@@ -69,6 +69,11 @@ BASE_DIR = Path(__file__).parent
 
 def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmod, _state=None, CONFIG_PATH="config.json"):
     """Attach all brand routes to the existing Flask app."""
+    global BASE_DIR
+    # Same directory as the real config.json (the persistent disk in production,
+    # e.g. /data) -- not this module's own /app location -- so brand profiles,
+    # uploads, and media survive a redeploy.
+    BASE_DIR = Path(CONFIG_PATH).resolve().parent
 
     # ---- brand profiles -----------------------------------------------------
     @app.route("/brand/list")
@@ -136,7 +141,7 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
         cfg["connection"] = conn
         # persist back to config.json (same file the app already uses)
         try:
-            json.dump(cfg, open("config.json", "w", encoding="utf-8"),
+            json.dump(cfg, open(CONFIG_PATH, "w", encoding="utf-8"),
                       ensure_ascii=False, indent=2)
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:160]}), 500

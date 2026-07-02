@@ -34,6 +34,7 @@ import csv
 import gzip
 import io
 import json
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -52,7 +53,10 @@ RT_SEARCH_TERMS = "GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT"
 RT_SQP          = "GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT"
 
 # Where pulled raw data is cached so we don't re-pull the same week repeatedly.
-_CACHE_DIR = Path(__file__).parent / "brand_analytics_cache"
+# Same directory as config.json (the persistent disk in production) so the
+# cache survives a redeploy instead of living in the ephemeral container fs.
+_CONFIG_PATH = os.environ.get("CONFIG_PATH", "config.json")
+_CACHE_DIR = Path(os.path.dirname(os.path.abspath(_CONFIG_PATH))) / "brand_analytics_cache"
 _CACHE_DIR.mkdir(exist_ok=True)
 
 
