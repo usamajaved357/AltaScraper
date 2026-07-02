@@ -1,0 +1,44 @@
+John Deere J-20C
+John Deere J-20D
+J-20C
+J-20D
+Ford M2C134-A
+Ford M2C134-B
+Ford M2C134-C
+Ford M2C134-D
+Ford ESN-M2C86-B
+M2C134-A
+M2C134-B
+M2C134-C
+M2C134-D
+ESN-M2C86-B
+Case New Holland MAT 3505
+Case New Holland MAT 3525
+MAT 3505
+MAT 3525
+Caterpillar ECF-3
+CAT TO-4
+ECF-3
+TO-4
+Allison C4
+Allison TES-295
+TES-295
+Cummins CES 20081
+CES 20081
+Detroit Diesel DFS 93K218
+DFS 93K218
+Mack EO-O Premium Plus
+EO-O Premium Plus
+Volvo VDS-4.5
+VDS-4.5
+Mercedes-Benz 229.51
+229.51
+Kubota UDT
+Kubota Super UDT
+Super UDT
+ZF TE-ML-03E
+ZF TE-ML-05F
+TE-ML-03E
+TE-ML-05F
+Volvo VCE 1273.03
+VCE 1273.03

@@ -1,0 +1,65 @@
+[
+  {
+    "id": "mt1782508128617",
+    "label": "5 gallon pail",
+    "container": "pail",
+    "filename": "tpl_pail_1782508128.png",
+    "zones": {
+      "application": {
+        "box": [
+          0.10235294117647059,
+          0.691764705882353,
+          0.3705882352941177,
+          0.7917647058823529
+        ],
+        "align": "left",
+        "bold": true,
+        "size": 1,
+        "text": ""
+      },
+      "choice": {
+        "box": [
+          0,
+          0.5679411764705882,
+          0.3652941176470588,
+          0.6411764705882353
+        ],
+        "align": "center",
+        "bold": false,
+        "size": 1,
+        "text": ""
+      },
+      "grade": {
+        "box": [
+          0.022941176470588243,
+          0.5,
+          0.3529411764705882,
+          0.56
+        ],
+        "align": "center",
+        "bold": true,
+        "size": 1,
+        "text": ""
+      },
+      "title": {
+        "box": [
+          0.0611764705882353,
+          0.33294117647058824,
+          0.361764705882353,
+          0.4964705882352941
+        ],
+        "align": "left",
+        "bold": true,
+        "size": 1,
+        "text": ""
+      }
+    },
+    "erase": []
+  },
+  {
+    "id": "mt1782508150150",
+    "label": "55 gallon drum",
+    "container": "pail",
+    "filename": "tpl_pail_1782508150.png"
+  }
+]

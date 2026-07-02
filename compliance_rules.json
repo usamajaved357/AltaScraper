@@ -1,0 +1,365 @@
+{
+  "_meta": {
+    "version": "2.0",
+    "last_reviewed": "2026-06-11",
+    "marketplace": "Amazon UK",
+    "applicable_law": "UK GPSR 2024, UKCA, CPSR, CLP, FSA, MHRA, FCM Regulations",
+    "note": "This file is a first-line keyword screen, not a substitute for professional compliance review. HIGH risk categories should never be auto-approved without seller verification."
+  },
+
+  "health_beauty": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "whitening", "teeth", "dental", "collagen", "serum", "mask", "face mask",
+      "lotion", "cream", "moisturiser", "moisturizer", "skincare", "skin care",
+      "face", "facial", "body lotion", "cleanser", "toner", "retinol", "vitamin c",
+      "hyaluronic", "sunscreen", "spf", "anti-aging", "anti ageing", "anti-ageing",
+      "acne", "brightening", "wrinkle", "exfoliator", "scrub", "balm", "essence",
+      "ampoule", "peel", "facewash", "face wash", "shampoo", "conditioner", "hair oil",
+      "hair mask", "lip balm", "lip gloss", "lipstick", "eyeshadow", "foundation",
+      "concealer", "mascara", "blusher", "deodorant", "perfume", "fragrance", "eau de"
+    ],
+    "requirements": [
+      "🧪 CPSR (Cosmetic Product Safety Report) required — EU/UK Cosmetic Regulation 1223/2009 retained",
+      "👤 Responsible Person (RP) declaration required under UK GPSR 2024",
+      "🏷️ Full INCI ingredient list required on packaging in descending order of weight",
+      "📋 Product Information File (PIF) must be maintained and accessible to UK authorities within 72 hours",
+      "⚗️ Lab safety testing required (challenge testing for water-based, stability testing for all)",
+      "🚫 No medical claims allowed (e.g. 'cures acne', 'treats eczema', 'heals scars')",
+      "📦 UK address of Responsible Person must appear on packaging — overseas-only address fails GPSR",
+      "🔬 Preservative challenge testing required for water-based or aqueous products",
+      "⚠️ Amazon Health & Personal Care may request CPSR + RP docs before listing approval",
+      "📄 CPNP notification (or UK equivalent SCPN) required before placing on UK market"
+    ]
+  },
+
+  "teeth_whitening": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "whitening", "teeth whitening", "tooth whitening", "bleach", "bleaching",
+      "white teeth", "smile bright", "carbamide peroxide", "hydrogen peroxide",
+      "dental bleach", "whitening strips", "whitening gel", "whitening pen",
+      "led teeth", "blue light teeth"
+    ],
+    "requirements": [
+      "🦷 UK Cosmetic Products Regulation: Maximum 0.1% hydrogen peroxide (H2O2) for OTC products",
+      "🚫 Products with >0.1% H2O2 are BANNED for direct consumer sale in UK — only registered dental professionals may supply",
+      "📋 CPSR required specifically for oral cosmetics with peroxide testing",
+      "⚠️ Amazon Health category requires prior approval — many sellers are gated out",
+      "🔬 Independent lab certificate confirming H2O2/carbamide peroxide concentration is mandatory",
+      "📄 SDS (Safety Data Sheet) required if any regulated chemicals present",
+      "🚫 Cannot make medical claims (e.g. 'removes plaque', 'prevents cavities')",
+      "👶 Must be labelled NOT FOR USE BY UNDER-18s if any peroxide present"
+    ]
+  },
+
+  "supplements": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "supplement", "vitamin", "vitamins", "capsule", "tablet", "powder",
+      "protein", "omega", "probiotic", "prebiotic", "collagen supplement",
+      "weight loss", "fat burner", "fat burning", "pre-workout", "pre workout",
+      "energy drink", "energy supplement", "appetite", "metabolism booster",
+      "detox", "cleanse", "gummies", "softgel", "multivitamin", "biotin",
+      "ashwagandha", "turmeric", "ginseng", "magnesium", "zinc supplement",
+      "iron supplement", "fish oil", "krill oil", "creatine", "bcaa", "whey"
+    ],
+    "requirements": [
+      "📋 Food Business Operator (FBO) registration with local UK council required",
+      "🏷️ Full nutritional labelling required per UK Food Information Regulations 2014",
+      "🚫 No disease prevention/treatment claims (UK Advertising Standards Authority + EFSA)",
+      "⚠️ Novel Food authorisation may be required — check FSA Novel Food catalogue before listing",
+      "📄 SDS required if product contains controlled substances",
+      "🔬 Certificate of Analysis (CoA) per batch — Amazon may request",
+      "📦 Country of origin must be declared on label",
+      "⚠️ Amazon requires Responsible Person docs + CoA before listing in many supplement subcategories",
+      "🚫 CBD, novel proteins, novel extracts require explicit FSA authorisation",
+      "👶 Children's supplements require additional age-appropriate dosing warnings"
+    ]
+  },
+
+  "electrical": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "led", "lamp", "light", "lighting", "bulb", "solar", "electric", "electrical",
+      "usb", "charging", "charger", "battery", "batteries", "plug", "watt", "wattage",
+      "volt", "voltage", "power", "wireless", "bluetooth", "wifi", "electronic",
+      "device", "gadget", "sensor", "fan", "heater", "humidifier", "diffuser",
+      "kettle", "toaster", "hairdryer", "hair dryer", "iron", "vacuum", "blender",
+      "mixer", "speaker", "headphone", "earphone", "earbuds", "smart watch",
+      "fitness tracker", "remote control", "motor", "pump", "compressor"
+    ],
+    "requirements": [
+      "🔌 UKCA marking required for UK market (replaced CE mark for GB after 31 Dec 2024)",
+      "📋 Declaration of Conformity (DoC) required and must accompany product on request",
+      "⚡ Mains-powered: must comply with BS 1363 (UK 3-pin plug) — NO EU 2-pin plugs accepted",
+      "🔋 Battery regulations: comply with UK Batteries Regulations 2008 — Producer Registration required",
+      "📄 WEEE compliance — register with an approved WEEE compliance scheme before placing on market",
+      "🔬 EMC testing certificate required (UK Electromagnetic Compatibility Regulations 2016)",
+      "🔥 Low Voltage Directive equivalent (UK Electrical Equipment (Safety) Regulations 2016)",
+      "⚠️ Amazon UK Compliance team frequently requests UKCA/DoC docs — random audits common",
+      "🌍 RoHS UK compliance required (Restriction of Hazardous Substances)",
+      "📦 Responsible Person UK address required on product or packaging (GPSR 2024)"
+    ]
+  },
+
+  "lithium_batteries": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "lithium", "li-ion", "lithium-ion", "lithium polymer", "li-po", "lipo",
+      "18650", "21700", "rechargeable battery", "power bank", "powerbank",
+      "drone battery", "vape battery"
+    ],
+    "requirements": [
+      "🔋 Lithium content/capacity must be declared on packaging (Wh and mAh)",
+      "✈️ Air transport: UN3480 (loose) or UN3481 (in equipment) — UN 38.3 test report required",
+      "📋 MSDS / Safety Data Sheet required",
+      "⚠️ Amazon enforces lithium battery documentation aggressively — listings without docs get suspended",
+      "🚫 Capacity limits: Amazon may restrict standalone batteries over certain Wh thresholds",
+      "📄 Battery Producer Registration (UK Batteries Regulations 2008) required",
+      "🔥 Cannot be sold as 'fire-resistant' or 'explosion-proof' without certified evidence",
+      "👶 If accessible to children: small parts warning + battery cover compliance"
+    ]
+  },
+
+  "medical_devices": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "medical", "medical device", "blood pressure", "thermometer", "pulse oximeter",
+      "oximeter", "stethoscope", "glucose", "diabetes", "nebuliser", "nebulizer",
+      "inhaler", "tens machine", "ultrasonic", "compression stocking", "compression sock",
+      "orthopedic", "orthopaedic", "posture corrector", "back brace", "wrist brace",
+      "knee brace", "first aid", "wound", "bandage", "plaster", "sterile", "syringe",
+      "test kit", "diagnostic", "treatment", "therapy", "therapeutic"
+    ],
+    "requirements": [
+      "🏥 Anything marketed as treating/diagnosing/preventing disease requires MHRA registration",
+      "🇬🇧 UKCA mark with Notified Body number for Class IIa+ devices (UK MDR 2002 as amended)",
+      "📋 Clinical evaluation file + Technical documentation required",
+      "🚫 Cannot make medical claims without MHRA approval — even 'helps with', 'soothes', 'relieves' is risky",
+      "📄 Instructions For Use (IFU) in English required",
+      "⚠️ Amazon Medical category requires Brand Registry + pre-approval for most sellers",
+      "🏷️ Single-use, sterile, expiry, lot number must be on packaging where applicable",
+      "👤 UK Responsible Person required (UK MDR Part IVA)",
+      "🚫 Diagnostic in-vitro devices require additional IVDR compliance"
+    ]
+  },
+
+  "cbd_products": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "cbd", "cannabidiol", "hemp", "hemp oil", "hemp seed", "cbd oil", "cbd cream",
+      "cbd gummies", "broad spectrum", "full spectrum", "thc-free", "thc free", "cannabis"
+    ],
+    "requirements": [
+      "📋 CBD ingestibles require FSA Novel Food authorisation — only authorised products may be sold",
+      "🚫 THC content must be below 1mg per closed container (UK Misuse of Drugs Regulations)",
+      "🏥 Cannot make medical claims — MHRA treats medicinal CBD as a licensed medicine",
+      "📄 Certificate of Analysis (CoA) per batch confirming THC + CBD levels mandatory",
+      "🌿 Source must be from EU-approved industrial hemp varieties",
+      "🚫 Amazon currently prohibits most ingestible CBD listings — read latest Amazon policy before listing",
+      "👶 Cannot be marketed to under-18s",
+      "🏷️ Daily intake limit recommendation must follow FSA guidance (currently 10mg/day)"
+    ]
+  },
+
+  "cookware_kitchen": {
+    "risk_level": "MEDIUM",
+    "keywords": [
+      "cookware", "pan", "pot", "saucepan", "frying", "kitchen", "non-stick",
+      "nonstick", "non stick", "teflon", "induction", "bakeware", "utensil",
+      "knife set", "cutting board", "chopping board", "food storage", "container",
+      "bowl", "plate", "bottle", "tumbler", "cup", "mug", "thermos", "flask",
+      "spatula", "whisk", "tongs", "ladle", "colander", "strainer", "grater",
+      "peeler", "garlic press"
+    ],
+    "requirements": [
+      "🍳 Food Contact Materials (FCM) compliance required — Retained Regulation (EC) No 1935/2004",
+      "🚫 No unsubstantiated 'food safe', 'BPA free', 'PFOA free' claims without test evidence",
+      "📋 Declaration of Compliance (DoC) for food contact materials must be retained and provided on request",
+      "🔬 Migration testing required for non-stick coatings under Plastic Materials Regulation",
+      "🏷️ Material composition must be accurately described — silicone, melamine, ceramic, etc.",
+      "⚠️ Non-stick coatings: PTFE/PFOA claims scrutinised by Amazon and consumer protection bodies",
+      "📦 'Knife and fork' or 'glass' symbol indicates food contact — must use only where compliant",
+      "🚫 Melamine cookware: not for microwave/oven use — must be clearly labelled"
+    ]
+  },
+
+  "toys_children": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "toy", "toys", "kids", "children", "child", "baby", "infant", "toddler",
+      "educational", "play", "playset", "puzzle", "game", "doll", "action figure",
+      "plush", "soft toy", "teddy", "rattle", "teether", "pacifier", "dummy",
+      "high chair", "cot", "crib", "stroller", "pram", "buggy", "car seat",
+      "booster seat", "nursery", "kids room", "children's", "child's"
+    ],
+    "requirements": [
+      "🧸 UKCA marking MANDATORY — UK Toys (Safety) Regulations 2011",
+      "🔬 EN 71 safety testing required (Parts 1, 2, 3 minimum; Part 9 for organic chemicals)",
+      "⚠️ Age grading must be accurate, evidence-based, and marked on packaging",
+      "📋 Technical file with test reports must be retained for 10 years after last unit sold",
+      "🚫 Small parts warning (choking hazard) required if any part fits the small-parts cylinder under EN 71-1",
+      "📄 Declaration of Conformity required and traceable to manufacturer",
+      "🌍 RoHS UK + REACH compliance for chemicals (e.g. phthalates limits for under-3s items)",
+      "⚠️ Amazon Toys category requires prior approval for most sellers — Brand Registry helps",
+      "🔥 Stuffed toys: flammability standard BS 5852 if labelled for under-3s",
+      "👶 Sleep-related (cot mattress, bedding): BS EN 16890 for cots, BS 1877-10 for mattresses"
+    ]
+  },
+
+  "nightwear_children": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "pyjama", "pyjamas", "pajama", "pajamas", "nightie", "nightdress",
+      "nightgown", "sleepwear", "nightwear", "dressing gown", "bathrobe",
+      "kids pyjamas", "children's pyjamas", "baby sleepsuit", "sleepsuit",
+      "onesie"
+    ],
+    "requirements": [
+      "🔥 Children's nightwear must meet BS 5722 flammability standard (Nightwear (Safety) Regulations 1985)",
+      "🏷️ Mandatory permanent flammability label: 'KEEP AWAY FROM FIRE' or compliant equivalent",
+      "🚫 Cannot make 'flame retardant' claims without certified evidence",
+      "📋 Test certificate from accredited UK lab required and retained for inspection",
+      "⚠️ Trading Standards regularly enforces — non-compliance leads to immediate Amazon takedown"
+    ]
+  },
+
+  "knives_blades": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "knife", "knives", "kitchen knife", "chef knife", "hunting knife",
+      "pocket knife", "folding knife", "machete", "sword", "axe", "hatchet",
+      "blade", "razor", "straight razor", "katana", "dagger", "throwing knife"
+    ],
+    "requirements": [
+      "🔞 UK Criminal Justice Act 1988 + Offensive Weapons Act 2019: sale to under-18s is a criminal offence",
+      "🚫 Cannot ship to UK addresses without age-verification at delivery (Amazon enforces via Restricted Products policy)",
+      "🚫 Zombie knives, flick knives, gravity knives, push daggers BANNED from sale (Offensive Weapons Act 2019)",
+      "🚫 Stealth knives (non-metallic) BANNED",
+      "⚠️ Sword sales restricted: curved blades over 50cm prohibited except for genuine antiques or hand-forged",
+      "📦 Packaging must include age-verification labelling",
+      "⚠️ Amazon requires Knife Restricted Product approval before listing"
+    ]
+  },
+
+  "tools_hardware": {
+    "risk_level": "MEDIUM",
+    "keywords": [
+      "tool", "drill", "wrench", "screwdriver", "puller", "bearing", "bracket",
+      "mounting", "hardware", "mechanical", "socket", "extractor", "pliers",
+      "clamp", "hammer", "saw", "spanner", "hex key", "allen key", "ratchet",
+      "torque wrench", "spirit level", "tape measure"
+    ],
+    "requirements": [
+      "⚙️ UKCA marking required for powered/electrical tools (Supply of Machinery (Safety) Regs 2008)",
+      "📋 Declaration of Conformity required for powered tools",
+      "📄 Instructions for safe use must be included in English",
+      "🔬 EN safety standards compliance for professional/trade tools (e.g. EN 60745 for hand tools)",
+      "🚫 No misleading torque/load capacity claims without certified evidence"
+    ]
+  },
+
+  "sports_fitness": {
+    "risk_level": "MEDIUM",
+    "keywords": [
+      "golf", "sports", "fitness", "exercise", "workout", "training", "net",
+      "swing", "gym", "resistance", "yoga", "running", "cycling", "swim",
+      "dumbbell", "kettlebell", "barbell", "weight", "treadmill", "exercise bike",
+      "rowing machine", "skipping rope", "boxing", "punching bag", "helmet",
+      "shin guard", "mouthguard"
+    ],
+    "requirements": [
+      "🚫 No weight loss or body composition claims without clinical evidence (ASA / CAP Code)",
+      "📋 UKCA marking required for protective equipment classified as PPE",
+      "🏋️ Personal Protective Equipment Regulations apply if PPE — Cat I/II/III conformity",
+      "⚠️ Avoid performance claims that cannot be substantiated",
+      "🪖 Helmets, shin guards: must meet relevant EN standard (e.g. EN 1078 for cycling helmets)"
+    ]
+  },
+
+  "pet_products": {
+    "risk_level": "MEDIUM",
+    "keywords": [
+      "pet", "dog", "cat", "puppy", "kitten", "animal", "pet food", "dog food",
+      "cat food", "pet toy", "dog toy", "cat toy", "pet bed", "dog bed",
+      "cat bed", "litter", "leash", "collar", "harness", "carrier",
+      "pet bowl", "pet treat", "chew", "scratching post"
+    ],
+    "requirements": [
+      "🐾 Pet food: must comply with UK Animal Feed Regulations + display registration number",
+      "🚫 No medicinal claims (e.g. 'cures fleas', 'treats anxiety') without VMD authorisation",
+      "📋 Pet food: ingredients in descending order + nutritional analysis required",
+      "📄 CITES check required for products containing animal-derived materials (ivory, certain leathers, exotic feathers)",
+      "🚫 Dog collars: cannot be electric/shock collars (banned in England from 2024)",
+      "⚠️ Pet medicines/veterinary products require VMD (Veterinary Medicines Directorate) authorisation"
+    ]
+  },
+
+  "aerosols_pressurised": {
+    "risk_level": "MEDIUM",
+    "keywords": [
+      "aerosol", "spray can", "compressed gas", "pressurised", "pressurized",
+      "air freshener", "deodorant spray", "hair spray", "hairspray",
+      "spray paint", "lubricant spray", "wd-40"
+    ],
+    "requirements": [
+      "🚯 Aerosol Dispensers Regulations 2009 compliance required",
+      "🏷️ CLP (Classification, Labelling, Packaging) hazard pictograms + statements required",
+      "🚫 Cannot ship by air without dangerous goods classification (UN1950)",
+      "⚠️ Amazon restricts hazmat products — sellers need hazmat-approved Amazon account",
+      "🔥 Flammable contents: clear hazard warning required",
+      "📦 Packaging must withstand internal pressure of contents"
+    ]
+  },
+
+  "eyewear_sunglasses": {
+    "risk_level": "MEDIUM",
+    "keywords": [
+      "sunglasses", "sunglass", "shades", "eyewear", "reading glasses",
+      "blue light glasses", "blue-light", "computer glasses", "safety glasses",
+      "goggles", "swimming goggles", "ski goggles"
+    ],
+    "requirements": [
+      "🕶️ UKCA marking required as PPE (Category I for general sun protection)",
+      "🔬 EN ISO 12312-1 compliance for sunglasses",
+      "🏷️ UV protection rating must be accurate (UV400 = blocks UVA + UVB to 400nm)",
+      "🚫 Cannot claim 'medical' or 'prescription' without optometrist supply chain compliance",
+      "📋 Optical category (0-4) must be declared",
+      "👶 Children's eyewear: additional age-appropriate sizing + impact resistance requirements"
+    ]
+  },
+
+  "food_consumables": {
+    "risk_level": "HIGH",
+    "keywords": [
+      "food", "snack", "biscuit", "cookie", "chocolate", "candy", "sweets",
+      "tea", "coffee", "drink", "beverage", "juice", "sauce", "spice", "seasoning",
+      "herb", "honey", "jam", "syrup", "oil", "olive oil", "edible", "flavour"
+    ],
+    "requirements": [
+      "🏷️ Food Information Regulations 2014: full allergen declaration (14 named allergens highlighted)",
+      "📅 'Best Before' or 'Use By' date required",
+      "📋 Nutritional information panel mandatory (per 100g/100ml)",
+      "🌍 Country of origin or place of provenance required",
+      "📋 FBO (Food Business Operator) registration with local council required",
+      "🚫 Health claims must be on approved EU/UK register (most are not)",
+      "🚫 No medical/disease claims",
+      "⚠️ Novel Foods authorisation required for ingredients not consumed significantly in EU before May 1997",
+      "📄 HACCP plan required for food production/repacking"
+    ]
+  },
+
+  "general": {
+    "risk_level": "BASELINE",
+    "requirements": [
+      "📦 UK GPSR 2024: every product must have a UK-based Responsible Person whose name + address is on product/packaging",
+      "🏷️ English language instructions and warnings required for UK market",
+      "📋 Country of origin must be accurately stated (not 'Imported')",
+      "🚫 No false or misleading product claims (Consumer Protection from Unfair Trading Regulations 2008)",
+      "⚠️ Product images must reflect actual product — no misleading visuals or stock images of different versions",
+      "📦 EAN or UPC required for Amazon listings (unless Brand Registered with GTIN exemption)",
+      "♻️ Producer Responsibility: register with packaging waste scheme if turnover/tonnage above thresholds"
+    ]
+  }
+}

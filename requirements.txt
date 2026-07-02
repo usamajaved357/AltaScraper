@@ -1,0 +1,42 @@
+# ============================================================
+#  Listing Generator Suite - Python dependencies
+#  Every third-party package the code actually imports (verified
+#  by an AST scan of dashboard.py + all other .py files).
+#  Install:  pip install -r requirements.txt
+# ============================================================
+
+# --- Web server (dashboard.py, dashboard_brand_patch.py) ---
+flask>=3.0.0
+
+# --- AI / content generation ---
+anthropic>=0.25.0
+crawl4ai>=0.4.0
+
+# --- Google Sheets / Drive ---
+gspread>=6.0.0
+google-auth>=2.0.0                 # provides google.oauth2.*
+google-api-python-client>=2.100.0  # provides googleapiclient.*
+
+# --- Amazon SP-API ---
+python-amazon-sp-api>=0.3.0        # provides sp_api.*
+
+# --- Spreadsheets / documents / PDFs ---
+openpyxl>=3.1.0
+python-docx>=1.1.0                 # provides docx.*  (ppc_deliverables.py)
+python-pptx>=0.6.23                # provides pptx.*  (ppc_deliverables.py)
+pdfplumber>=0.10.0
+
+# --- Images ---
+Pillow>=10.0.0                     # provides PIL.*  (ai_providers, dashboard, miles_template)
+
+# --- HTTP / networking ---
+requests>=2.31.0
+urllib3>=2.0.0                     # imported directly in miles_import.py
+
+# --- Console output ---
+rich>=13.0.0
+
+# --- Retained from the original file; NOT imported anywhere in the
+#     Python code (the only "pd." hits are JavaScript inside an HTML
+#     string). Kept to avoid surprising a regression; safe to delete.
+pandas>=2.0.0

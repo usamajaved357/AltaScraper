@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: amazon-listing-tool
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: standard          # crawl4ai's headless Chromium needs more than the free/starter RAM
+    healthCheckPath: /healthz
+    disk:
+      name: app-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: CONFIG_PATH
+        value: /data/config.json
+      - key: APP_PASSWORD
+        sync: false          # set manually in the Render dashboard, not committed
+      - key: APP_SECRET_KEY
+        generateValue: true  # Render generates and persists a random value

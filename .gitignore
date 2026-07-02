@@ -1,0 +1,30 @@
+# ============================================================
+#  Keep secrets and machine-specific files OUT of git.
+#  If you ever run `git init` in this folder, these are ignored.
+# ============================================================
+
+# --- Secrets / credentials (NEVER commit these) ---
+service_account.json
+config.json
+*.pem
+*.key
+.env
+
+# --- Runtime / machine-specific ---
+.venv/
+.app_port
+.DS_Store
+
+# --- Python caches ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- Generated output (uncomment if you don't want these tracked) ---
+# inventory_out/
+# ppc_out/
+# filled_unified_template.xlsm
+
+# --- Stray local artifacts, not part of the app ---
+python-3.14.6-macos11.pkg
+KITCHEN_COOKWARE_SET_FOOD_SPATULA_KITCHEN_KNIFE_HARDWARE__2_.xlsm

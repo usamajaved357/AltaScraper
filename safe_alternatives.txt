@@ -1,0 +1,36 @@
+SAFE ALTERNATIVES TO USE INSTEAD OF BRAND NAMES:
+
+For Agricultural Equipment:
+- "Suitable for agricultural tractors with common sump systems"
+- "For equipment requiring multi-purpose fluids"
+- "Formulated for tractors requiring universal tractor fluids"
+- "For agricultural tractor transmission and hydraulic systems"
+- "Designed for common sump applications"
+
+For Compressor Equipment:
+- "Suitable for rotary screw air compressors"
+- "For industrial air compression systems"
+- "For reciprocating and rotary screw compressors"
+- "For compressors operating at 150-200 PSI"
+- "Meets ISO 6743-3 specifications for compressor oils"
+
+For Heavy Duty Diesel:
+- "For heavy-duty diesel engines with DPF systems"
+- "For on-highway diesel engines"
+- "For commercial fleet applications"
+- "For heavy equipment diesel engines"
+
+For Hydraulic Systems:
+- "For mobile and industrial hydraulic systems"
+- "For high-pressure hydraulic applications"
+- "For construction equipment hydraulic systems"
+- "For mobile hydraulic equipment"
+
+Generic Standards (SAFE to mention):
+- ISO viscosity grade (ISO 32, ISO 46, ISO VG 220, etc.)
+- SAE viscosity grade (SAE 5W-30, SAE 80W-90, etc.)
+- AGMA grade (AGMA 5 EP, AGMA 7, etc.)
+- NLGI grade (NLGI 2, for greases)
+- ISO 3448 (viscosity classification standard)
+- ASTM D445 (test method)
+- DIN 51524 (German standard)

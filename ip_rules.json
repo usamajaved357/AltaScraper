@@ -1,0 +1,130 @@
+{
+  "_meta": {
+    "version": "1.1",
+    "purpose": "Universal IP/trademark compliance for Amazon UK dropshipping listings",
+    "note": "Approach: zero brand names except seller's own brand. No comparative claims. Maintained allowlist of safe capitalised words. Phrases pruned to remove too-generic ones like 'designed for', 'genuine', 'authentic' which fire on innocent product copy. Threshold raised to 4 to absorb proper-noun edge cases (place names, etc.) without false IP_HOLD."
+  },
+
+  "forbidden_phrases": [
+    "compatible with",
+    "replacement for",
+    "alternative to",
+    "equivalent to",
+    "compare to",
+    "compares to",
+    "comparable to",
+    "approved by",
+    "recommended by",
+    "works with",
+    "better than",
+    "as good as",
+    "same as",
+    "replaces",
+    "oem approved",
+    "factory approved",
+    "manufacturer recommended",
+    "manufacturer approved",
+    "like the famous",
+    "like the popular",
+    "made by",
+    "produced by",
+    "branded",
+    "trademark",
+    "patented",
+    "fits all",
+    "universal fit"
+  ],
+
+  "safe_capitalised_words": [
+    "USB", "USB-C", "USB-A", "LED", "LCD", "OLED", "HDMI", "WiFi", "Wi-Fi",
+    "NFC", "GPS", "BLE", "RGB", "RGBW", "AC", "DC", "AA", "AAA",
+    "TYPE-C", "MICRO-USB", "QI", "5G", "4G", "3G", "GHz", "MHz", "KHz", "Hz",
+    "IP65", "IP67", "IP68", "IPX4", "IPX5", "IPX7", "IPX8",
+    "BPA", "PFOA", "PTFE", "ABS", "EVA", "TPE", "TPR", "PVC", "PU",
+    "PP", "PE", "PET", "POM", "PC", "UV", "IR", "FM", "AM", "DPI", "CPI",
+    "RPM", "MPH", "KPH", "PSI", "BAR", "VAC", "VDC", "WATT", "VOLT",
+
+    "Stainless", "Steel", "Aluminium", "Aluminum", "Plastic", "Silicone",
+    "Wood", "Wooden", "Glass", "Ceramic", "Porcelain", "Cotton", "Polyester",
+    "Leather", "Faux", "Nylon", "Rubber", "Bamboo", "Marble", "Granite",
+    "Carbon", "Titanium", "Iron", "Copper", "Brass", "Bronze", "Vinyl",
+    "Acrylic", "Mesh", "Microfibre", "Microfiber", "Suede", "Felt",
+    "Foam", "Velvet", "Linen", "Wool", "Cashmere", "Silk",
+    "Mahogany", "Oak", "Walnut", "Birch", "Pine", "Teak", "Cork",
+
+    "Black", "White", "Grey", "Gray", "Red", "Blue", "Green", "Yellow",
+    "Pink", "Purple", "Orange", "Brown", "Beige", "Gold", "Silver",
+    "Cream", "Navy", "Maroon", "Burgundy", "Turquoise", "Coral", "Khaki",
+    "Charcoal", "Ivory", "Olive", "Tan", "Rose", "Champagne", "Platinum",
+    "Pearl", "Sky", "Sage", "Mint", "Lavender", "Lemon", "Lime", "Peach",
+
+    "Small", "Medium", "Large", "Mini", "Micro", "Slim", "Compact",
+    "Standard", "Tall", "Short", "Wide", "Narrow", "Thick", "Thin",
+    "Heavy", "Light", "Lightweight", "King", "Queen", "Single", "Double", "Twin",
+
+    "UKCA", "CE", "ISO", "ASTM", "EN", "BS", "UL", "FCC", "RoHS",
+    "REACH", "NSF", "FDA", "MHRA", "FSA", "GPSR", "CPSR", "WEEE",
+    "GTIN", "EAN", "UPC", "ASIN", "SKU", "GSM", "JIS",
+
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+    "January", "February", "March", "April", "May", "June", "July",
+    "August", "September", "October", "November", "December",
+
+    "UK", "US", "USA", "EU", "China", "Chinese", "Japanese", "German",
+    "French", "Italian", "Korean", "American", "British", "European",
+    "Asian", "African", "Mediterranean", "Nordic", "Scandinavian", "Swiss",
+
+    "Gas", "Electric", "Induction", "Microwave", "Dishwasher", "Oven",
+    "Freezer", "Refrigerator", "Fridge", "Hob", "Stovetop", "Stove",
+    "Grill", "Pan", "Pans", "Pot", "Pots", "Lid", "Lids", "Bowl", "Bowls",
+    "Cup", "Cups", "Mug", "Mugs", "Plate", "Plates", "Saucepan", "Saucepans",
+    "Skillet", "Skillets", "Wok", "Woks", "Frypan", "Frypans", "Kettle",
+    "Toaster", "Blender", "Mixer", "Spatula", "Tongs", "Whisk", "Cookware",
+    "Bakeware", "Utensils", "Knife", "Knives", "Fork", "Forks", "Spoon", "Spoons",
+
+    "Premium", "Professional", "Pro", "Smart", "Active", "Eco", "Bio",
+    "Organic", "Natural", "Sport", "Sports", "Travel", "Home", "Office",
+    "Outdoor", "Indoor", "Portable", "Foldable", "Adjustable", "Detachable",
+    "Removable", "Reusable", "Disposable", "Waterproof", "Easy", "Quick",
+    "Fast", "Slow", "Hot", "Cold", "Warm", "Cool", "Soft", "Hard", "Strong",
+    "Sturdy", "Durable", "Reliable", "Stylish", "Modern", "Classic",
+    "Traditional", "Vintage", "Rustic", "Elegant", "Sleek", "Comfortable",
+
+    "Built", "Made", "Crafted", "Created", "Engineered", "Tested", "Approved",
+    "Designed", "Equipped", "Featuring", "Includes", "Including", "Contains",
+    "Suitable", "Ideal", "Perfect", "Great", "Excellent", "Superior",
+
+    "Manual", "Guide", "Instructions", "Box", "Package", "Bundle", "Set",
+    "Sets", "Kit", "Kits", "Bag", "Bags", "Pack", "Packs", "Pair", "Pairs",
+    "Piece", "Pieces", "Unit", "Units",
+
+    "Adult", "Adults", "Child", "Children", "Kids", "Baby", "Babies",
+    "Infant", "Toddler", "Teen", "Teenager", "Men", "Mens", "Women", "Womens",
+    "Boys", "Girls", "Unisex", "Family", "Universal",
+
+    "Spring", "Summer", "Autumn", "Winter", "Fall",
+
+    "Bluetooth", "Wireless", "Cordless", "Rechargeable", "Solar",
+
+    "Celsius", "Fahrenheit", "Kelvin", "Watt", "Watts", "Volt", "Volts",
+    "Amp", "Amps", "Hertz", "Kilogram", "Kilograms", "Gram", "Grams",
+    "Pound", "Pounds", "Ounce", "Ounces", "Inch", "Inches", "Foot", "Feet",
+    "Metre", "Metres", "Meter", "Meters", "Centimetre", "Centimetres",
+    "Centimeter", "Centimeters", "Millimetre", "Millimetres",
+    "Millimeter", "Millimeters", "Litre", "Litres", "Liter", "Liters",
+    "Millilitre", "Millilitres", "Milliliter", "Milliliters", "Mile", "Miles",
+    "Yard", "Yards", "Square", "Squared", "Cubic",
+
+    "Description", "Features", "Specifications", "Specs", "Note", "Tip",
+    "Warning", "Caution", "Important", "Notice", "Care", "Cleaning",
+    "Storage", "Use", "Usage", "Application", "Applications",
+
+    "Plus", "Max", "Mini", "Lite", "Light"
+  ],
+
+  "max_allowed_caps_words_unrecognised": 4,
+  "scan_title":         false,
+  "scan_bullets":       true,
+  "scan_description":   true,
+  "scan_search_terms":  true
+}

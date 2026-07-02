@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+.DS_Store
+.app_port
+
+# Secrets — never bake into the image, seeded at runtime instead
+config.json
+service_account.json
+
+# Local-only generated/output folders (become persistent-disk mounts at runtime)
+media/
+uploads/
+inventory_out/
+ppc_out/
+brands/
+miles_templates/
+files/
+
+# Large local-only artifacts not needed to run the server
+python-3.14.6-macos11.pkg
+KITCHEN_COOKWARE_SET_FOOD_SPATULA_KITCHEN_KNIFE_HARDWARE__2_.xlsm
+
+# Docs
+*.md
