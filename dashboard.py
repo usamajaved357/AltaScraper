@@ -632,7 +632,7 @@ def save_default():
                  if str(v).strip() != ""}
         if not attrs:
             return jsonify({"ok": False, "error": "no filled attributes to remember"}), 400
-        path = "attribute_defaults.json"
+        path = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "attribute_defaults.json")
         try:
             data = json.load(open(path, encoding="utf-8"))
         except Exception:
@@ -1156,7 +1156,7 @@ def media_delete():
 _LIVE_CACHE = {}   # key "accountid::MKT" -> {"ts":epoch, "items":[...]}
 _LIVE_TTL = 1800   # 30 min (SP-API is free; matches auto-sync cadence)
 _COGS_OVERRIDE = {}  # {"accountid::SKU": cost} manual overrides (also persisted to file)
-_COGS_FILE = "cogs_overrides.json"
+_COGS_FILE = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "cogs_overrides.json")
 _IMG_CACHE = {}  # {"accountid::MKT::SKU": {"url":..., "ts":epoch}} live listing main images
 
 # ---- background image-generation jobs (so the UI never blocks) ----

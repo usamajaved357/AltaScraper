@@ -1771,7 +1771,7 @@ def cap_chars(s: str, n: int) -> str:
         cut = cut[: cut.rfind(" ")].rstrip()
     return cut
 
-COUNTER_PATH      = Path(__file__).parent / "model_number_counter.json"
+COUNTER_PATH      = CONFIG_PATH.parent / "model_number_counter.json"
 COMPLIANCE_PATH   = Path(__file__).parent / "compliance_rules.json"
 IP_RULES_PATH     = Path(__file__).parent / "ip_rules.json"
 VALID_VALUES_PATH = Path(__file__).parent / "valid_values.json"
@@ -4580,7 +4580,7 @@ def _load_attr_defaults() -> dict:
     new listing of the same type. Shape: {product_type: {attr: value}}."""
     if _ATTR_DEFAULTS_CACHE["data"] is None:
         try:
-            _ATTR_DEFAULTS_CACHE["data"] = json.load(open("attribute_defaults.json", encoding="utf-8"))
+            _ATTR_DEFAULTS_CACHE["data"] = json.load(open(CONFIG_PATH.parent / "attribute_defaults.json", encoding="utf-8"))
         except Exception:
             _ATTR_DEFAULTS_CACHE["data"] = {}
     return _ATTR_DEFAULTS_CACHE["data"] or {}
@@ -6290,7 +6290,7 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
     Drive; here we only generate the listing rows."""
     import sys as _sys, json as _json
     from pathlib import Path as _P
-    base_dir = _P(__file__).parent
+    base_dir = CONFIG_PATH.parent
 
     def _argval(flag):
         """Read a --flag value from argv (run_miles can't see main()'s helper)."""
@@ -6792,7 +6792,7 @@ def run_brand(config: dict, gc, creds: dict, ws_out=None,
     test_limit: if > 0, only generate the first N products (saves credits)."""
     import sys as _sys
     from pathlib import Path as _P
-    base_dir = _P(__file__).parent
+    base_dir = CONFIG_PATH.parent
 
     if ws_out is None:                      # safety net: open ONCE if not given
         _gc, _wsin, ws_out = init_sheets(config)
@@ -7317,7 +7317,9 @@ def run_export_unified(config: dict, gc, status_filter: str = "APPROVED"):
     manufacturer = config.get("manufacturer", brand)
 
     template_path = config.get("unified_template_path")
-    output_path   = config.get("unified_output_path", "filled_unified_template.xlsm")
+    output_path   = config.get("unified_output_path") or str(CONFIG_PATH.parent / "filled_unified_template.xlsm")
+    if not Path(output_path).is_absolute():
+        output_path = str(CONFIG_PATH.parent / output_path)
 
     if not template_path:
         console.print("[red]unified_template_path missing in config.json[/red]")

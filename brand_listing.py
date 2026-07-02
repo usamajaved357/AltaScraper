@@ -38,8 +38,18 @@ PROVENANCE
 """
 
 import json
+import os
 import re
 from datetime import datetime
+
+# Mirrors dashboard.py's CONFIG_PATH convention so media/recipes read and write
+# the SAME directory as the rest of the app (the persistent disk in production,
+# e.g. /data when CONFIG_PATH=/data/config.json -- not the ephemeral /app).
+CONFIG_PATH = os.environ.get("CONFIG_PATH", "config.json")
+
+
+def _app_dir() -> str:
+    return os.path.dirname(os.path.abspath(CONFIG_PATH))
 
 
 # =============================================================================
@@ -415,7 +425,7 @@ def _img_to_data_url(src: str) -> str:
             return f"data:{mime};base64," + _b64.b64encode(data).decode("ascii")
         # local /media/ path -> resolve under the app's media dir
         if s.startswith("/media/"):
-            p = _Path(__file__).parent / "media" / s[len("/media/"):]
+            p = _Path(_app_dir()) / "media" / s[len("/media/"):]
             if p.exists():
                 mime = _mt.guess_type(str(p))[0] or "image/png"
                 return f"data:{mime};base64," + _b64.b64encode(p.read_bytes()).decode("ascii")
@@ -437,9 +447,9 @@ def _lookup_brand_recipe(brand: str):
     try:
         import json as _json
         from pathlib import Path as _Path
-        rp = _Path(__file__).parent / "image_recipes.json"
+        rp = _Path(_app_dir()) / "image_recipes.json"
         if not rp.exists():
-            rp = _Path(__file__).parent / "recipes.json"
+            rp = _Path(_app_dir()) / "recipes.json"
         if not rp.exists():
             return "", ""
         data = _json.loads(rp.read_text(encoding="utf-8"))
@@ -455,7 +465,7 @@ def _lookup_brand_recipe(brand: str):
             tpl = r.get("template_image", "") or ""
             # local /media path -> absolute file path the image_gen fetcher can read
             if tpl.startswith("/media/"):
-                tpl_local = _Path(__file__).parent / "media" / tpl[len("/media/"):]
+                tpl_local = _Path(_app_dir()) / "media" / tpl[len("/media/"):]
                 if tpl_local.exists():
                     tpl = str(tpl_local)
             return tpl, r.get("instructions", "") or ""
@@ -472,7 +482,7 @@ def _save_main_image(sku: str, image_b64: str, account_id: str = "") -> str:
     try:
         import base64 as _b64, time as _t
         from pathlib import Path as _Path
-        media = _Path(__file__).parent / "media"
+        media = _Path(_app_dir()) / "media"
         if account_id:
             base = media / "_acct" / _safe_seg(account_id) / _safe_seg(sku)
             urlpfx = f"/media/_acct/{_safe_seg(account_id)}/{_safe_seg(sku)}"
