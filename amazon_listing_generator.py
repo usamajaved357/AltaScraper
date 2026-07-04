@@ -65,8 +65,10 @@ import unified_export
 console     = Console()
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", str(Path(__file__).parent / "config.json")))
 
-MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default)
-US_MARKETPLACE_ID = "ATVPDKIKX0DER"        # USA
+MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default); MUTABLE — reassigned on marketplace switch
+# US_MARKETPLACE_ID moved to listing/constants.py in Phase 5 (immutable, shared). Imported
+# here so amazon_listing_generator.US_MARKETPLACE_ID still resolves for every use below.
+from listing.constants import US_MARKETPLACE_ID
 
 # When True (set by --minimal), build_api_attributes keeps ONLY the fields
 # Amazon strictly requires (its `required` list) plus the offer essentials
@@ -3970,10 +3972,9 @@ async def process_row(row: dict, client, ws_out,
 LANG = "en_GB"   # legacy default; real tag is derived per-marketplace via _lang_for()
 
 
-def _lang_for(mid: str) -> str:
-    """Amazon language_tag for a marketplace id. US needs en_US; UK needs en_GB.
-    Sending the wrong one triggers 'Invalid language data provided' on validate."""
-    return "en_US" if str(mid) == US_MARKETPLACE_ID else "en_GB"
+# _lang_for moved to listing/shaper.py in Phase 5 (uses only the immutable US_MARKETPLACE_ID;
+# behaviour unchanged). Imported so amazon_listing_generator._lang_for still resolves.
+from listing.shaper import _lang_for
 
 
 def _raw_schema(product_type: str, creds: dict):

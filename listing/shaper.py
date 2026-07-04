@@ -3,8 +3,16 @@
 shape_by_schema reads the live Amazon product-type schema and folds a raw value into the
 EXACT shape Amazon requires (array vs object, value vs decimal_value, unit enums, nested
 sub-attributes). It NEVER guesses the shape — it is driven entirely by the schema passed
-in. Moved verbatim from amazon_listing_generator.py in Phase 5 (behaviour unchanged).
+in. _lang_for maps a marketplace id to the correct Amazon language_tag. Both moved
+verbatim from amazon_listing_generator.py in Phase 5 (behaviour unchanged).
 """
+from listing.constants import US_MARKETPLACE_ID
+
+
+def _lang_for(mid: str) -> str:
+    """Amazon language_tag for a marketplace id. US needs en_US; UK needs en_GB.
+    Sending the wrong one triggers 'Invalid language data provided' on validate."""
+    return "en_US" if str(mid) == US_MARKETPLACE_ID else "en_GB"
 
 
 def shape_by_schema(schema, raw, mid, lang="en_GB"):
