@@ -3000,12 +3000,8 @@ def _col_letter(col_0: int) -> str:
     return result
 
 
-def _clean_price(val) -> str:
-    cleaned = re.sub(r"[^\d.]", "", str(val).split("-")[0])
-    try:
-        return str(round(float(cleaned), 2))
-    except ValueError:
-        return ""
+# _clean_price moved to listing/builder.py in Phase 5 (self-contained; behaviour unchanged).
+from listing.builder import _clean_price
 
 
 def _strip_html(html: str) -> str:
@@ -4209,15 +4205,9 @@ def _try_fetch_seller_id(creds: dict) -> str:
 
 # ---- value shaping helpers ---------------------------------------------------
 
-_NA = {"", "n/a", "na", "none", "null", "-"}
-
-
-def _is_blank(v) -> bool:
-    return v is None or str(v).strip().lower() in _NA
-
-
-def _truthy(v) -> bool:
-    return str(v).strip().lower() in {"yes", "y", "true", "1", "included", "required", "t"}
+# _NA/_is_blank/_truthy moved to listing/builder.py in Phase 5 (self-contained; behaviour
+# unchanged). _NA is private to _is_blank (used nowhere else), so it moved too.
+from listing.builder import _is_blank, _truthy
 
 
 def _split_value_unit(s):
@@ -4288,9 +4278,8 @@ def _coerce_value(val_schema: dict, raw):
     return str(raw)
 
 
-def _item_props(field_schema: dict) -> dict:
-    items = field_schema.get("items", {})
-    return items.get("properties", {}) if isinstance(items, dict) else {}
+# _item_props moved to listing/builder.py in Phase 5 (self-contained; behaviour unchanged).
+from listing.builder import _item_props
 
 
 def _shape_simple(field_schema: dict, raw, mid: str):
@@ -4549,22 +4538,9 @@ def _shape_weight(field_schema: dict, raw, mid: str):
     return [o] if "value" in o else []
 
 
-def _offer(price, mid: str):
-    return [{
-        "marketplace_id": mid,
-        "currency": "GBP",
-        "our_price": [{"schedule": [{"value_with_tax": round(float(price), 2)}]}],
-    }]
-
-
-def _fulfillment(qty, handling_days):
-    o = {"fulfillment_channel_code": "DEFAULT", "quantity": int(qty)}
-    if not _is_blank(handling_days):
-        try:
-            o["lead_time_to_ship_max_days"] = int(float(str(handling_days)))
-        except Exception:
-            pass
-    return [o]
+# _offer/_fulfillment moved to listing/builder.py in Phase 5 (self-contained; _fulfillment
+# calls the now-module-local _is_blank there; behaviour unchanged).
+from listing.builder import _offer, _fulfillment
 
 
 def _issue_str(issues, sent_attrs: dict = None) -> str:
