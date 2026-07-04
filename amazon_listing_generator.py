@@ -1810,15 +1810,9 @@ def prompt_for_brand() -> str:
     return entered
 
 
-def pick_brand_for_product(schema: dict) -> str:
-    """Read brand attribute's allowed values from the schema. Return first allowed
-    value, or 'Unbranded' if the field has no enforced list."""
-    all_fields = schema.get("all", {}) or {}
-    brand_meta = all_fields.get("brand") or all_fields.get("brand_name") or {}
-    allowed    = brand_meta.get("allowed", []) or []
-    if allowed:
-        return str(allowed[0])
-    return "Unbranded"
+# pick_brand_for_product moved to listing/brand_validator.py in Phase 5 (self-contained;
+# behaviour unchanged). Imported so amazon_listing_generator.pick_brand_for_product resolves.
+from listing.brand_validator import pick_brand_for_product
 
 
 def derive_product_type_code(product_type: str) -> str:
