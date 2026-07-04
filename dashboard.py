@@ -98,28 +98,10 @@ font-weight:600;cursor:pointer}.err{color:#ff6b6b;font-size:13px;margin-bottom:1
 </form></body></html>"""
 
 
-@app.route("/healthz")
-def _healthz():
-    return "ok", 200
 
 
-@app.route("/login", methods=["GET", "POST"])
-def _login():
-    if not _APP_PASSWORD:
-        return "Login is not configured.", 404
-    err = ""
-    if request.method == "POST":
-        if request.form.get("password") == _APP_PASSWORD:
-            session["authed"] = True
-            return redirect(url_for("index"))
-        err = '<div class="err">Wrong password.</div>'
-    return Response(_LOGIN_HTML.replace("{err}", err), mimetype="text/html")
 
 
-@app.route("/logout")
-def _logout():
-    session.clear()
-    return redirect(url_for("_login"))
 
 
 @app.before_request
@@ -10221,4 +10203,6 @@ if __name__ == "__main__":
                           _estimate_profit=_estimate_profit,
                           _parse_listings_report=_parse_listings_report,
                           _resolve_cogs=_resolve_cogs, _state=_state)
+    import routes.dash_auth_routes as _dash_auth_routes
+    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, _LOGIN_HTML=_LOGIN_HTML)
     app.run(host=HOST, port=PORT, threaded=True)
