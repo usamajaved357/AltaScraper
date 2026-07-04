@@ -1,0 +1,43 @@
+{# templates/login.html — the sign-in screen. HTML structure only; all styling lives in static/css/login.css. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AltaScraper &middot; Sign in</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+</head>
+<body>
+  <main class="login-shell">
+    <section class="login-card">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div class="brand-name">AltaScraper</div>
+        <div class="brand-sub">Listing Operations Console</div>
+      </div>
+
+      {% if authed | default(false) %}
+        <p class="signed-in">You are signed in.</p>
+        <a class="btn btn-secondary" href="{{ url_for('auth.logout') }}">Sign out</a>
+      {% else %}
+        {% if error %}<div class="alert" role="alert">{{ error }}</div>{% endif %}
+        {% if configured | default(true) %}
+          <form method="post" action="{{ url_for('auth.login') }}" class="login-form">
+            <label class="field-label" for="password">Team password</label>
+            <input class="field-input" id="password" name="password" type="password"
+                   autocomplete="current-password" autofocus required>
+            <button class="btn btn-primary" type="submit">Sign in</button>
+          </form>
+        {% else %}
+          <div class="alert alert-muted">
+            Login is not configured. Add an <code>app_password</code> value to
+            config.json to enable sign-in.
+          </div>
+        {% endif %}
+      {% endif %}
+
+      <footer class="login-foot">Authorized access only</footer>
+    </section>
+  </main>
+</body>
+</html>

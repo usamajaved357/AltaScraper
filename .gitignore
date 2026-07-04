@@ -6,9 +6,16 @@
 # --- Secrets / credentials (NEVER commit these) ---
 service_account.json
 config.json
+# backups/variants of config.json (e.g. *.pre-zip-import.bak)
+config.json*
 *.pem
 *.key
 .env
+
+# --- Local data caches (machine-specific, per CLAUDE.md §2 — never commit) ---
+miles_bundles_store.json
+miles_bundles.json
+miles_harvested.json
 
 # --- Runtime / machine-specific ---
 .venv/
