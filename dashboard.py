@@ -82,20 +82,6 @@ app.secret_key = os.environ.get("APP_SECRET_KEY") or os.urandom(32)
 # APP_PASSWORD is only set on a real deployment (Render etc.); locally it's
 # unset so the gate no-ops and dev workflow is unchanged.
 _APP_PASSWORD = os.environ.get("APP_PASSWORD")
-_LOGIN_HTML = """<!doctype html><html><head><title>Sign in</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>body{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#0f1115;
-color:#e6e6e6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
-form{background:#1a1d24;padding:32px 36px;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.4);
-width:280px}h1{font-size:17px;margin:0 0 18px}input{width:100%;box-sizing:border-box;padding:10px;
-border-radius:6px;border:1px solid #333;background:#0f1115;color:#fff;margin-bottom:12px}
-button{width:100%;padding:10px;border:0;border-radius:6px;background:#4c8bf5;color:#fff;
-font-weight:600;cursor:pointer}.err{color:#ff6b6b;font-size:13px;margin-bottom:10px}</style>
-</head><body><form method="post">
-<h1>Listing Dashboard</h1>{err}
-<input type="password" name="password" placeholder="Password" autofocus>
-<button type="submit">Sign in</button>
-</form></body></html>"""
 
 
 
@@ -2443,5 +2429,5 @@ if __name__ == "__main__":
                           _parse_listings_report=_parse_listings_report,
                           _resolve_cogs=_resolve_cogs, _state=_state)
     import routes.dash_auth_routes as _dash_auth_routes
-    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, _LOGIN_HTML=_LOGIN_HTML)
+    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD)
     app.run(host=HOST, port=PORT, threaded=True)
