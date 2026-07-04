@@ -3884,52 +3884,6 @@ def accounts_set_default_marketplace():
     return jsonify({"ok": True, "default_marketplace": mkt})
 
 
-@app.route("/cogs/set", methods=["POST"])
-def cogs_set():
-    """Manually set/override COGS for a SKU in the active account."""
-    b = request.get_json(force=True) or {}
-    aid = b.get("id", "") or _state.get("active_account_id", "")
-    sku = (b.get("sku", "") or "").strip()
-    cost = b.get("cost", None)
-    if not sku:
-        return jsonify({"ok": False, "error": "no sku"}), 400
-    key = f"{aid}::{sku}"
-    if cost in (None, "", "null"):
-        _COGS_OVERRIDE.pop(key, None)   # clear override
-    else:
-        try:
-            _COGS_OVERRIDE[key] = float(cost)
-        except Exception:
-            return jsonify({"ok": False, "error": "cost must be a number"}), 400
-    _save_cogs_overrides()
-    # return the recomputed profit for immediate UI update
-    prof = None
-    if key in _COGS_OVERRIDE:
-        prof = _estimate_profit(b.get("price", ""), _COGS_OVERRIDE[key])
-    return jsonify({"ok": True, "profit": prof})
-
-
-@app.route("/cogs/upload", methods=["POST"])
-def cogs_upload():
-    """Bulk COGS upload: accepts {rows:[{sku,cost}]} (parsed client-side from CSV)."""
-    b = request.get_json(force=True) or {}
-    aid = b.get("id", "") or _state.get("active_account_id", "")
-    rows = b.get("rows", []) or []
-    n = 0
-    for r in rows:
-        sku = (r.get("sku", "") or "").strip()
-        cost = r.get("cost", None)
-        if not sku or cost in (None, ""):
-            continue
-        try:
-            _COGS_OVERRIDE[f"{aid}::{sku}"] = float(cost)
-            n += 1
-        except Exception:
-            continue
-    _save_cogs_overrides()
-    return jsonify({"ok": True, "count": n})
-
-
 @app.route("/accounts/remove_brand", methods=["POST"])
 def accounts_remove_brand():
     """Remove a brand/trademark from the ACTIVE account's brands list.
@@ -15077,4 +15031,8 @@ if __name__ == "__main__":
     import routes.submit_routes as _submit_routes
     _submit_routes.register(app, _records=_records, _active_account=_active_account,
                             _state=_state, _cfg=_cfg)
+    import routes.cogs_routes as _cogs_routes
+    _cogs_routes.register(app, _state=_state, _COGS_OVERRIDE=_COGS_OVERRIDE,
+                          _save_cogs_overrides=_save_cogs_overrides,
+                          _estimate_profit=_estimate_profit)
     app.run(host=HOST, port=PORT, threaded=True)
