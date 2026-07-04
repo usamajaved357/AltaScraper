@@ -3,12 +3,12 @@
 Auto-extracted @app.route("paths:/,/ui,/stop,/save_default...") funcs; shared helpers injected. Verified with
 verify_free_vars.py.
 """
-from flask import request, jsonify, Response, send_from_directory
+from flask import request, jsonify, Response, send_from_directory, render_template
 import json
 import os
 
 
-def register(app, *, CONFIG_PATH, _HTML, _kill_proc, _records, _run_lock, _running, _ws):
+def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws):
     """Attach the paths:/,/ui,/stop,/save_default routes to the existing Flask app."""
 
     @app.route("/save_default", methods=["POST"])
@@ -54,7 +54,7 @@ def register(app, *, CONFIG_PATH, _HTML, _kill_proc, _records, _run_lock, _runni
 
     @app.route("/")
     def index():
-        return Response(_HTML, mimetype="text/html")
+        return render_template("dashboard.html")
 
     @app.route("/ui")
     def ui_preview():

@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listing Generator</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+
+<div class="appbar">
+  <div class="brandmark" onclick="goHome()">
+    <span class="dot">L</span><span>Listing Generator</span>
+  </div>
+  <div class="crumbs" id="crumbs"></div>
+  <span class="spacer"></span>
+  <button class="barbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i> Privacy</button>
+  <button class="barbtn" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</button>
+  <button class="barbtn" onclick="goHome()"><i class="ti ti-home"></i> Home</button>
+</div>
+
+<!-- ============ HOME SCREEN ============ -->
+<div id="home" class="show">
+  <p class="homehd">Workspaces</p>
+  <div class="wsgrid" id="wsgrid">
+    <div class="empty" style="grid-column:1/-1">Loading workspaces…</div>
+  </div>
+</div>
+
+<!-- ============ WORKSPACE SCREEN ============ -->
+<div id="workspace">
+  <div class="sidebar">
+    <div class="backlink" onclick="goHome()"><i class="ti ti-arrow-left"></i> All workspaces</div>
+    <div class="wsident">
+      <div class="ic" id="ws_ic">··</div>
+      <div><div class="nm pii" id="ws_nm">Workspace</div><div class="sub cc pii" id="ws_sub"></div></div>
+    </div>
+    <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> Listings</div>
+    <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
+    <div class="navitem" data-sec="setup" id="nav_setup" onclick="navTo('setup')"><i class="ti ti-settings"></i> Brand setup</div>
+    <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-table"></i> Account &amp; sheets</div>
+    <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
+    <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
+    <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
+  </div>
+
+  <div class="wsmain">
+    <!-- LISTINGS section -->
+    <div id="sec_listings">
+      <div class="wstoolbar">
+        <div><h2 id="ws_title">Listings</h2><div class="sub" id="ws_rowsub"></div></div>
+        <span class="spacer"></span>
+        <div id="srcswitch" class="mktswitch">
+          <button class="mktbtn on" data-src="drafts" onclick="setListSource('drafts')">Drafts</button>
+          <button class="mktbtn" data-src="live" onclick="setListSource('live')">Live on Amazon</button>
+          <button class="mktbtn" data-src="all" onclick="setListSource('all')">All</button>
+          <button class="mktbtn" title="Sync live listings from Amazon now" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync</button>
+          <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
+          <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
+          <button class="mktbtn" title="Upload a CSV of SKU/ASIN + cost to set COGS in bulk" onclick="document.getElementById('cogscsv').click()"><i class="ti ti-upload"></i> COGS CSV</button>
+          <input type="file" id="cogscsv" accept=".csv" style="display:none" onchange="uploadCogsCsv(this)">
+        </div>
+        <div id="mktswitch" class="mktswitch"></div>
+        <select id="statussel" onchange="setFilterVal(this.value)" title="Filter by status"
+          style="background:#161b24;color:#c8d3e6;border:1px solid #2f3a4d;border-radius:8px;padding:5px 10px;font-size:13px">
+          <option value="all">All statuses</option>
+          <option value="review">Needs review</option>
+          <option value="holds">Holds</option>
+          <option value="approved">Approved</option>
+          <option value="live">Live</option>
+        </select>
+        <button class="ghost" onclick="loadRows()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="gridhow"></div>
+      <div id="selbar" class="selbar" style="display:none">
+        <span id="selcount">0 selected</span>
+        <span class="spacer"></span>
+        <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
+        <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
+        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#2563eb;color:#93c5fd"><i class="ti ti-wand"></i> Auto-fix</button>
+        <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
+        <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
+        <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
+        <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
+        <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
+        <button onclick="bulkDelete()" title="Delete all selected listings" style="color:#ff8a8a;border-color:#5c2424"><i class="ti ti-trash"></i> Delete</button>
+        <button onclick="selectAllVisible(true)">Select all</button>
+        <button onclick="clearSelection()">Clear</button>
+      </div>
+      <div id="summary">Loading…</div>
+      <pre id="log"></pre>
+      <main id="grid"><div class="empty">Loading listings…</div></main>
+      <div id="drawerscrim" class="drawerscrim" onclick="closeDrawer()"></div>
+      <aside id="drawer" class="drawer"><div id="drawerbody"></div></aside>
+    </div>
+
+    <!-- IMAGE REFS section -->
+    <div id="sec_imagerefs" class="wspanel">
+      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px"><div><h2>Image references</h2><div class="sub">Saved reference images used for AI main-image generation in this workspace</div></div></div>
+      <div id="imagerefsbody"></div>
+    </div>
+
+    <!-- BRAND SETUP section -->
+    <div id="sec_setup" class="wspanel">
+      <div id="brandpanel"></div>
+    </div>
+
+    <!-- GENERATE & SUBMIT section -->
+    <div id="sec_generate" class="wspanel">
+      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px"><div><h2>Generate &amp; submit</h2><div class="sub">Run generation, export, preview the API, and submit live — scoped to this workspace</div></div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="primary" onclick="runMode('generate')"><i class="ti ti-player-play"></i> Generate</button>
+        <button onclick="runMode('retry')">Retry holds</button>
+        <button onclick="runMode('export')">Export .xlsm</button>
+        <button onclick="runMode('api')">Preview (API)</button>
+        <button class="danger" onclick="submitLive()">Submit · go live</button>
+        <button class="danger" id="stopbtn" onclick="stopRun()" disabled title="Stops the current run">Stop</button>
+      </div>
+      <!-- Row selector: pick which input-sheet rows to generate -->
+      <div id="genselectwrap" style="margin:-4px 0 14px;padding:12px 14px;border:1px solid var(--line,#2a2f3a);border-radius:10px;background:var(--panel2,rgba(255,255,255,.02))">
+        <div style="font-size:13px;opacity:.85;margin-bottom:8px">
+          <b>Generate</b> creates every input-sheet listing that isn't in the app yet.
+          To create only specific ones, enter them below.
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="gensel_value" type="text" placeholder="Paste an eBay / Amazon URL, or type a value…"
+                 oninput="genSelOnInput()"
+                 style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--line,#2a2f3a);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <select id="gensel_type" title="What you're entering (ignored when a URL is pasted)"
+                  style="padding:8px 10px;border:1px solid var(--line,#2a2f3a);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+            <option value="row" selected>Row number</option>
+            <option value="asin">ASIN</option>
+            <option value="ebay_item">eBay item number</option>
+          </select>
+        </div>
+        <div id="gensel_hint" style="font-size:12px;opacity:.6;margin-top:6px">
+          Row numbers can be comma-separated (e.g. 2, 5, 7). For one product you can paste its URL — the dropdown is ignored then.
+        </div>
+      </div>
+      <div id="genhow"></div>
+      <div class="reqnote">Runs here only touch <b id="gen_scope">this workspace's</b> sheet/marketplace — nothing else is affected.</div>
+      <div id="targetacct" class="acctbanner">Resolving destination account…</div>
+
+      <!-- INPUT SHEET VIEWER: see the source sheet right here, no need to open Google Sheets -->
+      <div id="inputsheetwrap" style="margin-top:18px;border:1px solid var(--line,#2a2f3a);border-radius:10px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2,rgba(255,255,255,.02));flex-wrap:wrap">
+          <b style="font-size:14px"><i class="ti ti-table"></i> Input sheet</b>
+          <span class="cc" id="inputsheet_meta" style="font-size:12px;opacity:.7"></span>
+          <span class="spacer" style="flex:1"></span>
+          <input id="inputsheet_filter" placeholder="Filter rows…" oninput="filterInputSheet()"
+                 style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:160px">
+          <button class="ib" onclick="loadInputSheet()"><i class="ti ti-refresh"></i> Refresh</button>
+          <a class="ib" id="inputsheet_open" href="#" target="_blank" rel="noopener" style="display:none"><i class="ti ti-external-link"></i> Open in Google Sheets</a>
+        </div>
+        <div id="inputsheet_body" style="max-height:520px;overflow:auto">
+          <div class="cc" style="padding:16px;opacity:.6">Click Refresh to load the input sheet.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PPC section -->
+    <div id="sec_ppc" class="wspanel">
+      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+        <div><h2>PPC</h2>
+        <div class="sub">Amazon Sponsored Products — campaign builder, harvest, audits, forecasts, weekly decks. Ask the agent below or use a shortcut. Every deliverable is scoped to this workspace's account and marketplace.</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;min-height:420px">
+        <!-- Left: shortcut buttons -->
+        <div>
+          <div style="font-weight:600;margin-bottom:8px;font-size:13px;opacity:.85">Shortcuts</div>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenBuilder()"><i class="ti ti-plus"></i> Build campaigns from keywords</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenHarvest()"><i class="ti ti-tractor"></i> Harvest search-term report</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('auditor', 'Audit account PPC health', 'Upload the SP bulk export + a campaign performance report (last 30 days is fine). Optionally add the SP Search Term Report. I audit clusters, budget benchmarks, match-type pyramid, funnel coverage, and bid-gap; deliver as docx.')"><i class="ti ti-stethoscope"></i> Audit account PPC health</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('dashboard', 'Control-Room dashboard', 'Upload the SP bulk export + a campaign performance report. I build the interactive Control-Room dashboard as HTML. Optionally add an organic ranking XLSX to unlock the Targeting Opportunity Map.')"><i class="ti ti-dashboard"></i> Control-Room dashboard</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('forecaster', 'Sales forecast', 'Upload the Amazon business report (session/units data) + SQP files (Brand Analytics), and tell me your target TACOS and net margin %. I build 3-scenario revenue+unit forecasts with growth-rate decay. If required data is missing I stop and ask — I never fabricate numbers.')"><i class="ti ti-chart-line"></i> Sales forecast</button>
+          <button class="mktbtn" style="width:100%;text-align:left;margin-bottom:6px" onclick="ppcOpenDeliverable('weekly-deck', 'Weekly client deck', 'Upload this week and last week performance data (business report + Ads campaign report per week). Give me the brand name, week ending, and any context. I produce a strategic PPC deck (pptx).')"><i class="ti ti-presentation"></i> Weekly client deck</button>
+          <div style="font-size:11px;opacity:.65;margin-top:12px;line-height:1.5">
+            <b>Hard rules baked in:</b><br>
+            · Match types spelled out (Exact/Phrase/Broad)<br>
+            · SKU (never ASIN) on Product Ads<br>
+            · Keywords + Product Targets never share an ad group<br>
+            · Never sets bids/budgets on its own initiative
+          </div>
+        </div>
+
+        <!-- Right: agent chat -->
+        <div style="display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden">
+          <div id="ppc_chatlog" style="flex:1;padding:14px;overflow-y:auto;min-height:360px;max-height:520px;background:#0d1220">
+            <div style="opacity:.75;font-size:13px;line-height:1.5">
+              <b>PPC Agent.</b> Describe what you want — build campaigns, harvest a search-term report, audit, dashboard, forecast, weekly deck. The agent knows the full PPC skill set from the handover doc and applies your standing rules (never touches bids/budgets without your value; SKU on ads; kw + PT never share; every kw in all 3 match types).
+              <br><br>
+              Scoped to: <b id="ppc_ctx">this workspace</b>.
+            </div>
+          </div>
+          <div style="padding:10px;border-top:1px solid var(--line);background:#141b2b">
+            <div style="display:flex;gap:8px">
+              <textarea id="ppc_input" placeholder="e.g. Build campaigns for ASIN B0EXAMPLE1, SKU MYSKU-001…" rows="2" style="flex:1;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:8px;padding:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+              <button class="mktbtn on" style="align-self:stretch;padding:0 16px" onclick="ppcAgentSend()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Campaign-builder shortcut modal -->
+      <div id="ppc_builder_modal" class="modalwrap">
+        <div class="modal" style="max-width:640px">
+          <button class="x" onclick="ppcCloseBuilder()">×</button>
+          <h3><i class="ti ti-plus"></i> Build Sponsored Products campaigns</h3>
+          <div class="cc" style="margin:6px 0 12px">Feed a keyword export + ASIN/SKU. The tool buckets keywords (drop/head/comp/core), builds 5 campaigns with the full-coverage structure, and validates before letting you download.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div><label class="cc" style="font-size:11px">ASIN</label><input id="pb_asin" placeholder="B0EXAMPLE1" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="pb_sku" placeholder="MYSKU-001" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Product short name (for campaign names)</label><input id="pb_name" placeholder="BodyScale" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Daily budget (£/$)</label><input id="pb_budget" type="number" step="0.01" value="8.00" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Flat bid (£/$) — you set this, never auto</label><input id="pb_bid" type="number" step="0.01" value="0.30" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Conquest ASINs (comma-sep, optional)</label><input id="pb_conquest" placeholder="B0COMP0001, B0COMP0002" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Competitor brand names (comma-sep, for bucketing)</label>
+            <input id="pb_compbrands" placeholder="dyson, shark, vax" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Category-head terms (comma-sep — go to Phrase discovery)</label>
+            <input id="pb_headterms" placeholder="vacuum, hoover" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Keyword file (CSV) — DataDive / Helium 10 / SQP</label>
+            <input type="file" id="pb_file" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="mktbtn" onclick="ppcCloseBuilder()">Cancel</button>
+            <button class="mktbtn on" onclick="ppcRunBuilder()">Build bulk file</button>
+          </div>
+          <div id="pb_result" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- Harvest shortcut modal -->
+      <div id="ppc_harvest_modal" class="modalwrap">
+        <div class="modal" style="max-width:640px">
+          <button class="x" onclick="ppcCloseHarvest()">×</button>
+          <h3><i class="ti ti-tractor"></i> Harvest a Sponsored Products Search Term Report</h3>
+          <div class="cc" style="margin:6px 0 12px">Applies the $10 rule + break-even ACOS: converters → harvest bulk (3 match types); past-$10 zero-order → negatives bulk; everything else → colour-coded status sheet. Already-targeted keywords are excluded from harvest to prevent duplicate (keyword, match-type) pairs on upload.</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div><label class="cc" style="font-size:11px">ASIN</label><input id="ph_asin" placeholder="B0EXAMPLE1" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Seller SKU (NOT ASIN)</label><input id="ph_sku" placeholder="MYSKU-001" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Product short name</label><input id="ph_name" placeholder="BodyScale" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Break-even ACOS (0-1) — from your unit economics</label><input id="ph_be" type="number" step="0.01" value="0.35" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Bid for harvested keywords (you set — never auto)</label><input id="ph_bid" type="number" step="0.01" value="0.30" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+            <div><label class="cc" style="font-size:11px">Daily budget for new campaign (if none set)</label><input id="ph_budget" type="number" step="0.01" value="8.00" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px"></div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">SP Search Term Report (CSV) — required</label>
+            <input type="file" id="ph_file" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Already-targeted keywords file (CSV, optional) — excluded from harvest</label>
+            <input type="file" id="ph_targeted" accept=".csv,.tsv,.txt" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="mktbtn" onclick="ppcCloseHarvest()">Cancel</button>
+            <button class="mktbtn on" onclick="ppcRunHarvest()">Run harvest</button>
+          </div>
+          <div id="ph_result" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- Unified deliverable modal: audit / dashboard / forecast / weekly-deck -->
+      <div id="ppc_deliv_modal" class="modalwrap">
+        <div class="modal" style="max-width:640px">
+          <button class="x" onclick="ppcCloseDeliv()">×</button>
+          <h3 id="pd_title"><i class="ti ti-file"></i> PPC Deliverable</h3>
+          <div class="cc" style="margin:6px 0 12px" id="pd_desc">…</div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Files (multi-select; drop the right family for the task)</label>
+            <input type="file" id="pd_files" multiple style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+            <div class="cc" style="font-size:11px;margin-top:4px;opacity:.7">Accepted families: SP bulk export, Search Term Report, Business Report, Brand Analytics SQP, Scale Insights exports. I auto-detect from column headers.</div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="cc" style="font-size:11px">Context / notes (optional — brand, week, targets, whatever helps)</label>
+            <textarea id="pd_context" rows="3" style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px;font-family:inherit;font-size:13px"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="mktbtn" onclick="ppcCloseDeliv()">Cancel</button>
+            <button class="mktbtn on" onclick="ppcRunDeliv()">Send to PPC agent</button>
+          </div>
+          <div id="pd_result" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVENTORY REPLENISHMENT -->
+    <div id="sec_inventory" class="wspanel">
+      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+        <div><h2>Inventory replenishment</h2>
+        <div class="sub">Fully automated. Pulls FBA inventory + sales velocity from SP-API. Applies four-bucket zero-velocity classification (Active / New Launch / Dormant / Dead). Coloured xlsx output mirrors your original Excel model.</div></div>
+      </div>
+
+      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <label class="cc" style="font-size:11px">Target normal FBA DOS</label>
+            <input id="inv2_normal" type="number" value="85" min="0" max="365"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Reorder cycle days</label>
+            <input id="inv2_reorder" type="number" value="5" min="0" max="90"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Long-horizon 3PL DOS</label>
+            <input id="inv2_long" type="number" value="110" min="0" max="365"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Sales window (days)</label>
+            <input id="inv2_window" type="number" value="30" min="7" max="180"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <label class="cc" style="font-size:11px">3PL stock CSV (optional) — matches your existing sheet columns</label>
+            <input type="file" id="inv2_3pl" accept=".csv,.tsv,.txt"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+            <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
+              Cols: Natural SKUs · SKUs · Product Name · ASIN · 3PL Stock · In-Transit · Ordered Qty
+            </div>
+          </div>
+          <div>
+            <label class="cc" style="font-size:11px">Cache lifetime (hours) — protects Seller Central from report spam</label>
+            <input id="inv2_cache" type="number" value="6" min="0" max="72"
+              style="width:100%;background:#0d1220;border:1px solid var(--line);color:#e8eaed;border-radius:6px;padding:7px">
+            <div class="cc" style="font-size:10px;margin-top:2px;opacity:.65">
+              6h = at most 4 reports/day per account. Set to 0 to always fetch fresh (creates a Seller Central report each run).
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center">
+          <label style="font-size:12px;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="inv2_force"> Force refresh (bypass cache, generates new Seller Central report)
+          </label>
+          <button class="mktbtn on" onclick="inv2Run()"><i class="ti ti-package"></i> Run inventory model</button>
+        </div>
+        <div id="inv2_result" style="margin-top:12px"></div>
+
+        <div style="margin-top:14px;padding:10px;border:1px solid #263145;border-radius:8px;background:#0d1220;font-size:11px;line-height:1.6;opacity:.8">
+          <b>How it works:</b> Fetches FBA inventory via the SP-API <code>GET_FBA_MYI_ALL_INVENTORY_DATA</code> report (cached 6h by default). Fetches sales velocity per SKU via the Orders API over the sales window. Classifies each SKU as <b>ACTIVE</b> (has sales), <b>NEW_LAUNCH</b> (0 sales but &lt;60 days old), <b>DORMANT</b> (0 sales, 60-365 days), or <b>DEAD</b> (0 sales &gt;365 days or Discontinued). Only ACTIVE and NEW_LAUNCH SKUs get reorder recommendations. The red badge in the sidebar shows count of SKUs needing reorder.
+        </div>
+      </div>
+    </div>
+
+    <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_miles" class="wspanel">
+      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+        <div><h2>Miles Lubricants Import</h2>
+        <div class="sub">Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks.</div></div>
+      </div>
+
+      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <div style="font-size:13px;opacity:.85;margin-bottom:10px">
+          <b>Step 1.</b> Upload a CSV or Excel file with one column of item numbers (e.g. <code>M001000603</code>). One item number = one product = one listing.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input type="file" id="miles_file" accept=".csv,.xlsx,.xls" onchange="milesPickFile(this)"
+                 style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <span id="miles_filestatus" style="font-size:12px;opacity:.7"></span>
+        </div>
+        <div id="miles_items" style="font-size:12px;opacity:.6;margin-top:8px"></div>
+      </div>
+
+      <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
+        <div style="font-size:13px;opacity:.85;margin-bottom:10px">
+          <b>Step 2.</b> Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL" onchange="milesSavePref()"
+                 style="flex:1;min-width:260px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <input type="text" id="miles_tab" placeholder="Tab name (e.g. Sheet2)" onchange="milesSavePref()"
+                 style="width:180px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+          <input type="number" id="miles_limit" min="1" placeholder="How many? (blank = all)"
+                 style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+        </div>
+        <div style="font-size:11px;opacity:.6;margin-top:8px">
+          Columns written: SKU, Title, Bullet Point 1-5, Description, Backend Keywords, Compliance Report, Uploaded. Enter a number (e.g. 5) to generate just that many this run.
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="miles_use_ba" style="width:16px;height:16px">
+          Use real Amazon search data (Brand Analytics) to seed keywords — needs Brand Registry on the account
+        </label>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <button class="primary" id="miles_runbtn" onclick="milesRun()" disabled><i class="ti ti-player-play"></i> Harvest &amp; draft</button>
+        <button id="miles_genbtn" onclick="milesGenerate()"><i class="ti ti-file-text"></i> Generate drafts</button>
+        <button id="miles_optbtn" onclick="milesOptimize()" title="Pull real Search Query Performance for live ASINs and front-load converting keywords"><i class="ti ti-trending-up"></i> Optimize live listings (SQP)</button>
+        <button class="danger" id="miles_stopbtn" onclick="milesStop()" disabled>Stop</button>
+      </div>
+
+      <div class="reqnote" style="margin-bottom:10px">
+        Files are saved to your Drive master folder, one subfolder per item number. Industrial lubricants are hazmat on Amazon — the SDS sheet drives the compliance fields.
+        <br><b>Optimize live listings</b> pulls each ASIN's real Search Query Performance (the searches that actually drove sales) and rewrites the copy to front-load those — use it 2–4 weeks after listings go live.
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="miles_skip_done" checked> Skip item numbers already harvested
+        </label>
+        <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
+      </div>
+
+      <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
+
+      <div id="miles_results" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI settings modal -->
+<div class="modalwrap" id="aimodal">
+  <div class="modal">
+    <button class="x" onclick="closeAISettings()">×</button>
+    <h3>AI &amp; settings</h3>
+    <p class="cc" style="margin:0 0 14px">Pick which AI handles each job. Providers without a key show “(no key)” — add keys in your local config.json under <code>ai_keys</code>.</p>
+    <div id="aimodalbody">Loading…</div>
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px">
+      <h4 style="margin:0 0 8px;font-size:13px;color:#cbd3e1">Display</h4>
+      <label class="minlbl" title="Show the 'Exact payload sent to Amazon' section under each listing. This is read-only debug info — turning it off only hides it, nothing else changes.">
+        <input type="checkbox" id="payloadViewerToggle" onchange="togglePayloadViewer(this)"> Show exact payload sent to Amazon (debug)
+      </label>
+    </div>
+  </div>
+</div>
+
+<div class="modalwrap" id="acctmodal">
+  <div class="modal">
+    <button class="x" onclick="closeAccountEditor()">×</button>
+    <h3>Amazon account</h3>
+    <p class="cc" style="margin:0 0 14px">Each account is a workspace. Submits in this workspace publish to <b>this account only</b>, using its own credentials.</p>
+    <div id="acctmodalbody">Loading…</div>
+  </div>
+</div>
+
+<div class="modalwrap" id="optmodal">
+  <div class="modal" style="max-width:680px">
+    <button class="x" onclick="closeOpt()">×</button>
+    <h3><i class="ti ti-wand"></i> Optimize live listing</h3>
+    <div id="optbody">Loading…</div>
+  </div>
+</div>
+
+<div class="modalwrap" id="imgstudio">
+  <div class="modal" style="max-width:860px">
+    <button class="x" onclick="closeStudio()">×</button>
+    <h3><i class="ti ti-photo-edit"></i> Image Studio</h3>
+    <div id="studiobody">Loading…</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/static/js/dashboard.js"></script>
+
+<div id="genpanel" class="modalwrap" style="z-index:115">
+  <div class="modal" style="max-width:760px;position:relative">
+    <button class="x" onclick="closeGenPanel()">×</button>
+    <h3><i class="ti ti-photo-bolt"></i> Image generation</h3>
+    <div id="genpanelhead" class="cc" style="margin:2px 0 10px">Starting…</div>
+    <div style="margin-bottom:10px">
+      <button id="genpanelstop" onclick="stopAllGenerations()" style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:6px 14px;cursor:pointer"><i class="ti ti-player-stop"></i> Stop all generation</button>
+      <span class="cc" style="margin-left:8px">Images save to each product's library as they finish — safe to close this; use the bottom bar to reopen.</span>
+    </div>
+    <div id="genpanelgrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:60vh;overflow:auto"></div>
+  </div>
+</div>
+<div id="genstatusbar" style="display:none;position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:120;
+     background:#141b2b;border:1px solid #2c3a55;border-radius:10px;padding:9px 14px;
+     box-shadow:0 8px 28px rgba(0,0,0,.45);align-items:center;gap:12px;font-size:13px;color:#cfe0ff;min-width:280px">
+  <span class="genspin"></span>
+  <span id="genstatustext">Generating…</span>
+  <button onclick="openGenPanel()" style="background:#1b2942;border:1px solid #2c3a55;color:#cfe0ff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-eye"></i> View</button>
+  <button onclick="stopAllGenerations()" style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-player-stop"></i> Stop all</button>
+</div>
+<button class="fab" id="fab" onclick="toggleChat()" title="Ask Claude about this product">✦ Ask Claude</button>
+<div class="chatwrap" id="chatwrap">
+  <div class="chathead">
+    <b>Ask Claude</b>
+    <select id="chatctx" title="Attach a listing as context"><option value="">— general —</option></select>
+    <button class="x" onclick="toggleChat()" title="Close">×</button>
+  </div>
+  <div class="chatbody" id="chatbody">
+    <div class="chatempty" id="chatempty">Ask about attribute values — e.g. “typical size for a folding camping chair?” or “is assembly required?”<br><br>Pick a listing above to give me its context, and paste a competitor image URL (right-click image → Copy image address) or attach a screenshot for me to look at.</div>
+  </div>
+  <div class="chatfoot">
+    <div class="chips" id="chatchips"></div>
+    <div class="chatin">
+      <button class="ic" onclick="document.getElementById('chatfile').click()" title="Attach image">📎</button>
+      <input type="file" id="chatfile" accept="image/*" style="display:none" onchange="onChatFile(event)">
+      <textarea id="chatinput" rows="1" placeholder="Ask… (paste a competitor image URL too)" onkeydown="chatKey(event)" onpaste="onChatPaste(event)"></textarea>
+      <button class="snd" id="chatsend" onclick="sendChat()">Send</button>
+    </div>
+    <div class="chathint">Tip: paste a competitor image URL or attach a screenshot, then ask “is assembly required?”. This is just chat — nothing is published.</div>
+  </div>
+</div>
+</body>
+</html>
