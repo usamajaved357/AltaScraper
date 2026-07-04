@@ -4350,31 +4350,13 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                     _sub_ip = sub_schema.get("properties", {}) or {}
                 # If the sub-schema itself is a nested object with value/unit,
                 # recurse via _shape_simple on a synthetic wrapper.
-                #
-                # Bug C fix: _shape_simple always returns a LIST ([obj]). Amazon
-                # accepts an array only where the sub-schema is actually an array
-                # (type: array / has an `items` wrapper). For a plain nested OBJECT
-                # slot -- e.g. leg.length / cable.length, which are single
-                # {decimal_value, unit} objects -- assigning the list produces
-                # `length: [{...}]` and Amazon rejects the whole parent as invalid.
-                # Decide per sub-schema whether the slot wants an array or a bare
-                # object, and unwrap the single-element list when it wants an object.
-                def _sub_is_array(_ss):
-                    if not isinstance(_ss, dict):
-                        return False
-                    return _ss.get("type") == "array" or isinstance(_ss.get("items"), dict)
-                def _emit(_sk, _shaped, _ss):
-                    if _shaped and not _sub_is_array(_ss) and isinstance(_shaped, list) and len(_shaped) == 1:
-                        obj[_sk] = _shaped[0]
-                    else:
-                        obj[_sk] = _shaped
                 if isinstance(sub_raw, dict) and _sub_ip:
                     # array-wrapped nested: schema like {type: object, items: {props}}
                     # OR just an object with props -- normalise via _shape_simple.
                     _synthetic = {"items": {"properties": _sub_ip}}
                     _shaped = _shape_simple(_synthetic, sub_raw, mid)
                     if _shaped:
-                        _emit(sk, _shaped, sub_schema)
+                        obj[sk] = _shaped
                         _wrote_any = True
                 elif _sub_ip:
                     # Nested schema (props exist) but the user gave a flat value.
@@ -4382,7 +4364,7 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                     _synthetic = {"items": {"properties": _sub_ip}}
                     _shaped = _shape_simple(_synthetic, sub_raw, mid)
                     if _shaped:
-                        _emit(sk, _shaped, sub_schema)
+                        obj[sk] = _shaped
                         _wrote_any = True
                 else:
                     # Flat sub-key: assign directly, coercing to schema type.
@@ -4402,23 +4384,17 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                 return [obj]
             # else: fall through to legacy paths
 
-    # The numeric leaf key is `value` for most attributes but `decimal_value`
-    # for some nested measures (leg.length, cable.length -- HARDWARE_TUBING,
-    # MASSAGER). Treat whichever the schema declares as THE numeric key so the
-    # inner {decimal_value, unit} object is built correctly and coerced to a
-    # number, instead of falling through and being left as a raw string list.
-    _numk = "value" if "value" in ip else ("decimal_value" if "decimal_value" in ip else None)
-    if _numk:
-        vp = ip[_numk]
+    if "value" in ip:
+        vp = ip["value"]
         if "unit" in ip:
             # DICT PATH: sub-fields were filled and _renest folded them here
             if isinstance(raw, dict):
-                num_raw = raw.get(_numk, raw.get("value", raw.get("decimal_value")))
+                num_raw = raw.get("value")
                 unit    = raw.get("unit")
                 try:
-                    obj[_numk] = float(str(num_raw)) if num_raw not in (None, "") else _coerce_value(vp, num_raw)
+                    obj["value"] = float(str(num_raw)) if num_raw not in (None, "") else _coerce_value(vp, num_raw)
                 except (ValueError, TypeError):
-                    obj[_numk] = _coerce_value(vp, num_raw)
+                    obj["value"] = _coerce_value(vp, num_raw)
                 up = ip["unit"]
                 if unit:
                     obj["unit"] = _snap_enum(up.get("enum"), unit) if up.get("enum") else unit
@@ -4428,17 +4404,17 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                 # STRING PATH: single combined value like '80.0 kilometers_per_hour'
                 num, unit = _split_value_unit(raw)
                 if num is None:
-                    obj[_numk] = _coerce_value(vp, raw)
+                    obj["value"] = _coerce_value(vp, raw)
                 else:
-                    obj[_numk] = num
+                    obj["value"] = num
                     up = ip["unit"]
                     obj["unit"] = _snap_enum(up.get("enum"), unit) if up.get("enum") else (unit or up.get("default"))
         else:
             # DICT PATH: sub-fields (maybe just 'value'?) folded up
-            if isinstance(raw, dict) and (_numk in raw or "value" in raw or "decimal_value" in raw):
-                obj[_numk] = _coerce_value(vp, raw.get(_numk, raw.get("value", raw.get("decimal_value"))))
+            if isinstance(raw, dict) and "value" in raw:
+                obj["value"] = _coerce_value(vp, raw.get("value"))
             else:
-                obj[_numk] = _coerce_value(vp, raw)
+                obj["value"] = _coerce_value(vp, raw)
     elif ip:
         # item is an object but has no 'value' key we recognise -> best effort
         return []
@@ -4696,116 +4672,6 @@ def _build_ghs_from_schema(ghs_schema: dict, mid: str):
     return [obj]
 
 
-
-def _verify_live_status(li, seller_id, sku, mid, locale="en_GB"):
-    """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
-    'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
-    LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
-    downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues); (None, None) if the check itself failed."""
-    import time as _t
-    for _attempt in range(2):
-        try:
-            _t.sleep(4)   # give Amazon a moment to process the submission
-            resp = li.get_listings_item(seller_id, sku, marketplaceIds=[mid],
-                                        issueLocale=locale,
-                                        includedData=["summaries", "issues"])
-            p = resp.payload if hasattr(resp, "payload") else (resp or {})
-            summaries = (p or {}).get("summaries", []) or []
-            status = summaries[0].get("status", []) if summaries else []
-            issues = (p or {}).get("issues", []) or []
-            errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
-            return status, errs
-        except Exception:
-            continue
-    return None, None
-
-
-def _skus_across_all_tabs(ws_out) -> set:
-    """Union of the SKU column across EVERY worksheet in ws_out's spreadsheet.
-
-    Miles listing copies are split across category tabs (e.g. Sheet2, 'Hydraulic
-    Fluids', 'Synthetic Gallon-ISEL'). Generation must skip an item whose copy
-    already exists on ANY tab -- not just the one it writes to -- or a re-run
-    duplicates a listing that was generated onto a different tab.
-
-    Robust to malformed tabs: a sheet with duplicate/blank headers (e.g. an old
-    'Sheet1' whose SKU column sits under blank leading headers) can't be read as
-    records, so we fall back to the raw grid -- pulling the 'SKU' column by header
-    position, or, if there's no SKU header, scanning for item-number-shaped cells
-    so nothing is missed."""
-    out = set()
-    try:
-        worksheets = ws_out.spreadsheet.worksheets()
-    except Exception as e:
-        console.print(f"  [yellow]Cross-tab SKU scan unavailable: {str(e)[:80]}[/yellow]")
-        return out
-    _itempat = re.compile(r"^[A-Za-z]{2,4}\d{4,}$")
-    for ws in worksheets:
-        try:
-            for r in _safe_records(ws):
-                v = str(r.get("SKU", "") or "").strip()
-                if v:
-                    out.add(v)
-            continue
-        except Exception:
-            pass
-        # Fallback: malformed/duplicate headers -> read the raw grid.
-        try:
-            vals = ws.get_all_values()
-        except Exception:
-            continue
-        if not vals:
-            continue
-        hdr = [str(c).strip().lower() for c in vals[0]]
-        if "sku" in hdr:
-            ci = hdr.index("sku")
-            for row in vals[1:]:
-                if ci < len(row) and str(row[ci]).strip():
-                    out.add(str(row[ci]).strip())
-        else:
-            for row in vals:
-                for c in row:
-                    if _itempat.match(str(c).strip()):
-                        out.add(str(c).strip())
-    return out
-
-
-def shape_by_schema(schema, raw, mid, lang="en_GB"):
-    t = schema.get("type")
-    if t == "array":
-        shaped = shape_by_schema(schema.get("items", {}) or {}, raw, mid, lang)
-        return [shaped] if shaped is not None else []
-    if t == "object":
-        props = schema.get("properties", {}) or {}
-        obj = {}
-        if "marketplace_id" in props: obj["marketplace_id"] = mid
-        if "language_tag" in props:   obj["language_tag"]   = lang
-        num_key = "decimal_value" if "decimal_value" in props else ("value" if "value" in props else None)
-        num=unit=None
-        if isinstance(raw, str):
-            p=raw.split()
-            if p:
-                try: num=float(p[0]); unit=" ".join(p[1:]) or None
-                except ValueError: pass
-        elif isinstance(raw, dict):
-            num=raw.get("decimal_value", raw.get("value")); unit=raw.get("unit")
-        if num_key and num not in (None,""):
-            try: obj[num_key]=float(str(num))
-            except (ValueError,TypeError): obj[num_key]=num
-        if "unit" in props and unit not in (None,""):
-            uen=props["unit"].get("enum")
-            obj["unit"]=(next((e for e in uen if str(e).lower()==str(unit).strip().lower()), unit)
-                         if uen else unit)
-        for pk,pv in props.items():
-            if pk in ("marketplace_id","language_tag","unit",num_key): continue
-            if isinstance(pv,dict) and pv.get("type") in ("array","object"):
-                sub = raw.get(pk) if isinstance(raw,dict) and pk in raw else raw
-                s = shape_by_schema(pv, sub, mid, lang)
-                if s not in (None,[],{}): obj[pk]=s
-        return obj
-    return raw.get("decimal_value", raw.get("value")) if isinstance(raw,dict) else raw
-
 def build_api_attributes(row: dict, pt: str, props: dict, required: set, config: dict) -> dict:
     """Assemble the SP-API 'attributes' object for one listing, gated to `props`
     (the live schema for this product type) so nothing inapplicable is sent."""
@@ -4929,20 +4795,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         put("generic_keyword", _shape_simple(props["generic_keyword"], g("Search Terms / KW"), mid))
 
     # --- brand / condition ----------------------------------------------------
-    # Brand = the ACCOUNT'S OWN TRADEMARK, which is the authority. Trust the Brand
-    # column only when it is one of THIS account's registered brands (supports
-    # multi-brand accounts); otherwise the column holds a stale/leaked value -> use
-    # the account's primary trademark. NEVER the global config["brand_name"] -- that
-    # leak is exactly how one account's brand ended up on another's listings.
-    brand = g("Brand").strip()
-    _acct_brands = [str(x).strip() for x in (config.get("_account_brands") or []) if str(x).strip()]
-    if _acct_brands:
-        if brand not in _acct_brands:
-            brand = _acct_brands[0]
-    elif config.get("_account_brand") is not None:
-        brand = ""                       # account resolved but NO trademark set -> blank
-    else:
-        brand = brand or config.get("brand_name", "")   # legacy / no-account fallback
+    brand = g("Brand") or config.get("brand_name", "")
     if has("brand") and brand:
         put("brand", _shape_simple(props["brand"], brand, mid))
     if has("condition_type"):
@@ -5049,7 +4902,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # composite dimension variants some categories require instead of item_dimensions.
     # Schema-driven: any field whose item properties contain axis sub-fields
     # (length/width/height/depth) with their own value+unit is a composite dim
-    # attribute and gets routed through shape_by_schema. Previously this loop
+    # attribute and gets routed through _shape_axes. Previously this loop
     # hardcoded ("item_depth_width_height", "item_length_width_height") -- but
     # Amazon uses more variants than that (item_length_width for flat/flexible
     # products like expandable hoses is a notable example). Missing variants
@@ -5080,12 +4933,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         for axis in _axis_names:
             av = v.get(axis)
             if isinstance(av, dict):
-                # {value|decimal_value: "0.0", unit: "centimeters"} -> "0.0 centimeters"
-                # Amazon nests some axes as `decimal_value` (leg/cable/HARDWARE_TUBING)
-                # and others as `value`. _renest stores whichever the AI applied, so
-                # accept both or the applied measurement is silently dropped and the
-                # field is shaped from empty generic columns (rejected as invalid).
-                num = av.get("decimal_value", av.get("value"))
+                # {value: "0.0", unit: "centimeters"} -> "0.0 centimeters"
+                num = av.get("value")
                 unit = av.get("unit")
                 if num not in (None, "") and unit:
                     out[axis] = f"{num} {unit}"
@@ -5093,7 +4942,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                     out[axis] = str(num)
             elif isinstance(av, list) and av and isinstance(av[0], dict):
                 # already-shaped list: preserve as-is by picking the first entry
-                num = av[0].get("decimal_value", av[0].get("value"))
+                num = av[0].get("value")
                 unit = av[0].get("unit")
                 if num not in (None, "") and unit:
                     out[axis] = f"{num} {unit}"
@@ -5106,20 +4955,7 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         _user_axes = _from_user_composite(_fname)
         _merged_axes = dict(_axes_src)
         _merged_axes.update({k: v for k, v in _user_axes.items() if v})
-        # Schema-driven shaping. shape_by_schema reads the LIVE schema at every
-        # level -- array-vs-object wrapping, `value` vs `decimal_value` leaf, and
-        # enum units are all READ, never assumed. This is what leg/cable need:
-        # their `length` axis is itself a `type: array` whose item leaf key is
-        # `decimal_value` (one level deeper than _shape_axes looked, so _shape_axes
-        # defaulted to a flat `value` object and Amazon rejected it as invalid).
-        # We pass ONLY the axes the field's own schema declares AND that carry a
-        # value, so absent axes never fold into empty {}/[{}] wrappers.
-        _fip = _item_props(props[_fname])
-        _raw_axes = {k: v for k, v in _merged_axes.items()
-                     if k in _fip and not _is_blank(v)}
-        if not _raw_axes:
-            continue
-        d = shape_by_schema(props[_fname], _raw_axes, mid, _lang_for(mid))
+        d = _shape_axes(props[_fname], _merged_axes, mid)
         if d:
             A[_fname] = d
 
@@ -5354,28 +5190,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # full lithium composite block onto a non-keyword product.
     def _schema_wants(_f):
         return (_f in required) or isinstance(props.get(_f), dict)
-    def _cbc_value(_prop):
-        # contains_battery_or_cell is an ENUM (e.g. "Yes"/"No") for some product
-        # types (UNMANNED_AERIAL_VEHICLE) and a BOOLEAN for others. Sending JSON
-        # `true` to an enum field fails with "select an approved value from the
-        # list". Inspect the schema: if it declares an enum, pick the allowed
-        # value meaning "yes"; otherwise fall back to boolean True.
-        _enum = []
-        if isinstance(_prop, dict):
-            _it  = _prop.get("items", {}) if isinstance(_prop.get("items"), dict) else {}
-            _itp = _it.get("properties", {}) if isinstance(_it, dict) else {}
-            _vpp = _itp.get("value", {}) if isinstance(_itp, dict) else {}
-            _enum = [str(x) for x in (_vpp.get("enum") or _itp.get("enum")
-                                      or _it.get("enum") or _prop.get("enum") or [])]
-        if _enum:
-            for _e in _enum:
-                if str(_e).strip().lower() in ("yes", "true", "1"):
-                    return _e
-            return _enum[0]
-        return True
     if _schema_wants("contains_battery_or_cell") and "contains_battery_or_cell" not in A:
-        A["contains_battery_or_cell"] = [{"value": _cbc_value(props.get("contains_battery_or_cell", {})),
-                                          "marketplace_id": mid}]
+        A["contains_battery_or_cell"] = [{"value": True, "marketplace_id": mid}]
     if _schema_wants("number_of_lithium_ion_cells") and "number_of_lithium_ion_cells" not in A:
         A["number_of_lithium_ion_cells"] = [{"value": 1, "marketplace_id": mid}]
 
@@ -6367,28 +6183,6 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                           f"(SKU='{sku[:30]}', Product Type='{pt[:30]}')")
             skip += 1; continue
 
-        # BRAND GUARD (submit only): a listing must go out under THIS account's own
-        # trademark. Resolve it the same way build_api_attributes does, and BLOCK the
-        # submit (with an actionable message) if the account has no trademark set.
-        # Preview is left alone so the user can still validate other fields.
-        if submit:
-            _rb = str(row.get("Brand", "") or "").strip()
-            _acct_brands = [str(x).strip() for x in (config.get("_account_brands") or []) if str(x).strip()]
-            if _acct_brands:
-                if _rb not in _acct_brands:
-                    _rb = _acct_brands[0]
-            elif config.get("_account_brand") is not None:
-                _rb = ""
-            if not _rb:
-                err += 1
-                queue(i, status_col, "API_ERROR")
-                queue(i, notes_col,
-                      "[E] brand -- no trademark set for this account. Add your brand/trademark "
-                      "in account Settings, or in the product card on the Listings page, then submit.")
-                console.print(f"  [red]row {i} {sku}: SUBMIT BLOCKED -- no trademark set for this "
-                              f"account (add it in Settings or the product card)[/red]")
-                continue
-
         if pt not in schema_cache:
             console.print(f"  fetching schema: [bold]{pt}[/bold]")
             schema_cache[pt] = _raw_schema(pt, creds)
@@ -6438,66 +6232,26 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             errors  = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
             msgs    = _issue_str(issues, attrs)
 
-            if submit:
-                # 'Accepted' != 'published'. Amazon processes asynchronously, so the
-                # submit-time issues above are NOT the final outcome (a submit that
-                # reported errors can still be live; a clean submit can be rejected
-                # downstream, e.g. main-image compliance). Set status from the REAL
-                # listing state via getListingsItem.
-                _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale)
-                if _rstatus is None and _rerrs is None:
-                    # couldn't verify -> fall back to submit-time verdict, flagged unverified
-                    if errors:
-                        err += 1
-                        queue(i, status_col, "API_ERROR")
-                        queue(i, notes_col, f"API SUBMIT - {len(errors)} error(s) [live status unverified]: {msgs}")
-                        console.print(f"  [red]row {i} {sku}: {len(errors)} submit error(s) (unverified)[/red]")
-                    else:
-                        ok += 1
-                        queue(i, status_col, "SUBMITTED")
-                        queue(i, notes_col, "API SUBMITTED -- accepted; live status could not be verified (re-check shortly).")
-                        console.print(f"  [yellow]row {i} {sku}: SUBMITTED (status unverified)[/yellow]")
-                elif _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
-                    # Amazon shows it live. If the main image (or other) is flagged,
-                    # keep it LIVE but note it -- the user fixes the image later.
-                    ok += 1
-                    queue(i, status_col, "LIVE")
-                    _rmsg = _issue_str(_rerrs, attrs) if _rerrs else ""
-                    queue(i, notes_col, f"API SUBMITTED -- LIVE ({', '.join(_rstatus)})"
-                                        + (f" | needs attention (fix later): {_rmsg}" if _rmsg else ""))
-                    console.print(f"  [green]row {i} {sku}: LIVE ({', '.join(_rstatus)})[/green]"
-                                  + ("  [yellow](flagged -- fix later)[/yellow]" if _rerrs else ""))
-                elif _rerrs:
-                    # Accepted but Amazon rejected it in processing -> NOT live.
-                    err += 1
-                    queue(i, status_col, "API_ERROR")
-                    queue(i, notes_col, f"API SUBMIT accepted but NOT live -- Amazon rejected in processing: {_issue_str(_rerrs, attrs)}")
-                    console.print(f"  [red]row {i} {sku}: NOT live -- {len(_rerrs)} issue(s) after processing[/red]")
-                    for _em in (_issue_str(_rerrs, attrs).split("; ")):
-                        if _em.strip():
-                            console.print(f"      [red]- {_em.strip()}[/red]")
-                else:
-                    # accepted, no errors yet, but not yet BUYABLE -> still processing
-                    ok += 1
-                    queue(i, status_col, "SUBMITTED")
-                    queue(i, notes_col, "API SUBMITTED -- accepted, pending Amazon processing (not yet live). Re-check shortly.")
-                    console.print(f"  [yellow]row {i} {sku}: SUBMITTED (pending Amazon processing)[/yellow]")
+            if errors:
+                err += 1
+                queue(i, status_col, "API_ERROR")
+                queue(i, notes_col,
+                    f"API {'SUBMIT' if submit else 'PREVIEW'} - {len(errors)} error(s): {msgs}")
+                # Print EVERY error (one per line) so all required-field gaps are
+                # visible at once, not truncated.
+                console.print(f"  [red]row {i} {sku}: {len(errors)} error(s)[/red]")
+                for _em in (msgs.split("; ") if isinstance(msgs, str) else []):
+                    if _em.strip():
+                        console.print(f"      [red]- {_em.strip()}[/red]")
             else:
-                # PREVIEW: the submit-time validation IS the answer.
-                if errors:
-                    err += 1
-                    queue(i, status_col, "API_ERROR")
-                    queue(i, notes_col, f"API PREVIEW - {len(errors)} error(s): {msgs}")
-                    console.print(f"  [red]row {i} {sku}: {len(errors)} error(s)[/red]")
-                    for _em in (msgs.split("; ") if isinstance(msgs, str) else []):
-                        if _em.strip():
-                            console.print(f"      [red]- {_em.strip()}[/red]")
-                else:
-                    ok += 1
-                    queue(i, status_col, "API_READY")
-                    queue(i, notes_col, "API PREVIEW clean" + (f" | warnings: {msgs}" if msgs else ""))
-                    tag = " (with warnings)" if msgs else ""
-                    console.print(f"  [green]row {i} {sku}: API_READY[/green]{tag}")
+                ok += 1
+                new_status = "LIVE" if submit else "API_READY"
+                queue(i, status_col, new_status)
+                queue(i, notes_col,
+                    f"API {'SUBMITTED' if submit else 'PREVIEW clean'}"
+                    + (f" | warnings: {msgs}" if msgs else ""))
+                tag = " (with warnings)" if msgs else ""
+                console.print(f"  [green]row {i} {sku}: {new_status}[/green]{tag}")
         except Exception as e:
             err += 1
             em = str(e)[:300]
@@ -6550,81 +6304,19 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
     # number); fall back to the latest-run file for back-compat.
     store_path  = base_dir / "miles_bundles_store.json"
     bundle_path = base_dir / "miles_bundles.json"
-    items_path  = base_dir / "miles_items.json"
-
-    # Load the permanent store as a DICT keyed by item number (so we can test
-    # membership and merge back-filled entries), not just its values.
-    _store = {}
+    bundles = []
     if store_path.exists():
         try:
-            _loaded = _json.load(open(store_path, encoding="utf-8"))
-            if isinstance(_loaded, dict):
-                _store = _loaded
+            _store = _json.load(open(store_path, encoding="utf-8"))
+            if isinstance(_store, dict):
+                bundles = list(_store.values())
         except Exception:
-            _store = {}
-
-    # The SKU list the user uploaded in Step 1 (persisted by the dashboard when
-    # 'Generate drafts' is clicked). When present we generate for THIS list and,
-    # crucially, BACK-FILL any listed SKU that was already harvested to Drive but
-    # is missing from the local store -- reading its PDFs straight from Drive.
-    # Drive is the source of truth; we do NOT re-scrape the Miles website. This is
-    # what stops the "148 harvested in Drive but only 14 in the store -> 134
-    # silently ignored" bug.
-    _items = []
-    if items_path.exists():
+            bundles = []
+    if not bundles and bundle_path.exists():
         try:
-            _il = _json.load(open(items_path, encoding="utf-8"))
-            if isinstance(_il, list):
-                _items = [str(x).strip() for x in _il if str(x).strip()]
+            bundles = _json.load(open(bundle_path, encoding="utf-8"))
         except Exception:
-            _items = []
-
-    if _items:
-        _missing = [s for s in _items if s not in _store]
-        if _missing:
-            console.print(f"[cyan]  {len(_missing)} listed SKU(s) not in the local store -- "
-                          f"back-filling from Drive (reusing the harvest PDF logic)...[/cyan]")
-            try:
-                import miles_import as _MI
-                _drv, _derr = _MI.build_drive_rw(config, base_dir)
-            except Exception as _de:
-                _drv, _derr = None, f"{type(_de).__name__}: {str(_de)[:120]}"
-            if not _drv:
-                console.print(f"[yellow]  Drive unavailable -- cannot back-fill "
-                              f"({_derr}); those SKUs will be skipped.[/yellow]")
-            else:
-                _added = 0
-                for _sku in _missing:
-                    try:
-                        _b = _MI.bundle_from_drive(_drv, _sku,
-                                                   log=lambda m: console.print(m, markup=False))
-                    except Exception as _be:
-                        console.print(f"[yellow]  {_sku}: Drive back-fill error: "
-                                      f"{type(_be).__name__}: {str(_be)[:100]}[/yellow]")
-                        _b = None
-                    # keep only entries that actually carry document text to ground on
-                    if _b and (_b.get("sds_text") or _b.get("spec_text")):
-                        _store[_sku] = _b
-                        _added += 1
-                if _added:
-                    try:
-                        _json.dump(_store, open(store_path, "w", encoding="utf-8"))
-                        console.print(f"[green]  Back-filled {_added} SKU(s) from Drive into "
-                                      f"miles_bundles_store.json (merged, existing kept).[/green]")
-                    except Exception as _se:
-                        console.print(f"[yellow]  Could not save store: {_se}[/yellow]")
-        # Generate for the uploaded list, in order, for SKUs that now have data.
-        bundles = [_store[s] for s in _items if s in _store]
-    else:
-        # No uploaded list -> keep the prior behaviour: generate everything in the
-        # store, falling back to the latest-run file for back-compat.
-        bundles = list(_store.values())
-        if not bundles and bundle_path.exists():
-            try:
-                bundles = _json.load(open(bundle_path, encoding="utf-8"))
-            except Exception:
-                bundles = []
-
+            bundles = []
     if not bundles:
         console.print("[red]No harvested bundles found. Run a harvest first.[/red]")
         return
@@ -6873,18 +6565,6 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
 
     client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
     taken_skus, _ = load_existing_skus_and_asins(ws_out)
-    # Miles copies are spread across MANY tabs in the same spreadsheet -- skip an
-    # item if its SKU exists on ANY tab, not just the one we write to, so a re-run
-    # (or the one-click Harvest->Generate flow) never duplicates a listing that
-    # was generated onto a different tab.
-    try:
-        _cross = _skus_across_all_tabs(ws_out)
-        _extra = len(_cross - taken_skus)
-        taken_skus |= _cross
-        console.print(f"  [cyan]Cross-tab dedup: {len(_cross)} SKU(s) already exist across all tabs "
-                      f"(+{_extra} beyond the target tab) -- these will be skipped.[/cyan]")
-    except Exception as _e:
-        console.print(f"  [yellow]Cross-tab SKU scan failed: {str(_e)[:80]}[/yellow]")
     compliance_rules = load_compliance_rules()
     ip_rules = load_ip_rules()
     static_vv = load_static_valid_values()
@@ -7324,29 +7004,11 @@ async def main():
                     _acc_brand = str(_abr[0]).strip()
                 elif _acc_obj.get("brand"):
                     _acc_brand = str(_acc_obj.get("brand")).strip()
-                # Expose the account's OWN trademark(s) to the API/submit path so
-                # build_api_attributes uses THIS account's brand -- never the global
-                # default, and never another account's brand.
-                config["_account_brand"]  = _acc_brand
-                config["_account_brands"] = [str(x).strip() for x in (_abr or []) if str(x).strip()]
                 # UK Responsible Person (for Amazon.co.uk compliance fields). Only
                 # used when the run targets a UK/GB marketplace; harmless otherwise.
                 _rp = _acc_obj.get("uk_responsible_person") or {}
                 if isinstance(_rp, dict) and any(_rp.values()):
                     config["_uk_responsible_person"] = _rp
-                # Per-account eBay override: if THIS account carries its own eBay
-                # Browse-API creds (both App ID + Cert ID), they override the global
-                # config values for this run so fetch_ebay_supplement scrapes under
-                # the account's own eBay app. A half-filled pair is ignored (would
-                # break OAuth) -> global creds stand. Mirrors the dashboard's
-                # _ebay_creds() resolver so CLI and UI resolve identically.
-                _eb_app  = str(_acc_obj.get("ebay_app_id", "") or "").strip()
-                _eb_cert = str(_acc_obj.get("ebay_cert_id", "") or "").strip()
-                if _eb_app and _eb_cert:
-                    config["ebay_app_id"]  = _eb_app
-                    config["ebay_cert_id"] = _eb_cert
-                    console.print(f"  [yellow]eBay creds: account override[/yellow] "
-                                  f"(app {_eb_app[:14]}…)")
                 _ac = _acc_mod.account_creds(_acc_obj)
                 if _ac.get("lwa_client_secret") and _ac.get("refresh_token"):
                     config["_account_creds"] = _ac

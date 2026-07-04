@@ -3925,11 +3925,7 @@ def accounts_list():
                      "features": a.get("features", []),
                      "has_creds": ready,
                      "has_secret": bool(a.get("lwa_client_secret")),
-                     "lwa_client_id": a.get("lwa_client_id", ""),
-                     # per-account eBay override: expose the App ID (public) and
-                     # whether a Cert (secret) is stored -- never the Cert itself.
-                     "ebay_app_id": a.get("ebay_app_id", ""),
-                     "has_ebay_cert": bool(a.get("ebay_cert_id"))})
+                     "lwa_client_id": a.get("lwa_client_id", "")})
     return jsonify({"ok": True, "accounts": safe, "active": _state.get("active_account_id", "")})
 
 
@@ -3946,14 +3942,10 @@ def accounts_select():
     _state["active_account_id"] = aid
     _state["active_marketplace"] = b.get("marketplace", "") or _state.get("active_marketplace", "")
     if not aid:
-        # Dropshipping: use the user-assigned default sheet/tab if one was set in
-        # "Dropshipping sheets"; otherwise leave None so _ws() falls back to the
-        # config default (google_spreadsheet_id + OUTPUT_TAB) exactly as before.
-        _c0 = _cfg()
-        _ds_sid = str(_c0.get("dropshipping_output_spreadsheet_id") or "").strip()
-        _state["active_sheet_id"] = _ds_sid or None
-        _state["active_tab"] = (str(_c0.get("dropshipping_output_tab") or "").strip() or None)
-        _state["active_tab_gid"] = str(_c0.get("dropshipping_output_tab_gid") or "").strip()
+        # Dropshipping: default sheet/tab
+        _state["active_sheet_id"] = None
+        _state["active_tab"] = None
+        _state["active_tab_gid"] = ""
         _state["active_view"] = ""
         return jsonify({"ok": True, "scope": "dropshipping"})
     acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
@@ -4027,7 +4019,7 @@ def accounts_save():
     # account routes its listings to the correct spreadsheet + tab
     for k in ("input_sheet_url", "output_sheet_url", "input_spreadsheet_id",
               "input_tab_gid", "output_tab_gid", "drive_folder_url",
-              "uk_responsible_person", "ebay_app_id"):
+              "uk_responsible_person"):
         if k in b:
             acct[k] = b.get(k, acct.get(k, ""))
     if b.get("default_marketplace"):
@@ -4039,10 +4031,8 @@ def accounts_save():
     if isinstance(b.get("features"), list):
         acct["features"] = [str(f).strip() for f in b["features"] if str(f).strip()]
     acct.setdefault("marketplaces", existing.get("marketplaces", []))
-    # only overwrite secrets if a real value was supplied. ebay_cert_id is the
-    # per-account eBay secret (blank keeps the existing one, like the SP-API
-    # secrets); when set alongside ebay_app_id it overrides the global eBay creds.
-    for sk in ("lwa_client_secret", "refresh_token", "ebay_cert_id"):
+    # only overwrite secrets if a real value was supplied
+    for sk in ("lwa_client_secret", "refresh_token"):
         v = (b.get(sk) or "").strip()
         if v and not v.startswith(("PUT_", "ROTATE", "•", "*")):
             acct[sk] = v
@@ -4209,8 +4199,7 @@ def suggest():
     # tier 1: eBay specifics
     try:
         from amazon_listing_generator import fetch_ebay_supplement
-        _eb_app, _eb_cert = _ebay_creds()   # account override wins, else global
-        eb = fetch_ebay_supplement(ebay_url, _eb_app, _eb_cert)
+        eb = fetch_ebay_supplement(ebay_url, cfg.get("ebay_app_id", ""), cfg.get("ebay_cert_id", ""))
         sources["ebay"] = (eb.get("item_specifics") or {})
         imgs = eb.get("images") or eb.get("image_urls") or []
         sources["ebay_image"] = imgs[0] if imgs else (attrs.get("main_product_image_locator", "") or "")
@@ -6383,196 +6372,6 @@ def clear_empty():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-
-@app.route("/miles/sheet_pref", methods=["POST"])
-def miles_sheet_pref_set():
-    """Persist the output Sheet ID/tab so the user need not re-paste it each run."""
-    b = request.get_json(force=True) or {}
-    ok = _miles_set_pref(b.get("sheet", ""), b.get("tab", ""))
-    return jsonify({"ok": bool(ok)})
-
-
-@app.route("/miles/sheet_pref", methods=["GET"])
-def miles_sheet_pref_get():
-    """Return the saved output Sheet ID/tab for the active account (for pre-fill)."""
-    return jsonify(_miles_get_pref())
-
-
-def _miles_set_pref(sheet: str, tab: str) -> bool:
-    try:
-        import json as _j
-        d = _miles_load_prefs()
-        d[_miles_prefs_key()] = {"sheet": (sheet or "").strip(), "tab": (tab or "").strip()}
-        _j.dump(d, open(_miles_prefs_file(), "w", encoding="utf-8"))
-        return True
-    except Exception:
-        return False
-
-
-def _miles_get_pref() -> dict:
-    p = _miles_load_prefs().get(_miles_prefs_key()) or {}
-    return {"sheet": str(p.get("sheet", "") or ""), "tab": str(p.get("tab", "") or "")}
-
-
-def _miles_prefs_key() -> str:
-    # Key per account so multiple workspaces each remember their own sheet.
-    try:
-        a = _active_account()
-        return (a.get("id") if a else "") or "_default"
-    except Exception:
-        return "_default"
-
-
-def _miles_load_prefs() -> dict:
-    try:
-        import json as _j
-        d = _j.load(open(_miles_prefs_file(), encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
-
-
-def _miles_prefs_file():
-    return os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "miles_ui_prefs.json")
-
-
-@app.route("/settings/dropshipping_sheets", methods=["GET", "POST"])
-def settings_dropshipping_sheets():
-    """View / update the DEFAULT (Dropshipping / no-account) input + output sheets.
-    The built-in Dropshipping workspace has no account object, so it previously
-    always fell back to the hardcoded google_spreadsheet_id + OUTPUT_TAB. This lets
-    a user point it at any sheet/tab from the UI, exactly like a real account.
-    POST accepts full Google Sheets URLs, parses id + gid, resolves the output tab
-    NAME (so api/regen runs -- which open the worksheet by name -- hit the right
-    tab), and saves. Blank clears the override -> back to config defaults."""
-    cfg = _cfg()
-    if request.method == "GET":
-        return jsonify({
-            "ok": True,
-            "output_sheet_url": cfg.get("dropshipping_output_sheet_url", ""),
-            "input_sheet_url":  cfg.get("dropshipping_input_sheet_url", ""),
-            "output_tab":       cfg.get("dropshipping_output_tab", ""),
-        })
-    b = request.get_json(force=True) or {}
-    out_url = str(b.get("output_sheet_url", "") or "").strip()
-    in_url  = str(b.get("input_sheet_url", "") or "").strip()
-    out_id, out_gid = _parse_sheet_url(out_url)
-    in_id,  in_gid  = _parse_sheet_url(in_url)
-    if out_url and not out_id:
-        return jsonify({"ok": False, "error": "couldn't read a sheet ID from the output link"}), 400
-    if in_url and not in_id:
-        return jsonify({"ok": False, "error": "couldn't read a sheet ID from the input link"}), 400
-    # resolve the output tab NAME from its gid (best-effort; run_api opens by name)
-    out_tab = ""
-    if out_id and out_gid.isdigit():
-        try:
-            _wsg = _client().open_by_key(out_id).get_worksheet_by_id(int(out_gid))
-            if _wsg is not None:
-                out_tab = _wsg.title
-        except Exception:
-            out_tab = ""
-    try:
-        raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
-        raw["dropshipping_output_sheet_url"]      = out_url
-        raw["dropshipping_output_spreadsheet_id"] = out_id
-        raw["dropshipping_output_tab_gid"]        = out_gid
-        raw["dropshipping_output_tab"]            = out_tab
-        raw["dropshipping_input_sheet_url"]       = in_url
-        raw["dropshipping_input_spreadsheet_id"]  = in_id
-        raw["dropshipping_input_tab_gid"]         = in_gid
-        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-        _state["cfg"] = None
-        return jsonify({"ok": True, "output_tab": out_tab,
-                        "output_sheet_id": out_id, "input_sheet_id": in_id})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-def _parse_sheet_url(url: str):
-    """Extract (spreadsheet_id, tab_gid) from a full Google Sheets URL (or a bare
-    id). Returns ('','') if no id is found. Server-side mirror of the client's
-    parseSheetUrl so both paths agree on how a link is read."""
-    import re as _re
-    u = str(url or "").strip()
-    if not u:
-        return "", ""
-    m = _re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", u)
-    sid = m.group(1) if m else (u if _re.fullmatch(r"[a-zA-Z0-9_-]{20,}", u) else "")
-    g = _re.search(r"[#?&]gid=(\d+)", u)
-    return sid, (g.group(1) if g else "")
-
-
-@app.route("/settings/ebay", methods=["GET", "POST"])
-def settings_ebay():
-    """View / update the GLOBAL eBay Browse-API credentials (used to scrape the
-    source product for each row). GET never returns the raw Cert ID (secret) --
-    only the App ID (a public client id) and whether a Cert is stored, plus a
-    masked tail so the user can recognise which key is saved. POST saves; a blank
-    Cert ID keeps the existing one (so editing the App ID alone won't wipe it).
-    Per-account overrides live on the account object (see /accounts/save)."""
-    cfg = _cfg()
-    if request.method == "GET":
-        cert = str(cfg.get("ebay_cert_id", "") or "")
-        return jsonify({
-            "ok": True,
-            "ebay_app_id": str(cfg.get("ebay_app_id", "") or ""),
-            "has_cert": bool(cert.strip()),
-            # last 4 chars only, so the user can tell which secret is saved
-            "cert_tail": (cert[-4:] if len(cert) >= 4 else ("•" * len(cert))) if cert else "",
-        })
-    b = request.get_json(force=True) or {}
-    try:
-        raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
-        if "ebay_app_id" in b:
-            raw["ebay_app_id"] = str(b.get("ebay_app_id", "") or "").strip()
-        # only overwrite the secret when a real, non-masked value is supplied
-        _cert = str(b.get("ebay_cert_id", "") or "").strip()
-        if _cert and not _cert.startswith(("•", "*", "PUT_", "ROTATE")):
-            raw["ebay_cert_id"] = _cert
-        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-        _state["cfg"] = None
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/ui")
-def ui_preview():
-    """ADDITIVE preview of the new 'ListingOS' layout, served from the live app so
-    the page can call the real endpoints (/accounts/list, /rows, ...) on the same
-    origin. This does NOT touch the existing dashboard at '/'. Read fresh from disk
-    each request so edits to ui/index.html show on refresh with no restart."""
-    try:
-        _p = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "ui", "index.html")
-        with open(_p, encoding="utf-8") as _f:
-            return Response(_f.read(), mimetype="text/html")
-    except Exception as e:
-        return Response(f"<pre>ui/index.html not found: {e}</pre>",
-                        mimetype="text/html", status=404)
-
-
-def _ebay_creds() -> tuple:
-    """(app_id, cert_id) for the eBay Browse API used to scrape source products.
-
-    Resolution: the ACTIVE account's own eBay credentials OVERRIDE the global
-    ones -- but only when BOTH are present on the account (a half-filled pair
-    would break OAuth, so we fall back to global rather than send a broken mix).
-    Otherwise the global config values are used. Mirrors _sp_creds's
-    account-aware pattern."""
-    c = _cfg()
-    g_app  = str(c.get("ebay_app_id", "") or "").strip()
-    g_cert = str(c.get("ebay_cert_id", "") or "").strip()
-    try:
-        acc = _active_account()
-    except Exception:
-        acc = None
-    if acc:
-        a_app  = str(acc.get("ebay_app_id", "") or "").strip()
-        a_cert = str(acc.get("ebay_cert_id", "") or "").strip()
-        if a_app and a_cert:
-            return a_app, a_cert
-    return g_app, g_cert
-
 def _kill_proc(p):
     """Stop a running child process (and its descendants on Windows)."""
     try:
@@ -6776,29 +6575,6 @@ def miles_generate():
             if _user_sheet or _user_tab:
                 yield (f"data: [target] writing to sheet '{_out_sheet[:16]}...' / tab "
                        f"'{_out_tab or '(default)'}'\n\n")
-            # GENERATION SET = every item folder in Drive (NOT the uploaded Excel,
-            # which is HARVEST-ONLY). We scan Drive fresh each time and write the
-            # full list to miles_items.json, so Generate never depends on a stale
-            # file or on whether a spreadsheet was uploaded this session. run_miles
-            # back-fills any missing from Drive and skips any SKU already present on
-            # ANY tab -- so this builds exactly the missing listing copies.
-            try:
-                import miles_import as _MG
-                _base_g = os.path.dirname(os.path.abspath(_cfg_path))
-                _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
-                _drv_g, _derr_g = _MG.build_drive_rw(_cfg_g, _base_g)
-                _all_items = _MG.list_all_item_folders(_drv_g, log=lambda m: None) if _drv_g else []
-                with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
-                    json.dump(_all_items, _itf)
-                if _all_items:
-                    yield (f"data: [items] {len(_all_items)} item folder(s) in Drive -- building the "
-                           f"ones not already in the sheet (existing rows on ANY tab are skipped)\n\n")
-                else:
-                    yield (f"data: [items] Drive scan returned nothing"
-                           f"{(' ('+_derr_g+')') if _derr_g else ''} -- falling back to all "
-                           f"locally-harvested items in the store\n\n")
-            except Exception as _ie:
-                yield f"data: [items] could not scan Drive for item list: {_ie}\n\n"
             args = [sys.executable, "-u", SCRIPT] + extra
             yield f"data: [start] {' '.join(args)}\n\n"
             p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -6931,14 +6707,6 @@ def miles_run():
     _items = list(_MILES_STATE.get("items") or [])
     _skip_done = (request.args.get("skip_done", "1") == "1")
     _cfg_path = str(CONFIG_PATH)
-    # Resolve the output target + account HERE (request context) so the harvest
-    # can CHAIN generation once it finishes -- the SSE generator below runs
-    # outside request context and can't call _active_account()/_miles_get_pref().
-    try:
-        _acc = _active_account()
-    except Exception:
-        _acc = None
-    _pref = _miles_get_pref()
 
     def stream():
         if not _items:
@@ -6963,74 +6731,6 @@ def miles_run():
                 yield f"data: [error] miles_import import failed: {_ie}\n\n"
                 yield "event: end\ndata: end\n\n"
                 return
-
-            def _generate_missing():
-                """Harvest is done -> build listing copies for EVERY item folder in
-                Drive that is NOT already in the output sheet. The uploaded Excel is
-                HARVEST-ONLY; the generation set comes from Drive (all harvested
-                folders), and run_miles skips any SKU already present in the sheet
-                (replace_existing=False), so re-hitting Harvest never duplicates a
-                row -- it only fills in what's missing."""
-                yield "data: \n\n"
-                yield "data: [generate] scanning Drive for harvested item folders...\n\n"
-                _base_g = os.path.dirname(os.path.abspath(_cfg_path))
-                try:
-                    _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
-                except Exception as _ce:
-                    yield f"data: [error] cannot read config for generation: {_ce}\n\n"
-                    return
-                _drv_g, _derr_g = _M.build_drive_rw(_cfg_g, _base_g)
-                if not _drv_g:
-                    yield f"data: [error] cannot scan Drive for generation: {_derr_g}\n\n"
-                    return
-                _all = _M.list_all_item_folders(_drv_g, log=lambda m: None)
-                if not _all:
-                    yield "data: [generate] no item folders found in Drive -- nothing to generate.\n\n"
-                    return
-                yield (f"data: [generate] {len(_all)} item folder(s) in Drive; building the ones "
-                       f"not already in the sheet (existing rows are skipped)...\n\n")
-                try:
-                    with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _f:
-                        json.dump(_all, _f)
-                except Exception as _we:
-                    yield f"data: [error] could not write item list for generation: {_we}\n\n"
-                    return
-                # Account/sheet-scoped generation command (mirrors /miles/generate).
-                gen_extra = ["miles"]
-                if _acc:
-                    _aid = _acc.get("id") or ""
-                    if _aid:
-                        gen_extra += ["--account-id", _aid]
-                    _amkt = (_acc.get("default_marketplace") or "").strip().upper()
-                    if _amkt in ("US", "UK", "GB"):
-                        gen_extra += ["--marketplace", _amkt]
-                # The saved pref may hold a full Google Sheets URL -- extract the
-                # bare spreadsheet ID (the generator's --sheet expects an ID, not a
-                # URL). Mirrors _sheet_id() in /miles/generate.
-                _raw_sheet = (_pref.get("sheet") or (_acc.get("output_spreadsheet_id") if _acc else "") or "")
-                _sm = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", _raw_sheet)
-                _out_sheet = _sm.group(1) if _sm else _raw_sheet.strip()
-                _out_tab   = (_pref.get("tab") or ((_acc.get("output_tab") or _acc.get("output_worksheet")) if _acc else "") or "")
-                if _out_sheet:
-                    gen_extra += ["--sheet", _out_sheet]
-                if _out_tab:
-                    gen_extra += ["--tab", _out_tab]
-                if _acc and "image_template" in (_acc.get("features") or []):
-                    gen_extra += ["--auto-image"]
-                    yield "data: [image] Auto main image ENABLED for generated listings\n\n"
-                args = [sys.executable, "-u", SCRIPT] + gen_extra
-                yield f"data: [start] {' '.join(args)}\n\n"
-                _gp = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                       cwd=_base_g)
-                _running["proc"] = _gp
-                for _line in iter(_gp.stdout.readline, ""):
-                    if _line:
-                        yield f"data: {_line.rstrip()}\n\n"
-                _gp.wait()
-                _running["proc"] = None
-                yield f"data: [done] generation finished (exit {_gp.returncode})\n\n"
-
             done = _miles_load_history()
             # Also treat anything already in the PERMANENT store as done -- its
             # text is saved, so there's no need to re-scrape it.
@@ -7050,8 +6750,6 @@ def miles_run():
                 # were skipped forever). If Drive can't be checked, DON'T silently
                 # skip everything -- surface why, and only skip items we can confirm
                 # are still present.
-                # Emit immediately so the log shows life while Drive auth happens.
-                yield "data: [start] connecting to Drive to check what's already harvested...\n\n"
                 _drv = None
                 _drv_err = ""
                 try:
@@ -7069,48 +6767,22 @@ def miles_run():
                 else:
                     skipped, _revived = [], []
                     _items_after = []
-                    _newly_skipped = []                        # had Drive files but NOT in local history
-                    # DRIVE is the source of truth for "already harvested": if the
-                    # item's folder holds at least one file, skip it -- even when our
-                    # LOCAL history / text-store never recorded it (cleared history,
-                    # a different machine, or a prior run on another install). The
-                    # old code only checked Drive for items already in `done`, so an
-                    # item whose files WERE in Drive but absent from local history
-                    # dropped into the else-branch and got needlessly re-harvested.
-                    #
-                    # Each check is 2 Drive list calls (network). STREAM the result of
-                    # each item as it comes in -- if we accumulated and dumped after the
-                    # loop, the log would sit on an empty box for many seconds while N
-                    # items are checked silently (looked like "nothing is happening").
-                    _ntotal = len(items)
-                    yield (f"data: [check] verifying {_ntotal} item(s) against Drive "
-                           f"(skip anything already harvested)...\n\n")
-                    for _idx, it in enumerate(items, 1):
-                        _one_log = []
-                        _has = _M.item_has_drive_files(_drv, it,
-                                                       log=lambda m: _one_log.append(str(m)))
-                        for _cl in _one_log:                   # live per-item detail
-                            yield f"data: {_cl}\n\n"
-                        if _has:
-                            skipped.append(it)
-                            if it not in done:
-                                _newly_skipped.append(it)
-                                done.add(it)                   # sync local history to Drive
-                        else:
-                            if it in done:
-                                _revived.append(it)            # was 'done' but files gone
+                    _check_log = []
+                    for it in items:
+                        if it in done:
+                            if not _M.item_has_drive_files(_drv, it,
+                                                           log=lambda m: _check_log.append(str(m))):
+                                _revived.append(it)
+                                _items_after.append(it)        # re-harvest it
                                 done.discard(it)               # forget stale 'done'
-                            _items_after.append(it)            # (re-)harvest it
-                        if _idx % 25 == 0 and _idx != _ntotal:
-                            yield f"data: [check] {_idx}/{_ntotal} checked...\n\n"
+                            else:
+                                skipped.append(it)
+                        else:
+                            _items_after.append(it)
                     items = _items_after
-                    # Persist history when Drive told us something new (files exist for
-                    # items local history didn't know about).
-                    if _newly_skipped:
-                        _miles_save_history(done)
-                        yield (f"data: Skipping {len(_newly_skipped)} item(s) whose files were "
-                               f"already in Drive (not in local history): "
-                               f"{', '.join(_newly_skipped[:20])}\n\n")
+                    # surface exactly what the Drive check saw for each item
+                    for _cl in _check_log:
+                        yield f"data: {_cl}\n\n"
                     if _revived:
                         yield (f"data: Re-harvesting {len(_revived)} item(s) whose files were "
                                f"deleted from Drive: {', '.join(_revived[:20])}\n\n")
@@ -7132,27 +6804,14 @@ def miles_run():
                                f"(files still present in Drive): "
                                f"{', '.join(skipped[:20])}\n\n")
             if not items:
-                yield (f"data: [note] Nothing new to harvest -- all {len(_items)} uploaded item(s) "
-                       "already have their files in Drive. Building any missing listings now...\n\n")
-                yield from _generate_missing()
-                with _run_lock:
-                    if _running.get("miles_token") == _my_token:
-                        _running["on"] = False
+                yield (f"data: [done] Nothing to harvest: all {len(_items)} uploaded item(s) "
+                       "already have their files in Drive (verified just now). "
+                       "Click 'Generate drafts' to build listings from the saved data, "
+                       "or untick 'Skip already harvested' / clear history to force a full re-harvest.\n\n")
                 yield "event: end\ndata: end\n\n"
                 return
 
-            # Count against the FULL uploaded list, not just the remaining items.
-            # e.g. uploaded 146, 25 already harvested (skipped) -> the harvest of the
-            # remaining 121 shows as [26/146] .. [146/146], so the numbers line up
-            # with the sheet the user uploaded instead of restarting at [1/121].
-            _orig_total  = len(_items)                 # full uploaded count (e.g. 146)
-            _done_before = _orig_total - len(items)    # already harvested / skipped (e.g. 25)
-            if _done_before > 0:
-                yield (f"data: [start] Miles harvest -- {_done_before} of {_orig_total} already "
-                       f"harvested (skipped); harvesting the remaining {len(items)} "
-                       f"as {_done_before + 1}-{_orig_total} of {_orig_total}\n\n")
-            else:
-                yield f"data: [start] Miles harvest -- {_orig_total} item number(s)\n\n"
+            yield f"data: [start] Miles harvest -- {len(items)} item number(s)\n\n"
             import asyncio
             try:
                 import miles_import as _miles
@@ -7174,14 +6833,13 @@ def miles_run():
                 yield "data: Drive connected -- files will be saved per item number.\n\n"
 
             results = {"products": [], "needs_review": [], "not_found": [], "errors": []}
-            total = _orig_total              # count against the FULL uploaded list
+            total = len(items)
             _MILES_STATE["cancel"] = False   # clear any stale cancel request
             for i, item in enumerate(items, 1):
-                _pos = _done_before + i      # position within the uploaded list (e.g. 26)
                 if _MILES_STATE.get("cancel"):
-                    yield f"data: [stopped] cancelled after {_pos-1}/{total} item(s)\n\n"
+                    yield f"data: [stopped] cancelled after {i-1}/{total} item(s)\n\n"
                     break
-                yield f"data: [{_pos}/{total}] {item} -- searching...\n\n"
+                yield f"data: [{i}/{total}] {item} -- searching...\n\n"
                 _item_log = []
                 try:
                     res = asyncio.run(_M.harvest_item(item, drive_service,
@@ -7257,19 +6915,11 @@ def miles_run():
                    f"review {len(results['needs_review'])} | "
                    f"not found {len(results['not_found'])} | "
                    f"errors {len(results['errors'])}\n\n")
-            # Harvest finished -> automatically build listing copies for every Drive
-            # item folder not yet in the output sheet (the requested one-click flow).
-            yield from _generate_missing()
+            if results["products"]:
+                yield ("data: Bundles saved. Click 'Generate drafts' to turn them "
+                       "into Amazon draft listings with compliance + IP checks.\n\n")
         except GeneratorExit:
-            # browser closed the SSE connection; kill any chained generation
-            # subprocess, release lock if we own it, re-raise
-            try:
-                _p = _running.get("proc")
-                if _p and _p.poll() is None:
-                    _p.terminate()
-            except Exception:
-                pass
-            _running["proc"] = None
+            # browser closed the SSE connection; release lock if we own it, re-raise
             with _run_lock:
                 if _running.get("miles_token") == _my_token:
                     _running["on"] = False
@@ -7278,13 +6928,6 @@ def miles_run():
             import traceback as _tb
             yield f"data: [error] {type(e).__name__}: {str(e)[:200]}\n\n"
             yield f"data:   {_tb.format_exc().splitlines()[-1][:200]}\n\n"
-            try:
-                _p = _running.get("proc")
-                if _p and _p.poll() is None:
-                    _p.terminate()
-            except Exception:
-                pass
-            _running["proc"] = None
             with _run_lock:
                 if _running.get("miles_token") == _my_token:
                     _running["on"] = False
@@ -7394,30 +7037,6 @@ def run(mode):
                             break
                 if _acc_mkt and "--marketplace" not in extra:
                     extra += ["--marketplace", _acc_mkt]
-            else:
-                # DROPSHIPPING (no active account): honour the user-assigned default
-                # sheets from "AI & settings ▸ Dropshipping sheets", if set. Purely
-                # additive -- when unset, nothing is passed and the generator uses
-                # its config.json defaults exactly as before (zero regression). We
-                # pass BOTH the tab name (--tab, for api/regen whose run_api opens
-                # the worksheet by name) and the gid (--tab-gid, for generate whose
-                # init_sheets resolves by gid), so either path targets the right tab.
-                _cfg0 = _cfg()
-                _ds_out  = str(_cfg0.get("dropshipping_output_spreadsheet_id") or "").strip()
-                _ds_otab = str(_cfg0.get("dropshipping_output_tab") or "").strip()
-                _ds_ogid = str(_cfg0.get("dropshipping_output_tab_gid") or "").strip()
-                _ds_in   = str(_cfg0.get("dropshipping_input_spreadsheet_id") or "").strip()
-                _ds_igid = str(_cfg0.get("dropshipping_input_tab_gid") or "").strip()
-                if _ds_out and "--sheet" not in extra:
-                    extra += ["--sheet", _ds_out]
-                if _ds_otab and "--tab" not in extra:
-                    extra += ["--tab", _ds_otab]
-                if _ds_ogid and "--tab-gid" not in extra:
-                    extra += ["--tab-gid", _ds_ogid]
-                if _ds_in and "--input-sheet" not in extra:
-                    extra += ["--input-sheet", _ds_in]
-                if _ds_igid and "--input-tab-gid" not in extra:
-                    extra += ["--input-tab-gid", _ds_igid]
             # If a brand view is active, scope api preview/submit to THAT sheet +
             # marketplace only -- so it never previews every marketplace/account
             # at once (which would waste credits), and validates against the
@@ -8432,9 +8051,9 @@ _HTML = r"""<!doctype html>
           <b>Step 2.</b> Where should the listing copy go? Paste the Google Sheet ID (or full URL) and the tab name. Leave blank to use the account default.
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL" onchange="milesSavePref()"
+          <input type="text" id="miles_sheet" placeholder="Output Sheet ID or URL"
                  style="flex:1;min-width:260px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
-          <input type="text" id="miles_tab" placeholder="Tab name (e.g. Sheet2)" onchange="milesSavePref()"
+          <input type="text" id="miles_tab" placeholder="Tab name (e.g. Sheet2)"
                  style="width:180px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
           <input type="number" id="miles_limit" min="1" placeholder="How many? (blank = all)"
                  style="width:170px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
@@ -9011,7 +8630,6 @@ function drawerContent(r){
         <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
         <button class="genmain" onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
         <button class="pushimg" onclick="pushImageLive('${esc(r.sku)}',this)" title="Send the current main image to the LIVE Amazon listing (updates just the image, no full resubmit)"><i class="ti ti-cloud-upload"></i> Push image to live</button>
-        <label class="pushimg" style="cursor:pointer" title="Upload a clean main image from your computer. It's hosted publicly so Amazon can fetch it, then set as this listing's main image. Preview/Submit sends it."><i class="ti ti-photo-up"></i> Upload main image<input type="file" accept="image/*" style="display:none" onchange="uploadMainImage('${esc(r.sku)}',this)"></label>
         <button class="ok" onclick="setStatus('${esc(r.sku)}','APPROVED',this)">Approve</button>
         <button class="prev1" onclick="previewOne('${esc(r.sku)}')" title="Preview this listing against Amazon (no changes sent)"><i class="ti ti-eye"></i> Preview</button>
         <button class="prev1" style="background:#fff;color:#111;border-color:#fff" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-loop: Suggest → Apply → Preview. Repeats until zero errors, or stops if progress stalls (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
@@ -10700,33 +10318,6 @@ async function doGen(sku, sidv){
     if(st) st.innerHTML='<span style="color:#ef9a9a">\u2717 Error: '+esc(String(e))+'</span>';
   }
 }
-function uploadMainImage(sku, inp){
-  // Upload a LOCAL image as this listing's main image. Chains two existing routes:
-  //  1) /media/upload (kind:'main') -> saves + auto-pushes to Drive, returns a
-  //     PUBLIC drive_direct_url Amazon can fetch.
-  //  2) /edit -> writes that public URL onto the row's main_product_image_locator,
-  //     so the next Preview/Submit sends YOUR clean image instead of the source one.
-  const f = inp && inp.files && inp.files[0];
-  if(!f){ return; }
-  if(!/^image\//.test(f.type||"")){ toast("Please choose an image file"); inp.value=""; return; }
-  const rd = new FileReader();
-  rd.onload = async () => {
-    toast("Uploading main image…");
-    try{
-      const up = await (await fetch("/media/upload",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:sku, data:rd.result, name:f.name, kind:"main"})})).json();
-      if(!up || !up.ok){ toast("Upload failed: "+((up&&up.error)||"unknown")); return; }
-      const pub = up.drive_direct_url || "";
-      if(!pub){ toast("Uploaded, but no public URL"+(up.drive_error?(" ("+up.drive_error+")"):"")+". Set the account's Drive folder so Amazon can fetch it."); return; }
-      const sv = await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:sku, target:"attr", key:"main_product_image_locator", value:pub})})).json();
-      if(sv && sv.ok){ toast("Main image set ✓ — Preview/Submit to send it to Amazon"); loadRows(); }
-      else { toast("Image hosted but couldn't save to the row: "+((sv&&sv.error)||"")); }
-    }catch(e){ toast("Upload error: "+((e&&e.message)||e)); }
-    finally { if(inp) inp.value=""; }
-  };
-  rd.readAsDataURL(f);
-}
 async function pushImageLive(sku, btn){
   var r=(ROWS||[]).find(x=>String(x.sku)===String(sku));
   if(!r){ toast('Listing not found'); return; }
@@ -11188,24 +10779,15 @@ async function submitLive(){
       alert("This view is set to the "+t.marketplace+" marketplace, but no credentials are configured for it. Nothing will be submitted. Add the account's SP-API credentials first.");
       return;
     }
-    var _sel = selectedSkus();
-    var _scope = _sel.length
-      ? ("the "+_sel.length+" SELECTED listing(s):\n    "+_sel.join(", ")+"\n")
-      : "every APPROVED / API_READY row in THIS view";
     var msg = "PUBLISH LIVE \u2014 confirm the destination account:\n\n"
       + "  Account:    "+t.account_label+"\n"
       + (t.seller_id?("  Seller ID:  "+t.seller_id+"\n"):"")
       + "  Marketplace: "+t.marketplace+"\n"
       + "  Workspace:  "+t.view+"\n\n"
-      + "This will CREATE or REPLACE live listings for "+_scope+", on the account above.\n"
-      + "(Already-live listings are skipped automatically.)\n\nIs this the correct account?";
+      + "This will CREATE or REPLACE live listings for every APPROVED / API_READY row in THIS view, on the account above.\n\nIs this the correct account?";
     if(!confirm(msg)) return;
   }
-  // Scope the submit to the user's SELECTION when there is one; otherwise fall back
-  // to all approved/ready rows (the server's default).
-  var _sel2 = selectedSkus();
-  if(_sel2.length) runMode('api_submit', _sel2);
-  else runMode('api_submit');
+  runMode('api_submit');
 }
 function isEmptyRow(r){
   const s=x=>String(x==null?"":x).trim();
@@ -13318,30 +12900,12 @@ function milesRun(){
   ES.addEventListener("end",()=>{ES.close();ES=null;
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;
-    milesLoadResults(); toast("Harvest + generation finished");});
+    milesLoadResults(); toast("Harvest finished");});
   ES.onerror=()=>{if(ES){ES.close();ES=null;
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;
     if(log){const d=document.createElement("div");d.style.color="#ff8585";d.textContent="[error] stream interrupted — check the app terminal for a Python traceback";log.appendChild(d);}
   }};
-}
-function milesSavePref(){
-  // Persist the output Sheet ID/tab so it survives reloads until changed.
-  const sheet=(document.getElementById("miles_sheet")||{}).value||"";
-  const tab=(document.getElementById("miles_tab")||{}).value||"";
-  fetch("/miles/sheet_pref",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({sheet:sheet.trim(),tab:tab.trim()})}).catch(()=>{});
-}
-function milesLoadPref(){
-  // Pre-fill the saved Sheet ID/tab on open. Only fills empty fields so we never
-  // clobber something the user just typed.
-  fetch("/miles/sheet_pref").then(r=>r.json()).then(d=>{
-    if(!d) return;
-    const s=document.getElementById("miles_sheet");
-    const t=document.getElementById("miles_tab");
-    if(s && !s.value && d.sheet) s.value=d.sheet;
-    if(t && !t.value && d.tab)   t.value=d.tab;
-  }).catch(()=>{});
 }
 function milesGenerate(){
   if(ES){toast("A run is already streaming");return;}
@@ -13853,7 +13417,7 @@ async function invBadgeRefresh(){
 }
 // ---------- /Inventory section ----------
 
-function runMode(mode, skus){
+function runMode(mode){
   if(ES){toast("A run is already streaming");return;}
   const log=document.getElementById("log");
   log.style.display="block"; log.textContent="";
@@ -13870,11 +13434,6 @@ function runMode(mode, skus){
       params.set("select_type", (typeEl&&!typeEl.disabled)? typeEl.value : "auto");
       url += "?"+params.toString();
     }
-  }
-  // Preview/Submit: if specific SKUs are passed (the user's SELECTION), scope the
-  // run to exactly those. Empty -> the server's default (all approved/ready rows).
-  if((mode==="api"||mode==="api_submit") && skus && skus.length){
-    url += (url.indexOf("?")>=0?"&":"?")+"skus="+encodeURIComponent(skus.join(","));
   }
   ES=new EventSource(url);
   showStop(true);
@@ -14319,8 +13878,7 @@ async function loadHome(){
       <button class="peek" title="Reveal" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
       <div style="display:flex;align-items:center;gap:11px">
         <div class="ic" style="background:rgba(76,141,255,.16);color:#9cc1ff">${SVG_CART}</div>
-        <div style="flex:1"><div class="nm pii">Dropshipping</div><div class="sub pii">eBay → Amazon arbitrage</div></div>
-        <button class="wsedit" title="Assign input &amp; output sheets" onclick='event.stopPropagation();openDropshippingSheets()'><i class="ti ti-settings"></i></button>
+        <div><div class="nm pii">Dropshipping</div><div class="sub pii">eBay → Amazon arbitrage</div></div>
       </div>
       <div class="stats"><span class="cc">cross-account</span></div>
     </div>`;
@@ -14347,38 +13905,6 @@ async function loadHome(){
   }).join("");
   cards += `<div class="wscard add" onclick="openAccountEditor('')">${SVG_PLUS} Add account</div>`;
   grid.innerHTML = cards;
-}
-async function openDropshippingSheets(){
-  // Reuse the account modal shell to edit the DEFAULT (Dropshipping) sheets.
-  const m=document.getElementById("acctmodal"); if(!m) return; m.classList.add("open");
-  const body=document.getElementById("acctmodalbody");
-  body.innerHTML='<div class="cc" style="padding:12px"><span class="genspin"></span> Loading…</div>';
-  let s; try{ s=await (await fetch("/settings/dropshipping_sheets")).json(); }catch(e){ s={ok:false}; }
-  const S=(s&&s.ok)?s:{output_sheet_url:"",input_sheet_url:"",output_tab:""};
-  body.innerHTML=`
-    <div style="font-weight:600;font-size:14px;margin-bottom:2px"><i class="ti ti-table"></i> Dropshipping default sheets</div>
-    <div class="cc" style="font-size:11.5px;margin-bottom:10px">The built-in Dropshipping workspace (eBay → Amazon) uses these sheets. Paste the <b>full Google Sheets link</b> with the tab open — the app reads the spreadsheet ID and the tab (gid) from the URL. Leave blank to fall back to the app's config defaults.</div>
-    <table class="kv">
-      <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ds_output_url" value="${esc(S.output_sheet_url||'')}" oninput="_showParsed('ds_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ds_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
-      <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ds_input_url" value="${esc(S.input_sheet_url||'')}" oninput="_showParsed('ds_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ds_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
-    </table>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="primary" onclick="saveDropshippingSheets()">Save sheets</button>
-      <button onclick="closeAccountEditor()">Cancel</button>
-      <span id="ds_status" class="cc"></span>
-    </div>`;
-}
-async function saveDropshippingSheets(){
-  const out=((document.getElementById("ds_output_url")||{}).value||"").trim();
-  const inp=((document.getElementById("ds_input_url")||{}).value||"").trim();
-  const st=document.getElementById("ds_status");
-  if(st) st.textContent="Saving…";
-  try{
-    const j=await (await fetch("/settings/dropshipping_sheets",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({output_sheet_url:out, input_sheet_url:inp})})).json();
-    if(j.ok){ toast("Dropshipping sheets saved"+(j.output_tab?(" · tab: "+j.output_tab):"")); closeAccountEditor(); loadHome(); }
-    else { if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(String(e))+'</span>'; }
 }
 function _wsColorKey(key){
   const palette=[["#E1F5EE","#0F6E56"],["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],
@@ -14559,9 +14085,6 @@ function openAccountEditor(id){
       <tr><td class="k">RP email</td><td class="v"><input class="ed" id="ac_rp_email" value="${esc((a.uk_responsible_person||{}).email||'')}" placeholder="contact@…"></td></tr>
       <tr><td class="k">RP phone</td><td class="v"><input class="ed" id="ac_rp_phone" value="${esc((a.uk_responsible_person||{}).phone||'')}" placeholder="+44…"></td></tr>
       <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
-      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials <span class="cc">(optional — per-account override)</span></div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row. Leave blank to use the app-wide eBay keys (set in <b>AI &amp; settings ▸ eBay</b>). <b>If you fill BOTH fields here, they override the global eBay credentials for THIS account.</b></div></td></tr>
-      <tr><td class="k">eBay App ID <span class="cc">(client ID)</span></td><td class="v"><input class="ed" id="ac_ebay_app" value="${esc(a.ebay_app_id||'')}" placeholder="leave blank to use global"></td></tr>
-      <tr><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ac_ebay_cert" type="password" placeholder="${a.has_ebay_cert?'•••••• (leave blank to keep)':'leave blank to use global'}"></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-plug"></i> Workspace features</div><div class="cc" style="font-size:11.5px">Turn on extra capabilities for this account. Enabling a feature reveals its section inside the workspace; uploads there build listings for THIS account (its sheet, its credentials).</div></td></tr>
       <tr><td class="k">Supplier harvest</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -14640,9 +14163,6 @@ async function saveAccount(){
     },
     input_spreadsheet_id:inP.id, input_tab_gid:inP.gid,
     output_spreadsheet_id:outP.id, output_tab_gid:outP.gid,
-    // per-account eBay override (blank = fall back to the global eBay creds)
-    ebay_app_id:((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
-    ebay_cert_id:((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
     default_marketplace:(document.getElementById("ac_marketplace")||{}).value||"UK",
     brands:((document.getElementById("ac_brands")||{}).value||"").split(",").map(s=>s.trim()).filter(Boolean),
     features:[
@@ -14786,7 +14306,7 @@ function navTo(sec){
   if(sec==="setup")     loadBrandPanel();
   if(sec==="imagerefs") loadImageRefs();
   if(sec==="generate"){ loadTargetAccount(); loadInputSheet(); }
-  if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
+  if(sec==="miles")     milesLoadResults();
   if(sec==="ppc")       ppcOnOpen();
 }
 async function loadTargetAccount(){
@@ -14998,9 +14518,6 @@ async function openAISettings(){
   body.innerHTML="Loading models from OpenRouter…";
   let s; try{ s=await (await fetch("/ai/settings")).json(); }catch(e){ s={ok:false}; }
   if(!s.ok){ body.innerHTML='<div class="reqnote">Could not load AI settings.</div>'; return; }
-  // current GLOBAL eBay creds (App ID shown; Cert never returned, only a masked tail)
-  let eb; try{ eb=await (await fetch("/settings/ebay")).json(); }catch(e){ eb={ok:false}; }
-  const ebSafe=(eb&&eb.ok)?eb:{ebay_app_id:"",has_cert:false,cert_tail:""};
   const keyNote = s.has_key
     ? (s.discover_ok ? `<span class="cc" style="color:#7fd99a">\u2713 OpenRouter connected \u2014 ${ (s.text_models||[]).length } text models, ${ (s.image_models||[]).length } image models available</span>`
                      : `<span class="cc" style="color:#e3b768">Key present, but model discovery failed: ${esc(s.discover_error||'')} (showing fallback list)</span>`)
@@ -15019,15 +14536,6 @@ async function openAISettings(){
       <button onclick="refreshAIModels()"><i class="ti ti-refresh"></i> Refresh model list</button>
       <a class="browsemodels" href="https://openrouter.ai/models" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Browse all models</a>
       <button onclick="closeAISettings()">Cancel</button>
-    </div>
-    <div class="adminbox" style="margin-top:12px">
-      <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-shopping-cart"></i> eBay source credentials <span class="cc">(global default)</span></div>
-      <div class="cc" style="font-size:11.5px;margin-bottom:8px">Used to scrape each row's source eBay listing (title, item specifics, images) via eBay's Browse API. These are the app-wide defaults; any single account can override them in its <b>Account &amp; sheets</b> editor. <b>No eBay Dev ID is required</b> — the Browse API authenticates with only App ID + Cert ID.</div>
-      <table class="kv">
-        <tr><td class="k">eBay App ID <span class="cc">(client ID)</span></td><td class="v"><input class="ed" id="ebay_app" value="${esc(ebSafe.ebay_app_id||'')}" placeholder="YourApp-xxxx-PRD-xxxx-xxxx"></td></tr>
-        <tr><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ebay_cert" type="password" placeholder="${ebSafe.has_cert?('•••• '+esc(ebSafe.cert_tail||'')+' — leave blank to keep'):'paste Cert ID'}"></td></tr>
-      </table>
-      <div style="margin-top:8px"><button class="primary" onclick="saveEbaySettings()"><i class="ti ti-check"></i> Save eBay credentials</button> <span id="ebay_status" class="cc"></span></div>
     </div>
     <div class="adminbox">
       <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-shield-lock"></i> Admin — transparency &amp; access</div>
@@ -15076,18 +14584,6 @@ async function saveAISettings(){
     toast("AI selection saved");
     closeAISettings();
   }catch(e){ toast("Could not save: "+e); }
-}
-async function saveEbaySettings(){
-  const app=((document.getElementById("ebay_app")||{}).value||"").trim();
-  const cert=((document.getElementById("ebay_cert")||{}).value||"").trim();
-  const st=document.getElementById("ebay_status");
-  if(st) st.textContent="Saving…";
-  try{
-    const j=await (await fetch("/settings/ebay",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ebay_app_id:app, ebay_cert_id:cert})})).json();
-    if(j.ok){ if(st) st.innerHTML='<span style="color:#7fd99a">✓ saved</span>'; toast("eBay credentials saved"); }
-    else { if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(String(e))+'</span>'; }
 }
 
 // ---- GLOBAL generation status bar + full-visibility panel (works everywhere) ----

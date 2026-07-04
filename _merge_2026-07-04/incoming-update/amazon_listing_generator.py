@@ -20,7 +20,6 @@ COMMANDS:
 import asyncio
 import base64
 import json
-import os
 import re
 import sys
 import time
@@ -63,7 +62,7 @@ from sp_api.base import Marketplaces
 import unified_export
 
 console     = Console()
-CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", str(Path(__file__).parent / "config.json")))
+CONFIG_PATH = Path(__file__).parent / "config.json"
 
 MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default)
 US_MARKETPLACE_ID = "ATVPDKIKX0DER"        # USA
@@ -1771,7 +1770,7 @@ def cap_chars(s: str, n: int) -> str:
         cut = cut[: cut.rfind(" ")].rstrip()
     return cut
 
-COUNTER_PATH      = CONFIG_PATH.parent / "model_number_counter.json"
+COUNTER_PATH      = Path(__file__).parent / "model_number_counter.json"
 COMPLIANCE_PATH   = Path(__file__).parent / "compliance_rules.json"
 IP_RULES_PATH     = Path(__file__).parent / "ip_rules.json"
 VALID_VALUES_PATH = Path(__file__).parent / "valid_values.json"
@@ -2241,6 +2240,56 @@ def load_existing_skus_and_asins(ws_out) -> tuple:
     return skus, asins
 
 
+def _skus_across_all_tabs(ws_out) -> set:
+    """Union of the SKU column across EVERY worksheet in ws_out's spreadsheet.
+
+    Miles listing copies are split across category tabs (e.g. Sheet2, 'Hydraulic
+    Fluids', 'Synthetic Gallon-ISEL'). Generation must skip an item whose copy
+    already exists on ANY tab -- not just the one it writes to -- or a re-run
+    duplicates a listing that was generated onto a different tab.
+
+    Robust to malformed tabs: a sheet with duplicate/blank headers (e.g. an old
+    'Sheet1' whose SKU column sits under blank leading headers) can't be read as
+    records, so we fall back to the raw grid -- pulling the 'SKU' column by header
+    position, or, if there's no SKU header, scanning for item-number-shaped cells
+    so nothing is missed."""
+    out = set()
+    try:
+        worksheets = ws_out.spreadsheet.worksheets()
+    except Exception as e:
+        console.print(f"  [yellow]Cross-tab SKU scan unavailable: {str(e)[:80]}[/yellow]")
+        return out
+    _itempat = re.compile(r"^[A-Za-z]{2,4}\d{4,}$")
+    for ws in worksheets:
+        try:
+            for r in _safe_records(ws):
+                v = str(r.get("SKU", "") or "").strip()
+                if v:
+                    out.add(v)
+            continue
+        except Exception:
+            pass
+        # Fallback: malformed/duplicate headers -> read the raw grid.
+        try:
+            vals = ws.get_all_values()
+        except Exception:
+            continue
+        if not vals:
+            continue
+        hdr = [str(c).strip().lower() for c in vals[0]]
+        if "sku" in hdr:
+            ci = hdr.index("sku")
+            for row in vals[1:]:
+                if ci < len(row) and str(row[ci]).strip():
+                    out.add(str(row[ci]).strip())
+        else:
+            for row in vals:
+                for c in row:
+                    if _itempat.match(str(c).strip()):
+                        out.add(str(c).strip())
+    return out
+
+
 
 def _open_sheet_retry(gc, key: str, what: str = "sheet", tries: int = 5):
     """Open a Google spreadsheet, retrying on transient server errors (HTTP
@@ -2398,11 +2447,6 @@ def select_rows(products: list, raw: str, sel_type: str = "auto"):
             hits = [(i, p) for i, p in enumerate(products, 1)
                     if _extract_ebay_item(p.get("ebay_url", "")) == item]
             return _finish_match(hits, f"eBay item {item}")
-        if "docs.google." in low or "/spreadsheets/" in low or "drive.google." in low:
-            return [], ("That's your Google Sheet link, not a product to select. "
-                        "Leave the Generate box EMPTY to make every input-sheet row, "
-                        "or type a row number (e.g. 1), or paste a single Amazon/eBay "
-                        "product URL.")
         return [], f"Couldn't tell if that URL is Amazon or eBay: {raw[:60]}"
 
     # --- Row numbers ----------------------------------------------------------
@@ -4508,6 +4552,42 @@ def _shape_axes(field_schema: dict, values: dict, mid: str):
     return [obj] if axis_keys else []
 
 
+def shape_by_schema(schema, raw, mid, lang="en_GB"):
+    t = schema.get("type")
+    if t == "array":
+        shaped = shape_by_schema(schema.get("items", {}) or {}, raw, mid, lang)
+        return [shaped] if shaped is not None else []
+    if t == "object":
+        props = schema.get("properties", {}) or {}
+        obj = {}
+        if "marketplace_id" in props: obj["marketplace_id"] = mid
+        if "language_tag" in props:   obj["language_tag"]   = lang
+        num_key = "decimal_value" if "decimal_value" in props else ("value" if "value" in props else None)
+        num=unit=None
+        if isinstance(raw, str):
+            p=raw.split()
+            if p:
+                try: num=float(p[0]); unit=" ".join(p[1:]) or None
+                except ValueError: pass
+        elif isinstance(raw, dict):
+            num=raw.get("decimal_value", raw.get("value")); unit=raw.get("unit")
+        if num_key and num not in (None,""):
+            try: obj[num_key]=float(str(num))
+            except (ValueError,TypeError): obj[num_key]=num
+        if "unit" in props and unit not in (None,""):
+            uen=props["unit"].get("enum")
+            obj["unit"]=(next((e for e in uen if str(e).lower()==str(unit).strip().lower()), unit)
+                         if uen else unit)
+        for pk,pv in props.items():
+            if pk in ("marketplace_id","language_tag","unit",num_key): continue
+            if isinstance(pv,dict) and pv.get("type") in ("array","object"):
+                sub = raw.get(pk) if isinstance(raw,dict) and pk in raw else raw
+                s = shape_by_schema(pv, sub, mid, lang)
+                if s not in (None,[],{}): obj[pk]=s
+        return obj
+    return raw.get("decimal_value", raw.get("value")) if isinstance(raw,dict) else raw
+
+
 def _shape_list_price(field_schema: dict, price, mid: str):
     """List Price (RRP). Defaults to the selling price; shape adapts to schema
     (value vs value_with_tax, optional currency / marketplace_id). When the schema
@@ -4604,7 +4684,7 @@ def _load_attr_defaults() -> dict:
     new listing of the same type. Shape: {product_type: {attr: value}}."""
     if _ATTR_DEFAULTS_CACHE["data"] is None:
         try:
-            _ATTR_DEFAULTS_CACHE["data"] = json.load(open(CONFIG_PATH.parent / "attribute_defaults.json", encoding="utf-8"))
+            _ATTR_DEFAULTS_CACHE["data"] = json.load(open("attribute_defaults.json", encoding="utf-8"))
         except Exception:
             _ATTR_DEFAULTS_CACHE["data"] = {}
     return _ATTR_DEFAULTS_CACHE["data"] or {}
@@ -4695,116 +4775,6 @@ def _build_ghs_from_schema(ghs_schema: dict, mid: str):
         obj["marketplace_id"] = mid
     return [obj]
 
-
-
-def _verify_live_status(li, seller_id, sku, mid, locale="en_GB"):
-    """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
-    'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
-    LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
-    downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues); (None, None) if the check itself failed."""
-    import time as _t
-    for _attempt in range(2):
-        try:
-            _t.sleep(4)   # give Amazon a moment to process the submission
-            resp = li.get_listings_item(seller_id, sku, marketplaceIds=[mid],
-                                        issueLocale=locale,
-                                        includedData=["summaries", "issues"])
-            p = resp.payload if hasattr(resp, "payload") else (resp or {})
-            summaries = (p or {}).get("summaries", []) or []
-            status = summaries[0].get("status", []) if summaries else []
-            issues = (p or {}).get("issues", []) or []
-            errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
-            return status, errs
-        except Exception:
-            continue
-    return None, None
-
-
-def _skus_across_all_tabs(ws_out) -> set:
-    """Union of the SKU column across EVERY worksheet in ws_out's spreadsheet.
-
-    Miles listing copies are split across category tabs (e.g. Sheet2, 'Hydraulic
-    Fluids', 'Synthetic Gallon-ISEL'). Generation must skip an item whose copy
-    already exists on ANY tab -- not just the one it writes to -- or a re-run
-    duplicates a listing that was generated onto a different tab.
-
-    Robust to malformed tabs: a sheet with duplicate/blank headers (e.g. an old
-    'Sheet1' whose SKU column sits under blank leading headers) can't be read as
-    records, so we fall back to the raw grid -- pulling the 'SKU' column by header
-    position, or, if there's no SKU header, scanning for item-number-shaped cells
-    so nothing is missed."""
-    out = set()
-    try:
-        worksheets = ws_out.spreadsheet.worksheets()
-    except Exception as e:
-        console.print(f"  [yellow]Cross-tab SKU scan unavailable: {str(e)[:80]}[/yellow]")
-        return out
-    _itempat = re.compile(r"^[A-Za-z]{2,4}\d{4,}$")
-    for ws in worksheets:
-        try:
-            for r in _safe_records(ws):
-                v = str(r.get("SKU", "") or "").strip()
-                if v:
-                    out.add(v)
-            continue
-        except Exception:
-            pass
-        # Fallback: malformed/duplicate headers -> read the raw grid.
-        try:
-            vals = ws.get_all_values()
-        except Exception:
-            continue
-        if not vals:
-            continue
-        hdr = [str(c).strip().lower() for c in vals[0]]
-        if "sku" in hdr:
-            ci = hdr.index("sku")
-            for row in vals[1:]:
-                if ci < len(row) and str(row[ci]).strip():
-                    out.add(str(row[ci]).strip())
-        else:
-            for row in vals:
-                for c in row:
-                    if _itempat.match(str(c).strip()):
-                        out.add(str(c).strip())
-    return out
-
-
-def shape_by_schema(schema, raw, mid, lang="en_GB"):
-    t = schema.get("type")
-    if t == "array":
-        shaped = shape_by_schema(schema.get("items", {}) or {}, raw, mid, lang)
-        return [shaped] if shaped is not None else []
-    if t == "object":
-        props = schema.get("properties", {}) or {}
-        obj = {}
-        if "marketplace_id" in props: obj["marketplace_id"] = mid
-        if "language_tag" in props:   obj["language_tag"]   = lang
-        num_key = "decimal_value" if "decimal_value" in props else ("value" if "value" in props else None)
-        num=unit=None
-        if isinstance(raw, str):
-            p=raw.split()
-            if p:
-                try: num=float(p[0]); unit=" ".join(p[1:]) or None
-                except ValueError: pass
-        elif isinstance(raw, dict):
-            num=raw.get("decimal_value", raw.get("value")); unit=raw.get("unit")
-        if num_key and num not in (None,""):
-            try: obj[num_key]=float(str(num))
-            except (ValueError,TypeError): obj[num_key]=num
-        if "unit" in props and unit not in (None,""):
-            uen=props["unit"].get("enum")
-            obj["unit"]=(next((e for e in uen if str(e).lower()==str(unit).strip().lower()), unit)
-                         if uen else unit)
-        for pk,pv in props.items():
-            if pk in ("marketplace_id","language_tag","unit",num_key): continue
-            if isinstance(pv,dict) and pv.get("type") in ("array","object"):
-                sub = raw.get(pk) if isinstance(raw,dict) and pk in raw else raw
-                s = shape_by_schema(pv, sub, mid, lang)
-                if s not in (None,[],{}): obj[pk]=s
-        return obj
-    return raw.get("decimal_value", raw.get("value")) if isinstance(raw,dict) else raw
 
 def build_api_attributes(row: dict, pt: str, props: dict, required: set, config: dict) -> dict:
     """Assemble the SP-API 'attributes' object for one listing, gated to `props`
@@ -6279,6 +6249,30 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
 
 # ---- runner ------------------------------------------------------------------
 
+def _verify_live_status(li, seller_id, sku, mid, locale="en_GB"):
+    """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
+    'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
+    LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
+    downstream rejection (e.g. a blocked main image) instead of a false LIVE.
+    Returns (status_list, error_issues); (None, None) if the check itself failed."""
+    import time as _t
+    for _attempt in range(2):
+        try:
+            _t.sleep(4)   # give Amazon a moment to process the submission
+            resp = li.get_listings_item(seller_id, sku, marketplaceIds=[mid],
+                                        issueLocale=locale,
+                                        includedData=["summaries", "issues"])
+            p = resp.payload if hasattr(resp, "payload") else (resp or {})
+            summaries = (p or {}).get("summaries", []) or []
+            status = summaries[0].get("status", []) if summaries else []
+            issues = (p or {}).get("issues", []) or []
+            errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
+            return status, errs
+        except Exception:
+            continue
+    return None, None
+
+
 def run_api(config: dict, gc, creds: dict, submit: bool = False,
             marketplace: str = "UK", output_tab: str = None,
             spreadsheet_id: str = None, only_skus: set = None):
@@ -6536,7 +6530,7 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
     Drive; here we only generate the listing rows."""
     import sys as _sys, json as _json
     from pathlib import Path as _P
-    base_dir = CONFIG_PATH.parent
+    base_dir = _P(__file__).parent
 
     def _argval(flag):
         """Read a --flag value from argv (run_miles can't see main()'s helper)."""
@@ -7112,7 +7106,7 @@ def run_brand(config: dict, gc, creds: dict, ws_out=None,
     test_limit: if > 0, only generate the first N products (saves credits)."""
     import sys as _sys
     from pathlib import Path as _P
-    base_dir = CONFIG_PATH.parent
+    base_dir = _P(__file__).parent
 
     if ws_out is None:                      # safety net: open ONCE if not given
         _gc, _wsin, ws_out = init_sheets(config)
@@ -7651,13 +7645,11 @@ def run_export_unified(config: dict, gc, status_filter: str = "APPROVED"):
     console.print(f"[bold cyan]  UNIFIED FLAT FILE EXPORT -- Status: {status_filter}[/bold cyan]")
     console.print(f"[bold cyan]{'='*55}[/bold cyan]\n")
 
-    brand        = config.get("brand_name", "")
+    brand        = config.get("brand_name",  "AltaboltaVoo")
     manufacturer = config.get("manufacturer", brand)
 
     template_path = config.get("unified_template_path")
-    output_path   = config.get("unified_output_path") or str(CONFIG_PATH.parent / "filled_unified_template.xlsm")
-    if not Path(output_path).is_absolute():
-        output_path = str(CONFIG_PATH.parent / output_path)
+    output_path   = config.get("unified_output_path", "filled_unified_template.xlsm")
 
     if not template_path:
         console.print("[red]unified_template_path missing in config.json[/red]")

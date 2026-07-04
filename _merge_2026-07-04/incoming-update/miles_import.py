@@ -460,6 +460,7 @@ def item_has_drive_files(drive_service, item_number: str, master_id: str = MASTE
              f"{str(e)[:80]}) -> treating as MISSING so it re-harvests")
         return False
 
+
 def list_all_item_folders(drive_service, master_id: str = MASTER_FOLDER_ID,
                           with_files_only: bool = False, log=None) -> list:
     """Return the item-number NAMES of every folder directly under the master
@@ -514,7 +515,6 @@ def list_all_item_folders(drive_service, master_id: str = MASTER_FOLDER_ID,
         if n not in seen:
             seen.add(n); out.append(n)
     return out
-
 
 
 def ensure_item_folder(drive_service, item_number: str, master_id: str = MASTER_FOLDER_ID):
@@ -667,6 +667,43 @@ def to_product_dict(item_number: str, product_url: str, parsed: dict,
         "product_type":  "",                       # let schema/preview resolve; lubricant
     }
 
+
+# =============================================================================
+# DRIVE BACK-FILL: build a bundle for an ALREADY-harvested item straight from the
+# PDFs sitting in its Drive folder (no website scraping). Used by "Generate
+# drafts" so a listed SKU whose PDFs are in Drive but missing from the local text
+# store is recovered instead of silently skipped. Reuses the SAME extraction /
+# classification / bundle-shaping as harvest_item.
+# =============================================================================
+
+def find_item_folder_id(drive_service, item_number: str,
+                        master_id: str = MASTER_FOLDER_ID):
+    """Return the Drive folder id for <master>/<item_number>, or None. Same lookup
+    the harvest path uses (item_has_drive_files / ensure_item_folder)."""
+    if not drive_service or not item_number:
+        return None
+    q = (f"'{master_id}' in parents and name = '{item_number}' "
+         f"and mimeType = 'application/vnd.google-apps.folder' and trashed = false")
+    try:
+        res = drive_service.files().list(q=q, fields="files(id,name)",
+                                         supportsAllDrives=True,
+                                         includeItemsFromAllDrives=True).execute()
+        fs = res.get("files", [])
+        return fs[0]["id"] if fs else None
+    except Exception:
+        return None
+
+
+def download_drive_file_bytes(drive_service, file_id: str):
+    """Download a Drive file's raw bytes (shared-drive safe). Returns (bytes, err)."""
+    try:
+        data = drive_service.files().get_media(
+            fileId=file_id, supportsAllDrives=True).execute()
+        return data, None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {str(e)[:120]}"
+
+
 def bundle_from_drive(drive_service, item_number: str,
                       master_id: str = MASTER_FOLDER_ID, log=print) -> dict:
     """Build a bundle dict for ONE already-harvested item by reading its PDFs from
@@ -714,35 +751,6 @@ def bundle_from_drive(drive_service, item_number: str,
     parsed = {"title": item_number, "description": "", "spec_table": [],
               "images": [], "pricing": {}, "volume": ""}
     return to_product_dict(item_number, "", parsed, pdf_bundle)
-
-
-def download_drive_file_bytes(drive_service, file_id: str):
-    """Download a Drive file's raw bytes (shared-drive safe). Returns (bytes, err)."""
-    try:
-        data = drive_service.files().get_media(
-            fileId=file_id, supportsAllDrives=True).execute()
-        return data, None
-    except Exception as e:
-        return None, f"{type(e).__name__}: {str(e)[:120]}"
-
-
-def find_item_folder_id(drive_service, item_number: str,
-                        master_id: str = MASTER_FOLDER_ID):
-    """Return the Drive folder id for <master>/<item_number>, or None. Same lookup
-    the harvest path uses (item_has_drive_files / ensure_item_folder)."""
-    if not drive_service or not item_number:
-        return None
-    q = (f"'{master_id}' in parents and name = '{item_number}' "
-         f"and mimeType = 'application/vnd.google-apps.folder' and trashed = false")
-    try:
-        res = drive_service.files().list(q=q, fields="files(id,name)",
-                                         supportsAllDrives=True,
-                                         includeItemsFromAllDrives=True).execute()
-        fs = res.get("files", [])
-        return fs[0]["id"] if fs else None
-    except Exception:
-        return None
-
 
 
 # =============================================================================

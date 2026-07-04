@@ -32,41 +32,17 @@ try:
 except Exception:
     image_gen = None
 
-from flask import Flask, Response, request, jsonify, session, redirect, url_for
+from flask import Flask, Response, request, jsonify
 import gspread
 from google.oauth2.service_account import Credentials
 
 # --- must match amazon_listing_generator.py -----------------------------------
-CONFIG_PATH       = os.environ.get("CONFIG_PATH", "config.json")
+CONFIG_PATH       = "config.json"
 SCRIPT            = "amazon_listing_generator.py"
 OUTPUT_TAB        = "Listings v7.0 UK"      # OUTPUT_TAB in the main script
 STATUS_HEADER     = "Status"
 SKU_HEADER        = "SKU"
-def _pick_port(preferred=5000, tries=20):
-    """Return a bindable port. On macOS, AirPlay Receiver occupies 5000 by
-    default, which would make app.run() fail with 'Address already in use'
-    and/or send the browser to AirPlay instead of the dashboard. Try the
-    preferred port first, then walk upward to the next free one so a fresh
-    Mac works without the user having to disable any system service."""
-    import socket as _sock
-    for _p in range(preferred, preferred + tries):
-        _s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
-        _s.setsockopt(_sock.SOL_SOCKET, _sock.SO_REUSEADDR, 1)
-        try:
-            _s.bind(("127.0.0.1", _p))
-            _s.close()
-            return _p
-        except OSError:
-            _s.close()
-            continue
-    return preferred  # all busy: let app.run surface the real error
-
-# On Render (and similar PaaS), the platform sets $PORT and expects the app to
-# bind 0.0.0.0. Locally, no $PORT is set, so we keep the old AirPlay-avoiding
-# auto-port-pick behaviour bound to 127.0.0.1 unchanged.
-IS_HOSTED         = bool(os.environ.get("PORT"))
-HOST              = "0.0.0.0" if IS_HOSTED else "127.0.0.1"
-PORT              = int(os.environ["PORT"]) if IS_HOSTED else _pick_port(5000)
+PORT              = 5000
 
 # --- config + Google auth (same service account the script uses) --------------
 SCOPES   = ["https://spreadsheets.google.com/feeds",
@@ -76,60 +52,6 @@ _ANSI    = re.compile(r"\x1b\[[0-9;]*m")
 _VALID_SET_STATUS = {"APPROVED", "NEEDS_REVIEW", "IP_HOLD", "COMPLIANCE_HOLD"}
 
 app       = Flask(__name__)
-app.secret_key = os.environ.get("APP_SECRET_KEY") or os.urandom(32)
-
-# --- shared-password login gate (hosted deployments only) --------------------
-# APP_PASSWORD is only set on a real deployment (Render etc.); locally it's
-# unset so the gate no-ops and dev workflow is unchanged.
-_APP_PASSWORD = os.environ.get("APP_PASSWORD")
-_LOGIN_HTML = """<!doctype html><html><head><title>Sign in</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>body{font-family:-apple-system,Segoe UI,Arial,sans-serif;background:#0f1115;
-color:#e6e6e6;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
-form{background:#1a1d24;padding:32px 36px;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.4);
-width:280px}h1{font-size:17px;margin:0 0 18px}input{width:100%;box-sizing:border-box;padding:10px;
-border-radius:6px;border:1px solid #333;background:#0f1115;color:#fff;margin-bottom:12px}
-button{width:100%;padding:10px;border:0;border-radius:6px;background:#4c8bf5;color:#fff;
-font-weight:600;cursor:pointer}.err{color:#ff6b6b;font-size:13px;margin-bottom:10px}</style>
-</head><body><form method="post">
-<h1>Listing Dashboard</h1>{err}
-<input type="password" name="password" placeholder="Password" autofocus>
-<button type="submit">Sign in</button>
-</form></body></html>"""
-
-
-@app.route("/healthz")
-def _healthz():
-    return "ok", 200
-
-
-@app.route("/login", methods=["GET", "POST"])
-def _login():
-    if not _APP_PASSWORD:
-        return "Login is not configured.", 404
-    err = ""
-    if request.method == "POST":
-        if request.form.get("password") == _APP_PASSWORD:
-            session["authed"] = True
-            return redirect(url_for("index"))
-        err = '<div class="err">Wrong password.</div>'
-    return Response(_LOGIN_HTML.replace("{err}", err), mimetype="text/html")
-
-
-@app.route("/logout")
-def _logout():
-    session.clear()
-    return redirect(url_for("_login"))
-
-
-@app.before_request
-def _require_login():
-    if not _APP_PASSWORD:
-        return  # no password configured (local dev) -> gate disabled
-    if request.endpoint in ("_login", "_healthz", "static"):
-        return
-    if not session.get("authed"):
-        return redirect(url_for("_login"))
 
 
 @app.errorhandler(500)
@@ -290,6 +212,29 @@ def _sp_creds(marketplace: str = "UK") -> dict:
     return {"lwa_app_id":        c["sp_api_client_id"],
             "lwa_client_secret": c["sp_api_client_secret"],
             "refresh_token":     c["sp_api_refresh_token"]}
+
+
+def _ebay_creds() -> tuple:
+    """(app_id, cert_id) for the eBay Browse API used to scrape source products.
+
+    Resolution: the ACTIVE account's own eBay credentials OVERRIDE the global
+    ones -- but only when BOTH are present on the account (a half-filled pair
+    would break OAuth, so we fall back to global rather than send a broken mix).
+    Otherwise the global config values are used. Mirrors _sp_creds's
+    account-aware pattern."""
+    c = _cfg()
+    g_app  = str(c.get("ebay_app_id", "") or "").strip()
+    g_cert = str(c.get("ebay_cert_id", "") or "").strip()
+    try:
+        acc = _active_account()
+    except Exception:
+        acc = None
+    if acc:
+        a_app  = str(acc.get("ebay_app_id", "") or "").strip()
+        a_cert = str(acc.get("ebay_cert_id", "") or "").strip()
+        if a_app and a_cert:
+            return a_app, a_cert
+    return g_app, g_cert
 
 
 _SUBFIELD_PLUMBING = {"language_tag", "marketplace_id", "audience"}
@@ -632,7 +577,7 @@ def save_default():
                  if str(v).strip() != ""}
         if not attrs:
             return jsonify({"ok": False, "error": "no filled attributes to remember"}), 400
-        path = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "attribute_defaults.json")
+        path = "attribute_defaults.json"
         try:
             data = json.load(open(path, encoding="utf-8"))
         except Exception:
@@ -1156,7 +1101,7 @@ def media_delete():
 _LIVE_CACHE = {}   # key "accountid::MKT" -> {"ts":epoch, "items":[...]}
 _LIVE_TTL = 1800   # 30 min (SP-API is free; matches auto-sync cadence)
 _COGS_OVERRIDE = {}  # {"accountid::SKU": cost} manual overrides (also persisted to file)
-_COGS_FILE = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "cogs_overrides.json")
+_COGS_FILE = "cogs_overrides.json"
 _IMG_CACHE = {}  # {"accountid::MKT::SKU": {"url":..., "ts":epoch}} live listing main images
 
 # ---- background image-generation jobs (so the UI never blocks) ----
@@ -4739,6 +4684,21 @@ def index():
     return Response(_HTML, mimetype="text/html")
 
 
+@app.route("/ui")
+def ui_preview():
+    """ADDITIVE preview of the new 'ListingOS' layout, served from the live app so
+    the page can call the real endpoints (/accounts/list, /rows, ...) on the same
+    origin. This does NOT touch the existing dashboard at '/'. Read fresh from disk
+    each request so edits to ui/index.html show on refresh with no restart."""
+    try:
+        _p = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "ui", "index.html")
+        with open(_p, encoding="utf-8") as _f:
+            return Response(_f.read(), mimetype="text/html")
+    except Exception as e:
+        return Response(f"<pre>ui/index.html not found: {e}</pre>",
+                        mimetype="text/html", status=404)
+
+
 _RECORDS_CACHE = {}   # {sheet_id::tab: (ts, records)} -- short TTL to avoid 429s
 _RECORDS_TTL = 12     # seconds
 
@@ -5027,6 +4987,106 @@ def ai_settings():
         json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
         _state["cfg"] = None
         return jsonify({"ok": True, "select": sel})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/settings/ebay", methods=["GET", "POST"])
+def settings_ebay():
+    """View / update the GLOBAL eBay Browse-API credentials (used to scrape the
+    source product for each row). GET never returns the raw Cert ID (secret) --
+    only the App ID (a public client id) and whether a Cert is stored, plus a
+    masked tail so the user can recognise which key is saved. POST saves; a blank
+    Cert ID keeps the existing one (so editing the App ID alone won't wipe it).
+    Per-account overrides live on the account object (see /accounts/save)."""
+    cfg = _cfg()
+    if request.method == "GET":
+        cert = str(cfg.get("ebay_cert_id", "") or "")
+        return jsonify({
+            "ok": True,
+            "ebay_app_id": str(cfg.get("ebay_app_id", "") or ""),
+            "has_cert": bool(cert.strip()),
+            # last 4 chars only, so the user can tell which secret is saved
+            "cert_tail": (cert[-4:] if len(cert) >= 4 else ("•" * len(cert))) if cert else "",
+        })
+    b = request.get_json(force=True) or {}
+    try:
+        raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
+        if "ebay_app_id" in b:
+            raw["ebay_app_id"] = str(b.get("ebay_app_id", "") or "").strip()
+        # only overwrite the secret when a real, non-masked value is supplied
+        _cert = str(b.get("ebay_cert_id", "") or "").strip()
+        if _cert and not _cert.startswith(("•", "*", "PUT_", "ROTATE")):
+            raw["ebay_cert_id"] = _cert
+        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        _state["cfg"] = None
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+def _parse_sheet_url(url: str):
+    """Extract (spreadsheet_id, tab_gid) from a full Google Sheets URL (or a bare
+    id). Returns ('','') if no id is found. Server-side mirror of the client's
+    parseSheetUrl so both paths agree on how a link is read."""
+    import re as _re
+    u = str(url or "").strip()
+    if not u:
+        return "", ""
+    m = _re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", u)
+    sid = m.group(1) if m else (u if _re.fullmatch(r"[a-zA-Z0-9_-]{20,}", u) else "")
+    g = _re.search(r"[#?&]gid=(\d+)", u)
+    return sid, (g.group(1) if g else "")
+
+
+@app.route("/settings/dropshipping_sheets", methods=["GET", "POST"])
+def settings_dropshipping_sheets():
+    """View / update the DEFAULT (Dropshipping / no-account) input + output sheets.
+    The built-in Dropshipping workspace has no account object, so it previously
+    always fell back to the hardcoded google_spreadsheet_id + OUTPUT_TAB. This lets
+    a user point it at any sheet/tab from the UI, exactly like a real account.
+    POST accepts full Google Sheets URLs, parses id + gid, resolves the output tab
+    NAME (so api/regen runs -- which open the worksheet by name -- hit the right
+    tab), and saves. Blank clears the override -> back to config defaults."""
+    cfg = _cfg()
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "output_sheet_url": cfg.get("dropshipping_output_sheet_url", ""),
+            "input_sheet_url":  cfg.get("dropshipping_input_sheet_url", ""),
+            "output_tab":       cfg.get("dropshipping_output_tab", ""),
+        })
+    b = request.get_json(force=True) or {}
+    out_url = str(b.get("output_sheet_url", "") or "").strip()
+    in_url  = str(b.get("input_sheet_url", "") or "").strip()
+    out_id, out_gid = _parse_sheet_url(out_url)
+    in_id,  in_gid  = _parse_sheet_url(in_url)
+    if out_url and not out_id:
+        return jsonify({"ok": False, "error": "couldn't read a sheet ID from the output link"}), 400
+    if in_url and not in_id:
+        return jsonify({"ok": False, "error": "couldn't read a sheet ID from the input link"}), 400
+    # resolve the output tab NAME from its gid (best-effort; run_api opens by name)
+    out_tab = ""
+    if out_id and out_gid.isdigit():
+        try:
+            _wsg = _client().open_by_key(out_id).get_worksheet_by_id(int(out_gid))
+            if _wsg is not None:
+                out_tab = _wsg.title
+        except Exception:
+            out_tab = ""
+    try:
+        raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
+        raw["dropshipping_output_sheet_url"]      = out_url
+        raw["dropshipping_output_spreadsheet_id"] = out_id
+        raw["dropshipping_output_tab_gid"]        = out_gid
+        raw["dropshipping_output_tab"]            = out_tab
+        raw["dropshipping_input_sheet_url"]       = in_url
+        raw["dropshipping_input_spreadsheet_id"]  = in_id
+        raw["dropshipping_input_tab_gid"]         = in_gid
+        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+        _state["cfg"] = None
+        return jsonify({"ok": True, "output_tab": out_tab,
+                        "output_sheet_id": out_id, "input_sheet_id": in_id})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -6383,196 +6443,6 @@ def clear_empty():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-
-@app.route("/miles/sheet_pref", methods=["POST"])
-def miles_sheet_pref_set():
-    """Persist the output Sheet ID/tab so the user need not re-paste it each run."""
-    b = request.get_json(force=True) or {}
-    ok = _miles_set_pref(b.get("sheet", ""), b.get("tab", ""))
-    return jsonify({"ok": bool(ok)})
-
-
-@app.route("/miles/sheet_pref", methods=["GET"])
-def miles_sheet_pref_get():
-    """Return the saved output Sheet ID/tab for the active account (for pre-fill)."""
-    return jsonify(_miles_get_pref())
-
-
-def _miles_set_pref(sheet: str, tab: str) -> bool:
-    try:
-        import json as _j
-        d = _miles_load_prefs()
-        d[_miles_prefs_key()] = {"sheet": (sheet or "").strip(), "tab": (tab or "").strip()}
-        _j.dump(d, open(_miles_prefs_file(), "w", encoding="utf-8"))
-        return True
-    except Exception:
-        return False
-
-
-def _miles_get_pref() -> dict:
-    p = _miles_load_prefs().get(_miles_prefs_key()) or {}
-    return {"sheet": str(p.get("sheet", "") or ""), "tab": str(p.get("tab", "") or "")}
-
-
-def _miles_prefs_key() -> str:
-    # Key per account so multiple workspaces each remember their own sheet.
-    try:
-        a = _active_account()
-        return (a.get("id") if a else "") or "_default"
-    except Exception:
-        return "_default"
-
-
-def _miles_load_prefs() -> dict:
-    try:
-        import json as _j
-        d = _j.load(open(_miles_prefs_file(), encoding="utf-8"))
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        return {}
-
-
-def _miles_prefs_file():
-    return os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "miles_ui_prefs.json")
-
-
-@app.route("/settings/dropshipping_sheets", methods=["GET", "POST"])
-def settings_dropshipping_sheets():
-    """View / update the DEFAULT (Dropshipping / no-account) input + output sheets.
-    The built-in Dropshipping workspace has no account object, so it previously
-    always fell back to the hardcoded google_spreadsheet_id + OUTPUT_TAB. This lets
-    a user point it at any sheet/tab from the UI, exactly like a real account.
-    POST accepts full Google Sheets URLs, parses id + gid, resolves the output tab
-    NAME (so api/regen runs -- which open the worksheet by name -- hit the right
-    tab), and saves. Blank clears the override -> back to config defaults."""
-    cfg = _cfg()
-    if request.method == "GET":
-        return jsonify({
-            "ok": True,
-            "output_sheet_url": cfg.get("dropshipping_output_sheet_url", ""),
-            "input_sheet_url":  cfg.get("dropshipping_input_sheet_url", ""),
-            "output_tab":       cfg.get("dropshipping_output_tab", ""),
-        })
-    b = request.get_json(force=True) or {}
-    out_url = str(b.get("output_sheet_url", "") or "").strip()
-    in_url  = str(b.get("input_sheet_url", "") or "").strip()
-    out_id, out_gid = _parse_sheet_url(out_url)
-    in_id,  in_gid  = _parse_sheet_url(in_url)
-    if out_url and not out_id:
-        return jsonify({"ok": False, "error": "couldn't read a sheet ID from the output link"}), 400
-    if in_url and not in_id:
-        return jsonify({"ok": False, "error": "couldn't read a sheet ID from the input link"}), 400
-    # resolve the output tab NAME from its gid (best-effort; run_api opens by name)
-    out_tab = ""
-    if out_id and out_gid.isdigit():
-        try:
-            _wsg = _client().open_by_key(out_id).get_worksheet_by_id(int(out_gid))
-            if _wsg is not None:
-                out_tab = _wsg.title
-        except Exception:
-            out_tab = ""
-    try:
-        raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
-        raw["dropshipping_output_sheet_url"]      = out_url
-        raw["dropshipping_output_spreadsheet_id"] = out_id
-        raw["dropshipping_output_tab_gid"]        = out_gid
-        raw["dropshipping_output_tab"]            = out_tab
-        raw["dropshipping_input_sheet_url"]       = in_url
-        raw["dropshipping_input_spreadsheet_id"]  = in_id
-        raw["dropshipping_input_tab_gid"]         = in_gid
-        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-        _state["cfg"] = None
-        return jsonify({"ok": True, "output_tab": out_tab,
-                        "output_sheet_id": out_id, "input_sheet_id": in_id})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-def _parse_sheet_url(url: str):
-    """Extract (spreadsheet_id, tab_gid) from a full Google Sheets URL (or a bare
-    id). Returns ('','') if no id is found. Server-side mirror of the client's
-    parseSheetUrl so both paths agree on how a link is read."""
-    import re as _re
-    u = str(url or "").strip()
-    if not u:
-        return "", ""
-    m = _re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", u)
-    sid = m.group(1) if m else (u if _re.fullmatch(r"[a-zA-Z0-9_-]{20,}", u) else "")
-    g = _re.search(r"[#?&]gid=(\d+)", u)
-    return sid, (g.group(1) if g else "")
-
-
-@app.route("/settings/ebay", methods=["GET", "POST"])
-def settings_ebay():
-    """View / update the GLOBAL eBay Browse-API credentials (used to scrape the
-    source product for each row). GET never returns the raw Cert ID (secret) --
-    only the App ID (a public client id) and whether a Cert is stored, plus a
-    masked tail so the user can recognise which key is saved. POST saves; a blank
-    Cert ID keeps the existing one (so editing the App ID alone won't wipe it).
-    Per-account overrides live on the account object (see /accounts/save)."""
-    cfg = _cfg()
-    if request.method == "GET":
-        cert = str(cfg.get("ebay_cert_id", "") or "")
-        return jsonify({
-            "ok": True,
-            "ebay_app_id": str(cfg.get("ebay_app_id", "") or ""),
-            "has_cert": bool(cert.strip()),
-            # last 4 chars only, so the user can tell which secret is saved
-            "cert_tail": (cert[-4:] if len(cert) >= 4 else ("•" * len(cert))) if cert else "",
-        })
-    b = request.get_json(force=True) or {}
-    try:
-        raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
-        if "ebay_app_id" in b:
-            raw["ebay_app_id"] = str(b.get("ebay_app_id", "") or "").strip()
-        # only overwrite the secret when a real, non-masked value is supplied
-        _cert = str(b.get("ebay_cert_id", "") or "").strip()
-        if _cert and not _cert.startswith(("•", "*", "PUT_", "ROTATE")):
-            raw["ebay_cert_id"] = _cert
-        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-        _state["cfg"] = None
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/ui")
-def ui_preview():
-    """ADDITIVE preview of the new 'ListingOS' layout, served from the live app so
-    the page can call the real endpoints (/accounts/list, /rows, ...) on the same
-    origin. This does NOT touch the existing dashboard at '/'. Read fresh from disk
-    each request so edits to ui/index.html show on refresh with no restart."""
-    try:
-        _p = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "ui", "index.html")
-        with open(_p, encoding="utf-8") as _f:
-            return Response(_f.read(), mimetype="text/html")
-    except Exception as e:
-        return Response(f"<pre>ui/index.html not found: {e}</pre>",
-                        mimetype="text/html", status=404)
-
-
-def _ebay_creds() -> tuple:
-    """(app_id, cert_id) for the eBay Browse API used to scrape source products.
-
-    Resolution: the ACTIVE account's own eBay credentials OVERRIDE the global
-    ones -- but only when BOTH are present on the account (a half-filled pair
-    would break OAuth, so we fall back to global rather than send a broken mix).
-    Otherwise the global config values are used. Mirrors _sp_creds's
-    account-aware pattern."""
-    c = _cfg()
-    g_app  = str(c.get("ebay_app_id", "") or "").strip()
-    g_cert = str(c.get("ebay_cert_id", "") or "").strip()
-    try:
-        acc = _active_account()
-    except Exception:
-        acc = None
-    if acc:
-        a_app  = str(acc.get("ebay_app_id", "") or "").strip()
-        a_cert = str(acc.get("ebay_cert_id", "") or "").strip()
-        if a_app and a_cert:
-            return a_app, a_cert
-    return g_app, g_cert
-
 def _kill_proc(p):
     """Stop a running child process (and its descendants on Windows)."""
     try:
@@ -6637,6 +6507,57 @@ def _miles_save_history(done: set):
         _j.dump(sorted(done), open(_miles_history_file(), "w", encoding="utf-8"))
     except Exception:
         pass
+
+# --- Persisted Miles output-sheet preference ------------------------------
+# The user asked to STOP re-pasting the output Sheet ID/tab every run. We save
+# whatever they type into a small prefs file keyed by the active account id, and
+# pre-fill the inputs on load. It stays until they change it. Empty fields still
+# fall back to the account default in the generate/optimize routes (this only
+# remembers the manual override; it does not touch account settings).
+def _miles_prefs_file():
+    return os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "miles_ui_prefs.json")
+
+def _miles_load_prefs() -> dict:
+    try:
+        import json as _j
+        d = _j.load(open(_miles_prefs_file(), encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def _miles_prefs_key() -> str:
+    # Key per account so multiple workspaces each remember their own sheet.
+    try:
+        a = _active_account()
+        return (a.get("id") if a else "") or "_default"
+    except Exception:
+        return "_default"
+
+def _miles_get_pref() -> dict:
+    p = _miles_load_prefs().get(_miles_prefs_key()) or {}
+    return {"sheet": str(p.get("sheet", "") or ""), "tab": str(p.get("tab", "") or "")}
+
+def _miles_set_pref(sheet: str, tab: str) -> bool:
+    try:
+        import json as _j
+        d = _miles_load_prefs()
+        d[_miles_prefs_key()] = {"sheet": (sheet or "").strip(), "tab": (tab or "").strip()}
+        _j.dump(d, open(_miles_prefs_file(), "w", encoding="utf-8"))
+        return True
+    except Exception:
+        return False
+
+@app.route("/miles/sheet_pref", methods=["GET"])
+def miles_sheet_pref_get():
+    """Return the saved output Sheet ID/tab for the active account (for pre-fill)."""
+    return jsonify(_miles_get_pref())
+
+@app.route("/miles/sheet_pref", methods=["POST"])
+def miles_sheet_pref_set():
+    """Persist the output Sheet ID/tab so the user need not re-paste it each run."""
+    b = request.get_json(force=True) or {}
+    ok = _miles_set_pref(b.get("sheet", ""), b.get("tab", ""))
+    return jsonify({"ok": bool(ok)})
 
 @app.route("/miles/upload", methods=["POST"])
 def miles_upload():
@@ -8131,7 +8052,7 @@ _HTML = r"""<!doctype html>
         <span class="spacer"></span>
         <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
         <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
-        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#2563eb;color:#93c5fd"><i class="ti ti-wand"></i> Auto-fix</button>
+        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#5b3fb8;color:#c9b8ff"><i class="ti ti-wand"></i> Auto-fix</button>
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
@@ -8894,7 +8815,7 @@ function card(r){
       <button class="ib" title="Approve" onclick="setStatus('${esc(r.sku)}','APPROVED',this)"><i class="ti ti-check"></i></button>
       <button class="ib gen" title="Image Studio (creative ideas, prompt &amp; image AI)" onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
       <button class="ib" title="Edit / details" onclick="openDrawer('${esc(r.sku)}')"><i class="ti ti-edit"></i></button>
-      <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
+      <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#c9b8ff" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
       <button class="ib more" title="More" onclick="tileMenu(event,'${esc(r.sku)}',${r.row||0})"><i class="ti ti-dots"></i></button>
     </div>
   </div>`;
@@ -9014,7 +8935,7 @@ function drawerContent(r){
         <label class="pushimg" style="cursor:pointer" title="Upload a clean main image from your computer. It's hosted publicly so Amazon can fetch it, then set as this listing's main image. Preview/Submit sends it."><i class="ti ti-photo-up"></i> Upload main image<input type="file" accept="image/*" style="display:none" onchange="uploadMainImage('${esc(r.sku)}',this)"></label>
         <button class="ok" onclick="setStatus('${esc(r.sku)}','APPROVED',this)">Approve</button>
         <button class="prev1" onclick="previewOne('${esc(r.sku)}')" title="Preview this listing against Amazon (no changes sent)"><i class="ti ti-eye"></i> Preview</button>
-        <button class="prev1" style="background:#fff;color:#111;border-color:#fff" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-loop: Suggest → Apply → Preview. Repeats until zero errors, or stops if progress stalls (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
+        <button class="prev1" style="background:#5b3fb8;color:#fff" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-loop: Suggest → Apply → Preview. Repeats until zero errors, or stops if progress stalls (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
         <button class="submit1" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit this</button>
         <button class="hold" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)">Hold</button>
         <button class="askthis" onclick="askAbout('${esc(r.sku)}')">\u2726 Ask Claude</button>
@@ -15248,14 +15169,9 @@ window.addEventListener("DOMContentLoaded", function(){ try{ if(localStorage.get
 
 
 if __name__ == "__main__":
-    try:
-        with open(".app_port", "w") as _pf:
-            _pf.write(str(PORT))
-    except Exception:
-        pass
-    print(f"\n  Listing Review dashboard -> http://{HOST}:{PORT}")
+    print(f"\n  Listing Review dashboard -> http://127.0.0.1:{PORT}")
     print("  (Ctrl+C to stop)\n")
     _load_cogs_overrides()
     dashboard_brand_patch.register(app, _cfg, _ws, _records, _run_lock,
                                    _running, _ANSI, SCRIPT, sys, _state, CONFIG_PATH)
-    app.run(host=HOST, port=PORT, threaded=True)
+    app.run(host="127.0.0.1", port=PORT, threaded=True)
