@@ -43,12 +43,15 @@ function _streamRunPanel(url, sku, mode){
     // parse the per-row result line for THIS sku
     if(d.indexOf(sku)>=0){
       const low=d.toLowerCase();
-      let m=d.match(/(\d+)\s+error\(s\)/i);
+      // count "N error(s)" OR "N issue(s)" -- submit prints "NOT live -- 2 issue(s)"
+      let m=d.match(/(\d+)\s+(?:error|issue)\(s\)/i);
       if(m){ verdict={kind:"error", n:parseInt(m[1]), raw:d}; }
+      // "NOT live" CONTAINS the word "live" -- it must be caught as an ERROR *before*
+      // the "live" success check below, or a failed submit falsely reads "Published live".
+      else if(low.indexOf("not live")>=0 || low.indexOf("api call failed")>=0 || low.indexOf("api_error")>=0){ verdict={kind:"error", n:0, raw:d}; }
       else if(low.indexOf("missing")>=0 && low.indexOf("skip")>=0){ verdict={kind:"missing", raw:d}; }
       else if(low.indexOf("api_ready")>=0 || low.indexOf("preview clean")>=0){ verdict={kind:"ok_preview", raw:d}; }
       else if(low.indexOf("live")>=0 || low.indexOf("submitted")>=0){ verdict={kind:"ok_submit", raw:d}; }
-      else if(low.indexOf("api call failed")>=0 || low.indexOf("api_error")>=0){ verdict={kind:"error", n:0, raw:d}; }
       const wm=d.match(/warnings?:\s*(.+)$/i); if(wm) warnings=wm[1];
     }
     if(d.toLowerCase().indexOf("none of the requested")>=0 && !verdict){ verdict={kind:"notfound", raw:d}; }
