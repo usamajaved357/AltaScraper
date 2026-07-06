@@ -4117,16 +4117,21 @@ from listing.hazmat import _build_ghs_from_schema
 
 
 
-def _verify_live_status(li, seller_id, sku, mid, locale="en_GB"):
+def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
     """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
     'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
     LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
     downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues); (None, None) if the check itself failed."""
+    Returns (status_list, error_issues); (None, None) if the check itself failed.
+
+    settle=True waits a few seconds first (right after a fresh submit, Amazon needs a
+    moment). Pass settle=False when RE-verifying an already-submitted listing minutes
+    later -- there's nothing to wait for, so skip the delay and check immediately."""
     import time as _t
     for _attempt in range(2):
         try:
-            _t.sleep(4)   # give Amazon a moment to process the submission
+            if settle:
+                _t.sleep(4)   # give Amazon a moment to process the submission
             resp = li.get_listings_item(seller_id, sku, marketplaceIds=[mid],
                                         issueLocale=locale,
                                         includedData=["summaries", "issues"])
@@ -5694,7 +5699,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
 
 def run_api(config: dict, gc, creds: dict, submit: bool = False,
             marketplace: str = "UK", output_tab: str = None,
-            spreadsheet_id: str = None, only_skus: set = None):
+            spreadsheet_id: str = None, only_skus: set = None,
+            verify: bool = False):
     mkt = str(marketplace or "UK").upper()
     mkt_id = marketplace_id_for(mkt)
     issue_locale = "en_US" if mkt == "US" else "en_GB"
@@ -5758,6 +5764,51 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         if _updates:
             ws.batch_update(_updates, value_input_option="RAW")
             _updates.clear()
+
+    # ---- VERIFY mode: re-check already-submitted rows and flip them to LIVE ---------
+    # A fresh submit is only 'accepted'; Amazon publishes ASYNCHRONOUSLY (minutes). The
+    # submit-time check runs seconds later, so rows usually land on SUBMITTED/pending.
+    # This mode re-queries Amazon (no wait) for every not-yet-LIVE row and marks it LIVE
+    # once Amazon shows it BUYABLE/DISCOVERABLE -- so the app reflects reality without the
+    # user guessing. Read-only on Amazon; only writes the sheet Status/Notes.
+    if verify:
+        console.print("\n[bold cyan]API mode: RE-VERIFY LIVE STATUS (read-only; updates status only)[/bold cyan]")
+        console.print(f"  seller: [bold]{seller_id}[/bold]   marketplace: {mkt_id} ({mkt})\n")
+        _checked = _wentlive = 0
+        for i, row in enumerate(records, start=2):
+            sku = str(row.get("SKU", "")).strip()
+            if not sku:
+                continue
+            if only_skus and sku not in only_skus:
+                continue
+            _st = str(row.get("Status", "")).strip().upper()
+            if _st == "LIVE":
+                continue                      # already LIVE -- nothing to do
+            # only re-verify rows that were actually submitted or were ready to be
+            if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED", "PENDING", ""):
+                continue
+            _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
+            _checked += 1
+            if _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
+                queue(i, status_col, "LIVE")
+                queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})")
+                _wentlive += 1
+                console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})[/green]")
+            elif _rerrs:
+                queue(i, status_col, "API_ERROR")
+                queue(i, notes_col, f"RE-VERIFIED -- not live yet: {_issue_str(_rerrs, {})}")
+                console.print(f"  [red]row {i} {sku}: not live -- {len(_rerrs)} issue(s)[/red]")
+            elif _rstatus is None and _rerrs is None:
+                console.print(f"  [dim]row {i} {sku}: could not check (Amazon didn't return the listing)[/dim]")
+            else:
+                console.print(f"  [yellow]row {i} {sku}: still pending Amazon processing (not yet buyable)[/yellow]")
+            time.sleep(0.3)                   # gentle on the listings rate limit
+        flush()
+        console.print(f"\n[bold]Live re-verify complete[/bold] -- checked: {_checked}   flipped to LIVE: {_wentlive}")
+        if only_skus and _checked == 0:
+            console.print("  [yellow]None of the requested SKU(s) needed re-verifying[/yellow] "
+                          f"(already LIVE, or not in a submitted state). Looked for: {', '.join(sorted(only_skus))}.")
+        return
 
     label = "SUBMIT (creates / replaces live listings)" if submit \
             else "VALIDATION_PREVIEW (validates only -- creates nothing)"
@@ -6855,6 +6906,9 @@ async def main():
 
     if mode == "api":
         submit = any(a.lower() == "submit" for a in sys.argv[2:])
+        verify = any(a.lower() == "verify" for a in sys.argv[2:])
+        if verify:
+            submit = False       # verify is read-only -- it never publishes
         def _argval(flag):
             try:
                 i = sys.argv.index(flag)
@@ -6869,7 +6923,8 @@ async def main():
         if _only:
             console.print(f"  [yellow]Scoped to {len(_only)} SKU(s) only:[/yellow] {', '.join(sorted(_only))}")
         run_api(config, gc, creds, submit=submit,
-                marketplace=_mkt, output_tab=_tab, spreadsheet_id=_sheet, only_skus=_only)
+                marketplace=_mkt, output_tab=_tab, spreadsheet_id=_sheet, only_skus=_only,
+                verify=verify)
         return
 
     if mode == "regen":

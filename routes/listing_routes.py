@@ -527,7 +527,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
     @app.route("/run/<mode>")
     def run(mode):
-        if mode not in ("generate", "retry", "export", "api", "api_submit", "regen"):
+        if mode not in ("generate", "retry", "export", "api", "api_submit", "api_verify", "regen"):
             return Response("data: [error] unknown mode\n\nevent: end\ndata: end\n\n",
                             mimetype="text/event-stream")
 
@@ -549,6 +549,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # -u = unbuffered child stdout so progress streams live
                 extra = ([] if mode == "generate"
                          else ["api", "submit"] if mode == "api_submit"
+                         else ["api", "verify"] if mode == "api_verify"
                          else [mode])
                 # REGEN: re-run the generator scoped to a specific set of SKUs and the
                 # active sheet/tab/marketplace. Needs generator support for --skus.
@@ -631,8 +632,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # marketplace only -- so it never previews every marketplace/account
                 # at once (which would waste credits), and validates against the
                 # correct catalogue (US for US brands).
-                if mode in ("api", "api_submit"):
-                    # per-listing Preview/Submit: a ?skus= filter limits to those SKUs
+                if mode in ("api", "api_submit", "api_verify"):
+                    # per-listing Preview/Submit/Verify: a ?skus= filter limits to those SKUs
                     _api_skus = _req_skus
                     if _api_skus and "--skus" not in extra:
                         extra += ["--skus", _api_skus]
