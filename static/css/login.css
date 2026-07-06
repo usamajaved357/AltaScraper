@@ -1,0 +1,129 @@
+/* static/css/login.css — appearance of the sign-in screen only. Navy/corporate palette. */
+
+:root {
+  --navy-900: #0b1e3b;
+  --navy-800: #12294d;
+  --navy-700: #1b3a66;
+  --accent:   #2f6fed;
+  --accent-600: #2a5fd0;
+  --ink:      #0f1b2d;
+  --paper:    #ffffff;
+  --muted:    #64748b;
+  --line:     #e2e8f0;
+  --danger:   #c0392b;
+  --ok:       #1a7f4b;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+
+body {
+  font-family: "Segoe UI", -apple-system, system-ui, Arial, sans-serif;
+  color: var(--ink);
+  background: radial-gradient(1200px 600px at 50% -10%, var(--navy-700), var(--navy-900));
+}
+
+.login-shell {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 32px 30px;
+  box-shadow: 0 24px 60px rgba(3, 12, 28, 0.45);
+}
+
+.brand { text-align: center; margin-bottom: 22px; }
+
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  background: var(--navy-800);
+  color: #fff;
+  font-weight: 700;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-name { font-size: 18px; font-weight: 700; letter-spacing: 0.2px; }
+.brand-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+.login-form { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.field-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 15px;
+  background: #f8fafc;
+  color: var(--ink);
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.18);
+  background: #fff;
+}
+
+.btn {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  border: 0;
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary { background: var(--accent); color: #fff; margin-top: 4px; }
+.btn-primary:hover { background: var(--accent-600); }
+.btn-secondary { background: #eef2f7; color: var(--ink); }
+
+.alert {
+  background: #fdecea;
+  color: var(--danger);
+  border: 1px solid #f5c6c0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.alert-muted { background: #f1f5f9; color: var(--muted); border-color: var(--line); }
+
+.signed-in { text-align: center; color: var(--ok); font-weight: 600; margin: 6px 0 14px; }
+
+.login-foot {
+  text-align: center;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 18px;
+  letter-spacing: 0.3px;
+}
+
+code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: 12px; }

@@ -1,0 +1,8 @@
+<!doctype html><html><head><title>Sign in</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/css/dash_login.css">
+</head><body><form method="post">
+<h1>Listing Dashboard</h1>{% if error %}<div class="err">Wrong password.</div>{% endif %}
+<input type="password" name="password" placeholder="Password" autofocus>
+<button type="submit">Sign in</button>
+</form></body></html>

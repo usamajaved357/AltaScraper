@@ -1,0 +1,1 @@
+# static/js/ — browser interactivity only, one .js file per feature. No Python-embedded JS ever.
