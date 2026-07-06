@@ -247,7 +247,9 @@ async function switchView(key){
     loadRows();
   }catch(e){ toast('Could not switch view'); }
 }
-loadViews();
+// loadViews() is invoked at DOMContentLoaded (in settings.js) so every file's helpers
+// (e.g. _fetchJSON in shell.js) are already defined -- calling it here at script-load
+// time ran before shell.js loaded and threw "ReferenceError: _fetchJSON is not defined".
 async function loadRows(){
   try{
     const j=await _fetchJSON("/rows", null, 20000);
@@ -260,7 +262,7 @@ async function loadRows(){
     render();
   }catch(e){ toast("Could not load: "+e); }
 }
-loadRows();
+// loadRows() is invoked at DOMContentLoaded (in settings.js) -- see note above.
 
 /* ---------- floating Claude assistant ---------- */
 let CHAT = [];
