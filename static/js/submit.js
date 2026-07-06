@@ -24,6 +24,28 @@ function _runPanel(sku){
     show(t){ p.style.display="block"; this.title.textContent=t; this.verdict.innerHTML=""; this.log.textContent=""; }
   };
 }
+// Render one raw log line, colour-coded by kind so the error + its reason stand out
+// in the otherwise dense stream: red = Amazon error, amber = ignorable warning,
+// grey = plumbing/progress, green = success.
+function _logLineEl(d){
+  const s=String(d==null?"":d);
+  const div=document.createElement("div");
+  div.textContent=s;
+  div.style.whiteSpace="pre-wrap"; div.style.padding="1px 0";
+  if(/\[E\]|NOT live|invalid attribute value|does not match any ASIN|not in the catalog|cannot be added|\b\d+\s+(?:error|issue)\(s\)/i.test(s)){
+    div.style.color="#ff6b6b"; div.style.fontWeight="700"; div.style.borderLeft="3px solid #ff6b6b";
+    div.style.paddingLeft="8px"; div.style.margin="6px 0"; div.style.background="rgba(255,107,107,.07)";
+  } else if(/\[W\]|We are ignoring|warning/i.test(s)){
+    div.style.color="#e3b768";
+  } else if(/\[start\]|\[done\]|API mode:|seller:|fetching schema|MODE:|Listing Generator|complete --/i.test(s)){
+    div.style.color="#7f8ea3";
+  } else if(/LIVE \(|Amazon accepted|no missing|accepted this listing|Published live/i.test(s)){
+    div.style.color="#5fd08a"; div.style.fontWeight="600";
+  } else {
+    div.style.color="#cfe0ff";
+  }
+  return div;
+}
 // Stream a run INTO the listing's own panel, parsing Amazon's response into a
 // clear verdict (accepted / needs fields / error).
 function _streamRunPanel(url, sku, mode){
@@ -37,7 +59,7 @@ function _streamRunPanel(url, sku, mode){
   ES.onmessage=e=>{
     const d=e.data||"";
     lines.push(d);
-    if(P){ P.log.textContent+=d+"\n"; P.log.scrollTop=P.log.scrollHeight; }
+    if(P){ P.log.appendChild(_logLineEl(d)); P.log.scrollTop=P.log.scrollHeight; }
     if(d.indexOf("[busy]")>=0){ verdict={kind:"busy", raw:d}; }
     if(d.startsWith("[start]")){ sawStart=true; if(P) P.verdict.innerHTML='<span class="rspin"></span> Request sent to Amazon… waiting for response.'; }
     // parse the per-row result line for THIS sku
@@ -118,9 +140,30 @@ function _streamRunPanel(url, sku, mode){
           +'<div class="rhint"><b>Try this:</b> 1) Preview again (often works on the next try). 2) If you\u2019re on a VPN/proxy, turn it off \u2014 it adds latency to the EU endpoint. 3) Switch DNS to <code>1.1.1.1</code>. 4) If it keeps timing out, your connection to Amazon EU is slow right now \u2014 wait a moment and retry.</div>';
         return;
       }
-      const msg=esc(verdict.raw.replace(/^.*error\(s\)\)?/i,"").trim()||verdict.raw);
+      // Pull Amazon's ACTUAL error detail lines (the [E] lines) straight from the
+      // stream, so we show Amazon's OWN words verbatim -- not our paraphrase. This is
+      // how you can be sure it's Amazon rejecting, not the app claiming it is.
+      const _eLines=lines.filter(x=>/\[E\]/.test(x))
+                         .map(x=>x.replace(/^[^[]*\[E\]\s*/,"").replace(/\s+/g," ").trim())
+                         .filter(Boolean);
+      const _eText=_eLines.join("  •  ");
+      const _allText=lines.join(" ");
+      // Amazon rejected the product barcode / identifier for creating a new ASIN.
+      // "Suggest missing fields" CANNOT fix this -- the barcode itself is invalid, so
+      // tell the truth and offer the two real options (replace it, or use exemption).
+      if(/standard_product_id|externally_assigned_product_identifier|does not match any ASIN|not in the catalog/i.test(_allText)){
+        P.verdict.innerHTML='<div class="rbad">✗ Amazon REJECTED your barcode (GTIN / EAN).</div>'
+          +'<div class="rmsg"><b>This is Amazon’s response, word for word:</b></div>'
+          +'<div class="ramz">'+esc(_eText||verdict.raw)+'</div>'
+          +'<div class="rmsg"><b>Why:</b> Amazon won’t accept this barcode to create a new listing. Purchased / reseller EANs aren’t GS1-registered to your brand, so Amazon’s GS1 check rejects them.</div>'
+          +'<div class="rhint"><b>Two ways forward:</b><br>'
+          +'&nbsp;&nbsp;<b>1) Replace it</b> — put a different purchased EAN in the <b>Barcode / GTIN</b> box above, then Preview again.<br>'
+          +'&nbsp;&nbsp;<b>2) Use the GTIN exemption</b> — <b>empty</b> the Barcode / GTIN box and Preview; the app claims the exemption instead (needs GTIN-exemption approval for this brand + category in Seller Central).</div>';
+        return;
+      }
+      const msg=esc(_eText||verdict.raw.replace(/^.*error\(s\)\)?/i,"").trim()||verdict.raw);
       P.verdict.innerHTML='<div class="rbad">✗ Amazon did NOT accept this listing — '+(verdict.n||"")+' issue(s).</div>'
-        +'<div class="rmsg">Amazon is asking for fixes / extra fields:</div><div class="ramz">'+msg+'</div>'
+        +'<div class="rmsg"><b>Amazon’s response, word for word:</b></div><div class="ramz">'+msg+'</div>'
         +'<div class="rhint">Click <b>Suggest missing fields</b> above to fill what Amazon flagged, then Preview again.</div>';
       return;
     }
