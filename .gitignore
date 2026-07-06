@@ -12,10 +12,16 @@ config.json*
 *.key
 .env
 
-# --- Local data caches (machine-specific, per CLAUDE.md §2 — never commit) ---
+# --- Local data caches / runtime state (machine-specific, per CLAUDE.md §2 — never commit) ---
+# These are written at runtime (they live on the persistent disk on the server), so they
+# change every time the app runs -- they are app STATE, not code / bug fixes.
 miles_bundles_store.json
 miles_bundles.json
 miles_harvested.json
+miles_items.json
+miles_ui_prefs.json
+model_number_counter.json
+attribute_defaults.json
 
 # --- Session baselines (bug-check snapshots, per CLAUDE.md §3 — never commit) ---
 *.baseline.py
@@ -30,10 +36,15 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
-# --- Generated output (uncomment if you don't want these tracked) ---
-# inventory_out/
-# ppc_out/
-# filled_unified_template.xlsm
+# --- Generated output folders (runtime; these become persistent-disk mounts on the server) ---
+media/
+uploads/
+inventory_out/
+ppc_out/
+brands/
+miles_templates/
+files/
+filled_unified_template.xlsm
 
 # --- Stray local artifacts, not part of the app ---
 python-3.14.6-macos11.pkg
