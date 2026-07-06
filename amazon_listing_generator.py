@@ -5765,10 +5765,15 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     console.print(f"  seller: [bold]{seller_id}[/bold]   marketplace: {mkt_id} ({mkt})\n")
 
     ok = err = skip = 0
+    _requested_status = {}   # requested SKU -> its Status in the sheet, for an accurate
+                             # "not processed" message (distinguish missing vs status-gated)
     for i, row in enumerate(records, start=2):        # row 1 = headers
-        if str(row.get("Status", "")).strip().upper() not in eligible:
-            continue
+        _st = str(row.get("Status", "")).strip().upper()
         sku = str(row.get("SKU", "")).strip()
+        if only_skus and sku in only_skus:
+            _requested_status[sku] = _st
+        if _st not in eligible:
+            continue
         if only_skus and sku not in only_skus:
             continue
         pt  = str(row.get("Product Type", "")).strip()
@@ -5932,10 +5937,24 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     console.print(f"\n[bold]API {'submit' if submit else 'preview'} complete[/bold] -- "
                   f"ok: {ok}   errors: {err}   skipped: {skip}")
     if only_skus and (ok + err) == 0:
-        console.print(f"  [yellow]None of the requested SKU(s) were processed.[/yellow] "
-                      f"Looked for: {', '.join(sorted(only_skus))}. "
-                      "Check the row actually has a 'SKU' and 'Product Type' value in this tab, "
-                      "and that the column headers are exactly 'SKU' and 'Product Type'.")
+        _blocked = {s: st for s, st in _requested_status.items() if st not in eligible}
+        _elig = ", ".join(sorted(e for e in eligible if e))
+        if _blocked:
+            # the SKU(s) ARE in this tab -- they were skipped by the status gate, not missing.
+            _lines = ", ".join(f"{s} (status '{st or 'blank'}')" for s, st in sorted(_blocked.items()))
+            if submit:
+                console.print(f"  [yellow]None of the requested SKU(s) were submitted.[/yellow] "
+                              f"They ARE in this tab, but Submit only publishes {_elig} rows. "
+                              f"Skipped: {_lines}. Fix any flagged errors, then click Approve, then Submit.")
+            else:
+                console.print(f"  [yellow]None of the requested SKU(s) were processed.[/yellow] "
+                              f"They ARE in this tab but their status isn't eligible ({_elig}). "
+                              f"Skipped: {_lines}.")
+        else:
+            console.print(f"  [yellow]None of the requested SKU(s) were found in this tab.[/yellow] "
+                          f"Looked for: {', '.join(sorted(only_skus))}. "
+                          "Check the row actually has a 'SKU' and 'Product Type' value in this tab, "
+                          "and that the column headers are exactly 'SKU' and 'Product Type'.")
     if not submit:
         console.print("  Review flags in the sheet / dashboard. When happy, publish with:  "
                       "[bold]python amazon_listing_generator.py api submit[/bold]")
