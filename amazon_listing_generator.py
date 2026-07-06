@@ -5664,6 +5664,29 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         if not _ok:
             A.pop("wattage", None)
 
+    # --- PRODUCT IDENTIFIER: single AUTHORITATIVE pass (Rule 1) ----------------
+    # The UPC column (the dashboard's "Barcode / GTIN" box) is the ONE source of
+    # truth for the product identifier. Recompute it here, at the very end, so
+    # nothing folded in earlier -- an AI auto-fix suggestion left in Attributes
+    # JSON, or a stale value -- can leave a half-filled or conflicting identifier:
+    #   * real barcode present -> send it, and DROP any GTIN-exemption claim.
+    #   * no real barcode      -> DROP any (possibly AI-guessed / value-less)
+    #                             externally_assigned_product_identifier and claim
+    #                             the GTIN exemption instead.
+    # This guarantees Amazon never receives an AI-guessed or value-less barcode,
+    # and that the owner's real purchased EAN in the UPC box is what gets sent.
+    _barcode = g("UPC")
+    if _barcode and has("externally_assigned_product_identifier"):
+        _typ = "ean" if len(_barcode) == 13 else "upc"
+        A["externally_assigned_product_identifier"] = [
+            {"value": _barcode, "type": _typ, "marketplace_id": mid}]
+        A.pop("supplier_declared_has_product_identifier_exemption", None)
+    else:
+        A.pop("externally_assigned_product_identifier", None)
+        if has("supplier_declared_has_product_identifier_exemption"):
+            A["supplier_declared_has_product_identifier_exemption"] = [
+                {"value": True, "marketplace_id": mid}]
+
     return A
 
 

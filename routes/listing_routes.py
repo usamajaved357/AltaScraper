@@ -177,6 +177,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             note = (row.get("Notes", "") or "") + " " + (row.get("Comp Notes", "") or "")
             fields = _parse_required_missing(note)
 
+        # Rule 1: NEVER let the AI guess a product identifier / barcode. The owner
+        # supplies real purchased EANs in the sheet's UPC ("Barcode / GTIN") box, and
+        # the builder uses that as the single source of truth (else it claims the GTIN
+        # exemption). Strip any identifier field so the auto-fix loop can't invent one.
+        _ID_SKIP = {"externally_assigned_product_identifier", "standard_product_id",
+                    "external_product_id", "merchant_suggested_asin"}
+        fields = [f for f in fields
+                  if str(f).split(".", 1)[0].strip().lower() not in _ID_SKIP]
+
         # ---- gather SOURCES (the eBay product is the anchor) ----
         sources = {"ebay": {}, "sp": {}, "ebay_image": "", "raw": {}}
         # tier 1: eBay specifics
