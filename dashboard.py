@@ -1275,21 +1275,25 @@ def _run_img_jobs_bg(jid, jobs, kind):
                     if payload.get("art_direction") is not None:
                         payload["art_direction"] = (str(payload.get("art_direction", "")).rstrip()
                                                     + "\n\nUSER STANDING INSTRUCTIONS (always apply): " + _custom)
+                # These handlers were extracted into route modules in Phase 3, so they're
+                # no longer bare names in this module. Call them via the Flask view registry
+                # (endpoint == function name) -- fixes "name 'genimage_from_concept' is not
+                # defined" and the same latent break for recipe/source/secondary/aplus.
                 if kind in ("recipe", "creative"):
                     with app.test_request_context(json=payload):
-                        resp = genimage_recipe()
+                        resp = app.view_functions["genimage_recipe"]()
                 elif kind == "concept":
                     with app.test_request_context(json=payload):
-                        resp = genimage_from_concept()
+                        resp = app.view_functions["genimage_from_concept"]()
                 elif kind == "source":
                     with app.test_request_context(json=payload):
-                        resp = genimage_process_source()
+                        resp = app.view_functions["genimage_process_source"]()
                 elif kind == "secondary":
                     with app.test_request_context(json=payload):
-                        resp = genimage_secondary_v2()
+                        resp = app.view_functions["genimage_secondary_v2"]()
                 elif kind == "aplus":
                     with app.test_request_context(json=payload):
-                        resp = aplus_generate()
+                        resp = app.view_functions["aplus_generate"]()
                 else:
                     _job_push(jid, {"ok": False, "label": label, "error": "unknown job kind"})
                     continue
