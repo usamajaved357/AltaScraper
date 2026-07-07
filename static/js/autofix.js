@@ -1161,7 +1161,12 @@ function _fullDataInner(r){
   const IMGRE=/^(main_product_image_locator|other_product_image_locator_\d+)$/;
   const imgUrls=Object.keys(a).filter(k=>IMGRE.test(k)).sort().map(k=>a[k]).filter(Boolean);
   const HIDEKEYS=new Set([...Object.keys(a).filter(k=>IMGRE.test(k)),"fulfillment_quantity"]);
-  const _AHIDE=new Set(["_provenance","provenance"]); const aKeys=Object.keys(a).filter(k=>!HIDEKEYS.has(k));
+  // The product identifier is edited ONLY via the single "Barcode / GTIN" box above
+  // (the UPC column, which the builder actually sends to Amazon). Never render these as
+  // separate editor fields -- two barcode boxes that can silently diverge is exactly what
+  // confused the user ("External Product ID" showing a stale/leftover value).
+  const _BARCODE_HANDLED=new Set(["externally_assigned_product_identifier","standard_product_id","merchant_suggested_asin","sku","supplier_declared_has_product_identifier_exemption"]);
+  const _AHIDE=new Set(["_provenance","provenance"]); const aKeys=Object.keys(a).filter(k=>!HIDEKEYS.has(k) && !_BARCODE_HANDLED.has(String(k).split(".")[0]));
   // fields the script fills itself (structural / identity / dimensions) -- never shown as needs-value
   const EXCLUDE_REQ=new Set(["item_name","bullet_point","product_description","generic_keyword","purchasable_offer","fulfillment_availability","brand","condition_type","merchant_shipping_group","supplier_declared_has_product_identifier_exemption","externally_assigned_product_identifier","list_price","manufacturer","model_number","part_number","item_dimensions","item_package_dimensions","item_depth_width_height","item_length_width_height","website_shipping_weight","recommended_browse_nodes","browse_node","browse_nodes"]);
   // required-but-missing = schema top-level required UNION the fields Amazon's last preview flagged
@@ -1173,6 +1178,7 @@ function _fullDataInner(r){
   // Only EXCLUDE_REQ filters the schema-required list, never the flagged list.
   const missing=[...reqUnion].filter(k=>{
     if(!k) return false;
+    if(_BARCODE_HANDLED.has(String(k).split(".")[0])) return false; // barcode = the single box above
     if(k in a) return false;                       // already has a value
     if(flagged[k]) return true;                    // Amazon flagged it -> ALWAYS show
     if(EXCLUDE_REQ.has(k)) return false;           // script fills it (and not flagged)

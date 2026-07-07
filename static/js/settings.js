@@ -344,5 +344,5 @@ async function stopAllGenerations(){
 }
 
 // boot into the home screen
-window.addEventListener("DOMContentLoaded", function(){ try{ if(localStorage.getItem("priv_on")==="1"){ togglePrivacy(); } }catch(e){} loadAISettings().then(function(){ if(typeof refreshStaticHowPanels==="function") refreshStaticHowPanels(); }); loadHome(); startGenStatusPoll(); });
+window.addEventListener("DOMContentLoaded", function(){ try{ if(localStorage.getItem("priv_on")==="1"){ togglePrivacy(); } }catch(e){} loadAISettings().then(function(){ if(typeof refreshStaticHowPanels==="function") refreshStaticHowPanels(); }); loadHome(); startGenStatusPoll(); if(typeof loadViews==="function") loadViews(); if(typeof loadRows==="function") loadRows(); });
 

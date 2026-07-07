@@ -25,6 +25,84 @@ _HAZARD_QUESTION_FIELDS = (
 )
 
 
+# ---------------------------------------------------------------------------
+# LISTING-COPY SCRUBBER -- belt-and-suspenders over the generation prompt.
+# Amazon rejects listing copy containing seller self-promotion, shipping/
+# fulfilment claims, external links, or unverifiable superlatives ("false/
+# promotional claims or external links"). The prompt forbids these, but a model
+# can still slip one in, so we strip them from the FINISHED copy before it is
+# written to the sheet. Each function returns what it removed, so it's transparent.
+# ---------------------------------------------------------------------------
+
+# URLs / other-site references.
+_SCRUB_URL_RE = re.compile(r"(?:https?://|www\.)\S+|\b[\w-]+\.(?:com|co\.uk|net|org|io)\b\S*", re.I)
+
+# A whole sentence carrying one of these is seller/shipping self-promotion Amazon
+# rejects -- safe to drop the sentence (they're standalone marketing lines).
+_SCRUB_SENTENCE_RE = re.compile(
+    r"\b(?:sold\s+(?:by|exclusively\s+by)|quality\s+you\s+can\s+trust|trusted\s+brand|"
+    r"handling\s+and\s+dispatch|processed\s+promptly|arrives?\s+in\b[^.]*condition|"
+    r"unboxing\s+experience|without\s+a\s+long\s+wait|next[-\s]?day\s+delivery|"
+    r"free\s+delivery|fast\s+delivery|ships?\s+from|in\s+stock|money[-\s]?back|"
+    r"satisfaction\s+guarantee)\b", re.I)
+
+# Single unverifiable superlatives / quality words -> removed in place.
+_SCRUB_WORD_RE = re.compile(
+    r"\b(?:premium|perfect|ultimate|impressive|pristine|flawless|top[-\s]?quality|"
+    r"high[-\s]?quality|best[-\s]?selling|world[-\s]?class|exclusively|exclusive)\b", re.I)
+
+
+def scrub_copy(text, html=False):
+    """Strip Amazon-rejected promotional content from ONE copy field.
+    Returns (clean_text, [removed]). html=True skips sentence-splitting so
+    description markup isn't broken (only URLs + superlative words are removed)."""
+    if not text or not isinstance(text, str):
+        return text, []
+    removed, s = [], text
+    for u in _SCRUB_URL_RE.findall(s):
+        removed.append("link:" + str(u)[:60])
+    s = _SCRUB_URL_RE.sub("", s)
+    if not html:
+        kept = []
+        for sent in re.split(r"(?<=[.!?])\s+", s):
+            if _SCRUB_SENTENCE_RE.search(sent):
+                removed.append("sentence:" + sent.strip()[:70])
+            else:
+                kept.append(sent)
+        s = " ".join(kept)
+    for w in sorted(set(m.group(0) for m in _SCRUB_WORD_RE.finditer(s))):
+        removed.append("word:" + w)
+    s = _SCRUB_WORD_RE.sub("", s)
+    # tidy whitespace / dangling punctuation the removals leave behind
+    s = re.sub(r"\s{2,}", " ", s)
+    s = re.sub(r"\s+([,.;:])", r"\1", s)
+    s = re.sub(r"[:–—-]\s*$", "", s).strip()
+    return s, removed
+
+
+def scrub_listing_copy(listing: dict):
+    """Scrub the customer-facing copy fields of a generated listing dict IN PLACE.
+    Returns human-readable notes on what was removed (empty list if clean)."""
+    if not isinstance(listing, dict):
+        return []
+    notes = []
+    for f in ("title", "item_highlights", "bullet_1", "bullet_2", "bullet_3",
+              "bullet_4", "bullet_5"):
+        v = listing.get(f)
+        if isinstance(v, str) and v:
+            clean, removed = scrub_copy(v, html=False)
+            if removed:
+                listing[f] = clean
+                notes.append(f"{f}: " + "; ".join(removed))
+    d = listing.get("description")
+    if isinstance(d, str) and d:
+        clean, removed = scrub_copy(d, html=True)
+        if removed:
+            listing["description"] = clean
+            notes.append("description: " + "; ".join(removed))
+    return notes
+
+
 def _enum_for(prop: dict):
     """Pull the allowed-value enum for an attribute from its schema property."""
     if not isinstance(prop, dict):

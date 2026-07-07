@@ -681,9 +681,29 @@ function startAutoSync(){
     }
   }, 30*60*1000);
 }
+// Re-check submitted listings against Amazon and flip them to LIVE where Amazon has
+// now published them. Streams /run/api_verify quietly to completion. A fresh submit is
+// only 'accepted'; Amazon publishes minutes later, so this is what actually moves a row
+// to LIVE in the list without the user guessing.
+function _reverifyLiveStatus(){
+  return new Promise((resolve)=>{
+    if(typeof ES!=="undefined" && ES){ resolve(); return; }   // a run is already streaming -- skip
+    let flipped=0, es;
+    try{ es=new EventSource("/run/api_verify"); }catch(e){ resolve(); return; }
+    ES=es;                                                     // hold the run lock while verifying
+    es.onmessage=(e)=>{ if(/now LIVE/i.test(e.data||"")) flipped++; };
+    const finish=()=>{ try{es.close();}catch(_){} if(ES===es) ES=null;
+                       if(flipped) toast(flipped+" listing(s) now live on Amazon"); resolve(); };
+    es.addEventListener("end", finish);
+    es.onerror=()=>{ try{es.close();}catch(_){} if(ES===es) ES=null; resolve(); };
+    setTimeout(()=>{ if(ES===es) finish(); }, 120000);        // safety: never hang forever
+  });
+}
 async function syncLive(){
   toast("Syncing live listings from Amazon…");
-  await loadLiveCatalog(true);
+  await _reverifyLiveStatus();          // flip submitted rows to LIVE where Amazon has published them
+  await loadLiveCatalog(true);          // refresh the LIVE ON AMAZON catalog
+  try{ if(typeof loadRows==="function") loadRows(); }catch(e){}   // refresh the statuses shown in the list
 }
 async function runSpDiagnose(){
   // Run the one-shot SP-API health check for THIS workspace's account +

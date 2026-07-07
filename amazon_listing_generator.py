@@ -1476,9 +1476,18 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         "  'don't miss out', 'get yours', 'limited time', 'sale', 'hurry'.\n"
         "- NO EXTERNAL LINKS or site references (no URLs, no 'visit our store',\n"
         "  no 'see our website', no other-platform mentions).\n"
-        "- NO UNVERIFIABLE SUPERLATIVES / GUARANTEES: 'best', '#1', 'number one',\n"
-        "  'world's most powerful', 'guaranteed', 'lifetime guarantee', '100% \n"
-        "  satisfaction', 'perfect', 'ultimate' -- unless objectively certifiable.\n"
+        "- NO SELLER SELF-PROMOTION / TRUST CLAIMS in bullets or description: no\n"
+        "  'sold by', 'sold exclusively by', 'quality you can trust', 'trusted brand',\n"
+        "  'we/our', or any company plug. Describe the PRODUCT, not the seller/brand.\n"
+        "- NO SHIPPING / FULFILMENT / AVAILABILITY claims anywhere in title/bullets/\n"
+        "  description: no 'fast/free/next-day delivery', 'handling', 'dispatch',\n"
+        "  'despatch', 'ships from', 'processed promptly', 'in stock', 'arrives in ...\n"
+        "  condition', 'unboxing experience', 'without a long wait'. Amazon rejects these.\n"
+        "- NO UNVERIFIABLE SUPERLATIVES / QUALITY CLAIMS / GUARANTEES: 'best', '#1',\n"
+        "  'number one', 'world's most powerful', 'guaranteed', 'lifetime guarantee',\n"
+        "  '100% satisfaction', 'perfect', 'ultimate', 'premium', 'high-quality',\n"
+        "  'top-quality', 'quality you can trust', 'impressive', 'pristine', 'exclusive',\n"
+        "  'exclusively' -- unless objectively certifiable.\n"
         "- NO false/medical/efficacy claims; describe features and honest benefits.\n"
         "- It is BETTER to omit a doubtful detail than to risk a policy rejection.\n"
         "\n"
@@ -2385,6 +2394,18 @@ def build_sheet_row(comp_asin: str, row: dict, listing: dict,
                     brand: str = "", model_number: str = "", notes: str = "",
                     compliance_risk: str = "", ip_risk: str = "",
                     marketplace: str = "UK") -> list:
+    # Belt-and-suspenders: strip any policy-risky promo copy (seller self-promotion,
+    # shipping claims, links, unverifiable superlatives) the model may have slipped past
+    # the generation prompt, BEFORE it's written to the sheet. Transparent -- logs removals.
+    try:
+        from listing.compliance import scrub_listing_copy
+        _scrub_notes = scrub_listing_copy(listing)
+        if _scrub_notes:
+            console.print(f"  [yellow]Copy scrubber cleaned {len(_scrub_notes)} field(s) of policy-risky text:[/yellow]")
+            for _sn in _scrub_notes:
+                console.print(f"    [dim]• {_sn[:160]}[/dim]")
+    except Exception:
+        pass
     kw_str = ", ".join(k["keyword"] for k in keywords[:8])
     _mkt = str(marketplace or "UK").upper()
     _cur = "USD" if _mkt == "US" else "GBP"
@@ -4117,16 +4138,21 @@ from listing.hazmat import _build_ghs_from_schema
 
 
 
-def _verify_live_status(li, seller_id, sku, mid, locale="en_GB"):
+def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
     """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
     'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
     LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
     downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues); (None, None) if the check itself failed."""
+    Returns (status_list, error_issues); (None, None) if the check itself failed.
+
+    settle=True waits a few seconds first (right after a fresh submit, Amazon needs a
+    moment). Pass settle=False when RE-verifying an already-submitted listing minutes
+    later -- there's nothing to wait for, so skip the delay and check immediately."""
     import time as _t
     for _attempt in range(2):
         try:
-            _t.sleep(4)   # give Amazon a moment to process the submission
+            if settle:
+                _t.sleep(4)   # give Amazon a moment to process the submission
             resp = li.get_listings_item(seller_id, sku, marketplaceIds=[mid],
                                         issueLocale=locale,
                                         includedData=["summaries", "issues"])
@@ -5664,6 +5690,29 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         if not _ok:
             A.pop("wattage", None)
 
+    # --- PRODUCT IDENTIFIER: single AUTHORITATIVE pass (Rule 1) ----------------
+    # The UPC column (the dashboard's "Barcode / GTIN" box) is the ONE source of
+    # truth for the product identifier. Recompute it here, at the very end, so
+    # nothing folded in earlier -- an AI auto-fix suggestion left in Attributes
+    # JSON, or a stale value -- can leave a half-filled or conflicting identifier:
+    #   * real barcode present -> send it, and DROP any GTIN-exemption claim.
+    #   * no real barcode      -> DROP any (possibly AI-guessed / value-less)
+    #                             externally_assigned_product_identifier and claim
+    #                             the GTIN exemption instead.
+    # This guarantees Amazon never receives an AI-guessed or value-less barcode,
+    # and that the owner's real purchased EAN in the UPC box is what gets sent.
+    _barcode = g("UPC")
+    if _barcode and has("externally_assigned_product_identifier"):
+        _typ = "ean" if len(_barcode) == 13 else "upc"
+        A["externally_assigned_product_identifier"] = [
+            {"value": _barcode, "type": _typ, "marketplace_id": mid}]
+        A.pop("supplier_declared_has_product_identifier_exemption", None)
+    else:
+        A.pop("externally_assigned_product_identifier", None)
+        if has("supplier_declared_has_product_identifier_exemption"):
+            A["supplier_declared_has_product_identifier_exemption"] = [
+                {"value": True, "marketplace_id": mid}]
+
     return A
 
 
@@ -5671,7 +5720,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
 
 def run_api(config: dict, gc, creds: dict, submit: bool = False,
             marketplace: str = "UK", output_tab: str = None,
-            spreadsheet_id: str = None, only_skus: set = None):
+            spreadsheet_id: str = None, only_skus: set = None,
+            verify: bool = False):
     mkt = str(marketplace or "UK").upper()
     mkt_id = marketplace_id_for(mkt)
     issue_locale = "en_US" if mkt == "US" else "en_GB"
@@ -5736,16 +5786,66 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             ws.batch_update(_updates, value_input_option="RAW")
             _updates.clear()
 
+    # ---- VERIFY mode: re-check already-submitted rows and flip them to LIVE ---------
+    # A fresh submit is only 'accepted'; Amazon publishes ASYNCHRONOUSLY (minutes). The
+    # submit-time check runs seconds later, so rows usually land on SUBMITTED/pending.
+    # This mode re-queries Amazon (no wait) for every not-yet-LIVE row and marks it LIVE
+    # once Amazon shows it BUYABLE/DISCOVERABLE -- so the app reflects reality without the
+    # user guessing. Read-only on Amazon; only writes the sheet Status/Notes.
+    if verify:
+        console.print("\n[bold cyan]API mode: RE-VERIFY LIVE STATUS (read-only; updates status only)[/bold cyan]")
+        console.print(f"  seller: [bold]{seller_id}[/bold]   marketplace: {mkt_id} ({mkt})\n")
+        _checked = _wentlive = 0
+        for i, row in enumerate(records, start=2):
+            sku = str(row.get("SKU", "")).strip()
+            if not sku:
+                continue
+            if only_skus and sku not in only_skus:
+                continue
+            _st = str(row.get("Status", "")).strip().upper()
+            if _st == "LIVE":
+                continue                      # already LIVE -- nothing to do
+            # only re-verify rows that were actually submitted or were ready to be
+            if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED", "PENDING", ""):
+                continue
+            _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
+            _checked += 1
+            if _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
+                queue(i, status_col, "LIVE")
+                queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})")
+                _wentlive += 1
+                console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})[/green]")
+            elif _rerrs:
+                queue(i, status_col, "API_ERROR")
+                queue(i, notes_col, f"RE-VERIFIED -- not live yet: {_issue_str(_rerrs, {})}")
+                console.print(f"  [red]row {i} {sku}: not live -- {len(_rerrs)} issue(s)[/red]")
+            elif _rstatus is None and _rerrs is None:
+                console.print(f"  [dim]row {i} {sku}: could not check (Amazon didn't return the listing)[/dim]")
+            else:
+                console.print(f"  [yellow]row {i} {sku}: still pending Amazon processing (not yet buyable)[/yellow]")
+            time.sleep(0.3)                   # gentle on the listings rate limit
+        flush()
+        console.print(f"\n[bold]Live re-verify complete[/bold] -- checked: {_checked}   flipped to LIVE: {_wentlive}")
+        if only_skus and _checked == 0:
+            console.print("  [yellow]None of the requested SKU(s) needed re-verifying[/yellow] "
+                          f"(already LIVE, or not in a submitted state). Looked for: {', '.join(sorted(only_skus))}.")
+        return
+
     label = "SUBMIT (creates / replaces live listings)" if submit \
             else "VALIDATION_PREVIEW (validates only -- creates nothing)"
     console.print(f"\n[bold cyan]API mode: {label}[/bold cyan]")
     console.print(f"  seller: [bold]{seller_id}[/bold]   marketplace: {mkt_id} ({mkt})\n")
 
     ok = err = skip = 0
+    _requested_status = {}   # requested SKU -> its Status in the sheet, for an accurate
+                             # "not processed" message (distinguish missing vs status-gated)
     for i, row in enumerate(records, start=2):        # row 1 = headers
-        if str(row.get("Status", "")).strip().upper() not in eligible:
-            continue
+        _st = str(row.get("Status", "")).strip().upper()
         sku = str(row.get("SKU", "")).strip()
+        if only_skus and sku in only_skus:
+            _requested_status[sku] = _st
+        if _st not in eligible:
+            continue
         if only_skus and sku not in only_skus:
             continue
         pt  = str(row.get("Product Type", "")).strip()
@@ -5909,10 +6009,24 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     console.print(f"\n[bold]API {'submit' if submit else 'preview'} complete[/bold] -- "
                   f"ok: {ok}   errors: {err}   skipped: {skip}")
     if only_skus and (ok + err) == 0:
-        console.print(f"  [yellow]None of the requested SKU(s) were processed.[/yellow] "
-                      f"Looked for: {', '.join(sorted(only_skus))}. "
-                      "Check the row actually has a 'SKU' and 'Product Type' value in this tab, "
-                      "and that the column headers are exactly 'SKU' and 'Product Type'.")
+        _blocked = {s: st for s, st in _requested_status.items() if st not in eligible}
+        _elig = ", ".join(sorted(e for e in eligible if e))
+        if _blocked:
+            # the SKU(s) ARE in this tab -- they were skipped by the status gate, not missing.
+            _lines = ", ".join(f"{s} (status '{st or 'blank'}')" for s, st in sorted(_blocked.items()))
+            if submit:
+                console.print(f"  [yellow]None of the requested SKU(s) were submitted.[/yellow] "
+                              f"They ARE in this tab, but Submit only publishes {_elig} rows. "
+                              f"Skipped: {_lines}. Fix any flagged errors, then click Approve, then Submit.")
+            else:
+                console.print(f"  [yellow]None of the requested SKU(s) were processed.[/yellow] "
+                              f"They ARE in this tab but their status isn't eligible ({_elig}). "
+                              f"Skipped: {_lines}.")
+        else:
+            console.print(f"  [yellow]None of the requested SKU(s) were found in this tab.[/yellow] "
+                          f"Looked for: {', '.join(sorted(only_skus))}. "
+                          "Check the row actually has a 'SKU' and 'Product Type' value in this tab, "
+                          "and that the column headers are exactly 'SKU' and 'Product Type'.")
     if not submit:
         console.print("  Review flags in the sheet / dashboard. When happy, publish with:  "
                       "[bold]python amazon_listing_generator.py api submit[/bold]")
@@ -6813,6 +6927,9 @@ async def main():
 
     if mode == "api":
         submit = any(a.lower() == "submit" for a in sys.argv[2:])
+        verify = any(a.lower() == "verify" for a in sys.argv[2:])
+        if verify:
+            submit = False       # verify is read-only -- it never publishes
         def _argval(flag):
             try:
                 i = sys.argv.index(flag)
@@ -6827,7 +6944,8 @@ async def main():
         if _only:
             console.print(f"  [yellow]Scoped to {len(_only)} SKU(s) only:[/yellow] {', '.join(sorted(_only))}")
         run_api(config, gc, creds, submit=submit,
-                marketplace=_mkt, output_tab=_tab, spreadsheet_id=_sheet, only_skus=_only)
+                marketplace=_mkt, output_tab=_tab, spreadsheet_id=_sheet, only_skus=_only,
+                verify=verify)
         return
 
     if mode == "regen":
