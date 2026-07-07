@@ -11,6 +11,9 @@ config.json*
 *.pem
 *.key
 .env
+# App backup archives -- these bundle a full config.json with LIVE credentials, so a
+# zip of the app must NEVER be committed. (e.g. "new app for brands shopify to amazon.zip")
+*.zip
 
 # --- Local data caches / runtime state (machine-specific, per CLAUDE.md §2 — never commit) ---
 # These are written at runtime (they live on the persistent disk on the server), so they
