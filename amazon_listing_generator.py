@@ -2394,6 +2394,18 @@ def build_sheet_row(comp_asin: str, row: dict, listing: dict,
                     brand: str = "", model_number: str = "", notes: str = "",
                     compliance_risk: str = "", ip_risk: str = "",
                     marketplace: str = "UK") -> list:
+    # Belt-and-suspenders: strip any policy-risky promo copy (seller self-promotion,
+    # shipping claims, links, unverifiable superlatives) the model may have slipped past
+    # the generation prompt, BEFORE it's written to the sheet. Transparent -- logs removals.
+    try:
+        from listing.compliance import scrub_listing_copy
+        _scrub_notes = scrub_listing_copy(listing)
+        if _scrub_notes:
+            console.print(f"  [yellow]Copy scrubber cleaned {len(_scrub_notes)} field(s) of policy-risky text:[/yellow]")
+            for _sn in _scrub_notes:
+                console.print(f"    [dim]• {_sn[:160]}[/dim]")
+    except Exception:
+        pass
     kw_str = ", ".join(k["keyword"] for k in keywords[:8])
     _mkt = str(marketplace or "UK").upper()
     _cur = "USD" if _mkt == "US" else "GBP"
