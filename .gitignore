@@ -47,6 +47,7 @@ ppc_out/
 brands/
 miles_templates/
 files/
+autofix_logs/
 filled_unified_template.xlsm
 
 # --- Stray local artifacts, not part of the app ---

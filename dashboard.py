@@ -2374,6 +2374,8 @@ if __name__ == "__main__":
     import routes.misc_routes as _misc_routes
     _misc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _active_account=_active_account,
                           _state=_state)
+    import routes.autofix_log_routes as _autofix_log_routes
+    _autofix_log_routes.register(app, CONFIG_PATH=CONFIG_PATH)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
                            _load_img_instructions=_load_img_instructions,
