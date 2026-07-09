@@ -69,8 +69,12 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         merged = list(dict.fromkeys([*existing, *from_live]))  # dedupe, keep order
         if merged != existing:
             try:
-                acc2 = dict(acc); acc2["brands"] = merged
-                _acc.save_account(_cfg(), CONFIG_PATH, acc2)
+                # Write ONLY the field we changed. save_account merges {**disk, **passed},
+                # so passing a full (possibly stale) snapshot of `acc` silently reverts
+                # anything changed on disk since it was read -- e.g. the account's
+                # input/output sheet IDs. That's what made new accounts lose their sheets.
+                _acc.save_account(_cfg(), CONFIG_PATH,
+                                  {"id": acc.get("id"), "brands": merged})
                 _state["cfg"] = None
             except Exception:
                 pass
@@ -161,8 +165,12 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
 
         # save back onto the account
         try:
-            acc2 = dict(acc); acc2["marketplaces"] = detected
-            _acc.save_account(_cfg(), CONFIG_PATH, acc2)
+            # Write ONLY the changed field (see accounts_detect_brands): a full snapshot
+            # would clobber the account's sheet IDs and other fields with stale values.
+            # This route auto-runs for a NEW account (empty marketplaces), which is exactly
+            # why new accounts lost their sheets while old ones were fine.
+            _acc.save_account(_cfg(), CONFIG_PATH,
+                              {"id": acc.get("id"), "marketplaces": detected})
             _state["cfg"] = None
         except Exception:
             pass
@@ -342,9 +350,10 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
-        acc["default_marketplace"] = mkt
         try:
-            _acc.save_account(_cfg(), CONFIG_PATH, acc)
+            # only the changed field -- a full snapshot would clobber the sheet IDs
+            _acc.save_account(_cfg(), CONFIG_PATH,
+                              {"id": acc.get("id") or aid, "default_marketplace": mkt})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
         _state["cfg"] = None
@@ -370,10 +379,10 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
         brands = [x for x in (acc.get("brands") or []) if x.strip().lower() != brand.lower()]
-        acc["brands"] = brands
-        # persist via save_account (writes back into config accounts list)
+        # persist ONLY the changed field -- a full snapshot would clobber the sheet IDs
         try:
-            _acc.save_account(_cfg(), CONFIG_PATH, acc)
+            _acc.save_account(_cfg(), CONFIG_PATH,
+                              {"id": acc.get("id") or aid, "brands": brands})
         except Exception as e:
             return jsonify({"ok": False, "error": f"save failed: {e}"}), 500
         _state["cfg"] = None
