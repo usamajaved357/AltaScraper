@@ -23,6 +23,28 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
              _active_account, _miles_load_history, _miles_save_history, _run_lock, _running):
     """Attach the /miles/* routes to the existing Flask app."""
 
+    def _claim_run(max_seconds=600):
+        """Self-healing busy-lock claim. Returns True if WE claimed the run, False only
+        if a genuinely-live run is still going. On Render an SSE stream the proxy kills
+        (or the user navigates away from) never runs its release `finally`, so
+        _running['on'] can stay True forever and wedge every future harvest/generate with
+        '[busy]'. This reclaims the lock when the previous run's process is already dead,
+        or the run is older than max_seconds -- so a stuck lock heals itself instead of
+        needing an app restart."""
+        import time as _t
+        with _run_lock:
+            if _running.get("on"):
+                proc = _running.get("proc")
+                started = _running.get("started") or 0.0
+                dead = (proc is None) or (proc.poll() is not None)
+                too_old = (_t.time() - started) > max_seconds
+                if not (dead or too_old):
+                    return False            # a real run is genuinely in progress
+            _running["on"] = True
+            _running["started"] = _t.time()
+            _running["proc"] = None
+            return True
+
     @app.route("/miles/sheet_pref", methods=["POST"])
     def miles_sheet_pref_set():
         """Persist the output Sheet ID/tab so the user need not re-paste it each run."""
@@ -133,21 +155,18 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             yield (f"data: [params] sheet='{_user_sheet[:20]}...' "
                    f"tab='{_user_tab or '(none)'}' "
                    f"limit={_user_limit or 'all'}\n\n")
-            with _run_lock:
-                busy = _running["on"]
-                if not busy:
-                    _running["on"] = True
+            busy = not _claim_run()
             if busy:
                 yield "data: [busy] a run is already in progress\n\n"
                 yield "event: end\ndata: end\n\n"
                 return
             try:
-                bundle_path = os.path.join(os.path.dirname(os.path.abspath(_cfg_path)),
-                                           "miles_bundles.json")
-                if not os.path.exists(bundle_path):
-                    yield "data: [error] No harvested bundles yet. Run a harvest first.\n\n"
-                    yield "event: end\ndata: end\n\n"
-                    return
+                # Do NOT hard-block on the local miles_bundles.json here. The engine's 'miles'
+                # mode back-fills any uploaded SKU that's missing locally straight from its Drive
+                # folder (bundle_from_drive reads the harvested PDFs/SDS), so DRIVE is the source
+                # of truth -- generation works from the Drive folders even when this machine has
+                # no local bundle (harvested elsewhere, or on Render). The engine itself prints
+                # "No harvested bundles found" only if the local store AND Drive are both empty.
                 extra = ["miles"]
                 if _acc:
                     _aid = _acc.get("id") or ""
@@ -261,10 +280,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         def stream():
             yield (f"data: [start] SQP optimize -- sheet='{_user_sheet[:16]}...' "
                    f"tab='{_user_tab or '(default)'}'\n\n")
-            with _run_lock:
-                busy = _running["on"]
-                if not busy:
-                    _running["on"] = True
+            busy = not _claim_run()
             if busy:
                 yield "data: [busy] a run is already in progress\n\n"
                 yield "event: end\ndata: end\n\n"
@@ -345,12 +361,10 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 yield "event: end\ndata: end\n\n"
                 return
             _my_token = None
-            with _run_lock:
-                busy = _running["on"]
-                if not busy:
-                    _running["on"] = True
-                    _my_token = __import__("time").time()
-                    _running["miles_token"] = _my_token
+            busy = not _claim_run()
+            if not busy:
+                _my_token = __import__("time").time()
+                _running["miles_token"] = _my_token
             if busy:
                 yield "data: [busy] a run is already in progress\n\n"
                 yield "event: end\ndata: end\n\n"

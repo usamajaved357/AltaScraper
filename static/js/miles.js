@@ -66,9 +66,12 @@ function milesRun(){
   const skipDone = document.getElementById("miles_skip_done");
   const url = "/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0");
   ES=new EventSource(url);
+  let _sawBusy=false, _sawErr=false;   // so we don't falsely toast "finished" on a busy/blocked run
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
   const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;
   ES.onmessage=e=>{
+    if(e.data.indexOf("[busy]")>=0) _sawBusy=true;
+    if(e.data.startsWith("[error]")) _sawErr=true;
     if(!log) return;
     const div=document.createElement("div");
     if(e.data.startsWith("[error]")) div.style.color="#ff8585";
@@ -80,8 +83,11 @@ function milesRun(){
   };
   ES.addEventListener("end",()=>{ES.close();ES=null;
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
-    const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;
-    milesLoadResults(); toast("Harvest + generation finished");});
+    const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;   // keep Stop clickable to force-clear a stuck lock
+    milesLoadResults();
+    toast(_sawBusy ? "Another run is already in progress — click Stop, then retry"
+          : _sawErr ? "Harvest finished with errors — check the log"
+          : "Harvest + generation finished");});
   ES.onerror=()=>{if(ES){ES.close();ES=null;
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;
@@ -183,8 +189,9 @@ function milesStop(){
   const log=document.getElementById("miles_log");
   if(log){ const d=document.createElement("div"); d.style.color="#e3b768"; d.textContent="[stopped] harvest cancelled by user"; log.appendChild(d); log.scrollTop=log.scrollHeight; }
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
-  const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=true;
-  toast("Harvest stopped");
+  const gb=document.getElementById("miles_genbtn"); if(gb) gb.disabled=false;
+  const ob=document.getElementById("miles_optbtn"); if(ob) ob.disabled=false;
+  toast("Stopped — lock cleared, you can run again");
 }
 function milesClearHistory(){
   fetch("/miles/clear_history",{method:"POST"}).then(r=>r.json()).then(j=>{

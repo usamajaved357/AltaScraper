@@ -321,6 +321,8 @@ async function autoFixLoop(sku){
     // hit /rows 20+ times in a bulk run.
     if(!(window.BULK_AUTOFIX && !window.BULK_AUTOFIX.done)){
       loadRows();
+      // persist the trace so a page refresh can't lose it (single runs only; a batch saves once)
+      try{ _autoFixSaveLog('single', _autoFixTraceText(state), state.sku); }catch(e){}
     }
   }
 }
@@ -451,6 +453,20 @@ function _autoFixTraceText(state){
   });
   lines.push('=== END TRACE ===');
   return lines.join('\n');
+}
+
+// Persist an auto-fix trace to the server (a timestamped file) so a page refresh can't
+// lose it -- the on-screen trace is otherwise browser-memory only. Fire-and-forget.
+function _autoFixSaveLog(kind, text, note){
+  if(!text) return;
+  try{
+    fetch('/autofix/save_log', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({kind:kind, text:text,
+        account:(window.CUR_ACCOUNT&&window.CUR_ACCOUNT.id)||'', note:note||''})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if(j&&j.ok&&j.file){ toast('Auto-fix log saved ✓'); } })
+      .catch(function(){});
+  }catch(e){}
 }
 
 async function _autoFixCopyTrace(){
@@ -665,6 +681,8 @@ async function bulkAutoFix(){
     panel.renderTrace();
   } finally {
     loadRows();
+    // persist the full batch trace so a page refresh can't lose it
+    try{ if(batch) _autoFixSaveLog('batch', _bulkAutoFixTraceText(batch), (batch.skus||[]).length+' skus'); }catch(e){}
   }
 }
 
