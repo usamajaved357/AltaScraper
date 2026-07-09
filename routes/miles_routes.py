@@ -161,12 +161,12 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 yield "event: end\ndata: end\n\n"
                 return
             try:
-                bundle_path = os.path.join(os.path.dirname(os.path.abspath(_cfg_path)),
-                                           "miles_bundles.json")
-                if not os.path.exists(bundle_path):
-                    yield "data: [error] No harvested bundles yet. Run a harvest first.\n\n"
-                    yield "event: end\ndata: end\n\n"
-                    return
+                # Do NOT hard-block on the local miles_bundles.json here. The engine's 'miles'
+                # mode back-fills any uploaded SKU that's missing locally straight from its Drive
+                # folder (bundle_from_drive reads the harvested PDFs/SDS), so DRIVE is the source
+                # of truth -- generation works from the Drive folders even when this machine has
+                # no local bundle (harvested elsewhere, or on Render). The engine itself prints
+                # "No harvested bundles found" only if the local store AND Drive are both empty.
                 extra = ["miles"]
                 if _acc:
                     _aid = _acc.get("id") or ""
