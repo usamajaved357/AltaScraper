@@ -31,22 +31,34 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
 
     @app.route("/genimage/stop_all", methods=["POST"])
     def genimage_stop_all():
-        """Flag every running image job as cancelled. Workers stop between images."""
+        """Cancel every running image job AND retire it immediately.
+
+        Setting only `cancel` was not enough: a worker reads that flag only BETWEEN
+        images, so a worker hung inside one image -- or one that died on an unhandled
+        exception -- never cleared its job. The job stayed "running" forever, the UI kept
+        spinning, and Stop looked broken. Retiring the job here clears it at once; a live
+        worker still sees `cancel` and exits cleanly at its next check.
+        """
         n = 0
         with _IMG_JOBS_LOCK:
             for j in _IMG_JOBS.values():
                 if j.get("status") == "running":
                     j["cancel"] = True
+                    j["status"] = "error"          # same shape the worker's own cancel path uses
+                    j["error"] = j.get("error") or "stopped by user"
                     n += 1
         return jsonify({"ok": True, "stopped": n})
 
     @app.route("/genimage/stop_job", methods=["POST"])
     def genimage_stop_job():
+        """Cancel ONE job and retire it immediately (see genimage_stop_all)."""
         jid = (request.get_json(silent=True) or {}).get("job", "")
         with _IMG_JOBS_LOCK:
             j = _IMG_JOBS.get(jid)
-            if j:
+            if j and j.get("status") == "running":
                 j["cancel"] = True
+                j["status"] = "error"
+                j["error"] = j.get("error") or "stopped by user"
         return jsonify({"ok": True})
 
     @app.route("/genimage/job_status")

@@ -1250,6 +1250,33 @@ def _save_img_instructions(text, aid=None, scope="account"):
 
 
 def _run_img_jobs_bg(jid, jobs, kind):
+    """Crash-safe wrapper around the image worker.
+
+    A worker that dies on an unhandled exception -- e.g. the genimage/aplus NameError, or
+    any failure BEFORE the per-job try -- never reached _job_finish, so its job sat on
+    "running" forever: the UI spun at 0/N and Stop looked broken (Stop only sets a `cancel`
+    flag, which a dead worker never reads). This guarantees the job is always retired.
+    """
+    try:
+        _run_img_jobs_bg_inner(jid, jobs, kind)
+    except Exception as _we:
+        try:
+            _job_finish(jid, error=f"worker crashed: {type(_we).__name__}: {str(_we)[:160]}")
+        except Exception:
+            pass
+    finally:
+        # Belt-and-braces: whatever happened, never leave the job on "running".
+        try:
+            with _IMG_JOBS_LOCK:
+                _j = _IMG_JOBS.get(jid)
+                if _j and _j.get("status") == "running":
+                    _j["status"] = "error"
+                    _j["error"] = _j.get("error") or "worker exited without finishing"
+        except Exception:
+            pass
+
+
+def _run_img_jobs_bg_inner(jid, jobs, kind):
     """Background worker: runs a list of generation jobs, pushing each result."""
     # Custom instructions the user wants the AI to remember for EVERY image
     # (e.g. "always pure white background", "include our logo top-left", "no people").
