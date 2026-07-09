@@ -14,6 +14,113 @@ import sys
 def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER, _ANSI, _EDITABLE_COLS, _URL_RE, _VALID_SET_STATUS, _acquire_run_lock, _active_account, _build_patches, _bust_records_cache, _card, _cfg, _client, _drive_folder_id_from_url, _drive_map_get, _drive_map_put, _drive_upload_image, _ebay_creds, _fetch_image_b64, _load_schema, _marketplace_for_row, _media_root, _options_for, _parse_required_missing, _product_types, _records, _resolve_fields, _run_lock, _running, _schema_attrs, _schema_required, _schema_subfields, _sp_creds, _state, _ws):
     """Attach the paths:/suggest,/ask,/input_sheet,/row,/rows,/approve,/schema/<path:pt>,/edit,/delete,/clear_empty,/listing/push_image,/run/<mode> routes to the existing Flask app."""
 
+    _LIVE_IMG_KEY = re.compile(
+        r"^(main_product_image_locator|other_product_image_locator_\d+|swatch_image_locator)$")
+
+    @app.route("/live/pull_row", methods=["POST"])
+    def live_pull_row():
+        """Pull a LIVE listing's REAL data from Amazon into the row.
+
+        The app only ever showed the images captured at GENERATION time (the eBay/competitor
+        URLs in main_product_image_locator), so a listing that is live on Amazon still displayed
+        the wrong photos, and A+/Image Studio reported "no reference image". This calls
+        getListingsItem(attributes,summaries) and merges EVERY live image locator -- the main
+        image plus every other_product_image_locator_N (the secondary images) -- back into the
+        row's Attributes JSON, replacing the stale generation-time ones.
+        """
+        b = request.get_json(force=True) or {}
+        sku = str(b.get("sku", "")).strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "missing sku"}), 400
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        acc = _active_account()
+        if not acc:
+            return jsonify({"ok": False, "error": "open an Amazon account workspace first"}), 400
+        rt = str(acc.get("refresh_token", ""))
+        if not rt or rt.startswith(("PUT_", "ROTATE")):
+            return jsonify({"ok": False, "error": "this account is not connected to Amazon"}), 400
+
+        mkt = (acc.get("default_marketplace") or "UK").strip().upper()
+        try:
+            from sp_api.api import ListingsItemsV20210801 as _LI
+            from sp_api.base import Marketplaces as _MK
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"sp_api unavailable: {e}"}), 500
+        mkt_enum = getattr(_MK, mkt, None) or getattr(_MK, "UK")
+        mid = _acc.marketplace_id(mkt) or ""
+        try:
+            li = _LI(credentials=_acc.account_creds(acc), marketplace=mkt_enum, timeout=60)
+            resp = li.get_listings_item(acc.get("seller_id", ""), sku,
+                                        marketplaceIds=[mid] if mid else None,
+                                        includedData="attributes,summaries")
+            pay = resp.payload if hasattr(resp, "payload") else (resp or {})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"Amazon call failed: {str(e)[:180]}"}), 502
+
+        live_attrs = (pay or {}).get("attributes", {}) or {}
+        summaries  = (pay or {}).get("summaries", []) or []
+
+        def _media(v):
+            """Image attributes look like [{"media_location": "https://...", ...}]."""
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                return str(v[0].get("media_location") or v[0].get("value") or "").strip()
+            return ""
+
+        images = {}
+        for k, v in live_attrs.items():
+            if _LIVE_IMG_KEY.match(str(k)):
+                u = _media(v)
+                if u.startswith("http"):
+                    images[str(k)] = u
+        # Fall back to the summary's main image if Amazon didn't return the attribute.
+        if "main_product_image_locator" not in images and summaries:
+            mi = summaries[0].get("mainImage") or {}
+            if isinstance(mi, dict) and str(mi.get("link", "")).startswith("http"):
+                images["main_product_image_locator"] = mi["link"]
+
+        if not images:
+            return jsonify({"ok": False,
+                            "error": "Amazon returned no images for this SKU"}), 404
+
+        try:
+            ws = _ws()
+            headers = ws.row_values(1)
+            if "Attributes JSON" not in headers:
+                return jsonify({"ok": False, "error": "no attributes column"}), 400
+            kcol = headers.index(SKU_HEADER) + 1
+            trow = None
+            for i, v in enumerate(ws.col_values(kcol), start=1):
+                if str(v).strip() == sku:
+                    trow = i
+                    break
+            if not trow:
+                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
+            acol = headers.index("Attributes JSON") + 1
+            try:
+                obj = json.loads(ws.cell(trow, acol).value or "{}")
+            except Exception:
+                obj = {}
+            if not isinstance(obj, dict):
+                obj = {}
+            # drop the stale generation-time image locators, then write the live ones
+            for k in [k for k in list(obj.keys()) if _LIVE_IMG_KEY.match(str(k))]:
+                obj.pop(k, None)
+            obj.update(images)
+            ws.update_cell(trow, acol, json.dumps(obj))
+            try:
+                _bust_records_cache()
+            except Exception:
+                pass
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"sheet write failed: {str(e)[:160]}"}), 500
+
+        return jsonify({"ok": True, "sku": sku, "images": images, "count": len(images),
+                        "asin": (summaries[0].get("asin", "") if summaries else ""),
+                        "status": (summaries[0].get("status", []) if summaries else [])})
+
     @app.route("/listing/push_image", methods=["POST"])
     def listing_push_image():
         """Push ONLY the main image to the LIVE Amazon listing via patchListingsItem.
