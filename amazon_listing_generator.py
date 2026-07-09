@@ -6083,6 +6083,28 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
         except Exception:
             _items = []
 
+    # If the user didn't upload a list, treat DRIVE as the source of truth: every item
+    # folder under the master Drive folder is a harvested product. We take that whole set;
+    # generation then SKIPS any SKU already in the output sheet (taken_skus below), so it
+    # only fills the gap -- items harvested to Drive that don't have a listing copy yet.
+    if not _items:
+        try:
+            import miles_import as _MI0
+            _drv_scan, _derr_scan = _MI0.build_drive_rw(config, base_dir)
+            if _drv_scan:
+                _items = _MI0.list_all_item_folders(
+                    _drv_scan, with_files_only=True,
+                    log=lambda m: console.print(m, markup=False))
+                console.print(f"[cyan]  No item list uploaded -- scanned Drive: "
+                              f"{len(_items)} harvested folder(s) found. Generation will skip "
+                              f"any already in the output sheet and build the rest.[/cyan]")
+            else:
+                console.print(f"[yellow]  Drive scan unavailable ({_derr_scan}); "
+                              f"falling back to the local store only.[/yellow]")
+        except Exception as _e0:
+            console.print(f"[yellow]  Drive scan failed ({type(_e0).__name__}: "
+                          f"{str(_e0)[:100]}); falling back to the local store only.[/yellow]")
+
     if _items:
         _missing = [s for s in _items if s not in _store]
         if _missing:
