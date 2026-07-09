@@ -329,6 +329,32 @@ function summary(){
     `<span style="color:#74e0a3">${c.LIVE} live</span>`;
 }
 
+// Pull a LIVE listing's real data (every Amazon image: main + all secondary) into the row, so
+// the product card, the drawer and Image Studio show the ACTUAL live photos instead of the
+// eBay/competitor ones captured at generation time -- and so A+ finally has a reference image.
+async function pullLiveRow(sku, btn){
+  const _old = btn ? btn.innerHTML : "";
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="genspin"></span> Pulling from Amazon…'; }
+  try{
+    const j = await (await fetch("/live/pull_row",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku:sku})})).json();
+    if(!j || !j.ok){ toast("Couldn't pull from Amazon: "+((j&&j.error)||"unknown")); return; }
+    toast("Pulled "+j.count+" live image(s) from Amazon");
+    try{
+      const r = await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      if(r && r.ok && r.row){
+        const i = ROWS.findIndex(x=>String(x.sku)===String(sku));
+        if(i>=0) ROWS[i] = Object.assign({}, ROWS[i], r.row);
+      }
+    }catch(e){}
+    try{ render(); }catch(e){}
+    if(typeof DRAWER_SKU!=="undefined" && String(DRAWER_SKU)===String(sku)){ try{ openDrawer(sku); }catch(e){} }
+  }catch(e){
+    toast("Pull failed: "+((e&&e.message)||e));
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML=_old; }
+  }
+}
 function _rowImages(r){
   var a={};try{a=JSON.parse(r.attrs||'{}');}catch(e){a={};}
   var IMGRE=/^(main_product_image_locator|other_product_image_locator_\d+)$/;
@@ -488,7 +514,8 @@ function drawerContent(r){
       </div>
       <div class="dwactions">
         <button class="suggestbtn" onclick="suggestFields('${esc(r.sku)}')"><i class="ti ti-wand"></i> Suggest missing fields</button>
-        <button class="suggestbtn" onclick="refreshSchemaFor('${esc(r.sku)}')" title="Re-fetch Amazon's allowed values so dropdowns show the latest options"><i class="ti ti-refresh"></i> Refresh Amazon values</button>
+        <button class="suggestbtn" onclick="refreshSchemaFor('${esc(r.sku)}')" title="Re-fetch Amazon's allowed values so the dropdowns show the latest options. This does NOT pull your listing's data — use 'Pull live data from Amazon' for that."><i class="ti ti-refresh"></i> Refresh dropdown options</button>
+        ${String(r.status||"").toUpperCase()==="LIVE" ? `<button class="suggestbtn" style="background:#123021;border-color:#2c5c3f;color:#9fe6bd" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this LIVE listing's real images from Amazon (main + all secondary images) and show them here"><i class="ti ti-cloud-download"></i> Pull live data from Amazon</button>` : ""}
         <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
         <button class="genmain" onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
         <button class="pushimg" onclick="pushImageLive('${esc(r.sku)}',this)" title="Send the current main image to the LIVE Amazon listing (updates just the image, no full resubmit)"><i class="ti ti-cloud-upload"></i> Push image to live</button>
