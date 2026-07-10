@@ -254,19 +254,31 @@ function passFilter(r){
   return true;
 }
 
-// A row is "actually live" if its status is LIVE, OR its SKU/ASIN already
-// exists in the Amazon live catalog. This must return the SAME answer whether
-// called by render() (for grouping) or summary() (for counting) -- otherwise
-// the two drift and the top-bar shows a HOLD count for rows that are actually
-// live on Amazon (a leftover pre-submit status the sheet never updated).
+// Is this row live ON AMAZON? Amazon's catalog is the ONLY authority whenever we
+// have it. A "LIVE" in the sheet is a claim, not proof: the sheet is written by
+// this app, it is never re-read from Amazon, and a misrouted tab once put another
+// account's "LIVE" rows straight into the Live on Amazon group. So when the live
+// catalog is loaded, a row counts as live only if Amazon returned its SKU or ASIN.
+//
+// Without the catalog (the Drafts view never fetches it) we fall back to the
+// sheet's own claim -- and render() labels that group as unverified, rather than
+// captioning it "Live on Amazon".
+//
+// Must return the SAME answer for render() (grouping) and summary() (counting),
+// or the top bar disagrees with the grid.
 function isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown){
   const norm = v => String(v||"").trim().toUpperCase();
-  if(norm(r.status)==="LIVE") return true;
-  if(!liveGroupShown) return false;   // don't reclassify in views without a Live group
   const s=norm(r.sku), a=norm(r.asin);
-  if(s && liveCatSkus.has(s)) return true;
-  if(a && liveCatAsins.has(a)) return true;
-  return false;
+  if(liveGroupShown) return !!((s && liveCatSkus.has(s)) || (a && liveCatAsins.has(a)));
+  return norm(r.status)==="LIVE";
+}
+
+// The sheet SAYS this row is live, but Amazon's catalog does not list it.
+// Only meaningful once the catalog is loaded.
+function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
+  const norm = v => String(v||"").trim().toUpperCase();
+  if(!liveGroupShown) return false;
+  return norm(r.status)==="LIVE" && !isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown);
 }
 
 // Build the SKU/ASIN sets once per render -- reused by summary()

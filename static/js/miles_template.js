@@ -462,8 +462,12 @@ function render(){
   const _liveCatAsins = sets.asins;
   const _liveGroupShown = sets.liveGroupShown;
   const _isActuallyLive = r => isActuallyLive(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
-  const real     = realAll.filter(r=>!_isActuallyLive(r));
+  const _isClaimedOnly  = r => isClaimedLiveOnly(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
   const liveRows = realAll.filter(r=> _isActuallyLive(r));
+  // Rows whose sheet says LIVE but Amazon never returned them. They are NOT live;
+  // they get their own group instead of being smuggled into "Live on Amazon".
+  const claimedRows = realAll.filter(_isClaimedOnly);
+  const real     = realAll.filter(r=>!_isActuallyLive(r) && !_isClaimedOnly(r));
   const note = empties.length
     ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them from the sheet</button></div>`
     : "";
@@ -482,23 +486,28 @@ function render(){
     if(a && liveAppAsins.has(a)) return false;  // or same ASIN
     return true;
   });
-  // The live group mixes TWO different sources, so label each one. liveRows are
-  // rows in THIS workspace's Google Sheet whose Status column says LIVE -- the sheet
-  // asserts it, Amazon has not confirmed it. liveCatalog tiles come from Amazon's
-  // Reports API. Unlabelled, a misconfigured sheet once made another account's rows
-  // look like Amazon data under the "Live on Amazon" heading.
-  const _sheetSub = '<div class="srcsub"><i class="ti ti-table"></i> From your sheet — Status says LIVE (not re-checked against Amazon)</div>';
-  const _amzSub   = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> From Amazon — live catalog for this account</div>';
-  // live group = app rows already submitted (status LIVE) + non-duplicate catalog tiles
-  let liveHtml  = (liveRows.length ? _sheetSub + liveRows.map(card).join("") : "")
+  // EVERY card in the live group is now confirmed by Amazon: liveRows only survives
+  // isActuallyLive() if Amazon returned its SKU/ASIN, and liveCatalog IS Amazon's
+  // reply. The sub-captions just say which of them the sheet also knows about, so
+  // you can tell an editable row from a catalog-only tile.
+  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in your sheet, so you can edit and push changes</div>';
+  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in your sheet</div>';
+  // Rows the sheet claims are LIVE but Amazon never returned. Shown apart, never
+  // counted as live. Usually: submitted but not yet published, killed by Amazon, or
+  // written into the wrong account's tab.
+  const _claimSub = '<div class="srcsub" style="color:#e3b768"><i class="ti ti-alert-triangle"></i> Your sheet says LIVE, but Amazon did not return these — not live</div>';
+  let liveHtml  = (liveRows.length ? _bothSub + liveRows.map(card).join("") : "")
                 + (liveCatalog.length ? _amzSub + liveCatalog.map(liveTile).join("") : "");
+  const claimedHtml = claimedRows.length ? _claimSub + claimedRows.map(card).join("") : "";
   if(LIST_SOURCE==="live"){
-    grid.innerHTML = liveHtml || `<div class="empty">No live listings loaded yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="loadLiveCatalog(true)">Fetch ${esc(WS_MARKET)} live listings now</button>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`;
+    grid.innerHTML = (liveHtml || `<div class="empty">No live listings loaded yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="loadLiveCatalog(true)">Fetch ${esc(WS_MARKET)} live listings now</button>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
+      + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'');
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
       + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
       + (liveHtml?('<div class="srcgroup">Live on Amazon</div>'+liveHtml):'')
-      + ((!draftHtml&&!liveHtml)?'<div class="empty">Nothing to show yet.</div>':'');
+      + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'')
+      + ((!draftHtml&&!liveHtml&&!claimedHtml)?'<div class="empty">Nothing to show yet.</div>':'');
   } else {
     // default view: show drafts, then any already-live (submitted) app rows,
     // each under a clear heading, so a submitted listing is visible but not

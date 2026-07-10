@@ -377,9 +377,16 @@ function openAccountEditor(id){
       <tr><td class="k">RP email</td><td class="v"><input class="ed" id="ac_rp_email" value="${esc((a.uk_responsible_person||{}).email||'')}" placeholder="contact@…"></td></tr>
       <tr><td class="k">RP phone</td><td class="v"><input class="ed" id="ac_rp_phone" value="${esc((a.uk_responsible_person||{}).phone||'')}" placeholder="+44…"></td></tr>
       <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
-      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials <span class="cc">(optional — per-account override)</span></div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row. Leave blank to use the app-wide eBay keys (set in <b>AI &amp; settings ▸ eBay</b>). <b>If you fill BOTH fields here, they override the global eBay credentials for THIS account.</b></div></td></tr>
-      <tr><td class="k">eBay App ID <span class="cc">(client ID)</span></td><td class="v"><input class="ed" id="ac_ebay_app" value="${esc(a.ebay_app_id||'')}" placeholder="leave blank to use global"></td></tr>
-      <tr><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ac_ebay_cert" type="password" placeholder="${a.has_ebay_cert?'•••••• (leave blank to keep)':'leave blank to use global'}"></td></tr>
+      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials</div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row.</div></td></tr>
+      <tr><td class="k">eBay account</td><td class="v">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="ac_ebay_global" ${(a.ebay_app_id && a.has_ebay_cert)?'':'checked'} onchange="_toggleEbayGlobal(this.checked)">
+          <span>Use my global eBay credentials</span>
+        </label>
+        <div class="cc" style="font-size:11.5px;margin-top:3px">Your one eBay developer app, shared by every account (set in <b>AI &amp; settings ▸ eBay</b>). Untick only when this account has its own developer app.</div>
+      </td></tr>
+      <tr id="ac_ebay_row_app" style="display:${(a.ebay_app_id && a.has_ebay_cert)?'':'none'}"><td class="k">eBay App ID <span class="cc">(client ID)</span></td><td class="v"><input class="ed" id="ac_ebay_app" value="${esc(a.ebay_app_id||'')}" placeholder="this account's own eBay App ID"></td></tr>
+      <tr id="ac_ebay_row_cert" style="display:${(a.ebay_app_id && a.has_ebay_cert)?'':'none'}"><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ac_ebay_cert" type="password" placeholder="${a.has_ebay_cert?'•••••• (leave blank to keep)':"this account's own eBay Cert ID"}"><div class="cc" style="font-size:11px;margin-top:3px">Both boxes must be filled, or the app falls back to the global keys rather than send a half-filled pair.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-plug"></i> Workspace features</div><div class="cc" style="font-size:11.5px">Turn on extra capabilities for this account. Enabling a feature reveals its section inside the workspace; uploads there build listings for THIS account (its sheet, its credentials).</div></td></tr>
       <tr><td class="k">Supplier harvest</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -436,9 +443,23 @@ function _showParsed(boxId, url){
   if(p.id){ el.innerHTML='<span style="color:#7fd99a">✓ sheet '+esc(p.id.slice(0,10))+'…'+(p.gid?(' · tab gid '+esc(p.gid)):' · first tab')+'</span>'; }
   else { el.innerHTML='<span style="color:#e0696b">✗ couldn\u2019t read a sheet ID from that link</span>'; }
 }
+// Show/hide the per-account eBay boxes. Ticked = use the app-wide eBay keys, which
+// is what the backend already does whenever an account has no eBay App ID of its own
+// (dashboard.py _ebay_creds). This only makes that visible; it changes no logic.
+function _toggleEbayGlobal(useGlobal){
+  ["ac_ebay_row_app","ac_ebay_row_cert"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display = useGlobal ? "none" : "";
+  });
+}
+
 async function saveAccount(){
   const inUrl=(document.getElementById("ac_input_url")||{}).value||"";
   const outUrl=(document.getElementById("ac_output_url")||{}).value||"";
+  // Ticked "use global" -> clear this account's eBay App ID. _ebay_creds() needs BOTH
+  // halves to use a per-account pair, so blanking the App ID is enough to fall back
+  // to the global keys (and we never have to touch the stored secret).
+  const ebayGlobal = !!(document.getElementById("ac_ebay_global")||{}).checked;
   const inP=parseSheetUrl(inUrl), outP=parseSheetUrl(outUrl);
   const body={
     id:(document.getElementById("ac_id")||{}).value||"",
@@ -459,8 +480,8 @@ async function saveAccount(){
     input_spreadsheet_id:inP.id, input_tab_gid:inP.gid,
     output_spreadsheet_id:outP.id, output_tab_gid:outP.gid,
     // per-account eBay override (blank = fall back to the global eBay creds)
-    ebay_app_id:((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
-    ebay_cert_id:((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
+    ebay_app_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
+    ebay_cert_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
     default_marketplace:(document.getElementById("ac_marketplace")||{}).value||"UK",
     brands:((document.getElementById("ac_brands")||{}).value||"").split(",").map(s=>s.trim()).filter(Boolean),
     features:[
