@@ -359,6 +359,21 @@
   .tile.live .tileimg.noimg{color:#74e0a3}
   .srcgroup{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9cc1ff;
             font-weight:700;margin:8px 2px 2px;padding-top:6px;border-top:1px solid var(--line)}
+  /* A+ content (EBC) pulled from Amazon's A+ Content API. */
+  .tileaplus{position:absolute;top:8px;left:8px;background:#3a2f5c;color:#e9ddff;
+             border:1px solid #6b5b9a;border-radius:6px;font-size:10px;font-weight:700;
+             padding:2px 6px;letter-spacing:.04em;line-height:1.4}
+  .tileinactive{position:absolute;bottom:8px;left:8px;background:#3a1d1d;color:#ff8a8a;
+                border:1px solid #5c2424;border-radius:6px;font-size:10px;font-weight:700;
+                padding:2px 6px;display:inline-flex;align-items:center;gap:3px;line-height:1.4}
+  .aplusdoc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+  .aplushead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+             font-size:12.5px;margin-bottom:8px}
+  .aplusimgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+  .aplusimgs a{flex:0 0 auto;line-height:0}
+  .aplusimgs img{height:104px;width:auto;border-radius:6px;border:1px solid var(--line);
+                 background:#0f131a;object-fit:contain}
+
   /* Sub-caption inside a group: names WHERE those cards came from (sheet vs Amazon). */
   .srcsub{grid-column:1/-1;font-size:11px;color:#7f8ba3;margin:4px 2px 2px;
           display:flex;align-items:center;gap:6px}

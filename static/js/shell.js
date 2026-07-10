@@ -212,12 +212,23 @@ async function enterAccount(accountId){
   // Refresh inventory alert badge when workspace changes (fire-and-forget)
   if(typeof invBadgeRefresh === 'function') invBadgeRefresh();
   const hasCreds = !!(a.has_creds || (a.refresh_token && !String(a.refresh_token).startsWith("PUT_")));
-  LIVE_ITEMS=[]; LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
+  // A read-only workspace owns no Amazon app. It may borrow another account's app to
+  // look up catalogue data while generating, but it has no listings of its own to show
+  // and may never publish. can_publish comes from the backend, which is what actually
+  // enforces it -- this only keeps the UI from offering actions that will be refused.
+  window.WS_READONLY = (a.can_publish === false);
+  window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
+  LIVE_ITEMS=[]; APLUS_BY_ASIN={}; AMZ_STATE={};   // never carry one account's data into another
+  LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
   WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
   CUR_SYMBOL = (WS_MARKET==="US"||WS_MARKET==="CA"||WS_MARKET==="MX") ? "$" : ((WS_MARKET==="EU"||["DE","FR","IT","ES","NL"].includes(WS_MARKET)) ? "\u20ac" : "\u00a3");
-  var sw=document.getElementById('srcswitch'); if(sw){ sw.style.display='flex'; sw.querySelectorAll('.mktbtn').forEach(b=>b.classList.toggle('on',b.dataset.src===LIST_SOURCE)); }
+  // A read-only workspace has no live catalog at all -- /live/catalog refuses it --
+  // so don't offer the Live / All / Sync controls that can only fail.
+  var sw=document.getElementById('srcswitch');
+  if(sw){ sw.style.display = (hasCreds && !window.WS_READONLY) ? 'flex' : 'none';
+          sw.querySelectorAll('.mktbtn').forEach(b=>b.classList.toggle('on',b.dataset.src===LIST_SOURCE)); }
   // tell the backend this account is active (all submit/preview use ITS creds).
   // The reply names the exact spreadsheet + tab this workspace is bound to, and
   // lists anything unset -- shown in the header so the data source is never a guess.
@@ -236,7 +247,15 @@ async function enterAccount(accountId){
   const icEl=document.getElementById("ws_ic");
   icEl.style.background=col.bg; icEl.style.color=col.fg; icEl.innerHTML=_initials(a.label);
   document.getElementById("ws_nm").textContent=a.label;
-  document.getElementById("ws_sub").textContent="Amazon account"+(a.seller_id?(" · "+a.seller_id):"");
+  if(window.WS_READONLY){
+    const _lender=(ACCOUNTS||[]).find(x=>x.id===window.WS_CREDS_SOURCE);
+    document.getElementById("ws_sub").innerHTML =
+      '<span style="color:#e3b768;font-weight:600"><i class="ti ti-lock"></i> Read-only</span>'
+      + (_lender ? ' · generating with '+esc(_lender.label)+"'s Amazon app" : ' · no Amazon app')
+      + ' · cannot publish';
+  } else {
+    document.getElementById("ws_sub").textContent="Amazon account"+(a.seller_id?(" · "+a.seller_id):"");
+  }
   document.getElementById("ws_title").textContent="Listings";
   document.getElementById("crumbs").innerHTML=`<span class="sep">/</span><span class="here">${esc(a.label)}</span>`;
   document.getElementById("nav_setup").style.display="flex"; // brand/account setup
@@ -368,8 +387,8 @@ function openAccountEditor(id){
       <tr><td class="k">Refresh token</td><td class="v"><input class="ed" id="ac_refresh" type="password" placeholder="${a.has_creds?'•••••• (leave blank to keep)':'paste refresh token'}"></td></tr>
       <tr><td class="k">Primary marketplace</td><td class="v"><select class="ed" id="ac_marketplace"><option value="UK"${(a.default_marketplace||'UK')==='UK'?' selected':''}>UK — amazon.co.uk (GBP)</option><option value="US"${(a.default_marketplace||'')==='US'?' selected':''}>US — amazon.com (USD)</option></select><div class="cc" style="font-size:11px;margin-top:2px">Drives pricing, fees, SP-API and the flat-file route for this account's listings.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-table"></i> Google Sheets for this account</div><div class="cc" style="font-size:11.5px">Paste the <b>full Google Sheets link</b> (with the tab open). The app reads the spreadsheet ID and the tab (gid) from the URL — so each account's US/UK listings go to the right place.</div></td></tr>
-      <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ac_input_url" value="${esc(a.input_sheet_url||'')}" oninput="_showParsed('ac_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
-      <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ac_output_url" value="${esc(a.output_sheet_url||'')}" oninput="_showParsed('ac_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
+      <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ac_input_url" value="${esc(a.input_sheet_url||'')}" oninput="_showParsed('ac_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div>${_savedSheetLine('Currently saved', a.input_sheet_url, a.input_tab_gid)}</td></tr>
+      <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ac_output_url" value="${esc(a.output_sheet_url||'')}" oninput="_showParsed('ac_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div>${_savedSheetLine('Currently saved', a.output_sheet_url, a.output_tab_gid)}</td></tr>
       <tr><td class="k">Drive image folder URL <span class="cc">(image storage)</span></td><td class="v"><input class="ed" id="ac_drive_url" value="${esc(a.drive_folder_url||'')}" placeholder="https://drive.google.com/drive/folders/…"><div class="cc" id="ac_drive_share" style="font-size:11px;margin-top:3px">Generated images upload here into per-product <code>SKU_ProductName</code> subfolders. <b>Share this folder (Editor) with the service account</b> shown below, or uploads will be denied.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shield-check"></i> UK Responsible Person <span class="cc">(only needed for Amazon.co.uk listings)</span></div><div class="cc" style="font-size:11.5px">Selling on Amazon.co.uk from outside the UK legally requires a UK Responsible Person (name + real UK address + contact). Fill this once and every UK listing inherits it. Leave blank for US-only — US listings are unaffected.</div></td></tr>
       <tr><td class="k">RP legal name</td><td class="v"><input class="ed" id="ac_rp_name" value="${esc((a.uk_responsible_person||{}).name||'')}" placeholder="e.g. FLIPX LTD"></td></tr>
@@ -377,9 +396,27 @@ function openAccountEditor(id){
       <tr><td class="k">RP email</td><td class="v"><input class="ed" id="ac_rp_email" value="${esc((a.uk_responsible_person||{}).email||'')}" placeholder="contact@…"></td></tr>
       <tr><td class="k">RP phone</td><td class="v"><input class="ed" id="ac_rp_phone" value="${esc((a.uk_responsible_person||{}).phone||'')}" placeholder="+44…"></td></tr>
       <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
-      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials <span class="cc">(optional — per-account override)</span></div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row. Leave blank to use the app-wide eBay keys (set in <b>AI &amp; settings ▸ eBay</b>). <b>If you fill BOTH fields here, they override the global eBay credentials for THIS account.</b></div></td></tr>
-      <tr><td class="k">eBay App ID <span class="cc">(client ID)</span></td><td class="v"><input class="ed" id="ac_ebay_app" value="${esc(a.ebay_app_id||'')}" placeholder="leave blank to use global"></td></tr>
-      <tr><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ac_ebay_cert" type="password" placeholder="${a.has_ebay_cert?'•••••• (leave blank to keep)':'leave blank to use global'}"></td></tr>
+      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-lock"></i> No Amazon account of its own?</div><div class="cc" style="font-size:11.5px">If this workspace has no SP-API credentials above, it can borrow another account's Amazon app to look up <b>catalogue data only</b> — product types, item type keywords, valid values, fees. It can <b>never</b> read that account's listings or inventory, and it can <b>never</b> publish. Leave as "none" for a normal, connected account.</div></td></tr>
+      <tr><td class="k">Borrow Amazon app from</td><td class="v">
+        <select class="ed" id="ac_creds_source">
+          <option value="">none — this account uses its own Amazon app</option>
+          ${(ACCOUNTS||[]).filter(x=>x.id!==a.id && x.has_creds).map(x=>
+            `<option value="${esc(x.id)}" ${a.credentials_source_account_id===x.id?'selected':''}>${esc(x.label)}</option>`).join("")}
+        </select>
+        <div class="cc" style="font-size:11px;margin-top:3px">${a.can_publish===false
+          ? '<span style="color:#e3b768"><i class="ti ti-lock"></i> This workspace is read-only: it can generate listings, but not preview, verify or publish them.</span>'
+          : 'This account can publish to Amazon.'}</div>
+      </td></tr>
+      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials</div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row.</div></td></tr>
+      <tr><td class="k">eBay account</td><td class="v">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="ac_ebay_global" ${(a.ebay_app_id && a.has_ebay_cert)?'':'checked'} onchange="_toggleEbayGlobal(this.checked)">
+          <span>Use my global eBay credentials</span>
+        </label>
+        <div class="cc" style="font-size:11.5px;margin-top:3px">Your one eBay developer app, shared by every account (set in <b>AI &amp; settings ▸ eBay</b>). Untick only when this account has its own developer app.</div>
+      </td></tr>
+      <tr id="ac_ebay_row_app" style="display:${(a.ebay_app_id && a.has_ebay_cert)?'':'none'}"><td class="k">eBay App ID <span class="cc">(client ID)</span></td><td class="v"><input class="ed" id="ac_ebay_app" value="${esc(a.ebay_app_id||'')}" placeholder="this account's own eBay App ID"></td></tr>
+      <tr id="ac_ebay_row_cert" style="display:${(a.ebay_app_id && a.has_ebay_cert)?'':'none'}"><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ac_ebay_cert" type="password" placeholder="${a.has_ebay_cert?'•••••• (leave blank to keep)':"this account's own eBay Cert ID"}"><div class="cc" style="font-size:11px;margin-top:3px">Both boxes must be filled, or the app falls back to the global keys rather than send a half-filled pair.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-plug"></i> Workspace features</div><div class="cc" style="font-size:11.5px">Turn on extra capabilities for this account. Enabling a feature reveals its section inside the workspace; uploads there build listings for THIS account (its sheet, its credentials).</div></td></tr>
       <tr><td class="k">Supplier harvest</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -429,6 +466,20 @@ function parseSheetUrl(u){
   if(g){ gid=g[1]; }
   return {id:id, gid:gid};
 }
+// The exact link the app has on disk for this account, spelled out and clickable.
+// Previously the only clue was whatever happened to be inside the text box, so an
+// account with a spreadsheet id but no stored URL looked like it had nothing saved.
+function _savedSheetLine(label, url, gid){
+  const u = String(url||"").trim();
+  if(!u) return `<div class="cc" style="font-size:11px;margin-top:3px"><span class="missing">Nothing saved yet</span></div>`;
+  const tab = String(gid||"").trim();
+  return `<div class="cc" style="font-size:11px;margin-top:3px;word-break:break-all">`
+       + `${esc(label)}: <a href="${esc(u)}" target="_blank" rel="noopener" style="color:#7fd0ff">${esc(u)}</a>`
+       + (tab ? ` <code style="opacity:.75">(tab gid ${esc(tab)})</code>`
+              : ` <span class="missing">— no tab (#gid=…) in this link</span>`)
+       + `</div>`;
+}
+
 function _showParsed(boxId, url){
   const p=parseSheetUrl(url); const el=document.getElementById(boxId);
   if(!el) return;
@@ -436,9 +487,23 @@ function _showParsed(boxId, url){
   if(p.id){ el.innerHTML='<span style="color:#7fd99a">✓ sheet '+esc(p.id.slice(0,10))+'…'+(p.gid?(' · tab gid '+esc(p.gid)):' · first tab')+'</span>'; }
   else { el.innerHTML='<span style="color:#e0696b">✗ couldn\u2019t read a sheet ID from that link</span>'; }
 }
+// Show/hide the per-account eBay boxes. Ticked = use the app-wide eBay keys, which
+// is what the backend already does whenever an account has no eBay App ID of its own
+// (dashboard.py _ebay_creds). This only makes that visible; it changes no logic.
+function _toggleEbayGlobal(useGlobal){
+  ["ac_ebay_row_app","ac_ebay_row_cert"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display = useGlobal ? "none" : "";
+  });
+}
+
 async function saveAccount(){
   const inUrl=(document.getElementById("ac_input_url")||{}).value||"";
   const outUrl=(document.getElementById("ac_output_url")||{}).value||"";
+  // Ticked "use global" -> clear this account's eBay App ID. _ebay_creds() needs BOTH
+  // halves to use a per-account pair, so blanking the App ID is enough to fall back
+  // to the global keys (and we never have to touch the stored secret).
+  const ebayGlobal = !!(document.getElementById("ac_ebay_global")||{}).checked;
   const inP=parseSheetUrl(inUrl), outP=parseSheetUrl(outUrl);
   const body={
     id:(document.getElementById("ac_id")||{}).value||"",
@@ -458,9 +523,11 @@ async function saveAccount(){
     },
     input_spreadsheet_id:inP.id, input_tab_gid:inP.gid,
     output_spreadsheet_id:outP.id, output_tab_gid:outP.gid,
+    // "" = this account uses its own Amazon app (or has none at all)
+    credentials_source_account_id:((document.getElementById("ac_creds_source")||{}).value||""),
     // per-account eBay override (blank = fall back to the global eBay creds)
-    ebay_app_id:((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
-    ebay_cert_id:((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
+    ebay_app_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
+    ebay_cert_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
     default_marketplace:(document.getElementById("ac_marketplace")||{}).value||"UK",
     brands:((document.getElementById("ac_brands")||{}).value||"").split(",").map(s=>s.trim()).filter(Boolean),
     features:[

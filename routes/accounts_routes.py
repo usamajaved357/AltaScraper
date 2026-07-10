@@ -19,6 +19,26 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
              OUTPUT_TAB, ConfigError, _client, _save_active_state=lambda: None):
     """Attach the /accounts/* routes to the existing Flask app."""
 
+    import re as _re
+    _SHEET_ID_RE = _re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
+    _SHEET_GID_RE = _re.compile(r"[#&?]gid=([0-9]+)")
+
+    def _parse_sheet_url(url):
+        """(spreadsheet_id, tab_gid) from a full Sheets link, or a bare ID.
+
+        Handles both ...?gid=123 and ...#gid=123 (Google now emits both at once).
+        The URL is the single source of truth -- the browser also parses it, but the
+        server must not TRUST that: a stale or absent parsed field would silently blank
+        the tab, and a blank tab used to send the account to the shared default tab.
+        """
+        u = str(url or "").strip()
+        if not u:
+            return "", ""
+        m = _SHEET_ID_RE.search(u)
+        sid = m.group(1) if m else (u if _re.fullmatch(r"[a-zA-Z0-9_-]{20,}", u) else "")
+        g = _SHEET_GID_RE.search(u)
+        return sid, (g.group(1) if g else "")
+
     @app.route("/accounts/detect_brands", methods=["POST"])
     def accounts_detect_brands():
         """Best-effort: derive the brands actually used on this account by reading the
@@ -190,6 +210,25 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         except ConfigError as e:
             return jsonify({"ok": False, "error": str(e), "config_error": True}), 200
         al = _acc.load_accounts(cfg, CONFIG_PATH)
+
+        def _sheet_url(a, which):
+            """The account's sheet link, ALWAYS shown, never blank when we know the ids.
+
+            An account can carry output_spreadsheet_id + output_tab_gid with no stored
+            output_sheet_url (config edited by hand, or an older save). The editor then
+            rendered an empty box, which looked like "the app forgot my sheet" -- so
+            rebuild the canonical link from the parts we do have.
+            """
+            stored = str(a.get(f"{which}_sheet_url") or "").strip()
+            if stored:
+                return stored
+            sid = str(a.get(f"{which}_spreadsheet_id") or "").strip()
+            if not sid:
+                return ""
+            gid = str(a.get(f"{which}_tab_gid") or "").strip()
+            return (f"https://docs.google.com/spreadsheets/d/{sid}/edit"
+                    + (f"#gid={gid}" if gid else ""))
+
         safe = []
         for a in al:
             rt = str(a.get("refresh_token", ""))
@@ -199,8 +238,8 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                          "marketplaces": a.get("marketplaces", []),
                          "brands": a.get("brands", []),
                          "output_spreadsheet_id": a.get("output_spreadsheet_id", ""),
-                         "input_sheet_url": a.get("input_sheet_url", ""),
-                         "output_sheet_url": a.get("output_sheet_url", ""),
+                         "input_sheet_url": _sheet_url(a, "input"),
+                         "output_sheet_url": _sheet_url(a, "output"),
                          "drive_folder_url": a.get("drive_folder_url", ""),
                          "uk_responsible_person": a.get("uk_responsible_person", {}),
                          "input_spreadsheet_id": a.get("input_spreadsheet_id", ""),
@@ -209,6 +248,12 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                          "default_marketplace": a.get("default_marketplace", "UK"),
                          "features": a.get("features", []),
                          "has_creds": ready,
+                         # Read-only workspace: no Amazon app of its own. It may borrow
+                         # another account's app for catalogue lookups, but it can never
+                         # read that account's listings nor publish anything.
+                         "can_publish": _acc.can_publish(a),
+                         "is_borrowed": _acc.is_borrowed(a),
+                         "credentials_source_account_id": _acc.credentials_source_id(a),
                          "has_secret": bool(a.get("lwa_client_secret")),
                          "lwa_client_id": a.get("lwa_client_id", ""),
                          # per-account eBay override: expose the App ID (public) and
@@ -333,9 +378,40 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         # account routes its listings to the correct spreadsheet + tab
         for k in ("input_sheet_url", "output_sheet_url", "input_spreadsheet_id",
                   "input_tab_gid", "output_tab_gid", "drive_folder_url",
-                  "uk_responsible_person", "ebay_app_id"):
+                  "uk_responsible_person", "ebay_app_id",
+                  # Which connected account lends its Amazon app for CATALOGUE lookups
+                  # when this workspace has none of its own. "" = none. Settable here so
+                  # a read-only workspace can be configured in the app rather than by
+                  # editing config.json on the server, which the UI can never reach.
+                  "credentials_source_account_id"):
             if k in b:
                 acct[k] = b.get(k, acct.get(k, ""))
+        # A lender is only meaningful for an account with no Amazon app of its own; and
+        # borrowing NEVER grants publish rights (accounts.can_publish keys off
+        # has_own_creds). Refuse to point an account at itself.
+        if str(acct.get("credentials_source_account_id") or "").strip() == str(acct.get("id") or "").strip():
+            acct["credentials_source_account_id"] = ""
+        # Re-derive sheet id + tab gid FROM THE URL, server-side. Two failures this
+        # closes: (1) the browser's parsed value never arrives (or arrives stale) and
+        # the tab silently blanks; (2) re-saving a form whose URL lost its "#gid="
+        # (Drive's "Copy link" drops it) wrote "" straight over a good gid, because the
+        # whitelist above treats an empty string as a value. If the URL carries no gid
+        # but still points at the SAME spreadsheet, keep the gid we already had.
+        for _url_k, _sid_k, _gid_k in (("output_sheet_url", "output_spreadsheet_id", "output_tab_gid"),
+                                       ("input_sheet_url", "input_spreadsheet_id", "input_tab_gid")):
+            _u = str(acct.get(_url_k) or "").strip()
+            if not _u:
+                continue
+            _sid, _gid = _parse_sheet_url(_u)
+            if _sid:
+                acct[_sid_k] = _sid
+            if _gid:
+                acct[_gid_k] = _gid
+            elif not str(acct.get(_gid_k) or "").strip():
+                _old_gid = str(existing.get(_gid_k) or "").strip()
+                _old_sid = str(existing.get(_sid_k) or "").strip()
+                if _old_gid and _sid and _sid == _old_sid:
+                    acct[_gid_k] = _old_gid
         if b.get("default_marketplace"):
             acct["default_marketplace"] = str(b["default_marketplace"]).strip().upper()
         if isinstance(b.get("brands"), list):

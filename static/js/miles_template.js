@@ -450,7 +450,7 @@ function render(){
   const grid=document.getElementById("grid");
   const list=ROWS.filter(passFilter);
   const empties=list.filter(isEmptyRow);
-  const realAll=list.filter(r=>!isEmptyRow(r));
+  let realAll=list.filter(r=>!isEmptyRow(r));
   const _norm = v => String(v||"").trim().toUpperCase();
   // Use the shared isActuallyLive() so render() and summary() ALWAYS agree.
   // Before this fix, render() had inline logic while summary() did not, so a
@@ -462,11 +462,26 @@ function render(){
   const _liveCatAsins = sets.asins;
   const _liveGroupShown = sets.liveGroupShown;
   const _isActuallyLive = r => isActuallyLive(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
-  const real     = realAll.filter(r=>!_isActuallyLive(r));
+  const _isClaimedOnly  = r => isClaimedLiveOnly(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
+  // Listings we published that Amazon no longer has. Hidden from the grid entirely --
+  // they are not drafts and they are not live. Never auto-deleted from the sheet.
+  const goneRows = realAll.filter(isDeletedOnAmazon);
+  if(goneRows.length){ realAll = realAll.filter(r=>!isDeletedOnAmazon(r)); }
   const liveRows = realAll.filter(r=> _isActuallyLive(r));
-  const note = empties.length
+  // Rows whose sheet says LIVE but Amazon never returned them. They are NOT live;
+  // they get their own group instead of being smuggled into "Live on Amazon".
+  const claimedRows = realAll.filter(_isClaimedOnly);
+  const real     = realAll.filter(r=>!_isActuallyLive(r) && !_isClaimedOnly(r));
+  const note = (empties.length
     ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them from the sheet</button></div>`
-    : "";
+    : "")
+    + (goneRows.length
+    ? `<div class="emptynote" style="border-color:#5c2424;color:#ff8a8a">
+         ${goneRows.length} listing${goneRows.length>1?'s were':' was'} deleted on Amazon and ${goneRows.length>1?'are':'is'} hidden here
+         (${goneRows.slice(0,3).map(r=>esc(r.sku)).join(', ')}${goneRows.length>3?', …':''}) —
+         <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} from the sheet</button>
+       </div>`
+    : "");
   // SOURCE: drafts (app rows) / live (Amazon catalog) / all (both)
   let draftHtml = real.length ? real.map(card).join("") : "";
   // DEDUPE: the same SKU can exist BOTH as an app row marked LIVE and as an
@@ -482,23 +497,28 @@ function render(){
     if(a && liveAppAsins.has(a)) return false;  // or same ASIN
     return true;
   });
-  // The live group mixes TWO different sources, so label each one. liveRows are
-  // rows in THIS workspace's Google Sheet whose Status column says LIVE -- the sheet
-  // asserts it, Amazon has not confirmed it. liveCatalog tiles come from Amazon's
-  // Reports API. Unlabelled, a misconfigured sheet once made another account's rows
-  // look like Amazon data under the "Live on Amazon" heading.
-  const _sheetSub = '<div class="srcsub"><i class="ti ti-table"></i> From your sheet — Status says LIVE (not re-checked against Amazon)</div>';
-  const _amzSub   = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> From Amazon — live catalog for this account</div>';
-  // live group = app rows already submitted (status LIVE) + non-duplicate catalog tiles
-  let liveHtml  = (liveRows.length ? _sheetSub + liveRows.map(card).join("") : "")
+  // EVERY card in the live group is now confirmed by Amazon: liveRows only survives
+  // isActuallyLive() if Amazon returned its SKU/ASIN, and liveCatalog IS Amazon's
+  // reply. The sub-captions just say which of them the sheet also knows about, so
+  // you can tell an editable row from a catalog-only tile.
+  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in your sheet, so you can edit and push changes</div>';
+  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in your sheet</div>';
+  // Rows the sheet claims are LIVE but Amazon never returned. Shown apart, never
+  // counted as live. Usually: submitted but not yet published, killed by Amazon, or
+  // written into the wrong account's tab.
+  const _claimSub = '<div class="srcsub" style="color:#e3b768"><i class="ti ti-alert-triangle"></i> Your sheet says LIVE, but Amazon did not return these — not live</div>';
+  let liveHtml  = (liveRows.length ? _bothSub + liveRows.map(card).join("") : "")
                 + (liveCatalog.length ? _amzSub + liveCatalog.map(liveTile).join("") : "");
+  const claimedHtml = claimedRows.length ? _claimSub + claimedRows.map(card).join("") : "";
   if(LIST_SOURCE==="live"){
-    grid.innerHTML = liveHtml || `<div class="empty">No live listings loaded yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="loadLiveCatalog(true)">Fetch ${esc(WS_MARKET)} live listings now</button>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`;
+    grid.innerHTML = (liveHtml || `<div class="empty">No live listings loaded yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="loadLiveCatalog(true)">Fetch ${esc(WS_MARKET)} live listings now</button>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
+      + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'');
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
       + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
       + (liveHtml?('<div class="srcgroup">Live on Amazon</div>'+liveHtml):'')
-      + ((!draftHtml&&!liveHtml)?'<div class="empty">Nothing to show yet.</div>':'');
+      + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'')
+      + ((!draftHtml&&!liveHtml&&!claimedHtml)?'<div class="empty">Nothing to show yet.</div>':'');
   } else {
     // default view: show drafts, then any already-live (submitted) app rows,
     // each under a clear heading, so a submitted listing is visible but not
@@ -614,6 +634,73 @@ async function clearEmpty(btn){
 let LIST_SOURCE = "drafts";   // 'drafts' | 'live' | 'all'
 let LIVE_ITEMS = [];          // fetched live Amazon catalog for current account+mkt
 let LIVE_STORE = {};          // cache: "accountid::MKT" -> {items, ts}
+// ASIN -> [A+ document, ...] for the OPEN account+marketplace. A+ modules are not part
+// of getListingsItem; they come from Amazon's separate A+ Content API (/live/aplus).
+let APLUS_BY_ASIN = {};
+
+// SKU -> what Amazon says the listing REALLY is: {state:'live'|'inactive'|'gone'|'unknown',
+// reason, status, qty}. Filled by /live/reconcile for the rows Amazon's catalog didn't
+// return, plus any catalog tile that isn't Active.
+let AMZ_STATE = {};
+
+// Statuses that mean "this app believes it published this listing". Amazon cannot tell a
+// deleted listing from one that never existed -- getListingsItem answers NOT_FOUND for
+// both (verified on the live account). Only the sheet knows which it was, so ONLY these
+// rows may be treated as deleted when Amazon says NOT_FOUND. Everything else is a draft.
+const _PUBLISHED_STATES = new Set(["LIVE", "SUBMITTED"]);
+function amzState(r){ return AMZ_STATE[String((r&&r.sku)||"")] || {}; }
+function wasPublished(r){ return _PUBLISHED_STATES.has(String((r&&r.status)||"").trim().toUpperCase()); }
+// Published by us, and Amazon no longer has it -> deleted on Amazon.
+function isDeletedOnAmazon(r){ return wasPublished(r) && amzState(r).state === "gone"; }
+
+// Ask Amazon about every listing whose real state we can't infer from the catalog:
+//   * rows we published that the catalog didn't return  -> live / inactive / gone?
+//   * catalog tiles that came back as anything but Active -> why?
+// A transient failure returns state 'unknown', never 'gone' -- a network blip must never
+// look like a deletion.
+async function reconcileAmazonState(){
+  if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
+  const reqAccount = CUR_ACCOUNT.id, reqMkt = WS_MARKET;
+  const inCatalog = new Set((LIVE_ITEMS||[]).map(it=>String(it.sku||"").trim().toUpperCase()));
+  const ask = new Set();
+  (ROWS||[]).forEach(function(r){
+    const s = String(r.sku||"").trim();
+    if(s && wasPublished(r) && !inCatalog.has(s.toUpperCase())) ask.add(s);
+  });
+  (LIVE_ITEMS||[]).forEach(function(it){
+    const st = String(it.status||"").toLowerCase();
+    if(it.sku && st.indexOf("active")<0) ask.add(String(it.sku));   // inactive/suppressed/incomplete
+  });
+  if(!ask.size){ return; }
+  try{
+    const j = await (await fetch("/live/reconcile",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount, marketplace:reqMkt, skus:[...ask]})})).json();
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;  // workspace switched
+    if(!j || !j.ok) return;
+    Object.assign(AMZ_STATE, j.by_sku || {});
+    try{ render(); }catch(e){}
+  }catch(e){ /* additive: never break the grid over it */ }
+}
+
+// Remove rows for listings that Amazon no longer has. Destructive and irreversible, so
+// it is a deliberate click, never part of Sync.
+async function removeDeletedRows(){
+  const gone = (ROWS||[]).filter(isDeletedOnAmazon);
+  if(!gone.length){ toast("Nothing to remove"); return; }
+  if(!confirm("Delete "+gone.length+" row(s) from your Google Sheet?\n\n"+
+              gone.map(r=>"  • "+r.sku).join("\n")+
+              "\n\nThese listings no longer exist on Amazon. This cannot be undone.")) return;
+  let done=0, failed=0;
+  for(const r of gone){
+    try{
+      const res = await (await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sku:r.sku, row:r.row})})).json();
+      if(res && res.ok){ done++; delete AMZ_STATE[String(r.sku)]; } else failed++;
+    }catch(e){ failed++; }
+  }
+  toast("Removed "+done+" row(s)"+(failed?(" · "+failed+" failed"):""));
+  loadRows();
+}
 let LIVE_SYNC_TIMER = null;   // auto-sync interval handle
 
 function _liveKey(){ return (CUR_ACCOUNT?CUR_ACCOUNT.id:"")+"::"+(WS_MARKET||""); }
@@ -634,6 +721,26 @@ function setListSource(src){
   }
   else render();
 }
+// Fetch this account's A+ content once per account+marketplace and index it by ASIN.
+// Cheap and cached server-side for 30 min. Never blocks the grid: A+ is decoration on
+// top of the catalog, so a failure here must not hide the listings.
+async function loadAplus(force){
+  if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
+  const reqAccount = CUR_ACCOUNT.id, reqMkt = WS_MARKET;
+  try{
+    const j = await (await fetch("/live/aplus",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount, marketplace:reqMkt, force:!!force})})).json();
+    // guard: the user may have switched workspace while this was in flight
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;
+    if(!j || !j.ok){ APLUS_BY_ASIN = {}; return; }
+    const m = {};
+    Object.keys(j.by_asin||{}).forEach(function(k){ m[String(k).trim().toUpperCase()] = j.by_asin[k]; });
+    APLUS_BY_ASIN = m;
+    try{ render(); }catch(e){}
+    if(DRAWER_SKU){ try{ openDrawer(DRAWER_SKU); }catch(e){} }
+  }catch(e){ /* A+ is additive -- never break the grid over it */ }
+}
+
 async function loadLiveCatalog(force){
   if(!CUR_ACCOUNT){ toast("Live catalog is per Amazon account — open an account workspace"); return; }
   if(!WS_MARKET){ toast("Pick a marketplace first"); return; }
@@ -647,7 +754,7 @@ async function loadLiveCatalog(force){
   const reqAccount=CUR_ACCOUNT.id, reqMkt=WS_MARKET;   // remember what THIS request is for
   // use in-browser cache unless forced -> returning to the page is instant
   if(!force && LIVE_STORE[key]){
-    LIVE_ITEMS=LIVE_STORE[key].items; render(); updateSyncLabel(); return;
+    LIVE_ITEMS=LIVE_STORE[key].items; render(); updateSyncLabel(); loadAplus(false); return;
   }
   const grid=document.getElementById("grid");
   if(grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching live listings from Amazon…<div class="cc" style="margin-top:8px">The first fetch generates a report on Amazon\u2019s side and can take 1\u20134 minutes for larger accounts. After that it\u2019s cached for 30 minutes. Please leave this open.</div></div>';
@@ -670,6 +777,8 @@ async function loadLiveCatalog(force){
       // cache the result but don't render now -- rendering would wipe the panel.
       if(window.RUN_STREAMING){ updateSyncLabel(); startAutoSync(); return; }
       render(); updateSyncLabel(); startAutoSync();
+      loadAplus(!!force);            // fire-and-forget: re-renders when the A+ map lands
+      reconcileAmazonState();        // deleted vs inactive, straight from Amazon
     }
   }catch(e){ if(grid && CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt) grid.innerHTML='<div class="empty">Error: '+esc(String(e))+'</div>'; }
 }
@@ -708,11 +817,22 @@ function _reverifyLiveStatus(){
     setTimeout(()=>{ if(ES===es) finish(); }, 120000);        // safety: never hang forever
   });
 }
+// Toolbar "Refresh". It used to call loadRows() only -- reloading the SHEET and never
+// asking Amazon anything, which is why it looked like it did nothing to live status.
+// Now it also re-checks Amazon's catalog whenever the live group is on screen.
+async function refreshView(){
+  try{ if(typeof loadRows==="function") await loadRows(); }catch(e){}
+  if((LIST_SOURCE==="live"||LIST_SOURCE==="all") && CUR_ACCOUNT && WS_MARKET){
+    await loadLiveCatalog(true);   // force: a cached 30-min catalog would hide new listings
+  }
+}
+
 async function syncLive(){
   toast("Syncing live listings from Amazon…");
   await _reverifyLiveStatus();          // flip submitted rows to LIVE where Amazon has published them
   await loadLiveCatalog(true);          // refresh the LIVE ON AMAZON catalog
-  try{ if(typeof loadRows==="function") loadRows(); }catch(e){}   // refresh the statuses shown in the list
+  try{ if(typeof loadRows==="function") await loadRows(); }catch(e){}   // refresh the statuses shown in the list
+  await reconcileAmazonState();         // and settle deleted / inactive against Amazon
 }
 async function runSpDiagnose(){
   // Run the one-shot SP-API health check for THIS workspace's account +

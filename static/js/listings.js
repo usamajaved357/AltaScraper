@@ -254,19 +254,31 @@ function passFilter(r){
   return true;
 }
 
-// A row is "actually live" if its status is LIVE, OR its SKU/ASIN already
-// exists in the Amazon live catalog. This must return the SAME answer whether
-// called by render() (for grouping) or summary() (for counting) -- otherwise
-// the two drift and the top-bar shows a HOLD count for rows that are actually
-// live on Amazon (a leftover pre-submit status the sheet never updated).
+// Is this row live ON AMAZON? Amazon's catalog is the ONLY authority whenever we
+// have it. A "LIVE" in the sheet is a claim, not proof: the sheet is written by
+// this app, it is never re-read from Amazon, and a misrouted tab once put another
+// account's "LIVE" rows straight into the Live on Amazon group. So when the live
+// catalog is loaded, a row counts as live only if Amazon returned its SKU or ASIN.
+//
+// Without the catalog (the Drafts view never fetches it) we fall back to the
+// sheet's own claim -- and render() labels that group as unverified, rather than
+// captioning it "Live on Amazon".
+//
+// Must return the SAME answer for render() (grouping) and summary() (counting),
+// or the top bar disagrees with the grid.
 function isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown){
   const norm = v => String(v||"").trim().toUpperCase();
-  if(norm(r.status)==="LIVE") return true;
-  if(!liveGroupShown) return false;   // don't reclassify in views without a Live group
   const s=norm(r.sku), a=norm(r.asin);
-  if(s && liveCatSkus.has(s)) return true;
-  if(a && liveCatAsins.has(a)) return true;
-  return false;
+  if(liveGroupShown) return !!((s && liveCatSkus.has(s)) || (a && liveCatAsins.has(a)));
+  return norm(r.status)==="LIVE";
+}
+
+// The sheet SAYS this row is live, but Amazon's catalog does not list it.
+// Only meaningful once the catalog is loaded.
+function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
+  const norm = v => String(v||"").trim().toUpperCase();
+  if(!liveGroupShown) return false;
+  return norm(r.status)==="LIVE" && !isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown);
 }
 
 // Build the SKU/ASIN sets once per render -- reused by summary()
@@ -369,6 +381,43 @@ function _statusDot(r){
   return col;
 }
 // ---- GALLERY TILE ----
+// Is this row confirmed live by AMAZON right now? Used to gate the live-only
+// actions (Optimize, Pull live data). These used to key off r.status === "LIVE",
+// i.e. the sheet's own claim -- so they appeared on rows Amazon had never seen and
+// were missing from rows Amazon HAD published but whose sheet status was stale
+// (e.g. still "SUBMITTED"). Returns false in the Drafts view, where the catalog was
+// never fetched and we genuinely do not know.
+function isAmazonLive(r){
+  const sets = _liveCatSetsForCurrentView();
+  if(!sets.liveGroupShown) return false;
+  return isActuallyLive(r, sets.skus, sets.asins, true);
+}
+
+// A+ content (EBC) for this row, keyed by ASIN. Populated by loadAplus() from
+// /live/aplus. getListingsItem never returns A+ modules -- they live behind Amazon's
+// separate A+ Content API -- which is why the card only ever showed the main and
+// secondary images. Returns [] when the account has no A+ content, or none for this ASIN.
+function aplusFor(r){
+  const a = String((r && r.asin) || "").trim().toUpperCase();
+  if(!a || typeof APLUS_BY_ASIN === "undefined") return [];
+  return APLUS_BY_ASIN[a] || [];
+}
+function aplusImages(r){
+  const out = [];
+  aplusFor(r).forEach(function(d){ (d.images||[]).forEach(function(im){ if(im.url) out.push(im); }); });
+  return out;
+}
+
+// "Inactive" chip carrying Amazon's own reason (out of stock, policy issue, no offer).
+// Only rendered once /live/reconcile has actually asked Amazon about this SKU.
+function _inactiveChip(r){
+  if(typeof amzState !== "function") return "";
+  const st = amzState(r);
+  if(st.state !== "inactive") return "";
+  const why = st.reason || "Amazon reports this listing is not buyable";
+  return `<span class="tileinactive" title="${esc(why)}"><i class="ti ti-alert-circle"></i> Inactive</span>`;
+}
+
 function card(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
@@ -387,6 +436,8 @@ function card(r){
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
       ${issues?'<span class="tileflag" title="Needs review"><i class="ti ti-alert-triangle"></i></span>':''}
+      ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
+      ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
     <div class="tilebody" onclick="openDrawer('${esc(r.sku)}')">
@@ -401,7 +452,8 @@ function card(r){
       <button class="ib gen" title="Image Studio (creative ideas, prompt &amp; image AI)" onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
       <button class="ib" title="Edit / details" onclick="openDrawer('${esc(r.sku)}')"><i class="ti ti-edit"></i></button>
       <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
-      ${String(r.status||"").toUpperCase()==="LIVE" ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:#c8b6ff" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}
+      ${isAmazonLive(r) ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:#c8b6ff" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}
+      ${isAmazonLive(r) ? `<button class="ib" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:#9fe6bd" onclick="event.stopPropagation();pullLiveRow('${esc(r.sku)}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
       <button class="ib more" title="More" onclick="tileMenu(event,'${esc(r.sku)}',${r.row||0})"><i class="ti ti-dots"></i></button>
     </div>
   </div>`;
@@ -497,6 +549,22 @@ function drawerContent(r){
   const urls=_rowImages(r);
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const hero = (urls&&urls.length)?`<div class="heroimg"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.style.display='none'"></div>`:'';
+  // A+ content that is LIVE on Amazon for this ASIN, straight from the A+ Content API.
+  // Grouped per document, because one ASIN can carry more than one.
+  const aplusDocs = aplusFor(r);
+  const aplusHtml = aplusDocs.length ? `
+    <div class="kvsec" style="color:#c8b6ff;margin-top:14px"><i class="ti ti-layout-board"></i> A+ content live on Amazon</div>
+    ${aplusDocs.map(function(d){ return `
+      <div class="aplusdoc">
+        <div class="aplushead">
+          <b>${esc(d.name||'(untitled)')}</b>
+          <span class="livestatus" style="background:#123021;color:#7fd99a">${esc(d.status||'')}</span>
+          <span class="cc">${d.module_count} module(s) · ${(d.images||[]).length} image(s)</span>
+        </div>
+        <div class="aplusimgs">
+          ${(d.images||[]).map(function(im){ return `<a href="${esc(im.url)}" target="_blank" rel="noopener" title="${esc(im.alt||'')} — ${im.w||'?'}x${im.h||'?'} — open full size"><img src="${esc(im.url)}" loading="lazy" alt="${esc(im.alt||'')}" onerror="this.closest('a').style.display='none'"></a>`; }).join("")}
+        </div>
+      </div>`; }).join("")}` : '';
   return `
     <div class="dwhead">
       <div class="dwtop">
@@ -515,7 +583,7 @@ function drawerContent(r){
       <div class="dwactions">
         <button class="suggestbtn" onclick="suggestFields('${esc(r.sku)}')"><i class="ti ti-wand"></i> Suggest missing fields</button>
         <button class="suggestbtn" onclick="refreshSchemaFor('${esc(r.sku)}')" title="Re-fetch Amazon's allowed values so the dropdowns show the latest options. This does NOT pull your listing's data — use 'Pull live data from Amazon' for that."><i class="ti ti-refresh"></i> Refresh dropdown options</button>
-        ${String(r.status||"").toUpperCase()==="LIVE" ? `<button class="suggestbtn" style="background:#123021;border-color:#2c5c3f;color:#9fe6bd" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this LIVE listing's real images from Amazon (main + all secondary images) and show them here"><i class="ti ti-cloud-download"></i> Pull live data from Amazon</button>` : ""}
+        ${isAmazonLive(r) ? `<button class="suggestbtn" style="background:#123021;border-color:#2c5c3f;color:#9fe6bd" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this listing's real IMAGES from Amazon — the main image and every secondary image — and replace the generation-time ones on this row. Does not pull A+ content, title, bullets or price."><i class="ti ti-cloud-download"></i> Pull live images from Amazon</button>` : ""}
         <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
         <button class="genmain" onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
         <button class="pushimg" onclick="pushImageLive('${esc(r.sku)}',this)" title="Send the current main image to the LIVE Amazon listing (updates just the image, no full resubmit)"><i class="ti ti-cloud-upload"></i> Push image to live</button>
@@ -523,13 +591,14 @@ function drawerContent(r){
         <button class="ok" onclick="setStatus('${esc(r.sku)}','APPROVED',this)">Approve</button>
         <button class="prev1" onclick="previewOne('${esc(r.sku)}')" title="Preview this listing against Amazon (no changes sent)"><i class="ti ti-eye"></i> Preview</button>
         <button class="prev1" style="background:#fff;color:#111;border-color:#fff" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-loop: Suggest → Apply → Preview. Repeats until zero errors, or stops if progress stalls (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
-        <button class="submit1" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit this</button>
-        ${String(r.status||"").toUpperCase()==="LIVE" ? `<button class="prev1" style="background:#3a2f5c;color:#e9ddff;border-color:#6b5b9a" onclick="optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')" title="Optimize this LIVE listing's copy — pulls it from Amazon so you can rewrite &amp; push the update"><i class="ti ti-sparkles"></i> Optimize copy</button>` : ""}
+        ${window.WS_READONLY ? `<span class="cc" style="font-size:11.5px;align-self:center"><i class="ti ti-lock"></i> Read-only workspace — cannot publish</span>` : `<button class="submit1" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit this</button>`}
+        ${isAmazonLive(r) ? `<button class="prev1" style="background:#3a2f5c;color:#e9ddff;border-color:#6b5b9a" onclick="optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')" title="Optimize this LIVE listing's copy — pulls it from Amazon so you can rewrite &amp; push the update"><i class="ti ti-sparkles"></i> Optimize copy</button>` : ""}
         <button class="hold" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)">Hold</button>
         <button class="askthis" onclick="askAbout('${esc(r.sku)}')">\u2726 Ask Claude</button>
         ${r.source?`<a class="srcbtn" href="${esc(r.source)}" target="_blank" rel="noopener">source \u2197</a>`:''}
         <button class="del" onclick="delRow('${esc(r.sku)}',${r.row||0},this)">Delete</button>
       </div>
+      ${aplusHtml}
       <div id="suggestbox_${sid(r.sku)}" class="suggestbox"></div>
       <div id="runpanel_${sid(r.sku)}" class="runpanel" style="display:none">
         <div class="runhead"><span class="runtitle"></span><button class="runclose" onclick="window.RUN_STREAMING=false;this.closest('.runpanel').style.display='none'">✕</button></div>

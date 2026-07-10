@@ -104,6 +104,93 @@ def account_creds(account: dict) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Credential scope
+# ---------------------------------------------------------------------------
+# An account with no Amazon developer app of its own (Miles, Headbanger) may
+# BORROW another account's app to read the public catalogue -- product types,
+# item type keywords, valid values, competitor ASIN data, fees. It must never
+# use the lender's credentials for anything seller-scoped, because SP-API has no
+# read-only token: the same refresh token that reads the lender's listings can
+# also overwrite them, and every seller-scoped call is answered for the LENDER's
+# seller id, not the borrower's.
+#
+# Hence one rule, which delivers both guarantees at once:
+#
+#     borrowed credentials -> CATALOGUE scope only.
+#     never seller-scope reads (that is how one workspace saw another's
+#     listings), never writes.
+#
+# CATALOGUE scope : getDefinitionsProductType, searchCatalogItems, fees, pricing
+# SELLER scope    : GET_MERCHANT_LISTINGS_ALL_DATA, getListingsItem, Inventories,
+#                   getMarketplaceParticipations, patchListingsItem/put/delete
+# ---------------------------------------------------------------------------
+
+_PLACEHOLDER_PREFIXES = ("PUT_", "ROTATE", "•", "*")
+
+
+def has_own_creds(account: dict) -> bool:
+    """True when this account can authenticate to Amazon AS ITSELF."""
+    if not account:
+        return False
+    rt = str(account.get("refresh_token") or "").strip()
+    if not rt or rt.startswith(_PLACEHOLDER_PREFIXES):
+        return False
+    return bool(str(account.get("lwa_client_secret") or "").strip())
+
+
+def credentials_source_id(account: dict) -> str:
+    """Id of the account whose Amazon app this one borrows ('' = none)."""
+    return str((account or {}).get("credentials_source_account_id") or "").strip()
+
+
+def is_borrowed(account: dict) -> bool:
+    """This account has no app of its own and is configured to borrow one."""
+    return (not has_own_creds(account)) and bool(credentials_source_id(account))
+
+
+def seller_scope_allowed(account: dict) -> bool:
+    """May we make SELLER-scoped calls for this workspace?
+
+    Only with its own credentials. A borrowed token answers for the LENDER's
+    seller id -- returning the lender's listings, inventory and marketplaces.
+    """
+    return has_own_creds(account)
+
+
+def can_publish(account: dict) -> bool:
+    """May this workspace write to Amazon (submit / patch / push image)?"""
+    if not account:
+        return False
+    if account.get("can_publish") is False:
+        return False
+    return has_own_creds(account)
+
+
+def resolve_catalog_creds(cfg: dict, account: dict, config_path: str = None):
+    """(creds, lender) for CATALOGUE-scope calls. lender is None when the account
+    uses its own app. Raises LookupError when nothing can be resolved -- we never
+    fall back to a global credential block, because that silently runs as whichever
+    account happens to be first in config."""
+    if has_own_creds(account):
+        return account_creds(account), None
+    src = credentials_source_id(account)
+    label = (account or {}).get("label") or (account or {}).get("id") or "This workspace"
+    if not src:
+        raise LookupError(
+            f"{label} has no Amazon developer app, and no account to borrow one from. "
+            f"Open Account & sheets and either connect its own SP-API credentials, or "
+            f"pick an account to borrow catalogue access from.")
+    lender = get_account(cfg, src, config_path)
+    if not lender:
+        raise LookupError(f"{label} borrows credentials from '{src}', which no longer exists.")
+    if not has_own_creds(lender):
+        raise LookupError(
+            f"{label} borrows credentials from "
+            f"'{lender.get('label') or src}', but that account is not connected either.")
+    return account_creds(lender), lender
+
+
 def save_account(cfg: dict, config_path: str, account: dict) -> dict:
     """Add or update an account by id. Returns the saved account."""
     raw = json.load(open(config_path, encoding="utf-8"))

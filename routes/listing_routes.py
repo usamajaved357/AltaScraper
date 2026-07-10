@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 
-def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER, _ANSI, _EDITABLE_COLS, _URL_RE, _VALID_SET_STATUS, _acquire_run_lock, _active_account, _build_patches, _bust_records_cache, _card, _cfg, _client, _drive_folder_id_from_url, _drive_map_get, _drive_map_put, _drive_upload_image, _ebay_creds, _fetch_image_b64, _load_schema, _marketplace_for_row, _media_root, _options_for, _parse_required_missing, _product_types, _records, _resolve_fields, _run_lock, _running, _schema_attrs, _schema_required, _schema_subfields, _sp_creds, _state, _ws):
+def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER, _ANSI, _EDITABLE_COLS, _URL_RE, _VALID_SET_STATUS, _acquire_run_lock, _active_account, _build_patches, _bust_records_cache, _card, _cfg, _client, _drive_folder_id_from_url, _drive_map_get, _drive_map_put, _drive_upload_image, _ebay_creds, _fetch_image_b64, _load_schema, _marketplace_for_row, _media_root, _options_for, _parse_required_missing, _product_types, _records, _resolve_fields, _run_lock, _running, _schema_attrs, _schema_required, _schema_subfields, _sp_creds, _state, _ws, _require_publish=lambda acc=None: acc):
     """Attach the paths:/suggest,/ask,/input_sheet,/row,/rows,/approve,/schema/<path:pt>,/edit,/delete,/clear_empty,/listing/push_image,/run/<mode> routes to the existing Flask app."""
 
     _LIVE_IMG_KEY = re.compile(
@@ -134,6 +134,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         b = request.get_json(force=True) or {}
         if not b.get("confirmed"):
             return jsonify({"ok": False, "error": "not confirmed"}), 400
+        # WRITE (patchListingsItem). A workspace that owns its Amazon app passes
+        # straight through -- this only stops read-only/borrowing workspaces, which
+        # would otherwise patch the LENDER's listing.
+        try:
+            _require_publish()
+        except Exception as _e:
+            return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
         sku = (b.get("sku", "") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "missing sku"}), 400
@@ -660,6 +667,18 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         _req_select = (request.args.get("select") or "").strip()
         _req_select_type = (request.args.get("select_type") or "auto").strip()
         _req_minimal = (request.args.get("minimal") or "") == "1"
+
+        # PUBLISH GATE. api_submit writes to Amazon. A workspace with no Amazon app of
+        # its own must never reach the generator: the generator falls back to the global
+        # sp_api_* credential block, which is jack_uk's -- so a submit from a read-only
+        # workspace would publish into Jack Reacherd's catalogue.
+        if mode in ("api_submit", "api_verify"):
+            try:
+                _require_publish()
+            except Exception as _e:
+                _msg = str(_e).replace("\n", " ")
+                return Response(f"data: [error] {_msg}\n\nevent: end\ndata: end\n\n",
+                                mimetype="text/event-stream")
 
         def stream():
             if not _acquire_run_lock():

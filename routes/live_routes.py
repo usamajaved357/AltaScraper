@@ -7,8 +7,234 @@ from flask import request, jsonify, Response, send_from_directory
 import urllib
 
 
-def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state):
+def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800):
     """Attach the /live routes to the existing Flask app."""
+
+    if _APLUS_CACHE is None:
+        _APLUS_CACHE = {}
+
+    # A+ image references come back as a media-library path, not a URL:
+    #   "uploadDestinationId": "aplus-media-library-service-media/<uuid>.png"
+    # Verified against Amazon: prefixing it with this host returns the real PNG (200,
+    # image/png). Nothing in the API response gives a usable URL directly.
+    _APLUS_IMG_HOST = "https://m.media-amazon.com/images/S/"
+
+    def _aplus_img_url(dest):
+        d = str(dest or "").strip()
+        if not d:
+            return ""
+        if d.startswith("http://") or d.startswith("https://"):
+            return d
+        return _APLUS_IMG_HOST + d.lstrip("/")
+
+    def _aplus_walk_images(node, out):
+        """Collect every image in a content document, whatever module type holds it.
+
+        The document is a contentModuleList of ~25 possible module shapes (standardText,
+        premiumImageCarousel, ...), all but one null per module, each nesting images at a
+        different depth. Rather than hard-code the shapes, walk for any dict carrying an
+        uploadDestinationId -- the one field every image component has.
+        """
+        if isinstance(node, dict):
+            dest = node.get("uploadDestinationId")
+            if dest:
+                size = ((node.get("imageCropSpecification") or {}).get("size") or {})
+                out.append({
+                    "url": _aplus_img_url(dest),
+                    "alt": node.get("altText") or "",
+                    "w": ((size.get("width") or {}).get("value")),
+                    "h": ((size.get("height") or {}).get("value")),
+                })
+            for v in node.values():
+                _aplus_walk_images(v, out)
+        elif isinstance(node, list):
+            for v in node:
+                _aplus_walk_images(v, out)
+        return out
+
+    @app.route("/live/aplus", methods=["POST"])
+    def live_aplus():
+        """A+ content (EBC) for this account's ASINs, straight from Amazon.
+
+        getListingsItem does NOT return A+ modules -- they live behind the separate A+
+        Content API -- which is why the product card only ever showed main + secondary
+        images. Body: {id, marketplace, force}. Returns {ok, by_asin: {asin: {...}}}.
+        """
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        b = request.get_json(force=True) or {}
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        force = bool(b.get("force"))
+        acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
+        if not acc:
+            return jsonify({"ok": False, "error": "account not found"}), 404
+        # SELLER SCOPE: these are the account's OWN A+ documents. A borrowed token would
+        # return the lender's A+ content.
+        if not _acc.seller_scope_allowed(acc):
+            return jsonify({"ok": True, "by_asin": {}, "read_only": True}), 200
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+
+        import time as _t
+        ck = f"{aid}::{mkt}"
+        if not force and ck in _APLUS_CACHE and (_t.time() - _APLUS_CACHE[ck]["ts"] < _APLUS_TTL):
+            return jsonify({"ok": True, "by_asin": _APLUS_CACHE[ck]["by_asin"], "cached": True})
+
+        try:
+            from sp_api.api import AplusContent
+            from sp_api.base import Marketplaces
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"sp_api AplusContent not available: {e}"}), 500
+        mid = _acc.marketplace_id(mkt) or ""
+        try:
+            ap = AplusContent(credentials=_acc.account_creds(acc),
+                              marketplace=getattr(Marketplaces, mkt, None) or Marketplaces.UK,
+                              timeout=60)
+            # 1) every content document on the account (paginated)
+            docs, token = [], None
+            for _ in range(10):
+                kw = {"marketplaceId": mid}
+                if token:
+                    kw["pageToken"] = token
+                r = ap.search_content_documents(**kw)
+                pay = r.payload if hasattr(r, "payload") else r
+                docs.extend((pay or {}).get("contentMetadataRecords", []) or [])
+                token = (pay or {}).get("nextPageToken")
+                if not token:
+                    break
+            by_asin = {}
+            for d in docs:
+                key = d.get("contentReferenceKey")
+                meta = d.get("contentMetadata") or {}
+                if not key:
+                    continue
+                # 2) which ASINs is it attached to?
+                try:
+                    rr = ap.list_content_document_asin_relations(contentReferenceKey=key,
+                                                                 marketplaceId=mid)
+                    rp = rr.payload if hasattr(rr, "payload") else rr
+                    asins = [x.get("asin") for x in (rp or {}).get("asinMetadataSet", []) if x.get("asin")]
+                except Exception:
+                    asins = []
+                if not asins:
+                    continue
+                # 3) the modules + their images
+                try:
+                    dr = ap.get_content_document(contentReferenceKey=key, marketplaceId=mid,
+                                                 includedDataSet=["CONTENTS"])
+                    dp = dr.payload if hasattr(dr, "payload") else dr
+                    doc = ((dp or {}).get("contentRecord") or {}).get("contentDocument") or {}
+                except Exception:
+                    continue
+                mods = doc.get("contentModuleList") or []
+                images = _aplus_walk_images(mods, [])
+                # de-dupe: the same image can appear in several modules
+                seen, uniq = set(), []
+                for im in images:
+                    if im["url"] and im["url"] not in seen:
+                        seen.add(im["url"]); uniq.append(im)
+                entry = {"key": key, "name": doc.get("name") or meta.get("name") or "",
+                         "status": meta.get("status") or "", "module_count": len(mods),
+                         "images": uniq}
+                for a in asins:
+                    by_asin.setdefault(a, []).append(entry)
+            _APLUS_CACHE[ck] = {"ts": _t.time(), "by_asin": by_asin}
+            return jsonify({"ok": True, "by_asin": by_asin, "documents": len(docs), "cached": False})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"A+ Content API failed: {str(e)[:200]}"}), 502
+
+    @app.route("/live/reconcile", methods=["POST"])
+    def live_reconcile():
+        """Ask Amazon, per SKU, what state a listing is REALLY in.
+
+        Body: {id, marketplace, skus:[...]} -> {ok, by_sku: {sku: {...}}}
+
+        Three states, and the important subtlety: Amazon CANNOT tell "deleted" apart
+        from "never existed" -- getListingsItem answers NOT_FOUND for both. Verified
+        against the live account: a SKU our sheet calls LIVE and a SKU our sheet calls
+        API_ERROR return the identical error. So this route only reports `gone`; the
+        caller must combine it with what the SHEET believed:
+
+            sheet said LIVE/SUBMITTED + gone  -> it was published, then deleted
+            sheet said API_ERROR/etc  + gone  -> it was never created; still a draft
+
+        Deciding "deleted" here, without the sheet's belief, would delete drafts.
+        """
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        b = request.get_json(force=True) or {}
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not skus:
+            return jsonify({"ok": True, "by_sku": {}})
+        acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
+        if not acc:
+            return jsonify({"ok": False, "error": "account not found"}), 404
+        if not _acc.seller_scope_allowed(acc):   # getListingsItem answers for the token's seller
+            return jsonify({"ok": True, "by_sku": {}, "read_only": True}), 200
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        try:
+            from sp_api.api import ListingsItemsV20210801 as _LI
+            from sp_api.base import Marketplaces as _MK
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"sp_api unavailable: {e}"}), 500
+        mid = _acc.marketplace_id(mkt) or ""
+        locale = "en_US" if mkt == "US" else "en_GB"
+        li = _LI(credentials=_acc.account_creds(acc),
+                 marketplace=getattr(_MK, mkt, None) or _MK.UK, timeout=60)
+        seller = acc.get("seller_id", "")
+        out = {}
+        for sku in skus[:60]:
+            try:
+                r = li.get_listings_item(seller, sku, marketplaceIds=[mid] if mid else None,
+                                         issueLocale=locale,
+                                         includedData=["summaries", "issues", "fulfillmentAvailability"])
+                p = r.payload if hasattr(r, "payload") else (r or {})
+            except Exception as e:
+                msg = str(e)
+                if "NOT_FOUND" in msg:
+                    out[sku] = {"state": "gone", "reason": "Amazon has no listing with this SKU"}
+                else:
+                    # a transient failure must NOT be read as "deleted"
+                    out[sku] = {"state": "unknown", "reason": f"check failed: {msg[:120]}"}
+                continue
+            s = ((p or {}).get("summaries") or [{}])[0]
+            status = s.get("status") or []
+            issues = (p or {}).get("issues") or []
+            errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
+            fa = (p or {}).get("fulfillmentAvailability") or []
+            qty = None
+            for f in fa:
+                q = f.get("quantity")
+                if isinstance(q, int):
+                    qty = q if qty is None else max(qty, q)
+            buyable = "BUYABLE" in status
+            # Why is it not buyable? Say so in Amazon's own words where we have them.
+            if buyable:
+                reason = ""
+            elif errs:
+                reason = str(errs[0].get("message", ""))[:220]
+            elif qty == 0:
+                reason = "Out of stock (quantity 0)"
+            elif "DISCOVERABLE" in status:
+                reason = "Searchable on Amazon but not currently buyable"
+            else:
+                reason = "Amazon reports no active offer for this listing"
+            out[sku] = {
+                "state": "live" if buyable else "inactive",
+                "status": status, "qty": qty, "reason": reason,
+                "asin": s.get("asin", ""), "title": s.get("itemName", ""),
+                "issues": [{"severity": x.get("severity"), "code": x.get("code"),
+                            "message": str(x.get("message", ""))[:220]} for x in issues[:6]],
+            }
+        return jsonify({"ok": True, "by_sku": out, "checked": len(out)})
 
     @app.route("/live/images", methods=["POST"])
     def live_images():
@@ -28,9 +254,10 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
-        rt = str(acc.get("refresh_token", ""))
-        if not rt or rt.startswith(("PUT_", "ROTATE")):
-            return jsonify({"ok": False, "error": "account not connected"}), 400
+        # SELLER-SCOPE (getListingsItem answers for the token's own seller id).
+        if not _acc.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error":
+                f"{acc.get('label') or aid} has no Amazon account of its own"}), 400
         import time as _t
         out = {}
         statuses = {}
@@ -151,8 +378,14 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
-        rt = str(acc.get("refresh_token", ""))
-        if not rt or rt.startswith(("PUT_", "ROTATE")):
+        # SELLER-SCOPE. A borrowed token authenticates as the LENDER, so this report
+        # would return the lender's listings under this workspace's name. Refuse.
+        if not _acc.seller_scope_allowed(acc):
+            if _acc.is_borrowed(acc):
+                return jsonify({"ok": False, "read_only": True, "error":
+                    f"{acc.get('label') or aid} is a read-only workspace — it has no Amazon "
+                    f"account of its own, so it has no live listings. It borrows catalogue "
+                    f"access only."}), 200
             return jsonify({"ok": False, "error": "account has no real refresh token yet"}), 400
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
@@ -241,6 +474,37 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 except Exception as _e:
                     return jsonify({"ok": False, "error": f"could not download report doc: {_e}"}), 502
             items = _parse_listings_report(text)
+            # GET_MERCHANT_LISTINGS_ALL_DATA returns ACTIVE listings only, so a listing
+            # Amazon has deactivated or suppressed simply vanished from this view -- and
+            # since Amazon is now the sole authority for "live", it would be demoted to
+            # "not confirmed by Amazon". Merge the inactive report so every listing on
+            # the account is shown, each carrying its real status.
+            try:
+                _icr = rc.create_report(reportType="GET_MERCHANT_LISTINGS_INACTIVE_DATA",
+                                        marketplaceIds=[mkt_id] if mkt_id else None)
+                _irid = (_icr.payload or {}).get("reportId") if hasattr(_icr, "payload") else _icr.get("reportId")
+                _idoc = None
+                for _a in range(45):
+                    _ist = rc.get_report(_irid)
+                    _ip = _ist.payload if hasattr(_ist, "payload") else _ist
+                    if _ip.get("processingStatus") == "DONE":
+                        _idoc = _ip.get("reportDocumentId"); break
+                    if _ip.get("processingStatus") in ("CANCELLED", "FATAL"):
+                        break
+                    _t.sleep(2 if _a < 10 else 4)
+                if _idoc:
+                    _id_ = rc.get_report_document(_idoc, download=True)
+                    _idp = _id_.payload if hasattr(_id_, "payload") else _id_
+                    _itext = (_idp or {}).get("document", "") if isinstance(_idp, dict) else ""
+                    _seen = {str(i.get("sku", "")).strip().upper() for i in items}
+                    for _ii in _parse_listings_report(_itext):
+                        if str(_ii.get("sku", "")).strip().upper() in _seen:
+                            continue
+                        _ii["status"] = _ii.get("status") or "Inactive"
+                        items.append(_ii)
+            except Exception as _ie:
+                # never fail the whole catalog because the inactive report misbehaved
+                print(f"[live/catalog] inactive report skipped: {_ie}")
             # enrich each item with COGS + profit estimate
             for it in items:
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))

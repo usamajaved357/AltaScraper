@@ -15,7 +15,7 @@ import re
 from flask import request, jsonify
 
 
-def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches):
+def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish=lambda acc=None: acc):
     """Attach the /optimize/* routes to the existing Flask app."""
 
     @app.route("/optimize/fetch", methods=["POST"])
@@ -237,6 +237,13 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches):
         b = request.get_json(force=True) or {}
         if not b.get("confirmed"):
             return jsonify({"ok": False, "error": "push not confirmed"}), 400
+        # WRITE (patchListingsItem). Connected accounts are unaffected: can_publish()
+        # is true whenever the workspace owns its Amazon app. This refuses only
+        # read-only/borrowing workspaces, whose token belongs to another seller.
+        try:
+            _require_publish()
+        except Exception as _e:
+            return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
         aid = b.get("id", "") or _state.get("active_account_id", "")
         sku = (b.get("sku", "") or "").strip()
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
