@@ -134,6 +134,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         b = request.get_json(force=True) or {}
         if not b.get("confirmed"):
             return jsonify({"ok": False, "error": "not confirmed"}), 400
+        # WRITE (patchListingsItem). A workspace that owns its Amazon app passes
+        # straight through -- this only stops read-only/borrowing workspaces, which
+        # would otherwise patch the LENDER's listing.
+        try:
+            _require_publish()
+        except Exception as _e:
+            return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
         sku = (b.get("sku", "") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "missing sku"}), 400

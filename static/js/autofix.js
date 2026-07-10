@@ -256,8 +256,40 @@ async function autoFixLoop(sku){
       // is code-owned -- Preview is what actually resolves those.
       const codeOwnedCount = roundEntry.suggestions.filter(function(s){ return s.code_owned; }).length;
       if(roundEntry.applied.length === 0 && codeOwnedCount === 0 && state.round > 1){
-        roundEntry.diagnosis = 'Nothing new to apply after round 1 and no code-owned fields to fill. AI has no more suggestions.';
-        panel.stop('Round '+state.round+': nothing new to apply. Stopping.');
+        // Say WHY, using what Amazon actually rejected in the last round that ran a
+        // Preview -- not a bare "AI has no more suggestions", which reads as if the
+        // listing were fine. The previous diagnosis was written before any Preview ran
+        // for THIS round, so it had no evidence behind it at all.
+        roundEntry.preview_skipped = true;
+        const prev = state.trace.slice(0, -1).reverse()
+                       .find(function(x){ return (x.preview_error_fields||[]).length; });
+        const outstanding = prev ? prev.preview_error_fields : [];
+        // Fields auto-fix deliberately never touches: the barcode/GTIN identifiers are
+        // owned by the UPC box + the GTIN-exemption rule, not by the AI. When they are
+        // ALL that is left, the loop can never clear them, and saying "no suggestions"
+        // hides the real blocker.
+        const IDENT = ['externally_assigned_product_identifier','standard_product_id',
+                       'external_product_id','merchant_suggested_asin'];
+        const identOnly = outstanding.length &&
+                          outstanding.every(function(f){ return IDENT.indexOf(f) >= 0; });
+        if(identOnly){
+          roundEntry.diagnosis = 'BLOCKED BY THE BARCODE, not by missing attributes. Amazon '+
+            'still rejects: '+outstanding.join(', ')+'. Auto-fix never edits these — the '+
+            'barcode comes from the Barcode/GTIN box, and Amazon is refusing the value in '+
+            'it. Either supply a GS1-registered barcode, or clear the box to submit under '+
+            'the GTIN exemption. No number of extra rounds will fix this.';
+          panel.stop('Round '+state.round+': blocked by the barcode — see trace');
+        } else if(outstanding.length){
+          roundEntry.diagnosis = 'Amazon still rejects: '+outstanding.join(', ')+'. The AI had '+
+            'no new values to apply for them, and no code-owned fields remain. These need a '+
+            'human decision — open the listing and set them by hand.';
+          panel.stop('Round '+state.round+': '+outstanding.length+' field(s) still rejected — see trace');
+        } else {
+          roundEntry.diagnosis = 'Nothing new to apply after round 1, and the last Preview '+
+            'reported no flagged fields. Either the listing is already clean, or the Preview '+
+            'stream was never parsed — check the raw stream above before trusting this.';
+          panel.stop('Round '+state.round+': nothing new to apply. Stopping.');
+        }
         panel.renderTrace();
         break;
       }
@@ -426,13 +458,20 @@ function _autoFixTraceText(state){
       });
     }
     lines.push('');
-    lines.push('PREVIEW VERDICT: '+r.preview_verdict);
+    // Distinguish "the Preview ran and told us nothing" from "the Preview never ran".
+    // Both used to print `VERDICT: null` + `(no stream lines received)`, which reads
+    // like Amazon returned nothing when in fact we never asked it.
+    lines.push('PREVIEW VERDICT: '+(r.preview_skipped
+      ? 'not run — the loop stopped before previewing (nothing new to apply)'
+      : r.preview_verdict));
     if(r.preview_error_fields && r.preview_error_fields.length){
       lines.push('Amazon flagged ('+r.preview_error_fields.length+'): '+
                   r.preview_error_fields.join(', '));
     }
     lines.push('');
-    lines.push('PREVIEW STREAM (full Amazon response, verbatim):');
+    lines.push(r.preview_skipped
+      ? 'PREVIEW STREAM: (Preview was not run this round — see the previous round for Amazon’s last response)'
+      : 'PREVIEW STREAM (full Amazon response, verbatim):');
     // Include EVERY raw line, not a filtered subset. Filtering was hiding
     // parser mismatches (e.g. verdict `unknown` with an empty filtered view
     // when the stream actually did contain success/error lines the parser
@@ -442,8 +481,8 @@ function _autoFixTraceText(state){
     const raw_all = r.preview_raw_lines || [];
     if(raw_all.length){
       raw_all.forEach(function(x){ lines.push('  | '+x); });
-    } else {
-      lines.push('  (no stream lines received)');
+    } else if(!r.preview_skipped){
+      lines.push('  (no stream lines received — Amazon returned nothing, or the stream died)');
     }
     lines.push('');
     if(r.diagnosis){
@@ -621,7 +660,10 @@ async function bulkAutoFix(){
     skus: skus, done: false, cancelled: false, startedAt: new Date().toISOString(),
     per_sku_states: [],    // one autoFix state per SKU
     current_idx: -1,
-    summary: {ok: 0, stuck: 0, failed: 0},
+    // `not_run` closes the accounting: cleared+stuck+failed+not_run must equal skus.length.
+    // Without it a cancelled batch printed e.g. "cleared=1 stuck=2 failed=13" for 17 SKUs
+    // and silently lost the rest, which reads as a counting bug rather than a cancellation.
+    summary: {ok: 0, stuck: 0, failed: 0, not_run: 0},
   };
   window.BULK_AUTOFIX = batch;
 
@@ -630,7 +672,7 @@ async function bulkAutoFix(){
 
   try{
     for(let i=0; i<skus.length; i++){
-      if(batch.cancelled){ break; }
+      if(batch.cancelled){ batch.summary.not_run = skus.length - i; break; }
       batch.current_idx = i;
       const sku = skus[i];
       panel.step("["+(i+1)+"/"+skus.length+"] "+sku+" — running…");
@@ -693,9 +735,15 @@ function _bulkAutoFixTraceText(batch){
   lines.push('=== BULK AUTO-FIX BATCH TRACE ===');
   lines.push('Started: '+batch.startedAt);
   lines.push('SKUs: '+batch.skus.length);
+  const _accounted = batch.summary.ok + batch.summary.stuck + batch.summary.failed +
+                     (batch.summary.not_run || 0);
   lines.push('Summary: cleared='+batch.summary.ok+
               ' · stuck='+batch.summary.stuck+
-              ' · failed='+batch.summary.failed);
+              ' · failed='+batch.summary.failed+
+              (batch.summary.not_run ? ' · not run (cancelled)='+batch.summary.not_run : '') +
+              (_accounted !== batch.skus.length
+                ? '   [!] '+(batch.skus.length-_accounted)+' SKU(s) unaccounted for — this is a bug'
+                : ''));
   lines.push('');
   batch.per_sku_states.forEach(function(s, idx){
     lines.push('################################################################');

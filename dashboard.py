@@ -2528,7 +2528,7 @@ if __name__ == "__main__":
                                _INV_ALERT_COUNTS=_INV_ALERT_COUNTS, _cfg=_cfg)
     import routes.optimize_routes as _optimize_routes
     _optimize_routes.register(app, _state=_state, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH,
-                              _build_patches=_build_patches)
+                              _build_patches=_build_patches, _require_publish=_require_publish)
     import routes.ppc_routes as _ppc_routes
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,

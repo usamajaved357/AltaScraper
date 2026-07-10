@@ -212,12 +212,22 @@ async function enterAccount(accountId){
   // Refresh inventory alert badge when workspace changes (fire-and-forget)
   if(typeof invBadgeRefresh === 'function') invBadgeRefresh();
   const hasCreds = !!(a.has_creds || (a.refresh_token && !String(a.refresh_token).startsWith("PUT_")));
+  // A read-only workspace owns no Amazon app. It may borrow another account's app to
+  // look up catalogue data while generating, but it has no listings of its own to show
+  // and may never publish. can_publish comes from the backend, which is what actually
+  // enforces it -- this only keeps the UI from offering actions that will be refused.
+  window.WS_READONLY = (a.can_publish === false);
+  window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
   LIVE_ITEMS=[]; LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
   WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
   CUR_SYMBOL = (WS_MARKET==="US"||WS_MARKET==="CA"||WS_MARKET==="MX") ? "$" : ((WS_MARKET==="EU"||["DE","FR","IT","ES","NL"].includes(WS_MARKET)) ? "\u20ac" : "\u00a3");
-  var sw=document.getElementById('srcswitch'); if(sw){ sw.style.display='flex'; sw.querySelectorAll('.mktbtn').forEach(b=>b.classList.toggle('on',b.dataset.src===LIST_SOURCE)); }
+  // A read-only workspace has no live catalog at all -- /live/catalog refuses it --
+  // so don't offer the Live / All / Sync controls that can only fail.
+  var sw=document.getElementById('srcswitch');
+  if(sw){ sw.style.display = (hasCreds && !window.WS_READONLY) ? 'flex' : 'none';
+          sw.querySelectorAll('.mktbtn').forEach(b=>b.classList.toggle('on',b.dataset.src===LIST_SOURCE)); }
   // tell the backend this account is active (all submit/preview use ITS creds).
   // The reply names the exact spreadsheet + tab this workspace is bound to, and
   // lists anything unset -- shown in the header so the data source is never a guess.
@@ -236,7 +246,15 @@ async function enterAccount(accountId){
   const icEl=document.getElementById("ws_ic");
   icEl.style.background=col.bg; icEl.style.color=col.fg; icEl.innerHTML=_initials(a.label);
   document.getElementById("ws_nm").textContent=a.label;
-  document.getElementById("ws_sub").textContent="Amazon account"+(a.seller_id?(" · "+a.seller_id):"");
+  if(window.WS_READONLY){
+    const _lender=(ACCOUNTS||[]).find(x=>x.id===window.WS_CREDS_SOURCE);
+    document.getElementById("ws_sub").innerHTML =
+      '<span style="color:#e3b768;font-weight:600"><i class="ti ti-lock"></i> Read-only</span>'
+      + (_lender ? ' · generating with '+esc(_lender.label)+"'s Amazon app" : ' · no Amazon app')
+      + ' · cannot publish';
+  } else {
+    document.getElementById("ws_sub").textContent="Amazon account"+(a.seller_id?(" · "+a.seller_id):"");
+  }
   document.getElementById("ws_title").textContent="Listings";
   document.getElementById("crumbs").innerHTML=`<span class="sep">/</span><span class="here">${esc(a.label)}</span>`;
   document.getElementById("nav_setup").style.display="flex"; // brand/account setup

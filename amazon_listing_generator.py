@@ -1507,8 +1507,12 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         "- Include a key for EVERY attribute named in SAFETY & COMPLIANCE FIELDS above, picking the\n"
         "  exact string that means Not Applicable / No for an ordinary non-hazardous product.\n"
         "- ALSO include when applicable: number_of_items, included_components, unit_count,\n"
-        "  unit_count_type, number_of_boxes, country_of_origin, is_fragile, item_shape,\n"
+        "  unit_count_type, country_of_origin, is_fragile, item_shape,\n"
         "  special_features, item_condition, colour, material, size.\n"
+        "  (number_of_boxes is deliberately NOT in this list: most product types have no\n"
+        "   such attribute, so Amazon returns a warning for it on every single preview --\n"
+        "   noise the auto-fix loop can never clear. Only include it if it appears in the\n"
+        "   AMAZON-ENFORCED ATTRIBUTE VALUES section above.)\n"
         "HOW TO DETERMINE VALUES:\n"
         "- number_of_items: COUNT from the title/image (e.g. \"15-in-1\" -> 15; a visible set of 4 -> 4).\n"
         "- included_components: list what is actually shown in the box in the images.\n"
@@ -1552,7 +1556,6 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         '    "included_components": "what is in the box, read from the images",\n'
         '    "unit_count":          "numeric value or N/A",\n'
         '    "unit_count_type":     "Count or other accepted unit, or N/A",\n'
-        '    "number_of_boxes":     1,\n'
         '    "is_fragile":          "No",\n'
         '    "item_shape":          "shape from image or N/A",\n'
         '    "special_features":    "from specs/images or N/A",\n'

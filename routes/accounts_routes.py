@@ -229,6 +229,12 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                          "default_marketplace": a.get("default_marketplace", "UK"),
                          "features": a.get("features", []),
                          "has_creds": ready,
+                         # Read-only workspace: no Amazon app of its own. It may borrow
+                         # another account's app for catalogue lookups, but it can never
+                         # read that account's listings nor publish anything.
+                         "can_publish": _acc.can_publish(a),
+                         "is_borrowed": _acc.is_borrowed(a),
+                         "credentials_source_account_id": _acc.credentials_source_id(a),
                          "has_secret": bool(a.get("lwa_client_secret")),
                          "lwa_client_id": a.get("lwa_client_id", ""),
                          # per-account eBay override: expose the App ID (public) and
