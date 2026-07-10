@@ -157,6 +157,43 @@ def _acquire_run_lock():
         return True
 _state    = {"cfg": None, "gc": None, "schemas": {}, "vv": None}
 
+# The selected workspace (the account AND its sheet/tab scope) lived ONLY in the in-memory
+# _state dict, so EVERY restart -- a Render redeploy, an instance recycle -- silently dropped
+# it. _active_account() then fell back to accounts[0] (Jack Reacherd) and _ws() fell back to
+# the default sheet, so the user saw the wrong account's sheets and thought their saved sheet
+# links had "reverted". Persist the selection next to config.json (Render's persistent disk)
+# and restore it on boot, so the chosen workspace survives restarts.
+_ACTIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "app_state.json")
+_ACTIVE_KEYS = ("active_account_id", "active_marketplace", "active_sheet_id",
+                "active_tab", "active_tab_gid", "active_view")
+
+
+def _save_active_state():
+    """Persist the chosen workspace so a restart can't silently switch accounts."""
+    try:
+        data = {k: _state.get(k) for k in _ACTIVE_KEYS if _state.get(k) is not None}
+        with open(_ACTIVE_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def _load_active_state():
+    """Restore the workspace chosen before the last restart. Only fills blanks, so an
+    explicit in-session selection always wins."""
+    try:
+        with open(_ACTIVE_STATE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            for k in _ACTIVE_KEYS:
+                if k in data and not _state.get(k):
+                    _state[k] = data[k]
+    except Exception:
+        pass
+
+
+_load_active_state()   # restore on boot, before any request is served
+
 
 class ConfigError(Exception):
     pass
@@ -2397,7 +2434,8 @@ if __name__ == "__main__":
     _accounts_routes.register(app, _state=_state, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH,
                               _LIVE_CACHE=_LIVE_CACHE,
                               live_catalog=(lambda: app.view_functions["live_catalog"]()),
-                              OUTPUT_TAB=OUTPUT_TAB, ConfigError=ConfigError, _client=_client)
+                              OUTPUT_TAB=OUTPUT_TAB, ConfigError=ConfigError, _client=_client,
+                              _save_active_state=_save_active_state)
     import routes.misc_routes as _misc_routes
     _misc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _active_account=_active_account,
                           _state=_state)

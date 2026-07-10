@@ -16,7 +16,7 @@ from flask import request, jsonify
 
 
 def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
-             OUTPUT_TAB, ConfigError, _client):
+             OUTPUT_TAB, ConfigError, _client, _save_active_state=lambda: None):
     """Attach the /accounts/* routes to the existing Flask app."""
 
     @app.route("/accounts/detect_brands", methods=["POST"])
@@ -240,6 +240,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
             _state["active_tab"] = (str(_c0.get("dropshipping_output_tab") or "").strip() or None)
             _state["active_tab_gid"] = str(_c0.get("dropshipping_output_tab_gid") or "").strip()
             _state["active_view"] = ""
+            _save_active_state()   # persist, so a restart can't silently revert the workspace
             return jsonify({"ok": True, "scope": "dropshipping"})
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
@@ -266,6 +267,7 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                 _resolved_tab = None
         _state["active_tab"] = _resolved_tab or _account_tab_name(acc)
         _state["active_view"] = acc.get("label", aid)
+        _save_active_state()   # persist the chosen workspace so a restart can't revert it
         return jsonify({"ok": True, "scope": "account",
                         "sheet": sid or _cfg().get("google_spreadsheet_id", ""),
                         "tab": _state["active_tab"]})
