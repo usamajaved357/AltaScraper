@@ -2582,6 +2582,7 @@ if __name__ == "__main__":
                              _EDITABLE_COLS=_EDITABLE_COLS, _URL_RE=_URL_RE,
                              _VALID_SET_STATUS=_VALID_SET_STATUS, _acquire_run_lock=_acquire_run_lock,
                              _active_account=_active_account, _build_patches=_build_patches,
+                             _require_publish=_require_publish,
                              _bust_records_cache=_bust_records_cache, _card=_card, _cfg=_cfg,
                              _client=_client, _drive_folder_id_from_url=_drive_folder_id_from_url,
                              _drive_map_get=_drive_map_get, _drive_map_put=_drive_map_put,

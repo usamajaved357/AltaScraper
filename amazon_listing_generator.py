@@ -4365,16 +4365,23 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         put("condition_type", _shape_simple(props["condition_type"], "new_new", mid))
 
     # --- manufacturer / model / part (required by many types) -----------------
-    # Prefer a real value scraped from the competitor; otherwise default to the
-    # brand and the generated model number (falling back to the SKU).
+    # Prefer a real value scraped from the competitor; otherwise the generated model
+    # number from the "Model Number" column.
+    #
+    # It used to fall back to the SKU. Our SKU is price_handlingdays_competitorASIN
+    # (e.g. "12.74_2Days_B00IE769RO"), so listings went live on Amazon with that string
+    # published as their Model Number and Part Number -- exposing our pricing, handling
+    # time and the competitor's ASIN on the public product page. Never publish the SKU
+    # as product data. If we have no real model number, omit the field: it is only
+    # written when the schema exposes it, and Amazon reports it as missing if required,
+    # which is a fixable error rather than permanently-wrong public data.
     model_default = (g("Model Number")
-                     or str(pa.get("model_number") or pa.get("part_number") or "").strip()
-                     or g("SKU"))
+                     or str(pa.get("model_number") or pa.get("part_number") or "").strip())
     if has("manufacturer"):
         put("manufacturer", _shape_simple(props["manufacturer"], pa.get("manufacturer") or brand, mid))
-    if has("model_number"):
+    if has("model_number") and (pa.get("model_number") or model_default):
         put("model_number", _shape_simple(props["model_number"], pa.get("model_number") or model_default, mid))
-    if has("part_number"):
+    if has("part_number") and (pa.get("part_number") or model_default):
         put("part_number", _shape_simple(props["part_number"], pa.get("part_number") or model_default, mid))
 
     # --- offer + fulfillment --------------------------------------------------
@@ -6883,8 +6890,43 @@ async def main():
                     console.print(f"  [yellow]Account-scoped creds:[/yellow] {_acc_obj.get('label','?')} "
                                   f"(seller {_ac.get('seller_id','?')})")
                 else:
-                    console.print(f"  [yellow]Account '{_acc_obj.get('label','?')}' has no SP-API creds "
-                                  "-- using config defaults.[/yellow]")
+                    # This account has no Amazon app of its own. It used to fall through
+                    # to the global sp_api_* block -- which is jack_uk's credentials -- so
+                    # a run (and a SUBMIT) from Miles published into Jack's catalogue.
+                    # Instead: borrow a nominated account's app for CATALOGUE lookups only,
+                    # and refuse to write anything.
+                    _lender_creds, _lender = None, None
+                    try:
+                        _lender_creds, _lender = _acc_mod.resolve_catalog_creds(
+                            config, _acc_obj, str(CONFIG_PATH))
+                    except LookupError as _le:
+                        console.print(f"  [red]{_le}[/red]")
+                        sys.exit(2)
+                    # Strip the LENDER's seller_id. Every seller-scoped call keys off it,
+                    # so leaving it here would let this run read (and putListingsItem
+                    # against) the lender's catalogue. Catalogue calls don't need it.
+                    _lender_creds = dict(_lender_creds)
+                    _lender_creds["seller_id"] = ""
+                    config["_account_creds"] = _lender_creds
+                    config["_read_only"] = True
+                    creds = sp_creds(config)
+                    console.print(
+                        f"  [yellow]READ-ONLY workspace:[/yellow] '{_acc_obj.get('label','?')}' has no "
+                        f"Amazon app of its own. Borrowing '{(_lender or {}).get('label','?')}'s app for "
+                        f"catalogue lookups (product types, item type keyword, valid values, fees).")
+                    console.print(
+                        "  [yellow]It cannot read or change that account's listings, and cannot "
+                        "publish.[/yellow]")
+                    # `api` mode covers preview, verify AND submit. Even VALIDATION_PREVIEW
+                    # calls putListingsItem against a seller_id -- which here would be the
+                    # LENDER's. Refuse the whole mode; generate/miles need no seller.
+                    # (NB: `submit` isn't parsed until later in main(), so test argv.)
+                    if mode == "api":
+                        console.print(f"  [bold red]REFUSED: '{_acc_obj.get('label','?')}' is a read-only "
+                                      f"workspace — it has no Seller Central account, so it cannot "
+                                      f"preview, verify or publish listings. Connect its own SP-API "
+                                      f"credentials to enable this.[/bold red]")
+                        sys.exit(3)
                 # The account is the source of truth for its own marketplace.
                 # default_marketplace first; else the FIRST entry that is US/UK/GB
                 # (never blindly marketplaces[0] -- that can be MX/CA/BR and would
