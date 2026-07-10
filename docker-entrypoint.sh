@@ -37,6 +37,15 @@ fi
 _last_sha=""
 if [ -f "$SEED_STAMP" ]; then
     _last_sha=$(cat "$SEED_STAMP")
+elif [ -f "$CONFIG_PATH" ]; then
+    # FIRST BOOT AFTER THIS CHANGE. A config already exists on the persistent disk, but
+    # no checksum was ever recorded. Treat what is on disk as already-seeded and adopt
+    # the current Secret File's checksum. Without this, _last_sha would be empty, the
+    # checksums would differ, and RESEED_CONFIG=1 would overwrite the live config exactly
+    # once -- the very thing this change exists to prevent.
+    _last_sha="$_seed_sha"
+    [ -n "$_seed_sha" ] && printf '%s' "$_seed_sha" > "$SEED_STAMP"
+    echo "Adopted the existing $CONFIG_PATH (recorded its seed checksum; not reseeding)."
 fi
 
 # Seed when: there is no config at all, OR the Secret File genuinely changed while
