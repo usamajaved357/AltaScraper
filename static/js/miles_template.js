@@ -623,6 +623,9 @@ async function clearEmpty(btn){
 let LIST_SOURCE = "drafts";   // 'drafts' | 'live' | 'all'
 let LIVE_ITEMS = [];          // fetched live Amazon catalog for current account+mkt
 let LIVE_STORE = {};          // cache: "accountid::MKT" -> {items, ts}
+// ASIN -> [A+ document, ...] for the OPEN account+marketplace. A+ modules are not part
+// of getListingsItem; they come from Amazon's separate A+ Content API (/live/aplus).
+let APLUS_BY_ASIN = {};
 let LIVE_SYNC_TIMER = null;   // auto-sync interval handle
 
 function _liveKey(){ return (CUR_ACCOUNT?CUR_ACCOUNT.id:"")+"::"+(WS_MARKET||""); }
@@ -643,6 +646,26 @@ function setListSource(src){
   }
   else render();
 }
+// Fetch this account's A+ content once per account+marketplace and index it by ASIN.
+// Cheap and cached server-side for 30 min. Never blocks the grid: A+ is decoration on
+// top of the catalog, so a failure here must not hide the listings.
+async function loadAplus(force){
+  if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
+  const reqAccount = CUR_ACCOUNT.id, reqMkt = WS_MARKET;
+  try{
+    const j = await (await fetch("/live/aplus",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount, marketplace:reqMkt, force:!!force})})).json();
+    // guard: the user may have switched workspace while this was in flight
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;
+    if(!j || !j.ok){ APLUS_BY_ASIN = {}; return; }
+    const m = {};
+    Object.keys(j.by_asin||{}).forEach(function(k){ m[String(k).trim().toUpperCase()] = j.by_asin[k]; });
+    APLUS_BY_ASIN = m;
+    try{ render(); }catch(e){}
+    if(DRAWER_SKU){ try{ openDrawer(DRAWER_SKU); }catch(e){} }
+  }catch(e){ /* A+ is additive -- never break the grid over it */ }
+}
+
 async function loadLiveCatalog(force){
   if(!CUR_ACCOUNT){ toast("Live catalog is per Amazon account — open an account workspace"); return; }
   if(!WS_MARKET){ toast("Pick a marketplace first"); return; }
@@ -656,7 +679,7 @@ async function loadLiveCatalog(force){
   const reqAccount=CUR_ACCOUNT.id, reqMkt=WS_MARKET;   // remember what THIS request is for
   // use in-browser cache unless forced -> returning to the page is instant
   if(!force && LIVE_STORE[key]){
-    LIVE_ITEMS=LIVE_STORE[key].items; render(); updateSyncLabel(); return;
+    LIVE_ITEMS=LIVE_STORE[key].items; render(); updateSyncLabel(); loadAplus(false); return;
   }
   const grid=document.getElementById("grid");
   if(grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching live listings from Amazon…<div class="cc" style="margin-top:8px">The first fetch generates a report on Amazon\u2019s side and can take 1\u20134 minutes for larger accounts. After that it\u2019s cached for 30 minutes. Please leave this open.</div></div>';
@@ -679,6 +702,7 @@ async function loadLiveCatalog(force){
       // cache the result but don't render now -- rendering would wipe the panel.
       if(window.RUN_STREAMING){ updateSyncLabel(); startAutoSync(); return; }
       render(); updateSyncLabel(); startAutoSync();
+      loadAplus(!!force);   // fire-and-forget: re-renders when the A+ map lands
     }
   }catch(e){ if(grid && CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt) grid.innerHTML='<div class="empty">Error: '+esc(String(e))+'</div>'; }
 }

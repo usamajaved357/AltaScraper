@@ -1009,6 +1009,8 @@ def _sku_dir(sku):
 
 
 
+_APLUS_CACHE = {}  # key "accountid::MKT" -> {"ts":epoch, "by_asin":{asin:[docs]}}
+_APLUS_TTL = 1800  # 30 min. A+ content changes rarely and each refresh is 1+N API calls.
 _LIVE_CACHE = {}   # key "accountid::MKT" -> {"ts":epoch, "items":[...]}
 _LIVE_TTL = 1800   # 30 min (SP-API is free; matches auto-sync cadence)
 _COGS_OVERRIDE = {}  # {"accountid::SKU": cost} manual overrides (also persisted to file)
@@ -2611,7 +2613,8 @@ if __name__ == "__main__":
                           _LIVE_CACHE=_LIVE_CACHE, _LIVE_TTL=_LIVE_TTL, _cfg=_cfg,
                           _estimate_profit=_estimate_profit,
                           _parse_listings_report=_parse_listings_report,
-                          _resolve_cogs=_resolve_cogs, _state=_state)
+                          _resolve_cogs=_resolve_cogs, _state=_state,
+                          _APLUS_CACHE=_APLUS_CACHE, _APLUS_TTL=_APLUS_TTL)
     import routes.dash_auth_routes as _dash_auth_routes
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD)
     app.run(host=HOST, port=PORT, threaded=True)

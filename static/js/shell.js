@@ -218,7 +218,8 @@ async function enterAccount(accountId){
   // enforces it -- this only keeps the UI from offering actions that will be refused.
   window.WS_READONLY = (a.can_publish === false);
   window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
-  LIVE_ITEMS=[]; LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
+  LIVE_ITEMS=[]; APLUS_BY_ASIN={};   // never carry one account's catalog or A+ into another
+  LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
   WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");

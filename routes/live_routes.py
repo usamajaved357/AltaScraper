@@ -7,8 +7,144 @@ from flask import request, jsonify, Response, send_from_directory
 import urllib
 
 
-def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state):
+def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800):
     """Attach the /live routes to the existing Flask app."""
+
+    if _APLUS_CACHE is None:
+        _APLUS_CACHE = {}
+
+    # A+ image references come back as a media-library path, not a URL:
+    #   "uploadDestinationId": "aplus-media-library-service-media/<uuid>.png"
+    # Verified against Amazon: prefixing it with this host returns the real PNG (200,
+    # image/png). Nothing in the API response gives a usable URL directly.
+    _APLUS_IMG_HOST = "https://m.media-amazon.com/images/S/"
+
+    def _aplus_img_url(dest):
+        d = str(dest or "").strip()
+        if not d:
+            return ""
+        if d.startswith("http://") or d.startswith("https://"):
+            return d
+        return _APLUS_IMG_HOST + d.lstrip("/")
+
+    def _aplus_walk_images(node, out):
+        """Collect every image in a content document, whatever module type holds it.
+
+        The document is a contentModuleList of ~25 possible module shapes (standardText,
+        premiumImageCarousel, ...), all but one null per module, each nesting images at a
+        different depth. Rather than hard-code the shapes, walk for any dict carrying an
+        uploadDestinationId -- the one field every image component has.
+        """
+        if isinstance(node, dict):
+            dest = node.get("uploadDestinationId")
+            if dest:
+                size = ((node.get("imageCropSpecification") or {}).get("size") or {})
+                out.append({
+                    "url": _aplus_img_url(dest),
+                    "alt": node.get("altText") or "",
+                    "w": ((size.get("width") or {}).get("value")),
+                    "h": ((size.get("height") or {}).get("value")),
+                })
+            for v in node.values():
+                _aplus_walk_images(v, out)
+        elif isinstance(node, list):
+            for v in node:
+                _aplus_walk_images(v, out)
+        return out
+
+    @app.route("/live/aplus", methods=["POST"])
+    def live_aplus():
+        """A+ content (EBC) for this account's ASINs, straight from Amazon.
+
+        getListingsItem does NOT return A+ modules -- they live behind the separate A+
+        Content API -- which is why the product card only ever showed main + secondary
+        images. Body: {id, marketplace, force}. Returns {ok, by_asin: {asin: {...}}}.
+        """
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        b = request.get_json(force=True) or {}
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        force = bool(b.get("force"))
+        acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
+        if not acc:
+            return jsonify({"ok": False, "error": "account not found"}), 404
+        # SELLER SCOPE: these are the account's OWN A+ documents. A borrowed token would
+        # return the lender's A+ content.
+        if not _acc.seller_scope_allowed(acc):
+            return jsonify({"ok": True, "by_asin": {}, "read_only": True}), 200
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+
+        import time as _t
+        ck = f"{aid}::{mkt}"
+        if not force and ck in _APLUS_CACHE and (_t.time() - _APLUS_CACHE[ck]["ts"] < _APLUS_TTL):
+            return jsonify({"ok": True, "by_asin": _APLUS_CACHE[ck]["by_asin"], "cached": True})
+
+        try:
+            from sp_api.api import AplusContent
+            from sp_api.base import Marketplaces
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"sp_api AplusContent not available: {e}"}), 500
+        mid = _acc.marketplace_id(mkt) or ""
+        try:
+            ap = AplusContent(credentials=_acc.account_creds(acc),
+                              marketplace=getattr(Marketplaces, mkt, None) or Marketplaces.UK,
+                              timeout=60)
+            # 1) every content document on the account (paginated)
+            docs, token = [], None
+            for _ in range(10):
+                kw = {"marketplaceId": mid}
+                if token:
+                    kw["pageToken"] = token
+                r = ap.search_content_documents(**kw)
+                pay = r.payload if hasattr(r, "payload") else r
+                docs.extend((pay or {}).get("contentMetadataRecords", []) or [])
+                token = (pay or {}).get("nextPageToken")
+                if not token:
+                    break
+            by_asin = {}
+            for d in docs:
+                key = d.get("contentReferenceKey")
+                meta = d.get("contentMetadata") or {}
+                if not key:
+                    continue
+                # 2) which ASINs is it attached to?
+                try:
+                    rr = ap.list_content_document_asin_relations(contentReferenceKey=key,
+                                                                 marketplaceId=mid)
+                    rp = rr.payload if hasattr(rr, "payload") else rr
+                    asins = [x.get("asin") for x in (rp or {}).get("asinMetadataSet", []) if x.get("asin")]
+                except Exception:
+                    asins = []
+                if not asins:
+                    continue
+                # 3) the modules + their images
+                try:
+                    dr = ap.get_content_document(contentReferenceKey=key, marketplaceId=mid,
+                                                 includedDataSet=["CONTENTS"])
+                    dp = dr.payload if hasattr(dr, "payload") else dr
+                    doc = ((dp or {}).get("contentRecord") or {}).get("contentDocument") or {}
+                except Exception:
+                    continue
+                mods = doc.get("contentModuleList") or []
+                images = _aplus_walk_images(mods, [])
+                # de-dupe: the same image can appear in several modules
+                seen, uniq = set(), []
+                for im in images:
+                    if im["url"] and im["url"] not in seen:
+                        seen.add(im["url"]); uniq.append(im)
+                entry = {"key": key, "name": doc.get("name") or meta.get("name") or "",
+                         "status": meta.get("status") or "", "module_count": len(mods),
+                         "images": uniq}
+                for a in asins:
+                    by_asin.setdefault(a, []).append(entry)
+            _APLUS_CACHE[ck] = {"ts": _t.time(), "by_asin": by_asin}
+            return jsonify({"ok": True, "by_asin": by_asin, "documents": len(docs), "cached": False})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"A+ Content API failed: {str(e)[:200]}"}), 502
 
     @app.route("/live/images", methods=["POST"])
     def live_images():

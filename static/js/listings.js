@@ -393,6 +393,21 @@ function isAmazonLive(r){
   return isActuallyLive(r, sets.skus, sets.asins, true);
 }
 
+// A+ content (EBC) for this row, keyed by ASIN. Populated by loadAplus() from
+// /live/aplus. getListingsItem never returns A+ modules -- they live behind Amazon's
+// separate A+ Content API -- which is why the card only ever showed the main and
+// secondary images. Returns [] when the account has no A+ content, or none for this ASIN.
+function aplusFor(r){
+  const a = String((r && r.asin) || "").trim().toUpperCase();
+  if(!a || typeof APLUS_BY_ASIN === "undefined") return [];
+  return APLUS_BY_ASIN[a] || [];
+}
+function aplusImages(r){
+  const out = [];
+  aplusFor(r).forEach(function(d){ (d.images||[]).forEach(function(im){ if(im.url) out.push(im); }); });
+  return out;
+}
+
 function card(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
@@ -411,6 +426,7 @@ function card(r){
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
       ${issues?'<span class="tileflag" title="Needs review"><i class="ti ti-alert-triangle"></i></span>':''}
+      ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
     <div class="tilebody" onclick="openDrawer('${esc(r.sku)}')">
@@ -522,6 +538,22 @@ function drawerContent(r){
   const urls=_rowImages(r);
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const hero = (urls&&urls.length)?`<div class="heroimg"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.style.display='none'"></div>`:'';
+  // A+ content that is LIVE on Amazon for this ASIN, straight from the A+ Content API.
+  // Grouped per document, because one ASIN can carry more than one.
+  const aplusDocs = aplusFor(r);
+  const aplusHtml = aplusDocs.length ? `
+    <div class="kvsec" style="color:#c8b6ff;margin-top:14px"><i class="ti ti-layout-board"></i> A+ content live on Amazon</div>
+    ${aplusDocs.map(function(d){ return `
+      <div class="aplusdoc">
+        <div class="aplushead">
+          <b>${esc(d.name||'(untitled)')}</b>
+          <span class="livestatus" style="background:#123021;color:#7fd99a">${esc(d.status||'')}</span>
+          <span class="cc">${d.module_count} module(s) · ${(d.images||[]).length} image(s)</span>
+        </div>
+        <div class="aplusimgs">
+          ${(d.images||[]).map(function(im){ return `<a href="${esc(im.url)}" target="_blank" rel="noopener" title="${esc(im.alt||'')} — ${im.w||'?'}x${im.h||'?'} — open full size"><img src="${esc(im.url)}" loading="lazy" alt="${esc(im.alt||'')}" onerror="this.closest('a').style.display='none'"></a>`; }).join("")}
+        </div>
+      </div>`; }).join("")}` : '';
   return `
     <div class="dwhead">
       <div class="dwtop">
@@ -555,6 +587,7 @@ function drawerContent(r){
         ${r.source?`<a class="srcbtn" href="${esc(r.source)}" target="_blank" rel="noopener">source \u2197</a>`:''}
         <button class="del" onclick="delRow('${esc(r.sku)}',${r.row||0},this)">Delete</button>
       </div>
+      ${aplusHtml}
       <div id="suggestbox_${sid(r.sku)}" class="suggestbox"></div>
       <div id="runpanel_${sid(r.sku)}" class="runpanel" style="display:none">
         <div class="runhead"><span class="runtitle"></span><button class="runclose" onclick="window.RUN_STREAMING=false;this.closest('.runpanel').style.display='none'">✕</button></div>
