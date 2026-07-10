@@ -649,7 +649,7 @@ async function studioRunBackground(kind, jobs, total){
       if(st.status!=="running"){
         clearInterval(STUDIO_POLL); STUDIO_POLL=null;
         const okN=st.results.filter(r=>r.ok).length;
-        prog.innerHTML='<span style="color:#7fd99a">✓ Done — '+okN+'/'+st.total+' succeeded. <b>All generated images were auto-saved to each product\u2019s media library</b> (Image refs), so they\u2019re safe even if you close this.</span>'
+        prog.innerHTML='<span style="color:#7fd99a">✓ Done — '+okN+'/'+st.total+' succeeded. <b>All generated images were saved to this account\u2019s media library</b> (Image refs) on the app\u2019s own storage \u2014 safe across redeploys, no Google Drive needed.</span>'
           + (st.error?(' <span style="color:#e0696b">'+esc(st.error)+'</span>'):'');
       } else {
         prog.innerHTML='<span class="genspin"></span> Generating '+st.done+'/'+st.total+' in background… <span class="cc">each finished image is auto-saved to its media library; safe to close or keep working.</span>';

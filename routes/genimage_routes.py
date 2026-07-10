@@ -95,6 +95,15 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         if not jobs:
             return jsonify({"ok": False, "error": "no jobs"}), 400
         label = (b.get("label", "") or "").strip()[:80]
+        # Stamp the ACTIVE account onto every job NOW, at enqueue time. The background
+        # worker used to read _state["active_account_id"] when each image FINISHED --
+        # so a redeploy or a workspace switch mid-batch (the in-memory state is wiped or
+        # changed) filed the image under the wrong account, or under the shared root
+        # where the owning workspace never showed it. Capturing it here pins each image
+        # to the workspace it was generated for.
+        _acct_now = _state.get("active_account_id", "") or ""
+        for jb in jobs:
+            jb.setdefault("_acct_id", _acct_now)
         # a lightweight plan (label + concept per job) so the UI can show every
         # planned image and its status from the very start, not just as they finish.
         plan = [{"label": jb.get("label", ""), "sku": jb.get("sku", ""),

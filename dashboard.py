@@ -1546,25 +1546,44 @@ def _run_img_jobs_bg_inner(jid, jobs, kind):
                                 fname = f"{_asin}.{_code}.{ext}"
                             else:
                                 fname = f"generated_{int(_t.time()*1000)}.{ext}"
-                            _dir = _sku_dir(sku)
+                            # Use the account captured when the batch was ENQUEUED, not
+                            # whatever is active now -- a background job can finish after
+                            # a redeploy or a workspace switch, and reading _state here is
+                            # what misfiled images (and lost the user's A+ content).
+                            _aid = str(job.get("_acct_id", "") or _state.get("active_account_id", "") or "")
+                            _acct_root = _account_media_root(_aid) if _aid else _media_root()
+                            _dir = os.path.join(_acct_root, _safe_sku(sku))
                             if _sub:
                                 _dir = os.path.join(_dir, *_sub.split("/"))
-                                os.makedirs(_dir, exist_ok=True)
+                            os.makedirs(_dir, exist_ok=True)
                             _full = os.path.join(_dir, fname)
                             with open(_full, "wb") as f:
                                 f.write(raw_bytes)
-                            _aid = _state.get("active_account_id", "") or ""
                             _pfx = f"/media/_acct/{_safe_sku(_aid)}" if _aid else "/media"
                             _subpart = f"{_sub}/" if _sub else ""
                             saved_url = f"{_pfx}/{_safe_sku(sku)}/{_subpart}{fname}"
                             data["saved_url"] = saved_url
-                            # mirror to Drive under the same subpath, make public, map it
+                            data["saved_to_disk"] = True   # the persistent copy that survives redeploys
+                            # OPTIONAL mirror to Drive. Drive is a nice-to-have backup, not
+                            # required: the image is already safe on the persistent disk
+                            # above. So "no Drive folder" is a normal state, not an error --
+                            # surfacing it as drive_error made the UI look like the save
+                            # failed when it fully succeeded on disk.
                             try:
-                                acc = _active_account()
+                                # the account that OWNS this image (captured at enqueue),
+                                # not whichever workspace is active now
+                                acc = None
+                                if _aid:
+                                    try:
+                                        import accounts as _accmod
+                                        acc = _accmod.get_account(_cfg(), _aid, CONFIG_PATH)
+                                    except Exception:
+                                        acc = None
+                                acc = acc or _active_account()
                                 folder = (acc or {}).get("drive_folder_url", "")
-                                parent_id = _drive_folder_id_from_url(folder)
+                                parent_id = _drive_folder_id_from_url(folder) if folder else ""
                                 if not parent_id:
-                                    data["drive_error"] = "no Drive folder set for this account"
+                                    data["drive_skipped"] = "no Drive folder configured (optional)"
                                 else:
                                     _prod = ""
                                     try:
