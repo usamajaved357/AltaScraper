@@ -680,6 +680,31 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 return jsonify({"ok": False, "error": f"image gen failed: {res.get('error','')}",
                                 "generated": len(images)}), 400
 
+        # Persist every generated image to the media library so this bulk path is as
+        # safe as the Studio batch: without this, a live-listing set was returned to the
+        # screen only (lost on reload) and a draft set lived only as a base64 blob in the
+        # sheet. Saved under the first selected SKU's "secondary" folder, account-scoped.
+        # Additive: what gets written to the row / submitted is unchanged.
+        try:
+            _aid0 = _state.get("active_account_id", "") or ""
+            _first = _safe_sku(skus[0])
+            _secdir = os.path.join(_sku_dir(skus[0]), "secondary")
+            os.makedirs(_secdir, exist_ok=True)
+            import time as _t0
+            for _i, _img in enumerate(images, start=1):
+                if not str(_img).startswith("data:"):
+                    continue   # a remote URL: nothing local to write
+                try:
+                    _head, _, _raw = _img.partition(",")
+                    _mime = (re.search(r"data:([^;]+)", _head) or [None, "image/png"])[1]
+                    _ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(_mime, "png")
+                    with open(os.path.join(_secdir, f"secondary_{int(_t0.time()*1000)}_{_i}.{_ext}"), "wb") as _f:
+                        _f.write(_b64.b64decode(_raw))
+                except Exception:
+                    pass
+        except Exception:
+            pass   # library save is a safety net; never fail generation over it
+
         # LIVE listings aren't sheet rows -> just return the generated images for
         # the user to download and upload via Amazon Manage Images.
         if live:
