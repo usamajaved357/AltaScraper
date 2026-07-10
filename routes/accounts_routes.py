@@ -268,9 +268,26 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         _state["active_tab"] = _resolved_tab or _account_tab_name(acc)
         _state["active_view"] = acc.get("label", aid)
         _save_active_state()   # persist the chosen workspace so a restart can't revert it
+        # Tell the browser EXACTLY which sheet + tab this workspace is bound to, and
+        # whether that binding is incomplete -- so it can show the data source in the
+        # header and warn instead of the app quietly reading someone else's tab.
+        _in_sid = str(acc.get("input_spreadsheet_id") or "").strip()
+        _in_gid = str(acc.get("input_tab_gid") or "").strip()
+        _missing = []
+        if not sid:
+            _missing.append("output sheet")
+        elif not (_state["active_tab_gid"].isdigit() or _state["active_tab"]):
+            _missing.append("output tab")
+        if not _in_sid:
+            _missing.append("input sheet")
         return jsonify({"ok": True, "scope": "account",
-                        "sheet": sid or _cfg().get("google_spreadsheet_id", ""),
-                        "tab": _state["active_tab"]})
+                        "sheet": sid,
+                        "tab": _state["active_tab"],
+                        "tab_gid": _state["active_tab_gid"],
+                        "input_sheet": _in_sid,
+                        "input_tab_gid": _in_gid,
+                        "missing": _missing,
+                        "scope_ok": not _missing})
 
 
     def _account_tab_name(acc):
@@ -280,16 +297,18 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         empty/wrong tab:
           1. _tab_override  -> explicit tab (e.g. a brand tab)
           2. output tab resolved from output_tab_gid (handled by the caller)
-          3. the generator's marketplace default -> "Listings v7.0 US" for a US
-             account, else "Listings v7.0 UK". (NOT the account label, which would
-             point at a non-existent tab and show no listings.)
+          3. nothing -- "" means NOT CONFIGURED.
+
+        It used to fall back to the marketplace default ("Listings v7.0 UK" / "US").
+        That was wrong: those tabs are shared, and hold whichever account was set up
+        first. An account with no output_tab_gid therefore silently displayed another
+        account's listings, and a Submit would have published them under the wrong
+        Amazon seller. _ws() now raises SheetScopeError on "" so the user is told to
+        set the tab in Account & sheets, rather than the app guessing for them.
         """
         if acc.get("_tab_override"):
             return acc["_tab_override"]
-        _mkt = str(acc.get("default_marketplace") or "").upper()
-        if _mkt == "US":
-            return "Listings v7.0 US"
-        return OUTPUT_TAB   # "Listings v7.0 UK"
+        return ""
 
 
     @app.route("/accounts/save", methods=["POST"])

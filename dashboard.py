@@ -198,6 +198,18 @@ _load_active_state()   # restore on boot, before any request is served
 class ConfigError(Exception):
     pass
 
+
+class SheetScopeError(Exception):
+    """An account workspace has no output sheet/tab configured.
+
+    Raised instead of falling back to the shared default sheet + OUTPUT_TAB.
+    That tab holds whichever account was configured first, so the fallback
+    showed one account's listings under another's name -- and a Submit there
+    would have published them under the wrong Amazon seller.
+    """
+    pass
+
+
 def _cfg() -> dict:
     if _state["cfg"] is None:
         try:
@@ -227,8 +239,28 @@ def _ws():
     # exact tab the generator writes to), then by name. If it doesn't exist yet,
     # auto-create it so accounts never silently fall back to another's listings.
     sid = _state.get("active_sheet_id") or _cfg()["google_spreadsheet_id"]
-    tab = _state.get("active_tab") or OUTPUT_TAB
+    tab = str(_state.get("active_tab") or "").strip()
     gid = str(_state.get("active_tab_gid") or "").strip()
+
+    # An ACCOUNT workspace must never fall back to the shared default sheet/tab:
+    # that tab belongs to the first-configured account. Refuse and tell the user
+    # what to set. Dropshipping (no active_account_id) keeps the historic default.
+    _aid = _state.get("active_account_id")
+    _who = _state.get("active_view") or _aid
+    if _aid:
+        if not _state.get("active_sheet_id"):
+            raise SheetScopeError(
+                f"{_who} has no output sheet configured, so nothing was read or written. "
+                f"Open Account & sheets and paste this account's output Google Sheets link. "
+                f"The app will not fall back to another account's sheet.")
+        if not gid.isdigit() and not tab:
+            raise SheetScopeError(
+                f"{_who} has no output tab configured, so nothing was read or written. "
+                f"Open Account & sheets and paste the output sheet link with the correct tab "
+                f"open, so the URL ends in '#gid=...'. The app will not fall back to the shared "
+                f"'{OUTPUT_TAB}' tab, which holds another account's listings.")
+    if not tab:
+        tab = OUTPUT_TAB
     try:
         book = _client().open_by_key(sid)
         if gid.isdigit():
@@ -252,8 +284,14 @@ def _ws():
         if header:
             ws.update("A1", [header])
         return ws
-    except Exception:
-        # last resort: default sheet/tab (keeps app alive; only hit if creation fails)
+    except Exception as e:
+        # An account workspace must fail loudly rather than serve the shared tab.
+        if _aid:
+            raise SheetScopeError(
+                f"Could not open or create tab '{tab}' in sheet {sid} for {_who} ({e}). "
+                f"Check the output sheet link in Account & sheets, and that the service "
+                f"account has edit access. Nothing was read or written.")
+        # last resort (dropshipping only): default sheet/tab, keeps the app alive
         return _client().open_by_key(_cfg()["google_spreadsheet_id"]).worksheet(OUTPUT_TAB)
 
 
