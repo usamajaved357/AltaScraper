@@ -378,9 +378,19 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         # account routes its listings to the correct spreadsheet + tab
         for k in ("input_sheet_url", "output_sheet_url", "input_spreadsheet_id",
                   "input_tab_gid", "output_tab_gid", "drive_folder_url",
-                  "uk_responsible_person", "ebay_app_id"):
+                  "uk_responsible_person", "ebay_app_id",
+                  # Which connected account lends its Amazon app for CATALOGUE lookups
+                  # when this workspace has none of its own. "" = none. Settable here so
+                  # a read-only workspace can be configured in the app rather than by
+                  # editing config.json on the server, which the UI can never reach.
+                  "credentials_source_account_id"):
             if k in b:
                 acct[k] = b.get(k, acct.get(k, ""))
+        # A lender is only meaningful for an account with no Amazon app of its own; and
+        # borrowing NEVER grants publish rights (accounts.can_publish keys off
+        # has_own_creds). Refuse to point an account at itself.
+        if str(acct.get("credentials_source_account_id") or "").strip() == str(acct.get("id") or "").strip():
+            acct["credentials_source_account_id"] = ""
         # Re-derive sheet id + tab gid FROM THE URL, server-side. Two failures this
         # closes: (1) the browser's parsed value never arrives (or arrives stale) and
         # the tab silently blanks; (2) re-saving a form whose URL lost its "#gid="

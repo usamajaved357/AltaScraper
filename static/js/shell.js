@@ -396,6 +396,17 @@ function openAccountEditor(id){
       <tr><td class="k">RP email</td><td class="v"><input class="ed" id="ac_rp_email" value="${esc((a.uk_responsible_person||{}).email||'')}" placeholder="contact@…"></td></tr>
       <tr><td class="k">RP phone</td><td class="v"><input class="ed" id="ac_rp_phone" value="${esc((a.uk_responsible_person||{}).phone||'')}" placeholder="+44…"></td></tr>
       <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
+      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-lock"></i> No Amazon account of its own?</div><div class="cc" style="font-size:11.5px">If this workspace has no SP-API credentials above, it can borrow another account's Amazon app to look up <b>catalogue data only</b> — product types, item type keywords, valid values, fees. It can <b>never</b> read that account's listings or inventory, and it can <b>never</b> publish. Leave as "none" for a normal, connected account.</div></td></tr>
+      <tr><td class="k">Borrow Amazon app from</td><td class="v">
+        <select class="ed" id="ac_creds_source">
+          <option value="">none — this account uses its own Amazon app</option>
+          ${(ACCOUNTS||[]).filter(x=>x.id!==a.id && x.has_creds).map(x=>
+            `<option value="${esc(x.id)}" ${a.credentials_source_account_id===x.id?'selected':''}>${esc(x.label)}</option>`).join("")}
+        </select>
+        <div class="cc" style="font-size:11px;margin-top:3px">${a.can_publish===false
+          ? '<span style="color:#e3b768"><i class="ti ti-lock"></i> This workspace is read-only: it can generate listings, but not preview, verify or publish them.</span>'
+          : 'This account can publish to Amazon.'}</div>
+      </td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials</div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row.</div></td></tr>
       <tr><td class="k">eBay account</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -512,6 +523,8 @@ async function saveAccount(){
     },
     input_spreadsheet_id:inP.id, input_tab_gid:inP.gid,
     output_spreadsheet_id:outP.id, output_tab_gid:outP.gid,
+    // "" = this account uses its own Amazon app (or has none at all)
+    credentials_source_account_id:((document.getElementById("ac_creds_source")||{}).value||""),
     // per-account eBay override (blank = fall back to the global eBay creds)
     ebay_app_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
     ebay_cert_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
