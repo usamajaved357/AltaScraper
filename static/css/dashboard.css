@@ -363,6 +363,9 @@
   .tileaplus{position:absolute;top:8px;left:8px;background:#3a2f5c;color:#e9ddff;
              border:1px solid #6b5b9a;border-radius:6px;font-size:10px;font-weight:700;
              padding:2px 6px;letter-spacing:.04em;line-height:1.4}
+  .tileinactive{position:absolute;bottom:8px;left:8px;background:#3a1d1d;color:#ff8a8a;
+                border:1px solid #5c2424;border-radius:6px;font-size:10px;font-weight:700;
+                padding:2px 6px;display:inline-flex;align-items:center;gap:3px;line-height:1.4}
   .aplusdoc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
   .aplushead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
              font-size:12.5px;margin-bottom:8px}

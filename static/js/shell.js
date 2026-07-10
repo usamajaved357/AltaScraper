@@ -218,7 +218,7 @@ async function enterAccount(accountId){
   // enforces it -- this only keeps the UI from offering actions that will be refused.
   window.WS_READONLY = (a.can_publish === false);
   window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
-  LIVE_ITEMS=[]; APLUS_BY_ASIN={};   // never carry one account's catalog or A+ into another
+  LIVE_ITEMS=[]; APLUS_BY_ASIN={}; AMZ_STATE={};   // never carry one account's data into another
   LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
@@ -387,8 +387,8 @@ function openAccountEditor(id){
       <tr><td class="k">Refresh token</td><td class="v"><input class="ed" id="ac_refresh" type="password" placeholder="${a.has_creds?'•••••• (leave blank to keep)':'paste refresh token'}"></td></tr>
       <tr><td class="k">Primary marketplace</td><td class="v"><select class="ed" id="ac_marketplace"><option value="UK"${(a.default_marketplace||'UK')==='UK'?' selected':''}>UK — amazon.co.uk (GBP)</option><option value="US"${(a.default_marketplace||'')==='US'?' selected':''}>US — amazon.com (USD)</option></select><div class="cc" style="font-size:11px;margin-top:2px">Drives pricing, fees, SP-API and the flat-file route for this account's listings.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-table"></i> Google Sheets for this account</div><div class="cc" style="font-size:11.5px">Paste the <b>full Google Sheets link</b> (with the tab open). The app reads the spreadsheet ID and the tab (gid) from the URL — so each account's US/UK listings go to the right place.</div></td></tr>
-      <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ac_input_url" value="${esc(a.input_sheet_url||'')}" oninput="_showParsed('ac_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
-      <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ac_output_url" value="${esc(a.output_sheet_url||'')}" oninput="_showParsed('ac_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
+      <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ac_input_url" value="${esc(a.input_sheet_url||'')}" oninput="_showParsed('ac_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div>${_savedSheetLine('Currently saved', a.input_sheet_url, a.input_tab_gid)}</td></tr>
+      <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ac_output_url" value="${esc(a.output_sheet_url||'')}" oninput="_showParsed('ac_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div>${_savedSheetLine('Currently saved', a.output_sheet_url, a.output_tab_gid)}</td></tr>
       <tr><td class="k">Drive image folder URL <span class="cc">(image storage)</span></td><td class="v"><input class="ed" id="ac_drive_url" value="${esc(a.drive_folder_url||'')}" placeholder="https://drive.google.com/drive/folders/…"><div class="cc" id="ac_drive_share" style="font-size:11px;margin-top:3px">Generated images upload here into per-product <code>SKU_ProductName</code> subfolders. <b>Share this folder (Editor) with the service account</b> shown below, or uploads will be denied.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shield-check"></i> UK Responsible Person <span class="cc">(only needed for Amazon.co.uk listings)</span></div><div class="cc" style="font-size:11.5px">Selling on Amazon.co.uk from outside the UK legally requires a UK Responsible Person (name + real UK address + contact). Fill this once and every UK listing inherits it. Leave blank for US-only — US listings are unaffected.</div></td></tr>
       <tr><td class="k">RP legal name</td><td class="v"><input class="ed" id="ac_rp_name" value="${esc((a.uk_responsible_person||{}).name||'')}" placeholder="e.g. FLIPX LTD"></td></tr>
@@ -455,6 +455,20 @@ function parseSheetUrl(u){
   if(g){ gid=g[1]; }
   return {id:id, gid:gid};
 }
+// The exact link the app has on disk for this account, spelled out and clickable.
+// Previously the only clue was whatever happened to be inside the text box, so an
+// account with a spreadsheet id but no stored URL looked like it had nothing saved.
+function _savedSheetLine(label, url, gid){
+  const u = String(url||"").trim();
+  if(!u) return `<div class="cc" style="font-size:11px;margin-top:3px"><span class="missing">Nothing saved yet</span></div>`;
+  const tab = String(gid||"").trim();
+  return `<div class="cc" style="font-size:11px;margin-top:3px;word-break:break-all">`
+       + `${esc(label)}: <a href="${esc(u)}" target="_blank" rel="noopener" style="color:#7fd0ff">${esc(u)}</a>`
+       + (tab ? ` <code style="opacity:.75">(tab gid ${esc(tab)})</code>`
+              : ` <span class="missing">— no tab (#gid=…) in this link</span>`)
+       + `</div>`;
+}
+
 function _showParsed(boxId, url){
   const p=parseSheetUrl(url); const el=document.getElementById(boxId);
   if(!el) return;

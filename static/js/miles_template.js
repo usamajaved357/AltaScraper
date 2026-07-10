@@ -450,7 +450,7 @@ function render(){
   const grid=document.getElementById("grid");
   const list=ROWS.filter(passFilter);
   const empties=list.filter(isEmptyRow);
-  const realAll=list.filter(r=>!isEmptyRow(r));
+  let realAll=list.filter(r=>!isEmptyRow(r));
   const _norm = v => String(v||"").trim().toUpperCase();
   // Use the shared isActuallyLive() so render() and summary() ALWAYS agree.
   // Before this fix, render() had inline logic while summary() did not, so a
@@ -463,14 +463,25 @@ function render(){
   const _liveGroupShown = sets.liveGroupShown;
   const _isActuallyLive = r => isActuallyLive(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
   const _isClaimedOnly  = r => isClaimedLiveOnly(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
+  // Listings we published that Amazon no longer has. Hidden from the grid entirely --
+  // they are not drafts and they are not live. Never auto-deleted from the sheet.
+  const goneRows = realAll.filter(isDeletedOnAmazon);
+  if(goneRows.length){ realAll = realAll.filter(r=>!isDeletedOnAmazon(r)); }
   const liveRows = realAll.filter(r=> _isActuallyLive(r));
   // Rows whose sheet says LIVE but Amazon never returned them. They are NOT live;
   // they get their own group instead of being smuggled into "Live on Amazon".
   const claimedRows = realAll.filter(_isClaimedOnly);
   const real     = realAll.filter(r=>!_isActuallyLive(r) && !_isClaimedOnly(r));
-  const note = empties.length
+  const note = (empties.length
     ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them from the sheet</button></div>`
-    : "";
+    : "")
+    + (goneRows.length
+    ? `<div class="emptynote" style="border-color:#5c2424;color:#ff8a8a">
+         ${goneRows.length} listing${goneRows.length>1?'s were':' was'} deleted on Amazon and ${goneRows.length>1?'are':'is'} hidden here
+         (${goneRows.slice(0,3).map(r=>esc(r.sku)).join(', ')}${goneRows.length>3?', …':''}) —
+         <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} from the sheet</button>
+       </div>`
+    : "");
   // SOURCE: drafts (app rows) / live (Amazon catalog) / all (both)
   let draftHtml = real.length ? real.map(card).join("") : "";
   // DEDUPE: the same SKU can exist BOTH as an app row marked LIVE and as an
@@ -626,6 +637,70 @@ let LIVE_STORE = {};          // cache: "accountid::MKT" -> {items, ts}
 // ASIN -> [A+ document, ...] for the OPEN account+marketplace. A+ modules are not part
 // of getListingsItem; they come from Amazon's separate A+ Content API (/live/aplus).
 let APLUS_BY_ASIN = {};
+
+// SKU -> what Amazon says the listing REALLY is: {state:'live'|'inactive'|'gone'|'unknown',
+// reason, status, qty}. Filled by /live/reconcile for the rows Amazon's catalog didn't
+// return, plus any catalog tile that isn't Active.
+let AMZ_STATE = {};
+
+// Statuses that mean "this app believes it published this listing". Amazon cannot tell a
+// deleted listing from one that never existed -- getListingsItem answers NOT_FOUND for
+// both (verified on the live account). Only the sheet knows which it was, so ONLY these
+// rows may be treated as deleted when Amazon says NOT_FOUND. Everything else is a draft.
+const _PUBLISHED_STATES = new Set(["LIVE", "SUBMITTED"]);
+function amzState(r){ return AMZ_STATE[String((r&&r.sku)||"")] || {}; }
+function wasPublished(r){ return _PUBLISHED_STATES.has(String((r&&r.status)||"").trim().toUpperCase()); }
+// Published by us, and Amazon no longer has it -> deleted on Amazon.
+function isDeletedOnAmazon(r){ return wasPublished(r) && amzState(r).state === "gone"; }
+
+// Ask Amazon about every listing whose real state we can't infer from the catalog:
+//   * rows we published that the catalog didn't return  -> live / inactive / gone?
+//   * catalog tiles that came back as anything but Active -> why?
+// A transient failure returns state 'unknown', never 'gone' -- a network blip must never
+// look like a deletion.
+async function reconcileAmazonState(){
+  if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
+  const reqAccount = CUR_ACCOUNT.id, reqMkt = WS_MARKET;
+  const inCatalog = new Set((LIVE_ITEMS||[]).map(it=>String(it.sku||"").trim().toUpperCase()));
+  const ask = new Set();
+  (ROWS||[]).forEach(function(r){
+    const s = String(r.sku||"").trim();
+    if(s && wasPublished(r) && !inCatalog.has(s.toUpperCase())) ask.add(s);
+  });
+  (LIVE_ITEMS||[]).forEach(function(it){
+    const st = String(it.status||"").toLowerCase();
+    if(it.sku && st.indexOf("active")<0) ask.add(String(it.sku));   // inactive/suppressed/incomplete
+  });
+  if(!ask.size){ return; }
+  try{
+    const j = await (await fetch("/live/reconcile",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount, marketplace:reqMkt, skus:[...ask]})})).json();
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;  // workspace switched
+    if(!j || !j.ok) return;
+    Object.assign(AMZ_STATE, j.by_sku || {});
+    try{ render(); }catch(e){}
+  }catch(e){ /* additive: never break the grid over it */ }
+}
+
+// Remove rows for listings that Amazon no longer has. Destructive and irreversible, so
+// it is a deliberate click, never part of Sync.
+async function removeDeletedRows(){
+  const gone = (ROWS||[]).filter(isDeletedOnAmazon);
+  if(!gone.length){ toast("Nothing to remove"); return; }
+  if(!confirm("Delete "+gone.length+" row(s) from your Google Sheet?\n\n"+
+              gone.map(r=>"  • "+r.sku).join("\n")+
+              "\n\nThese listings no longer exist on Amazon. This cannot be undone.")) return;
+  let done=0, failed=0;
+  for(const r of gone){
+    try{
+      const res = await (await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sku:r.sku, row:r.row})})).json();
+      if(res && res.ok){ done++; delete AMZ_STATE[String(r.sku)]; } else failed++;
+    }catch(e){ failed++; }
+  }
+  toast("Removed "+done+" row(s)"+(failed?(" · "+failed+" failed"):""));
+  loadRows();
+}
 let LIVE_SYNC_TIMER = null;   // auto-sync interval handle
 
 function _liveKey(){ return (CUR_ACCOUNT?CUR_ACCOUNT.id:"")+"::"+(WS_MARKET||""); }
@@ -702,7 +777,8 @@ async function loadLiveCatalog(force){
       // cache the result but don't render now -- rendering would wipe the panel.
       if(window.RUN_STREAMING){ updateSyncLabel(); startAutoSync(); return; }
       render(); updateSyncLabel(); startAutoSync();
-      loadAplus(!!force);   // fire-and-forget: re-renders when the A+ map lands
+      loadAplus(!!force);            // fire-and-forget: re-renders when the A+ map lands
+      reconcileAmazonState();        // deleted vs inactive, straight from Amazon
     }
   }catch(e){ if(grid && CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt) grid.innerHTML='<div class="empty">Error: '+esc(String(e))+'</div>'; }
 }
@@ -755,7 +831,8 @@ async function syncLive(){
   toast("Syncing live listings from Amazon…");
   await _reverifyLiveStatus();          // flip submitted rows to LIVE where Amazon has published them
   await loadLiveCatalog(true);          // refresh the LIVE ON AMAZON catalog
-  try{ if(typeof loadRows==="function") loadRows(); }catch(e){}   // refresh the statuses shown in the list
+  try{ if(typeof loadRows==="function") await loadRows(); }catch(e){}   // refresh the statuses shown in the list
+  await reconcileAmazonState();         // and settle deleted / inactive against Amazon
 }
 async function runSpDiagnose(){
   // Run the one-shot SP-API health check for THIS workspace's account +

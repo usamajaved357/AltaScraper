@@ -408,6 +408,16 @@ function aplusImages(r){
   return out;
 }
 
+// "Inactive" chip carrying Amazon's own reason (out of stock, policy issue, no offer).
+// Only rendered once /live/reconcile has actually asked Amazon about this SKU.
+function _inactiveChip(r){
+  if(typeof amzState !== "function") return "";
+  const st = amzState(r);
+  if(st.state !== "inactive") return "";
+  const why = st.reason || "Amazon reports this listing is not buyable";
+  return `<span class="tileinactive" title="${esc(why)}"><i class="ti ti-alert-circle"></i> Inactive</span>`;
+}
+
 function card(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
@@ -427,6 +437,7 @@ function card(r){
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
       ${issues?'<span class="tileflag" title="Needs review"><i class="ti ti-alert-triangle"></i></span>':''}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
+      ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
     <div class="tilebody" onclick="openDrawer('${esc(r.sku)}')">

@@ -210,6 +210,25 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         except ConfigError as e:
             return jsonify({"ok": False, "error": str(e), "config_error": True}), 200
         al = _acc.load_accounts(cfg, CONFIG_PATH)
+
+        def _sheet_url(a, which):
+            """The account's sheet link, ALWAYS shown, never blank when we know the ids.
+
+            An account can carry output_spreadsheet_id + output_tab_gid with no stored
+            output_sheet_url (config edited by hand, or an older save). The editor then
+            rendered an empty box, which looked like "the app forgot my sheet" -- so
+            rebuild the canonical link from the parts we do have.
+            """
+            stored = str(a.get(f"{which}_sheet_url") or "").strip()
+            if stored:
+                return stored
+            sid = str(a.get(f"{which}_spreadsheet_id") or "").strip()
+            if not sid:
+                return ""
+            gid = str(a.get(f"{which}_tab_gid") or "").strip()
+            return (f"https://docs.google.com/spreadsheets/d/{sid}/edit"
+                    + (f"#gid={gid}" if gid else ""))
+
         safe = []
         for a in al:
             rt = str(a.get("refresh_token", ""))
@@ -219,8 +238,8 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                          "marketplaces": a.get("marketplaces", []),
                          "brands": a.get("brands", []),
                          "output_spreadsheet_id": a.get("output_spreadsheet_id", ""),
-                         "input_sheet_url": a.get("input_sheet_url", ""),
-                         "output_sheet_url": a.get("output_sheet_url", ""),
+                         "input_sheet_url": _sheet_url(a, "input"),
+                         "output_sheet_url": _sheet_url(a, "output"),
                          "drive_folder_url": a.get("drive_folder_url", ""),
                          "uk_responsible_person": a.get("uk_responsible_person", {}),
                          "input_spreadsheet_id": a.get("input_spreadsheet_id", ""),

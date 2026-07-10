@@ -146,6 +146,96 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception as e:
             return jsonify({"ok": False, "error": f"A+ Content API failed: {str(e)[:200]}"}), 502
 
+    @app.route("/live/reconcile", methods=["POST"])
+    def live_reconcile():
+        """Ask Amazon, per SKU, what state a listing is REALLY in.
+
+        Body: {id, marketplace, skus:[...]} -> {ok, by_sku: {sku: {...}}}
+
+        Three states, and the important subtlety: Amazon CANNOT tell "deleted" apart
+        from "never existed" -- getListingsItem answers NOT_FOUND for both. Verified
+        against the live account: a SKU our sheet calls LIVE and a SKU our sheet calls
+        API_ERROR return the identical error. So this route only reports `gone`; the
+        caller must combine it with what the SHEET believed:
+
+            sheet said LIVE/SUBMITTED + gone  -> it was published, then deleted
+            sheet said API_ERROR/etc  + gone  -> it was never created; still a draft
+
+        Deciding "deleted" here, without the sheet's belief, would delete drafts.
+        """
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        b = request.get_json(force=True) or {}
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not skus:
+            return jsonify({"ok": True, "by_sku": {}})
+        acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
+        if not acc:
+            return jsonify({"ok": False, "error": "account not found"}), 404
+        if not _acc.seller_scope_allowed(acc):   # getListingsItem answers for the token's seller
+            return jsonify({"ok": True, "by_sku": {}, "read_only": True}), 200
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        try:
+            from sp_api.api import ListingsItemsV20210801 as _LI
+            from sp_api.base import Marketplaces as _MK
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"sp_api unavailable: {e}"}), 500
+        mid = _acc.marketplace_id(mkt) or ""
+        locale = "en_US" if mkt == "US" else "en_GB"
+        li = _LI(credentials=_acc.account_creds(acc),
+                 marketplace=getattr(_MK, mkt, None) or _MK.UK, timeout=60)
+        seller = acc.get("seller_id", "")
+        out = {}
+        for sku in skus[:60]:
+            try:
+                r = li.get_listings_item(seller, sku, marketplaceIds=[mid] if mid else None,
+                                         issueLocale=locale,
+                                         includedData=["summaries", "issues", "fulfillmentAvailability"])
+                p = r.payload if hasattr(r, "payload") else (r or {})
+            except Exception as e:
+                msg = str(e)
+                if "NOT_FOUND" in msg:
+                    out[sku] = {"state": "gone", "reason": "Amazon has no listing with this SKU"}
+                else:
+                    # a transient failure must NOT be read as "deleted"
+                    out[sku] = {"state": "unknown", "reason": f"check failed: {msg[:120]}"}
+                continue
+            s = ((p or {}).get("summaries") or [{}])[0]
+            status = s.get("status") or []
+            issues = (p or {}).get("issues") or []
+            errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
+            fa = (p or {}).get("fulfillmentAvailability") or []
+            qty = None
+            for f in fa:
+                q = f.get("quantity")
+                if isinstance(q, int):
+                    qty = q if qty is None else max(qty, q)
+            buyable = "BUYABLE" in status
+            # Why is it not buyable? Say so in Amazon's own words where we have them.
+            if buyable:
+                reason = ""
+            elif errs:
+                reason = str(errs[0].get("message", ""))[:220]
+            elif qty == 0:
+                reason = "Out of stock (quantity 0)"
+            elif "DISCOVERABLE" in status:
+                reason = "Searchable on Amazon but not currently buyable"
+            else:
+                reason = "Amazon reports no active offer for this listing"
+            out[sku] = {
+                "state": "live" if buyable else "inactive",
+                "status": status, "qty": qty, "reason": reason,
+                "asin": s.get("asin", ""), "title": s.get("itemName", ""),
+                "issues": [{"severity": x.get("severity"), "code": x.get("code"),
+                            "message": str(x.get("message", ""))[:220]} for x in issues[:6]],
+            }
+        return jsonify({"ok": True, "by_sku": out, "checked": len(out)})
+
     @app.route("/live/images", methods=["POST"])
     def live_images():
         """Fetch real main images for a batch of SKUs via getListingsItem (summaries
