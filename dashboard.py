@@ -1157,7 +1157,15 @@ def _fetch_fba_inventory_via_spapi(marketplace: str) -> dict:
     except ImportError as e:
         return {"ok": False, "by_sku": {}, "error": f"sp_api Inventories not available: {e}",
                 "warnings": []}
-    creds = _sp_creds(marketplace)
+    # SELLER SCOPE. The Inventories API answers for the TOKEN's own seller. This used
+    # _sp_creds(), the CATALOGUE resolver -- which for a borrowing workspace returns the
+    # lender's token, so Miles' Inventory page would have listed Shee'lady's FBA stock
+    # (and, before the borrow existed, whatever the global sp_api_* block pointed at,
+    # i.e. Jack's). Demand the workspace's own credentials.
+    try:
+        creds, _ = _seller_creds()
+    except AccountScopeError as e:
+        return {"ok": False, "by_sku": {}, "error": str(e), "warnings": []}
     mkt_id = "ATVPDKIKX0DER" if str(marketplace).upper() == "US" else "A1F83G8C2ARO7P"
     mkt = getattr(Marketplaces, "US" if str(marketplace).upper() == "US" else "UK",
                    Marketplaces.UK)
