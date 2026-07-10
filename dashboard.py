@@ -32,7 +32,7 @@ try:
 except Exception:
     image_gen = None
 
-from flask import Flask, Response, request, jsonify, session, redirect, url_for
+from flask import Flask, Response, request, jsonify, session, redirect, url_for, send_from_directory
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -84,6 +84,44 @@ app.secret_key = os.environ.get("APP_SECRET_KEY") or os.urandom(32)
 _APP_PASSWORD = os.environ.get("APP_PASSWORD")
 
 
+# --- PUBLIC image serving (so Amazon can fetch generated images WITHOUT Drive) ---
+# Amazon fetches listing images by URL; it never accepts uploaded bytes. The app's
+# own /media/<path> route sits behind the login gate, so Amazon can't reach it --
+# which is the ONLY reason the app used to require a Google Drive folder (to get a
+# public URL). Instead, serve the SAME file at a login-exempt URL carrying an HMAC
+# token of its path, so the link is unguessable but needs no auth. Product images are
+# public on Amazon anyway; the token only stops the media tree from being enumerable.
+import hmac as _hmac
+import hashlib as _hashlib
+
+def _img_token(relpath: str) -> str:
+    key = app.secret_key if isinstance(app.secret_key, bytes) else str(app.secret_key).encode()
+    return _hmac.new(key, ("pubimg:" + str(relpath)).encode("utf-8"), _hashlib.sha256).hexdigest()[:24]
+
+def _public_media_url(media_url: str) -> str:
+    """Turn a local '/media/<relpath>' path into a full, public, Amazon-fetchable URL.
+    Returns '' if it isn't a local media path or no base URL can be determined."""
+    m = re.match(r"^/media/(.+)$", str(media_url or ""))
+    if not m:
+        return ""
+    relpath = m.group(1)
+    if ".." in relpath:
+        return ""
+    base = (os.environ.get("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+    if not base:
+        try:
+            base = request.host_url.rstrip("/")
+        except Exception:
+            base = ""
+    if not base:
+        return ""
+    # Amazon requires https for image locators; force it (Render terminates TLS).
+    if base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    from urllib.parse import quote as _q
+    return f"{base}/img/{_img_token(relpath)}/{_q(relpath)}"
+
+
 
 
 
@@ -94,10 +132,30 @@ _APP_PASSWORD = os.environ.get("APP_PASSWORD")
 def _require_login():
     if not _APP_PASSWORD:
         return  # no password configured (local dev) -> gate disabled
-    if request.endpoint in ("_login", "_healthz", "static"):
+    # _pubimg is intentionally public: it serves a single image whose URL already
+    # embeds a valid HMAC token, so Amazon (and only holders of the token) can fetch it.
+    if request.endpoint in ("_login", "_healthz", "static", "_pubimg"):
         return
     if not session.get("authed"):
         return redirect(url_for("_login"))
+
+
+@app.route("/img/<token>/<path:relpath>")
+def _pubimg(token, relpath):
+    """PUBLIC (login-exempt) image serving for Amazon. The URL must carry a valid
+    HMAC token for exactly this path, so the media tree can't be enumerated."""
+    try:
+        if not _hmac.compare_digest(str(token), _img_token(relpath)):
+            return ("forbidden", 403)
+    except Exception:
+        return ("forbidden", 403)
+    if ".." in relpath or relpath.startswith("/"):
+        return ("bad path", 400)
+    root = _media_root()
+    full = os.path.normpath(os.path.join(root, relpath))
+    if not full.startswith(os.path.normpath(root)) or not os.path.isfile(full):
+        return ("not found", 404)
+    return send_from_directory(root, relpath, max_age=86400)
 
 
 @app.errorhandler(500)
@@ -1546,25 +1604,44 @@ def _run_img_jobs_bg_inner(jid, jobs, kind):
                                 fname = f"{_asin}.{_code}.{ext}"
                             else:
                                 fname = f"generated_{int(_t.time()*1000)}.{ext}"
-                            _dir = _sku_dir(sku)
+                            # Use the account captured when the batch was ENQUEUED, not
+                            # whatever is active now -- a background job can finish after
+                            # a redeploy or a workspace switch, and reading _state here is
+                            # what misfiled images (and lost the user's A+ content).
+                            _aid = str(job.get("_acct_id", "") or _state.get("active_account_id", "") or "")
+                            _acct_root = _account_media_root(_aid) if _aid else _media_root()
+                            _dir = os.path.join(_acct_root, _safe_sku(sku))
                             if _sub:
                                 _dir = os.path.join(_dir, *_sub.split("/"))
-                                os.makedirs(_dir, exist_ok=True)
+                            os.makedirs(_dir, exist_ok=True)
                             _full = os.path.join(_dir, fname)
                             with open(_full, "wb") as f:
                                 f.write(raw_bytes)
-                            _aid = _state.get("active_account_id", "") or ""
                             _pfx = f"/media/_acct/{_safe_sku(_aid)}" if _aid else "/media"
                             _subpart = f"{_sub}/" if _sub else ""
                             saved_url = f"{_pfx}/{_safe_sku(sku)}/{_subpart}{fname}"
                             data["saved_url"] = saved_url
-                            # mirror to Drive under the same subpath, make public, map it
+                            data["saved_to_disk"] = True   # the persistent copy that survives redeploys
+                            # OPTIONAL mirror to Drive. Drive is a nice-to-have backup, not
+                            # required: the image is already safe on the persistent disk
+                            # above. So "no Drive folder" is a normal state, not an error --
+                            # surfacing it as drive_error made the UI look like the save
+                            # failed when it fully succeeded on disk.
                             try:
-                                acc = _active_account()
+                                # the account that OWNS this image (captured at enqueue),
+                                # not whichever workspace is active now
+                                acc = None
+                                if _aid:
+                                    try:
+                                        import accounts as _accmod
+                                        acc = _accmod.get_account(_cfg(), _aid, CONFIG_PATH)
+                                    except Exception:
+                                        acc = None
+                                acc = acc or _active_account()
                                 folder = (acc or {}).get("drive_folder_url", "")
-                                parent_id = _drive_folder_id_from_url(folder)
+                                parent_id = _drive_folder_id_from_url(folder) if folder else ""
                                 if not parent_id:
-                                    data["drive_error"] = "no Drive folder set for this account"
+                                    data["drive_skipped"] = "no Drive folder configured (optional)"
                                 else:
                                     _prod = ""
                                     try:
@@ -2597,6 +2674,7 @@ if __name__ == "__main__":
                              _client=_client, _drive_folder_id_from_url=_drive_folder_id_from_url,
                              _drive_map_get=_drive_map_get, _drive_map_put=_drive_map_put,
                              _drive_upload_image=_drive_upload_image, _ebay_creds=_ebay_creds,
+                             _public_media_url=_public_media_url,
                              _fetch_image_b64=_fetch_image_b64, _load_schema=_load_schema,
                              _marketplace_for_row=_marketplace_for_row, _media_root=_media_root,
                              _options_for=_options_for, _parse_required_missing=_parse_required_missing,

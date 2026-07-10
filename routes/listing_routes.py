@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 
-def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER, _ANSI, _EDITABLE_COLS, _URL_RE, _VALID_SET_STATUS, _acquire_run_lock, _active_account, _build_patches, _bust_records_cache, _card, _cfg, _client, _drive_folder_id_from_url, _drive_map_get, _drive_map_put, _drive_upload_image, _ebay_creds, _fetch_image_b64, _load_schema, _marketplace_for_row, _media_root, _options_for, _parse_required_missing, _product_types, _records, _resolve_fields, _run_lock, _running, _schema_attrs, _schema_required, _schema_subfields, _sp_creds, _state, _ws, _require_publish=lambda acc=None: acc):
+def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER, _ANSI, _EDITABLE_COLS, _URL_RE, _VALID_SET_STATUS, _acquire_run_lock, _active_account, _build_patches, _bust_records_cache, _card, _cfg, _client, _drive_folder_id_from_url, _drive_map_get, _drive_map_put, _drive_upload_image, _ebay_creds, _fetch_image_b64, _load_schema, _marketplace_for_row, _media_root, _options_for, _parse_required_missing, _product_types, _records, _resolve_fields, _run_lock, _running, _schema_attrs, _schema_required, _schema_subfields, _sp_creds, _state, _ws, _require_publish=lambda acc=None: acc, _public_media_url=lambda u: ""):
     """Attach the paths:/suggest,/ask,/input_sheet,/row,/rows,/approve,/schema/<path:pt>,/edit,/delete,/clear_empty,/listing/push_image,/run/<mode> routes to the existing Flask app."""
 
     _LIVE_IMG_KEY = re.compile(
@@ -190,28 +190,38 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 fpath = os.path.normpath(os.path.join(_media_root(), relpath))
                 if not fpath.startswith(os.path.normpath(_media_root())) or not os.path.exists(fpath):
                     return jsonify({"ok": False, "error": "main image file not found on disk"}), 400
+                # Prefer Drive if the account has a folder (kept as an optional mirror);
+                # otherwise serve the image publicly from the app itself. Drive is no
+                # longer required to publish an image to Amazon.
                 acc0 = _active_account()
                 folder = (acc0 or {}).get("drive_folder_url", "")
-                parent_id = _drive_folder_id_from_url(folder)
-                if not parent_id:
-                    return jsonify({"ok": False, "error": "no Drive folder set for this account — can't make the image public for Amazon"}), 400
-                try:
-                    _prodttl = ""
+                parent_id = _drive_folder_id_from_url(folder) if folder else ""
+                if parent_id:
                     try:
-                        _rec2 = next((r for r in _records(_ws())
-                                      if str(r.get("SKU", "")).strip() == sku), None)
-                        _prodttl = (_rec2 or {}).get("Title", "") or ""
-                    except Exception:
                         _prodttl = ""
-                    res = _drive_upload_image(parent_id, sku, _prodttl, fpath,
-                                              filename=os.path.basename(fpath))
-                    public_url = res.get("direct_url", "")
-                    if res.get("id"):
-                        _drive_map_put(img, {"drive_id": res.get("id"),
-                                             "direct_url": res.get("direct_url", ""),
-                                             "view_url": res.get("view_url", "")})
-                except Exception as e:
-                    return jsonify({"ok": False, "error": f"could not upload image to Drive: {str(e)[:160]}"}), 502
+                        try:
+                            _rec2 = next((r for r in _records(_ws())
+                                          if str(r.get("SKU", "")).strip() == sku), None)
+                            _prodttl = (_rec2 or {}).get("Title", "") or ""
+                        except Exception:
+                            _prodttl = ""
+                        res = _drive_upload_image(parent_id, sku, _prodttl, fpath,
+                                                  filename=os.path.basename(fpath))
+                        public_url = res.get("direct_url", "")
+                        if res.get("id"):
+                            _drive_map_put(img, {"drive_id": res.get("id"),
+                                                 "direct_url": res.get("direct_url", ""),
+                                                 "view_url": res.get("view_url", "")})
+                    except Exception:
+                        public_url = ""   # fall through to the public app URL
+                if not public_url:
+                    public_url = _public_media_url(img)
+                    if not public_url:
+                        return jsonify({"ok": False, "error":
+                            "could not build a public URL for this image. On the server, set the "
+                            "PUBLIC_BASE_URL environment variable to your app's address "
+                            "(e.g. https://altascraper.onrender.com) so Amazon can fetch generated "
+                            "images without Google Drive."}), 400
         if not public_url:
             return jsonify({"ok": False, "error": "could not resolve a public image URL for Amazon"}), 400
 
