@@ -19,6 +19,26 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
              OUTPUT_TAB, ConfigError, _client, _save_active_state=lambda: None):
     """Attach the /accounts/* routes to the existing Flask app."""
 
+    import re as _re
+    _SHEET_ID_RE = _re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
+    _SHEET_GID_RE = _re.compile(r"[#&?]gid=([0-9]+)")
+
+    def _parse_sheet_url(url):
+        """(spreadsheet_id, tab_gid) from a full Sheets link, or a bare ID.
+
+        Handles both ...?gid=123 and ...#gid=123 (Google now emits both at once).
+        The URL is the single source of truth -- the browser also parses it, but the
+        server must not TRUST that: a stale or absent parsed field would silently blank
+        the tab, and a blank tab used to send the account to the shared default tab.
+        """
+        u = str(url or "").strip()
+        if not u:
+            return "", ""
+        m = _SHEET_ID_RE.search(u)
+        sid = m.group(1) if m else (u if _re.fullmatch(r"[a-zA-Z0-9_-]{20,}", u) else "")
+        g = _SHEET_GID_RE.search(u)
+        return sid, (g.group(1) if g else "")
+
     @app.route("/accounts/detect_brands", methods=["POST"])
     def accounts_detect_brands():
         """Best-effort: derive the brands actually used on this account by reading the
@@ -336,6 +356,27 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                   "uk_responsible_person", "ebay_app_id"):
             if k in b:
                 acct[k] = b.get(k, acct.get(k, ""))
+        # Re-derive sheet id + tab gid FROM THE URL, server-side. Two failures this
+        # closes: (1) the browser's parsed value never arrives (or arrives stale) and
+        # the tab silently blanks; (2) re-saving a form whose URL lost its "#gid="
+        # (Drive's "Copy link" drops it) wrote "" straight over a good gid, because the
+        # whitelist above treats an empty string as a value. If the URL carries no gid
+        # but still points at the SAME spreadsheet, keep the gid we already had.
+        for _url_k, _sid_k, _gid_k in (("output_sheet_url", "output_spreadsheet_id", "output_tab_gid"),
+                                       ("input_sheet_url", "input_spreadsheet_id", "input_tab_gid")):
+            _u = str(acct.get(_url_k) or "").strip()
+            if not _u:
+                continue
+            _sid, _gid = _parse_sheet_url(_u)
+            if _sid:
+                acct[_sid_k] = _sid
+            if _gid:
+                acct[_gid_k] = _gid
+            elif not str(acct.get(_gid_k) or "").strip():
+                _old_gid = str(existing.get(_gid_k) or "").strip()
+                _old_sid = str(existing.get(_sid_k) or "").strip()
+                if _old_gid and _sid and _sid == _old_sid:
+                    acct[_gid_k] = _old_gid
         if b.get("default_marketplace"):
             acct["default_marketplace"] = str(b["default_marketplace"]).strip().upper()
         if isinstance(b.get("brands"), list):
