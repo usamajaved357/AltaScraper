@@ -717,6 +717,16 @@ function _reverifyLiveStatus(){
     setTimeout(()=>{ if(ES===es) finish(); }, 120000);        // safety: never hang forever
   });
 }
+// Toolbar "Refresh". It used to call loadRows() only -- reloading the SHEET and never
+// asking Amazon anything, which is why it looked like it did nothing to live status.
+// Now it also re-checks Amazon's catalog whenever the live group is on screen.
+async function refreshView(){
+  try{ if(typeof loadRows==="function") await loadRows(); }catch(e){}
+  if((LIST_SOURCE==="live"||LIST_SOURCE==="all") && CUR_ACCOUNT && WS_MARKET){
+    await loadLiveCatalog(true);   // force: a cached 30-min catalog would hide new listings
+  }
+}
+
 async function syncLive(){
   toast("Syncing live listings from Amazon…");
   await _reverifyLiveStatus();          // flip submitted rows to LIVE where Amazon has published them

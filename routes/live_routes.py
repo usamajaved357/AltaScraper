@@ -28,9 +28,10 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
-        rt = str(acc.get("refresh_token", ""))
-        if not rt or rt.startswith(("PUT_", "ROTATE")):
-            return jsonify({"ok": False, "error": "account not connected"}), 400
+        # SELLER-SCOPE (getListingsItem answers for the token's own seller id).
+        if not _acc.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error":
+                f"{acc.get('label') or aid} has no Amazon account of its own"}), 400
         import time as _t
         out = {}
         statuses = {}
@@ -151,8 +152,14 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
-        rt = str(acc.get("refresh_token", ""))
-        if not rt or rt.startswith(("PUT_", "ROTATE")):
+        # SELLER-SCOPE. A borrowed token authenticates as the LENDER, so this report
+        # would return the lender's listings under this workspace's name. Refuse.
+        if not _acc.seller_scope_allowed(acc):
+            if _acc.is_borrowed(acc):
+                return jsonify({"ok": False, "read_only": True, "error":
+                    f"{acc.get('label') or aid} is a read-only workspace — it has no Amazon "
+                    f"account of its own, so it has no live listings. It borrows catalogue "
+                    f"access only."}), 200
             return jsonify({"ok": False, "error": "account has no real refresh token yet"}), 400
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400

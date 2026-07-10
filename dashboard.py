@@ -295,34 +295,54 @@ def _ws():
         return _client().open_by_key(_cfg()["google_spreadsheet_id"]).worksheet(OUTPUT_TAB)
 
 
+class AccountScopeError(Exception):
+    """This workspace may not make the call that was attempted.
+
+    Either no workspace is selected, or the workspace has no Amazon app of its own
+    and the call is seller-scoped (it would be answered for the LENDER's seller id)
+    or a write (it would modify the lender's catalogue).
+    """
+    pass
+
+
 def _active_account():
-    """The account (workspace) currently in focus, or None."""
+    """The account (workspace) currently in focus, or None.
+
+    It used to fall back to accounts[0] when nothing was selected. accounts[0] is
+    jack_uk, whose credentials are byte-identical to the legacy global sp_api_*
+    block -- so ANY request that arrived without a workspace silently ran as Jack
+    Reacherd, against Jack's sheet and Jack's Amazon account. Return None instead;
+    the callers now refuse rather than guess.
+    """
     try:
         import accounts as _acc
         aid = _state.get("active_account_id")
-        if aid:
-            a = _acc.get_account(_cfg(), aid, CONFIG_PATH)
-            if a:
-                return a
-        # fall back to first account
-        al = _acc.load_accounts(_cfg(), CONFIG_PATH)
-        return al[0] if al else None
+        if not aid:
+            return None
+        return _acc.get_account(_cfg(), aid, CONFIG_PATH) or None
     except Exception:
         return None
 
 
 def _sp_creds(marketplace: str = "UK") -> dict:
-    # ACCOUNT-AWARE: if a workspace (account) is active, use ITS credentials --
-    # never infer the account from marketplace. Marketplace only selects the
-    # marketplace_id within that one account.
+    """CATALOGUE-scope credentials: product-type definitions, item type keywords,
+    valid values, competitor ASIN lookups, fees. These return no seller data and
+    cannot write, so a workspace with no Amazon app of its own may BORROW another
+    account's app for them (accounts.resolve_catalog_creds).
+
+    For seller-scoped calls or writes use _seller_creds() -- never this.
+    """
     acc = _active_account()
-    if acc and acc.get("refresh_token") and not str(acc.get("refresh_token","")).startswith(("PUT_","ROTATE")):
+    if acc:
+        import accounts as _acc
         try:
-            import accounts as _acc
-            return _acc.account_creds(acc)
-        except Exception:
-            pass
-    # legacy fallback (pre-accounts): marketplace-based selection
+            creds, lender = _acc.resolve_catalog_creds(_cfg(), acc, CONFIG_PATH)
+        except LookupError as e:
+            raise AccountScopeError(str(e))
+        return creds
+    # No account workspace: the built-in Dropshipping workspace. It has no account
+    # object, so it uses the app-wide credential block. Catalogue scope only -- the
+    # seller-scoped routes all go through _seller_creds(), which refuses here.
     c = _cfg()
     if str(marketplace).upper() == "US":
         us = c.get("us_spapi") or {}
@@ -333,6 +353,52 @@ def _sp_creds(marketplace: str = "UK") -> dict:
     return {"lwa_app_id":        c["sp_api_client_id"],
             "lwa_client_secret": c["sp_api_client_secret"],
             "refresh_token":     c["sp_api_refresh_token"]}
+
+
+def _seller_creds(acc: dict = None):
+    """(creds, seller_id) for SELLER-scoped calls and writes.
+
+    Requires the workspace to own its Amazon app. A borrowed token authenticates as
+    the LENDER, so every seller-scoped response would be the lender's listings,
+    inventory and marketplaces -- which is exactly how one workspace ended up
+    displaying another's data.
+    """
+    import accounts as _acc
+    acc = acc if acc is not None else _active_account()
+    if not acc:
+        raise AccountScopeError(
+            "No Amazon workspace is selected, so this action was refused rather than "
+            "run against whichever account happens to be first in your config. "
+            "Open an account workspace and try again.")
+    if not _acc.seller_scope_allowed(acc):
+        label = acc.get("label") or acc.get("id")
+        if _acc.is_borrowed(acc):
+            src = _acc.get_account(_cfg(), _acc.credentials_source_id(acc), CONFIG_PATH) or {}
+            raise AccountScopeError(
+                f"{label} is a read-only workspace. It borrows "
+                f"{src.get('label') or _acc.credentials_source_id(acc)}'s Amazon app to look up "
+                f"catalogue data, but it may not read or change that account's listings, "
+                f"inventory or marketplaces. Connect {label}'s own SP-API credentials to "
+                f"enable this.")
+        raise AccountScopeError(
+            f"{label} has no Amazon credentials, so this action was refused. "
+            f"Add its SP-API credentials in Account & sheets.")
+    return _acc.account_creds(acc), acc.get("seller_id", "")
+
+
+def _require_publish(acc: dict = None):
+    """Hard gate before ANY write to Amazon. Read-only workspaces never pass."""
+    import accounts as _acc
+    acc = acc if acc is not None else _active_account()
+    if not acc:
+        raise AccountScopeError("No Amazon workspace is selected — refusing to publish.")
+    if not _acc.can_publish(acc):
+        label = acc.get("label") or acc.get("id")
+        raise AccountScopeError(
+            f"{label} is a read-only workspace and cannot publish to Amazon. "
+            f"It can generate listings, but submitting them requires its own "
+            f"Seller Central account and SP-API credentials.")
+    return acc
 
 
 _SUBFIELD_PLUMBING = {"language_tag", "marketplace_id", "audience"}
