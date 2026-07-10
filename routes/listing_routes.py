@@ -441,18 +441,32 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
     @app.route("/rows")
     def rows():
         try:
-            data  = _records(_ws())
+            ws    = _ws()
+            data  = _records(ws)
             cards = []
             for i, r in enumerate(data):
                 c = _card(r)
                 c["row"] = i + 2          # actual sheet row number (row 1 = header)
                 cards.append(c)
+            # Report the sheet/tab we ACTUALLY read, straight off the worksheet object,
+            # so the header shows the real data source rather than what config claims.
+            src = {}
+            try:
+                src = {"sheet_id": ws.spreadsheet.id, "tab": ws.title,
+                       "tab_gid": str(ws.id), "url": ws.url}
+            except Exception:
+                src = {}
             return jsonify({"ok": True,
                             "shipping_group": _cfg().get("merchant_shipping_group", ""),
                             "product_types": _product_types(),
+                            "source": src,
                             "rows": cards})
         except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+            # SheetScopeError (dashboard.py) = this workspace has no sheet/tab configured.
+            # Checked by name to avoid a circular import back into dashboard.
+            _scope = type(e).__name__ == "SheetScopeError"
+            return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
+                    200 if _scope else 500)
 
     @app.route("/approve", methods=["POST"])
     def approve():

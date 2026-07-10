@@ -300,8 +300,30 @@ async function loadRows(){
   try{
     const j=await _fetchJSON("/rows", null, 20000);
     if(!j || j._failed){ toast("Could not load listings: "+((j&&j.error)||"timeout")); return; }
-    if(!j.ok){ toast("Sheet error: "+(j.error||"unknown")); return; }
+    if(!j.ok){
+      // This workspace has no sheet/tab configured. The app deliberately refuses to
+      // fall back to the shared default tab (it holds another account's listings), so
+      // say so plainly and send the user to the one place that fixes it.
+      if(j.sheet_scope_error){
+        ROWS=[];
+        const g=document.getElementById("grid");
+        if(g) g.innerHTML=`<div class="empty" style="border:1px solid #5c2424;border-radius:10px;background:rgba(255,80,80,.05)">
+          <div style="color:#ff8a8a;font-weight:600;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> This workspace has no sheet configured</div>
+          <div class="cc" style="max-width:620px;margin:0 auto 12px;line-height:1.5">${esc(j.error||"")}</div>
+          <button class="mktbtn on" onclick="openCurrentAccountSettings()">Open Account &amp; sheets</button></div>`;
+        const s=document.getElementById("summary"); if(s) s.innerHTML="";
+        return;
+      }
+      toast("Sheet error: "+(j.error||"unknown")); return;
+    }
     ROWS=j.rows||[]; SHIP=j.shipping_group||""; PTYPES=j.product_types||[];
+    // /rows reports the tab it ACTUALLY opened -- trust that over what config claims.
+    if(j.source && j.source.sheet_id && typeof WS_SOURCE!=="undefined" && WS_SOURCE){
+      WS_SOURCE.out_id=j.source.sheet_id;
+      WS_SOURCE.out_gid=j.source.tab_gid||"";
+      WS_SOURCE.out_tab=j.source.tab||"";
+      if(typeof renderDataSource==="function") renderDataSource();
+    }
     render();
     const pts=[...new Set(ROWS.map(r=>r.product_type).filter(Boolean))];
     try{ await loadSchemas(pts); }catch(e){}

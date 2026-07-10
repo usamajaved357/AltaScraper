@@ -25,6 +25,7 @@ miles_items.json
 miles_ui_prefs.json
 model_number_counter.json
 attribute_defaults.json
+app_state.json
 
 # --- Session baselines (bug-check snapshots, per CLAUDE.md §3 — never commit) ---
 *.baseline.py

@@ -9,6 +9,42 @@ let ACTIVE_WS = null;  // currently-open workspace member (a view)
 let CUR_GROUP = null;  // currently-open workspace group (brand across marketplaces)
 let CUR_SEC = "listings";
 
+// Which spreadsheet + tab the OPEN workspace actually reads and writes.
+// {out_id,out_gid,out_tab,in_id,in_gid,missing:[]} -- or null for Dropshipping.
+// Seeded from /accounts/select, then corrected by /rows, which reports the tab it
+// really opened. Shown in the header so the user can always see (and click through
+// to) the sheet the app is using, instead of trusting that it picked the right one.
+let WS_SOURCE = null;
+
+function _srcLink(id, gid){
+  if(!id) return "";
+  return "https://docs.google.com/spreadsheets/d/" + id + "/edit" + (gid ? ("#gid=" + gid) : "");
+}
+function _srcChip(label, id, gid, tab){
+  if(!id) return `<span><b>${esc(label)}:</b> <span class="missing">not set</span></span>`;
+  const shortId = id.length > 18 ? (id.slice(0, 10) + "…" + id.slice(-4)) : id;
+  const where = tab ? esc(tab) : (gid ? ("gid " + esc(String(gid))) : "no tab set");
+  const cls = (!tab && !gid) ? ' class="missing"' : "";
+  return `<span><b>${esc(label)}:</b> `
+       + `<a href="${_srcLink(id, gid)}" target="_blank" rel="noopener" title="${esc(id)}">${esc(shortId)}</a>`
+       + ` <code${cls}>· ${where}</code></span>`;
+}
+function renderDataSource(){
+  const el = document.getElementById("ws_datasrc");
+  if(!el) return;
+  const s = WS_SOURCE;
+  if(!s){ el.innerHTML = ""; return; }
+  let html = `<span style="opacity:.7"><i class="ti ti-database"></i> Data source</span>`
+           + _srcChip("Output", s.out_id, s.out_gid, s.out_tab)
+           + _srcChip("Input",  s.in_id,  s.in_gid,  "");
+  if(s.missing && s.missing.length){
+    html += `<span class="missing"><i class="ti ti-alert-triangle"></i> `
+          + `${esc(s.missing.join(" and "))} not configured</span>`
+          + ` <button class="linkbtn" onclick="openCurrentAccountSettings()">Fix in Account &amp; sheets</button>`;
+  }
+  el.innerHTML = html;
+}
+
 function _wsColor(v){
   // deterministic accent per workspace
   if(!v || !v.brand) return {bg:"rgba(76,141,255,.16)", fg:"#9cc1ff"};
@@ -182,9 +218,17 @@ async function enterAccount(accountId){
   WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
   CUR_SYMBOL = (WS_MARKET==="US"||WS_MARKET==="CA"||WS_MARKET==="MX") ? "$" : ((WS_MARKET==="EU"||["DE","FR","IT","ES","NL"].includes(WS_MARKET)) ? "\u20ac" : "\u00a3");
   var sw=document.getElementById('srcswitch'); if(sw){ sw.style.display='flex'; sw.querySelectorAll('.mktbtn').forEach(b=>b.classList.toggle('on',b.dataset.src===LIST_SOURCE)); }
-  // tell the backend this account is active (all submit/preview use ITS creds)
-  try{ await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({id:a.id})}); }catch(e){}
+  // tell the backend this account is active (all submit/preview use ITS creds).
+  // The reply names the exact spreadsheet + tab this workspace is bound to, and
+  // lists anything unset -- shown in the header so the data source is never a guess.
+  try{
+    const _sel=await (await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({id:a.id})})).json();
+    WS_SOURCE = _sel && _sel.ok ? {out_id:_sel.sheet||"", out_gid:_sel.tab_gid||"", out_tab:_sel.tab||"",
+                                   in_id:_sel.input_sheet||"", in_gid:_sel.input_tab_gid||"",
+                                   missing:_sel.missing||[]} : null;
+  }catch(e){ WS_SOURCE=null; }
+  renderDataSource();
   // paint shell
   document.getElementById("home").classList.remove("show");
   document.getElementById("workspace").classList.add("show");
@@ -212,6 +256,7 @@ async function enterAccount(accountId){
 }
 function enterDropshipping(){
   CUR_ACCOUNT=null;
+  WS_SOURCE=null; renderDataSource();   // dropshipping uses the config default sheet
   try{ fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:""})}); }catch(e){}
   document.getElementById("home").classList.remove("show");
   document.getElementById("workspace").classList.add("show");

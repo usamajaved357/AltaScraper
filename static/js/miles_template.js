@@ -482,9 +482,16 @@ function render(){
     if(a && liveAppAsins.has(a)) return false;  // or same ASIN
     return true;
   });
+  // The live group mixes TWO different sources, so label each one. liveRows are
+  // rows in THIS workspace's Google Sheet whose Status column says LIVE -- the sheet
+  // asserts it, Amazon has not confirmed it. liveCatalog tiles come from Amazon's
+  // Reports API. Unlabelled, a misconfigured sheet once made another account's rows
+  // look like Amazon data under the "Live on Amazon" heading.
+  const _sheetSub = '<div class="srcsub"><i class="ti ti-table"></i> From your sheet — Status says LIVE (not re-checked against Amazon)</div>';
+  const _amzSub   = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> From Amazon — live catalog for this account</div>';
   // live group = app rows already submitted (status LIVE) + non-duplicate catalog tiles
-  let liveHtml  = (liveRows.length ? liveRows.map(card).join("") : "")
-                + (liveCatalog.length ? liveCatalog.map(liveTile).join("") : "");
+  let liveHtml  = (liveRows.length ? _sheetSub + liveRows.map(card).join("") : "")
+                + (liveCatalog.length ? _amzSub + liveCatalog.map(liveTile).join("") : "");
   if(LIST_SOURCE==="live"){
     grid.innerHTML = liveHtml || `<div class="empty">No live listings loaded yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="loadLiveCatalog(true)">Fetch ${esc(WS_MARKET)} live listings now</button>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`;
   } else if(LIST_SOURCE==="all"){
@@ -496,10 +503,12 @@ function render(){
     // default view: show drafts, then any already-live (submitted) app rows,
     // each under a clear heading, so a submitted listing is visible but not
     // mislabeled as a draft.
+    // These are SHEET rows marked LIVE -- this view never fetches Amazon, so don't
+    // label them "Live on Amazon" as if Amazon had confirmed them.
     const liveAppHtml = liveRows.length ? liveRows.map(card).join("") : "";
     grid.innerHTML = note
       + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
-      + (liveAppHtml?('<div class="srcgroup">Live on Amazon</div>'+liveAppHtml):'')
+      + (liveAppHtml?('<div class="srcgroup">Submitted — marked LIVE in your sheet</div>'+liveAppHtml):'')
       + ((!draftHtml&&!liveAppHtml)?(empties.length ? "" : `<div class="empty">No listings in this view.${ROWS.length?'':' Run Generate to create some.'}</div>`):'');
   }
   summary();
