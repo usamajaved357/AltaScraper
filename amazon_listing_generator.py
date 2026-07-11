@@ -5881,12 +5881,20 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                 _rb = ""
             if not _rb:
                 err += 1
-                queue(i, status_col, "API_ERROR")
+                # Do NOT touch the row's Status. This is an ACCOUNT-level misconfiguration
+                # (no trademark on the account), NOT a problem with this listing's data.
+                # Overwriting Status with API_ERROR here destroyed the user's own APPROVED
+                # status, so the NEXT Submit silently skipped the row ("Submit only
+                # publishes API_READY, APPROVED rows") -- they had to re-approve, with no
+                # hint why. Leave the status alone: once the trademark is set, the row is
+                # still APPROVED and submits straight away.
                 queue(i, notes_col,
                       "[E] brand -- no trademark set for this account. Add your brand/trademark "
-                      "in account Settings, or in the product card on the Listings page, then submit.")
+                      "in Brand setup (it is assigned to the account when you save it), then submit. "
+                      "This listing's own data is unchanged.")
                 console.print(f"  [red]row {i} {sku}: SUBMIT BLOCKED -- no trademark set for this "
-                              f"account (add it in Settings or the product card)[/red]")
+                              f"account. Set it in Brand setup, then Submit again (the row keeps "
+                              f"its current status -- you do NOT need to re-approve).[/red]")
                 continue
 
         if pt not in schema_cache:
