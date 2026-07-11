@@ -55,6 +55,12 @@ function _streamRunPanel(url, sku, mode){
   const P=_runPanel(sku);
   if(P) P.show((mode==="submit"?"Submitting ":"Previewing ")+sku+" …");
   let sawStart=false, lines=[], verdict=null, warnings="", done=false;
+  // Authoritative run counters, straight from the generator's summary line:
+  //   "API submit complete -- ok: 0   errors: 0   skipped: 0"
+  // These are the TRUTH about what happened. A per-row line can be misread; the
+  // summary cannot. If a submit reports ok:0, nothing was published -- full stop.
+  let summary=null;          // {ok, errors, skipped}
+  let notSubmitted=[];       // the generator's "none of the requested SKU(s)…" explanation
   ES=new EventSource(url);
   ES.onmessage=e=>{
     const d=e.data||"";
@@ -62,8 +68,17 @@ function _streamRunPanel(url, sku, mode){
     if(P){ P.log.appendChild(_logLineEl(d)); P.log.scrollTop=P.log.scrollHeight; }
     if(d.indexOf("[busy]")>=0){ verdict={kind:"busy", raw:d}; }
     if(d.startsWith("[start]")){ sawStart=true; if(P) P.verdict.innerHTML='<span class="rspin"></span> Request sent to Amazon… waiting for response.'; }
-    // parse the per-row result line for THIS sku
-    if(d.indexOf(sku)>=0){
+    // the summary counters
+    const sm=d.match(/complete\s*--\s*ok:\s*(\d+)\s+errors?:\s*(\d+)\s+skipped:\s*(\d+)/i);
+    if(sm){ summary={ok:parseInt(sm[1]), errors:parseInt(sm[2]), skipped:parseInt(sm[3])}; }
+    // The generator explains a no-op in PROSE that names the SKU and the words
+    // "API_READY, APPROVED". The per-row parser below matched that sentence and read
+    // it as a success -- the app then said "Amazon accepted this listing" when in fact
+    // NOTHING was submitted. Capture the explanation and NEVER parse it as a verdict.
+    const _isProse=/none of the requested|only publishes|fix any flagged errors|then click approve/i.test(d);
+    if(_isProse){ notSubmitted.push(d.trim()); }
+    // parse the per-row result line for THIS sku (never from the prose above)
+    if(!_isProse && d.indexOf(sku)>=0){
       const low=d.toLowerCase();
       // count "N error(s)" OR "N issue(s)" -- submit prints "NOT live -- 2 issue(s)"
       let m=d.match(/(\d+)\s+(?:error|issue)\(s\)/i);
@@ -76,7 +91,6 @@ function _streamRunPanel(url, sku, mode){
       else if(low.indexOf("live")>=0 || low.indexOf("submitted")>=0){ verdict={kind:"ok_submit", raw:d}; }
       const wm=d.match(/warnings?:\s*(.+)$/i); if(wm) warnings=wm[1];
     }
-    if(d.toLowerCase().indexOf("none of the requested")>=0 && !verdict){ verdict={kind:"notfound", raw:d}; }
     if(d.toLowerCase().indexOf("no seller_id")>=0) verdict={kind:"nocreds", raw:d};
     // network / DNS failure (e.g. "getaddrinfo failed", "Failed to resolve",
     // "Max retries exceeded", "NameResolutionError") -> the script couldn't even
@@ -100,6 +114,21 @@ function _streamRunPanel(url, sku, mode){
     if(!sawStart){
       if(verdict && verdict.kind==="busy"){ P.verdict.innerHTML='<span class="rwarn">A previous Preview/Submit for this account is still finishing (it may be retrying a slow schema download). Wait ~10\u201320 seconds and click Preview again \u2014 the app clears the lock automatically once that run ends or its process exits, so you won\u2019t stay stuck.</span>'; return; }
       P.verdict.innerHTML='<span class="rbad">✗ The run didn\u2019t start. Check that the generator script is reachable.</span>'; return;
+    }
+    // NOTHING WAS PUBLISHED. The generator's own counters are the authority: if a run
+    // finished with ok:0 and it did not fail with an error, then no listing went to
+    // Amazon -- whatever a per-row line seemed to say. This is what produced the false
+    // "Amazon accepted this listing" banner on a run that submitted nothing.
+    if(mode === "submit" && summary && summary.ok === 0 && (!verdict || verdict.kind !== "error")){
+      const _why = esc((notSubmitted.join(" ") || "The run finished without publishing this listing.")
+                        .replace(/\s+/g, " ").trim());
+      const _gated = /api_error|status\s*'|only publishes/i.test(_why);
+      P.verdict.innerHTML='<div class="rbad">✗ Nothing was submitted — this listing was NOT sent to Amazon.</div>'
+        + '<div class="rmsg"><b>The app’s own words:</b></div><div class="ramz">'+_why+'</div>'
+        + (_gated
+            ? '<div class="rhint"><b>Why:</b> Submit only publishes rows whose status is <b>API_READY</b> or <b>APPROVED</b>. This row is still marked <b>API_ERROR</b> from an earlier failed check.<br><b>Do this:</b> click <b>Preview</b> to re-check it against Amazon — if it comes back clean the status becomes API_READY — then click <b>Approve</b>, then <b>Submit</b>.</div>'
+            : '<div class="rhint">Fix what’s flagged above, then Preview → Approve → Submit.</div>');
+      return;
     }
     if(verdict && verdict.kind==="network"){
       // Distinguish the common case where ONLY the schema CDN host failed to
