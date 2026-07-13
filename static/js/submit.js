@@ -75,7 +75,9 @@ function _streamRunPanel(url, sku, mode){
     // "API_READY, APPROVED". The per-row parser below matched that sentence and read
     // it as a success -- the app then said "Amazon accepted this listing" when in fact
     // NOTHING was submitted. Capture the explanation and NEVER parse it as a verdict.
-    const _isProse=/none of the requested|only publishes|fix any flagged errors|then click approve/i.test(d);
+    // "was not processed (status 'API_ERROR')" names the SKU *and* a status, so without
+    // this it would be parsed as an Amazon rejection -- when Amazon never even saw it.
+    const _isProse=/none of the requested|only publishes|fix any flagged errors|then click approve|not processed|were NOT (?:submitted|processed)|not found in this tab|^\s*accounting:/i.test(d);
     if(_isProse){ notSubmitted.push(d.trim()); }
     // parse the per-row result line for THIS sku (never from the prose above)
     if(!_isProse && d.indexOf(sku)>=0){

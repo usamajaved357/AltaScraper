@@ -1241,7 +1241,8 @@ def _af_finish(jid, error=""):
 # Reuse the EXISTING /run/api route by consuming its stream generator, rather than
 # rebuilding the generator's command line here. That keeps ONE source of truth for
 # account/sheet/tab/marketplace scoping -- if that logic changes, auto-fix follows.
-_AF_PROSE = re.compile(r"none of the requested|only publishes|fix any flagged errors|then click approve", re.I)
+_AF_PROSE = re.compile(r"none of the requested|only publishes|fix any flagged errors|then click approve"
+                       r"|not processed|were not (?:submitted|processed)|not found in this tab|^\s*accounting:", re.I)
 _AF_ERRNUM = re.compile(r"(\d+)\s+(?:error|issue)\(s\)", re.I)
 _AF_EFIELD = re.compile(r"\[E\]\s*([a-z0-9_.]+)", re.I)
 _AF_NET = re.compile(r"getaddrinfo failed|failed to resolve|nameresolutionerror|max retries exceeded"

@@ -5849,6 +5849,11 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     ok = err = skip = 0
     _requested_status = {}   # requested SKU -> its Status in the sheet, for an accurate
                              # "not processed" message (distinguish missing vs status-gated)
+    _processed = set()       # requested SKUs that actually entered the loop body. Without
+                             # this, a row whose Status failed the gate below was dropped by
+                             # a bare `continue` -- not counted in ok/err/skip and never
+                             # mentioned -- so submitting 17 SKUs could report "ok: 6
+                             # errors: 2 skipped: 0" and say NOTHING about the other 9.
     for i, row in enumerate(records, start=2):        # row 1 = headers
         _st = str(row.get("Status", "")).strip().upper()
         sku = str(row.get("SKU", "")).strip()
@@ -5858,6 +5863,8 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             continue
         if only_skus and sku not in only_skus:
             continue
+        if sku:
+            _processed.add(sku)
         pt  = str(row.get("Product Type", "")).strip()
         if not sku or not pt:
             _miss = []
@@ -6026,25 +6033,35 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     flush()                               # write any remaining results
     console.print(f"\n[bold]API {'submit' if submit else 'preview'} complete[/bold] -- "
                   f"ok: {ok}   errors: {err}   skipped: {skip}")
-    if only_skus and (ok + err) == 0:
-        _blocked = {s: st for s, st in _requested_status.items() if st not in eligible}
+    # FULL ACCOUNTING. Every SKU the user asked for must be reported on -- whether it
+    # succeeded, failed, or was quietly dropped by the status gate above. This used to
+    # run ONLY when nothing at all was processed, so a partial run ("ok: 6 errors: 2"
+    # out of 17 requested) silently swallowed the other 9 and the numbers never added up.
+    if only_skus:
+        _not_done = sorted(s for s in only_skus if s not in _processed)
         _elig = ", ".join(sorted(e for e in eligible if e))
-        if _blocked:
-            # the SKU(s) ARE in this tab -- they were skipped by the status gate, not missing.
-            _lines = ", ".join(f"{s} (status '{st or 'blank'}')" for s, st in sorted(_blocked.items()))
-            if submit:
-                console.print(f"  [yellow]None of the requested SKU(s) were submitted.[/yellow] "
-                              f"They ARE in this tab, but Submit only publishes {_elig} rows. "
-                              f"Skipped: {_lines}. Fix any flagged errors, then click Approve, then Submit.")
-            else:
-                console.print(f"  [yellow]None of the requested SKU(s) were processed.[/yellow] "
-                              f"They ARE in this tab but their status isn't eligible ({_elig}). "
-                              f"Skipped: {_lines}.")
-        else:
-            console.print(f"  [yellow]None of the requested SKU(s) were found in this tab.[/yellow] "
-                          f"Looked for: {', '.join(sorted(only_skus))}. "
-                          "Check the row actually has a 'SKU' and 'Product Type' value in this tab, "
-                          "and that the column headers are exactly 'SKU' and 'Product Type'.")
+        _word = "submitted" if submit else "processed"
+        if _not_done:
+            _gated = {s: _requested_status[s] for s in _not_done if s in _requested_status}
+            _absent = [s for s in _not_done if s not in _requested_status]
+            console.print(f"\n  [yellow]{len(_not_done)} of the {len(only_skus)} requested SKU(s) "
+                          f"were NOT {_word}:[/yellow]")
+            if _gated:
+                console.print(f"    [yellow]{len(_gated)} were not processed -- their status is not "
+                              f"eligible.[/yellow] {'Submit' if submit else 'Preview'} only handles "
+                              f"{_elig} rows:")
+                for s, st in sorted(_gated.items()):
+                    console.print(f"      - {s} was not processed (status '{st or 'blank'}')")
+                if submit:
+                    console.print("    Fix any flagged errors, then click Approve, then Submit.")
+            if _absent:
+                console.print(f"    [yellow]{len(_absent)} were not processed -- not found in this "
+                              f"tab:[/yellow] {', '.join(_absent)}")
+                console.print("    Check the row is in THIS account's tab and has both a 'SKU' and a "
+                              "'Product Type' value.")
+        # the numbers must always reconcile
+        console.print(f"  [bold]Accounting:[/bold] {len(only_skus)} requested = "
+                      f"{ok} ok + {err} error(s) + {skip} skipped + {len(_not_done)} not processed")
     if not submit:
         console.print("  Review flags in the sheet / dashboard. When happy, publish with:  "
                       "[bold]python amazon_listing_generator.py api submit[/bold]")
