@@ -78,6 +78,15 @@ _VALID_SET_STATUS = {"APPROVED", "NEEDS_REVIEW", "IP_HOLD", "COMPLIANCE_HOLD"}
 app       = Flask(__name__)
 app.secret_key = os.environ.get("APP_SECRET_KEY") or os.urandom(32)
 
+# Keep the user signed in across a screen lock, a laptop sleep, and a browser restart.
+# The login set session["authed"] but never session.permanent, so Flask issued a plain
+# BROWSER-SESSION cookie -- dropped as soon as Chrome suspended/restored the window.
+# That is why locking the screen forced a fresh sign-in. A permanent cookie with an
+# explicit lifetime survives that. (It does NOT weaken the gate: the cookie is still
+# signed with APP_SECRET_KEY, and /logout still clears it.)
+from datetime import timedelta as _timedelta
+app.permanent_session_lifetime = _timedelta(days=30)
+
 # --- shared-password login gate (hosted deployments only) --------------------
 # APP_PASSWORD is only set on a real deployment (Render etc.); locally it's
 # unset so the gate no-ops and dev workflow is unchanged.
