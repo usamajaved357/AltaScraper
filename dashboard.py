@@ -1129,6 +1129,319 @@ def _job_cancelled(jid):
         return bool(j and j.get("cancel"))
 
 
+# =============================================================================
+# AUTO-FIX AS A SERVER-SIDE JOB
+# =============================================================================
+# Auto-fix used to be a loop inside the BROWSER (static/js/autofix.js): it called
+# /suggest -> /edit -> /run/api in a JS `while`. So it died whenever the browser
+# stopped executing JS -- a locked screen, a slept laptop, a closed tab, a re-login.
+# The user would come back to a half-finished batch with no progress shown.
+#
+# It now runs HERE, on the server, exactly like image generation:
+#   * it keeps running when nobody is watching,
+#   * ANY signed-in browser can see the same live progress (the job registry is
+#     server state, not per-tab state),
+#   * it stops only when it finishes, or when the user presses Stop.
+# Same code path locally and on Render -- there is no browser dependency left.
+# =============================================================================
+_AF_JOBS = {}                       # job_id -> {...}
+_AF_JOBS_LOCK = threading.Lock()
+_AF_MAX_ROUNDS = 8                  # matches the old browser loop
+
+
+def _af_new(skus, account_id, label=""):
+    import time as _t, uuid as _u
+    jid = _u.uuid4().hex[:12]
+    with _AF_JOBS_LOCK:
+        # retire anything older than an hour so the registry can't grow forever
+        for k in [k for k, v in _AF_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
+            _AF_JOBS.pop(k, None)
+        _AF_JOBS[jid] = {
+            "id": jid, "status": "running", "cancel": False, "error": "",
+            "ts": _t.time(), "started_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
+            "account_id": account_id, "label": label,
+            "skus": list(skus), "total": len(skus), "done": 0,
+            "current": "", "current_round": 0,
+            "summary": {"cleared": 0, "stuck": 0, "failed": 0, "not_run": len(skus)},
+            "results": [],          # one entry per finished SKU
+            "steps": [],            # human-readable progress lines
+        }
+    return jid
+
+
+def _af_get(jid):
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
+        return dict(j) if j else None
+
+
+def _af_active():
+    """The job to show when no id is given: the newest RUNNING one, else the newest
+    job of any status.
+
+    The fallback matters. Returning only running jobs meant that the moment a run
+    finished, this went None -- so the polling browser lost the final result and the
+    panel just froze on the last tick. A finished job stays visible (for the hour it
+    lives in the registry) so the outcome is always readable, including by someone who
+    signs in after it ended.
+    """
+    with _AF_JOBS_LOCK:
+        if not _AF_JOBS:
+            return None
+        run = [v for v in _AF_JOBS.values() if v.get("status") == "running"]
+        pool = run or list(_AF_JOBS.values())
+        return dict(sorted(pool, key=lambda x: x.get("ts", 0))[-1])
+
+
+def _af_cancelled(jid):
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
+        return bool(j and j.get("cancel"))
+
+
+def _af_stop(jid=""):
+    """Stop one job, or every running job when jid is empty."""
+    n = 0
+    with _AF_JOBS_LOCK:
+        for k, j in _AF_JOBS.items():
+            if (not jid or k == jid) and j.get("status") == "running":
+                j["cancel"] = True
+                n += 1
+    return n
+
+
+def _af_step(jid, msg):
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
+        if j:
+            j["steps"].append(msg)
+            del j["steps"][:-400]          # keep the tail bounded
+
+
+def _af_set(jid, **kw):
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
+        if j:
+            j.update(kw)
+
+
+def _af_finish(jid, error=""):
+    with _AF_JOBS_LOCK:
+        j = _AF_JOBS.get(jid)
+        if j:
+            if j.get("cancel") and not error:
+                j["status"] = "stopped"
+            else:
+                j["status"] = "error" if error else "done"
+            if error:
+                j["error"] = error
+
+
+# --- the Preview step, run synchronously inside the worker --------------------
+# Reuse the EXISTING /run/api route by consuming its stream generator, rather than
+# rebuilding the generator's command line here. That keeps ONE source of truth for
+# account/sheet/tab/marketplace scoping -- if that logic changes, auto-fix follows.
+_AF_PROSE = re.compile(r"none of the requested|only publishes|fix any flagged errors|then click approve", re.I)
+_AF_ERRNUM = re.compile(r"(\d+)\s+(?:error|issue)\(s\)", re.I)
+_AF_EFIELD = re.compile(r"\[E\]\s*([a-z0-9_.]+)", re.I)
+_AF_NET = re.compile(r"getaddrinfo failed|failed to resolve|nameresolutionerror|max retries exceeded"
+                     r"|connectionerror|errno 11002|temporary failure in name resolution"
+                     r"|connection timed out|handshake operation timed out", re.I)
+
+
+def _af_preview(sku):
+    """Run one Preview for `sku` and return (verdict, error_fields, lines).
+
+    verdict: ok_preview | error | missing | busy | network | nocreds | unknown
+    """
+    from urllib.parse import quote as _q
+    lines, verdict, n_err, fields = [], None, 0, []
+    try:
+        with app.test_request_context(f"/run/api?skus={_q(sku)}"):
+            resp = app.view_functions["run"]("api")
+            for chunk in resp.response:            # drives the generator to completion
+                text = chunk.decode("utf-8", "replace") if isinstance(chunk, bytes) else str(chunk)
+                for raw in text.splitlines():
+                    if not raw.startswith("data: "):
+                        continue
+                    d = raw[6:]
+                    lines.append(d)
+                    if "[busy]" in d:
+                        verdict = "busy"
+                    if _AF_NET.search(d):
+                        verdict = "network"
+                    if "no seller_id" in d.lower():
+                        verdict = "nocreds"
+                    for m in _AF_EFIELD.finditer(d):
+                        if m.group(1) not in fields:
+                            fields.append(m.group(1))
+                    # NEVER read the generator's explanatory prose as a per-row result:
+                    # it names the SKU *and* the words "API_READY, APPROVED", which used
+                    # to be misparsed as success.
+                    if _AF_PROSE.search(d) or sku not in d:
+                        continue
+                    low = d.lower()
+                    m = _AF_ERRNUM.search(d)
+                    if m:
+                        verdict, n_err = "error", int(m.group(1))
+                    elif "not live" in low or "api call failed" in low or "api_error" in low:
+                        verdict, n_err = "error", 0
+                    elif "missing" in low and "skip" in low:
+                        verdict = "missing"
+                    elif "api_ready" in low or "preview clean" in low:
+                        verdict = "ok_preview"
+    except Exception as e:
+        return "exception", fields, lines + [f"preview crashed: {type(e).__name__}: {e}"]
+    return (verdict or "unknown"), fields, lines
+
+
+def _run_autofix_bg(jid):
+    """Crash-safe wrapper -- a worker that dies must never leave the job 'running'."""
+    try:
+        _run_autofix_bg_inner(jid)
+    except Exception as e:
+        try:
+            _af_finish(jid, error=f"worker crashed: {type(e).__name__}: {str(e)[:200]}")
+        except Exception:
+            pass
+    finally:
+        try:
+            with _AF_JOBS_LOCK:
+                j = _AF_JOBS.get(jid)
+                if j and j.get("status") == "running":
+                    j["status"] = "error"
+                    j["error"] = j.get("error") or "worker exited without finishing"
+        except Exception:
+            pass
+
+
+def _run_autofix_bg_inner(jid):
+    """Suggest -> Apply -> Preview, per SKU, until clean / stuck / stopped."""
+    job = _af_get(jid)
+    if not job:
+        return
+    skus = job["skus"]
+    acct = job["account_id"]
+
+    with app.app_context():
+        for idx, sku in enumerate(skus):
+            if _af_cancelled(jid):
+                _af_step(jid, "Stopped by user.")
+                break
+            # The worker writes to whatever sheet _ws() resolves, which follows the
+            # ACTIVE workspace. If the user switches account mid-run we would edit the
+            # wrong account's rows -- refuse rather than corrupt someone else's sheet.
+            if (_state.get("active_account_id") or "") != (acct or ""):
+                _af_finish(jid, error="Workspace changed while auto-fix was running, so it "
+                                      "stopped to avoid editing another account's listings. "
+                                      "Go back to the original workspace and run it again.")
+                return
+
+            _af_set(jid, current=sku, current_round=0)
+            _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — starting")
+            rounds, prev_errors, outcome, diagnosis = [], None, "failed", ""
+
+            for rnd in range(1, _AF_MAX_ROUNDS + 1):
+                if _af_cancelled(jid):
+                    break
+                _af_set(jid, current_round=rnd)
+                entry = {"round": rnd, "suggestions": [], "applied": [], "skipped": [],
+                         "verdict": None, "error_fields": [], "diagnosis": ""}
+
+                # 1) ask for suggestions
+                try:
+                    with app.test_request_context(json={"sku": sku}):
+                        sres = app.view_functions["suggest"]().get_json() or {}
+                except Exception as e:
+                    entry["diagnosis"] = f"/suggest crashed: {e}"
+                    rounds.append(entry); diagnosis = entry["diagnosis"]; break
+                if not sres.get("ok"):
+                    err = str(sres.get("error") or "unknown")
+                    entry["diagnosis"] = f"/suggest failed: {err}"
+                    rounds.append(entry); diagnosis = entry["diagnosis"]; break
+
+                allsug = sres.get("suggestions") or []
+                entry["suggestions"] = [{"field": s.get("field"), "value": s.get("value", ""),
+                                         "source": s.get("source", ""),
+                                         "code_owned": bool(s.get("_code_owned"))} for s in allsug]
+                ai = [s for s in allsug if not s.get("_code_owned")]
+                code_owned = len(allsug) - len(ai)
+                _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: "
+                              f"{len(ai)} AI suggestion(s), {code_owned} code-owned")
+
+                # 2) apply them
+                for s in ai:
+                    if _af_cancelled(jid):
+                        break
+                    if not s.get("value"):
+                        entry["skipped"].append({"field": s.get("field"), "reason": "empty AI value"})
+                        continue
+                    try:
+                        with app.test_request_context(json={"sku": sku, "target": "attr",
+                                                            "key": s.get("field"), "value": s.get("value")}):
+                            eres = app.view_functions["edit"]().get_json() or {}
+                        if eres.get("ok"):
+                            entry["applied"].append({"field": s.get("field"), "value": s.get("value")})
+                        else:
+                            entry["skipped"].append({"field": s.get("field"),
+                                                     "reason": "edit failed: " + str(eres.get("error"))})
+                    except Exception as e:
+                        entry["skipped"].append({"field": s.get("field"), "reason": f"edit crashed: {e}"})
+
+                # nothing new to apply and nothing code-owned -> the AI is out of ideas
+                if rnd > 1 and not entry["applied"] and code_owned == 0:
+                    entry["diagnosis"] = ("Nothing new to apply and no code-owned fields left. "
+                                          + ("Amazon still rejects: " + ", ".join(prev_errors.split("|"))
+                                             if prev_errors else "The AI has no more suggestions."))
+                    rounds.append(entry); outcome = "stuck"; diagnosis = entry["diagnosis"]; break
+
+                # 3) preview
+                _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: previewing against Amazon…")
+                verdict, fields, _lines = _af_preview(sku)
+                entry["verdict"] = verdict
+                entry["error_fields"] = fields
+                rounds.append(entry)
+
+                if _af_cancelled(jid):
+                    break
+                if verdict == "ok_preview":
+                    entry["diagnosis"] = "Amazon accepted the Preview. Ready to Submit."
+                    outcome = "cleared"; diagnosis = entry["diagnosis"]
+                    _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — ✓ clean, ready to submit")
+                    break
+                if verdict in ("network", "nocreds", "busy", "exception"):
+                    entry["diagnosis"] = f"Environment issue ({verdict}) — not a listing problem."
+                    outcome = "failed"; diagnosis = entry["diagnosis"]; break
+                if verdict == "error":
+                    key = "|".join(sorted(fields))
+                    entry["diagnosis"] = "Amazon flagged: " + (", ".join(fields) or "(no field named)")
+                    if prev_errors is not None and prev_errors == key:
+                        entry["diagnosis"] += " — identical to the previous round, no progress."
+                        outcome = "stuck"; diagnosis = entry["diagnosis"]
+                        _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — stuck on: {', '.join(fields)}")
+                        break
+                    prev_errors = key
+                    continue
+                entry["diagnosis"] = f"Unclear outcome ({verdict}). Stopped for safety."
+                outcome = "failed"; diagnosis = entry["diagnosis"]; break
+
+            if _af_cancelled(jid):
+                _af_step(jid, "Stopped by user.")
+                break
+
+            with _AF_JOBS_LOCK:
+                j = _AF_JOBS.get(jid)
+                if j:
+                    j["results"].append({"sku": sku, "outcome": outcome,
+                                         "diagnosis": diagnosis, "rounds": rounds})
+                    j["done"] = len(j["results"])
+                    s = j["summary"]
+                    s[outcome] = s.get(outcome, 0) + 1
+                    s["not_run"] = max(0, j["total"] - j["done"])
+
+    _af_finish(jid)
+
+
 
 
 
@@ -2641,6 +2954,10 @@ if __name__ == "__main__":
                           _state=_state)
     import routes.autofix_log_routes as _autofix_log_routes
     _autofix_log_routes.register(app, CONFIG_PATH=CONFIG_PATH)
+    import routes.autofix_job_routes as _autofix_job_routes
+    _autofix_job_routes.register(app, _af_new=_af_new, _af_get=_af_get, _af_active=_af_active,
+                                 _af_stop=_af_stop, _run_autofix_bg=_run_autofix_bg,
+                                 _state=_state, _threading=threading)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
                            _load_img_instructions=_load_img_instructions,
