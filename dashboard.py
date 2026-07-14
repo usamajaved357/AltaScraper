@@ -38,7 +38,11 @@ from google.oauth2.service_account import Credentials
 
 # --- must match amazon_listing_generator.py -----------------------------------
 CONFIG_PATH       = os.environ.get("CONFIG_PATH", "config.json")
-SCRIPT            = "amazon_listing_generator.py"
+# APP_DIR is where the CODE lives; CONFIG_PATH may point somewhere else entirely
+# (on Render it is /data/config.json). SCRIPT must be absolute or a subprocess
+# launched with any other cwd cannot find it.
+APP_DIR           = os.path.dirname(os.path.abspath(__file__))
+SCRIPT            = os.path.join(APP_DIR, "amazon_listing_generator.py")
 OUTPUT_TAB        = "Listings v7.0 UK"      # OUTPUT_TAB in the main script
 STATUS_HEADER     = "Status"
 SKU_HEADER        = "SKU"
