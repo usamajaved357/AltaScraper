@@ -126,237 +126,216 @@ async function applyAllSuggestions(sku){
 // ============================================================================
 window.AUTOFIX_STATE = null;
 
-async function autoFixLoop(sku){
-  if(!sku) return;
-  if(window.AUTOFIX_STATE && window.AUTOFIX_STATE.sku === sku){
-    toast('Auto-fix already running for this SKU'); return;
-  }
-  const MAX_ROUNDS = 8;
-  const state = {sku:sku, round:0, prevErrors:null, stopped:false, cancelled:false,
-                  trace: [], startedAt: new Date().toISOString()};
-  window.AUTOFIX_STATE = state;
-  window._AUTOFIX_LAST_STATE = state;   // set NOW so bulkAutoFix can read it back regardless of which panel path we take
+// ============================================================================
+// AUTO-FIX NOW RUNS ON THE SERVER, NOT IN THIS BROWSER
+// ============================================================================
+// This used to be a `while` loop right here: /suggest -> /edit -> /run/api, round
+// after round, in the tab. So it only ran while this tab was executing JavaScript --
+// locking the screen, sleeping the laptop, closing the tab or being signed out KILLED
+// it mid-batch, and you came back to a half-finished run with no progress shown.
+//
+// The loop now lives on the server (dashboard.py :: _run_autofix_bg). These functions
+// only START it and POLL it. So:
+//   * it keeps running when nobody is watching;
+//   * ANY signed-in browser sees the same live progress (it is SERVER state, not tab
+//     state) -- including a different device, or you after signing back in;
+//   * it runs to completion unless you press Stop.
+// Identical behaviour locally and on Render: there is no browser dependency left.
+let AF_POLL = null;
 
-  // If we're inside a bulk batch, DON'T create our own panel -- the batch panel
-  // is already on screen and using the same DOM slot ('autofix_panel'). We
-  // still capture the full trace in `state` so the batch panel can render it,
-  // but skip the per-SKU floating box to avoid destroying the batch UI.
-  const insideBulk = !!(window.BULK_AUTOFIX && !window.BULK_AUTOFIX.done);
-  const panel = insideBulk ? _autoFixNullPanel() : _autoFixPanel(sku, state);
-  if(!insideBulk){
-    panel.show('Auto-fix started for '+sku);
-  }
+function autoFixLoop(sku){ if(sku) _afStart([sku]); }     // per-listing button
+function bulkAutoFix(){                                    // toolbar button (N selected)
+  const skus = (typeof selectedSkus === "function") ? selectedSkus() : [];
+  if(!skus.length){ toast("Select some listings first"); return; }
+  _afStart(skus);
+}
 
+async function _afStart(skus){
   try{
-    while(state.round < MAX_ROUNDS && !state.cancelled){
-      state.round++;
-      const roundEntry = {
-        round: state.round,
-        started_at: new Date().toISOString(),
-        suggestions: [],
-        applied: [],
-        skipped: [],
-        preview_verdict: null,
-        preview_error_fields: [],
-        preview_raw_lines: [],
-        diagnosis: '',
-      };
-      state.trace.push(roundEntry);
-      panel.step('Round '+state.round+' of '+MAX_ROUNDS+' — asking AI for suggestions…');
-
-      // --- 1. Get suggestions from AI ---
-      let sugRes;
-      try{
-        sugRes = await fetch('/suggest',{method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({sku:sku})});
-        sugRes = await sugRes.json();
-      }catch(e){
-        roundEntry.diagnosis = '/suggest network error: '+String(e);
-        panel.fail('Round '+state.round+': /suggest failed — see trace');
-        panel.renderTrace();
-        break;
-      }
-      if(!sugRes.ok){
-        // If the error mentions "sku not found" it means the row isn't in the
-        // current worksheet -- usually because the user switched account
-        // workspaces (or the app was restarted) after ticking this SKU.
-        // Explain that plainly so the trace tells the user what to fix.
-        const errRaw = String(sugRes.error || 'no error field');
-        const isMissing = /sku not found|not in.*view|not in.*sheet/i.test(errRaw);
-        roundEntry.diagnosis = isMissing
-          ? ('SKU not visible in current workspace. This usually means you switched '+
-              'account workspaces (or the app restarted) after ticking this SKU. '+
-              'Click into the correct account workspace first, then try again. '+
-              '(Raw: '+errRaw+')')
-          : ('/suggest returned ok=false: '+errRaw);
-        panel.fail('Round '+state.round+': '+(isMissing ? 'SKU not in current workspace' : 'suggestion API error')+' — see trace');
-        panel.renderTrace();
-        break;
-      }
-      // Capture EVERY suggestion (both code_owned info cards and AI-fillable ones)
-      // so the trace shows exactly what the system chose per field.
-      roundEntry.suggestions = (sugRes.suggestions||[]).map(function(s){
-        return {
-          field: s.field, value: s.value || '', source: s.source || '',
-          confidence: s.confidence || '', note: s.note || '',
-          code_owned: !!s._code_owned,
-        };
-      });
-      const suggestions = (sugRes.suggestions||[]).filter(function(s){ return !s._code_owned; });
-      panel.step('Round '+state.round+': got '+suggestions.length+' AI suggestions ('+
-                 (roundEntry.suggestions.length-suggestions.length)+' code-owned)');
-
-      // --- 2. Apply each suggestion ---
-      for(let i=0;i<suggestions.length;i++){
-        const s = suggestions[i];
-        if(!s.value){
-          roundEntry.skipped.push({field:s.field, reason:'empty AI value'});
-          continue;
-        }
-        try{
-          const editRes = await fetch('/edit',{method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({sku:sku, target:'attr', key:s.field, value:s.value})});
-          const editJson = await editRes.json();
-          if(editJson.ok){
-            roundEntry.applied.push({field:s.field, value:s.value, source:s.source});
-          } else {
-            const err = String(editJson.error || 'unknown');
-            roundEntry.skipped.push({field:s.field, reason:'edit failed: '+err});
-            // If the sheet says the SKU doesn't exist, all further edits in this
-            // round WILL fail identically -- abort the loop immediately with a
-            // clear diagnosis instead of grinding through every suggestion.
-            if(/sku not found|not in.*sheet|not in.*view/i.test(err)){
-              roundEntry.diagnosis = 'SKU not visible in current workspace at edit time. '+
-                                      'The row was found by /suggest but had disappeared by /edit -- '+
-                                      'this usually means you switched workspaces mid-run or a '+
-                                      'concurrent submit moved the row. Click into the correct '+
-                                      'account workspace and retry.';
-              panel.fail('Round '+state.round+': SKU disappeared from workspace between /suggest and /edit — see trace');
-              panel.renderTrace();
-              // Break out of BOTH the inner apply loop and the outer round loop
-              window._AUTOFIX_STOP = true;
-              break;
-            }
-          }
-        }catch(e){
-          roundEntry.skipped.push({field:s.field, reason:'edit exception: '+String(e)});
-        }
-      }
-      if(window._AUTOFIX_STOP){ window._AUTOFIX_STOP = false; break; }
-      panel.step('Round '+state.round+': applied '+roundEntry.applied.length+
-                 ' / skipped '+roundEntry.skipped.length);
-
-      // Count code-owned suggestions: these DON'T get "applied" (nothing to
-      // apply -- the generator fills them itself when Preview runs), but they
-      // ARE progress. If the current round applied 0 AI values but flagged
-      // code-owned fields exist, running Preview WILL fill them via the
-      // generator's compliance block. So don't stop when the only work left
-      // is code-owned -- Preview is what actually resolves those.
-      const codeOwnedCount = roundEntry.suggestions.filter(function(s){ return s.code_owned; }).length;
-      if(roundEntry.applied.length === 0 && codeOwnedCount === 0 && state.round > 1){
-        // Say WHY, using what Amazon actually rejected in the last round that ran a
-        // Preview -- not a bare "AI has no more suggestions", which reads as if the
-        // listing were fine. The previous diagnosis was written before any Preview ran
-        // for THIS round, so it had no evidence behind it at all.
-        roundEntry.preview_skipped = true;
-        const prev = state.trace.slice(0, -1).reverse()
-                       .find(function(x){ return (x.preview_error_fields||[]).length; });
-        const outstanding = prev ? prev.preview_error_fields : [];
-        // Fields auto-fix deliberately never touches: the barcode/GTIN identifiers are
-        // owned by the UPC box + the GTIN-exemption rule, not by the AI. When they are
-        // ALL that is left, the loop can never clear them, and saying "no suggestions"
-        // hides the real blocker.
-        const IDENT = ['externally_assigned_product_identifier','standard_product_id',
-                       'external_product_id','merchant_suggested_asin'];
-        const identOnly = outstanding.length &&
-                          outstanding.every(function(f){ return IDENT.indexOf(f) >= 0; });
-        if(identOnly){
-          roundEntry.diagnosis = 'BLOCKED BY THE BARCODE, not by missing attributes. Amazon '+
-            'still rejects: '+outstanding.join(', ')+'. Auto-fix never edits these — the '+
-            'barcode comes from the Barcode/GTIN box, and Amazon is refusing the value in '+
-            'it. Either supply a GS1-registered barcode, or clear the box to submit under '+
-            'the GTIN exemption. No number of extra rounds will fix this.';
-          panel.stop('Round '+state.round+': blocked by the barcode — see trace');
-        } else if(outstanding.length){
-          roundEntry.diagnosis = 'Amazon still rejects: '+outstanding.join(', ')+'. The AI had '+
-            'no new values to apply for them, and no code-owned fields remain. These need a '+
-            'human decision — open the listing and set them by hand.';
-          panel.stop('Round '+state.round+': '+outstanding.length+' field(s) still rejected — see trace');
-        } else {
-          roundEntry.diagnosis = 'Nothing new to apply after round 1, and the last Preview '+
-            'reported no flagged fields. Either the listing is already clean, or the Preview '+
-            'stream was never parsed — check the raw stream above before trusting this.';
-          panel.stop('Round '+state.round+': nothing new to apply. Stopping.');
-        }
-        panel.renderTrace();
-        break;
-      }
-
-      // --- 3. Run Preview and capture EVERY line ---
-      panel.step('Round '+state.round+': running Preview…');
-      const verdict = await _autoFixPreview(sku, panel, roundEntry);
-      roundEntry.preview_verdict = verdict.kind;
-      roundEntry.preview_error_fields = verdict.errorFields || [];
-      roundEntry.preview_verdict_raw = verdict.raw || '';
-
-      if(state.cancelled){ break; }
-
-      // --- 4. Interpret verdict ---
-      if(verdict.kind === 'ok_preview'){
-        roundEntry.diagnosis = 'Amazon accepted the Preview. Ready to Submit.';
-        panel.done('✓ Round '+state.round+': Amazon accepted Preview. Ready to Submit!');
-        panel.renderTrace();
-        loadRows();
-        break;
-      }
-
-      if(verdict.kind === 'network' || verdict.kind === 'nocreds' ||
-          verdict.kind === 'busy' || verdict.kind === 'timeout'){
-        roundEntry.diagnosis = 'Environment issue ('+verdict.kind+') — not a listing problem.';
-        panel.fail('Round '+state.round+': '+verdict.kind+' — see trace');
-        panel.renderTrace();
-        break;
-      }
-
-      if(verdict.kind === 'error'){
-        const errKey = (verdict.errorFields||[]).slice().sort().join('|');
-        roundEntry.diagnosis = 'Amazon flagged '+verdict.n+' error(s) on fields: '+
-                                (verdict.errorFields||[]).join(', ');
-        panel.step('Round '+state.round+': Amazon flagged '+verdict.n+' error(s) on: '+
-                   (verdict.errorFields||[]).join(', '));
-        if(state.prevErrors && state.prevErrors === errKey){
-          roundEntry.diagnosis += ' — IDENTICAL to previous round, no progress.';
-          panel.stop('Round '+state.round+': Same errors as last round. Auto-fix cannot resolve these. Stopped.');
-          panel.renderTrace();
-          break;
-        }
-        state.prevErrors = errKey;
-        panel.renderTrace();   // incremental render so user sees progress
-        continue;
-      }
-
-      roundEntry.diagnosis = 'Unclear outcome ('+verdict.kind+'). Stopped for safety.';
-      panel.fail('Round '+state.round+': unclear outcome — see trace');
-      panel.renderTrace();
-      break;
+    const j = await (await fetch("/autofix/start", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({skus: skus})})).json();
+    if(!j.ok){
+      if(j.running){ toast("An auto-fix run is already going — showing it."); _afAttach(); return; }
+      toast("Could not start auto-fix: " + (j.error || "unknown"));
+      return;
     }
-    if(state.round >= MAX_ROUNDS && !state.cancelled){
-      panel.stop('Hit max rounds ('+MAX_ROUNDS+'). Stopped. Review trace to see the loop pattern.');
-      panel.renderTrace();
-    }
-  } finally {
-    window.AUTOFIX_STATE = null;
-    // Skip the per-SKU sheet refresh when running inside a batch -- the batch
-    // wrapper calls loadRows() once at the very end. Doing it per SKU would
-    // hit /rows 20+ times in a bulk run.
-    if(!(window.BULK_AUTOFIX && !window.BULK_AUTOFIX.done)){
-      loadRows();
-      // persist the trace so a page refresh can't lose it (single runs only; a batch saves once)
-      try{ _autoFixSaveLog('single', _autoFixTraceText(state), state.sku); }catch(e){}
-    }
+    _afPanel();
+    _afPollStart();
+  }catch(e){ toast("Could not start auto-fix: " + e); }
+}
+
+async function _afStopJob(){
+  try{
+    await fetch("/autofix/stop", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+    toast("Stopping — it will halt after the current step.");
+  }catch(e){ toast("Could not stop: " + e); }
+}
+
+function _afPollStart(){
+  if(AF_POLL) clearInterval(AF_POLL);
+  _afTick();
+  AF_POLL = setInterval(_afTick, 2000);
+}
+
+async function _afTick(){
+  let j;
+  try{ j = await (await fetch("/autofix/state")).json(); }
+  catch(e){ return; }                       // a network blip must not kill the panel
+  const job = j && j.job;
+  if(!job) return;
+  window.AF_JOB = job;
+  _afRender(job);
+  if(job.status !== "running"){
+    if(AF_POLL){ clearInterval(AF_POLL); AF_POLL = null; }
+    try{ loadRows(); }catch(e){}
+    try{ _autoFixSaveLog("server", _afTraceText(job), (job.skus||[]).length + " skus"); }catch(e){}
   }
+}
+
+// On every page load -- including a fresh sign-in on any device -- attach to whatever
+// run is already in progress, so progress is never invisible just because nobody was
+// watching when it started.
+async function _afAttach(){
+  try{
+    const j = await (await fetch("/autofix/state")).json();
+    // Only pop the panel open for work that is STILL RUNNING. /autofix/state also
+    // returns the last finished job (so the poller can show a final result), and we
+    // must not resurrect that on every page load.
+    if(j && j.ok && j.job && j.job.status === "running"){
+      window.AF_JOB = j.job;
+      _afPanel();
+      _afRender(j.job);
+      _afPollStart();
+    }
+  }catch(e){}
+}
+window.addEventListener("DOMContentLoaded", function(){ setTimeout(_afAttach, 900); });
+
+function _afPanel(){
+  let el = document.getElementById("autofix_panel");
+  if(el) el.remove();
+  el = document.createElement("div");
+  el.id = "autofix_panel";
+  el.style.cssText = "position:fixed;bottom:20px;right:20px;width:620px;max-height:80vh;"+
+    "background:#141b2b;border:1px solid #3b4d70;border-radius:10px;padding:12px;"+
+    "box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;font-size:12px;color:#e8eaed;"+
+    "display:flex;flex-direction:column;gap:8px";
+  el.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600">'+
+      '<span id="af_title">✦ Auto-fix</span>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+        '<button onclick="_afCopyTrace()" style="background:#5b3fb8;color:#fff;border:none;'+
+          'padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">📋 Copy trace</button>'+
+        '<button id="af_stopbtn" onclick="_afStopJob()" style="background:#5c2424;color:#ff8a8a;'+
+          'border:1px solid #7a3030;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+          '■ Stop</button>'+
+        '<button onclick="document.getElementById(\'autofix_panel\').remove()" title="Close this box '+
+          '(the run KEEPS going on the server)" style="background:none;color:#e8eaed;border:none;'+
+          'cursor:pointer;font-size:16px">✕</button>'+
+      '</div>'+
+    '</div>'+
+    '<div id="af_status" style="color:#9cc1ff"></div>'+
+    '<div id="af_bar" style="height:6px;background:#22293a;border-radius:4px;overflow:hidden">'+
+      '<div id="af_barfill" style="height:100%;width:0%;background:#4a8cff;transition:width .3s"></div>'+
+    '</div>'+
+    '<div style="color:#7f8ba3;font-size:11px">This runs on the server — you can lock your screen, '+
+      'close this box, or sign out. It keeps going until it finishes or you press Stop.</div>'+
+    '<div id="af_steps" style="overflow:auto;max-height:30vh;font-family:ui-monospace,monospace;'+
+      'font-size:11px;background:#0f131a;border-radius:6px;padding:8px;white-space:pre-wrap"></div>'+
+    '<div id="af_results" style="overflow:auto;max-height:26vh"></div>';
+  document.body.appendChild(el);
+}
+
+function _afRender(job){
+  if(!document.getElementById("autofix_panel")) return;   // the user closed the box
+  const t = document.getElementById("af_title");
+  const s = document.getElementById("af_status");
+  const f = document.getElementById("af_barfill");
+  const st = document.getElementById("af_steps");
+  const rs = document.getElementById("af_results");
+  const sb = document.getElementById("af_stopbtn");
+  const sum = job.summary || {};
+  const pct = job.total ? Math.round((job.done / job.total) * 100) : 0;
+
+  if(t) t.textContent = "✦ Auto-fix — " + job.done + " / " + job.total + " listing(s)";
+  if(f) f.style.width = pct + "%";
+  if(sb) sb.style.display = (job.status === "running") ? "" : "none";
+
+  if(s){
+    if(job.status === "running"){
+      s.innerHTML = '<span class="genspin"></span> ' +
+        (job.current ? ("Working on <b>" + esc(job.current) + "</b>" +
+                        (job.current_round ? (" · round " + job.current_round) : "")) : "Starting…");
+    } else if(job.status === "stopped"){
+      s.innerHTML = '<span style="color:#e3b768">■ Stopped by you.</span>';
+    } else if(job.status === "error"){
+      s.innerHTML = '<span style="color:#ff8a8a">✗ ' + esc(job.error || "failed") + '</span>';
+    } else {
+      s.innerHTML = '<span style="color:#7fd99a">✓ Finished.</span>';
+    }
+    s.innerHTML += ' <span style="color:#7f8ba3">cleared ' + (sum.cleared||0) +
+                   ' · stuck ' + (sum.stuck||0) + ' · failed ' + (sum.failed||0) +
+                   ((sum.not_run) ? (' · not run ' + sum.not_run) : '') + '</span>';
+  }
+  if(st){
+    st.textContent = (job.steps || []).slice(-60).join("\n");
+    st.scrollTop = st.scrollHeight;
+  }
+  if(rs){
+    rs.innerHTML = (job.results || []).map(function(r){
+      const col = r.outcome === "cleared" ? "#7fd99a" : (r.outcome === "stuck" ? "#e3b768" : "#ff8a8a");
+      const mark = r.outcome === "cleared" ? "✓" : (r.outcome === "stuck" ? "▲" : "✗");
+      return '<div style="border-top:1px solid #22293a;padding:6px 2px">'+
+             '<span style="color:'+col+';font-weight:700">'+mark+' '+esc(r.sku)+'</span> '+
+             '<span style="color:#7f8ba3">('+esc(r.outcome)+', '+(r.rounds||[]).length+' round(s))</span>'+
+             (r.diagnosis ? ('<div style="color:#9aa3b2;margin-top:2px">'+esc(r.diagnosis)+'</div>') : '')+
+             '</div>';
+    }).join("");
+  }
+}
+
+function _afTraceText(job){
+  const L = [];
+  L.push("=== AUTO-FIX (server) ===");
+  L.push("Started: " + (job.started_at || ""));
+  L.push("Account: " + (job.account_id || ""));
+  L.push("Status:  " + job.status + (job.error ? (" — " + job.error) : ""));
+  const s = job.summary || {};
+  L.push("Summary: cleared=" + (s.cleared||0) + " · stuck=" + (s.stuck||0) +
+         " · failed=" + (s.failed||0) + " · not run=" + (s.not_run||0) +
+         "   (of " + job.total + ")");
+  L.push("");
+  (job.results || []).forEach(function(r, i){
+    L.push("################################################################");
+    L.push("# " + (i+1) + ". " + r.sku + "  ->  " + r.outcome);
+    L.push("################################################################");
+    if(r.diagnosis) L.push("DIAGNOSIS: " + r.diagnosis);
+    (r.rounds || []).forEach(function(rd){
+      L.push("");
+      L.push("-- round " + rd.round + " --");
+      (rd.suggestions || []).forEach(function(x){
+        L.push("   suggest " + x.field + " = " + String(x.value).slice(0,80) +
+               (x.code_owned ? "   [code-owned]" : "   [" + (x.source||"") + "]"));
+      });
+      (rd.applied || []).forEach(function(x){ L.push("   APPLIED " + x.field); });
+      (rd.skipped || []).forEach(function(x){ L.push("   skipped " + x.field + " — " + x.reason); });
+      L.push("   PREVIEW: " + rd.verdict +
+             ((rd.error_fields||[]).length ? ("  flagged: " + rd.error_fields.join(", ")) : ""));
+      if(rd.diagnosis) L.push("   " + rd.diagnosis);
+    });
+    L.push("");
+  });
+  L.push("=== END ===");
+  return L.join("\n");
+}
+
+function _afCopyTrace(){
+  const job = window.AF_JOB;
+  if(!job){ toast("Nothing to copy yet"); return; }
+  const txt = _afTraceText(job);
+  try{ navigator.clipboard.writeText(txt); toast("Trace copied"); }
+  catch(e){ toast("Copy failed"); }
 }
 
 // Runs one Preview and returns a verdict object. Also appends every stream line
@@ -613,120 +592,8 @@ function _autoFixPanel(sku, state){
 // ============================================================================
 window.BULK_AUTOFIX = null;
 
-async function bulkAutoFix(){
-  const skus = selectedSkus();
-  if(!skus.length){ toast("Nothing selected — tick some listings first"); return; }
-  if(window.BULK_AUTOFIX && !window.BULK_AUTOFIX.done){
-    toast("A batch auto-fix is already running"); return;
-  }
-
-  // PRE-FLIGHT: verify every selected SKU is actually in the current workspace.
-  // The batch UI persists SELECTED across page-loads and Flask restarts, so it's
-  // possible to tick SKUs on Account A, switch to Account B (or restart Flask
-  // which resets active_account to default), and end up asking Amazon about
-  // rows that aren't visible to the current worksheet. Without this check the
-  // /suggest and /edit endpoints just 404 with cryptic 'sku not found in
-  // current view' messages -- the batch trace shows those but doesn't explain
-  // WHY, which wastes the user's time.
-  //
-  // The current view rows are already loaded into ROWS as of the last
-  // loadRows() call. Cross-check locally before hitting the network.
-  const inView = new Set((ROWS || []).map(r => String(r.sku || "")));
-  const missing = skus.filter(s => !inView.has(String(s)));
-  if(missing.length){
-    const inViewCount = skus.length - missing.length;
-    const msg = "⚠ "+missing.length+" of "+skus.length+" selected SKU(s) are NOT in the current workspace view:\n\n" +
-                 missing.slice(0, 10).join("\n") +
-                 (missing.length > 10 ? "\n  ...and "+(missing.length-10)+" more" : "") +
-                 "\n\nThis usually means you switched account workspaces (or the app restarted) after ticking them. " +
-                 "The auto-fix loop can't Suggest/Apply/Preview rows it can't see.\n\n" +
-                 (inViewCount > 0
-                   ? "Continue anyway with the "+inViewCount+" SKU(s) still in view?"
-                   : "None of the selected SKUs are in this view. Please click into the correct account workspace first and re-tick.");
-    if(inViewCount === 0){ alert(msg); return; }
-    if(!confirm(msg)) return;
-    // Filter to just the SKUs actually visible
-    for(let i = skus.length - 1; i >= 0; i--){
-      if(!inView.has(String(skus[i]))) skus.splice(i, 1);
-    }
-  }
-
-  if(!confirm("Run Auto-fix on "+skus.length+" selected listing(s)?\n\n"+
-              "Each SKU will loop through Suggest→Apply→Preview until Amazon accepts "+
-              "or the loop can\u2019t make progress. This is sequential (one at a time) "+
-              "so it may take a few minutes.")) return;
-
-  const batch = {
-    skus: skus, done: false, cancelled: false, startedAt: new Date().toISOString(),
-    per_sku_states: [],    // one autoFix state per SKU
-    current_idx: -1,
-    // `not_run` closes the accounting: cleared+stuck+failed+not_run must equal skus.length.
-    // Without it a cancelled batch printed e.g. "cleared=1 stuck=2 failed=13" for 17 SKUs
-    // and silently lost the rest, which reads as a counting bug rather than a cancellation.
-    summary: {ok: 0, stuck: 0, failed: 0, not_run: 0},
-  };
-  window.BULK_AUTOFIX = batch;
-
-  const panel = _bulkAutoFixPanel(batch);
-  panel.show("Batch auto-fix: "+skus.length+" listing(s)");
-
-  try{
-    for(let i=0; i<skus.length; i++){
-      if(batch.cancelled){ batch.summary.not_run = skus.length - i; break; }
-      batch.current_idx = i;
-      const sku = skus[i];
-      panel.step("["+(i+1)+"/"+skus.length+"] "+sku+" — running…");
-
-      // Run the single-SKU loop and capture its state into the batch trace.
-      // The single-SKU loop already stores state on window.AUTOFIX_STATE and
-      // window._AUTOFIX_LAST_STATE so we can read it back when it finishes.
-      window.AUTOFIX_STATE = null;
-      try{
-        await autoFixLoop(sku);
-      }catch(e){
-        batch.summary.failed++;
-        batch.per_sku_states.push({sku: sku, error: String(e)});
-        panel.step("["+(i+1)+"/"+skus.length+"] "+sku+" — CRASHED: "+String(e));
-        panel.renderTrace();
-        continue;
-      }
-      // autoFixLoop finished — pull the final state
-      const finalState = window._AUTOFIX_LAST_STATE;
-      if(finalState && finalState.sku === sku){
-        batch.per_sku_states.push(finalState);
-        // Judge the outcome from the last round's verdict (trace may be empty
-        // if the loop bailed before completing any round -- e.g. /suggest 500)
-        const lastRound = (finalState.trace && finalState.trace.length)
-                          ? finalState.trace[finalState.trace.length-1]
-                          : null;
-        if(lastRound && lastRound.preview_verdict === 'ok_preview'){
-          batch.summary.ok++;
-        } else if(lastRound && lastRound.preview_verdict === 'error'){
-          batch.summary.stuck++;
-        } else {
-          batch.summary.failed++;
-        }
-      } else {
-        batch.summary.failed++;
-        batch.per_sku_states.push({sku: sku, error: "no state captured"});
-      }
-      panel.renderTrace();
-    }
-    batch.done = true;
-    if(batch.cancelled){
-      panel.stop("Cancelled after "+batch.current_idx+" of "+skus.length+" SKU(s). "+
-                  "Cleared: "+batch.summary.ok+" · stuck: "+batch.summary.stuck+" · failed: "+batch.summary.failed);
-    } else {
-      panel.done("Batch complete. Cleared: "+batch.summary.ok+
-                 " · stuck: "+batch.summary.stuck+" · failed: "+batch.summary.failed);
-    }
-    panel.renderTrace();
-  } finally {
-    loadRows();
-    // persist the full batch trace so a page refresh can't lose it
-    try{ if(batch) _autoFixSaveLog('batch', _bulkAutoFixTraceText(batch), (batch.skus||[]).length+' skus'); }catch(e){}
-  }
-}
+// (the old in-browser bulkAutoFix loop lived here; auto-fix now runs on the
+//  server -- see the AUTO-FIX NOW RUNS ON THE SERVER section above)
 
 // Build one large trace text covering every SKU in the batch, ready to paste
 // to Claude in one message.

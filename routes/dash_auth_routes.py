@@ -20,6 +20,10 @@ def register(app, *, _APP_PASSWORD):
         error = False
         if request.method == "POST":
             if request.form.get("password") == _APP_PASSWORD:
+                # permanent -> the cookie carries an explicit 30-day expiry instead of
+                # dying with the browser process, so a screen lock / sleep / browser
+                # restore no longer forces a fresh sign-in.
+                session.permanent = True
                 session["authed"] = True
                 return redirect(url_for("index"))
             error = True

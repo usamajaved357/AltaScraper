@@ -119,7 +119,8 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
     def brand_save():
         cfg = _cfg()
         body = request.get_json(force=True) or {}
-        if not body.get("brand_name", "").strip():
+        bn = (body.get("brand_name", "") or "").strip()
+        if not bn:
             return jsonify({"ok": False, "error": "brand_name required"}), 400
         # normalise list fields that arrive as comma-separated strings
         for key in ("competitor_asins", "forbidden_brands"):
@@ -127,7 +128,31 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
             if isinstance(v, str):
                 body[key] = [x.strip() for x in v.split(",") if x.strip()]
         path = brand_profile.save_profile(cfg, BASE_DIR, body)
-        return jsonify({"ok": True, "path": path})
+        # ASSIGN the brand to the active account. Without this the saved profile is
+        # invisible -- /brand/list is scoped to the account's own "brands" list -- so
+        # the page still says "No brands saved yet", AND a submit is blocked with
+        # "no trademark set for this account" (the generator's BRAND GUARD reads the
+        # same account list). Saving a brand and using it are the same intent.
+        assigned = False
+        try:
+            aid = _state.get("active_account_id") if _state else None
+        except Exception:
+            aid = None
+        if aid:
+            try:
+                import accounts as _acc
+                acc = _acc.get_account(cfg, aid, CONFIG_PATH) or {}
+                brands = [str(x).strip() for x in (acc.get("brands") or []) if str(x).strip()]
+                if bn.lower() not in [x.lower() for x in brands]:
+                    brands.append(bn)
+                    # minimal patch (id + brands) so we never clobber sheet ids/creds
+                    _acc.save_account(cfg, CONFIG_PATH, {"id": aid, "brands": brands})
+                if _state is not None:
+                    _state["cfg"] = None   # force a reload so the new brand shows now
+                assigned = True
+            except Exception:
+                assigned = False
+        return jsonify({"ok": True, "path": path, "assigned_to_account": assigned})
 
     # ---- connection (Drive auth) -------------------------------------------
     @app.route("/brand/connection", methods=["GET", "POST"])

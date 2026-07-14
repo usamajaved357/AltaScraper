@@ -3711,6 +3711,18 @@ async def process_row(row: dict, client, ws_out,
         if listing.get("item_highlights"):
             listing["item_highlights"] = cap_chars(listing["item_highlights"], HIGHLIGHTS_MAX)
 
+        # BULLET CAP. BULLET_MAX_CHARS has existed since the beginning but was NEVER
+        # APPLIED -- cap_chars was only ever called on the title and item_highlights. So
+        # bullets shipped over the limit (measured on the live sheet: 5 rows at 509-562
+        # chars against a 500 cap). Enforce it, in the same place as the other caps.
+        for _bi in range(1, 6):
+            _bk = f"bullet_{_bi}"
+            _bv = str(listing.get(_bk, "") or "")
+            if len(_bv) > BULLET_MAX_CHARS:
+                listing[_bk] = cap_chars(_bv, BULLET_MAX_CHARS)
+                console.print(f"  [yellow]Bullet {_bi} trimmed to {BULLET_MAX_CHARS} chars "
+                              f"(was {len(_bv)})[/yellow]")
+
         st = listing.get("search_terms", "")
         cleaned = clean_search_terms(st)
         if cleaned != st:
@@ -4543,6 +4555,23 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         _fip = _item_props(props[_fname])
         _raw_axes = {k: v for k, v in _merged_axes.items()
                      if k in _fip and not _is_blank(v)}
+        # A composite is NOT only its dimension axes. furniture_leg also carries color,
+        # material and style -- and _from_user_composite() above only ever collected
+        # length/width/height/depth, so the values the user typed for those three were
+        # never passed to the shaper. Amazon then reported them as missing
+        # ("'color#1.value' does not have enough values"). Feed EVERY sub-field the
+        # schema declares and the user actually supplied.
+        _user_obj = pa.get(_fname)
+        if isinstance(_user_obj, dict):
+            for _sk, _sv in _user_obj.items():
+                if _sk in _axis_names or _sk not in _fip or _sk in _raw_axes:
+                    continue
+                if isinstance(_sv, dict):
+                    _sv = _sv.get("value", _sv.get("decimal_value"))
+                elif isinstance(_sv, list) and _sv and isinstance(_sv[0], dict):
+                    _sv = _sv[0].get("value", _sv[0].get("decimal_value"))
+                if not _is_blank(_sv):
+                    _raw_axes[_sk] = _sv
         if not _raw_axes:
             continue
         d = shape_by_schema(props[_fname], _raw_axes, mid, _lang_for(mid))
@@ -5849,6 +5878,11 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     ok = err = skip = 0
     _requested_status = {}   # requested SKU -> its Status in the sheet, for an accurate
                              # "not processed" message (distinguish missing vs status-gated)
+    _processed = set()       # requested SKUs that actually entered the loop body. Without
+                             # this, a row whose Status failed the gate below was dropped by
+                             # a bare `continue` -- not counted in ok/err/skip and never
+                             # mentioned -- so submitting 17 SKUs could report "ok: 6
+                             # errors: 2 skipped: 0" and say NOTHING about the other 9.
     for i, row in enumerate(records, start=2):        # row 1 = headers
         _st = str(row.get("Status", "")).strip().upper()
         sku = str(row.get("SKU", "")).strip()
@@ -5858,6 +5892,8 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             continue
         if only_skus and sku not in only_skus:
             continue
+        if sku:
+            _processed.add(sku)
         pt  = str(row.get("Product Type", "")).strip()
         if not sku or not pt:
             _miss = []
@@ -5881,12 +5917,20 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                 _rb = ""
             if not _rb:
                 err += 1
-                queue(i, status_col, "API_ERROR")
+                # Do NOT touch the row's Status. This is an ACCOUNT-level misconfiguration
+                # (no trademark on the account), NOT a problem with this listing's data.
+                # Overwriting Status with API_ERROR here destroyed the user's own APPROVED
+                # status, so the NEXT Submit silently skipped the row ("Submit only
+                # publishes API_READY, APPROVED rows") -- they had to re-approve, with no
+                # hint why. Leave the status alone: once the trademark is set, the row is
+                # still APPROVED and submits straight away.
                 queue(i, notes_col,
                       "[E] brand -- no trademark set for this account. Add your brand/trademark "
-                      "in account Settings, or in the product card on the Listings page, then submit.")
+                      "in Brand setup (it is assigned to the account when you save it), then submit. "
+                      "This listing's own data is unchanged.")
                 console.print(f"  [red]row {i} {sku}: SUBMIT BLOCKED -- no trademark set for this "
-                              f"account (add it in Settings or the product card)[/red]")
+                              f"account. Set it in Brand setup, then Submit again (the row keeps "
+                              f"its current status -- you do NOT need to re-approve).[/red]")
                 continue
 
         if pt not in schema_cache:
@@ -6018,25 +6062,35 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     flush()                               # write any remaining results
     console.print(f"\n[bold]API {'submit' if submit else 'preview'} complete[/bold] -- "
                   f"ok: {ok}   errors: {err}   skipped: {skip}")
-    if only_skus and (ok + err) == 0:
-        _blocked = {s: st for s, st in _requested_status.items() if st not in eligible}
+    # FULL ACCOUNTING. Every SKU the user asked for must be reported on -- whether it
+    # succeeded, failed, or was quietly dropped by the status gate above. This used to
+    # run ONLY when nothing at all was processed, so a partial run ("ok: 6 errors: 2"
+    # out of 17 requested) silently swallowed the other 9 and the numbers never added up.
+    if only_skus:
+        _not_done = sorted(s for s in only_skus if s not in _processed)
         _elig = ", ".join(sorted(e for e in eligible if e))
-        if _blocked:
-            # the SKU(s) ARE in this tab -- they were skipped by the status gate, not missing.
-            _lines = ", ".join(f"{s} (status '{st or 'blank'}')" for s, st in sorted(_blocked.items()))
-            if submit:
-                console.print(f"  [yellow]None of the requested SKU(s) were submitted.[/yellow] "
-                              f"They ARE in this tab, but Submit only publishes {_elig} rows. "
-                              f"Skipped: {_lines}. Fix any flagged errors, then click Approve, then Submit.")
-            else:
-                console.print(f"  [yellow]None of the requested SKU(s) were processed.[/yellow] "
-                              f"They ARE in this tab but their status isn't eligible ({_elig}). "
-                              f"Skipped: {_lines}.")
-        else:
-            console.print(f"  [yellow]None of the requested SKU(s) were found in this tab.[/yellow] "
-                          f"Looked for: {', '.join(sorted(only_skus))}. "
-                          "Check the row actually has a 'SKU' and 'Product Type' value in this tab, "
-                          "and that the column headers are exactly 'SKU' and 'Product Type'.")
+        _word = "submitted" if submit else "processed"
+        if _not_done:
+            _gated = {s: _requested_status[s] for s in _not_done if s in _requested_status}
+            _absent = [s for s in _not_done if s not in _requested_status]
+            console.print(f"\n  [yellow]{len(_not_done)} of the {len(only_skus)} requested SKU(s) "
+                          f"were NOT {_word}:[/yellow]")
+            if _gated:
+                console.print(f"    [yellow]{len(_gated)} were not processed -- their status is not "
+                              f"eligible.[/yellow] {'Submit' if submit else 'Preview'} only handles "
+                              f"{_elig} rows:")
+                for s, st in sorted(_gated.items()):
+                    console.print(f"      - {s} was not processed (status '{st or 'blank'}')")
+                if submit:
+                    console.print("    Fix any flagged errors, then click Approve, then Submit.")
+            if _absent:
+                console.print(f"    [yellow]{len(_absent)} were not processed -- not found in this "
+                              f"tab:[/yellow] {', '.join(_absent)}")
+                console.print("    Check the row is in THIS account's tab and has both a 'SKU' and a "
+                              "'Product Type' value.")
+        # the numbers must always reconcile
+        console.print(f"  [bold]Accounting:[/bold] {len(only_skus)} requested = "
+                      f"{ok} ok + {err} error(s) + {skip} skipped + {len(_not_done)} not processed")
     if not submit:
         console.print("  Review flags in the sheet / dashboard. When happy, publish with:  "
                       "[bold]python amazon_listing_generator.py api submit[/bold]")
