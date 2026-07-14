@@ -3711,6 +3711,18 @@ async def process_row(row: dict, client, ws_out,
         if listing.get("item_highlights"):
             listing["item_highlights"] = cap_chars(listing["item_highlights"], HIGHLIGHTS_MAX)
 
+        # BULLET CAP. BULLET_MAX_CHARS has existed since the beginning but was NEVER
+        # APPLIED -- cap_chars was only ever called on the title and item_highlights. So
+        # bullets shipped over the limit (measured on the live sheet: 5 rows at 509-562
+        # chars against a 500 cap). Enforce it, in the same place as the other caps.
+        for _bi in range(1, 6):
+            _bk = f"bullet_{_bi}"
+            _bv = str(listing.get(_bk, "") or "")
+            if len(_bv) > BULLET_MAX_CHARS:
+                listing[_bk] = cap_chars(_bv, BULLET_MAX_CHARS)
+                console.print(f"  [yellow]Bullet {_bi} trimmed to {BULLET_MAX_CHARS} chars "
+                              f"(was {len(_bv)})[/yellow]")
+
         st = listing.get("search_terms", "")
         cleaned = clean_search_terms(st)
         if cleaned != st:
