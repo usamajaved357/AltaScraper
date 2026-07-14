@@ -4543,6 +4543,23 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         _fip = _item_props(props[_fname])
         _raw_axes = {k: v for k, v in _merged_axes.items()
                      if k in _fip and not _is_blank(v)}
+        # A composite is NOT only its dimension axes. furniture_leg also carries color,
+        # material and style -- and _from_user_composite() above only ever collected
+        # length/width/height/depth, so the values the user typed for those three were
+        # never passed to the shaper. Amazon then reported them as missing
+        # ("'color#1.value' does not have enough values"). Feed EVERY sub-field the
+        # schema declares and the user actually supplied.
+        _user_obj = pa.get(_fname)
+        if isinstance(_user_obj, dict):
+            for _sk, _sv in _user_obj.items():
+                if _sk in _axis_names or _sk not in _fip or _sk in _raw_axes:
+                    continue
+                if isinstance(_sv, dict):
+                    _sv = _sv.get("value", _sv.get("decimal_value"))
+                elif isinstance(_sv, list) and _sv and isinstance(_sv[0], dict):
+                    _sv = _sv[0].get("value", _sv[0].get("decimal_value"))
+                if not _is_blank(_sv):
+                    _raw_axes[_sk] = _sv
         if not _raw_axes:
             continue
         d = shape_by_schema(props[_fname], _raw_axes, mid, _lang_for(mid))

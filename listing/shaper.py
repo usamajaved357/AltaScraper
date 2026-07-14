@@ -17,40 +17,88 @@ def _lang_for(mid: str) -> str:
     return "en_US" if str(mid) == US_MARKETPLACE_ID else "en_GB"
 
 
+# Keys Amazon uses to SELECT a value, not to carry one. An object holding nothing but
+# these is empty data -- sending it is what makes Amazon say a field "does not have
+# enough values", because the `value` it wants is simply absent.
+_SELECTOR_KEYS = ("marketplace_id", "language_tag")
+
+
+def _is_empty_shape(s):
+    """True when a shaped value carries no actual data -- e.g. [{"language_tag":"en_GB"}]."""
+    if s in (None, "", [], {}):
+        return True
+    if isinstance(s, list):
+        return all(_is_empty_shape(x) for x in s)
+    if isinstance(s, dict):
+        return all(k in _SELECTOR_KEYS for k in s)
+    return False
+
+
 def shape_by_schema(schema, raw, mid, lang="en_GB"):
     t = schema.get("type")
     if t == "array":
         shaped = shape_by_schema(schema.get("items", {}) or {}, raw, mid, lang)
-        return [shaped] if shaped is not None else []
+        # never emit [{}] or [{"language_tag": ...}] -- Amazon reads that as "no value"
+        return [] if _is_empty_shape(shaped) else [shaped]
     if t == "object":
         props = schema.get("properties", {}) or {}
         obj = {}
         if "marketplace_id" in props: obj["marketplace_id"] = mid
         if "language_tag" in props:   obj["language_tag"]   = lang
         num_key = "decimal_value" if "decimal_value" in props else ("value" if "value" in props else None)
-        num=unit=None
-        if isinstance(raw, str):
-            p=raw.split()
-            if p:
-                try: num=float(p[0]); unit=" ".join(p[1:]) or None
-                except ValueError: pass
-        elif isinstance(raw, dict):
-            num=raw.get("decimal_value", raw.get("value")); unit=raw.get("unit")
-        if num_key and num not in (None,""):
-            try: obj[num_key]=float(str(num))
-            except (ValueError,TypeError): obj[num_key]=num
-        if "unit" in props and unit not in (None,""):
-            uen=props["unit"].get("enum")
-            obj["unit"]=(next((e for e in uen if str(e).lower()==str(unit).strip().lower()), unit)
-                         if uen else unit)
-        for pk,pv in props.items():
-            if pk in ("marketplace_id","language_tag","unit",num_key): continue
-            if isinstance(pv,dict) and pv.get("type") in ("array","object"):
-                sub = raw.get(pk) if isinstance(raw,dict) and pk in raw else raw
+        # READ the leaf's declared type instead of assuming it is numeric. The old code
+        # only wrote the leaf when float(raw) succeeded, so a TEXT leaf (furniture_leg's
+        # color / material / style, all "type": "string") lost its value entirely and we
+        # sent [{"language_tag":"en_GB"}] -- exactly Amazon's
+        # "'color#1.value' does not have enough values. The required minimum is '1'".
+        leaf_type = ""
+        if num_key and isinstance(props.get(num_key), dict):
+            leaf_type = str(props[num_key].get("type") or "").lower()
+        _numeric_leaf = leaf_type in ("number", "integer")
+        val = unit = None
+        if isinstance(raw, dict):
+            val = raw.get("decimal_value", raw.get("value"))
+            unit = raw.get("unit")
+        elif isinstance(raw, str):
+            if _numeric_leaf or (not leaf_type and "unit" in props):
+                # "60 centimeters" -> 60 + centimeters
+                p = raw.split()
+                if p:
+                    try:
+                        val = float(p[0]); unit = " ".join(p[1:]) or None
+                    except ValueError:
+                        val = raw          # not a number after all -> keep the text
+            else:
+                val = raw                  # a text leaf: the whole string IS the value
+        elif raw is not None and not isinstance(raw, (list,)):
+            val = raw
+        if num_key and val not in (None, ""):
+            if _numeric_leaf:
+                try: obj[num_key] = float(str(val))
+                except (ValueError, TypeError): obj[num_key] = val
+            else:
+                obj[num_key] = val if not isinstance(val, (int, float)) else str(val)
+        if "unit" in props and unit not in (None, ""):
+            uen = props["unit"].get("enum")
+            obj["unit"] = (next((e for e in uen if str(e).lower() == str(unit).strip().lower()), unit)
+                           if uen else unit)
+        for pk, pv in props.items():
+            if pk in ("marketplace_id", "language_tag", "unit", num_key): continue
+            if isinstance(pv, dict) and pv.get("type") in ("array", "object"):
+                # Only shape a sub-field from ITS OWN data. Passing the whole `raw` down
+                # when the key is absent made every sibling sub-field shape itself from
+                # unrelated data (or from nothing), producing the empty scaffolds above.
+                if isinstance(raw, dict):
+                    if pk not in raw:
+                        continue
+                    sub = raw.get(pk)
+                else:
+                    sub = raw
                 s = shape_by_schema(pv, sub, mid, lang)
-                if s not in (None,[],{}): obj[pk]=s
+                if not _is_empty_shape(s):
+                    obj[pk] = s
         return obj
-    return raw.get("decimal_value", raw.get("value")) if isinstance(raw,dict) else raw
+    return raw.get("decimal_value", raw.get("value")) if isinstance(raw, dict) else raw
 
 
 # --- measurement/enum shapers moved from amazon_listing_generator.py (Phase 5, verbatim). _shape_list_price stays in the engine (mutable MARKETPLACE_ID). ---
