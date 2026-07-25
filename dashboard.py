@@ -2370,6 +2370,19 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
                 src = (src or "source") + " -> Amazon value"
         prelim.append({"field": field, "value": val or "", "source": src or "", "note": ""})
 
+    # CREDIT SAVER: only spend a Claude call when the AI actually has work to do.
+    # If the deterministic chain (eBay/competitor source + Amazon enum-snap) already
+    # produced a value for EVERY requested field -- or there are no AI fields left at
+    # all (all code-owned) -- skip the call entirely. Amazon's Preview is the
+    # backstop: any value it rejects comes back as a flagged field and DOES get the
+    # AI on the next round. On multi-SKU auto-fix runs this removes most of the
+    # per-round AI calls (the ones that were only re-validating already-filled
+    # fields), cutting token spend without changing what gets written.
+    if not fields or all(p.get("value") for p in prelim):
+        for p in prelim:
+            p.setdefault("confidence", "from source")
+        return _code_owned_hits + prelim
+
     # hand the whole picture to the AI to finalise: confirm source values fit the
     # eBay product, and fill any still-empty fields with clearly-labelled reasoning.
     key = (cfg.get("anthropic_api_key") or "").strip()
