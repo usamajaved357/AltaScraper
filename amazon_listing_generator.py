@@ -156,13 +156,47 @@ def seller_id_for(config: dict, marketplace: str = "UK") -> str:
     return str(config.get("seller_id") or "").strip()
 
 
+def _read_retry(fn, *args, _tries=6, **kwargs):
+    """Call a gspread READ (get_all_values / worksheets / row_values) with
+    exponential backoff on Google's per-minute read-quota (HTTP 429).
+
+    The auto-fix loop drives many Preview subprocesses per minute; without this a
+    transient 'Quota exceeded ... Read requests per minute' throttle surfaces as a
+    hard error. The wait is entirely server-side -- the user never sees it. Waits
+    2,4,8,16,30s (~60s total) which covers Google's one-minute quota reset."""
+    import time as _t
+    for i in range(_tries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            _m = str(e).lower()
+            _code = ""
+            try:
+                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
+            except Exception:
+                _code = ""
+            _throttled = (_code == "429" or "429" in _m or "quota" in _m
+                          or "resource_exhausted" in _m or "rate limit" in _m
+                          or "rate_limit" in _m or "per minute" in _m)
+            if _throttled and i < _tries - 1:
+                _wait = min(30, 2 * (2 ** i))
+                try:
+                    console.print(f"  [yellow]Google read throttled (429) -- backing off "
+                                  f"{_wait}s (attempt {i+1}/{_tries})[/yellow]")
+                except Exception:
+                    pass
+                _t.sleep(_wait)
+                continue
+            raise
+
+
 def _safe_records(ws):
     """get_all_records() that tolerates blank / duplicate header cells.
     gspread's own get_all_records() raises when the header row repeats a value
     (including empty strings from trailing blank columns) -- which otherwise
     crashes generate, retry, export and the API preview. Reads raw values and
     builds the dicts directly, keeping the first occurrence of each named header."""
-    vals = ws.get_all_values()
+    vals = _read_retry(ws.get_all_values)
     if not vals:
         return []
     headers = vals[0]
@@ -4198,7 +4232,7 @@ def _skus_across_all_tabs(ws_out) -> set:
     so nothing is missed."""
     out = set()
     try:
-        worksheets = ws_out.spreadsheet.worksheets()
+        worksheets = _read_retry(ws_out.spreadsheet.worksheets)
     except Exception as e:
         console.print(f"  [yellow]Cross-tab SKU scan unavailable: {str(e)[:80]}[/yellow]")
         return out
@@ -4214,7 +4248,7 @@ def _skus_across_all_tabs(ws_out) -> set:
             pass
         # Fallback: malformed/duplicate headers -> read the raw grid.
         try:
-            vals = ws.get_all_values()
+            vals = _read_retry(ws.get_all_values)
         except Exception:
             continue
         if not vals:

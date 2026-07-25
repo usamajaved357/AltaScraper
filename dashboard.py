@@ -2495,6 +2495,31 @@ _RECORDS_CACHE = {}   # {sheet_id::tab: (ts, records)} -- short TTL to avoid 429
 _RECORDS_TTL = 12     # seconds
 
 
+def _sheet_read_retry(fn, *args, _tries=6, **kwargs):
+    """gspread READ with exponential backoff on Google's per-minute read quota
+    (HTTP 429). The auto-fix loop fires many reads/min; this absorbs the throttle
+    server-side so it never surfaces as an error to the user. Waits 2,4,8,16,30s
+    (~60s total, covering the one-minute quota reset). Mirrors
+    amazon_listing_generator._read_retry."""
+    import time as _t
+    for i in range(_tries):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            _m = str(e).lower()
+            _code = ""
+            try:
+                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
+            except Exception:
+                _code = ""
+            if ((_code == "429" or "429" in _m or "quota" in _m or "resource_exhausted" in _m
+                 or "rate limit" in _m or "rate_limit" in _m or "per minute" in _m)
+                    and i < _tries - 1):
+                _t.sleep(min(30, 2 * (2 ** i)))
+                continue
+            raise
+
+
 def _bust_records_cache():
     """Clear the short read-cache so a just-written change is read fresh."""
     _RECORDS_CACHE.clear()
@@ -2520,7 +2545,7 @@ def _records(ws, _use_cache: bool = True):
         hit = _RECORDS_CACHE.get(_key)
         if hit and (_t.time() - hit[0]) < _RECORDS_TTL:
             return hit[1]
-    vals = ws.get_all_values()
+    vals = _sheet_read_retry(ws.get_all_values)
     if not vals:
         if _key:
             _RECORDS_CACHE[_key] = (_t.time(), [])
