@@ -1374,24 +1374,24 @@ def _run_autofix_bg_inner(jid):
                 _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: "
                               f"{len(ai)} AI suggestion(s), {code_owned} code-owned")
 
-                # 2) apply them
+                # 2) apply them -- ONE batched write for the whole round. The old
+                # path called /edit per field (2-3 reads + a write + a cache-bust
+                # EACH), which tripped Google's per-minute quota (429) on multi-SKU
+                # runs. Collapsing a round into a single write also cuts wall-clock.
                 for s in ai:
-                    if _af_cancelled(jid):
-                        break
                     if not s.get("value"):
                         entry["skipped"].append({"field": s.get("field"), "reason": "empty AI value"})
-                        continue
+                _batch = [{"target": "attr", "key": s.get("field"), "value": s.get("value")}
+                          for s in ai if s.get("value")]
+                if _batch and not _af_cancelled(jid):
                     try:
-                        with app.test_request_context(json={"sku": sku, "target": "attr",
-                                                            "key": s.get("field"), "value": s.get("value")}):
-                            eres = app.view_functions["edit"]().get_json() or {}
-                        if eres.get("ok"):
-                            entry["applied"].append({"field": s.get("field"), "value": s.get("value")})
-                        else:
-                            entry["skipped"].append({"field": s.get("field"),
-                                                     "reason": "edit failed: " + str(eres.get("error"))})
+                        _ap, _sk = _apply_edits_batch(sku, _batch)
+                        entry["applied"].extend(_ap)
+                        entry["skipped"].extend(_sk)
                     except Exception as e:
-                        entry["skipped"].append({"field": s.get("field"), "reason": f"edit crashed: {e}"})
+                        for _s2 in _batch:
+                            entry["skipped"].append({"field": _s2.get("key"),
+                                                     "reason": f"batch edit crashed: {e}"})
 
                 # nothing new to apply and nothing code-owned -> the AI is out of ideas
                 if rnd > 1 and not entry["applied"] and code_owned == 0:
@@ -2566,6 +2566,59 @@ def _records(ws, _use_cache: bool = True):
     if _key:
         _RECORDS_CACHE[_key] = (_t.time(), out)
     return out
+
+
+def _apply_edits_batch(sku, edits):
+    """Apply MANY attribute edits to one SKU in a SINGLE write (auto-fix helper).
+
+    The old auto-fix path called /edit once PER field, and each /edit did
+    row_values(1) + a full col_values scan + a cell read + a write + a cache-bust.
+    Seven fields => ~15-20 reads + 7 writes per round, which drove Google's
+    per-minute read/write quota to HTTP 429 on multi-SKU runs. This reads the row
+    from the short cache (already populated by the round's /suggest, so ~0 extra
+    reads), merges every edit into the Attributes JSON in memory, and writes it
+    ONCE (retry-wrapped). Returns (applied, skipped). Faithfully mirrors /edit's
+    attr prefix-cleanup so nested dot-keys behave identically."""
+    applied, skipped = [], []
+    ws   = _ws()
+    recs = _records(ws)                       # cache hit from /suggest -> ~0 reads
+    row  = next((r for r in recs if str(r.get("SKU", "")).strip() == sku), None)
+    if not row:
+        return applied, [{"field": e.get("key"), "reason": "sku not in current view"} for e in edits]
+    trow = row.get("_row")
+    try:
+        obj = json.loads(row.get("Attributes JSON") or "{}")
+        if not isinstance(obj, dict):
+            obj = {}
+    except Exception:
+        obj = {}
+    for e in edits:
+        key   = str(e.get("key", "")).strip()
+        value = e.get("value", "")
+        if not key or str(value).strip() == "":
+            skipped.append({"field": key, "reason": "empty value"})
+            continue
+        if "." in key:                        # deeper dot-key: drop shallower scalar prefixes
+            parts = key.split(".")
+            for i in range(1, len(parts)):
+                prefix = ".".join(parts[:i])
+                if prefix in obj and not isinstance(obj[prefix], dict):
+                    obj.pop(prefix, None)
+        else:                                 # scalar write: drop dot-keys underneath us
+            _pfx = key + "."
+            for _stale in [k for k in list(obj.keys()) if k.startswith(_pfx)]:
+                obj.pop(_stale, None)
+        obj[key] = value
+        applied.append({"field": key, "value": value})
+    if not applied:
+        return applied, skipped
+    hdr = _sheet_read_retry(ws.row_values, 1)
+    if "Attributes JSON" not in hdr:
+        return [], [{"field": e.get("key"), "reason": "no attributes column"} for e in edits]
+    acol = hdr.index("Attributes JSON") + 1
+    _sheet_read_retry(ws.update_cell, trow, acol, json.dumps(obj, ensure_ascii=False))
+    _bust_records_cache()
+    return applied, skipped
 
 
 
