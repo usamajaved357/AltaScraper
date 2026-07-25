@@ -211,6 +211,140 @@ def _split_brand_words(brand: str) -> set:
     return {w.lower() for w in re.findall(r"[A-Za-z0-9]+", brand) if len(w) > 1}
 
 
+# ---------------------------------------------------------------------------
+# CLAIMS GROUNDING GATE -- a SPECIFIC standards/approval claim in the finished
+# copy must appear in the product's OWN source documents (SDS/TDS/other). This is
+# the code-level enforcement that was missing: fabricated OEM spec approvals
+# ("meets Denison HF-2, Vickers I-286-S", "passes the Vickers 35VQ25 pump wear
+# test") reached LIVE Miles listings because the "claims gate" lived only in the
+# generation prompt and nothing verified it against source. check_unsupported_claims
+# runs AFTER generation, over the finished copy only, and returns the ungrounded
+# claims so the caller can HARD-HOLD the row.
+#
+# Deliberately LENIENT: it exists to catch a designation ABSENT from source, not
+# formatting drift. Both sides are normalised (case, hyphen/space, VG/Part/Grade
+# infixes, trailing part-numbers), so "ISO 46"~"ISO VG 46", "P-68"~"P68",
+# "DIN 51524"~"DIN 51524-2" are NOT mismatches. Only SPECIFIC designations are
+# checked: a code containing BOTH a letter and a digit (HF-2, I-286-S, 35VQ25,
+# TES-295), an issuer name (Denison, Vickers, Cincinnati Milacron), or issuer+number
+# (DIN 51524, AGMA 9005). Vague claims ("meets industry specifications") are left to
+# the prompt, not hard-held. The product's OWN viscosity grade (AW-46, ISO 46) is
+# excluded -- it is identity, not an external approval.
+#
+# KNOWN OPEN HOLE (tracked separately): bare quantified claims with no named
+# standard ("rated to 250C", an invented viscosity/flash value) are NOT covered
+# here -- that needs unit normalisation.
+# ---------------------------------------------------------------------------
+
+# Words that introduce a spec the copy claims to satisfy.
+_CLAIM_TRIGGER_RE = re.compile(
+    r"\b(?:meet|meets|meeting|met|exceed|exceeds|exceeding|pass|passes|passing|"
+    r"passed|approved|approval|complies|comply|complying|conform|conforms|"
+    r"conforming|certified|rated|per|according)\b", re.I)
+
+# Spec-issuer names that, claimed as met, must be grounded in source. Distinct from
+# the forbidden-BRAND list; this is about verifiable standards issuers. (Kept >=3
+# chars and distinctive to avoid false hits; 2-char issuers like GM/ZF are handled
+# by the forbidden-brand checker instead.)
+_SPEC_ISSUERS = (
+    "denison", "vickers", "cincinnati", "milacron", "eaton", "parker", "rexroth",
+    "sundstrand", "sundyne", "racine", "sperry", "danfoss", "bosch",
+    "agma", "afnor", "allison", "cummins", "caterpillar", "kubota", "komatsu",
+    "deere", "mercedes", "volvo", "mack", "detroit", "meritor", "poclain",
+)
+_ISSUER_ALT = "|".join(re.escape(i) for i in _SPEC_ISSUERS)
+_ISSUER_RE = re.compile(r"\b(" + _ISSUER_ALT + r")\b", re.I)
+_ISSUER_NUM_RE = re.compile(r"\b(" + _ISSUER_ALT + r")\s*#?\s*([0-9][0-9A-Za-z\-./]*)", re.I)
+
+# Candidate designation tokens; filtered to those with BOTH a letter and a digit.
+_CODE_CANDIDATE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-./]{1,18}")
+# The product's own viscosity grade -- excluded (identity, not an external approval).
+_GRADE_RE = re.compile(r"^(?:iso|aw|vg|sae|iso-?vg)?[-\s]?\d{1,3}[a-z]?$", re.I)
+
+
+def _norm_spec(s: str) -> str:
+    """Canonicalise a designation / source blob for lenient comparison: lowercase,
+    drop VG/Part/Grade/etc. infix words, then strip everything non-alphanumeric."""
+    s = s.lower()
+    s = re.sub(r"\b(?:vg|part|no|nr|class|grade|type|level|approval|approved|spec|"
+               r"specification|specifications|standard|standards|category|series|"
+               r"sequence|test)\b", " ", s)
+    s = re.sub(r"[^a-z0-9]+", "", s)
+    return s
+
+
+def _grounded(token: str, norm_source: str) -> bool:
+    """True if `token` appears in the normalised source, tolerating trailing
+    part-number differences (DIN 51524 ~ DIN 51524-2 ~ DIN 51524 Part 2)."""
+    nt = _norm_spec(token)
+    if len(nt) < 3:
+        return True                      # too generic to verify -> never flag
+    if nt in norm_source:
+        return True
+    core = nt[:max(4, len(nt) - 2)]      # lenient: allow trailing-part drift
+    return core in norm_source
+
+
+def _looks_like_code(tok: str) -> bool:
+    return (bool(re.search(r"[A-Za-z]", tok)) and bool(re.search(r"\d", tok))
+            and not _GRADE_RE.match(tok))
+
+
+def check_unsupported_claims(listing: dict, source_text: str) -> dict:
+    """Verify every SPECIFIC standards/approval claim in the finished copy against
+    the product's OWN source documents.
+
+    Returns {"has_ungrounded": bool, "ungrounded": [{"claim","token"}], "summary"}.
+    Returns empty (nothing flagged) when source_text is blank -- the caller handles
+    the no-source case separately (refuse to generate), so this never hard-holds a
+    row merely because we have nothing to check against."""
+    result = {"has_ungrounded": False, "ungrounded": [], "summary": ""}
+    if not source_text or not source_text.strip():
+        return result
+    norm_source = _norm_spec(source_text)
+
+    blocks = [
+        listing.get("title", ""), listing.get("item_highlights", ""),
+        listing.get("bullet_1", ""), listing.get("bullet_2", ""),
+        listing.get("bullet_3", ""), listing.get("bullet_4", ""),
+        listing.get("bullet_5", ""), _strip_html(listing.get("description", "")),
+    ]
+    text = ". ".join(b for b in blocks if b)
+    sentences = re.split(r"(?<=[.!?;:])\s+|\n+|•|<li>|</li>", text)
+
+    seen = set()
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent or not _CLAIM_TRIGGER_RE.search(sent):
+            continue
+        referenced = []
+        # issuer + number combined standards (DIN 51524, AGMA 9005)
+        for m in _ISSUER_NUM_RE.finditer(sent):
+            referenced.append(m.group(1) + " " + m.group(2))
+        # bare issuer names claimed as met (meets Denison ...)
+        for m in _ISSUER_RE.finditer(sent):
+            referenced.append(m.group(1))
+        # specific alphanumeric codes (HF-2, I-286-S, 35VQ25, TES-295)
+        for tok in _CODE_CANDIDATE_RE.findall(sent):
+            if _looks_like_code(tok):
+                referenced.append(tok)
+        for tok in referenced:
+            if _grounded(tok, norm_source):
+                continue
+            key = (_norm_spec(tok), sent[:50])
+            if key in seen:
+                continue
+            seen.add(key)
+            result["ungrounded"].append({"claim": sent[:180], "token": tok})
+
+    if result["ungrounded"]:
+        result["has_ungrounded"] = True
+        toks = ", ".join(sorted({u["token"] for u in result["ungrounded"]}))
+        result["summary"] = ("UNGROUNDED CLAIM(S) -- not found in product source docs: "
+                             + toks)
+    return result
+
+
 def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
     """
     Universal IP scan. Two checks:

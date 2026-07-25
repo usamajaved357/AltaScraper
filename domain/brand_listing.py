@@ -110,7 +110,7 @@ def _slugish(s: str) -> str:
 
 def build_brand_prompt(product: dict, profile: dict, identity: dict,
                        schema: dict, keywords: list, claim_docs: list,
-                       competitor_specs: str = "") -> str:
+                       competitor_specs: str = "", source_docs: str = "") -> str:
     """Build the brand-mode prompt. Emits the SAME JSON contract as the arbitrage
     build_prompt PLUS a `_provenance` map. Claims gated to evidence."""
 
@@ -199,8 +199,27 @@ def build_brand_prompt(product: dict, profile: dict, identity: dict,
         kw_line = ", ".join(k.get("keyword", "") for k in keywords[:25] if k.get("keyword"))
         kw_section = f"\nKEYWORDS (weave naturally, do not stuff):\n  {kw_line}\n"
 
-    comp_section = f"\nOPTIONAL COMPETITOR REFERENCE (context only, never a source of claims, never name it):\n{competitor_specs}\n" \
-        if competitor_specs else ""
+    # Source framing is mode-dependent, and getting it wrong is a ROOT CAUSE of the
+    # fabrication incident. ARBITRAGE passes a COMPETITOR reference (never a claim
+    # source). DOC-GROUNDED brand/Miles listings pass the product's OWN SDS/TDS in
+    # source_docs -- the authoritative basis for claims. Labelling the own-docs as
+    # "never a source of claims" is precisely why the model ignored the real specs
+    # and invented OEM approvals, so the two are framed separately.
+    if source_docs and source_docs.strip():
+        comp_section = (
+            "\nPRODUCT SOURCE DOCUMENTS (the manufacturer's OWN SDS/TDS for THIS product "
+            "-- the authoritative basis for every specific or performance claim):\n"
+            f"{source_docs}\n"
+            "GROUNDING RULE: State a specific standard, approval, or performance claim "
+            "(e.g. 'meets X', 'passes the Y test', a named viscosity/flash/pour value) ONLY "
+            "if it appears in these documents. If it is not here, DO NOT state it. Never name "
+            "a competitor or OEM brand.\n")
+    elif competitor_specs:
+        comp_section = (
+            "\nOPTIONAL COMPETITOR REFERENCE (context only, never a source of claims, never "
+            f"name it):\n{competitor_specs}\n")
+    else:
+        comp_section = ""
 
     title_rule = (
         f"TITLE (max {_title_max} chars): may LEAD with the brand name \"{brand}\"."
@@ -610,7 +629,7 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
                       creds: dict, config: dict, idx: int, total: int,
                       taken_skus: set, compliance_rules: dict, ip_rules: dict,
                       static_vv: dict, claim_docs: list,
-                      competitor_specs: str = "") -> bool:
+                      competitor_specs: str = "", source_docs: str = "") -> bool:
     """Generate one brand listing and write it to the same output sheet/contract
     as the arbitrage path. Returns True on success."""
     console = host.console
@@ -634,6 +653,17 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
     taken_skus.add(sku)
     console.print(f"  SKU: {sku} | Model/MPN: {identity['model_number'] or '(blank)'} | "
                   f"GTIN: {identity['gtin'] or '(none)'}")
+
+    # CLAIMS-GATE (no-source refuse). Doc-grounded listings (Miles) make specific
+    # technical/performance claims that MUST be grounded in the product's own SDS/TDS.
+    # With no source text there is nothing to ground on, so generation can only
+    # INVENT -- which is exactly how the OEM-spec fabrications reached live listings.
+    # Refuse rather than fabricate. (Scoped to miles_sheet_format, which is set only
+    # for the Miles workflow -- brand-owner-from-profile generation is unaffected.)
+    if profile.get("miles_sheet_format") and not (source_docs or "").strip():
+        console.print(f"  [bold red]HOLD:[/bold red] {sku} has no source documents -- "
+                      f"refusing to generate (would fabricate specs). Re-harvest from Drive first.")
+        return False
 
     # 2) product type schema (reuse host) -- use the brand's marketplace so a
     # US brand queries the US catalogue (not the UK one, which causes NOT_FOUND)
@@ -668,7 +698,7 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
 
     # 4) build prompt + attach images AND claim docs
     prompt = build_brand_prompt(product, profile, identity, schema, keywords,
-                                claim_docs, competitor_specs)
+                                claim_docs, competitor_specs, source_docs=source_docs)
     content = host._build_message_content(prompt, product.get("images", []))
     # attach claim docs (PDF/image) as additional document blocks
     for d in claim_docs:
@@ -802,6 +832,18 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         notes_parts.append(ip_result["summary"])
         ip_risk = "REVIEW"
 
+    # 7b) CLAIMS-GATE (grounding). Any SPECIFIC standards/approval claim in the
+    # FINISHED copy must appear in the product's OWN source docs; if not, HARD-HOLD
+    # the row. Locked, permanent hold format (greppable; the future Status column
+    # reads this same "HOLD:" prefix): "HOLD: ungrounded claim: <tokens> not in source".
+    claims_hold = ""
+    if (source_docs or "").strip():
+        _cg = host.check_unsupported_claims(listing, source_docs)
+        if _cg.get("has_ungrounded"):
+            _toks = ", ".join(sorted({u["token"] for u in _cg["ungrounded"]}))
+            claims_hold = f"HOLD: ungrounded claim: {_toks} not in source"
+            notes_parts.append(claims_hold)
+
     # 8) converge into the EXISTING sheet row + write
     comp_data, pricing, financials, voc_data = _shells(product, profile, identity)
     row_in = {"ebay_url": "", "upc": identity["gtin"]}
@@ -923,7 +965,9 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         # NFPA ratings which triggers food/electrical/sports categories).
         # Only surface real IP violations, not category mismatches.
         comp_report = "Generated"
-        if ip_result.get("has_violations") and notes_parts:
+        if claims_hold:
+            comp_report = claims_hold          # locked "HOLD:" prefix; takes precedence
+        elif ip_result.get("has_violations") and notes_parts:
             # Filter to only genuine IP findings, not compliance categories
             ip_notes = [n for n in notes_parts if "IP" in n or "brand" in n.lower()
                         or "forbidden" in n.lower() or "phrase" in n.lower()]

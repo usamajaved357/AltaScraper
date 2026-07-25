@@ -2118,6 +2118,7 @@ from listing.compliance import _split_brand_words
 
 # check_ip_violations moved to listing/compliance.py in Phase 5 (behaviour unchanged).
 from listing.compliance import check_ip_violations
+from listing.compliance import check_unsupported_claims   # claims-grounding gate (step a)
 
 
 # =============================================================================
@@ -6508,13 +6509,21 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
         # the hazmat/compliance fields; then the technical spec text). The Miles
         # IP-compliance block is prepended so the forbidden OEM brands/specs are
         # scrubbed from the copy.
-        specs_ctx = _miles_compliance_block + "\n\n" if _miles_compliance_block else ""
+        # OWN source documents (SDS/TDS/other) -- the authoritative grounding text
+        # for the claims-gate. Kept SEPARATE from the compliance block on purpose:
+        # "Vickers" is in the forbidden-brands list inside that block, so folding it
+        # in would let a fabricated "Vickers" approval falsely "ground" itself.
+        source_docs = ""
         if b.get("sds_text"):
-            specs_ctx += "SAFETY DATA SHEET (SDS):\n" + b["sds_text"][:4000] + "\n\n"
+            source_docs += "SAFETY DATA SHEET (SDS):\n" + b["sds_text"][:4000] + "\n\n"
         if b.get("spec_text"):
-            specs_ctx += "TECHNICAL DATA SHEET (TDS):\n" + b["spec_text"][:3000] + "\n\n"
+            source_docs += "TECHNICAL DATA SHEET (TDS):\n" + b["spec_text"][:3000] + "\n\n"
         if b.get("other_pdf_text"):
-            specs_ctx += "ADDITIONAL:\n" + b["other_pdf_text"][:1500]
+            source_docs += "ADDITIONAL:\n" + b["other_pdf_text"][:1500]
+        # The Miles compliance/IP block is separate system guidance, NOT a competitor
+        # reference and NOT own-product source. STEP b wires its loading + a dedicated
+        # prompt section; until then it is empty and rides competitor_specs harmlessly.
+        specs_ctx = _miles_compliance_block or ""
 
         try:
             done = brand_listing.process_brand_row(
@@ -6522,7 +6531,7 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
                 ws_out=ws_out, creds=creds, config=config, idx=idx, total=total,
                 taken_skus=taken_skus, compliance_rules=compliance_rules,
                 ip_rules=ip_rules, static_vv=static_vv, claim_docs=[],
-                competitor_specs=specs_ctx)
+                competitor_specs=specs_ctx, source_docs=source_docs)
             if done:
                 ok += 1
                 try:
