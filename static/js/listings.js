@@ -436,6 +436,7 @@ function card(r){
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
       ${issues?'<span class="tileflag" title="Needs review"><i class="ti ti-alert-triangle"></i></span>':''}
+      ${claimBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
@@ -573,8 +574,8 @@ function drawerContent(r){
         <span class="spacer"></span>
         <button class="ib" onclick="closeDrawer()" title="Close"><i class="ti ti-x"></i></button>
       </div>
-      <div class="dwtitle">${esc(r.title)||'<span class="cc">(no title)</span>'}</div>
-      ${r.item_highlights?`<div class="dwhl"><span class="dwhl-lbl">Highlights</span> ${esc(r.item_highlights)}</div>`:''}
+      <div class="dwtitle">${claimMarkField(r,'title',r.title)||'<span class="cc">(no title)</span>'}</div>
+      ${r.item_highlights?`<div class="dwhl"><span class="dwhl-lbl">Highlights</span> ${claimMarkField(r,'item_highlights',r.item_highlights)}</div>`:''}
       <div class="lmeta">
         <span class="lsku">${esc(r.sku)||'\u2014'}</span>
         ${priceStr?`<span class="lprice">${priceStr}</span>`:''}
@@ -607,8 +608,100 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+}
+
+// ---- CATEGORY-AWARE CLAIM RISK (task #18 UI) -----------------------------------
+// Surfaces the backend's per-hit flags (phrase/field/severity/category/rule/swap/col):
+// a tile badge, in-copy highlighting, and a one-click safe rewrite the USER accepts.
+// NEVER blocks publishing -- it's a loud, specific, actionable warning only. A listing
+// with zero hits renders exactly as before (claimBadge/claimBox return "").
+const _CLAIM_FLABEL = {title:"title", item_highlights:"highlights",
+  bullet_1:"bullet 1", bullet_2:"bullet 2", bullet_3:"bullet 3", bullet_4:"bullet 4",
+  bullet_5:"bullet 5", description:"description"};
+function _claimFieldText(r, field){
+  if(field==="title") return r.title||"";
+  if(field==="item_highlights") return r.item_highlights||"";
+  if(field==="description") return String(r.description||"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim();
+  const m=/^bullet_([1-5])$/.exec(field);
+  if(m){ const b=r.bullets||[]; return b[(+m[1])-1]||""; }
+  return "";
+}
+function _claimWholeWordRe(phrase){
+  const p=String(phrase).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  return new RegExp("(?<![A-Za-z0-9])("+p+")(?![A-Za-z0-9])","gi");
+}
+// Escape text, THEN wrap any flagged phrase for `field` in a severity-coloured <mark>.
+function claimMarkField(r, field, rawText){
+  let out=esc(rawText||"");
+  const hits=(r.claim_flags||[]).filter(x=>x.field===field);
+  hits.forEach(h=>{
+    const lvl=h.severity==="RED"?"red":"amber";
+    try{ out=out.replace(_claimWholeWordRe(esc(h.phrase)),'<mark class="claimhit '+lvl+'">$1</mark>'); }catch(e){}
+  });
+  return out;
+}
+function claimBadge(r){
+  const f=r.claim_flags||[]; if(!f.length) return "";
+  const red=f.some(x=>x.severity==="RED"); const lvl=red?"red":"amber";
+  const rules=[...new Set(f.map(x=>x.rule+" ("+x.category+" category)"))].join("; ");
+  const tip=f.length+" claim risk"+(f.length>1?"s":"")+": "+rules+" — click to review";
+  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
+}
+function claimBox(r){
+  const f=r.claim_flags||[]; if(!f.length) return "";
+  const red=f.some(x=>x.severity==="RED");
+  const head=`<summary class="findsum ${red?'bad':'info'}">⚠ ${f.length} claim risk${f.length>1?'s':''} — ${red?'action recommended':'review'} (never blocks publishing)</summary>`;
+  const rows=f.map((h,i)=>{
+    const lvl=h.severity==="RED"?"red":"amber";
+    const marked=claimMarkField(r,h.field,_claimFieldText(r,h.field));
+    return `<div class="claimrow ${lvl}">
+      <div class="claimhead">
+        <span class="claimsev ${lvl}">${esc(h.severity)}</span>
+        <b>${esc(h.rule)}</b> <span class="cc">(${esc(h.category)} category) · in ${esc(_CLAIM_FLABEL[h.field]||h.field)}</span>
+      </div>
+      <div class="claimtext">${marked}</div>
+      ${h.swap?`<button class="linkbtn" onclick="toggleRewrite('${esc(r.sku)}',${i})">✎ Show safe rewrite</button>
+        <div class="rewrite" id="rw_${sid(r.sku)}_${i}" style="display:none"></div>`
+        :`<div class="cc" style="margin-top:4px">No direct swap — rephrase or remove this wording.</div>`}
+    </div>`;
+  }).join("");
+  return `<details class="findingsbox claimsbox" open>${head}<div class="claimlist">${rows}</div></details>`;
+}
+function toggleRewrite(sku, i){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  const box=document.getElementById("rw_"+sid(sku)+"_"+i); if(!box) return;
+  if(box.style.display!=="none"){ box.style.display="none"; box.innerHTML=""; return; }
+  const h=(r.claim_flags||[])[i]; if(!h||!h.swap){ return; }
+  const before=_claimFieldText(r,h.field);
+  let after; try{ after=before.replace(_claimWholeWordRe(h.phrase), h.swap); }catch(e){ after=before; }
+  box.style.display="block";
+  box.innerHTML=`<div class="rwrow"><span class="rwlbl">Before</span><div class="rwbefore">${claimMarkField(r,h.field,before)}</div></div>
+    <div class="rwrow"><span class="rwlbl">After</span><div class="rwafter">${esc(after)}</div></div>
+    <div class="rwacts"><button class="linkbtn ok" onclick="applyRewrite('${esc(sku)}',${i})">Apply this rewrite</button>
+      <span class="cc">You accept it — nothing is changed until you click.</span></div>`;
+}
+async function applyRewrite(sku, i){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  const h=(r.claim_flags||[])[i]; if(!h||!h.swap||!h.col){ toast("No target column for this field"); return; }
+  const raw=(h.field==="description") ? String(r.description||"") : _claimFieldText(r,h.field);
+  let val; try{ val=raw.replace(_claimWholeWordRe(h.phrase), h.swap); }catch(e){ val=raw; }
+  try{
+    const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku:sku, target:"col", key:h.col, value:val})})).json();
+    if(!j.ok){ toast("Save failed: "+(j.error||"")); return; }
+    toast("Rewrite applied ✓ — re-screening");
+    // pull the fresh row so flags recompute against the new copy
+    try{
+      const rr=await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      if(rr&&rr.ok&&rr.row){ const k=ROWS.findIndex(x=>String(x.sku)===String(sku));
+        if(k>=0) ROWS[k]=Object.assign({},ROWS[k],rr.row); }
+    }catch(e){}
+    try{ render(); }catch(e){}
+    if(typeof DRAWER_SKU!=="undefined" && String(DRAWER_SKU)===String(sku)){ try{ openDrawer(sku); }catch(e){} }
+  }catch(e){ toast("Apply failed: "+((e&&e.message)||e)); }
 }
 
 function openDrawer(sku, jumpGen){

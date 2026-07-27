@@ -496,6 +496,36 @@
   .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}
   .tileflag{position:absolute;bottom:8px;right:8px;color:#e3b768;background:rgba(0,0,0,.55);
             border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px}
+  /* Category-aware claim-risk badge (task #18). RED = loud; AMBER deliberately quieter
+     so a soft superlative never screams as loud as a pesticide claim. Absent on clean
+     listings, so those tiles look exactly as before. */
+  .tileclaim{position:absolute;bottom:8px;left:8px;display:flex;align-items:center;gap:3px;
+             height:22px;padding:0 7px;border-radius:11px;font-size:11.5px;font-weight:800;
+             cursor:pointer;z-index:6;line-height:1}
+  .tileclaim i{font-size:12px}
+  .tileclaim.red{background:#c0392b;color:#fff;border:1px solid #e05a4b;box-shadow:0 1px 6px rgba(192,57,43,.55)}
+  .tileclaim.amber{background:rgba(90,74,22,.85);color:#f0cf8c;border:1px solid #7a641f;box-shadow:none}
+  /* In-copy highlight of the offending word(s). */
+  mark.claimhit{padding:0 2px;border-radius:3px;font-weight:700}
+  mark.claimhit.red{background:#5c1f1a;color:#ffb4a8;box-shadow:inset 0 0 0 1px #9c3a30}
+  mark.claimhit.amber{background:#4a3d13;color:#f0cf8c;box-shadow:inset 0 0 0 1px #7a641f}
+  /* Claim-risk panel in the drawer. */
+  .claimsbox .claimlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .claimrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .claimrow.red{background:var(--redbg);border-color:#5c2424}
+  .claimrow.amber{background:var(--amberbg);border-color:#5c4a16}
+  .claimhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
+  .claimsev{font-size:10px;font-weight:800;padding:1px 6px;border-radius:5px;letter-spacing:.03em}
+  .claimsev.red{background:#c0392b;color:#fff}
+  .claimsev.amber{background:#7a641f;color:#fff}
+  .claimtext{margin-top:5px;font-size:12.5px;line-height:1.5;color:var(--fg)}
+  .rewrite{margin-top:6px;border-top:1px dashed var(--line);padding-top:6px}
+  .rwrow{display:flex;gap:8px;align-items:flex-start;margin-bottom:4px}
+  .rwlbl{flex:0 0 46px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;padding-top:2px}
+  .rwbefore,.rwafter{flex:1;font-size:12.5px;line-height:1.5}
+  .rwafter{color:#7fd99a}
+  .rwacts{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .linkbtn.ok{color:#7fd99a;font-weight:700}
   .tilebody{padding:11px 13px 6px;cursor:pointer;flex:1;display:flex;flex-direction:column;gap:2px}
   .tiletitle{font-size:13.5px;font-weight:600;line-height:1.4;min-height:38px;overflow:hidden;
              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
