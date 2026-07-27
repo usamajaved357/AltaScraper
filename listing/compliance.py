@@ -466,6 +466,98 @@ def forbidden_names_block(safe_alternatives_text: str = "") -> str:
     return block
 
 
+# ---------------------------------------------------------------------------
+# REGULATED / CERTIFICATION CLAIMS (NSF / H1 / FDA / food-grade / 21 CFR / USDA)
+# present in the FINISHED copy but NOT in the product's own source docs. Whole-word
+# matched via the SAME _wordish primitive the forbidden-brand scanner uses -- so
+# "nsf" NEVER matches "tra-nsf-er" (the substring bug that lived in the audit's own
+# reimplementation). This is the single source of truth for the check; the audit
+# calls THIS function, so a passing audit validates this exact logic.
+# (Not yet wired into the generation gate -- that gate enforces named-standard
+# grounding only; adding a regulated-claim gate is a separate decision.)
+# ---------------------------------------------------------------------------
+# Whole-word patterns with FLEXIBLE internal separators so "food grade" == "food-grade"
+# == "foodgrade", and the boundary guard so "nsf" never matches "tra-nsf-er".
+_REG_PATTERNS = [
+    ("nsf h1",          re.compile(r"(?<![a-z0-9])nsf[\s-]*h-?1(?![a-z0-9])", re.I)),
+    ("nsf",             re.compile(r"(?<![a-z0-9])nsf(?![a-z0-9])", re.I)),
+    ("fda",             re.compile(r"(?<![a-z0-9])fda(?![a-z0-9])", re.I)),
+    ("food grade",      re.compile(r"(?<![a-z0-9])food[\s-]*grade(?![a-z0-9])", re.I)),
+    ("food contact",    re.compile(r"(?<![a-z0-9])food[\s-]*contact(?![a-z0-9])", re.I)),
+    ("incidental food", re.compile(r"(?<![a-z0-9])incidental[\s-]*food(?![a-z0-9])", re.I)),
+    ("21 cfr",          re.compile(r"(?<![a-z0-9])21[\s-]*cfr(?![a-z0-9])", re.I)),
+    ("usda",            re.compile(r"(?<![a-z0-9])usda(?![a-z0-9])", re.I)),
+    ("halal",           re.compile(r"(?<![a-z0-9])halal(?![a-z0-9])", re.I)),
+    ("kosher",          re.compile(r"(?<![a-z0-9])kosher(?![a-z0-9])", re.I)),
+]
+
+
+def check_regulated_claims(listing: dict, source_text: str) -> dict:
+    """A regulated/certification claim (NSF / H1 / FDA / food-grade / 21 CFR / USDA)
+    in the finished copy is UNSUPPORTED only when the source docs contain NO food-grade
+    evidence AT ALL (any marker, any wording). This 'does the source support the concept'
+    test avoids two false-positive traps: substring ('nsf' in 'transfer') AND wording
+    ('food grade' in copy vs 'food-grade' in source). Returns
+    {"has_unsupported": bool, "hits": [markers-in-copy], "summary": str}."""
+    result = {"has_unsupported": False, "hits": [], "summary": ""}
+    blocks = [listing.get("title", ""), listing.get("item_highlights", ""),
+              listing.get("bullet_1", ""), listing.get("bullet_2", ""),
+              listing.get("bullet_3", ""), listing.get("bullet_4", ""),
+              listing.get("bullet_5", ""), _strip_html(listing.get("description", "")),
+              listing.get("search_terms", "") or listing.get("backend_keywords", "")]
+    copy = " ".join(b for b in blocks if b)
+    src  = source_text or ""
+    copy_hits   = [name for name, rx in _REG_PATTERNS if rx.search(copy)]
+    src_has_any = any(rx.search(src) for _, rx in _REG_PATTERNS)
+    if copy_hits and not src_has_any:
+        result["has_unsupported"] = True
+        result["hits"] = copy_hits
+        result["summary"] = ("UNSUPPORTED REGULATED CLAIM(S) -- source has NO food-grade "
+                             "evidence: " + ", ".join(sorted(set(copy_hits))))
+    return result
+
+
+# Quantified performance figures in copy but absent from source. Digit-boundary
+# guarded (never a substring of a longer number). KNOWN CAVEAT: a value shown in F
+# in copy may be C in source -- treat as REVIEW, not proof of fabrication.
+_PERF_NUM_RE = re.compile(r"(-?\d[\d,]*\.?\d*)\s*°?\s*(cSt|centistokes?|ppm|%|hours?|hrs?)\b", re.I)
+_PERF_TEMP_RE = re.compile(r"(-?\d[\d,]*\.?\d*)\s*°?\s*([FC])\b")
+_PERF_CTX_RE = re.compile(r"(?:viscosity index|flash point|pour point|zinc(?:\s*content)?|\bVI\b|"
+                          r"TOST|TAN|TBN|demulsibility|oxidation|copper corrosion|foam)"
+                          r"\D{0,25}(-?\d[\d,]*\.?\d*)", re.I)
+_PERF_PACK_RE = re.compile(r"\b(gallon|gal|oz|ounce|pail|drum|quart|litre|liter|ml|pack|case|lb|pound|kg)\b", re.I)
+
+
+def check_numeric_grounding(listing: dict, source_text: str) -> dict:
+    """Quantified performance figures in the finished copy absent from source.
+    Returns {"has_ungrounded": bool, "figures": [...], "summary": str, "caveat": str}."""
+    result = {"has_ungrounded": False, "figures": [], "summary": "",
+              "caveat": "temps shown in F in copy may be C in source -- review, not proof"}
+    blocks = [listing.get("title", ""), listing.get("item_highlights", ""),
+              listing.get("bullet_1", ""), listing.get("bullet_2", ""),
+              listing.get("bullet_3", ""), listing.get("bullet_4", ""),
+              listing.get("bullet_5", ""), _strip_html(listing.get("description", ""))]
+    copy = " ".join(b for b in blocks if b)
+    nsrc = re.sub(r",", "", (source_text or "").lower())
+    figs = set()
+    for rx in (_PERF_NUM_RE, _PERF_TEMP_RE, _PERF_CTX_RE):
+        for m in rx.finditer(copy):
+            num = m.group(1)
+            ctx = copy[max(0, m.start() - 12):m.end() + 12]
+            if _PERF_PACK_RE.search(ctx):
+                continue
+            n = num.replace(",", "").lstrip("+").rstrip(".")
+            if n and re.search(r"\d\d|\.\d", n):        # skip trivial 1-digit
+                figs.add(n)
+    missing = sorted(n for n in figs
+                     if not re.search(r"(?<![\d.])" + re.escape(n) + r"(?![\d.])", nsrc))
+    if missing:
+        result["has_ungrounded"] = True
+        result["figures"] = missing
+        result["summary"] = "NUMERIC FIGURE(S) not in source: " + ", ".join(missing)
+    return result
+
+
 def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
     """
     Universal IP scan. Two checks:
