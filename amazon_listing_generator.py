@@ -2153,6 +2153,7 @@ from listing.compliance import _split_brand_words
 # check_ip_violations moved to listing/compliance.py in Phase 5 (behaviour unchanged).
 from listing.compliance import check_ip_violations
 from listing.compliance import check_unsupported_claims   # claims-grounding gate (step a)
+from listing.compliance import check_forbidden_brands, forbidden_names_block  # brand scanner + prompt block (steps b/c)
 
 
 # =============================================================================
@@ -6368,22 +6369,35 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
     # J-20C, Caterpillar TO-4, etc). Listing those on Amazon = IP takedown risk.
     # Load the forbidden brands/specs + safe rephrasings and feed them into the
     # generation context so Claude scrubs them out and uses compliant language.
+    # These rule files ship WITH THE CODE (repo root), not with config.json -- on
+    # Render config is /data while the code + rule files are /app. Anchor to __file__.
+    # (Was base_dir/"miles_compliance"/fn -- a folder that does not exist, so every
+    # IP list silently loaded EMPTY and never reached the prompt: the exact bug here.)
+    _rule_dir = Path(__file__).parent
     def _load_lines(fn):
-        p = base_dir / "miles_compliance" / fn
+        p = _rule_dir / fn
         try:
             return [l.strip() for l in open(p, encoding="utf-8") if l.strip()]
         except Exception:
             return []
-    _forbidden_brands = _load_lines("forbidden_brands.txt")
-    _forbidden_specs  = _load_lines("forbidden_specs.txt")
     def _load_text(fn):
-        p = base_dir / "miles_compliance" / fn
+        p = _rule_dir / fn
         try:
             return open(p, encoding="utf-8").read().strip()
         except Exception:
             return ""
-    _safe_alts = _load_text("safe_alternatives.txt")
+    _forbidden_brands = _load_lines("forbidden_brands.txt")
+    _forbidden_specs  = _load_lines("forbidden_specs.txt")
+    _safe_alts  = _load_text("safe_alternatives.txt")
     _miles_addl = _load_text("additional_instructions.txt")
+    # LOUD warning if a compliance list came back empty -- an empty IP list means the
+    # brand/spec scrub is NOT reaching the AI (the silent failure we just fixed).
+    for _nm, _val in (("forbidden_brands.txt", _forbidden_brands),
+                      ("forbidden_specs.txt", _forbidden_specs),
+                      ("safe_alternatives.txt", _safe_alts)):
+        if not _val:
+            console.print(f"  [bold red]WARNING:[/bold red] {_nm} loaded EMPTY from "
+                          f"{_rule_dir} -- IP scrub for this list is NOT reaching the prompt.")
 
     _miles_compliance_block = ""
 
@@ -6446,16 +6460,12 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
             "AMAZON POLICY COMPLIANCE (key rules from Amazon's official guidelines):\n"
             + _amazon_policies[:2000] + "\n\n"
         )
-    if _forbidden_brands:
-        _miles_compliance_block += (
-            "\n\nCRITICAL IP RULES FOR THIS LUBRICANT (ZERO TOLERANCE -- the spec "
-            "sheets WILL mention these; you must NOT put any of them in the listing):\n"
-            "FORBIDDEN BRANDS: " + ", ".join(_forbidden_brands[:120]) + "\n")
-    if _forbidden_specs:
-        _miles_compliance_block += ("FORBIDDEN OEM SPEC CODES: "
-                                    + ", ".join(_forbidden_specs[:60]) + "\n")
-    if _safe_alts:
-        _miles_compliance_block += "\nUSE THESE SAFE ALTERNATIVES INSTEAD:\n" + _safe_alts[:1200] + "\n"
+    # Tiered forbidden-name section (single source of truth in listing/compliance):
+    # Tier A distinctive names (bare) + Tier B ambiguous names (full-form only) + the
+    # 44 spec codes + safe alternatives + the "Case in a pack size is fine" clarifier.
+    # Replaces the old raw 166-name dump, which included noise words like "Case"/
+    # "Total" that would have told the model to avoid legitimate packaging language.
+    _miles_compliance_block += forbidden_names_block(_safe_alts)
     if _miles_addl:
         _miles_compliance_block += "\n" + _miles_addl[:600]
 
@@ -6554,18 +6564,18 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
             source_docs += "TECHNICAL DATA SHEET (TDS):\n" + b["spec_text"][:3000] + "\n\n"
         if b.get("other_pdf_text"):
             source_docs += "ADDITIONAL:\n" + b["other_pdf_text"][:1500]
-        # The Miles compliance/IP block is separate system guidance, NOT a competitor
-        # reference and NOT own-product source. STEP b wires its loading + a dedicated
-        # prompt section; until then it is empty and rides competitor_specs harmlessly.
-        specs_ctx = _miles_compliance_block or ""
-
+        # The Miles compliance/IP block is system guidance (role, rules, forbidden
+        # names, safe alternatives) -- routed as its OWN prompt section via
+        # guidance_block so it renders ALWAYS, including when source_docs are present.
+        # Miles has no competitor reference, so competitor_specs stays empty.
         try:
             done = brand_listing.process_brand_row(
                 product, profile, host=_sys.modules[__name__], client=client,
                 ws_out=ws_out, creds=creds, config=config, idx=idx, total=total,
                 taken_skus=taken_skus, compliance_rules=compliance_rules,
                 ip_rules=ip_rules, static_vv=static_vv, claim_docs=[],
-                competitor_specs=specs_ctx, source_docs=source_docs)
+                competitor_specs="", source_docs=source_docs,
+                guidance_block=_miles_compliance_block)
             if done:
                 ok += 1
                 try:
@@ -6615,7 +6625,7 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
     # Load the same forbidden brand/spec lists used at generation time so the
     # SQP queries are gated through the IP layer before entering the prompt.
     def _load_lines(fname):
-        p = Path(__file__).parent / "miles_compliance" / fname
+        p = Path(__file__).parent / fname
         if p.exists():
             return [ln.strip() for ln in p.read_text(encoding="utf-8").splitlines()
                     if ln.strip() and not ln.strip().startswith("#")]

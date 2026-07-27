@@ -345,6 +345,127 @@ def check_unsupported_claims(listing: dict, source_text: str) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor trademark names must NOT
+# appear in the finished Miles/brand copy at all (distinct from the claims gate,
+# which is about whether a claim is grounded). Tiered to keep false-positives out
+# of lubricant copy:
+#   TIER A -- distinctive names, matched as BARE whole words (John Deere, Kubota).
+#   TIER B -- ambiguous names, matched ONLY in their full multi-word form
+#             (Case IH, Atlas Copco) -- NEVER the bare word ("Case" in "4x1
+#             Gallon/Case" is a packaging term and is fine).
+#   plus the 44 OEM spec codes, and Vickers/Denison/Cincinnati Milacron.
+# WHOLE-WORD matched with a boundary guard so a name that is a SUBSTRING of an
+# ordinary word never fires -- e.g. "Esso" inside "compressor" must NOT hit.
+# Scans the FINISHED copy only (title/highlights/bullets/description/keywords),
+# never the source docs. A hit hard-holds the row via the locked "HOLD:" prefix.
+# ---------------------------------------------------------------------------
+import os as _os
+
+_TIER_A_BARE = [
+    "John Deere", "Deere", "Kubota", "Caterpillar", "Komatsu", "Kioti", "Kiota",
+    "Fendt", "Claas", "Valtra", "Landini", "Mahindra", "Volvo", "Bobcat", "JCB",
+    "Hitachi", "Kobelco", "Doosan", "Hyundai", "Liebherr", "Manitowoc", "CompAir",
+    "Sullair", "Kaeser", "Cummins", "Freightliner", "Peterbilt", "Kenworth",
+    "Navistar", "MaxxForce", "Meritor", "Vickers", "Danfoss", "Rexroth",
+    "Bosch Rexroth", "Poclain", "Mobil", "Castrol", "Chevron", "Valvoline",
+    "Pennzoil", "Texaco", "AMSOIL", "Motul", "Havoline", "Motorcraft", "Citgo",
+    "Conoco", "Esso", "Aisin", "Fuchs", "Kluber", "Anderol", "Krytox",
+    "Lubriplate", "SuperTech", "AGCO", "McCormick", "Steiger", "TYM", "Boge",
+    "Worthington", "Kendall", "Denison", "Milacron",
+]
+_TIER_B_FULL = [
+    "Case IH", "New Holland", "Ford New Holland", "Massey-Ferguson", "LS Tractor",
+    "Deutz-Fahr", "Volvo CE", "Link-Belt", "Ingersoll Rand", "Atlas Copco",
+    "Quincy Compressor", "Gardner Denver", "Chicago Pneumatic", "FS Curtis",
+    "Detroit Diesel", "Allison Transmission", "Mack Trucks", "Western Star",
+    "Eaton Fuller", "Eaton Vickers", "Dana Spicer", "Parker Hannifin",
+    "Sauer-Danfoss", "Linde Hydraulics", "Shell Tellus", "Shell Rotella",
+    "Shell Rimula", "Total Dacnis", "Total Rubia", "BP Energol", "Petro-Canada",
+    "Phillips 66", "Royal Purple", "Lucas Oil", "Lucas Heavy Duty", "Red Line",
+    "Liqui Moly", "Liqui-Moly", "Schaeffer Manufacturing", "Mystik JT-6",
+    "Warren Distribution", "Quaker State", "MAG 1", "Nye Lubricants",
+    "Dow Corning", "Jet-Lube", "Cincinnati Milacron",
+]
+
+# 44 OEM spec codes loaded from the repo-root file (single source of truth).
+_SPEC_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                           "forbidden_specs.txt")
+try:
+    FORBIDDEN_SPEC_CODES = [l.strip() for l in open(_SPEC_FILE, encoding="utf-8") if l.strip()]
+except Exception:
+    FORBIDDEN_SPEC_CODES = []
+
+
+def _wordish(term: str):
+    """Whole-word pattern with a boundary guard on BOTH ends so a term that is a
+    substring of a longer word never matches ('Esso' in 'compressor' -> no hit)."""
+    return re.compile(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
+
+
+_FORBIDDEN_TERMS = _TIER_A_BARE + _TIER_B_FULL + FORBIDDEN_SPEC_CODES
+_FORBIDDEN_PATTERNS = [(t, _wordish(t)) for t in _FORBIDDEN_TERMS]
+
+
+def check_forbidden_brands(listing: dict) -> dict:
+    """Scan the FINISHED copy for any forbidden OEM/competitor name or spec code.
+    Returns {"has_forbidden": bool, "hits": [{"term","field"}], "summary": str}."""
+    result = {"has_forbidden": False, "hits": [], "summary": ""}
+    fields = [
+        ("title", listing.get("title", "")),
+        ("item_highlights", listing.get("item_highlights", "")),
+        ("bullet_1", listing.get("bullet_1", "")),
+        ("bullet_2", listing.get("bullet_2", "")),
+        ("bullet_3", listing.get("bullet_3", "")),
+        ("bullet_4", listing.get("bullet_4", "")),
+        ("bullet_5", listing.get("bullet_5", "")),
+        ("description", _strip_html(listing.get("description", ""))),
+        ("keywords", listing.get("search_terms", "") or listing.get("backend_keywords", "")),
+    ]
+    seen = set()
+    for fname, text in fields:
+        if not text:
+            continue
+        for term, pat in _FORBIDDEN_PATTERNS:
+            if pat.search(text):
+                k = (term.lower(), fname)
+                if k in seen:
+                    continue
+                seen.add(k)
+                result["hits"].append({"term": term, "field": fname})
+    if result["hits"]:
+        result["has_forbidden"] = True
+        names = ", ".join(sorted({h["term"] for h in result["hits"]}))
+        result["summary"] = "FORBIDDEN BRAND/SPEC in copy: " + names
+    return result
+
+
+def forbidden_names_block(safe_alternatives_text: str = "") -> str:
+    """The prompt section (step b) that feeds the AI the real names to avoid. Rendered
+    as its OWN section so it survives even when source_docs are present."""
+    block = (
+        "\n===================================\n"
+        "FORBIDDEN OEM / COMPETITOR NAMES -- ZERO TOLERANCE\n"
+        "===================================\n"
+        "NEVER write any of these competitor or OEM brand names anywhere in the title, "
+        "bullets, item highlights, description or keywords. If a SOURCE DOCUMENT mentions "
+        "one, describe the capability generically or use the safe-alternative wording "
+        "instead -- never echo the name into the listing.\n"
+        "FORBIDDEN NAMES: " + ", ".join(_TIER_A_BARE + _TIER_B_FULL) + "\n"
+    )
+    if FORBIDDEN_SPEC_CODES:
+        block += "FORBIDDEN OEM SPEC CODES: " + ", ".join(FORBIDDEN_SPEC_CODES) + "\n"
+    if safe_alternatives_text and safe_alternatives_text.strip():
+        block += "\nSAFE ALTERNATIVES TO USE INSTEAD:\n" + safe_alternatives_text.strip()[:1500] + "\n"
+    block += (
+        "\nCLARIFIER: the ordinary word 'Case' in a pack size such as '4x1 Gallon/Case' "
+        "is a PACKAGING term and is fine -- it is NOT the 'Case IH' tractor brand. Only "
+        "the full form 'Case IH' is forbidden; the same applies to other Tier-B names "
+        "(only the full multi-word form is forbidden, never the bare common word).\n"
+    )
+    return block
+
+
 def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
     """
     Universal IP scan. Two checks:

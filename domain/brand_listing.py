@@ -110,7 +110,8 @@ def _slugish(s: str) -> str:
 
 def build_brand_prompt(product: dict, profile: dict, identity: dict,
                        schema: dict, keywords: list, claim_docs: list,
-                       competitor_specs: str = "", source_docs: str = "") -> str:
+                       competitor_specs: str = "", source_docs: str = "",
+                       guidance_block: str = "") -> str:
     """Build the brand-mode prompt. Emits the SAME JSON contract as the arbitrage
     build_prompt PLUS a `_provenance` map. Claims gated to evidence."""
 
@@ -259,6 +260,7 @@ def build_brand_prompt(product: dict, profile: dict, identity: dict,
         f"{claims_evidence}\n"
         f"{kw_section}"
         f"{comp_section}"
+        f"{guidance_block}"
         "\n===================================\n"
         "VOICE\n"
         "===================================\n"
@@ -629,7 +631,8 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
                       creds: dict, config: dict, idx: int, total: int,
                       taken_skus: set, compliance_rules: dict, ip_rules: dict,
                       static_vv: dict, claim_docs: list,
-                      competitor_specs: str = "", source_docs: str = "") -> bool:
+                      competitor_specs: str = "", source_docs: str = "",
+                      guidance_block: str = "") -> bool:
     """Generate one brand listing and write it to the same output sheet/contract
     as the arbitrage path. Returns True on success."""
     console = host.console
@@ -698,7 +701,8 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
 
     # 4) build prompt + attach images AND claim docs
     prompt = build_brand_prompt(product, profile, identity, schema, keywords,
-                                claim_docs, competitor_specs, source_docs=source_docs)
+                                claim_docs, competitor_specs, source_docs=source_docs,
+                                guidance_block=guidance_block)
     content = host._build_message_content(prompt, product.get("images", []))
     # attach claim docs (PDF/image) as additional document blocks
     for d in claim_docs:
@@ -844,6 +848,17 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             claims_hold = f"HOLD: ungrounded claim: {_toks} not in source"
             notes_parts.append(claims_hold)
 
+    # 7c) FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor names must not appear in
+    # the FINISHED copy at all (distinct from grounding). Same locked "HOLD:" marker
+    # as the claims gate. Scoped to Miles, matching the claims-gate scope.
+    fb_hold = ""
+    if profile.get("miles_sheet_format"):
+        _fb = host.check_forbidden_brands(listing)
+        if _fb.get("has_forbidden"):
+            _names = ", ".join(sorted({h["term"] for h in _fb["hits"]}))
+            fb_hold = f"HOLD: forbidden brand: {_names} in copy"
+            notes_parts.append(fb_hold)
+
     # 8) converge into the EXISTING sheet row + write
     comp_data, pricing, financials, voc_data = _shells(product, profile, identity)
     row_in = {"ebay_url": "", "upc": identity["gtin"]}
@@ -965,8 +980,9 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         # NFPA ratings which triggers food/electrical/sports categories).
         # Only surface real IP violations, not category mismatches.
         comp_report = "Generated"
-        if claims_hold:
-            comp_report = claims_hold          # locked "HOLD:" prefix; takes precedence
+        _holds = [h for h in (claims_hold, fb_hold) if h]
+        if _holds:
+            comp_report = " | ".join(_holds)   # locked "HOLD:" prefix; takes precedence
         elif ip_result.get("has_violations") and notes_parts:
             # Filter to only genuine IP findings, not compliance categories
             ip_notes = [n for n in notes_parts if "IP" in n or "brand" in n.lower()
