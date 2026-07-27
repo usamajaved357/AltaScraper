@@ -3059,6 +3059,9 @@ if __name__ == "__main__":
     _autofix_job_routes.register(app, _af_new=_af_new, _af_get=_af_get, _af_active=_af_active,
                                  _af_stop=_af_stop, _run_autofix_bg=_run_autofix_bg,
                                  _state=_state, _threading=threading)
+    import routes.sync_routes as _sync_routes
+    _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
+                          _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
                            _load_img_instructions=_load_img_instructions,

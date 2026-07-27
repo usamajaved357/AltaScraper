@@ -26,6 +26,10 @@ miles_ui_prefs.json
 model_number_counter.json
 attribute_defaults.json
 app_state.json
+# two-way Amazon<->app sync caches (feature 2): last-known-Amazon snapshots + live
+# per-account pull-capability results. Runtime state, machine-specific -- never commit.
+sync_snapshots.json
+sync_capability.json
 
 # --- Session baselines (bug-check snapshots, per CLAUDE.md §3 — never commit) ---
 *.baseline.py
