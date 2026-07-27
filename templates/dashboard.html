@@ -45,6 +45,7 @@
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
   </div>
 
@@ -441,6 +442,40 @@
   </div>
 </div>
 
+<div id="sec_sync" class="wspanel">
+  <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+    <div><h2>Amazon &harr; App sync</h2>
+    <div class="sub">Pull Amazon's live copy into the app, or push app copy to Amazon. Both directions PROPOSE a side-by-side &mdash; nothing is overwritten without your per-field choice. Push is locked until you unlock it, refuses to run through borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
+  </div>
+
+  <h4 style="margin:0 0 8px">Account capability (live)</h4>
+  <div id="sync_matrix" class="cc">Loading&hellip;</div>
+
+  <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+    <h4 style="margin:0 0 8px">Sync a listing &mdash; active workspace</h4>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="sync_sku" placeholder="SKU" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit">
+      <button class="btn" onclick="syncCheckStatus()">Check status</button>
+      <span id="sync_pill"></span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" id="sync_pull_btn" onclick="syncPull()"><i class="ti ti-download"></i> Pull from Amazon</button>
+      <button class="btn" id="sync_push_btn" onclick="syncPush()" disabled title="Push is locked"><i class="ti ti-upload"></i> Push to Amazon</button>
+    </div>
+    <label class="minlbl" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">
+      <input type="checkbox" id="sync_push_unlock" onchange="syncTogglePushLock(this)"> Unlock push buttons (backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials)
+    </label>
+  </div>
+</div>
+
+<div class="modalwrap" id="sync_modal">
+  <div class="modal" style="max-width:940px">
+    <button class="x" onclick="syncCloseModal()">&times;</button>
+    <h3 id="sync_modal_title">Review</h3>
+    <div id="sync_modal_body">Loading&hellip;</div>
+  </div>
+</div>
+
 <div class="modalwrap" id="acctmodal">
   <div class="modal">
     <button class="x" onclick="closeAccountEditor()">×</button>
@@ -479,6 +514,7 @@
 <script src="/static/js/submit.js"></script>
 <script src="/static/js/shell.js"></script>
 <script src="/static/js/settings.js"></script>
+<script src="/static/js/sync.js"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">
