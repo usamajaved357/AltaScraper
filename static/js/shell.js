@@ -219,7 +219,12 @@ async function enterAccount(accountId){
   window.WS_READONLY = (a.can_publish === false);
   window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
   LIVE_ITEMS=[]; APLUS_BY_ASIN={}; AMZ_STATE={};   // never carry one account's data into another
-  LIST_SOURCE = hasCreds ? 'all' : 'drafts';   // All = drafts + live for connected accounts
+  // Open on DRAFTS only -- loading the workspace must be fully local. A live Amazon
+  // read (the Reports API call in /live/catalog) is slow and must never fire just from
+  // opening the page; the user triggers it explicitly by clicking the Live/All source
+  // button or Sync/Pull. (Previously defaulted to 'all' for connected accounts, which
+  // auto-fired loadLiveCatalog on every workspace open.)
+  LIST_SOURCE = 'drafts';
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
   WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");

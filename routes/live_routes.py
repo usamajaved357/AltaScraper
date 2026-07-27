@@ -524,5 +524,13 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             return jsonify({"ok": True, "items": items, "count": len(items),
                             "cached": False, "columns": hdr, "report_source": report_source})
         except Exception as e:
-            return jsonify({"ok": False, "error": f"report flow failed: {str(e)[:220]}"}), 500
+            # Print the FULL traceback to the terminal so the real cause is always
+            # visible (the JSON only carries a truncated string). Without this the
+            # 500 is a black box -- you see "report flow failed: ..." and nothing more.
+            import traceback as _tb
+            print("[live/catalog] EXCEPTION during report flow "
+                  f"(account={aid} marketplace={mkt}):")
+            _tb.print_exc()
+            return jsonify({"ok": False,
+                            "error": f"report flow failed: {type(e).__name__}: {str(e)[:220]}"}), 500
 
