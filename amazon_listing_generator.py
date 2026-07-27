@@ -2156,6 +2156,7 @@ from listing.compliance import check_unsupported_claims   # claims-grounding gat
 from listing.compliance import check_forbidden_brands, forbidden_names_block  # brand scanner + prompt block (steps b/c)
 from listing.compliance import check_regulated_claims  # regulated-claim gate (gap close)
 from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
+from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
 
 
 # =============================================================================

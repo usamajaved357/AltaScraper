@@ -876,6 +876,15 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         for _w in _nm.get("warnings", []):
             notes_parts.append("REVIEW: unverified figure: " + _w)
 
+    # 7b-4) RESTRICTED-PHRASING CHECK (feature 1) -- WARN only, never a hard hold.
+    # True/grounded wording that reads as a pesticide/medical claim to Amazon's filters;
+    # surfaced so it can be softened before submit. Code-only, no AI credits.
+    if profile.get("miles_sheet_format"):
+        _rp = host.check_restricted_phrasing(listing)
+        if _rp.get("has_flagged"):
+            notes_parts.append("REVIEW: restricted phrasing: "
+                               + ", ".join(sorted({h["phrase"] for h in _rp["hits"]})))
+
     # 7c) FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor names must not appear in
     # the FINISHED copy at all (distinct from grounding). Same locked "HOLD:" marker
     # as the claims gate. Scoped to Miles, matching the claims-gate scope.

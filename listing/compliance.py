@@ -463,7 +463,63 @@ def forbidden_names_block(safe_alternatives_text: str = "") -> str:
         "the full form 'Case IH' is forbidden; the same applies to other Tier-B names "
         "(only the full multi-word form is forbidden, never the bare common word).\n"
     )
+    block += (
+        "\nAMAZON-SAFE PHRASING (avoid tripping the pesticide/medical claim filters): do NOT "
+        "use antimicrobial/pesticide/medical wording (kill, eliminate, destroy, repel, prevent "
+        "growth, fights bacteria/mould/odour, disinfect, sanitise, antimicrobial, medical grade, "
+        "therapeutic). PREFER plain descriptive wording over action wording -- 'reduces wear' "
+        "not 'protects against wear', 'runs clean' not 'controls deposits', 'resists rust' not "
+        "'prevents corrosion'. The claim is true either way; just phrase it descriptively.\n"
+    )
     return block
+
+
+# ---------------------------------------------------------------------------
+# RESTRICTED-PHRASING CHECK (feature 1) -- true, grounded wording that nonetheless
+# reads as a pesticide/antimicrobial/medical claim to Amazon's filters. Pure pattern
+# match (NO AI), whole-word via the same _wordish primitive. A hit WARNs (soften
+# before submit), never hard-holds. The list is an editable repo-root file
+# (restricted_phrasing.txt), kept conservative so it never nags on normal lube
+# language ("rust protection", "reduces wear").
+# ---------------------------------------------------------------------------
+_RESTRICTED_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                                 "restricted_phrasing.txt")
+try:
+    RESTRICTED_PHRASES = [l.strip() for l in open(_RESTRICTED_FILE, encoding="utf-8")
+                          if l.strip() and not l.strip().startswith("#")]
+except Exception:
+    RESTRICTED_PHRASES = []
+_RESTRICTED_PATTERNS = [(p, _wordish(p)) for p in RESTRICTED_PHRASES]
+
+
+def check_restricted_phrasing(listing: dict) -> dict:
+    """Scan finished copy for phrasing Amazon's pesticide/medical filters dislike.
+    WARN-level (never a hard hold). Returns
+    {"has_flagged": bool, "hits": [{"phrase","field"}], "summary": str}."""
+    result = {"has_flagged": False, "hits": [], "summary": ""}
+    fields = [
+        ("title", listing.get("title", "")),
+        ("item_highlights", listing.get("item_highlights", "")),
+        ("bullet_1", listing.get("bullet_1", "")), ("bullet_2", listing.get("bullet_2", "")),
+        ("bullet_3", listing.get("bullet_3", "")), ("bullet_4", listing.get("bullet_4", "")),
+        ("bullet_5", listing.get("bullet_5", "")),
+        ("description", _strip_html(listing.get("description", ""))),
+    ]
+    seen = set()
+    for fname, text in fields:
+        if not text:
+            continue
+        for phrase, pat in _RESTRICTED_PATTERNS:
+            if pat.search(text):
+                k = (phrase.lower(), fname)
+                if k in seen:
+                    continue
+                seen.add(k)
+                result["hits"].append({"phrase": phrase, "field": fname})
+    if result["hits"]:
+        result["has_flagged"] = True
+        result["summary"] = "RESTRICTED PHRASING: " + ", ".join(sorted({h["phrase"] for h in result["hits"]}))
+    return result
 
 
 # ---------------------------------------------------------------------------
