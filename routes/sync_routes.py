@@ -84,17 +84,37 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache):
                     marketplace=getattr(Marketplaces, mkt, Marketplaces.UK), timeout=60)
             li.get_listings_item(acc.get("seller_id", ""), "SYNC-READTEST-DUMMY",
                                  marketplaceIds=[mid] if mid else None, includedData="summaries")
-            confirmed = True; detail = "unexpected 200"
+            status = _sync.CONFIRMED; detail = "unexpected 200"
         except Exception as e:
             m = str(e).lower()
             if "not_found" in m or "not found" in m:
-                confirmed = True; detail = "NOT_FOUND -> read authorised"
-            elif "forbidden" in m or "unauthor" in m:
-                confirmed = False; detail = "not authorised for Listings read"
+                status = _sync.CONFIRMED; detail = "NOT_FOUND -> read authorised"
+            elif "forbidden" in m or "unauthor" in m or "access to requested" in m:
+                # A 403 is ambiguous: deactivated (temporary) vs role gap (real). classify()
+                # only auto-labels when Amazon says so, else 'blocked_unconfirmed' -- never a guess.
+                status = _sync.classify_read_error(str(e)); detail = str(e)[:160]
             else:
                 return jsonify({"ok": False, "error": f"{type(e).__name__}: {str(e)[:120]}"}), 502
-        _sync.set_pull_confirmed(acc.get("id", ""), confirmed)
-        return jsonify({"ok": True, "pull_confirmed": confirmed, "detail": detail})
+        _sync.set_pull_result(acc.get("id", ""), status, detail)
+        cap = _sync.capability(acc)
+        return jsonify({"ok": True, "status": cap["status"], "pull_enabled": cap["pull_enabled"],
+                        "reason": cap["reason"], "detail": detail})
+
+    @app.route("/sync/mark_status", methods=["POST"])
+    def sync_mark_status():
+        """OPERATOR override for the active account's pull status -- name a cause the generic
+        403 cannot (e.g. mark a suspended account 'deactivated'). Does NOT touch the Amazon
+        account; a later successful re-test clears it."""
+        b = request.get_json(force=True) or {}
+        status = str(b.get("status", "")).strip()
+        note = str(b.get("note", "")).strip()
+        acc = _active_account()
+        if not acc:
+            return jsonify({"ok": False, "error": "no active account"}), 400
+        if status not in (_sync.DEACTIVATED, _sync.ROLE_GAP, _sync.BLOCKED_UNCONFIRMED, _sync.UNTESTED):
+            return jsonify({"ok": False, "error": "invalid status"}), 400
+        _sync.mark_status(acc.get("id", ""), status, note)
+        return jsonify({"ok": True, **_sync.capability(acc)})
 
     @app.route("/sync/status", methods=["POST"])
     def sync_status():

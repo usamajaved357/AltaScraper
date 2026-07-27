@@ -49,44 +49,97 @@ def _save(fn, obj):
 
 
 # --- capability (config-derived + live-confirmed pull) ---------------------
+# Read-test outcomes. A FAILURE is not automatically a permanent 'no access': a 403 can
+# mean the account is DEACTIVATED (temporary -- access returns on reinstatement) OR that
+# the credentials genuinely lack the role (a real gap). Amazon's generic 403 does not say
+# which, so an ambiguous failure is 'blocked_unconfirmed', never a guessed cause.
+CONFIRMED = "confirmed"
+DEACTIVATED = "deactivated"
+ROLE_GAP = "role_gap"
+BLOCKED_UNCONFIRMED = "blocked_unconfirmed"
+UNTESTED = "untested"
+
+
+def classify_read_error(err_text: str) -> str:
+    """Classify a read-test failure from Amazon's message. Only auto-labels a cause when
+    the message clearly says so; otherwise 'blocked_unconfirmed' (never a guess)."""
+    m = (err_text or "").lower()
+    if any(k in m for k in ("suspend", "deactivat", "inactive", "not active", "account status")):
+        return DEACTIVATED
+    if any(k in m for k in ("not authorized to perform", "grantless", "developer", "application id",
+                            "missing role", "unauthorized for operation")):
+        return ROLE_GAP
+    return BLOCKED_UNCONFIRMED           # e.g. generic "Access to requested resource is denied"
+
+
 def capability(account: dict) -> dict:
-    """Per-account sync capability. PULL is only 'enabled' when a live read-test has
-    CONFIRMED it (config alone is not trusted -- Sheelady looked pull-capable in config
-    but was denied live). PUSH is enabled from can_publish but stays INFERRED (a write
-    is never tested by writing)."""
+    """Per-account sync capability. PULL is enabled ONLY on a live-CONFIRMED read-test. A
+    failure is labelled BY CAUSE (deactivated=temporary vs role_gap=real vs unconfirmed),
+    and is always RE-TESTABLE -- one re-test on reinstatement flips it back to confirmed
+    with no code change. PUSH is enabled from can_publish but stays INFERRED. An operator
+    override can name a cause the generic 403 cannot."""
     aid = account.get("id", "")
     own = _acc.has_own_creds(account)
     borrowed = _acc.is_borrowed(account)
-    can_read_scope = _acc.seller_scope_allowed(account)   # config says seller-scope possible
+    can_read_scope = _acc.seller_scope_allowed(account)
     can_push_cfg = _acc.can_publish(account)
     cap = _load(_CAP_FILE).get(aid, {})
-    pull_confirmed = bool(cap.get("pull_confirmed"))
+    status = cap.get("status")
+    manual = cap.get("manual", "")
     if borrowed:
-        reason = "borrowed credentials -> catalogue-only (no seller read/write)"
+        status_lbl, reason = "borrowed", "borrowed credentials -> catalogue-only (no seller read/write)"
     elif not own:
-        reason = "not connected (no own SP-API app)"
-    elif not can_read_scope:
-        reason = "own creds but seller-scope not allowed"
-    elif cap.get("tested_at"):
-        reason = "own creds; pull CONFIRMED (live read-test)" if pull_confirmed else \
-                 "own creds; pull DENIED (live read-test) -- no Listings read role"
+        status_lbl, reason = "not_connected", "not connected (no own SP-API app)"
+    elif status == CONFIRMED:
+        status_lbl, reason = CONFIRMED, "own creds; pull CONFIRMED (live read-test)"
+    elif status == DEACTIVATED:
+        status_lbl, reason = DEACTIVATED, ("access blocked -- account DEACTIVATED (temporary); "
+                                           "access returns on reinstatement, then re-test")
+    elif status == ROLE_GAP:
+        status_lbl, reason = ROLE_GAP, "credentials lack the Listings read role -- a real gap (fix creds)"
+    elif status == BLOCKED_UNCONFIRMED:
+        status_lbl, reason = BLOCKED_UNCONFIRMED, ("access blocked -- reason UNCONFIRMED (generic 403); "
+                                                   "re-test, or mark the cause (deactivated vs role gap)")
     else:
-        reason = "own creds; pull not yet read-tested"
+        status_lbl, reason = UNTESTED, "own creds; pull not yet read-tested"
+    if manual:
+        reason += " | operator note: " + manual
+    pull_confirmed = (status == CONFIRMED)
     return {
         "account_id": aid,
-        "pull_enabled": bool(can_read_scope and pull_confirmed),   # LIVE-confirmed only
-        "pull_possible": bool(can_read_scope),                     # config thinks so (needs read-test)
+        "status": status_lbl,
+        "pull_enabled": bool(can_read_scope and pull_confirmed),
+        "pull_possible": bool(can_read_scope),
         "pull_confirmed": pull_confirmed,
-        "push_enabled": bool(can_push_cfg),                        # INFERRED until a real push
+        "re_testable": bool(own and not borrowed),      # a failure is never a permanent verdict
+        "push_enabled": bool(can_push_cfg),              # INFERRED until a real push
         "push_confirmed": bool(cap.get("push_confirmed")),
         "reason": reason,
+        "tested_at": cap.get("tested_at"),
     }
 
 
-def set_pull_confirmed(account_id: str, confirmed: bool):
+def set_pull_result(account_id: str, status: str, detail: str = ""):
+    """Record a read-test outcome. Re-running the read-test overwrites this -- never frozen.
+    A fresh CONFIRMED clears any stale operator note (access is back)."""
     cap = _load(_CAP_FILE)
-    cap.setdefault(account_id, {})["pull_confirmed"] = bool(confirmed)
-    cap[account_id]["tested_at"] = int(time.time())
+    e = cap.setdefault(account_id, {})
+    e["status"] = status
+    e["detail"] = detail
+    e["tested_at"] = int(time.time())
+    if status == CONFIRMED:
+        e.pop("manual", None)
+    _save(_CAP_FILE, cap)
+
+
+def mark_status(account_id: str, status: str, note: str = ""):
+    """OPERATOR override to name a cause the 403 cannot (e.g. 'deactivated'). Sets status +
+    a note; does NOT touch the Amazon account. A later successful re-test clears it."""
+    cap = _load(_CAP_FILE)
+    e = cap.setdefault(account_id, {})
+    e["status"] = status
+    e["manual"] = note
+    e.setdefault("tested_at", int(time.time()))
     _save(_CAP_FILE, cap)
 
 
