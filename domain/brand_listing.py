@@ -862,6 +862,20 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
                         + ", ".join(sorted(set(_rg["hits"]))) + " not in source")
             notes_parts.append(reg_hold)
 
+    # 7b-3) NUMERIC GATE -- a quantified figure with a unit + property keyword that is
+    # not in / derivable from source (unit-normalised, F<->C aware, range- and tolerance-
+    # aware). HOLD only on confident 'far' fabrications; near-misses (rounding / messy
+    # source) become REVIEW notes, never hard holds -- the anti-over-flag rule.
+    num_hold = ""
+    if (source_docs or "").strip():
+        _nm = host.check_numeric_grounding(listing, source_docs)
+        if _nm.get("has_fabricated"):
+            num_hold = ("HOLD: unsupported figure: " + ", ".join(_nm["fabricated"])
+                        + " not in source")
+            notes_parts.append(num_hold)
+        for _w in _nm.get("warnings", []):
+            notes_parts.append("REVIEW: unverified figure: " + _w)
+
     # 7c) FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor names must not appear in
     # the FINISHED copy at all (distinct from grounding). Same locked "HOLD:" marker
     # as the claims gate. Scoped to Miles, matching the claims-gate scope.
@@ -994,7 +1008,7 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         # NFPA ratings which triggers food/electrical/sports categories).
         # Only surface real IP violations, not category mismatches.
         comp_report = "Generated"
-        _holds = [h for h in (claims_hold, reg_hold, fb_hold) if h]
+        _holds = [h for h in (claims_hold, reg_hold, num_hold, fb_hold) if h]
         if _holds:
             comp_report = " | ".join(_holds)   # locked "HOLD:" prefix; takes precedence
         elif ip_result.get("has_violations") and notes_parts:

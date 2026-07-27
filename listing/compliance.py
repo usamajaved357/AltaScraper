@@ -517,44 +517,128 @@ def check_regulated_claims(listing: dict, source_text: str) -> dict:
     return result
 
 
-# Quantified performance figures in copy but absent from source. Digit-boundary
-# guarded (never a substring of a longer number). KNOWN CAVEAT: a value shown in F
-# in copy may be C in source -- treat as REVIEW, not proof of fabrication.
-_PERF_NUM_RE = re.compile(r"(-?\d[\d,]*\.?\d*)\s*°?\s*(cSt|centistokes?|ppm|%|hours?|hrs?)\b", re.I)
-_PERF_TEMP_RE = re.compile(r"(-?\d[\d,]*\.?\d*)\s*°?\s*([FC])\b")
-_PERF_CTX_RE = re.compile(r"(?:viscosity index|flash point|pour point|zinc(?:\s*content)?|\bVI\b|"
-                          r"TOST|TAN|TBN|demulsibility|oxidation|copper corrosion|foam)"
-                          r"\D{0,25}(-?\d[\d,]*\.?\d*)", re.I)
-_PERF_PACK_RE = re.compile(r"\b(gallon|gal|oz|ounce|pail|drum|quart|litre|liter|ml|pack|case|lb|pound|kg)\b", re.I)
+# ---------------------------------------------------------------------------
+# NUMERIC GROUNDING -- a quantified figure in the copy is a fabrication ONLY if,
+# after UNIT-NORMALISATION and TOLERANCE, it neither appears in nor is derivable
+# from the source. Derivable = same value in different units (F<->C), inside a
+# source-stated range, or within a small rounding tolerance. This is the whole
+# point: a legit F/C conversion is NOT a mismatch, so it must never HOLD.
+# Two tiers: a number with an explicit unit AND a performance-property keyword
+# that can't be derived is CONFIDENT (-> HOLD); every other ungrounded figure is
+# UNCERTAIN (-> WARN note, never a hard hold). Malformed concatenations (460Miles,
+# 0FG) carry no unit + keyword, so they can never HOLD.
+# ---------------------------------------------------------------------------
+_UNIT_FIG_RE = re.compile(
+    r"(-?\d[\d,]*(?:\.\d+)?)\s*°?\s*(cSt|centistokes?|ppm|%|hours?|hrs?|kg|Nm|[FC]\b)", re.I)
+_PERF_KW_RE = re.compile(
+    r"(flash\s*point|pour\s*point|viscosity\s*index|\bVI\b|timken|zinc|demulsibility|"
+    r"oxidation|copper\s*corrosion|kinematic|viscosit)", re.I)
+_KW_NUM_RE = re.compile(
+    r"(?:flash\s*point|pour\s*point|viscosity\s*index|\bVI\b|timken|zinc|demulsibility|"
+    r"oxidation|copper\s*corrosion|iso\s*vg|\biso\b)\D{0,18}(-?\d[\d,]*(?:\.\d+)?)", re.I)
+_PACK_NEAR_RE = re.compile(
+    r"\b(gallon|gal|oz|ounce|pail|drum|quart|litre|liter|ml|pack|case|lb|pound)\b", re.I)
+
+
+def _parse_numbers(text: str):
+    """(floats, ranges) from a blob. Thousands commas stripped; ranges '44-48' /
+    '44 to 48' captured so a copy value inside them grounds."""
+    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", text or "")
+    ranges = []
+    for m in re.finditer(r"(-?\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(-?\d+(?:\.\d+)?)", t):
+        try:
+            a, b = float(m.group(1)), float(m.group(2))
+            ranges.append((min(a, b), max(a, b)))
+        except Exception:
+            pass
+    nums = []
+    for m in re.finditer(r"-?\d+(?:\.\d+)?", t):
+        try:
+            nums.append(float(m.group(0)))
+        except Exception:
+            pass
+    return nums, ranges
+
+
+def _num_status(n: float, src_nums, src_ranges) -> str:
+    """'grounded' -- n (or its F<->C conversion) matches a source number within tight
+    tolerance (+/-1 or +/-2%) or falls in a source range. 'near' -- loosely close
+    (rounding / product-variant / messy source -- UNCERTAIN, warn not hold). 'far' --
+    nothing anywhere near, even converted (likely fabricated)."""
+    cands = (n, (n - 32.0) * 5.0 / 9.0, n * 9.0 / 5.0 + 32.0)   # value, F->C, C->F
+    for c in cands:
+        if any(abs(c - s) <= max(1.0, abs(s) * 0.02) for s in src_nums):
+            return "grounded"
+    if any(lo - 0.5 <= n <= hi + 0.5 for lo, hi in src_ranges):
+        return "grounded"
+    for c in cands:
+        if any(abs(c - s) <= max(8.0, abs(s) * 0.15) for s in src_nums):
+            return "near"
+    for lo, hi in src_ranges:
+        span = abs(hi - lo) + 5.0
+        if lo - span <= n <= hi + span:
+            return "near"
+    return "far"
 
 
 def check_numeric_grounding(listing: dict, source_text: str) -> dict:
-    """Quantified performance figures in the finished copy absent from source.
-    Returns {"has_ungrounded": bool, "figures": [...], "summary": str, "caveat": str}."""
-    result = {"has_ungrounded": False, "figures": [], "summary": "",
-              "caveat": "temps shown in F in copy may be C in source -- review, not proof"}
+    """Unit-normalised numeric grounding. Returns
+    {"has_fabricated": bool, "fabricated": [figs], "warnings": [figs], "summary"}.
+    Empty when source is blank (the caller refuses no-source rows separately)."""
+    result = {"has_fabricated": False, "fabricated": [], "warnings": [], "summary": ""}
+    if not (source_text or "").strip():
+        return result
     blocks = [listing.get("title", ""), listing.get("item_highlights", ""),
               listing.get("bullet_1", ""), listing.get("bullet_2", ""),
               listing.get("bullet_3", ""), listing.get("bullet_4", ""),
               listing.get("bullet_5", ""), _strip_html(listing.get("description", ""))]
     copy = " ".join(b for b in blocks if b)
-    nsrc = re.sub(r",", "", (source_text or "").lower())
-    figs = set()
-    for rx in (_PERF_NUM_RE, _PERF_TEMP_RE, _PERF_CTX_RE):
-        for m in rx.finditer(copy):
-            num = m.group(1)
-            ctx = copy[max(0, m.start() - 12):m.end() + 12]
-            if _PERF_PACK_RE.search(ctx):
-                continue
-            n = num.replace(",", "").lstrip("+").rstrip(".")
-            if n and re.search(r"\d\d|\.\d", n):        # skip trivial 1-digit
-                figs.add(n)
-    missing = sorted(n for n in figs
-                     if not re.search(r"(?<![\d.])" + re.escape(n) + r"(?![\d.])", nsrc))
-    if missing:
-        result["has_ungrounded"] = True
-        result["figures"] = missing
-        result["summary"] = "NUMERIC FIGURE(S) not in source: " + ", ".join(missing)
+    src_nums, src_ranges = _parse_numbers(source_text)
+    seen = set()
+
+    def _val(raw):
+        try:
+            return float(raw.replace(",", "").rstrip("."))
+        except Exception:
+            return None
+
+    # CONFIDENT vs UNCERTAIN split on unit-bearing figures.
+    for m in _UNIT_FIG_RE.finditer(copy):
+        n = _val(m.group(1))
+        if n is None:
+            continue
+        ctx = copy[max(0, m.start() - 35):m.end() + 5]
+        if _PACK_NEAR_RE.search(ctx):
+            continue
+        # A figure preceded by "at"/"@" is a MEASUREMENT CONDITION ("at 40C", "at
+        # 100C", "at 130C") -- the reference temperature a property is measured at,
+        # not a claimed value. Never a fabrication.
+        if re.search(r"(?:\bat|@)\s*$", copy[max(0, m.start() - 5):m.start()], re.I):
+            continue
+        key = round(n, 2)
+        if key in seen:
+            continue
+        seen.add(key)
+        st = _num_status(n, src_nums, src_ranges)
+        if st == "grounded":
+            continue
+        if st == "far" and _PERF_KW_RE.search(ctx):
+            result["fabricated"].append(m.group(0).strip())     # unit + property, nothing near -> HOLD
+        else:
+            result["warnings"].append(m.group(0).strip()[:48])  # near-miss or unit-only -> WARN
+
+    # Keyword-adjacent numbers WITHOUT a unit -> WARN only (never HOLD).
+    for m in _KW_NUM_RE.finditer(copy):
+        n = _val(m.group(1))
+        if n is None or round(n, 2) in seen:
+            continue
+        if _num_status(n, src_nums, src_ranges) == "far":
+            result["warnings"].append(m.group(0).strip()[:48])
+
+    if result["fabricated"]:
+        result["has_fabricated"] = True
+        result["summary"] = ("UNSUPPORTED FIGURE(S) not in/derivable from source: "
+                             + ", ".join(result["fabricated"]))
     return result
 
 
