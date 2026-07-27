@@ -7088,8 +7088,10 @@ async def main():
     console.print(f"[bold cyan]{'='*55}[/bold cyan]\n")
 
     console.print("Connecting to Google Sheets...")
-    if mode in ("miles", "miles-optimize"):
+    if mode in ("miles", "miles-optimize", "regen"):
         config["_miles_mode"] = True   # don't clobber the Miles tab's own headers
+        # (regen operates on existing Miles rows -- init_sheets must NEVER rewrite the
+        #  header to FIXED_HEADERS, which would misalign every row on the tab.)
     if _cli_sheet or _cli_tab:
         console.print(f"  [yellow]Scoped to account sheet/tab:[/yellow] {_cli_sheet or '(config default)'} / '{OUTPUT_TAB}'")
     gc, ws_in, ws_out = init_sheets(config)

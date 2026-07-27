@@ -95,6 +95,18 @@ def run_regen(config, gc, creds, *, skus, marketplace="UK", output_tab=None,
     # read the tab once (retry-wrapped)
     vals = G._read_retry(ws.get_all_values)
     hdr  = vals[0] if vals else []
+    # Some older Miles tabs have no "Compliance Report" column -- then a HOLD would
+    # have nowhere to land. Add it so HOLD status always has a home; existing rows
+    # are untouched (new column is blank). The "Regenerated" column is added by the
+    # in-place writer itself.
+    if hdr and "Compliance Report" not in hdr:
+        try:
+            ws.update_cell(1, len(hdr) + 1, "Compliance Report")
+            vals = G._read_retry(ws.get_all_values)
+            hdr  = vals[0] if vals else hdr
+            console.print("[regen] added a 'Compliance Report' column (was missing on this tab).")
+        except Exception:
+            pass
     def _ci(name):
         return hdr.index(name) if name in hdr else -1
     sku_c, comp_c = _ci("SKU"), _ci("Compliance Report")
