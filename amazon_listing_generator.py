@@ -2154,6 +2154,7 @@ from listing.compliance import _split_brand_words
 from listing.compliance import check_ip_violations
 from listing.compliance import check_unsupported_claims   # claims-grounding gate (step a)
 from listing.compliance import check_forbidden_brands, forbidden_names_block  # brand scanner + prompt block (steps b/c)
+from listing.compliance import check_regulated_claims  # regulated-claim gate (gap close)
 
 
 # =============================================================================

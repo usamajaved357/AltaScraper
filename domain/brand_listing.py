@@ -849,6 +849,19 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             claims_hold = f"HOLD: ungrounded claim: {_toks} not in source"
             notes_parts.append(claims_hold)
 
+    # 7b-2) REGULATED-CLAIM GATE -- NSF/H1/FDA/food-grade/21 CFR/USDA claimed in the
+    # finished copy with NO food-grade evidence in the source docs. Whole-word + concept
+    # test (shared production fn, so a passing audit validates THIS). Same locked "HOLD:"
+    # marker. NOTE: the numeric grounder is deliberately NOT wired here -- it would
+    # false-HOLD legitimate F-vs-C unit conversions; deferred until unit-normalised (task #13).
+    reg_hold = ""
+    if (source_docs or "").strip():
+        _rg = host.check_regulated_claims(listing, source_docs)
+        if _rg.get("has_unsupported"):
+            reg_hold = ("HOLD: unsupported regulated claim: "
+                        + ", ".join(sorted(set(_rg["hits"]))) + " not in source")
+            notes_parts.append(reg_hold)
+
     # 7c) FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor names must not appear in
     # the FINISHED copy at all (distinct from grounding). Same locked "HOLD:" marker
     # as the claims gate. Scoped to Miles, matching the claims-gate scope.
@@ -981,7 +994,7 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         # NFPA ratings which triggers food/electrical/sports categories).
         # Only surface real IP violations, not category mismatches.
         comp_report = "Generated"
-        _holds = [h for h in (claims_hold, fb_hold) if h]
+        _holds = [h for h in (claims_hold, reg_hold, fb_hold) if h]
         if _holds:
             comp_report = " | ".join(_holds)   # locked "HOLD:" prefix; takes precedence
         elif ip_result.get("has_violations") and notes_parts:
