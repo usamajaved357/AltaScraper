@@ -1469,6 +1469,7 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         f"{opt_section}"
         f"{enforced_section}\n"
         f"{safety_section}\n"
+        f"{category_lane_block(product_type)}"
         "\n===================================\n"
         "ACCURACY RULES -- MANDATORY\n"
         "===================================\n"
@@ -2157,6 +2158,7 @@ from listing.compliance import check_forbidden_brands, forbidden_names_block  # 
 from listing.compliance import check_regulated_claims  # regulated-claim gate (gap close)
 from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
 from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
+from listing.compliance import category_lane_block, check_category_claims  # category-aware claims (task #18)
 
 
 # =============================================================================
@@ -3813,6 +3815,13 @@ async def process_row(row: dict, client, ws_out,
         if status in ("NEEDS_REVIEW", "COMPLIANCE_HOLD"):
             status = "IP_HOLD"
             console.print(f"  [red]Status set to IP_HOLD -- brand/trademark risk[/red]")
+
+    # --- Category-aware claims screener (task #18) -- WARN only, never blocks. Scans
+    # the finished copy against the product_type's category rulebook (unknown -> all).
+    _cat = check_category_claims(listing, comp_data.get("product_type", ""))
+    if _cat.get("has_flagged"):
+        notes_parts.append(_cat["note"])
+        console.print(f"  [yellow]{_cat['summary']}[/yellow]")
 
     notes_text = " | ".join(notes_parts)
     row_data = build_sheet_row(

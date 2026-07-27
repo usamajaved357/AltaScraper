@@ -523,6 +523,216 @@ def check_restricted_phrasing(listing: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# CATEGORY-AWARE CLAIMS SCREENER (task #18) -- UPGRADES the single restricted-
+# phrasing list into a category-SEGMENTED rulebook driven by the product's
+# product_type. Two layers:
+#   LAYER 1  category_lane_block(product_type) -> a per-category "safe lane" taught
+#            in the generation prompt (prevention: teaches the SWAP, not just a ban).
+#   LAYER 2  check_category_claims(listing, product_type) -> a pure pattern-match scan
+#            of the FINISHED copy against that category's trigger file (enforcement).
+# Pure pattern-match, NO AI call. Whole-word via the SAME _wordish primitive (so "nsf"
+# never matches "transfer"). WARN only -- never blocks; the operator stays the final
+# gate. Category comes from product_type; blank/unknown -> STRICTEST (screen against
+# ALL categories), never guess-safe. Trigger lists are plain editable per-category
+# files in claims_rules/ so they can be tuned without touching code.
+# ---------------------------------------------------------------------------
+_CLAIMS_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                            "claims_rules")
+_LANES = ("supplements", "skincare", "cleaning", "devices", "pet", "general")
+_RULE_NAMES = {
+    "supplements": "disease / health claim",
+    "skincare":    "cosmetic drug claim",
+    "cleaning":    "pesticide / antimicrobial claim",
+    "devices":     "medical-device claim",
+    "pet":         "animal-health claim",
+    "general":     "unverifiable claim",
+}
+# Invented / unverifiable certifications -- risky in ANY category (AMBER). Appended to
+# every lane so e.g. "BPA-free" with no supporting doc is flagged regardless of the
+# product's category.
+_INVENTED_CERT = [
+    "bpa-free", "bpa free", "non-toxic", "food-safe", "food safe", "phthalate-free",
+    "formaldehyde-free", "chemical-free", "hypoallergenic", "clinically proven",
+    "doctor recommended", "dermatologist recommended", "fda approved", "eco-certified",
+]
+
+
+def _parse_lane_line(line: str):
+    """'SEVERITY | phrase | swap' -> (severity, phrase, swap). A bare line with no '|'
+    (or an unrecognised first field) is treated as a RED phrase."""
+    parts = [p.strip() for p in line.split("|")]
+    if len(parts) == 1:
+        return "RED", parts[0], ""
+    sev = parts[0].upper()
+    if sev not in ("RED", "AMBER"):
+        return "RED", parts[0], (parts[1] if len(parts) > 1 else "")
+    phrase = parts[1] if len(parts) > 1 else ""
+    swap = parts[2] if len(parts) > 2 else ""
+    return sev, phrase, swap
+
+
+def _load_lane(name: str):
+    """Load one category's trigger file into (severity, phrase, swap, rule, pattern) rows."""
+    rules = []
+    path = _os.path.join(_CLAIMS_DIR, name + ".txt")
+    try:
+        for raw in open(path, encoding="utf-8"):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            sev, phrase, swap = _parse_lane_line(line)
+            if phrase:
+                rules.append((sev, phrase, swap, _RULE_NAMES.get(name, "claim"), _wordish(phrase)))
+    except Exception:
+        pass
+    return rules
+
+
+_CATEGORY_RULES = {name: _load_lane(name) for name in _LANES}
+# Fold the conservative restricted_phrasing.txt list into the cleaning lane (RED) so
+# nothing check_restricted_phrasing catches regresses out of the category screener.
+for _p in RESTRICTED_PHRASES:
+    _CATEGORY_RULES["cleaning"].append(
+        ("RED", _p, "", _RULE_NAMES["cleaning"], _wordish(_p)))
+# Invented-certification (AMBER) applies to EVERY lane.
+for _lane in _LANES:
+    for _p in _INVENTED_CERT:
+        _CATEGORY_RULES[_lane].append(
+            ("AMBER", _p, "", "unverifiable / invented certification", _wordish(_p)))
+
+
+def lane_for_product_type(product_type: str):
+    """Map a product_type to its claims lane. Blank/unknown -> None, so the caller
+    screens against ALL lanes -- an unknown category is treated as risky, never
+    guessed safe."""
+    s = re.sub(r"[^A-Za-z0-9]+", " ", str(product_type or "")).upper()
+    if not s.strip():
+        return None
+
+    def has(*ks):
+        return any(k in s for k in ks)
+
+    if has("SUPPLEMENT", "VITAMIN", "NUTRITION", "DIETARY", "PROTEIN", "HERBAL", "PROBIOTIC"):
+        return "supplements"
+    if has("SKIN", "COSMETIC", "FACIAL", "LOTION", "MOISTURIZ", "MOISTURIS", "SERUM",
+           "MAKEUP", "BEAUTY", "SHAMPOO", "SUNSCREEN", "DEODORANT", "CREAM"):
+        return "skincare"
+    if has("CLEAN", "DISINFECT", "SANITIZ", "SANITIS", "DETERGENT", "BLEACH", "PESTICIDE",
+           "INSECTICIDE", "HERBICIDE", "FUNGICIDE", "REPELLENT", "SOAP"):
+        return "cleaning"
+    if has("MEDICAL", "THERAPEUTIC", "NEBULIZER", "INHALER", "THERMOMETER",
+           "ORTHOPEDIC", "MASSAGE", "FIRST AID", "BLOOD PRESSURE", "HEALTH CARE"):
+        return "devices"
+    if has("PET", "DOG", "CAT", "ANIMAL", "VETERINARY", "AQUARIUM", "BIRD", "POULTRY"):
+        return "pet"
+    return "general"
+
+
+# The safe-lane teaching text injected into the generation prompt (Layer 1). Each lane
+# teaches what to DO (describe what it IS/DOES) with concrete SWAPS, not just a ban list.
+_LANE_TEACH = {
+    "supplements": (
+        "SUPPLEMENTS / INGESTIBLES -- the HIGHEST disease-claim risk. Use structure/"
+        "function language ONLY (supports, maintains, promotes, helps). NEVER say a "
+        "product treats, cures, prevents, or diagnoses any disease, and never name a "
+        "condition (arthritis, diabetes, depression, cancer). SWAPS: 'treats joint pain' "
+        "-> 'supports joint comfort'; 'reduces inflammation' -> 'supports a healthy "
+        "inflammatory response'; 'lowers cholesterol' -> 'supports already-healthy "
+        "cholesterol'."),
+    "skincare": (
+        "SKINCARE / COSMETICS -- APPEARANCE language only, no drug claims. Describe how "
+        "the product makes skin look and feel; never a skin disease it treats. SWAPS: "
+        "'treats dry skin' -> 'moisturises'; 'heals eczema' -> 'soothes the feel of dry, "
+        "irritated-looking skin'; 'anti-aging' -> 'reduces the appearance of fine lines'."),
+    "cleaning": (
+        "CLEANING / CHEMICAL -- the pesticide trap. Do NOT say kill, sanitize, disinfect, "
+        "antibacterial, antimicrobial, or mould-resistant unless the product is an "
+        "EPA/HSE-registered pesticide. SWAPS: 'kills bacteria' -> 'cleans surfaces'; "
+        "'disinfects' -> 'cleans and freshens'; 'mould-resistant' -> 'resists mould "
+        "build-up'."),
+    "devices": (
+        "DEVICES -- no medical-device framing unless the product is actually registered. "
+        "Avoid medical grade, therapeutic, nebuliser, inhaler, 'FDA cleared', 'treats "
+        "pain'. SWAPS: 'medical grade' -> 'professional style'; 'therapeutic massage' -> "
+        "'relaxing massage'; 'treats pain' -> 'helps you feel soothed'."),
+    "pet": (
+        "PET -- animal use does NOT exempt a health or pesticide claim. The same rules as "
+        "human supplements/devices apply. SWAPS: 'cures infection' -> 'supports skin "
+        "health'; 'kills fleas' -> 'helps manage fleas' (unless registered)."),
+    "general": (
+        "GENERAL HARDWARE -- light touch. Describe what the product physically IS and "
+        "DOES. Avoid inventing certifications (BPA-free, non-toxic, food-safe) unless you "
+        "have a document proving it."),
+}
+_LANE_COMMON = (
+    "\n===================================\n"
+    "CLAIMS SAFE-LANE -- MANDATORY\n"
+    "===================================\n"
+    "Describe what the product physically IS and DOES -- never what it treats, cures, "
+    "kills, prevents, or diagnoses. Give the plain-descriptive version, e.g. 'kills "
+    "bacteria' -> 'cleans surfaces', 'treats dry skin' -> 'moisturises', 'prevents rust' "
+    "-> 'resists corrosion'. HONESTY RULE: if a claim has to be mentally reframed or "
+    "justified to be defensible, OMIT it.\n")
+
+
+def category_lane_block(product_type: str = "") -> str:
+    """LAYER 1: the category-aware safe-lane prompt section, keyed off product_type.
+    Blank/unknown product_type -> the STRICTEST lane (supplements-level), never the
+    lightest -- unknown category is treated as risky."""
+    lane = lane_for_product_type(product_type)
+    if lane is None:
+        teach = _LANE_TEACH["supplements"]
+        label = "CATEGORY UNKNOWN -> STRICTEST (disease-claim) RULES APPLIED"
+    else:
+        teach = _LANE_TEACH.get(lane, _LANE_TEACH["general"])
+        label = "CATEGORY: " + lane.upper()
+    return _LANE_COMMON + label + "\n" + teach + "\n"
+
+
+def check_category_claims(listing: dict, product_type: str = "") -> dict:
+    """LAYER 2: scan the FINISHED copy against the product's category trigger list.
+    WARN-level, never a hard hold. Blank/unknown product_type -> screen against ALL
+    lanes (strictest). Returns {"has_flagged", "hits":[{phrase,field,severity,category,
+    rule,swap}], "lane", "unknown_category", "summary", "note"}."""
+    lane = lane_for_product_type(product_type)
+    unknown = lane is None
+    lanes = list(_LANES) if unknown else [lane]
+    fields = [
+        ("title", listing.get("title", "")),
+        ("item_highlights", listing.get("item_highlights", "")),
+        ("bullet_1", listing.get("bullet_1", "")), ("bullet_2", listing.get("bullet_2", "")),
+        ("bullet_3", listing.get("bullet_3", "")), ("bullet_4", listing.get("bullet_4", "")),
+        ("bullet_5", listing.get("bullet_5", "")),
+        ("description", _strip_html(listing.get("description", ""))),
+    ]
+    hits, seen = [], set()
+    for ln in lanes:
+        for sev, phrase, swap, rule, pat in _CATEGORY_RULES.get(ln, []):
+            for fname, text in fields:
+                if not text:
+                    continue
+                if pat.search(text):
+                    k = (phrase.lower(), fname)
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    hits.append({"phrase": phrase, "field": fname, "severity": sev,
+                                 "category": ln, "rule": rule, "swap": swap})
+    result = {"has_flagged": bool(hits), "hits": hits,
+              "lane": ("ALL" if unknown else lane),
+              "unknown_category": unknown, "summary": "", "note": ""}
+    if hits:
+        lvl = "RED" if any(h["severity"] == "RED" for h in hits) else "AMBER"
+        phrases = sorted({h["phrase"] for h in hits})
+        cats = sorted({h["category"] for h in hits})
+        tail = " (category unknown -- screened against all rules)" if unknown else ""
+        result["summary"] = ("CLAIM RISK [%s]: %s -- %s%s"
+                             % (lvl, ", ".join(phrases), "/".join(cats), tail))
+        result["note"] = "REVIEW: " + result["summary"]
+    return result
+
+
+# ---------------------------------------------------------------------------
 # REGULATED / CERTIFICATION CLAIMS (NSF / H1 / FDA / food-grade / 21 CFR / USDA)
 # present in the FINISHED copy but NOT in the product's own source docs. Whole-word
 # matched via the SAME _wordish primitive the forbidden-brand scanner uses -- so

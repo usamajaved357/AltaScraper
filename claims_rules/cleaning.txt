@@ -1,0 +1,26 @@
+# CLEANING / CHEMICAL lane -- the pesticide / antimicrobial trap.
+# FORMAT:  SEVERITY | phrase | optional safe-swap        (# = comment line)
+#   RED   = a pesticide / biocide claim Amazon treats as requiring EPA registration.
+#   AMBER = softer / unverifiable.
+# Whole-word matched (same primitive as the brand & restricted-phrasing scans) -- a
+# phrase here never fires as a substring of an ordinary word ("nsf" in "transfer").
+#
+# NOTE: restricted_phrasing.txt is ALSO folded into this lane at load time, and the
+# shared invented-certification list (BPA-free, non-toxic, food-safe...) applies to
+# EVERY lane -- so keep THIS file to the extra bare pesticide verbs not already there.
+# Do NOT add lubricant/hardware words ("rust", "wear", "transfer", "varnish") -- those
+# are normal desirable language and a greedy list gets switched off.
+
+RED | kills | cleans surfaces
+RED | kill | clean
+RED | killing | cleaning
+RED | disinfect | cleans
+RED | disinfecting | cleaning
+RED | sanitize | cleans
+RED | sanitise | cleans
+RED | deodorize | freshens
+RED | deodorise | freshens
+RED | mold-resistant | resists mould build-up
+RED | mould-resistant | resists mould build-up
+RED | mildew-resistant | resists mildew build-up
+RED | rot-proof | resists rot

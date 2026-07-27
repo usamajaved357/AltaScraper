@@ -41,6 +41,7 @@ import json
 import os
 import re
 from datetime import datetime
+from listing.compliance import category_lane_block  # category-aware safe-lane prompt (task #18)
 
 # Mirrors dashboard.py's CONFIG_PATH convention so media/recipes read and write
 # the SAME directory as the rest of the app (the persistent disk in production,
@@ -261,6 +262,7 @@ def build_brand_prompt(product: dict, profile: dict, identity: dict,
         f"{kw_section}"
         f"{comp_section}"
         f"{guidance_block}"
+        f"{category_lane_block(product.get('product_type', ''))}"
         "\n===================================\n"
         "VOICE\n"
         "===================================\n"
@@ -884,6 +886,13 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         if _rp.get("has_flagged"):
             notes_parts.append("REVIEW: restricted phrasing: "
                                + ", ".join(sorted({h["phrase"] for h in _rp["hits"]})))
+
+    # 7b-5) CATEGORY-AWARE CLAIMS SCREENER (task #18) -- category-segmented rulebook
+    # keyed off product_type (unknown -> screened against ALL categories). WARN only,
+    # never a hard hold; the operator stays the final gate. Code-only, no AI credits.
+    _cc = host.check_category_claims(listing, product_type)
+    if _cc.get("has_flagged"):
+        notes_parts.append(_cc["note"])
 
     # 7c) FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor names must not appear in
     # the FINISHED copy at all (distinct from grounding). Same locked "HOLD:" marker

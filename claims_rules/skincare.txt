@@ -1,0 +1,18 @@
+# SKINCARE / COSMETICS lane -- APPEARANCE language only, no drug claims.
+# Describe how it looks/feels, never a disease it treats.
+# FORMAT:  SEVERITY | phrase | optional safe-swap   (whole-word matched; # = comment)
+
+RED | cures | improves the look of
+RED | heals | soothes the feel of
+RED | eczema |
+RED | psoriasis |
+RED | rosacea |
+RED | dermatitis |
+RED | acne treatment | helps reduce the appearance of blemishes
+RED | anti-fungal |
+RED | antifungal |
+AMBER | anti-aging | reduces the appearance of fine lines
+AMBER | anti-ageing | reduces the appearance of fine lines
+AMBER | wrinkle removal | reduces the appearance of wrinkles
+AMBER | clinically proven |
+AMBER | dermatologically tested |
