@@ -632,7 +632,8 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
                       taken_skus: set, compliance_rules: dict, ip_rules: dict,
                       static_vv: dict, claim_docs: list,
                       competitor_specs: str = "", source_docs: str = "",
-                      guidance_block: str = "") -> bool:
+                      guidance_block: str = "", replace_at_row=None,
+                      regen_reason: str = "") -> bool:
     """Generate one brand listing and write it to the same output sheet/contract
     as the arbitrage path. Returns True on success."""
     console = host.console
@@ -1064,6 +1065,47 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             comp_report,
             "No",
         ]
+        if replace_at_row:
+            # REGEN (step d): replace ONLY the copy fields + Compliance Report in the
+            # EXISTING row -- never SKU / image (Column 1) / Uploaded -- and stamp a
+            # "Regenerated" column with timestamp + reason. In-place: no new row, no
+            # duplicate, no _2 SKU. Compliance Report reflects the FRESH gate result
+            # (so a held row that a human cleared and re-ran is re-verified, never
+            # laundered blindly -- run_regen refuses rows that still carry a HOLD).
+            from datetime import datetime as _dt
+            from gspread.utils import rowcol_to_a1
+            try:
+                _hdr = host._read_retry(ws_out.row_values, 1) if hasattr(host, "_read_retry") \
+                       else ws_out.row_values(1)
+            except Exception:
+                _hdr = []
+            if "Regenerated" not in _hdr:
+                try:
+                    ws_out.update_cell(1, len(_hdr) + 1, "Regenerated")
+                    _hdr = _hdr + ["Regenerated"]
+                except Exception:
+                    pass
+            _stamp = _dt.now().strftime("%Y-%m-%d %H:%M") + (f" -- {regen_reason}" if regen_reason else "")
+            _upd = {"Title": miles_row[1], "Item Highlights": miles_row[2],
+                    "Bullet Point 1": miles_row[3], "Bullet Point 2": miles_row[4],
+                    "Bullet Point 3": miles_row[5], "Bullet Point 4": miles_row[6],
+                    "Bullet Point 5": miles_row[7], "Description": miles_row[8],
+                    "Backend Keywords": miles_row[9], "Compliance Report": comp_report,
+                    "Regenerated": _stamp}
+            _data = [{"range": rowcol_to_a1(replace_at_row, _hdr.index(_n) + 1), "values": [[_v]]}
+                     for _n, _v in _upd.items() if _n in _hdr]
+            ok = False
+            if _data:
+                try:
+                    ws_out.batch_update(_data)
+                    ok = True
+                except Exception as _e:
+                    console.print(f"  [red]regen write failed: {str(_e)[:100]}[/red]")
+            console.print(f"  [{'green' if ok else 'red'}]"
+                          + (f"regenerated in place (row {replace_at_row})" if ok else "regen write failed")
+                          + f"[/] | status={status}")
+            return bool(ok)
+
         ok = _miles_write_row(host, ws_out, miles_row)
         console.print(f"  [{'green' if ok else 'red'}]{'written (Miles format)' if ok else 'write failed'}[/]"
                       f" | status={status}")

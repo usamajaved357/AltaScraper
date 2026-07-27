@@ -7132,10 +7132,11 @@ async def main():
                 return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
             except ValueError:
                 return None
-        _skus  = (_argval("--skus") or "").strip()
-        _sheet = _argval("--sheet")
-        _tab   = _argval("--tab")
-        _mkt   = _argval("--marketplace") or "UK"
+        _skus   = (_argval("--skus") or "").strip()
+        _sheet  = _argval("--sheet")
+        _tab    = _argval("--tab")
+        _mkt    = _argval("--marketplace") or "UK"
+        _reason = (_argval("--reason") or "").strip()
         sku_list = [s.strip() for s in _skus.split(",") if s.strip()]
         if not sku_list:
             console.print("[regen] no --skus given; nothing to do.")
@@ -7143,13 +7144,11 @@ async def main():
         console.print(f"[regen] regenerating {len(sku_list)} SKU(s) on "
                       f"{_tab or 'default tab'} ({_mkt}): {', '.join(sku_list)}")
         try:
+            from listing.regen import run_regen
             run_regen(config, gc, creds, skus=sku_list, marketplace=_mkt,
-                      output_tab=_tab, spreadsheet_id=_sheet)
-        except NameError:
-            console.print("[regen] This generator build does not yet include "
-                          "run_regen(). Per-listing regeneration via the dashboard "
-                          "editor still works; batch copy-regen needs run_regen wired "
-                          "into the generator.")
+                      output_tab=_tab, spreadsheet_id=_sheet, reason=_reason)
+        except Exception as _re:
+            console.print(f"[regen] run_regen failed: {type(_re).__name__}: {str(_re)[:160]}")
         return
 
     if mode == "brand":
