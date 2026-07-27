@@ -2378,7 +2378,12 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
     # AI on the next round. On multi-SKU auto-fix runs this removes most of the
     # per-round AI calls (the ones that were only re-validating already-filled
     # fields), cutting token spend without changing what gets written.
-    if not fields or all(p.get("value") for p in prelim):
+    # Flag-gated OFF by default (per owner): with the flag unset, the AI still runs
+    # to re-validate already-sourced values. The "no AI fields at all" case always
+    # short-circuits (nothing for the model to do). Set config autofix_skip_ai_when_sourced
+    # true to re-enable the credit-saver skip.
+    _skip_ai_when_sourced = bool(cfg.get("autofix_skip_ai_when_sourced", False))
+    if not fields or (_skip_ai_when_sourced and all(p.get("value") for p in prelim)):
         for p in prelim:
             p.setdefault("confidence", "from source")
         return _code_owned_hits + prelim
