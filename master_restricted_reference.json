@@ -107,7 +107,7 @@
      "marketplaces": {"US": "Limited to Class 3R (<=5mW), must be branded. Class 3B & Class 4 barred. Handheld pointers generally not allowed.", "UK": "Consumer products restricted to Class 1 or Class 2 (stricter). OPSS has removed Class 3/4 lasers from Amazon UK."},
      "thresholds": ["US: <=5mW (Class 3R) with approval", "UK: Class 1 or 2 only for consumers", "Class 3B/4 = prohibited both"],
      "docs": ["US: FDA accession number + testing report from Intertek/UL/SGS + brand", "list of laser ASINs + seller info"],
-     "trigger_keywords": ["laser pointer", "burning laser", "class 3", "class 4", "class iiib", "high power laser", "laser 303", "mw laser"],
+     "trigger_keywords": ["laser pointer", "burning laser", "class 3 laser", "class 4 laser", "class 3b laser", "class iiib laser", "high power laser", "laser 303", "mw laser"],
      "regulator": "FDA/CDRH (US) / OPSS-UKHSA (UK)"},
     {"id": "lock_picking", "label": "Lock picking & theft devices", "status": "PROHIBITED_EXCEPT_BLANKS", "depth": "full",
      "note": "Prohibited: lock-pick sets, slim-jims, tension bars, key-duplication devices, Sensormatic detachers, card-skimming devices, code grabbers, shoplifting/booster devices. ALLOWED: blank keys only.",

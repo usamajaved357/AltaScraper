@@ -61,9 +61,11 @@ _STRONG_SINGLES = {
     "jammer", "freon", "taser", "slimjim",
 }
 # Multi-word / digit-bearing terms that are nonetheless too BROAD to flag alone.
+# NOTE: precise real-restriction terms (class 3 LASER, signal booster, high power vtx,
+# high power laser, mw laser) are deliberately NOT here -- they name the actual restricted
+# product and must stay STRONG. Only genuinely ambiguous fragments live here.
 _BROAD_OVERRIDE = {
-    "class 3", "class 4", "class ii", "class iiib", "high power laser", "mw laser",
-    "signal booster", "high power vtx", "medical grade", "1w", "heavy duty",
+    "class 3", "class 4", "class ii", "class iiib", "medical grade", "1w", "heavy duty",
     "coolant gas", "high power",
 }
 
