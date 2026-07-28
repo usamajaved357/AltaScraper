@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "_note": "Restricted / prohibited PRODUCT TYPES (not words -- the claims screener handles words). Per-marketplace status because status differs by marketplace (FPV goggles: UK prohibited / US restricted). Every entry carries a per-marketplace 'source': 'amazon_notice' = confirmed from Amazon's own violation notice (verbatim reason); 'amazon_notice_pending' = a real Amazon notice exists but exact text not yet captured; 'unverified' = educated guess, CONFIRM before relying. Matching a product to a TYPE is fuzzier than matching a word: obvious cases hit reliably, disguised ones may slip -- a strong WARNING, never a guarantee. NO MATCH != SAFE.",
+  "no_match_message": "No known restriction matched -- this is NOT a clearance. Unlisted or disguised product types can still be restricted or prohibited by Amazon or a regulator. Verify before sourcing/listing.",
+  "types": [
+    {
+      "id": "power_bank",
+      "label": "Power bank / portable power station",
+      "asin_seen": "B0H2WKFN55",
+      "keywords": ["power bank", "powerbank", "portable power station", "portable charger", "power station", "jump starter", "portable battery pack"],
+      "status": {
+        "UK": {"value": "RESTRICTED", "source": "amazon_notice"},
+        "US": {"value": "RESTRICTED", "source": "unverified"}
+      },
+      "reason": "In order to sell this product on the Amazon marketplace, you must provide documents related to Power Banks and Portable Power Stations. Failure to provide these documentations by [date] may result in suppression of this ASIN from the Amazon website. (Category: Power Banks and Portable Power Stations: Food and Product Safety Issues.)",
+      "regulator": {"UK": "Amazon Product Safety (Power Banks & Portable Power Stations)", "US": "Amazon Dangerous Goods / DOT"},
+      "docs": ["un38_3", "battery_iec62133", "sds"],
+      "docs_note": "Amazon's notice did not itemise the documents; these are the standard lithium-battery safety requirements. Provide the exact list Amazon requests in the notice."
+    },
+    {
+      "id": "fpv_video_goggles",
+      "label": "High-power FPV / RPV drone video goggles",
+      "asin_seen": "B0H7JT6171",
+      "keywords": ["fpv goggles", "fpv headset", "rpv goggles", "drone goggles", "video goggles", "vtx", "5.8ghz goggles", "fpv video", "first person view goggles"],
+      "status": {
+        "UK": {"value": "PROHIBITED", "source": "amazon_notice"},
+        "US": {"value": "RESTRICTED", "source": "unverified"}
+      },
+      "reason": {
+        "UK": "This product has been identified as a high power FPV (First Person View), also known as RPV (Remote Person View), most commonly used to pilot an unmanned aerial vehicle (UAV). This type of apparatus cannot be legally used in the UK and is therefore prohibited on Amazon.co.uk.",
+        "US": "High-power FPV/RPV video transmitters typically require FCC equipment authorization in the US. UNVERIFIED -- confirm the exact US requirement before relying."
+      },
+      "regulator": {"UK": "Ofcom", "US": "FCC"},
+      "docs": {"UK": [], "US": ["fcc_id"]},
+      "docs_note": "UK: no compliance path -- prohibited outright. US status/docs are an unverified guess."
+    },
+    {
+      "id": "nebulizer_inhaler",
+      "label": "Nebulizer / inhaler / medication-delivery device",
+      "asin_seen": "B0H5FP3C8S",
+      "keywords": ["nebulizer", "nebuliser", "inhaler", "mist inhaler", "medication delivery", "asthma machine", "aerosol therapy", "atomizer inhaler"],
+      "status": {
+        "UK": {"value": "RESTRICTED", "source": "unverified"},
+        "US": {"value": "RESTRICTED", "source": "amazon_notice"}
+      },
+      "reason": {
+        "US": "This product has been identified as a nebulizer, classified as a medical device by the FDA. If not for professional use, the following documentation is required: (1) a 510(k) number issued by the U.S. FDA for this product; (2) the device manufacturer's FDA establishment registration number or owner/operator number; (3) a purchase order, invoice, or letter (in English) from the manufacturer confirming the device was purchased from the manufacturer. Amazon may also require photos of all sides of the packaging and photos of the instructions for use.",
+        "UK": "Nebulizers/inhalers are medical devices; the UK typically requires MHRA registration and UKCA/CE marking. UNVERIFIED -- confirm the exact UK requirement before relying."
+      },
+      "regulator": {"US": "FDA", "UK": "MHRA"},
+      "docs": {
+        "US": ["fda_510k", "fda_establishment_reg", "manufacturer_invoice", "packaging_photos", "ifu_photos"],
+        "UK": ["mhra_reg", "ukca_ce", "manufacturer_invoice"]
+      }
+    },
+    {
+      "id": "opaque_eyewear",
+      "label": "Opaque / light-blocking goggles or eyeshields",
+      "asin_seen": "B0H4NJN5BM",
+      "keywords": ["opaque goggles", "light-blocking goggles", "light blocking goggles", "blackout eyeshield", "blackout goggles", "sleep eyeshield", "tanning goggles", "opaque eyeshield", "blackout mask goggles"],
+      "status": {
+        "US": {"value": "PROHIBITED", "source": "amazon_notice"},
+        "UK": {"value": "PROHIBITED", "source": "unverified"}
+      },
+      "reason": {
+        "US": "This product has been identified as goggles or eyeshields that block all light from the user. The FDA requires that the eyewear to be see-through. Opaque goggles and eyeshields are prohibited from sale and listing on Amazon.",
+        "UK": "Opaque/light-blocking eyeshields are prohibited on Amazon (FDA see-through requirement). UNVERIFIED for UK -- likely the same policy applies, confirm before relying."
+      },
+      "regulator": {"US": "FDA", "UK": "Amazon policy (FDA basis)"},
+      "docs": []
+    },
+    {
+      "id": "facial_steamer_diffuser",
+      "label": "Facial / nano steamer, essential-oil / spa vaporiser diffuser",
+      "keywords": ["facial steamer", "nano steamer", "face steamer", "ionic steamer", "essential oil diffuser", "aroma diffuser", "spa vaporizer", "spa vaporiser", "aromatherapy diffuser", "mist humidifier diffuser"],
+      "status": {
+        "UK": {"value": "RESTRICTED", "source": "amazon_notice_pending"},
+        "US": {"value": "RESTRICTED", "source": "amazon_notice_pending"}
+      },
+      "reason": "Restricted Products Policy Violation -- identified as a restricted personal/health steaming device. AMAZON NOTICE PENDING EXACT TEXT (you have the full wording in a screenshot to paste; ~$1,948 at risk). Treat as restricted device/electrical until the verbatim notice is added.",
+      "regulator": {"US": "FDA (device) / electrical safety", "UK": "UKCA / electrical safety"},
+      "docs": ["fda_general", "ukca_ce", "sds"],
+      "docs_note": "Placeholder docs pending the verbatim notice."
+    },
+
+    {
+      "id": "supplements_ingestible",
+      "label": "Supplements / ingestibles / vitamins",
+      "keywords": ["supplement", "dietary supplement", "vitamin", "capsule", "gummy", "gummies", "probiotic", "protein powder", "herbal supplement"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Ingestible products face topical/ingestible restrictions and safety/labelling requirements. UNVERIFIED -- confirm the exact Amazon requirement.",
+      "regulator": {"UK": "FSA", "US": "FDA"},
+      "docs": ["fda_facility_reg", "coa", "product_label"]
+    },
+    {
+      "id": "cosmetics_skincare",
+      "label": "Cosmetics / skincare (topical)",
+      "keywords": ["cosmetic", "moisturiser", "moisturizer", "face cream", "skin serum", "lotion", "sunscreen", "spf cream", "anti-aging cream"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Cosmetics require a product safety assessment and correct labelling. UNVERIFIED -- confirm the exact Amazon/regulator requirement.",
+      "regulator": {"UK": "OPSS / CPSR (UK-EU)", "US": "FDA (MoCRA)"},
+      "docs": ["cpsr", "fda_cosmetic", "product_label"]
+    },
+    {
+      "id": "pesticide_biocide",
+      "label": "Pesticide / biocide / disinfectant / sanitiser",
+      "keywords": ["disinfectant", "sanitizer", "sanitiser", "insecticide", "weed killer", "herbicide", "pesticide", "mould remover", "mold remover", "rodenticide", "biocide"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Pesticides/biocides require regulator registration and are heavily restricted. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "HSE", "US": "EPA"},
+      "docs": ["hse_biocide", "epa_registration", "sds"]
+    },
+    {
+      "id": "medical_device_general",
+      "label": "General medical device",
+      "keywords": ["thermometer", "blood pressure monitor", "pulse oximeter", "oximeter", "tens machine", "hearing aid", "medical device", "blood glucose"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Medical devices require registration/clearance and marking. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "MHRA", "US": "FDA"},
+      "docs": ["fda_510k", "ukca_ce", "mhra_reg"]
+    },
+    {
+      "id": "radio_transmitter",
+      "label": "Radio transmitter / signal booster / jammer",
+      "keywords": ["signal booster", "signal jammer", "gps jammer", "wifi jammer", "radio transmitter", "walkie booster", "mobile booster", "high power transmitter"],
+      "status": {"UK": {"value": "PROHIBITED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Transmitters/jammers/boosters are restricted or prohibited on radio-use grounds. Jammers are typically illegal. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "Ofcom", "US": "FCC"},
+      "docs": {"UK": [], "US": ["fcc_id"]}
+    },
+    {
+      "id": "laser_pointer",
+      "label": "Laser pointer / high-power laser",
+      "keywords": ["laser pointer", "high power laser", "laser module", "burning laser", "class 3 laser", "class 4 laser"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Lasers above class limits are restricted/prohibited on safety grounds. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "OPSS / PHE", "US": "FDA"},
+      "docs": ["laser_safety_cert"]
+    },
+    {
+      "id": "mains_electrical",
+      "label": "Mains-powered electrical product",
+      "keywords": ["mains powered", "plug-in", "240v", "wall charger", "power adapter", "mains adapter", "ac adapter"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Mains electrical products require safety conformity marking and correct plug. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "UKCA/CE + BS1363 plug", "US": "UL / ETL"},
+      "docs": ["ukca_ce", "plug_cert", "ul_etl"]
+    },
+    {
+      "id": "childrens_product",
+      "label": "Children's product / toy",
+      "keywords": ["toy", "children's", "toddler toy", "baby product", "kids toy", "infant"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Children's products/toys require safety certification. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "UKCA / EN71", "US": "CPSC (CPC)"},
+      "docs": ["en71", "cpc", "cpsr"]
+    },
+    {
+      "id": "hazmat_flammable",
+      "label": "Hazmat / flammable / aerosol / compressed gas",
+      "keywords": ["aerosol", "flammable", "compressed gas", "butane", "propane", "spray paint", "lithium cell"],
+      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Dangerous goods require an SDS and DG handling. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "Amazon Dangerous Goods", "US": "Amazon Dangerous Goods / DOT"},
+      "docs": ["sds", "dg_declaration"]
+    },
+    {
+      "id": "weapons_adjacent",
+      "label": "Weapons-adjacent (knives, sprays, stun)",
+      "keywords": ["hunting knife", "pepper spray", "stun gun", "crossbow", "machete", "butterfly knife", "self defense spray"],
+      "status": {"UK": {"value": "PROHIBITED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
+      "reason": "Weapons-adjacent items are prohibited or heavily restricted, varying by state/region. UNVERIFIED -- confirm the exact requirement.",
+      "regulator": {"UK": "gov.uk (offensive weapons)", "US": "State law / Amazon policy"},
+      "docs": []
+    }
+  ]
+}
