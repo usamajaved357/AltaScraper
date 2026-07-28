@@ -1,0 +1,163 @@
+{
+  "_meta": {
+    "title": "Master restricted-products reference — all 30 categories, deep detail",
+    "purpose": "The comprehensive reference: every Amazon restricted category with status, required docs, trigger keywords, prohibited substances, and marketplace-specific notes. Danger zones (batteries, medical, radio, cosmetics, supplements, hazmat, children's) in full depth; all others at solid category level. Consolidates tier1 + tier2 + tier2b + deep research.",
+    "compiled": "2026-07-28",
+    "source_tier": "master_deep_research",
+    "amazon_policy_ref": "G200164330",
+    "confidence_note": "Compiled from Amazon published policy + regulators (FDA, EPA, FCC, Ofcom, CPSC, MHRA, HSE) + industry compliance references, accurate as of compile date. Amazon updates without notice. Definitive per-ASIN/per-account answer = Seller Central Apply-to-Sell.",
+    "usage_rule": "SOURCING ALARM + listing warning. PROHIBITED -> block normal submit (logged force-list only). GATED -> warn + show docs, submit allowed. Never a copy tool: never strip a true spec/ingredient to conceal a restricted product (account-ending).",
+    "marketplace_principle": "EU/UK is generally the stricter constraint (esp. cosmetics, children's). Several restrictions are marketplace-specific and must resolve per active marketplace, never globally. Hazmat and category approvals are per-marketplace — approval in one region does NOT carry to another."
+  },
+
+  "categories": [
+
+    {
+      "id": "supplements", "label": "Dietary supplements", "status": "GATED", "depth": "full",
+      "marketplaces": {"US": "GATED (FDA/FTC)", "UK": "GATED (FSA/MHRA)"},
+      "prohibited_ingredients": ["Ephedra / ephedrine alkaloids (incl. Sida cordifolia / heartleaf sida — Amazon treats plant-sourced ephedrine as prohibited)", "DMAA (1,3-dimethylamylamine)", "Phenibut", "Tianeptine", "DHEA", "SARMs", "Kratom", "Kava", "hidden pharmaceuticals (sildenafil, tadalafil — common in sexual-enhancement products)"],
+      "restricted_extra_docs": ["Caffeine >400mg", "Yohimbine", "Melatonin", "5-HTP"],
+      "docs": ["Certificate of Analysis from ISO/IEC 17025-certified lab", "GMP compliance", "Supplement Facts Panel", "manufacturer info", "sealed original packaging, English labelling"],
+      "amazon_specific_rules": ["EVERY ingredient claim on the detail page must MATCH the Supplement Facts Panel in name, weight, presentation — 'label-led not marketing-led'. Deactivations for mismatched legacy copy from 2026-03-31.", "No 'equivalent raw material' / potency storytelling that exceeds the panel.", "Sexual-enhancement & weight-loss supplements CANNOT be sold in single- or double-pill packs (since 2021-12-06)."],
+      "claims_trap": "Any disease claim (diagnose/cure/mitigate/treat/prevent) = unapproved drug = instant restriction.",
+      "regulator": "FDA (US) / MHRA-FSA (UK)"
+    },
+
+    {
+      "id": "cosmetics_topicals", "label": "Cosmetics / skincare / topicals", "status": "GATED", "depth": "full",
+      "marketplaces": {"US": "GATED (FDA FDCA / MoCRA)", "UK": "GATED (UK Cosmetics Reg 2020)"},
+      "prohibited_ingredients_us": ["Bithionol", "Mercury compounds (aliases: Hg, mercuric iodide, mercurous chloride, ammoniated mercury, quicksilver, cinnabaris, hydrargyri oxydum rubrum)", "Vinyl chloride", "Halogenated salicylanilides", "Chloroform", "certain CFC propellants", "Hexachlorophene (<=0.1%, not on mucous membranes)", "Methylene chloride", "Hydroquinone (OTC = unapproved drug)"],
+      "prohibited_ingredients_eu_uk": ["Hydroquinone (banned general cosmetic use)", "Mercury", "Tretinoin", "Betamethasone/corticosteroids", "5 parabens (isopropyl/isobutyl/phenyl/benzyl/pentyl)", "Methylisothiazolinone (restricted)"],
+      "amazon_specific_rules": ["Separate SKIN-LIGHTENER/whitening policy: requires third-party GMP, heavy-metals + mercury testing, FDA forms 5066 (facility) + 5067 (product). NSF is a named approved tester.", "Topicals (anything applied to skin, incl. oils) require approval."],
+      "docs": ["UK/EU: CPSR (signed by qualified assessor) + SCPN(UK)/CPNP(EU) + INCI labelling + Responsible Person", "US: FDA registration, GMP, COA, manufacturer invoice (last 180 days)"],
+      "claims_trap": "anti-acne/anti-aging-treatment/SPF/antibacterial/treats-eczema flip cosmetic -> OTC drug.",
+      "regulator": "FDA (US) / UK Cosmetics Reg 2020"
+    },
+
+    {
+      "id": "medical_devices", "label": "Medical devices & accessories", "status": "GATED_HARD", "depth": "full",
+      "marketplaces": {"US": "GATED_HARD (FDA)", "UK": "GATED_HARD (MHRA)"},
+      "detail": "Nebulizers/inhalers = Class II, 510(k), prescription-only, Amazon Professional Healthcare Program only (near-closed for resellers). TENS, blood-pressure monitors, some massagers = Class II OTC. Over-triggers from keywords (beauty/back-strap/snore-guard items get flagged).",
+      "docs": ["US: FDA 510(k) clearance + establishment registration + manufacturer invoice + packaging photos + IFU; prescription devices need Professional Healthcare Program", "UK/EU: UKCA(GB)/CE mark + signed Declaration of Conformity under MDR"],
+      "trigger_keywords": ["nebulizer", "nebuliser", "inhaler", "atomizer for medicine", "tens", "therapeutic", "medical grade", "510k", "fda cleared", "treats", "blood pressure monitor"],
+      "matches_user_violation": "B0H5FP3C8S", "regulator": "FDA (US) / MHRA (UK)"
+    },
+
+    {
+      "id": "lithium_batteries", "label": "Lithium batteries & products containing them", "status": "GATED", "depth": "full",
+      "marketplaces": {"US": "GATED (CPSC/DOT)", "UK": "GATED (ICAO/IATA)"},
+      "docs": ["UN38.3 test summary (mandatory)", "UL 2054", "UL 1642", "IEC 62133", "UL 2056 (power banks)", "SDS with Wh rating"],
+      "thresholds": ["Batteries >2.7Wh: air-transport charge limits", ">100Wh: prohibited from standard FBA without special approval", "Wh rating MUST match across marketplaces or flagged"],
+      "scope_trap": "Anything with a lithium cell: toothbrushes, speakers, earbuds, toy cars, tools, flashlights. 'If it charges, it's affected.'",
+      "matches_user_violation": "B0H2WKFN55", "regulator": "CPSC/DOT (US)"
+    },
+
+    {
+      "id": "radio_wireless_fpv", "label": "Radio / wireless / FPV transmitting equipment", "status": "GATED_OR_PROHIBITED", "depth": "full",
+      "marketplaces": {"UK": "5.8GHz >25mW EIRP = PROHIBITED (Ofcom IR2030); 2.4GHz control >100mW prohibited. Jammers prohibited.", "US": "5.8GHz up to 1W legal (FCC Part 15); jammers prohibited; FCC ID/certification required."},
+      "detail": "High-power FPV VTX is the classic marketplace-split case: 600mW prohibited UK / legal US. Signal jammers prohibited both. Surveillance/hidden-camera restricted.",
+      "trigger_keywords": ["600mw", "800mw", "1w", "200mw", "high power vtx", "fpv", "5.8ghz", "jammer", "signal booster", "transmitter"],
+      "docs": ["US: FCC ID/certification", "UK: UKCA + Declaration of Conformity"],
+      "matches_user_violation": "B0H7JT6171", "regulator": "Ofcom (UK) / FCC (US)"
+    },
+
+    {
+      "id": "hazmat_dangerous_goods", "label": "Hazmat / dangerous goods (9 classes)", "status": "GATED", "depth": "full",
+      "marketplaces": {"US": "GATED (DOT)", "UK": "GATED"},
+      "fba_outcomes": ["Non-dangerous: standard FBA", "Restricted-dangerous: FBA only if enrolled in Dangerous Goods Program (special centers, higher fees)", "Unfulfillable: Class 1 explosives, Class 7 radioactive, Class 6.2 infectious — cannot enter FBA at all"],
+      "classes": ["Class 2 (aerosols — every aerosol qualifies due to propellant)", "Class 3 flammable liquids (flash point <=60C/140F: perfume, nail polish, lighter fluid, lamp oil)", "Class 4 flammable solids (matches, fire starters)", "Class 8 corrosives (glycolic acid skincare)", "Class 9 misc (lithium, magnets)"],
+      "scope_trap": "Aerosols, perfume, nail polish, hand sanitizer, glycolic-acid skincare, magnets (speakers/toys), glue/adhesives, disinfectants all trigger it.",
+      "docs": ["SDS (GHS format)", "battery exemption sheet", "test reports"],
+      "note": "Approval is MARKETPLACE-SPECIFIC. Review takes ~4 business days to 2-3 weeks. Certain words in the listing trigger it.",
+      "regulator": "DOT (US)"
+    },
+
+    {
+      "id": "childrens_products", "label": "Children's products / toys (<=12 yrs)", "status": "GATED", "depth": "full",
+      "marketplaces": {"US": "GATED (CPSIA/CPSC)", "UK": "GATED (UKCA/Toy Safety)"},
+      "docs_us": ["Children's Product Certificate (CPC) based on CPSC-accepted third-party lab testing", "ASTM F963 toy testing", "lead & phthalates testing", "tracking labels (manufacturer + batch)"],
+      "docs_uk_eu": ["UKCA (UK) / CE (EU) marking", "BS EN 71 / EN 71 (71-1 mechanical, 71-2 flammability, 71-3 toxic elements)", "REACH compliance"],
+      "scope": "Toys, apparel, jewelry, books, art materials, children's furniture — anything for kids <=12. Amazon usually gives ~30 days to provide CPC; non-compliance = removal even after years listed.",
+      "regulator": "CPSC (US)"
+    },
+
+    {"id": "composite_wood", "label": "Composite wood products", "status": "PROHIBITED_UNLESS_COMPLIANT", "depth": "solid",
+     "marketplaces": {"US": "Prohibited unless EPA TSCA Title VI / CARB formaldehyde compliant"},
+     "docs": ["EPA TSCA Title VI / CARB Phase 2 formaldehyde certification"], "note": "Plywood, MDF, particleboard. Also hits children's toys with composite panels.", "regulator": "EPA (US)"},
+
+    {"id": "upholstered_furniture", "label": "Upholstered furniture & clothing storage units", "status": "GATED", "depth": "solid",
+     "marketplaces": {"US": "Clothing storage units require DV Direct Verification per ASTM F2057-23 (anti-tip/stability)", "UK": "Fire safety regs (fire label) — changing"},
+     "docs": ["ASTM F2057-23 tip-over testing (US dressers)", "UK furniture fire-safety label"], "regulator": "CPSC (US)"},
+
+    {"id": "pesticides_biocides", "label": "Pesticides & pesticide-claim products", "status": "GATED", "depth": "solid",
+     "marketplaces": {"US": "EPA registration", "UK": "HSE biocide rules"},
+     "claims_trap": "NON-pesticide products pulled in by pesticide-CLAIM language (kill/sanitize/antimicrobial/mold-resistant) — the Mil-Gear case.",
+     "docs": ["US: EPA registration number", "UK: HSE biocide registration"], "regulator": "EPA (US) / HSE (UK)"},
+
+    {"id": "opaque_eyewear", "label": "Opaque / light-blocking goggles & eyeshields", "status": "PROHIBITED", "depth": "solid",
+     "marketplaces": {"US": "PROHIBITED — FDA requires see-through eyewear", "UK": "verify"},
+     "matches_user_violation": "B0H4NJN5BM", "note": "Attribute-triggered: see-through eyewear is fine.", "regulator": "FDA"},
+
+    {"id": "alcohol", "label": "Alcohol", "status": "PROHIBITED_EXCEPT_WINE_APPROVED", "depth": "solid", "marketplaces": {"US":"prohibited except pre-approved wine","UK":"prohibited except pre-approved wine"}},
+    {"id": "drugs_otc", "label": "Drugs, OTC medicines, paraphernalia", "status": "GATED", "depth": "solid", "regulator": "FDA/MHRA"},
+    {"id": "cbd_hemp", "label": "CBD / hemp / cannabis", "status": "RESTRICTED_HIGH", "depth": "thin — research pending", "note": "Largely restricted/prohibited; verify — often no path. Per-marketplace US/UK legal lines to be researched by owner."},
+    {"id": "weapons_knives", "label": "Weapons, firearms, ammunition, certain knives", "status": "PROHIBITED_MOSTLY", "depth": "thin — research pending", "note": "UK knife laws stricter than US; automatic/concealed knives prohibited. Exact UK knife-law list + what's allowed to be researched by owner."},
+    {"id": "explosives_fireworks", "label": "Explosives, fireworks", "status": "PROHIBITED", "depth": "solid"},
+    {"id": "lasers", "label": "Laser products / pointers", "status": "GATED", "depth": "full",
+     "marketplaces": {"US": "Limited to Class 3R (<=5mW), must be branded. Class 3B & Class 4 barred. Handheld pointers generally not allowed.", "UK": "Consumer products restricted to Class 1 or Class 2 (stricter). OPSS has removed Class 3/4 lasers from Amazon UK."},
+     "thresholds": ["US: <=5mW (Class 3R) with approval", "UK: Class 1 or 2 only for consumers", "Class 3B/4 = prohibited both"],
+     "docs": ["US: FDA accession number + testing report from Intertek/UL/SGS + brand", "list of laser ASINs + seller info"],
+     "trigger_keywords": ["laser pointer", "burning laser", "class 3", "class 4", "class iiib", "high power laser", "laser 303", "mw laser"],
+     "regulator": "FDA/CDRH (US) / OPSS-UKHSA (UK)"},
+    {"id": "lock_picking", "label": "Lock picking & theft devices", "status": "PROHIBITED_EXCEPT_BLANKS", "depth": "full",
+     "note": "Prohibited: lock-pick sets, slim-jims, tension bars, key-duplication devices, Sensormatic detachers, card-skimming devices, code grabbers, shoplifting/booster devices. ALLOWED: blank keys only.",
+     "trigger_keywords": ["lock pick", "lock-picking", "slim jim", "tension bar", "sensormatic detacher", "card skimmer", "code grabber", "key duplication"]},
+    {"id": "surveillance", "label": "Surveillance / spy equipment", "status": "RESTRICTED", "depth": "full",
+     "note": "PROHIBITED: covert/eavesdropping devices, devices to intercept conversations, signal jammers. ALLOWED: baby monitors, non-eavesdropping security cameras.",
+     "trigger_keywords": ["hidden camera", "spy camera", "covert", "eavesdrop", "wiretap", "listening device", "signal jammer"]},
+    {"id": "food_grocery", "label": "Food, beverages, grocery", "status": "GATED", "depth": "full",
+     "marketplaces": {"US": "GATED (FDA/USDA)", "UK": "GATED (FSA)"},
+     "requirements": ["Expiration date PERMANENTLY marked on every unit (set is_expiration_dated_product=true in inventory template)", "Sesame must be declared (9th US allergen, FASTER Act 2023)", "FDA RACC serving sizes (21 CFR 101.12) mandatory — foreign serving sizes void the Nutrition Facts panel (#1 import error)", "FSVP program if importer of record (FDA can demand records in 24h)", "English labelling: name, net weight, ingredients, allergens, nutrition, manufacturer"],
+     "docs": ["FDA Food Facility Registration", "Certificate of Analysis (COA)", "FSVP documentation", "Prior Notice of Imported Food (imports)"],
+     "prohibited": ["unpasteurized/raw milk", "most alcohol", "certain plant-based items"],
+     "dietary_claims_trap": "'organic', 'gluten-free', 'non-GMO', 'keto', 'vegan' need appropriate certification/approval.",
+     "regulator": "FDA/USDA (US) / FSA (UK)"},
+    {"id": "jewelry_precious", "label": "Jewelry & precious gems", "status": "GATED", "depth": "full",
+     "docs": ["proof of authenticity", "quality certifications", "invoices from reputable wholesalers/manufacturers"],
+     "note": "Fine jewelry gated for anti-fraud/quality. Requires establishing account history."},
+    {"id": "refrigerants_ozone", "label": "Refrigerants / ozone-depleting substances", "status": "GATED_HARD", "depth": "full",
+     "marketplaces": {"US": "Can ONLY be sold to EPA Section 608/609 certified technicians (40 CFR 82 Subpart F, Clean Air Act). Effectively closed to general buyers.", "UK": "F-gas regulated"},
+     "exception": "Small cans of R-134a substitute for motor-vehicle AC.",
+     "trigger_keywords": ["refrigerant", "r-134a", "r-22", "r134a", "freon", "hcfc", "ozone-depleting", "coolant gas"],
+     "regulator": "EPA (US) / F-gas (UK)"},
+    {"id": "automotive", "label": "Automotive & powersports", "status": "GATED_SUBCATEGORY", "depth": "full",
+     "note": "Top-level open, but: EMISSIONS DEFEAT DEVICES prohibited (Title II Clean Air Act) — tuners/deletes removed even WITH CARB EO docs. Tires/wheels/rims = separate gate. Parts needing EPA Certificate of Conformity gated. Products must retain full OBD/emissions functionality.",
+     "trigger_keywords": ["defeat device", "emissions delete", "egr delete", "dpf delete", "tuner", "def delete", "catalytic bypass"],
+     "docs": ["EPA Certificate of Conformity", "tire/wheel category approval"],
+     "regulator": "EPA / CARB (US)"},
+    {"id": "fine_art", "label": "Fine art", "status": "GATED", "depth": "solid", "note":"No mass-produced/unnamed-artist works."},
+    {"id": "coins_currency", "label": "Collectible coins & currency", "status": "GATED", "depth": "solid", "note":"No altered/counterfeit legal tender."},
+    {"id": "tobacco_vaping", "label": "Tobacco, e-cigarettes, vaping", "status": "PROHIBITED", "depth": "solid"},
+    {"id": "animals", "label": "Animals & animal products", "status": "RESTRICTED", "depth": "solid", "note":"No live pets/endangered fur/feathers/marine mammals."},
+    {"id": "plants_seeds", "label": "Plant & seed products", "status": "RESTRICTED", "depth": "thin — research pending", "docs":["phytosanitary"], "note": "Phytosanitary specifics + prohibited-species list to be researched by owner."},
+    {"id": "recalled", "label": "Recalled products", "status": "PROHIBITED", "depth": "solid", "note":"Amazon ingests CPSC/FDA recall feeds automatically."},
+    {"id": "gambling_lottery", "label": "Gambling & lottery", "status": "PROHIBITED", "depth": "solid"},
+    {"id": "warranties_services", "label": "Warranties, service plans, subscriptions", "status": "GATED", "depth": "solid"},
+    {"id": "lighting", "label": "Lighting products (bulbs, lamps)", "status": "GATED", "depth": "thin — research pending", "note": "Must meet energy-efficiency standards; non-compliant bulbs/lamps prohibited. Exact DOE standard + required docs to be researched by owner.", "regulator": "DOE (US)"},
+    {"id": "recycling_electronics", "label": "Electronics recycling / e-waste", "status": "RESTRICTED", "depth": "solid", "note": "Recycling-electronics program restrictions apply."},
+    {"id": "postage_stamps", "label": "Postage meters & stamps", "status": "GATED", "depth": "solid", "note": "Collectible stamps allowed; counterfeit stamps & unauthorized postage-meter equipment prohibited."},
+    {"id": "offensive_materials", "label": "Offensive & controversial materials", "status": "PROHIBITED", "depth": "solid", "note": "Hate symbols, items promoting violence/intolerance, culturally insensitive content prohibited."},
+    {"id": "strike_matches", "label": "Strike-anywhere matches", "status": "PROHIBITED", "depth": "solid", "note": "Fire hazard — prohibited (safety matches may differ; verify)."},
+    {"id": "cpap_ozone_cleaners", "label": "Ozone/UV CPAP cleaning devices", "status": "PROHIBITED", "depth": "solid", "note": "Devices claiming to clean CPAPs with ozone gas or UV light are FDA-unapproved and prohibited.", "regulator": "FDA"},
+    {"id": "polystyrene_wa", "label": "Washington State expanded polystyrene", "status": "RESTRICTED_STATE", "depth": "solid", "note": "State-specific restriction (US)."}
+
+  ],
+
+  "cross_cutting": {
+    "claims_to_regulated_conversion": "Three categories flip via COPY not product: supplement disease-claims -> drug; cosmetic anti-acne/SPF/antibacterial -> drug; any product kill/sanitize/antimicrobial -> pesticide. These overlap the claims screener.",
+    "keyword_over_triggering": "Amazon's automated classifiers over-trigger from title/bullet/review keywords (medical-device, pesticide, hazmat). A clean product with the wrong word gets pulled into a restricted bucket.",
+    "no_match_not_safe": "Absence from this list is NOT a clearance. Subcategory gating and account-specific gating only resolve via Seller Central Apply-to-Sell.",
+    "enforcement_timing": "Often post-listing: created fine, removed/flagged weeks later. Notice windows typically 14-30 days to provide docs.",
+    "still_needed_from_login": ["Amazon's verbatim per-category sub-page text (G200164330 children)", "exact doc quantities/date-ranges per gate", "account-specific gating status per account (Apple/Nike-style brand gating)", "full supplement prohibited-ingredient list as Amazon publishes it"]
+  }
+}
