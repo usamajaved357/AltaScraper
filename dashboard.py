@@ -3062,6 +3062,10 @@ if __name__ == "__main__":
     import routes.sync_routes as _sync_routes
     _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
                           _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
+    # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
+    import routes.dashboard_routes as _dashboard_routes
+    _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,
+                               STATUS_HEADER=STATUS_HEADER, SKU_HEADER=SKU_HEADER)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
                            _load_img_instructions=_load_img_instructions,

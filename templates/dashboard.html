@@ -24,10 +24,16 @@
 
 <!-- ============ HOME SCREEN ============ -->
 <div id="home" class="show">
-  <p class="homehd">Workspaces</p>
+  <div class="homebar">
+    <p class="homehd" id="homehd" style="margin:0">Workspaces</p>
+    <label class="newui-toggle" title="Opt-in preview of the new dashboard. Your classic UI stays the default — flip this off any time to return to it.">
+      <input type="checkbox" id="newui_switch" onchange="toggleNewUI(this.checked)"> New UI
+    </label>
+  </div>
   <div class="wsgrid" id="wsgrid">
     <div class="empty" style="grid-column:1/-1">Loading workspaces…</div>
   </div>
+  <div id="newdash" style="display:none"></div>
 </div>
 
 <!-- ============ WORKSPACE SCREEN ============ -->
@@ -515,6 +521,25 @@
 <script src="/static/js/shell.js"></script>
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/sync.js"></script>
+<!-- Shape-1: manual pre-source restricted-product check -->
+<div class="rc-modal" id="rc_modal">
+  <div class="rc-box">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3>Check a product before sourcing</h3>
+      <button class="db-chip" onclick="rcClose()"><i class="ti ti-x"></i></button>
+    </div>
+    <p class="cc" style="margin:2px 0 0">Paste a product title or description. Keyword-based — catches obvious restricted types reliably, disguised ones may slip. A strong warning, not a guarantee.</p>
+    <input class="rc-in" id="rc_text" placeholder="e.g. 20000mAh power bank / FPV drone goggles 600mW / nano facial steamer">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <select class="rc-in" id="rc_mkt" style="width:auto;margin:0">
+        <option value="UK">UK</option><option value="US">US</option>
+      </select>
+      <button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="rcRun()"><i class="ti ti-search"></i> Check</button>
+    </div>
+    <div class="rc-res" id="rc_res"></div>
+  </div>
+</div>
+<script src="/static/js/dashboard.js"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">
