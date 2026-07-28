@@ -3818,10 +3818,35 @@ async def process_row(row: dict, client, ws_out,
 
     # --- Category-aware claims screener (task #18) -- WARN only, never blocks. Scans
     # the finished copy against the product_type's category rulebook (unknown -> all).
+    # This ALSO carries the always-on PERFORMANCE + SUPERIORITY buckets (task #14 Part B).
     _cat = check_category_claims(listing, comp_data.get("product_type", ""))
     if _cat.get("has_flagged"):
         notes_parts.append(_cat["note"])
         console.print(f"  [yellow]{_cat['summary']}[/yellow]")
+
+    # --- Arbitrage grounding floor (task #14 Part A) -- WARN only, never blocks. Assemble
+    # every source the app actually captured for THIS row (competitor title + attributes
+    # incl bullet_points, eBay title/description/specifics, reviews, autocomplete keywords)
+    # and flag figures / named standards in the finished copy that appear in NONE of it.
+    # Honest limit: numeric + named-standard only, and only as strong as the row's source.
+    _src_parts = [comp_data.get("title", "")]
+    for _k, _v in (comp_data.get("attributes") or {}).items():
+        _src_parts.append(f"{_k} {_v}")
+    _es = comp_data.get("_ebay_supplement") or {}
+    _src_parts += [_es.get("title", ""), _es.get("description", "")]
+    for _k, _v in (_es.get("item_specifics") or {}).items():
+        _src_parts.append(f"{_k} {_v}")
+    _src_parts += [str(_rv) for _rv in (voc_data.get("reviews") or [])]
+    _src_parts += [str(_kw.get("keyword", "")) for _kw in (keywords or []) if isinstance(_kw, dict)]
+    _source_blob = "\n".join(p for p in _src_parts if p)
+    if _source_blob.strip():
+        _ng = check_numeric_grounding(listing, _source_blob)
+        for _fig in (_ng.get("fabricated", []) + _ng.get("warnings", [])):
+            notes_parts.append("REVIEW: unverified figure (not in captured source): " + _fig)
+        _uc = check_unsupported_claims(listing, _source_blob)
+        if _uc.get("has_ungrounded"):
+            _toks = ", ".join(sorted({u["token"] for u in _uc["ungrounded"]}))
+            notes_parts.append("REVIEW: unverified spec (not in captured source): " + _toks)
 
     notes_text = " | ".join(notes_parts)
     row_data = build_sheet_row(

@@ -599,6 +599,15 @@ for _lane in _LANES:
     for _p in _INVENTED_CERT:
         _CATEGORY_RULES[_lane].append(
             ("AMBER", _p, "", "unverifiable / invented certification", _wordish(_p)))
+# ALWAYS-ON claim buckets (task #14 Part B): PERFORMANCE + SUPERIORITY claims are a
+# Restricted-Products risk in EVERY category and REGARDLESS of source (a competitor
+# saying it is not a defence), so they fire on every lane. Their rule labels come from
+# _RULE_NAMES, set here just before the files are loaded.
+_RULE_NAMES["performance"] = "performance claim -- not documentable"
+_RULE_NAMES["superiority"] = "superiority claim -- not documentable"
+_ALWAYS_ON = _load_lane("performance") + _load_lane("superiority")
+for _lane in _LANES:
+    _CATEGORY_RULES[_lane].extend(_ALWAYS_ON)
 
 
 def lane_for_product_type(product_type: str):

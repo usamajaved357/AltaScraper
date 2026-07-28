@@ -1,0 +1,24 @@
+# SUPERIORITY-CLAIM bucket -- ALWAYS-ON (fires on EVERY category, SOURCE-INDEPENDENT).
+# Unqualified superiority ("best", "strongest", "#1", "unbeatable") needs proof Amazon
+# can demand at any time, so it is a Restricted-Products risk even if the competitor said
+# it. WARN, never blocks; you stay the final gate.
+#
+# Whole-word matched; keep CONSERVATIVE. (Note: scrub_copy already strips "best-selling",
+# "world-class", "premium", "perfect", "ultimate" from finished arbitrage copy, so those
+# are not repeated here.)
+# FORMAT:  SEVERITY | phrase | optional safe-swap    (# = comment)
+
+AMBER | best |
+AMBER | strongest |
+AMBER | toughest |
+AMBER | most powerful |
+AMBER | most durable |
+AMBER | unbeatable |
+AMBER | unmatched |
+AMBER | unrivaled |
+AMBER | unrivalled |
+AMBER | superior |
+AMBER | number one |
+AMBER | #1 |
+AMBER | top-rated |
+AMBER | guaranteed |
