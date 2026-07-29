@@ -194,29 +194,38 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 if _user_sheet or _user_tab:
                     yield (f"data: [target] writing to sheet '{_out_sheet[:16]}...' / tab "
                            f"'{_out_tab or '(default)'}'\n\n")
-                # GENERATION SET = every item folder in Drive (NOT the uploaded Excel,
-                # which is HARVEST-ONLY). We scan Drive fresh each time and write the
-                # full list to miles_items.json, so Generate never depends on a stale
-                # file or on whether a spreadsheet was uploaded this session. run_miles
-                # back-fills any missing from Drive and skips any SKU already present on
-                # ANY tab -- so this builds exactly the missing listing copies.
+                # GENERATION SET = the UPLOADED item list when one exists this session
+                # (Drive is the data source WITHIN that scope; run_miles back-fills each
+                # listed SKU from its Drive folder and ignores any Drive item NOT in the
+                # list). Only when NO list was uploaded do we fall back to scanning all
+                # Drive folders. Previously this ALWAYS scanned all Drive, which swept in
+                # items from other runs/tabs/older harvests.
                 try:
                     import miles_import as _MG
                     _base_g = os.path.dirname(os.path.abspath(_cfg_path))
-                    _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
-                    _drv_g, _derr_g = _MG.build_drive_rw(_cfg_g, _base_g)
-                    _all_items = _MG.list_all_item_folders(_drv_g, log=lambda m: None) if _drv_g else []
-                    with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
-                        json.dump(_all_items, _itf)
-                    if _all_items:
-                        yield (f"data: [items] {len(_all_items)} item folder(s) in Drive -- building the "
-                               f"ones not already in the sheet (existing rows on ANY tab are skipped)\n\n")
+                    _uploaded = [str(x).strip() for x in (_MILES_STATE.get("items") or [])
+                                 if str(x).strip()]
+                    if _uploaded:
+                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
+                            json.dump(_uploaded, _itf)
+                        yield (f"data: [items] {len(_uploaded)} uploaded item(s) in scope -- generating "
+                               f"ONLY these (items in Drive but NOT in your list are ignored; existing "
+                               f"rows are skipped)\n\n")
                     else:
-                        yield (f"data: [items] Drive scan returned nothing"
-                               f"{(' ('+_derr_g+')') if _derr_g else ''} -- falling back to all "
-                               f"locally-harvested items in the store\n\n")
+                        _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
+                        _drv_g, _derr_g = _MG.build_drive_rw(_cfg_g, _base_g)
+                        _all_items = _MG.list_all_item_folders(_drv_g, log=lambda m: None) if _drv_g else []
+                        with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _itf:
+                            json.dump(_all_items, _itf)
+                        if _all_items:
+                            yield (f"data: [items] no uploaded list this session -- {len(_all_items)} "
+                                   f"item folder(s) in Drive; building the ones not already in the sheet\n\n")
+                        else:
+                            yield (f"data: [items] Drive scan returned nothing"
+                                   f"{(' ('+_derr_g+')') if _derr_g else ''} -- falling back to all "
+                                   f"locally-harvested items in the store\n\n")
                 except Exception as _ie:
-                    yield f"data: [items] could not scan Drive for item list: {_ie}\n\n"
+                    yield f"data: [items] could not build item list: {_ie}\n\n"
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
                 p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -387,21 +396,18 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     yield "data: \n\n"
                     yield "data: [generate] scanning Drive for harvested item folders...\n\n"
                     _base_g = os.path.dirname(os.path.abspath(_cfg_path))
-                    try:
-                        _cfg_g = json.load(open(_cfg_path, encoding="utf-8"))
-                    except Exception as _ce:
-                        yield f"data: [error] cannot read config for generation: {_ce}\n\n"
-                        return
-                    _drv_g, _derr_g = _M.build_drive_rw(_cfg_g, _base_g)
-                    if not _drv_g:
-                        yield f"data: [error] cannot scan Drive for generation: {_derr_g}\n\n"
-                        return
-                    _all = _M.list_all_item_folders(_drv_g, log=lambda m: None)
+                    # SCOPE = the UPLOADED item list ONLY. Drive is the data source WITHIN this
+                    # scope -- run_miles back-fills each listed SKU from its Drive folder and
+                    # ignores any Drive item that is NOT in this list. Previously this scanned
+                    # ALL Drive folders (list_all_item_folders) and swept in items from other
+                    # runs/tabs/older harvests, generating far more than the uploaded list.
+                    _all = list(_items)
                     if not _all:
-                        yield "data: [generate] no item folders found in Drive -- nothing to generate.\n\n"
+                        yield "data: [generate] no uploaded item list -- nothing to generate.\n\n"
                         return
-                    yield (f"data: [generate] {len(_all)} item folder(s) in Drive; building the ones "
-                           f"not already in the sheet (existing rows are skipped)...\n\n")
+                    yield (f"data: [generate] {len(_all)} uploaded item(s) in scope; generating ONLY "
+                           f"these (items in Drive but NOT in your list are ignored; existing rows in "
+                           f"the output tab are skipped)...\n\n")
                     try:
                         with open(os.path.join(_base_g, "miles_items.json"), "w", encoding="utf-8") as _f:
                             json.dump(_all, _f)
