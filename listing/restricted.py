@@ -95,7 +95,7 @@ _CATEGORY_SIGNALS = {
     "lithium_batteries": ["power bank", "power station", "lithium battery"],
     "radio_wireless_fpv": ["drone", "fpv", "quadcopter"],
     "hazmat_dangerous_goods": ["aerosol"],
-    "childrens_products": ["toy", "children", "toddler"],
+    "childrens_products": ["toy", "children", "toddler", "kids", "baby", "infant"],
     "pesticides_biocides": ["pesticide", "insecticide", "herbicide"],
     "lasers": ["laser pointer"],
     "refrigerants_ozone": ["refrigerant"],
@@ -243,12 +243,22 @@ for _e in _ENTRIES.values():
     _e["kw_corrob"] = [(kw, _wordish(kw)) for kw in _e["keywords"] if classify_keyword(kw) == "corroborating"]
 
 
+# Context that DISQUALIFIES a category signal (avoids cross-category false positives, e.g. a
+# PET_TOY / "Pet Supplies" product wrongly read as a children's toy off the word "toy").
+_CATEGORY_EXCLUDE = {
+    "childrens_products": ["pet", "dog", "cat", "aquarium"],
+}
+
+
 def _category_signal(cid, product_type, category_path, browse_nodes):
     tokens = _CATEGORY_SIGNALS.get(cid)
     if not tokens:
         return False
     hay = "  ".join(str(x) for x in (product_type, category_path,
                     " ".join(browse_nodes or [])) if x).lower()
+    for ex in _CATEGORY_EXCLUDE.get(cid, []):
+        if _wordish(ex).search(hay):
+            return False
     return any(_wordish(t).search(hay) for t in tokens)
 
 

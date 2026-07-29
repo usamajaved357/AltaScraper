@@ -140,7 +140,7 @@
     {
       "id": "mains_electrical",
       "label": "Mains-powered electrical product",
-      "keywords": ["mains powered", "plug-in", "240v", "wall charger", "power adapter", "mains adapter", "ac adapter"],
+      "keywords": ["mains powered", "240v", "230v", "wall charger", "mains adapter", "ac mains adapter"],
       "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
       "reason": "Mains electrical products require safety conformity marking and correct plug. UNVERIFIED -- confirm the exact requirement.",
       "regulator": {"UK": "UKCA/CE + BS1363 plug", "US": "UL / ETL"},
