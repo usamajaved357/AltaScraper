@@ -480,18 +480,35 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             # "not confirmed by Amazon". Merge the inactive report so every listing on
             # the account is shown, each carrying its real status.
             try:
-                _icr = rc.create_report(reportType="GET_MERCHANT_LISTINGS_INACTIVE_DATA",
-                                        marketplaceIds=[mkt_id] if mkt_id else None)
-                _irid = (_icr.payload or {}).get("reportId") if hasattr(_icr, "payload") else _icr.get("reportId")
                 _idoc = None
-                for _a in range(45):
-                    _ist = rc.get_report(_irid)
-                    _ip = _ist.payload if hasattr(_ist, "payload") else _ist
-                    if _ip.get("processingStatus") == "DONE":
-                        _idoc = _ip.get("reportDocumentId"); break
-                    if _ip.get("processingStatus") in ("CANCELLED", "FATAL"):
-                        break
-                    _t.sleep(2 if _a < 10 else 4)
+                # REUSE a recent DONE inactive report when NOT forcing -- like the active
+                # report above. Previously this ALWAYS created a fresh report and polled it
+                # (~2-3 min) on EVERY catalogue view, which is why "Live on Amazon" was slow
+                # every time. Now a plain view downloads an existing report (seconds); only a
+                # forced Sync regenerates it.
+                if not force:
+                    try:
+                        _iex = rc.get_reports(reportTypes=["GET_MERCHANT_LISTINGS_INACTIVE_DATA"],
+                                              processingStatuses=["DONE"],
+                                              marketplaceIds=[mkt_id] if mkt_id else None, pageSize=1)
+                        _iep = _iex.payload if hasattr(_iex, "payload") else _iex
+                        _ireps = (_iep or {}).get("reports", []) if isinstance(_iep, dict) else []
+                        if _ireps:
+                            _idoc = _ireps[0].get("reportDocumentId")
+                    except Exception:
+                        _idoc = None
+                if not _idoc:
+                    _icr = rc.create_report(reportType="GET_MERCHANT_LISTINGS_INACTIVE_DATA",
+                                            marketplaceIds=[mkt_id] if mkt_id else None)
+                    _irid = (_icr.payload or {}).get("reportId") if hasattr(_icr, "payload") else _icr.get("reportId")
+                    for _a in range(45):
+                        _ist = rc.get_report(_irid)
+                        _ip = _ist.payload if hasattr(_ist, "payload") else _ist
+                        if _ip.get("processingStatus") == "DONE":
+                            _idoc = _ip.get("reportDocumentId"); break
+                        if _ip.get("processingStatus") in ("CANCELLED", "FATAL"):
+                            break
+                        _t.sleep(2 if _a < 10 else 4)
                 if _idoc:
                     _id_ = rc.get_report_document(_idoc, download=True)
                     _idp = _id_.payload if hasattr(_id_, "payload") else _id_
