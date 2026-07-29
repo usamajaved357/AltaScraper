@@ -439,7 +439,15 @@ function card(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
   if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
-  const issues = isHold(r.status) || r.ip_risk==="HIGH" || r.comp_risk==="HIGH" || r.comp_risk==="MEDIUM" || findings.length>0;
+  // REAL ISSUE only: a restricted-products flag (prohibited/gated) OR a genuine blocker
+  // (hold/error status). NOT: stored notes, old comp_risk, Amazon feedback, or claims-risk.
+  // Red/⚠️ are reserved so they stay trustworthy; a clean product shows neither.
+  const _rest = r.restricted;
+  const _restProhibited = !!(_rest && _rest.matches && _rest.matches.some(m=>m.tier==="PROHIBITED"));
+  const _restFlag = !!(_rest && _rest.matched);
+  const _blocker = (typeof isHold==="function" && isHold(r.status));
+  const realIssue = _restFlag || _blocker;
+  const flagRed = _restProhibited || _blocker;   // gated-only -> amber
   const urls=_rowImages(r);
   const thumb = (urls&&urls.length)
     ? `<img src="${esc(urls[0])}" loading="lazy" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
@@ -448,12 +456,12 @@ function card(r){
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const skuId=sid(r.sku);
   const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
-  return `<div class="tile ${selected?'sel':''} ${issues?'flag':''}" data-sku="${esc(r.sku)}">
+  return `<div class="tile ${selected?'sel':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
     <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openDrawer('${esc(r.sku)}')">
       ${thumb}
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
-      ${issues?'<span class="tileflag" title="Needs review"><i class="ti ti-alert-triangle"></i></span>':''}
+      ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
       ${claimBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
@@ -533,45 +541,31 @@ function drawerContent(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
   if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
-  const issues = isHold(r.status) || r.ip_risk==="HIGH" || r.comp_risk==="HIGH" || r.comp_risk==="MEDIUM" || findings.length>0;
+  // Header risk chips: keep only the genuine IP/trademark one. The old "Compliance: HIGH/MED"
+  // chips came from the legacy category matcher and cried wolf on clean products -- the
+  // Restricted products check panel now carries real compliance, so those are dropped.
+  const hasFeedback = findings.length>0;
   const risks = [];
   if(r.ip_risk==="HIGH") risks.push('<span class="risk hi">IP: HIGH</span>');
-  if(r.comp_risk==="HIGH") risks.push('<span class="risk hi">Compliance: HIGH</span>');
-  else if(r.comp_risk==="MEDIUM") risks.push('<span class="risk med">Compliance: MED</span>');
   // This panel shows AMAZON'S OWN post-submit messages (attribute conflicts, catalogue
   // mismatches) + our IP note -- NOT a restricted-products / docs verdict. That lives in the
   // separate "Restricted products check" panel. Label it honestly so it never masquerades
   // as "docs required".
-  let reason = "";
-  if(issues){
-    if(r.ip_risk&&r.ip_risk!=="") reason="IP / trademark review";
-    else reason="Amazon feedback";
-  }
+  let reason = (r.ip_risk && r.ip_risk!=="") ? "IP / trademark review" : "Amazon feedback";
   // Is this an ACTUAL blocking problem, or just an informational compliance note
   // (e.g. "lithium battery -> these docs may be requested")? A real problem = an
   // API error/hold or an IP risk. A compliance note on an already-submitted/live
   // listing is informational, so show it ORANGE, not alarming red.
-  const _allNotes = String((r.notes||"")+" "+(r.comp_notes||""));
-  const _hasApiError = /\[E\]|required but missing|API (PREVIEW|SUBMIT)[^:]*:\s*\d+\s*error|invalid/i.test(_allNotes);
-  const _isHoldOrErr = (typeof isHold==="function" && isHold(r.status)) ||
-                       String(r.status||"").toUpperCase().indexOf("ERROR")>=0;
-  const _ipProblem = r.ip_risk==="HIGH";
-  const _informational = issues && !_hasApiError && !_isHoldOrErr && !_ipProblem;
-  if(_informational){
-    reason = "Amazon feedback";
-  }
-  const _sumClass = _informational ? "findsum info" : "findsum bad";
-  const _findClass = _informational ? "findings info" : "findings";
   const _fbNote = (reason==="IP / trademark review")
     ? "Our brand/trademark check — not a docs requirement."
     : "Amazon’s own submission messages (attribute conflicts, catalogue mismatches) — NOT a restricted-products or docs verdict. See the Restricted products check panel for that.";
-  const statusBlock = issues
-    ? `<details class="findingsbox" open><summary class="${_sumClass}">\u2139 ${esc(reason)}</summary>
+  const statusBlock = hasFeedback
+    ? `<details class="findingsbox"><summary class="findsum neutral">\u2139 ${esc(reason)}</summary>
         <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">${esc(_fbNote)}</div>
-        <div class="${_findClass}">${formatFindings(findings)}</div>
+        <div class="findings neutral">${formatFindings(findings)}</div>
         <button class="linkbtn" style="margin-top:6px" onclick="locateFlags('${esc(r.sku)}',this)">\ud83d\udd0d Locate flagged terms</button>
         <div class="locout" id="loc_${sid(r.sku)}"></div></details>`
-    : `<div class="findsum good">\u2713 No issues detected</div>`;
+    : "";
   const urls=_rowImages(r);
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const hero = (urls&&urls.length)?`<div class="heroimg"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.style.display='none'"></div>`:'';

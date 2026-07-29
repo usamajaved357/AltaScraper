@@ -531,10 +531,15 @@
   .findsum.bad{background:var(--redbg);border:1px solid #5c2424;color:#ef9a9a}
   .findsum.info{background:var(--amberbg);border:1px solid #5c4a16;color:#e3b768}
   .findings.info{background:var(--amberbg);border:1px solid #5c4a16}
+  /* Amazon feedback = informational -> NEUTRAL/GREY, never red. */
+  .findsum.neutral{background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  .findings.neutral{background:var(--panel2);border:1px solid var(--line)}
   /* Restricted products check panel (Shape 2) -- clean = quiet green strip; matches = rows */
-  .restclear{font-size:12px;color:#7fd99a;background:#10301f;border:1px solid #1f7a3d;border-radius:8px;
-             padding:7px 11px;margin:2px 0;display:flex;align-items:center;gap:7px}
-  .restclear .cc{color:#8fb8a0}
+  /* Restricted-check CLEAN state: quiet reassurance, not a flag. Small + muted green. */
+  .restclear{font-size:11px;color:#6fb98a;background:transparent;border:none;border-radius:8px;
+             padding:3px 2px;margin:2px 0;display:flex;align-items:center;gap:6px}
+  .restclear i{font-size:13px;color:#4e9c6e}
+  .restclear .cc{color:var(--muted)}
   .restlist{display:flex;flex-direction:column;gap:8px;margin-top:2px}
   .restrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
   .restrow.red{background:var(--redbg);border-color:#5c2424}
@@ -548,7 +553,8 @@
         display:flex;flex-direction:column;transition:border-color .12s,transform .12s}
   .tile:hover{border-color:#3d4658;transform:translateY(-1px)}
   .tile.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-  .tile.flag{border-color:#5a3030}
+  .tile.flag{border-color:#5a3030}       /* red border: prohibited / blocker only */
+  .tile.flagamber{border-color:#5c4a16}  /* amber border: restricted-needs-docs */
   .tileimg{position:relative;height:180px;background:#1c2531;display:flex;align-items:center;
            justify-content:center;cursor:pointer;overflow:hidden}
   .tileimg img{width:100%;height:100%;object-fit:contain;background:#fff}
@@ -558,6 +564,8 @@
   .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}
   .tileflag{position:absolute;bottom:8px;right:8px;color:#e3b768;background:rgba(0,0,0,.55);
             border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .tileflag.red{color:#ef9a9a}    /* prohibited / blocker */
+  .tileflag.amber{color:#e3b768}  /* restricted-needs-docs */
   /* Category-aware claim-risk badge (task #18). RED = loud; AMBER deliberately quieter
      so a soft superlative never screams as loud as a pesticide claim. Absent on clean
      listings, so those tiles look exactly as before. */
