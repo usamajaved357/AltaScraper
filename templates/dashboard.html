@@ -18,6 +18,7 @@
   </div>
   <div class="crumbs" id="crumbs"></div>
   <span class="spacer"></span>
+  <button class="barbtn" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</button>
   <button class="barbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i> Privacy</button>
   <button class="barbtn" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</button>
   <button class="barbtn" onclick="goHome()"><i class="ti ti-home"></i> Home</button>
@@ -566,6 +567,23 @@
   </div>
 </div>
 <script src="/static/js/dashboard.js"></script>
+<!-- ASIN research (read-only lookup -> hand off to Image Studio + copy generator) -->
+<div class="rc-modal" id="asin_modal">
+  <div class="rc-box" style="width:min(760px,100%)">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3>Research an ASIN</h3>
+      <button class="db-chip" onclick="asinClose()"><i class="ti ti-x"></i></button>
+    </div>
+    <p class="cc" style="margin:2px 0 0">Pull any Amazon product's live data + images with your SP-API access. Read-only — nothing is published. Then send it to the Image Studio or generate copy.</p>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <input class="rc-in" id="asin_input" style="flex:1;min-width:200px;margin:0" placeholder="Paste an ASIN, e.g. B09BNLQG2Q">
+      <select class="rc-in" id="asin_mkt" style="width:auto;margin:0"><option value="UK">UK</option><option value="US">US</option></select>
+      <button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="asinLookup()"><i class="ti ti-search"></i> Look up</button>
+    </div>
+    <div id="asin_res" style="margin-top:14px"></div>
+  </div>
+</div>
+<script src="/static/js/asinresearch.js"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">

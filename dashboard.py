@@ -3067,6 +3067,9 @@ if __name__ == "__main__":
     _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,
                                STATUS_HEADER=STATUS_HEADER, SKU_HEADER=SKU_HEADER,
                                _INV_ALERT_COUNTS=_INV_ALERT_COUNTS)
+    # ASIN research (read-only Catalog Items lookup; no publish)
+    import routes.catalog_routes as _catalog_routes
+    _catalog_routes.register(app, _cfg=_cfg, _state=_state, CONFIG_PATH=CONFIG_PATH)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
                            _load_img_instructions=_load_img_instructions,
