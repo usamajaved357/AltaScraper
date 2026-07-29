@@ -439,13 +439,19 @@ function card(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
   if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
-  // REAL ISSUE only: a restricted-products flag (prohibited/gated) OR a genuine blocker
-  // (hold/error status). NOT: stored notes, old comp_risk, Amazon feedback, or claims-risk.
-  // Red/⚠️ are reserved so they stay trustworthy; a clean product shows neither.
+  // CARD ⚠️ ICON = a genuine RESTRICTED-PRODUCTS flag (prohibited/gated) OR a real hard
+  // blocker ONLY. Deliberately EXCLUDED so they never raise the icon:
+  //   - API_ERROR  -> that's Amazon's preview/submit attribute feedback (item_type_keyword,
+  //                   color, is_fragile, catalogue mismatches). Informational; lives in the
+  //                   "Amazon feedback" panel, NEVER the card icon. (This was the bug.)
+  //   - COMPLIANCE_HOLD -> legacy category-matcher noise (the restricted check replaces it).
+  //   - stored notes / old comp_risk / claims-risk -> never the icon.
+  // Genuine blockers that DO raise it: IP_HOLD (trademark) and ERROR (generation failure).
   const _rest = r.restricted;
   const _restProhibited = !!(_rest && _rest.matches && _rest.matches.some(m=>m.tier==="PROHIBITED"));
   const _restFlag = !!(_rest && _rest.matched);
-  const _blocker = (typeof isHold==="function" && isHold(r.status));
+  const _st = String(r.status||"").toUpperCase();
+  const _blocker = (_st==="IP_HOLD" || _st==="ERROR");
   const realIssue = _restFlag || _blocker;
   const flagRed = _restProhibited || _blocker;   // gated-only -> amber
   const urls=_rowImages(r);
