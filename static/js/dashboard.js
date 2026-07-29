@@ -120,9 +120,9 @@
           '<p class="muted" style="font-size:11px;margin-bottom:8px">'+_esc(meta||"—")+'</p>' +
           '<div style="display:flex;gap:5px;flex-wrap:wrap">'+pills.join("")+'</div></div>';
       }).join("");
-      var accountsSection = accCards
-        ? '<p class="eyebrow" style="margin:2px 0 8px">Accounts</p><div class="acctgrid">'+accCards+'</div>'
-        : "";
+      var accountsSection = '<p class="eyebrow" style="margin:2px 0 8px">Accounts</p>' + (accCards
+        ? '<div class="acctgrid">'+accCards+'</div>'
+        : '<div class="card muted" style="font-size:12px;margin-bottom:10px">No accounts returned by /dashboard/summary. If you have accounts in the classic UI, restart the app so the new endpoint reloads, then reload this page.</div>');
 
       // Inventory alerts (real; omit-honest empty)
       var inv = d.inventory || {};

@@ -57,6 +57,15 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
     _TTL = 60
 
     def _accounts():
+        # Use the SAME source /accounts/list uses -- load_accounts() migrates from legacy
+        # config when cfg["accounts"] is empty, so a legacy config still yields accounts.
+        try:
+            import accounts as _acc
+            got = _acc.load_accounts(_cfg() or {}, None)
+            if got:
+                return list(got)
+        except Exception:
+            pass
         return list((_cfg() or {}).get("accounts", []) or [])
 
     def _read_account_rows(book_cache, acc):
