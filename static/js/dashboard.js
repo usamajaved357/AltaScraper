@@ -48,6 +48,11 @@
     _toast("Open the workspace to see this listing.");
   };
   window.dbMetric = function(label){ _toast(label + ": the filtered queue arrives in Stage 2 — opening classic listings."); altShowClassic(); };
+  window.dbEnterId = function(id){
+    toggleNewUI(false);
+    try{ if(id && typeof enterAccount === "function"){ enterAccount(id); return; } }catch(e){}
+    _toast("Open the workspace from All workspaces.");
+  };
 
   function renderDashboard(){
     var el = document.getElementById("alt_content");
@@ -76,9 +81,12 @@
       var items = (d.needs_you || []).map(function(it){
         var pill = it.status === "Blocked" ? "p-blocked" : "p-review";
         var rcls = it.status === "Blocked" ? "c-danger" : "muted";
-        return '<div class="row" onclick="dbEnter('+js(it.account)+','+js(it.sku)+')">' +
+        var thumb = it.image
+          ? '<div class="thumb"><img src="'+_esc(it.image)+'" loading="lazy" onerror="this.parentNode.innerHTML=\'<i class=&quot;ti ti-photo&quot;></i>\'"></div>'
+          : '<div class="thumb"><i class="ti ti-photo"></i></div>';
+        return '<div class="row" onclick="dbEnter('+js(it.account)+','+js(it.sku)+')">' + thumb +
           '<div style="flex:1;min-width:0"><p style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_esc(it.title)+'</p>' +
-          '<p style="font-size:11px;margin-top:2px" class="'+rcls+'">'+_esc((it.account?it.account+" · ":"")+(it.reason||""))+'</p></div>' +
+          '<p style="font-size:11px;margin-top:1px" class="'+rcls+'">'+_esc((it.account?it.account+" · ":"")+(it.reason||""))+'</p></div>' +
           '<span class="pill '+pill+'">'+_esc(it.status)+'</span></div>';
       }).join("");
       if(!items) items = '<div class="c-ok" style="padding:9px 0;font-size:13px">✓ Nothing needs you right now</div>';
@@ -96,13 +104,25 @@
         kv("Confirmed from your history", cm.confirmed_history, "") +
         '<button class="btn btn-primary" style="width:100%;margin-top:11px;justify-content:center" onclick="rcOpen()"><i class="ti ti-search"></i> Check a product</button></div>';
 
-      // Sync + account health
-      var srows = sync.map(function(s){
-        var tail = s.note ? (" · " + s.note) : (s.last_sync ? (" · synced " + s.last_sync) : " · not synced yet");
-        return '<div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:2.1"><span class="dot '+_esc(s.dot)+'"></span> '+_esc(s.account)+(s.marketplace?" ("+_esc(s.marketplace)+")":"")+_esc(tail)+'</div>';
+      // Accounts (ALL of them, with per-account counts + health) -- so every account is visible.
+      var accCards = (d.per_account || []).map(function(a){
+        var cc = a.counts || {};
+        var pills = [];
+        if(cc.review) pills.push('<span class="pill p-review">'+cc.review+' review</span>');
+        if(cc.blocked) pills.push('<span class="pill p-blocked">'+cc.blocked+' blocked</span>');
+        if(cc.ready) pills.push('<span class="pill p-ready">'+cc.ready+' ready</span>');
+        if(cc.live) pills.push('<span class="pill p-live">'+cc.live+' live</span>');
+        if(a.readable === false) pills.push('<span class="pill p-blocked">unreadable</span>');
+        if(!pills.length) pills.push('<span class="pill p-live">no listings</span>');
+        var meta = (a.marketplace||"") + (a.note ? (" · "+a.note) : (a.last_sync ? (" · synced "+a.last_sync) : ""));
+        return '<div class="acct" onclick="dbEnterId('+js(a.id)+')">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px"><span style="font-weight:600;font-size:13px">'+_esc(a.label)+'</span><span class="dot '+_esc(a.dot||"grey")+'"></span></div>' +
+          '<p class="muted" style="font-size:11px;margin-bottom:8px">'+_esc(meta||"—")+'</p>' +
+          '<div style="display:flex;gap:5px;flex-wrap:wrap">'+pills.join("")+'</div></div>';
       }).join("");
-      if(!srows) srows = '<div class="muted" style="font-size:12px">No accounts configured.</div>';
-      var syncCard = '<div class="card"><p class="eyebrow" style="margin-bottom:10px">Sync + account health</p>'+srows+'</div>';
+      var accountsSection = accCards
+        ? '<p class="eyebrow" style="margin:2px 0 8px">Accounts</p><div class="acctgrid">'+accCards+'</div>'
+        : "";
 
       // Inventory alerts (real; omit-honest empty)
       var inv = d.inventory || {};
@@ -122,10 +142,11 @@
 
       el.innerHTML =
         '<h1 class="h1">'+greeting()+', Talha</h1>' +
-        '<p class="muted" style="font-size:13px;margin:3px 0 16px">'+sub+'</p>' +
+        '<p class="muted" style="font-size:13px;margin:2px 0 12px">'+sub+'</p>' +
         tiles +
+        accountsSection +
         '<div class="grid2">'+needsCard+compCard+'</div>' +
-        '<div class="grid2">'+syncCard+invCard+'</div>' +
+        invCard +
         notes;
     }).catch(function(e){ el.innerHTML = '<div class="card c-danger">Overview failed to load: '+_esc(String(e))+'</div>'; });
   }

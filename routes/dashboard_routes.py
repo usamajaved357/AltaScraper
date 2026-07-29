@@ -11,8 +11,33 @@ stays the untouched default/fallback.
 """
 from flask import request, jsonify
 import time
+import json as _json
 
 from listing.restricted import check_restricted_type
+
+
+def _row_image(attrs_json):
+    """Best-effort main-image URL from a row's Attributes JSON (locators vary in shape)."""
+    try:
+        a = _json.loads(attrs_json or "{}")
+        if not isinstance(a, dict):
+            return ""
+        def _url(v):
+            if isinstance(v, list) and v and isinstance(v[0], dict):
+                return v[0].get("value") or v[0].get("media_location") or ""
+            return v if isinstance(v, str) else ""
+        for k in ("main_product_image_locator", "main_image_url"):
+            u = _url(a.get(k))
+            if u:
+                return u
+        for k, v in a.items():
+            if "image" in str(k).lower():
+                u = _url(v)
+                if u:
+                    return u
+    except Exception:
+        pass
+    return ""
 try:
     from listing import sync as _sync
 except Exception:
@@ -90,15 +115,22 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
         gated_current = 0
         missing = []
         book_cache = {}
+        per = {}   # account_id -> per-account rollup (so EVERY account is visible)
 
         for acc in accounts:
-            label = acc.get("label") or acc.get("id") or "account"
+            aid = acc.get("id") or ""
+            label = acc.get("label") or aid or "account"
             mkt = str(acc.get("default_marketplace") or "").upper()
+            pc = {"review": 0, "blocked": 0, "ready": 0, "live": 0}
+            per[aid] = {"id": aid, "label": label, "marketplace": mkt, "counts": pc,
+                        "readable": True, "seller_id": acc.get("seller_id", "")}
             header, rows = _read_account_rows(book_cache, acc)
             if header is None:
-                # dropshipping-style / unconfigured accounts simply carry no output sheet
+                # An account with a sheet we couldn't read is still SHOWN (readable=False)
+                # so it never silently disappears; one without a sheet just has no listings.
                 if acc.get("output_spreadsheet_id"):
                     missing.append(label)
+                    per[aid]["readable"] = False
                 continue
             si = _col(header, STATUS_HEADER, "Status")
             ti = _col(header, "Title")
@@ -106,6 +138,7 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             pi = _col(header, "Product Type")
             ci = _col(header, "Amazon Category")
             ni = _col(header, "Notes", "Compliance Report", "Compliance Notes")
+            ji = _col(header, "Attributes JSON", "Attributes")
             for r in rows:
                 def cell(i):
                     return r[i] if (0 <= i < len(r)) else ""
@@ -114,13 +147,13 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
                 if not any([status, title.strip()]):
                     continue
                 if status in _REVIEW:
-                    counts["review"] += 1
+                    counts["review"] += 1; pc["review"] += 1
                 elif status in _BLOCKED:
-                    counts["blocked"] += 1
+                    counts["blocked"] += 1; pc["blocked"] += 1
                 elif status in _READY:
-                    counts["ready"] += 1
+                    counts["ready"] += 1; pc["ready"] += 1
                 elif status in _LIVE:
-                    counts["live"] += 1
+                    counts["live"] += 1; pc["live"] += 1
                 # compliance watch (live, current -- NOT a weekly window)
                 is_priority = status in _BLOCKED or status in _REVIEW
                 reason, rr = ("", None)
@@ -139,6 +172,7 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
                     needs.append({
                         "sku": cell(ki), "title": title[:80], "account": label,
                         "reason": reason, "marketplace": mkt,
+                        "image": _row_image(cell(ji)) if ji >= 0 else "",
                         "status": ("Blocked" if status in _BLOCKED else "Review"),
                         "_rank": 0 if status in _BLOCKED else 1,
                     })
@@ -183,6 +217,8 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
                 last = None
             sync_rows.append({"account": label, "marketplace": mkt, "dot": dot,
                               "note": note, "last_sync": last})
+            if acc.get("id", "") in per:
+                per[acc.get("id", "")].update({"dot": dot, "note": note, "last_sync": last})
 
         confirmed_history = 0
         try:
@@ -219,6 +255,7 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             "ok": True,
             "accounts_count": len(accounts),
             "need_you_total": need_you_total,
+            "per_account": list(per.values()),
             "counts": counts,
             "blocked_partial": True,   # restricted-checker BLOCK not wired until Stage 3
             "needs_you": needs[:6],
