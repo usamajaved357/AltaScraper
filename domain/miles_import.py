@@ -594,6 +594,71 @@ def extract_pdf_text(data: bytes) -> str:
     return ""
 
 
+def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-6",
+                       max_pages: int = 3, log=print) -> str:
+    """OCR an IMAGE-BASED PDF (near-zero text layer -- e.g. the Miles TDS scans, which carry
+    the whole properties table as images) by rendering each page and transcribing it with
+    Claude vision. Returns the extracted text, or '' on failure / no key.
+
+    Costs AI credits, so it is called ONLY as a fallback when extract_pdf_text() came back
+    near-empty (see extract_pdf_text_smart). Text PDFs (SDS etc.) never reach here."""
+    if not api_key or not data:
+        return ""
+    try:
+        import pdfplumber
+        import anthropic
+    except Exception:
+        return ""
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        prompt = ("This image is one page of a technical/spec data sheet for an industrial "
+                  "lubricant. Transcribe ALL of it to plain text: every heading, every bullet, "
+                  "and the FULL typical-properties table -- each property name and each value "
+                  "under its column header (viscosity cSt at each temperature, viscosity index, "
+                  "flash point, pour point, auto-ignition, four-ball weld, copper corrosion, "
+                  "demulsibility, density, etc.). Preserve all numbers and units exactly. "
+                  "No commentary, just the transcription.")
+        out = []
+        with pdfplumber.open(io.BytesIO(data)) as pdf:
+            for pg in pdf.pages[:max_pages]:
+                try:
+                    pil = pg.to_image(resolution=170).original.convert("RGB")
+                    b = io.BytesIO(); pil.save(b, "JPEG", quality=82)
+                    b64 = base64.b64encode(b.getvalue()).decode("ascii")
+                    resp = client.messages.create(model=model, max_tokens=2000, messages=[{
+                        "role": "user", "content": [
+                            {"type": "image", "source": {"type": "base64",
+                             "media_type": "image/jpeg", "data": b64}},
+                            {"type": "text", "text": prompt}]}])
+                    out.append("".join(getattr(p, "text", "") for p in resp.content
+                                       if getattr(p, "type", "") == "text"))
+                except Exception as _pe:
+                    log(f"  OCR page skipped: {type(_pe).__name__}: {str(_pe)[:80]}")
+        return "\n".join(t for t in out if t).strip()
+    except Exception as e:
+        log(f"  OCR failed: {type(e).__name__}: {str(e)[:100]}")
+        return ""
+
+
+# A text layer this small means the PDF is image-based (scanned/graphical) -> needs OCR.
+_OCR_TRIGGER_CHARS = 40
+
+
+def extract_pdf_text_smart(data: bytes, api_key: str = "", model: str = "claude-sonnet-4-6",
+                           log=print) -> str:
+    """extract_pdf_text() first; if that comes back near-empty (image-based PDF, e.g. a Miles
+    TDS) AND an api_key is given, fall back to Claude-vision OCR. Text PDFs never trigger OCR."""
+    text = extract_pdf_text(data)
+    if len((text or "").strip()) >= _OCR_TRIGGER_CHARS:
+        return text
+    if api_key:
+        log(f"  text layer near-empty ({len((text or '').strip())} chars) -> OCR fallback")
+        ocr = ocr_pdf_via_vision(data, api_key, model, log=log)
+        if len(ocr.strip()) > len((text or "").strip()):
+            return ocr
+    return text
+
+
 def classify_pdf(filename: str, text: str = "") -> str:
     """Label a downloaded PDF: 'sds' | 'tds' | 'spec' | 'other' so the bundle can
     keep the SDS separate (it drives hazmat/compliance fields)."""
@@ -668,7 +733,8 @@ def to_product_dict(item_number: str, product_url: str, parsed: dict,
     }
 
 def bundle_from_drive(drive_service, item_number: str,
-                      master_id: str = MASTER_FOLDER_ID, log=print) -> dict:
+                      master_id: str = MASTER_FOLDER_ID, log=print,
+                      api_key: str = "", chat_model: str = "claude-sonnet-4-6") -> dict:
     """Build a bundle dict for ONE already-harvested item by reading its PDFs from
     the item's Drive folder (Drive is the source of truth -- NO website scraping).
     Reuses extract_pdf_text + classify_pdf + to_product_dict, so the entry is the
@@ -700,7 +766,7 @@ def bundle_from_drive(drive_service, item_number: str,
         if not data:
             log(f"  [{item_number}] could not download {fname}: {why}")
             continue
-        text = extract_pdf_text(data)
+        text = extract_pdf_text_smart(data, api_key, chat_model, log=log)
         kind = classify_pdf(fname, text)
         pdf_bundle.append({"filename": fname, "kind": kind, "text": text,
                            "drive_file_id": f["id"]})

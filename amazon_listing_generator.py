@@ -6260,7 +6260,9 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
                 for _sku in _missing:
                     try:
                         _b = _MI.bundle_from_drive(_drv, _sku,
-                                                   log=lambda m: console.print(m, markup=False))
+                                                   log=lambda m: console.print(m, markup=False),
+                                                   api_key=(config.get("anthropic_api_key") or "").strip(),
+                                                   chat_model=(config.get("chat_model") or "claude-sonnet-4-6"))
                     except Exception as _be:
                         console.print(f"[yellow]  {_sku}: Drive back-fill error: "
                                       f"{type(_be).__name__}: {str(_be)[:100]}[/yellow]")
