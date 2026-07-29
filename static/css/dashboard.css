@@ -531,6 +531,15 @@
   .findsum.bad{background:var(--redbg);border:1px solid #5c2424;color:#ef9a9a}
   .findsum.info{background:var(--amberbg);border:1px solid #5c4a16;color:#e3b768}
   .findings.info{background:var(--amberbg);border:1px solid #5c4a16}
+  /* Restricted products check panel (Shape 2) -- clean = quiet green strip; matches = rows */
+  .restclear{font-size:12px;color:#7fd99a;background:#10301f;border:1px solid #1f7a3d;border-radius:8px;
+             padding:7px 11px;margin:2px 0;display:flex;align-items:center;gap:7px}
+  .restclear .cc{color:#8fb8a0}
+  .restlist{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+  .restrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .restrow.red{background:var(--redbg);border-color:#5c2424}
+  .restrow.amber{background:var(--amberbg);border-color:#5c4a16}
+  .restconf{margin-left:6px;font-size:10.5px}
   .findingsbox .findings{margin-top:6px}
   details.findingsbox>summary::-webkit-details-marker{display:none}
   /* ---- GALLERY GRID ---- */

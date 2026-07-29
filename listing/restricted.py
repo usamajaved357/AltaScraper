@@ -154,6 +154,19 @@ def _resolve_docs_display(doc_ids_or_strings):
     return out
 
 
+def _docs_for_match(entry, mkt):
+    """Resolve the display docs for a matched entry, MARKETPLACE-AWARE. tier-3 docs may be a
+    flat id list OR a per-marketplace dict {"UK":[...],"US":[...]} -- unwrap the dict for the
+    active marketplace first, so a gated item shows THAT marketplace's docs (and never the
+    dict's keys 'UK'/'US')."""
+    raw = entry.get("docs_tier3")
+    if raw is not None:
+        if isinstance(raw, dict):
+            raw = raw.get(mkt, raw.get("UK") or raw.get("US") or [])
+        return _resolve_docs_display(raw if isinstance(raw, list) else [])
+    return entry.get("docs") or []
+
+
 def _master_status_for(entry, mkt):
     """Resolve a master entry's status text for a marketplace (marketplaces map first)."""
     mkts = entry.get("marketplaces") or {}
@@ -205,13 +218,19 @@ def _build_entries():
                 cur = base["statuses"].get(mkt)
                 if cur is None or _SRC_RANK.get(new["source"], 0) >= _SRC_RANK.get(cur.get("source", ""), 0):
                     base["statuses"][mkt] = new
-        # prefer tier-3 verbatim reason/docs/regulator where present
-        if e.get("reason"):
-            base["reason_tier3"] = e["reason"]
-        if e.get("regulator"):
-            base["regulator_tier3"] = e["regulator"]
-        if e.get("docs"):
-            base["docs_tier3"] = e["docs"]
+        # prefer tier-3 verbatim reason/docs/regulator BY SOURCE PRECEDENCE, so a later
+        # generic UNVERIFIED entry (e.g. medical_device_general) never clobbers an earlier
+        # CONFIRMED one's richer docs/reason (e.g. nebulizer_inhaler's verbatim 510(k) set).
+        _ent_rank = max([_SRC_RANK.get((sv or {}).get("source", ""), 0)
+                         for sv in (e.get("status") or {}).values()] or [0])
+        if _ent_rank >= base.get("_meta_rank", -1):
+            base["_meta_rank"] = _ent_rank
+            if e.get("reason"):
+                base["reason_tier3"] = e["reason"]
+            if e.get("regulator"):
+                base["regulator_tier3"] = e["regulator"]
+            if e.get("docs"):
+                base["docs_tier3"] = e["docs"]
         if e.get("asin_seen"):
             base["asin_seen"] = e["asin_seen"]
     return canon
@@ -274,7 +293,7 @@ def check_restricted_type(text="", marketplace="UK", product_type="", category_p
             "action": action,
             "reason": e.get("reason_tier3") or e.get("reason", ""),
             "regulator": e.get("regulator_tier3") or e.get("regulator", ""),
-            "docs": _resolve_docs_display(e["docs_tier3"]) if e.get("docs_tier3") else e["docs"],
+            "docs": _docs_for_match(e, mkt),
             "depth": e.get("depth", ""),
             "matched_keywords": used_kws,
             "category_signal": cat_sig,

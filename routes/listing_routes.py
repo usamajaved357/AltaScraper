@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
+from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
 
 # Map the screener's field name -> the sheet column header to WRITE a rewrite into.
 # Standard 48-col layout first, then the Miles 12-col layout, so the one-click "Apply
@@ -66,6 +67,22 @@ def _attach_claim_flags(c, r):
     c["claim_summary"] = cc.get("summary", "")
     c["claim_level"] = ("RED" if any(f.get("severity") == "RED" for f in flags)
                         else ("AMBER" if flags else ""))
+    return c
+
+
+def _attach_restricted(c, r):
+    """Run the tuned restricted-products engine (Shape 2, WARN only) on a card and attach
+    the result for the 'Restricted products check' panel. Read-only; never blocks. Uses the
+    product signals the card already carries (title + product_type + Amazon category +
+    marketplace); clean products return matched=False so the panel stays quiet (doormat rule)."""
+    try:
+        res = check_restricted_type(
+            c.get("title", ""), str(c.get("_marketplace", "") or "").upper(),
+            product_type=c.get("product_type", ""), category_path=c.get("category", ""))
+    except Exception:
+        res = {"matched": False, "matches": [], "overall_action": "NONE",
+               "message": "", "caveat": ""}
+    c["restricted"] = res
     return c
 
 
@@ -509,6 +526,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     c = _card(r)
                     c["row"] = i + 2
                     _attach_claim_flags(c, r)
+                    _attach_restricted(c, r)
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:
@@ -524,6 +542,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 c = _card(r)
                 c["row"] = i + 2          # actual sheet row number (row 1 = header)
                 _attach_claim_flags(c, r)
+                _attach_restricted(c, r)
                 cards.append(c)
             # Report the sheet/tab we ACTUALLY read, straight off the worksheet object,
             # so the header shows the real data source rather than what config claims.

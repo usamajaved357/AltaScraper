@@ -538,12 +538,14 @@ function drawerContent(r){
   if(r.ip_risk==="HIGH") risks.push('<span class="risk hi">IP: HIGH</span>');
   if(r.comp_risk==="HIGH") risks.push('<span class="risk hi">Compliance: HIGH</span>');
   else if(r.comp_risk==="MEDIUM") risks.push('<span class="risk med">Compliance: MED</span>');
+  // This panel shows AMAZON'S OWN post-submit messages (attribute conflicts, catalogue
+  // mismatches) + our IP note -- NOT a restricted-products / docs verdict. That lives in the
+  // separate "Restricted products check" panel. Label it honestly so it never masquerades
+  // as "docs required".
   let reason = "";
   if(issues){
-    if(r.comp_risk==="HIGH") reason="Compliance flag";
-    else if(r.ip_risk&&r.ip_risk!=="") reason="IP review";
-    else if(r.comp_risk==="MEDIUM") reason="Minor compliance note";
-    else reason="Review note";
+    if(r.ip_risk&&r.ip_risk!=="") reason="IP / trademark review";
+    else reason="Amazon feedback";
   }
   // Is this an ACTUAL blocking problem, or just an informational compliance note
   // (e.g. "lithium battery -> these docs may be requested")? A real problem = an
@@ -556,12 +558,16 @@ function drawerContent(r){
   const _ipProblem = r.ip_risk==="HIGH";
   const _informational = issues && !_hasApiError && !_isHoldOrErr && !_ipProblem;
   if(_informational){
-    reason = "Compliance info — documents Amazon may request";
+    reason = "Amazon feedback";
   }
   const _sumClass = _informational ? "findsum info" : "findsum bad";
   const _findClass = _informational ? "findings info" : "findings";
+  const _fbNote = (reason==="IP / trademark review")
+    ? "Our brand/trademark check — not a docs requirement."
+    : "Amazon’s own submission messages (attribute conflicts, catalogue mismatches) — NOT a restricted-products or docs verdict. See the Restricted products check panel for that.";
   const statusBlock = issues
     ? `<details class="findingsbox" open><summary class="${_sumClass}">\u2139 ${esc(reason)}</summary>
+        <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">${esc(_fbNote)}</div>
         <div class="${_findClass}">${formatFindings(findings)}</div>
         <button class="linkbtn" style="margin-top:6px" onclick="locateFlags('${esc(r.sku)}',this)">\ud83d\udd0d Locate flagged terms</button>
         <div class="locout" id="loc_${sid(r.sku)}"></div></details>`
@@ -627,9 +633,47 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${restrictedPanel(r)}
     ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+}
+
+// ---- RESTRICTED PRODUCTS CHECK (Shape 2) -- its own panel, separate from Amazon feedback
+// and from the claims-risk warning. Runs the tuned restricted-products library per listing
+// (read-only, WARN only, never blocks). Clean products stay SILENT (a small quiet line) --
+// no false docs warning (the doormat rule). r.restricted is attached server-side.
+function _restrictedConfidence(src){
+  if(src==="amazon_notice") return "verified · from your history";
+  if(src==="amazon_notice_pending") return "verified · notice text pending";
+  return "unverified · educated guess, confirm";
+}
+function restrictedPanel(r){
+  const rr = r.restricted;
+  if(!rr) return "";
+  if(!rr.matched){
+    // CLEAN: quiet, never a red/amber panel. Honest "not a clearance", not a docs warning.
+    return `<div class="restclear"><i class="ti ti-shield-check"></i> Restricted products check: no known restriction matched <span class="cc">— not a clearance</span></div>`;
+  }
+  const anyProhibited = rr.matches.some(m=>m.tier==="PROHIBITED");
+  const head = anyProhibited ? "Restricted products check — PROHIBITED"
+                             : "Restricted products check — gated (docs required)";
+  const rows = rr.matches.map(function(m){
+    const red = m.tier==="PROHIBITED";
+    const tierLbl = red ? "PROHIBITED" : (m.tier==="GATED" ? "GATED" : "RESTRICTED");
+    const docs = (!red && m.docs && m.docs.length)
+      ? `<div class="cc" style="margin-top:4px"><b>Docs required:</b> ${esc(m.docs.join("; "))}</div>`
+      : (red ? `<div class="cc" style="margin-top:4px">No compliance path — prohibited on this marketplace.</div>` : "");
+    const meta = [m.reason, m.regulator, rr.marketplace].filter(Boolean).map(esc).join(" · ");
+    return `<div class="restrow ${red?'red':'amber'}">
+      <div><span class="risk ${red?'hi':'med'}">${tierLbl}</span> <b>${esc(m.label)}</b>
+        <span class="cc restconf">${esc(_restrictedConfidence(m.source))}</span></div>
+      <div class="cc" style="margin-top:3px">${meta}</div>${docs}</div>`;
+  }).join("");
+  return `<details class="findingsbox" open><summary class="findsum ${anyProhibited?'bad':'info'}">${anyProhibited?'⛔':'⚠'} ${esc(head)}</summary>
+    <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">Your restricted-products library (SP-API-independent). Warning only — publishing is never blocked here.</div>
+    <div class="restlist">${rows}</div>
+    <div class="cc" style="margin-top:6px;font-size:11px;font-style:italic">${esc(rr.caveat||"")}</div></details>`;
 }
 
 // ---- CATEGORY-AWARE CLAIM RISK (task #18 UI) -----------------------------------
