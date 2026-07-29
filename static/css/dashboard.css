@@ -587,6 +587,12 @@
   .shipline{font-size:11px;line-height:1.4}
   .tileprice{font-size:12.5px;font-weight:600}
   .tilesku{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+  /* Your OWN live ASIN chip (from the live catalogue, matched by SKU) */
+  .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10.5px;
+            color:#9fe6bd;font-family:ui-monospace,Consolas,monospace}
+  .tileasin i{font-size:12px}
+  .tileasin a{color:#9fe6bd;text-decoration:none}
+  .tileasin a:hover{text-decoration:underline}
   .tileacts{display:flex;gap:3px;padding:7px 9px 9px}
   .tileacts .ib{flex:1}
   .ib{height:30px;padding:0;display:flex;align-items:center;justify-content:center;

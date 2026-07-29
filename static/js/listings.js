@@ -118,6 +118,23 @@ function _asinForSku(sku){
   it=(ROWS||[]).find(x=>String(x.sku)===s);
   return (it && it.asin) ? String(it.asin) : "";
 }
+// YOUR OWN live ASIN (the one Amazon assigned to YOUR listing) -- taken ONLY from the live
+// catalogue matched by YOUR SKU. This is NOT the competitor ASIN embedded in the SKU
+// (price_days_ASIN); we deliberately never fall back to r.asin here, which is competitor.
+function ownLiveAsin(r){
+  try{
+    const s=String((r&&r.sku)||"").trim();
+    if(!s) return "";
+    const it=(LIVE_ITEMS||[]).find(x=>String(x.sku).trim()===s);
+    return (it && it.asin) ? String(it.asin).trim() : "";
+  }catch(e){ return ""; }
+}
+function _dpUrl(asin){
+  const m=(typeof WS_MARKET!=="undefined"&&WS_MARKET)||"";
+  const dom=(m==="US")?"amazon.com":(m==="CA")?"amazon.ca":(m==="DE")?"amazon.de":
+            (m==="FR")?"amazon.fr":(m==="IT")?"amazon.it":(m==="ES")?"amazon.es":"amazon.co.uk";
+  return "https://www."+dom+"/dp/"+encodeURIComponent(asin);
+}
 async function batchSecondaryImages(){
   const skus=selectedSkus();
   if(!skus.length){ toast("Select some listings first"); return; }
@@ -430,6 +447,7 @@ function card(r){
   const selected = SELECTED.has(String(r.sku));
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const skuId=sid(r.sku);
+  const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
   return `<div class="tile ${selected?'sel':''} ${issues?'flag':''}" data-sku="${esc(r.sku)}">
     <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openDrawer('${esc(r.sku)}')">
       ${thumb}
@@ -447,6 +465,7 @@ function card(r){
         ${priceStr?`<span class="tileprice pii">${priceStr}</span>`:'<span></span>'}
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
+      ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
     <div class="tileacts">
       <button class="ib" title="Approve" onclick="setStatus('${esc(r.sku)}','APPROVED',this)"><i class="ti ti-check"></i></button>
