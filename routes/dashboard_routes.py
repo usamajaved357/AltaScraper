@@ -25,7 +25,8 @@ _READY = {"APPROVED", "API_READY"}
 _LIVE = {"LIVE"}
 
 
-def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="SKU"):
+def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="SKU",
+             _INV_ALERT_COUNTS=None):
 
     _CACHE = {"ts": 0, "data": None}
     _TTL = 60
@@ -201,8 +202,20 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
         except Exception:
             ref_cats = 0
 
+        # inventory alerts (real, per-account; populated after an inventory run). No fake
+        # samples -- counts only, honest empty when never run.
+        inv_counts = _INV_ALERT_COUNTS or {}
+        inv_total, inv_by = 0, []
+        for acc in accounts:
+            aid = acc.get("id") or ""
+            cN = int(inv_counts.get(aid, 0) or 0)
+            inv_total += cN
+            if cN:
+                inv_by.append({"account": acc.get("label") or aid, "count": cN})
+
         need_you_total = counts["blocked"] + counts["review"]
         return {
+            "inventory": {"available": bool(inv_counts), "total": inv_total, "by_account": inv_by},
             "ok": True,
             "accounts_count": len(accounts),
             "need_you_total": need_you_total,

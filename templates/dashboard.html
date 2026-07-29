@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/css/dashboard.css">
+<link rel="stylesheet" href="/static/css/altui.css">
 </head>
 <body>
 
@@ -33,7 +34,32 @@
   <div class="wsgrid" id="wsgrid">
     <div class="empty" style="grid-column:1/-1">Loading workspaces…</div>
   </div>
-  <div id="newdash" style="display:none"></div>
+</div>
+
+<!-- ===== Opt-in NAVY UI shell (Stage 1). Full-screen overlay; shown only when the
+     ALTA_NEW_UI flag is on. Classic UI above stays the untouched default/fallback. ===== -->
+<div id="altui">
+  <nav class="side">
+    <div class="logo"><div class="t">AltaScraper</div><div class="s">listing operations</div></div>
+    <div class="nav">
+      <div class="lbl">Workspace</div>
+      <a class="on"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
+      <a onclick="altShowClassic()"><i class="ti ti-list-check"></i> <span>Listings</span></a>
+      <div class="lbl">Tools</div>
+      <a onclick="rcOpen()"><i class="ti ti-shield-half"></i> <span>Check a product</span></a>
+      <a onclick="altShowClassic()"><i class="ti ti-refresh"></i> <span>Sync</span></a>
+    </div>
+    <div class="foot"><div class="acctpill" onclick="toggleNewUI(false)" title="Switch back to your classic UI"><span class="dot"></span><span style="font-size:12px;color:var(--ink2)">New UI</span><span class="sw"><span></span></span></div></div>
+  </nav>
+  <div class="main">
+    <div class="top">
+      <span class="ttl">AltaScraper</span><span class="sep"></span><span class="sub" id="alt_crumb">Dashboard</span>
+      <span class="statusbadge" id="alt_health"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span> —</span>
+    </div>
+    <div class="content" id="alt_content">
+      <div class="muted" style="padding:20px 0">Loading overview…</div>
+    </div>
+  </div>
 </div>
 
 <!-- ============ WORKSPACE SCREEN ============ -->
