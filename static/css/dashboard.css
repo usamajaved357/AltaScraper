@@ -655,6 +655,18 @@
                color:#ff8a8a;background:transparent;border:1px solid #5c2424}
   .tiledup-del:hover{background:rgba(255,80,80,.10);color:#ffb0b0}
   .tiledup-del:disabled{opacity:.5;cursor:default}
+  /* "Actual on Amazon" read-only mirror panel in the drawer */
+  .mirbox{margin:12px 0 4px;border:1px solid #2c5c3f;border-radius:10px;background:rgba(18,48,33,.28)}
+  .mirsum{cursor:pointer;padding:9px 12px;font-weight:600;color:#9fe6bd;display:flex;align-items:center;gap:6px;list-style:none}
+  .mirsum::-webkit-details-marker{display:none}
+  .mirbox .mirbody{padding:2px 12px 12px}
+  .mirimgs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+  .mirimgs img{width:64px;height:64px;object-fit:cover;border-radius:7px;border:1px solid var(--line);background:#0d1220}
+  .mirrow{display:flex;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}
+  .mirrow .mirk{flex:0 0 130px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding-top:2px}
+  .mirdesc{white-space:pre-wrap;max-height:160px;overflow:auto}
+  .mirbul{margin:0;padding-left:18px}
+  .mirbul li{margin:2px 0}
   /* Bulk handling-time control in the selection bar */
   .handlingwrap{display:inline-flex;align-items:center;gap:6px;padding-left:8px;margin-left:2px;
                 border-left:1px solid var(--line)}

@@ -511,7 +511,7 @@ function render(){
                 + (liveCatalog.length ? _amzSub + liveCatalog.map(liveTile).join("") : "");
   const claimedHtml = claimedRows.length ? _claimSub + claimedRows.map(card).join("") : "";
   if(LIST_SOURCE==="live"){
-    grid.innerHTML = (liveHtml || `<div class="empty">No live listings loaded yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="loadLiveCatalog(true)">Fetch ${esc(WS_MARKET)} live listings now</button>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
+    grid.innerHTML = (liveHtml || `<div class="empty">No live listings synced yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync ${esc(WS_MARKET)} from Amazon now</button><div class="cc" style="margin-top:8px">Sync pulls your live listings and their real data (images, A+, bullets, description, item-type-keyword, variations) from Amazon. The first sync can take 1–4 minutes.</div>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
       + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'');
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
@@ -723,8 +723,13 @@ function setListSource(src){
   LIST_SOURCE=src;
   document.querySelectorAll('#srcswitch .mktbtn').forEach(b=>b.classList.toggle('on', b.dataset.src===src));
   if((src==="live"||src==="all") && CUR_ACCOUNT){
-    if(!WS_MARKET){ toast("Select a marketplace (US, UK, etc.) first, then it will load."); render(); return; }
-    loadLiveCatalog(false);   // uses cache if present; fetches only if not cached
+    if(!WS_MARKET){ toast("Select a marketplace (US, UK, etc.) first, then click Sync."); render(); return; }
+    // SHOW ONLY — never pull from Amazon just because the tab was clicked. Use whatever
+    // was already synced (browser cache); if nothing's synced yet, render the empty-state
+    // that prompts Sync. Pulling from Amazon happens ONLY on the Sync button now.
+    const key=_liveKey();
+    if(LIVE_STORE[key]){ LIVE_ITEMS=LIVE_STORE[key].items||[]; render(); updateSyncLabel(); loadAplus(false); }
+    else { LIVE_ITEMS=[]; render(); updateSyncLabel(); }
   }
   else render();
 }
@@ -837,9 +842,32 @@ async function refreshView(){
 async function syncLive(){
   toast("Syncing live listings from Amazon…");
   await _reverifyLiveStatus();          // flip submitted rows to LIVE where Amazon has published them
-  await loadLiveCatalog(true);          // refresh the LIVE ON AMAZON catalog
+  await loadLiveCatalog(true);          // refresh the LIVE ON AMAZON catalog (the list)
+  await fullPullLive(true);             // pull each listing's REAL full data into the mirror
   try{ if(typeof loadRows==="function") await loadRows(); }catch(e){}   // refresh the statuses shown in the list
   await reconcileAmazonState();         // and settle deleted / inactive against Amazon
+}
+// Pull the REAL full data (images, A+, bullets, description, item-type-keyword,
+// variations/theme) for every live listing into the read-only mirror (LIVE_MIRROR).
+// Additive: a failure here never breaks the catalog view. A+ arrives separately via loadAplus.
+async function fullPullLive(force){
+  if(!CUR_ACCOUNT || !WS_MARKET || WS_MARKET==="__all__") return;
+  const reqAccount=CUR_ACCOUNT.id, reqMkt=WS_MARKET;
+  const skus=(LIVE_ITEMS||[]).map(it=>String(it.sku||"").trim()).filter(Boolean);
+  if(!skus.length) return;
+  try{
+    toast("Pulling full listing data from Amazon… ("+skus.length+" listings)");
+    const j=await (await fetch("/live/full_pull",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount, marketplace:reqMkt, skus, force:!!force})})).json();
+    // guard: user may have switched workspace while this was in flight
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;
+    if(j && j.ok){
+      Object.assign(LIVE_MIRROR, j.mirror||{});
+      try{ render(); }catch(e){}
+      if(DRAWER_SKU){ try{ openDrawer(DRAWER_SKU); }catch(e){} }   // refresh an open drawer with mirror data
+      if(j.capped) toast("Synced full data for the first 300 listings (large catalog) — Sync again for more.");
+    }
+  }catch(e){ /* mirror is additive — never break the grid over it */ }
 }
 async function runSpDiagnose(){
   // Run the one-shot SP-API health check for THIS workspace's account +

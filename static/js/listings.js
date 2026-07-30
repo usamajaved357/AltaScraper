@@ -2,6 +2,9 @@ let ROWS = [], FILTER = "all", SHIP = "", SCHEMAS = {}, PTYPES = [];
 // Multi-tab view: TABS = manifest [{tab,tab_gid,count,url}] from /rows_all.
 // TAB_FILTER = "__all__" (show every tab) or a tab_gid to show just that tab.
 let TABS = [], TAB_FILTER = "__all__";
+// Live MIRROR: the REAL data pulled from Amazon on a Sync, keyed by SKU. Read-only —
+// shown beside a live listing, never written into the sheet. Filled by fullPullLive().
+let LIVE_MIRROR = {};
 let SELECTED = new Set();      // SKUs ticked for batch actions
 let CUR_SYMBOL = "\u00a3";     // £ default; flips to $ for US workspaces
 let WS_MARKET = "";           // active marketplace within the workspace
@@ -671,6 +674,39 @@ function formatFindings(findings){
   // not an API error list -> show as-is (compliance/IP notes), escaped + newlines
   return findings.map(f=>esc(f)).join("\n");
 }
+// Read-only "Actual on Amazon" panel: the REAL listing data pulled by a Sync
+// (images, item-type-keyword, variations/theme, bullets, description). Kept apart from
+// the editable draft fields — this is a mirror of what's live, never your draft copy.
+// Returns "" when nothing has been synced for this SKU.
+function liveMirrorPanel(r){
+  const m = LIVE_MIRROR[String(r&&r.sku||"").trim()];
+  if(!m) return "";
+  const imgs = (m.images||[]);
+  const imgHtml = imgs.length
+    ? `<div class="mirimgs">${imgs.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" loading="lazy" onerror="this.closest('a').style.display='none'"></a>`).join("")}</div>`
+    : `<div class="cc">No images returned by Amazon.</div>`;
+  const bullets = (m.bullets||[]).filter(Boolean);
+  const bulletHtml = bullets.length
+    ? `<ul class="mirbul">${bullets.map(b=>`<li>${esc(b)}</li>`).join("")}</ul>` : "";
+  const v = m.variations||{};
+  const varBits = [];
+  if(m.variation_theme) varBits.push(`theme: <b>${esc(m.variation_theme)}</b>`);
+  if(v.is_parent && (v.child_skus||[]).length) varBits.push(`${v.child_skus.length} child SKU(s)`);
+  if(v.is_child && (v.parent_skus||[]).length) varBits.push(`child of ${esc(v.parent_skus.join(', '))}`);
+  const varHtml = varBits.length ? `<div class="mirrow"><span class="mirk">Variations</span><span>${varBits.join(" · ")}</span></div>` : "";
+  const kw = m.item_type_keyword ? `<div class="mirrow"><span class="mirk">Item type keyword</span><span>${esc(m.item_type_keyword)}</span></div>` : "";
+  const desc = m.description ? `<div class="mirrow"><span class="mirk">Description</span><span class="mirdesc">${esc(m.description)}</span></div>` : "";
+  return `<details class="mirbox" open>
+    <summary class="mirsum"><i class="ti ti-brand-amazon"></i> Actual on Amazon <span class="cc">(read-only — pulled by Sync, ${imgs.length} image(s))</span></summary>
+    <div class="mirbody">
+      ${imgHtml}
+      ${kw}${varHtml}
+      ${bulletHtml?`<div class="mirrow"><span class="mirk">Bullets</span><span>${bulletHtml}</span></div>`:''}
+      ${desc}
+      <div class="cc" style="margin-top:6px">This mirrors what's live on Amazon. It never changes your draft — edit the fields below to change your copy.</div>
+    </div></details>`;
+}
+
 function drawerContent(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
@@ -761,6 +797,7 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${liveMirrorPanel(r)}
     ${restrictedPanel(r)}
     ${claimBox(r)}
     ${statusBlock}

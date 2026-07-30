@@ -7,11 +7,17 @@ from flask import request, jsonify, Response, send_from_directory
 import urllib
 
 
-def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800):
+def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800, _MIRROR_CACHE=None, _MIRROR_TTL=6*3600):
     """Attach the /live routes to the existing Flask app."""
 
     if _APLUS_CACHE is None:
         _APLUS_CACHE = {}
+    # Live MIRROR: the REAL per-listing data pulled from Amazon (full attributes) on a
+    # Sync -- images, bullets, description, item-type-keyword, variations/theme. Kept
+    # server-side, keyed aid::mkt::sku, and shown READ-ONLY beside a live listing. It is
+    # a mirror only: it never touches the sheet or a draft row.
+    if _MIRROR_CACHE is None:
+        _MIRROR_CACHE = {}
 
     # A+ image references come back as a media-library path, not a URL:
     #   "uploadDestinationId": "aplus-media-library-service-media/<uuid>.png"
@@ -550,4 +556,156 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             _tb.print_exc()
             return jsonify({"ok": False,
                             "error": f"report flow failed: {type(e).__name__}: {str(e)[:220]}"}), 500
+
+    # ---- Full per-listing pull -> the live MIRROR --------------------------------
+    def _attr_vals(attrs, key):
+        """Pull the list of scalar values from a Listings-API attribute. Attributes come as
+        [{"value": x, ...}] (copy fields) or [{"media_location"/"link": url}] (images)."""
+        v = attrs.get(key)
+        if not isinstance(v, list):
+            return [v] if v not in (None, "") else []
+        out = []
+        for e in v:
+            if isinstance(e, dict):
+                for k in ("value", "media_location", "link"):
+                    if e.get(k) not in (None, ""):
+                        out.append(e[k]); break
+            elif e not in (None, ""):
+                out.append(e)
+        return out
+
+    def _attr_one(attrs, key):
+        vs = _attr_vals(attrs, key)
+        return vs[0] if vs else ""
+
+    def _mirror_images(attrs, summaries):
+        imgs = list(_attr_vals(attrs, "main_product_image_locator"))
+        for k in sorted(attrs.keys()):
+            if k.startswith("other_product_image_locator"):
+                imgs += _attr_vals(attrs, k)
+        imgs += _attr_vals(attrs, "swatch_image_locator")
+        if not imgs and summaries:
+            mi = (summaries[0].get("mainImage") or {}) if isinstance(summaries[0], dict) else {}
+            if mi.get("link"):
+                imgs = [mi["link"]]
+        seen, out = set(), []
+        for u in imgs:
+            u = str(u or "").strip()
+            if u and u not in seen:
+                seen.add(u); out.append(u)
+        return out
+
+    def _mirror_variations(payload):
+        """From includedData=relationships: variation theme + child/parent SKUs, if any."""
+        theme, children, parents = "", [], []
+        for block in (payload.get("relationships") or []):
+            for rr in (block.get("relationships") or []):
+                if str(rr.get("type", "")).upper() != "VARIATION":
+                    continue
+                vt = rr.get("variationTheme") or {}
+                theme = theme or vt.get("theme") or ""
+                children += [c for c in (rr.get("childSkus") or []) if c]
+                parents += [p for p in (rr.get("parentSkus") or []) if p]
+        # de-dupe
+        children = list(dict.fromkeys(children))
+        parents = list(dict.fromkeys(parents))
+        return {"theme": theme, "child_skus": children, "parent_skus": parents,
+                "is_parent": bool(children), "is_child": bool(parents)}
+
+    def _build_mirror_entry(payload):
+        payload = payload if isinstance(payload, dict) else {}
+        attrs = payload.get("attributes", {}) or {}
+        summaries = payload.get("summaries", []) or []
+        s0 = summaries[0] if summaries and isinstance(summaries[0], dict) else {}
+        var = _mirror_variations(payload)
+        return {
+            "title": _attr_one(attrs, "item_name") or s0.get("itemName", "") or "",
+            "brand": _attr_one(attrs, "brand") or s0.get("brand", "") or "",
+            "bullets": _attr_vals(attrs, "bullet_point"),
+            "description": _attr_one(attrs, "product_description"),
+            "item_type_keyword": _attr_one(attrs, "item_type_keyword") or s0.get("itemClassification", ""),
+            "images": _mirror_images(attrs, summaries),
+            "variation_theme": var["theme"] or _attr_one(attrs, "variation_theme"),
+            "variations": var,
+            "asin": s0.get("asin", ""),
+            "product_type": s0.get("productType", ""),
+            "status": s0.get("status", []),
+        }
+
+    @app.route("/live/full_pull", methods=["POST"])
+    def live_full_pull():
+        """Pull the REAL full data (attributes+relationships) for a batch of live SKUs into
+        the mirror. Body: {id, marketplace, skus:[...], force}. Returns {ok, mirror:{sku:{...}}}.
+        This is the heavy part of a Sync; it never writes to the sheet."""
+        try:
+            import accounts as _acc
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        b = request.get_json(force=True) or {}
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        force = bool(b.get("force"))
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
+        if not acc:
+            return jsonify({"ok": False, "error": "account not found"}), 404
+        # SELLER-SCOPE: getListingsItem answers for the token's own seller.
+        if not _acc.seller_scope_allowed(acc):
+            return jsonify({"ok": True, "mirror": {}, "read_only": True}), 200
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        if not skus:
+            return jsonify({"ok": True, "mirror": {}})
+        import time as _t
+        mirror, todo = {}, []
+        for sku in skus:
+            ck = f"{aid}::{mkt}::{sku}"
+            c = _MIRROR_CACHE.get(ck)
+            if c and not force and (_t.time() - c["ts"] < _MIRROR_TTL):
+                mirror[sku] = c["data"]
+            else:
+                todo.append(sku)
+        if todo:
+            try:
+                from sp_api.api import ListingsItemsV20210801 as LI
+                from sp_api.base import Marketplaces
+            except Exception as e:
+                return jsonify({"ok": False, "error": f"sp_api unavailable: {e}"}), 500
+            mid = _acc.marketplace_id(mkt) if hasattr(_acc, "marketplace_id") else ""
+            locale = "en_US" if mkt == "US" else "en_GB"
+            seller = acc.get("seller_id", "")
+            li = LI(credentials=_acc.account_creds(acc),
+                    marketplace=getattr(Marketplaces, mkt, None) or Marketplaces.UK, timeout=60)
+            pulled = 0
+            for sku in todo[:300]:                      # cap one Sync at 300 SKUs
+                try:
+                    r = li.get_listings_item(
+                        seller, sku, marketplaceIds=[mid] if mid else None, issueLocale=locale,
+                        includedData=["attributes", "summaries", "relationships", "issues", "fulfillmentAvailability"])
+                    p = r.payload if hasattr(r, "payload") else (r or {})
+                    entry = _build_mirror_entry(p)
+                    _MIRROR_CACHE[f"{aid}::{mkt}::{sku}"] = {"ts": _t.time(), "data": entry}
+                    mirror[sku] = entry
+                    pulled += 1
+                    if pulled % 5 == 0:
+                        _t.sleep(1)                     # ~5 req/sec to respect the rate limit
+                except Exception:
+                    continue                            # a missing/failed SKU just isn't mirrored
+        return jsonify({"ok": True, "mirror": mirror, "count": len(mirror),
+                        "capped": len(todo) > 300})
+
+    @app.route("/live/mirror", methods=["POST"])
+    def live_mirror():
+        """Return already-mirrored data (no network) for a batch of SKUs. Body: {id, marketplace,
+        skus:[...]} -> {ok, mirror:{sku:{...}}}. Powers the read-only 'Actual on Amazon' view."""
+        b = request.get_json(force=True) or {}
+        aid = b.get("id", "") or _state.get("active_account_id", "")
+        mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        out = {}
+        for sku in skus:
+            c = _MIRROR_CACHE.get(f"{aid}::{mkt}::{sku}")
+            if c:
+                out[sku] = c["data"]
+        return jsonify({"ok": True, "mirror": out})
 
