@@ -667,6 +667,18 @@
   .mirdesc{white-space:pre-wrap;max-height:160px;overflow:auto}
   .mirbul{margin:0;padding-left:18px}
   .mirbul li{margin:2px 0}
+  /* Paste-a-listing modal form */
+  .pl-grid{display:flex;flex-direction:column;gap:5px}
+  .pl-lbl{font-size:12px;color:var(--muted);margin-top:8px}
+  .pl-in{width:100%;background:#0d1220;color:#e8eaed;border:1px solid #2f3a4d;border-radius:8px;
+         padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
+  .pl-in:focus{outline:none;border-color:var(--accent)}
+  textarea.pl-in{resize:vertical;line-height:1.5}
+  .pl-img{display:flex;gap:8px;align-items:center}
+  .pl-img .pl-in{flex:1}
+  .pl-preview{margin-top:8px;min-height:0}
+  .pl-preview img{max-height:150px;max-width:100%;border-radius:8px;border:1px solid var(--line);background:#0d1220}
+  .pl-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
   /* Bulk handling-time control in the selection bar */
   .handlingwrap{display:inline-flex;align-items:center;gap:6px;padding-left:8px;margin-left:2px;
                 border-left:1px solid var(--line)}
