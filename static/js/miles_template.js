@@ -547,6 +547,9 @@ async function delRow(sku, row, btn){
   if(!confirm("Delete this row from the sheet? This cannot be undone.")) return;
   btn.disabled=true;
   try{
+    // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
+    // so we never delete the same row number on the wrong tab.
+    if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sku:sku,row:row})});
     const j=await res.json();
     if(j.ok){ toast("Row deleted"); loadRows(); }
@@ -564,6 +567,7 @@ async function bulkStatus(status){
   toast(label+"ing "+skus.length+"…");
   for(const sku of skus){
     try{
+      if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }   // multi-tab: target each card's own tab
       const res=await fetch("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
                   body:JSON.stringify({sku:sku, status:status})});
       const j=await res.json();
@@ -584,6 +588,9 @@ async function bulkDelete(){
                   .sort((a,b)=>(b.row||0)-(a.row||0));
   for(const it of items){
     try{
+      // multi-tab: /delete targets the active tab BY ROW NUMBER, so the active tab MUST
+      // match this card's tab or a row on the wrong tab would be deleted. Sync first.
+      if(typeof ensureCardTab==="function"){ await ensureCardTab(it.sku); }
       const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
                   body:JSON.stringify({sku:it.sku, row:it.row})});
       const j=await res.json();

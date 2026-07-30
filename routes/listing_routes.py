@@ -564,6 +564,106 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
                     200 if _scope else 500)
 
+    @app.route("/rows_all")
+    def rows_all():
+        """Like /rows, but reads EVERY listing-shaped tab in the ACTIVE workspace's
+        output sheet and tags each card with the tab it lives on. Powers the multi-tab
+        'All tabs' view so accounts with many output tabs (Miles) are seen in one place
+        instead of one tab at a time. Read-only; never writes.
+
+        A tab counts as a listing tab when its header row 1 has BOTH a 'SKU' and a
+        'Title' column (the generated-listing shape). Non-listing tabs (input, config,
+        notes) are skipped. Each card gains c['tab'] + c['tab_gid']; the response also
+        returns a 'tabs' manifest (name, gid, count) so the UI can draw the tab filter."""
+        try:
+            # Resolve the active workspace's sheet. Mirror _ws()'s scoping guard so an
+            # ACCOUNT workspace never falls back to the shared default sheet/tab.
+            _aid = _state.get("active_account_id")
+            _who = _state.get("active_view") or _aid or "This workspace"
+            sid  = _state.get("active_sheet_id") or ""
+            if _aid and not sid:
+                return jsonify({"ok": False, "sheet_scope_error": True,
+                    "error": (f"{_who} has no output sheet configured, so nothing was read. "
+                              f"Open Account & sheets and paste this account's output Google "
+                              f"Sheets link. The app will not fall back to another account's sheet.")}), 200
+            if not sid:
+                sid = _cfg()["google_spreadsheet_id"]          # dropshipping default
+            book = _client().open_by_key(sid)
+            SKU_ALIASES = ("SKU", "Sku", "sku")
+            # A card is "empty" when sku/title/asin/product_type/price are ALL blank --
+            # the same rule the grid uses to hide placeholder rows (isEmptyRow in the JS).
+            # Empty cards are still returned (so the 'clear empty rows' note works per tab),
+            # but the tab pill count reflects only REAL listings, matching what's shown.
+            def _empty_card(c):
+                s = lambda x: str(x if x is not None else "").strip()
+                return (not s(c.get("sku")) and not s(c.get("title")) and not s(c.get("asin"))
+                        and not s(c.get("product_type")) and not s(c.get("price")))
+            tabs, cards = [], []
+            for ws in book.worksheets():
+                try:
+                    header = [str(h).strip() for h in ws.row_values(1)]
+                except Exception:
+                    continue
+                if not (any(a in header for a in SKU_ALIASES) and "Title" in header):
+                    continue                                    # not a listing tab -> skip
+                recs = _records(ws)
+                n = 0
+                for r in recs:
+                    c = _card(r)
+                    c["tab"]     = ws.title
+                    c["tab_gid"] = str(ws.id)
+                    _attach_claim_flags(c, r)
+                    _attach_restricted(c, r)
+                    cards.append(c)
+                    if not _empty_card(c):
+                        n += 1                                  # count real listings only
+                _url = ""
+                try: _url = ws.url
+                except Exception: _url = ""
+                tabs.append({"tab": ws.title, "tab_gid": str(ws.id), "count": n, "url": _url})
+            src = {"sheet_id": sid, "tab_count": len(tabs)}
+            try: src["url"] = book.url
+            except Exception: pass
+            return jsonify({"ok": True,
+                            "shipping_group": _cfg().get("merchant_shipping_group", ""),
+                            "product_types": _product_types(),
+                            "source": src, "tabs": tabs, "rows": cards})
+        except Exception as e:
+            _scope = type(e).__name__ == "SheetScopeError"
+            return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
+                    200 if _scope else 500)
+
+    @app.route("/view/set_active_tab", methods=["POST"])
+    def set_active_tab():
+        """Point the workspace's ACTIVE tab at another tab in the SAME output sheet, so
+        the edit / approve / push routes (which all target the active tab via _ws())
+        write to the tab the user is actually viewing in the multi-tab view. Only accepts
+        a tab that exists in the active sheet; it NEVER changes the sheet itself and only
+        mutates in-memory state (resets on account switch). This is what stops a cross-tab
+        duplicate SKU from being edited on the wrong tab."""
+        b   = request.get_json(force=True) or {}
+        gid = str(b.get("gid", "")).strip()
+        tab = str(b.get("tab", "")).strip()
+        if not gid and not tab:
+            return jsonify({"ok": False, "error": "no tab given"}), 400
+        try:
+            sid  = _state.get("active_sheet_id") or _cfg()["google_spreadsheet_id"]
+            book = _client().open_by_key(sid)
+            ws = None
+            if gid.isdigit():
+                try: ws = book.get_worksheet_by_id(int(gid))
+                except Exception: ws = None
+            if ws is None and tab:
+                try: ws = book.worksheet(tab)
+                except Exception: ws = None
+            if ws is None:
+                return jsonify({"ok": False, "error": "tab not found in this sheet"}), 404
+            _state["active_tab"]     = ws.title
+            _state["active_tab_gid"] = str(ws.id)
+            return jsonify({"ok": True, "tab": ws.title, "tab_gid": str(ws.id)})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
     @app.route("/approve", methods=["POST"])
     def approve():
         body   = request.get_json(force=True) or {}

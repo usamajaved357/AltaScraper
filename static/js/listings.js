@@ -1,4 +1,7 @@
 let ROWS = [], FILTER = "all", SHIP = "", SCHEMAS = {}, PTYPES = [];
+// Multi-tab view: TABS = manifest [{tab,tab_gid,count,url}] from /rows_all.
+// TAB_FILTER = "__all__" (show every tab) or a tab_gid to show just that tab.
+let TABS = [], TAB_FILTER = "__all__";
 let SELECTED = new Set();      // SKUs ticked for batch actions
 let CUR_SYMBOL = "\u00a3";     // £ default; flips to $ for US workspaces
 let WS_MARKET = "";           // active marketplace within the workspace
@@ -262,13 +265,68 @@ function toast(m){const t=document.getElementById("toast");t.textContent=m;t.cla
 function badgeClass(s){return ["APPROVED","NEEDS_REVIEW","IP_HOLD","COMPLIANCE_HOLD","ERROR","API_READY","API_ERROR","LIVE"].includes(s)?("b-"+s):"b-none";}
 function isHold(s){return s==="IP_HOLD"||s==="COMPLIANCE_HOLD"||s==="ERROR"||s==="API_ERROR";}
 
+// True if a row belongs to the tab currently selected in the tab filter.
+// "__all__" = every tab. Rows with no tab tag (single-tab sheets) always pass.
+function tabPass(r){
+  if(TAB_FILTER==="__all__") return true;
+  return String(r.tab_gid||"")===String(TAB_FILTER);
+}
 function passFilter(r){
+  if(!tabPass(r)) return false;                 // tab filter composes with status filter
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
   if(FILTER==="holds")return isHold(r.status);
   if(FILTER==="approved")return r.status==="APPROVED"||r.status==="API_READY";
   if(FILTER==="live")return r.status==="LIVE";
   return true;
+}
+
+// Draw the tab filter row (All tabs + one pill per tab, with counts). Hidden unless
+// the sheet has more than one listing tab. Same visual family as the status pills but
+// NEUTRAL — colour stays reserved for status. Called from summary() each render.
+function renderTabFilter(){
+  const host=document.getElementById("tabfilter");
+  if(!host) return;
+  if(!TABS || TABS.length<2){ host.style.display="none"; host.innerHTML=""; return; }
+  host.style.display="";
+  const total=TABS.reduce((a,t)=>a+(t.count||0),0);
+  const all=`<button class="tabpill ${TAB_FILTER==='__all__'?'active':''}" onclick="setTabFilter('__all__')">All tabs <span class="tabcount">${total}</span></button>`;
+  const pills=TABS.map(t=>{
+    const on=String(TAB_FILTER)===String(t.tab_gid);
+    return `<button class="tabpill ${on?'active':''}" onclick="setTabFilter('${esc(String(t.tab_gid))}')" title="${esc(t.tab)}">${esc(t.tab)} <span class="tabcount">${t.count||0}</span></button>`;
+  }).join("");
+  host.innerHTML=`<span class="tablabel"><i class="ti ti-layout-grid"></i> Tabs</span>${all}${pills}`;
+}
+// Switch the tab filter. When a SPECIFIC tab is chosen we also point the workspace's
+// active tab at it (server-side), so edits / approvals / image pushes land on the tab
+// you're viewing rather than a stale one — Miles has the same SKU on several tabs.
+function setTabFilter(gid){
+  TAB_FILTER=gid;
+  if(gid!=="__all__"){
+    const t=(TABS||[]).find(x=>String(x.tab_gid)===String(gid));
+    if(t){ syncActiveTab(t.tab_gid, t.tab); }
+  }
+  render();
+}
+// Tell the server which tab is active, so single-tab-targeting write routes are correct.
+// _ACTIVE_SYNC_GID remembers the last tab we synced so we don't re-POST needlessly.
+let _ACTIVE_SYNC_GID = "";
+async function syncActiveTab(gid, tab){
+  try{
+    await fetch("/view/set_active_tab",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({gid:String(gid||""), tab:String(tab||"")})});
+    _ACTIVE_SYNC_GID=String(gid||"");
+  }catch(e){ /* non-fatal: edits just target the previous active tab */ }
+}
+// Before ANY write on a card (approve, edit, delete, push), make the server's active
+// tab match that card's tab. No-op for single-tab sheets, and only POSTs when the tab
+// actually changes — so a bulk action over one tab syncs once, not once per SKU.
+async function ensureCardTab(sku){
+  if(!(TABS && TABS.length>1)) return;
+  const r=ROWS.find(x=>String(x.sku)===String(sku));
+  if(r && r.tab_gid && String(r.tab_gid)!==String(_ACTIVE_SYNC_GID)){
+    await syncActiveTab(r.tab_gid, r.tab);
+  }
 }
 
 // Is this row live ON AMAZON? Amazon's catalog is the ONLY authority whenever we
@@ -309,9 +367,14 @@ function _liveCatSetsForCurrentView(){
 }
 
 function summary(){
+  renderTabFilter();                             // keep the tab filter row in sync
   const c={APPROVED:0,API_READY:0,NEEDS_REVIEW:0,HOLD:0,ERROR:0,LIVE:0};
   const sets = _liveCatSetsForCurrentView();
-  ROWS.forEach(r=>{
+  // Counts reflect the ACTIVE tab filter: "All tabs" counts everything, a specific
+  // tab counts only that tab's rows. Blank placeholder rows are excluded so the
+  // "N listings" total agrees with the grid (which hides them) and the tab pills.
+  const _tabRows = ROWS.filter(tabPass).filter(r=> (typeof isEmptyRow!=="function") || !isEmptyRow(r));
+  _tabRows.forEach(r=>{
     // FIX: reclassify HOLD/NEEDS_REVIEW/etc. as LIVE if the row's SKU/ASIN
     // matches the Amazon catalog. Without this the top-bar shows a stale
     // "N on hold" count for rows that already went live on Amazon but never
@@ -331,9 +394,9 @@ function summary(){
   // Deduplicate: a catalog tile whose SKU/ASIN already matched an app row above
   // has already been counted as LIVE -- don't count it twice.
   const norm = v => String(v||"").trim().toUpperCase();
-  const alreadyCountedSkus  = new Set(ROWS.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
+  const alreadyCountedSkus  = new Set(_tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
                                           .map(r=>norm(r.sku)).filter(Boolean));
-  const alreadyCountedAsins = new Set(ROWS.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
+  const alreadyCountedAsins = new Set(_tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
                                           .map(r=>norm(r.asin)).filter(Boolean));
   const liveCount = ((LIST_SOURCE==='live'||LIST_SOURCE==='all')
                      ? (LIVE_ITEMS||[]).filter(it=>{
@@ -344,10 +407,10 @@ function summary(){
                        }).length
                      : 0);
   c.LIVE += liveCount;
-  // total reflects what's actually shown in the current view
-  let total = ROWS.length;
+  // total reflects what's actually shown in the current view (respecting the tab filter)
+  let total = _tabRows.length;
   if(LIST_SOURCE==='live') total = liveCount;
-  else if(LIST_SOURCE==='all') total = ROWS.length + liveCount;
+  else if(LIST_SOURCE==='all') total = _tabRows.length + liveCount;
   document.getElementById("summary").innerHTML =
     `<b style="color:#e8eaed">${total}</b> listings &nbsp;·&nbsp; `+
     `${c.NEEDS_REVIEW} needs review &nbsp;·&nbsp; `+
@@ -479,6 +542,7 @@ function card(r){
         ${priceStr?`<span class="tileprice pii">${priceStr}</span>`:'<span></span>'}
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
+      ${(TABS&&TABS.length>1&&r.tab)?`<div class="tiletab" title="This listing lives on the '${esc(r.tab)}' tab"><i class="ti ti-layout-grid"></i> ${esc(r.tab)}</div>`:''}
       ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
     <div class="tileacts">
@@ -770,6 +834,10 @@ async function applyRewrite(sku, i){
 function openDrawer(sku, jumpGen){
   const r=ROWS.find(x=>String(x.sku)===String(sku));
   if(!r) return;
+  // Multi-tab: make sure the workspace's active tab matches THIS card's tab before any
+  // edit/approve/push (all of which target the active tab). Without this, editing a card
+  // from a non-active tab could hit a duplicate SKU on the wrong tab.
+  ensureCardTab(sku);
   DRAWER_SKU=sku;
   const dw=document.getElementById("drawer");
   const body=document.getElementById("drawerbody");
