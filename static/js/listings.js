@@ -273,6 +273,7 @@ function tabPass(r){
 }
 function passFilter(r){
   if(!tabPass(r)) return false;                 // tab filter composes with status filter
+  if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
   if(FILTER==="holds")return isHold(r.status);
@@ -295,7 +296,12 @@ function renderTabFilter(){
     const on=String(TAB_FILTER)===String(t.tab_gid);
     return `<button class="tabpill ${on?'active':''}" onclick="setTabFilter('${esc(String(t.tab_gid))}')" title="${esc(t.tab)}">${esc(t.tab)} <span class="tabcount">${t.count||0}</span></button>`;
   }).join("");
-  host.innerHTML=`<span class="tablabel"><i class="ti ti-layout-grid"></i> Tabs</span>${all}${pills}`;
+  // "Duplicates only" toggle — shown only when the sheet actually has duplicate SKUs.
+  const _dupN=(typeof countDuplicateSkus==="function")?countDuplicateSkus():0;
+  const dupBtn=_dupN>0
+    ? `<button class="tabpill dup ${DUP_ONLY?'active':''}" onclick="toggleDupOnly()" title="Show only duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> Duplicates <span class="tabcount">${_dupN}</span></button>`
+    : "";
+  host.innerHTML=`<span class="tablabel"><i class="ti ti-layout-grid"></i> Tabs</span>${all}${pills}${dupBtn}`;
 }
 // Switch the tab filter. When a SPECIFIC tab is chosen we also point the workspace's
 // active tab at it (server-side), so edits / approvals / image pushes land on the tab
@@ -327,6 +333,53 @@ async function ensureCardTab(sku){
   if(r && r.tab_gid && String(r.tab_gid)!==String(_ACTIVE_SYNC_GID)){
     await syncActiveTab(r.tab_gid, r.tab);
   }
+}
+
+// ---- Cross-tab duplicate SKUs -------------------------------------------------
+// The same SKU on more than one card (usually on different tabs) means the same
+// product is listed twice. We index every SKU -> all its copies so each copy can be
+// flagged and the extras deleted. Built once per data load (buildDupIndex), and any
+// delete triggers loadRows() which rebuilds it.
+let DUP_INDEX = new Map();   // skuUpper -> [{sku,tab,tab_gid,row}]
+let DUP_ONLY  = false;       // filter toggle: show ONLY duplicate copies
+function buildDupIndex(){
+  DUP_INDEX = new Map();
+  (ROWS||[]).forEach(r=>{
+    if(typeof isEmptyRow==="function" && isEmptyRow(r)) return;   // ignore blank rows
+    const k=String(r.sku||"").trim().toUpperCase();
+    if(!k) return;
+    if(!DUP_INDEX.has(k)) DUP_INDEX.set(k, []);
+    DUP_INDEX.get(k).push({sku:r.sku, tab:r.tab||"", tab_gid:String(r.tab_gid||""), row:r.row});
+  });
+}
+function dupCopies(r){                       // every copy of this SKU (incl. itself)
+  const k=String(r.sku||"").trim().toUpperCase();
+  if(!k) return [];
+  return DUP_INDEX.get(k) || [];
+}
+function isDuplicate(r){ return dupCopies(r).length>1; }
+function dupOtherTabs(r){                     // distinct OTHER tabs the SKU also lives on
+  const mine=String(r.tab_gid||""), seen=new Set(), out=[];
+  dupCopies(r).forEach(c=>{ if(String(c.tab_gid)!==mine && c.tab && !seen.has(c.tab)){ seen.add(c.tab); out.push(c.tab); } });
+  return out;
+}
+function countDuplicateSkus(){ let n=0; DUP_INDEX.forEach(v=>{ if(v.length>1) n++; }); return n; }
+function toggleDupOnly(){ DUP_ONLY=!DUP_ONLY; render(); }
+// Delete ONE duplicate copy from its own tab (leaving the other copies untouched).
+// ensureCardTab syncs the active tab first, so /delete removes the right row on the
+// right tab -- never a same-numbered row on another tab.
+async function delDuplicate(sku, row, tab, btn){
+  if(!confirm("Delete this DUPLICATE copy of "+sku+" from the '"+tab+"' tab?\n\n"
+             +"Only this copy is removed — copies on other tabs stay. This cannot be undone.")) return;
+  if(btn) btn.disabled=true;
+  try{
+    if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
+    const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({sku:sku, row:row})});
+    const j=await res.json();
+    if(j.ok){ toast("Duplicate removed from "+tab); loadRows(); }
+    else{ toast("Delete failed: "+(j.error||"")); if(btn) btn.disabled=false; }
+  }catch(e){ toast("Delete failed"); if(btn) btn.disabled=false; }
 }
 
 // Is this row live ON AMAZON? Amazon's catalog is the ONLY authority whenever we
@@ -373,7 +426,9 @@ function summary(){
   // Counts reflect the ACTIVE tab filter: "All tabs" counts everything, a specific
   // tab counts only that tab's rows. Blank placeholder rows are excluded so the
   // "N listings" total agrees with the grid (which hides them) and the tab pills.
-  const _tabRows = ROWS.filter(tabPass).filter(r=> (typeof isEmptyRow!=="function") || !isEmptyRow(r));
+  const _tabRows = ROWS.filter(tabPass)
+                       .filter(r=> (typeof isEmptyRow!=="function") || !isEmptyRow(r))
+                       .filter(r=> !DUP_ONLY || isDuplicate(r));
   _tabRows.forEach(r=>{
     // FIX: reclassify HOLD/NEEDS_REVIEW/etc. as LIVE if the row's SKU/ASIN
     // matches the Amazon catalog. Without this the top-bar shows a stale
@@ -418,7 +473,10 @@ function summary(){
     `<span style="color:#ef9a9a">${c.ERROR} error</span> &nbsp;·&nbsp; `+
     `<span style="color:#7fd1a0">${c.APPROVED} approved</span> &nbsp;·&nbsp; `+
     `<span style="color:#9cc1ff">${c.API_READY} preview-ready</span> &nbsp;·&nbsp; `+
-    `<span style="color:#74e0a3">${c.LIVE} live</span>`;
+    `<span style="color:#74e0a3">${c.LIVE} live</span>`+
+    ((countDuplicateSkus()>0)
+      ? ` &nbsp;·&nbsp; <span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`
+      : "");
 }
 
 // Pull a LIVE listing's real data (every Amazon image: main + all secondary) into the row, so
@@ -525,7 +583,9 @@ function card(r){
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const skuId=sid(r.sku);
   const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
-  return `<div class="tile ${selected?'sel':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
+  const _isDup=(typeof isDuplicate==="function") && isDuplicate(r);   // same SKU on another card/tab
+  const _dupOther=_isDup?dupOtherTabs(r):[];
+  return `<div class="tile ${selected?'sel':''} ${_isDup?'dup':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
     <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openDrawer('${esc(r.sku)}')">
       ${thumb}
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
@@ -543,6 +603,10 @@ function card(r){
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
       ${(TABS&&TABS.length>1&&r.tab)?`<div class="tiletab" title="This listing lives on the '${esc(r.tab)}' tab"><i class="ti ti-layout-grid"></i> ${esc(r.tab)}</div>`:''}
+      ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
+        <span class="tiledup-lbl"><i class="ti ti-copy"></i> Duplicate SKU${_dupOther.length?` — also on ${esc(_dupOther.join(', '))}`:` — appears ${dupCopies(r).length}×`}</span>
+        <button class="tiledup-del" title="Delete this copy from ${esc(r.tab||'this tab')} (other copies stay)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>
+      </div>`:''}
       ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
     <div class="tileacts">

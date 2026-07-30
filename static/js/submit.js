@@ -356,6 +356,8 @@ async function loadRows(){
     // sheet has >1 listing tab the filter + per-card tab tags appear; with 1 tab they
     // stay hidden and the view is exactly as before.
     if(typeof TABS!=="undefined"){ TABS=j.tabs||[]; }
+    // Index duplicate SKUs across all tabs (for the highlight + delete affordance).
+    if(typeof buildDupIndex==="function"){ buildDupIndex(); }
     // /rows_all reports the sheet it ACTUALLY read (all tabs) -- trust that over config.
     if(j.source && j.source.sheet_id && typeof WS_SOURCE!=="undefined" && WS_SOURCE){
       WS_SOURCE.out_id=j.source.sheet_id;
