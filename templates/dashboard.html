@@ -117,6 +117,11 @@
         <span class="spacer"></span>
         <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
         <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
+        <span class="handlingwrap" title="Set the handling time (lead time to ship, in days) on the selected listings — updates the sheet and pushes live to Amazon">
+          <i class="ti ti-clock-hour-4"></i>
+          <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
+          <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
+        </span>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#2563eb;color:#93c5fd"><i class="ti ti-wand"></i> Auto-fix</button>
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
@@ -546,6 +551,7 @@
 <script src="/static/js/ppc.js"></script>
 <script src="/static/js/inventory.js"></script>
 <script src="/static/js/submit.js"></script>
+<script src="/static/js/handling.js"></script>
 <script src="/static/js/shell.js"></script>
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/sync.js"></script>

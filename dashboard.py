@@ -3062,6 +3062,10 @@ if __name__ == "__main__":
     import routes.sync_routes as _sync_routes
     _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
                           _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
+    # Bulk handling-time updates (sheet + live Amazon push).
+    import routes.handling_routes as _handling_routes
+    _handling_routes.register(app, _cfg=_cfg, _active_account=_active_account,
+                              _ws=_ws, _bust_records_cache=_bust_records_cache, _state=_state)
     # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
     import routes.dashboard_routes as _dashboard_routes
     _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,

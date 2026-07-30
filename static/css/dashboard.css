@@ -655,6 +655,13 @@
                color:#ff8a8a;background:transparent;border:1px solid #5c2424}
   .tiledup-del:hover{background:rgba(255,80,80,.10);color:#ffb0b0}
   .tiledup-del:disabled{opacity:.5;cursor:default}
+  /* Bulk handling-time control in the selection bar */
+  .handlingwrap{display:inline-flex;align-items:center;gap:6px;padding-left:8px;margin-left:2px;
+                border-left:1px solid var(--line)}
+  .handlingwrap>i{color:var(--muted);font-size:15px}
+  .handlingdays{width:62px;background:#0d1220;color:#e8eaed;border:1px solid #2f3a4d;
+                border-radius:7px;padding:5px 8px;font-size:13px}
+  .handlingdays:focus{outline:none;border-color:var(--accent)}
   .tileacts{display:flex;gap:3px;padding:7px 9px 9px}
   .tileacts .ib{flex:1}
   .ib{height:30px;padding:0;display:flex;align-items:center;justify-content:center;
