@@ -710,6 +710,23 @@
   .monrm{background:transparent;border:1px solid #5c2424;color:#ff8a8a;border-radius:7px;
          height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
   .monrm:hover{background:rgba(255,80,80,.10)}
+  .monhist{background:transparent;border:1px solid var(--line);color:#c2c9d6;border-radius:7px;
+           height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .monhist:hover{border-color:var(--accent);color:#fff}
+  /* Offer history modal */
+  .monhist-mkt{margin:14px 0}
+  .monhist-h{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .monhisttable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .monhisttable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+                   color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .monhisttable td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+  .monhisttable a{color:#7fd0ff;text-decoration:none}
+  .monhisttable a:hover{text-decoration:underline}
+  .monhs{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;margin:1px 0;
+         background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--muted);
+         font-family:ui-monospace,Consolas,monospace;max-width:130px;overflow:hidden;
+         text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+  .monhs.bb{color:#9fe6bd;border-color:#2c5c3f;background:rgba(18,48,33,.28)}
   /* Paste-a-listing modal form */
   .pl-grid{display:flex;flex-direction:column;gap:5px}
   .pl-lbl{font-size:12px;color:var(--muted);margin-top:8px}

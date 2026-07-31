@@ -100,6 +100,12 @@ def get_history(config_path, asin, marketplace=None, limit=60):
     return out
 
 
+def get_seller_names(config_path):
+    """The cached SellerId->name map ({'<sellerId>::<mkt>': name}) for enriching the history
+    view. Read-only; never triggers a fetch."""
+    return _load_hist(config_path).get("seller_names", {})
+
+
 def status():
     return dict(_STATUS)
 

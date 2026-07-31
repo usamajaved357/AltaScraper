@@ -93,6 +93,77 @@ async function monMarkAllRead(){
   }catch(e){}
 }
 
+// ---- offer history viewer (Stage 4) ----------------------------------------
+let MON_NAMES = {};
+function _monSellerLabel(sid, mkt){
+  if(!sid) return '<span class="cc">—</span>';
+  const nm = MON_NAMES[sid+"::"+mkt];
+  const link = `https://www.amazon.${_monTld(mkt)}/sp?seller=${encodeURIComponent(sid)}`;
+  const inner = nm ? `${esc(nm)} <span class="cc">(${esc(sid)})</span>` : esc(sid);
+  return `<a href="${link}" target="_blank" rel="noopener">${inner}</a>`;
+}
+function _monTld(mkt){
+  const m={UK:"co.uk",GB:"co.uk",DE:"de",FR:"fr",IT:"it",ES:"es",NL:"nl",PL:"pl",SE:"se",BE:"com.be",IE:"ie"};
+  return m[String(mkt||"").toUpperCase()]||"co.uk";
+}
+function _lowestLanded(offers){
+  const vals=(offers||[]).map(o=>o.landed).filter(v=>v!==null&&v!==undefined);
+  return vals.length?Math.min.apply(null,vals):null;
+}
+
+async function openMonHistory(asin, label){
+  if(document.getElementById("monhistwrap")) closeMonHistory();
+  const dlg=document.createElement("div");
+  dlg.className="modalwrap open"; dlg.id="monhistwrap"; dlg.style.zIndex="130";
+  dlg.innerHTML=`<div class="modal" style="max-width:900px;position:relative">
+    <button class="x" onclick="closeMonHistory()">×</button>
+    <h3><i class="ti ti-history"></i> Offer history — <span class="ma-asin">${esc(asin)}</span>${label?` <span class="cc">${esc(label)}</span>`:''}</h3>
+    <div id="monhist_body"><div class="cc" style="padding:14px"><span class="genspin"></span> Loading…</div></div>
+  </div>`;
+  document.body.appendChild(dlg);
+  try{
+    const j=await (await fetch("/monitor/history?asin="+encodeURIComponent(asin))).json();
+    const body=document.getElementById("monhist_body"); if(!body) return;
+    if(!j || !j.ok){ body.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">'+esc((j&&j.error)||"could not load")+'</div>'; return; }
+    MON_NAMES = j.names || {};
+    const hist = j.history || {};
+    const keys = Object.keys(hist).sort();
+    if(!keys.length){ body.innerHTML='<div class="cc" style="padding:14px;opacity:.75">No checks recorded yet for this ASIN. Hit “Check now”, then open this again.</div>'; return; }
+    body.innerHTML = keys.map(k=>{
+      const mkt = k.split("::")[1]||"";
+      const snaps = (hist[k]||[]).slice().reverse();   // newest first
+      let rows = snaps.map(s=>{
+        const bb = _monSellerLabel(s.buybox_seller, mkt);
+        const low = _lowestLanded(s.offers);
+        const sellerCount = (s.seller_count!=null?s.seller_count:(s.sellers||[]).length);
+        const cur = ((s.offers||[])[0]||{}).currency||"";
+        return `<tr>
+          <td class="cc">${esc(s.ts||"")}</td>
+          <td style="text-align:center">${esc(String(sellerCount))}${s.total_offer_count&&s.total_offer_count>sellerCount?` <span class="cc">/${esc(String(s.total_offer_count))}</span>`:''}</td>
+          <td>${low!=null?esc(String(low))+" "+esc(cur):'<span class="cc">—</span>'}</td>
+          <td>${bb}</td>
+          <td>${_monSnapSellers(s, mkt)}</td>
+        </tr>`;
+      }).join("");
+      return `<div class="monhist-mkt"><div class="monhist-h"><span class="monchip">${esc(mkt)}</span> ${snaps.length} check(s)</div>
+        <div style="overflow-x:auto"><table class="monhisttable">
+          <thead><tr><th>When</th><th>Sellers</th><th>Lowest</th><th>Buy Box</th><th>Who was present</th></tr></thead>
+          <tbody>${rows}</tbody></table></div></div>`;
+    }).join("");
+  }catch(e){ const body=document.getElementById("monhist_body"); if(body) body.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Error: '+esc(String(e))+'</div>'; }
+}
+function _monSnapSellers(s, mkt){
+  const ids = (s.sellers||[]);
+  if(!ids.length) return '<span class="cc">—</span>';
+  const bb = s.buybox_seller;
+  return ids.slice(0,12).map(id=>{
+    const nm = MON_NAMES[id+"::"+mkt];
+    const cls = (id===bb)?'monhs bb':'monhs';
+    return `<span class="${cls}" title="${esc(nm||id)}">${esc(nm? nm.slice(0,14) : id)}</span>`;
+  }).join(" ") + (ids.length>12?` <span class="cc">+${ids.length-12}</span>`:"");
+}
+function closeMonHistory(){ const w=document.getElementById("monhistwrap"); if(w) w.remove(); }
+
 // Global badge poll so the nav count stays fresh even when not on the section.
 async function refreshMonBadge(){
   try{
@@ -155,7 +226,10 @@ function renderMonitorList(){
       + `<td>${mkChips}</td>`
       + `<td>${esc(r.condition||"New")}</td>`
       + `<td class="cc">${esc(r.added_at||"")}</td>`
-      + `<td><button class="monrm" title="Stop tracking this ASIN" onclick="removeMonitorAsin('${esc(String(r.id))}','${esc(r.asin)}')"><i class="ti ti-trash"></i></button></td>`
+      + `<td style="white-space:nowrap">`
+      +   `<button class="monhist" title="View offer history for this ASIN" onclick="openMonHistory('${esc(r.asin)}','${esc((r.label||'').replace(/'/g,""))}')"><i class="ti ti-history"></i></button> `
+      +   `<button class="monrm" title="Stop tracking this ASIN" onclick="removeMonitorAsin('${esc(String(r.id))}','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>`
+      + `</td>`
       + '</tr>';
   });
   html += '</tbody></table>';

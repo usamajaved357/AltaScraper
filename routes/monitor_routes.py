@@ -66,4 +66,6 @@ def register(app, *, CONFIG_PATH, _cfg=None):
         mkt = (request.args.get("marketplace") or "").strip() or None
         if not asin:
             return jsonify({"ok": False, "error": "asin required"}), 400
-        return jsonify({"ok": True, "history": _chk.get_history(CONFIG_PATH, asin, mkt)})
+        return jsonify({"ok": True,
+                        "history": _chk.get_history(CONFIG_PATH, asin, mkt),
+                        "names": _chk.get_seller_names(CONFIG_PATH)})
