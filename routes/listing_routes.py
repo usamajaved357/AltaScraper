@@ -564,6 +564,38 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
                     200 if _scope else 500)
 
+    def _accounts_on_sheet(sid):
+        """List of accounts whose OUTPUT sheet is spreadsheet `sid`. When more than one
+        account lives in the same workbook, that workbook is SHARED and each account must
+        be scoped to its own tab only."""
+        out = []
+        try:
+            import re as _re2
+            import accounts as _accs
+            def _sid_of(v):
+                v = str(v or "").strip()
+                m = _re2.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", v)
+                return m.group(1) if m else v
+            for a in (_accs.load_accounts(_cfg()) or []):
+                if _sid_of(a.get("output_spreadsheet_id", "")) == str(sid):
+                    out.append(a)
+        except Exception:
+            return []
+        return out
+
+    def _other_account_gids(sid, aid):
+        """Tab gids OWNED by OTHER accounts on spreadsheet `sid` (for the set_active_tab guard)."""
+        out = set()
+        if not aid:
+            return out
+        for a in _accounts_on_sheet(sid):
+            if str(a.get("id", "")) == str(aid):
+                continue
+            g = str(a.get("output_tab_gid") or "").strip()
+            if g:
+                out.add(g)
+        return out
+
     @app.route("/rows_all")
     def rows_all():
         """Like /rows, but reads EVERY listing-shaped tab in the ACTIVE workspace's
@@ -588,6 +620,17 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                               f"Sheets link. The app will not fall back to another account's sheet.")}), 200
             if not sid:
                 sid = _cfg()["google_spreadsheet_id"]          # dropshipping default
+            # ACCOUNT ISOLATION: several accounts can SHARE one workbook, each owning a
+            # different tab (jack_uk, selvora, sheelady... all live in one spreadsheet, which
+            # ALSO holds many other tabs). A workspace must show ONLY its own account's tab --
+            # NEVER another account's, and never the workbook's other loose tabs.
+            #   - SHARED workbook (>1 account uses this sheet): show ONLY this account's own
+            #     tab (its output_tab_gid, or the resolved active_tab by name). Multi-tab OFF.
+            #   - SINGLE-ACCOUNT workbook (e.g. Miles owns its sheet): show ALL listing tabs.
+            #     The multi-tab view keeps working there.
+            my_gid  = str(_state.get("active_tab_gid") or "").strip()
+            my_tab  = str(_state.get("active_tab") or "").strip()
+            _shared = _aid and len(_accounts_on_sheet(sid)) > 1
             book = _client().open_by_key(sid)
             SKU_ALIASES = ("SKU", "Sku", "sku")
             # A card is "empty" when sku/title/asin/product_type/price are ALL blank --
@@ -606,6 +649,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     continue
                 if not (any(a in header for a in SKU_ALIASES) and "Title" in header):
                     continue                                    # not a listing tab -> skip
+                # On a SHARED workbook, include ONLY this account's own tab.
+                if _shared:
+                    _gid = str(ws.id)
+                    _mine = (_gid == my_gid) if my_gid else (ws.title == my_tab)
+                    if not _mine:
+                        continue                                # another account's / loose tab -> hide
                 recs = _records(ws)
                 n = 0
                 for r in recs:
@@ -658,6 +707,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 except Exception: ws = None
             if ws is None:
                 return jsonify({"ok": False, "error": "tab not found in this sheet"}), 404
+            # ISOLATION: never let a workspace point its active tab at a tab OWNED by
+            # another account (shared workbook). Belt-and-suspenders: the UI already only
+            # offers this account's own tabs.
+            if str(ws.id) in _other_account_gids(sid, _state.get("active_account_id")):
+                return jsonify({"ok": False, "error": "that tab belongs to a different account"}), 403
             _state["active_tab"]     = ws.title
             _state["active_tab_gid"] = str(ws.id)
             return jsonify({"ok": True, "tab": ws.title, "tab_gid": str(ws.id)})

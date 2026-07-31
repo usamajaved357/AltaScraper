@@ -520,16 +520,25 @@ function render(){
       + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'')
       + ((!draftHtml&&!liveHtml&&!claimedHtml)?'<div class="empty">Nothing to show yet.</div>':'');
   } else {
-    // default view: show drafts, then any already-live (submitted) app rows,
-    // each under a clear heading, so a submitted listing is visible but not
-    // mislabeled as a draft.
-    // These are SHEET rows marked LIVE -- this view never fetches Amazon, so don't
-    // label them "Live on Amazon" as if Amazon had confirmed them.
-    const liveAppHtml = liveRows.length ? liveRows.map(card).join("") : "";
+    // DRAFTS = ONLY listings that are NOT live/published on Amazon. A row is "published"
+    // if the sheet marks it LIVE, OR (when a Sync has loaded Amazon's catalog) Amazon
+    // actually lists its SKU/ASIN. Published rows belong in Live/All — never in Drafts —
+    // even if they started life as a draft in this app. This is what stops live listings
+    // from appearing under the Drafts filter.
+    const _pubSku  = new Set((LIVE_ITEMS||[]).map(r=>_norm(r.sku)).filter(Boolean));
+    const _pubAsin = new Set((LIVE_ITEMS||[]).map(r=>_norm(r.asin)).filter(Boolean));
+    const _published = r => _norm(r.status)==="LIVE"
+        || (_pubSku.size>0  && _pubSku.has(_norm(r.sku)))
+        || (_pubAsin.size>0 && r.asin && _pubAsin.has(_norm(r.asin)));
+    const draftsOnly = realAll.filter(r=>!_published(r));
+    const draftsHtml = draftsOnly.length ? draftsOnly.map(card).join("") : "";
+    const _liveHere = realAll.length - draftsOnly.length;   // published rows hidden from Drafts
     grid.innerHTML = note
-      + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
-      + (liveAppHtml?('<div class="srcgroup">Submitted — marked LIVE in your sheet</div>'+liveAppHtml):'')
-      + ((!draftHtml&&!liveAppHtml)?(empties.length ? "" : `<div class="empty">No listings in this view.${ROWS.length?'':' Run Generate to create some.'}</div>`):'');
+      + (draftsHtml?('<div class="srcgroup">Drafts (not yet live on Amazon)</div>'+draftsHtml):'')
+      + ((!draftsHtml)?(empties.length ? "" :
+          (_liveHere>0
+            ? `<div class="empty">No drafts here — all ${_liveHere} listing${_liveHere>1?'s are':' is'} live on Amazon. Switch to <b>Live on Amazon</b> or <b>All</b> to see them.</div>`
+            : `<div class="empty">No listings in this view.${ROWS.length?'':' Run Generate to create some.'}</div>`)):'');
   }
   summary();
   // fetch real product images for live tiles that don't have one yet
