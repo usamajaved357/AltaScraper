@@ -30,6 +30,9 @@ app_state.json
 # per-account pull-capability results. Runtime state, machine-specific -- never commit.
 sync_snapshots.json
 sync_capability.json
+# ASIN Monitor: tracked-ASIN list + (later) offer-snapshot history. Runtime state.
+asin_monitor.json
+asin_monitor_history.json
 
 # --- Session baselines (bug-check snapshots, per CLAUDE.md §3 — never commit) ---
 *.baseline.py

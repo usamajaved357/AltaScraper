@@ -3066,6 +3066,9 @@ if __name__ == "__main__":
     import routes.handling_routes as _handling_routes
     _handling_routes.register(app, _cfg=_cfg, _active_account=_active_account,
                               _ws=_ws, _bust_records_cache=_bust_records_cache, _state=_state)
+    # ASIN Monitor — competitor/hijacker tracking list (Stage 2: storage + UI only).
+    import routes.monitor_routes as _monitor_routes
+    _monitor_routes.register(app, CONFIG_PATH=CONFIG_PATH)
     # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
     import routes.dashboard_routes as _dashboard_routes
     _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,

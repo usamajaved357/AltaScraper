@@ -79,6 +79,7 @@
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
+    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
   </div>
 
@@ -508,6 +509,43 @@
   </div>
 </div>
 
+<div id="sec_monitor" class="wspanel">
+  <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+    <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
+    <div class="sub">Track competitor ASINs and (from the next stage) get alerted the moment a new seller appears. Read-only surveillance through Jack Reacherd (UK)'s credentials &mdash; it never writes to or affects the tracked listings.</div></div>
+  </div>
+
+  <div class="monadd">
+    <div class="monrow">
+      <div class="monfield" style="flex:0 0 170px">
+        <label class="monlbl">ASIN</label>
+        <input id="mon_asin" class="monin" placeholder="B0XXXXXXXX" maxlength="10" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="monfield" style="flex:1 1 220px">
+        <label class="monlbl">Label / product name <span class="cc">(your reference)</span></label>
+        <input id="mon_label" class="monin" placeholder="e.g. Green Haven bamboo airer" autocomplete="off">
+      </div>
+    </div>
+    <div class="monfield" style="margin-top:10px">
+      <label class="monlbl">Marketplaces to check <span class="cc">(default: all European)</span>
+        <button class="linkbtn" type="button" onclick="monMarketsAll(true)">all</button> ·
+        <button class="linkbtn" type="button" onclick="monMarketsAll(false)">none</button></label>
+      <div id="mon_markets" class="monmkts"></div>
+    </div>
+    <div style="margin-top:12px">
+      <button id="mon_addbtn" class="mktbtn on" onclick="addMonitorAsin()"><i class="ti ti-plus"></i> Add ASIN to watch</button>
+      <span id="mon_count" class="cc" style="margin-left:10px"></span>
+    </div>
+  </div>
+
+  <div id="mon_list" style="margin-top:16px"></div>
+
+  <div class="cc" style="margin-top:16px;font-size:11.5px;opacity:.8">
+    Next stage: an hourly checker fetches every tracked ASIN's live offers, alerts you on a new seller
+    (also seller removed / price change / buy-box change), and keeps a per-ASIN offer history.
+  </div>
+</div>
+
 <div class="modalwrap" id="sync_modal">
   <div class="modal" style="max-width:940px">
     <button class="x" onclick="syncCloseModal()">&times;</button>
@@ -554,6 +592,7 @@
 <script src="/static/js/submit.js"></script>
 <script src="/static/js/handling.js"></script>
 <script src="/static/js/pastelisting.js"></script>
+<script src="/static/js/monitor.js"></script>
 <script src="/static/js/shell.js"></script>
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/sync.js"></script>
