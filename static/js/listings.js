@@ -83,7 +83,9 @@ async function batchAutoGenerate(kind){
     let concepts=[];
     try{
       const sj=await (await fetch("/genimage/strategize",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({product_image:ref, title:(it&&it.title)||"", kind:kind,
+        body:JSON.stringify({product_image:ref,
+          product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]),
+          title:(it&&it.title)||"", kind:kind,
           n:per, text_provider:(window.AI_TEXT||null)})})).json();
       if(!sj.ok){ toast("Strategist failed for "+sku+": "+(sj.error||"unknown")); continue; }
       concepts=sj.concepts||[];

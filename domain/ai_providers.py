@@ -135,41 +135,155 @@ def select(config: dict, purpose: str) -> str:
     return ids[0] if ids else ""
 
 
-def _url_to_data_uri(url: str, timeout: int = 20) -> str:
-    """Download a remote image and return it as a base64 data URI. Some providers
-    (Anthropic-via-Azure, etc.) reject bare image URLs and require inline base64,
-    which caused 'invalid base64 data' 400s when an Amazon image URL was passed
-    straight through. Fetching + inlining makes the reference work everywhere."""
+class ImageRefError(Exception):
+    """A reference image could not be turned into VALID image data (empty, not an image,
+    a URL/path mistaken for base64, an expired URL that returned HTML, too large, etc.).
+    Callers surface the message to the user instead of forwarding garbage to the model and
+    getting a cryptic 400."""
+    pass
+
+
+_MAX_IMG_BYTES = 20 * 1024 * 1024      # 20 MB hard cap (models reject bigger; avoids truncation)
+# Where local '/media/...' references resolve on disk. Set once at startup if needed; otherwise
+# falls back to <cwd>/media (the app always runs from its own dir), so no per-call plumbing.
+DEFAULT_MEDIA_ROOT = ""
+
+
+def _sniff_image_mime(raw: bytes):
+    """Image mime from magic numbers, or None if `raw` is NOT a known image format."""
+    if not raw or len(raw) < 12:
+        return None
+    if raw[:3] == b"\xff\xd8\xff":                  return "image/jpeg"
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":             return "image/png"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP": return "image/webp"
+    if raw[:6] in (b"GIF87a", b"GIF89a"):           return "image/gif"
+    if raw[:2] == b"BM":                            return "image/bmp"
+    return None
+
+
+def _bytes_to_data_uri(raw: bytes, where: str = "image") -> str:
+    """Validate that `raw` really is an image (magic numbers) and within the size cap, then
+    return a base64 data URI. Raises ImageRefError with a clear message otherwise."""
+    if not raw:
+        raise ImageRefError(f"no product image available (the {where} was empty).")
+    if len(raw) > _MAX_IMG_BYTES:
+        raise ImageRefError(f"the {where} is too large ({len(raw)//(1024*1024)} MB; limit "
+                            f"{_MAX_IMG_BYTES//(1024*1024)} MB) — use a smaller image.")
+    mime = _sniff_image_mime(raw)
+    if mime is None:
+        raise ImageRefError(
+            f"the {where} is not a valid image (got {len(raw)} bytes, header {bytes(raw[:12])!r}). "
+            f"It may be an expired/redirected link or non-image data — download or upload the "
+            f"product image first.")
     import base64 as _b64
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}, method="GET")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read()
-        ctype = r.headers.get("Content-Type", "") or ""
-    # sniff a sane image mime from the bytes if the header is missing/wrong
-    mime = "image/jpeg"
-    if raw[:3] == b"\xff\xd8\xff": mime = "image/jpeg"
-    elif raw[:8] == b"\x89PNG\r\n\x1a\n": mime = "image/png"
-    elif raw[:4] == b"RIFF" and raw[8:12] == b"WEBP": mime = "image/webp"
-    elif raw[:6] in (b"GIF87a", b"GIF89a"): mime = "image/gif"
-    elif ctype.startswith("image/"): mime = ctype.split(";")[0].strip()
     return "data:" + mime + ";base64," + _b64.b64encode(raw).decode("ascii")
 
 
-def _img_to_ref(url_or_b64: str):
+def _url_to_data_uri(url: str, timeout: int = 20) -> str:
+    """Download a remote image and return it as a VALIDATED base64 data URI. Raises
+    ImageRefError if the URL doesn't return real image bytes -- e.g. an expired link that now
+    serves an HTML error page (which previously got base64-encoded as image/jpeg and 400'd)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read(_MAX_IMG_BYTES + 1)
+    except Exception as e:
+        raise ImageRefError(f"could not download the image URL ({str(e)[:120]}) — it may have "
+                            f"expired; upload or re-download the product image.")
+    return _bytes_to_data_uri(raw, where="image URL")
+
+
+def _read_local_image(path: str, media_root: str = "") -> str:
+    """Read a LOCAL image (absolute path, file:// URI, or an app '/media/...' served path) from
+    disk and return a validated data URI. Raises ImageRefError if missing / not an image."""
+    import os as _os
+    media_root = media_root or DEFAULT_MEDIA_ROOT or _os.path.join(_os.getcwd(), "media")
+    p = path
+    if p.startswith("file://"):
+        p = urllib.request.url2pathname(p[7:])
+    if p.startswith("/media/"):                               # app served path -> disk path
+        p = _os.path.join(media_root, p[len("/media/"):].replace("/", _os.sep))
+    elif not _os.path.isabs(p) and _os.path.exists(_os.path.join(media_root, p)):
+        p = _os.path.join(media_root, p)
+    if not _os.path.exists(p):
+        raise ImageRefError(f"the local image file was not found on disk ({path}).")
+    try:
+        with open(p, "rb") as f:
+            raw = f.read(_MAX_IMG_BYTES + 1)
+    except Exception as e:
+        raise ImageRefError(f"could not read the local image ({str(e)[:120]}).")
+    return _bytes_to_data_uri(raw, where="local image file")
+
+
+def _looks_like_local_path(s: str) -> bool:
+    # EXPLICIT path markers only. Deliberately NOT a bare leading "/" — a bare-base64 JPEG
+    # begins with "/9j/", so treating "/" as a path would misroute valid JPEG data to disk.
+    if s.startswith(("file://", "./", "../", "/media/")):
+        return True
+    if len(s) > 2 and s[1] == ":" and s[2] in "\\/":     # Windows drive path C:\ or C:/
+        return True
+    if "\\" in s:                                          # backslash path (never in base64)
+        return True
+    return False
+
+
+def _img_to_ref(url_or_b64, media_root: str = ""):
+    """Turn a reference (URL / data-uri / local path / bare base64) into a VALIDATED image
+    block. Raises ImageRefError with a clear message on anything that isn't a real image, so we
+    never forward garbage and trigger a cryptic 400."""
     if not url_or_b64:
-        return None
-    s = url_or_b64.strip()
+        raise ImageRefError("no product image available.")
+    s = str(url_or_b64).strip()
     if s.startswith("data:"):
-        return {"type": "image_url", "image_url": {"url": s}}
-    if s.startswith("http://") or s.startswith("https://"):
-        # inline remote images as base64 so EVERY provider accepts them
-        # (bare URLs 400 on some Azure/Anthropic routes). Fall back to the raw
-        # URL if the download fails, so we never hard-crash on a fetch hiccup.
+        import base64 as _b64
         try:
-            return {"type": "image_url", "image_url": {"url": _url_to_data_uri(s)}}
+            b64 = s.split(",", 1)[1] if "," in s else ""
+            raw = _b64.b64decode(b64)
         except Exception:
-            return {"type": "image_url", "image_url": {"url": s}}
-    return {"type": "image_url", "image_url": {"url": "data:image/png;base64," + s}}
+            raise ImageRefError("the reference image data URI could not be decoded.")
+        return {"type": "image_url", "image_url": {"url": _bytes_to_data_uri(raw, "reference image")}}
+    if s.startswith("http://") or s.startswith("https://"):
+        return {"type": "image_url", "image_url": {"url": _url_to_data_uri(s)}}
+    if _looks_like_local_path(s):
+        return {"type": "image_url", "image_url": {"url": _read_local_image(s, media_root)}}
+    # otherwise it is SUPPOSED to be bare base64 image bytes. Decode + validate. If it is
+    # actually a stray URL/path/text this raises a clear error instead of shipping
+    # "data:image/png;base64,<garbage>" to the API (the old bug at this very spot).
+    import base64 as _b64
+    try:
+        raw = _b64.b64decode(s, validate=True)
+    except Exception:
+        raise ImageRefError("the reference wasn't a valid image — it looks like a URL/path or "
+                            "text, not image data. Download or upload the product image first.")
+    return {"type": "image_url", "image_url": {"url": _bytes_to_data_uri(raw, "reference image")}}
+
+
+def resolve_image_ref(candidates, media_root: str = ""):
+    """Try image sources IN ORDER (uploaded local file -> cached/downloaded copy -> source URL)
+    and return the first that yields a VALID image block. Raises ImageRefError('no product image
+    available ...') if every candidate fails -- so an expired scrape URL falls through to a
+    cached/local copy instead of failing the whole run."""
+    cands = list(candidates) if isinstance(candidates, (list, tuple)) else [candidates]
+    cands = [c for c in cands if c]
+    if not cands:
+        raise ImageRefError("no product image available.")
+    errors = []
+    for c in cands:
+        try:
+            return _img_to_ref(c, media_root)
+        except ImageRefError as e:
+            errors.append(str(e))
+    raise ImageRefError("no product image available — none of the sources (uploaded file, "
+                        "cached copy, source URL) returned a valid image. ["
+                        + " | ".join(errors[:3]) + "]")
+
+
+def _resolve_ref_block(image, media_root: str = ""):
+    """image = a single ref (str) OR an ordered list of candidates. Returns a validated ref
+    block; raises ImageRefError. Central helper so every entry point validates identically."""
+    if isinstance(image, (list, tuple)):
+        return resolve_image_ref(image, media_root)
+    return _img_to_ref(image, media_root)
 
 
 _ENHANCE_SYSTEM = (
@@ -220,9 +334,12 @@ def describe_image(config: dict, images: list, focus: str = "", provider: str = 
     )
     content = [{"type": "text", "text": "Describe the reusable visual style/technique of these reference image(s)."}]
     for im in images[:3]:
-        ref = _img_to_ref(im)
-        if ref:
-            content.append(ref)
+        try:                                    # skip any invalid reference; describe the rest
+            ref = _img_to_ref(im)
+            if ref:
+                content.append(ref)
+        except ImageRefError:
+            continue
     body = {"model": model,
             "messages": [{"role": "system", "content": sys},
                          {"role": "user", "content": content}],
@@ -268,9 +385,10 @@ _APLUS_SYSTEM = (
 )
 
 
-def strategize_images(config: dict, image: str = "", product_title: str = "",
+def strategize_images(config: dict, image="", product_title: str = "",
                       product_spec: str = "", n: int = 3, kind: str = "main",
-                      provider: str = None, custom_instructions: str = "") -> dict:
+                      provider: str = None, custom_instructions: str = "",
+                      media_root: str = "") -> dict:
     """STRATEGIST AI — thinks like a world-class Amazon conversion strategist AND
     like the target customer, then INVENTS concrete image concepts for this exact
     product (rather than executing the seller's literal idea). Returns a list of
@@ -355,9 +473,12 @@ def strategize_images(config: dict, image: str = "", product_title: str = "",
                            "each one unmistakably about THIS item. Think as the strategist AND the customer."
                          + _ci_block
                          + "\nReturn ONLY the JSON list.")}]
-    ref = _img_to_ref(image)
-    if ref:
-        content.append(ref)
+    try:
+        _rb = _resolve_ref_block(image, media_root) if image else None
+    except ImageRefError as e:
+        return {"ok": False, "error": str(e)}
+    if _rb:
+        content.append(_rb)
     body = {"model": model,
             "messages": [{"role": "system", "content": sys},
                          {"role": "user", "content": content}],
@@ -484,25 +605,32 @@ def enhance_prompt(config: dict, brief: str, product_title: str = "",
         return {"ok": False, "error": f"OpenRouter text failed: {str(e)[:200]}"}
 
 
-def generate_image(config: dict, prompt: str, reference_image: str = "",
+def generate_image(config: dict, prompt: str, reference_image="",
                    provider: str = None, strength: float = None,
                    aspect_ratio: str = "1:1", image_size: str = None,
-                   extra_reference: str = "") -> dict:
+                   extra_reference: str = "", media_root: str = "") -> dict:
     model = provider or select(config, "image_generate")
     if not _key(config):
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No image model selected/available"}
     body = {"model": model, "prompt": prompt, "output_format": "png"}
-    ref = _img_to_ref(reference_image)
+    ref = None
+    if reference_image:
+        try:
+            ref = _resolve_ref_block(reference_image, media_root)
+        except ImageRefError as e:
+            return {"ok": False, "error": str(e)}
     if ref:
         # reference image(s) for editing / product preservation. We can pass more
         # than one: e.g. [image-to-edit, ORIGINAL product] so a refine edits the
         # generated image while staying anchored to the REAL product.
         refs = [ref]
-        ref2 = _img_to_ref(extra_reference) if extra_reference else None
-        if ref2:
-            refs.append(ref2)
+        if extra_reference:
+            try:                                # extra reference is optional -> skip if invalid
+                refs.append(_resolve_ref_block(extra_reference, media_root))
+            except ImageRefError:
+                pass
         body["input_references"] = refs
         # image_config.strength keeps the output close to the source product.
         # Low strength = stay very close to the reference (product unchanged);
@@ -552,8 +680,8 @@ def generate_image(config: dict, prompt: str, reference_image: str = "",
         return {"ok": False, "error": f"OpenRouter image failed: {str(e)[:200]}"}
 
 
-def describe_product(config: dict, image: str, product_title: str = "",
-                     provider: str = None) -> dict:
+def describe_product(config: dict, image="", product_title: str = "",
+                     provider: str = None, media_root: str = "") -> dict:
     """Vision AI reads the seller's ACTUAL product in fine detail so the image
     model reproduces it faithfully. Captures: exact product type/shape, every
     colour, ALL text on labels/packaging verbatim, logo placement, materials,
@@ -564,9 +692,10 @@ def describe_product(config: dict, image: str, product_title: str = "",
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No text model selected/available"}
-    ref = _img_to_ref(image)
-    if not ref:
-        return {"ok": False, "error": "no product image to read"}
+    try:
+        ref = _resolve_ref_block(image, media_root)
+    except ImageRefError as e:
+        return {"ok": False, "error": str(e)}
     sys = (
         "You are a forensic product analyst preparing a brief so an AI image model can RECREATE "
         "this exact product without changing it. Examine the image and document EVERYTHING with "
@@ -663,11 +792,12 @@ def _resize_to_exact(image_b64: str, target_w: int, target_h: int) -> str:
     return _b64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def run_pipeline(config: dict, brief: str, reference_image: str = "",
+def run_pipeline(config: dict, brief: str, reference_image="",
                  product_title: str = "", text_provider: str = None,
                  image_provider: str = None, image_kind: str = "main",
                  read_product: bool = True, strength: float = 0.25,
-                 extra_reference: str = "", target_w: int = 0, target_h: int = 0) -> dict:
+                 extra_reference: str = "", target_w: int = 0, target_h: int = 0,
+                 media_root: str = "") -> dict:
     """Vision-first pipeline:
     1) (optional) vision AI reads the ACTUAL product in detail (exact label text,
        shape, colours, material) so the model can't alter it,
@@ -679,7 +809,8 @@ def run_pipeline(config: dict, brief: str, reference_image: str = "",
     """
     product_spec = ""
     if read_product and reference_image:
-        desc = describe_product(config, reference_image, product_title, provider=text_provider)
+        desc = describe_product(config, reference_image, product_title,
+                                provider=text_provider, media_root=media_root)
         if desc.get("ok"):
             product_spec = desc.get("description", "")
     # fold the exact product spec into the brief so the prompt AI anchors to it
@@ -707,7 +838,8 @@ def run_pipeline(config: dict, brief: str, reference_image: str = "",
         _ar = _closest_aspect_ratio(target_w, target_h)
     img = generate_image(config, detailed, reference_image, provider=image_provider,
                          strength=strength if reference_image else None,
-                         aspect_ratio=_ar, image_size="4K", extra_reference=extra_reference)
+                         aspect_ratio=_ar, image_size="4K", extra_reference=extra_reference,
+                         media_root=media_root)
     if not img.get("ok"):
         return {"ok": False, "error": "Image stage: " + img.get("error", ""),
                 "stage": "image", "detailed_prompt": detailed, "raw": img.get("raw", "")}

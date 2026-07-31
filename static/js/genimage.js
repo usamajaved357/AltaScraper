@@ -13,6 +13,20 @@ function _refImgForItem(it){
   // brand/source image, then a manually-provided reference (upload/URL) as last resort
   return it.source_image || it.src_image || (typeof STUDIO!=='undefined' && STUDIO.manualRef) || "";
 }
+// Ordered image sources for the resolver: LOCAL/uploaded + cached copy FIRST, source URL
+// LAST. The backend tries them in order and uses the first that is a VALID image — so an
+// expired scrape URL falls through to a local/cached copy instead of failing the run.
+function _refCandidates(it){
+  if(!it) return [(typeof STUDIO!=='undefined' && STUDIO.manualRef) || ""].filter(Boolean);
+  var out=[];
+  [it.img, it.main_image, it.image].forEach(function(u){ if(u) out.push(u); });
+  try{ (_rowImages(it)||[]).forEach(function(u){ if(u) out.push(u); }); }catch(e){}
+  [it.source_image, it.src_image, (typeof STUDIO!=='undefined' && STUDIO.manualRef)].forEach(function(u){ if(u) out.push(u); });
+  // de-dupe, preserve order
+  var seen={}, uniq=[];
+  out.forEach(function(u){ if(u && !seen[u]){ seen[u]=1; uniq.push(u); } });
+  return uniq;
+}
 async function openStudioSingle(sku){
   const it=_itemForSku(sku);
   STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), recipes:[], results:{} };
@@ -714,7 +728,7 @@ async function studioStrategize(kind, autoGen){
     const _instrEl=document.getElementById("strat_instr_"+kind);
     const _customInstr=(_instrEl && _instrEl.value || "").trim();
     const j=await (await fetch("/genimage/strategize",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({product_image:ref, title:(it&&it.title)||"", kind:kind, n:_n, text_provider:(window.AI_TEXT||null), custom_instructions:_customInstr})})).json();
+      body:JSON.stringify({product_image:ref, product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]), title:(it&&it.title)||"", kind:kind, n:_n, text_provider:(window.AI_TEXT||null), custom_instructions:_customInstr})})).json();
     if(!j.ok){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; return; }
     const concepts=j.concepts||[];
     if(!concepts.length){ if(st) st.innerHTML='<span class="cc">No concepts returned — try again.</span>'; return; }
