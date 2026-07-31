@@ -6,7 +6,102 @@
 let MON_EU = ["UK","DE","FR","IT","ES","NL","PL","SE","BE","IE"];
 let MON_LIST = [];
 
-function monitorOnOpen(){ loadMonitorList(); }
+function monitorOnOpen(){ loadMonitorList(); loadMonitorAlerts(); }
+
+// ---- alerts / status / manual check ----------------------------------------
+const MON_ALERT_META = {
+  new_seller:    {icon:"ti-user-plus",   cls:"na", label:"New seller"},
+  seller_removed:{icon:"ti-user-minus",  cls:"sr", label:"Seller left"},
+  price_change:  {icon:"ti-tag",         cls:"pc", label:"Price change"},
+  buybox_change: {icon:"ti-award",       cls:"bb", label:"Buy Box changed"},
+};
+
+async function loadMonitorAlerts(){
+  const host = document.getElementById("mon_alerts");
+  try{
+    const j = await (await fetch("/monitor/alerts")).json();
+    if(!j || !j.ok){ return; }
+    updateMonBadge(j.unread||0);
+    renderMonStatus(j.status||{});
+    if(!host) return;
+    const al = j.alerts || [];
+    if(!al.length){
+      host.innerHTML = '<div class="cc" style="padding:10px 2px;opacity:.7">No alerts yet. When a new seller appears on a tracked ASIN, it shows here.</div>';
+      return;
+    }
+    host.innerHTML = al.map(monAlertCard).join("");
+  }catch(e){ /* alerts are additive */ }
+}
+
+function monAlertCard(a){
+  const m = MON_ALERT_META[a.type] || {icon:"ti-bell", cls:"", label:a.type};
+  const seller = a.seller_name
+    ? `${esc(a.seller_name)} <span class="cc">(${esc(a.seller_id||"")})</span>`
+    : `<span class="cc">${esc(a.seller_id||"unknown seller")}</span>`;
+  const fb = (a.feedback_pct!==null && a.feedback_pct!==undefined)
+    ? ` · ${esc(String(a.feedback_pct))}% (${esc(String(a.feedback_count||0))})` : "";
+  const price = (a.price!==null && a.price!==undefined)
+    ? ` · ${esc(String(a.price))} ${esc(a.currency||"")} ${a.fba?"(FBA)":"(FBM)"}` : "";
+  const store = a.storefront ? ` · <a href="${esc(a.storefront)}" target="_blank" rel="noopener">storefront ↗</a>` : "";
+  return `<div class="monalert ${m.cls} ${a.read?'read':''}">
+    <div class="ma-ic"><i class="ti ${m.icon}"></i></div>
+    <div class="ma-body">
+      <div class="ma-top"><b>${esc(m.label)}</b> · <span class="ma-asin">${esc(a.asin||"")}</span>
+        <span class="monchip">${esc(a.marketplace||"")}</span>
+        ${a.label?`<span class="cc">${esc(a.label)}</span>`:''}
+        <span class="spacer"></span><span class="cc ma-ts">${esc(a.ts||"")}</span></div>
+      <div class="ma-mid">Seller: ${seller}${fb}${price}${store}</div>
+      ${a.detail?`<div class="cc ma-det">${esc(a.detail)}</div>`:''}
+    </div></div>`;
+}
+
+function renderMonStatus(st){
+  const el = document.getElementById("mon_status"); if(!el) return;
+  if(st.running){ el.innerHTML = '<span class="genspin"></span> checking…'; return; }
+  if(st.last_run){
+    const okTxt = st.last_run_ok===false ? ' <span style="color:#e3b768">(some checks failed — see terminal)</span>' : '';
+    el.innerHTML = `Last check: ${esc(st.last_run)} · ${esc(String(st.checks||0))} call(s)${okTxt}`;
+  } else { el.textContent = "Not run yet — runs hourly while the app is open."; }
+}
+
+function updateMonBadge(n){
+  const b = document.getElementById("mon_badge"); if(!b) return;
+  if(n>0){ b.textContent = n>99?"99+":String(n); b.style.display=""; }
+  else { b.style.display="none"; b.textContent=""; }
+}
+
+async function monCheckNow(){
+  const btn = document.getElementById("mon_checkbtn");
+  if(btn){ btn.disabled = true; }
+  try{
+    const j = await (await fetch("/monitor/check_now",{method:"POST"})).json();
+    if(!j || !j.ok){ toast("Could not start: "+((j&&j.error)||"unknown")); return; }
+    toast("Checking tracked ASINs now…");
+    // poll a few times while it runs
+    let n=0; const iv=setInterval(async ()=>{
+      await loadMonitorAlerts();
+      const s = await (await fetch("/monitor/status")).json();
+      if((!s.status || !s.status.running) || ++n>40){ clearInterval(iv); if(btn) btn.disabled=false; }
+    }, 3000);
+  }catch(e){ toast("Check error: "+e); if(btn) btn.disabled=false; }
+}
+
+async function monMarkAllRead(){
+  try{
+    await fetch("/monitor/alerts/read",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    loadMonitorAlerts();
+  }catch(e){}
+}
+
+// Global badge poll so the nav count stays fresh even when not on the section.
+async function refreshMonBadge(){
+  try{
+    const j = await (await fetch("/monitor/status")).json();
+    if(j && j.ok) updateMonBadge(j.unread||0);
+  }catch(e){}
+}
+setInterval(refreshMonBadge, 120000);
+setTimeout(refreshMonBadge, 8000);
 
 async function loadMonitorList(){
   const host = document.getElementById("mon_list");

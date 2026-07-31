@@ -79,7 +79,7 @@
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
-    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor</div>
+    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
   </div>
 
@@ -512,8 +512,16 @@
 <div id="sec_monitor" class="wspanel">
   <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
     <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
-    <div class="sub">Track competitor ASINs and (from the next stage) get alerted the moment a new seller appears. Read-only surveillance through Jack Reacherd (UK)'s credentials &mdash; it never writes to or affects the tracked listings.</div></div>
+    <div class="sub">Track competitor ASINs and get alerted the moment a new seller appears (also seller removed / price change / buy-box change). Read-only surveillance through Jack Reacherd (UK)'s credentials &mdash; it never writes to or affects the tracked listings.</div></div>
   </div>
+
+  <div class="monalertbar">
+    <button class="mktbtn" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
+    <span id="mon_status" class="cc"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="linkbtn" onclick="monMarkAllRead()">Mark all read</button>
+  </div>
+  <div id="mon_alerts" style="margin:10px 0 6px"></div>
 
   <div class="monadd">
     <div class="monrow">
