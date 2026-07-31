@@ -39,41 +39,95 @@ def fetch_offers(creds, asin, marketplace, condition="New", log=print):
                     time.sleep(5); continue
                 out["error"] = f"{type(e).__name__}: {str(e)[:180]}"; return out
         pay = resp.payload if hasattr(resp, "payload") else resp
-        pay = pay if isinstance(pay, dict) else {}
-        norm = []
-        for o in (pay.get("Offers", []) or []):
-            lp = o.get("ListingPrice") or {}
-            sh = o.get("Shipping") or {}
-            fb = o.get("SellerFeedbackRating") or {}
-            price = lp.get("Amount")
-            ship = sh.get("Amount") or 0
-            norm.append({
-                "seller_id": o.get("SellerId", ""),
-                "price": price,
-                "currency": lp.get("CurrencyCode", ""),
-                "shipping": ship,
-                "landed": (round((price or 0) + (ship or 0), 2) if price is not None else None),
-                "fba": bool(o.get("IsFulfilledByAmazon")),
-                "condition": o.get("SubCondition", ""),
-                "buybox": bool(o.get("IsBuyBoxWinner")),
-                "feedback_pct": fb.get("SellerPositiveFeedbackRating"),
-                "feedback_count": fb.get("FeedbackCount"),
-                "prime": bool((o.get("PrimeInformation") or {}).get("IsPrime")),
-                "ships_from": (o.get("ShipsFrom") or {}).get("Country", ""),
-            })
-        summ = pay.get("Summary", {}) or {}
-        bb = next((x["seller_id"] for x in norm if x["buybox"]), None)
-        out["summary"] = {
-            "total_offer_count": summ.get("TotalOfferCount"),
-            "seller_count": len(norm),
-            "buybox_seller": bb,
-            "buybox_price": _first_buybox_price(summ),
-        }
-        out["offers"] = norm
-        out["ok"] = True
-        return out
+        return _normalize(pay if isinstance(pay, dict) else {}, asin, marketplace, condition)
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {str(e)[:180]}"; return out
+
+
+def _normalize(pay, asin, marketplace, condition):
+    """Turn a getItemOffers payload into our normalized {ok, offers, summary} shape. Shared by
+    the single call and every sub-response of the BATCH call."""
+    out = {"ok": True, "asin": asin, "marketplace": marketplace, "condition": condition,
+           "offers": [], "summary": {}, "error": ""}
+    norm = []
+    for o in (pay.get("Offers", []) or []):
+        lp = o.get("ListingPrice") or {}
+        sh = o.get("Shipping") or {}
+        fb = o.get("SellerFeedbackRating") or {}
+        price = lp.get("Amount")
+        ship = sh.get("Amount") or 0
+        norm.append({
+            "seller_id": o.get("SellerId", ""),
+            "price": price, "currency": lp.get("CurrencyCode", ""), "shipping": ship,
+            "landed": (round((price or 0) + (ship or 0), 2) if price is not None else None),
+            "fba": bool(o.get("IsFulfilledByAmazon")), "condition": o.get("SubCondition", ""),
+            "buybox": bool(o.get("IsBuyBoxWinner")),
+            "feedback_pct": fb.get("SellerPositiveFeedbackRating"),
+            "feedback_count": fb.get("FeedbackCount"),
+            "prime": bool((o.get("PrimeInformation") or {}).get("IsPrime")),
+            "ships_from": (o.get("ShipsFrom") or {}).get("Country", ""),
+        })
+    summ = pay.get("Summary", {}) or {}
+    out["summary"] = {"total_offer_count": summ.get("TotalOfferCount"), "seller_count": len(norm),
+                      "buybox_seller": next((x["seller_id"] for x in norm if x["buybox"]), None),
+                      "buybox_price": _first_buybox_price(summ)}
+    out["offers"] = norm
+    return out
+
+
+def fetch_offers_batch(creds, requests, condition="New", log=print):
+    """getItemOffersBatch: up to 20 (asin x marketplace) requests in ONE API call. `requests` is a
+    list of {'asin','marketplace'}. Returns a list of normalized results (same order), each tagged
+    with asin+marketplace. Retries the whole batch once on a 429. Never raises."""
+    reqs = list(requests)[:20]
+    if not reqs:
+        return []
+    try:
+        from sp_api.api import Products
+        from sp_api.base import Marketplaces
+        import accounts as _acc
+    except Exception as e:
+        return [{"ok": False, "asin": r["asin"], "marketplace": r["marketplace"],
+                 "offers": [], "summary": {}, "error": f"sp_api unavailable: {e}"} for r in reqs]
+    body = []
+    for r in reqs:
+        mid = _acc.marketplace_id(r["marketplace"]) if hasattr(_acc, "marketplace_id") else ""
+        body.append({"uri": f"/products/pricing/v0/items/{r['asin']}/offers",
+                     "method": "GET", "MarketplaceId": mid,
+                     "ItemCondition": r.get("condition") or condition})
+    # one client; region is the same for all EU marketplaces so any EU enum works for the endpoint
+    prods = Products(credentials=creds, marketplace=_mk_enum(reqs[0]["marketplace"]), timeout=90)
+    resp = None
+    for attempt in range(2):
+        try:
+            resp = prods.get_item_offers_batch(body)
+            break
+        except Exception as e:
+            m = str(e).lower()
+            if ("quota" in m or "throttl" in m or "429" in m or "too many" in m) and attempt == 0:
+                time.sleep(8); continue
+            return [{"ok": False, "asin": r["asin"], "marketplace": r["marketplace"],
+                     "offers": [], "summary": {}, "error": f"{type(e).__name__}: {str(e)[:160]}"}
+                    for r in reqs]
+    pay = resp.payload if hasattr(resp, "payload") else resp
+    responses = (pay or {}).get("responses", []) if isinstance(pay, dict) else []
+    out = []
+    for i, r in enumerate(reqs):
+        sub = responses[i] if i < len(responses) else {}
+        code = ((sub.get("status") or {}).get("statusCode")) if isinstance(sub, dict) else None
+        spay = ((sub.get("body") or {}).get("payload")) if isinstance(sub, dict) else None
+        if code == 200 and isinstance(spay, dict):
+            out.append(_normalize(spay, r["asin"], r["marketplace"], condition))
+        else:
+            # NOT_FOUND (404) etc. -> a valid "no offers here" result (used by dead-market detection)
+            reason = ((sub.get("status") or {}).get("reasonPhrase") or f"HTTP {code}") if isinstance(sub, dict) else "no response"
+            res = {"ok": True, "asin": r["asin"], "marketplace": r["marketplace"], "condition": condition,
+                   "offers": [], "summary": {"seller_count": 0, "buybox_seller": None,
+                                             "total_offer_count": 0}, "error": ""}
+            if code and code != 404:
+                res["ok"] = False; res["error"] = str(reason)[:160]
+            out.append(res)
+    return out
 
 
 def _first_buybox_price(summ):

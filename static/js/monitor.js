@@ -48,6 +48,7 @@ function monAsinBlock(r){
     <button class="monrm" title="Stop tracking" onclick="removeMonitorAsin('','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>
   </div>`;
   const mkts = (r.per_marketplace||[]).map(m=>{
+    if(m.skipped) return `<div class="monmkt-row skipped"><span class="monchip">${esc(m.marketplace)}</span> <span class="cc">skipped — not listed here${m.last_checked?(' (checked '+esc(m.last_checked)+')'):''}</span></div>`;
     if(!m.checked) return `<div class="monmkt-row"><span class="monchip">${esc(m.marketplace)}</span> <span class="cc">not checked yet</span></div>`;
     const chips = (m.sellers||[]).map(monSellerChip).join(" ");
     return `<div class="monmkt-row"><span class="monchip">${esc(m.marketplace)}</span> <b>${m.seller_count}</b> seller${m.seller_count!==1?'s':''} ${chips}<span class="cc monmkt-ts"> · ${esc(m.ts||'')}</span></div>`;
@@ -114,10 +115,16 @@ function monAlertCard(a){
 function renderMonStatus(st){
   const el = document.getElementById("mon_status"); if(!el) return;
   if(st.running){ el.innerHTML = '<span class="genspin"></span> checking…'; return; }
-  if(st.last_run){
-    const okTxt = st.last_run_ok===false ? ' <span style="color:#e3b768">(some checks failed — see terminal)</span>' : '';
-    el.innerHTML = `Last check: ${esc(st.last_run)} · ${esc(String(st.checks||0))} call(s)${okTxt}`;
-  } else { el.textContent = "Not run yet — runs hourly while the app is open."; }
+  if(!st.last_run){ el.textContent = "Not run yet — runs hourly while the app is open."; return; }
+  const bits = ["Last check: "+esc(st.last_run)];
+  if(st.api_calls!=null) bits.push(st.api_calls+" API call"+(st.api_calls!==1?"s":""));
+  if(st.duration!=null) bits.push(st.duration+"s");
+  if(st.skipped) bits.push(st.skipped+" market"+(st.skipped!==1?"s":"")+" skipped");
+  if(st.next_run_ts){ const m=Math.max(0,Math.round((st.next_run_ts*1000-Date.now())/60000)); bits.push("next in "+m+"m"); }
+  let html = bits.join(" · ");
+  if(st.last_run_ok===false) html += ' <span style="color:#e3b768">(some checks failed — see terminal)</span>';
+  if(st.overload) html += ' <span style="color:#e0696b">⚠ cycle nearly exceeds the hour — reduce scope (drop dead markets / inactive ASINs)</span>';
+  el.innerHTML = html;
 }
 
 function updateMonBadge(n){
@@ -126,20 +133,32 @@ function updateMonBadge(n){
   else { b.style.display="none"; b.textContent=""; }
 }
 
+function _monPoll(btn){
+  let n=0; const iv=setInterval(async ()=>{
+    await loadMonitorAlerts();
+    const s = await (await fetch("/monitor/status")).json();
+    if((!s.status || !s.status.running) || ++n>60){ clearInterval(iv); if(btn) btn.disabled=false; loadMonitorOverview(); }
+  }, 3000);
+}
 async function monCheckNow(){
   const btn = document.getElementById("mon_checkbtn");
   if(btn){ btn.disabled = true; }
   try{
     const j = await (await fetch("/monitor/check_now",{method:"POST"})).json();
-    if(!j || !j.ok){ toast("Could not start: "+((j&&j.error)||"unknown")); return; }
+    if(!j || !j.ok){ toast("Could not start: "+((j&&j.error)||"unknown")); if(btn) btn.disabled=false; return; }
     toast("Checking tracked ASINs now…");
-    // poll a few times while it runs
-    let n=0; const iv=setInterval(async ()=>{
-      await loadMonitorAlerts();
-      const s = await (await fetch("/monitor/status")).json();
-      if((!s.status || !s.status.running) || ++n>40){ clearInterval(iv); if(btn) btn.disabled=false; loadMonitorOverview(); }
-    }, 3000);
+    _monPoll(btn);
   }catch(e){ toast("Check error: "+e); if(btn) btn.disabled=false; }
+}
+async function monRescanAll(){
+  const btn = document.getElementById("mon_rescanbtn");
+  if(btn){ btn.disabled = true; }
+  try{
+    const j = await (await fetch("/monitor/check_now",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rescan:true})})).json();
+    if(!j || !j.ok){ toast("Could not start: "+((j&&j.error)||"unknown")); if(btn) btn.disabled=false; return; }
+    toast("Re-scanning every marketplace (including skipped)…");
+    _monPoll(btn);
+  }catch(e){ toast("Re-scan error: "+e); if(btn) btn.disabled=false; }
 }
 
 async function monMarkAllRead(){

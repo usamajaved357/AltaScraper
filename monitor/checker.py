@@ -27,7 +27,11 @@ from monitor import known_sellers as _ks
 PRICE_CHANGE_PCT = 5.0
 PRICE_CHANGE_ABS = 1.0
 _MONITOR_ACCOUNT_DEFAULT = "jack_uk"
-_CALL_PACING_S = 1.5          # spacing between getItemOffers calls (rate-limit friendly)
+_CALL_PACING_S = 1.5          # (legacy single-call pacing; batch path uses _BATCH_PACING_S)
+_BATCH_SIZE = 20              # getItemOffersBatch does up to 20 (asin x marketplace) per call
+_BATCH_PACING_S = 2.0         # spacing between batch calls (the batch endpoint is heavier)
+_RESCAN_DEAD_AFTER = 24 * 3600  # re-check a DEAD marketplace at most once a day (catch expansion)
+_SCHED_INTERVAL = 3600        # set by start_scheduler; used for next-run ETA + overload warning
 
 _LOCK = threading.Lock()
 _SCHED_STARTED = False
@@ -114,6 +118,7 @@ def overview(config_path, cfg):
     d = _load_hist(config_path)
     names = d.get("seller_names", {})
     snaps = d.get("snapshots", {})
+    mstate = d.get("market_state", {})
     items = _store.list_asins(config_path)
     rows, total_unknown = [], set()
     n_clean = n_unknown = n_checked = 0
@@ -121,9 +126,15 @@ def overview(config_path, cfg):
         asin = it.get("asin")
         per_mkt, asin_unknown, asin_checked = [], False, False
         for mkt in (it.get("marketplaces") or _store.EU_MARKETPLACES):
+            se = mstate.get(_key(asin, mkt)) or {}
+            live = se.get("live")                  # True=has offers, False=dead(skipped), None=never checked
+            last_checked = se.get("last_checked", "")
             slist = snaps.get(_key(asin, mkt)) or []
             if not slist:
-                per_mkt.append({"marketplace": mkt, "checked": False})
+                # never got offers: either not checked yet, or a known-dead marketplace we now skip
+                per_mkt.append({"marketplace": mkt, "checked": bool(se),
+                                "live": bool(live), "skipped": (live is False),
+                                "last_checked": last_checked})
                 continue
             asin_checked = True
             snap = slist[-1]
@@ -148,7 +159,9 @@ def overview(config_path, cfg):
             _ord = {"me": 1, "amazon": 2, "authorised": 3, "unknown": 4}
             sellers.sort(key=lambda s: (0 if s["buybox"] else 1, _ord.get(s["kind"], 5)))
             per_mkt.append({"marketplace": mkt, "checked": True, "ts": snap.get("ts"),
-                            "seller_count": len(sellers), "sellers": sellers})
+                            "seller_count": len(sellers), "sellers": sellers,
+                            "live": (live is not False), "skipped": (live is False),
+                            "last_checked": last_checked})
         if asin_checked:
             n_checked += 1
             n_unknown += 1 if asin_unknown else 0
@@ -278,13 +291,66 @@ def _resolve_creds(cfg, config_path):
         return None, f"could not build creds for {aid}: {str(e)[:120]}"
 
 
-def check_all(cfg, config_path, log=print):
-    """One full pass over every tracked ASIN x marketplace. Returns a summary dict."""
+def _should_check(state_entry, force):
+    """Decide whether to check a marketplace this cycle (dead-marketplace skipping)."""
+    if force or not state_entry:
+        return True                              # forced, or never checked (first run)
+    if state_entry.get("live"):
+        return True                              # a live marketplace is always checked
+    return (time.time() - state_entry.get("last_checked_ts", 0)) >= _RESCAN_DEAD_AFTER  # stale dead -> re-scan
+
+
+def _process_result(d, it, mkt, res, cfg, config_path, log):
+    """Diff a fetch result vs its baseline -> alerts, record the snapshot, resolve unknown seller
+    names + auto-classify Amazon. Returns the number of new alerts."""
+    asin = it.get("asin")
+    k = _key(asin, mkt)
+    prev = d["baselines"].get(k)
+    new_alerts = 0
+    for ev in diff(prev, res):
+        d["alerts"].append(_make_alert(d, it, mkt, ev))
+        new_alerts += 1
+    d["snapshots"].setdefault(k, []).append({
+        "ts": _now(),
+        "seller_count": res["summary"].get("seller_count"),
+        "total_offer_count": res["summary"].get("total_offer_count"),
+        "buybox_seller": res["summary"].get("buybox_seller"),
+        "sellers": [o["seller_id"] for o in res["offers"]],
+        "offers": res["offers"],
+    })
+    d["snapshots"][k] = d["snapshots"][k][-200:]
+    d["baselines"][k] = res
+    for _o in res["offers"]:
+        _sid = _o.get("seller_id")
+        if not _sid:
+            continue
+        _nk = f"{_sid}::{mkt}"
+        if _nk in d["seller_names"]:
+            continue
+        if _ks.classify(_sid, mkt, cfg)["kind"] == "unknown":
+            _nm = _sf.resolve_seller_name(_sid, mkt)
+            d["seller_names"][_nk] = _nm
+            if _nm and _ks.looks_like_amazon(_nm, mkt):
+                if _ks.auto_add_amazon(config_path, _sid, mkt, _nm):
+                    log(f"[asin-monitor] auto-classified {_sid} as Amazon ('{_nm}') on {mkt} -- written to config.")
+                try:
+                    cfg.setdefault("known_sellers", {}).setdefault("amazon", {}).setdefault(mkt, [])
+                    if _sid not in [(e.get("id") if isinstance(e, dict) else e)
+                                    for e in cfg["known_sellers"]["amazon"][mkt]]:
+                        cfg["known_sellers"]["amazon"][mkt].append(_sid)
+                except Exception:
+                    pass
+    return new_alerts
+
+
+def check_all(cfg, config_path, log=print, force_rescan=False):
+    """One cycle. Skips DEAD marketplaces (unless forced / >24h), checks the rest via the BATCH
+    Pricing endpoint (20 per call), records live/dead per marketplace, and reports cycle cost."""
     if cfg.get("asin_monitor_enabled", True) is False:
         return {"ok": False, "error": "monitoring disabled (asin_monitor_enabled=false)"}
     items = _store.list_asins(config_path)
     if not items:
-        _STATUS.update(last_run=_now(), last_run_ok=True, checks=0)
+        _STATUS.update(last_run=_now(), last_run_ok=True, checks=0, api_calls=0)
         return {"ok": True, "checks": 0, "note": "no ASINs tracked"}
     creds, err = _resolve_creds(cfg, config_path)
     if err:
@@ -293,88 +359,75 @@ def check_all(cfg, config_path, log=print):
         return {"ok": False, "error": err}
 
     _STATUS["running"] = True
-    checks, new_alerts, fails = 0, 0, 0
     try:
         with _LOCK:
             d = _load_hist(config_path)
+        ms = d.setdefault("market_state", {})
+        # 1) build the to-check list, SKIPPING dead marketplaces (unless forced / stale)
+        tocheck, skipped = [], 0
         for it in items:
             asin = it.get("asin")
             cond = it.get("condition", "New")
             for mkt in (it.get("marketplaces") or _store.EU_MARKETPLACES):
-                res = _pricing.fetch_offers(creds, asin, mkt, cond)
-                checks += 1
+                if _should_check(ms.get(_key(asin, mkt)), force_rescan):
+                    tocheck.append({"asin": asin, "marketplace": mkt, "condition": cond, "it": it})
+                else:
+                    skipped += 1
+        # 2) batch through the Pricing API (20 per call), paced + backed-off inside fetch_offers_batch
+        t0 = time.monotonic()
+        api_calls, new_alerts, fails = 0, 0, 0
+        for i in range(0, len(tocheck), _BATCH_SIZE):
+            chunk = tocheck[i:i + _BATCH_SIZE]
+            results = _pricing.fetch_offers_batch(creds, chunk, log=log)
+            api_calls += 1
+            for req, res in zip(chunk, results):
+                asin, mkt, it = req["asin"], req["marketplace"], req["it"]
+                se = ms.setdefault(_key(asin, mkt), {})
+                se["last_checked"] = _now()
+                se["last_checked_ts"] = time.time()
                 if not res.get("ok"):
-                    fails += 1
+                    fails += 1                    # transient error -> leave prior live/dead state
                     log(f"[asin-monitor] {asin} {mkt}: {res.get('error')}")
-                    time.sleep(_CALL_PACING_S)
                     continue
-                k = _key(asin, mkt)
-                prev = d["baselines"].get(k)
-                for ev in diff(prev, res):
-                    d["alerts"].append(_make_alert(d, it, mkt, ev))
-                    new_alerts += 1
-                d["snapshots"].setdefault(k, []).append({
-                    "ts": _now(),
-                    "seller_count": res["summary"].get("seller_count"),
-                    "total_offer_count": res["summary"].get("total_offer_count"),
-                    "buybox_seller": res["summary"].get("buybox_seller"),
-                    "sellers": [o["seller_id"] for o in res["offers"]],
-                    "offers": res["offers"],
-                })
-                d["snapshots"][k] = d["snapshots"][k][-200:]     # cap history per key
-                d["baselines"][k] = res
-                # Resolve storefront names for UNKNOWN third-party sellers only (one-time, cached).
-                # me / Amazon / authorised are labelled from config -> never fetched, so volume stays tiny.
-                for _o in res["offers"]:
-                    _sid = _o.get("seller_id")
-                    if not _sid:
-                        continue
-                    _nk = f"{_sid}::{mkt}"
-                    if _nk in d["seller_names"]:
-                        continue
-                    if _ks.classify(_sid, mkt, cfg)["kind"] == "unknown":
-                        _nm = _sf.resolve_seller_name(_sid, mkt)
-                        d["seller_names"][_nk] = _nm
-                        # AUTO-CLASSIFY AMAZON: if the resolved name IS Amazon's own retail
-                        # storefront for this marketplace, persist the id to config (source=auto),
-                        # log it, and reflect it in THIS run's cfg so it's labelled immediately.
-                        if _nm and _ks.looks_like_amazon(_nm, mkt):
-                            if _ks.auto_add_amazon(config_path, _sid, mkt, _nm):
-                                log(f"[asin-monitor] auto-classified {_sid} as Amazon "
-                                    f"('{_nm}') on {mkt} -- written to config.")
-                            try:
-                                cfg.setdefault("known_sellers", {}).setdefault("amazon", {}).setdefault(mkt, [])
-                                if _sid not in [ (e.get("id") if isinstance(e, dict) else e)
-                                                 for e in cfg["known_sellers"]["amazon"][mkt] ]:
-                                    cfg["known_sellers"]["amazon"][mkt].append(_sid)
-                            except Exception:
-                                pass
-                time.sleep(_CALL_PACING_S)
+                has_offers = (res["summary"].get("seller_count") or 0) > 0
+                se["live"] = has_offers           # dead = returned no offers (skip next cycles)
+                if has_offers:
+                    se["last_offers_at"] = _now()
+                new_alerts += _process_result(d, it, mkt, res, cfg, config_path, log)
+            if i + _BATCH_SIZE < len(tocheck):
+                time.sleep(_BATCH_PACING_S)
+        dur = round(time.monotonic() - t0, 1)
         d["alerts"] = d["alerts"][-1000:]
         with _LOCK:
             _save_hist(config_path, d)
-        _STATUS.update(last_run=_now(), last_run_ok=(fails == 0), checks=checks)
-        return {"ok": True, "checks": checks, "alerts": new_alerts, "fails": fails}
+        overload = bool(_SCHED_INTERVAL and dur > _SCHED_INTERVAL * 0.9)
+        _STATUS.update(last_run=_now(), last_run_ok=(fails == 0), checks=len(tocheck),
+                       api_calls=api_calls, duration=dur, skipped=skipped, interval=_SCHED_INTERVAL,
+                       next_run_ts=(time.time() + _SCHED_INTERVAL), overload=overload)
+        return {"ok": True, "checks": len(tocheck), "api_calls": api_calls, "duration": dur,
+                "alerts": new_alerts, "skipped": skipped, "fails": fails, "overload": overload}
     finally:
         _STATUS["running"] = False
 
 
-def check_now_async(cfg, config_path):
-    """Run a full check on a background thread (for the 'Check now' button)."""
+def check_now_async(cfg, config_path, force_rescan=False):
+    """Run a full check on a background thread (for the 'Check now' / 'Re-scan all' buttons).
+    force_rescan=True checks EVERY selected marketplace (ignores dead-market skipping) for one cycle."""
     if _STATUS.get("running"):
         return {"ok": False, "error": "a check is already running"}
-    threading.Thread(target=lambda: check_all(cfg, config_path),
+    threading.Thread(target=lambda: check_all(cfg, config_path, force_rescan=force_rescan),
                      daemon=True, name="asin-monitor-now").start()
-    return {"ok": True, "started": True}
+    return {"ok": True, "started": True, "rescan": bool(force_rescan)}
 
 
 # ---------------- scheduler ----------------
 def start_scheduler(cfg_getter, config_path, interval=3600, initial_delay=25):
     """Start the hourly daemon loop once. cfg_getter is a callable returning current config."""
-    global _SCHED_STARTED
+    global _SCHED_STARTED, _SCHED_INTERVAL
     if _SCHED_STARTED:
         return
     _SCHED_STARTED = True
+    _SCHED_INTERVAL = interval
 
     def _loop():
         time.sleep(initial_delay)                 # let the app finish booting

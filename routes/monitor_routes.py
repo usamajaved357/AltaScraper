@@ -65,7 +65,9 @@ def register(app, *, CONFIG_PATH, _cfg=None):
     def monitor_check_now():
         if _cfg is None:
             return jsonify({"ok": False, "error": "config unavailable"}), 500
-        return jsonify(_chk.check_now_async(_cfg(), CONFIG_PATH))
+        b = request.get_json(silent=True) or {}
+        force = bool(b.get("rescan") or b.get("force"))   # 'Re-scan all marketplaces' ignores dead-skip
+        return jsonify(_chk.check_now_async(_cfg(), CONFIG_PATH, force_rescan=force))
 
     @app.route("/monitor/bulk_preview", methods=["POST"])
     def monitor_bulk_preview():
