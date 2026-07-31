@@ -91,7 +91,9 @@ def register(app, *, CONFIG_PATH, _cfg=None):
         new = sum(1 for r in res["rows"] if not r["existing"])
         return jsonify({"ok": True, "rows": res["rows"], "invalid": res["invalid"],
                         "found": len(res["rows"]), "new": new,
-                        "existing": len(res["rows"]) - new, "detected": res.get("detected", {})})
+                        "existing": len(res["rows"]) - new,
+                        "status_counts": res.get("status_counts", {}),
+                        "detected": res.get("detected", {})})
 
     @app.route("/monitor/bulk_import", methods=["POST"])
     def monitor_bulk_import():
@@ -102,7 +104,8 @@ def register(app, *, CONFIG_PATH, _cfg=None):
         errors = []
         for r in (b.get("rows") or []):
             res = _mon.add(CONFIG_PATH, r.get("asin", ""), r.get("label", ""),
-                           r.get("marketplaces"), r.get("condition", "New"))
+                           r.get("marketplaces"), r.get("condition", "New"),
+                           sku=r.get("sku", ""), status=r.get("status", ""))
             if res.get("ok"):
                 if res.get("updated"):
                     updated += 1

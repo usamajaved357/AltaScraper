@@ -89,29 +89,67 @@ def _first_text_col(grid, start, exclude=()):
     return None
 
 
+def _exact_col(header, names):
+    """Column whose (lower) header EXACTLY equals one of `names` (priority order)."""
+    for want in names:
+        for ci, h in enumerate(header):
+            if h == want:
+                return ci
+    return None
+
+
+def _norm_status(v):
+    s = str(v or "").strip().lower()
+    if s.startswith("active"):
+        return "Active"
+    if s.startswith("inactive"):
+        return "Inactive"
+    if s.startswith("incomplete"):
+        return "Incomplete"
+    return s.title() if s else ""
+
+
 def parse(data, filename=""):
     grid = _read_grid(data, filename)
     if not grid:
-        return {"rows": [], "invalid": [], "detected": {}}
+        return {"rows": [], "invalid": [], "detected": {}, "status_counts": {}}
     row0_has_asin = any(_looks_asin(c) for c in grid[0])
     start = 0 if row0_has_asin else 1
-    asin_col, n = _pick_asin_col(grid, start if len(grid) > 1 else 0)
-    if not asin_col and n == 0:                    # no header case / single-col txt
-        asin_col, n = _pick_asin_col(grid, 0); start = 0
+    header = [] if row0_has_asin else [str(c).strip().lower() for c in grid[0]]
+
+    # ASIN column: prefer the Amazon report's 'asin1' (or an exact 'asin' header) so asin2/asin3
+    # are NEVER imported as separate ASINs; else fall back to the most-ASIN-looking column.
+    asin_col = _exact_col(header, ("asin1", "asin"))
+    if asin_col is None:
+        asin_col = _find_col(header, ("asin",), exclude=None) if header else None
+        # avoid grabbing asin2/asin3 by name
+        if asin_col is not None and header and header[asin_col] in ("asin2", "asin3"):
+            asin_col = None
+    if asin_col is None:
+        asin_col, n = _pick_asin_col(grid, start if len(grid) > 1 else 0)
+        if not asin_col and n == 0:
+            asin_col, n = _pick_asin_col(grid, 0); start = 0
     if asin_col is None:
         return {"rows": [], "invalid": [{"row": 0, "value": "", "reason": "no ASIN column found"}],
-                "detected": {}}
-    header = [] if row0_has_asin else [str(c).strip().lower() for c in grid[0]]
-    label_col = _find_col(header, ("label", "title", "name", "product"), exclude=asin_col)
+                "detected": {}, "status_counts": {}}
+
+    label_col = _exact_col(header, ("item-name", "item name")) \
+        or _find_col(header, ("label", "title", "name", "product"), exclude=asin_col)
+    status_col = _exact_col(header, ("status",))
+    sku_col = _exact_col(header, ("seller-sku", "seller sku", "sku"))
     mkt_col = _find_col(header, ("marketplace", "markets", "mkt", "country", "countries"), exclude=asin_col)
     if mkt_col is None:
         mkt_col = _find_mkt_by_values(grid, start, asin_col)
     if label_col is None:
-        label_col = _first_text_col(grid, start, exclude=(asin_col, mkt_col))
+        label_col = _first_text_col(grid, start, exclude=(asin_col, mkt_col, status_col, sku_col))
+
+    def _cell(r, ci):
+        return (str(r[ci]).strip() if (ci is not None and ci < len(r)) else "")
 
     rows, invalid, seen = [], [], set()
+    status_counts = {}
     for ri, r in enumerate(grid[start:], start=start + 1):
-        raw = (r[asin_col].strip() if asin_col < len(r) else "")
+        raw = _cell(r, asin_col)
         if not raw and not any(str(c).strip() for c in r):
             continue                               # wholly blank line
         asin = raw.upper()
@@ -121,9 +159,13 @@ def parse(data, filename=""):
         if asin in seen:
             continue                               # duplicate within the file -> keep first
         seen.add(asin)
-        label = (r[label_col].strip() if (label_col is not None and label_col < len(r)) else "")
-        mkts = _parse_mkts(r[mkt_col]) if (mkt_col is not None and mkt_col < len(r)) else []
-        rows.append({"asin": asin, "label": label, "marketplaces": mkts or list(EU)})
-    return {"rows": rows, "invalid": invalid,
-            "detected": {"asin_col": asin_col, "label_col": label_col,
-                         "mkt_col": mkt_col, "had_header": bool(header)}}
+        st = _norm_status(_cell(r, status_col))
+        if st:
+            status_counts[st] = status_counts.get(st, 0) + 1
+        mkts = _parse_mkts(_cell(r, mkt_col)) if mkt_col is not None else []
+        rows.append({"asin": asin, "label": _cell(r, label_col),
+                     "marketplaces": mkts or list(EU),
+                     "sku": _cell(r, sku_col), "status": st})
+    return {"rows": rows, "invalid": invalid, "status_counts": status_counts,
+            "detected": {"asin_col": asin_col, "label_col": label_col, "mkt_col": mkt_col,
+                         "status_col": status_col, "sku_col": sku_col, "had_header": bool(header)}}

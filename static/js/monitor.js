@@ -339,38 +339,69 @@ async function monBulkUpload(inp){
 
 function showBulkPreview(j){
   if(document.getElementById("bulkwrap")) closeBulk();
+  window._BULK_ALL = j.rows||[];
+  window._BULK_STATUS_COUNTS = j.status_counts||{};
+  window._BULK_FILTER = "active";                 // default = Active only
   const invalid = j.invalid||[];
   const invalidHtml = invalid.length
     ? `<details style="margin-top:8px"><summary class="cc" style="color:#e3b768;cursor:pointer">${invalid.length} invalid row(s) — skipped</summary>
         <div class="cc" style="max-height:150px;overflow:auto;margin-top:6px;line-height:1.6">${invalid.slice(0,60).map(x=>`row ${x.row}: “${esc(String(x.value))}” — ${esc(x.reason)}`).join("<br>")}</div></details>`
     : "";
-  const rowsHtml = (j.rows||[]).slice(0,300).map(r=>{
-    const mk = (r.marketplaces||[]);
-    const mkc = mk.length>=10 ? '<span class="monchip all">all EU</span>' : mk.map(m=>`<span class="monchip">${esc(m)}</span>`).join(" ");
-    return `<tr><td class="monasin">${esc(r.asin)}</td><td>${esc(r.label||"")||'<span class="cc">—</span>'}</td><td>${mkc}</td><td>${r.existing?'<span class="cc">update</span>':'<span class="monchip ok">new</span>'}</td></tr>`;
-  }).join("");
+  const sc = window._BULK_STATUS_COUNTS;
+  const hasStatus = Object.keys(sc).length>0;
+  const scText = hasStatus ? " — " + Object.keys(sc).map(k=>`<b>${sc[k]}</b> ${esc(k)}`).join(", ") : "";
+  const filterRow = hasStatus ? `<div class="bulkfilter">Import:
+      <button class="tabpill" data-f="active" onclick="monBulkSetFilter('active')">Active only</button>
+      <button class="tabpill" data-f="active_inactive" onclick="monBulkSetFilter('active_inactive')">Active + Inactive</button>
+      <button class="tabpill" data-f="all" onclick="monBulkSetFilter('all')">All</button></div>` : "";
   const dlg=document.createElement("div"); dlg.className="modalwrap open"; dlg.id="bulkwrap"; dlg.style.zIndex="130";
-  dlg.innerHTML=`<div class="modal" style="max-width:780px;position:relative">
+  dlg.innerHTML=`<div class="modal" style="max-width:800px;position:relative">
     <button class="x" onclick="closeBulk()">×</button>
     <h3><i class="ti ti-upload"></i> Import ASINs</h3>
-    <div class="cc" style="margin:2px 0 10px"><b style="color:#e8eaed">Found ${j.found}</b> ASIN(s) — <b>${j.new}</b> new, <b>${j.existing}</b> already tracked (will be updated)${invalid.length?`, <b style="color:#e3b768">${invalid.length}</b> invalid`:''}.</div>
+    <div class="cc" style="margin:2px 0 8px"><b style="color:#e8eaed">Found ${j.found}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:#e3b768">${invalid.length}</b> invalid`:''}.</div>
+    ${filterRow}
     ${invalidHtml}
-    <div style="max-height:340px;overflow:auto;margin-top:10px">
-      <table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Marketplaces</th><th></th></tr></thead>
-      <tbody>${rowsHtml||'<tr><td colspan="4" class="cc">No valid ASINs found in this file.</td></tr>'}</tbody></table>
-    </div>
+    <div id="bulk_table" style="max-height:330px;overflow:auto;margin-top:10px"></div>
     <div class="pl-actions">
       <button class="mktbtn" onclick="closeBulk()">Cancel</button>
-      <button class="mktbtn on" id="bulk_go" ${j.found?'':'disabled'} onclick="monBulkImport()"><i class="ti ti-check"></i> Import ${j.found} ASIN(s)</button>
+      <button class="mktbtn on" id="bulk_go" onclick="monBulkImport()"></button>
     </div>
   </div>`;
   document.body.appendChild(dlg);
-  window._BULK_ROWS = j.rows||[];
+  monBulkSetFilter(hasStatus ? "active" : "all");
 }
-function closeBulk(){ const w=document.getElementById("bulkwrap"); if(w) w.remove(); window._BULK_ROWS=null; }
+function _bulkStatusMatch(r, f){
+  const st = String(r.status||"");
+  if(f==="all") return true;
+  if(f==="active") return st==="Active";
+  if(f==="active_inactive") return st==="Active" || st==="Inactive";
+  return true;
+}
+function monBulkFiltered(){
+  const rows = window._BULK_ALL||[];
+  const hasStatus = Object.keys(window._BULK_STATUS_COUNTS||{}).length>0;
+  if(!hasStatus) return rows;                     // non-report file -> import all
+  return rows.filter(r=>_bulkStatusMatch(r, window._BULK_FILTER||"active"));
+}
+function monBulkSetFilter(f){
+  window._BULK_FILTER = f;
+  document.querySelectorAll("#bulkwrap .bulkfilter .tabpill").forEach(b=>b.classList.toggle("active", b.dataset.f===f));
+  const rows = monBulkFiltered();
+  const tbl = document.getElementById("bulk_table");
+  if(tbl){
+    const body = rows.slice(0,300).map(r=>{
+      const mk=(r.marketplaces||[]); const mkc = mk.length>=10?'<span class="monchip all">all EU</span>':mk.map(m=>`<span class="monchip">${esc(m)}</span>`).join(" ");
+      return `<tr><td class="monasin">${esc(r.asin)}</td><td>${esc(r.label||"")||'<span class="cc">—</span>'}</td><td>${r.status?esc(r.status):'<span class="cc">—</span>'}</td><td>${mkc}</td><td>${r.existing?'<span class="cc">update</span>':'<span class="monchip ok">new</span>'}</td></tr>`;
+    }).join("");
+    tbl.innerHTML = `<table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Status</th><th>Marketplaces</th><th></th></tr></thead><tbody>${body||'<tr><td colspan="5" class="cc">Nothing matches this filter.</td></tr>'}</tbody></table>`;
+  }
+  const btn=document.getElementById("bulk_go");
+  if(btn){ btn.disabled = !rows.length; btn.innerHTML = `<i class="ti ti-check"></i> Import ${rows.length} ASIN(s)`; }
+}
+function closeBulk(){ const w=document.getElementById("bulkwrap"); if(w) w.remove(); window._BULK_ALL=null; }
 
 async function monBulkImport(){
-  const rows = window._BULK_ROWS||[];
+  const rows = monBulkFiltered();
   if(!rows.length){ closeBulk(); return; }
   const btn=document.getElementById("bulk_go"); if(btn){ btn.disabled=true; btn.textContent="Importing…"; }
   try{

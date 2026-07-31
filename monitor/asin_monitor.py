@@ -78,13 +78,17 @@ def _clean_marketplaces(marketplaces):
     return out or list(EU_MARKETPLACES)
 
 
-def add(config_path, asin, label="", marketplaces=None, condition="New"):
-    """Add a tracked ASIN (or update label/marketplaces/condition if it already exists)."""
+def add(config_path, asin, label="", marketplaces=None, condition="New", sku="", status=""):
+    """Add a tracked ASIN (or update label/marketplaces/condition/sku if it already exists).
+    `sku` (your seller-SKU) and `status` are stored as CONTEXT -- useful when the ASIN came from
+    an All Listings Report; they don't affect monitoring."""
     asin = _norm_asin(asin)
     if not _valid_asin(asin):
         return {"ok": False, "error": "ASIN must be 10 letters/digits, e.g. B0XXXXXXXX"}
     mkts = _clean_marketplaces(marketplaces)
     cond = (str(condition).strip() or "New")
+    sku = str(sku or "").strip()
+    status = str(status or "").strip()
     with _LOCK:
         data = load(config_path)
         arr = data.setdefault("asins", [])
@@ -93,10 +97,18 @@ def add(config_path, asin, label="", marketplaces=None, condition="New"):
             existing["label"] = (label or existing.get("label", "")).strip()
             existing["marketplaces"] = mkts
             existing["condition"] = cond
+            if sku:
+                existing["sku"] = sku
+            if status:
+                existing["status"] = status
             _save(config_path, data)
             return {"ok": True, "updated": True, "item": existing}
         item = {"id": _new_id(arr), "asin": asin, "label": (label or "").strip(),
                 "marketplaces": mkts, "condition": cond, "added_at": _now_iso()}
+        if sku:
+            item["sku"] = sku
+        if status:
+            item["status"] = status
         arr.append(item)
         _save(config_path, data)
         return {"ok": True, "item": item}
