@@ -3994,6 +3994,29 @@ def _raw_schema(product_type: str, creds: dict):
     return {}, set(), {}
 
 
+def _raw_schema_bounded(product_type: str, creds: dict, hard_timeout: int = 180):
+    """HARD wall-clock cap around _raw_schema so a stalled Amazon schema endpoint can never hang
+    the whole submission. urllib's timeout is per-socket-op, so a CDN that TRICKLES bytes can run
+    far past it; this runs the fetch on a worker thread and abandons it after hard_timeout seconds
+    (_raw_schema already does its own 60s x 3 internal tries, so 180s covers all three).
+
+    Returns _raw_schema's (props, required, raw) tuple, or None on timeout so the caller can SKIP
+    the row with a clear message and move to the next one -- never blocking the remaining rows."""
+    import threading as _th
+    box = {}
+    def _work():
+        try:
+            box["r"] = _raw_schema(product_type, creds)
+        except Exception as _e:
+            box["e"] = _e
+    t = _th.Thread(target=_work, daemon=True)
+    t.start()
+    t.join(hard_timeout)
+    if t.is_alive():
+        return None                      # timed out -> abandon the worker; caller skips the row
+    return box.get("r", ({}, set(), {}))
+
+
 def _merge_conditional_enums(props: dict, raw: dict) -> dict:
     """Amazon hides many fields' REAL allowed values inside conditional branches
     (allOf / anyOf / oneOf / if-then-else) of the schema, NOT in top-level
@@ -6008,7 +6031,20 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
 
         if pt not in schema_cache:
             console.print(f"  fetching schema: [bold]{pt}[/bold]")
-            schema_cache[pt] = _raw_schema(pt, creds)
+            _sc = _raw_schema_bounded(pt, creds, hard_timeout=180)   # 60s x 3 tries max
+            if _sc is None:
+                # A slow/stalled schema endpoint must NEVER block the remaining rows. Skip THIS
+                # row with a clear, retryable message, log it, and move on to the next one.
+                _msg = (f"[E] schema download timed out for {pt} -- skipped, try again later "
+                        f"(Amazon's schema endpoint was too slow; the other rows still ran).")
+                console.print(f"  [red]row {i} {sku}: {_msg}[/red]")
+                try:
+                    queue(i, notes_col, _msg)          # log the skipped row so you know what to retry
+                except Exception:
+                    pass
+                skip += 1
+                continue
+            schema_cache[pt] = _sc
         props, required, _ = schema_cache[pt]
         if not props:
             console.print(f"  row {i} {sku}: no schema for {pt} -- skip"); skip += 1; continue
