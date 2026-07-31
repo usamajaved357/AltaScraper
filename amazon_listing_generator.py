@@ -156,16 +156,32 @@ def seller_id_for(config: dict, marketplace: str = "UK") -> str:
     return str(config.get("seller_id") or "").strip()
 
 
-def _read_retry(fn, *args, _tries=6, **kwargs):
-    """Call a gspread READ (get_all_values / worksheets / row_values) with
-    exponential backoff on Google's per-minute read-quota (HTTP 429).
+import threading as _threading
+# READ PACER (CLI): pace Sheets reads to stay under Google's ~300/min per-user quota. The CLI
+# SHARES the service account with the always-on web app, so it paces a touch slower (~4/sec) and
+# -- on a 429 -- backs off HARDER than the web app, deliberately yielding the quota so the web
+# app keeps running.
+_READ_PACE_LOCK = _threading.Lock()
+_READ_PACE = {"last": 0.0, "min_interval": 0.25}      # ~4 reads/sec
 
-    The auto-fix loop drives many Preview subprocesses per minute; without this a
-    transient 'Quota exceeded ... Read requests per minute' throttle surfaces as a
-    hard error. The wait is entirely server-side -- the user never sees it. Waits
-    2,4,8,16,30s (~60s total) which covers Google's one-minute quota reset."""
+
+def _pace_read():
+    import time as _t
+    with _READ_PACE_LOCK:
+        wait = _READ_PACE["min_interval"] - (_t.monotonic() - _READ_PACE["last"])
+        if wait > 0:
+            _t.sleep(wait)
+        _READ_PACE["last"] = _t.monotonic()
+
+
+def _read_retry(fn, *args, _tries=7, **kwargs):
+    """gspread READ (get_all_values / worksheets / row_values), PACED (~4/sec) to stay under
+    Google's per-minute read quota, with AGGRESSIVE backoff on a 429. The quota is PER-MINUTE and
+    shared with the web app, so the CLI waits 45,65,85,90,90s (much longer than the web app's
+    30-60s) -- it yields the quota so the web app never crashes. Server-side; the user never sees it."""
     import time as _t
     for i in range(_tries):
+        _pace_read()
         try:
             return fn(*args, **kwargs)
         except Exception as e:
@@ -179,10 +195,10 @@ def _read_retry(fn, *args, _tries=6, **kwargs):
                           or "resource_exhausted" in _m or "rate limit" in _m
                           or "rate_limit" in _m or "per minute" in _m)
             if _throttled and i < _tries - 1:
-                _wait = min(30, 2 * (2 ** i))
+                _wait = min(90, 45 + 20 * i)            # 45,65,85,90,90 -- CLI defers to the web app
                 try:
                     console.print(f"  [yellow]Google read throttled (429) -- backing off "
-                                  f"{_wait}s (attempt {i+1}/{_tries})[/yellow]")
+                                  f"{_wait}s, yielding quota to the web app (attempt {i+1}/{_tries})[/yellow]")
                 except Exception:
                     pass
                 _t.sleep(_wait)

@@ -2513,14 +2513,31 @@ _RECORDS_CACHE = {}   # {sheet_id::tab: (ts, records)} -- short TTL to avoid 429
 _RECORDS_TTL = 12     # seconds
 
 
+import threading as _threading
+# READ PACER: Google's per-user quota is ~300 reads/min (5/sec). We PACE reads to stay under
+# it PROACTIVELY (so a burst can't spike past the limit) instead of only reacting to 429s.
+# min_interval 0.22s -> ~4.5 reads/sec sustained, process-wide (the lock serialises the pace).
+_READ_PACE_LOCK = _threading.Lock()
+_READ_PACE = {"last": 0.0, "min_interval": 0.22}
+
+
+def _pace_sheet_read():
+    import time as _t
+    with _READ_PACE_LOCK:
+        wait = _READ_PACE["min_interval"] - (_t.monotonic() - _READ_PACE["last"])
+        if wait > 0:
+            _t.sleep(wait)
+        _READ_PACE["last"] = _t.monotonic()
+
+
 def _sheet_read_retry(fn, *args, _tries=6, **kwargs):
-    """gspread READ with exponential backoff on Google's per-minute read quota
-    (HTTP 429). The auto-fix loop fires many reads/min; this absorbs the throttle
-    server-side so it never surfaces as an error to the user. Waits 2,4,8,16,30s
-    (~60s total, covering the one-minute quota reset). Mirrors
-    amazon_listing_generator._read_retry."""
+    """gspread READ, PACED (~4.5/sec) to stay under Google's 300/min read quota, with long
+    exponential backoff on a 429. Because the quota is PER-MINUTE, the backoff waits 30,45,60,60s
+    (not 2-8s) so the minute-window actually resets before retrying. Mirrors
+    amazon_listing_generator._read_retry (the CLI backs off even harder, deferring to the web app)."""
     import time as _t
     for i in range(_tries):
+        _pace_sheet_read()
         try:
             return fn(*args, **kwargs)
         except Exception as e:
@@ -2533,7 +2550,7 @@ def _sheet_read_retry(fn, *args, _tries=6, **kwargs):
             if ((_code == "429" or "429" in _m or "quota" in _m or "resource_exhausted" in _m
                  or "rate limit" in _m or "rate_limit" in _m or "per minute" in _m)
                     and i < _tries - 1):
-                _t.sleep(min(30, 2 * (2 ** i)))
+                _t.sleep(min(60, 30 + 15 * i))          # 30, 45, 60, 60 ... per-minute reset
                 continue
             raise
 
