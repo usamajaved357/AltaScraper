@@ -54,6 +54,13 @@ def register(app, *, CONFIG_PATH, _cfg=None):
         return jsonify({"ok": True, "status": _chk.status(),
                         "unread": _chk.unread_count(CONFIG_PATH)})
 
+    @app.route("/monitor/overview")
+    def monitor_overview():
+        """Per-ASIN latest offer picture (sellers classified me/amazon/authorised/unknown) + the
+        top summary. Read-only; uses stored snapshots + the name cache, no live Amazon calls."""
+        cfg = _cfg() if _cfg else {}
+        return jsonify({"ok": True, **_chk.overview(CONFIG_PATH, cfg)})
+
     @app.route("/monitor/check_now", methods=["POST"])
     def monitor_check_now():
         if _cfg is None:

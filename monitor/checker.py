@@ -20,6 +20,7 @@ import datetime
 from monitor import asin_monitor as _store
 from monitor import pricing as _pricing
 from monitor import storefront_name as _sf
+from monitor import known_sellers as _ks
 
 # An existing seller's landed-price move counts as a change only if it clears BOTH a
 # percentage and an absolute floor (avoids alerting on 1p rounding).
@@ -104,6 +105,60 @@ def get_seller_names(config_path):
     """The cached SellerId->name map ({'<sellerId>::<mkt>': name}) for enriching the history
     view. Read-only; never triggers a fetch."""
     return _load_hist(config_path).get("seller_names", {})
+
+
+def overview(config_path, cfg):
+    """Per-tracked-ASIN latest offer picture with every seller classified me/amazon/authorised/
+    unknown, plus a top summary ('is anyone sitting on my listings right now'). Read-only: uses
+    the stored snapshots + the cached names; no live Amazon calls."""
+    d = _load_hist(config_path)
+    names = d.get("seller_names", {})
+    snaps = d.get("snapshots", {})
+    items = _store.list_asins(config_path)
+    rows, total_unknown = [], set()
+    n_clean = n_unknown = n_checked = 0
+    for it in items:
+        asin = it.get("asin")
+        per_mkt, asin_unknown, asin_checked = [], False, False
+        for mkt in (it.get("marketplaces") or _store.EU_MARKETPLACES):
+            slist = snaps.get(_key(asin, mkt)) or []
+            if not slist:
+                per_mkt.append({"marketplace": mkt, "checked": False})
+                continue
+            asin_checked = True
+            snap = slist[-1]
+            bb = snap.get("buybox_seller")
+            sellers = []
+            for o in (snap.get("offers") or []):
+                sid = o.get("seller_id")
+                if not sid:
+                    continue
+                nm = names.get(f"{sid}::{mkt}", "")
+                cls = _ks.classify(sid, mkt, cfg, name=nm)
+                unknown = cls["kind"] == "unknown"
+                if unknown:
+                    asin_unknown = True
+                    total_unknown.add(f"{sid}::{mkt}")
+                sellers.append({"id": sid, "kind": cls["kind"], "label": cls["label"],
+                                "buybox": (sid == bb), "fba": bool(o.get("fba")),
+                                "feedback_pct": o.get("feedback_pct"),
+                                "feedback_count": o.get("feedback_count"),
+                                "storefront": _sf.storefront_url(sid, mkt) if unknown else ""})
+            # Buy-Box first, then me, Amazon, authorised, unknown last (the eye lands on threats)
+            _ord = {"me": 1, "amazon": 2, "authorised": 3, "unknown": 4}
+            sellers.sort(key=lambda s: (0 if s["buybox"] else 1, _ord.get(s["kind"], 5)))
+            per_mkt.append({"marketplace": mkt, "checked": True, "ts": snap.get("ts"),
+                            "seller_count": len(sellers), "sellers": sellers})
+        if asin_checked:
+            n_checked += 1
+            n_unknown += 1 if asin_unknown else 0
+            n_clean += 0 if asin_unknown else 1
+        rows.append({"asin": asin, "label": it.get("label", ""),
+                     "marketplaces": it.get("marketplaces") or _store.EU_MARKETPLACES,
+                     "per_marketplace": per_mkt, "has_unknown": asin_unknown, "checked": asin_checked})
+    summary = {"tracked": len(items), "checked": n_checked, "clean": n_clean,
+               "with_unknown": n_unknown, "total_unknown": len(total_unknown)}
+    return {"rows": rows, "summary": summary, "eu_marketplaces": _store.EU_MARKETPLACES}
 
 
 def status():
@@ -268,6 +323,32 @@ def check_all(cfg, config_path, log=print):
                 })
                 d["snapshots"][k] = d["snapshots"][k][-200:]     # cap history per key
                 d["baselines"][k] = res
+                # Resolve storefront names for UNKNOWN third-party sellers only (one-time, cached).
+                # me / Amazon / authorised are labelled from config -> never fetched, so volume stays tiny.
+                for _o in res["offers"]:
+                    _sid = _o.get("seller_id")
+                    if not _sid:
+                        continue
+                    _nk = f"{_sid}::{mkt}"
+                    if _nk in d["seller_names"]:
+                        continue
+                    if _ks.classify(_sid, mkt, cfg)["kind"] == "unknown":
+                        _nm = _sf.resolve_seller_name(_sid, mkt)
+                        d["seller_names"][_nk] = _nm
+                        # AUTO-CLASSIFY AMAZON: if the resolved name IS Amazon's own retail
+                        # storefront for this marketplace, persist the id to config (source=auto),
+                        # log it, and reflect it in THIS run's cfg so it's labelled immediately.
+                        if _nm and _ks.looks_like_amazon(_nm, mkt):
+                            if _ks.auto_add_amazon(config_path, _sid, mkt, _nm):
+                                log(f"[asin-monitor] auto-classified {_sid} as Amazon "
+                                    f"('{_nm}') on {mkt} -- written to config.")
+                            try:
+                                cfg.setdefault("known_sellers", {}).setdefault("amazon", {}).setdefault(mkt, [])
+                                if _sid not in [ (e.get("id") if isinstance(e, dict) else e)
+                                                 for e in cfg["known_sellers"]["amazon"][mkt] ]:
+                                    cfg["known_sellers"]["amazon"][mkt].append(_sid)
+                            except Exception:
+                                pass
                 time.sleep(_CALL_PACING_S)
         d["alerts"] = d["alerts"][-1000:]
         with _LOCK:

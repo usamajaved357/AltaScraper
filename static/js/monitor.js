@@ -6,7 +6,63 @@
 let MON_EU = ["UK","DE","FR","IT","ES","NL","PL","SE","BE","IE"];
 let MON_LIST = [];
 
-function monitorOnOpen(){ loadMonitorList(); loadMonitorAlerts(); }
+function monitorOnOpen(){ loadMonitorOverview(); loadMonitorAlerts(); }
+
+// ---- overview: per-ASIN seller detail + top summary (Feature 1) ----------------
+async function loadMonitorOverview(){
+  const host = document.getElementById("mon_list");
+  if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading…</div>';
+  try{
+    const j = await (await fetch("/monitor/overview")).json();
+    if(!j || !j.ok){ if(host) host.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    MON_EU = j.eu_marketplaces || MON_EU;
+    renderMonitorMarketPicker();
+    renderMonitorOverview(j.rows||[], j.summary||{});
+  }catch(e){ if(host) host.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Error: '+esc(String(e))+'</div>'; }
+}
+
+function renderMonitorOverview(rows, s){
+  const host = document.getElementById("mon_list"); if(!host) return;
+  const warnCls = n => (n>0 ? "monsum-warn" : "monsum-ok");
+  const sumBar = `<div class="monsum">
+    <span><b>${s.tracked||0}</b> ASIN${(s.tracked||0)!==1?'s':''} tracked</span>
+    <span class="monsum-ok"><b>${s.clean||0}</b> clean</span>
+    <span class="${warnCls(s.with_unknown||0)}"><b>${s.with_unknown||0}</b> with unknown seller${(s.with_unknown||0)!==1?'s':''}</span>
+    <span class="${warnCls(s.total_unknown||0)}"><b>${s.total_unknown||0}</b> unknown seller${(s.total_unknown||0)!==1?'s':''} total</span>
+    ${(s.checked||0)<(s.tracked||0)?`<span class="cc">· ${(s.tracked||0)-(s.checked||0)} not checked yet</span>`:''}
+  </div>`;
+  const c=document.getElementById("mon_count"); if(c) c.textContent=(s.tracked||0)+" ASIN"+((s.tracked||0)!==1?"s":"")+" tracked";
+  if(!rows.length){ host.innerHTML = sumBar + '<div class="cc" style="padding:14px;opacity:.7">No ASINs tracked yet. Add one above (or upload a list) to start watching it.</div>'; return; }
+  host.innerHTML = sumBar + rows.map(monAsinBlock).join("");
+}
+
+function monAsinBlock(r){
+  const dp = `https://www.amazon.co.uk/dp/${esc(r.asin)}`;
+  const badge = r.has_unknown ? '<span class="monchip warn">⚠ unknown seller</span>'
+              : (r.checked ? '<span class="monchip ok">clean</span>' : '<span class="cc">not checked yet</span>');
+  const head = `<div class="monasin-head">
+    <a href="${dp}" target="_blank" rel="noopener" class="monasin">${esc(r.asin)}</a>
+    ${r.label?`<span class="cc">${esc(r.label)}</span>`:''} ${badge}
+    <span style="flex:1"></span>
+    <button class="monhist" title="Offer history" onclick="openMonHistory('${esc(r.asin)}','${esc((r.label||'').replace(/'/g,''))}')"><i class="ti ti-history"></i></button>
+    <button class="monrm" title="Stop tracking" onclick="removeMonitorAsin('','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>
+  </div>`;
+  const mkts = (r.per_marketplace||[]).map(m=>{
+    if(!m.checked) return `<div class="monmkt-row"><span class="monchip">${esc(m.marketplace)}</span> <span class="cc">not checked yet</span></div>`;
+    const chips = (m.sellers||[]).map(monSellerChip).join(" ");
+    return `<div class="monmkt-row"><span class="monchip">${esc(m.marketplace)}</span> <b>${m.seller_count}</b> seller${m.seller_count!==1?'s':''} ${chips}<span class="cc monmkt-ts"> · ${esc(m.ts||'')}</span></div>`;
+  }).join("");
+  return `<div class="monasin-block ${r.has_unknown?'warn':''}">${head}<div class="monmkt-list">${mkts}</div></div>`;
+}
+
+function monSellerChip(s){
+  const cls = s.kind==="me"?"me":(s.kind==="amazon"?"amz":(s.kind==="authorised"?"auth":"unk"));
+  const star = s.buybox ? '<span class="bbstar" title="Buy Box holder">★</span>' : '';
+  const fb = (s.feedback_pct!==null && s.feedback_pct!==undefined) ? (" · "+s.feedback_pct+"% ("+(s.feedback_count||0)+")") : "";
+  const inner = (s.kind==="unknown" && s.storefront)
+    ? `<a href="${esc(s.storefront)}" target="_blank" rel="noopener">${esc(s.label)}</a>` : esc(s.label);
+  return `<span class="sellerchip ${cls}" title="${esc(s.id)}${esc(fb)}">${star}${inner}</span>`;
+}
 
 // ---- alerts / status / manual check ----------------------------------------
 const MON_ALERT_META = {
@@ -81,7 +137,7 @@ async function monCheckNow(){
     let n=0; const iv=setInterval(async ()=>{
       await loadMonitorAlerts();
       const s = await (await fetch("/monitor/status")).json();
-      if((!s.status || !s.status.running) || ++n>40){ clearInterval(iv); if(btn) btn.disabled=false; }
+      if((!s.status || !s.status.running) || ++n>40){ clearInterval(iv); if(btn) btn.disabled=false; loadMonitorOverview(); }
     }, 3000);
   }catch(e){ toast("Check error: "+e); if(btn) btn.disabled=false; }
 }
@@ -257,7 +313,7 @@ async function addMonitorAsin(){
     if(asinEl) asinEl.value = "";
     if(labelEl) labelEl.value = "";
     monMarketsAll(true);
-    loadMonitorList();
+    loadMonitorOverview();
   }catch(e){ toast("Add error: "+e); }
   finally{ if(btn) btn.disabled = false; }
 }
@@ -269,6 +325,6 @@ async function removeMonitorAsin(id, asin){
       body:JSON.stringify({id, asin})})).json();
     if(!j || !j.ok){ toast("Remove failed: "+((j&&j.error)||"unknown")); return; }
     toast("Stopped tracking "+(asin||""));
-    loadMonitorList();
+    loadMonitorOverview();
   }catch(e){ toast("Remove error: "+e); }
 }

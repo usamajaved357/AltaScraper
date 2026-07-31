@@ -668,6 +668,33 @@
   .mirbul{margin:0;padding-left:18px}
   .mirbul li{margin:2px 0}
   /* ASIN Monitor section */
+  /* top summary bar: is anyone sitting on my listings */
+  .monsum{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:10px 12px;margin:0 0 12px;
+          border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
+  .monsum b{color:#e8eaed}
+  .monsum-ok b{color:#7fd1a0}
+  .monsum-warn{color:#e3b768}
+  .monsum-warn b{color:#e3b768}
+  /* per-ASIN block */
+  .monasin-block{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+  .monasin-block.warn{border-color:#5c4a24;background:rgba(227,183,104,.05)}
+  .monasin-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .monmkt-list{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+  .monmkt-row{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+              padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}
+  .monmkt-ts{white-space:nowrap;margin-left:auto}
+  /* seller chips, coloured by identity (colour reserved for the ONE thing that matters: unknown) */
+  .sellerchip{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;
+              border-radius:999px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+  .sellerchip.me  {color:#7fe0c0;border-color:#2c5c4c;background:rgba(18,48,40,.30)}   /* teal = you */
+  .sellerchip.amz {color:var(--muted);border-color:var(--line)}                        /* neutral = Amazon */
+  .sellerchip.auth{color:#9cc1ff;border-color:#2f3a4d}                                  /* authorised reseller */
+  .sellerchip.unk {color:#f0b45a;border-color:#8a5a1e;background:rgba(227,183,104,.12)} /* amber = threat */
+  .sellerchip.unk a{color:#f0b45a;text-decoration:none}
+  .sellerchip.unk a:hover{text-decoration:underline}
+  .sellerchip .bbstar{color:#ffd479}
+  .monchip.warn{color:#f0b45a;border-color:#8a5a1e;background:rgba(227,183,104,.12)}
+  .monchip.ok{color:#7fd1a0;border-color:#2c5c3f;background:rgba(18,48,33,.22)}
   .monalertbar{display:flex;align-items:center;gap:10px;margin-bottom:4px}
   .monalert{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;margin:6px 0;
             border:1px solid var(--line);border-left-width:3px;border-radius:10px;background:var(--panel2)}
