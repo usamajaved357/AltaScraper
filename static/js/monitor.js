@@ -318,6 +318,70 @@ async function addMonitorAsin(){
   finally{ if(btn) btn.disabled = false; }
 }
 
+// ---- bulk upload (Feature 2) ------------------------------------------------
+function monPickFile(){ const el=document.getElementById("mon_file"); if(el) el.click(); }
+
+async function monBulkUpload(inp){
+  const f = inp && inp.files && inp.files[0];
+  if(!f) return;
+  const rd = new FileReader();
+  rd.onload = async () => {
+    try{
+      const j = await (await fetch("/monitor/bulk_preview",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({filename:f.name, data:String(rd.result)})})).json();
+      if(!j || !j.ok){ toast("Could not read file: "+((j&&j.error)||"unknown")); return; }
+      showBulkPreview(j);
+    }catch(e){ toast("Upload error: "+e); }
+    finally{ if(inp) inp.value=""; }
+  };
+  rd.readAsDataURL(f);
+}
+
+function showBulkPreview(j){
+  if(document.getElementById("bulkwrap")) closeBulk();
+  const invalid = j.invalid||[];
+  const invalidHtml = invalid.length
+    ? `<details style="margin-top:8px"><summary class="cc" style="color:#e3b768;cursor:pointer">${invalid.length} invalid row(s) — skipped</summary>
+        <div class="cc" style="max-height:150px;overflow:auto;margin-top:6px;line-height:1.6">${invalid.slice(0,60).map(x=>`row ${x.row}: “${esc(String(x.value))}” — ${esc(x.reason)}`).join("<br>")}</div></details>`
+    : "";
+  const rowsHtml = (j.rows||[]).slice(0,300).map(r=>{
+    const mk = (r.marketplaces||[]);
+    const mkc = mk.length>=10 ? '<span class="monchip all">all EU</span>' : mk.map(m=>`<span class="monchip">${esc(m)}</span>`).join(" ");
+    return `<tr><td class="monasin">${esc(r.asin)}</td><td>${esc(r.label||"")||'<span class="cc">—</span>'}</td><td>${mkc}</td><td>${r.existing?'<span class="cc">update</span>':'<span class="monchip ok">new</span>'}</td></tr>`;
+  }).join("");
+  const dlg=document.createElement("div"); dlg.className="modalwrap open"; dlg.id="bulkwrap"; dlg.style.zIndex="130";
+  dlg.innerHTML=`<div class="modal" style="max-width:780px;position:relative">
+    <button class="x" onclick="closeBulk()">×</button>
+    <h3><i class="ti ti-upload"></i> Import ASINs</h3>
+    <div class="cc" style="margin:2px 0 10px"><b style="color:#e8eaed">Found ${j.found}</b> ASIN(s) — <b>${j.new}</b> new, <b>${j.existing}</b> already tracked (will be updated)${invalid.length?`, <b style="color:#e3b768">${invalid.length}</b> invalid`:''}.</div>
+    ${invalidHtml}
+    <div style="max-height:340px;overflow:auto;margin-top:10px">
+      <table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Marketplaces</th><th></th></tr></thead>
+      <tbody>${rowsHtml||'<tr><td colspan="4" class="cc">No valid ASINs found in this file.</td></tr>'}</tbody></table>
+    </div>
+    <div class="pl-actions">
+      <button class="mktbtn" onclick="closeBulk()">Cancel</button>
+      <button class="mktbtn on" id="bulk_go" ${j.found?'':'disabled'} onclick="monBulkImport()"><i class="ti ti-check"></i> Import ${j.found} ASIN(s)</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+  window._BULK_ROWS = j.rows||[];
+}
+function closeBulk(){ const w=document.getElementById("bulkwrap"); if(w) w.remove(); window._BULK_ROWS=null; }
+
+async function monBulkImport(){
+  const rows = window._BULK_ROWS||[];
+  if(!rows.length){ closeBulk(); return; }
+  const btn=document.getElementById("bulk_go"); if(btn){ btn.disabled=true; btn.textContent="Importing…"; }
+  try{
+    const j = await (await fetch("/monitor/bulk_import",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({rows})})).json();
+    if(!j || !j.ok){ toast("Import failed: "+((j&&j.error)||"unknown")); if(btn) btn.disabled=false; return; }
+    toast("Imported: "+j.added+" new, "+j.updated+" updated"+(j.failed?(", "+j.failed+" failed"):""));
+    closeBulk(); loadMonitorOverview();
+  }catch(e){ toast("Import error: "+e); if(btn) btn.disabled=false; }
+}
+
 async function removeMonitorAsin(id, asin){
   if(!confirm("Stop tracking "+(asin||"this ASIN")+"?")) return;
   try{

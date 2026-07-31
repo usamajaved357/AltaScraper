@@ -67,6 +67,53 @@ def register(app, *, CONFIG_PATH, _cfg=None):
             return jsonify({"ok": False, "error": "config unavailable"}), 500
         return jsonify(_chk.check_now_async(_cfg(), CONFIG_PATH))
 
+    @app.route("/monitor/bulk_preview", methods=["POST"])
+    def monitor_bulk_preview():
+        """Parse an uploaded CSV/TXT/XLSX and return a PREVIEW (found / new / existing / invalid)
+        BEFORE anything is committed. Body: {filename, data (base64 or data-uri)}."""
+        import base64
+        from monitor import bulk_import as _bulk
+        b = request.get_json(force=True) or {}
+        data = b.get("data", "") or ""
+        if data.startswith("data:"):
+            data = data.split(",", 1)[1] if "," in data else ""
+        try:
+            raw = base64.b64decode(data)
+        except Exception:
+            return jsonify({"ok": False, "error": "could not decode the uploaded file"}), 400
+        try:
+            res = _bulk.parse(raw, b.get("filename", ""))
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"could not read the file: {str(e)[:160]}"}), 400
+        existing = {str(r.get("asin", "")).upper() for r in _mon.list_asins(CONFIG_PATH)}
+        for r in res["rows"]:
+            r["existing"] = r["asin"] in existing
+        new = sum(1 for r in res["rows"] if not r["existing"])
+        return jsonify({"ok": True, "rows": res["rows"], "invalid": res["invalid"],
+                        "found": len(res["rows"]), "new": new,
+                        "existing": len(res["rows"]) - new, "detected": res.get("detected", {})})
+
+    @app.route("/monitor/bulk_import", methods=["POST"])
+    def monitor_bulk_import():
+        """Commit the confirmed rows. Adds new ASINs; UPDATES ones already tracked (same rule as
+        the single-add form). Body: {rows:[{asin,label,marketplaces}]}."""
+        b = request.get_json(force=True) or {}
+        added = updated = failed = 0
+        errors = []
+        for r in (b.get("rows") or []):
+            res = _mon.add(CONFIG_PATH, r.get("asin", ""), r.get("label", ""),
+                           r.get("marketplaces"), r.get("condition", "New"))
+            if res.get("ok"):
+                if res.get("updated"):
+                    updated += 1
+                else:
+                    added += 1
+            else:
+                failed += 1
+                errors.append({"asin": r.get("asin"), "error": res.get("error")})
+        return jsonify({"ok": True, "added": added, "updated": updated,
+                        "failed": failed, "errors": errors})
+
     @app.route("/monitor/history")
     def monitor_history():
         asin = (request.args.get("asin") or "").strip()

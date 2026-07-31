@@ -433,9 +433,11 @@
             <button class="linkbtn" type="button" onclick="monMarketsAll(false)">none</button></label>
           <div id="mon_markets" class="monmkts"></div>
         </div>
-        <div style="margin-top:12px">
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <button id="mon_addbtn" class="mktbtn on" onclick="addMonitorAsin()"><i class="ti ti-plus"></i> Add ASIN to watch</button>
-          <span id="mon_count" class="cc" style="margin-left:10px"></span>
+          <button class="mktbtn" onclick="monPickFile()" title="Upload a CSV, TXT or XLSX list of ASINs — the column is auto-detected, no template needed"><i class="ti ti-upload"></i> Upload list</button>
+          <input type="file" id="mon_file" accept=".csv,.txt,.xlsx" style="display:none" onchange="monBulkUpload(this)">
+          <span id="mon_count" class="cc" style="margin-left:4px"></span>
         </div>
       </div>
 
