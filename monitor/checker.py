@@ -131,10 +131,11 @@ def overview(config_path, cfg):
             last_checked = se.get("last_checked", "")
             slist = snaps.get(_key(asin, mkt)) or []
             if not slist:
-                # never got offers: either not checked yet, or a known-dead marketplace we now skip
+                # never got offers: not checked yet, a known-dead marketplace we now skip, or a
+                # check that failed (transient error) -- surface each honestly, never "undefined".
                 per_mkt.append({"marketplace": mkt, "checked": bool(se),
                                 "live": bool(live), "skipped": (live is False),
-                                "last_checked": last_checked})
+                                "error": se.get("last_error", ""), "last_checked": last_checked})
                 continue
             asin_checked = True
             snap = slist[-1]
@@ -387,8 +388,10 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
                 se["last_checked_ts"] = time.time()
                 if not res.get("ok"):
                     fails += 1                    # transient error -> leave prior live/dead state
+                    se["last_error"] = str(res.get("error", ""))[:140]
                     log(f"[asin-monitor] {asin} {mkt}: {res.get('error')}")
                     continue
+                se.pop("last_error", None)         # cleared on a successful check
                 has_offers = (res["summary"].get("seller_count") or 0) > 0
                 se["live"] = has_offers           # dead = returned no offers (skip next cycles)
                 if has_offers:

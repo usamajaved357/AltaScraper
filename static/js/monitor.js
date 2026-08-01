@@ -48,10 +48,14 @@ function monAsinBlock(r){
     <button class="monrm" title="Stop tracking" onclick="removeMonitorAsin('','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>
   </div>`;
   const mkts = (r.per_marketplace||[]).map(m=>{
-    if(m.skipped) return `<div class="monmkt-row skipped"><span class="monchip">${esc(m.marketplace)}</span> <span class="cc">skipped — not listed here${m.last_checked?(' (checked '+esc(m.last_checked)+')'):''}</span></div>`;
-    if(!m.checked) return `<div class="monmkt-row"><span class="monchip">${esc(m.marketplace)}</span> <span class="cc">not checked yet</span></div>`;
+    const mk = `<span class="monchip">${esc(m.marketplace)}</span>`;
+    if(m.skipped) return `<div class="monmkt-row skipped">${mk} <span class="cc">skipped — not listed here${m.last_checked?(' (checked '+esc(m.last_checked)+')'):''}</span></div>`;
+    if(m.error) return `<div class="monmkt-row">${mk} <span class="cc" style="color:#e3b768">check failed — ${esc(m.error)}</span></div>`;
+    if(!m.checked) return `<div class="monmkt-row">${mk} <span class="cc">not checked yet</span></div>`;
+    const n = m.seller_count||0;
     const chips = (m.sellers||[]).map(monSellerChip).join(" ");
-    return `<div class="monmkt-row"><span class="monchip">${esc(m.marketplace)}</span> <b>${m.seller_count}</b> seller${m.seller_count!==1?'s':''} ${chips}<span class="cc monmkt-ts"> · ${esc(m.ts||'')}</span></div>`;
+    const body = n>0 ? `<b>${n}</b> seller${n!==1?'s':''} ${chips}` : `<span class="cc">no offers found</span>`;
+    return `<div class="monmkt-row">${mk} ${body}<span class="cc monmkt-ts"> · ${esc(m.ts||'')}</span></div>`;
   }).join("");
   return `<div class="monasin-block ${r.has_unknown?'warn':''}">${head}<div class="monmkt-list">${mkts}</div></div>`;
 }
@@ -60,9 +64,10 @@ function monSellerChip(s){
   const cls = s.kind==="me"?"me":(s.kind==="amazon"?"amz":(s.kind==="authorised"?"auth":"unk"));
   const star = s.buybox ? '<span class="bbstar" title="Buy Box holder">★</span>' : '';
   const fb = (s.feedback_pct!==null && s.feedback_pct!==undefined) ? (" · "+s.feedback_pct+"% ("+(s.feedback_count||0)+")") : "";
+  const name = esc(s.label || s.id || "unknown seller");
   const inner = (s.kind==="unknown" && s.storefront)
-    ? `<a href="${esc(s.storefront)}" target="_blank" rel="noopener">${esc(s.label)}</a>` : esc(s.label);
-  return `<span class="sellerchip ${cls}" title="${esc(s.id)}${esc(fb)}">${star}${inner}</span>`;
+    ? `<a href="${esc(s.storefront)}" target="_blank" rel="noopener">${name}</a>` : name;
+  return `<span class="sellerchip ${cls}" title="${esc(s.id||"")}${esc(fb)}">${star}${inner}</span>`;
 }
 
 // ---- alerts / status / manual check ----------------------------------------
@@ -383,7 +388,7 @@ function showBulkPreview(j){
   dlg.innerHTML=`<div class="modal" style="max-width:800px;position:relative">
     <button class="x" onclick="closeBulk()">×</button>
     <h3><i class="ti ti-upload"></i> Import ASINs</h3>
-    <div class="cc" style="margin:2px 0 8px"><b style="color:#e8eaed">Found ${j.found}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:#e3b768">${invalid.length}</b> invalid`:''}.</div>
+    <div class="cc" style="margin:2px 0 8px"><b style="color:#e8eaed">Found ${j.found||0}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:#e3b768">${invalid.length}</b> invalid`:''}.</div>
     ${filterRow}
     ${invalidHtml}
     <div id="bulk_table" style="max-height:330px;overflow:auto;margin-top:10px"></div>

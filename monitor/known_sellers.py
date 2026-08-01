@@ -17,7 +17,9 @@ config.json shape (editable — add authorised resellers or missing Amazon IDs a
 # UK is confirmed live. Edit/extend in config.json. A wrong/missing Amazon ID only means that
 # offer shows as UNKNOWN until you add it -- a harmless extra amber, never a missed threat.
 _SEED = {
-    "me": {"A1VE7Q65PZSDVZ": "Promixx Inc (you)"},
+    # MY OWN seller IDs -- multiple owned entities supported (id -> business label).
+    "me": {"A1VE7Q65PZSDVZ": "Promixx Inc (you)",
+           "A2UGPOQGIOZGY1": "Promixx Ltd (you)"},
     "amazon": {
         "UK": ["A3P5ROKL5A1OLE"],   # confirmed live
         "DE": ["A3JWKAKR8XB7XF"],   # verify
