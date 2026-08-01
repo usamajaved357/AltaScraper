@@ -78,6 +78,47 @@ def name_for(seller_id, cfg):
     return load(cfg).get("names", {}).get(_norm(seller_id), "")
 
 
+def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
+    """Label/classify a seller from the UI -> writes config.json known_sellers (no code edit needed).
+    kind: 'name' (named third party, STAYS flagged) | 'authorised' (trusted, neutral) |
+          'me' (your own, teal) | 'amazon' (Amazon retail, neutral). Removing all other entries for
+    the id first so re-classifying is clean. Returns {ok, kind}."""
+    import json
+    sid = _norm(seller_id)
+    if not sid:
+        return {"ok": False, "error": "no seller id"}
+    kind = (kind or "name").lower()
+    name = str(name or "").strip()
+    with _CFG_LOCK:
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception as e:
+            return {"ok": False, "error": f"could not read config: {str(e)[:120]}"}
+        ks = cfg.setdefault("known_sellers", {})
+        for blk in ("names", "me", "authorised"):
+            if isinstance(ks.get(blk), dict):
+                ks[blk].pop(sid, None)
+        for mk in list((ks.get("amazon") or {}).keys()):
+            ks["amazon"][mk] = [e for e in ks["amazon"][mk] if _amz_id(e) != sid]
+        if kind == "me":
+            ks.setdefault("me", {})[sid] = name or "My account (you)"
+        elif kind == "authorised":
+            ks.setdefault("authorised", {})[sid] = name or sid
+        elif kind == "amazon":
+            mk = str(marketplace or "").upper() or "UK"
+            ks.setdefault("amazon", {}).setdefault(mk, []).append(
+                {"id": sid, "source": "manual", "name": name})
+        else:                                          # 'name' -> named third party, stays flagged
+            ks.setdefault("names", {})[sid] = name or sid
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            return {"ok": False, "error": f"could not write config: {str(e)[:120]}"}
+    return {"ok": True, "kind": kind}
+
+
 def looks_like_amazon(name, marketplace=""):
     """True if a resolved storefront name is Amazon's OWN retail account for a marketplace."""
     return bool(_AMAZON_NAME.match(str(name or "")))

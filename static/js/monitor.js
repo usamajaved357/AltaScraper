@@ -38,13 +38,55 @@ function monUnknownsSection(unknowns, s){
       <td>${u.buybox?'<span class="bbstar">★</span>':''}</td>
       <td>${price} <span class="cc">${u.fba?'FBA':'FBM'}</span></td>
       <td>${esc(fb)}</td>
-      <td class="cc">${esc(u.first_seen||'—')}</td></tr>`;
+      <td class="cc">${esc(u.first_seen||'—')}</td>
+      <td><button class="monlabelbtn" title="Name / classify this seller" onclick="monLabelSeller('${esc(u.seller_id)}','${esc(String(u.name||'').replace(/'/g,''))}','${esc(u.marketplace)}')"><i class="ti ti-tag"></i> Name</button></td></tr>`;
   }).join("");
   const hr = s.high_risk||0;
   return `<div class="monunk">
     <div class="monunk-h"><i class="ti ti-alert-triangle"></i> Third parties on your listings — <b>${unknowns.length}</b>${hr?` · <span style="color:#e0696b">${hr} HIGH RISK</span>`:''}${na?` · <span style="color:#e3b768">${na} new account${na!==1?'s':''}</span>`:''}</div>
-    <div style="overflow-x:auto"><table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Market</th><th>Seller</th><th>BB</th><th>Price</th><th>Feedback</th><th>First seen</th></tr></thead><tbody>${body}</tbody></table></div>
+    <div style="overflow-x:auto"><table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Market</th><th>Seller</th><th>BB</th><th>Price</th><th>Feedback</th><th>First seen</th><th></th></tr></thead><tbody>${body}</tbody></table></div>
   </div>`;
+}
+
+// Name / classify a seller from the UI -> writes config.json known_sellers (no code edit).
+function monLabelSeller(id, name, mkt){
+  if(document.getElementById("lblwrap")) closeLabelModal();
+  const dlg=document.createElement("div"); dlg.className="modalwrap open"; dlg.id="lblwrap"; dlg.style.zIndex="140";
+  dlg.innerHTML=`<div class="modal" style="max-width:460px;position:relative">
+    <button class="x" onclick="closeLabelModal()">×</button>
+    <h3><i class="ti ti-tag"></i> Label seller</h3>
+    <div class="cc" style="margin:2px 0 10px">Seller ID <b>${esc(id)}</b>${mkt?` · ${esc(mkt)}`:''}</div>
+    <input type="hidden" id="lbl_id" value="${esc(id)}"><input type="hidden" id="lbl_mkt" value="${esc(mkt||'')}">
+    <label class="pl-lbl">Business name</label>
+    <input id="lbl_name" class="pl-in" placeholder="e.g. Woux LLC" value="${esc(name||'')}" autocomplete="off">
+    <label class="pl-lbl" style="margin-top:10px">Classify as</label>
+    <select id="lbl_kind" class="pl-in">
+      <option value="name">Named third party — still flagged (default)</option>
+      <option value="authorised">Authorised reseller — trusted (neutral)</option>
+      <option value="me">My own account — you (teal)</option>
+      <option value="amazon">Amazon retail — neutral</option>
+    </select>
+    <div class="pl-actions">
+      <button class="mktbtn" onclick="closeLabelModal()">Cancel</button>
+      <button class="mktbtn on" id="lbl_save" onclick="monSaveSellerLabel()"><i class="ti ti-check"></i> Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(dlg);
+  setTimeout(()=>{ const el=document.getElementById("lbl_name"); if(el){ el.focus(); el.select(); } }, 50);
+}
+function closeLabelModal(){ const w=document.getElementById("lblwrap"); if(w) w.remove(); }
+async function monSaveSellerLabel(){
+  const g=id=>(document.getElementById(id)||{}).value||"";
+  const id=g("lbl_id"), name=g("lbl_name").trim(), kind=g("lbl_kind")||"name", mkt=g("lbl_mkt");
+  if(!name && kind!=="me"){ toast("Enter a name"); const el=document.getElementById("lbl_name"); if(el) el.focus(); return; }
+  const btn=document.getElementById("lbl_save"); if(btn) btn.disabled=true;
+  try{
+    const j=await (await fetch("/monitor/seller_label",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({seller_id:id, name, kind, marketplace:mkt})})).json();
+    if(!j||!j.ok){ toast("Save failed: "+((j&&j.error)||"unknown")); if(btn) btn.disabled=false; return; }
+    toast(kind==="name" ? ('Named "'+name+'"') : ('Classified as '+kind));
+    closeLabelModal(); loadMonitorOverview();
+  }catch(e){ toast("Save error: "+e); if(btn) btn.disabled=false; }
 }
 
 function renderMonitorOverview(rows, s, unknowns){

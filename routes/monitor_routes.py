@@ -70,6 +70,16 @@ def register(app, *, CONFIG_PATH, _cfg=None):
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
+    @app.route("/monitor/seller_label", methods=["POST"])
+    def monitor_seller_label():
+        """Name/classify a seller from the UI -> writes config.json known_sellers.
+        Body: {seller_id, name, kind: name|authorised|me|amazon, marketplace}."""
+        from monitor import known_sellers as _ks
+        b = request.get_json(force=True) or {}
+        res = _ks.set_seller(CONFIG_PATH, b.get("seller_id", ""), b.get("name", ""),
+                             b.get("kind", "name"), b.get("marketplace", ""))
+        return jsonify(res), (200 if res.get("ok") else 400)
+
     @app.route("/monitor/overview")
     def monitor_overview():
         """Per-ASIN latest offer picture (sellers classified me/amazon/authorised/unknown) + the
