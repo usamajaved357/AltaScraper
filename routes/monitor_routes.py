@@ -8,7 +8,7 @@ register(app, ...) injection pattern.
 from flask import request, jsonify
 
 
-def register(app, *, CONFIG_PATH, _cfg=None):
+def register(app, *, CONFIG_PATH, _cfg=None, _reload_cfg=None):
     from monitor import asin_monitor as _mon
     from monitor import checker as _chk
 
@@ -70,15 +70,37 @@ def register(app, *, CONFIG_PATH, _cfg=None):
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
+    @app.route("/monitor/seller_info")
+    def monitor_seller_info():
+        """Current classification + name + FOOTPRINT (blast radius) + evidence for a seller id."""
+        sid = (request.args.get("seller_id") or "").strip()
+        if not sid:
+            return jsonify({"ok": False, "error": "seller_id required"}), 400
+        cfg = _cfg() if _cfg else {}
+        return jsonify({"ok": True, **_chk.seller_info(CONFIG_PATH, cfg, sid)})
+
     @app.route("/monitor/seller_label", methods=["POST"])
     def monitor_seller_label():
-        """Name/classify a seller from the UI -> writes config.json known_sellers.
-        Body: {seller_id, name, kind: name|authorised|me|amazon, marketplace}."""
+        """Name/classify a seller GLOBALLY by seller id -> writes config.json known_sellers, applies
+        to every ASIN/marketplace + past snapshots. Body: {seller_id, name, kind, marketplace}."""
         from monitor import known_sellers as _ks
+        import datetime
         b = request.get_json(force=True) or {}
         res = _ks.set_seller(CONFIG_PATH, b.get("seller_id", ""), b.get("name", ""),
                              b.get("kind", "name"), b.get("marketplace", ""))
+        if res.get("ok"):
+            if _reload_cfg:
+                _reload_cfg()                       # BUG 2 fix: drop the cached config so overview re-reads
+            _chk.log_manual_label(CONFIG_PATH, {
+                "ts": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "seller_id": b.get("seller_id", ""), "name": b.get("name", ""),
+                "kind": res.get("kind"), "previous": res.get("previous"), "by": "operator"})
         return jsonify(res), (200 if res.get("ok") else 400)
+
+    @app.route("/monitor/label_log")
+    def monitor_label_log():
+        """Audit log of manual classifications (who/what/when/previous)."""
+        return jsonify({"ok": True, "log": _chk.get_manual_labels(CONFIG_PATH, limit=100)})
 
     @app.route("/monitor/overview")
     def monitor_overview():

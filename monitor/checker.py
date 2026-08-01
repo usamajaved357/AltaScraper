@@ -111,6 +111,51 @@ def get_seller_names(config_path):
     return _load_hist(config_path).get("seller_names", {})
 
 
+def seller_info(config_path, cfg, seller_id):
+    """Everything the Label modal needs: the seller's CURRENT global classification + name, its
+    FOOTPRINT across stored data (how many ASINs / marketplaces it appears on = the blast radius of
+    a label), and evidence for the misclassification warning. Read-only."""
+    sid = str(seller_id or "").strip()
+    d = _load_hist(config_path)
+    snaps = d.get("snapshots", {})
+    names = d.get("seller_names", {})
+    asins, mkts, latest = set(), set(), None
+    for key, slist in snaps.items():
+        if not slist or "::" not in key:
+            continue
+        a, m = key.split("::", 1)
+        for o in (slist[-1].get("offers") or []):
+            if o.get("seller_id") == sid:
+                asins.add(a); mkts.add(m); latest = o
+    cur = _ks.current(cfg, sid)
+    resolved = _ks.name_for(sid, cfg) or next((v for k, v in names.items()
+                                               if k.startswith(sid + "::") and v), "")
+    if cur["kind"] == "amazon":
+        name = "Amazon"
+    elif cur["kind"] in ("me", "authorised"):
+        name = cur["label"]
+    else:
+        name = resolved
+    return {"seller_id": sid, "kind": cur["kind"], "name": name,
+            "footprint": {"asin_count": len(asins), "marketplace_count": len(mkts),
+                          "asins": sorted(asins), "marketplaces": sorted(mkts)},
+            "evidence": ({"feedback_count": latest.get("feedback_count"),
+                          "fba": bool(latest.get("fba"))} if latest else {})}
+
+
+def log_manual_label(config_path, entry):
+    """Append a manual-classification entry to the audit log (who/what/when/previous)."""
+    with _LOCK:
+        d = _load_hist(config_path)
+        d.setdefault("manual_labels", []).append(entry)
+        d["manual_labels"] = d["manual_labels"][-500:]
+        _save_hist(config_path, d)
+
+
+def get_manual_labels(config_path, limit=100):
+    return list(reversed(_load_hist(config_path).get("manual_labels", [])))[:limit]
+
+
 def overview(config_path, cfg):
     """Per-tracked-ASIN latest offer picture with every seller classified me/amazon/authorised/
     unknown, plus a top summary ('is anyone sitting on my listings right now'). Read-only: uses

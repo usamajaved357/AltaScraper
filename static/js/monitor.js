@@ -39,7 +39,7 @@ function monUnknownsSection(unknowns, s){
       <td>${price} <span class="cc">${u.fba?'FBA':'FBM'}</span></td>
       <td>${esc(fb)}</td>
       <td class="cc">${esc(u.first_seen||'—')}</td>
-      <td><button class="monlabelbtn" title="Name / classify this seller" onclick="monLabelSeller('${esc(u.seller_id)}','${esc(String(u.name||'').replace(/'/g,''))}','${esc(u.marketplace)}')"><i class="ti ti-tag"></i> Name</button></td></tr>`;
+      <td><button class="monlabelbtn" title="Name / classify this seller (applies to this ID everywhere)" onclick="monLabelSeller('${esc(u.seller_id)}','${esc(u.marketplace)}')"><i class="ti ti-tag"></i> Name</button></td></tr>`;
   }).join("");
   const hr = s.high_risk||0;
   return `<div class="monunk">
@@ -49,22 +49,29 @@ function monUnknownsSection(unknowns, s){
 }
 
 // Name / classify a seller from the UI -> writes config.json known_sellers (no code edit).
-function monLabelSeller(id, name, mkt){
+// BUG 1/2/3 fix: the modal takes ONLY the seller id + marketplace (never a name — the name is
+// fetched from the server so an ASIN can never be pre-filled). It shows the seller's CURRENT
+// global classification and its FOOTPRINT (how many ASINs/marketplaces this label will touch),
+// offers a REVERT-to-unknown option, and warns before marking a contradictory seller as safe.
+function monLabelSeller(id, mkt){
   if(document.getElementById("lblwrap")) closeLabelModal();
+  window._LBL_INFO = null;
   const dlg=document.createElement("div"); dlg.className="modalwrap open"; dlg.id="lblwrap"; dlg.style.zIndex="140";
-  dlg.innerHTML=`<div class="modal" style="max-width:460px;position:relative">
+  dlg.innerHTML=`<div class="modal" style="max-width:480px;position:relative">
     <button class="x" onclick="closeLabelModal()">×</button>
     <h3><i class="ti ti-tag"></i> Label seller</h3>
-    <div class="cc" style="margin:2px 0 10px">Seller ID <b>${esc(id)}</b>${mkt?` · ${esc(mkt)}`:''}</div>
+    <div class="cc" style="margin:2px 0 8px">Seller ID <b>${esc(id)}</b> — this label applies to this ID <b>everywhere</b> (all ASINs &amp; marketplaces), not just here.</div>
+    <div id="lbl_footprint" class="cc" style="margin-bottom:10px;padding:7px 9px;border:1px solid var(--bd,#333);border-radius:6px"><span class="genspin"></span> checking where this seller appears…</div>
     <input type="hidden" id="lbl_id" value="${esc(id)}"><input type="hidden" id="lbl_mkt" value="${esc(mkt||'')}">
     <label class="pl-lbl">Business name</label>
-    <input id="lbl_name" class="pl-in" placeholder="e.g. Woux LLC" value="${esc(name||'')}" autocomplete="off">
-    <label class="pl-lbl" style="margin-top:10px">Classify as</label>
+    <input id="lbl_name" class="pl-in" placeholder="e.g. Woux LLC" autocomplete="off">
+    <label class="pl-lbl" style="margin-top:10px">Classify as <span id="lbl_prev" class="cc"></span></label>
     <select id="lbl_kind" class="pl-in">
       <option value="name">Named third party — still flagged (default)</option>
       <option value="authorised">Authorised reseller — trusted (neutral)</option>
       <option value="me">My own account — you (teal)</option>
       <option value="amazon">Amazon retail — neutral</option>
+      <option value="unknown">↩ Revert to UNKNOWN — flag it again</option>
     </select>
     <div class="pl-actions">
       <button class="mktbtn" onclick="closeLabelModal()">Cancel</button>
@@ -72,20 +79,56 @@ function monLabelSeller(id, name, mkt){
     </div>
   </div>`;
   document.body.appendChild(dlg);
-  setTimeout(()=>{ const el=document.getElementById("lbl_name"); if(el){ el.focus(); el.select(); } }, 50);
+  // Pull the seller's real name + current classification + footprint from the server.
+  fetch("/monitor/seller_info?seller_id="+encodeURIComponent(id))
+    .then(r=>r.json()).then(j=>{
+      if(!j||!j.ok) return;
+      window._LBL_INFO=j;
+      const nm=document.getElementById("lbl_name"); if(nm && j.name) nm.value=j.name;   // real name, NEVER the ASIN
+      const kd=document.getElementById("lbl_kind"); if(kd && j.kind && j.kind!=="unknown") kd.value=j.kind;
+      const pv=document.getElementById("lbl_prev"); if(pv) pv.textContent="· currently: "+(j.kind||"unknown");
+      const fp=j.footprint||{}; const ev=j.evidence||{}; const fpEl=document.getElementById("lbl_footprint");
+      if(fpEl){
+        const mkts=(fp.marketplaces||[]);
+        let html="This label will apply to <b>"+esc(String(fp.asin_count||0))+"</b> ASIN"+((fp.asin_count||0)!==1?'s':'')+
+                 " across <b>"+esc(String(fp.marketplace_count||0))+"</b> marketplace"+((fp.marketplace_count||0)!==1?'s':'')+
+                 (mkts.length?" ("+mkts.map(esc).join(", ")+")":"")+".";
+        const fb=ev.feedback_count;
+        if(fb===0) html+=' <span style="color:#e0a800">⚠ 0 feedback</span>';
+        else if(fb!=null) html+=" · "+esc(String(fb))+" feedback";
+        if(ev.fba) html+=" · FBA";
+        fpEl.innerHTML=html;
+      }
+    }).catch(()=>{});
+  setTimeout(()=>{ const el=document.getElementById("lbl_name"); if(el){ el.focus(); el.select(); } }, 120);
 }
 function closeLabelModal(){ const w=document.getElementById("lblwrap"); if(w) w.remove(); }
 async function monSaveSellerLabel(){
   const g=id=>(document.getElementById(id)||{}).value||"";
   const id=g("lbl_id"), name=g("lbl_name").trim(), kind=g("lbl_kind")||"name", mkt=g("lbl_mkt");
-  if(!name && kind!=="me"){ toast("Enter a name"); const el=document.getElementById("lbl_name"); if(el) el.focus(); return; }
+  if(!name && kind!=="me" && kind!=="unknown"){ toast("Enter a name"); const el=document.getElementById("lbl_name"); if(el) el.focus(); return; }
+  // CONTRADICTION WARNING — don't silently mark a likely hijacker as safe. Confirm, never block.
+  const info=window._LBL_INFO||{}; const ev=info.evidence||{};
+  if(kind==="me" || kind==="amazon"){
+    const reasons=[];
+    if(ev.feedback_count===0) reasons.push("it has 0 feedback");
+    if(kind==="amazon" && name && !/amazon/i.test(name)) reasons.push('its storefront name ("'+name+'") does not match Amazon');
+    if(reasons.length){
+      if(!confirm("Hold on — marking "+id+" as "+kind.toUpperCase()+" will STOP it being flagged, but "+reasons.join(" and ")+
+                  ".\n\nThis looks like it could be a hijacker. Misclassifying a hijacker as safe is the most costly mistake this tool can make — it silences alerts on a real threat.\n\nMark it as "+kind.toUpperCase()+" anyway?")) return;
+    }
+  }
   const btn=document.getElementById("lbl_save"); if(btn) btn.disabled=true;
   try{
     const j=await (await fetch("/monitor/seller_label",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({seller_id:id, name, kind, marketplace:mkt})})).json();
     if(!j||!j.ok){ toast("Save failed: "+((j&&j.error)||"unknown")); if(btn) btn.disabled=false; return; }
-    toast(kind==="name" ? ('Named "'+name+'"') : ('Classified as '+kind));
-    closeLabelModal(); loadMonitorOverview();
+    const prev=(j.previous&&j.previous.kind)||"unknown";
+    const msg = kind==="unknown" ? "Reverted to unknown"
+              : kind==="name"    ? ('Named "'+name+'"')
+              :                    ('Classified as '+kind);
+    toast(msg+" (was: "+prev+")");
+    closeLabelModal(); loadMonitorOverview();   // cfg cache is dropped server-side -> rows re-render with the new label
   }catch(e){ toast("Save error: "+e); if(btn) btn.disabled=false; }
 }
 

@@ -3085,7 +3085,8 @@ if __name__ == "__main__":
                               _ws=_ws, _bust_records_cache=_bust_records_cache, _state=_state)
     # ASIN Monitor — competitor/hijacker tracking + hourly checker (read-only, in-app alerts).
     import routes.monitor_routes as _monitor_routes
-    _monitor_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg)
+    _monitor_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _reload_cfg=lambda: _state.update(cfg=None))   # drop config cache so edits take effect
     try:
         from monitor import checker as _mon_checker
         _mon_checker.start_scheduler(_cfg, CONFIG_PATH)     # daemon: hourly getItemOffers diff

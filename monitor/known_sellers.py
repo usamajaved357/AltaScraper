@@ -79,10 +79,12 @@ def name_for(seller_id, cfg):
 
 
 def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
-    """Label/classify a seller from the UI -> writes config.json known_sellers (no code edit needed).
-    kind: 'name' (named third party, STAYS flagged) | 'authorised' (trusted, neutral) |
-          'me' (your own, teal) | 'amazon' (Amazon retail, neutral). Removing all other entries for
-    the id first so re-classifying is clean. Returns {ok, kind}."""
+    """Label/classify a seller GLOBALLY BY SELLER ID from the UI -> writes config.json known_sellers.
+    The mapping is keyed only by seller id, so it applies to EVERY ASIN and marketplace (past
+    snapshots + future checks). kind: 'name' (named third party, STAYS flagged) | 'authorised'
+    (trusted, neutral) | 'me' (yours, teal) | 'amazon' (Amazon retail, neutral) | 'unknown' (REVERT
+    -- remove all labels, flag it again). Removes the id from every block first so re-classifying is
+    clean. Returns {ok, kind, previous:{kind,label}} so the caller can audit the change."""
     import json
     sid = _norm(seller_id)
     if not sid:
@@ -95,8 +97,9 @@ def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
                 cfg = json.load(f)
         except Exception as e:
             return {"ok": False, "error": f"could not read config: {str(e)[:120]}"}
+        previous = classify(sid, "", cfg)              # what it was, BEFORE we change anything
         ks = cfg.setdefault("known_sellers", {})
-        for blk in ("names", "me", "authorised"):
+        for blk in ("names", "me", "authorised"):      # id is GLOBAL -> clear it everywhere first
             if isinstance(ks.get(blk), dict):
                 ks[blk].pop(sid, None)
         for mk in list((ks.get("amazon") or {}).keys()):
@@ -106,9 +109,11 @@ def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
         elif kind == "authorised":
             ks.setdefault("authorised", {})[sid] = name or sid
         elif kind == "amazon":
-            mk = str(marketplace or "").upper() or "UK"
+            mk = str(marketplace or "").upper() or "UK"     # amazon keeps a marketplace tag for display
             ks.setdefault("amazon", {}).setdefault(mk, []).append(
                 {"id": sid, "source": "manual", "name": name})
+        elif kind == "unknown":
+            pass                                       # REVERT: left in no block -> flagged again
         else:                                          # 'name' -> named third party, stays flagged
             ks.setdefault("names", {})[sid] = name or sid
         try:
@@ -116,7 +121,12 @@ def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
         except Exception as e:
             return {"ok": False, "error": f"could not write config: {str(e)[:120]}"}
-    return {"ok": True, "kind": kind}
+    return {"ok": True, "kind": kind, "previous": previous}
+
+
+def current(cfg, seller_id):
+    """The seller's CURRENT global classification {kind,label} (marketplace-agnostic) from config."""
+    return classify(seller_id, "", cfg)
 
 
 def looks_like_amazon(name, marketplace=""):
