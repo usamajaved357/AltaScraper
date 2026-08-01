@@ -117,6 +117,7 @@ def overview(config_path, cfg):
     the stored snapshots + the cached names; no live Amazon calls."""
     d = _load_hist(config_path)
     names = d.get("seller_names", {})
+    known_names = _ks.load(cfg).get("names", {})    # manually-stored names (editable in config)
     snaps = d.get("snapshots", {})
     mstate = d.get("market_state", {})
     items = _store.list_asins(config_path)
@@ -152,20 +153,24 @@ def overview(config_path, cfg):
                 sid = o.get("seller_id")
                 if not sid:
                     continue
-                nm = names.get(f"{sid}::{mkt}", "")
+                nm = names.get(f"{sid}::{mkt}", "") or known_names.get(sid, "")
                 cls = _ks.classify(sid, mkt, cfg, name=nm)
                 unknown = cls["kind"] == "unknown"
                 if unknown:
                     asin_unknown = True
                     total_unknown.add(f"{sid}::{mkt}")
                     fc = o.get("feedback_count")
+                    new_acct = (fc is None or fc == 0)
                     unknowns.append({
                         "asin": asin, "label": it.get("label", ""), "marketplace": mkt,
                         "seller_id": sid, "name": nm, "buybox": (sid == bb),
                         "price": o.get("landed"), "currency": o.get("currency", ""),
                         "fba": bool(o.get("fba")),
                         "feedback_pct": o.get("feedback_pct"), "feedback_count": fc,
-                        "new_account": (fc is None or fc == 0),   # classic new-hijacker signature
+                        "new_account": new_acct,                   # classic new-hijacker signature
+                        # HIGH RISK: FBA + zero feedback + holding the Buy Box on my listing =
+                        # a brand-new account with physical stock of my product winning the sale.
+                        "high_risk": (bool(o.get("fba")) and new_acct and (sid == bb)),
                         "first_seen": _first_seen(slist, sid),
                         "storefront": _sf.storefront_url(sid, mkt)})
                 sellers.append({"id": sid, "kind": cls["kind"], "label": cls["label"],
@@ -187,12 +192,27 @@ def overview(config_path, cfg):
         rows.append({"asin": asin, "label": it.get("label", ""),
                      "marketplaces": it.get("marketplaces") or _store.EU_MARKETPLACES,
                      "per_marketplace": per_mkt, "has_unknown": asin_unknown, "checked": asin_checked})
-    # scariest first: brand-new (0-feedback) accounts on top, then lowest feedback count
-    unknowns.sort(key=lambda u: (0 if u["new_account"] else 1,
+    # MULTI-ACCOUNT: same resolved NAME under multiple seller IDs = strong bad-actor signal
+    # (e.g. "Woux LLC" running 4 IDs on BE). Tag each with how many IDs share its name.
+    name_ids = {}
+    for u in unknowns:
+        if u.get("name"):
+            name_ids.setdefault(u["name"], set()).add(u["seller_id"])
+    for u in unknowns:
+        u["multi_account"] = len(name_ids.get(u.get("name", ""), {u["seller_id"]})) if u.get("name") else 1
+    # per-marketplace unknown concentration (surfaces hotspots like Belgium)
+    by_mkt = {}
+    for key in total_unknown:                       # {sid::mkt}
+        mk = key.split("::", 1)[1]
+        by_mkt[mk] = by_mkt.get(mk, 0) + 1
+    # scariest first: HIGH RISK, then brand-new (0-feedback), then lowest feedback count
+    unknowns.sort(key=lambda u: (0 if u.get("high_risk") else 1, 0 if u["new_account"] else 1,
                                  (u["feedback_count"] if u["feedback_count"] is not None else 1e9)))
     summary = {"tracked": len(items), "checked": n_checked, "clean": n_clean,
                "with_unknown": n_unknown, "total_unknown": len(total_unknown),
-               "new_accounts": sum(1 for u in unknowns if u["new_account"])}
+               "new_accounts": sum(1 for u in unknowns if u["new_account"]),
+               "high_risk": sum(1 for u in unknowns if u.get("high_risk")),
+               "by_marketplace": dict(sorted(by_mkt.items(), key=lambda kv: -kv[1]))}
     return {"rows": rows, "summary": summary, "unknowns": unknowns,
             "eu_marketplaces": _store.EU_MARKETPLACES}
 

@@ -36,9 +36,12 @@ import json
 import datetime
 import threading
 
-# Amazon's OWN retail storefront names, exactly: "Amazon", "Amazon.co.uk", "Amazon.de", ...
-# Strict on purpose -- "Amazon Warehouse", "Amazon Deals reseller" etc. must NOT match.
-_AMAZON_NAME = re.compile(r"^\s*amazon(\.[a-z]{2,3}(\.[a-z]{2,3})?)?\s*$", re.I)
+# Amazon's OWN retail storefront names -- DOMESTIC and CROSS-BORDER:
+#   "Amazon", "Amazon.de", "Amazon.co.uk", "Amazon.com.be", "Amazon.nl",
+#   "Amazon US", "Amazon EU", "Amazon UK", ...
+# Strict on purpose -- "Amazon Warehouse", "Amazon Deals reseller" etc. must NOT match. Feedback
+# count can't be the signal (several Amazon cross-border accounts have 0 feedback) -- the NAME is.
+_AMAZON_NAME = re.compile(r"^\s*amazon(?:[.\s](?:co\.[a-z]{2}|com\.[a-z]{2}|[a-z]{2,3}))?\s*$", re.I)
 _CFG_LOCK = threading.Lock()
 
 
@@ -56,6 +59,9 @@ def load(cfg):
     block = (cfg or {}).get("known_sellers") or {}
     me = dict(_SEED["me"]); me.update({_norm(k): v for k, v in (block.get("me") or {}).items()})
     auth = dict(_SEED["authorised"]); auth.update({_norm(k): v for k, v in (block.get("authorised") or {}).items()})
+    # names: an EDITABLE {sellerId: "Business Name"} map for KNOWN unknown third parties -- lets you
+    # label a flagged seller (it stays type=unknown) without a code change. Add to it anytime.
+    names = dict(_SEED.get("names", {})); names.update({_norm(k): v for k, v in (block.get("names") or {}).items()})
     amazon = {mk: list(ids) for mk, ids in _SEED["amazon"].items()}
     for mk, ids in (block.get("amazon") or {}).items():
         MK = str(mk).upper()
@@ -64,7 +70,12 @@ def load(cfg):
             iid = _amz_id(i)                          # tolerate bare-id OR tagged-object entries
             if iid and iid not in amazon[MK]:
                 amazon[MK].append(iid)
-    return {"me": me, "amazon": amazon, "authorised": auth}
+    return {"me": me, "amazon": amazon, "authorised": auth, "names": names}
+
+
+def name_for(seller_id, cfg):
+    """A manually-stored display name for a seller id (from known_sellers.names), or ""."""
+    return load(cfg).get("names", {}).get(_norm(seller_id), "")
 
 
 def looks_like_amazon(name, marketplace=""):
@@ -113,7 +124,8 @@ def classify(seller_id, marketplace, cfg, name=""):
         return {"kind": "amazon", "label": "Amazon"}
     if sid and sid in k["authorised"]:
         return {"kind": "authorised", "label": k["authorised"][sid]}
-    return {"kind": "unknown", "label": (name or sid or "unknown seller")}
+    # unknown third party -- but show a stored/resolved NAME if we have one (stays flagged)
+    return {"kind": "unknown", "label": (name or k.get("names", {}).get(sid) or sid or "unknown seller")}
 
 
 def is_known(seller_id, marketplace, cfg):

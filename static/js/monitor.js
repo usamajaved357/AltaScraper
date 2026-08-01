@@ -26,20 +26,23 @@ function monUnknownsSection(unknowns, s){
   const na = s.new_accounts||0;
   const body = unknowns.map(u=>{
     const nameCell = u.storefront ? `<a href="${esc(u.storefront)}" target="_blank" rel="noopener">${esc(u.name||u.seller_id)}</a>` : esc(u.name||u.seller_id);
-    const newBadge = u.new_account ? ' <span class="newacct">NEW</span>' : '';
+    const badges = (u.high_risk?' <span class="hirisk">HIGH RISK</span>':'')
+                 + (u.new_account?' <span class="newacct">NEW</span>':'')
+                 + ((u.multi_account||1)>1?` <span class="multiacct" title="Same name on ${u.multi_account} seller IDs — likely one bad actor">${u.multi_account} accounts</span>`:'');
     const fb = u.new_account ? '0 reviews' : ((u.feedback_pct!=null?u.feedback_pct+'%':'?')+' · '+(u.feedback_count||0));
     const price = (u.price!==null && u.price!==undefined) ? (esc(String(u.price))+' '+esc(u.currency||'')) : '—';
-    return `<tr class="${u.new_account?'newrow':''}">
+    return `<tr class="${u.high_risk?'hirow':(u.new_account?'newrow':'')}">
       <td class="monasin">${esc(u.asin)}</td><td>${esc(u.label||'')||'<span class="cc">—</span>'}</td>
       <td><span class="monchip">${esc(u.marketplace)}</span></td>
-      <td>${nameCell}${newBadge} <span class="cc">(${esc(u.seller_id)})</span></td>
+      <td>${nameCell}${badges} <span class="cc">(${esc(u.seller_id)})</span></td>
       <td>${u.buybox?'<span class="bbstar">★</span>':''}</td>
       <td>${price} <span class="cc">${u.fba?'FBA':'FBM'}</span></td>
       <td>${esc(fb)}</td>
       <td class="cc">${esc(u.first_seen||'—')}</td></tr>`;
   }).join("");
+  const hr = s.high_risk||0;
   return `<div class="monunk">
-    <div class="monunk-h"><i class="ti ti-alert-triangle"></i> Third parties on your listings — <b>${unknowns.length}</b>${na?` · <span style="color:#e0696b">${na} new account${na!==1?'s':''}</span>`:''}</div>
+    <div class="monunk-h"><i class="ti ti-alert-triangle"></i> Third parties on your listings — <b>${unknowns.length}</b>${hr?` · <span style="color:#e0696b">${hr} HIGH RISK</span>`:''}${na?` · <span style="color:#e3b768">${na} new account${na!==1?'s':''}</span>`:''}</div>
     <div style="overflow-x:auto"><table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Market</th><th>Seller</th><th>BB</th><th>Price</th><th>Feedback</th><th>First seen</th></tr></thead><tbody>${body}</tbody></table></div>
   </div>`;
 }
@@ -52,11 +55,17 @@ function renderMonitorOverview(rows, s, unknowns){
     <span class="monsum-ok"><b>${s.clean||0}</b> clean</span>
     <span class="${warnCls(s.with_unknown||0)}"><b>${s.with_unknown||0}</b> with unknown seller${(s.with_unknown||0)!==1?'s':''}</span>
     <span class="${warnCls(s.total_unknown||0)}"><b>${s.total_unknown||0}</b> unknown seller${(s.total_unknown||0)!==1?'s':''} total</span>
+    ${(s.high_risk||0)>0?`<span class="monsum-hi"><b>${s.high_risk}</b> HIGH RISK</span>`:''}
     ${(s.checked||0)<(s.tracked||0)?`<span class="cc">· ${(s.tracked||0)-(s.checked||0)} not checked yet</span>`:''}
   </div>`;
+  const bm = s.by_marketplace||{};
+  const bmMax = Math.max(0, ...Object.values(bm));
+  const bmText = Object.keys(bm).length
+    ? `<div class="monsum-bm">Unknown sellers by market: ${Object.keys(bm).map(m=>`<span class="${bm[m]===bmMax?'hot':''}">${esc(m)} ${bm[m]}</span>`).join(" · ")}</div>`
+    : "";
   const c=document.getElementById("mon_count"); if(c) c.textContent=(s.tracked||0)+" ASIN"+((s.tracked||0)!==1?"s":"")+" tracked";
-  if(!rows.length){ host.innerHTML = sumBar + '<div class="cc" style="padding:14px;opacity:.7">No ASINs tracked yet. Add one above (or upload a list) to start watching it.</div>'; return; }
-  host.innerHTML = sumBar + monUnknownsSection(unknowns, s) + rows.map(monAsinBlock).join("");
+  if(!rows.length){ host.innerHTML = sumBar + bmText + '<div class="cc" style="padding:14px;opacity:.7">No ASINs tracked yet. Add one above (or upload a list) to start watching it.</div>'; return; }
+  host.innerHTML = sumBar + bmText + monUnknownsSection(unknowns, s) + rows.map(monAsinBlock).join("");
 }
 
 function monAsinBlock(r){
