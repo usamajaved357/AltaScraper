@@ -17,11 +17,34 @@ async function loadMonitorOverview(){
     if(!j || !j.ok){ if(host) host.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     renderMonitorMarketPicker();
-    renderMonitorOverview(j.rows||[], j.summary||{});
+    renderMonitorOverview(j.rows||[], j.summary||{}, j.unknowns||[]);
   }catch(e){ if(host) host.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Error: '+esc(String(e))+'</div>'; }
 }
 
-function renderMonitorOverview(rows, s){
+function monUnknownsSection(unknowns, s){
+  if(!unknowns || !unknowns.length) return "";
+  const na = s.new_accounts||0;
+  const body = unknowns.map(u=>{
+    const nameCell = u.storefront ? `<a href="${esc(u.storefront)}" target="_blank" rel="noopener">${esc(u.name||u.seller_id)}</a>` : esc(u.name||u.seller_id);
+    const newBadge = u.new_account ? ' <span class="newacct">NEW</span>' : '';
+    const fb = u.new_account ? '0 reviews' : ((u.feedback_pct!=null?u.feedback_pct+'%':'?')+' · '+(u.feedback_count||0));
+    const price = (u.price!==null && u.price!==undefined) ? (esc(String(u.price))+' '+esc(u.currency||'')) : '—';
+    return `<tr class="${u.new_account?'newrow':''}">
+      <td class="monasin">${esc(u.asin)}</td><td>${esc(u.label||'')||'<span class="cc">—</span>'}</td>
+      <td><span class="monchip">${esc(u.marketplace)}</span></td>
+      <td>${nameCell}${newBadge} <span class="cc">(${esc(u.seller_id)})</span></td>
+      <td>${u.buybox?'<span class="bbstar">★</span>':''}</td>
+      <td>${price} <span class="cc">${u.fba?'FBA':'FBM'}</span></td>
+      <td>${esc(fb)}</td>
+      <td class="cc">${esc(u.first_seen||'—')}</td></tr>`;
+  }).join("");
+  return `<div class="monunk">
+    <div class="monunk-h"><i class="ti ti-alert-triangle"></i> Third parties on your listings — <b>${unknowns.length}</b>${na?` · <span style="color:#e0696b">${na} new account${na!==1?'s':''}</span>`:''}</div>
+    <div style="overflow-x:auto"><table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Market</th><th>Seller</th><th>BB</th><th>Price</th><th>Feedback</th><th>First seen</th></tr></thead><tbody>${body}</tbody></table></div>
+  </div>`;
+}
+
+function renderMonitorOverview(rows, s, unknowns){
   const host = document.getElementById("mon_list"); if(!host) return;
   const warnCls = n => (n>0 ? "monsum-warn" : "monsum-ok");
   const sumBar = `<div class="monsum">
@@ -33,7 +56,7 @@ function renderMonitorOverview(rows, s){
   </div>`;
   const c=document.getElementById("mon_count"); if(c) c.textContent=(s.tracked||0)+" ASIN"+((s.tracked||0)!==1?"s":"")+" tracked";
   if(!rows.length){ host.innerHTML = sumBar + '<div class="cc" style="padding:14px;opacity:.7">No ASINs tracked yet. Add one above (or upload a list) to start watching it.</div>'; return; }
-  host.innerHTML = sumBar + rows.map(monAsinBlock).join("");
+  host.innerHTML = sumBar + monUnknownsSection(unknowns, s) + rows.map(monAsinBlock).join("");
 }
 
 function monAsinBlock(r){
@@ -67,7 +90,17 @@ function monSellerChip(s){
   const name = esc(s.label || s.id || "unknown seller");
   const inner = (s.kind==="unknown" && s.storefront)
     ? `<a href="${esc(s.storefront)}" target="_blank" rel="noopener">${name}</a>` : name;
-  return `<span class="sellerchip ${cls}" title="${esc(s.id||"")}${esc(fb)}">${star}${inner}</span>`;
+  // For UNKNOWN third parties, surface feedback prominently: brand-new (0 feedback) = NEW badge
+  // (classic hijacker signature); otherwise show the % + review count inline, not just on hover.
+  let extra = "";
+  if(s.kind==="unknown"){
+    const fc = s.feedback_count;
+    if(fc===0 || fc===null || fc===undefined)
+      extra = ' <span class="newacct" title="Brand-new account — 0 feedback (classic hijacker signature)">NEW</span>';
+    else
+      extra = ` <span class="fbnote">${esc(String(s.feedback_pct!=null?s.feedback_pct:'?'))}%·${esc(String(fc))}</span>`;
+  }
+  return `<span class="sellerchip ${cls}" title="${esc(s.id||"")}${esc(fb)}">${star}${inner}${extra}</span>`;
 }
 
 // ---- alerts / status / manual check ----------------------------------------

@@ -120,8 +120,14 @@ def overview(config_path, cfg):
     snaps = d.get("snapshots", {})
     mstate = d.get("market_state", {})
     items = _store.list_asins(config_path)
-    rows, total_unknown = [], set()
+    rows, total_unknown, unknowns = [], set(), []
     n_clean = n_unknown = n_checked = 0
+
+    def _first_seen(slist, sid):
+        for snap in slist:                          # slist is oldest -> newest
+            if sid in (snap.get("sellers") or []):
+                return snap.get("ts", "")
+        return (slist[-1].get("ts", "") if slist else "")
     for it in items:
         asin = it.get("asin")
         per_mkt, asin_unknown, asin_checked = [], False, False
@@ -133,9 +139,10 @@ def overview(config_path, cfg):
             if not slist:
                 # never got offers: not checked yet, a known-dead marketplace we now skip, or a
                 # check that failed (transient error) -- surface each honestly, never "undefined".
-                per_mkt.append({"marketplace": mkt, "checked": bool(se),
-                                "live": bool(live), "skipped": (live is False),
-                                "error": se.get("last_error", ""), "last_checked": last_checked})
+                per_mkt.append({"marketplace": mkt, "checked": bool(se), "live": bool(live),
+                                "skipped": (live is False), "error": se.get("last_error", ""),
+                                "seller_count": 0, "sellers": [], "ts": "",   # never undefined
+                                "last_checked": last_checked})
                 continue
             asin_checked = True
             snap = slist[-1]
@@ -151,6 +158,16 @@ def overview(config_path, cfg):
                 if unknown:
                     asin_unknown = True
                     total_unknown.add(f"{sid}::{mkt}")
+                    fc = o.get("feedback_count")
+                    unknowns.append({
+                        "asin": asin, "label": it.get("label", ""), "marketplace": mkt,
+                        "seller_id": sid, "name": nm, "buybox": (sid == bb),
+                        "price": o.get("landed"), "currency": o.get("currency", ""),
+                        "fba": bool(o.get("fba")),
+                        "feedback_pct": o.get("feedback_pct"), "feedback_count": fc,
+                        "new_account": (fc is None or fc == 0),   # classic new-hijacker signature
+                        "first_seen": _first_seen(slist, sid),
+                        "storefront": _sf.storefront_url(sid, mkt)})
                 sellers.append({"id": sid, "kind": cls["kind"], "label": cls["label"],
                                 "buybox": (sid == bb), "fba": bool(o.get("fba")),
                                 "feedback_pct": o.get("feedback_pct"),
@@ -170,9 +187,14 @@ def overview(config_path, cfg):
         rows.append({"asin": asin, "label": it.get("label", ""),
                      "marketplaces": it.get("marketplaces") or _store.EU_MARKETPLACES,
                      "per_marketplace": per_mkt, "has_unknown": asin_unknown, "checked": asin_checked})
+    # scariest first: brand-new (0-feedback) accounts on top, then lowest feedback count
+    unknowns.sort(key=lambda u: (0 if u["new_account"] else 1,
+                                 (u["feedback_count"] if u["feedback_count"] is not None else 1e9)))
     summary = {"tracked": len(items), "checked": n_checked, "clean": n_clean,
-               "with_unknown": n_unknown, "total_unknown": len(total_unknown)}
-    return {"rows": rows, "summary": summary, "eu_marketplaces": _store.EU_MARKETPLACES}
+               "with_unknown": n_unknown, "total_unknown": len(total_unknown),
+               "new_accounts": sum(1 for u in unknowns if u["new_account"])}
+    return {"rows": rows, "summary": summary, "unknowns": unknowns,
+            "eu_marketplaces": _store.EU_MARKETPLACES}
 
 
 def status():

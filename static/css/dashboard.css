@@ -685,6 +685,15 @@
               padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}
   .monmkt-ts{white-space:nowrap;margin-left:auto}
   .monmkt-row.skipped{opacity:.5}
+  /* NEW-account marker on an unknown seller (0 feedback = classic new-hijacker signature) */
+  .newacct{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
+           border-radius:5px;background:#7a1f1f;color:#ffd0d0;vertical-align:middle}
+  .fbnote{font-size:9.5px;color:var(--muted)}
+  /* "Third parties on your listings" list */
+  .monunk{border:1px solid #5c4a24;border-radius:12px;background:rgba(227,183,104,.06);padding:10px 12px;margin:0 0 12px}
+  .monunk-h{font-size:13px;color:#f0b45a;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+  .monunk .montable td{vertical-align:middle}
+  .monunk .newrow td{background:rgba(224,105,107,.10)}
   /* seller chips, coloured by identity (colour reserved for the ONE thing that matters: unknown) */
   .sellerchip{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;
               border-radius:999px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}

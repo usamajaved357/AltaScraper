@@ -24,10 +24,7 @@ def storefront_url(seller_id, marketplace):
     return f"https://www.amazon.{tld}/sp?seller={seller_id}"
 
 
-def resolve_seller_name(seller_id, marketplace, timeout=15):
-    """Best-effort seller display name from the storefront page. "" on any failure."""
-    if not seller_id:
-        return ""
+def _fetch_name(seller_id, marketplace, timeout):
     try:
         req = urllib.request.Request(storefront_url(seller_id, marketplace), headers={
             "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -39,6 +36,23 @@ def resolve_seller_name(seller_id, marketplace, timeout=15):
         return _parse_name(raw.decode("utf-8", "replace"))
     except Exception:
         return ""
+
+
+def resolve_seller_name(seller_id, marketplace, timeout=15):
+    """Best-effort seller display name. Tries the seller's own marketplace FIRST, then falls back
+    across the other EU domains -- a seller listing on e.g. SE often only has a resolvable profile
+    on another EU domain (UK/DE/...). Returns "" if none resolve. Result is cached one-time upstream."""
+    if not seller_id:
+        return ""
+    order, seen = [], set()
+    for m in [str(marketplace).upper(), "UK", "DE", "FR", "IT", "ES", "NL", "SE", "PL", "BE", "IE"]:
+        if m and m not in seen:
+            seen.add(m); order.append(m)
+    for m in order:
+        nm = _fetch_name(seller_id, m, timeout)
+        if nm:
+            return nm
+    return ""
 
 
 # --- everything below is page-structure-dependent and intentionally quarantined here ---
