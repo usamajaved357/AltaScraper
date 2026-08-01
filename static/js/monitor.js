@@ -161,6 +161,12 @@ async function monRescanAll(){
   }catch(e){ toast("Re-scan error: "+e); if(btn) btn.disabled=false; }
 }
 
+function monDownloadExcel(){
+  // simple GET download -> the route streams the .xlsx with a Content-Disposition attachment
+  window.location.href = "/monitor/export";
+  toast("Preparing Excel…");
+}
+
 async function monMarkAllRead(){
   try{
     await fetch("/monitor/alerts/read",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});

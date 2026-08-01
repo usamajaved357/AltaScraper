@@ -54,6 +54,22 @@ def register(app, *, CONFIG_PATH, _cfg=None):
         return jsonify({"ok": True, "status": _chk.status(),
                         "unread": _chk.unread_count(CONFIG_PATH)})
 
+    @app.route("/monitor/export")
+    def monitor_export():
+        """Download the current results as an .xlsx (Summary + detailed Sellers sheet)."""
+        from flask import Response
+        from monitor import export as _exp
+        import datetime
+        cfg = _cfg() if _cfg else {}
+        try:
+            data = _exp.build_xlsx(CONFIG_PATH, cfg)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"export failed: {str(e)[:160]}"}), 500
+        fname = "asin_monitor_" + datetime.datetime.now().strftime("%Y%m%d_%H%M") + ".xlsx"
+        return Response(data,
+                        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
     @app.route("/monitor/overview")
     def monitor_overview():
         """Per-ASIN latest offer picture (sellers classified me/amazon/authorised/unknown) + the
