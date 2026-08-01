@@ -45,22 +45,30 @@ def build_xlsx(config_path, cfg):
         s.append([label, summary.get(key, 0)])
         s.cell(row=s.max_row, column=1).font = Font(bold=True)
     s.append([])
-    s.append(["ASIN", "Label", "Marketplace", "Sellers", "Buy Box", "Unknown", "State", "Last checked"])
-    _style_header(s, 8)
+    # a seller's display NAME, always falling back to the seller ID so a cell is never blank
+    def _nm(x):
+        return x.get("label") or x.get("id") or ""
+    s.append(["ASIN", "Label", "Marketplace", "# Sellers", "Buy Box",
+              "Sellers (★ = Buy Box)", "Unknown sellers", "Unknown #", "State", "Last checked"])
+    _style_header(s, 10)
     for row in ov.get("rows", []):
         for m in row.get("per_marketplace", []):
             if m.get("checked"):
-                sellers = m.get("sellers", [])
+                sellers = m.get("sellers", [])           # already Buy-Box-first, unknown-last
                 bb = next((x for x in sellers if x.get("buybox")), None)
                 unk = sum(1 for x in sellers if x.get("kind") == "unknown")
+                # EVERY seller by name (not just the Buy-Box holder), ★ marks who holds the Buy Box
+                names_all = ", ".join(_nm(x) + (" ★" if x.get("buybox") else "") for x in sellers)
+                # just the unrecognised ones, so threats can be scanned without filtering me/Amazon
+                names_unknown = ", ".join(_nm(x) for x in sellers if x.get("kind") == "unknown")
                 state = "skipped" if m.get("skipped") else "live"
                 s.append([row["asin"], row.get("label", ""), m["marketplace"], m.get("seller_count", 0),
-                          (bb.get("label") if bb else ""), unk, state, m.get("ts", "")])
+                          (_nm(bb) if bb else ""), names_all, names_unknown, unk, state, m.get("ts", "")])
             else:
                 state = "skipped — not listed here" if m.get("skipped") else "not checked yet"
-                s.append([row["asin"], row.get("label", ""), m["marketplace"], "", "", "", state, m.get("last_checked", "")])
-            if s.cell(row=s.max_row, column=6).value:      # unknown count > 0 -> highlight the row amber
-                for c in range(1, 9):
+                s.append([row["asin"], row.get("label", ""), m["marketplace"], "", "", "", "", "", state, m.get("last_checked", "")])
+            if m.get("checked") and sum(1 for x in m.get("sellers", []) if x.get("kind") == "unknown"):
+                for c in range(1, 11):                    # any unknown seller -> highlight the row amber
                     s.cell(row=s.max_row, column=c).fill = AMBER
     s.freeze_panes = "A9"
 
@@ -75,8 +83,10 @@ def build_xlsx(config_path, cfg):
             if not m.get("checked"):
                 continue
             for sel in m.get("sellers", []):
+                # "Seller name" uses the resolved label (manual name for known unknowns, e.g.
+                # La Casa Siesta / StarPlanet GmbH / Woux LLC), falling back to the ID if unresolved
                 d.append([asin, label, sku, m["marketplace"], m.get("ts", ""),
-                          sel.get("id", ""), sel.get("label", ""), sel.get("kind", ""),
+                          sel.get("id", ""), sel.get("label") or sel.get("id", ""), sel.get("kind", ""),
                           "Yes" if sel.get("buybox") else "", "FBA" if sel.get("fba") else "FBM",
                           sel.get("price"), sel.get("currency", ""),
                           sel.get("feedback_pct"), sel.get("feedback_count"), sel.get("storefront", "")])
@@ -90,7 +100,7 @@ def build_xlsx(config_path, cfg):
     d.freeze_panes = "A2"
 
     # column widths
-    for ws, widths in ((s, [16, 26, 12, 9, 22, 9, 22, 18]),
+    for ws, widths in ((s, [16, 24, 12, 9, 22, 42, 30, 9, 22, 18]),
                        (d, [14, 24, 14, 12, 18, 16, 24, 12, 9, 11, 10, 9, 11, 13, 40])):
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
