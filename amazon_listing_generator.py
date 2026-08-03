@@ -4265,17 +4265,41 @@ from listing.hazmat import _build_ghs_from_schema
 
 
 
+def _classify_verify_error(exc) -> str:
+    """Turn a getListingsItem exception into a plain-English REASON the status check
+    failed, so 'unverified' means something (timeout vs not-found vs auth vs other)
+    instead of silently swallowing every error. Returns a short human sentence."""
+    m = (type(exc).__name__ + " " + str(exc)).lower()
+    if "timed out" in m or "timeout" in m or "read operation" in m:
+        return ("status check TIMED OUT (connection to Amazon too slow) -- the listing "
+                "may well be fine; re-check shortly with 'Re-verify live status'")
+    if "404" in m or "not found" in m or "notfound" in m or "does not exist" in m:
+        return ("Amazon has NO record of this SKU yet -- either still processing right "
+                "after submit (re-check shortly), or the submission did not create a listing")
+    if ("403" in m or "401" in m or "forbidden" in m or "unauthorized" in m
+            or "unauthorised" in m or "accessdenied" in m or "access to requested" in m):
+        return ("PERMISSION DENIED reading the listing (the app's SP-API Listings role "
+                "may lack read access) -- fix the role, then re-verify")
+    if "429" in m or "quota" in m or "throttl" in m or "too many requests" in m:
+        return "Amazon THROTTLED the status check (rate limit) -- re-check shortly"
+    return f"status check failed: {str(exc)[:140]}"
+
+
 def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
     """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
     'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
     LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
     downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues); (None, None) if the check itself failed.
+    Returns (status_list, error_issues, reason): on success reason is ""; if the check
+    itself failed, status/errs are None and reason is a plain-English WHY (timeout /
+    not-found / auth / throttle / other) captured from the LAST exception -- never
+    swallowed silently.
 
     settle=True waits a few seconds first (right after a fresh submit, Amazon needs a
     moment). Pass settle=False when RE-verifying an already-submitted listing minutes
     later -- there's nothing to wait for, so skip the delay and check immediately."""
     import time as _t
+    _last_exc = None
     for _attempt in range(2):
         try:
             if settle:
@@ -4288,10 +4312,11 @@ def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
             status = summaries[0].get("status", []) if summaries else []
             issues = (p or {}).get("issues", []) or []
             errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
-            return status, errs
-        except Exception:
+            return status, errs, ""
+        except Exception as _e:
+            _last_exc = _e
             continue
-    return None, None
+    return None, None, _classify_verify_error(_last_exc) if _last_exc else "status check failed (no response)"
 
 
 def _skus_across_all_tabs(ws_out) -> set:
@@ -5959,7 +5984,7 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             # only re-verify rows that were actually submitted or were ready to be
             if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED", "PENDING", ""):
                 continue
-            _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
+            _rstatus, _rerrs, _rwhy = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
             _checked += 1
             if _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
                 queue(i, status_col, "LIVE")
@@ -5971,7 +5996,8 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                 queue(i, notes_col, f"RE-VERIFIED -- not live yet: {_issue_str(_rerrs, {})}")
                 console.print(f"  [red]row {i} {sku}: not live -- {len(_rerrs)} issue(s)[/red]")
             elif _rstatus is None and _rerrs is None:
-                console.print(f"  [dim]row {i} {sku}: could not check (Amazon didn't return the listing)[/dim]")
+                queue(i, notes_col, f"RE-VERIFY could not check -- {_rwhy}")
+                console.print(f"  [dim]row {i} {sku}: could not check -- {_rwhy}[/dim]")
             else:
                 console.print(f"  [yellow]row {i} {sku}: still pending Amazon processing (not yet buyable)[/yellow]")
             time.sleep(0.3)                   # gentle on the listings rate limit
@@ -6113,19 +6139,23 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                 # reported errors can still be live; a clean submit can be rejected
                 # downstream, e.g. main-image compliance). Set status from the REAL
                 # listing state via getListingsItem.
-                _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale)
+                _rstatus, _rerrs, _rwhy = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale)
                 if _rstatus is None and _rerrs is None:
-                    # couldn't verify -> fall back to submit-time verdict, flagged unverified
+                    # couldn't verify -> say WHY (timeout/not-found/auth/throttle), and still
+                    # show the submit-time errors in full so 'unverified' is never a black box.
                     if errors:
                         err += 1
                         queue(i, status_col, "API_ERROR")
-                        queue(i, notes_col, f"API SUBMIT - {len(errors)} error(s) [live status unverified]: {msgs}")
-                        console.print(f"  [red]row {i} {sku}: {len(errors)} submit error(s) (unverified)[/red]")
+                        queue(i, notes_col, f"API SUBMIT - {len(errors)} error(s) [live status UNVERIFIED: {_rwhy}]: {msgs}")
+                        console.print(f"  [red]row {i} {sku}: {len(errors)} submit error(s) -- live status unverified: {_rwhy}[/red]")
+                        for _em in (msgs.split("; ") if isinstance(msgs, str) else []):
+                            if _em.strip():
+                                console.print(f"      [red]- {_em.strip()}[/red]")
                     else:
                         ok += 1
                         queue(i, status_col, "SUBMITTED")
-                        queue(i, notes_col, "API SUBMITTED -- accepted; live status could not be verified (re-check shortly).")
-                        console.print(f"  [yellow]row {i} {sku}: SUBMITTED (status unverified)[/yellow]")
+                        queue(i, notes_col, f"API SUBMITTED -- accepted; live status could not be verified ({_rwhy}).")
+                        console.print(f"  [yellow]row {i} {sku}: SUBMITTED -- live status unverified: {_rwhy}[/yellow]")
                 elif _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
                     # Amazon shows it live. If the main image (or other) is flagged,
                     # keep it LIVE but note it -- the user fixes the image later.
