@@ -4179,6 +4179,25 @@ from listing.shaper import _shape_simple
 from listing.shaper import _shape_dimensions
 
 
+def _dim_axis_raw(parent, axis, flat):
+    """Return one dimension axis as a 'value unit' string for _shape_dimensions.
+
+    Reads the NESTED item_dimensions[axis] object the EDITOR actually saves (each axis is
+    {value, unit}, rebuilt by _renest) FIRST, and falls back to the legacy FLAT item_<axis>
+    key only when the nested axis is absent or blank. Before this, the builder read the flat
+    keys only, so any axis present just in nested form (commonly width/height) was silently
+    dropped -- and Amazon rejected the listing as 'height/width missing'."""
+    node = parent.get(axis) if isinstance(parent, dict) else None
+    if isinstance(node, dict):
+        val = node.get("value", node.get("decimal_value", ""))
+        if str(val).strip() != "":
+            unit = str(node.get("unit", "")).strip()
+            return (str(val).strip() + " " + unit).strip()
+    elif node not in (None, ""):
+        return str(node)
+    return flat
+
+
 # _shape_axes moved to listing/shaper.py in Phase 5 (behaviour unchanged).
 from listing.shaper import _shape_axes
 
@@ -4609,15 +4628,24 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
             {"value": True, "marketplace_id": mid}]
 
     # --- dimensions (composite if the type uses it) ---------------------------
+    # Read each axis from the NESTED item_dimensions[axis] object (what the editor saves,
+    # rebuilt by _renest) FIRST, falling back to the legacy flat item_<axis> key. Reading
+    # flat-only used to drop any axis present only in nested form (commonly width/height),
+    # so Amazon rejected the listing as missing them. Same fix for item_package_dimensions.
     if has("item_dimensions"):
+        _idim = pa.get("item_dimensions")
         d = _shape_dimensions(props["item_dimensions"],
-                              pa.get("item_length"), pa.get("item_width"), pa.get("item_height"), mid)
+                              _dim_axis_raw(_idim, "length", pa.get("item_length")),
+                              _dim_axis_raw(_idim, "width",  pa.get("item_width")),
+                              _dim_axis_raw(_idim, "height", pa.get("item_height")), mid)
         if d:
             A["item_dimensions"] = d
     if has("item_package_dimensions"):
+        _pdim = pa.get("item_package_dimensions")
         d = _shape_dimensions(props["item_package_dimensions"],
-                              pa.get("item_package_length"), pa.get("item_package_width"),
-                              pa.get("item_package_height"), mid)
+                              _dim_axis_raw(_pdim, "length", pa.get("item_package_length")),
+                              _dim_axis_raw(_pdim, "width",  pa.get("item_package_width")),
+                              _dim_axis_raw(_pdim, "height", pa.get("item_package_height")), mid)
         if d:
             A["item_package_dimensions"] = d
 
