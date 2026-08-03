@@ -24,7 +24,10 @@ def register(app, *, CONFIG_PATH, _active_account, _state):
         b = request.get_json(silent=True) or {}
         mkt = (b.get("marketplace", "") or "UK").upper()
         acct = (b.get("account_id", "") or "").strip()
-        script = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "sp_diagnose.py")
+        # sp_diagnose.py lives with the CODE, not with config.json (on Render the
+        # config is at /data/config.json while the code is at /app).
+        _app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script = os.path.join(_app_dir, "sp_diagnose.py")
         if not os.path.exists(script):
             return jsonify({"ok": False, "error": f"sp_diagnose.py not found at {script}"}), 404
         args = [_sys.executable, "-u", script, "--marketplace", mkt]
@@ -32,7 +35,7 @@ def register(app, *, CONFIG_PATH, _active_account, _state):
             args += ["--account-id", acct]
         try:
             proc = subprocess.run(args, capture_output=True, text=True, timeout=180,
-                                  cwd=os.path.dirname(os.path.abspath(CONFIG_PATH)))
+                                  cwd=_app_dir)
             # strip ANSI colour codes for clean display in the browser
             import re as _re
             clean = _re.sub(r"\x1b\[[0-9;]*m", "", (proc.stdout or "") + (proc.stderr or ""))

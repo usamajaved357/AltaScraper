@@ -1,4 +1,10 @@
 let ROWS = [], FILTER = "all", SHIP = "", SCHEMAS = {}, PTYPES = [];
+// Multi-tab view: TABS = manifest [{tab,tab_gid,count,url}] from /rows_all.
+// TAB_FILTER = "__all__" (show every tab) or a tab_gid to show just that tab.
+let TABS = [], TAB_FILTER = "__all__";
+// Live MIRROR: the REAL data pulled from Amazon on a Sync, keyed by SKU. Read-only —
+// shown beside a live listing, never written into the sheet. Filled by fullPullLive().
+let LIVE_MIRROR = {};
 let SELECTED = new Set();      // SKUs ticked for batch actions
 let CUR_SYMBOL = "\u00a3";     // £ default; flips to $ for US workspaces
 let WS_MARKET = "";           // active marketplace within the workspace
@@ -77,7 +83,9 @@ async function batchAutoGenerate(kind){
     let concepts=[];
     try{
       const sj=await (await fetch("/genimage/strategize",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({product_image:ref, title:(it&&it.title)||"", kind:kind,
+        body:JSON.stringify({product_image:ref,
+          product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]),
+          title:(it&&it.title)||"", kind:kind,
           n:per, text_provider:(window.AI_TEXT||null)})})).json();
       if(!sj.ok){ toast("Strategist failed for "+sku+": "+(sj.error||"unknown")); continue; }
       concepts=sj.concepts||[];
@@ -117,6 +125,23 @@ function _asinForSku(sku){
   if(it && it.asin) return String(it.asin);
   it=(ROWS||[]).find(x=>String(x.sku)===s);
   return (it && it.asin) ? String(it.asin) : "";
+}
+// YOUR OWN live ASIN (the one Amazon assigned to YOUR listing) -- taken ONLY from the live
+// catalogue matched by YOUR SKU. This is NOT the competitor ASIN embedded in the SKU
+// (price_days_ASIN); we deliberately never fall back to r.asin here, which is competitor.
+function ownLiveAsin(r){
+  try{
+    const s=String((r&&r.sku)||"").trim();
+    if(!s) return "";
+    const it=(LIVE_ITEMS||[]).find(x=>String(x.sku).trim()===s);
+    return (it && it.asin) ? String(it.asin).trim() : "";
+  }catch(e){ return ""; }
+}
+function _dpUrl(asin){
+  const m=(typeof WS_MARKET!=="undefined"&&WS_MARKET)||"";
+  const dom=(m==="US")?"amazon.com":(m==="CA")?"amazon.ca":(m==="DE")?"amazon.de":
+            (m==="FR")?"amazon.fr":(m==="IT")?"amazon.it":(m==="ES")?"amazon.es":"amazon.co.uk";
+  return "https://www."+dom+"/dp/"+encodeURIComponent(asin);
 }
 async function batchSecondaryImages(){
   const skus=selectedSkus();
@@ -245,13 +270,121 @@ function toast(m){const t=document.getElementById("toast");t.textContent=m;t.cla
 function badgeClass(s){return ["APPROVED","NEEDS_REVIEW","IP_HOLD","COMPLIANCE_HOLD","ERROR","API_READY","API_ERROR","LIVE"].includes(s)?("b-"+s):"b-none";}
 function isHold(s){return s==="IP_HOLD"||s==="COMPLIANCE_HOLD"||s==="ERROR"||s==="API_ERROR";}
 
+// True if a row belongs to the tab currently selected in the tab filter.
+// "__all__" = every tab. Rows with no tab tag (single-tab sheets) always pass.
+function tabPass(r){
+  if(TAB_FILTER==="__all__") return true;
+  return String(r.tab_gid||"")===String(TAB_FILTER);
+}
 function passFilter(r){
+  if(!tabPass(r)) return false;                 // tab filter composes with status filter
+  if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
   if(FILTER==="holds")return isHold(r.status);
   if(FILTER==="approved")return r.status==="APPROVED"||r.status==="API_READY";
   if(FILTER==="live")return r.status==="LIVE";
   return true;
+}
+
+// Draw the tab filter row (All tabs + one pill per tab, with counts). Hidden unless
+// the sheet has more than one listing tab. Same visual family as the status pills but
+// NEUTRAL — colour stays reserved for status. Called from summary() each render.
+function renderTabFilter(){
+  const host=document.getElementById("tabfilter");
+  if(!host) return;
+  if(!TABS || TABS.length<2){ host.style.display="none"; host.innerHTML=""; return; }
+  host.style.display="";
+  const total=TABS.reduce((a,t)=>a+(t.count||0),0);
+  const all=`<button class="tabpill ${TAB_FILTER==='__all__'?'active':''}" onclick="setTabFilter('__all__')">All tabs <span class="tabcount">${total}</span></button>`;
+  const pills=TABS.map(t=>{
+    const on=String(TAB_FILTER)===String(t.tab_gid);
+    return `<button class="tabpill ${on?'active':''}" onclick="setTabFilter('${esc(String(t.tab_gid))}')" title="${esc(t.tab)}">${esc(t.tab)} <span class="tabcount">${t.count||0}</span></button>`;
+  }).join("");
+  // "Duplicates only" toggle — shown only when the sheet actually has duplicate SKUs.
+  const _dupN=(typeof countDuplicateSkus==="function")?countDuplicateSkus():0;
+  const dupBtn=_dupN>0
+    ? `<button class="tabpill dup ${DUP_ONLY?'active':''}" onclick="toggleDupOnly()" title="Show only duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> Duplicates <span class="tabcount">${_dupN}</span></button>`
+    : "";
+  host.innerHTML=`<span class="tablabel"><i class="ti ti-layout-grid"></i> Tabs</span>${all}${pills}${dupBtn}`;
+}
+// Switch the tab filter. When a SPECIFIC tab is chosen we also point the workspace's
+// active tab at it (server-side), so edits / approvals / image pushes land on the tab
+// you're viewing rather than a stale one — Miles has the same SKU on several tabs.
+function setTabFilter(gid){
+  TAB_FILTER=gid;
+  if(gid!=="__all__"){
+    const t=(TABS||[]).find(x=>String(x.tab_gid)===String(gid));
+    if(t){ syncActiveTab(t.tab_gid, t.tab); }
+  }
+  render();
+}
+// Tell the server which tab is active, so single-tab-targeting write routes are correct.
+// _ACTIVE_SYNC_GID remembers the last tab we synced so we don't re-POST needlessly.
+let _ACTIVE_SYNC_GID = "";
+async function syncActiveTab(gid, tab){
+  try{
+    await fetch("/view/set_active_tab",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({gid:String(gid||""), tab:String(tab||"")})});
+    _ACTIVE_SYNC_GID=String(gid||"");
+  }catch(e){ /* non-fatal: edits just target the previous active tab */ }
+}
+// Before ANY write on a card (approve, edit, delete, push), make the server's active
+// tab match that card's tab. No-op for single-tab sheets, and only POSTs when the tab
+// actually changes — so a bulk action over one tab syncs once, not once per SKU.
+async function ensureCardTab(sku){
+  if(!(TABS && TABS.length>1)) return;
+  const r=ROWS.find(x=>String(x.sku)===String(sku));
+  if(r && r.tab_gid && String(r.tab_gid)!==String(_ACTIVE_SYNC_GID)){
+    await syncActiveTab(r.tab_gid, r.tab);
+  }
+}
+
+// ---- Cross-tab duplicate SKUs -------------------------------------------------
+// The same SKU on more than one card (usually on different tabs) means the same
+// product is listed twice. We index every SKU -> all its copies so each copy can be
+// flagged and the extras deleted. Built once per data load (buildDupIndex), and any
+// delete triggers loadRows() which rebuilds it.
+let DUP_INDEX = new Map();   // skuUpper -> [{sku,tab,tab_gid,row}]
+let DUP_ONLY  = false;       // filter toggle: show ONLY duplicate copies
+function buildDupIndex(){
+  DUP_INDEX = new Map();
+  (ROWS||[]).forEach(r=>{
+    if(typeof isEmptyRow==="function" && isEmptyRow(r)) return;   // ignore blank rows
+    const k=String(r.sku||"").trim().toUpperCase();
+    if(!k) return;
+    if(!DUP_INDEX.has(k)) DUP_INDEX.set(k, []);
+    DUP_INDEX.get(k).push({sku:r.sku, tab:r.tab||"", tab_gid:String(r.tab_gid||""), row:r.row});
+  });
+}
+function dupCopies(r){                       // every copy of this SKU (incl. itself)
+  const k=String(r.sku||"").trim().toUpperCase();
+  if(!k) return [];
+  return DUP_INDEX.get(k) || [];
+}
+function isDuplicate(r){ return dupCopies(r).length>1; }
+function dupOtherTabs(r){                     // distinct OTHER tabs the SKU also lives on
+  const mine=String(r.tab_gid||""), seen=new Set(), out=[];
+  dupCopies(r).forEach(c=>{ if(String(c.tab_gid)!==mine && c.tab && !seen.has(c.tab)){ seen.add(c.tab); out.push(c.tab); } });
+  return out;
+}
+function countDuplicateSkus(){ let n=0; DUP_INDEX.forEach(v=>{ if(v.length>1) n++; }); return n; }
+function toggleDupOnly(){ DUP_ONLY=!DUP_ONLY; render(); }
+// Delete ONE duplicate copy from its own tab (leaving the other copies untouched).
+// ensureCardTab syncs the active tab first, so /delete removes the right row on the
+// right tab -- never a same-numbered row on another tab.
+async function delDuplicate(sku, row, tab, btn){
+  if(!confirm("Delete this DUPLICATE copy of "+sku+" from the '"+tab+"' tab?\n\n"
+             +"Only this copy is removed — copies on other tabs stay. This cannot be undone.")) return;
+  if(btn) btn.disabled=true;
+  try{
+    if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
+    const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({sku:sku, row:row})});
+    const j=await res.json();
+    if(j.ok){ toast("Duplicate removed from "+tab); loadRows(); }
+    else{ toast("Delete failed: "+(j.error||"")); if(btn) btn.disabled=false; }
+  }catch(e){ toast("Delete failed"); if(btn) btn.disabled=false; }
 }
 
 // Is this row live ON AMAZON? Amazon's catalog is the ONLY authority whenever we
@@ -292,9 +425,16 @@ function _liveCatSetsForCurrentView(){
 }
 
 function summary(){
+  renderTabFilter();                             // keep the tab filter row in sync
   const c={APPROVED:0,API_READY:0,NEEDS_REVIEW:0,HOLD:0,ERROR:0,LIVE:0};
   const sets = _liveCatSetsForCurrentView();
-  ROWS.forEach(r=>{
+  // Counts reflect the ACTIVE tab filter: "All tabs" counts everything, a specific
+  // tab counts only that tab's rows. Blank placeholder rows are excluded so the
+  // "N listings" total agrees with the grid (which hides them) and the tab pills.
+  const _tabRows = ROWS.filter(tabPass)
+                       .filter(r=> (typeof isEmptyRow!=="function") || !isEmptyRow(r))
+                       .filter(r=> !DUP_ONLY || isDuplicate(r));
+  _tabRows.forEach(r=>{
     // FIX: reclassify HOLD/NEEDS_REVIEW/etc. as LIVE if the row's SKU/ASIN
     // matches the Amazon catalog. Without this the top-bar shows a stale
     // "N on hold" count for rows that already went live on Amazon but never
@@ -314,9 +454,9 @@ function summary(){
   // Deduplicate: a catalog tile whose SKU/ASIN already matched an app row above
   // has already been counted as LIVE -- don't count it twice.
   const norm = v => String(v||"").trim().toUpperCase();
-  const alreadyCountedSkus  = new Set(ROWS.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
+  const alreadyCountedSkus  = new Set(_tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
                                           .map(r=>norm(r.sku)).filter(Boolean));
-  const alreadyCountedAsins = new Set(ROWS.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
+  const alreadyCountedAsins = new Set(_tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
                                           .map(r=>norm(r.asin)).filter(Boolean));
   const liveCount = ((LIST_SOURCE==='live'||LIST_SOURCE==='all')
                      ? (LIVE_ITEMS||[]).filter(it=>{
@@ -327,10 +467,10 @@ function summary(){
                        }).length
                      : 0);
   c.LIVE += liveCount;
-  // total reflects what's actually shown in the current view
-  let total = ROWS.length;
+  // total reflects what's actually shown in the current view (respecting the tab filter)
+  let total = _tabRows.length;
   if(LIST_SOURCE==='live') total = liveCount;
-  else if(LIST_SOURCE==='all') total = ROWS.length + liveCount;
+  else if(LIST_SOURCE==='all') total = _tabRows.length + liveCount;
   document.getElementById("summary").innerHTML =
     `<b style="color:#e8eaed">${total}</b> listings &nbsp;·&nbsp; `+
     `${c.NEEDS_REVIEW} needs review &nbsp;·&nbsp; `+
@@ -338,7 +478,10 @@ function summary(){
     `<span style="color:#ef9a9a">${c.ERROR} error</span> &nbsp;·&nbsp; `+
     `<span style="color:#7fd1a0">${c.APPROVED} approved</span> &nbsp;·&nbsp; `+
     `<span style="color:#9cc1ff">${c.API_READY} preview-ready</span> &nbsp;·&nbsp; `+
-    `<span style="color:#74e0a3">${c.LIVE} live</span>`;
+    `<span style="color:#74e0a3">${c.LIVE} live</span>`+
+    ((countDuplicateSkus()>0)
+      ? ` &nbsp;·&nbsp; <span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`
+      : "");
 }
 
 // Pull a LIVE listing's real data (every Amazon image: main + all secondary) into the row, so
@@ -422,7 +565,21 @@ function card(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
   if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
-  const issues = isHold(r.status) || r.ip_risk==="HIGH" || r.comp_risk==="HIGH" || r.comp_risk==="MEDIUM" || findings.length>0;
+  // CARD ⚠️ ICON = a genuine RESTRICTED-PRODUCTS flag (prohibited/gated) OR a real hard
+  // blocker ONLY. Deliberately EXCLUDED so they never raise the icon:
+  //   - API_ERROR  -> that's Amazon's preview/submit attribute feedback (item_type_keyword,
+  //                   color, is_fragile, catalogue mismatches). Informational; lives in the
+  //                   "Amazon feedback" panel, NEVER the card icon. (This was the bug.)
+  //   - COMPLIANCE_HOLD -> legacy category-matcher noise (the restricted check replaces it).
+  //   - stored notes / old comp_risk / claims-risk -> never the icon.
+  // Genuine blockers that DO raise it: IP_HOLD (trademark) and ERROR (generation failure).
+  const _rest = r.restricted;
+  const _restProhibited = !!(_rest && _rest.matches && _rest.matches.some(m=>m.tier==="PROHIBITED"));
+  const _restFlag = !!(_rest && _rest.matched);
+  const _st = String(r.status||"").toUpperCase();
+  const _blocker = (_st==="IP_HOLD" || _st==="ERROR");
+  const realIssue = _restFlag || _blocker;
+  const flagRed = _restProhibited || _blocker;   // gated-only -> amber
   const urls=_rowImages(r);
   const thumb = (urls&&urls.length)
     ? `<img src="${esc(urls[0])}" loading="lazy" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
@@ -430,12 +587,16 @@ function card(r){
   const selected = SELECTED.has(String(r.sku));
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const skuId=sid(r.sku);
-  return `<div class="tile ${selected?'sel':''} ${issues?'flag':''}" data-sku="${esc(r.sku)}">
+  const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
+  const _isDup=(typeof isDuplicate==="function") && isDuplicate(r);   // same SKU on another card/tab
+  const _dupOther=_isDup?dupOtherTabs(r):[];
+  return `<div class="tile ${selected?'sel':''} ${_isDup?'dup':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
     <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openDrawer('${esc(r.sku)}')">
       ${thumb}
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
-      ${issues?'<span class="tileflag" title="Needs review"><i class="ti ti-alert-triangle"></i></span>':''}
+      ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
+      ${claimBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
@@ -446,6 +607,12 @@ function card(r){
         ${priceStr?`<span class="tileprice pii">${priceStr}</span>`:'<span></span>'}
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
+      ${(TABS&&TABS.length>1&&r.tab)?`<div class="tiletab" title="This listing lives on the '${esc(r.tab)}' tab"><i class="ti ti-layout-grid"></i> ${esc(r.tab)}</div>`:''}
+      ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
+        <span class="tiledup-lbl"><i class="ti ti-copy"></i> Duplicate SKU${_dupOther.length?` — also on ${esc(_dupOther.join(', '))}`:` — appears ${dupCopies(r).length}×`}</span>
+        <button class="tiledup-del" title="Delete this copy from ${esc(r.tab||'this tab')} (other copies stay)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>
+      </div>`:''}
+      ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
     <div class="tileacts">
       <button class="ib" title="Approve" onclick="setStatus('${esc(r.sku)}','APPROVED',this)"><i class="ti ti-check"></i></button>
@@ -509,43 +676,68 @@ function formatFindings(findings){
   // not an API error list -> show as-is (compliance/IP notes), escaped + newlines
   return findings.map(f=>esc(f)).join("\n");
 }
+// Read-only "Actual on Amazon" panel: the REAL listing data pulled by a Sync
+// (images, item-type-keyword, variations/theme, bullets, description). Kept apart from
+// the editable draft fields — this is a mirror of what's live, never your draft copy.
+// Returns "" when nothing has been synced for this SKU.
+function liveMirrorPanel(r){
+  const m = LIVE_MIRROR[String(r&&r.sku||"").trim()];
+  if(!m) return "";
+  const imgs = (m.images||[]);
+  const imgHtml = imgs.length
+    ? `<div class="mirimgs">${imgs.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" loading="lazy" onerror="this.closest('a').style.display='none'"></a>`).join("")}</div>`
+    : `<div class="cc">No images returned by Amazon.</div>`;
+  const bullets = (m.bullets||[]).filter(Boolean);
+  const bulletHtml = bullets.length
+    ? `<ul class="mirbul">${bullets.map(b=>`<li>${esc(b)}</li>`).join("")}</ul>` : "";
+  const v = m.variations||{};
+  const varBits = [];
+  if(m.variation_theme) varBits.push(`theme: <b>${esc(m.variation_theme)}</b>`);
+  if(v.is_parent && (v.child_skus||[]).length) varBits.push(`${v.child_skus.length} child SKU(s)`);
+  if(v.is_child && (v.parent_skus||[]).length) varBits.push(`child of ${esc(v.parent_skus.join(', '))}`);
+  const varHtml = varBits.length ? `<div class="mirrow"><span class="mirk">Variations</span><span>${varBits.join(" · ")}</span></div>` : "";
+  const kw = m.item_type_keyword ? `<div class="mirrow"><span class="mirk">Item type keyword</span><span>${esc(m.item_type_keyword)}</span></div>` : "";
+  const desc = m.description ? `<div class="mirrow"><span class="mirk">Description</span><span class="mirdesc">${esc(m.description)}</span></div>` : "";
+  return `<details class="mirbox" open>
+    <summary class="mirsum"><i class="ti ti-brand-amazon"></i> Actual on Amazon <span class="cc">(read-only — pulled by Sync, ${imgs.length} image(s))</span></summary>
+    <div class="mirbody">
+      ${imgHtml}
+      ${kw}${varHtml}
+      ${bulletHtml?`<div class="mirrow"><span class="mirk">Bullets</span><span>${bulletHtml}</span></div>`:''}
+      ${desc}
+      <div class="cc" style="margin-top:6px">This mirrors what's live on Amazon. It never changes your draft — edit the fields below to change your copy.</div>
+    </div></details>`;
+}
+
 function drawerContent(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
   if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
-  const issues = isHold(r.status) || r.ip_risk==="HIGH" || r.comp_risk==="HIGH" || r.comp_risk==="MEDIUM" || findings.length>0;
+  // Header risk chips: keep only the genuine IP/trademark one. The old "Compliance: HIGH/MED"
+  // chips came from the legacy category matcher and cried wolf on clean products -- the
+  // Restricted products check panel now carries real compliance, so those are dropped.
+  const hasFeedback = findings.length>0;
   const risks = [];
   if(r.ip_risk==="HIGH") risks.push('<span class="risk hi">IP: HIGH</span>');
-  if(r.comp_risk==="HIGH") risks.push('<span class="risk hi">Compliance: HIGH</span>');
-  else if(r.comp_risk==="MEDIUM") risks.push('<span class="risk med">Compliance: MED</span>');
-  let reason = "";
-  if(issues){
-    if(r.comp_risk==="HIGH") reason="Compliance flag";
-    else if(r.ip_risk&&r.ip_risk!=="") reason="IP review";
-    else if(r.comp_risk==="MEDIUM") reason="Minor compliance note";
-    else reason="Review note";
-  }
+  // This panel shows AMAZON'S OWN post-submit messages (attribute conflicts, catalogue
+  // mismatches) + our IP note -- NOT a restricted-products / docs verdict. That lives in the
+  // separate "Restricted products check" panel. Label it honestly so it never masquerades
+  // as "docs required".
+  let reason = (r.ip_risk && r.ip_risk!=="") ? "IP / trademark review" : "Amazon feedback";
   // Is this an ACTUAL blocking problem, or just an informational compliance note
   // (e.g. "lithium battery -> these docs may be requested")? A real problem = an
   // API error/hold or an IP risk. A compliance note on an already-submitted/live
   // listing is informational, so show it ORANGE, not alarming red.
-  const _allNotes = String((r.notes||"")+" "+(r.comp_notes||""));
-  const _hasApiError = /\[E\]|required but missing|API (PREVIEW|SUBMIT)[^:]*:\s*\d+\s*error|invalid/i.test(_allNotes);
-  const _isHoldOrErr = (typeof isHold==="function" && isHold(r.status)) ||
-                       String(r.status||"").toUpperCase().indexOf("ERROR")>=0;
-  const _ipProblem = r.ip_risk==="HIGH";
-  const _informational = issues && !_hasApiError && !_isHoldOrErr && !_ipProblem;
-  if(_informational){
-    reason = "Compliance info — documents Amazon may request";
-  }
-  const _sumClass = _informational ? "findsum info" : "findsum bad";
-  const _findClass = _informational ? "findings info" : "findings";
-  const statusBlock = issues
-    ? `<details class="findingsbox" open><summary class="${_sumClass}">\u2139 ${esc(reason)}</summary>
-        <div class="${_findClass}">${formatFindings(findings)}</div>
+  const _fbNote = (reason==="IP / trademark review")
+    ? "Our brand/trademark check — not a docs requirement."
+    : "Amazon’s own submission messages (attribute conflicts, catalogue mismatches) — NOT a restricted-products or docs verdict. See the Restricted products check panel for that.";
+  const statusBlock = hasFeedback
+    ? `<details class="findingsbox"><summary class="findsum neutral">\u2139 ${esc(reason)}</summary>
+        <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">${esc(_fbNote)}</div>
+        <div class="findings neutral">${formatFindings(findings)}</div>
         <button class="linkbtn" style="margin-top:6px" onclick="locateFlags('${esc(r.sku)}',this)">\ud83d\udd0d Locate flagged terms</button>
         <div class="locout" id="loc_${sid(r.sku)}"></div></details>`
-    : `<div class="findsum good">\u2713 No issues detected</div>`;
+    : "";
   const urls=_rowImages(r);
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const hero = (urls&&urls.length)?`<div class="heroimg"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.style.display='none'"></div>`:'';
@@ -573,8 +765,8 @@ function drawerContent(r){
         <span class="spacer"></span>
         <button class="ib" onclick="closeDrawer()" title="Close"><i class="ti ti-x"></i></button>
       </div>
-      <div class="dwtitle">${esc(r.title)||'<span class="cc">(no title)</span>'}</div>
-      ${r.item_highlights?`<div class="dwhl"><span class="dwhl-lbl">Highlights</span> ${esc(r.item_highlights)}</div>`:''}
+      <div class="dwtitle">${claimMarkField(r,'title',r.title)||'<span class="cc">(no title)</span>'}</div>
+      ${r.item_highlights?`<div class="dwhl"><span class="dwhl-lbl">Highlights</span> ${claimMarkField(r,'item_highlights',r.item_highlights)}</div>`:''}
       <div class="lmeta">
         <span class="lsku">${esc(r.sku)||'\u2014'}</span>
         ${priceStr?`<span class="lprice">${priceStr}</span>`:''}
@@ -607,13 +799,148 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${liveMirrorPanel(r)}
+    ${restrictedPanel(r)}
+    ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+}
+
+// ---- RESTRICTED PRODUCTS CHECK (Shape 2) -- its own panel, separate from Amazon feedback
+// and from the claims-risk warning. Runs the tuned restricted-products library per listing
+// (read-only, WARN only, never blocks). Clean products stay SILENT (a small quiet line) --
+// no false docs warning (the doormat rule). r.restricted is attached server-side.
+function _restrictedConfidence(src){
+  if(src==="amazon_notice") return "verified · from your history";
+  if(src==="amazon_notice_pending") return "verified · notice text pending";
+  return "unverified · educated guess, confirm";
+}
+function restrictedPanel(r){
+  const rr = r.restricted;
+  if(!rr) return "";
+  if(!rr.matched){
+    // CLEAN: quiet, never a red/amber panel. Honest "not a clearance", not a docs warning.
+    return `<div class="restclear"><i class="ti ti-shield-check"></i> Restricted products check: no known restriction matched <span class="cc">— not a clearance</span></div>`;
+  }
+  const anyProhibited = rr.matches.some(m=>m.tier==="PROHIBITED");
+  const head = anyProhibited ? "Restricted products check — PROHIBITED"
+                             : "Restricted products check — gated (docs required)";
+  const rows = rr.matches.map(function(m){
+    const red = m.tier==="PROHIBITED";
+    const tierLbl = red ? "PROHIBITED" : (m.tier==="GATED" ? "GATED" : "RESTRICTED");
+    const docs = (!red && m.docs && m.docs.length)
+      ? `<div class="cc" style="margin-top:4px"><b>Docs required:</b> ${esc(m.docs.join("; "))}</div>`
+      : (red ? `<div class="cc" style="margin-top:4px">No compliance path — prohibited on this marketplace.</div>` : "");
+    const meta = [m.reason, m.regulator, rr.marketplace].filter(Boolean).map(esc).join(" · ");
+    return `<div class="restrow ${red?'red':'amber'}">
+      <div><span class="risk ${red?'hi':'med'}">${tierLbl}</span> <b>${esc(m.label)}</b>
+        <span class="cc restconf">${esc(_restrictedConfidence(m.source))}</span></div>
+      <div class="cc" style="margin-top:3px">${meta}</div>${docs}</div>`;
+  }).join("");
+  return `<details class="findingsbox" open><summary class="findsum ${anyProhibited?'bad':'info'}">${anyProhibited?'⛔':'⚠'} ${esc(head)}</summary>
+    <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">Your restricted-products library (SP-API-independent). Warning only — publishing is never blocked here.</div>
+    <div class="restlist">${rows}</div>
+    <div class="cc" style="margin-top:6px;font-size:11px;font-style:italic">${esc(rr.caveat||"")}</div></details>`;
+}
+
+// ---- CATEGORY-AWARE CLAIM RISK (task #18 UI) -----------------------------------
+// Surfaces the backend's per-hit flags (phrase/field/severity/category/rule/swap/col):
+// a tile badge, in-copy highlighting, and a one-click safe rewrite the USER accepts.
+// NEVER blocks publishing -- it's a loud, specific, actionable warning only. A listing
+// with zero hits renders exactly as before (claimBadge/claimBox return "").
+const _CLAIM_FLABEL = {title:"title", item_highlights:"highlights",
+  bullet_1:"bullet 1", bullet_2:"bullet 2", bullet_3:"bullet 3", bullet_4:"bullet 4",
+  bullet_5:"bullet 5", description:"description"};
+function _claimFieldText(r, field){
+  if(field==="title") return r.title||"";
+  if(field==="item_highlights") return r.item_highlights||"";
+  if(field==="description") return String(r.description||"").replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim();
+  const m=/^bullet_([1-5])$/.exec(field);
+  if(m){ const b=r.bullets||[]; return b[(+m[1])-1]||""; }
+  return "";
+}
+function _claimWholeWordRe(phrase){
+  const p=String(phrase).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  return new RegExp("(?<![A-Za-z0-9])("+p+")(?![A-Za-z0-9])","gi");
+}
+// Escape text, THEN wrap any flagged phrase for `field` in a severity-coloured <mark>.
+function claimMarkField(r, field, rawText){
+  let out=esc(rawText||"");
+  const hits=(r.claim_flags||[]).filter(x=>x.field===field);
+  hits.forEach(h=>{
+    const lvl=h.severity==="RED"?"red":"amber";
+    try{ out=out.replace(_claimWholeWordRe(esc(h.phrase)),'<mark class="claimhit '+lvl+'">$1</mark>'); }catch(e){}
+  });
+  return out;
+}
+function claimBadge(r){
+  const f=r.claim_flags||[]; if(!f.length) return "";
+  const red=f.some(x=>x.severity==="RED"); const lvl=red?"red":"amber";
+  const rules=[...new Set(f.map(x=>x.rule+" ("+x.category+" category)"))].join("; ");
+  const tip=f.length+" claim risk"+(f.length>1?"s":"")+": "+rules+" — click to review";
+  return `<span class="tileclaim ${lvl}" title="${esc(tip)}" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-alert-hexagon"></i>${f.length}</span>`;
+}
+function claimBox(r){
+  const f=r.claim_flags||[]; if(!f.length) return "";
+  const red=f.some(x=>x.severity==="RED");
+  const head=`<summary class="findsum ${red?'bad':'info'}">⚠ ${f.length} claim risk${f.length>1?'s':''} — ${red?'action recommended':'review'} (never blocks publishing)</summary>`;
+  const rows=f.map((h,i)=>{
+    const lvl=h.severity==="RED"?"red":"amber";
+    const marked=claimMarkField(r,h.field,_claimFieldText(r,h.field));
+    return `<div class="claimrow ${lvl}">
+      <div class="claimhead">
+        <span class="claimsev ${lvl}">${esc(h.severity)}</span>
+        <b>${esc(h.rule)}</b> <span class="cc">(${esc(h.category)} category) · in ${esc(_CLAIM_FLABEL[h.field]||h.field)}</span>
+      </div>
+      <div class="claimtext">${marked}</div>
+      ${h.swap?`<button class="linkbtn" onclick="toggleRewrite('${esc(r.sku)}',${i})">✎ Show safe rewrite</button>
+        <div class="rewrite" id="rw_${sid(r.sku)}_${i}" style="display:none"></div>`
+        :`<div class="cc" style="margin-top:4px">No direct swap — rephrase or remove this wording.</div>`}
+    </div>`;
+  }).join("");
+  return `<details class="findingsbox claimsbox" open>${head}<div class="claimlist">${rows}</div></details>`;
+}
+function toggleRewrite(sku, i){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  const box=document.getElementById("rw_"+sid(sku)+"_"+i); if(!box) return;
+  if(box.style.display!=="none"){ box.style.display="none"; box.innerHTML=""; return; }
+  const h=(r.claim_flags||[])[i]; if(!h||!h.swap){ return; }
+  const before=_claimFieldText(r,h.field);
+  let after; try{ after=before.replace(_claimWholeWordRe(h.phrase), h.swap); }catch(e){ after=before; }
+  box.style.display="block";
+  box.innerHTML=`<div class="rwrow"><span class="rwlbl">Before</span><div class="rwbefore">${claimMarkField(r,h.field,before)}</div></div>
+    <div class="rwrow"><span class="rwlbl">After</span><div class="rwafter">${esc(after)}</div></div>
+    <div class="rwacts"><button class="linkbtn ok" onclick="applyRewrite('${esc(sku)}',${i})">Apply this rewrite</button>
+      <span class="cc">You accept it — nothing is changed until you click.</span></div>`;
+}
+async function applyRewrite(sku, i){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  const h=(r.claim_flags||[])[i]; if(!h||!h.swap||!h.col){ toast("No target column for this field"); return; }
+  const raw=(h.field==="description") ? String(r.description||"") : _claimFieldText(r,h.field);
+  let val; try{ val=raw.replace(_claimWholeWordRe(h.phrase), h.swap); }catch(e){ val=raw; }
+  try{
+    const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku:sku, target:"col", key:h.col, value:val})})).json();
+    if(!j.ok){ toast("Save failed: "+(j.error||"")); return; }
+    toast("Rewrite applied ✓ — re-screening");
+    // pull the fresh row so flags recompute against the new copy
+    try{
+      const rr=await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      if(rr&&rr.ok&&rr.row){ const k=ROWS.findIndex(x=>String(x.sku)===String(sku));
+        if(k>=0) ROWS[k]=Object.assign({},ROWS[k],rr.row); }
+    }catch(e){}
+    try{ render(); }catch(e){}
+    if(typeof DRAWER_SKU!=="undefined" && String(DRAWER_SKU)===String(sku)){ try{ openDrawer(sku); }catch(e){} }
+  }catch(e){ toast("Apply failed: "+((e&&e.message)||e)); }
 }
 
 function openDrawer(sku, jumpGen){
   const r=ROWS.find(x=>String(x.sku)===String(sku));
   if(!r) return;
+  // Multi-tab: make sure the workspace's active tab matches THIS card's tab before any
+  // edit/approve/push (all of which target the active tab). Without this, editing a card
+  // from a non-active tab could hit a duplicate SKU on the wrong tab.
+  ensureCardTab(sku);
   DRAWER_SKU=sku;
   const dw=document.getElementById("drawer");
   const body=document.getElementById("drawerbody");

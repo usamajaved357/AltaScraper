@@ -211,6 +211,712 @@ def _split_brand_words(brand: str) -> set:
     return {w.lower() for w in re.findall(r"[A-Za-z0-9]+", brand) if len(w) > 1}
 
 
+# ---------------------------------------------------------------------------
+# CLAIMS GROUNDING GATE -- a SPECIFIC standards/approval claim in the finished
+# copy must appear in the product's OWN source documents (SDS/TDS/other). This is
+# the code-level enforcement that was missing: fabricated OEM spec approvals
+# ("meets Denison HF-2, Vickers I-286-S", "passes the Vickers 35VQ25 pump wear
+# test") reached LIVE Miles listings because the "claims gate" lived only in the
+# generation prompt and nothing verified it against source. check_unsupported_claims
+# runs AFTER generation, over the finished copy only, and returns the ungrounded
+# claims so the caller can HARD-HOLD the row.
+#
+# Deliberately LENIENT: it exists to catch a designation ABSENT from source, not
+# formatting drift. Both sides are normalised (case, hyphen/space, VG/Part/Grade
+# infixes, trailing part-numbers), so "ISO 46"~"ISO VG 46", "P-68"~"P68",
+# "DIN 51524"~"DIN 51524-2" are NOT mismatches. Only SPECIFIC designations are
+# checked: a code containing BOTH a letter and a digit (HF-2, I-286-S, 35VQ25,
+# TES-295), an issuer name (Denison, Vickers, Cincinnati Milacron), or issuer+number
+# (DIN 51524, AGMA 9005). Vague claims ("meets industry specifications") are left to
+# the prompt, not hard-held. The product's OWN viscosity grade (AW-46, ISO 46) is
+# excluded -- it is identity, not an external approval.
+#
+# KNOWN OPEN HOLE (tracked separately): bare quantified claims with no named
+# standard ("rated to 250C", an invented viscosity/flash value) are NOT covered
+# here -- that needs unit normalisation.
+# ---------------------------------------------------------------------------
+
+# Words that introduce a spec the copy claims to satisfy.
+_CLAIM_TRIGGER_RE = re.compile(
+    r"\b(?:meet|meets|meeting|met|exceed|exceeds|exceeding|pass|passes|passing|"
+    r"passed|approved|approval|complies|comply|complying|conform|conforms|"
+    r"conforming|certified|rated|per|according)\b", re.I)
+
+# Spec-issuer names that, claimed as met, must be grounded in source. Distinct from
+# the forbidden-BRAND list; this is about verifiable standards issuers. (Kept >=3
+# chars and distinctive to avoid false hits; 2-char issuers like GM/ZF are handled
+# by the forbidden-brand checker instead.)
+_SPEC_ISSUERS = (
+    "denison", "vickers", "cincinnati", "milacron", "eaton", "parker", "rexroth",
+    "sundstrand", "sundyne", "racine", "sperry", "danfoss", "bosch",
+    "agma", "afnor", "allison", "cummins", "caterpillar", "kubota", "komatsu",
+    "deere", "mercedes", "volvo", "mack", "detroit", "meritor", "poclain",
+)
+_ISSUER_ALT = "|".join(re.escape(i) for i in _SPEC_ISSUERS)
+_ISSUER_RE = re.compile(r"\b(" + _ISSUER_ALT + r")\b", re.I)
+_ISSUER_NUM_RE = re.compile(r"\b(" + _ISSUER_ALT + r")\s*#?\s*([0-9][0-9A-Za-z\-./]*)", re.I)
+
+# Candidate designation tokens; filtered to those with BOTH a letter and a digit.
+_CODE_CANDIDATE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-./]{1,18}")
+# The product's own viscosity grade -- excluded (identity, not an external approval).
+_GRADE_RE = re.compile(r"^(?:iso|aw|vg|sae|iso-?vg)?[-\s]?\d{1,3}[a-z]?$", re.I)
+
+
+def _norm_spec(s: str) -> str:
+    """Canonicalise a designation / source blob for lenient comparison: lowercase,
+    drop VG/Part/Grade/etc. infix words, then strip everything non-alphanumeric."""
+    s = s.lower()
+    s = re.sub(r"\b(?:vg|part|no|nr|class|grade|type|level|approval|approved|spec|"
+               r"specification|specifications|standard|standards|category|series|"
+               r"sequence|test)\b", " ", s)
+    s = re.sub(r"[^a-z0-9]+", "", s)
+    return s
+
+
+def _grounded(token: str, norm_source: str) -> bool:
+    """True if `token` appears in the normalised source, tolerating trailing
+    part-number differences (DIN 51524 ~ DIN 51524-2 ~ DIN 51524 Part 2)."""
+    nt = _norm_spec(token)
+    if len(nt) < 3:
+        return True                      # too generic to verify -> never flag
+    if nt in norm_source:
+        return True
+    core = nt[:max(4, len(nt) - 2)]      # lenient: allow trailing-part drift
+    return core in norm_source
+
+
+def _looks_like_code(tok: str) -> bool:
+    return (bool(re.search(r"[A-Za-z]", tok)) and bool(re.search(r"\d", tok))
+            and not _GRADE_RE.match(tok))
+
+
+def check_unsupported_claims(listing: dict, source_text: str) -> dict:
+    """Verify every SPECIFIC standards/approval claim in the finished copy against
+    the product's OWN source documents.
+
+    Returns {"has_ungrounded": bool, "ungrounded": [{"claim","token"}], "summary"}.
+    Returns empty (nothing flagged) when source_text is blank -- the caller handles
+    the no-source case separately (refuse to generate), so this never hard-holds a
+    row merely because we have nothing to check against."""
+    result = {"has_ungrounded": False, "ungrounded": [], "summary": ""}
+    if not source_text or not source_text.strip():
+        return result
+    norm_source = _norm_spec(source_text)
+
+    blocks = [
+        listing.get("title", ""), listing.get("item_highlights", ""),
+        listing.get("bullet_1", ""), listing.get("bullet_2", ""),
+        listing.get("bullet_3", ""), listing.get("bullet_4", ""),
+        listing.get("bullet_5", ""), _strip_html(listing.get("description", "")),
+    ]
+    text = ". ".join(b for b in blocks if b)
+    sentences = re.split(r"(?<=[.!?;:])\s+|\n+|•|<li>|</li>", text)
+
+    seen = set()
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent or not _CLAIM_TRIGGER_RE.search(sent):
+            continue
+        referenced = []
+        # issuer + number combined standards (DIN 51524, AGMA 9005)
+        for m in _ISSUER_NUM_RE.finditer(sent):
+            referenced.append(m.group(1) + " " + m.group(2))
+        # bare issuer names claimed as met (meets Denison ...)
+        for m in _ISSUER_RE.finditer(sent):
+            referenced.append(m.group(1))
+        # specific alphanumeric codes (HF-2, I-286-S, 35VQ25, TES-295)
+        for tok in _CODE_CANDIDATE_RE.findall(sent):
+            if _looks_like_code(tok):
+                referenced.append(tok)
+        for tok in referenced:
+            if _grounded(tok, norm_source):
+                continue
+            key = (_norm_spec(tok), sent[:50])
+            if key in seen:
+                continue
+            seen.add(key)
+            result["ungrounded"].append({"claim": sent[:180], "token": tok})
+
+    if result["ungrounded"]:
+        result["has_ungrounded"] = True
+        toks = ", ".join(sorted({u["token"] for u in result["ungrounded"]}))
+        result["summary"] = ("UNGROUNDED CLAIM(S) -- not found in product source docs: "
+                             + toks)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor trademark names must NOT
+# appear in the finished Miles/brand copy at all (distinct from the claims gate,
+# which is about whether a claim is grounded). Tiered to keep false-positives out
+# of lubricant copy:
+#   TIER A -- distinctive names, matched as BARE whole words (John Deere, Kubota).
+#   TIER B -- ambiguous names, matched ONLY in their full multi-word form
+#             (Case IH, Atlas Copco) -- NEVER the bare word ("Case" in "4x1
+#             Gallon/Case" is a packaging term and is fine).
+#   plus the 44 OEM spec codes, and Vickers/Denison/Cincinnati Milacron.
+# WHOLE-WORD matched with a boundary guard so a name that is a SUBSTRING of an
+# ordinary word never fires -- e.g. "Esso" inside "compressor" must NOT hit.
+# Scans the FINISHED copy only (title/highlights/bullets/description/keywords),
+# never the source docs. A hit hard-holds the row via the locked "HOLD:" prefix.
+# ---------------------------------------------------------------------------
+import os as _os
+
+_TIER_A_BARE = [
+    "John Deere", "Deere", "Kubota", "Caterpillar", "Komatsu", "Kioti", "Kiota",
+    "Fendt", "Claas", "Valtra", "Landini", "Mahindra", "Volvo", "Bobcat", "JCB",
+    "Hitachi", "Kobelco", "Doosan", "Hyundai", "Liebherr", "Manitowoc", "CompAir",
+    "Sullair", "Kaeser", "Cummins", "Freightliner", "Peterbilt", "Kenworth",
+    "Navistar", "MaxxForce", "Meritor", "Vickers", "Danfoss", "Rexroth",
+    "Bosch Rexroth", "Poclain", "Mobil", "Castrol", "Chevron", "Valvoline",
+    "Pennzoil", "Texaco", "AMSOIL", "Motul", "Havoline", "Motorcraft", "Citgo",
+    "Conoco", "Esso", "Aisin", "Fuchs", "Kluber", "Anderol", "Krytox",
+    "Lubriplate", "SuperTech", "AGCO", "McCormick", "Steiger", "TYM", "Boge",
+    "Worthington", "Kendall", "Denison", "Milacron",
+]
+_TIER_B_FULL = [
+    "Case IH", "New Holland", "Ford New Holland", "Massey-Ferguson", "LS Tractor",
+    "Deutz-Fahr", "Volvo CE", "Link-Belt", "Ingersoll Rand", "Atlas Copco",
+    "Quincy Compressor", "Gardner Denver", "Chicago Pneumatic", "FS Curtis",
+    "Detroit Diesel", "Allison Transmission", "Mack Trucks", "Western Star",
+    "Eaton Fuller", "Eaton Vickers", "Dana Spicer", "Parker Hannifin",
+    "Sauer-Danfoss", "Linde Hydraulics", "Shell Tellus", "Shell Rotella",
+    "Shell Rimula", "Total Dacnis", "Total Rubia", "BP Energol", "Petro-Canada",
+    "Phillips 66", "Royal Purple", "Lucas Oil", "Lucas Heavy Duty", "Red Line",
+    "Liqui Moly", "Liqui-Moly", "Schaeffer Manufacturing", "Mystik JT-6",
+    "Warren Distribution", "Quaker State", "MAG 1", "Nye Lubricants",
+    "Dow Corning", "Jet-Lube", "Cincinnati Milacron",
+]
+
+# 44 OEM spec codes loaded from the repo-root file (single source of truth).
+_SPEC_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                           "forbidden_specs.txt")
+try:
+    FORBIDDEN_SPEC_CODES = [l.strip() for l in open(_SPEC_FILE, encoding="utf-8") if l.strip()]
+except Exception:
+    FORBIDDEN_SPEC_CODES = []
+
+
+def _wordish(term: str):
+    """Whole-word pattern with a boundary guard on BOTH ends so a term that is a
+    substring of a longer word never matches ('Esso' in 'compressor' -> no hit)."""
+    return re.compile(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
+
+
+_FORBIDDEN_TERMS = _TIER_A_BARE + _TIER_B_FULL + FORBIDDEN_SPEC_CODES
+_FORBIDDEN_PATTERNS = [(t, _wordish(t)) for t in _FORBIDDEN_TERMS]
+
+
+def check_forbidden_brands(listing: dict) -> dict:
+    """Scan the FINISHED copy for any forbidden OEM/competitor name or spec code.
+    Returns {"has_forbidden": bool, "hits": [{"term","field"}], "summary": str}."""
+    result = {"has_forbidden": False, "hits": [], "summary": ""}
+    fields = [
+        ("title", listing.get("title", "")),
+        ("item_highlights", listing.get("item_highlights", "")),
+        ("bullet_1", listing.get("bullet_1", "")),
+        ("bullet_2", listing.get("bullet_2", "")),
+        ("bullet_3", listing.get("bullet_3", "")),
+        ("bullet_4", listing.get("bullet_4", "")),
+        ("bullet_5", listing.get("bullet_5", "")),
+        ("description", _strip_html(listing.get("description", ""))),
+        ("keywords", listing.get("search_terms", "") or listing.get("backend_keywords", "")),
+    ]
+    seen = set()
+    for fname, text in fields:
+        if not text:
+            continue
+        for term, pat in _FORBIDDEN_PATTERNS:
+            if pat.search(text):
+                k = (term.lower(), fname)
+                if k in seen:
+                    continue
+                seen.add(k)
+                result["hits"].append({"term": term, "field": fname})
+    if result["hits"]:
+        result["has_forbidden"] = True
+        names = ", ".join(sorted({h["term"] for h in result["hits"]}))
+        result["summary"] = "FORBIDDEN BRAND/SPEC in copy: " + names
+    return result
+
+
+def forbidden_names_block(safe_alternatives_text: str = "") -> str:
+    """The prompt section (step b) that feeds the AI the real names to avoid. Rendered
+    as its OWN section so it survives even when source_docs are present."""
+    block = (
+        "\n===================================\n"
+        "FORBIDDEN OEM / COMPETITOR NAMES -- ZERO TOLERANCE\n"
+        "===================================\n"
+        "NEVER write any of these competitor or OEM brand names anywhere in the title, "
+        "bullets, item highlights, description or keywords. If a SOURCE DOCUMENT mentions "
+        "one, describe the capability generically or use the safe-alternative wording "
+        "instead -- never echo the name into the listing.\n"
+        "FORBIDDEN NAMES: " + ", ".join(_TIER_A_BARE + _TIER_B_FULL) + "\n"
+    )
+    if FORBIDDEN_SPEC_CODES:
+        block += "FORBIDDEN OEM SPEC CODES: " + ", ".join(FORBIDDEN_SPEC_CODES) + "\n"
+    if safe_alternatives_text and safe_alternatives_text.strip():
+        block += "\nSAFE ALTERNATIVES TO USE INSTEAD:\n" + safe_alternatives_text.strip()[:1500] + "\n"
+    block += (
+        "\nCLARIFIER: the ordinary word 'Case' in a pack size such as '4x1 Gallon/Case' "
+        "is a PACKAGING term and is fine -- it is NOT the 'Case IH' tractor brand. Only "
+        "the full form 'Case IH' is forbidden; the same applies to other Tier-B names "
+        "(only the full multi-word form is forbidden, never the bare common word).\n"
+    )
+    block += (
+        "\nAMAZON-SAFE PHRASING (avoid tripping the pesticide/medical claim filters): do NOT "
+        "use antimicrobial/pesticide/medical wording (kill, eliminate, destroy, repel, prevent "
+        "growth, fights bacteria/mould/odour, disinfect, sanitise, antimicrobial, medical grade, "
+        "therapeutic). PREFER plain descriptive wording over action wording -- 'reduces wear' "
+        "not 'protects against wear', 'runs clean' not 'controls deposits', 'resists rust' not "
+        "'prevents corrosion'. The claim is true either way; just phrase it descriptively.\n"
+    )
+    return block
+
+
+# ---------------------------------------------------------------------------
+# RESTRICTED-PHRASING CHECK (feature 1) -- true, grounded wording that nonetheless
+# reads as a pesticide/antimicrobial/medical claim to Amazon's filters. Pure pattern
+# match (NO AI), whole-word via the same _wordish primitive. A hit WARNs (soften
+# before submit), never hard-holds. The list is an editable repo-root file
+# (restricted_phrasing.txt), kept conservative so it never nags on normal lube
+# language ("rust protection", "reduces wear").
+# ---------------------------------------------------------------------------
+_RESTRICTED_FILE = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                                 "restricted_phrasing.txt")
+try:
+    RESTRICTED_PHRASES = [l.strip() for l in open(_RESTRICTED_FILE, encoding="utf-8")
+                          if l.strip() and not l.strip().startswith("#")]
+except Exception:
+    RESTRICTED_PHRASES = []
+_RESTRICTED_PATTERNS = [(p, _wordish(p)) for p in RESTRICTED_PHRASES]
+
+
+def check_restricted_phrasing(listing: dict) -> dict:
+    """Scan finished copy for phrasing Amazon's pesticide/medical filters dislike.
+    WARN-level (never a hard hold). Returns
+    {"has_flagged": bool, "hits": [{"phrase","field"}], "summary": str}."""
+    result = {"has_flagged": False, "hits": [], "summary": ""}
+    fields = [
+        ("title", listing.get("title", "")),
+        ("item_highlights", listing.get("item_highlights", "")),
+        ("bullet_1", listing.get("bullet_1", "")), ("bullet_2", listing.get("bullet_2", "")),
+        ("bullet_3", listing.get("bullet_3", "")), ("bullet_4", listing.get("bullet_4", "")),
+        ("bullet_5", listing.get("bullet_5", "")),
+        ("description", _strip_html(listing.get("description", ""))),
+    ]
+    seen = set()
+    for fname, text in fields:
+        if not text:
+            continue
+        for phrase, pat in _RESTRICTED_PATTERNS:
+            if pat.search(text):
+                k = (phrase.lower(), fname)
+                if k in seen:
+                    continue
+                seen.add(k)
+                result["hits"].append({"phrase": phrase, "field": fname})
+    if result["hits"]:
+        result["has_flagged"] = True
+        result["summary"] = "RESTRICTED PHRASING: " + ", ".join(sorted({h["phrase"] for h in result["hits"]}))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# CATEGORY-AWARE CLAIMS SCREENER (task #18) -- UPGRADES the single restricted-
+# phrasing list into a category-SEGMENTED rulebook driven by the product's
+# product_type. Two layers:
+#   LAYER 1  category_lane_block(product_type) -> a per-category "safe lane" taught
+#            in the generation prompt (prevention: teaches the SWAP, not just a ban).
+#   LAYER 2  check_category_claims(listing, product_type) -> a pure pattern-match scan
+#            of the FINISHED copy against that category's trigger file (enforcement).
+# Pure pattern-match, NO AI call. Whole-word via the SAME _wordish primitive (so "nsf"
+# never matches "transfer"). WARN only -- never blocks; the operator stays the final
+# gate. Category comes from product_type; blank/unknown -> STRICTEST (screen against
+# ALL categories), never guess-safe. Trigger lists are plain editable per-category
+# files in claims_rules/ so they can be tuned without touching code.
+# ---------------------------------------------------------------------------
+_CLAIMS_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                            "claims_rules")
+_LANES = ("supplements", "skincare", "cleaning", "devices", "pet", "general")
+_RULE_NAMES = {
+    "supplements": "disease / health claim",
+    "skincare":    "cosmetic drug claim",
+    "cleaning":    "pesticide / antimicrobial claim",
+    "devices":     "medical-device claim",
+    "pet":         "animal-health claim",
+    "general":     "unverifiable claim",
+}
+# Invented / unverifiable certifications -- risky in ANY category (AMBER). Appended to
+# every lane so e.g. "BPA-free" with no supporting doc is flagged regardless of the
+# product's category.
+_INVENTED_CERT = [
+    "bpa-free", "bpa free", "non-toxic", "food-safe", "food safe", "phthalate-free",
+    "formaldehyde-free", "chemical-free", "hypoallergenic", "clinically proven",
+    "doctor recommended", "dermatologist recommended", "fda approved", "eco-certified",
+]
+
+
+def _parse_lane_line(line: str):
+    """'SEVERITY | phrase | swap' -> (severity, phrase, swap). A bare line with no '|'
+    (or an unrecognised first field) is treated as a RED phrase."""
+    parts = [p.strip() for p in line.split("|")]
+    if len(parts) == 1:
+        return "RED", parts[0], ""
+    sev = parts[0].upper()
+    if sev not in ("RED", "AMBER"):
+        return "RED", parts[0], (parts[1] if len(parts) > 1 else "")
+    phrase = parts[1] if len(parts) > 1 else ""
+    swap = parts[2] if len(parts) > 2 else ""
+    return sev, phrase, swap
+
+
+def _load_lane(name: str):
+    """Load one category's trigger file into (severity, phrase, swap, rule, pattern) rows."""
+    rules = []
+    path = _os.path.join(_CLAIMS_DIR, name + ".txt")
+    try:
+        for raw in open(path, encoding="utf-8"):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            sev, phrase, swap = _parse_lane_line(line)
+            if phrase:
+                rules.append((sev, phrase, swap, _RULE_NAMES.get(name, "claim"), _wordish(phrase)))
+    except Exception:
+        pass
+    return rules
+
+
+_CATEGORY_RULES = {name: _load_lane(name) for name in _LANES}
+# Fold the conservative restricted_phrasing.txt list into the cleaning lane (RED) so
+# nothing check_restricted_phrasing catches regresses out of the category screener.
+for _p in RESTRICTED_PHRASES:
+    _CATEGORY_RULES["cleaning"].append(
+        ("RED", _p, "", _RULE_NAMES["cleaning"], _wordish(_p)))
+# Invented-certification (AMBER) applies to EVERY lane.
+for _lane in _LANES:
+    for _p in _INVENTED_CERT:
+        _CATEGORY_RULES[_lane].append(
+            ("AMBER", _p, "", "unverifiable / invented certification", _wordish(_p)))
+# ALWAYS-ON claim buckets (task #14 Part B): PERFORMANCE + SUPERIORITY claims are a
+# Restricted-Products risk in EVERY category and REGARDLESS of source (a competitor
+# saying it is not a defence), so they fire on every lane. Their rule labels come from
+# _RULE_NAMES, set here just before the files are loaded.
+_RULE_NAMES["performance"] = "performance claim -- not documentable"
+_RULE_NAMES["superiority"] = "superiority claim -- not documentable"
+_ALWAYS_ON = _load_lane("performance") + _load_lane("superiority")
+for _lane in _LANES:
+    _CATEGORY_RULES[_lane].extend(_ALWAYS_ON)
+
+
+def lane_for_product_type(product_type: str):
+    """Map a product_type to its claims lane. Blank/unknown -> None, so the caller
+    screens against ALL lanes -- an unknown category is treated as risky, never
+    guessed safe."""
+    s = re.sub(r"[^A-Za-z0-9]+", " ", str(product_type or "")).upper()
+    if not s.strip():
+        return None
+
+    def has(*ks):
+        return any(k in s for k in ks)
+
+    if has("SUPPLEMENT", "VITAMIN", "NUTRITION", "DIETARY", "PROTEIN", "HERBAL", "PROBIOTIC"):
+        return "supplements"
+    if has("SKIN", "COSMETIC", "FACIAL", "LOTION", "MOISTURIZ", "MOISTURIS", "SERUM",
+           "MAKEUP", "BEAUTY", "SHAMPOO", "SUNSCREEN", "DEODORANT", "CREAM"):
+        return "skincare"
+    if has("CLEAN", "DISINFECT", "SANITIZ", "SANITIS", "DETERGENT", "BLEACH", "PESTICIDE",
+           "INSECTICIDE", "HERBICIDE", "FUNGICIDE", "REPELLENT", "SOAP"):
+        return "cleaning"
+    if has("MEDICAL", "THERAPEUTIC", "NEBULIZER", "INHALER", "THERMOMETER",
+           "ORTHOPEDIC", "MASSAGE", "FIRST AID", "BLOOD PRESSURE", "HEALTH CARE"):
+        return "devices"
+    if has("PET", "DOG", "CAT", "ANIMAL", "VETERINARY", "AQUARIUM", "BIRD", "POULTRY"):
+        return "pet"
+    return "general"
+
+
+# The safe-lane teaching text injected into the generation prompt (Layer 1). Each lane
+# teaches what to DO (describe what it IS/DOES) with concrete SWAPS, not just a ban list.
+_LANE_TEACH = {
+    "supplements": (
+        "SUPPLEMENTS / INGESTIBLES -- the HIGHEST disease-claim risk. Use structure/"
+        "function language ONLY (supports, maintains, promotes, helps). NEVER say a "
+        "product treats, cures, prevents, or diagnoses any disease, and never name a "
+        "condition (arthritis, diabetes, depression, cancer). SWAPS: 'treats joint pain' "
+        "-> 'supports joint comfort'; 'reduces inflammation' -> 'supports a healthy "
+        "inflammatory response'; 'lowers cholesterol' -> 'supports already-healthy "
+        "cholesterol'."),
+    "skincare": (
+        "SKINCARE / COSMETICS -- APPEARANCE language only, no drug claims. Describe how "
+        "the product makes skin look and feel; never a skin disease it treats. SWAPS: "
+        "'treats dry skin' -> 'moisturises'; 'heals eczema' -> 'soothes the feel of dry, "
+        "irritated-looking skin'; 'anti-aging' -> 'reduces the appearance of fine lines'."),
+    "cleaning": (
+        "CLEANING / CHEMICAL -- the pesticide trap. Do NOT say kill, sanitize, disinfect, "
+        "antibacterial, antimicrobial, or mould-resistant unless the product is an "
+        "EPA/HSE-registered pesticide. SWAPS: 'kills bacteria' -> 'cleans surfaces'; "
+        "'disinfects' -> 'cleans and freshens'; 'mould-resistant' -> 'resists mould "
+        "build-up'."),
+    "devices": (
+        "DEVICES -- no medical-device framing unless the product is actually registered. "
+        "Avoid medical grade, therapeutic, nebuliser, inhaler, 'FDA cleared', 'treats "
+        "pain'. SWAPS: 'medical grade' -> 'professional style'; 'therapeutic massage' -> "
+        "'relaxing massage'; 'treats pain' -> 'helps you feel soothed'."),
+    "pet": (
+        "PET -- animal use does NOT exempt a health or pesticide claim. The same rules as "
+        "human supplements/devices apply. SWAPS: 'cures infection' -> 'supports skin "
+        "health'; 'kills fleas' -> 'helps manage fleas' (unless registered)."),
+    "general": (
+        "GENERAL HARDWARE -- light touch. Describe what the product physically IS and "
+        "DOES. Avoid inventing certifications (BPA-free, non-toxic, food-safe) unless you "
+        "have a document proving it."),
+}
+_LANE_COMMON = (
+    "\n===================================\n"
+    "CLAIMS SAFE-LANE -- MANDATORY\n"
+    "===================================\n"
+    "Describe what the product physically IS and DOES -- never what it treats, cures, "
+    "kills, prevents, or diagnoses. Give the plain-descriptive version, e.g. 'kills "
+    "bacteria' -> 'cleans surfaces', 'treats dry skin' -> 'moisturises', 'prevents rust' "
+    "-> 'resists corrosion'. HONESTY RULE: if a claim has to be mentally reframed or "
+    "justified to be defensible, OMIT it.\n")
+
+
+def category_lane_block(product_type: str = "") -> str:
+    """LAYER 1: the category-aware safe-lane prompt section, keyed off product_type.
+    Blank/unknown product_type -> the STRICTEST lane (supplements-level), never the
+    lightest -- unknown category is treated as risky."""
+    lane = lane_for_product_type(product_type)
+    if lane is None:
+        teach = _LANE_TEACH["supplements"]
+        label = "CATEGORY UNKNOWN -> STRICTEST (disease-claim) RULES APPLIED"
+    else:
+        teach = _LANE_TEACH.get(lane, _LANE_TEACH["general"])
+        label = "CATEGORY: " + lane.upper()
+    return _LANE_COMMON + label + "\n" + teach + "\n"
+
+
+def check_category_claims(listing: dict, product_type: str = "") -> dict:
+    """LAYER 2: scan the FINISHED copy against the product's category trigger list.
+    WARN-level, never a hard hold. Blank/unknown product_type -> screen against ALL
+    lanes (strictest). Returns {"has_flagged", "hits":[{phrase,field,severity,category,
+    rule,swap}], "lane", "unknown_category", "summary", "note"}."""
+    lane = lane_for_product_type(product_type)
+    unknown = lane is None
+    lanes = list(_LANES) if unknown else [lane]
+    fields = [
+        ("title", listing.get("title", "")),
+        ("item_highlights", listing.get("item_highlights", "")),
+        ("bullet_1", listing.get("bullet_1", "")), ("bullet_2", listing.get("bullet_2", "")),
+        ("bullet_3", listing.get("bullet_3", "")), ("bullet_4", listing.get("bullet_4", "")),
+        ("bullet_5", listing.get("bullet_5", "")),
+        ("description", _strip_html(listing.get("description", ""))),
+    ]
+    hits, seen = [], set()
+    for ln in lanes:
+        for sev, phrase, swap, rule, pat in _CATEGORY_RULES.get(ln, []):
+            for fname, text in fields:
+                if not text:
+                    continue
+                if pat.search(text):
+                    k = (phrase.lower(), fname)
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    hits.append({"phrase": phrase, "field": fname, "severity": sev,
+                                 "category": ln, "rule": rule, "swap": swap})
+    result = {"has_flagged": bool(hits), "hits": hits,
+              "lane": ("ALL" if unknown else lane),
+              "unknown_category": unknown, "summary": "", "note": ""}
+    if hits:
+        lvl = "RED" if any(h["severity"] == "RED" for h in hits) else "AMBER"
+        phrases = sorted({h["phrase"] for h in hits})
+        cats = sorted({h["category"] for h in hits})
+        tail = " (category unknown -- screened against all rules)" if unknown else ""
+        result["summary"] = ("CLAIM RISK [%s]: %s -- %s%s"
+                             % (lvl, ", ".join(phrases), "/".join(cats), tail))
+        result["note"] = "REVIEW: " + result["summary"]
+    return result
+
+
+# ---------------------------------------------------------------------------
+# REGULATED / CERTIFICATION CLAIMS (NSF / H1 / FDA / food-grade / 21 CFR / USDA)
+# present in the FINISHED copy but NOT in the product's own source docs. Whole-word
+# matched via the SAME _wordish primitive the forbidden-brand scanner uses -- so
+# "nsf" NEVER matches "tra-nsf-er" (the substring bug that lived in the audit's own
+# reimplementation). This is the single source of truth for the check; the audit
+# calls THIS function, so a passing audit validates this exact logic.
+# (Not yet wired into the generation gate -- that gate enforces named-standard
+# grounding only; adding a regulated-claim gate is a separate decision.)
+# ---------------------------------------------------------------------------
+# Whole-word patterns with FLEXIBLE internal separators so "food grade" == "food-grade"
+# == "foodgrade", and the boundary guard so "nsf" never matches "tra-nsf-er".
+_REG_PATTERNS = [
+    ("nsf h1",          re.compile(r"(?<![a-z0-9])nsf[\s-]*h-?1(?![a-z0-9])", re.I)),
+    ("nsf",             re.compile(r"(?<![a-z0-9])nsf(?![a-z0-9])", re.I)),
+    ("fda",             re.compile(r"(?<![a-z0-9])fda(?![a-z0-9])", re.I)),
+    ("food grade",      re.compile(r"(?<![a-z0-9])food[\s-]*grade(?![a-z0-9])", re.I)),
+    ("food contact",    re.compile(r"(?<![a-z0-9])food[\s-]*contact(?![a-z0-9])", re.I)),
+    ("incidental food", re.compile(r"(?<![a-z0-9])incidental[\s-]*food(?![a-z0-9])", re.I)),
+    ("21 cfr",          re.compile(r"(?<![a-z0-9])21[\s-]*cfr(?![a-z0-9])", re.I)),
+    ("usda",            re.compile(r"(?<![a-z0-9])usda(?![a-z0-9])", re.I)),
+    ("halal",           re.compile(r"(?<![a-z0-9])halal(?![a-z0-9])", re.I)),
+    ("kosher",          re.compile(r"(?<![a-z0-9])kosher(?![a-z0-9])", re.I)),
+]
+
+
+def check_regulated_claims(listing: dict, source_text: str) -> dict:
+    """A regulated/certification claim (NSF / H1 / FDA / food-grade / 21 CFR / USDA)
+    in the finished copy is UNSUPPORTED only when the source docs contain NO food-grade
+    evidence AT ALL (any marker, any wording). This 'does the source support the concept'
+    test avoids two false-positive traps: substring ('nsf' in 'transfer') AND wording
+    ('food grade' in copy vs 'food-grade' in source). Returns
+    {"has_unsupported": bool, "hits": [markers-in-copy], "summary": str}."""
+    result = {"has_unsupported": False, "hits": [], "summary": ""}
+    blocks = [listing.get("title", ""), listing.get("item_highlights", ""),
+              listing.get("bullet_1", ""), listing.get("bullet_2", ""),
+              listing.get("bullet_3", ""), listing.get("bullet_4", ""),
+              listing.get("bullet_5", ""), _strip_html(listing.get("description", "")),
+              listing.get("search_terms", "") or listing.get("backend_keywords", "")]
+    copy = " ".join(b for b in blocks if b)
+    src  = source_text or ""
+    copy_hits   = [name for name, rx in _REG_PATTERNS if rx.search(copy)]
+    src_has_any = any(rx.search(src) for _, rx in _REG_PATTERNS)
+    if copy_hits and not src_has_any:
+        result["has_unsupported"] = True
+        result["hits"] = copy_hits
+        result["summary"] = ("UNSUPPORTED REGULATED CLAIM(S) -- source has NO food-grade "
+                             "evidence: " + ", ".join(sorted(set(copy_hits))))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# NUMERIC GROUNDING -- a quantified figure in the copy is a fabrication ONLY if,
+# after UNIT-NORMALISATION and TOLERANCE, it neither appears in nor is derivable
+# from the source. Derivable = same value in different units (F<->C), inside a
+# source-stated range, or within a small rounding tolerance. This is the whole
+# point: a legit F/C conversion is NOT a mismatch, so it must never HOLD.
+# Two tiers: a number with an explicit unit AND a performance-property keyword
+# that can't be derived is CONFIDENT (-> HOLD); every other ungrounded figure is
+# UNCERTAIN (-> WARN note, never a hard hold). Malformed concatenations (460Miles,
+# 0FG) carry no unit + keyword, so they can never HOLD.
+# ---------------------------------------------------------------------------
+_UNIT_FIG_RE = re.compile(
+    r"(-?\d[\d,]*(?:\.\d+)?)\s*°?\s*(cSt|centistokes?|ppm|%|hours?|hrs?|kg|Nm|[FC]\b)", re.I)
+_PERF_KW_RE = re.compile(
+    r"(flash\s*point|pour\s*point|viscosity\s*index|\bVI\b|timken|zinc|demulsibility|"
+    r"oxidation|copper\s*corrosion|kinematic|viscosit)", re.I)
+_KW_NUM_RE = re.compile(
+    r"(?:flash\s*point|pour\s*point|viscosity\s*index|\bVI\b|timken|zinc|demulsibility|"
+    r"oxidation|copper\s*corrosion|iso\s*vg|\biso\b)\D{0,18}(-?\d[\d,]*(?:\.\d+)?)", re.I)
+_PACK_NEAR_RE = re.compile(
+    r"\b(gallon|gal|oz|ounce|pail|drum|quart|litre|liter|ml|pack|case|lb|pound)\b", re.I)
+
+
+def _parse_numbers(text: str):
+    """(floats, ranges) from a blob. Thousands commas stripped; ranges '44-48' /
+    '44 to 48' captured so a copy value inside them grounds."""
+    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", text or "")
+    ranges = []
+    for m in re.finditer(r"(-?\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(-?\d+(?:\.\d+)?)", t):
+        try:
+            a, b = float(m.group(1)), float(m.group(2))
+            ranges.append((min(a, b), max(a, b)))
+        except Exception:
+            pass
+    nums = []
+    for m in re.finditer(r"-?\d+(?:\.\d+)?", t):
+        try:
+            nums.append(float(m.group(0)))
+        except Exception:
+            pass
+    return nums, ranges
+
+
+def _num_status(n: float, src_nums, src_ranges) -> str:
+    """'grounded' -- n (or its F<->C conversion) matches a source number within tight
+    tolerance (+/-1 or +/-2%) or falls in a source range. 'near' -- loosely close
+    (rounding / product-variant / messy source -- UNCERTAIN, warn not hold). 'far' --
+    nothing anywhere near, even converted (likely fabricated)."""
+    cands = (n, (n - 32.0) * 5.0 / 9.0, n * 9.0 / 5.0 + 32.0)   # value, F->C, C->F
+    for c in cands:
+        if any(abs(c - s) <= max(1.0, abs(s) * 0.02) for s in src_nums):
+            return "grounded"
+    if any(lo - 0.5 <= n <= hi + 0.5 for lo, hi in src_ranges):
+        return "grounded"
+    for c in cands:
+        if any(abs(c - s) <= max(8.0, abs(s) * 0.15) for s in src_nums):
+            return "near"
+    for lo, hi in src_ranges:
+        span = abs(hi - lo) + 5.0
+        if lo - span <= n <= hi + span:
+            return "near"
+    return "far"
+
+
+def check_numeric_grounding(listing: dict, source_text: str) -> dict:
+    """Unit-normalised numeric grounding. Returns
+    {"has_fabricated": bool, "fabricated": [figs], "warnings": [figs], "summary"}.
+    Empty when source is blank (the caller refuses no-source rows separately)."""
+    result = {"has_fabricated": False, "fabricated": [], "warnings": [], "summary": ""}
+    if not (source_text or "").strip():
+        return result
+    blocks = [listing.get("title", ""), listing.get("item_highlights", ""),
+              listing.get("bullet_1", ""), listing.get("bullet_2", ""),
+              listing.get("bullet_3", ""), listing.get("bullet_4", ""),
+              listing.get("bullet_5", ""), _strip_html(listing.get("description", ""))]
+    copy = " ".join(b for b in blocks if b)
+    src_nums, src_ranges = _parse_numbers(source_text)
+    seen = set()
+
+    def _val(raw):
+        try:
+            return float(raw.replace(",", "").rstrip("."))
+        except Exception:
+            return None
+
+    # CONFIDENT vs UNCERTAIN split on unit-bearing figures.
+    for m in _UNIT_FIG_RE.finditer(copy):
+        n = _val(m.group(1))
+        if n is None:
+            continue
+        ctx = copy[max(0, m.start() - 35):m.end() + 5]
+        if _PACK_NEAR_RE.search(ctx):
+            continue
+        # A figure preceded by "at"/"@" is a MEASUREMENT CONDITION ("at 40C", "at
+        # 100C", "at 130C") -- the reference temperature a property is measured at,
+        # not a claimed value. Never a fabrication.
+        if re.search(r"(?:\bat|@)\s*$", copy[max(0, m.start() - 5):m.start()], re.I):
+            continue
+        key = round(n, 2)
+        if key in seen:
+            continue
+        seen.add(key)
+        st = _num_status(n, src_nums, src_ranges)
+        if st == "grounded":
+            continue
+        if st == "far" and _PERF_KW_RE.search(ctx):
+            result["fabricated"].append(m.group(0).strip())     # unit + property, nothing near -> HOLD
+        else:
+            result["warnings"].append(m.group(0).strip()[:48])  # near-miss or unit-only -> WARN
+
+    # Keyword-adjacent numbers WITHOUT a unit -> WARN only (never HOLD).
+    for m in _KW_NUM_RE.finditer(copy):
+        n = _val(m.group(1))
+        if n is None or round(n, 2) in seen:
+            continue
+        if _num_status(n, src_nums, src_ranges) == "far":
+            result["warnings"].append(m.group(0).strip()[:48])
+
+    if result["fabricated"]:
+        result["has_fabricated"] = True
+        result["summary"] = ("UNSUPPORTED FIGURE(S) not in/derivable from source: "
+                             + ", ".join(result["fabricated"]))
+    return result
+
+
 def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
     """
     Universal IP scan. Two checks:

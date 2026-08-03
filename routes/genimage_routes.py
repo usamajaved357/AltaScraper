@@ -142,8 +142,10 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                         break
             except Exception:
                 pass
+        # ordered candidates (local/upload -> cache -> source URL); fall back to the single ref
+        _ref = (b.get("product_images") if (ref_img != "__BRAND_REF__" and b.get("product_images")) else ref_img)
         res = ai_providers.run_pipeline(
-            _cfg(), brief=brief, reference_image=ref_img, product_title=title,
+            _cfg(), brief=brief, reference_image=_ref, product_title=title,
             text_provider=tprov, image_provider=iprov)
         if not res.get("ok"):
             return jsonify(res), 400
@@ -182,6 +184,10 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             return jsonify({"ok": False, "error": "ai_providers module missing"}), 500
         b = request.get_json(force=True) or {}
         product_image = b.get("product_image", "") or b.get("reference_image", "")
+        # Ordered image sources: uploaded/local -> cached copy -> source URL. The resolver in
+        # ai_providers tries them in order and uses the first that is a VALID image, so an
+        # expired scrape URL falls through to a local/cached copy instead of failing.
+        product_images = b.get("product_images") or ([product_image] if product_image else [])
         title = b.get("title", "")
         kind = b.get("kind", "main")          # 'main' | 'secondary'
         n = int(b.get("n", 3) or 3)
@@ -190,17 +196,17 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # instructions) -- e.g. "don't show pets", "pour the medicine into the tub in
         # one image", "show the product in only some images". Optional, not persisted.
         custom_instr = (b.get("custom_instructions", "") or b.get("strategist_instructions", "") or "").strip()
-        if not product_image:
+        if not product_images:
             return jsonify({"ok": False, "error": "This product has no reference image."}), 400
         # read the product first so the strategist's ideas fit the real item
         spec = ""
         try:
-            d = ai_providers.describe_product(_cfg(), product_image, title, provider=tprov)
+            d = ai_providers.describe_product(_cfg(), product_images, title, provider=tprov)
             if d.get("ok"):
                 spec = d.get("description", "")
         except Exception:
             spec = ""
-        res = ai_providers.strategize_images(_cfg(), image=product_image, product_title=title,
+        res = ai_providers.strategize_images(_cfg(), image=product_images, product_title=title,
                                              product_spec=spec, n=n, kind=kind, provider=tprov,
                                              custom_instructions=custom_instr)
         if not res.get("ok"):

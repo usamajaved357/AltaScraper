@@ -1,0 +1,6 @@
+# GENERAL HARDWARE / EVERYTHING-ELSE lane -- LIGHT TOUCH. Do NOT nag ordinary goods.
+# This file is intentionally almost empty: the shared invented-certification list
+# (BPA-free, non-toxic, food-safe, "clinically proven"...) is appended to EVERY lane
+# at load time, so it still catches an invented cert on a general product. Add a
+# category-specific general trigger here ONLY if it is a genuine claim risk.
+# FORMAT:  SEVERITY | phrase | optional safe-swap   (whole-word matched; # = comment)

@@ -156,13 +156,63 @@ def seller_id_for(config: dict, marketplace: str = "UK") -> str:
     return str(config.get("seller_id") or "").strip()
 
 
+import threading as _threading
+# READ PACER (CLI): pace Sheets reads to stay under Google's ~300/min per-user quota. The CLI
+# SHARES the service account with the always-on web app, so it paces a touch slower (~4/sec) and
+# -- on a 429 -- backs off HARDER than the web app, deliberately yielding the quota so the web
+# app keeps running.
+_READ_PACE_LOCK = _threading.Lock()
+_READ_PACE = {"last": 0.0, "min_interval": 0.25}      # ~4 reads/sec
+
+
+def _pace_read():
+    import time as _t
+    with _READ_PACE_LOCK:
+        wait = _READ_PACE["min_interval"] - (_t.monotonic() - _READ_PACE["last"])
+        if wait > 0:
+            _t.sleep(wait)
+        _READ_PACE["last"] = _t.monotonic()
+
+
+def _read_retry(fn, *args, _tries=7, **kwargs):
+    """gspread READ (get_all_values / worksheets / row_values), PACED (~4/sec) to stay under
+    Google's per-minute read quota, with AGGRESSIVE backoff on a 429. The quota is PER-MINUTE and
+    shared with the web app, so the CLI waits 45,65,85,90,90s (much longer than the web app's
+    30-60s) -- it yields the quota so the web app never crashes. Server-side; the user never sees it."""
+    import time as _t
+    for i in range(_tries):
+        _pace_read()
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            _m = str(e).lower()
+            _code = ""
+            try:
+                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
+            except Exception:
+                _code = ""
+            _throttled = (_code == "429" or "429" in _m or "quota" in _m
+                          or "resource_exhausted" in _m or "rate limit" in _m
+                          or "rate_limit" in _m or "per minute" in _m)
+            if _throttled and i < _tries - 1:
+                _wait = min(90, 45 + 20 * i)            # 45,65,85,90,90 -- CLI defers to the web app
+                try:
+                    console.print(f"  [yellow]Google read throttled (429) -- backing off "
+                                  f"{_wait}s, yielding quota to the web app (attempt {i+1}/{_tries})[/yellow]")
+                except Exception:
+                    pass
+                _t.sleep(_wait)
+                continue
+            raise
+
+
 def _safe_records(ws):
     """get_all_records() that tolerates blank / duplicate header cells.
     gspread's own get_all_records() raises when the header row repeats a value
     (including empty strings from trailing blank columns) -- which otherwise
     crashes generate, retry, export and the API preview. Reads raw values and
     builds the dicts directly, keeping the first occurrence of each named header."""
-    vals = ws.get_all_values()
+    vals = _read_retry(ws.get_all_values)
     if not vals:
         return []
     headers = vals[0]
@@ -1435,6 +1485,7 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         f"{opt_section}"
         f"{enforced_section}\n"
         f"{safety_section}\n"
+        f"{category_lane_block(product_type)}"
         "\n===================================\n"
         "ACCURACY RULES -- MANDATORY\n"
         "===================================\n"
@@ -2118,6 +2169,12 @@ from listing.compliance import _split_brand_words
 
 # check_ip_violations moved to listing/compliance.py in Phase 5 (behaviour unchanged).
 from listing.compliance import check_ip_violations
+from listing.compliance import check_unsupported_claims   # claims-grounding gate (step a)
+from listing.compliance import check_forbidden_brands, forbidden_names_block  # brand scanner + prompt block (steps b/c)
+from listing.compliance import check_regulated_claims  # regulated-claim gate (gap close)
+from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
+from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
+from listing.compliance import category_lane_block, check_category_claims  # category-aware claims (task #18)
 
 
 # =============================================================================
@@ -3775,6 +3832,38 @@ async def process_row(row: dict, client, ws_out,
             status = "IP_HOLD"
             console.print(f"  [red]Status set to IP_HOLD -- brand/trademark risk[/red]")
 
+    # --- Category-aware claims screener (task #18) -- WARN only, never blocks. Scans
+    # the finished copy against the product_type's category rulebook (unknown -> all).
+    # This ALSO carries the always-on PERFORMANCE + SUPERIORITY buckets (task #14 Part B).
+    _cat = check_category_claims(listing, comp_data.get("product_type", ""))
+    if _cat.get("has_flagged"):
+        notes_parts.append(_cat["note"])
+        console.print(f"  [yellow]{_cat['summary']}[/yellow]")
+
+    # --- Arbitrage grounding floor (task #14 Part A) -- WARN only, never blocks. Assemble
+    # every source the app actually captured for THIS row (competitor title + attributes
+    # incl bullet_points, eBay title/description/specifics, reviews, autocomplete keywords)
+    # and flag figures / named standards in the finished copy that appear in NONE of it.
+    # Honest limit: numeric + named-standard only, and only as strong as the row's source.
+    _src_parts = [comp_data.get("title", "")]
+    for _k, _v in (comp_data.get("attributes") or {}).items():
+        _src_parts.append(f"{_k} {_v}")
+    _es = comp_data.get("_ebay_supplement") or {}
+    _src_parts += [_es.get("title", ""), _es.get("description", "")]
+    for _k, _v in (_es.get("item_specifics") or {}).items():
+        _src_parts.append(f"{_k} {_v}")
+    _src_parts += [str(_rv) for _rv in (voc_data.get("reviews") or [])]
+    _src_parts += [str(_kw.get("keyword", "")) for _kw in (keywords or []) if isinstance(_kw, dict)]
+    _source_blob = "\n".join(p for p in _src_parts if p)
+    if _source_blob.strip():
+        _ng = check_numeric_grounding(listing, _source_blob)
+        for _fig in (_ng.get("fabricated", []) + _ng.get("warnings", [])):
+            notes_parts.append("REVIEW: unverified figure (not in captured source): " + _fig)
+        _uc = check_unsupported_claims(listing, _source_blob)
+        if _uc.get("has_ungrounded"):
+            _toks = ", ".join(sorted({u["token"] for u in _uc["ungrounded"]}))
+            notes_parts.append("REVIEW: unverified spec (not in captured source): " + _toks)
+
     notes_text = " | ".join(notes_parts)
     row_data = build_sheet_row(
         comp_asin, row, listing, comp_data,
@@ -3919,6 +4008,29 @@ def _raw_schema(product_type: str, creds: dict):
                 continue
     console.print(f"  [red]schema download failed for {product_type}: {last_err[:90]}[/red]")
     return {}, set(), {}
+
+
+def _raw_schema_bounded(product_type: str, creds: dict, hard_timeout: int = 180):
+    """HARD wall-clock cap around _raw_schema so a stalled Amazon schema endpoint can never hang
+    the whole submission. urllib's timeout is per-socket-op, so a CDN that TRICKLES bytes can run
+    far past it; this runs the fetch on a worker thread and abandons it after hard_timeout seconds
+    (_raw_schema already does its own 60s x 3 internal tries, so 180s covers all three).
+
+    Returns _raw_schema's (props, required, raw) tuple, or None on timeout so the caller can SKIP
+    the row with a clear message and move to the next one -- never blocking the remaining rows."""
+    import threading as _th
+    box = {}
+    def _work():
+        try:
+            box["r"] = _raw_schema(product_type, creds)
+        except Exception as _e:
+            box["e"] = _e
+    t = _th.Thread(target=_work, daemon=True)
+    t.start()
+    t.join(hard_timeout)
+    if t.is_alive():
+        return None                      # timed out -> abandon the worker; caller skips the row
+    return box.get("r", ({}, set(), {}))
 
 
 def _merge_conditional_enums(props: dict, raw: dict) -> dict:
@@ -4197,7 +4309,7 @@ def _skus_across_all_tabs(ws_out) -> set:
     so nothing is missed."""
     out = set()
     try:
-        worksheets = ws_out.spreadsheet.worksheets()
+        worksheets = _read_retry(ws_out.spreadsheet.worksheets)
     except Exception as e:
         console.print(f"  [yellow]Cross-tab SKU scan unavailable: {str(e)[:80]}[/yellow]")
         return out
@@ -4213,7 +4325,7 @@ def _skus_across_all_tabs(ws_out) -> set:
             pass
         # Fallback: malformed/duplicate headers -> read the raw grid.
         try:
-            vals = ws.get_all_values()
+            vals = _read_retry(ws.get_all_values)
         except Exception:
             continue
         if not vals:
@@ -5935,7 +6047,20 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
 
         if pt not in schema_cache:
             console.print(f"  fetching schema: [bold]{pt}[/bold]")
-            schema_cache[pt] = _raw_schema(pt, creds)
+            _sc = _raw_schema_bounded(pt, creds, hard_timeout=180)   # 60s x 3 tries max
+            if _sc is None:
+                # A slow/stalled schema endpoint must NEVER block the remaining rows. Skip THIS
+                # row with a clear, retryable message, log it, and move on to the next one.
+                _msg = (f"[E] schema download timed out for {pt} -- skipped, try again later "
+                        f"(Amazon's schema endpoint was too slow; the other rows still ran).")
+                console.print(f"  [red]row {i} {sku}: {_msg}[/red]")
+                try:
+                    queue(i, notes_col, _msg)          # log the skipped row so you know what to retry
+                except Exception:
+                    pass
+                skip += 1
+                continue
+            schema_cache[pt] = _sc
         props, required, _ = schema_cache[pt]
         if not props:
             console.print(f"  row {i} {sku}: no schema for {pt} -- skip"); skip += 1; continue
@@ -6187,7 +6312,9 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
                 for _sku in _missing:
                     try:
                         _b = _MI.bundle_from_drive(_drv, _sku,
-                                                   log=lambda m: console.print(m, markup=False))
+                                                   log=lambda m: console.print(m, markup=False),
+                                                   api_key=(config.get("anthropic_api_key") or "").strip(),
+                                                   chat_model=(config.get("chat_model") or "claude-sonnet-4-6"))
                     except Exception as _be:
                         console.print(f"[yellow]  {_sku}: Drive back-fill error: "
                                       f"{type(_be).__name__}: {str(_be)[:100]}[/yellow]")
@@ -6333,22 +6460,35 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
     # J-20C, Caterpillar TO-4, etc). Listing those on Amazon = IP takedown risk.
     # Load the forbidden brands/specs + safe rephrasings and feed them into the
     # generation context so Claude scrubs them out and uses compliant language.
+    # These rule files ship WITH THE CODE (repo root), not with config.json -- on
+    # Render config is /data while the code + rule files are /app. Anchor to __file__.
+    # (Was base_dir/"miles_compliance"/fn -- a folder that does not exist, so every
+    # IP list silently loaded EMPTY and never reached the prompt: the exact bug here.)
+    _rule_dir = Path(__file__).parent
     def _load_lines(fn):
-        p = base_dir / "miles_compliance" / fn
+        p = _rule_dir / fn
         try:
             return [l.strip() for l in open(p, encoding="utf-8") if l.strip()]
         except Exception:
             return []
-    _forbidden_brands = _load_lines("forbidden_brands.txt")
-    _forbidden_specs  = _load_lines("forbidden_specs.txt")
     def _load_text(fn):
-        p = base_dir / "miles_compliance" / fn
+        p = _rule_dir / fn
         try:
             return open(p, encoding="utf-8").read().strip()
         except Exception:
             return ""
-    _safe_alts = _load_text("safe_alternatives.txt")
+    _forbidden_brands = _load_lines("forbidden_brands.txt")
+    _forbidden_specs  = _load_lines("forbidden_specs.txt")
+    _safe_alts  = _load_text("safe_alternatives.txt")
     _miles_addl = _load_text("additional_instructions.txt")
+    # LOUD warning if a compliance list came back empty -- an empty IP list means the
+    # brand/spec scrub is NOT reaching the AI (the silent failure we just fixed).
+    for _nm, _val in (("forbidden_brands.txt", _forbidden_brands),
+                      ("forbidden_specs.txt", _forbidden_specs),
+                      ("safe_alternatives.txt", _safe_alts)):
+        if not _val:
+            console.print(f"  [bold red]WARNING:[/bold red] {_nm} loaded EMPTY from "
+                          f"{_rule_dir} -- IP scrub for this list is NOT reaching the prompt.")
 
     _miles_compliance_block = ""
 
@@ -6411,16 +6551,12 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
             "AMAZON POLICY COMPLIANCE (key rules from Amazon's official guidelines):\n"
             + _amazon_policies[:2000] + "\n\n"
         )
-    if _forbidden_brands:
-        _miles_compliance_block += (
-            "\n\nCRITICAL IP RULES FOR THIS LUBRICANT (ZERO TOLERANCE -- the spec "
-            "sheets WILL mention these; you must NOT put any of them in the listing):\n"
-            "FORBIDDEN BRANDS: " + ", ".join(_forbidden_brands[:120]) + "\n")
-    if _forbidden_specs:
-        _miles_compliance_block += ("FORBIDDEN OEM SPEC CODES: "
-                                    + ", ".join(_forbidden_specs[:60]) + "\n")
-    if _safe_alts:
-        _miles_compliance_block += "\nUSE THESE SAFE ALTERNATIVES INSTEAD:\n" + _safe_alts[:1200] + "\n"
+    # Tiered forbidden-name section (single source of truth in listing/compliance):
+    # Tier A distinctive names (bare) + Tier B ambiguous names (full-form only) + the
+    # 44 spec codes + safe alternatives + the "Case in a pack size is fine" clarifier.
+    # Replaces the old raw 166-name dump, which included noise words like "Case"/
+    # "Total" that would have told the model to avoid legitimate packaging language.
+    _miles_compliance_block += forbidden_names_block(_safe_alts)
     if _miles_addl:
         _miles_compliance_block += "\n" + _miles_addl[:600]
 
@@ -6508,21 +6644,29 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
         # the hazmat/compliance fields; then the technical spec text). The Miles
         # IP-compliance block is prepended so the forbidden OEM brands/specs are
         # scrubbed from the copy.
-        specs_ctx = _miles_compliance_block + "\n\n" if _miles_compliance_block else ""
+        # OWN source documents (SDS/TDS/other) -- the authoritative grounding text
+        # for the claims-gate. Kept SEPARATE from the compliance block on purpose:
+        # "Vickers" is in the forbidden-brands list inside that block, so folding it
+        # in would let a fabricated "Vickers" approval falsely "ground" itself.
+        source_docs = ""
         if b.get("sds_text"):
-            specs_ctx += "SAFETY DATA SHEET (SDS):\n" + b["sds_text"][:4000] + "\n\n"
+            source_docs += "SAFETY DATA SHEET (SDS):\n" + b["sds_text"][:4000] + "\n\n"
         if b.get("spec_text"):
-            specs_ctx += "TECHNICAL DATA SHEET (TDS):\n" + b["spec_text"][:3000] + "\n\n"
+            source_docs += "TECHNICAL DATA SHEET (TDS):\n" + b["spec_text"][:3000] + "\n\n"
         if b.get("other_pdf_text"):
-            specs_ctx += "ADDITIONAL:\n" + b["other_pdf_text"][:1500]
-
+            source_docs += "ADDITIONAL:\n" + b["other_pdf_text"][:1500]
+        # The Miles compliance/IP block is system guidance (role, rules, forbidden
+        # names, safe alternatives) -- routed as its OWN prompt section via
+        # guidance_block so it renders ALWAYS, including when source_docs are present.
+        # Miles has no competitor reference, so competitor_specs stays empty.
         try:
             done = brand_listing.process_brand_row(
                 product, profile, host=_sys.modules[__name__], client=client,
                 ws_out=ws_out, creds=creds, config=config, idx=idx, total=total,
                 taken_skus=taken_skus, compliance_rules=compliance_rules,
                 ip_rules=ip_rules, static_vv=static_vv, claim_docs=[],
-                competitor_specs=specs_ctx)
+                competitor_specs="", source_docs=source_docs,
+                guidance_block=_miles_compliance_block)
             if done:
                 ok += 1
                 try:
@@ -6572,7 +6716,7 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
     # Load the same forbidden brand/spec lists used at generation time so the
     # SQP queries are gated through the IP layer before entering the prompt.
     def _load_lines(fname):
-        p = Path(__file__).parent / "miles_compliance" / fname
+        p = Path(__file__).parent / fname
         if p.exists():
             return [ln.strip() for ln in p.read_text(encoding="utf-8").splitlines()
                     if ln.strip() and not ln.strip().startswith("#")]
@@ -7035,8 +7179,10 @@ async def main():
     console.print(f"[bold cyan]{'='*55}[/bold cyan]\n")
 
     console.print("Connecting to Google Sheets...")
-    if mode in ("miles", "miles-optimize"):
+    if mode in ("miles", "miles-optimize", "regen"):
         config["_miles_mode"] = True   # don't clobber the Miles tab's own headers
+        # (regen operates on existing Miles rows -- init_sheets must NEVER rewrite the
+        #  header to FIXED_HEADERS, which would misalign every row on the tab.)
     if _cli_sheet or _cli_tab:
         console.print(f"  [yellow]Scoped to account sheet/tab:[/yellow] {_cli_sheet or '(config default)'} / '{OUTPUT_TAB}'")
     gc, ws_in, ws_out = init_sheets(config)
@@ -7079,10 +7225,11 @@ async def main():
                 return sys.argv[i + 1] if i + 1 < len(sys.argv) else None
             except ValueError:
                 return None
-        _skus  = (_argval("--skus") or "").strip()
-        _sheet = _argval("--sheet")
-        _tab   = _argval("--tab")
-        _mkt   = _argval("--marketplace") or "UK"
+        _skus   = (_argval("--skus") or "").strip()
+        _sheet  = _argval("--sheet")
+        _tab    = _argval("--tab")
+        _mkt    = _argval("--marketplace") or "UK"
+        _reason = (_argval("--reason") or "").strip()
         sku_list = [s.strip() for s in _skus.split(",") if s.strip()]
         if not sku_list:
             console.print("[regen] no --skus given; nothing to do.")
@@ -7090,13 +7237,11 @@ async def main():
         console.print(f"[regen] regenerating {len(sku_list)} SKU(s) on "
                       f"{_tab or 'default tab'} ({_mkt}): {', '.join(sku_list)}")
         try:
+            from listing.regen import run_regen
             run_regen(config, gc, creds, skus=sku_list, marketplace=_mkt,
-                      output_tab=_tab, spreadsheet_id=_sheet)
-        except NameError:
-            console.print("[regen] This generator build does not yet include "
-                          "run_regen(). Per-listing regeneration via the dashboard "
-                          "editor still works; batch copy-regen needs run_regen wired "
-                          "into the generator.")
+                      output_tab=_tab, spreadsheet_id=_sheet, reason=_reason)
+        except Exception as _re:
+            console.print(f"[regen] run_regen failed: {type(_re).__name__}: {str(_re)[:160]}")
         return
 
     if mode == "brand":

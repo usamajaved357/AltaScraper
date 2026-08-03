@@ -1,0 +1,13 @@
+# PET lane -- animal use does NOT exempt a health/pesticide claim.
+# NOTE: bare "treats" is deliberately NOT here -- "dog treats" / "cat treats" are a
+# product noun, not a claim. Use disease-specific phrases instead.
+# FORMAT:  SEVERITY | phrase | optional safe-swap   (whole-word matched; # = comment)
+
+RED | cures | supports
+RED | heals | supports
+RED | treats infection |
+RED | kills fleas | helps manage fleas
+RED | kills ticks | helps manage ticks
+RED | prevents disease | supports wellness
+RED | dewormer |
+RED | antibacterial |

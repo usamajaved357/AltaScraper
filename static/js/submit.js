@@ -329,7 +329,11 @@ async function switchView(key){
 // time ran before shell.js loaded and threw "ReferenceError: _fetchJSON is not defined".
 async function loadRows(){
   try{
-    const j=await _fetchJSON("/rows", null, 20000);
+    // /rows_all reads EVERY listing-shaped tab in this workspace's output sheet (not
+    // just the active tab), tagging each card with its tab, so a multi-tab account
+    // (e.g. Miles) is seen in one view. Single-tab sheets return one tab -> identical
+    // to the old /rows behaviour (no tab filter, no tags shown).
+    const j=await _fetchJSON("/rows_all", null, 30000);
     if(!j || j._failed){ toast("Could not load listings: "+((j&&j.error)||"timeout")); return; }
     if(!j.ok){
       // This workspace has no sheet/tab configured. The app deliberately refuses to
@@ -348,11 +352,17 @@ async function loadRows(){
       toast("Sheet error: "+(j.error||"unknown")); return;
     }
     ROWS=j.rows||[]; SHIP=j.shipping_group||""; PTYPES=j.product_types||[];
-    // /rows reports the tab it ACTUALLY opened -- trust that over what config claims.
+    // Tabs manifest for the multi-tab filter. TABS=[{tab,tab_gid,count,url}]. When a
+    // sheet has >1 listing tab the filter + per-card tab tags appear; with 1 tab they
+    // stay hidden and the view is exactly as before.
+    if(typeof TABS!=="undefined"){ TABS=j.tabs||[]; }
+    // Index duplicate SKUs across all tabs (for the highlight + delete affordance).
+    if(typeof buildDupIndex==="function"){ buildDupIndex(); }
+    // /rows_all reports the sheet it ACTUALLY read (all tabs) -- trust that over config.
     if(j.source && j.source.sheet_id && typeof WS_SOURCE!=="undefined" && WS_SOURCE){
       WS_SOURCE.out_id=j.source.sheet_id;
-      WS_SOURCE.out_gid=j.source.tab_gid||"";
-      WS_SOURCE.out_tab=j.source.tab||"";
+      WS_SOURCE.out_gid="";
+      WS_SOURCE.out_tab=((j.tabs&&j.tabs.length>1)?("all tabs ("+j.tabs.length+")"):((j.tabs&&j.tabs[0]&&j.tabs[0].tab)||""));
       if(typeof renderDataSource==="function") renderDataSource();
     }
     render();

@@ -41,6 +41,7 @@ import json
 import os
 import re
 from datetime import datetime
+from listing.compliance import category_lane_block  # category-aware safe-lane prompt (task #18)
 
 # Mirrors dashboard.py's CONFIG_PATH convention so media/recipes read and write
 # the SAME directory as the rest of the app (the persistent disk in production,
@@ -110,7 +111,8 @@ def _slugish(s: str) -> str:
 
 def build_brand_prompt(product: dict, profile: dict, identity: dict,
                        schema: dict, keywords: list, claim_docs: list,
-                       competitor_specs: str = "") -> str:
+                       competitor_specs: str = "", source_docs: str = "",
+                       guidance_block: str = "") -> str:
     """Build the brand-mode prompt. Emits the SAME JSON contract as the arbitrage
     build_prompt PLUS a `_provenance` map. Claims gated to evidence."""
 
@@ -199,8 +201,27 @@ def build_brand_prompt(product: dict, profile: dict, identity: dict,
         kw_line = ", ".join(k.get("keyword", "") for k in keywords[:25] if k.get("keyword"))
         kw_section = f"\nKEYWORDS (weave naturally, do not stuff):\n  {kw_line}\n"
 
-    comp_section = f"\nOPTIONAL COMPETITOR REFERENCE (context only, never a source of claims, never name it):\n{competitor_specs}\n" \
-        if competitor_specs else ""
+    # Source framing is mode-dependent, and getting it wrong is a ROOT CAUSE of the
+    # fabrication incident. ARBITRAGE passes a COMPETITOR reference (never a claim
+    # source). DOC-GROUNDED brand/Miles listings pass the product's OWN SDS/TDS in
+    # source_docs -- the authoritative basis for claims. Labelling the own-docs as
+    # "never a source of claims" is precisely why the model ignored the real specs
+    # and invented OEM approvals, so the two are framed separately.
+    if source_docs and source_docs.strip():
+        comp_section = (
+            "\nPRODUCT SOURCE DOCUMENTS (the manufacturer's OWN SDS/TDS for THIS product "
+            "-- the authoritative basis for every specific or performance claim):\n"
+            f"{source_docs}\n"
+            "GROUNDING RULE: State a specific standard, approval, or performance claim "
+            "(e.g. 'meets X', 'passes the Y test', a named viscosity/flash/pour value) ONLY "
+            "if it appears in these documents. If it is not here, DO NOT state it. Never name "
+            "a competitor or OEM brand.\n")
+    elif competitor_specs:
+        comp_section = (
+            "\nOPTIONAL COMPETITOR REFERENCE (context only, never a source of claims, never "
+            f"name it):\n{competitor_specs}\n")
+    else:
+        comp_section = ""
 
     title_rule = (
         f"TITLE (max {_title_max} chars): may LEAD with the brand name \"{brand}\"."
@@ -240,6 +261,8 @@ def build_brand_prompt(product: dict, profile: dict, identity: dict,
         f"{claims_evidence}\n"
         f"{kw_section}"
         f"{comp_section}"
+        f"{guidance_block}"
+        f"{category_lane_block(product.get('product_type', ''))}"
         "\n===================================\n"
         "VOICE\n"
         "===================================\n"
@@ -610,7 +633,9 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
                       creds: dict, config: dict, idx: int, total: int,
                       taken_skus: set, compliance_rules: dict, ip_rules: dict,
                       static_vv: dict, claim_docs: list,
-                      competitor_specs: str = "") -> bool:
+                      competitor_specs: str = "", source_docs: str = "",
+                      guidance_block: str = "", replace_at_row=None,
+                      regen_reason: str = "") -> bool:
     """Generate one brand listing and write it to the same output sheet/contract
     as the arbitrage path. Returns True on success."""
     console = host.console
@@ -634,6 +659,17 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
     taken_skus.add(sku)
     console.print(f"  SKU: {sku} | Model/MPN: {identity['model_number'] or '(blank)'} | "
                   f"GTIN: {identity['gtin'] or '(none)'}")
+
+    # CLAIMS-GATE (no-source refuse). Doc-grounded listings (Miles) make specific
+    # technical/performance claims that MUST be grounded in the product's own SDS/TDS.
+    # With no source text there is nothing to ground on, so generation can only
+    # INVENT -- which is exactly how the OEM-spec fabrications reached live listings.
+    # Refuse rather than fabricate. (Scoped to miles_sheet_format, which is set only
+    # for the Miles workflow -- brand-owner-from-profile generation is unaffected.)
+    if profile.get("miles_sheet_format") and not (source_docs or "").strip():
+        console.print(f"  [bold red]HOLD:[/bold red] {sku} has no source documents -- "
+                      f"refusing to generate (would fabricate specs). Re-harvest from Drive first.")
+        return False
 
     # 2) product type schema (reuse host) -- use the brand's marketplace so a
     # US brand queries the US catalogue (not the UK one, which causes NOT_FOUND)
@@ -668,7 +704,8 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
 
     # 4) build prompt + attach images AND claim docs
     prompt = build_brand_prompt(product, profile, identity, schema, keywords,
-                                claim_docs, competitor_specs)
+                                claim_docs, competitor_specs, source_docs=source_docs,
+                                guidance_block=guidance_block)
     content = host._build_message_content(prompt, product.get("images", []))
     # attach claim docs (PDF/image) as additional document blocks
     for d in claim_docs:
@@ -802,6 +839,72 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         notes_parts.append(ip_result["summary"])
         ip_risk = "REVIEW"
 
+    # 7b) CLAIMS-GATE (grounding). Any SPECIFIC standards/approval claim in the
+    # FINISHED copy must appear in the product's OWN source docs; if not, HARD-HOLD
+    # the row. Locked, permanent hold format (greppable; the future Status column
+    # reads this same "HOLD:" prefix): "HOLD: ungrounded claim: <tokens> not in source".
+    claims_hold = ""
+    if (source_docs or "").strip():
+        _cg = host.check_unsupported_claims(listing, source_docs)
+        if _cg.get("has_ungrounded"):
+            _toks = ", ".join(sorted({u["token"] for u in _cg["ungrounded"]}))
+            claims_hold = f"HOLD: ungrounded claim: {_toks} not in source"
+            notes_parts.append(claims_hold)
+
+    # 7b-2) REGULATED-CLAIM GATE -- NSF/H1/FDA/food-grade/21 CFR/USDA claimed in the
+    # finished copy with NO food-grade evidence in the source docs. Whole-word + concept
+    # test (shared production fn, so a passing audit validates THIS). Same locked "HOLD:"
+    # marker. NOTE: the numeric grounder is deliberately NOT wired here -- it would
+    # false-HOLD legitimate F-vs-C unit conversions; deferred until unit-normalised (task #13).
+    reg_hold = ""
+    if (source_docs or "").strip():
+        _rg = host.check_regulated_claims(listing, source_docs)
+        if _rg.get("has_unsupported"):
+            reg_hold = ("HOLD: unsupported regulated claim: "
+                        + ", ".join(sorted(set(_rg["hits"]))) + " not in source")
+            notes_parts.append(reg_hold)
+
+    # 7b-3) NUMERIC GATE -- a quantified figure with a unit + property keyword that is
+    # not in / derivable from source (unit-normalised, F<->C aware, range- and tolerance-
+    # aware). HOLD only on confident 'far' fabrications; near-misses (rounding / messy
+    # source) become REVIEW notes, never hard holds -- the anti-over-flag rule.
+    num_hold = ""
+    if (source_docs or "").strip():
+        _nm = host.check_numeric_grounding(listing, source_docs)
+        if _nm.get("has_fabricated"):
+            num_hold = ("HOLD: unsupported figure: " + ", ".join(_nm["fabricated"])
+                        + " not in source")
+            notes_parts.append(num_hold)
+        for _w in _nm.get("warnings", []):
+            notes_parts.append("REVIEW: unverified figure: " + _w)
+
+    # 7b-4) RESTRICTED-PHRASING CHECK (feature 1) -- WARN only, never a hard hold.
+    # True/grounded wording that reads as a pesticide/medical claim to Amazon's filters;
+    # surfaced so it can be softened before submit. Code-only, no AI credits.
+    if profile.get("miles_sheet_format"):
+        _rp = host.check_restricted_phrasing(listing)
+        if _rp.get("has_flagged"):
+            notes_parts.append("REVIEW: restricted phrasing: "
+                               + ", ".join(sorted({h["phrase"] for h in _rp["hits"]})))
+
+    # 7b-5) CATEGORY-AWARE CLAIMS SCREENER (task #18) -- category-segmented rulebook
+    # keyed off product_type (unknown -> screened against ALL categories). WARN only,
+    # never a hard hold; the operator stays the final gate. Code-only, no AI credits.
+    _cc = host.check_category_claims(listing, product_type)
+    if _cc.get("has_flagged"):
+        notes_parts.append(_cc["note"])
+
+    # 7c) FORBIDDEN-BRAND SCANNER (step c) -- OEM/competitor names must not appear in
+    # the FINISHED copy at all (distinct from grounding). Same locked "HOLD:" marker
+    # as the claims gate. Scoped to Miles, matching the claims-gate scope.
+    fb_hold = ""
+    if profile.get("miles_sheet_format"):
+        _fb = host.check_forbidden_brands(listing)
+        if _fb.get("has_forbidden"):
+            _names = ", ".join(sorted({h["term"] for h in _fb["hits"]}))
+            fb_hold = f"HOLD: forbidden brand: {_names} in copy"
+            notes_parts.append(fb_hold)
+
     # 8) converge into the EXISTING sheet row + write
     comp_data, pricing, financials, voc_data = _shells(product, profile, identity)
     row_in = {"ebay_url": "", "upc": identity["gtin"]}
@@ -923,7 +1026,10 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
         # NFPA ratings which triggers food/electrical/sports categories).
         # Only surface real IP violations, not category mismatches.
         comp_report = "Generated"
-        if ip_result.get("has_violations") and notes_parts:
+        _holds = [h for h in (claims_hold, reg_hold, num_hold, fb_hold) if h]
+        if _holds:
+            comp_report = " | ".join(_holds)   # locked "HOLD:" prefix; takes precedence
+        elif ip_result.get("has_violations") and notes_parts:
             # Filter to only genuine IP findings, not compliance categories
             ip_notes = [n for n in notes_parts if "IP" in n or "brand" in n.lower()
                         or "forbidden" in n.lower() or "phrase" in n.lower()]
@@ -1004,6 +1110,47 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             comp_report,
             "No",
         ]
+        if replace_at_row:
+            # REGEN (step d): replace ONLY the copy fields + Compliance Report in the
+            # EXISTING row -- never SKU / image (Column 1) / Uploaded -- and stamp a
+            # "Regenerated" column with timestamp + reason. In-place: no new row, no
+            # duplicate, no _2 SKU. Compliance Report reflects the FRESH gate result
+            # (so a held row that a human cleared and re-ran is re-verified, never
+            # laundered blindly -- run_regen refuses rows that still carry a HOLD).
+            from datetime import datetime as _dt
+            from gspread.utils import rowcol_to_a1
+            try:
+                _hdr = host._read_retry(ws_out.row_values, 1) if hasattr(host, "_read_retry") \
+                       else ws_out.row_values(1)
+            except Exception:
+                _hdr = []
+            if "Regenerated" not in _hdr:
+                try:
+                    ws_out.update_cell(1, len(_hdr) + 1, "Regenerated")
+                    _hdr = _hdr + ["Regenerated"]
+                except Exception:
+                    pass
+            _stamp = _dt.now().strftime("%Y-%m-%d %H:%M") + (f" -- {regen_reason}" if regen_reason else "")
+            _upd = {"Title": miles_row[1], "Item Highlights": miles_row[2],
+                    "Bullet Point 1": miles_row[3], "Bullet Point 2": miles_row[4],
+                    "Bullet Point 3": miles_row[5], "Bullet Point 4": miles_row[6],
+                    "Bullet Point 5": miles_row[7], "Description": miles_row[8],
+                    "Backend Keywords": miles_row[9], "Compliance Report": comp_report,
+                    "Regenerated": _stamp}
+            _data = [{"range": rowcol_to_a1(replace_at_row, _hdr.index(_n) + 1), "values": [[_v]]}
+                     for _n, _v in _upd.items() if _n in _hdr]
+            ok = False
+            if _data:
+                try:
+                    ws_out.batch_update(_data)
+                    ok = True
+                except Exception as _e:
+                    console.print(f"  [red]regen write failed: {str(_e)[:100]}[/red]")
+            console.print(f"  [{'green' if ok else 'red'}]"
+                          + (f"regenerated in place (row {replace_at_row})" if ok else "regen write failed")
+                          + f"[/] | status={status}")
+            return bool(ok)
+
         ok = _miles_write_row(host, ws_out, miles_row)
         console.print(f"  [{'green' if ok else 'red'}]{'written (Miles format)' if ok else 'write failed'}[/]"
                       f" | status={status}")

@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/css/dashboard.css">
+<link rel="stylesheet" href="/static/css/altui.css">
 </head>
 <body>
 
@@ -17,6 +18,7 @@
   </div>
   <div class="crumbs" id="crumbs"></div>
   <span class="spacer"></span>
+  <button class="barbtn" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</button>
   <button class="barbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i> Privacy</button>
   <button class="barbtn" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</button>
   <button class="barbtn" onclick="goHome()"><i class="ti ti-home"></i> Home</button>
@@ -24,9 +26,40 @@
 
 <!-- ============ HOME SCREEN ============ -->
 <div id="home" class="show">
-  <p class="homehd">Workspaces</p>
+  <div class="homebar">
+    <p class="homehd" id="homehd" style="margin:0">Workspaces</p>
+    <label class="newui-toggle" title="Opt-in preview of the new dashboard. Your classic UI stays the default — flip this off any time to return to it.">
+      <input type="checkbox" id="newui_switch" onchange="toggleNewUI(this.checked)"> New UI
+    </label>
+  </div>
   <div class="wsgrid" id="wsgrid">
     <div class="empty" style="grid-column:1/-1">Loading workspaces…</div>
+  </div>
+</div>
+
+<!-- ===== Opt-in NAVY UI shell (Stage 1). Full-screen overlay; shown only when the
+     ALTA_NEW_UI flag is on. Classic UI above stays the untouched default/fallback. ===== -->
+<div id="altui">
+  <nav class="side">
+    <div class="logo"><div class="t">AltaScraper</div><div class="s">listing operations</div></div>
+    <div class="nav">
+      <div class="lbl">Workspace</div>
+      <a class="on"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
+      <a onclick="altShowClassic()"><i class="ti ti-list-check"></i> <span>Listings</span></a>
+      <div class="lbl">Tools</div>
+      <a onclick="rcOpen()"><i class="ti ti-shield-half"></i> <span>Check a product</span></a>
+      <a onclick="altShowClassic()"><i class="ti ti-refresh"></i> <span>Sync</span></a>
+    </div>
+    <div class="foot"><div class="acctpill" onclick="toggleNewUI(false)" title="Switch back to your classic UI"><span class="dot"></span><span style="font-size:12px;color:var(--ink2)">New UI</span><span class="sw"><span></span></span></div></div>
+  </nav>
+  <div class="main">
+    <div class="top">
+      <span class="ttl">AltaScraper</span><span class="sep"></span><span class="sub" id="alt_crumb">Dashboard</span>
+      <span class="statusbadge" id="alt_health"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span> —</span>
+    </div>
+    <div class="content" id="alt_content">
+      <div class="muted" style="padding:20px 0">Loading overview…</div>
+    </div>
   </div>
 </div>
 
@@ -45,6 +78,8 @@
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
+    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
   </div>
 
@@ -73,15 +108,22 @@
           <option value="approved">Approved</option>
           <option value="live">Live</option>
         </select>
+        <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no sheet row needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
         <button class="ghost" onclick="refreshView()" title="Reload this workspace's sheet rows, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
       </div>
       <div id="gridhow"></div>
       <div id="ws_datasrc" class="datasrc"></div>
+      <div id="tabfilter" class="tabfilter" style="display:none"></div>
       <div id="selbar" class="selbar" style="display:none">
         <span id="selcount">0 selected</span>
         <span class="spacer"></span>
         <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
         <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
+        <span class="handlingwrap" title="Set the handling time (lead time to ship, in days) on the selected listings — updates the sheet and pushes live to Amazon">
+          <i class="ti ti-clock-hour-4"></i>
+          <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
+          <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
+        </span>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#2563eb;color:#93c5fd"><i class="ti ti-wand"></i> Auto-fix</button>
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
@@ -360,6 +402,54 @@
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_monitor" class="wspanel">
+      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+        <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
+        <div class="sub">Track competitor ASINs and get alerted the moment a new seller appears (also seller removed / price change / buy-box change). Read-only surveillance through Jack Reacherd (UK)'s credentials &mdash; it never writes to or affects the tracked listings.</div></div>
+      </div>
+
+      <div class="monalertbar">
+        <button class="mktbtn" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
+        <button class="mktbtn" id="mon_rescanbtn" onclick="monRescanAll()" title="Check EVERY selected marketplace once, including ones currently skipped as dead — use after expanding into a new marketplace"><i class="ti ti-world-search"></i> Re-scan all markets</button>
+        <button class="mktbtn" onclick="monDownloadExcel()" title="Download the current results as an Excel file"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
+        <span id="mon_status" class="cc"></span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="linkbtn" onclick="monMarkAllRead()">Mark all read</button>
+      </div>
+      <div id="mon_alerts" style="margin:10px 0 6px"></div>
+
+      <div class="monadd">
+        <div class="monrow">
+          <div class="monfield" style="flex:0 0 170px">
+            <label class="monlbl">ASIN</label>
+            <input id="mon_asin" class="monin" placeholder="B0XXXXXXXX" maxlength="10" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="monfield" style="flex:1 1 220px">
+            <label class="monlbl">Label / product name <span class="cc">(your reference)</span></label>
+            <input id="mon_label" class="monin" placeholder="e.g. Green Haven bamboo airer" autocomplete="off">
+          </div>
+        </div>
+        <div class="monfield" style="margin-top:10px">
+          <label class="monlbl">Marketplaces to check <span class="cc">(default: all European)</span>
+            <button class="linkbtn" type="button" onclick="monMarketsAll(true)">all</button> ·
+            <button class="linkbtn" type="button" onclick="monMarketsAll(false)">none</button></label>
+          <div id="mon_markets" class="monmkts"></div>
+        </div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button id="mon_addbtn" class="mktbtn on" onclick="addMonitorAsin()"><i class="ti ti-plus"></i> Add ASIN to watch</button>
+          <button class="mktbtn" onclick="monPickFile()" title="Upload a CSV, TXT or XLSX list of ASINs — the column is auto-detected, no template needed"><i class="ti ti-upload"></i> Upload list</button>
+          <input type="file" id="mon_file" accept=".csv,.txt,.xlsx" style="display:none" onchange="monBulkUpload(this)">
+          <span id="mon_count" class="cc" style="margin-left:4px"></span>
+        </div>
+      </div>
+
+      <div id="mon_list" style="margin-top:16px"></div>
+
+      <div class="cc" style="margin-top:16px;font-size:11.5px;opacity:.8">
+        The hourly checker is live — it runs every 60 min while the app is open. Hit <b>Check now</b> above to run it immediately (the first check just records a baseline; changes after that raise alerts). Use the <b>History</b> button on any ASIN to see its offer timeline.
+      </div>
+    </div>
+
     <div id="sec_miles" class="wspanel">
       <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
         <div><h2>Miles Lubricants Import</h2>
@@ -441,6 +531,40 @@
   </div>
 </div>
 
+<div id="sec_sync" class="wspanel">
+  <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+    <div><h2>Amazon &harr; App sync</h2>
+    <div class="sub">Pull Amazon's live copy into the app, or push app copy to Amazon. Both directions PROPOSE a side-by-side &mdash; nothing is overwritten without your per-field choice. Push is locked until you unlock it, refuses to run through borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
+  </div>
+
+  <h4 style="margin:0 0 8px">Account capability (live)</h4>
+  <div id="sync_matrix" class="cc">Loading&hellip;</div>
+
+  <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+    <h4 style="margin:0 0 8px">Sync a listing &mdash; active workspace</h4>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="sync_sku" placeholder="SKU" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit">
+      <button class="btn" onclick="syncCheckStatus()">Check status</button>
+      <span id="sync_pill"></span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" id="sync_pull_btn" onclick="syncPull()"><i class="ti ti-download"></i> Pull from Amazon</button>
+      <button class="btn" id="sync_push_btn" onclick="syncPush()" disabled title="Push is locked"><i class="ti ti-upload"></i> Push to Amazon</button>
+    </div>
+    <label class="minlbl" style="margin-top:10px;display:inline-flex;align-items:center;gap:6px">
+      <input type="checkbox" id="sync_push_unlock" onchange="syncTogglePushLock(this)"> Unlock push buttons (backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials)
+    </label>
+  </div>
+</div>
+
+<div class="modalwrap" id="sync_modal">
+  <div class="modal" style="max-width:940px">
+    <button class="x" onclick="syncCloseModal()">&times;</button>
+    <h3 id="sync_modal_title">Review</h3>
+    <div id="sync_modal_body">Loading&hellip;</div>
+  </div>
+</div>
+
 <div class="modalwrap" id="acctmodal">
   <div class="modal">
     <button class="x" onclick="closeAccountEditor()">×</button>
@@ -477,8 +601,48 @@
 <script src="/static/js/ppc.js"></script>
 <script src="/static/js/inventory.js"></script>
 <script src="/static/js/submit.js"></script>
+<script src="/static/js/handling.js"></script>
+<script src="/static/js/pastelisting.js"></script>
+<script src="/static/js/monitor.js"></script>
 <script src="/static/js/shell.js"></script>
 <script src="/static/js/settings.js"></script>
+<script src="/static/js/sync.js"></script>
+<!-- Shape-1: manual pre-source restricted-product check -->
+<div class="rc-modal" id="rc_modal">
+  <div class="rc-box">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3>Check a product before sourcing</h3>
+      <button class="db-chip" onclick="rcClose()"><i class="ti ti-x"></i></button>
+    </div>
+    <p class="cc" style="margin:2px 0 0">Paste a product title or description. Keyword-based — catches obvious restricted types reliably, disguised ones may slip. A strong warning, not a guarantee.</p>
+    <input class="rc-in" id="rc_text" placeholder="e.g. 20000mAh power bank / FPV drone goggles 600mW / nano facial steamer">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <select class="rc-in" id="rc_mkt" style="width:auto;margin:0">
+        <option value="UK">UK</option><option value="US">US</option>
+      </select>
+      <button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="rcRun()"><i class="ti ti-search"></i> Check</button>
+    </div>
+    <div class="rc-res" id="rc_res"></div>
+  </div>
+</div>
+<script src="/static/js/dashboard.js"></script>
+<!-- ASIN research (read-only lookup -> hand off to Image Studio + copy generator) -->
+<div class="rc-modal" id="asin_modal">
+  <div class="rc-box" style="width:min(760px,100%)">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3>Research an ASIN</h3>
+      <button class="db-chip" onclick="asinClose()"><i class="ti ti-x"></i></button>
+    </div>
+    <p class="cc" style="margin:2px 0 0">Pull any Amazon product's live data + images with your SP-API access. Read-only — nothing is published. Then send it to the Image Studio or generate copy.</p>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <input class="rc-in" id="asin_input" style="flex:1;min-width:200px;margin:0" placeholder="Paste an ASIN, e.g. B09BNLQG2Q">
+      <select class="rc-in" id="asin_mkt" style="width:auto;margin:0"><option value="UK">UK</option><option value="US">US</option></select>
+      <button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="asinLookup()"><i class="ti ti-search"></i> Look up</button>
+    </div>
+    <div id="asin_res" style="margin-top:14px"></div>
+  </div>
+</div>
+<script src="/static/js/asinresearch.js"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">

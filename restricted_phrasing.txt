@@ -1,0 +1,59 @@
+# Restricted phrasing -- wording that reads as a PESTICIDE / ANTIMICROBIAL / MEDICAL
+# claim to Amazon's automated filters, even when the underlying claim is true. A hit is
+# a WARN (soften before submit), never a hard hold.
+#
+# WHOLE-WORD matched (same primitive as the brand scanner) -- so a phrase here never
+# fires as a substring of an ordinary word. KEEP THIS LIST CONSERVATIVE AND PRECISE:
+# only genuinely risky antimicrobial/pesticide/medical phrasing. Do NOT add bare words
+# like "protect" or "control" -- "rust protection" and "varnish control" are normal,
+# desirable lubricant language and a greedy list gets switched off. Prefer multi-word
+# phrases. One phrase per line; lines starting with # are comments; edit freely.
+
+# --- antimicrobial / biocidal ---
+antimicrobial
+antibacterial
+antifungal
+antiviral
+bactericidal
+germicidal
+fungicide
+bactericide
+biocide
+pesticide
+insecticide
+disinfectant
+sanitizer
+sanitiser
+
+# --- action-verb antimicrobial/pest claims (multi-word to stay precise) ---
+kills bacteria
+kills germs
+kills mold
+kills mould
+kills fungus
+eliminates bacteria
+eliminates germs
+eliminates odour-causing bacteria
+eliminates odor-causing bacteria
+fights bacteria
+fights germs
+fights mold
+fights mould
+prevents growth
+prevent the growth
+inhibits growth
+inhibits bacteria
+inhibits mold
+repels insects
+repels pests
+disinfects
+sanitizes
+sanitizing
+
+# --- medical / therapeutic claims ---
+medical grade
+therapeutic
+cures
+heals wounds
+treats infection
+antiseptic

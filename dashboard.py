@@ -38,7 +38,11 @@ from google.oauth2.service_account import Credentials
 
 # --- must match amazon_listing_generator.py -----------------------------------
 CONFIG_PATH       = os.environ.get("CONFIG_PATH", "config.json")
-SCRIPT            = "amazon_listing_generator.py"
+# APP_DIR is where the CODE lives; CONFIG_PATH may point somewhere else entirely
+# (on Render it is /data/config.json). SCRIPT must be absolute or a subprocess
+# launched with any other cwd cannot find it.
+APP_DIR           = os.path.dirname(os.path.abspath(__file__))
+SCRIPT            = os.path.join(APP_DIR, "amazon_listing_generator.py")
 OUTPUT_TAB        = "Listings v7.0 UK"      # OUTPUT_TAB in the main script
 STATUS_HEADER     = "Status"
 SKU_HEADER        = "SKU"
@@ -1370,24 +1374,24 @@ def _run_autofix_bg_inner(jid):
                 _af_step(jid, f"[{idx+1}/{len(skus)}] {sku} — round {rnd}: "
                               f"{len(ai)} AI suggestion(s), {code_owned} code-owned")
 
-                # 2) apply them
+                # 2) apply them -- ONE batched write for the whole round. The old
+                # path called /edit per field (2-3 reads + a write + a cache-bust
+                # EACH), which tripped Google's per-minute quota (429) on multi-SKU
+                # runs. Collapsing a round into a single write also cuts wall-clock.
                 for s in ai:
-                    if _af_cancelled(jid):
-                        break
                     if not s.get("value"):
                         entry["skipped"].append({"field": s.get("field"), "reason": "empty AI value"})
-                        continue
+                _batch = [{"target": "attr", "key": s.get("field"), "value": s.get("value")}
+                          for s in ai if s.get("value")]
+                if _batch and not _af_cancelled(jid):
                     try:
-                        with app.test_request_context(json={"sku": sku, "target": "attr",
-                                                            "key": s.get("field"), "value": s.get("value")}):
-                            eres = app.view_functions["edit"]().get_json() or {}
-                        if eres.get("ok"):
-                            entry["applied"].append({"field": s.get("field"), "value": s.get("value")})
-                        else:
-                            entry["skipped"].append({"field": s.get("field"),
-                                                     "reason": "edit failed: " + str(eres.get("error"))})
+                        _ap, _sk = _apply_edits_batch(sku, _batch)
+                        entry["applied"].extend(_ap)
+                        entry["skipped"].extend(_sk)
                     except Exception as e:
-                        entry["skipped"].append({"field": s.get("field"), "reason": f"edit crashed: {e}"})
+                        for _s2 in _batch:
+                            entry["skipped"].append({"field": _s2.get("key"),
+                                                     "reason": f"batch edit crashed: {e}"})
 
                 # nothing new to apply and nothing code-owned -> the AI is out of ideas
                 if rnd > 1 and not entry["applied"] and code_owned == 0:
@@ -2366,6 +2370,24 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
                 src = (src or "source") + " -> Amazon value"
         prelim.append({"field": field, "value": val or "", "source": src or "", "note": ""})
 
+    # CREDIT SAVER: only spend a Claude call when the AI actually has work to do.
+    # If the deterministic chain (eBay/competitor source + Amazon enum-snap) already
+    # produced a value for EVERY requested field -- or there are no AI fields left at
+    # all (all code-owned) -- skip the call entirely. Amazon's Preview is the
+    # backstop: any value it rejects comes back as a flagged field and DOES get the
+    # AI on the next round. On multi-SKU auto-fix runs this removes most of the
+    # per-round AI calls (the ones that were only re-validating already-filled
+    # fields), cutting token spend without changing what gets written.
+    # Flag-gated OFF by default (per owner): with the flag unset, the AI still runs
+    # to re-validate already-sourced values. The "no AI fields at all" case always
+    # short-circuits (nothing for the model to do). Set config autofix_skip_ai_when_sourced
+    # true to re-enable the credit-saver skip.
+    _skip_ai_when_sourced = bool(cfg.get("autofix_skip_ai_when_sourced", False))
+    if not fields or (_skip_ai_when_sourced and all(p.get("value") for p in prelim)):
+        for p in prelim:
+            p.setdefault("confidence", "from source")
+        return _code_owned_hits + prelim
+
     # hand the whole picture to the AI to finalise: confirm source values fit the
     # eBay product, and fill any still-empty fields with clearly-labelled reasoning.
     key = (cfg.get("anthropic_api_key") or "").strip()
@@ -2491,6 +2513,48 @@ _RECORDS_CACHE = {}   # {sheet_id::tab: (ts, records)} -- short TTL to avoid 429
 _RECORDS_TTL = 12     # seconds
 
 
+import threading as _threading
+# READ PACER: Google's per-user quota is ~300 reads/min (5/sec). We PACE reads to stay under
+# it PROACTIVELY (so a burst can't spike past the limit) instead of only reacting to 429s.
+# min_interval 0.22s -> ~4.5 reads/sec sustained, process-wide (the lock serialises the pace).
+_READ_PACE_LOCK = _threading.Lock()
+_READ_PACE = {"last": 0.0, "min_interval": 0.22}
+
+
+def _pace_sheet_read():
+    import time as _t
+    with _READ_PACE_LOCK:
+        wait = _READ_PACE["min_interval"] - (_t.monotonic() - _READ_PACE["last"])
+        if wait > 0:
+            _t.sleep(wait)
+        _READ_PACE["last"] = _t.monotonic()
+
+
+def _sheet_read_retry(fn, *args, _tries=6, **kwargs):
+    """gspread READ, PACED (~4.5/sec) to stay under Google's 300/min read quota, with long
+    exponential backoff on a 429. Because the quota is PER-MINUTE, the backoff waits 30,45,60,60s
+    (not 2-8s) so the minute-window actually resets before retrying. Mirrors
+    amazon_listing_generator._read_retry (the CLI backs off even harder, deferring to the web app)."""
+    import time as _t
+    for i in range(_tries):
+        _pace_sheet_read()
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            _m = str(e).lower()
+            _code = ""
+            try:
+                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
+            except Exception:
+                _code = ""
+            if ((_code == "429" or "429" in _m or "quota" in _m or "resource_exhausted" in _m
+                 or "rate limit" in _m or "rate_limit" in _m or "per minute" in _m)
+                    and i < _tries - 1):
+                _t.sleep(min(60, 30 + 15 * i))          # 30, 45, 60, 60 ... per-minute reset
+                continue
+            raise
+
+
 def _bust_records_cache():
     """Clear the short read-cache so a just-written change is read fresh."""
     _RECORDS_CACHE.clear()
@@ -2516,7 +2580,7 @@ def _records(ws, _use_cache: bool = True):
         hit = _RECORDS_CACHE.get(_key)
         if hit and (_t.time() - hit[0]) < _RECORDS_TTL:
             return hit[1]
-    vals = ws.get_all_values()
+    vals = _sheet_read_retry(ws.get_all_values)
     if not vals:
         if _key:
             _RECORDS_CACHE[_key] = (_t.time(), [])
@@ -2537,6 +2601,59 @@ def _records(ws, _use_cache: bool = True):
     if _key:
         _RECORDS_CACHE[_key] = (_t.time(), out)
     return out
+
+
+def _apply_edits_batch(sku, edits):
+    """Apply MANY attribute edits to one SKU in a SINGLE write (auto-fix helper).
+
+    The old auto-fix path called /edit once PER field, and each /edit did
+    row_values(1) + a full col_values scan + a cell read + a write + a cache-bust.
+    Seven fields => ~15-20 reads + 7 writes per round, which drove Google's
+    per-minute read/write quota to HTTP 429 on multi-SKU runs. This reads the row
+    from the short cache (already populated by the round's /suggest, so ~0 extra
+    reads), merges every edit into the Attributes JSON in memory, and writes it
+    ONCE (retry-wrapped). Returns (applied, skipped). Faithfully mirrors /edit's
+    attr prefix-cleanup so nested dot-keys behave identically."""
+    applied, skipped = [], []
+    ws   = _ws()
+    recs = _records(ws)                       # cache hit from /suggest -> ~0 reads
+    row  = next((r for r in recs if str(r.get("SKU", "")).strip() == sku), None)
+    if not row:
+        return applied, [{"field": e.get("key"), "reason": "sku not in current view"} for e in edits]
+    trow = row.get("_row")
+    try:
+        obj = json.loads(row.get("Attributes JSON") or "{}")
+        if not isinstance(obj, dict):
+            obj = {}
+    except Exception:
+        obj = {}
+    for e in edits:
+        key   = str(e.get("key", "")).strip()
+        value = e.get("value", "")
+        if not key or str(value).strip() == "":
+            skipped.append({"field": key, "reason": "empty value"})
+            continue
+        if "." in key:                        # deeper dot-key: drop shallower scalar prefixes
+            parts = key.split(".")
+            for i in range(1, len(parts)):
+                prefix = ".".join(parts[:i])
+                if prefix in obj and not isinstance(obj[prefix], dict):
+                    obj.pop(prefix, None)
+        else:                                 # scalar write: drop dot-keys underneath us
+            _pfx = key + "."
+            for _stale in [k for k in list(obj.keys()) if k.startswith(_pfx)]:
+                obj.pop(_stale, None)
+        obj[key] = value
+        applied.append({"field": key, "value": value})
+    if not applied:
+        return applied, skipped
+    hdr = _sheet_read_retry(ws.row_values, 1)
+    if "Attributes JSON" not in hdr:
+        return [], [{"field": e.get("key"), "reason": "no attributes column"} for e in edits]
+    acol = hdr.index("Attributes JSON") + 1
+    _sheet_read_retry(ws.update_cell, trow, acol, json.dumps(obj, ensure_ascii=False))
+    _bust_records_cache()
+    return applied, skipped
 
 
 
@@ -2959,6 +3076,30 @@ if __name__ == "__main__":
     _autofix_job_routes.register(app, _af_new=_af_new, _af_get=_af_get, _af_active=_af_active,
                                  _af_stop=_af_stop, _run_autofix_bg=_run_autofix_bg,
                                  _state=_state, _threading=threading)
+    import routes.sync_routes as _sync_routes
+    _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
+                          _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
+    # Bulk handling-time updates (sheet + live Amazon push).
+    import routes.handling_routes as _handling_routes
+    _handling_routes.register(app, _cfg=_cfg, _active_account=_active_account,
+                              _ws=_ws, _bust_records_cache=_bust_records_cache, _state=_state)
+    # ASIN Monitor — competitor/hijacker tracking + hourly checker (read-only, in-app alerts).
+    import routes.monitor_routes as _monitor_routes
+    _monitor_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _reload_cfg=lambda: _state.update(cfg=None))   # drop config cache so edits take effect
+    try:
+        from monitor import checker as _mon_checker
+        _mon_checker.start_scheduler(_cfg, CONFIG_PATH)     # daemon: hourly getItemOffers diff
+    except Exception as _mon_e:
+        print("[asin-monitor] scheduler not started:", str(_mon_e)[:200])
+    # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
+    import routes.dashboard_routes as _dashboard_routes
+    _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,
+                               STATUS_HEADER=STATUS_HEADER, SKU_HEADER=SKU_HEADER,
+                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS)
+    # ASIN research (read-only Catalog Items lookup; no publish)
+    import routes.catalog_routes as _catalog_routes
+    _catalog_routes.register(app, _cfg=_cfg, _state=_state, CONFIG_PATH=CONFIG_PATH)
     import routes.aplus_routes as _aplus_routes
     _aplus_routes.register(app, _APLUS_MODULES=_APLUS_MODULES, _cfg=_cfg,
                            _load_img_instructions=_load_img_instructions,

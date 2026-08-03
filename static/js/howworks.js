@@ -403,6 +403,7 @@ async function setStatus(sku,status,btn){
   if(!sku){toast("This row has no SKU yet");return;}
   btn.disabled=true; const old=btn.textContent; btn.textContent="…";
   try{
+    if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }   // multi-tab: target this card's tab
     const res=await fetch("/approve",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({sku,status})});
     const j=await res.json();

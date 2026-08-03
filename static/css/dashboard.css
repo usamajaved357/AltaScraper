@@ -78,6 +78,59 @@
   #home.show{display:block}
   .homehd{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px}
   .wsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+
+  /* ===== Opt-in new dashboard (Stage 1). Uses the app's own theme vars. ===== */
+  .homebar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .newui-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);
+                cursor:pointer;border:1px solid var(--line);background:var(--panel2);
+                padding:5px 10px;border-radius:20px;user-select:none}
+  .newui-toggle input{accent-color:var(--accent);cursor:pointer}
+  .db-warn-amber{color:#e3b768} .db-warn-red{color:#ef9a9a} .db-ok{color:#7fd99a}
+  .db-greet{font-size:18px;font-weight:600;margin:0 0 4px}
+  .db-sub{font-size:13px;color:var(--muted);margin:0 0 16px}
+  .db-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+  .db-metric{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;
+             cursor:pointer;transition:border-color .12s}
+  .db-metric:hover{border-color:var(--accent)}
+  .db-metric .n{font-size:26px;font-weight:600;line-height:1.1;margin:0}
+  .db-metric .l{font-size:12px;color:var(--muted);margin:4px 0 0}
+  .db-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  @media (max-width:720px){ .db-grid2{grid-template-columns:1fr} }
+  .db-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .db-h{font-size:14px;font-weight:600;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .db-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .db-item:last-child{border-bottom:none}
+  .db-item:hover .db-title{color:var(--accent)}
+  .db-title{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+  .db-reason{font-size:11px;margin:1px 0 0;color:var(--muted)}
+  .db-pill{font-size:11px;padding:2px 8px;border-radius:20px;flex-shrink:0;white-space:nowrap}
+  .db-pill.blocked{background:var(--redbg);color:#ef9a9a}
+  .db-pill.review{background:var(--amberbg);color:#e3b768}
+  .db-kv{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);line-height:1.9}
+  .db-chip{font-size:12px;padding:7px 11px;border-radius:20px;border:1px solid var(--line);
+           background:var(--panel2);color:var(--ink);display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .db-chip:hover{border-color:var(--accent)}
+  .db-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:0 0 auto}
+  .db-note{font-size:11px;color:var(--muted);margin-top:8px;font-style:italic}
+  .db-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  /* Shape-1 restricted-check modal */
+  .rc-modal{position:fixed;inset:0;background:rgba(6,8,12,.72);z-index:200;display:none;
+            align-items:flex-start;justify-content:center;padding:60px 16px;overflow:auto}
+  .rc-modal.show{display:flex}
+  .rc-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;
+          width:min(560px,100%)}
+  .rc-box h3{margin:0 0 4px;font-size:16px}
+  .rc-box .cc{color:var(--muted);font-size:12px}
+  .rc-in{width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line);
+         color:var(--ink);border-radius:8px;padding:9px 11px;font:inherit;margin-top:8px}
+  .rc-res{margin-top:14px}
+  .rc-match{border-radius:10px;padding:11px 13px;margin-bottom:8px;border:1px solid var(--line)}
+  .rc-match.prohibited{background:var(--redbg);border-color:#5c2424}
+  .rc-match.gated,.rc-match.restricted{background:var(--amberbg);border-color:#5c4a16}
+  .rc-clear{background:var(--greenbg);border:1px solid #1f7a3d;color:#7fd99a;border-radius:10px;padding:11px 13px}
+  .rc-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.03em}
+  .rc-badge.prohibited{background:#c0392b;color:#fff} .rc-badge.gated,.rc-badge.restricted{background:#7a641f;color:#fff}
+  .rc-src{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 5px;margin-left:6px}
   .wscard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;
           transition:border-color .12s,transform .12s;display:flex;flex-direction:column;gap:12px}
   .wscard:hover{border-color:#3d4658;transform:translateY(-1px)}
@@ -478,6 +531,20 @@
   .findsum.bad{background:var(--redbg);border:1px solid #5c2424;color:#ef9a9a}
   .findsum.info{background:var(--amberbg);border:1px solid #5c4a16;color:#e3b768}
   .findings.info{background:var(--amberbg);border:1px solid #5c4a16}
+  /* Amazon feedback = informational -> NEUTRAL/GREY, never red. */
+  .findsum.neutral{background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+  .findings.neutral{background:var(--panel2);border:1px solid var(--line)}
+  /* Restricted products check panel (Shape 2) -- clean = quiet green strip; matches = rows */
+  /* Restricted-check CLEAN state: quiet reassurance, not a flag. Small + muted green. */
+  .restclear{font-size:11px;color:#6fb98a;background:transparent;border:none;border-radius:8px;
+             padding:3px 2px;margin:2px 0;display:flex;align-items:center;gap:6px}
+  .restclear i{font-size:13px;color:#4e9c6e}
+  .restclear .cc{color:var(--muted)}
+  .restlist{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+  .restrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .restrow.red{background:var(--redbg);border-color:#5c2424}
+  .restrow.amber{background:var(--amberbg);border-color:#5c4a16}
+  .restconf{margin-left:6px;font-size:10.5px}
   .findingsbox .findings{margin-top:6px}
   details.findingsbox>summary::-webkit-details-marker{display:none}
   /* ---- GALLERY GRID ---- */
@@ -486,7 +553,8 @@
         display:flex;flex-direction:column;transition:border-color .12s,transform .12s}
   .tile:hover{border-color:#3d4658;transform:translateY(-1px)}
   .tile.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-  .tile.flag{border-color:#5a3030}
+  .tile.flag{border-color:#5a3030}       /* red border: prohibited / blocker only */
+  .tile.flagamber{border-color:#5c4a16}  /* amber border: restricted-needs-docs */
   .tileimg{position:relative;height:180px;background:#1c2531;display:flex;align-items:center;
            justify-content:center;cursor:pointer;overflow:hidden}
   .tileimg img{width:100%;height:100%;object-fit:contain;background:#fff}
@@ -496,6 +564,38 @@
   .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}
   .tileflag{position:absolute;bottom:8px;right:8px;color:#e3b768;background:rgba(0,0,0,.55);
             border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .tileflag.red{color:#ef9a9a}    /* prohibited / blocker */
+  .tileflag.amber{color:#e3b768}  /* restricted-needs-docs */
+  /* Category-aware claim-risk badge (task #18). RED = loud; AMBER deliberately quieter
+     so a soft superlative never screams as loud as a pesticide claim. Absent on clean
+     listings, so those tiles look exactly as before. */
+  .tileclaim{position:absolute;bottom:8px;left:8px;display:flex;align-items:center;gap:3px;
+             height:22px;padding:0 7px;border-radius:11px;font-size:11.5px;font-weight:800;
+             cursor:pointer;z-index:6;line-height:1}
+  .tileclaim i{font-size:12px}
+  .tileclaim.red{background:#c0392b;color:#fff;border:1px solid #e05a4b;box-shadow:0 1px 6px rgba(192,57,43,.55)}
+  .tileclaim.amber{background:rgba(90,74,22,.85);color:#f0cf8c;border:1px solid #7a641f;box-shadow:none}
+  /* In-copy highlight of the offending word(s). */
+  mark.claimhit{padding:0 2px;border-radius:3px;font-weight:700}
+  mark.claimhit.red{background:#5c1f1a;color:#ffb4a8;box-shadow:inset 0 0 0 1px #9c3a30}
+  mark.claimhit.amber{background:#4a3d13;color:#f0cf8c;box-shadow:inset 0 0 0 1px #7a641f}
+  /* Claim-risk panel in the drawer. */
+  .claimsbox .claimlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .claimrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .claimrow.red{background:var(--redbg);border-color:#5c2424}
+  .claimrow.amber{background:var(--amberbg);border-color:#5c4a16}
+  .claimhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
+  .claimsev{font-size:10px;font-weight:800;padding:1px 6px;border-radius:5px;letter-spacing:.03em}
+  .claimsev.red{background:#c0392b;color:#fff}
+  .claimsev.amber{background:#7a641f;color:#fff}
+  .claimtext{margin-top:5px;font-size:12.5px;line-height:1.5;color:var(--fg)}
+  .rewrite{margin-top:6px;border-top:1px dashed var(--line);padding-top:6px}
+  .rwrow{display:flex;gap:8px;align-items:flex-start;margin-bottom:4px}
+  .rwlbl{flex:0 0 46px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;padding-top:2px}
+  .rwbefore,.rwafter{flex:1;font-size:12.5px;line-height:1.5}
+  .rwafter{color:#7fd99a}
+  .rwacts{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .linkbtn.ok{color:#7fd99a;font-weight:700}
   .tilebody{padding:11px 13px 6px;cursor:pointer;flex:1;display:flex;flex-direction:column;gap:2px}
   .tiletitle{font-size:13.5px;font-weight:600;line-height:1.4;min-height:38px;overflow:hidden;
              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -504,6 +604,200 @@
   .shipline{font-size:11px;line-height:1.4}
   .tileprice{font-size:12.5px;font-weight:600}
   .tilesku{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+  /* Your OWN live ASIN chip (from the live catalogue, matched by SKU) */
+  .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10.5px;
+            color:#9fe6bd;font-family:ui-monospace,Consolas,monospace}
+  .tileasin i{font-size:12px}
+  .tileasin a{color:#9fe6bd;text-decoration:none}
+  .tileasin a:hover{text-decoration:underline}
+  /* Multi-tab: neutral tab tag on a card (which tab it lives on). NOT coloured —
+     colour stays reserved for status. */
+  .tiletab{display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:10px;
+           padding:2px 8px;border-radius:999px;color:var(--muted);
+           background:var(--panel2);border:1px solid var(--line);
+           max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tiletab i{font-size:11px;opacity:.75}
+  /* Multi-tab: the tab filter row (All tabs + one pill per tab). Same family as the
+     status pills but neutral. */
+  .tabfilter{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}
+  .tabfilter .tablabel{font-size:11px;color:var(--muted);display:inline-flex;
+                       align-items:center;gap:4px;margin-right:2px;text-transform:uppercase;
+                       letter-spacing:.04em}
+  .tabpill{font-size:12px;padding:4px 10px;border-radius:999px;cursor:pointer;
+           background:var(--panel2);border:1px solid var(--line);color:#c2c9d6;
+           display:inline-flex;align-items:center;gap:6px;line-height:1.2}
+  .tabpill:hover{border-color:#3a465c;color:#e8eaed}
+  .tabpill.active{background:rgba(76,141,255,.16);border-color:var(--accent);color:#fff;font-weight:600}
+  .tabpill .tabcount{font-size:10.5px;padding:0 6px;border-radius:999px;
+                     background:rgba(255,255,255,.06);color:var(--muted);
+                     font-variant-numeric:tabular-nums}
+  .tabpill.active .tabcount{background:rgba(255,255,255,.14);color:#dfe7f5}
+  /* Duplicates toggle pill — amber, so it reads as a data-hygiene warning, distinct
+     from the neutral tab pills and from the red restricted flag. */
+  .tabpill.dup{color:#e3b768;border-color:#5c4a24}
+  .tabpill.dup:hover{border-color:#7a642f;color:#f0c987}
+  .tabpill.dup.active{background:rgba(227,183,104,.16);border-color:#c79a4a;color:#ffe0a6}
+  .tabpill.dup .tabcount{background:rgba(227,183,104,.18);color:#f0c987}
+  /* Clickable "N duplicate SKUs" note in the summary line */
+  .dupsum{color:#e3b768;cursor:pointer;border-bottom:1px dotted rgba(227,183,104,.5)}
+  .dupsum:hover{color:#f0c987}
+  /* Duplicate card: subtle amber outline (colour reserved for status stays untouched) */
+  .tile.dup{outline:1px dashed rgba(227,183,104,.55);outline-offset:-1px}
+  /* The duplicate chip on a card: label + a delete-this-copy button */
+  .tiledup{display:flex;align-items:center;justify-content:space-between;gap:8px;
+           margin:6px 9px 0;padding:5px 8px;border-radius:8px;font-size:10.5px;
+           color:#e3b768;background:rgba(227,183,104,.10);border:1px solid rgba(227,183,104,.30)}
+  .tiledup-lbl{display:inline-flex;align-items:center;gap:5px;min-width:0;
+               overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tiledup-lbl i{font-size:12px;flex:0 0 auto}
+  .tiledup-del{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+               font-size:10.5px;padding:3px 8px;border-radius:6px;
+               color:#ff8a8a;background:transparent;border:1px solid #5c2424}
+  .tiledup-del:hover{background:rgba(255,80,80,.10);color:#ffb0b0}
+  .tiledup-del:disabled{opacity:.5;cursor:default}
+  /* "Actual on Amazon" read-only mirror panel in the drawer */
+  .mirbox{margin:12px 0 4px;border:1px solid #2c5c3f;border-radius:10px;background:rgba(18,48,33,.28)}
+  .mirsum{cursor:pointer;padding:9px 12px;font-weight:600;color:#9fe6bd;display:flex;align-items:center;gap:6px;list-style:none}
+  .mirsum::-webkit-details-marker{display:none}
+  .mirbox .mirbody{padding:2px 12px 12px}
+  .mirimgs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+  .mirimgs img{width:64px;height:64px;object-fit:cover;border-radius:7px;border:1px solid var(--line);background:#0d1220}
+  .mirrow{display:flex;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}
+  .mirrow .mirk{flex:0 0 130px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding-top:2px}
+  .mirdesc{white-space:pre-wrap;max-height:160px;overflow:auto}
+  .mirbul{margin:0;padding-left:18px}
+  .mirbul li{margin:2px 0}
+  /* ASIN Monitor section */
+  .bulkfilter{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:4px 0 8px}
+  /* top summary bar: is anyone sitting on my listings */
+  .monsum{display:flex;flex-wrap:wrap;gap:14px;align-items:center;padding:10px 12px;margin:0 0 12px;
+          border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
+  .monsum b{color:#e8eaed}
+  .monsum-ok b{color:#7fd1a0}
+  .monsum-warn{color:#e3b768}
+  .monsum-warn b{color:#e3b768}
+  /* per-ASIN block */
+  .monasin-block{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
+  .monasin-block.warn{border-color:#5c4a24;background:rgba(227,183,104,.05)}
+  .monasin-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .monmkt-list{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+  .monmkt-row{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+              padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}
+  .monmkt-ts{white-space:nowrap;margin-left:auto}
+  .monmkt-row.skipped{opacity:.5}
+  /* NEW-account marker on an unknown seller (0 feedback = classic new-hijacker signature) */
+  .newacct{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
+           border-radius:5px;background:#7a1f1f;color:#ffd0d0;vertical-align:middle}
+  .fbnote{font-size:9.5px;color:var(--muted)}
+  /* "Third parties on your listings" list */
+  .monunk{border:1px solid #5c4a24;border-radius:12px;background:rgba(227,183,104,.06);padding:10px 12px;margin:0 0 12px}
+  .monunk-h{font-size:13px;color:#f0b45a;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:8px}
+  .monunk .montable td{vertical-align:middle}
+  .monunk .newrow td{background:rgba(227,183,104,.08)}
+  .monunk .hirow td{background:rgba(224,105,107,.14)}
+  /* HIGH RISK + multi-account badges */
+  .hirisk{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
+          border-radius:5px;background:#8a1010;color:#ffdede;vertical-align:middle}
+  .multiacct{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;
+             background:#5a2ea6;color:#e7ddff;vertical-align:middle}
+  .monsum-hi{color:#ff8a8a;font-weight:600}
+  .monsum-hi b{color:#ff8a8a}
+  /* per-marketplace unknown breakdown (Belgium hotspot) */
+  .monsum-bm{font-size:12px;color:var(--muted);margin:-6px 0 12px;padding:0 2px;display:flex;gap:10px;flex-wrap:wrap}
+  .monsum-bm .hot{color:#f0b45a;font-weight:600}
+  .monlabelbtn{display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;
+               padding:3px 9px;border-radius:7px;color:#c2c9d6;background:transparent;border:1px solid var(--line);white-space:nowrap}
+  .monlabelbtn:hover{border-color:var(--accent);color:#fff}
+  /* seller chips, coloured by identity (colour reserved for the ONE thing that matters: unknown) */
+  .sellerchip{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;
+              border-radius:999px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+  .sellerchip.me  {color:#7fe0c0;border-color:#2c5c4c;background:rgba(18,48,40,.30)}   /* teal = you */
+  .sellerchip.amz {color:var(--muted);border-color:var(--line)}                        /* neutral = Amazon */
+  .sellerchip.auth{color:#9cc1ff;border-color:#2f3a4d}                                  /* authorised reseller */
+  .sellerchip.unk {color:#f0b45a;border-color:#8a5a1e;background:rgba(227,183,104,.12)} /* amber = threat */
+  .sellerchip.unk a{color:#f0b45a;text-decoration:none}
+  .sellerchip.unk a:hover{text-decoration:underline}
+  .sellerchip .bbstar{color:#ffd479}
+  .monchip.warn{color:#f0b45a;border-color:#8a5a1e;background:rgba(227,183,104,.12)}
+  .monchip.ok{color:#7fd1a0;border-color:#2c5c3f;background:rgba(18,48,33,.22)}
+  .monalertbar{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .monalert{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;margin:6px 0;
+            border:1px solid var(--line);border-left-width:3px;border-radius:10px;background:var(--panel2)}
+  .monalert.read{opacity:.62}
+  .monalert.na{border-left-color:#e0696b}   /* new seller -> red (the one that matters most) */
+  .monalert.sr{border-left-color:#7f8ba3}   /* seller removed -> grey */
+  .monalert.pc{border-left-color:#e3b768}   /* price change -> amber */
+  .monalert.bb{border-left-color:#9cc1ff}   /* buy box change -> blue */
+  .monalert .ma-ic{flex:0 0 auto;font-size:16px;color:#c2c9d6;margin-top:1px}
+  .monalert.na .ma-ic{color:#e0696b}
+  .ma-body{flex:1;min-width:0}
+  .ma-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
+  .ma-top .spacer{flex:1}
+  .ma-asin{font-family:ui-monospace,Consolas,monospace;color:#7fd0ff}
+  .ma-ts{font-size:11px;white-space:nowrap}
+  .ma-mid{font-size:12.5px;margin-top:3px}
+  .ma-mid a{color:#7fd0ff;text-decoration:none}
+  .ma-mid a:hover{text-decoration:underline}
+  .ma-det{font-size:11.5px;margin-top:2px}
+  .monadd{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel2)}
+  .monrow{display:flex;gap:12px;flex-wrap:wrap}
+  .monfield{display:flex;flex-direction:column}
+  .monlbl{font-size:11.5px;color:var(--muted);margin-bottom:5px}
+  .monin{background:#0d1220;color:#e8eaed;border:1px solid #2f3a4d;border-radius:8px;
+         padding:8px 10px;font-size:13px;box-sizing:border-box}
+  .monin:focus{outline:none;border-color:var(--accent)}
+  .monmkts{display:flex;flex-wrap:wrap;gap:6px}
+  .monmkt{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#c2c9d6;cursor:pointer;
+          padding:4px 9px;border-radius:999px;background:#0d1220;border:1px solid var(--line);user-select:none}
+  .monmkt input{margin:0;cursor:pointer}
+  .montable{width:100%;border-collapse:collapse;font-size:13px}
+  .montable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;
+               color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line)}
+  .montable td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
+  .monasin{color:#7fd0ff;text-decoration:none;font-family:ui-monospace,Consolas,monospace;font-weight:600}
+  .monasin:hover{text-decoration:underline}
+  .monchip{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;
+           background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--line)}
+  .monchip.all{color:#9fe6bd;border-color:#2c5c3f;background:rgba(18,48,33,.28)}
+  .monrm{background:transparent;border:1px solid #5c2424;color:#ff8a8a;border-radius:7px;
+         height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .monrm:hover{background:rgba(255,80,80,.10)}
+  .monhist{background:transparent;border:1px solid var(--line);color:#c2c9d6;border-radius:7px;
+           height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+  .monhist:hover{border-color:var(--accent);color:#fff}
+  /* Offer history modal */
+  .monhist-mkt{margin:14px 0}
+  .monhist-h{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .monhisttable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .monhisttable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+                   color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .monhisttable td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+  .monhisttable a{color:#7fd0ff;text-decoration:none}
+  .monhisttable a:hover{text-decoration:underline}
+  .monhs{display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;margin:1px 0;
+         background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--muted);
+         font-family:ui-monospace,Consolas,monospace;max-width:130px;overflow:hidden;
+         text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+  .monhs.bb{color:#9fe6bd;border-color:#2c5c3f;background:rgba(18,48,33,.28)}
+  /* Paste-a-listing modal form */
+  .pl-grid{display:flex;flex-direction:column;gap:5px}
+  .pl-lbl{font-size:12px;color:var(--muted);margin-top:8px}
+  .pl-in{width:100%;background:#0d1220;color:#e8eaed;border:1px solid #2f3a4d;border-radius:8px;
+         padding:8px 10px;font-size:13px;font-family:inherit;box-sizing:border-box}
+  .pl-in:focus{outline:none;border-color:var(--accent)}
+  textarea.pl-in{resize:vertical;line-height:1.5}
+  .pl-img{display:flex;gap:8px;align-items:center}
+  .pl-img .pl-in{flex:1}
+  .pl-preview{margin-top:8px;min-height:0}
+  .pl-preview img{max-height:150px;max-width:100%;border-radius:8px;border:1px solid var(--line);background:#0d1220}
+  .pl-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  /* Bulk handling-time control in the selection bar */
+  .handlingwrap{display:inline-flex;align-items:center;gap:6px;padding-left:8px;margin-left:2px;
+                border-left:1px solid var(--line)}
+  .handlingwrap>i{color:var(--muted);font-size:15px}
+  .handlingdays{width:62px;background:#0d1220;color:#e8eaed;border:1px solid #2f3a4d;
+                border-radius:7px;padding:5px 8px;font-size:13px}
+  .handlingdays:focus{outline:none;border-color:var(--accent)}
   .tileacts{display:flex;gap:3px;padding:7px 9px 9px}
   .tileacts .ib{flex:1}
   .ib{height:30px;padding:0;display:flex;align-items:center;justify-content:center;

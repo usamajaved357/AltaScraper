@@ -1,0 +1,14 @@
+# DEVICES lane -- no MEDICAL-DEVICE framing unless the product is actually registered.
+# FORMAT:  SEVERITY | phrase | optional safe-swap   (whole-word matched; # = comment)
+
+RED | medical grade | professional style
+RED | therapeutic |
+RED | nebulizer |
+RED | inhaler |
+RED | diagnoses |
+RED | cures |
+RED | treats pain | helps soothe
+RED | fda cleared |
+RED | fda approved |
+AMBER | clinically proven |
+AMBER | pain relief |

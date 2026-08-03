@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "_note": "Compliance-document catalog. Each doc_id referenced by restricted_product_types.json is defined here once (name, which marketplaces, who issues it, what it proves). The 'type x marketplace -> docs' view is a type entry's docs filtered by marketplace. 'source' flags whether the doc requirement is confirmed from an Amazon notice or an unverified educated guess.",
+  "docs": {
+    "un38_3":                {"name": "UN38.3 lithium battery test summary", "markets": ["UK", "US"], "issued_by": "accredited battery test lab", "proves": "the battery is safe for transport", "source": "unverified"},
+    "battery_iec62133":      {"name": "IEC 62133 battery safety test report", "markets": ["UK", "US"], "issued_by": "accredited test lab", "proves": "cell/battery safety", "source": "unverified"},
+    "sds":                   {"name": "Safety Data Sheet (SDS/MSDS)", "markets": ["UK", "US"], "issued_by": "manufacturer", "proves": "chemical/hazard handling info", "source": "unverified"},
+    "fda_510k":              {"name": "FDA 510(k) number for this product", "markets": ["US"], "issued_by": "U.S. FDA", "proves": "the medical device is cleared for sale", "source": "amazon_notice"},
+    "fda_establishment_reg": {"name": "Device manufacturer's FDA establishment registration number (or owner/operator number)", "markets": ["US"], "issued_by": "U.S. FDA", "proves": "the manufacturer is FDA-registered", "source": "amazon_notice"},
+    "manufacturer_invoice":  {"name": "Purchase order, invoice, or letter (in English) from the manufacturer confirming the device was purchased from the manufacturer", "markets": ["UK", "US"], "issued_by": "device manufacturer", "proves": "the device was bought from the manufacturer", "source": "amazon_notice"},
+    "packaging_photos":      {"name": "Photos of all sides of the product packaging", "markets": ["US"], "issued_by": "seller", "proves": "packaging/labelling", "source": "amazon_notice"},
+    "ifu_photos":            {"name": "Photos of the instructions for use", "markets": ["US"], "issued_by": "seller", "proves": "usage instructions present", "source": "amazon_notice"},
+    "fcc_id":                {"name": "FCC equipment authorization / FCC ID", "markets": ["US"], "issued_by": "FCC / accredited lab", "proves": "radio equipment is authorized", "source": "unverified"},
+    "ukca_ce":               {"name": "UKCA / CE declaration of conformity", "markets": ["UK"], "issued_by": "manufacturer / notified body", "proves": "conformity with UK/EU rules", "source": "unverified"},
+    "mhra_reg":              {"name": "MHRA medical device registration", "markets": ["UK"], "issued_by": "MHRA", "proves": "device registered in the UK", "source": "unverified"},
+    "epa_registration":      {"name": "EPA pesticide registration number", "markets": ["US"], "issued_by": "EPA", "proves": "pesticide is registered", "source": "unverified"},
+    "hse_biocide":           {"name": "HSE / GB biocidal product authorisation", "markets": ["UK"], "issued_by": "HSE", "proves": "biocide is authorised", "source": "unverified"},
+    "cpsr":                  {"name": "Cosmetic Product Safety Report (CPSR)", "markets": ["UK"], "issued_by": "qualified safety assessor", "proves": "cosmetic is safe", "source": "unverified"},
+    "fda_cosmetic":          {"name": "FDA cosmetic facility registration (MoCRA)", "markets": ["US"], "issued_by": "U.S. FDA", "proves": "cosmetic facility registered", "source": "unverified"},
+    "cpc":                   {"name": "Children's Product Certificate (CPC)", "markets": ["US"], "issued_by": "manufacturer (from accredited lab tests)", "proves": "children's product meets safety rules", "source": "unverified"},
+    "en71":                  {"name": "EN71 toy safety test report", "markets": ["UK"], "issued_by": "accredited test lab", "proves": "toy safety", "source": "unverified"},
+    "ul_etl":                {"name": "UL / ETL safety certification", "markets": ["US"], "issued_by": "UL / Intertek", "proves": "electrical safety", "source": "unverified"},
+    "plug_cert":             {"name": "BS1363 plug conformity", "markets": ["UK"], "issued_by": "manufacturer / lab", "proves": "UK plug is compliant", "source": "unverified"},
+    "laser_safety_cert":     {"name": "Laser safety classification / certificate", "markets": ["UK", "US"], "issued_by": "accredited lab", "proves": "laser class within limits", "source": "unverified"},
+    "coa":                   {"name": "Certificate of Analysis (COA)", "markets": ["UK", "US"], "issued_by": "manufacturer / lab", "proves": "ingredient content/purity", "source": "unverified"},
+    "product_label":         {"name": "Compliant product label / ingredient list", "markets": ["UK", "US"], "issued_by": "seller / manufacturer", "proves": "correct labelling", "source": "unverified"},
+    "dg_declaration":        {"name": "Dangerous Goods declaration / exemption sheet", "markets": ["UK", "US"], "issued_by": "manufacturer", "proves": "DG classification", "source": "unverified"},
+    "fda_general":           {"name": "FDA registration/clearance appropriate to the device class", "markets": ["US"], "issued_by": "U.S. FDA", "proves": "device compliance", "source": "unverified"},
+    "fda_facility_reg":      {"name": "FDA facility registration (food/supplement)", "markets": ["US"], "issued_by": "U.S. FDA", "proves": "facility registered", "source": "unverified"}
+  }
+}

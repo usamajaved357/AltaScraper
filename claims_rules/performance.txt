@@ -1,0 +1,22 @@
+# PERFORMANCE-CLAIM bucket -- ALWAYS-ON (fires on EVERY category, SOURCE-INDEPENDENT).
+# A performance claim ("improves X", "increases Y by Z%", "boosts", "lasts longer") is
+# inherently unprovable without documentation, so it is a Restricted-Products risk EVEN
+# IF the competitor's listing said it -- their violation is not your defence. WARN, never
+# blocks; you stay the final gate.
+#
+# Whole-word matched (the esso-in-compressor / nsf-in-transfer discipline). Keep it
+# CONSERVATIVE so it doesn't nag normal copy. Do NOT add "reduces" -- "reduces wear /
+# reduces glare" is normal desirable copy and a known false-positive trap.
+# FORMAT:  SEVERITY | phrase | optional safe-swap    (# = comment)
+
+AMBER | improves |
+AMBER | improve |
+AMBER | increases |
+AMBER | increase |
+AMBER | boosts |
+AMBER | boost |
+AMBER | enhances |
+AMBER | outperforms |
+AMBER | lasts longer |
+AMBER | longer-lasting |
+AMBER | longer lasting |

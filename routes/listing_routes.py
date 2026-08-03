@@ -10,6 +10,81 @@ import re
 import subprocess
 import sys
 
+from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
+from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
+
+# Map the screener's field name -> the sheet column header to WRITE a rewrite into.
+# Standard 48-col layout first, then the Miles 12-col layout, so the one-click "Apply
+# rewrite" targets the correct column on either sheet format.
+_CLAIM_COL_STD = {
+    "title": "Title", "item_highlights": "Item Highlights",
+    "description": "Description (HTML)",
+    "bullet_1": "Bullet 1", "bullet_2": "Bullet 2", "bullet_3": "Bullet 3",
+    "bullet_4": "Bullet 4", "bullet_5": "Bullet 5",
+}
+_CLAIM_COL_MILES = {
+    "item_highlights": "Highlights", "description": "Description",
+    "bullet_1": "Bullet Point 1", "bullet_2": "Bullet Point 2",
+    "bullet_3": "Bullet Point 3", "bullet_4": "Bullet Point 4",
+    "bullet_5": "Bullet Point 5",
+}
+
+
+def _claim_write_col(field, r):
+    """The header actually present on THIS row for a screener field (standard vs Miles)."""
+    std = _CLAIM_COL_STD.get(field, "")
+    if std and std in r:
+        return std
+    miles = _CLAIM_COL_MILES.get(field, "")
+    if miles and miles in r:
+        return miles
+    return std
+
+
+def _attach_claim_flags(c, r):
+    """Re-run the (no-AI, pure pattern-match) category screener on a card's finished
+    copy and attach structured flags for the UI badge / in-copy highlight / rewrite.
+    Computed at read time so the card always reflects the CURRENT rulebook -- no new
+    sheet column. WARN only; carries no blocking effect."""
+    bl = c.get("bullets") or []
+    view = {
+        "title": c.get("title", ""), "item_highlights": c.get("item_highlights", ""),
+        "description": c.get("description", ""),
+        "bullet_1": bl[0] if len(bl) > 0 else "", "bullet_2": bl[1] if len(bl) > 1 else "",
+        "bullet_3": bl[2] if len(bl) > 2 else "", "bullet_4": bl[3] if len(bl) > 3 else "",
+        "bullet_5": bl[4] if len(bl) > 4 else "",
+    }
+    try:
+        cc = check_category_claims(view, c.get("product_type", ""))
+    except Exception:
+        cc = {"hits": [], "summary": ""}
+    flags = []
+    for h in cc.get("hits", []):
+        h2 = dict(h)
+        h2["col"] = _claim_write_col(h.get("field", ""), r)
+        flags.append(h2)
+    c["claim_flags"] = flags
+    c["claim_summary"] = cc.get("summary", "")
+    c["claim_level"] = ("RED" if any(f.get("severity") == "RED" for f in flags)
+                        else ("AMBER" if flags else ""))
+    return c
+
+
+def _attach_restricted(c, r):
+    """Run the tuned restricted-products engine (Shape 2, WARN only) on a card and attach
+    the result for the 'Restricted products check' panel. Read-only; never blocks. Uses the
+    product signals the card already carries (title + product_type + Amazon category +
+    marketplace); clean products return matched=False so the panel stays quiet (doormat rule)."""
+    try:
+        res = check_restricted_type(
+            c.get("title", ""), str(c.get("_marketplace", "") or "").upper(),
+            product_type=c.get("product_type", ""), category_path=c.get("category", ""))
+    except Exception:
+        res = {"matched": False, "matches": [], "overall_action": "NONE",
+               "message": "", "caveat": ""}
+    c["restricted"] = res
+    return c
+
 
 def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER, _ANSI, _EDITABLE_COLS, _URL_RE, _VALID_SET_STATUS, _acquire_run_lock, _active_account, _build_patches, _bust_records_cache, _card, _cfg, _client, _drive_folder_id_from_url, _drive_map_get, _drive_map_put, _drive_upload_image, _ebay_creds, _fetch_image_b64, _load_schema, _marketplace_for_row, _media_root, _options_for, _parse_required_missing, _product_types, _records, _resolve_fields, _run_lock, _running, _schema_attrs, _schema_required, _schema_subfields, _sp_creds, _state, _ws, _require_publish=lambda acc=None: acc, _public_media_url=lambda u: ""):
     """Attach the paths:/suggest,/ask,/input_sheet,/row,/rows,/approve,/schema/<path:pt>,/edit,/delete,/clear_empty,/listing/push_image,/run/<mode> routes to the existing Flask app."""
@@ -450,6 +525,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if str(r.get("SKU", "")).strip() == sku:
                     c = _card(r)
                     c["row"] = i + 2
+                    _attach_claim_flags(c, r)
+                    _attach_restricted(c, r)
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:
@@ -464,6 +541,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             for i, r in enumerate(data):
                 c = _card(r)
                 c["row"] = i + 2          # actual sheet row number (row 1 = header)
+                _attach_claim_flags(c, r)
+                _attach_restricted(c, r)
                 cards.append(c)
             # Report the sheet/tab we ACTUALLY read, straight off the worksheet object,
             # so the header shows the real data source rather than what config claims.
@@ -484,6 +563,160 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             _scope = type(e).__name__ == "SheetScopeError"
             return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
                     200 if _scope else 500)
+
+    def _accounts_on_sheet(sid):
+        """List of accounts whose OUTPUT sheet is spreadsheet `sid`. When more than one
+        account lives in the same workbook, that workbook is SHARED and each account must
+        be scoped to its own tab only."""
+        out = []
+        try:
+            import re as _re2
+            import accounts as _accs
+            def _sid_of(v):
+                v = str(v or "").strip()
+                m = _re2.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", v)
+                return m.group(1) if m else v
+            for a in (_accs.load_accounts(_cfg()) or []):
+                if _sid_of(a.get("output_spreadsheet_id", "")) == str(sid):
+                    out.append(a)
+        except Exception:
+            return []
+        return out
+
+    def _other_account_gids(sid, aid):
+        """Tab gids OWNED by OTHER accounts on spreadsheet `sid` (for the set_active_tab guard)."""
+        out = set()
+        if not aid:
+            return out
+        for a in _accounts_on_sheet(sid):
+            if str(a.get("id", "")) == str(aid):
+                continue
+            g = str(a.get("output_tab_gid") or "").strip()
+            if g:
+                out.add(g)
+        return out
+
+    @app.route("/rows_all")
+    def rows_all():
+        """Like /rows, but reads EVERY listing-shaped tab in the ACTIVE workspace's
+        output sheet and tags each card with the tab it lives on. Powers the multi-tab
+        'All tabs' view so accounts with many output tabs (Miles) are seen in one place
+        instead of one tab at a time. Read-only; never writes.
+
+        A tab counts as a listing tab when its header row 1 has BOTH a 'SKU' and a
+        'Title' column (the generated-listing shape). Non-listing tabs (input, config,
+        notes) are skipped. Each card gains c['tab'] + c['tab_gid']; the response also
+        returns a 'tabs' manifest (name, gid, count) so the UI can draw the tab filter."""
+        try:
+            # Resolve the active workspace's sheet. Mirror _ws()'s scoping guard so an
+            # ACCOUNT workspace never falls back to the shared default sheet/tab.
+            _aid = _state.get("active_account_id")
+            _who = _state.get("active_view") or _aid or "This workspace"
+            sid  = _state.get("active_sheet_id") or ""
+            if _aid and not sid:
+                return jsonify({"ok": False, "sheet_scope_error": True,
+                    "error": (f"{_who} has no output sheet configured, so nothing was read. "
+                              f"Open Account & sheets and paste this account's output Google "
+                              f"Sheets link. The app will not fall back to another account's sheet.")}), 200
+            if not sid:
+                sid = _cfg()["google_spreadsheet_id"]          # dropshipping default
+            # ACCOUNT ISOLATION: several accounts can SHARE one workbook, each owning a
+            # different tab (jack_uk, selvora, sheelady... all live in one spreadsheet, which
+            # ALSO holds many other tabs). A workspace must show ONLY its own account's tab --
+            # NEVER another account's, and never the workbook's other loose tabs.
+            #   - SHARED workbook (>1 account uses this sheet): show ONLY this account's own
+            #     tab (its output_tab_gid, or the resolved active_tab by name). Multi-tab OFF.
+            #   - SINGLE-ACCOUNT workbook (e.g. Miles owns its sheet): show ALL listing tabs.
+            #     The multi-tab view keeps working there.
+            my_gid  = str(_state.get("active_tab_gid") or "").strip()
+            my_tab  = str(_state.get("active_tab") or "").strip()
+            _shared = _aid and len(_accounts_on_sheet(sid)) > 1
+            book = _client().open_by_key(sid)
+            SKU_ALIASES = ("SKU", "Sku", "sku")
+            # A card is "empty" when sku/title/asin/product_type/price are ALL blank --
+            # the same rule the grid uses to hide placeholder rows (isEmptyRow in the JS).
+            # Empty cards are still returned (so the 'clear empty rows' note works per tab),
+            # but the tab pill count reflects only REAL listings, matching what's shown.
+            def _empty_card(c):
+                s = lambda x: str(x if x is not None else "").strip()
+                return (not s(c.get("sku")) and not s(c.get("title")) and not s(c.get("asin"))
+                        and not s(c.get("product_type")) and not s(c.get("price")))
+            tabs, cards = [], []
+            for ws in book.worksheets():
+                try:
+                    header = [str(h).strip() for h in ws.row_values(1)]
+                except Exception:
+                    continue
+                if not (any(a in header for a in SKU_ALIASES) and "Title" in header):
+                    continue                                    # not a listing tab -> skip
+                # On a SHARED workbook, include ONLY this account's own tab.
+                if _shared:
+                    _gid = str(ws.id)
+                    _mine = (_gid == my_gid) if my_gid else (ws.title == my_tab)
+                    if not _mine:
+                        continue                                # another account's / loose tab -> hide
+                recs = _records(ws)
+                n = 0
+                for r in recs:
+                    c = _card(r)
+                    c["tab"]     = ws.title
+                    c["tab_gid"] = str(ws.id)
+                    _attach_claim_flags(c, r)
+                    _attach_restricted(c, r)
+                    cards.append(c)
+                    if not _empty_card(c):
+                        n += 1                                  # count real listings only
+                _url = ""
+                try: _url = ws.url
+                except Exception: _url = ""
+                tabs.append({"tab": ws.title, "tab_gid": str(ws.id), "count": n, "url": _url})
+            src = {"sheet_id": sid, "tab_count": len(tabs)}
+            try: src["url"] = book.url
+            except Exception: pass
+            return jsonify({"ok": True,
+                            "shipping_group": _cfg().get("merchant_shipping_group", ""),
+                            "product_types": _product_types(),
+                            "source": src, "tabs": tabs, "rows": cards})
+        except Exception as e:
+            _scope = type(e).__name__ == "SheetScopeError"
+            return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
+                    200 if _scope else 500)
+
+    @app.route("/view/set_active_tab", methods=["POST"])
+    def set_active_tab():
+        """Point the workspace's ACTIVE tab at another tab in the SAME output sheet, so
+        the edit / approve / push routes (which all target the active tab via _ws())
+        write to the tab the user is actually viewing in the multi-tab view. Only accepts
+        a tab that exists in the active sheet; it NEVER changes the sheet itself and only
+        mutates in-memory state (resets on account switch). This is what stops a cross-tab
+        duplicate SKU from being edited on the wrong tab."""
+        b   = request.get_json(force=True) or {}
+        gid = str(b.get("gid", "")).strip()
+        tab = str(b.get("tab", "")).strip()
+        if not gid and not tab:
+            return jsonify({"ok": False, "error": "no tab given"}), 400
+        try:
+            sid  = _state.get("active_sheet_id") or _cfg()["google_spreadsheet_id"]
+            book = _client().open_by_key(sid)
+            ws = None
+            if gid.isdigit():
+                try: ws = book.get_worksheet_by_id(int(gid))
+                except Exception: ws = None
+            if ws is None and tab:
+                try: ws = book.worksheet(tab)
+                except Exception: ws = None
+            if ws is None:
+                return jsonify({"ok": False, "error": "tab not found in this sheet"}), 404
+            # ISOLATION: never let a workspace point its active tab at a tab OWNED by
+            # another account (shared workbook). Belt-and-suspenders: the UI already only
+            # offers this account's own tabs.
+            if str(ws.id) in _other_account_gids(sid, _state.get("active_account_id")):
+                return jsonify({"ok": False, "error": "that tab belongs to a different account"}), 403
+            _state["active_tab"]     = ws.title
+            _state["active_tab_gid"] = str(ws.id)
+            return jsonify({"ok": True, "tab": ws.title, "tab_gid": str(ws.id)})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:200]}), 500
 
     @app.route("/approve", methods=["POST"])
     def approve():

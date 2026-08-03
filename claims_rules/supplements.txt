@@ -1,0 +1,25 @@
+# SUPPLEMENTS / INGESTIBLES lane -- HIGHEST disease-claim risk.
+# Structure/function language ONLY (supports / maintains / promotes). Never
+# treat / cure / prevent / diagnose a disease.
+# FORMAT:  SEVERITY | phrase | optional safe-swap   (whole-word matched; # = comment)
+
+RED | treats | supports
+RED | treat | support
+RED | cures | supports
+RED | cure | support
+RED | heals | supports
+RED | prevents disease | supports overall wellness
+RED | prevent disease | support overall wellness
+RED | reduces inflammation | supports a healthy inflammatory response
+RED | anti-inflammatory | supports a healthy inflammatory response
+RED | lowers blood pressure | supports already-healthy blood pressure
+RED | lowers cholesterol | supports already-healthy cholesterol levels
+RED | boosts immunity | supports the immune system
+RED | joint pain | joint comfort
+RED | cancer |
+RED | diabetes |
+RED | arthritis |
+RED | depression |
+RED | diagnoses |
+AMBER | clinically proven |
+AMBER | miracle |
