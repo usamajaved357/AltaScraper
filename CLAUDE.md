@@ -150,6 +150,14 @@ When Amazon returns an error like "value is invalid" or "does not match":
 This is how the leg/cable/decimal_value bugs were eventually solved.
 Every hour spent guessing is wasted. The schema is always available — use it.
 
+### Parsing rule (companion to the above — governs how we READ an error, not how we fix it):
+Never derive an attribute name from Amazon's human-readable message text — use the
+structured field/schema, and validate any derived name against the schema before
+rendering it as an input field. (Origin: the "The"/"Your" phantom-field bug — a
+case-insensitive regex captured the capitalised first word of Amazon's prose and
+rendered it as a required field. Fix was a case-sensitive parse PLUS a schema check
+before any field is drawn.)
+
 ---
 
 ## 5. PLAIN ENGLISH FIRST — EVERY TIME

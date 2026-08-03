@@ -891,15 +891,31 @@ const SUBFIELD_HINT={
   "hazmat.value":"Type UN3481 (lithium-ion battery packed with equipment).",
   "hazmat.united_nations_regulatory_id":"Type UN3481."
 };
-function parseFlagged(notes){
+function parseFlagged(notes, isValidField, sink){
   // {field: hint} for every fixable attribute issue Amazon flagged in the last preview.
   // Maps composite dimension errors (item_depth_width_height) to the editable axis field.
+  // isValidField(name) (optional): a predicate that returns true only for names that are
+  // real attributes in the fetched product-type schema. When supplied, any extracted token
+  // that fails it is NOT turned into an editable field -- its raw text is pushed to `sink`
+  // (an array) to be shown as plain prose instead. This is the second guard: a regex must
+  // never be the only thing between Amazon's human message and a rendered form field.
   const out={};
   if(!notes) return out;
   String(notes).split(";").forEach(seg=>{
-    const m=seg.match(/\[[EW]\]\s+([a-z][a-z0-9_]+)\s+([\s\S]*)/i);   // skips non-attribute "fields" like a bare barcode number
+    // CASE-SENSITIVE ON PURPOSE (no /i): real Amazon attribute names are ALWAYS lowercase
+    // snake_case (item_type_keyword, part_number). With /i the [a-z] class also matched the
+    // capitalised first word of Amazon's PROSE ("The Listing data...", "Your offer...") and
+    // rendered "The"/"Your" as phantom input fields. The leading [a-z] now anchors to a real
+    // lowercase attribute token only.
+    const m=seg.match(/\[[EW]\]\s+([a-z][a-z0-9_]+)\s+([\s\S]*)/);   // skips non-attribute "fields" like a bare barcode number
     if(!m) return;
     const field=m[1].toLowerCase(), msg=m[2];
+    // Second guard: the token looks lowercase but isn't a real schema attribute -> don't make
+    // a field for it; surface Amazon's message as plain text.
+    if(typeof isValidField==="function" && !isValidField(field)){
+      if(sink) sink.push(seg.trim());
+      return;
+    }
     if(/required but missing/i.test(msg)){ if(!out[field]) out[field]="required"; return; }
     let mm=msg.match(/at least '([^']+)'\s+(\w+)\s+for '([^']+)'/i);
     if(mm){ out[AXIS_FIELD[mm[3].toLowerCase()]||field]="must be at least "+mm[1]+" "+mm[2]; return; }
@@ -1103,7 +1119,21 @@ function _fullDataInner(r){
   // fields the script fills itself (structural / identity / dimensions) -- never shown as needs-value
   const EXCLUDE_REQ=new Set(["item_name","bullet_point","product_description","generic_keyword","purchasable_offer","fulfillment_availability","brand","condition_type","merchant_shipping_group","supplier_declared_has_product_identifier_exemption","externally_assigned_product_identifier","list_price","manufacturer","model_number","part_number","item_dimensions","item_package_dimensions","item_depth_width_height","item_length_width_height","website_shipping_weight","recommended_browse_nodes","browse_node","browse_nodes"]);
   // required-but-missing = schema top-level required UNION the fields Amazon's last preview flagged
-  const flagged=parseFlagged(r.notes);   // {field: hint} from Amazon's last preview (required / min-max / invalid)
+  // Validate every field name Amazon's message yields against the product-type SCHEMA we
+  // already fetched, BEFORE it can become an input box. If the schema didn't load we can't
+  // validate, so we don't drop anything (the /i removal above still stops the phantom words).
+  const _schemaLoaded=(allAttrs||[]).length>0;
+  const _axisTargets=new Set(Object.values(AXIS_FIELD));            // item_width/depth/height/length
+  const _structOK=new Set(["item_depth_width_height","item_length_width_height"]);
+  const isRealAttr=f=>{
+    if(!_schemaLoaded) return true;
+    const top=String(f).split(".")[0];
+    return (allAttrs.indexOf(top)>=0) || !!enums[top] || !!(sc.subs||{})[top]
+        || ((reqList||[]).indexOf(top)>=0) || !!AXIS_FIELD[top]
+        || _axisTargets.has(top) || _structOK.has(top);
+  };
+  const _plainNotes=[];                  // Amazon prose that isn't a real field -> shown as text
+  const flagged=parseFlagged(r.notes, isRealAttr, _plainNotes);   // {field: hint} from Amazon's last preview (required / min-max / invalid)
   const flaggedKeys=Object.keys(flagged);
   const reqUnion=new Set([...(reqList||[]), ...flaggedKeys]);
   // A field Amazon EXPLICITLY flagged must ALWAYS show a box, even if it's in
@@ -1346,10 +1376,17 @@ function _fullDataInner(r){
     ? `<details class="suball"><summary class="kvsec" style="cursor:pointer">Complete submission data — everything sent to Amazon (${allSubKeys.length} fields, read-only)</summary>
         <table class="kv">${fullSubRows}</table></details>`
     : "";
+  // Amazon messages that don't name a real schema attribute (catalogue-conflict prose,
+  // "The Listing data...", "Your offer...") -> shown as plain text, NEVER as input fields.
+  const plainNoteBlock=(_plainNotes&&_plainNotes.length)
+    ? `<div class="amzprose" style="margin:6px 0;padding:8px 10px;border:1px solid var(--bd,#555);border-radius:6px">
+         <b>Amazon message</b> <span class="cc">(not an editable field — no attribute to fix here)</span><br>
+         ${_plainNotes.map(esc).join("<br>")}</div>`
+    : "";
   return `<details open><summary>Full listing data — click any value to edit; saves automatically${nEnum?'. Dropdowns = Amazon allowed values':''}</summary>
     ${imgBlock}
     <div class="kvsec">Identity &amp; offer</div><table class="kv">${idRows}</table>
-    <div class="kvsec">Attributes${attrHdr}</div>${schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)}${(typeof howWorks==="function")?howWorks('required_fields'):""}${hasAttrs?`<table class="kv">${attrRows}</table>`:''}${reqNote}${addCtrl}${rememberBtn}
+    <div class="kvsec">Attributes${attrHdr}</div>${schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)}${(typeof howWorks==="function")?howWorks('required_fields'):""}${hasAttrs?`<table class="kv">${attrRows}</table>`:''}${plainNoteBlock}${reqNote}${addCtrl}${rememberBtn}
     <div class="kvsec">Content</div>${(typeof howWorks==="function")?howWorks('content_index'):""}<table class="kv">${cRows}</table>
     ${fullSubBlock}
     <span class="rawtoggle" onclick="var e=document.getElementById('${rid}');e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>
