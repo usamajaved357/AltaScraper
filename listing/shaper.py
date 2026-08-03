@@ -379,7 +379,18 @@ def _shape_axes(field_schema: dict, values: dict, mid: str):
     return [obj] if axis_keys else []
 
 def _shape_weight(field_schema: dict, raw, mid: str):
-    """Single weight attribute {value, unit}, e.g. website_shipping_weight."""
+    """Single weight attribute {value, unit}, e.g. website_shipping_weight.
+
+    Accepts a flat 'value unit' string OR a nested {value|decimal_value, unit} dict --
+    the shape _renest produces when the editor's weight sub-field boxes were filled (the
+    sheet stores item_weight as dotted item_weight.value/.unit keys). Without the dict
+    branch, a nested item_weight fed here parsed to nothing and website_shipping_weight
+    was silently dropped -- the same class of bug as the item_dimensions flat/nested
+    mismatch."""
+    if isinstance(raw, dict):
+        _v = raw.get("value", raw.get("decimal_value", ""))
+        _u = str(raw.get("unit", "")).strip()
+        raw = (str(_v).strip() + " " + _u).strip() if str(_v).strip() != "" else ""
     if _is_blank(raw):
         return []
     ip = _item_props(field_schema)
