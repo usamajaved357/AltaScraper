@@ -850,6 +850,16 @@
   .runverdict .rmsg{color:var(--muted);margin-top:3px}
   .runverdict .ramz{margin-top:5px;padding:8px;background:#2a1a1a;border:1px solid #5c2b2b;border-radius:7px;color:#e8b4b4;font-size:12px;white-space:pre-wrap}
   .runverdict .rhint{margin-top:6px;color:#9cc1ff;font-size:12px}
+  /* Plain-English Amazon-error translation cards (amazon_errors.js) */
+  .amztrans{margin-top:6px;padding:9px 11px;background:#141c2b;border:1px solid #2a3a55;border-left:3px solid #e0b84a;border-radius:7px}
+  .amztrans-h{font-size:13px;color:#ffe1a6;margin-bottom:3px}
+  .amztrans-p{font-size:12.5px;color:#dfe8f7;line-height:1.45}
+  .amztrans-p b{color:#fff}
+  .amztrans-a{margin-top:5px;font-size:12px;color:#9fe0b8}
+  .amztrans-raw{border-left-color:#5c6b85}
+  details.amzraw{margin-top:6px}
+  details.amzraw>summary{cursor:pointer;color:#9cc1ff;font-size:12px}
+  details.amzraw .ramz{margin-top:5px;padding:8px;background:#2a1a1a;border:1px solid #5c2b2b;border-radius:7px;color:#e8b4b4;font-size:12px;white-space:pre-wrap}
   .runlogwrap{margin-top:8px}
   .runlogwrap summary{cursor:pointer;color:var(--muted);font-size:12px}
   .runlog{margin-top:6px;max-height:220px;overflow:auto;background:#0c1320;border:1px solid var(--line);border-radius:7px;padding:8px;font-size:11px;color:#aebbd0;white-space:pre-wrap}
