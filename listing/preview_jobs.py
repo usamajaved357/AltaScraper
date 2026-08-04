@@ -116,6 +116,10 @@ def _run_one(job):
 
     job["status"] = "running"
     job["started"] = _now()
+    # Emit a [start] marker (mirrors the live SSE endpoint) so the log shows the command AND
+    # the frontend knows the run actually launched -- without it the panel wrongly reported
+    # "The run didn't start" even though the job ran to completion.
+    job["log"].append("[start] " + " ".join(str(a) for a in job.get("_args", [])))
     p = None
     try:
         p = subprocess.Popen(job["_args"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,

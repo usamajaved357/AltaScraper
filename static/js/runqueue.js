@@ -13,13 +13,13 @@ const RQ = { timer:null, watchSku:null, watchJob:null, watchSt:null, globalTimer
 
 function _rqNewState(){ return {lines:[], verdict:null, summary:null, warnings:"", notSubmitted:[], sawStart:false, seen:0, titleShown:false}; }
 
-// Process ONE log line into state `st`, appending to panel P.
-function _rqProcessLine(st, d, P, sku){
+// PARSE ONE log line into state `st` (no rendering -- rendering happens in rqWatch,
+// against the CURRENT panel element, so a drawer re-render can never orphan the log).
+function _rqParseLine(st, d, sku){
   d = (d==null) ? "" : String(d);
   st.lines.push(d);
-  if(P){ P.log.appendChild(_logLineEl(d)); P.log.scrollTop=P.log.scrollHeight; }
   if(d.indexOf("[busy]")>=0){ st.verdict={kind:"busy", raw:d}; }
-  if(d.startsWith("[start]")){ st.sawStart=true; if(P) P.verdict.innerHTML='<span class="rspin"></span> Request sent to Amazon… waiting for response.'; }
+  if(d.startsWith("[start]")){ st.sawStart=true; }
   const sm=d.match(/complete\s*--\s*ok:\s*(\d+)\s+errors?:\s*(\d+)\s+skipped:\s*(\d+)/i);
   if(sm){ st.summary={ok:parseInt(sm[1]), errors:parseInt(sm[2]), skipped:parseInt(sm[3])}; }
   const _isProse=/none of the requested|only publishes|fix any flagged errors|then click approve|not processed|were NOT (?:submitted|processed)|not found in this tab|^\s*accounting:/i.test(d);
@@ -80,9 +80,17 @@ function _rqFinish(st, P, sku, mode){
         +'<div class="rhint">Preview again; turn off any VPN/proxy; or switch DNS to <code>1.1.1.1</code>.</div>';
       return;
     }
-    const _eLines=lines.filter(x=>/\[E\]/.test(x))
-                       .map(x=>x.replace(/^[^[]*\[E\]\s*/,"").replace(/\s+/g," ").trim())
-                       .filter(Boolean);
+    let _eLines=lines.filter(x=>/\[E\]/.test(x))
+                     .map(x=>x.replace(/^[^[]*\[E\]\s*/,"").replace(/\s+/g," ").trim())
+                     .filter(Boolean);
+    // FALLBACK: if no [E]-prefixed line survived (e.g. the generator's re-verify phrasing
+    // or a line-wrapped message), pull the error-bearing lines so the reason is NEVER just
+    // a bare "errors: 1" count. The full text is also in the row's Notes + the log below.
+    if(!_eLines.length){
+      _eLines=lines.filter(x=>/rejected|conflict|catalogue|catalog|does not match|not live|is invalid|not a valid|required but missing|cannot be added/i.test(x))
+                   .map(x=>x.replace(/^\s*[-•]\s*/,"").replace(/^\s*row\s+\d+\s+\S+:\s*/i,"").replace(/\s+/g," ").trim())
+                   .filter(Boolean);
+    }
     const _eText=_eLines.join("  •  ");
     const _allText=lines.join(" ");
     const _row=(typeof ROWS!=="undefined"&&ROWS.find)?ROWS.find(x=>String(x.sku)===String(sku)):null;
@@ -148,11 +156,15 @@ function rqEnqueue(sku, mode, minimal){
 
 // Watch a sku's job in the OPEN drawer: render its current log, poll until terminal.
 // Called on enqueue AND on openDrawer (to re-attach after navigation / refresh).
+// PARSE (into st) and RENDER (into the CURRENT panel) are separated: the panel element
+// is re-resolved every tick and the log re-rendered in full if the drawer was rebuilt --
+// so a schema-reload re-render can never leave the log appended to a detached (invisible)
+// panel. The full server-side job.log is always the source of truth.
 function rqWatch(sku, jobId){
   rqStopWatch();
-  const P=_runPanel(sku);
-  if(!P) return;
-  RQ.watchSku=sku; RQ.watchJob=jobId||null; RQ.watchSt=_rqNewState();
+  if(!_runPanel(sku)) return;
+  const st=_rqNewState();
+  RQ.watchSku=sku; RQ.watchJob=jobId||null; RQ.watchSt=st; RQ.watchEl=null; RQ.rendered=0;
   const tick=async ()=>{
     if(RQ.watchSku!==sku) return;   // stopped watching / switched drawer
     let j=null;
@@ -164,19 +176,27 @@ function rqWatch(sku, jobId){
     if(!j){ RQ.timer=setTimeout(tick,1300); return; }
     RQ.watchJob=j.id;
     const mode = j.mode==="api_submit" ? "submit" : "preview";
-    const st=RQ.watchSt;
-    if(!st.titleShown){ P.show((mode==="submit"?"Submitting ":"Previewing ")+sku+" …"); st.titleShown=true; }
-    if(j.status==="queued"){ P.verdict.innerHTML='<span class="rspin"></span> Queued — starts when the current run finishes.'; RQ.timer=setTimeout(tick,1200); return; }
+    // PARSE any new log lines into st (pure -- no DOM writes)
     const log=j.log||[];
-    for(let i=st.seen;i<log.length;i++){ _rqProcessLine(st, log[i], P, sku); }
+    for(let i=st.seen;i<log.length;i++){ _rqParseLine(st, log[i], sku); }
     st.seen=log.length;
-    if(j.status==="running"){
-      if(!st.sawStart){ P.verdict.innerHTML='<span class="rspin"></span> Running…'; }
-      RQ.timer=setTimeout(tick,1200); return;
+    if(st.lines.length>0) st.sawStart=true;   // any output -> the run demonstrably STARTED
+    // RENDER into the CURRENT panel element (re-render the whole log if it was rebuilt)
+    const P=_runPanel(sku);
+    if(P){
+      const el=document.getElementById("runpanel_"+sid(sku));
+      if(RQ.watchEl!==el){ RQ.watchEl=el; RQ.rendered=0; P.show((mode==="submit"?"Submitting ":"Previewing ")+sku+" …"); }
+      for(let i=RQ.rendered;i<st.lines.length;i++){ P.log.appendChild(_logLineEl(st.lines[i])); }
+      if(st.lines.length>RQ.rendered){ P.log.scrollTop=P.log.scrollHeight; RQ.rendered=st.lines.length; }
+      if(j.status==="queued"){ P.verdict.innerHTML='<span class="rspin"></span> Queued — starts when the current run finishes.'; }
+      else if(j.status==="running"){ P.verdict.innerHTML='<span class="rspin"></span> Running… <span class="cc">'+esc(String(st.lines.length))+' log line(s)</span>'; }
     }
+    if(j.status==="queued" || j.status==="running"){ RQ.timer=setTimeout(tick,1200); return; }
     // terminal
-    if(j.status==="cancelled" && !st.sawStart){ P.verdict.innerHTML='<span class="rwarn">Cancelled before it ran.</span>'; }
-    else { _rqFinish(st, P, sku, mode); }
+    if(P){
+      if(j.status==="cancelled" && !st.sawStart){ P.verdict.innerHTML='<span class="rwarn">Cancelled before it ran.</span>'; }
+      else { _rqFinish(st, P, sku, mode); }
+    }
     _rqRefreshRow(sku);
     rqGlobalPollNow();
     RQ.watchSku=null; RQ.timer=null;
@@ -185,7 +205,7 @@ function rqWatch(sku, jobId){
 }
 
 // Stop WATCHING (on closeDrawer). Does NOT stop the server job -- it keeps running.
-function rqStopWatch(){ if(RQ.timer){ clearTimeout(RQ.timer); RQ.timer=null; } RQ.watchSku=null; RQ.watchSt=null; RQ.watchJob=null; }
+function rqStopWatch(){ if(RQ.timer){ clearTimeout(RQ.timer); RQ.timer=null; } RQ.watchSku=null; RQ.watchSt=null; RQ.watchJob=null; RQ.watchEl=null; RQ.rendered=0; }
 
 // Called from openDrawer(sku): if a job exists for this sku, re-attach and show it.
 function rqAttach(sku){ rqWatch(sku, null); }
