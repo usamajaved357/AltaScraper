@@ -4338,6 +4338,34 @@ def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
     return None, None, _classify_verify_error(_last_exc) if _last_exc else "status check failed (no response)"
 
 
+def _verify_live_settled(li, seller_id, sku, mid, locale="en_GB",
+                         attempts=8, interval=12, log=None, tag=""):
+    """Poll getListingsItem until the listing SETTLES, instead of judging it from a single
+    snapshot taken ~4s after submit. Amazon processes asynchronously: right after a submit
+    a listing commonly shows ERRORS and a not-yet-DISCOVERABLE status for a few seconds,
+    then goes LIVE. Judging at 4s recorded a FALSE 'NOT live -- rejected' for listings
+    Amazon actually published (see 11.95_3Days_B09JYYJR7H -> ASIN B0HCV5XDBK went
+    DISCOVERABLE moments later). This returns as soon as the listing is BUYABLE/
+    DISCOVERABLE; otherwise it re-checks every `interval`s for up to attempts*interval
+    seconds before returning the SETTLED status. Same (status, errs, reason) shape as
+    _verify_live_status, so the caller's branch logic is unchanged. Safe to run long in
+    the background-job model (the user isn't waiting on a live connection)."""
+    import time as _t
+    last = (None, None, "status check did not complete")
+    n = max(1, int(attempts))
+    for _i in range(n):
+        status, errs, why = _verify_live_status(li, seller_id, sku, mid, locale, settle=(_i == 0))
+        if status is not None or errs is not None:
+            last = (status, errs, why)
+            if status and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in status):
+                return status, errs, ""            # settled LIVE -> done immediately
+        if _i < n - 1:                             # not live yet -> wait and re-check
+            if log and tag:
+                log(f"  [dim]{tag}: not live yet -- re-checking Amazon ({_i + 1}/{n})…[/dim]")
+            _t.sleep(max(1, int(interval)))
+    return last
+
+
 def _skus_across_all_tabs(ws_out) -> set:
     """Union of the SKU column across EVERY worksheet in ws_out's spreadsheet.
 
@@ -6164,10 +6192,13 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             if submit:
                 # 'Accepted' != 'published'. Amazon processes asynchronously, so the
                 # submit-time issues above are NOT the final outcome (a submit that
-                # reported errors can still be live; a clean submit can be rejected
-                # downstream, e.g. main-image compliance). Set status from the REAL
-                # listing state via getListingsItem.
-                _rstatus, _rerrs, _rwhy = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale)
+                # reported errors can still go live; a clean submit can be rejected
+                # downstream, e.g. main-image compliance). RE-VERIFY UNTIL SETTLED --
+                # poll getListingsItem until the listing is BUYABLE/DISCOVERABLE or a
+                # short window elapses, so we never record a false 'NOT live' for a
+                # listing Amazon actually published seconds later.
+                _rstatus, _rerrs, _rwhy = _verify_live_settled(
+                    li, seller_id, sku, mkt_id, issue_locale, log=console.print, tag=f"row {i} {sku}")
                 if _rstatus is None and _rerrs is None:
                     # couldn't verify -> say WHY (timeout/not-found/auth/throttle), and still
                     # show the submit-time errors in full so 'unverified' is never a black box.
@@ -6195,20 +6226,22 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                     console.print(f"  [green]row {i} {sku}: LIVE ({', '.join(_rstatus)})[/green]"
                                   + ("  [yellow](flagged -- fix later)[/yellow]" if _rerrs else ""))
                 elif _rerrs:
-                    # Accepted but Amazon rejected it in processing -> NOT live.
+                    # Settled (re-verified over the window) with errors and never became
+                    # BUYABLE/DISCOVERABLE -> a genuine rejection, not a premature snapshot.
                     err += 1
                     queue(i, status_col, "API_ERROR")
-                    queue(i, notes_col, f"API SUBMIT accepted but NOT live -- Amazon rejected in processing: {_issue_str(_rerrs, attrs)}")
-                    console.print(f"  [red]row {i} {sku}: NOT live -- {len(_rerrs)} issue(s) after processing[/red]")
+                    queue(i, notes_col, f"API SUBMIT accepted but NOT live after re-checking -- Amazon rejected in processing: {_issue_str(_rerrs, attrs)}")
+                    console.print(f"  [red]row {i} {sku}: NOT live -- {len(_rerrs)} issue(s) after re-checking[/red]")
                     for _em in (_issue_str(_rerrs, attrs).split("; ")):
                         if _em.strip():
                             console.print(f"      [red]- {_em.strip()}[/red]")
                 else:
-                    # accepted, no errors yet, but not yet BUYABLE -> still processing
+                    # accepted, no errors, but still not BUYABLE after the re-verify window
+                    # -> genuinely still processing at Amazon (NOT an error).
                     ok += 1
                     queue(i, status_col, "SUBMITTED")
-                    queue(i, notes_col, "API SUBMITTED -- accepted, pending Amazon processing (not yet live). Re-check shortly.")
-                    console.print(f"  [yellow]row {i} {sku}: SUBMITTED (pending Amazon processing)[/yellow]")
+                    queue(i, notes_col, "API SUBMITTED -- accepted; still processing at Amazon after re-checking (not yet live). Use 'Re-verify live status' shortly.")
+                    console.print(f"  [yellow]row {i} {sku}: SUBMITTED (still processing after re-checking)[/yellow]")
             else:
                 # PREVIEW: the submit-time validation IS the answer.
                 if errors:
