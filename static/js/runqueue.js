@@ -197,6 +197,7 @@ function rqWatch(sku, jobId){
       if(j.status==="cancelled" && !st.sawStart){ P.verdict.innerHTML='<span class="rwarn">Cancelled before it ran.</span>'; }
       else { _rqFinish(st, P, sku, mode); }
     }
+    window.RUN_STREAMING=false;   // the watched run is done -> let the views refresh again
     _rqRefreshRow(sku);
     rqGlobalPollNow();
     RQ.watchSku=null; RQ.timer=null;
@@ -224,7 +225,31 @@ function rqRenderBadge(counts){
   el.innerHTML='<span class="rqdot"></span>&nbsp;'+run+' running'+(q?(' · '+q+' queued'):'');
 }
 async function rqGlobalPollNow(){
-  try{ const j=await (await fetch("/preview/jobs")).json(); if(j&&j.ok){ RQ._jobs=j.jobs||[]; rqRenderBadge(j.counts); if(RQ._panelOpen) rqRenderPanel(); } }catch(e){}
+  try{
+    const j=await (await fetch("/preview/jobs")).json();
+    if(j&&j.ok){
+      RQ._jobs=j.jobs||[];
+      rqRenderBadge(j.counts);
+      if(RQ._panelOpen) rqRenderPanel();
+      // ALL-DONE transition (active went from >0 to 0): auto-collapse + unfreeze + refresh.
+      const active=((j.counts&&j.counts.running)||0)+((j.counts&&j.counts.queued)||0);
+      if(active>0 && RQ._allDoneTimer){ clearTimeout(RQ._allDoneTimer); RQ._allDoneTimer=null; }
+      if(RQ._prevActive>0 && active===0 && !RQ._allDoneTimer){ rqScheduleAllDone(); }
+      RQ._prevActive=active;
+    }
+  }catch(e){}
+}
+// 5s after the last job finishes: collapse the Runs panel to the badge, drop the
+// streaming lock, and refresh the listings so no run state is left bleeding on top.
+function rqScheduleAllDone(){
+  if(RQ._allDoneTimer) clearTimeout(RQ._allDoneTimer);
+  RQ._allDoneTimer=setTimeout(function(){
+    RQ._allDoneTimer=null;
+    RQ._panelOpen=false;
+    const p=document.getElementById("rqpanel"); if(p) p.style.display="none";
+    window.RUN_STREAMING=false;
+    if(typeof loadRows==="function"){ try{ loadRows(); }catch(e){} }
+  }, 5000);
 }
 function rqStartGlobal(){ if(RQ.globalTimer) return; const loop=async ()=>{ await rqGlobalPollNow(); RQ.globalTimer=setTimeout(loop, 3000); }; loop(); }
 function rqTogglePanel(){
@@ -234,10 +259,15 @@ function rqTogglePanel(){
   if(!p){ p=document.createElement("div"); p.id="rqpanel"; p.className="rqpanel"; document.body.appendChild(p); }
   p.style.display="block"; rqRenderPanel();
 }
+function rqClosePanel(){ RQ._panelOpen=false; const p=document.getElementById("rqpanel"); if(p) p.style.display="none"; }
 function rqRenderPanel(){
   const p=document.getElementById("rqpanel"); if(!p) return;
   const jobs=(RQ._jobs||[]).slice(0,15);
-  p.innerHTML='<div class="rqpanel-h">Preview / Submit runs</div>'
+  p.innerHTML='<div class="rqpanel-h"><span>Preview / Submit runs</span>'
+    + '<span class="rqpanel-btns">'
+    +   '<button class="rqmin" title="Collapse to the Runs badge" onclick="rqClosePanel()">–</button>'
+    +   '<button class="rqx" title="Close (jobs keep running; click the Runs badge to reopen)" onclick="rqClosePanel()">✕</button>'
+    + '</span></div>'
     + (jobs.length? jobs.map(j=>{
         const st=j.status, cls=(st==="running")?"run":(st==="queued")?"q":(st==="done")?"ok":(st==="cancelled")?"c":"err";
         const active=(st==="queued"||st==="running");

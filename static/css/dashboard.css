@@ -869,7 +869,10 @@
   @keyframes rqpulse{0%,100%{opacity:.35}50%{opacity:1}}
   .rqpanel{position:fixed;right:16px;bottom:58px;z-index:1200;width:300px;max-height:50vh;overflow:auto;
     background:#0f1722;border:1px solid #22304a;border-radius:10px;padding:8px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
-  .rqpanel-h{font-size:12px;color:#9cc1ff;font-weight:600;padding:2px 4px 6px}
+  .rqpanel-h{font-size:12px;color:#9cc1ff;font-weight:600;padding:2px 4px 6px;display:flex;align-items:center;justify-content:space-between}
+  .rqpanel-btns{display:inline-flex;gap:2px}
+  .rqmin,.rqx{background:none;border:none;color:#9cc1ff;cursor:pointer;font-size:14px;line-height:1;padding:0 5px;border-radius:5px}
+  .rqmin:hover,.rqx:hover{background:#16233a;color:#fff}
   .rqrow{display:flex;align-items:center;gap:7px;padding:6px;border-radius:7px;cursor:pointer;font-size:12px}
   .rqrow:hover{background:#16233a}
   .rqst{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:10px;text-transform:uppercase}

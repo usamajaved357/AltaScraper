@@ -122,8 +122,13 @@ def _run_one(job):
     job["log"].append("[start] " + " ".join(str(a) for a in job.get("_args", [])))
     p = None
     try:
+        # Decode the child's stdout as UTF-8 explicitly. On Windows text=True defaults to
+        # the ANSI code page (cp1252), which turns the generator's '…' (UTF-8 E2 80 A6)
+        # into mojibake 'â€¦' in the log. errors="replace" keeps a stray byte from killing
+        # the whole line.
         p = subprocess.Popen(job["_args"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, text=True, bufsize=1)
+                             stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                             errors="replace", bufsize=1)
         if running is not None:
             running["proc"] = p
         try:
