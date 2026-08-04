@@ -4309,10 +4309,10 @@ def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
     'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
     LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
     downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues, reason): on success reason is ""; if the check
-    itself failed, status/errs are None and reason is a plain-English WHY (timeout /
-    not-found / auth / throttle / other) captured from the LAST exception -- never
-    swallowed silently.
+    Returns (status_list, error_issues, reason, asin): on success reason is "" and asin is
+    the ASIN Amazon assigned (for the LIVE note); if the check itself failed, status/errs
+    are None, reason is a plain-English WHY (timeout / not-found / auth / throttle / other)
+    captured from the LAST exception (never swallowed silently), and asin is "".
 
     settle=True waits a few seconds first (right after a fresh submit, Amazon needs a
     moment). Pass settle=False when RE-verifying an already-submitted listing minutes
@@ -4329,13 +4329,14 @@ def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
             p = resp.payload if hasattr(resp, "payload") else (resp or {})
             summaries = (p or {}).get("summaries", []) or []
             status = summaries[0].get("status", []) if summaries else []
+            asin = summaries[0].get("asin", "") if summaries else ""
             issues = (p or {}).get("issues", []) or []
             errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
-            return status, errs, ""
+            return status, errs, "", asin
         except Exception as _e:
             _last_exc = _e
             continue
-    return None, None, _classify_verify_error(_last_exc) if _last_exc else "status check failed (no response)"
+    return None, None, (_classify_verify_error(_last_exc) if _last_exc else "status check failed (no response)"), ""
 
 
 def _verify_live_settled(li, seller_id, sku, mid, locale="en_GB",
@@ -4354,7 +4355,7 @@ def _verify_live_settled(li, seller_id, sku, mid, locale="en_GB",
     last = (None, None, "status check did not complete")
     n = max(1, int(attempts))
     for _i in range(n):
-        status, errs, why = _verify_live_status(li, seller_id, sku, mid, locale, settle=(_i == 0))
+        status, errs, why, _asin = _verify_live_status(li, seller_id, sku, mid, locale, settle=(_i == 0))
         if status is not None or errs is not None:
             last = (status, errs, why)
             if status and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in status):
@@ -6040,22 +6041,26 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             # only re-verify rows that were actually submitted or were ready to be
             if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED", "PENDING", ""):
                 continue
-            _rstatus, _rerrs, _rwhy = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
+            _rstatus, _rerrs, _rwhy, _rasin = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
             _checked += 1
             if _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
+                # CONFIRMED live -> promote to LIVE and capture the ASIN Amazon assigned.
                 queue(i, status_col, "LIVE")
-                queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})")
+                queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})" + (f"; ASIN {_rasin}" if _rasin else ""))
                 _wentlive += 1
-                console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})[/green]")
+                console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})" + (f" ASIN {_rasin}" if _rasin else "") + "[/green]")
             elif _rerrs:
-                queue(i, status_col, "API_ERROR")
-                queue(i, notes_col, f"RE-VERIFIED -- not live yet: {_issue_str(_rerrs, {})}")
-                console.print(f"  [red]row {i} {sku}: not live -- {len(_rerrs)} issue(s)[/red]")
+                # Amazon still shows issues -- re-verify is a CONFIRMATION, not a verdict, so
+                # DON'T downgrade to ERROR. Leave the row's status as-is; just note it.
+                queue(i, notes_col, f"RE-VERIFIED -- not yet confirmed live; Amazon still shows {len(_rerrs)} issue(s): {_issue_str(_rerrs, {})}. Check Seller Central.")
+                console.print(f"  [yellow]row {i} {sku}: not yet confirmed live -- {len(_rerrs)} issue(s) (status left as-is)[/yellow]")
             elif _rstatus is None and _rerrs is None:
                 queue(i, notes_col, f"RE-VERIFY could not check -- {_rwhy}")
                 console.print(f"  [dim]row {i} {sku}: could not check -- {_rwhy}[/dim]")
             else:
-                console.print(f"  [yellow]row {i} {sku}: still pending Amazon processing (not yet buyable)[/yellow]")
+                # accepted, still processing -> not yet confirmed live (NOT an error).
+                queue(i, notes_col, "RE-VERIFIED -- accepted; not yet confirmed live (still processing at Amazon). Check Seller Central or re-verify later.")
+                console.print(f"  [yellow]row {i} {sku}: not yet confirmed live (still processing)[/yellow]")
             time.sleep(0.3)                   # gentle on the listings rate limit
         flush()
         console.print(f"\n[bold]Live re-verify complete[/bold] -- checked: {_checked}   flipped to LIVE: {_wentlive}")
@@ -6190,58 +6195,36 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             msgs    = _issue_str(issues, attrs)
 
             if submit:
-                # 'Accepted' != 'published'. Amazon processes asynchronously, so the
-                # submit-time issues above are NOT the final outcome (a submit that
-                # reported errors can still go live; a clean submit can be rejected
-                # downstream, e.g. main-image compliance). RE-VERIFY UNTIL SETTLED --
-                # poll getListingsItem until the listing is BUYABLE/DISCOVERABLE or a
-                # short window elapses, so we never record a false 'NOT live' for a
-                # listing Amazon actually published seconds later.
-                _rstatus, _rerrs, _rwhy = _verify_live_settled(
-                    li, seller_id, sku, mkt_id, issue_locale, log=console.print, tag=f"row {i} {sku}")
-                if _rstatus is None and _rerrs is None:
-                    # couldn't verify -> say WHY (timeout/not-found/auth/throttle), and still
-                    # show the submit-time errors in full so 'unverified' is never a black box.
-                    if errors:
-                        err += 1
-                        queue(i, status_col, "API_ERROR")
-                        queue(i, notes_col, f"API SUBMIT - {len(errors)} error(s) [live status UNVERIFIED: {_rwhy}]: {msgs}")
-                        console.print(f"  [red]row {i} {sku}: {len(errors)} submit error(s) -- live status unverified: {_rwhy}[/red]")
-                        for _em in (msgs.split("; ") if isinstance(msgs, str) else []):
-                            if _em.strip():
-                                console.print(f"      [red]- {_em.strip()}[/red]")
-                    else:
-                        ok += 1
-                        queue(i, status_col, "SUBMITTED")
-                        queue(i, notes_col, f"API SUBMITTED -- accepted; live status could not be verified ({_rwhy}).")
-                        console.print(f"  [yellow]row {i} {sku}: SUBMITTED -- live status unverified: {_rwhy}[/yellow]")
-                elif _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
-                    # Amazon shows it live. If the main image (or other) is flagged,
-                    # keep it LIVE but note it -- the user fixes the image later.
-                    ok += 1
-                    queue(i, status_col, "LIVE")
-                    _rmsg = _issue_str(_rerrs, attrs) if _rerrs else ""
-                    queue(i, notes_col, f"API SUBMITTED -- LIVE ({', '.join(_rstatus)})"
-                                        + (f" | needs attention (fix later): {_rmsg}" if _rmsg else ""))
-                    console.print(f"  [green]row {i} {sku}: LIVE ({', '.join(_rstatus)})[/green]"
-                                  + ("  [yellow](flagged -- fix later)[/yellow]" if _rerrs else ""))
-                elif _rerrs:
-                    # Settled (re-verified over the window) with errors and never became
-                    # BUYABLE/DISCOVERABLE -> a genuine rejection, not a premature snapshot.
+                # THE SUBMIT RESPONSE IS THE VERDICT. putListingsItem returns status ACCEPTED
+                # (Amazon queued the listing -> it publishes in ~5-30 min) or INVALID (rejected
+                # right now, with the errors above). Amazon's async processing takes 5-30
+                # minutes, so polling getListingsItem for ~2 minutes and declaring failure was
+                # WRONG: it flagged as ERROR listings that Amazon had actually created -- often
+                # under a NEW ASIN, in 'Missing Offer' (e.g. 4.85_3Days_B0DHVTP2P9 -> B0HCVFW53Y).
+                # 'Accepted with warnings' is NOT 'rejected'. Re-verification is now DEFERRED /
+                # on-demand ('Re-verify live status') -- a bonus confirmation, never the verdict.
+                _sub_status = str(payload.get("status", "")).strip().upper()   # ACCEPTED | INVALID | ""
+                _rejected = (_sub_status == "INVALID") or (bool(errors) and _sub_status != "ACCEPTED")
+                if _rejected:
+                    # Amazon rejected the submission synchronously -> a real failure. Show why.
                     err += 1
                     queue(i, status_col, "API_ERROR")
-                    queue(i, notes_col, f"API SUBMIT accepted but NOT live after re-checking -- Amazon rejected in processing: {_issue_str(_rerrs, attrs)}")
-                    console.print(f"  [red]row {i} {sku}: NOT live -- {len(_rerrs)} issue(s) after re-checking[/red]")
-                    for _em in (_issue_str(_rerrs, attrs).split("; ")):
+                    queue(i, notes_col, f"API SUBMIT REJECTED by Amazon ({len(errors)} error(s)): {msgs}")
+                    console.print(f"  [red]row {i} {sku}: REJECTED by Amazon -- {len(errors)} error(s)[/red]")
+                    for _em in (msgs.split("; ") if isinstance(msgs, str) else []):
                         if _em.strip():
                             console.print(f"      [red]- {_em.strip()}[/red]")
                 else:
-                    # accepted, no errors, but still not BUYABLE after the re-verify window
-                    # -> genuinely still processing at Amazon (NOT an error).
+                    # ACCEPTED -> SUCCESS. Amazon queued it; it publishes shortly. Any issues
+                    # here are non-blocking warnings (kept in the note), NOT a rejection.
                     ok += 1
                     queue(i, status_col, "SUBMITTED")
-                    queue(i, notes_col, "API SUBMITTED -- accepted; still processing at Amazon after re-checking (not yet live). Use 'Re-verify live status' shortly.")
-                    console.print(f"  [yellow]row {i} {sku}: SUBMITTED (still processing after re-checking)[/yellow]")
+                    _warn = f" | Amazon warnings: {msgs}" if issues else ""
+                    queue(i, notes_col, "API SUBMITTED -- accepted by Amazon; will be live shortly "
+                                        "(usually ~5-30 min). Run 'Re-verify live status' later to "
+                                        "confirm it went live and capture the ASIN." + _warn)
+                    console.print(f"  [green]row {i} {sku}: SUBMITTED -- accepted by Amazon (live shortly)[/green]"
+                                  + (f"  [yellow]({len(issues)} warning(s))[/yellow]" if issues else ""))
             else:
                 # PREVIEW: the submit-time validation IS the answer.
                 if errors:
