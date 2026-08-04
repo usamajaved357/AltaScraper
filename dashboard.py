@@ -3151,6 +3151,16 @@ if __name__ == "__main__":
                              _schema_attrs=_schema_attrs, _schema_required=_schema_required,
                              _schema_subfields=_schema_subfields, _sp_creds=_sp_creds, _state=_state,
                              _ws=_ws)
+    # Preview/Submit as background JOBS (queue + visibility that survives navigation +
+    # reload). Shares the SAME global run lock so jobs never run concurrently with an SSE
+    # run / generate / auto-fix. The live /run/<mode> SSE endpoint is left untouched.
+    from listing import preview_jobs as _preview_jobs
+    _preview_jobs.configure(acquire_lock=_acquire_run_lock, run_lock=_run_lock,
+                            running=_running, ansi_re=_ANSI)
+    import routes.preview_job_routes as _preview_job_routes
+    _preview_job_routes.register(app, CONFIG_PATH=CONFIG_PATH, SCRIPT=SCRIPT, _cfg=_cfg,
+                                 _active_account=_active_account, _state=_state,
+                                 _require_publish=_require_publish)
     import routes.ui_routes as _ui_routes
     _ui_routes.register(app, CONFIG_PATH=CONFIG_PATH, _kill_proc=_kill_proc,
                         _records=_records, _run_lock=_run_lock, _running=_running, _ws=_ws)
