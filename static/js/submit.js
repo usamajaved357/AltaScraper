@@ -263,7 +263,8 @@ function togglePayloadViewer(cb){
 function _minParam(){ return MINIMAL_MODE_ON ? "&minimal=1" : ""; }
 function previewOne(sku){
   if(!sku) return;
-  _streamRunPanel("/run/api?skus="+encodeURIComponent(sku)+_minParam(), sku, "preview");
+  // background-job path (survives navigation + refresh; queues behind any active run)
+  rqEnqueue(sku, "api", MINIMAL_MODE_ON);
 }
 async function submitOne(sku){
   if(!sku) return;
@@ -296,7 +297,8 @@ async function submitOne(sku){
       +(MINIMAL_MODE_ON?"\n  Mode: MINIMAL (required fields only)":"")
       +"\n\nThis creates/replaces ONLY this listing on the account above. Continue?")) return;
   toast("Submitting "+sku+"…");
-  _streamRunPanel("/run/api_submit?skus="+encodeURIComponent(sku)+_minParam(), sku, "submit");
+  // background-job path (survives navigation + refresh; queues behind any active run)
+  rqEnqueue(sku, "api_submit", MINIMAL_MODE_ON);
 }
 
 async function loadViews(){

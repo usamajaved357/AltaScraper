@@ -948,6 +948,10 @@ function openDrawer(sku, jumpGen){
   dw.classList.add("open");
   document.getElementById("drawerscrim").classList.add("open");
   dw.scrollTop=0;
+  // Re-attach to any BACKGROUND Preview/Submit job for this SKU: replays its log into
+  // the run panel and resumes polling if still running. This is what makes progress
+  // survive navigating away and coming back (and a full page refresh).
+  if(typeof rqAttach==="function"){ setTimeout(function(){ if(DRAWER_SKU===sku) rqAttach(sku); }, 60); }
   // If this product type's schema (allowed values + nested sub-fields like ghs /
   // battery) isn't loaded yet, fetch it then re-render -- otherwise required
   // nested fields render as flat boxes (or not at all) and you can't see the
@@ -955,6 +959,7 @@ function openDrawer(sku, jumpGen){
   if(r.product_type && typeof loadSchemas==="function" && !(SCHEMAS[r.product_type] && (SCHEMAS[r.product_type].attrs||[]).length)){
     loadSchemas([r.product_type], false, rowMkt(r)).then(()=>{
       if(DRAWER_SKU===sku){ body.innerHTML=drawerContent(r); var sv=sid(sku);
+        if(typeof rqAttach==="function"){ setTimeout(function(){ if(DRAWER_SKU===sku) rqAttach(sku); }, 60); }
         setTimeout(function(){ if(typeof bulletMeter==='function') bulletMeter(); }, 60); }
     }).catch(()=>{});
   }
@@ -1026,6 +1031,9 @@ function closeDrawer(){
   DRAWER_SKU=null;
   window.RUN_STREAMING=false;
   if(ES){ try{ES.close();}catch(e){} ES=null; }
+  // Stop WATCHING any background Preview/Submit job -- but DON'T stop the job itself.
+  // It keeps running on the server; reopening the drawer re-attaches to its progress.
+  if(typeof rqStopWatch==="function") rqStopWatch();
   document.getElementById("drawer").classList.remove("open");
   document.getElementById("drawerscrim").classList.remove("open");
 }

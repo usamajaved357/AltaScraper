@@ -860,6 +860,26 @@
   details.amzraw{margin-top:6px}
   details.amzraw>summary{cursor:pointer;color:#9cc1ff;font-size:12px}
   details.amzraw .ramz{margin-top:5px;padding:8px;background:#2a1a1a;border:1px solid #5c2b2b;border-radius:7px;color:#e8b4b4;font-size:12px;white-space:pre-wrap}
+  /* Global "Runs" badge + panel (runqueue.js) -- Preview/Submit background jobs */
+  .rqbadge{position:fixed;right:16px;bottom:16px;z-index:1200;display:none;align-items:center;
+    gap:6px;background:#12233b;color:#dfe8f7;border:1px solid #2c4a6e;
+    border-radius:20px;padding:7px 13px;font-size:12.5px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  .rqbadge .rqdot{width:8px;height:8px;border-radius:50%;background:#4bd08a;display:inline-block;
+    animation:rqpulse 1.2s ease-in-out infinite}
+  @keyframes rqpulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .rqpanel{position:fixed;right:16px;bottom:58px;z-index:1200;width:300px;max-height:50vh;overflow:auto;
+    background:#0f1722;border:1px solid #22304a;border-radius:10px;padding:8px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+  .rqpanel-h{font-size:12px;color:#9cc1ff;font-weight:600;padding:2px 4px 6px}
+  .rqrow{display:flex;align-items:center;gap:7px;padding:6px;border-radius:7px;cursor:pointer;font-size:12px}
+  .rqrow:hover{background:#16233a}
+  .rqst{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:10px;text-transform:uppercase}
+  .rqst.run{background:#123a2a;color:#7fe6b0}.rqst.q{background:#3a3312;color:#e6cf7f}
+  .rqst.ok{background:#123021;color:#7fd99a}.rqst.err{background:#3a1616;color:#f0a0a0}
+  .rqst.c{background:#2a2f38;color:#aebbd0}
+  .rqsku{flex:1;color:#cfe0ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rqmode{color:#7f8ea3;font-size:11px}
+  .rqstop{background:none;border:none;color:#f0a0a0;cursor:pointer;font-size:13px;padding:0 2px}
+  .rqempty{color:#7f8ea3;font-size:12px;padding:8px 4px}
   .runlogwrap{margin-top:8px}
   .runlogwrap summary{cursor:pointer;color:var(--muted);font-size:12px}
   .runlog{margin-top:6px;max-height:220px;overflow:auto;background:#0c1320;border:1px solid var(--line);border-radius:7px;padding:8px;font-size:11px;color:#aebbd0;white-space:pre-wrap}
