@@ -256,6 +256,8 @@
   .bctl.dis,.bctl:disabled{opacity:.35;cursor:default}
   .cdel{background:none;border:none;color:#c98a8a;cursor:pointer;font-size:12px;padding:0 4px;border-radius:4px}
   .cdel:hover{background:#3a1616;color:#fff}
+  .cdel.dis,.cdel:disabled{color:#5b6472;cursor:not-allowed}
+  .cdel.dis:hover,.cdel:disabled:hover{background:none;color:#5b6472}
   .addbulletbtn{background:#12233b;border:1px dashed #2c4a6e;color:#9cc1ff;cursor:pointer;
     font-size:12px;padding:5px 10px;border-radius:7px;margin-top:2px}
   .addbulletbtn:hover{background:#16304e;color:#fff}
