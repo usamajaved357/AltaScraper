@@ -246,6 +246,19 @@
   .ed.err{border-color:#a12a2a !important}
   .ed.saving{opacity:.55}
   select.ed{cursor:pointer}
+  /* Full editor: field delete + bullet controls */
+  .bctls{display:inline-flex;gap:2px;margin-left:6px;vertical-align:middle}
+  .bctl{background:#16233a;border:1px solid #2a3a55;color:#cfe0ff;cursor:pointer;font-size:11px;
+    line-height:1;padding:2px 6px;border-radius:5px}
+  .bctl:hover{background:#213555;color:#fff}
+  .bctl.del{color:#f0a0a0;border-color:#5c2b2b}
+  .bctl.del:hover{background:#3a1616;color:#fff}
+  .bctl.dis,.bctl:disabled{opacity:.35;cursor:default}
+  .cdel{background:none;border:none;color:#c98a8a;cursor:pointer;font-size:12px;padding:0 4px;border-radius:4px}
+  .cdel:hover{background:#3a1616;color:#fff}
+  .addbulletbtn{background:#12233b;border:1px dashed #2c4a6e;color:#9cc1ff;cursor:pointer;
+    font-size:12px;padding:5px 10px;border-radius:7px;margin-top:2px}
+  .addbulletbtn:hover{background:#16304e;color:#fff}
   td.k{padding-top:9px;white-space:nowrap}
   .ro{color:var(--muted)}
   .safe{background:#10301f;border:1px solid #1f7a3d;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#9fe0b8}

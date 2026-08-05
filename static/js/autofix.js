@@ -852,7 +852,7 @@ function contentRow(label, sku, colKey, value, limit, opts){
   const rows = opts.rows||3;
   const tgt = opts.target||"col";
   const ta=`<textarea class="ed" rows="${rows}" data-bkt="${esc(opts.bucket||'')}" data-bytes="${useBytes?1:0}" data-warn="${warnAt}" data-lim="${lim}" oninput="ccount(this,'${cid}',${lim});bulletMeter()" onchange="saveEdit(this,'${esc(sku)}','${tgt}','${esc(colKey)}')">${esc(cur)}</textarea>`;
-  return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)} ${counter} ${idx}</div>${warnmsg}${ta}</td></tr>`;
+  return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)} ${counter} ${idx}${opts.controls?(' '+opts.controls):''}</div>${warnmsg}${ta}</td></tr>`;
 }
 function edRowReq(label,ctrl,hint){ return `<tr class="reqrow"><td class="k"><span class="klabel">${esc(label)}<span class="reqstar" title="Required by Amazon">\u2605</span></span> <span class="reqtag">needs value</span>${hint?`<span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
 function sid(s){ return String(s).replace(/[^a-zA-Z0-9]/g,"_"); }
@@ -985,6 +985,74 @@ async function saveEdit(el,sku,target,key){
              else updateLocalCol(r,key,value); }
     } else { el.classList.add("err"); toast("Save failed: "+(j.error||"")); }
   }catch(e){ el.classList.remove("saving"); el.classList.add("err"); toast("Save failed: "+e); }
+}
+
+// ============================================================================
+// FULL EDITOR -- field delete + bullet management (Seller-Central-style)
+// ============================================================================
+// Rebuild just the drawer's full-data block after a structural edit (delete /
+// add / reorder), without touching the run panel above it.
+function _rebuildDrawerData(sku){
+  const r=ROWS.find(x=>String(x.sku)===String(sku));
+  const host=document.getElementById("fulldata_"+sid(sku));
+  if(host && r){ host.innerHTML=fullData(r); setTimeout(()=>{ if(typeof bulletMeter==='function') bulletMeter(); }, 40); }
+}
+// Delete/clear a field. Attributes -> the key is REMOVED; columns/content -> the cell
+// is blanked. `refresh` rebuilds the block so a deleted attribute row disappears.
+async function clearField(sku, target, key, refresh){
+  if(!confirm("Delete '"+key+"' from this listing?")) return;
+  try{
+    const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku, target, key, value:""})})).json();
+    if(!j || !j.ok){ toast("Delete failed: "+((j&&j.error)||"unknown")); return; }
+    const r=ROWS.find(x=>String(x.sku)===String(sku));
+    if(r){ if(target==="attr"){ r.attributes=r.attributes||{}; delete r.attributes[key]; }
+           else if(typeof updateLocalCol==="function") updateLocalCol(r,key,""); }
+    toast("Deleted ✓");
+    if(refresh!==false) _rebuildDrawerData(sku);
+  }catch(e){ toast("Delete failed: "+e); }
+}
+
+// ---- bullets (stored as sheet columns "Bullet 1".."Bullet 5", Amazon max 5) ----
+const MAX_BULLETS=5;
+// Persist the whole bullet set: write all 5 columns (blank the unused) so the sheet
+// exactly matches the array -- this is what makes reorder / remove-and-compact stick.
+async function _saveBullets(sku, bullets){
+  const arr=(bullets||[]).slice(0, MAX_BULLETS);
+  for(let i=0;i<MAX_BULLETS;i++){
+    await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku, target:"col", key:"Bullet "+(i+1), value:(arr[i]||"")})});
+  }
+  const r=ROWS.find(x=>String(x.sku)===String(sku));
+  if(r) r.bullets=arr;
+}
+function bulletControls(sku, i, total){
+  const up   = i>0        ? `<button class="bctl" title="Move up" onclick="moveBullet('${esc(sku)}',${i},-1)">↑</button>` : `<button class="bctl dis" disabled>↑</button>`;
+  const down = i<total-1  ? `<button class="bctl" title="Move down" onclick="moveBullet('${esc(sku)}',${i},1)">↓</button>`  : `<button class="bctl dis" disabled>↓</button>`;
+  const del  = `<button class="bctl del" title="Delete this bullet" onclick="removeBullet('${esc(sku)}',${i})">✕</button>`;
+  return `<span class="bctls">${up}${down}${del}</span>`;
+}
+async function addBullet(sku){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  r.bullets=r.bullets||[];
+  if(r.bullets.length>=MAX_BULLETS){ toast("Amazon allows a maximum of 5 bullet points"); return; }
+  r.bullets.push("");
+  await _saveBullets(sku, r.bullets);
+  _rebuildDrawerData(sku);
+}
+async function removeBullet(sku, i){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
+  if((r.bullets[i]||"").trim() && !confirm("Delete bullet "+(i+1)+"?")) return;
+  r.bullets.splice(i,1);                         // remove AND compact -> no empty slot
+  await _saveBullets(sku, r.bullets);
+  _rebuildDrawerData(sku);
+}
+async function moveBullet(sku, i, dir){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
+  const j=i+dir; if(j<0||j>=r.bullets.length) return;
+  const t=r.bullets[i]; r.bullets[i]=r.bullets[j]; r.bullets[j]=t;
+  await _saveBullets(sku, r.bullets);
+  _rebuildDrawerData(sku);
 }
 // Schema-state diagnostic strip. The #1 reason flagged boxes render without
 // dropdowns (or look "empty/shrunk") is that the LIVE Amazon schema for this
@@ -1297,14 +1365,26 @@ function _fullDataInner(r){
   const bulletMeterRow = `<tr><td colspan="2" class="wcell"><div id="bulletIdxMeter" class="bulletmeter"></div></td></tr>`;
   const itemHi = (r.attributes||{}).item_type_keyword===undefined ? "" : "";
   const _highlightVal = (function(){ try{ return (r.attributes||{}).item_highlights || r.item_highlights || ""; }catch(e){ return ""; } })();
+  // ✕ delete control for a content field (blanks the cell; bullets get their own controls)
+  const cDel=(target,key)=>`<button class="cdel" title="Delete this field" onclick="clearField('${esc(sku)}','${target}','${esc(key)}')">✕</button>`;
   const cRows=[
-      contentRow("Backend search terms", sku, "Search Terms / KW", r.search_terms, 249, backendOpts),
+      contentRow("Backend search terms", sku, "Search Terms / KW", r.search_terms, 249, Object.assign({}, backendOpts, {controls:cDel("col","Search Terms / KW")})),
       contentRow("Title", sku, "Title", r.title, 200, titleOpts),
-      contentRow("Item Highlights", sku, "item_highlights", _highlightVal, 125, highlightOpts)
+      contentRow("Item Highlights", sku, "item_highlights", _highlightVal, 125, Object.assign({}, highlightOpts, {controls:cDel("attr","item_highlights")}))
     ]
     .concat([bulletMeterRow])
-    .concat((r.bullets||[]).map((b,i)=>contentRow("Bullet "+(i+1), sku, "Bullet "+(i+1), b, 500, bulletOptsFor(i+1))))
-    .concat([contentRow("Description", sku, "Description (HTML)", r.description, 2000, descOpts)]).join("");
+    .concat((function(){
+        var bl=(r.bullets||[]); var total=bl.length;
+        var rows=bl.map(function(b,i){
+          return contentRow("Bullet "+(i+1), sku, "Bullet "+(i+1), b, 500,
+                            Object.assign({}, bulletOptsFor(i+1), {controls: bulletControls(sku,i,total)}));
+        });
+        if(total<MAX_BULLETS){
+          rows.push('<tr><td colspan="2" class="wcell"><button class="addbulletbtn" onclick="addBullet(\''+esc(sku)+'\')">+ Add bullet ('+total+'/5)</button></td></tr>');
+        }
+        return rows;
+      })())
+    .concat([contentRow("Description", sku, "Description (HTML)", r.description, 2000, Object.assign({}, descOpts, {controls:cDel("col","Description (HTML)")}))]).join("");
   const rid="raw_"+Math.random().toString(36).slice(2,8);
   const nEnum=Object.keys(enums).length;
   const hasAttrs=aKeys.length||missing.length;
