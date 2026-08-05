@@ -334,8 +334,22 @@ async function loadRows(){
     // just the active tab), tagging each card with its tab, so a multi-tab account
     // (e.g. Miles) is seen in one view. Single-tab sheets return one tab -> identical
     // to the old /rows behaviour (no tab filter, no tags shown).
-    const j=await _fetchJSON("/rows_all", null, 30000);
-    if(!j || j._failed){ toast("Could not load listings: "+((j&&j.error)||"timeout")); return; }
+    // Multi-tab accounts like Miles read EVERY listing tab (5 tabs / ~267 rows for Miles),
+    // which legitimately takes ~50s of sequential Google Sheets reads -- the old 30s cap
+    // aborted before it could finish. Show a loading state so the wait isn't a blank
+    // screen, give it real headroom, and on failure render an in-grid error + Retry
+    // (not a toast that vanishes and leaves an empty page).
+    const _g0=document.getElementById("grid");
+    if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length))
+      _g0.innerHTML='<div class="empty"><span class="genspin"></span> Loading listings from your sheet…<div class="cc" style="margin-top:8px">Accounts with many tabs (e.g. Miles) read every tab and can take up to a minute.</div></div>';
+    const j=await _fetchJSON("/rows_all", null, 120000);
+    if(!j || j._failed){
+      const _g=document.getElementById("grid");
+      if(_g) _g.innerHTML='<div class="empty">Could not load listings: '+esc((j&&j.error)||"timed out")
+        +'<div style="margin-top:10px"><button class="mktbtn on" onclick="loadRows()"><i class="ti ti-refresh"></i> Retry</button></div></div>';
+      else toast("Could not load listings: "+((j&&j.error)||"timeout"));
+      return;
+    }
     if(!j.ok){
       // This workspace has no sheet/tab configured. The app deliberately refuses to
       // fall back to the shared default tab (it holds another account's listings), so
