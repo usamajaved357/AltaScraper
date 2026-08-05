@@ -406,11 +406,28 @@ function isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown){
   return norm(r.status)==="LIVE";
 }
 
+// Has Amazon's live catalog actually been fetched for the account+marketplace in view?
+// LIVE_STORE holds a cache entry (even an empty one) only AFTER a Sync completes for
+// that key. Before that, LIVE_ITEMS is empty simply because we never asked -- which is
+// NOT the same as "Amazon returned nothing". Callers that draw a negative conclusion
+// ("not confirmed by Amazon") must gate on this, or they slander live listings as dead
+// before the first Sync.
+function _liveCatalogLoaded(){
+  try{
+    return (typeof LIVE_STORE!=="undefined") && (typeof _liveKey==="function")
+           && (LIVE_STORE[_liveKey()]!==undefined);
+  }catch(e){ return false; }
+}
+
 // The sheet SAYS this row is live, but Amazon's catalog does not list it.
-// Only meaningful once the catalog is loaded.
+// Only meaningful once the catalog is loaded -- we cannot call a LIVE row "not
+// confirmed by Amazon" until we have actually asked Amazon (i.e. a Sync has run).
+// Before that, this returns false so those rows fall back to the sheet's own claim
+// and the alarming "Not confirmed by Amazon" group never appears pre-Sync.
 function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
   const norm = v => String(v||"").trim().toUpperCase();
   if(!liveGroupShown) return false;
+  if(!_liveCatalogLoaded()) return false;
   return norm(r.status)==="LIVE" && !isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown);
 }
 
