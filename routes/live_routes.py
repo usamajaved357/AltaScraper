@@ -420,7 +420,13 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         except Exception:
             mkt_id = ""
         try:
-            rc = Reports(credentials=creds, marketplace=mkt_enum)
+            # timeout so a stalled Amazon Reports call can't hang the request forever
+            # (every other SP-API client here already passes one; this one didn't, which
+            # is how a slow report could leave the UI spinning indefinitely).
+            try:
+                rc = Reports(credentials=creds, marketplace=mkt_enum, timeout=90)
+            except TypeError:
+                rc = Reports(credentials=creds, marketplace=mkt_enum)
             RT = "GET_MERCHANT_LISTINGS_ALL_DATA"
             doc_id = None
             report_source = "new"
