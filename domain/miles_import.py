@@ -152,7 +152,7 @@ def find_product_url(search_html: str, item_number: str):
     # /product/show/... href and the text around it, then match by exact number.
     # We look for the item number appearing as its own token next to a product
     # link. Two passes: structured (anchor) then loose (number proximity).
-    hrefs = re.findall(r'href=["\'](/product/show/[^"\']+)["\']', search_html, re.I)
+    hrefs = re.findall(r'href=["\']((?:https?://[^"\']+)?/product/show/[^"\']+)["\']', search_html, re.I)
     hrefs = [h for h in dict.fromkeys(hrefs)]   # de-dup, keep order
 
     # Find rows: split on table-row boundaries so each chunk is one result.
@@ -161,7 +161,7 @@ def find_product_url(search_html: str, item_number: str):
     for chunk in rows:
         # exact item number as a standalone token in this row?
         if re.search(r"(?<![A-Za-z0-9])" + re.escape(item) + r"(?![A-Za-z0-9])", chunk):
-            m = re.search(r'href=["\'](/product/show/[^"\']+)["\']', chunk, re.I)
+            m = re.search(r'href=["\']((?:https?://[^"\']+)?/product/show/[^"\']+)["\']', chunk, re.I)
             if m:
                 matches.append(m.group(1))
 
@@ -895,6 +895,18 @@ async def _search_item(item_number: str, timeout: int = 30000, diag: list = None
         except Exception as e:
             diag.append(f"POST {list(fields)[:2]} failed: {type(e).__name__}")
             return ""
+
+    # PRIMARY (matches the CURRENT site form <input name="search"> + <select name="selsearch">):
+    # POST search=<item> + selsearch=2 ("by Item Number"). Verified against the live site --
+    # returns the single exact /product/show/ match. The GET / other-POST attempts below
+    # remain as fallbacks for older or changed form shapes.
+    _primary = _try_post({"search": item_number, "selsearch": "2"})
+    if _primary:
+        _hp = "/product/show/" in _primary
+        diag.append(f"POST search+selsearch=2 -> {len(_primary)} bytes, "
+                    f"{'HAS' if _hp else 'no'} product links")
+        if _hp:
+            return _primary
 
     # The Miles site's search now responds to GET query params (POST endpoints
     # were removed/changed and return URLError). Try GET FIRST -- it's what works
