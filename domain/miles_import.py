@@ -1048,7 +1048,21 @@ async def harvest_item(item_number: str, drive_service, log=print,
 
     product_url = url_or_msg
     log(f"  [{item_number}] product page: {product_url}")
-    page_html, page_md = await _fetch_page(product_url, click_tabs=True)
+    # The UPDATED Miles site is fully server-rendered: a plain GET returns the whole
+    # product page (title, spec table, and ALL document links -- SDS + TDS + NSF). The
+    # crawl4ai tab-clicking render (click_tabs) now clicks the site's "SDS" NAV link,
+    # navigates away ("Execution context destroyed"), and captures the WRONG page with
+    # ONLY the NSF certificate -- exactly why SDS/TDS were going missing. So fetch plainly
+    # first; fall back to the browser renderer (WITHOUT tab-clicking) only if the plain
+    # page is missing its /uploads/ document links.
+    page_html, page_md = "", ""
+    _pdata, _pwhy = download_file_bytes(product_url)
+    if _pdata:
+        page_html = _pdata.decode("utf-8", "ignore")
+    if "/uploads/" not in page_html:
+        _bh, _bm = await _fetch_page(product_url, click_tabs=False)
+        if _bh and len(_bh) > len(page_html):
+            page_html, page_md = _bh, (_bm or "")
     log(f"  [{item_number}]   page loaded: {len(page_html)} bytes html, {len(page_md)} bytes text")
     if not page_html:
         return {"status": ERROR, "item_number": item_number,
@@ -1130,7 +1144,19 @@ async def harvest_item(item_number: str, drive_service, log=print,
         if not fname.lower().endswith(".pdf"):
             fname += ".pdf"
         text = extract_pdf_text(data)
-        kind = classify_pdf(fname, text)
+        # Folder is the most reliable classifier on the Miles site (filenames vary:
+        # "TDS - ...", "PDS ...", "SDS_..."):
+        #   /uploads/msds_docs/    = SDS       /uploads/spec_docs/ = TDS / spec sheet
+        #   /uploads/certificates/ = other (e.g. the shared NSF registration cert)
+        _lp = purl.lower()
+        if "/msds_docs/" in _lp:
+            kind = "sds"
+        elif "/spec_docs/" in _lp:
+            kind = "tds"
+        elif "/certificates/" in _lp:
+            kind = "other"
+        else:
+            kind = classify_pdf(fname, text)
         drive_id = ""
         if drive_service and folder_id:
             drive_id, uerr = upload_bytes_to_drive(drive_service, folder_id, fname, data)
