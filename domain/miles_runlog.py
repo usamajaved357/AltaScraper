@@ -29,6 +29,8 @@ _ACTIVE = {"id": None}
 
 # ---- per-SKU status parsing from the CLI's log lines -------------------------
 _RE_PROGRESS = re.compile(r"^\[(\d+)/(\d+)\]\s+([A-Za-z0-9._-]+)")          # [35/159] MSF1308003
+_RE_GENPROG  = re.compile(r"^\[(\d+)/(\d+)\][^\n]*::\s*([A-Za-z0-9._-]+)")  # [34/106] BRAND ... :: MSF1532003
+_RE_WROTE    = re.compile(r"WROTE draft for\s+([A-Za-z0-9._-]+)", re.I)     # generation wrote a listing
 _RE_NOTFOUND = re.compile(r"\[([A-Za-z0-9._-]+)\][^\n]*?NOT[_ ]?FOUND", re.I)
 _RE_REVIEW   = re.compile(r"\[([A-Za-z0-9._-]+)\][^\n]*?(NEEDS_REVIEW|need[s]? review|\d+\s+product matches|duplicate)", re.I)
 _RE_FILE     = re.compile(r"\[([A-Za-z0-9._-]+)\]\s+(SDS|TDS|OTHER)\s*:", re.I)   # a doc was captured
@@ -80,11 +82,22 @@ def _is_sku(tok):
 
 
 def _parse(meta, line):
-    m = _RE_PROGRESS.match(line)
-    if m and _is_sku(m.group(3)):
-        try: meta["total"] = int(m.group(2))
+    # generation progress ("[i/N] BRAND ... :: SKU") -- check FIRST because it also matches
+    # the plain [i/N] shape; the SKU is after the "::".
+    mg = _RE_GENPROG.match(line)
+    if mg and _is_sku(mg.group(3)):
+        try: meta["total"] = int(mg.group(2))
         except Exception: pass
-        _set_sku(meta, m.group(3), "processing")
+        _set_sku(meta, mg.group(3), "processing")
+    else:
+        m = _RE_PROGRESS.match(line)
+        if m and _is_sku(m.group(3)):
+            try: meta["total"] = int(m.group(2))
+            except Exception: pass
+            _set_sku(meta, m.group(3), "processing")
+    m = _RE_WROTE.search(line)
+    if m and _is_sku(m.group(1)):
+        _set_sku(meta, m.group(1), "generated", line)
     m = _RE_NOTFOUND.search(line)
     if m and _is_sku(m.group(1)):
         _set_sku(meta, m.group(1), "not_found", line)
