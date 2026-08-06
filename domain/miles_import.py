@@ -620,6 +620,7 @@ def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-
     try:
         import pdfplumber
         import anthropic
+        import base64
     except Exception:
         return ""
     try:
