@@ -98,21 +98,48 @@ function milesRun(reattach){
     if(log){const d=document.createElement("div");d.style.color="#ff8585";d.textContent="[error] stream interrupted — check the app terminal for a Python traceback";log.appendChild(d);}
   }};
 }
-// On page load: if a harvest/generate run is already in progress (it now keeps running
-// server-side even if you left the page), re-attach to its live log so you see its status
-// instead of a blank panel.
-function milesCheckActive(){
-  fetch("/miles/run_active").then(r=>r.json()).then(j=>{
-    if(!(j && j.ok && j.active)) return;
-    const log=document.getElementById("miles_log");
-    if(log){
-      log.style.display="block"; log.textContent="";
-      const d=document.createElement("div"); d.style.color="#9cc1ff";
-      d.textContent="[reattach] a run is in progress"+(j.source?(" ("+j.source+")"):"")+" — resuming its live log…";
-      log.appendChild(d);
+// ROBUST LIVE PROGRESS: poll the server every 2s so you always see where a run is --
+// harvest OR generation -- regardless of whether the live SSE connection is open. This is
+// what survives reloads, view-switches, and dropped connections: the run keeps going
+// server-side and this keeps showing its position.
+let MILES_POLL=null, MILES_TAILFROM=0, MILES_TAILID=null;
+function milesStartPoll(){ if(!MILES_POLL){ MILES_POLL=setInterval(milesPollTick, 2000); } milesPollTick(); }
+function milesPollTick(){
+  const from = MILES_TAILID ? MILES_TAILFROM : 0;
+  const idq = MILES_TAILID ? ("&id="+encodeURIComponent(MILES_TAILID)) : "";
+  fetch("/miles/run_tail?from="+from+idq).then(r=>r.json()).then(t=>{
+    const st=document.getElementById("miles_livestatus");
+    if(!(t && t.ok) || !t.state || t.state==="none"){
+      if(st) st.style.display="none";
+      if(MILES_TAILID){ MILES_TAILID=null; MILES_TAILFROM=0; milesLoadRuns(); try{milesLoadResults();}catch(e){} }
+      return;
     }
-    const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
-    milesRun(true);
+    if(MILES_TAILID!==t.id){ MILES_TAILID=t.id; MILES_TAILFROM=0; }   // new run -> reset pointer
+    const c=t.counts||{}, running=(t.state==="running");
+    if(st){
+      st.style.display="block";
+      const dot = running ? '<b style="color:#9cc1ff">● Running</b>' : '<b style="color:#7ee08a">✓ Finished</b>';
+      st.innerHTML = dot + (t.source?(' &nbsp;<b>'+t.source+'</b>'):'')
+        + ' &nbsp;—&nbsp; '+(t.done||0)+(t.total?('/'+t.total):'')+' processed'
+        + ' &nbsp;·&nbsp; <span style="color:#7ee08a">drafts '+(c.generated||0)+'</span>'
+        + ' &nbsp;·&nbsp; harvested '+(c.harvested||0)
+        + ' &nbsp;·&nbsp; <span style="color:#e3b768">not found '+(c.not_found||0)+'</span>'
+        + ((c.review||0)?(' &nbsp;·&nbsp; <span style="color:#e3b768">review '+c.review+'</span>'):'');
+    }
+    // Append new log lines ONLY when the live SSE isn't already doing it (avoids doubles).
+    if(!ES && t.lines && t.lines.length){
+      const log=document.getElementById("miles_log");
+      if(log){ log.style.display="block";
+        t.lines.forEach(function(ln){ const d=document.createElement("div");
+          if(ln.indexOf("NOT_FOUND")>=0||ln.indexOf("NEEDS_REVIEW")>=0) d.style.color="#e3b768";
+          else if(ln.indexOf("WROTE draft")>=0) d.style.color="#7ee08a";
+          else if(ln.startsWith("[error]")) d.style.color="#ff8585";
+          d.textContent=ln; log.appendChild(d); });
+        log.scrollTop=log.scrollHeight;
+      }
+    }
+    MILES_TAILFROM=t.next;                          // keep the pointer current either way
+    if(!running){ MILES_TAILID=null; milesLoadRuns(); }
   }).catch(()=>{});
 }
 // Past runs panel: list saved runs with links to each run's full log + per-SKU CSV.
@@ -138,7 +165,7 @@ function milesLoadRuns(){
     }).join("");
   }).catch(()=>{ host.textContent="Could not load runs."; });
 }
-window.addEventListener("DOMContentLoaded",function(){ setTimeout(function(){ milesCheckActive(); milesLoadRuns(); }, 900); });
+window.addEventListener("DOMContentLoaded",function(){ setTimeout(function(){ milesStartPoll(); milesLoadRuns(); }, 900); });
 
 function milesSavePref(){
   // Persist the output Sheet ID/tab so it survives reloads until changed.

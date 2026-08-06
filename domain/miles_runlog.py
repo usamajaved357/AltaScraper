@@ -279,17 +279,22 @@ def is_running(rid):
 
 
 def tail(rid, frm=0):
-    """Return new log lines since index `frm` + current status. Powers SSE re-attach."""
+    """Return new log lines since index `frm` + LIVE status (counts computed on the fly, so
+    they update during the run, not just at the end). Powers the polling progress view."""
     e = _RUNS.get(rid)
     if not e:
-        return {"ok": False, "lines": [], "next": frm, "state": "unknown"}
+        return {"ok": True, "lines": [], "next": frm, "state": "none"}
     with e["lock"]:
         lines = e["lines"][frm:]
         nxt = len(e["lines"])
     m = e["meta"]
-    return {"ok": True, "lines": lines, "next": nxt, "state": m.get("state"),
-            "total": m.get("total"), "counts": m.get("counts", {}),
-            "done": sum(1 for s in m["skus"].values() if s.get("status") in ("harvested","generated","not_found","review"))}
+    live = {"harvested": 0, "not_found": 0, "review": 0, "generated": 0, "processing": 0}
+    for s in m["skus"].values():
+        k = s.get("status", "processing"); live[k] = live.get(k, 0) + 1
+    done = live["harvested"] + live["generated"] + live["not_found"] + live["review"]
+    return {"ok": True, "id": m.get("id"), "source": m.get("source"),
+            "lines": lines, "next": nxt, "state": m.get("state"),
+            "total": m.get("total"), "counts": live, "done": done}
 
 
 def status(rid):
