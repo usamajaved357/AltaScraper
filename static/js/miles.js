@@ -88,6 +88,7 @@ function milesRun(reattach){
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;   // keep Stop clickable to force-clear a stuck lock
     milesLoadResults();
+    milesLoadRuns();
     toast(_sawBusy ? "Another run is already in progress — click Stop, then retry"
           : _sawErr ? "Harvest finished with errors — check the log"
           : "Harvest + generation finished");});
@@ -114,7 +115,30 @@ function milesCheckActive(){
     milesRun(true);
   }).catch(()=>{});
 }
-window.addEventListener("DOMContentLoaded",function(){ setTimeout(milesCheckActive, 900); });
+// Past runs panel: list saved runs with links to each run's full log + per-SKU CSV.
+function milesLoadRuns(){
+  const host=document.getElementById("miles_runs_list");
+  if(!host) return;
+  const esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});};
+  fetch("/miles/runs").then(r=>r.json()).then(j=>{
+    if(!(j&&j.ok&&j.runs&&j.runs.length)){ host.textContent="No saved runs yet."; return; }
+    host.innerHTML=j.runs.map(function(r){
+      const c=r.counts||{};
+      const badge=(r.state==="running")?'<span style="color:#9cc1ff">● running</span>'
+        :(r.state==="error")?'<span style="color:#ff8585">error</span>'
+        :(r.state==="stopped")?'<span style="color:#e3b768">stopped</span>'
+        :'<span style="color:#7ee08a">done</span>';
+      const counts='harvested '+(c.harvested||0)+' · not found '+(c.not_found||0)+' · review '+(c.review||0);
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">'
+        +'<div><b>'+esc(r.source||"(run)")+'</b> <span style="opacity:.6">'+esc(r.started||"")+'</span><br>'+badge+' <span style="opacity:.7">— '+counts+'</span></div>'
+        +'<div style="white-space:nowrap">'
+        +'<a href="/miles/run_log?id='+encodeURIComponent(r.id)+'" target="_blank" style="color:#9cc1ff;margin-right:10px">View log</a>'
+        +'<a href="/miles/run_csv?id='+encodeURIComponent(r.id)+'" style="color:#7ee08a">CSV</a>'
+        +'</div></div>';
+    }).join("");
+  }).catch(()=>{ host.textContent="Could not load runs."; });
+}
+window.addEventListener("DOMContentLoaded",function(){ setTimeout(function(){ milesCheckActive(); milesLoadRuns(); }, 900); });
 
 function milesSavePref(){
   // Persist the output Sheet ID/tab so it survives reloads until changed.
