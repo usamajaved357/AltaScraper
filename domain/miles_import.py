@@ -266,6 +266,17 @@ def parse_product_page(page_html: str, page_markdown: str = "") -> dict:
 
     seen = set()
     _raw_links = []
+    # The PDP also renders a "similar products" carousel whose <img> are OTHER
+    # products (49 similar-card blocks on a typical page). Those images live in
+    # /uploads/prod_images/ just like the real one, so the wide net above scoops
+    # them up and the auto-main-image feature could put a NEIGHBOUR's photo on this
+    # listing. Collect the filenames that appear inside the similar-products region
+    # and exclude them from THIS product's images.
+    _similar_files = set()
+    _sim_split = re.split(r'(?is)class\s*=\s*["\'][^"\']*similar-products', page_html, maxsplit=1)
+    if len(_sim_split) > 1:
+        for _si in re.findall(r'["\']([^"\']+\.(?:png|jpe?g|webp)[^"\']*)["\']', _sim_split[1], re.I):
+            _similar_files.add(_si.split("?")[0].split("/")[-1].lower())
     for u in found:
         u = u.strip()
         if not u or u.startswith("#") or u.startswith("javascript:"):
@@ -277,7 +288,9 @@ def parse_product_page(page_html: str, page_markdown: str = "") -> dict:
             # Images: not documents, but capture likely PRODUCT photos so the
             # auto-main-image feature has a real source to restyle. Skip obvious
             # asset/icon/logo files.
+            _fname = low.split("?")[0].split("/")[-1]
             if (low.endswith((".png", ".jpg", ".jpeg", ".webp"))
+                    and _fname not in _similar_files          # not a "similar products" neighbour
                     and not any(skip in low for skip in
                                 ("logo", "icon", "favicon", "sprite", "banner",
                                  "header", "footer", "bg-", "background", "btn",
