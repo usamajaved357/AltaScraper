@@ -918,8 +918,14 @@ async def _search_item(item_number: str, timeout: int = 30000, diag: list = None
         _hp = "/product/show/" in _primary
         diag.append(f"POST search+selsearch=2 -> {len(_primary)} bytes, "
                     f"{'HAS' if _hp else 'no'} product links")
-        if _hp:
-            return _primary
+        # selsearch=2 IS the authoritative by-item-number search, so TRUST its answer
+        # either way: with a product link -> the exact match; WITHOUT one -> the item
+        # genuinely isn't on the site. Returning the no-results page here lets
+        # find_product_url report NOT_FOUND immediately, instead of spending ~15s per
+        # missing item on the crawl4ai GET fallback below (which only returns the FULL
+        # catalogue and leads to NOT_FOUND anyway). Fall through to the fallbacks ONLY
+        # when the POST itself failed (empty body / network error).
+        return _primary
 
     # The Miles site's search now responds to GET query params (POST endpoints
     # were removed/changed and return URLError). Try GET FIRST -- it's what works
