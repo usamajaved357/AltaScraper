@@ -870,6 +870,8 @@ async def _fetch_page(url: str, timeout: int = 30000, delay: float = 3.0,
             html = (getattr(result, "html", "") or
                     getattr(result, "cleaned_html", "") or
                     getattr(result, "fit_html", "") or "")
+            if not isinstance(html, str):   # a failed/empty crawl can yield a non-string
+                html = ""
             md = ""
             _m = getattr(result, "markdown", "")
             if isinstance(_m, str):
@@ -1067,10 +1069,16 @@ async def harvest_item(item_number: str, drive_service, log=print,
     _pdata, _pwhy = download_file_bytes(product_url)
     if _pdata:
         page_html = _pdata.decode("utf-8", "ignore")
-    if "/uploads/" not in page_html:
+    # Only try the browser renderer when the plain fetch SUCCEEDED but the page happens to
+    # lack doc links. If the plain fetch failed outright (empty -- e.g. the site returns HTTP
+    # 500 for this specific product), skip the slow/also-failing browser fallback and let the
+    # empty-page check below report a clean error for this one item.
+    if page_html and "/uploads/" not in page_html:
         _bh, _bm = await _fetch_page(product_url, click_tabs=False)
-        if _bh and len(_bh) > len(page_html):
-            page_html, page_md = _bh, (_bm or "")
+        # _fetch_page can hand back a non-string when the browser render fails; guard so a
+        # failed fallback never crashes on len().
+        if isinstance(_bh, str) and _bh and len(_bh) > len(page_html):
+            page_html, page_md = _bh, (_bm if isinstance(_bm, str) else "")
     log(f"  [{item_number}]   page loaded: {len(page_html)} bytes html, {len(page_md)} bytes text")
     if not page_html:
         return {"status": ERROR, "item_number": item_number,
