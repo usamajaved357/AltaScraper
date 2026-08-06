@@ -166,6 +166,96 @@ def start(base_dir, source_name, args):
     return rid
 
 
+def _lines_from_chunk(chunk):
+    """Pull the human-readable text line(s) out of an SSE chunk ('data: <line>\\n\\n').
+    'event:' control lines (e.g. the 'event: end' terminator) carry no log text."""
+    out = []
+    for raw in str(chunk).split("\n"):
+        raw = raw.rstrip("\r")
+        if raw.startswith("data:"):
+            t = raw[5:].lstrip()
+            if t and t != "end":
+                out.append(t)
+    return out
+
+
+def run_stream(base_dir, source_name, gen_factory, args=None):
+    """Run an SSE generator function (the route's existing stream()) on a DAEMON thread,
+    teeing every yielded chunk to a persistent run log. Returns (run_id, tailer):
+      - the background thread runs gen_factory() to completion EVEN IF the client
+        disconnects, so the run never stops on reload and the log is always saved;
+      - `tailer` is a generator that yields the SSE chunks for the Response and ends when
+        the run is done (or the client goes away -- which does NOT stop the thread).
+    """
+    import time as _t
+    d = _runs_dir(base_dir)
+    rid = _new_id(source_name)
+    meta = {"id": rid, "source": source_name or "",
+            "started": datetime.datetime.now().isoformat(timespec="seconds"),
+            "args": list(args or []), "state": "running", "total": None,
+            "counts": {}, "skus": {}}
+    entry = {"proc": None, "meta": meta, "lines": [], "chunks": [],
+             "lock": threading.Lock(), "done": False,
+             "logf": os.path.join(d, rid + ".log"), "metaf": os.path.join(d, rid + ".json")}
+    with _LOCK:
+        _RUNS[rid] = entry
+        _ACTIVE["id"] = rid
+
+    def _worker():
+        lf = None
+        try:
+            lf = open(entry["logf"], "w", encoding="utf-8")
+            lf.write(f"# Miles run {rid}\n# source: {meta['source']}\n"
+                     f"# started: {meta['started']}\n\n"); lf.flush()
+            for chunk in gen_factory():
+                with entry["lock"]:
+                    entry["chunks"].append(chunk)
+                for ln in _lines_from_chunk(chunk):
+                    with entry["lock"]:
+                        entry["lines"].append(ln)
+                    try: lf.write(ln + "\n"); lf.flush()
+                    except Exception: pass
+                    _parse(meta, ln)
+                _save_meta(entry)
+            if meta["state"] == "running":
+                meta["state"] = "done"
+        except Exception as e:
+            meta["state"] = "error"
+            meta["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+        finally:
+            c = {"harvested": 0, "not_found": 0, "review": 0, "generated": 0, "processing": 0}
+            for s in meta["skus"].values():
+                k = s.get("status", "processing"); c[k] = c.get(k, 0) + 1
+            meta["counts"] = c
+            meta["ended"] = datetime.datetime.now().isoformat(timespec="seconds")
+            entry["done"] = True
+            _save_meta(entry)
+            try:
+                if lf: lf.close()
+            except Exception: pass
+            with _LOCK:
+                if _ACTIVE["id"] == rid:
+                    _ACTIVE["id"] = None
+
+    threading.Thread(target=_worker, daemon=True, name=f"miles-run-{rid}").start()
+
+    def tailer():
+        # first hand the client its run id so the page can re-attach after a reload
+        yield f"data: [runid] {rid}\n\n"
+        i = 0
+        while True:
+            with entry["lock"]:
+                new = entry["chunks"][i:]; i = len(entry["chunks"])
+            for c in new:
+                yield c
+            if entry["done"] and i >= len(entry["chunks"]):
+                break
+            _t.sleep(0.4)
+        yield "event: end\ndata: end\n\n"
+
+    return rid, tailer()
+
+
 def active_id():
     return _ACTIVE.get("id")
 

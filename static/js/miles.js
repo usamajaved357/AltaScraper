@@ -53,18 +53,21 @@ function milesParseRows(rows, fname){
   document.getElementById("miles_items").textContent = items.length? ("Items: "+items.slice(0,30).join(", ")+(items.length>30?" …":"")) : "No item numbers found in the file.";
   // upload to server
   fetch("/miles/upload",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items})}).then(r=>r.json()).then(j=>{
+    body:JSON.stringify({items, filename: fname})}).then(r=>r.json()).then(j=>{
       const btn=document.getElementById("miles_runbtn");
       if(btn) btn.disabled = !(j.ok && j.count>0);
     }).catch(()=>{});
 }
-function milesRun(){
-  if(ES){toast("A run is already streaming");return;}
-  if(!MILES_ITEMS.length){toast("Upload an item-number file first");return;}
+function milesRun(reattach){
+  if(ES){ if(!reattach) toast("A run is already streaming"); return;}
+  if(!reattach && !MILES_ITEMS.length){toast("Upload an item-number file first");return;}
   const log=document.getElementById("miles_log");
-  if(log){ log.style.display="block"; log.textContent=""; }
+  if(log){ log.style.display="block"; if(!reattach) log.textContent=""; }
   const skipDone = document.getElementById("miles_skip_done");
-  const url = "/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0");
+  // On re-attach (page reload while a run is in progress) hit /miles/run with no params --
+  // the backend detects the active run and replays its live log instead of starting a new one.
+  const url = reattach ? "/miles/run"
+              : ("/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0"));
   ES=new EventSource(url);
   let _sawBusy=false, _sawErr=false;   // so we don't falsely toast "finished" on a busy/blocked run
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
@@ -94,6 +97,25 @@ function milesRun(){
     if(log){const d=document.createElement("div");d.style.color="#ff8585";d.textContent="[error] stream interrupted — check the app terminal for a Python traceback";log.appendChild(d);}
   }};
 }
+// On page load: if a harvest/generate run is already in progress (it now keeps running
+// server-side even if you left the page), re-attach to its live log so you see its status
+// instead of a blank panel.
+function milesCheckActive(){
+  fetch("/miles/run_active").then(r=>r.json()).then(j=>{
+    if(!(j && j.ok && j.active)) return;
+    const log=document.getElementById("miles_log");
+    if(log){
+      log.style.display="block"; log.textContent="";
+      const d=document.createElement("div"); d.style.color="#9cc1ff";
+      d.textContent="[reattach] a run is in progress"+(j.source?(" ("+j.source+")"):"")+" — resuming its live log…";
+      log.appendChild(d);
+    }
+    const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
+    milesRun(true);
+  }).catch(()=>{});
+}
+window.addEventListener("DOMContentLoaded",function(){ setTimeout(milesCheckActive, 900); });
+
 function milesSavePref(){
   // Persist the output Sheet ID/tab so it survives reloads until changed.
   const sheet=(document.getElementById("miles_sheet")||{}).value||"";

@@ -18,6 +18,8 @@ import sys
 
 from flask import request, jsonify, Response
 
+from domain import miles_runlog as _runlog
+
 
 def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MILES_STATE,
              _active_account, _miles_load_history, _miles_save_history, _run_lock, _running):
@@ -45,6 +47,86 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             _running["proc"] = None
             return True
 
+    _BASE_DIR = os.path.dirname(os.path.abspath(str(CONFIG_PATH)))
+
+    def _sse_run(stream_fn):
+        """Wrap a route's SSE stream() with the persistent run-log engine.
+
+        The stream() work now runs on a DAEMON thread that survives browser disconnect and
+        saves every line to miles_runs/<id>.log -- so reloading/navigating away no longer
+        stops the harvest/generate or loses the log. If a run is already in progress, this
+        RE-ATTACHES to it (replays the log so far, then follows live) instead of starting or
+        blocking a second run. Falls back to the plain stream if the engine ever errors."""
+        try:
+            aid = _runlog.active_id()
+            if aid and _runlog.is_running(aid):
+                def _reattach():
+                    import time as _t2
+                    yield f"data: [reattach] resuming the run already in progress ({aid})\n\n"
+                    frm = 0
+                    while True:
+                        tl = _runlog.tail(aid, frm)
+                        for _ln in tl["lines"]:
+                            yield f"data: {_ln}\n\n"
+                        frm = tl["next"]
+                        if tl["state"] != "running":
+                            break
+                        _t2.sleep(0.4)
+                    yield "event: end\ndata: end\n\n"
+                return Response(_reattach(), mimetype="text/event-stream")
+            src = (_MILES_STATE.get("source") or "").strip() or "miles-run"
+            _rid, _tail = _runlog.run_stream(_BASE_DIR, src, stream_fn)
+            return Response(_tail, mimetype="text/event-stream")
+        except Exception:
+            return Response(stream_fn(), mimetype="text/event-stream")
+
+    @app.route("/miles/run_active")
+    def miles_run_active():
+        """Is a harvest/generate run in progress? Powers re-attach after a page reload."""
+        aid = _runlog.active_id()
+        m = _runlog.status(aid) if aid else None
+        if not (aid and m):
+            return jsonify({"ok": True, "active": False})
+        return jsonify({"ok": True, "active": _runlog.is_running(aid), "id": aid,
+                        "source": m.get("source"), "state": m.get("state"),
+                        "total": m.get("total"), "counts": m.get("counts", {})})
+
+    @app.route("/miles/run_tail")
+    def miles_run_tail():
+        """Poll new log lines + status for a run (id + from index). Used by the re-attach UI."""
+        rid = (request.args.get("id") or _runlog.active_id() or "").strip()
+        try:
+            frm = int(request.args.get("from", "0") or "0")
+        except ValueError:
+            frm = 0
+        if not rid:
+            return jsonify({"ok": True, "lines": [], "next": 0, "state": "none"})
+        return jsonify({"ok": True, **_runlog.tail(rid, frm)})
+
+    @app.route("/miles/runs")
+    def miles_runs():
+        """List past runs (newest first): uploaded source, time, state, per-SKU counts."""
+        return jsonify({"ok": True, "runs": _runlog.list_runs(_BASE_DIR)})
+
+    @app.route("/miles/run_log")
+    def miles_run_log():
+        """The full saved log text for a run (survives reloads)."""
+        rid = (request.args.get("id") or "").strip()
+        return Response(_runlog.read_log(_BASE_DIR, rid) or "(no log)",
+                        mimetype="text/plain; charset=utf-8")
+
+    @app.route("/miles/run_csv")
+    def miles_run_csv():
+        """Download a per-SKU status CSV for a run."""
+        rid = (request.args.get("id") or "").strip()
+        p = _runlog.write_csv(_BASE_DIR, rid)
+        if not p or not os.path.exists(p):
+            return jsonify({"ok": False, "error": "run not found"}), 404
+        with open(p, encoding="utf-8") as f:
+            body = f.read()
+        return Response(body, mimetype="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{rid}.csv"'})
+
     @app.route("/miles/sheet_pref", methods=["POST"])
     def miles_sheet_pref_set():
         """Persist the output Sheet ID/tab so the user need not re-paste it each run."""
@@ -71,6 +153,8 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             if it not in seen:
                 seen.add(it); clean.append(it)
         _MILES_STATE["items"] = clean
+        # remember the uploaded file's name so each run's saved log is headed with it
+        _MILES_STATE["source"] = str(b.get("filename", "") or "").strip()
         done = _miles_load_history()
         already = [it for it in clean if it in done]
         return jsonify({"ok": True, "count": len(clean), "items": clean[:50],
@@ -266,7 +350,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 _running["on"] = False
             _running["proc"] = None
             yield "event: end\ndata: end\n\n"
-        return Response(stream(), mimetype="text/event-stream")
+        return _sse_run(stream)
 
 
     @app.route("/miles/optimize")
@@ -344,7 +428,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 _running["on"] = False
             _running["proc"] = None
             yield "event: end\ndata: end\n\n"
-        return Response(stream(), mimetype="text/event-stream")
+        return _sse_run(stream)
 
 
     @app.route("/miles/run")
@@ -715,7 +799,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 if _running.get("miles_token") == _my_token:
                     _running["on"] = False
             yield "event: end\ndata: end\n\n"
-        return Response(stream(), mimetype="text/event-stream")
+        return _sse_run(stream)
 
 
     @app.route("/miles/results")
