@@ -233,6 +233,10 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         except ValueError:
             _user_limit = 0
         _use_ba = request.args.get("use_ba", "") == "1"
+        # Auto main image is OFF by default: listing-copy generation is TEXT-ONLY. Main
+        # images are created separately from the app, so we no longer bill an image model
+        # on every generate. It runs only if the request explicitly opts in (auto_image=1).
+        _auto_img = request.args.get("auto_image", "") == "1"
 
         def stream():
             # Log what we received so it's visible in the panel
@@ -272,9 +276,11 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 if _use_ba:
                     extra += ["--use-brand-analytics"]
                     yield "data: [BA] real Amazon search data (Brand Analytics) ENABLED for this run\n\n"
-                if _acc and "image_template" in (_acc.get("features") or []):
+                if _auto_img and _acc and "image_template" in (_acc.get("features") or []):
                     extra += ["--auto-image"]
-                    yield "data: [image] Auto main image ENABLED -- a templated main image will be generated per listing\n\n"
+                    yield "data: [image] Auto main image ENABLED for this run (auto_image=1)\n\n"
+                else:
+                    yield "data: [image] Auto main image OFF -- text-only copy (create main images separately)\n\n"
                 if _user_sheet or _user_tab:
                     yield (f"data: [target] writing to sheet '{_out_sheet[:16]}...' / tab "
                            f"'{_out_tab or '(default)'}'\n\n")
@@ -438,6 +444,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         # Read state in the request context (SSE generator runs outside it).
         _items = list(_MILES_STATE.get("items") or [])
         _skip_done = (request.args.get("skip_done", "1") == "1")
+        _auto_img = (request.args.get("auto_image", "") == "1")   # OFF by default; images made separately
         _cfg_path = str(CONFIG_PATH)
         # Resolve the output target + account HERE (request context) so the harvest
         # can CHAIN generation once it finishes -- the SSE generator below runs
@@ -518,9 +525,11 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         gen_extra += ["--sheet", _out_sheet]
                     if _out_tab:
                         gen_extra += ["--tab", _out_tab]
-                    if _acc and "image_template" in (_acc.get("features") or []):
+                    if _auto_img and _acc and "image_template" in (_acc.get("features") or []):
                         gen_extra += ["--auto-image"]
-                        yield "data: [image] Auto main image ENABLED for generated listings\n\n"
+                        yield "data: [image] Auto main image ENABLED for this run (auto_image=1)\n\n"
+                    else:
+                        yield "data: [image] Auto main image OFF -- text-only copy (create main images separately)\n\n"
                     args = [sys.executable, "-u", SCRIPT] + gen_extra
                     yield f"data: [start] {' '.join(args)}\n\n"
                     _gp = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
