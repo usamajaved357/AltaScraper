@@ -607,7 +607,7 @@ def extract_pdf_text(data: bytes) -> str:
     return ""
 
 
-def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-6",
+def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-5",
                        max_pages: int = 3, log=print) -> str:
     """OCR an IMAGE-BASED PDF (near-zero text layer -- e.g. the Miles TDS scans, which carry
     the whole properties table as images) by rendering each page and transcribing it with
@@ -658,7 +658,7 @@ def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-
 _OCR_TRIGGER_CHARS = 40
 
 
-def extract_pdf_text_smart(data: bytes, api_key: str = "", model: str = "claude-sonnet-4-6",
+def extract_pdf_text_smart(data: bytes, api_key: str = "", model: str = "claude-sonnet-4-5",
                            log=print) -> str:
     """extract_pdf_text() first; if that comes back near-empty (image-based PDF, e.g. a Miles
     TDS) AND an api_key is given, fall back to Claude-vision OCR. Text PDFs never trigger OCR."""
@@ -1028,7 +1028,8 @@ def download_file_bytes(url: str, timeout: int = 30):
 # =============================================================================
 
 async def harvest_item(item_number: str, drive_service, log=print,
-                       master_id: str = MASTER_FOLDER_ID) -> dict:
+                       master_id: str = MASTER_FOLDER_ID,
+                       api_key: str = "", ocr_model: str = "claude-sonnet-4-5") -> dict:
     """Harvest ONE item number end to end. Returns a result dict:
        {status, item_number, product, message}
     where status is OK / NOT_FOUND / NEEDS_REVIEW / ERROR and `product` is the
@@ -1150,7 +1151,10 @@ async def harvest_item(item_number: str, drive_service, log=print,
         fname = _upq.unquote(fname)   # restore readable filename
         if not fname.lower().endswith(".pdf"):
             fname += ".pdf"
-        text = extract_pdf_text(data)
+        # extract_pdf_text_smart OCRs ONLY image-based (scanned) PDFs via Claude vision when
+        # a key is available; text-layer PDFs (SDS etc.) never trigger OCR. This is what stops
+        # scanned TDS/spec sheets from landing as blank text on future harvests.
+        text = extract_pdf_text_smart(data, api_key=api_key, model=ocr_model, log=log)
         # Folder is the most reliable classifier on the Miles site (filenames vary:
         # "TDS - ...", "PDS ...", "SDS_..."):
         #   /uploads/msds_docs/    = SDS       /uploads/spec_docs/ = TDS / spec sheet
@@ -1192,12 +1196,17 @@ async def harvest_batch(item_numbers: list, config: dict, base_dir,
         log(f"  Drive unavailable -- files will NOT be saved to Drive: {derr}")
         drive_service = None
 
+    # Anthropic key + model for the scanned-TDS OCR fallback (only fires on image PDFs).
+    _api_key = config.get("anthropic_api_key", "") or ""
+    _ocr_model = config.get("ocr_model") or "claude-sonnet-4-5"
+
     out = {"products": [], "needs_review": [], "not_found": [], "errors": []}
     total = len(item_numbers)
     for i, item in enumerate(item_numbers, 1):
         log(f"[{i}/{total}] {item}")
         try:
-            res = await harvest_item(item, drive_service, log=log, master_id=master_id)
+            res = await harvest_item(item, drive_service, log=log, master_id=master_id,
+                                     api_key=_api_key, ocr_model=_ocr_model)
         except Exception as e:
             out["errors"].append({"item": item, "message": f"{type(e).__name__}: {str(e)[:120]}"})
             log(f"  [{item}] ERROR: {type(e).__name__}: {str(e)[:120]}")
