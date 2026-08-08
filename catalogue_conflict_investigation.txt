@@ -1,0 +1,226 @@
+================================================================================
+CATALOGUE-CONFLICT + HIDDEN-ERRORS INVESTIGATION
+Full submit run: 4 ok, 8 errors (67% failure). Investigation only -- no code
+changed, nothing committed, model unchanged.
+================================================================================
+
+
+CORRECTION (added after code re-verification) -- BARCODE ORIGIN
+--------------------------------------------------------------------------------
+An earlier verbal claim that the UPC/barcode is "copied from the source eBay
+product's EAN" was WRONG and is retracted. Verified in code:
+
+  * The app's eBay fetch (fetch_ebay_supplement, amazon_listing_generator.py:294)
+    returns title/description/price/item_specifics/images ONLY -- there is NO
+    barcode/EAN field in its return (empty template at :301-302).
+  * There is NO arbitrage harvest that writes an EAN/UPC column. The only sheet-
+    writing "harvest" in the app is the PPC keyword harvester (unrelated).
+  * The app NEVER generates a barcode: listing_routes.py:383-386 strips every
+    identifier field from the auto-fix loop, and build_api_attributes claims the
+    GTIN exemption when the UPC box is blank.
+
+The UPC column is USER-CONTROLLED:
+  WRITE path 1 (primary/by design): dashboard "Barcode / GTIN" box ->
+    editCell(sku,"col","UPC",r.barcode) (autofix.js:1068). Intent stated in code
+    at listing_routes.py:379-382: "The owner supplies real purchased EANs in the
+    sheet's UPC ('Barcode / GTIN') box ... single source of truth."
+  WRITE path 2 (generation seed): read_input_sheet (:2283) copies an ean/upc
+    column from the INPUT sheet into the output UPC cell (:2301 -> :2476 -> :2567)
+    -- but ONLY if the input sheet already has that column; the app does not
+    populate it.
+  READ at submit: g("UPC") (:5855 and :4577) -> externally_assigned_product_
+    identifier, verbatim, no uniqueness check.
+
+CONSEQUENCE: the most likely real scenario is the SAME purchased EAN reused across
+two of the owner's OWN rows (consistent with colliding against the owner's own
+ASIN B0H8PTGB4Z), NOT a borrowed third-party EAN. The Rule-1 "someone else's
+registered barcode" framing does not fit. What is UNCHANGED: the app sends
+whatever is in the UPC column verbatim with no uniqueness enforcement, so a
+duplicate value -- however it got there -- causes the auto-match + rejection. Fix
+direction (enforce uniqueness; never send a barcode that isn't genuinely that
+product's; GTIN exemption where there is no real registered code) stands.
+Confirming WHICH rows share a barcode requires the read-only sheet pull (Q2).
+================================================================================
+
+
+THE HEADLINE
+--------------------------------------------------------------------------------
+All three attribute conflicts are ONE mechanism, and it is the same root cause
+as the earlier barcode investigation.
+
+At submit time the app sends this body (amazon_listing_generator.py:6069):
+
+    {"productType": pt, "requirements": "LISTING", "attributes": attrs}
+
+NO ASIN. NO merchant_suggested_asin. (Confirmed -- merchant_suggested_asin only
+ever appears in SKIP-lists, never sent: grep at :5759 and :5820 are exclusion
+sets.) So the app never CHOOSES to attach to an existing ASIN. Amazon AUTO-MATCHES
+our submission to an existing ASIN using the BARCODE we send
+(externally_assigned_product_identifier), then compares the rest of our
+attributes to that ASIN's catalogue record and rejects on the first field that
+differs.
+
+That is why one run threw three DIFFERENT attribute names:
+
+  Row 37 -> ASIN B0H8Q19TD6 -> 'color' (both sides blank)
+            We sent an empty/differently-shaped color where the catalogue has one.
+  Row 38 -> ASIN B0H8TFYNB9 -> 'number_of_items' (Merchant 1 / Amazon 2)
+            Catalogue ASIN is a 2-PACK; we submit a 1-pack.
+  Row 41 -> ASIN B0H8PTGB4Z -> 'part_number' (Alta-WIL-001 / Alta-OUT-003)
+            Our generated part number != the matched ASIN's.
+
+These are not three bugs. They are ONE bug -- a wrong barcode auto-matching us to
+an unrelated ASIN -- reported through whichever attribute happened to differ.
+This is the exact root cause from the previous investigation: the barcode we send
+is not unique to our product, so Amazon glues us onto an existing ASIN (last time
+B0H8PTGB4Z was confirmed to be YOUR OWN earlier mixer-tap listing).
+
+
+WHY THE PROPOSED FIX ("fetch getCatalogItem, use Amazon's values") HAS TWO
+SERIOUS PROBLEMS -- READ BEFORE BUILDING
+--------------------------------------------------------------------------------
+Problem 1 -- we don't know which ASIN to fetch until AFTER the reject.
+At submit we send no ASIN; Amazon picks one from the barcode. The only ASIN we
+hold up front is the COMPETITOR REFERENCE in the SKU (e.g. B0BH8WXF5V in
+8.89_3Days_B0BH8WXF5V) -- but the ASIN in the error is B0H8PTGB4Z, a DIFFERENT
+ASIN Amazon reached via the reused barcode. So "fetch getCatalogItem first and
+copy its values" cannot target the right ASIN before submission -- that ASIN is
+only revealed IN the rejection message. (get_catalog_item does exist in the code,
+:442, but it is called during HARVEST with the competitor-reference ASIN, not in
+the submit path.)
+
+Problem 2 -- copying Amazon's values would violate CLAUDE.md Rule 1.
+Rule 1 says these are BRAND-NEW listings under your own brand, never
+me-too/piggyback offers on another seller's ASIN. Copying the matched ASIN's
+part_number, color, brand, manufacturer onto our submission so it "agrees" with
+that ASIN is precisely building a piggyback listing on an existing ASIN. That
+change cannot be built off an inferred requirement -- Rule 1 says it needs your
+explicit go-ahead.
+
+Your number_of_items instinct is the proof, and it generalizes.
+You said: don't auto-copy Amazon's "2" for B0H8TFYNB9, because it is a 2-pack and
+we ship 1 -- copying it would create a false listing. Correct. But that same fact
+-- the matched ASIN is a DIFFERENT product -- means its color and part_number are
+equally wrong to copy. You cannot trust the match enough to inherit its color
+while distrusting it for pack-size; it is the SAME match. If the ASIN is wrong,
+EVERY value from it is suspect, not just the quantity.
+
+The Rule-1-clean direction (for your decision, not built):
+Stop the barcode collision so Amazon cannot auto-match to any existing ASIN -> it
+mints a NEW ASIN under your brand, where OUR values become the catalogue values
+and nothing can conflict. Concretely: don't send a reused/foreign EAN; claim the
+GTIN exemption (supplier_declared_has_product_identifier_exemption) unless there
+is a real GS1 barcode you registered for THAT product. Same conclusion as the
+barcode investigation.
+
+
+NEW ISSUE 1 -- number_of_items as a wrong-ASIN signal
+--------------------------------------------------------------------------------
+Your read is right and it is the most valuable signal in the run. A pack-size
+mismatch (number_of_items, item_package_quantity, unit_count) is strong evidence
+the barcode matched a DIFFERENT product (single vs multipack). A safety check
+that FLAGS rather than copies on quantity fields is sound -- but per the point
+above, the flag should say "possible wrong-ASIN match -- do not copy ANY
+catalogue value" rather than "copy the others, flag only the quantity." The
+pack-size is just the field that made the wrong match VISIBLE.
+
+
+NEW ISSUE 2 -- the "unverified" rows are not hiding the error in a black box;
+the detail is in the SHEET, never streamed to the dashboard
+--------------------------------------------------------------------------------
+Exactly what happens to rows 42/44/46/49/50 (amazon_listing_generator.py:6116-6123):
+
+1. After submit, the app calls _verify_live_status() (getListingsItem) to confirm
+   the REAL outcome. For these 5 rows that call FAILED -- and _verify_live_status
+   swallows every exception silently (:6292 "except Exception: continue") and
+   returns (None, None). The reason it failed -- timeout? 404-not-yet-queryable?
+   auth? -- is thrown away.
+
+2. Falling into the "couldn't verify" branch with submit-time errors present,
+   line 6122 writes the FULL error text to the sheet's NOTES column:
+   "API SUBMIT - N error(s) [live status unverified]: {msgs}".
+
+3. But line 6123 streams to the console only the COUNT:
+   "N submit error(s) (unverified)".
+
+The dashboard you are reading renders the STREAMED console log (submit.js:68
+appends each streamed line; :174 pulls the [E] detail lines FROM the stream).
+Rows 37/38/41 hit a DIFFERENT branch -- "NOT live -- Amazon rejected in
+processing" (:6139-6147) -- which loops and streams each [E] line, so the
+dashboard shows their full text. The 5 "unverified" rows stream only the count,
+so the dashboard has nothing to show -- even though the full text is sitting in
+their sheet Notes column right now.
+
+Two real gaps, both fixable:
+  Gap A (display): the unverified-with-errors branch streams a count, not the [E]
+    lines -- unlike the NOT-live and preview branches. Mirror those and the detail
+    appears. IMMEDIATE WORKAROUND: open the sheet Notes column for rows
+    42/44/46/49/50 -- the full text is already there.
+  Gap B (verification reason): _verify_live_status discards WHY it could not
+    verify. "Unverified" currently cannot distinguish "listing is probably fine,
+    the check just timed out" from "getListingsItem 404/auth-failed." That reason
+    needs to be captured and surfaced so "unverified" is meaningful. (All 5 failed
+    verification in a run where 37/38/41 succeeded -- that pattern points to
+    transient EU-from-Pakistan timeouts on those specific getListingsItem calls
+    rather than a blanket auth failure, but capturing the exception will confirm.)
+
+On the blank color ("Merchant  / Amazon "): the exact wire payload we sent is
+saved verbatim to the payload column at submit (:6073-6077), so you can read
+precisely what color we put on the wire for row 37. Both sides rendering blank
+means either we sent an empty/wrongly-shaped color and Amazon's own catalogue
+value is also empty in that locale, or the value is nested where _issue_str is
+not surfacing it -- the saved payload column resolves which.
+
+
+ROW 45 -- the "flagged -- fix later" SPACE_HEATER
+--------------------------------------------------------------------------------
+amazon_listing_generator.py:6129-6138: the listing verified as LIVE
+(getListingsItem returned status BUYABLE/DISCOVERABLE), but the SAME verification
+also returned residual ERROR issues (_rerrs). The code deliberately keeps it LIVE
+and appends the flag to the sheet Notes column (:6135-6136):
+"... | needs attention (fix later): {_rmsg}", where _rmsg = _issue_str(_rerrs).
+The console (and therefore the dashboard) streams only the marker
+"(flagged -- fix later)" -- NOT the text (:6137-6138). Same rendering gap as
+Gap A: the flag's actual content is in row 45's Notes column, just never streamed.
+
+What the flag IS, mechanically: one or more ERROR-severity issues Amazon reports
+on the now-live listing -- most commonly a main-image compliance rejection (live
+on catalogue data, image suppressed) or a residual attribute problem. The exact
+string is in row 45's Notes column after "needs attention (fix later):".
+
+
+WHAT I'D NEED TO CLOSE THE LAST GAPS (read-only, your call)
+--------------------------------------------------------------------------------
+The exact colliding barcode per row, the saved color payload for row 37, and row
+45's flag text all live in the sheet -- there is no local submission log
+(verified: only model_number_counter.json, app_state.json, and the monitor stores
+exist locally, none record sent identifiers). One READ-ONLY pull of the
+ASIN / SKU / UPC / Notes / payload columns for rows 37-50 would let me hand you
+the exact per-row collision + flag table. No writes, nothing submitted.
+
+
+SUMMARY OF WHAT IS ACTUALLY BROKEN (nothing built yet)
+--------------------------------------------------------------------------------
+1. Catalogue conflicts (color / number_of_items / part_number) = one root cause:
+   a non-unique barcode auto-matches us to an unrelated existing ASIN. Same
+   finding as the barcode investigation.
+
+2. The proposed "copy Amazon's values" fix conflicts with Rule 1 (it builds a
+   piggyback listing) AND cannot target the right ASIN pre-submit AND is unsafe
+   wherever the match is wrong (which number_of_items proves it is). Needs your
+   explicit decision before that path is built.
+
+3. Hidden "unverified" errors = the full text is written to the sheet Notes column
+   but only a count is streamed to the dashboard (Gap A), and the
+   verification-failure reason is discarded (Gap B).
+
+4. Row 45 flag = residual Amazon ERROR issue(s) on a live listing (likely
+   main-image), content in the Notes column, marker-only in the stream -- same
+   display gap as Gap A.
+
+DECISIONS NEEDED FROM YOU:
+  - Catalogue conflict direction: Rule-1-clean (STOP the collision) vs
+    copy-catalogue-values (needs your explicit sign-off).
+  - Whether to pull the read-only sheet table for rows 37-50.
+Build starts only after that.
+================================================================================

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltaScraper — Queue rows (reference)</title>
+<link rel="stylesheet" href="_tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+  .as-row{display:flex; align-items:center; gap:12px; padding:11px 12px; border-bottom:0.5px solid var(--border);}
+  .as-row:last-child{border-bottom:none;}
+  .as-thumb{width:40px;height:40px;border-radius:8px;background:var(--surface-1);display:flex;align-items:center;justify-content:center;color:var(--text-muted);flex-shrink:0;}
+  .as-pill{font-size:11px; padding:3px 9px; border-radius:20px; flex-shrink:0; white-space:nowrap;}
+  .as-act{height:30px; padding:0 14px; border-radius:var(--radius); font-size:12px; flex-shrink:0; border:none; cursor:pointer;}
+  .as-dot{width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;flex-shrink:0; cursor:pointer; background:transparent; border:0.5px solid var(--border-strong); border-radius:var(--radius);}
+  .as-tab{font-size:12px; padding:5px 11px; border-radius:20px; border:0.5px solid var(--border); background:transparent; color:var(--text-secondary);}
+  .as-tab.on{background:var(--fill-accent); color:var(--on-accent); border-color:transparent;}
+</style></head><body>
+<div class="ref-note">REFERENCE ONLY — match this LAYOUT + BEHAVIOUR, use the app's own theme. The primary button CHANGES per state: Review / See why / Submit / View. Everything else goes in the ⋯ menu. Blocked rows never show Submit.</div>
+<div class="ref-frame">
+
+  <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+    <span style="color:var(--text-secondary);">Jack Reacherd (UK)</span><span style="color:var(--text-muted);">·</span><span style="color:var(--text-secondary);">4 shown</span>
+    <span style="flex:1;"></span>
+    <button class="as-tab on">All</button><button class="as-tab">Needs review</button><button class="as-tab">Blocked</button><button class="as-tab">Ready</button><button class="as-tab">Live</button>
+  </div>
+
+  <div style="border:0.5px solid var(--border); border-radius:12px;">
+    <div class="as-row">
+      <div class="as-thumb"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+      <div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Telescopic window cleaner pole 3.5m squeegee</p><p style="font-size:12px; color:var(--text-secondary); margin:2px 0 0;">£12.49 · <i class="ti ti-photo" style="font-size:11px;"></i> 4 · <span style="color:var(--text-success);"><i class="ti ti-shield-check" style="font-size:11px;"></i> clear</span></p></div>
+      <span class="as-pill" style="background:var(--bg-warning); color:var(--text-warning);">Needs review</span>
+      <button class="as-act" style="background:var(--fill-accent); color:var(--on-accent);">Review</button>
+      <button class="as-dot" aria-label="More"><i class="ti ti-dots"></i></button>
+    </div>
+    <div class="as-row">
+      <div class="as-thumb"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+      <div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">FPV drone goggles 5.8GHz 600mW long range</p><p style="font-size:12px; color:var(--text-secondary); margin:2px 0 0;">£89 · <i class="ti ti-photo" style="font-size:11px;"></i> 6 · <span style="color:var(--text-danger);"><i class="ti ti-shield-x" style="font-size:11px;"></i> UK prohibited</span></p></div>
+      <span class="as-pill" style="background:var(--bg-danger); color:var(--text-danger);">Blocked</span>
+      <button class="as-act" style="background:var(--surface-1); color:var(--text-danger); border:0.5px solid var(--border-danger);">See why</button>
+      <button class="as-dot" aria-label="More"><i class="ti ti-dots"></i></button>
+    </div>
+    <div class="as-row">
+      <div class="as-thumb"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+      <div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Heavy duty coir and rubber scraper mat natural</p><p style="font-size:12px; color:var(--text-secondary); margin:2px 0 0;">£23.99 · <i class="ti ti-photo" style="font-size:11px;"></i> 4 · <span style="color:var(--text-success);"><i class="ti ti-shield-check" style="font-size:11px;"></i> clear</span></p></div>
+      <span class="as-pill" style="background:var(--bg-success); color:var(--text-success);">Ready</span>
+      <button class="as-act" style="background:var(--fill-success); color:var(--on-success);">Submit</button>
+      <button class="as-dot" aria-label="More"><i class="ti ti-dots"></i></button>
+    </div>
+    <div class="as-row">
+      <div class="as-thumb"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+      <div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Car seat gap filler organiser 2-pack</p><p style="font-size:12px; color:var(--text-secondary); margin:2px 0 0;">£15.99 · <i class="ti ti-photo" style="font-size:11px;"></i> 5 · <span style="color:var(--text-secondary);">live 3 days</span></p></div>
+      <span class="as-pill" style="background:var(--surface-1); color:var(--text-secondary);"><i class="ti ti-check" style="font-size:11px;"></i> Live</span>
+      <button class="as-act" style="background:transparent; border:0.5px solid var(--border-strong); color:var(--text-primary);">View</button>
+      <button class="as-dot" aria-label="More"><i class="ti ti-dots"></i></button>
+    </div>
+  </div>
+  <p style="font-size:12px; color:var(--text-muted); margin:12px 2px 0;">Row click → detail · ⋯ menu holds: Hold, Push image, Preview raw, Source, Delete</p>
+
+</div></body></html>

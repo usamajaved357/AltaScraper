@@ -1,0 +1,80 @@
+{
+  "_meta": {
+    "title": "Tier 2b — granular ingredient/substance detail for danger-zone categories",
+    "purpose": "The DEEP layer beneath the category (Tier 1) and attribute-trigger (Tier 2) files: specific prohibited ingredients, named substances, concentration limits, and Amazon-specific sub-policies for the categories the user actually touches. This is the 'don't miss the necessary detail' layer.",
+    "compiled": "2026-07-28",
+    "source_tier": "tier2b_regulator_deep",
+    "confidence_note": "From FDA (21 CFR 700.11-700.35), EU/UK Cosmetics Regulation Annexes, and Amazon sub-policies, accurate as of compile date. Ingredient lists evolve; EU/UK lists are longer and stricter than US. Definitive per-product answer = Seller Central Apply-to-Sell + a qualified safety assessor (CPSR).",
+    "usage_rule": "Sourcing alarm + listing warning. If a product's ingredient list (from competitor data / specs) contains a prohibited substance -> flag. NEVER strip a true ingredient from copy to conceal — that is falsification, worse than the restriction.",
+    "design_principle_confirmed": "EU/UK is the harder constraint. A formula that clears EU/UK almost always clears US, but NOT the reverse. So for UK marketplace, apply the stricter EU/UK Annex rules."
+  },
+
+  "cosmetic_prohibited_ingredients": {
+    "note": "Scan competitor ingredient lists / product specs for these. Presence = restricted or prohibited depending on substance and marketplace.",
+
+    "us_fda_prohibited_or_restricted": {
+      "regulation": "21 CFR 700.11-700.35 + MoCRA 2023",
+      "outright_or_tightly_restricted": [
+        {"name": "Bithionol", "status": "prohibited"},
+        {"name": "Mercury compounds", "status": "prohibited except eye-area at <=0.0065% when no alternative preservative — effectively prohibited", "aliases": ["mercury","Hg","mercuric iodide","mercurous chloride","ammoniated mercury","amide chloride of mercury","quicksilver","cinnabaris","mercury sulfide","hydrargyri oxydum rubrum","mercury oxide","mercury iodide"]},
+        {"name": "Vinyl chloride", "status": "prohibited (aerosol propellant)"},
+        {"name": "Halogenated salicylanilides", "status": "prohibited"},
+        {"name": "Chloroform", "status": "prohibited"},
+        {"name": "Certain CFC propellants", "status": "prohibited"},
+        {"name": "Hexachlorophene (HCP)", "status": "restricted <=0.1%, prohibited on mucous membranes/lips/nose/eyelids"},
+        {"name": "Methylene chloride", "status": "prohibited"},
+        {"name": "Hydroquinone", "status": "OTC skin-lightening = unapproved drug (not GRASE), reclassified prescription-only. Effectively prohibited as OTC cosmetic."}
+      ]
+    },
+
+    "eu_uk_prohibited": {
+      "regulation": "UK Cosmetics Regulation 2020 (SI 2020/1466) / EU 1223/2009 Annexes II-VI",
+      "note": "EU/UK bans are far broader (~1600+ substances in Annex II). Key ones sellers hit:",
+      "key_bans": [
+        {"name": "Hydroquinone", "status": "banned for general cosmetic use in EU/UK"},
+        {"name": "Mercury and compounds", "status": "banned"},
+        {"name": "Tretinoin (retinoic acid)", "status": "prescription drug, not cosmetic"},
+        {"name": "Betamethasone / corticosteroids", "status": "prescription drug, prohibited in cosmetics"},
+        {"name": "5 parabens (isopropyl-, isobutyl-, phenyl-, benzyl-, pentyl-)", "status": "banned EU 2014 (methyl/ethylparaben still allowed with limits)"},
+        {"name": "Methylisothiazolinone (MIT)", "status": "heavily restricted/tightened"}
+      ]
+    },
+
+    "amazon_skin_lightener_policy": {
+      "note": "Amazon has a SPECIFIC skin-lightener / whitening product policy — separate from general cosmetics. Products must demonstrate:",
+      "requirements": [
+        "Third-party GMP compliance from an accredited body/scheme",
+        "Heavy metals testing including mercury testing",
+        "Verification of FDA product registration (FDA form 5067)",
+        "FDA facility registration (FDA form 5066)"
+      ],
+      "approved_testers": ["NSF (named Amazon-approved testing organization)"],
+      "trigger_keywords": ["skin lightening","skin whitening","brightening cream","fairness cream","whitening","lightening","fades dark spots","removes age spots"],
+      "targets_flag": "FDA notes these are often marketed to Asian/African/Latino/Middle Eastern communities and often DON'T declare mercury/hydroquinone on the label — so ingredient absence from a label is NOT proof of safety."
+    },
+
+    "sunscreen_note": "Sunscreens are DRUGS (not cosmetics) per FDA. SPF claims move a product into OTC drug regulation. UK/EU treat sunscreen as cosmetic but with strict UV-filter Annex VI limits.",
+
+    "claims_that_convert_to_drug": {
+      "note": "These CLAIMS flip a cosmetic into a regulated OTC DRUG = instant restriction. Ties to claims screener.",
+      "triggers": ["anti-acne","treats acne","anti-aging treatment","reduces wrinkles (as treatment)","SPF/sunscreen","antibacterial","antifungal","treats eczema","treats psoriasis","heals","cures","therapeutic","dandruff treatment"]
+    }
+  },
+
+  "cross_references": {
+    "battery_detail": "See tier2_restriction_triggers.json:lithium_battery — UN38.3, UL2054, UL1642, IEC62133, Wh thresholds.",
+    "medical_device_detail": "See tier2_restriction_triggers.json:medical_device_nebulizer_class — 510(k), FDA establishment reg, Professional Healthcare Program.",
+    "fpv_detail": "See tier2_restriction_triggers.json:fpv_vtx_power — 25mW UK / 1W US.",
+    "category_map": "See tier1_amazon_restricted_categories.json for the 30 top-level categories."
+  },
+
+  "still_needed_from_login": {
+    "note": "The following DEEP detail lives on login-gated Amazon Seller Central sub-pages and could not be pulled from public sources. Paste these to complete the reference:",
+    "items": [
+      "Dietary Supplements: Amazon's exact 'known prohibited ingredients' list (e.g. full list beyond ephedra)",
+      "The verbatim doc-quantity requirements per gated category (how many invoice units, date ranges)",
+      "Account-specific gating status per category (Jack/Selvora/Nestwell) — only visible via Apply-to-Sell per ASIN",
+      "The exact Amazon G200164330 sub-page text for each category the user sells in"
+    ]
+  }
+}

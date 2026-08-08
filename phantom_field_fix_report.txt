@@ -1,0 +1,104 @@
+================================================================================
+"The" / "Your" PHANTOM-FIELD BUG -- FIX REPORT
+Commit f952e65 on branch koibhe. Nothing pushed, model unchanged.
+================================================================================
+
+
+PLAIN ENGLISH
+--------------------------------------------------------------------------------
+Your diagnosis was exactly right -- it was one character. When Amazon rejects a
+listing, its error messages come as sentences like "The Listing data provided is
+different..." or "Your offer to the SKU cannot be added...". The auto-fix editor
+tries to pull the FIELD NAME out of each error so it can show you a box to fix.
+But the little pattern-matcher that did that pulling was set to ignore
+capital-vs-lowercase, so it grabbed the first word of Amazon's plain-English
+sentence -- "The", "Your" -- and drew them as if they were real fields you had to
+fill in. Real Amazon field names are always lowercase with underscores (like
+part_number), never capitalised words.
+
+I removed that one setting so the matcher now only grabs genuine lowercase field
+names. And, as you asked, I added a SECOND safety net: before drawing ANY box, the
+editor now checks the field name against the actual product schema it already
+downloaded. If the name isn't a real field in that schema, it doesn't draw a box
+-- it shows Amazon's message as plain text instead, clearly labelled "Amazon
+message (not an editable field)." So even if a bad word ever slips past the
+pattern again, it can't become a phantom field.
+
+What you'll see change: on the listings that currently show "The"/"Your" as empty
+required fields, those phantom boxes disappear. The underlying Amazon message
+still shows -- as read-only text, not a field you're expected to fill.
+
+
+TECHNICAL DETAIL
+--------------------------------------------------------------------------------
+File: static/js/autofix.js
+
+  * Line 900 (parseFlagged) -- THE FIX:
+      /\[[EW]\]\s+([a-z][a-z0-9_]+)\s+([\s\S]*)/i   ->  dropped the /i
+    [EW] is already uppercase so the marker still matches; the [a-z] field-token
+    class is now genuinely lowercase-only.
+
+  * Second guard: parseFlagged now accepts (notes, isValidField, sink). Any
+    extracted token that fails isValidField is pushed to sink (raw text) and NOT
+    turned into a field. The caller (~line 1108) builds isRealAttr from the
+    fetched product-type schema -- attrs, opts (enums), subs (nested), req, plus
+    the dimension-axis fields -- and only enforces it when the schema actually
+    loaded (allAttrs.length > 0), so a fallback view drops nothing. Diverted
+    messages render in a new plainNoteBlock right after the attributes table
+    (~line 1382).
+
+BEFORE / AFTER (verified with a node test -- your exact cases + the guard):
+
+  Input segment                       Old (/i)                 Fixed
+  ----------------------------------- ------------------------ ---------------------
+  [E] The Listing data...             the -> phantom field     no match
+  [E] Your offer to the SKU...        your -> phantom field    no match
+  [E] item_type_keyword You...        item_type_keyword        item_type_keyword
+  [E] number_of_items is req...       number_of_items          number_of_items
+  [E] listing data is invalid...      listing -> field         diverted to plain text
+    (lowercase "sneaky" case)                                  by the schema guard
+
+RELATED PATTERNS CHECKED (your item 2):
+  * autofix.js:365/368 (streaming [E] field tracker): already case-sensitive,
+    lowercase-only class -- SAFE, unchanged.
+  * autofix.js parseMissing (~864): uses \S+ with /i but is DEAD CODE (no caller
+    in any JS file) -- left as-is.
+
+THE MERGE BACKUPS (your item 3):
+  Both _merge_2026-07-04/original-local-backup/dashboard.py:9759 and
+  _merge_2026-07-04/incoming-update/dashboard.py:10062 contain the IDENTICAL buggy
+  regex -- but they are NOT live: nothing imports that folder (the only _merge
+  reference in live code is the unrelated function _merge_conditional_enums), and
+  the app serves static/js/autofix.js. So they're inert; not touched. Worth
+  deleting those backup folders from the repo in a separate cleanup if you want.
+
+CLAUDE.md Section 4:
+  Added your rule verbatim -- never derive an attribute name from Amazon's
+  human-readable message; use the structured field/schema and validate any derived
+  name against the schema before rendering it.
+
+
+BUG CHECK
+--------------------------------------------------------------------------------
+  * node --check static/js/autofix.js -- PASS.
+  * No Python files touched, so the two .baseline.py scope checks don't apply here;
+    amazon_listing_generator.py and dashboard.py are unchanged.
+  * 2 files changed (within Rule 7's limit). config.json / secrets not touched or
+    staged.
+
+
+GIT
+--------------------------------------------------------------------------------
+  Commit f952e65 on branch koibhe -- 2 files changed, 49 insertions, 4 deletions.
+  Files: static/js/autofix.js, CLAUDE.md.
+  Nothing pushed. Model unchanged.
+
+
+STILL TO CONFIRM IN THE RUNNING APP
+--------------------------------------------------------------------------------
+I could not confirm the phantom boxes are gone in the live app from here -- that
+needs the app open in front of you. Reload the auto-fix drawer on one of the
+affected rows (e.g. the toenail-clipper SKU): the "The"/"Your" boxes should be
+gone and Amazon's message should appear as read-only text. Tell me if any phantom
+field survives and I'll dig further.
+================================================================================
