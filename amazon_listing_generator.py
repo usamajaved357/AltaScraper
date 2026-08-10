@@ -3880,6 +3880,33 @@ async def process_row(row: dict, client, ws_out,
             _toks = ", ".join(sorted({u["token"] for u in _uc["ungrounded"]}))
             notes_parts.append("REVIEW: unverified spec (not in captured source): " + _toks)
 
+        # REGULATED-CLAIM GATE. Was written, imported and then never called on
+        # this path -- it only ever ran in brand mode. "FDA approved", "NSF",
+        # "food grade", "21 CFR", "USDA" in the copy with nothing in the captured
+        # source to back it is a claim Amazon acts on, so unlike the REVIEW notes
+        # above this one holds the row.
+        _rg = check_regulated_claims(listing, _source_blob)
+        if _rg.get("has_unsupported"):
+            _rg_hits = ", ".join(sorted(set(_rg.get("hits", []))))
+            notes_parts.append("HOLD: unsupported regulated claim: "
+                               f"{_rg_hits} not in source")
+            console.print(f"  [red]Unsupported regulated claim: {_rg_hits}[/red]")
+            if status in ("NEEDS_REVIEW",):
+                status = "COMPLIANCE_HOLD"
+                console.print("  [red]Status -> COMPLIANCE_HOLD -- regulated claim "
+                              "with no supporting source[/red]")
+
+    # RESTRICTED-PHRASING CHECK -- same story: built, imported, never called here.
+    # Wording that reads as a pesticide/medical claim to Amazon's filters even
+    # when the product is neither (CLAUDE.md's own note: the scanner cannot tell
+    # the difference). WARN only -- it never blocks, it just gets surfaced so the
+    # phrasing can be softened before submit. Needs no source text.
+    _rp = check_restricted_phrasing(listing)
+    if _rp.get("has_flagged"):
+        _rp_hits = ", ".join(sorted({h["phrase"] for h in _rp.get("hits", [])}))
+        notes_parts.append("REVIEW: restricted phrasing: " + _rp_hits)
+        console.print(f"  [yellow]Restricted phrasing (review wording): {_rp_hits}[/yellow]")
+
     notes_text = " | ".join(notes_parts)
     row_data = build_sheet_row(
         comp_asin, row, listing, comp_data,
