@@ -2029,22 +2029,26 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
     matched     = []
     all_reqs    = []
     highest     = ""
-    # Some keywords are too generic and cause false positives: a hand tool that
-    # "weighs 540g" is not sports/fitness; copy that says "safe around children"
-    # is not a children's TOY; "powerful" is not "mains-powered electrical". For
-    # these high-false-positive categories, require a STRONGER signal: the match
-    # must be a clear category keyword, AND for electrical we additionally require
-    # a genuine electrical token (not just "power"/"light" used as adjectives).
+    # WEAK KEYWORDS -- why almost every listing used to flag.
+    #
+    # Most category keywords are ordinary English before they are compliance
+    # signals: "pan", "kitchen", "tool", "dog", "led", "light", "baby", "knife".
+    # A single one of those matching flagged the whole category, so an LED desk
+    # lamp read as HIGH electrical, a frying pan as MEDIUM cookware and a dog bed
+    # as MEDIUM pet -- and a flag on everything is a flag on nothing.
+    #
+    # RULE: a weak keyword on its own never flags. Something STRONG from the same
+    # category must also be present ("240v", "pressure cooker", "power tool",
+    # "dog collar", "machete"). Strong keywords still flag on their own.
+    #
+    # The weak lists live in compliance_rules.json next to the keywords they
+    # qualify (CLAUDE.md §12 -- one source, not a second copy in code). The dict
+    # below is only a fallback for a rules file written before that field existed.
     _weak_kw = {
         "sports_fitness": {"weight", "weights", "net", "swing", "training", "resistance"},
         "toys_children":  {"play", "game", "child", "children", "kids", "educational"},
         "electrical":     {"power", "light", "lighting"},
     }
-    _electrical_strong = ("plug", "mains", "240v", "230v", "voltage", "volt", "watt",
-                          "wattage", "rechargeable", "battery", "batteries", "usb",
-                          "charger", "charging", "corded", "cordless", "led", "bulb",
-                          "lamp", "socket", "adapter", "adaptor", "power supply",
-                          "power cable", "power cord", "electric motor")
     for cat_key, rule in rules.items():
         if cat_key == "general":
             continue
@@ -2064,24 +2068,19 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
                 _matched_kw = _k
                 break
         if _matched_kw:
-            # context guard: drop the match if the ONLY thing that matched is a
-            # weak/generic keyword for a false-positive-prone category.
-            _weak = _weak_kw.get(cat_key, set())
+            # Context guard: drop the match if the ONLY thing that matched is a
+            # weak/generic keyword. Same rule for every category -- electrical no
+            # longer needs its own hand-maintained token list, because its strong
+            # signals ("240v", "mains powered", "kettle") are simply the keywords
+            # not marked weak.
+            _weak = set(rule.get("weak_keywords") or _weak_kw.get(cat_key, set()))
             if _matched_kw in _weak:
-                if cat_key == "electrical":
-                    # only keep electrical if a genuine electrical token is present
-                    if not any(re.search(rf"(?<![\w-]){re.escape(t)}(?![\w-])", haystack)
-                               for t in _electrical_strong):
-                        continue
-                else:
-                    # toys/sports: a weak keyword alone isn't enough; need a real
-                    # category keyword too (a non-weak keyword also present)
-                    _strong_hit = any(
-                        (kw.lower() not in _weak) and kw and
-                        re.search(rf"(?<![\w-]){re.escape(kw.lower())}(?![\w-])", haystack)
-                        for kw in kws)
-                    if not _strong_hit:
-                        continue
+                _strong_hit = any(
+                    (kw.lower() not in _weak) and kw and
+                    re.search(rf"(?<![\w-]){re.escape(kw.lower())}(?![\w-])", haystack)
+                    for kw in kws)
+                if not _strong_hit:
+                    continue
             matched.append(cat_key)
             all_reqs.extend(rule.get("requirements", []))
             risk = rule.get("risk_level", "")
