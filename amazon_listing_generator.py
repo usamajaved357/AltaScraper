@@ -69,6 +69,7 @@ MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default); MUTABLE — reassigne
 # US_MARKETPLACE_ID moved to listing/constants.py in Phase 5 (immutable, shared). Imported
 # here so amazon_listing_generator.US_MARKETPLACE_ID still resolves for every use below.
 from listing.constants import US_MARKETPLACE_ID
+from listing.barcode import normalize_gtin, gtin_or_reason, gtin_digits   # single source of barcode truth
 
 # When True (set by --minimal), build_api_attributes keeps ONLY the fields
 # Amazon strictly requires (its `required` list) plus the offer essentials
@@ -3129,16 +3130,11 @@ def build_flat_row(sheet_row: dict, brand: str, manufacturer: str,
 
     # Product Id: real barcode if the sheet provides one, else BLANK (GTIN-exempt).
     # Never write the competitor's ASIN -- you cannot list a new product under it.
-    digits_only = re.sub(r"[^\d]", "", upc)
-    if len(digits_only) == 13:
-        prod_id_type = "EAN"
-        prod_id      = digits_only
-    elif len(digits_only) == 12:
-        prod_id_type = "UPC"
-        prod_id      = digits_only
-    else:
-        prod_id_type = ""        # no barcode -> leave blank; requires GTIN exemption on the account
-        prod_id      = ""
+    # normalize_gtin is the ONE place that decides this (listing/barcode.py):
+    # it strips separators and unwraps a 14-digit GTIN back to the EAN-13 it is.
+    # Empty type -> no usable barcode -> leave blank; needs GTIN exemption.
+    prod_id, _pid_type = normalize_gtin(upc)
+    prod_id_type       = _pid_type.upper()
 
     # Per-row brand from sheet wins; fall back to the export-level default.
     row_brand        = str(sheet_row.get("Brand", "")).strip()
@@ -4647,9 +4643,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         put("merchant_shipping_group", _shape_simple(props["merchant_shipping_group"], msg, mid))
 
     # --- product identifier: real barcode, else claim GTIN exemption ----------
-    barcode = g("UPC")
+    barcode, typ = normalize_gtin(g("UPC"))   # listing/barcode.py -- single source
     if barcode and has("externally_assigned_product_identifier"):
-        typ = "ean" if len(barcode) == 13 else "upc"
         A["externally_assigned_product_identifier"] = [
             {"value": barcode, "type": typ, "marketplace_id": mid}]
     elif has("supplier_declared_has_product_identifier_exemption"):
@@ -5934,13 +5929,22 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     #                             the GTIN exemption instead.
     # This guarantees Amazon never receives an AI-guessed or value-less barcode,
     # and that the owner's real purchased EAN in the UPC box is what gets sent.
-    _barcode = g("UPC")
+    # normalize_gtin (listing/barcode.py) is the ONE place that decides the value
+    # and type. It unwraps a 14-digit GTIN to the EAN-13 it really is -- sending
+    # the padded form as "upc" is what made Amazon reject a perfectly valid
+    # barcode over and over, with auto-fix resubmitting the same number forever.
+    _barcode, _typ, _why = gtin_or_reason(g("UPC"))
     if _barcode and has("externally_assigned_product_identifier"):
-        _typ = "ean" if len(_barcode) == 13 else "upc"
         A["externally_assigned_product_identifier"] = [
             {"value": _barcode, "type": _typ, "marketplace_id": mid}]
         A.pop("supplier_declared_has_product_identifier_exemption", None)
     else:
+        # Say so loudly. A barcode is visible in the box but is not being sent,
+        # and silently claiming the exemption instead would hide a data-entry
+        # error until the listing went live under the wrong identity.
+        if _why and gtin_digits(g("UPC")):
+            console.print(f"  [yellow]Barcode not sent -- {_why}. "
+                          f"Claiming GTIN exemption instead.[/yellow]")
         A.pop("externally_assigned_product_identifier", None)
         if has("supplier_declared_has_product_identifier_exemption"):
             A["supplier_declared_has_product_identifier_exemption"] = [
