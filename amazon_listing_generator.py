@@ -3819,7 +3819,25 @@ async def process_row(row: dict, client, ws_out,
             console.print(f"  [red]Status downgraded to COMPLIANCE_HOLD -- HIGH risk category[/red]")
 
     # --- IP / trademark check ------------------------------------------------
-    ip_result = check_ip_violations(listing, chosen_brand, ip_rules)
+    # Pass the COMPETITOR's brand in, from whichever sources supplied this row's
+    # content. This listing is a new product under our own brand (CLAUDE.md §1);
+    # the competitor's name appearing anywhere in the copy is a genuine
+    # trademark leak, and it is the one brand we can actually prove.
+    _competitor_brands = []
+    try:
+        _cb = (comp_data.get("brand") or "").strip()
+        if _cb:
+            _competitor_brands.append(_cb)
+        _eb = (ebay_supp.get("item_specifics", {}) or {}).get("Brand", "")
+        _eb = str(_eb).strip()
+        if _eb and _eb.lower() not in {b.lower() for b in _competitor_brands}:
+            _competitor_brands.append(_eb)
+    except Exception:
+        pass
+    _competitor_brands = [b for b in _competitor_brands
+                          if b.lower() not in ("unbranded", "generic", "n/a", "none", "no brand")]
+    ip_result = check_ip_violations(listing, chosen_brand, ip_rules,
+                                    competitor_brands=_competitor_brands)
     ip_risk_level = ""
     if ip_result["has_violations"]:
         notes_parts.append(ip_result["summary"])
