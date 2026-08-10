@@ -19,6 +19,7 @@ import sys
 from flask import request, jsonify, Response
 
 from domain import miles_runlog as _runlog
+from routes.stream_pump import pump_lines
 
 
 def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MILES_STATE,
@@ -322,7 +323,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                                      stderr=subprocess.STDOUT, text=True, bufsize=1,
                                      cwd=os.path.dirname(os.path.abspath(_cfg_path)))
                 _running["proc"] = p
-                for line in iter(p.stdout.readline, ""):
+                # drained on a worker thread so a slow browser can't jam the pipe
+                # and freeze the run mid-print -- see routes/stream_pump.py
+                for line in pump_lines(p):
                     if line:
                         yield f"data: {line.rstrip()}\n\n"
                 p.wait()
@@ -405,7 +408,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                                      stderr=subprocess.STDOUT, text=True, bufsize=1,
                                      cwd=os.path.dirname(os.path.abspath(_cfg_path)))
                 _running["proc"] = p
-                for line in iter(p.stdout.readline, ""):
+                # drained on a worker thread so a slow browser can't jam the pipe
+                # and freeze the run mid-print -- see routes/stream_pump.py
+                for line in pump_lines(p):
                     if line:
                         yield f"data: {line.rstrip()}\n\n"
                 p.wait()
@@ -536,7 +541,9 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                                            stderr=subprocess.STDOUT, text=True, bufsize=1,
                                            cwd=_base_g)
                     _running["proc"] = _gp
-                    for _line in iter(_gp.stdout.readline, ""):
+                    # drained on a worker thread so a slow browser can't jam the
+                    # pipe and freeze the run -- see routes/stream_pump.py
+                    for _line in pump_lines(_gp):
                         if _line:
                             yield f"data: {_line.rstrip()}\n\n"
                     _gp.wait()

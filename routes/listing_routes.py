@@ -10,6 +10,8 @@ import re
 import subprocess
 import sys
 
+from routes.stream_pump import pump_lines
+
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
 
@@ -1061,7 +1063,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     p.stdin.close()
                 except Exception:
                     pass
-                for line in iter(p.stdout.readline, ""):
+                # pump_lines drains the child on its own thread, so a slow browser
+                # can never jam the pipe and freeze the run mid-print. See
+                # routes/stream_pump.py for the full explanation.
+                for line in pump_lines(p):
                     clean = _ANSI.sub("", line.rstrip("\n"))
                     if clean.strip():
                         yield f"data: {clean}\n\n"

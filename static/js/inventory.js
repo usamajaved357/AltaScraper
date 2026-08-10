@@ -152,9 +152,50 @@ async function invBadgeRefresh(){
 }
 // ---------- /Inventory section ----------
 
+// ---------------------------------------------------------------------------
+// RUN LOG PANEL -- batched appends with a hard line cap.
+//
+// Why: every incoming line used to create a <div> AND read log.scrollHeight,
+// which forces the browser to re-lay-out the whole panel. With thousands of
+// lines that got slow enough that the browser stopped collecting the stream,
+// which back-pressured all the way down the chain and froze the generator
+// mid-print. Batching + capping keeps appends cheap no matter how long the run.
+const LOG_MAX_LINES   = 3000;   // panel keeps the most recent N lines
+const LOG_MAX_PENDING = 5000;   // safety net if the tab is backgrounded
+let _logPending=[], _logTimer=0;
+
+function _logFlush(log){
+  _logTimer=0;
+  if(!_logPending.length) return;
+  const frag=document.createDocumentFragment();
+  for(const item of _logPending){
+    const div=document.createElement("div");
+    div.className=item[0]; div.textContent=item[1];
+    frag.appendChild(div);
+  }
+  _logPending.length=0;
+  log.appendChild(frag);
+  while(log.childElementCount>LOG_MAX_LINES) log.removeChild(log.firstChild);
+  log.scrollTop=log.scrollHeight;   // one layout read per batch, not per line
+}
+
+function _logPush(log, cls, txt){
+  _logPending.push([cls,txt]);
+  if(_logPending.length>LOG_MAX_PENDING)
+    _logPending.splice(0,_logPending.length-LOG_MAX_PENDING);
+  // setTimeout (not requestAnimationFrame) so a backgrounded tab still drains.
+  if(!_logTimer) _logTimer=setTimeout(()=>_logFlush(log),120);
+}
+
+function _logReset(){
+  _logPending.length=0;
+  if(_logTimer){ clearTimeout(_logTimer); _logTimer=0; }
+}
+
 function runMode(mode, skus){
   if(ES){toast("A run is already streaming");return;}
   const log=document.getElementById("log");
+  _logReset();
   log.style.display="block"; log.textContent="";
   let url="/run/"+mode;
   // Generate-only: pass the row selection (value + type). Empty -> generate all.
@@ -179,9 +220,8 @@ function runMode(mode, skus){
   showStop(true);
   ES.onmessage=e=>{
     const cls = e.data.startsWith("[start]")?"start":e.data.startsWith("[done]")?"done":"l";
-    const div=document.createElement("div"); div.className=cls; div.textContent=e.data;
-    log.appendChild(div); log.scrollTop=log.scrollHeight;
+    _logPush(log, cls, e.data);
   };
-  ES.addEventListener("end",()=>{ES.close();ES=null;showStop(false);loadRows();toast("Run finished");});
-  ES.onerror=()=>{if(ES){ES.close();ES=null;showStop(false);loadRows();}};
+  ES.addEventListener("end",()=>{_logFlush(log);ES.close();ES=null;showStop(false);loadRows();toast("Run finished");});
+  ES.onerror=()=>{if(ES){_logFlush(log);ES.close();ES=null;showStop(false);loadRows();}};
 }
