@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 
-from routes.stream_pump import pump_lines
+from routes.stream_pump import pump_lines, spawn
 
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
@@ -1052,8 +1052,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     extra += ["--select-type", _req_select_type or "auto"]
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
-                p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1)
+                p = spawn(args, stdin=subprocess.PIPE)
                 _running["proc"] = p
                 try:
                     # generation asks once for a brand; feed the configured one (Enter = auto)

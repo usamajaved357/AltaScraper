@@ -29,6 +29,7 @@ dropped and the viewer is told how many.
 Losing log lines is always better than freezing a run that is midway through
 writing to Google Sheets.
 """
+import subprocess
 import threading
 import time
 from collections import deque
@@ -37,6 +38,28 @@ from collections import deque
 # minutes of generator output -- far more than any real lag -- while still being
 # a hard ceiling on memory.
 DEFAULT_MAXLEN = 4000
+
+
+def spawn(args, **kwargs):
+    """Start a child whose output we intend to stream. THE one place that decides
+    how a child's text is decoded (CLAUDE.md §12).
+
+    encoding="utf-8", errors="replace" is not optional and must never be dropped.
+    With a bare text=True, Windows decodes the child using the ANSI code page
+    (cp1252 here). The generator and crawl4ai both emit UTF-8: crawl4ai's
+    "[COMPLETE] ●" is E2 97 8F, and 0x8F simply does not exist in cp1252. The
+    read then raises UnicodeDecodeError, the reader dies, nobody drains the pipe,
+    the pipe fills, and the generator blocks mid-print -- frozen at 0% CPU with
+    no error anywhere. That is what stalled a run at item 31/87 and again at
+    50/87. errors="replace" turns a fatal decode into one harmless '?'.
+    """
+    kwargs.setdefault("stdout", subprocess.PIPE)
+    kwargs.setdefault("stderr", subprocess.STDOUT)
+    kwargs.setdefault("text", True)
+    kwargs.setdefault("encoding", "utf-8")
+    kwargs.setdefault("errors", "replace")
+    kwargs.setdefault("bufsize", 1)
+    return subprocess.Popen(args, **kwargs)
 
 
 def pump_lines(proc, *, maxlen=DEFAULT_MAXLEN, poll=0.05):
@@ -52,31 +75,55 @@ def pump_lines(proc, *, maxlen=DEFAULT_MAXLEN, poll=0.05):
     buf     = deque(maxlen=maxlen)
     eof     = threading.Event()
     dropped = [0]
+    errors  = []
 
     def _drain():
+        # NEVER stop draining because of a bad line. Giving up here strands the
+        # child: it keeps printing into a pipe nobody empties, fills it, and
+        # freezes mid-write at 0% CPU with no error shown anywhere. A read error
+        # is reported and skipped -- draining continues until real end-of-output.
+        consecutive = 0
         try:
-            for line in iter(proc.stdout.readline, ""):
+            while True:
+                try:
+                    line = proc.stdout.readline()
+                    consecutive = 0
+                except Exception as e:
+                    consecutive += 1
+                    if len(errors) < 5:
+                        errors.append(f"{type(e).__name__}: {str(e)[:120]}")
+                    # A genuinely dead pipe fails forever -- don't spin on it.
+                    if consecutive >= 50:
+                        break
+                    continue
+                if line == "":
+                    break                       # real end-of-output
                 if len(buf) == buf.maxlen:
-                    dropped[0] += 1     # the append below evicts the oldest line
+                    dropped[0] += 1             # the append below evicts the oldest
                 buf.append(line)
-        except Exception:
-            # Pipe closed/killed mid-read: nothing useful to do, and raising here
-            # would only kill a daemon thread nobody is watching.
-            pass
         finally:
             eof.set()
 
     threading.Thread(target=_drain, daemon=True, name="run-drain").start()
 
     reported = 0
+    seen_err = 0
     while True:
         try:
             line = buf.popleft()
         except IndexError:
             if eof.is_set():
+                # Surface any read errors instead of ending the log as if the run
+                # had simply finished -- a silent ending is what hid the freeze.
+                for msg in errors[seen_err:]:
+                    yield f"[log] could not read a line from the run: {msg}\n"
                 return              # child finished AND we've drained everything
             time.sleep(poll)
             continue
+        if len(errors) > seen_err:
+            for msg in errors[seen_err:]:
+                yield f"[log] could not read a line from the run: {msg}\n"
+            seen_err = len(errors)
         if dropped[0] > reported:
             skipped  = dropped[0] - reported
             reported = dropped[0]

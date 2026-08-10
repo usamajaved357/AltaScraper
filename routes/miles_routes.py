@@ -19,7 +19,7 @@ import sys
 from flask import request, jsonify, Response
 
 from domain import miles_runlog as _runlog
-from routes.stream_pump import pump_lines
+from routes.stream_pump import pump_lines, spawn
 
 
 def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MILES_STATE,
@@ -319,9 +319,8 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     yield f"data: [items] could not build item list: {_ie}\n\n"
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
-                p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                     cwd=os.path.dirname(os.path.abspath(_cfg_path)))
+                p = spawn(args, stdin=subprocess.PIPE,
+                          cwd=os.path.dirname(os.path.abspath(_cfg_path)))
                 _running["proc"] = p
                 # drained on a worker thread so a slow browser can't jam the pipe
                 # and freeze the run mid-print -- see routes/stream_pump.py
@@ -404,9 +403,8 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     extra += ["--tab", _out_tab]
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
-                p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                     cwd=os.path.dirname(os.path.abspath(_cfg_path)))
+                p = spawn(args, stdin=subprocess.PIPE,
+                          cwd=os.path.dirname(os.path.abspath(_cfg_path)))
                 _running["proc"] = p
                 # drained on a worker thread so a slow browser can't jam the pipe
                 # and freeze the run mid-print -- see routes/stream_pump.py
@@ -537,9 +535,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         yield "data: [image] Auto main image OFF -- text-only copy (create main images separately)\n\n"
                     args = [sys.executable, "-u", SCRIPT] + gen_extra
                     yield f"data: [start] {' '.join(args)}\n\n"
-                    _gp = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                           stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                           cwd=_base_g)
+                    _gp = spawn(args, stdin=subprocess.PIPE, cwd=_base_g)
                     _running["proc"] = _gp
                     # drained on a worker thread so a slow browser can't jam the
                     # pipe and freeze the run -- see routes/stream_pump.py
