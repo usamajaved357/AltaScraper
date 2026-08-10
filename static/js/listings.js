@@ -222,6 +222,48 @@ function srcBadge(src){
   return '<span class="srcbadge '+cls+'" title="'+tip+'">'+label+'</span>';
 }
 function rowProvenance(r){ try{ return (JSON.parse(r.attrs||'{}')._provenance)||null; }catch(e){ return null; } }
+// ---------------------------------------------------------------------------
+// RE-CHECK FLAGS
+// A wrong flag rule leaves every already-generated row carrying the wrong flag.
+// Regenerating to clear one costs ~50s and Claude credits for copy that was
+// never the problem. This re-runs the checks against the copy already in the
+// sheet. Always previews first: it writes to the live sheet, so nothing changes
+// until you have seen the list and said yes.
+async function rescanFlags(){
+  let r;
+  try{
+    toast("Re-checking flags on stored rows…");
+    r = await (await fetch("/rescan/preview",{cache:"no-store"})).json();
+  }catch(e){ toast("Re-check failed: "+e); return; }
+  if(!r.ok){ toast("Re-check failed: "+(r.error||"unknown")); return; }
+  if(!r.changes){ toast(`Scanned ${r.scanned} rows — no flags need changing`); return; }
+
+  const lines = r.rows.slice(0,40).map(x=>{
+    const bits=[];
+    if(x.old_status!==x.new_status) bits.push(`${x.old_status} → ${x.new_status}`);
+    if(x.old_ip!==x.new_ip)   bits.push(`IP ${x.old_ip||"none"} → ${x.new_ip||"none"}`);
+    if(x.old_comp!==x.new_comp) bits.push(`Compliance ${x.old_comp||"none"} → ${x.new_comp||"none"}`);
+    return `• ${x.sku}  ${bits.join("   ")}`;
+  }).join("\n");
+  const more = r.changes>40 ? `\n…and ${r.changes-40} more` : "";
+
+  const ok = confirm(
+    `Re-check flags\n\n`+
+    `Scanned ${r.scanned} rows. ${r.changes} would change.\n\n`+
+    `${lines}${more}\n\n`+
+    `Only Status, Notes, Compliance Risk and IP Risk are written.\n`+
+    `Your copy, prices and SKUs are NOT touched, and APPROVED / LIVE / ERROR\n`+
+    `rows are skipped entirely.\n\nApply these changes to the sheet?`);
+  if(!ok){ toast("Nothing written"); return; }
+
+  try{
+    const a = await (await fetch("/rescan/apply",{method:"POST"})).json();
+    if(!a.ok){ toast("Apply failed: "+(a.error||"unknown")); return; }
+    toast(`Updated ${a.updated} row(s)`);
+    if(typeof loadRows==="function") loadRows();
+  }catch(e){ toast("Apply failed: "+e); }
+}
+
 function locateFlags(sku, btn){
   const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
   const out=document.getElementById('loc_'+sid(sku)); if(!out) return;
