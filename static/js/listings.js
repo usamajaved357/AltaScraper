@@ -225,11 +225,17 @@ function rowProvenance(r){ try{ return (JSON.parse(r.attrs||'{}')._provenance)||
 function locateFlags(sku, btn){
   const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
   const out=document.getElementById('loc_'+sid(sku)); if(!out) return;
-  // pull flagged terms from notes: "phrases: a, b" and "suspected brand words: c, d"
+  // Pull flagged terms out of the note. Three shapes, and BOTH wordings of the
+  // brand-word note must be accepted: rows generated before the IP-scanner fix
+  // say "suspected brand words:", rows after it say "possible brand words
+  // (unconfirmed):". Matching only one silently finds nothing on half your sheet.
   const notes=String(r.notes||'')+' '+String(r.comp_notes||'');
   let terms=[];
   let m=notes.match(/phrases?:\s*([^|]+)/i); if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
-  m=notes.match(/suspected brand words?:\s*([^|]+)/i); if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
+  m=notes.match(/(?:suspected|possible) brand words?(?:\s*\(unconfirmed\))?:\s*([^|]+)/i);
+  if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
+  m=notes.match(/COMPETITOR BRAND in copy:\s*([^|]+)/i);
+  if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
   terms=terms.filter(t=>t&&t.length>1);
   if(!terms.length){ out.innerHTML='<div class="cc" style="margin-top:6px">No specific terms parsed from the note — the flag may be a category/compliance signal, not a word match.</div>'; return; }
   // search each content field for each term
@@ -740,12 +746,27 @@ function drawerContent(r){
   // mismatches) + our IP note -- NOT a restricted-products / docs verdict. That lives in the
   // separate "Restricted products check" panel. Label it honestly so it never masquerades
   // as "docs required".
+  // Say WHY on the summary line itself. It used to read "IP / trademark review"
+  // with the actual cause hidden inside the collapsed box, so a row could show
+  // IP: HIGH with no visible reason at all -- there was no way to tell a real
+  // trademark leak from a false flag without opening it.
   let reason = (r.ip_risk && r.ip_risk!=="") ? "IP / trademark review" : "Amazon feedback";
+  const _ipNote = String(r.notes||'')+' '+String(r.comp_notes||'');
+  if(r.ip_risk && r.ip_risk!==""){
+    let mm=_ipNote.match(/COMPETITOR BRAND in copy:\s*([^|]+)/i);
+    if(mm) reason = "IP: competitor brand in copy — "+mm[1].trim();
+    else if((mm=_ipNote.match(/phrases?:\s*([^|]+)/i)))
+      reason = "IP: forbidden phrase — "+mm[1].trim();
+    else if((mm=_ipNote.match(/(?:suspected|possible) brand words?(?:\s*\(unconfirmed\))?:\s*([^|]+)/i)))
+      reason = "IP: possible brand words (unconfirmed) — "+mm[1].trim();
+  }
+  if(reason.length>110) reason = reason.slice(0,107)+"…";
   // Is this an ACTUAL blocking problem, or just an informational compliance note
   // (e.g. "lithium battery -> these docs may be requested")? A real problem = an
   // API error/hold or an IP risk. A compliance note on an already-submitted/live
   // listing is informational, so show it ORANGE, not alarming red.
-  const _fbNote = (reason==="IP / trademark review")
+  // Keyed off ip_risk, not off the reason text -- the reason now varies per row.
+  const _fbNote = (r.ip_risk && r.ip_risk!=="")
     ? "Our brand/trademark check — not a docs requirement."
     : "Amazon’s own submission messages (attribute conflicts, catalogue mismatches) — NOT a restricted-products or docs verdict. See the Restricted products check panel for that.";
   const statusBlock = hasFeedback
