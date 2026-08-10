@@ -64,3 +64,6 @@ KITCHEN_COOKWARE_SET_FOOD_SPATULA_KITCHEN_KNIFE_HARDWARE__2_.xlsm
 
 # Miles harvest/generate run logs (local run history)
 miles_runs/
+
+# Live run heartbeat -- rewritten constantly while a run is going, local only
+run_status.json

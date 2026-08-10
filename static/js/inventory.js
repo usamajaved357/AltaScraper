@@ -192,11 +192,73 @@ function _logReset(){
   if(_logTimer){ clearTimeout(_logTimer); _logTimer=0; }
 }
 
+// ---------------------------------------------------------------------------
+// RUN HEALTH BADGE
+//
+// Deliberately does NOT read the log stream. The log travels down the same pipe
+// that has twice jammed and frozen a run; a frozen log looks exactly like a
+// quiet one. This polls /run/health, which combines the generator's heartbeat
+// file with a real "is the process alive" check -- neither of which a jammed
+// pipe can fake. So the badge stays truthful even when the log has stopped dead.
+let _rhTimer=0, _rhLastState="";
+
+function _rhRender(h){
+  const box=document.getElementById("runhealth");
+  if(!box) return;
+  const label={RUNNING:"RUNNING",STALLED:"STUCK",STOPPED:"STOPPED",IDLE:"NOT RUNNING"};
+  const cls ={RUNNING:"rh-running",STALLED:"rh-stalled",STOPPED:"rh-stopped",IDLE:"rh-idle"};
+  box.style.display = (h.state==="IDLE" && !h.total) ? "none" : "flex";
+  box.className = "runhealth " + (cls[h.state]||"rh-idle");
+  document.getElementById("rh_state").textContent  = label[h.state]||h.state;
+  document.getElementById("rh_detail").textContent = h.detail||"";
+  // The stack dump is only meaningful while a stuck process still exists.
+  document.getElementById("rh_why").style.display = (h.state==="STALLED")?"block":"none";
+  if(h.state==="STALLED" && _rhLastState!=="STALLED")
+    toast("Run looks stuck — no activity for a while");
+  _rhLastState=h.state;
+}
+
+async function _rhPoll(){
+  try{
+    const r=await fetch("/run/health",{cache:"no-store"});
+    _rhRender(await r.json());
+  }catch(e){ /* dashboard unreachable; leave the last known state on screen */ }
+}
+
+function startRunHealth(){
+  if(_rhTimer) return;
+  _rhPoll();
+  _rhTimer=setInterval(_rhPoll,3000);
+}
+
+async function whyStuck(){
+  const log=document.getElementById("log");
+  const btn=document.getElementById("rh_why");
+  if(btn){ btn.disabled=true; btn.textContent="Looking…"; }
+  try{
+    const r=await fetch("/run/stack",{cache:"no-store"});
+    const j=await r.json();
+    const text = j.dump || j.error || "no answer";
+    _logPush(log,"start","----- WHY IS IT STUCK (process "+(j.pid||"?")+") -----");
+    text.split("\n").forEach(ln=>_logPush(log,"l",ln));
+    _logPush(log,"start","----- end -----");
+    _logFlush(log);
+    log.style.display="block";
+  }catch(e){
+    toast("Could not read the stack: "+e);
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent="Why is it stuck?"; }
+  }
+}
+
+document.addEventListener("DOMContentLoaded",startRunHealth);
+
 function runMode(mode, skus){
   if(ES){toast("A run is already streaming");return;}
   const log=document.getElementById("log");
   _logReset();
   log.style.display="block"; log.textContent="";
+  startRunHealth();
   let url="/run/"+mode;
   // Generate-only: pass the row selection (value + type). Empty -> generate all.
   if(mode==="generate"){

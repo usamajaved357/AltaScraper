@@ -70,6 +70,7 @@ MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default); MUTABLE — reassigne
 # here so amazon_listing_generator.US_MARKETPLACE_ID still resolves for every use below.
 from listing.constants import US_MARKETPLACE_ID
 from listing.barcode import normalize_gtin, gtin_or_reason, gtin_digits   # single source of barcode truth
+from listing import run_status   # heartbeat: lets the dashboard tell running from stuck
 
 # When True (set by --minimal), build_api_attributes keeps ONLY the fields
 # Amazon strictly requires (its `required` list) plus the offer essentials
@@ -966,6 +967,7 @@ async def scrape_pdp(asin: str) -> tuple:
 
     t       = Timer()
     pdp_url = f"https://www.{_amazon_domain()}/dp/{asin}"
+    run_status.beat(stage=f"PDP scrape {asin}")
     console.print(f"  [cyan]  PDP scrape: launching browser + fetching {pdp_url}[/cyan]")
 
     # Background heartbeat: prints every 10s so a slow scrape doesn't look
@@ -3472,6 +3474,7 @@ async def process_row(row: dict, client, ws_out,
         seen_asins.add(comp_asin)
     taken_skus.add(sku)
 
+    run_status.beat(idx=idx, total=total, sku=sku, stage="pre-flight")
     console.print(f"\n{'='*60}")
     console.print(f"[bold cyan][{idx}/{total}][/bold cyan] {item_name or comp_asin}")
     console.print(f"  ASIN: {comp_asin} | SKU: {sku} | UPC: {upc or 'N/A'}")
@@ -7412,7 +7415,14 @@ async def main():
     success = 0
     skipped = 0
 
+    # Heartbeat: from here on the run reports its own pulse to run_status.json,
+    # independent of the log pipe, so the dashboard can tell RUNNING from STUCK.
+    run_status.start(total=total, mode=mode)
+    run_status.install_console_heartbeat(console)
+
     for idx, row in enumerate(products, 1):
+        run_status.beat(idx=idx, total=total, stage="row start",
+                        sku=str(row.get("sku", "") or row.get("SKU", "") or ""))
         try:
             ok = await process_row(row, client, ws_out, creds, config, idx, total,
                                    user_brand, taken_skus, seen_asins, model_counter,
@@ -7433,6 +7443,10 @@ async def main():
                    f"[yellow]Skipped (already done): {skipped}[/yellow] | "
                    f"[red]Failed: {total-success-skipped}[/red]")
     console.print(f"[bold cyan]{'='*55}[/bold cyan]")
+    # Mark the run finished so the badge says "finished", not "process is gone".
+    run_status.finish(exit_code=0,
+                      summary=f"{success} ok, {skipped} skipped, "
+                              f"{total-success-skipped} failed of {total}")
 
     sheet_url = f"https://docs.google.com/spreadsheets/d/{config['google_spreadsheet_id']}"
     console.print(f"\n[bold green]Results -> '{OUTPUT_TAB}' tab[/bold green]")

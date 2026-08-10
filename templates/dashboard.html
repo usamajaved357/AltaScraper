@@ -135,6 +135,15 @@
         <button onclick="clearSelection()">Clear</button>
       </div>
       <div id="summary">Loading…</div>
+      <!-- Honest run state. Fed by /run/health (heartbeat file + real process
+           liveness), NOT by the log stream below -- a frozen log cannot fake it. -->
+      <div id="runhealth" class="runhealth" style="display:none">
+        <span id="rh_dot" class="rh_dot"></span>
+        <span id="rh_state" class="rh_state">—</span>
+        <span id="rh_detail" class="rh_detail"></span>
+        <button id="rh_why" class="rh_why" style="display:none"
+                onclick="whyStuck()">Why is it stuck?</button>
+      </div>
       <pre id="log"></pre>
       <main id="grid"><div class="empty">Loading listings…</div></main>
       <div id="drawerscrim" class="drawerscrim" onclick="closeDrawer()"></div>

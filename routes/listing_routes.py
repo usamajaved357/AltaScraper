@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from routes.stream_pump import pump_lines, spawn
+from listing import run_status          # honest run state, independent of the log pipe
 
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
@@ -1078,4 +1079,56 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     _running["on"] = False
 
         return Response(stream(), mimetype="text/event-stream")
+
+    @app.route("/run/health")
+    def run_health():
+        """The honest state of the run -- does NOT depend on the log stream.
+
+        The log panel travels down the same pipe that has twice jammed and frozen
+        a run, so it cannot be trusted to report its own health. This reads the
+        generator's heartbeat file and asks the OS whether the process is alive.
+        A jammed pipe can fake neither.
+        """
+        proc = _running.get("proc")
+        alive = None
+        if proc is not None:
+            alive = (proc.poll() is None)   # the real handle beats a PID lookup
+        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
+                                   proc_alive=alive)
+        info["stream_attached"] = bool(_running.get("on"))
+        return jsonify(info)
+
+    @app.route("/run/stack")
+    def run_stack():
+        """Why is it stuck? Dump the frozen process's actual Python stack.
+
+        This is exactly how both freezes were diagnosed. Read-only: py-spy
+        samples the process from outside and never modifies or resumes it.
+        """
+        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)))
+        pid = info.get("pid")
+        proc = _running.get("proc")
+        if proc is not None and proc.poll() is None:
+            pid = proc.pid
+        if not pid:
+            return jsonify({"ok": False, "error": "no run process to inspect"})
+
+        exe = os.path.join(os.path.dirname(sys.executable), "Scripts", "py-spy.exe")
+        if not os.path.exists(exe):
+            exe = "py-spy"
+        try:
+            out = subprocess.run([exe, "dump", "--pid", str(pid)],
+                                 capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=60)
+            text = (out.stdout or "") + (out.stderr or "")
+            if not text.strip():
+                text = "(py-spy returned nothing)"
+            return jsonify({"ok": out.returncode == 0, "pid": pid, "dump": text})
+        except FileNotFoundError:
+            return jsonify({"ok": False, "pid": pid,
+                            "error": "py-spy is not installed. Install it with:  "
+                                     "python -m pip install py-spy"})
+        except Exception as e:
+            return jsonify({"ok": False, "pid": pid,
+                            "error": f"{type(e).__name__}: {str(e)[:200]}"})
 
