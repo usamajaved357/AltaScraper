@@ -22,6 +22,16 @@ SEED_SRC=/etc/secrets/config.json
 SEED_STAMP="$CONFIG_DIR/.config_seed_sha"
 mkdir -p "$CONFIG_DIR"
 
+# Render mounts Secret Files at /etc/secrets/*. Railway (and other hosts without an
+# equivalent) has no such mount -- config there is passed as a CONFIG_JSON env var
+# instead. If the Render-style file isn't present but the env var is, materialise it
+# into a file on the persistent volume so every check below (hashing, backup, the
+# idempotent-reseed logic) works identically regardless of which host we're on.
+if [ ! -f "$SEED_SRC" ] && [ -n "${CONFIG_JSON:-}" ]; then
+    SEED_SRC="$CONFIG_DIR/.config_seed_from_env.json"
+    printf '%s' "$CONFIG_JSON" > "$SEED_SRC"
+fi
+
 # Hash with python, not sha256sum: this script ends in `exec python`, so python is
 # guaranteed, whereas a missing coreutils would leave _seed_sha empty and silently turn
 # "the secret changed" into "never reseed" -- a genuinely new Secret File would then
@@ -96,9 +106,14 @@ for a in accts:
 PY
 
 SERVICE_ACCOUNT_TARGET="$CONFIG_DIR/service_account.json"
-if [ ! -f "$SERVICE_ACCOUNT_TARGET" ] && [ -f /etc/secrets/service_account.json ]; then
-    cp /etc/secrets/service_account.json "$SERVICE_ACCOUNT_TARGET"
-    echo "Seeded $SERVICE_ACCOUNT_TARGET from /etc/secrets/service_account.json"
+if [ ! -f "$SERVICE_ACCOUNT_TARGET" ]; then
+    if [ -f /etc/secrets/service_account.json ]; then
+        cp /etc/secrets/service_account.json "$SERVICE_ACCOUNT_TARGET"
+        echo "Seeded $SERVICE_ACCOUNT_TARGET from /etc/secrets/service_account.json"
+    elif [ -n "${SERVICE_ACCOUNT_JSON:-}" ]; then
+        printf '%s' "$SERVICE_ACCOUNT_JSON" > "$SERVICE_ACCOUNT_TARGET"
+        echo "Seeded $SERVICE_ACCOUNT_TARGET from \$SERVICE_ACCOUNT_JSON env var"
+    fi
 fi
 
 mkdir -p "$CONFIG_DIR/media" "$CONFIG_DIR/ppc_out" "$CONFIG_DIR/inventory_out" \
