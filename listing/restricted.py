@@ -59,6 +59,17 @@ _STRONG_SINGLES = {
     "nebulizer", "nebuliser", "inhaler", "hydroquinone", "ephedra", "dmaa", "phenibut",
     "tianeptine", "kratom", "kava", "sarms", "yohimbine", "sildenafil", "tadalafil",
     "jammer", "freon", "taser", "slimjim",
+    # Cannabinoid terms: distinctive, never ordinary English, and cbd_hemp is
+    # PROHIBITED on both marketplaces -- these must be able to flag on their own.
+    "cbd", "cannabidiol", "cannabinoid", "cannabinoids", "thc", "cannabis", "marijuana",
+    # Tobacco/vaping is PROHIBITED in the US. These name the product itself and
+    # are not ordinary English, so a bare "vape" must flag without needing a
+    # product_type to corroborate -- a pasted title is often all Shape 1 gets.
+    "vape", "vaping", "nicotine", "hookah", "shisha",
+    # "upholstered" is the precise regulated term (fire-safety gated). "sofa" and
+    # "mattress" stay corroborating on purpose: a sofa THROW or mattress PROTECTOR
+    # is a textile, not gated furniture.
+    "upholstered",
 }
 # Multi-word / digit-bearing terms that are nonetheless too BROAD to flag alone.
 # NOTE: precise real-restriction terms (class 3 LASER, signal booster, high power vtx,
@@ -96,11 +107,32 @@ _CATEGORY_SIGNALS = {
     "radio_wireless_fpv": ["drone", "fpv", "quadcopter"],
     "hazmat_dangerous_goods": ["aerosol"],
     "childrens_products": ["toy", "children", "toddler", "kids", "baby", "infant"],
-    "pesticides_biocides": ["pesticide", "insecticide", "herbicide"],
     "lasers": ["laser pointer"],
     "refrigerants_ozone": ["refrigerant"],
     "jewelry_precious": ["jewelry", "jewellery", "gemstone"],
-    "tobacco_vaping": ["tobacco", "vape", "e-cigarette"],
+    "tobacco_vaping": ["tobacco", "vape", "vaping", "e-cigarette", "e-liquid", "nicotine"],
+    # --- categories added by the patch merge ---------------------------------
+    # A category signal flags ON ITS OWN, so every token here must mean the
+    # product genuinely IS in the category. Broad ones are deliberately absent:
+    # "electronics" would match Amazon's entire Electronics tree and flag every
+    # gadget, which is how a check stops meaning anything. Only the specifically
+    # regulated device names are listed.
+    "electronics": ["signal booster", "rf transmitter", "radio transmitter",
+                    "signal jammer", "radio frequency device"],
+    "drugs_otc": ["medicine", "medication", "pharmacy", "otc drug",
+                  "over-the-counter drug"],
+    "alcohol": ["alcoholic beverage", "wine", "beer", "spirits", "liquor"],
+    "explosives_fireworks": ["firearm", "ammunition", "firework", "pyrotechnic",
+                             "explosive"],
+    "composite_wood": ["composite wood", "engineered wood", "particleboard",
+                       "particle board", "mdf", "fiberboard", "fibreboard",
+                       "plywood", "chipboard"],
+    "upholstered_furniture": ["upholstered", "sofa", "couch", "mattress",
+                              "armchair", "recliner", "futon", "loveseat"],
+    "animals": ["live animal", "live fish", "live insect", "live reptile", "livestock"],
+    "cpap_ozone_cleaners": ["cpap", "ozone generator", "sleep apnea"],
+    "pesticides_biocides": ["pesticide", "insecticide", "herbicide", "biocide",
+                            "rodenticide", "pest control", "insect repellent"],
 }
 
 # Source precedence: a confirmed status must not be overwritten by a weaker one.
@@ -154,17 +186,54 @@ def _resolve_docs_display(doc_ids_or_strings):
     return out
 
 
+def _unwrap_docs(raw, mkt):
+    """A docs value may be a flat list OR a per-marketplace dict {"UK":[...],"US":[...]}.
+
+    The merged master carries BOTH shapes: the hand-built categories use a flat
+    list, and every entry that came from restricted_categories_patch.json uses the
+    dict. Iterating the dict directly would render the KEYS ("US", "UK") as if
+    they were document names, so it is unwrapped for the active marketplace here
+    -- once, for every caller.
+    """
+    if isinstance(raw, dict):
+        raw = raw.get(mkt) or raw.get("UK") or raw.get("US") or []
+    return raw if isinstance(raw, list) else []
+
+
 def _docs_for_match(entry, mkt):
-    """Resolve the display docs for a matched entry, MARKETPLACE-AWARE. tier-3 docs may be a
-    flat id list OR a per-marketplace dict {"UK":[...],"US":[...]} -- unwrap the dict for the
-    active marketplace first, so a gated item shows THAT marketplace's docs (and never the
-    dict's keys 'UK'/'US')."""
+    """Resolve the display docs for a matched entry, MARKETPLACE-AWARE.
+
+    Tier-3 docs are authoritative (they come from real Amazon notices) but are a
+    single flat list with no marketplace dimension. The merged master often has
+    a per-marketplace dict for the same category. Showing only tier-3 therefore
+    handed a US seller the UK document list -- 'HSE / GB biocidal product
+    authorisation' for a US pesticide, which is the wrong regulator entirely.
+
+    So: tier-3 first (authority preserved), then the active marketplace's master
+    docs appended, de-duplicated. Nothing is lost and the marketplace-correct
+    documents are always present.
+    """
+    out, seen = [], set()
+
+    def _add(items):
+        for d in items:
+            k = str(d).strip().lower()
+            if k and k not in seen:
+                seen.add(k)
+                out.append(d)
+
     raw = entry.get("docs_tier3")
+    mraw = entry.get("docs_master_raw")
+    # Marketplace-specific docs lead: a US seller must read "EPA registration"
+    # first, not the UK regulator. Tier-3's authority is over STATUS and reason,
+    # which are unaffected -- its docs still follow, nothing is dropped.
+    if isinstance(mraw, dict):
+        _add(_resolve_docs_display(_unwrap_docs(mraw, mkt)))
     if raw is not None:
-        if isinstance(raw, dict):
-            raw = raw.get(mkt, raw.get("UK") or raw.get("US") or [])
-        return _resolve_docs_display(raw if isinstance(raw, list) else [])
-    return entry.get("docs") or []
+        _add(_resolve_docs_display(_unwrap_docs(raw, mkt)))
+    elif not isinstance(mraw, dict):
+        _add(entry.get("docs") or [])
+    return out
 
 
 def _master_status_for(entry, mkt):
@@ -183,6 +252,7 @@ def _build_entries():
         cid = e.get("id")
         if not cid:
             continue
+        _docs_raw = e.get("docs")
         canon[cid] = {
             "id": cid,
             "label": e.get("label", cid),
@@ -191,10 +261,19 @@ def _build_entries():
                 "UK": {"value": _master_status_for(e, "UK"), "source": "master_research"},
                 "US": {"value": _master_status_for(e, "US"), "source": "master_research"},
             },
+            # Patched-in categories carry no detail/note; their marketplaces map
+            # already spells out the rule ("GATED -- EPA registration required
+            # under FIFRA"), which _master_status_for surfaces as the status.
             "reason": e.get("detail") or e.get("note") or "",
             "regulator": e.get("regulator", ""),
-            "docs": _resolve_docs_display(e.get("docs") or []),
+            # Flat list resolved now; a per-marketplace dict is kept raw and
+            # resolved per request by _docs_for_match, which knows the marketplace.
+            "docs": _resolve_docs_display(_docs_raw) if isinstance(_docs_raw, list) else [],
+            "docs_master_raw": _docs_raw if isinstance(_docs_raw, dict) else None,
             "depth": e.get("depth", ""),
+            # Patch-only field, surfaced so an operator sees WHY a category is
+            # prone to firing on innocent copy before they act on the flag.
+            "false_positive_warning": e.get("false_positive_warning", ""),
         }
     # 2) tier-3 overlay (authoritative status/reason/source for the owner's confirmed hits)
     for e in (_TIER3.get("types") or []):
@@ -247,6 +326,16 @@ for _e in _ENTRIES.values():
 # PET_TOY / "Pet Supplies" product wrongly read as a children's toy off the word "toy").
 _CATEGORY_EXCLUDE = {
     "childrens_products": ["pet", "dog", "cat", "aquarium"],
+    # A pet bed/cushion is not regulated upholstered furniture, and doll's-house
+    # furniture is not a sofa.
+    "upholstered_furniture": ["pet", "dog", "cat", "doll", "dolls", "toy"],
+    # Glassware, openers, racks and coolers are not alcohol.
+    "alcohol": ["glass", "glasses", "opener", "rack", "cooler", "decanter",
+                "aerator", "non-alcoholic", "alcohol-free"],
+    # Animal-print and plush goods are not live animals or animal parts.
+    "animals": ["toy", "plush", "costume", "print", "sticker"],
+    # Keep drugs_otc to human medicines; veterinary sits under pet products.
+    "drugs_otc": ["veterinary", "pet"],
 }
 
 
@@ -308,6 +397,7 @@ def check_restricted_type(text="", marketplace="UK", product_type="", category_p
             "matched_keywords": used_kws,
             "category_signal": cat_sig,
             "asin_seen": e.get("asin_seen", ""),
+            "false_positive_warning": e.get("false_positive_warning", ""),
         })
 
     if any(m["action"] == "BLOCK" for m in matches):

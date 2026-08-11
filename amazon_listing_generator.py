@@ -2176,6 +2176,7 @@ from listing.compliance import check_forbidden_brands, forbidden_names_block  # 
 from listing.compliance import check_regulated_claims  # regulated-claim gate (gap close)
 from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
 from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
+from listing.restricted import check_restricted_type       # Shape 2: restricted PRODUCT TYPE at generation
 from listing.compliance import category_lane_block, check_category_claims  # category-aware claims (task #18)
 
 
@@ -3817,6 +3818,47 @@ async def process_row(row: dict, client, ws_out,
         if comp_result["highest_risk"] == "HIGH" and status == "NEEDS_REVIEW":
             status = "COMPLIANCE_HOLD"
             console.print(f"  [red]Status downgraded to COMPLIANCE_HOLD -- HIGH risk category[/red]")
+
+    # --- RESTRICTED PRODUCT TYPE (Shape 2) -----------------------------------
+    # The 44-category restricted reference used to run ONLY when you opened a
+    # card in the dashboard, so a generation run could write a prohibited product
+    # type to the sheet without anything saying so. It now runs at generation.
+    #
+    # This asks a different question from the compliance check above: that one
+    # scores regulatory RISK from copy keywords; this one asks whether the
+    # product TYPE is restricted or outright prohibited to sell.
+    #   PROHIBITED        -> hold the row
+    #   GATED/RESTRICTED  -> note only, never a hold (approval is a process, not
+    #                        a defect, and holding every gated type would stall
+    #                        ordinary work)
+    try:
+        _rt_text = " ".join([listing.get("title", "")] +
+                            [listing.get(f"bullet_{_i}", "") for _i in range(1, 6)])
+        _rt = check_restricted_type(
+            _rt_text,
+            marketplace=("US" if MARKETPLACE_ID == US_MARKETPLACE_ID else "UK"),
+            product_type=product_type,
+            category_path=" > ".join(comp_data.get("browse_nodes") or []),
+            browse_nodes=comp_data.get("browse_nodes") or [])
+        _rt_prohibited = [m for m in _rt.get("matches", []) if m.get("tier") == "PROHIBITED"]
+        _rt_other      = [m for m in _rt.get("matches", []) if m.get("tier") != "PROHIBITED"]
+        if _rt_prohibited:
+            _names = ", ".join(sorted({m["label"] for m in _rt_prohibited}))
+            _why   = "; ".join(sorted({(m.get("status") or "")[:120] for m in _rt_prohibited}))
+            notes_parts.append(f"RESTRICTED: PROHIBITED product type: {_names} -- {_why}")
+            console.print(f"  [red]PROHIBITED product type: {_names}[/red]")
+            console.print(f"  [red]  {_why}[/red]")
+            if status == "NEEDS_REVIEW":
+                status = "COMPLIANCE_HOLD"
+                console.print("  [red]Status downgraded to COMPLIANCE_HOLD -- "
+                              "prohibited product type[/red]")
+        if _rt_other:
+            _names = ", ".join(sorted({f"{m['label']} [{m.get('tier','')}]" for m in _rt_other}))
+            notes_parts.append(f"REVIEW: restricted product type: {_names}")
+            console.print(f"  [yellow]Restricted/gated product type: {_names}[/yellow]")
+    except Exception as _rte:
+        # A reference-data problem must never stop a row generating.
+        console.print(f"  [yellow]Restricted-type check unavailable: {str(_rte)[:100]}[/yellow]")
 
     # --- IP / trademark check ------------------------------------------------
     # Pass the COMPETITOR's brand in, from whichever sources supplied this row's
