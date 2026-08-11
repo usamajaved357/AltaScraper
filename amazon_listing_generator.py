@@ -2177,6 +2177,7 @@ from listing.compliance import check_regulated_claims  # regulated-claim gate (g
 from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
 from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
 from listing.restricted import check_restricted_type       # Shape 2: restricted PRODUCT TYPE at generation
+from listing import flags as _flags                        # single source of the status-precedence rule
 from listing.compliance import category_lane_block, check_category_claims  # category-aware claims (task #18)
 
 
@@ -3815,9 +3816,13 @@ async def process_row(row: dict, client, ws_out,
         if top_reqs:
             notes_parts.append("Key reqs: " + " // ".join(top_reqs))
         console.print(f"  [yellow]Compliance: {comp_result['summary']}[/yellow]")
-        if comp_result["highest_risk"] == "HIGH" and status == "NEEDS_REVIEW":
-            status = "COMPLIANCE_HOLD"
-            console.print(f"  [red]Status downgraded to COMPLIANCE_HOLD -- HIGH risk category[/red]")
+
+    # Each check below records WHAT it found; the status decision itself is made
+    # once, at the end, by listing/flags.py:decide_status -- the single place the
+    # precedence rule (IP_HOLD > COMPLIANCE_HOLD > NEEDS_REVIEW, ERROR untouched)
+    # is written. It used to be re-implemented inline at three separate points.
+    _comp_high       = comp_result["highest_risk"] == "HIGH"
+    _restricted_hold = False
 
     # --- RESTRICTED PRODUCT TYPE (Shape 2) -----------------------------------
     # The 44-category restricted reference used to run ONLY when you opened a
@@ -3827,10 +3832,16 @@ async def process_row(row: dict, client, ws_out,
     # This asks a different question from the compliance check above: that one
     # scores regulatory RISK from copy keywords; this one asks whether the
     # product TYPE is restricted or outright prohibited to sell.
-    #   PROHIBITED        -> hold the row
-    #   GATED/RESTRICTED  -> note only, never a hold (approval is a process, not
-    #                        a defect, and holding every gated type would stall
-    #                        ordinary work)
+    #   PROHIBITED / CONDITIONAL -> hold the row
+    #   GATED / RESTRICTED       -> note only (approval is a process, not a
+    #                               defect; holding every gated type would stall
+    #                               ordinary work)
+    #
+    # CONDITIONAL holds too. It is what a status like "PROHIBITED except
+    # pre-approved wine sellers" resolves to -- i.e. prohibited unless you hold a
+    # specific permission. CBD and alcohol land there, and both are account-ending
+    # if you get them wrong, so a note that scrolls past in the log is not enough.
+    # The row can still be approved by hand once the permission is confirmed.
     try:
         _rt_text = " ".join([listing.get("title", "")] +
                             [listing.get(f"bullet_{_i}", "") for _i in range(1, 6)])
@@ -3840,18 +3851,17 @@ async def process_row(row: dict, client, ws_out,
             product_type=product_type,
             category_path=" > ".join(comp_data.get("browse_nodes") or []),
             browse_nodes=comp_data.get("browse_nodes") or [])
-        _rt_prohibited = [m for m in _rt.get("matches", []) if m.get("tier") == "PROHIBITED"]
-        _rt_other      = [m for m in _rt.get("matches", []) if m.get("tier") != "PROHIBITED"]
+        _HOLD_TIERS = ("PROHIBITED", "CONDITIONAL")
+        _rt_prohibited = [m for m in _rt.get("matches", []) if m.get("tier") in _HOLD_TIERS]
+        _rt_other      = [m for m in _rt.get("matches", []) if m.get("tier") not in _HOLD_TIERS]
         if _rt_prohibited:
             _names = ", ".join(sorted({m["label"] for m in _rt_prohibited}))
             _why   = "; ".join(sorted({(m.get("status") or "")[:120] for m in _rt_prohibited}))
-            notes_parts.append(f"RESTRICTED: PROHIBITED product type: {_names} -- {_why}")
-            console.print(f"  [red]PROHIBITED product type: {_names}[/red]")
+            _tiers = "/".join(sorted({m.get("tier", "") for m in _rt_prohibited}))
+            notes_parts.append(f"RESTRICTED: {_tiers} product type: {_names} -- {_why}")
+            console.print(f"  [red]{_tiers} product type: {_names}[/red]")
             console.print(f"  [red]  {_why}[/red]")
-            if status == "NEEDS_REVIEW":
-                status = "COMPLIANCE_HOLD"
-                console.print("  [red]Status downgraded to COMPLIANCE_HOLD -- "
-                              "prohibited product type[/red]")
+            _restricted_hold = True
         if _rt_other:
             _names = ", ".join(sorted({f"{m['label']} [{m.get('tier','')}]" for m in _rt_other}))
             notes_parts.append(f"REVIEW: restricted product type: {_names}")
@@ -3885,10 +3895,18 @@ async def process_row(row: dict, client, ws_out,
         notes_parts.append(ip_result["summary"])
         console.print(f"  [red]{ip_result['summary']}[/red]")
         ip_risk_level = "HIGH"
-        # IP_HOLD supersedes COMPLIANCE_HOLD and NEEDS_REVIEW. ERROR stays.
-        if status in ("NEEDS_REVIEW", "COMPLIANCE_HOLD"):
-            status = "IP_HOLD"
-            console.print(f"  [red]Status set to IP_HOLD -- brand/trademark risk[/red]")
+
+    # THE single status decision (listing/flags.py). ERROR is passed through
+    # untouched because it is not one of the statuses the flags own.
+    _prev_status = status
+    status = _flags.decide_status(status,
+                                  compliance_high=(_comp_high or _restricted_hold),
+                                  ip_violation=bool(ip_result["has_violations"]))
+    if status != _prev_status:
+        _reason = ("brand/trademark risk" if status == "IP_HOLD" else
+                   "prohibited product type" if _restricted_hold else
+                   "HIGH risk category")
+        console.print(f"  [red]Status {_prev_status} -> {status} -- {_reason}[/red]")
 
     # --- Category-aware claims screener (task #18) -- WARN only, never blocks. Scans
     # the finished copy against the product_type's category rulebook (unknown -> all).

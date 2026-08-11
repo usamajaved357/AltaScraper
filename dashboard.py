@@ -27,10 +27,9 @@ import os
 import subprocess
 import threading
 import base64
-try:
-    import image_gen
-except Exception:
-    image_gen = None
+# image_gen removed: its only public function (generate_main_image) had zero
+# callers -- auto-image runs through domain/ai_providers.run_pipeline instead.
+# This import was never referenced again anywhere in the file.
 
 from flask import Flask, Response, request, jsonify, session, redirect, url_for, send_from_directory
 import gspread

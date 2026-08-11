@@ -12,36 +12,6 @@ def _mk_enum(mkt):
     return getattr(Marketplaces, str(mkt).upper(), None) or Marketplaces.UK
 
 
-def fetch_offers(creds, asin, marketplace, condition="New", log=print):
-    """ALL current offers on `asin` in `marketplace`. Normalized dict, never raises.
-    NOTE: getItemOffers returns Amazon's ~20 most-competitive offers, not every offer."""
-    out = {"ok": False, "asin": asin, "marketplace": marketplace, "condition": condition,
-           "offers": [], "summary": {}, "error": ""}
-    try:
-        from sp_api.api import Products
-    except Exception as e:
-        out["error"] = f"sp_api unavailable: {e}"; return out
-    try:
-        import accounts as _acc
-        _ = _acc.marketplace_id(marketplace) if hasattr(_acc, "marketplace_id") else ""
-    except Exception:
-        pass
-    try:
-        prods = Products(credentials=creds, marketplace=_mk_enum(marketplace), timeout=60)
-        resp = None
-        for attempt in range(2):
-            try:
-                resp = prods.get_item_offers(asin, item_condition=condition)
-                break
-            except Exception as e:
-                m = str(e).lower()
-                if ("quota" in m or "throttl" in m or "429" in m or "too many" in m) and attempt == 0:
-                    time.sleep(5); continue
-                out["error"] = f"{type(e).__name__}: {str(e)[:180]}"; return out
-        pay = resp.payload if hasattr(resp, "payload") else resp
-        return _normalize(pay if isinstance(pay, dict) else {}, asin, marketplace, condition)
-    except Exception as e:
-        out["error"] = f"{type(e).__name__}: {str(e)[:180]}"; return out
 
 
 def _normalize(pay, asin, marketplace, condition):

@@ -69,13 +69,21 @@ def split_notes(notes: str):
 
 
 def decide_status(current: str, compliance_high: bool, ip_violation: bool) -> str:
-    """Flag precedence, mirroring generation: IP_HOLD > COMPLIANCE_HOLD > NEEDS_REVIEW.
+    """THE flag-precedence rule: IP_HOLD > COMPLIANCE_HOLD > NEEDS_REVIEW.
 
-    DUPLICATION, STATED PLAINLY (CLAUDE.md §12): process_row() in
-    amazon_listing_generator.py still applies this same precedence inline, so the
-    rule now exists in two places. It is four lines and both are covered by
-    tests, but it should be collapsed into this function -- a small, separately
-    testable change to the live generate path that has NOT been made here.
+    Used by BOTH callers -- process_row() at generation and rescan_row() here --
+    so the rule exists once (CLAUDE.md §12). It used to be re-implemented inline
+    at three separate points in process_row.
+
+    CLEAR-AND-RECOMPUTE. Any hold the flags previously set is dropped and the
+    verdict rebuilt from what was just found. That is required for rescan: if a
+    stale hold were kept, a corrected rule could never un-hold a row. Generation
+    is unaffected -- at its decision point the status is only ever NEEDS_REVIEW
+    or ERROR, and for those two this returns exactly what the old inline rules
+    returned.
+
+    Statuses the flags do NOT own -- APPROVED, LIVE, ERROR, API_* -- are returned
+    untouched. Those are the operator's decision or Amazon's own state.
     """
     status = (current or "").strip().upper() or "NEEDS_REVIEW"
     if status not in RESCANNABLE_STATUSES:

@@ -78,6 +78,9 @@ _STRONG_SINGLES = {
 _BROAD_OVERRIDE = {
     "class 3", "class 4", "class ii", "class iiib", "medical grade", "1w", "heavy duty",
     "coolant gas", "high power",
+    # Multi-word but still ambiguous: a "Cooking Oil Dispenser Bottle" is a
+    # container, not groceries. Needs a grocery browse-node to count.
+    "cooking oil",
 }
 
 
@@ -133,6 +136,8 @@ _CATEGORY_SIGNALS = {
     "cpap_ozone_cleaners": ["cpap", "ozone generator", "sleep apnea"],
     "pesticides_biocides": ["pesticide", "insecticide", "herbicide", "biocide",
                             "rodenticide", "pest control", "insect repellent"],
+    "food_grocery": ["grocery", "gourmet food", "food & grocery",
+                     "food and grocery", "grocery & gourmet", "pantry"],
 }
 
 # Source precedence: a confirmed status must not be overwritten by a weaker one.
@@ -336,6 +341,10 @@ _CATEGORY_EXCLUDE = {
     "animals": ["toy", "plush", "costume", "print", "sticker"],
     # Keep drugs_otc to human medicines; veterinary sits under pet products.
     "drugs_otc": ["veterinary", "pet"],
+    # Grocery-adjacent hardware is not food: tea-light holders, coffee grinders,
+    # oil dispensers, spice racks and storage tubs.
+    "food_grocery": ["candle", "holder", "dispenser", "grinder", "rack",
+                     "container", "storage", "mug", "cup", "utensil"],
 }
 
 
