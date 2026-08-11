@@ -8,7 +8,7 @@
     "confidence_note": "Compiled from Amazon published policy + regulators (FDA, EPA, FCC, Ofcom, CPSC, MHRA, HSE) + industry compliance references, accurate as of compile date. Amazon updates without notice. Definitive per-ASIN/per-account answer = Seller Central Apply-to-Sell.",
     "usage_rule": "SOURCING ALARM + listing warning. PROHIBITED -> block normal submit (logged force-list only). GATED -> warn + show docs, submit allowed. Never a copy tool: never strip a true spec/ingredient to conceal a restricted product (account-ending).",
     "marketplace_principle": "EU/UK is generally the stricter constraint (esp. cosmetics, children's). Several restrictions are marketplace-specific and must resolve per active marketplace, never globally. Hazmat and category approvals are per-marketplace — approval in one region does NOT carry to another.",
-    "category_count": 44,
+    "category_count": 45,
     "merged_from_patch": {
       "source": "restricted_categories_patch.json",
       "replaced": [
@@ -1664,6 +1664,66 @@
           "guaranteed"
         ]
       }
+    },
+    {
+      "id": "electric_heating_appliances",
+      "label": "Electric heating appliances (space heaters, patio heaters, fan heaters)",
+      "status": "GATED",
+      "depth": "full",
+      "marketplaces": {
+        "US": "GATED — UL/ETL certification required, FCC if wireless",
+        "UK": "GATED — BS EN 60335-2-30 test report required, UKCA DoC, UK Responsible Person. OPSS actively enforces on Amazon UK. High-risk category."
+      },
+      "trigger_keywords": [
+        "electric heater",
+        "space heater",
+        "patio heater",
+        "fan heater",
+        "convector heater",
+        "panel heater",
+        "oil filled radiator",
+        "oil-filled radiator",
+        "ceramic heater",
+        "halogen heater",
+        "infrared heater",
+        "tower heater",
+        "wall heater electric",
+        "bathroom heater",
+        "greenhouse heater",
+        "garage heater electric",
+        "portable heater",
+        "plug in heater",
+        "mini heater",
+        "radiator electric",
+        "convection heater",
+        "radiant heater",
+        "heat gun",
+        "industrial heater",
+        "wax heater",
+        "wax warmer electric",
+        "towel radiator electric",
+        "heated towel rail electric"
+      ],
+      "prohibited_items": [],
+      "docs": {
+        "US": [
+          "UL/ETL/CSA safety certification",
+          "FCC authorization if wireless controls",
+          "Prop 65 warning if applicable"
+        ],
+        "UK": [
+          "Test report from ISO 17025 lab to BS EN 60335-2-30",
+          "UKCA Declaration of Conformity",
+          "UK Responsible Person on packaging/labeling",
+          "BS 1363 compliant UK plug verification",
+          "IP rating test evidence if IP rating claimed in listing",
+          "EMC test report (EN 55014)"
+        ]
+      },
+      "false_positive_warning": "Amazon's classifier is aggressive on this category. Even hot water heating appliances get wrongly classified as electric space heaters. Any product with 'heater' in the title risks triggering a proactive compliance request.",
+      "your_violations": [
+        "B0HCJK9YKH — 2000W Electric Patio Heater, Food and Product Safety Issues, 11 Aug 2026, deadline 10 Oct 2026"
+      ]
     }
   ],
   "cross_cutting": {

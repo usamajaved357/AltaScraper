@@ -2177,6 +2177,8 @@ from listing.compliance import check_regulated_claims  # regulated-claim gate (g
 from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
 from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
 from listing.restricted import check_restricted_type       # Shape 2: restricted PRODUCT TYPE at generation
+from listing.sourcing_viability import (                   # document-demand risk (WARN only)
+    check_sourcing_viability, sourcing_warning_lines)
 from listing import flags as _flags                        # single source of the status-precedence rule
 from listing.compliance import category_lane_block, check_category_claims  # category-aware claims (task #18)
 
@@ -3869,6 +3871,36 @@ async def process_row(row: dict, client, ws_out,
     except Exception as _rte:
         # A reference-data problem must never stop a row generating.
         console.print(f"  [yellow]Restricted-type check unavailable: {str(_rte)[:100]}[/yellow]")
+
+    # --- SOURCING VIABILITY (document-demand risk) ---------------------------
+    # Runs AFTER the restricted check and BEFORE the sheet write, and asks the
+    # one question neither of the checks above can answer: this product is not
+    # gated and not restricted, so we may list it freely -- but WHICH SAFETY
+    # DOCUMENTS will Amazon demand months later, and can we produce them?
+    #
+    # The electric patio heater is why this exists. Nothing blocked it, it sold,
+    # and then Amazon asked for a BS EN 60335 test report no reseller can obtain
+    # after the fact. getListingsRestrictions would have said "no restrictions"
+    # the whole time.
+    #
+    # WARN ONLY, never HOLD -- deliberately. Holding every mains appliance would
+    # stop ordinary work; the point is that the operator sees the document bill
+    # before committing to stock. All matched rules are listed, because one
+    # product can owe two sets of papers (a silicone teething toy owes both
+    # children's and food-contact evidence).
+    try:
+        _sv = check_sourcing_viability(
+            title=listing.get("title", ""),
+            bullets=[listing.get(f"bullet_{_i}", "") for _i in range(1, 6)],
+            product_type=product_type,
+            category=" > ".join(comp_data.get("browse_nodes") or []),
+            marketplace=("US" if MARKETPLACE_ID == US_MARKETPLACE_ID else "UK"))
+        for _line in sourcing_warning_lines(_sv):
+            notes_parts.append(_line)
+            console.print(f"  [yellow]{_line}[/yellow]")
+    except Exception as _sve:
+        # Reference-data problems must never stop a row generating.
+        console.print(f"  [yellow]Sourcing-viability check unavailable: {str(_sve)[:100]}[/yellow]")
 
     # --- IP / trademark check ------------------------------------------------
     # Pass the COMPETITOR's brand in, from whichever sources supplied this row's

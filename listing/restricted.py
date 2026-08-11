@@ -49,8 +49,17 @@ _TIER3 = _load(_TIER3_FILE)
 _DOCS = _load(_DOCS_FILE)
 
 
-def _wordish(term):
+def wordish(term):
+    """Whole-word (alphanumeric-boundary) matcher for a term.
+
+    PUBLIC because listing/sourcing_viability.py matches words the same way. One
+    matcher, one place -- two copies would drift and the two layers would start
+    disagreeing about what counts as a word.
+    """
     return re.compile(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
+
+
+_wordish = wordish          # internal name kept so existing call sites don't move
 
 
 # --- KEYWORD CLASSIFIER ------------------------------------------------------
@@ -82,6 +91,35 @@ _BROAD_OVERRIDE = {
     # container, not groceries. Needs a grocery browse-node to count.
     "cooking oil",
 }
+
+# --- ACCESSORY DEMOTION (keyword tier) ---------------------------------------
+# A keyword hit IMMEDIATELY followed by an accessory noun names the accessory,
+# not the regulated product: "Patio Heater Cover" is a waterproof textile and
+# "heater thermostat" is a spare part -- neither needs a BS EN 60335-2-30 test
+# report. Adjacency is strict on purpose: "Patio Heater with Cover" (a real
+# heater sold with a cover) and "Heater Protective Cover" both still flag.
+# Over-flagging is the safe direction for a sourcing alarm; under-flagging is
+# not. Keyed by category id so it can never leak across categories.
+# ACCESSORY_NOUNS and accessory_pattern() are PUBLIC: listing/sourcing_viability.py
+# applies the identical rule to appliance nouns, so the noun list and the
+# adjacency pattern are defined here once and imported there.
+ACCESSORY_NOUNS = [
+    "cover", "covers", "case", "bag", "sleeve", "stand", "bracket",
+    "brackets", "mount", "remote", "thermostat", "replacement", "spare",
+    "spares", "part", "parts", "accessory", "accessories", "filter",
+    "filters", "wheels", "casters",
+]
+
+_ACCESSORY_SUFFIXES = {
+    "electric_heating_appliances": ACCESSORY_NOUNS,
+}
+
+
+def accessory_pattern(term, suffixes=None):
+    """'<term> <accessory-noun>' matcher -- the shared strict-adjacency rule."""
+    sfx = suffixes or ACCESSORY_NOUNS
+    return re.compile(re.escape(term) + r"[\s\-]+(?:" + "|".join(re.escape(s) for s in sfx)
+                      + r")(?![A-Za-z0-9])", re.I)
 
 
 def classify_keyword(kw):
@@ -158,7 +196,11 @@ _TIER3_TO_CANON = {
     "medical_device_general": "medical_devices",
     "radio_transmitter": "radio_wireless_fpv",
     "laser_pointer": "lasers",
-    "mains_electrical": "mains_electrical",
+    # "mains_electrical" retired 2026-08-11: being mains-powered is not a listing
+    # RESTRICTION, it is a document-demand liability. That belongs to
+    # listing/sourcing_viability.py (MAINS_ELECTRICAL), which detects it from
+    # physical signals -- wattage, voltage, plug wording -- instead of the six
+    # keywords this entry carried, and returns the full BS EN 60335 doc set.
     "childrens_product": "childrens_products",
     "hazmat_flammable": "hazmat_dangerous_goods",
     "weapons_adjacent": "weapons_knives",
@@ -179,8 +221,13 @@ def _norm_tier(value):
     return "RESTRICTED"
 
 
-def _resolve_docs_display(doc_ids_or_strings):
-    """Tier-3 uses doc_ids (resolve via catalog); master uses plain strings. Return display names."""
+def resolve_docs_display(doc_ids_or_strings):
+    """Tier-3 uses doc_ids (resolve via catalog); master uses plain strings. Return display names.
+
+    PUBLIC: listing/sourcing_viability.py resolves its document lists through this
+    same function, so required_docs.json stays the one document catalog for the
+    whole app and a doc renamed there changes everywhere at once.
+    """
     catalog = _DOCS.get("docs") or {}
     out = []
     for d in (doc_ids_or_strings or []):
@@ -189,6 +236,9 @@ def _resolve_docs_display(doc_ids_or_strings):
         else:
             out.append(str(d))
     return out
+
+
+_resolve_docs_display = resolve_docs_display     # internal name kept for existing call sites
 
 
 def _unwrap_docs(raw, mkt):
@@ -322,9 +372,27 @@ def _build_entries():
 
 _ENTRIES = _build_entries()
 # pre-classify each entry's keywords once
-for _e in _ENTRIES.values():
+for _cid, _e in _ENTRIES.items():
     _e["kw_strong"] = [(kw, _wordish(kw)) for kw in _e["keywords"] if classify_keyword(kw) == "strong"]
     _e["kw_corrob"] = [(kw, _wordish(kw)) for kw in _e["keywords"] if classify_keyword(kw) == "corroborating"]
+    # one "<keyword> <accessory-noun>" pattern per strong keyword, compiled once
+    _sfx = _ACCESSORY_SUFFIXES.get(_cid)
+    _e["kw_accessory"] = ({kw: accessory_pattern(kw, _sfx)
+                           for kw, _pat in _e["kw_strong"]} if _sfx else {})
+
+
+def _accessory_only(entry, text, hits):
+    """True when EVERY keyword hit names an accessory to the restricted product
+    rather than the product itself. See _ACCESSORY_SUFFIXES. One hit that is not
+    accessory-qualified is enough to keep the whole match."""
+    pats = entry.get("kw_accessory") or {}
+    if not pats or not hits:
+        return False
+    for kw in hits:
+        pat = pats.get(kw)
+        if pat is None or not pat.search(text):
+            return False
+    return True
 
 
 # Context that DISQUALIFIES a category signal (avoids cross-category false positives, e.g. a
@@ -379,6 +447,11 @@ def check_restricted_type(text="", marketplace="UK", product_type="", category_p
         # DEMOTION RULE: a corroborating word only counts WITH a category signal.
         matched = bool(strong_hits) or cat_sig
         if not matched:
+            continue
+        # An ACCESSORY to a restricted product is not the restricted product.
+        # Only ever suppresses when no category signal says the product really
+        # is in the category.
+        if strong_hits and not cat_sig and _accessory_only(e, text_hay, strong_hits):
             continue
 
         st = e["statuses"].get(mkt) if mkt_known else None

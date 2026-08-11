@@ -14,6 +14,7 @@ import time
 import json as _json
 
 from listing.restricted import check_restricted_type
+from listing.sourcing_viability import check_sourcing_viability
 
 
 def _row_image(attrs_json):
@@ -312,5 +313,15 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             res = check_restricted_type(text, mkt, product_type=ptype, category_path=cat)
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:200]}), 500
+        # Sourcing viability rides along on the same paste: "can I list it?" and
+        # "can I produce the papers Amazon will ask for later?" are both questions
+        # you want answered BEFORE buying stock, so the modal answers both at once.
+        # Additive key -- a failure here never breaks the restricted result.
+        try:
+            res["sourcing_viability"] = check_sourcing_viability(
+                title=text, product_type=ptype, category=cat, marketplace=mkt)
+        except Exception as e:
+            res["sourcing_viability"] = {"matched": False, "risks": [],
+                                         "error": str(e)[:200]}
         res["ok"] = True
         return jsonify(res)
