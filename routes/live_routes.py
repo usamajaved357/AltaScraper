@@ -5,6 +5,13 @@ verify_free_vars.py.
 """
 from flask import request, jsonify, Response, send_from_directory
 import urllib
+import datetime as _dt
+
+# How old an already-generated Amazon report may be before we refuse to reuse it.
+# getReports defaults createdSince to 90 DAYS and documents no sort order, so an
+# unbounded reuse could serve a weeks-old catalogue as if it were live. Six hours
+# keeps ordinary page views fast without ever showing yesterday's catalogue.
+_REPORT_REUSE_MAX_AGE = 6 * 3600
 
 
 def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800, _MIRROR_CACHE=None, _MIRROR_TTL=6*3600):
@@ -398,8 +405,25 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
 
         ck = f"{aid}::{mkt}"
         import time as _t
+        import domain.live_snapshots as _snap
         if not force and ck in _LIVE_CACHE and (_t.time() - _LIVE_CACHE[ck]["ts"] < _LIVE_TTL):
             return jsonify({"ok": True, "items": _LIVE_CACHE[ck]["items"], "cached": True})
+        # DURABLE SNAPSHOT (second line of defence). _LIVE_CACHE is process memory:
+        # a container restart or redeploy empties it, and on Render that happens on
+        # every deploy. Before going back to Amazon, serve the snapshot written by
+        # the last successful fetch -- so a reload shows the SAME catalogue it
+        # showed a minute ago instead of silently re-answering from a stale report.
+        if not force:
+            _rec = _snap.get(CONFIG_PATH, aid, mkt)
+            _age = _snap.age_seconds(_rec)
+            if _rec and _age is not None and _age < _LIVE_TTL:
+                _LIVE_CACHE[ck] = {"ts": _t.time() - _age, "items": _rec.get("items") or []}
+                return jsonify({"ok": True, "items": _rec.get("items") or [],
+                                "count": _rec.get("count", 0), "cached": True,
+                                "from_snapshot": True, "synced_at": _rec.get("ts"),
+                                "age_seconds": _age, "partial": _rec.get("partial", False),
+                                "warnings": _rec.get("warnings") or [],
+                                "report_source": _rec.get("report_source", "")})
         # on a forced sync, also drop the per-listing image/status/meta cache for
         # this account+marketplace so titles/images/status/fulfillment all refresh
         if force:
@@ -430,18 +454,34 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             RT = "GET_MERCHANT_LISTINGS_ALL_DATA"
             doc_id = None
             report_source = "new"
+            report_built_at = ""
+            warnings = []
             # 0) reuse a recently-generated report ONLY when not forcing. When the
             #    user clicks Sync (force=True), we must generate a FRESH report so
             #    edits made on Amazon are reflected — reusing the old report would
             #    show stale data.
+            #
+            #    REUSE IS NOW BOUNDED. getReports defaults createdSince to 90 DAYS
+            #    ago and documents NO sort order, so the old `pageSize=1 -> reps[0]`
+            #    could hand back a report Amazon built weeks ago and the UI would
+            #    present it as the live catalogue. That is the "it shows old
+            #    listings" bug. We now ask only for reports created since
+            #    _REPORT_REUSE_MAX_AGE and pick the genuinely newest by createdTime.
             if not force:
                 try:
+                    _since = _dt.datetime.utcnow() - _dt.timedelta(seconds=_REPORT_REUSE_MAX_AGE)
                     existing = rc.get_reports(reportTypes=[RT], processingStatuses=["DONE"],
-                                              marketplaceIds=[mkt_id] if mkt_id else None, pageSize=1)
+                                              marketplaceIds=[mkt_id] if mkt_id else None,
+                                              createdSince=_since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                              pageSize=10)
                     epay = existing.payload if hasattr(existing, "payload") else existing
                     reps = (epay or {}).get("reports", []) if isinstance(epay, dict) else []
+                    reps = [r for r in reps if r.get("reportDocumentId")]
+                    # newest first, explicitly -- never trust the response order
+                    reps.sort(key=lambda r: str(r.get("createdTime") or ""), reverse=True)
                     if reps:
                         doc_id = reps[0].get("reportDocumentId")
+                        report_built_at = str(reps[0].get("createdTime") or "")
                         report_source = "reused"
                 except Exception:
                     doc_id = None
@@ -500,11 +540,16 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 # forced Sync regenerates it.
                 if not force:
                     try:
+                        _isince = _dt.datetime.utcnow() - _dt.timedelta(seconds=_REPORT_REUSE_MAX_AGE)
                         _iex = rc.get_reports(reportTypes=["GET_MERCHANT_LISTINGS_INACTIVE_DATA"],
                                               processingStatuses=["DONE"],
-                                              marketplaceIds=[mkt_id] if mkt_id else None, pageSize=1)
+                                              marketplaceIds=[mkt_id] if mkt_id else None,
+                                              createdSince=_isince.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                              pageSize=10)
                         _iep = _iex.payload if hasattr(_iex, "payload") else _iex
                         _ireps = (_iep or {}).get("reports", []) if isinstance(_iep, dict) else []
+                        _ireps = [r for r in _ireps if r.get("reportDocumentId")]
+                        _ireps.sort(key=lambda r: str(r.get("createdTime") or ""), reverse=True)
                         if _ireps:
                             _idoc = _ireps[0].get("reportDocumentId")
                     except Exception:
@@ -531,9 +576,19 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                             continue
                         _ii["status"] = _ii.get("status") or "Inactive"
                         items.append(_ii)
+                else:
+                    # No inactive document at all (report cancelled/fatal/timed out).
+                    # Say so instead of silently returning an active-only list that
+                    # LOOKS like the whole catalogue -- that silence is how a 64-item
+                    # account displayed 16 with no error to explain it.
+                    warnings.append("Inactive/suppressed listings could not be loaded "
+                                    "(Amazon's inactive report was not ready) — this list "
+                                    "shows ACTIVE listings only.")
             except Exception as _ie:
                 # never fail the whole catalog because the inactive report misbehaved
                 print(f"[live/catalog] inactive report skipped: {_ie}")
+                warnings.append(f"Inactive/suppressed listings could not be loaded "
+                                f"({type(_ie).__name__}) — this list shows ACTIVE listings only.")
             # enrich each item with COGS + profit estimate
             for it in items:
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
@@ -550,8 +605,21 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             except Exception:
                 hdr = []
             _LIVE_CACHE[ck] = {"ts": _t.time(), "items": items}
+            # DURABLE WRITE. Everything above is process memory that a restart or a
+            # redeploy erases; this is the copy that survives. save() also refuses to
+            # let a PARTIAL result overwrite a larger COMPLETE one, so a failed
+            # inactive-report half can no longer shrink a good catalogue on disk.
+            _stored = _snap.save(CONFIG_PATH, aid, mkt, items,
+                                 report_source=report_source,
+                                 partial=bool(warnings), warnings=warnings)
+            _kept = (_stored.get("count", len(items)) != len(items))
             return jsonify({"ok": True, "items": items, "count": len(items),
-                            "cached": False, "columns": hdr, "report_source": report_source})
+                            "cached": False, "columns": hdr,
+                            "report_source": report_source,
+                            "report_built_at": report_built_at,
+                            "partial": bool(warnings), "warnings": warnings,
+                            "snapshot_kept_larger": _kept,
+                            "synced_at": _t.time()})
         except Exception as e:
             # Print the FULL traceback to the terminal so the real cause is always
             # visible (the JSON only carries a truncated string). Without this the
@@ -560,6 +628,21 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             print("[live/catalog] EXCEPTION during report flow "
                   f"(account={aid} marketplace={mkt}):")
             _tb.print_exc()
+            # LAST RESORT: Amazon failed, but we may still hold a saved catalogue on
+            # disk from a previous successful sync. Showing it (clearly labelled with
+            # its age) beats showing nothing -- an Amazon outage or a slow report must
+            # not look like "your listings disappeared".
+            _rec = _snap.get(CONFIG_PATH, aid, mkt)
+            if _rec and (_rec.get("items") or []):
+                _age = _snap.age_seconds(_rec)
+                return jsonify({"ok": True, "items": _rec.get("items") or [],
+                                "count": _rec.get("count", 0), "cached": True,
+                                "from_snapshot": True, "stale": True,
+                                "synced_at": _rec.get("ts"), "age_seconds": _age,
+                                "partial": _rec.get("partial", False),
+                                "warnings": (_rec.get("warnings") or []) + [
+                                    f"Amazon could not be reached ({type(e).__name__}); "
+                                    f"showing the last saved sync."]})
             return jsonify({"ok": False,
                             "error": f"report flow failed: {type(e).__name__}: {str(e)[:220]}"}), 500
 

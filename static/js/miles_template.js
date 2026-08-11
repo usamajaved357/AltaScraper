@@ -815,7 +815,17 @@ async function loadLiveCatalog(force){
     const j=await resp.json();
     clearTimeout(tmo);
     if(!j.ok){ fail("Could not load live catalog: "+(j.error||"unknown error")); return; }
-    LIVE_STORE[reqAccount+"::"+reqMkt]={items:(j.items||[]), ts:Date.now()};
+    // Keep the server's own timestamp when the data came from the saved snapshot,
+    // so the label reads "synced 3h ago" instead of pretending it just synced.
+    LIVE_STORE[reqAccount+"::"+reqMkt]={
+      items:(j.items||[]), ts:Date.now(),
+      syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
+      fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+      partial: !!j.partial, warnings: (j.warnings||[]),
+      reportSource: j.report_source||"", reportBuiltAt: j.report_built_at||""};
+    // A short list caused by a failed half of the fetch must SAY so. Silence here
+    // is what made 64 listings look like 16 with nothing to explain it.
+    if((j.warnings||[]).length){ toast(j.warnings.join(" ")); }
     if(stillHere()){
       LIVE_ITEMS=j.items||[];
       // If a Preview/Submit started streaming while this fetch was in flight, cache the
@@ -837,9 +847,21 @@ async function loadLiveCatalog(force){
 function updateSyncLabel(){
   const el=document.getElementById("synclabel"); if(!el) return;
   const key=_liveKey(); const c=LIVE_STORE[key];
-  if(c){ const mins=Math.round((Date.now()-c.ts)/60000);
-    el.textContent = mins<1?"synced just now":("synced "+mins+"m ago"); }
-  else el.textContent="";
+  if(!c){ el.textContent=""; return; }
+  // Age is measured from when AMAZON was actually read (syncedAt), not from when
+  // this browser tab happened to receive it -- a snapshot loaded after a restart
+  // is hours old and must not read "synced just now".
+  const when = c.syncedAt || c.ts;
+  const mins = Math.round((Date.now()-when)/60000);
+  let txt = mins<1 ? "synced just now"
+          : mins<60 ? ("synced "+mins+"m ago")
+          : ("synced "+Math.round(mins/60)+"h ago");
+  if(c.fromSnapshot) txt += " (saved copy)";
+  if(c.stale)   txt += " — Amazon unreachable";
+  if(c.partial) txt += " — partial";
+  el.textContent = txt;
+  el.title = (c.warnings&&c.warnings.length) ? c.warnings.join("\n")
+           : (c.reportBuiltAt ? ("Amazon report built "+c.reportBuiltAt) : "");
 }
 function startAutoSync(){
   // SP-API is free (no AI credits), so a periodic background sync is fine.
@@ -959,6 +981,10 @@ async function loadAllMarketplaces(force){
   }
   const reqAccount=CUR_ACCOUNT.id;
   let merged=[]; let done=0;
+  // A marketplace that fails used to contribute zero listings SILENTLY, so an
+  // 11-marketplace account could show a fraction of its catalogue and look simply
+  // "smaller". Failures are now collected and reported.
+  const failed=[];
   for(const mm of mkts){
     if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__")) return; // user moved on
     if(grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching all marketplaces… '+(done)+'/'+mkts.length+' ('+esc(mm)+')<div class="cc" style="margin-top:8px">Each marketplace is a separate Amazon report; this can take a few minutes the first time.</div></div>';
@@ -966,14 +992,35 @@ async function loadAllMarketplaces(force){
       const j=await (await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:reqAccount,marketplace:mm,force:!!force})})).json();
       if(j.ok){
-        LIVE_STORE[reqAccount+"::"+mm]={items:(j.items||[]), ts:Date.now()};
+        LIVE_STORE[reqAccount+"::"+mm]={
+          items:(j.items||[]), ts:Date.now(),
+          syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
+          fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+          partial: !!j.partial, warnings:(j.warnings||[])};
         merged=merged.concat((j.items||[]).map(it=>({...it,_mkt:mm})));
+        if((j.warnings||[]).length) failed.push(mm+" (partial)");
+      } else {
+        failed.push(mm+(j.error?(" — "+String(j.error).slice(0,60)):""));
+        // Never lose a marketplace we already had: fall back to its last copy.
+        const prev=LIVE_STORE[reqAccount+"::"+mm];
+        if(prev && (prev.items||[]).length){
+          merged=merged.concat((prev.items||[]).map(it=>({...it,_mkt:mm})));
+        }
       }
-    }catch(e){}
+    }catch(e){
+      failed.push(mm+" — "+String((e&&e.message)||e).slice(0,60));
+      const prev=LIVE_STORE[reqAccount+"::"+mm];
+      if(prev && (prev.items||[]).length){
+        merged=merged.concat((prev.items||[]).map(it=>({...it,_mkt:mm})));
+      }
+    }
     done++;
   }
   if(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__"){
     LIVE_ITEMS=merged; render(); updateSyncLabel(); startAutoSync();
+    if(failed.length){
+      toast((mkts.length-failed.length)+" of "+mkts.length+" marketplaces loaded. Failed: "+failed.join("; "));
+    }
   }
 }
 function liveTile(it){
