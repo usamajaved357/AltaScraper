@@ -3001,14 +3001,31 @@ def _miles_save_history(done: set):
 
 
 
-if __name__ == "__main__":
-    try:
-        with open(".app_port", "w") as _pf:
-            _pf.write(str(PORT))
-    except Exception:
-        pass
-    print(f"\n  Listing Review dashboard -> http://{HOST}:{PORT}")
-    print("  (Ctrl+C to stop)\n")
+def build_app(backend="sheets"):
+    """Wire every route onto the app and return it.
+
+    WHY THIS IS A FUNCTION AND NOT AN `if __name__` BLOCK
+    All of this registration used to sit inside `if __name__ == "__main__":`,
+    which meant importing dashboard.py gave you an app with no routes on it. The
+    SQLite beta needs the same wiring against a different data source, and the
+    only way to reuse it was to copy the whole file -- roughly 2,700 lines that
+    would drift apart from the first fix onward.
+
+    Moving it into a function is a MOVE, not a rewrite: the body below is
+    unchanged, only its wrapper. `dashboard_beta.py` now calls
+    build_app(backend="db") instead of duplicating any of it, so a fix made here
+    applies to both.
+
+    backend="sheets" -> Google Sheets, exactly as before (the default; the live
+                        app's behaviour is untouched)
+    backend="db"     -> SQLite, by swapping the two functions every route module
+                        is already given by injection
+    """
+    global _ws, _records
+    if backend == "db":
+        from data import backend as _data_backend
+        _ws, _records = _data_backend.make(_state, config_path=CONFIG_PATH)
+
     _load_cogs_overrides()
     dashboard_brand_patch.register(app, _cfg, _ws, _records, _run_lock,
                                    _running, _ANSI, SCRIPT, sys, _state, CONFIG_PATH)
@@ -3169,4 +3186,16 @@ if __name__ == "__main__":
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes
     _users_routes.register(app, CONFIG_PATH=CONFIG_PATH)
+    return app
+
+
+if __name__ == "__main__":
+    try:
+        with open(".app_port", "w") as _pf:
+            _pf.write(str(PORT))
+    except Exception:
+        pass
+    print(f"\n  Listing Review dashboard -> http://{HOST}:{PORT}")
+    print("  (Ctrl+C to stop)\n")
+    build_app()
     app.run(host=HOST, port=PORT, threaded=True)
