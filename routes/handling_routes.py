@@ -32,13 +32,19 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
             worksheets = book.worksheets()
         except Exception:
             return updated, tabs_touched, had_col
+        # This one matches a SET of SKUs in a single pass per tab, so it does NOT
+        # use repo.locate() -- that answers "where is ONE sku?" and calling it per
+        # SKU would turn one column read into N, against a quota'd API. What it
+        # shares with the rest of the app is the part that was actually diverging:
+        # how a header row is read (read_headers), how a column is found from
+        # several acceptable names (find_col), and how a SKU is compared (norm).
+        from listing import repo as _repo
         for ws in worksheets:
-            try:
-                headers = [str(h).strip() for h in ws.row_values(1)]
-            except Exception:
+            headers = _repo.read_headers(ws)
+            if not headers:
                 continue
-            hcol = next((headers.index(n) + 1 for n in _HANDLING_COLS if n in headers), None)
-            kcol = next((headers.index(n) + 1 for n in _SKU_COLS if n in headers), None)
+            hcol = _repo.find_col(headers, _HANDLING_COLS)
+            kcol = _repo.find_col(headers, _SKU_COLS)
             if not hcol or not kcol:
                 continue                                  # tab has no handling column -> skip
             had_col = True
@@ -48,7 +54,7 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
                 continue
             data = []
             for idx, v in enumerate(col_vals, start=1):
-                s = str(v).strip()
+                s = _repo.norm(v)
                 if s and s in skus_set:
                     data.append({"range": rowcol_to_a1(idx, hcol), "values": [[days]]})
                     updated.add(s)

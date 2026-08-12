@@ -2856,19 +2856,14 @@ _APLUS_MODULES = {
 
 def _write_attrs_for_sku(ws, sku, attrs):
     """Overwrite the Attributes JSON cell for a given SKU with the provided dict."""
-    headers = ws.row_values(1)
-    if "Attributes JSON" not in headers:
+    from listing import repo as _repo          # the ONE SKU->row lookup (Rule 12)
+    found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+    if "Attributes JSON" not in found.headers:
         raise RuntimeError("no attributes column")
-    kcol = headers.index(SKU_HEADER) + 1
-    trow = None
-    for i, v in enumerate(ws.col_values(kcol), start=1):
-        if str(v).strip() == str(sku).strip():
-            trow = i
-            break
-    if not trow:
-        raise RuntimeError("sku not found")
-    acol = headers.index("Attributes JSON") + 1
-    ws.update_cell(trow, acol, json.dumps(attrs, ensure_ascii=False))
+    if not found.ok:
+        raise RuntimeError(found.error or "sku not found")
+    ws.update_cell(found.row, found.col("Attributes JSON"),
+                   json.dumps(attrs, ensure_ascii=False))
     _bust_records_cache()
 
 

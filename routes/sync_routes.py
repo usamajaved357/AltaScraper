@@ -171,14 +171,15 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache):
                                      "overwrite freshly regenerated copy. Confirm force=true only if "
                                      "you intend to discard the regenerated copy."}), 409
         ws = _ws()
-        headers = ws.row_values(1)
-        try:
-            kcol = headers.index("SKU") + 1
-        except ValueError:
-            return jsonify({"ok": False, "error": "no SKU column"}), 400
-        trow = next((i for i, v in enumerate(ws.col_values(kcol), start=1) if str(v).strip() == sku), None)
-        if not trow:
-            return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
+        # Was a hardcoded "SKU" literal here rather than the shared header name,
+        # so a change to that constant would have broken sync alone, quietly.
+        from listing import repo as _repo       # the ONE SKU->row lookup (Rule 12)
+        found = _repo.locate(ws, sku)
+        if found.error == "no SKU column":
+            return jsonify({"ok": False, "error": found.error}), 400
+        if not found.ok:
+            return jsonify({"ok": False, "error": found.error}), 404
+        trow, headers = found.row, found.headers
         applied = []
         from gspread.utils import rowcol_to_a1
         data = []

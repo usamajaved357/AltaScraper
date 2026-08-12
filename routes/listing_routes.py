@@ -11,6 +11,7 @@ import subprocess
 import sys
 
 from routes.stream_pump import pump_lines, spawn
+from listing import repo as _repo       # the ONE SKU->row lookup (Rule 12)
 from listing import run_status          # honest run state, independent of the log pipe
 
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
@@ -193,18 +194,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
         try:
             ws = _ws()
-            headers = ws.row_values(1)
-            if "Attributes JSON" not in headers:
+            found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+            if "Attributes JSON" not in found.headers:
                 return jsonify({"ok": False, "error": "no attributes column"}), 400
-            kcol = headers.index(SKU_HEADER) + 1
-            trow = None
-            for i, v in enumerate(ws.col_values(kcol), start=1):
-                if str(v).strip() == sku:
-                    trow = i
-                    break
-            if not trow:
-                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
-            acol = headers.index("Attributes JSON") + 1
+            if not found.ok:
+                return jsonify({"ok": False, "error": found.error}), 404
+            trow = found.row
+            acol = found.col("Attributes JSON")
             try:
                 obj = json.loads(ws.cell(trow, acol).value or "{}")
             except Exception:
@@ -762,18 +758,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
         try:
-            ws      = _ws()
-            headers = ws.row_values(1)
-            scol    = headers.index(STATUS_HEADER) + 1
-            kcol    = headers.index(SKU_HEADER) + 1
-            target  = None
-            for i, v in enumerate(ws.col_values(kcol), start=1):
-                if str(v).strip() == sku:
-                    target = i
-                    break
-            if not target:
-                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
-            ws.update_cell(target, scol, status)
+            ws    = _ws()
+            found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+            if not found.ok:
+                return jsonify({"ok": False, "error": found.error}), 404
+            scol = found.col(STATUS_HEADER)
+            if not scol:
+                return jsonify({"ok": False, "error": "no Status column"}), 400
+            ws.update_cell(found.row, scol, status)
             _bust_records_cache()
             return jsonify({"ok": True})
         except Exception as e:
@@ -839,7 +831,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if not changes:
                 return jsonify({"ok": True, "updated": 0, "note": "nothing to change"})
 
-            headers = ws.row_values(1)
+            # Bulk: one pass building SKU -> row for MANY skus, so it shares the
+            # repo's rules (read_headers / find_col / norm) rather than calling
+            # locate() per row, which would be one column read each.
+            headers = _repo.read_headers(ws)
             col = {h: headers.index(h) + 1 for h in
                    ("SKU", "Status", "Notes", "Compliance Risk", "IP Risk")
                    if h in headers}
@@ -847,9 +842,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 return jsonify({"ok": False, "error": "SKU column not found"}), 500
 
             # Map SKU -> sheet row number once, rather than searching per row.
+            # Both sides go through repo.norm: the sheet value used to be stripped
+            # while the lookup key below was not, so a SKU carrying a stray space
+            # silently matched nothing and its row was skipped without a word.
             sku_rows = {}
             for i, v in enumerate(ws.col_values(col["SKU"]), start=1):
-                s = str(v).strip()
+                s = _repo.norm(v)
                 if s and s not in sku_rows:
                     sku_rows[s] = i
 
@@ -862,7 +860,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
             payload, updated = [], 0
             for ch in changes:
-                rn = sku_rows.get(ch["sku"])
+                rn = sku_rows.get(_repo.norm(ch["sku"]))
                 if not rn:
                     continue
                 for key, header in (("status", "Status"), ("notes", "Notes"),
@@ -923,16 +921,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         if not sku or not key:
             return jsonify({"ok": False, "error": "missing sku/key"}), 400
         try:
-            ws      = _ws()
-            headers = ws.row_values(1)
-            kcol    = headers.index(SKU_HEADER) + 1
-            trow    = None
-            for i, v in enumerate(ws.col_values(kcol), start=1):
-                if str(v).strip() == sku:
-                    trow = i
-                    break
-            if not trow:
-                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
+            ws    = _ws()
+            found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+            if not found.ok:
+                return jsonify({"ok": False, "error": found.error}), 404
+            trow, headers = found.row, found.headers
             if target == "col":
                 if key not in _EDITABLE_COLS or key not in headers:
                     return jsonify({"ok": False, "error": "column not editable"}), 400
@@ -992,13 +985,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             ws     = _ws()
             target = None
             if sku:                                   # prefer matching by SKU (stable)
-                headers = ws.row_values(1)
-                if SKU_HEADER in headers:
-                    kcol = headers.index(SKU_HEADER) + 1
-                    for i, v in enumerate(ws.col_values(kcol), start=1):
-                        if str(v).strip() == sku:
-                            target = i
-                            break
+                # A miss stays silent here on purpose: this route falls back to the
+                # row number below, which is how a blank row with no SKU is deleted.
+                found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+                if found.ok:
+                    target = found.row
             if target is None and row:                # fall back to row number (blank rows)
                 try:
                     target = int(row)
