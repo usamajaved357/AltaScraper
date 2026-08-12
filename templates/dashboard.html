@@ -52,9 +52,9 @@
     <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-table"></i> Account &amp; sheets</div>
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
-    <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
-    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
   </div>
 
@@ -76,7 +76,7 @@
         </div>
         <div id="mktswitch" class="mktswitch"></div>
         <select id="statussel" onchange="setFilterVal(this.value)" title="Filter by status"
-          style="background:#161b24;color:#c8d3e6;border:1px solid #2f3a4d;border-radius:8px;padding:5px 10px;font-size:13px">
+          style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px">
           <option value="all">All statuses</option>
           <option value="review">Needs review</option>
           <option value="holds">Holds</option>
@@ -99,14 +99,14 @@
           <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
           <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
         </span>
-        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#2563eb;color:#93c5fd"><i class="ti ti-wand"></i> Auto-fix</button>
+        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
-        <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
-        <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
-        <button onclick="bulkDelete()" title="Delete all selected listings" style="color:#ff8a8a;border-color:#5c2424"><i class="ti ti-trash"></i> Delete</button>
-        <button onclick="rescanFlags()" title="Re-judge compliance and IP flags on already-generated rows using the current rules. Costs nothing and never touches your copy — only Status, Notes, Compliance Risk and IP Risk, and only on rows that are NEEDS_REVIEW or held." style="border-color:#7fd1a0;color:#7fd1a0"><i class="ti ti-shield-check"></i> Re-check flags</button>
+        <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:var(--accent)"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
+        <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:var(--accent)"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
+        <button onclick="bulkDelete()" title="Delete all selected listings" style="color:var(--red);border-color:var(--red-line)"><i class="ti ti-trash"></i> Delete</button>
+        <button onclick="rescanFlags()" title="Re-judge compliance and IP flags on already-generated rows using the current rules. Costs nothing and never touches your copy — only Status, Notes, Compliance Risk and IP Risk, and only on rows that are NEEDS_REVIEW or held." style="border-color:var(--ok);color:var(--ok)"><i class="ti ti-shield-check"></i> Re-check flags</button>
         <button onclick="selectAllVisible(true)">Select all</button>
         <button onclick="clearSelection()">Clear</button>
       </div>
@@ -493,7 +493,7 @@
         <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
       </div>
 
-      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:rgba(76,141,255,.08);font-size:13px"></div>
+      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:var(--accent-bg);font-size:13px"></div>
 
       <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
 

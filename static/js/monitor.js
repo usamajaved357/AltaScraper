@@ -14,11 +14,11 @@ async function loadMonitorOverview(){
   if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading…</div>';
   try{
     const j = await (await fetch("/monitor/overview")).json();
-    if(!j || !j.ok){ if(host) host.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    if(!j || !j.ok){ if(host) host.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     renderMonitorMarketPicker();
     renderMonitorOverview(j.rows||[], j.summary||{}, j.unknowns||[]);
-  }catch(e){ if(host) host.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ if(host) host.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
 }
 
 function monUnknownsSection(unknowns, s){
@@ -43,7 +43,7 @@ function monUnknownsSection(unknowns, s){
   }).join("");
   const hr = s.high_risk||0;
   return `<div class="monunk">
-    <div class="monunk-h"><i class="ti ti-alert-triangle"></i> Third parties on your listings — <b>${unknowns.length}</b>${hr?` · <span style="color:#e0696b">${hr} HIGH RISK</span>`:''}${na?` · <span style="color:#e3b768">${na} new account${na!==1?'s':''}</span>`:''}</div>
+    <div class="monunk-h"><i class="ti ti-alert-triangle"></i> Third parties on your listings — <b>${unknowns.length}</b>${hr?` · <span style="color:var(--red)">${hr} HIGH RISK</span>`:''}${na?` · <span style="color:var(--warn)">${na} new account${na!==1?'s':''}</span>`:''}</div>
     <div style="overflow-x:auto"><table class="montable"><thead><tr><th>ASIN</th><th>Label</th><th>Market</th><th>Seller</th><th>BB</th><th>Price</th><th>Feedback</th><th>First seen</th><th></th></tr></thead><tbody>${body}</tbody></table></div>
   </div>`;
 }
@@ -167,7 +167,7 @@ function monAsinBlock(r){
   const mkts = (r.per_marketplace||[]).map(m=>{
     const mk = `<span class="monchip">${esc(m.marketplace)}</span>`;
     if(m.skipped) return `<div class="monmkt-row skipped">${mk} <span class="cc">skipped — not listed here${m.last_checked?(' (checked '+esc(m.last_checked)+')'):''}</span></div>`;
-    if(m.error) return `<div class="monmkt-row">${mk} <span class="cc" style="color:#e3b768">check failed — ${esc(m.error)}</span></div>`;
+    if(m.error) return `<div class="monmkt-row">${mk} <span class="cc" style="color:var(--warn)">check failed — ${esc(m.error)}</span></div>`;
     if(!m.checked) return `<div class="monmkt-row">${mk} <span class="cc">not checked yet</span></div>`;
     const n = m.seller_count||0;
     const chips = (m.sellers||[]).map(monSellerChip).join(" ");
@@ -254,8 +254,8 @@ function renderMonStatus(st){
   if(st.skipped) bits.push(st.skipped+" market"+(st.skipped!==1?"s":"")+" skipped");
   if(st.next_run_ts){ const m=Math.max(0,Math.round((st.next_run_ts*1000-Date.now())/60000)); bits.push("next in "+m+"m"); }
   let html = bits.join(" · ");
-  if(st.last_run_ok===false) html += ' <span style="color:#e3b768">(some checks failed — see terminal)</span>';
-  if(st.overload) html += ' <span style="color:#e0696b">⚠ cycle nearly exceeds the hour — reduce scope (drop dead markets / inactive ASINs)</span>';
+  if(st.last_run_ok===false) html += ' <span style="color:var(--warn)">(some checks failed — see terminal)</span>';
+  if(st.overload) html += ' <span style="color:var(--red)">⚠ cycle nearly exceeds the hour — reduce scope (drop dead markets / inactive ASINs)</span>';
   el.innerHTML = html;
 }
 
@@ -337,7 +337,7 @@ async function openMonHistory(asin, label){
   try{
     const j=await (await fetch("/monitor/history?asin="+encodeURIComponent(asin))).json();
     const body=document.getElementById("monhist_body"); if(!body) return;
-    if(!j || !j.ok){ body.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">'+esc((j&&j.error)||"could not load")+'</div>'; return; }
+    if(!j || !j.ok){ body.innerHTML='<div class="cc" style="color:var(--red);padding:14px">'+esc((j&&j.error)||"could not load")+'</div>'; return; }
     MON_NAMES = j.names || {};
     const hist = j.history || {};
     const keys = Object.keys(hist).sort();
@@ -363,7 +363,7 @@ async function openMonHistory(asin, label){
           <thead><tr><th>When</th><th>Sellers</th><th>Lowest</th><th>Buy Box</th><th>Who was present</th></tr></thead>
           <tbody>${rows}</tbody></table></div></div>`;
     }).join("");
-  }catch(e){ const body=document.getElementById("monhist_body"); if(body) body.innerHTML='<div class="cc" style="color:#e0696b;padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ const body=document.getElementById("monhist_body"); if(body) body.innerHTML='<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
 }
 function _monSnapSellers(s, mkt){
   const ids = (s.sellers||[]);
@@ -392,12 +392,12 @@ async function loadMonitorList(){
   if(host) host.innerHTML = '<div class="cc" style="padding:14px;opacity:.7"><span class="genspin"></span> Loading tracked ASINs…</div>';
   try{
     const j = await (await fetch("/monitor/list")).json();
-    if(!j || !j.ok){ if(host) host.innerHTML = '<div class="cc" style="color:#e0696b;padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
+    if(!j || !j.ok){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Could not load: '+esc((j&&j.error)||"unknown")+'</div>'; return; }
     MON_EU = j.eu_marketplaces || MON_EU;
     MON_LIST = j.asins || [];
     renderMonitorMarketPicker();
     renderMonitorList();
-  }catch(e){ if(host) host.innerHTML = '<div class="cc" style="color:#e0696b;padding:14px">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
 }
 
 // The EU marketplace checkboxes on the add form (default: all ticked).
@@ -501,7 +501,7 @@ function showBulkPreview(j){
   window._BULK_FILTER = "active";                 // default = Active only
   const invalid = j.invalid||[];
   const invalidHtml = invalid.length
-    ? `<details style="margin-top:8px"><summary class="cc" style="color:#e3b768;cursor:pointer">${invalid.length} invalid row(s) — skipped</summary>
+    ? `<details style="margin-top:8px"><summary class="cc" style="color:var(--warn);cursor:pointer">${invalid.length} invalid row(s) — skipped</summary>
         <div class="cc" style="max-height:150px;overflow:auto;margin-top:6px;line-height:1.6">${invalid.slice(0,60).map(x=>`row ${x.row}: “${esc(String(x.value))}” — ${esc(x.reason)}`).join("<br>")}</div></details>`
     : "";
   const sc = window._BULK_STATUS_COUNTS;
@@ -515,7 +515,7 @@ function showBulkPreview(j){
   dlg.innerHTML=`<div class="modal" style="max-width:800px;position:relative">
     <button class="x" onclick="closeBulk()">×</button>
     <h3><i class="ti ti-upload"></i> Import ASINs</h3>
-    <div class="cc" style="margin:2px 0 8px"><b style="color:#e8eaed">Found ${j.found||0}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:#e3b768">${invalid.length}</b> invalid`:''}.</div>
+    <div class="cc" style="margin:2px 0 8px"><b style="color:#e8eaed">Found ${j.found||0}</b> ASIN(s)${scText}${invalid.length?`, <b style="color:var(--warn)">${invalid.length}</b> invalid`:''}.</div>
     ${filterRow}
     ${invalidHtml}
     <div id="bulk_table" style="max-height:330px;overflow:auto;margin-top:10px"></div>

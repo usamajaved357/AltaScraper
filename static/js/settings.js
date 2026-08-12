@@ -150,8 +150,8 @@ async function openAISettings(){
   let eb; try{ eb=await (await fetch("/settings/ebay")).json(); }catch(e){ eb={ok:false}; }
   const ebSafe=(eb&&eb.ok)?eb:{ebay_app_id:"",has_cert:false,cert_tail:""};
   const keyNote = s.has_key
-    ? (s.discover_ok ? `<span class="cc" style="color:#7fd99a">\u2713 OpenRouter connected \u2014 ${ (s.text_models||[]).length } text models, ${ (s.image_models||[]).length } image models available</span>`
-                     : `<span class="cc" style="color:#e3b768">Key present, but model discovery failed: ${esc(s.discover_error||'')} (showing fallback list)</span>`)
+    ? (s.discover_ok ? `<span class="cc" style="color:var(--ok)">\u2713 OpenRouter connected \u2014 ${ (s.text_models||[]).length } text models, ${ (s.image_models||[]).length } image models available</span>`
+                     : `<span class="cc" style="color:var(--warn)">Key present, but model discovery failed: ${esc(s.discover_error||'')} (showing fallback list)</span>`)
     : `<div class="reqnote">No <code>openrouter_api_key</code> in your config.json. Get one at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a> and add it locally, then click Refresh.</div>`;
   const opt=(models,chosen)=>models.map(mm=>`<option value="${esc(mm.id)}"${mm.id===chosen?" selected":""}>${esc(mm.name||mm.id)}</option>`).join("");
   body.innerHTML=`
@@ -208,10 +208,10 @@ async function saveAdminSettings(){
       window.LOGIC_VISIBLE = !!j.show_logic && !j.preview_as_user;
       AISET=null;
       if(typeof refreshStaticHowPanels==="function") refreshStaticHowPanels();
-      if(st) st.innerHTML='<span style="color:#7fd99a">\u2713 saved — '+(window.LOGIC_VISIBLE?'logic panels visible':'logic panels hidden')+'</span>';
+      if(st) st.innerHTML='<span style="color:var(--ok)">\u2713 saved — '+(window.LOGIC_VISIBLE?'logic panels visible':'logic panels hidden')+'</span>';
       toast(window.LOGIC_VISIBLE?"Logic panels are now visible.":"Logic panels are now hidden (user view).");
-    } else { if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(String(e))+'</span>'; }
+    } else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
 }
 function closeAISettings(){ document.getElementById("aimodal").classList.remove("open"); }
 async function saveAISettings(){
@@ -233,9 +233,9 @@ async function saveEbaySettings(){
   try{
     const j=await (await fetch("/settings/ebay",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({ebay_app_id:app, ebay_cert_id:cert})})).json();
-    if(j.ok){ if(st) st.innerHTML='<span style="color:#7fd99a">✓ saved</span>'; toast("eBay credentials saved"); }
-    else { if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(String(e))+'</span>'; }
+    if(j.ok){ if(st) st.innerHTML='<span style="color:var(--ok)">✓ saved</span>'; toast("eBay credentials saved"); }
+    else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
 }
 
 // ---- GLOBAL generation status bar + full-visibility panel (works everywhere) ----
@@ -296,12 +296,12 @@ async function refreshGenPanel(){
   if(head){
     if(st.status==="running"){
       head.innerHTML='<span class="genspin"></span> Generating '+st.done+' of '+st.total+
-        ' — <span style="color:#7fd99a">'+okN+' done</span>'+(failN?(' · <span style="color:#e0696b">'+failN+' failed</span>'):'');
+        ' — <span style="color:var(--ok)">'+okN+' done</span>'+(failN?(' · <span style="color:var(--red)">'+failN+' failed</span>'):'');
     } else if(st.status==="error" && st.error==="stopped by user"){
-      head.innerHTML='<span style="color:#e3b768">■ Stopped. '+okN+'/'+st.total+' finished before stopping.</span>';
+      head.innerHTML='<span style="color:var(--warn)">■ Stopped. '+okN+'/'+st.total+' finished before stopping.</span>';
     } else {
-      head.innerHTML='<span style="color:#7fd99a">✓ Complete — '+okN+'/'+st.total+' generated'+
-        (failN?(' · <span style="color:#e0696b">'+failN+' failed</span>'):'')+
+      head.innerHTML='<span style="color:var(--ok)">✓ Complete — '+okN+'/'+st.total+' generated'+
+        (failN?(' · <span style="color:var(--red)">'+failN+' failed</span>'):'')+
         '. Saved to each product\u2019s library.</span>';
     }
   }
@@ -315,13 +315,13 @@ async function refreshGenPanel(){
       let statusHtml, thumb="";
       if(!r){
         statusHtml = (i===results.length)
-          ? '<span style="color:#9cc1ff"><span class="genspin"></span> generating…</span>'
+          ? '<span style="color:var(--accent2)"><span class="genspin"></span> generating…</span>'
           : '<span class="cc">queued</span>';
       } else if(r.ok && r.data_url){
-        statusHtml='<span style="color:#7fd99a">✓ done'+(r.saved_url?' · saved':'')+'</span>';
+        statusHtml='<span style="color:var(--ok)">✓ done'+(r.saved_url?' · saved':'')+'</span>';
         thumb='<img src="'+r.data_url+'" style="width:100%;border-radius:7px;margin-bottom:5px">';
       } else {
-        statusHtml='<span style="color:#e0696b" title="'+esc(r.error||"failed")+'">✗ '+esc((r.error||"failed").slice(0,60))+'</span>';
+        statusHtml='<span style="color:var(--red)" title="'+esc(r.error||"failed")+'">✗ '+esc((r.error||"failed").slice(0,60))+'</span>';
       }
       return '<div style="border:1px solid var(--line);border-radius:9px;padding:8px;background:var(--panel2)">'
         + thumb

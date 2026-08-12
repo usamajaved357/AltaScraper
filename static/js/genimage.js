@@ -96,7 +96,7 @@ async function studioLoadModels(){
 function studioModelHint(){
   const isel=document.getElementById("studio_image_model");
   const ih=document.getElementById("studio_image_hint");
-  if(isel&&ih){ const note=_imgModelNote(isel.value); ih.innerHTML=note?('<span style="color:#7fd99a">'+esc(note)+'</span>'):'<span class="cc">Pick the image model. Models that support reference images keep your product faithful.</span>'; }
+  if(isel&&ih){ const note=_imgModelNote(isel.value); ih.innerHTML=note?('<span style="color:var(--ok)">'+esc(note)+'</span>'):'<span class="cc">Pick the image model. Models that support reference images keep your product faithful.</span>'; }
 }
 function renderStudio(){
   const body=document.getElementById("studiobody");
@@ -225,7 +225,7 @@ function refPickerHTML(){
     const manual = STUDIO.manualRef || "";
     return `
       <div class="refpicker">
-        <div class="cc" style="margin-bottom:6px;color:#e3b768">No source image was found for this product automatically. Add one below so the AI can keep your real product (otherwise it generates from the text description only).</div>
+        <div class="cc" style="margin-bottom:6px;color:var(--warn)">No source image was found for this product automatically. Add one below so the AI can keep your real product (otherwise it generates from the text description only).</div>
         <div class="secrow" style="gap:8px;align-items:center;flex-wrap:wrap">
           <button class="ib" onclick="document.getElementById('manual_ref_file').click()"><i class="ti ti-upload"></i> Upload product image</button>
           <span class="cc" style="font-size:11px">or paste an image URL:</span>
@@ -647,8 +647,8 @@ async function studioRunBackground(kind, jobs, total){
   try{
     resp=await (await fetch("/genimage/start_batch",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({kind:kind, jobs:jobs})})).json();
-  }catch(e){ prog.innerHTML='<span style="color:#e0696b">Could not start: '+esc(String(e))+'</span>'; return; }
-  if(!resp.ok){ prog.innerHTML='<span style="color:#e0696b">'+esc(resp.error||"failed to start")+'</span>'; return; }
+  }catch(e){ prog.innerHTML='<span style="color:var(--red)">Could not start: '+esc(String(e))+'</span>'; return; }
+  if(!resp.ok){ prog.innerHTML='<span style="color:var(--red)">'+esc(resp.error||"failed to start")+'</span>'; return; }
   const jobId=resp.job;
   STUDIO.currentJob=jobId;
   let shown=0;
@@ -663,8 +663,8 @@ async function studioRunBackground(kind, jobs, total){
       if(st.status!=="running"){
         clearInterval(STUDIO_POLL); STUDIO_POLL=null;
         const okN=st.results.filter(r=>r.ok).length;
-        prog.innerHTML='<span style="color:#7fd99a">✓ Done — '+okN+'/'+st.total+' succeeded. <b>All generated images were saved to this account\u2019s media library</b> (Image refs) on the app\u2019s own storage \u2014 safe across redeploys, no Google Drive needed.</span>'
-          + (st.error?(' <span style="color:#e0696b">'+esc(st.error)+'</span>'):'');
+        prog.innerHTML='<span style="color:var(--ok)">✓ Done — '+okN+'/'+st.total+' succeeded. <b>All generated images were saved to this account\u2019s media library</b> (Image refs) on the app\u2019s own storage \u2014 safe across redeploys, no Google Drive needed.</span>'
+          + (st.error?(' <span style="color:var(--red)">'+esc(st.error)+'</span>'):'');
       } else {
         prog.innerHTML='<span class="genspin"></span> Generating '+st.done+'/'+st.total+' in background… <span class="cc">each finished image is auto-saved to its media library; safe to close or keep working.</span>';
       }
@@ -683,8 +683,8 @@ async function saveStudioInstructions(){
     const j=await (await fetch("/genimage/instructions",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({instructions:txt, scope:"account", id:(CUR_ACCOUNT&&CUR_ACCOUNT.id)||""})})).json();
     window.IMG_INSTRUCTIONS = j.instructions||"";
-    if(st) st.innerHTML='<span style="color:#7fd99a">✓ saved — applied to every image</span>';
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">could not save</span>'; }
+    if(st) st.innerHTML='<span style="color:var(--ok)">✓ saved — applied to every image</span>';
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">could not save</span>'; }
 }
 async function loadStudioInstructions(){
   try{
@@ -705,7 +705,7 @@ async function studioStrategize(kind, autoGen){
   }
   const sku=STUDIO.skus[0];
   const it=_itemForSku(sku); const ref=_refImgForItem(it);
-  if(!ref){ if(st) st.innerHTML='<span style="color:#e0696b">first product has no reference image</span>'; return; }
+  if(!ref){ if(st) st.innerHTML='<span style="color:var(--red)">first product has no reference image</span>'; return; }
   if(st) st.innerHTML='<span class="genspin"></span> The strategist is thinking like a customer & conversion expert…';
   if(box) box.innerHTML="";
   // How many ideas to ask for depends on the section:
@@ -729,11 +729,11 @@ async function studioStrategize(kind, autoGen){
     const _customInstr=(_instrEl && _instrEl.value || "").trim();
     const j=await (await fetch("/genimage/strategize",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({product_image:ref, product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]), title:(it&&it.title)||"", kind:kind, n:_n, text_provider:(window.AI_TEXT||null), custom_instructions:_customInstr})})).json();
-    if(!j.ok){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; return; }
+    if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; return; }
     const concepts=j.concepts||[];
     if(!concepts.length){ if(st) st.innerHTML='<span class="cc">No concepts returned — try again.</span>'; return; }
     STUDIO.concepts=concepts; STUDIO.conceptKind=kind;
-    if(st) st.innerHTML='<span style="color:#7fd99a">✓ '+concepts.length+' ideas'+(autoGen?' — generating all now…':' — pick to generate')+'</span>';
+    if(st) st.innerHTML='<span style="color:var(--ok)">✓ '+concepts.length+' ideas'+(autoGen?' — generating all now…':' — pick to generate')+'</span>';
     if(box) box.innerHTML=concepts.map((c,i)=>`
       <div class="conceptcard">
         <div style="flex:1">
@@ -748,7 +748,7 @@ async function studioStrategize(kind, autoGen){
     // AUTO-ACCEPT: if the user asked to auto-generate, skip the manual pick and
     // generate every suggested concept right away (across all selected products).
     if(autoGen){ studioGenAllConcepts(true); }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">Error: '+esc(String(e))+'</span>'; }
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">Error: '+esc(String(e))+'</span>'; }
 }
 function _conceptJobs(concepts){
   const kind=STUDIO.conceptKind||"main";

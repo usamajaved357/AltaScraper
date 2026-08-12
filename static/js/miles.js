@@ -78,9 +78,9 @@ function milesRun(reattach){
     if(!log) return;
     const div=document.createElement("div");
     if(e.data.startsWith("[error]")) div.style.color="#ff8585";
-    else if(e.data.startsWith("[done]")) div.style.color="#7ee08a";
-    else if(e.data.startsWith("[start]")) div.style.color="#9cc1ff";
-    else if(e.data.indexOf("NOT_FOUND")>=0||e.data.indexOf("NEEDS_REVIEW")>=0) div.style.color="#e3b768";
+    else if(e.data.startsWith("[done]")) div.style.color="var(--ok)";
+    else if(e.data.startsWith("[start]")) div.style.color="var(--accent2)";
+    else if(e.data.indexOf("NOT_FOUND")>=0||e.data.indexOf("NEEDS_REVIEW")>=0) div.style.color="var(--warn)";
     div.textContent=e.data;
     log.appendChild(div); log.scrollTop=log.scrollHeight;
   };
@@ -118,21 +118,21 @@ function milesPollTick(){
     const c=t.counts||{}, running=(t.state==="running");
     if(st){
       st.style.display="block";
-      const dot = running ? '<b style="color:#9cc1ff">● Running</b>' : '<b style="color:#7ee08a">✓ Finished</b>';
+      const dot = running ? '<b style="color:var(--accent2)">● Running</b>' : '<b style="color:var(--ok)">✓ Finished</b>';
       st.innerHTML = dot + (t.source?(' &nbsp;<b>'+t.source+'</b>'):'')
         + ' &nbsp;—&nbsp; '+(t.done||0)+(t.total?('/'+t.total):'')+' processed'
-        + ' &nbsp;·&nbsp; <span style="color:#7ee08a">drafts '+(c.generated||0)+'</span>'
+        + ' &nbsp;·&nbsp; <span style="color:var(--ok)">drafts '+(c.generated||0)+'</span>'
         + ' &nbsp;·&nbsp; harvested '+(c.harvested||0)
-        + ' &nbsp;·&nbsp; <span style="color:#e3b768">not found '+(c.not_found||0)+'</span>'
-        + ((c.review||0)?(' &nbsp;·&nbsp; <span style="color:#e3b768">review '+c.review+'</span>'):'');
+        + ' &nbsp;·&nbsp; <span style="color:var(--warn)">not found '+(c.not_found||0)+'</span>'
+        + ((c.review||0)?(' &nbsp;·&nbsp; <span style="color:var(--warn)">review '+c.review+'</span>'):'');
     }
     // Append new log lines ONLY when the live SSE isn't already doing it (avoids doubles).
     if(!ES && t.lines && t.lines.length){
       const log=document.getElementById("miles_log");
       if(log){ log.style.display="block";
         t.lines.forEach(function(ln){ const d=document.createElement("div");
-          if(ln.indexOf("NOT_FOUND")>=0||ln.indexOf("NEEDS_REVIEW")>=0) d.style.color="#e3b768";
-          else if(ln.indexOf("WROTE draft")>=0) d.style.color="#7ee08a";
+          if(ln.indexOf("NOT_FOUND")>=0||ln.indexOf("NEEDS_REVIEW")>=0) d.style.color="var(--warn)";
+          else if(ln.indexOf("WROTE draft")>=0) d.style.color="var(--ok)";
           else if(ln.startsWith("[error]")) d.style.color="#ff8585";
           d.textContent=ln; log.appendChild(d); });
         log.scrollTop=log.scrollHeight;
@@ -151,16 +151,16 @@ function milesLoadRuns(){
     if(!(j&&j.ok&&j.runs&&j.runs.length)){ host.textContent="No saved runs yet."; return; }
     host.innerHTML=j.runs.map(function(r){
       const c=r.counts||{};
-      const badge=(r.state==="running")?'<span style="color:#9cc1ff">● running</span>'
+      const badge=(r.state==="running")?'<span style="color:var(--accent2)">● running</span>'
         :(r.state==="error")?'<span style="color:#ff8585">error</span>'
-        :(r.state==="stopped")?'<span style="color:#e3b768">stopped</span>'
-        :'<span style="color:#7ee08a">done</span>';
+        :(r.state==="stopped")?'<span style="color:var(--warn)">stopped</span>'
+        :'<span style="color:var(--ok)">done</span>';
       const counts='harvested '+(c.harvested||0)+' · not found '+(c.not_found||0)+' · review '+(c.review||0);
       return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">'
         +'<div><b>'+esc(r.source||"(run)")+'</b> <span style="opacity:.6">'+esc(r.started||"")+'</span><br>'+badge+' <span style="opacity:.7">— '+counts+'</span></div>'
         +'<div style="white-space:nowrap">'
-        +'<a href="/miles/run_log?id='+encodeURIComponent(r.id)+'" target="_blank" style="color:#9cc1ff;margin-right:10px">View log</a>'
-        +'<a href="/miles/run_csv?id='+encodeURIComponent(r.id)+'" style="color:#7ee08a">CSV</a>'
+        +'<a href="/miles/run_log?id='+encodeURIComponent(r.id)+'" target="_blank" style="color:var(--accent2);margin-right:10px">View log</a>'
+        +'<a href="/miles/run_csv?id='+encodeURIComponent(r.id)+'" style="color:var(--ok)">CSV</a>'
         +'</div></div>';
     }).join("");
   }).catch(()=>{ host.textContent="Could not load runs."; });
@@ -211,8 +211,8 @@ function milesGenerate(){
     if(!log) return;
     const div=document.createElement("div");
     if(e.data.startsWith("[error]")) div.style.color="#ff8585";
-    else if(e.data.startsWith("[done]")) div.style.color="#7ee08a";
-    else if(e.data.startsWith("[start]")) div.style.color="#9cc1ff";
+    else if(e.data.startsWith("[done]")) div.style.color="var(--ok)";
+    else if(e.data.startsWith("[start]")) div.style.color="var(--accent2)";
     div.textContent=e.data;
     log.appendChild(div); log.scrollTop=log.scrollHeight;
   };
@@ -241,8 +241,8 @@ function milesOptimize(){
     if(!log) return;
     const div=document.createElement("div");
     if(e.data.startsWith("[error]")) div.style.color="#ff8585";
-    else if(e.data.startsWith("[done]")) div.style.color="#7ee08a";
-    else if(e.data.startsWith("[start]")) div.style.color="#9cc1ff";
+    else if(e.data.startsWith("[done]")) div.style.color="var(--ok)";
+    else if(e.data.startsWith("[start]")) div.style.color="var(--accent2)";
     div.textContent=e.data;
     log.appendChild(div); log.scrollTop=log.scrollHeight;
   };
@@ -260,7 +260,7 @@ function milesStop(){
   fetch("/miles/stop",{method:"POST"}).catch(()=>{});
   if(ES){ try{ES.close();}catch(e){} ES=null; }
   const log=document.getElementById("miles_log");
-  if(log){ const d=document.createElement("div"); d.style.color="#e3b768"; d.textContent="[stopped] harvest cancelled by user"; log.appendChild(d); log.scrollTop=log.scrollHeight; }
+  if(log){ const d=document.createElement("div"); d.style.color="var(--warn)"; d.textContent="[stopped] harvest cancelled by user"; log.appendChild(d); log.scrollTop=log.scrollHeight; }
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
   const gb=document.getElementById("miles_genbtn"); if(gb) gb.disabled=false;
   const ob=document.getElementById("miles_optbtn"); if(ob) ob.disabled=false;
@@ -287,7 +287,7 @@ function milesLoadResults(){
       h+='</table>';
     }
     if(s.needs_review.length){
-      h+='<div style="margin-top:10px;font-size:12px;color:#e3b768"><b>Manual review (multiple matches):</b> '+s.needs_review.map(x=>esc(x.item)).join(", ")+'</div>';
+      h+='<div style="margin-top:10px;font-size:12px;color:var(--warn)"><b>Manual review (multiple matches):</b> '+s.needs_review.map(x=>esc(x.item)).join(", ")+'</div>';
     }
     if(s.not_found.length){
       h+='<div style="margin-top:6px;font-size:12px;opacity:.7"><b>Not found:</b> '+s.not_found.map(x=>esc(x.item)).join(", ")+'</div>';

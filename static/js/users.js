@@ -84,9 +84,9 @@ async function renderUsers(){
   body.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> Loading…</div>';
   let j;
   try{ j = await (await fetch("/users/list")).json(); }
-  catch(e){ body.innerHTML = '<div class="cc" style="padding:16px;color:#e0696b">Could not load users: '+_uesc(String(e))+'</div>'; return; }
+  catch(e){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load users: '+_uesc(String(e))+'</div>'; return; }
   if(!j || !j.ok){
-    body.innerHTML = '<div class="cc" style="padding:16px;color:#e0696b">'+_uesc((j&&j.error)||"Could not load users")+'</div>';
+    body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_uesc((j&&j.error)||"Could not load users")+'</div>';
     return;
   }
   USERS_META = {all_permissions:j.all_permissions, roles:j.roles};
@@ -124,9 +124,9 @@ async function renderUsers(){
       : (u.workspaces||[]).join(", ");
     let state = "";
     if(!u.active)            state = '<span style="color:#e0a06b">disabled</span>';
-    else if(u.invite_expired) state = '<span style="color:#e0696b">invite expired</span>';
+    else if(u.invite_expired) state = '<span style="color:var(--red)">invite expired</span>';
     else if(u.pending_invite) state = '<span style="color:#e0c06b">invite not accepted</span>';
-    else                      state = '<span style="color:#7fd99a">active</span>';
+    else                      state = '<span style="color:var(--ok)">active</span>';
 
     h += '<tr><td style="padding:9px 6px;border-top:1px solid #26303f">'
       +  '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
@@ -142,7 +142,7 @@ async function renderUsers(){
       +      'title="Issue a fresh one-time link. Also use this as a password reset — it clears the old password.">New link</button>'
       +    '<button class="db-chip" onclick="userToggle('+JSON.stringify(u.id)+','+(u.active?"false":"true")+')">'
       +      (u.active?"Disable":"Enable")+'</button>'
-      +    '<button class="db-chip" style="color:#ff8a8a;border-color:#5c2424" '
+      +    '<button class="db-chip" style="color:var(--red);border-color:var(--red-line)" '
       +      'onclick="userDelete('+JSON.stringify(u.id)+')">Delete</button>'
       +  '</div></div>'
       +  '<div id="uedit_'+_uesc(u.id)+'"></div>'
@@ -224,7 +224,7 @@ function userRolePreset(){
 async function userCreate(){
   const email = ((document.getElementById("nu_email")||{}).value||"").trim();
   const out = document.getElementById("nu_result");
-  if(!email){ out.innerHTML = '<span style="color:#e0696b">Enter an email address.</span>'; return; }
+  if(!email){ out.innerHTML = '<span style="color:var(--red)">Enter an email address.</span>'; return; }
   const payload = {
     email: email,
     name:  ((document.getElementById("nu_name")||{}).value||"").trim(),
@@ -236,10 +236,10 @@ async function userCreate(){
   try{
     const j = await (await fetch("/users/create",{method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)})).json();
-    if(!j.ok){ out.innerHTML = '<span style="color:#e0696b">'+_uesc(j.error||"failed")+'</span>'; return; }
+    if(!j.ok){ out.innerHTML = '<span style="color:var(--red)">'+_uesc(j.error||"failed")+'</span>'; return; }
     showInviteLink(out, j.invite_url, email);
     renderUsersKeepingResult(out.innerHTML);
-  }catch(e){ out.innerHTML = '<span style="color:#e0696b">'+_uesc(String(e))+'</span>'; }
+  }catch(e){ out.innerHTML = '<span style="color:var(--red)">'+_uesc(String(e))+'</span>'; }
 }
 
 // The link is shown ONCE -- only its hash is stored, so it cannot be shown
@@ -247,7 +247,7 @@ async function userCreate(){
 function showInviteLink(host, url, who){
   host.innerHTML =
       '<div style="border:1px solid #2f4a33;background:#16231a;border-radius:6px;padding:10px">'
-    + '<div style="font-size:12px;font-weight:600;color:#7fd99a;margin-bottom:6px">'
+    + '<div style="font-size:12px;font-weight:600;color:var(--ok);margin-bottom:6px">'
     + 'Invite link for '+_uesc(who)+'</div>'
     + '<div class="cc" style="font-size:11px;margin-bottom:6px">Send this to them. '
     + 'It works once and expires in 7 days. <b>It is not stored</b> — if you lose it, '
@@ -304,9 +304,9 @@ async function userSave(id){
   try{
     const j = await (await fetch("/users/update",{method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)})).json();
-    if(!j.ok){ if(st) st.innerHTML = '<span style="color:#e0696b">'+_uesc(j.error)+'</span>'; return; }
+    if(!j.ok){ if(st) st.innerHTML = '<span style="color:var(--red)">'+_uesc(j.error)+'</span>'; return; }
     toast("Saved"); renderUsers();
-  }catch(e){ if(st) st.innerHTML = '<span style="color:#e0696b">'+_uesc(String(e))+'</span>'; }
+  }catch(e){ if(st) st.innerHTML = '<span style="color:var(--red)">'+_uesc(String(e))+'</span>'; }
 }
 
 async function userInvite(id){

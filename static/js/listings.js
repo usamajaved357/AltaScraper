@@ -184,9 +184,9 @@ function showSecondaryResults(images, skus, live){
     : "Applied to the selected draft SKUs and saved to the sheet.";
   host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
     + '<b style="font-size:13px">Secondary images ('+images.length+')</b>'
-    + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:#9cc1ff;cursor:pointer;font-size:16px">✕</button></div>'
-    + '<div style="font-size:11px;color:#9fb2cc;margin-bottom:10px">'+note+'</div>'
-    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,#22304a)"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:#9cc1ff">⬇ Download image '+(i+1)+'</a></div>').join("");
+    + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:16px">✕</button></div>'
+    + '<div style="font-size:11px;color:var(--ink2);margin-bottom:10px">'+note+'</div>'
+    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,#22304a)"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:var(--accent2)">⬇ Download image '+(i+1)+'</a></div>').join("");
 }
 async function loadBrandPanel(){
   const host=document.getElementById('brandpanel');
@@ -292,8 +292,8 @@ function locateFlags(sku, btn){
       const v=String(fields[fn]||'');
       if(v && re.test(v)){
         any=true;
-        const hl=esc(v).replace(re,'<mark style="background:#5c4a16;color:#ffe9a8">$1</mark>');
-        html+='<div style="margin:4px 0"><b style="color:#e3b768">'+esc(t)+'</b> in <b>'+fn+'</b>: <span style="color:#cbd3e1">'+hl+'</span></div>';
+        const hl=esc(v).replace(re,'<mark style="background:var(--warn-line);color:#ffe9a8">$1</mark>');
+        html+='<div style="margin:4px 0"><b style="color:var(--warn)">'+esc(t)+'</b> in <b>'+fn+'</b>: <span style="color:var(--ink)">'+hl+'</span></div>';
       }
     });
   });
@@ -539,11 +539,11 @@ function summary(){
   document.getElementById("summary").innerHTML =
     `<b style="color:#e8eaed">${total}</b> listings &nbsp;·&nbsp; `+
     `${c.NEEDS_REVIEW} needs review &nbsp;·&nbsp; `+
-    `<span style="color:#ef9a9a">${c.HOLD} on hold</span> &nbsp;·&nbsp; `+
-    `<span style="color:#ef9a9a">${c.ERROR} error</span> &nbsp;·&nbsp; `+
-    `<span style="color:#7fd1a0">${c.APPROVED} approved</span> &nbsp;·&nbsp; `+
-    `<span style="color:#9cc1ff">${c.API_READY} preview-ready</span> &nbsp;·&nbsp; `+
-    `<span style="color:#74e0a3">${c.LIVE} live</span>`+
+    `<span style="color:var(--red)">${c.HOLD} on hold</span> &nbsp;·&nbsp; `+
+    `<span style="color:var(--red)">${c.ERROR} error</span> &nbsp;·&nbsp; `+
+    `<span style="color:var(--ok)">${c.APPROVED} approved</span> &nbsp;·&nbsp; `+
+    `<span style="color:var(--accent2)">${c.API_READY} preview-ready</span> &nbsp;·&nbsp; `+
+    `<span style="color:var(--ok)">${c.LIVE} live</span>`+
     ((countDuplicateSkus()>0)
       ? ` &nbsp;·&nbsp; <span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`
       : "");
@@ -691,7 +691,7 @@ function card(r){
       <button class="ib" title="Edit / details" onclick="openDrawer('${esc(r.sku)}')"><i class="ti ti-edit"></i></button>
       <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
       ${isAmazonLive(r) ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:#c8b6ff" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}
-      ${isAmazonLive(r) ? `<button class="ib" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:#9fe6bd" onclick="event.stopPropagation();pullLiveRow('${esc(r.sku)}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
+      ${isAmazonLive(r) ? `<button class="ib" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:var(--ok)" onclick="event.stopPropagation();pullLiveRow('${esc(r.sku)}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
       <button class="ib more" title="More" onclick="tileMenu(event,'${esc(r.sku)}',${r.row||0})"><i class="ti ti-dots"></i></button>
     </div>
   </div>`;
@@ -836,7 +836,7 @@ function drawerContent(r){
       <div class="aplusdoc">
         <div class="aplushead">
           <b>${esc(d.name||'(untitled)')}</b>
-          <span class="livestatus" style="background:#123021;color:#7fd99a">${esc(d.status||'')}</span>
+          <span class="livestatus" style="background:#123021;color:var(--ok)">${esc(d.status||'')}</span>
           <span class="cc">${d.module_count} module(s) · ${(d.images||[]).length} image(s)</span>
         </div>
         <div class="aplusimgs">
@@ -861,7 +861,7 @@ function drawerContent(r){
       <div class="dwactions">
         <button class="suggestbtn" onclick="suggestFields('${esc(r.sku)}')"><i class="ti ti-wand"></i> Suggest missing fields</button>
         <button class="suggestbtn" onclick="refreshSchemaFor('${esc(r.sku)}')" title="Re-fetch Amazon's allowed values so the dropdowns show the latest options. This does NOT pull your listing's data — use 'Pull live data from Amazon' for that."><i class="ti ti-refresh"></i> Refresh dropdown options</button>
-        ${isAmazonLive(r) ? `<button class="suggestbtn" style="background:#123021;border-color:#2c5c3f;color:#9fe6bd" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this listing's real IMAGES from Amazon — the main image and every secondary image — and replace the generation-time ones on this row. Does not pull A+ content, title, bullets or price."><i class="ti ti-cloud-download"></i> Pull live images from Amazon</button>` : ""}
+        ${isAmazonLive(r) ? `<button class="suggestbtn" style="background:#123021;border-color:var(--ok-line);color:var(--ok)" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this listing's real IMAGES from Amazon — the main image and every secondary image — and replace the generation-time ones on this row. Does not pull A+ content, title, bullets or price."><i class="ti ti-cloud-download"></i> Pull live images from Amazon</button>` : ""}
         <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
         <button class="genmain" onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
         <button class="pushimg" onclick="pushImageLive('${esc(r.sku)}',this)" title="Send the current main image to the LIVE Amazon listing (updates just the image, no full resubmit)"><i class="ti ti-cloud-upload"></i> Push image to live</button>
@@ -1217,7 +1217,7 @@ async function uploadRef(input, sku, sidv){
     var j=await res.json();
     if(!j.ok){ if(st) st.textContent='Upload failed: '+(j.error||''); return; }
     var fld=document.getElementById('genraw_'+sidv); if(fld) fld.value=j.url;
-    if(st) st.innerHTML='<span style="color:#7fd99a">\u2713 Reference uploaded \u2014 saved to this SKU\u2019s media folder.</span>';
+    if(st) st.innerHTML='<span style="color:var(--ok)">\u2713 Reference uploaded \u2014 saved to this SKU\u2019s media folder.</span>';
   }catch(e){ if(st) st.textContent='Upload error: '+e; }
 }
 

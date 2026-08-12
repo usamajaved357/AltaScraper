@@ -18,11 +18,11 @@ function _syncPill(status){
     confirmed:['#1f3d2e','#4caf7d','Authorised'],
     synced:['#1f3d2e','#4caf7d','Synced'],
     'unknown-never-pulled':['#33384a','#aab3c5','Unknown — never pulled'],
-    'regenerated-not-on-amazon':['#3a3320','#e3b768','Regenerated — not on Amazon'],
+    'regenerated-not-on-amazon':['#3a3320','var(--warn)','Regenerated — not on Amazon'],
     'changed-on-amazon':['#1e3350','#6ea8fe','Changed on Amazon — app behind'],
-    deactivated:['#3d1f22','#e0696b','Deactivated (temporary)'],
-    role_gap:['#3d1f22','#e0696b','No read role'],
-    blocked_unconfirmed:['#3a3320','#e3b768','Blocked — reason unconfirmed'],
+    deactivated:['#3d1f22','var(--red)','Deactivated (temporary)'],
+    role_gap:['#3d1f22','var(--red)','No read role'],
+    blocked_unconfirmed:['#3a3320','var(--warn)','Blocked — reason unconfirmed'],
     borrowed:['#33384a','#aab3c5','Borrowed (catalogue-only)'],
     not_connected:['#33384a','#aab3c5','Not connected'],
     untested:['#33384a','#aab3c5','Not read-tested']
@@ -38,13 +38,13 @@ async function syncRenderMatrix(){
   el.innerHTML='<span class="genspin"></span> Loading capabilities…';
   try{
     var j=await (await fetch('/sync/capabilities')).json();
-    if(!j.ok){ el.innerHTML='<div class="cc" style="color:#e0696b">could not load</div>'; return; }
+    if(!j.ok){ el.innerHTML='<div class="cc" style="color:var(--red)">could not load</div>'; return; }
     var h='<table class="ishtable" style="width:100%"><thead><tr><th>Account</th><th>Status</th><th>Pull</th><th>Push</th></tr></thead><tbody>';
     (j.accounts||[]).forEach(function(a){
       h+='<tr><td><b>'+esc(a.label)+'</b></td>'
         +'<td>'+_syncPill(a.status)+'</td>'
-        +'<td title="'+esc(a.reason)+'">'+(a.pull_enabled?'<span style="color:#4caf7d">active</span>':'<span style="color:#e0696b">disabled</span>')+'</td>'
-        +'<td>'+(a.push_enabled?'<span style="color:#e3b768">inferred</span>':'<span style="color:#8b93a5">—</span>')+'</td></tr>';
+        +'<td title="'+esc(a.reason)+'">'+(a.pull_enabled?'<span style="color:#4caf7d">active</span>':'<span style="color:var(--red)">disabled</span>')+'</td>'
+        +'<td>'+(a.push_enabled?'<span style="color:var(--warn)">inferred</span>':'<span style="color:#8b93a5">—</span>')+'</td></tr>';
     });
     h+='</tbody></table>'
       +'<div class="cc" style="font-size:11px;opacity:.7;margin-top:6px">Pull reflects a live read-test. Push is inferred until a real push. Re-check / mark-cause apply to the <b>active workspace</b>.</div>'
@@ -52,7 +52,7 @@ async function syncRenderMatrix(){
       +'<button class="btn" onclick="syncRecheck()">Re-check active account (read-test)</button>'
       +'<button class="btn" onclick="syncMarkCause()">Mark cause…</button></div>';
     el.innerHTML=h;
-  }catch(e){ el.innerHTML='<div class="cc" style="color:#e0696b">error loading capabilities</div>'; }
+  }catch(e){ el.innerHTML='<div class="cc" style="color:var(--red)">error loading capabilities</div>'; }
 }
 
 function _syncSku(){ var e=document.getElementById('sync_sku'); return e?(e.value||'').trim():''; }
@@ -64,8 +64,8 @@ async function syncCheckStatus(){
   try{
     var j=await (await fetch('/sync/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sku:sku})})).json();
     pill.innerHTML = j.ok ? (_syncPill(j.status)+' <span class="cc" style="font-size:11px;opacity:.7">'+esc(j.detail||'')+'</span>')
-                          : ('<span style="color:#e0696b">'+esc(j.error||'error')+'</span>');
-  }catch(e){ pill.innerHTML='<span style="color:#e0696b">error</span>'; }
+                          : ('<span style="color:var(--red)">'+esc(j.error||'error')+'</span>');
+  }catch(e){ pill.innerHTML='<span style="color:var(--red)">error</span>'; }
 }
 
 async function syncPull(){
@@ -96,7 +96,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
   SYNC_LAST={sku:sku, amazon:amazon, stored:stored, status:(meta&&meta.status)};
   var h='<div class="cc" style="margin-bottom:8px">'+esc(sku)+' — '
     +(mode==='pull'?'PULL: tick the Amazon fields to bring into the app.':'PUSH: review what would go to Amazon (write is halted).')+'</div>';
-  if(meta&&meta.warn){ h+='<div style="background:#3a3320;color:#e3b768;padding:8px 10px;border-radius:8px;margin-bottom:8px">'+esc(meta.warn)+'</div>'; }
+  if(meta&&meta.warn){ h+='<div style="background:#3a3320;color:var(--warn);padding:8px 10px;border-radius:8px;margin-bottom:8px">'+esc(meta.warn)+'</div>'; }
   if(meta&&meta.status){ h+='<div style="margin-bottom:8px">Status: '+_syncPill(meta.status)+'</div>'; }
   var srcLbl=(mode==='pull')?'Amazon (incoming)':'App (would push)';
   var tgtLbl=(mode==='pull')?'App (current)':'Amazon (current)';
@@ -118,7 +118,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
   if(mode==='pull'){
     h+='<div style="margin-top:12px"><button class="btn primary" onclick="syncApplyPull()">Apply checked Amazon fields to app</button></div>';
   }else{
-    h+='<div style="margin-top:12px;background:#3d1f22;color:#e0696b;padding:8px 10px;border-radius:8px">Push write is intentionally HALTED pending the reviewed one-listing first-push test. Nothing was sent to Amazon.</div>';
+    h+='<div style="margin-top:12px;background:#3d1f22;color:var(--red);padding:8px 10px;border-radius:8px">Push write is intentionally HALTED pending the reviewed one-listing first-push test. Nothing was sent to Amazon.</div>';
   }
   document.getElementById('sync_modal_title').textContent=(mode==='pull'?'Pull review':'Push review')+' — '+sku;
   document.getElementById('sync_modal_body').innerHTML=h;

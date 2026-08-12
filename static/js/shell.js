@@ -47,7 +47,7 @@ function renderDataSource(){
 
 function _wsColor(v){
   // deterministic accent per workspace
-  if(!v || !v.brand) return {bg:"rgba(76,141,255,.16)", fg:"#9cc1ff"};
+  if(!v || !v.brand) return {bg:"var(--accent-bg)", fg:"var(--accent2)"};
   const palette=[["#E1F5EE","#0F6E56"],["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],
                  ["#E6F1FB","#185FA5"],["#FBEAF0","#993556"],["#FAEEDA","#854F0B"]];
   let h=0; for(const c of v.key) h=(h*31+c.charCodeAt(0))>>>0;
@@ -102,14 +102,14 @@ async function loadHome(){
   let acctData=await _fetchJSON("/accounts/list");
   if(acctData && acctData.config_error){
     grid.innerHTML='<div class="empty" style="grid-column:1/-1;text-align:left">'
-      +'<div style="color:#ef9a9a;font-weight:600;margin-bottom:8px">⚠ Your config.json has an error</div>'
+      +'<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ Your config.json has an error</div>'
       +'<div class="cc" style="white-space:pre-wrap">'+esc(acctData.error||"")+'</div>'
       +'<div class="cc" style="margin-top:10px">Fix the file, save it, then click Home to retry.</div></div>';
     return;
   }
   if(acctData && acctData._failed){
     grid.innerHTML='<div class="empty" style="grid-column:1/-1;text-align:left">'
-      +'<div style="color:#ef9a9a;font-weight:600;margin-bottom:8px">⚠ Could not load accounts</div>'
+      +'<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ Could not load accounts</div>'
       +'<div class="cc">'+esc(acctData.error||"")+'</div>'
       +'<div class="cc" style="margin-top:8px">Try clicking Home again. If this persists, check the terminal where the app runs for an error.</div></div>';
     return;
@@ -127,7 +127,7 @@ async function loadHome(){
   cards += `<div class="wscard" onclick='enterDropshipping()'>
       <button class="peek" title="Reveal" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
       <div style="display:flex;align-items:center;gap:11px">
-        <div class="ic" style="background:rgba(76,141,255,.16);color:#9cc1ff">${SVG_CART}</div>
+        <div class="ic" style="background:var(--accent-bg);color:var(--accent2)">${SVG_CART}</div>
         <div style="flex:1"><div class="nm pii">Dropshipping</div><div class="sub pii">eBay → Amazon arbitrage</div></div>
         <button class="wsedit" title="Assign input &amp; output sheets" onclick='event.stopPropagation();openDropshippingSheets()'><i class="ti ti-settings"></i></button>
       </div>
@@ -192,8 +192,8 @@ async function saveDropshippingSheets(){
     const j=await (await fetch("/settings/dropshipping_sheets",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({output_sheet_url:out, input_sheet_url:inp})})).json();
     if(j.ok){ toast("Dropshipping sheets saved"+(j.output_tab?(" · tab: "+j.output_tab):"")); closeAccountEditor(); loadHome(); }
-    else { if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(String(e))+'</span>'; }
+    else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
 }
 function _wsColorKey(key){
   const palette=[["#E1F5EE","#0F6E56"],["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],
@@ -261,7 +261,7 @@ async function enterAccount(accountId){
   if(window.WS_READONLY){
     const _lender=(ACCOUNTS||[]).find(x=>x.id===window.WS_CREDS_SOURCE);
     document.getElementById("ws_sub").innerHTML =
-      '<span style="color:#e3b768;font-weight:600"><i class="ti ti-lock"></i> Read-only</span>'
+      '<span style="color:var(--warn);font-weight:600"><i class="ti ti-lock"></i> Read-only</span>'
       + (_lender ? ' · generating with '+esc(_lender.label)+"'s Amazon app" : ' · no Amazon app')
       + ' · cannot publish';
   } else {
@@ -292,7 +292,7 @@ function enterDropshipping(){
   document.getElementById("home").classList.remove("show");
   document.getElementById("workspace").classList.add("show");
   const icEl=document.getElementById("ws_ic");
-  icEl.style.background="rgba(76,141,255,.16)"; icEl.style.color="#9cc1ff";
+  icEl.style.background="var(--accent-bg)"; icEl.style.color="var(--accent2)";
   icEl.innerHTML='<i class="ti ti-shopping-cart"></i>';
   document.getElementById("ws_nm").textContent="Dropshipping";
   document.getElementById("ws_sub").textContent="eBay → Amazon";
@@ -313,7 +313,7 @@ function enterDropshipping(){
 function buildAccountMktSwitch(a){
   const host=document.getElementById("mktswitch"); if(!host) return;
   if(!a.has_creds){
-    host.innerHTML='<span class="mktlabel" title="Add SP-API credentials to enable live features">draft-only · <a href="#" onclick="openAccountEditor(\''+esc(a.id)+'\');return false" style="color:#9cc1ff">connect account</a></span>';
+    host.innerHTML='<span class="mktlabel" title="Add SP-API credentials to enable live features">draft-only · <a href="#" onclick="openAccountEditor(\''+esc(a.id)+'\');return false" style="color:var(--accent2)">connect account</a></span>';
     return;
   }
   const mkts=a.marketplaces&&a.marketplaces.length?a.marketplaces:[];
@@ -330,7 +330,7 @@ function buildAccountMktSwitch(a){
     `<button class="mktbtn ${WS_MARKET==='__all__'?'on':''}" title="Show listings across every marketplace (fetches each — can be slow)" onclick="switchAccountMarket('__all__')">All</button>`
     + mkts.map(m=>{
         const isDflt = a.default_marketplace===m;
-        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" onclick="switchAccountMarket('${esc(m)}')">${esc(m)}${isDflt?' <span title="default" style="color:#e3b768">\u2605</span>':''}</button>`;
+        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" onclick="switchAccountMarket('${esc(m)}')">${esc(m)}${isDflt?' <span title="default" style="color:var(--warn)">\u2605</span>':''}</button>`;
       }).join("")
     + `<button class="mktbtn" title="Set current marketplace (${esc(WS_MARKET||'')}) as this account\u2019s default" onclick="setDefaultMarketplace()">\u2606 default</button>`
     + '<button class="mktbtn" title="Re-detect" onclick="detectMarketplaces(\''+esc(a.id)+'\')"><i class="ti ti-refresh"></i></button>';
@@ -417,7 +417,7 @@ function openAccountEditor(id){
             `<option value="${esc(x.id)}" ${a.credentials_source_account_id===x.id?'selected':''}>${esc(x.label)}</option>`).join("")}
         </select>
         <div class="cc" style="font-size:11px;margin-top:3px">${a.can_publish===false
-          ? '<span style="color:#e3b768"><i class="ti ti-lock"></i> This workspace is read-only: it can generate listings, but not preview, verify or publish them.</span>'
+          ? '<span style="color:var(--warn)"><i class="ti ti-lock"></i> This workspace is read-only: it can generate listings, but not preview, verify or publish them.</span>'
           : 'This account can publish to Amazon.'}</div>
       </td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials</div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row.</div></td></tr>
@@ -497,8 +497,8 @@ function _showParsed(boxId, url){
   const p=parseSheetUrl(url); const el=document.getElementById(boxId);
   if(!el) return;
   if(!url.trim()){ el.innerHTML=""; return; }
-  if(p.id){ el.innerHTML='<span style="color:#7fd99a">✓ sheet '+esc(p.id.slice(0,10))+'…'+(p.gid?(' · tab gid '+esc(p.gid)):' · first tab')+'</span>'; }
-  else { el.innerHTML='<span style="color:#e0696b">✗ couldn\u2019t read a sheet ID from that link</span>'; }
+  if(p.id){ el.innerHTML='<span style="color:var(--ok)">✓ sheet '+esc(p.id.slice(0,10))+'…'+(p.gid?(' · tab gid '+esc(p.gid)):' · first tab')+'</span>'; }
+  else { el.innerHTML='<span style="color:var(--red)">✗ couldn\u2019t read a sheet ID from that link</span>'; }
 }
 // Show/hide the per-account eBay boxes. Ticked = use the app-wide eBay keys, which
 // is what the backend already does whenever an account has no eBay App ID of its own
@@ -567,9 +567,9 @@ async function detectFromEditor(id){
   if(out) out.innerHTML='<span class="genspin"></span> Calling Amazon (getMarketplaceParticipations)…';
   try{
     var j=await (await fetch("/accounts/detect_marketplaces",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})})).json();
-    if(j.ok){ if(out) out.innerHTML='<span style="color:#7fd99a">\u2713 Detected: '+(j.marketplaces||[]).join(", ")+'</span>'; loadHome(); }
-    else { if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(String(e))+'</span>'; }
+    if(j.ok){ if(out) out.innerHTML='<span style="color:var(--ok)">\u2713 Detected: '+(j.marketplaces||[]).join(", ")+'</span>'; loadHome(); }
+    else { if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(String(e))+'</span>'; }
 }
 async function detectBrandsFromEditor(id){
   var out=document.getElementById("ac_detectout");
@@ -579,11 +579,11 @@ async function detectBrandsFromEditor(id){
     if(j.ok){
       // reflect into the brands field
       var bf=document.getElementById("ac_brands"); if(bf) bf.value=(j.brands||[]).join(", ");
-      if(out) out.innerHTML='<span style="color:#7fd99a">\u2713 Brands ('+esc(j.source||"")+'): '+esc((j.brands||[]).join(", ")||"none found")+'</span>'
+      if(out) out.innerHTML='<span style="color:var(--ok)">\u2713 Brands ('+esc(j.source||"")+'): '+esc((j.brands||[]).join(", ")||"none found")+'</span>'
         +'<div class="cc" style="margin-top:4px">'+esc(j.note||"")+'</div>';
       loadHome();
-    } else { if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(String(e))+'</span>'; }
+    } else { if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(String(e))+'</span>'; }
 }
 function buildMktSwitch(g){
   const host=document.getElementById("mktswitch"); if(!host) return;
@@ -711,7 +711,7 @@ async function loadInputSheet(){
   if(meta) meta.textContent="";
   try{
     var j=await (await fetch('/input_sheet')).json();
-    if(!j.ok){ body.innerHTML='<div class="cc" style="padding:16px;color:#e3b768">'+esc(j.error||'could not load')+'</div>'; return; }
+    if(!j.ok){ body.innerHTML='<div class="cc" style="padding:16px;color:var(--warn)">'+esc(j.error||'could not load')+'</div>'; return; }
     var openA=document.getElementById("inputsheet_open");
     if(openA && j.view_url){ openA.href=j.view_url; openA.style.display="inline-flex"; }
     if(meta) meta.textContent='\u201c'+(j.title||'')+'\u201d \u00b7 '+j.row_count+' rows \u00d7 '+j.col_count+' cols';
@@ -727,7 +727,7 @@ async function loadInputSheet(){
     });
     html+='</tbody></table>';
     body.innerHTML=html;
-  }catch(e){ body.innerHTML='<div class="cc" style="padding:16px;color:#e0696b">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ body.innerHTML='<div class="cc" style="padding:16px;color:var(--red)">Error: '+esc(String(e))+'</div>'; }
 }
 function filterInputSheet(){
   var q=((document.getElementById("inputsheet_filter")||{}).value||"").toLowerCase().trim();
