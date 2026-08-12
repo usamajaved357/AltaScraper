@@ -662,6 +662,7 @@ function card(r){
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
       ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
       ${claimBadge(r)}
+      ${viabilityBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
@@ -881,6 +882,7 @@ function drawerContent(r){
     ${hero}
     ${liveMirrorPanel(r)}
     ${restrictedPanel(r)}
+    ${viabilityPanel(r)}
     ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
@@ -921,6 +923,55 @@ function restrictedPanel(r){
     <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">Your restricted-products library (SP-API-independent). Warning only — publishing is never blocked here.</div>
     <div class="restlist">${rows}</div>
     <div class="cc" style="margin-top:6px;font-size:11px;font-style:italic">${esc(rr.caveat||"")}</div></details>`;
+}
+
+// ---- COMPLIANCE REQUIREMENTS (sourcing viability) -------------------------------
+// A DIFFERENT question from the restricted panel above. That one answers "may I list
+// this at all?"; this one answers "which safety documents will Amazon demand later?".
+// The patio heater passed every restriction check, listed freely, and cost the ASIN
+// months later when Amazon asked for a BS EN 60335 test report — so a clean panel
+// above is NOT evidence that nothing is owed. Server attaches r.viability.
+// WARN only: nothing here blocks publishing.
+function _viabRiskClass(lvl){ return lvl==="HIGH" ? "hi" : "med"; }
+// Tile badge: the document count, visible WITHOUT opening the listing. The whole
+// failure this fixes was a requirement nobody saw until Amazon asked.
+function viabilityBadge(r){
+  const v=r.viability; if(!v || !v.matched || !(v.risks||[]).length) return "";
+  const high=(v.risks||[]).some(x=>x.risk==="HIGH");
+  const docs=(v.risks||[]).reduce((n,x)=>n+((x.docs||[]).length),0);
+  const names=(v.risks||[]).map(x=>x.label).join(", ");
+  // Own class/position: .tileflag sits bottom-RIGHT (restricted) and .tileclaim
+  // bottom-LEFT (claims), so a third badge reusing either would land on top of it.
+  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-file-text"></i>${docs}</span>`;
+}
+function viabilityPanel(r){
+  const v = r.viability;
+  if(!v) return "";
+  if(!v.matched){
+    // Clean stays quiet — same doormat rule as the restricted panel.
+    return `<div class="restclear"><i class="ti ti-file-check"></i> Compliance requirements: no document demand detected <span class="cc">— not a clearance</span></div>`;
+  }
+  const anyHigh = (v.risks||[]).some(x=>x.risk==="HIGH");
+  const head = anyHigh ? "Compliance requirements — documents Amazon will likely request"
+                       : "Compliance requirements — documents Amazon may request";
+  const rows = (v.risks||[]).map(function(x){
+    const docs = (x.docs&&x.docs.length)
+      ? `<div class="cc" style="margin-top:4px"><b>Docs required:</b><ul style="margin:4px 0 0 16px;padding:0">`
+        + x.docs.map(d=>`<li>${esc(d)}</li>`).join("") + `</ul></div>`
+      : "";
+    const sig = (x.signals&&x.signals.length)
+      ? `<div class="cc" style="margin-top:3px;color:var(--muted)">Detected: ${esc(x.signals.join("; "))}</div>` : "";
+    const meta = [x.reason, x.regulator, v.marketplace].filter(Boolean).map(esc).join(" · ");
+    return `<div class="restrow ${x.risk==="HIGH"?'red':'amber'}">
+      <div><span class="risk ${_viabRiskClass(x.risk)}">${esc(x.risk||"")} RISK</span> <b>${esc(x.label)}</b>
+        <span class="cc restconf">${esc(x.id||"")}</span></div>
+      <div class="cc" style="margin-top:3px">${meta}</div>${sig}${docs}
+      <div class="cc" style="margin-top:5px;font-style:italic">As a reseller you probably cannot provide these — confirm before committing to stock.</div></div>`;
+  }).join("");
+  return `<details class="findingsbox" open><summary class="findsum ${anyHigh?'bad':'info'}">${anyHigh?'📄':'📄'} ${esc(head)}</summary>
+    <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">Not a listing restriction — this is the paperwork Amazon can demand after the listing goes live. Warning only; publishing is never blocked here.</div>
+    <div class="restlist">${rows}</div>
+    <div class="cc" style="margin-top:6px;font-size:11px;font-style:italic">${esc(v.caveat||"")}</div></details>`;
 }
 
 // ---- CATEGORY-AWARE CLAIM RISK (task #18 UI) -----------------------------------

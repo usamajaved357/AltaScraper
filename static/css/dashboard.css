@@ -599,6 +599,16 @@
             border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:13px}
   .tileflag.red{color:#ef9a9a}    /* prohibited / blocker */
   .tileflag.amber{color:#e3b768}  /* restricted-needs-docs */
+  /* Compliance-requirements badge (sourcing viability): the count of documents
+     Amazon can demand later. Sits immediately LEFT of .tileflag -- bottom-right is
+     taken by the restricted flag and bottom-left by .tileclaim, so a third badge
+     needs its own lane or it lands on top of one of them. */
+  .tiledocs{position:absolute;bottom:8px;right:36px;display:flex;align-items:center;gap:3px;
+            height:22px;padding:0 7px;border-radius:11px;font-size:11.5px;font-weight:800;
+            cursor:pointer;z-index:6;line-height:1;background:rgba(0,0,0,.55);border:1px solid var(--line)}
+  .tiledocs i{font-size:12px}
+  .tiledocs.red{color:#ef9a9a;border-color:#5c2424}
+  .tiledocs.amber{color:#e3b768;border-color:#5c4a16}
   /* Category-aware claim-risk badge (task #18). RED = loud; AMBER deliberately quieter
      so a soft superlative never screams as loud as a pesticide claim. Absent on clean
      listings, so those tiles look exactly as before. */

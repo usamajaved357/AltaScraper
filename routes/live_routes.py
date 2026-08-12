@@ -7,6 +7,8 @@ from flask import request, jsonify, Response, send_from_directory
 import urllib
 import datetime as _dt
 
+from listing.sourcing_viability import check_sourcing_viability as _viability
+
 # How old an already-generated Amazon report may be before we refuse to reuse it.
 # getReports defaults createdSince to 90 DAYS and documents no sort order, so an
 # unbounded reuse could serve a weeks-old catalogue as if it were live. Six hours
@@ -589,6 +591,27 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 print(f"[live/catalog] inactive report skipped: {_ie}")
                 warnings.append(f"Inactive/suppressed listings could not be loaded "
                                 f"({type(_ie).__name__}) — this list shows ACTIVE listings only.")
+            # COMPLIANCE REQUIREMENTS per live listing. A listing already selling on
+            # Amazon is exactly where the document demand lands -- the patio heater was
+            # live for months before the notice arrived -- so the requirement has to be
+            # visible here, not only on drafts. Pure pattern matching over the title, no
+            # extra Amazon calls, and it rides into the durable snapshot with the item.
+            for it in items:
+                try:
+                    _v = _viability(title=it.get("title", ""),
+                                    product_type=it.get("product_type", ""),
+                                    marketplace=mkt)
+                    if _v.get("matched"):
+                        it["compliance"] = {
+                            "verdict": _v.get("verdict", ""),
+                            "risks": [{"id": x["id"], "label": x["label"], "risk": x["risk"],
+                                       "docs": x["docs"], "regulator": x.get("regulator", ""),
+                                       "reason": x.get("reason", "")}
+                                      for x in _v.get("risks", [])],
+                            "doc_count": sum(len(x.get("docs") or []) for x in _v.get("risks", [])),
+                        }
+                except Exception:
+                    pass          # a compliance fault must never cost you the catalogue
             # enrich each item with COGS + profit estimate
             for it in items:
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))

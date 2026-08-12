@@ -1023,6 +1023,47 @@ async function loadAllMarketplaces(force){
     }
   }
 }
+// COMPLIANCE on a LIVE listing. This is where the document demand actually lands:
+// the patio heater was live and selling for months before Amazon asked for its
+// BS EN 60335 report. The chip states the count on the tile; clicking it lists the
+// documents. Server attaches it.compliance in /live/catalog.
+function liveComplianceChip(it){
+  const c = it.compliance; if(!c || !(c.risks||[]).length) return "";
+  const high = (c.risks||[]).some(x=>x.risk==="HIGH");
+  const col = high ? "#ef9a9a" : "#e3b768";
+  const names = (c.risks||[]).map(x=>x.label).join(", ");
+  return `<span class="profchip" style="cursor:pointer;color:${col};border-color:${col}55;background:${col}1a"
+    title="${esc(names)} — ${c.doc_count} document(s) Amazon can request for this live listing. Click for the list."
+    onclick="event.stopPropagation();showLiveCompliance('${esc(it.sku||'')}')"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`;
+}
+window.showLiveCompliance = function(sku){
+  const it = (LIVE_ITEMS||[]).find(x=>String(x.sku)===String(sku));
+  const c = it && it.compliance;
+  if(!c){ toast("No compliance requirements recorded for this listing."); return; }
+  const body = (c.risks||[]).map(function(x){
+    const docs = (x.docs||[]).map(d=>`<li>${esc(d)}</li>`).join("");
+    return `<div class="restrow ${x.risk==="HIGH"?'red':'amber'}">
+      <div><span class="risk ${x.risk==="HIGH"?'hi':'med'}">${esc(x.risk)} RISK</span> <b>${esc(x.label)}</b></div>
+      <div class="cc" style="margin-top:3px">${esc([x.reason,x.regulator].filter(Boolean).join(" · "))}</div>
+      <div class="cc" style="margin-top:4px"><b>Docs Amazon can request:</b><ul style="margin:4px 0 0 16px;padding:0">${docs}</ul></div>
+    </div>`;
+  }).join("");
+  // Uses the app's existing modal convention: .modalwrap (fixed overlay) toggled
+  // with .open, containing a .modal box with an .x close button.
+  let m = document.getElementById("livecompmodal");
+  if(!m){
+    m = document.createElement("div"); m.id="livecompmodal"; m.className="modalwrap";
+    m.addEventListener("click", function(ev){ if(ev.target===m) m.classList.remove("open"); });
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div class="modal" style="max-width:640px">
+    <button class="x" onclick="document.getElementById('livecompmodal').classList.remove('open')">×</button>
+    <h3>Compliance requirements</h3>
+    <div class="cc" style="margin-bottom:10px">${esc(it.title||sku)}</div>
+    <div class="cc" style="margin-bottom:10px">This listing is already live. These are the documents Amazon can ask for at any time — being live is not evidence that nothing is owed.</div>
+    <div class="restlist">${body}</div></div>`;
+  m.classList.add("open");
+};
 function liveTile(it){
   // real status from the report (Active/Inactive/Incomplete), not a hardcoded LIVE
   var st=(it.status||"Active").trim();
@@ -1087,7 +1128,7 @@ function liveTile(it){
       <div class="tilemeta"><span class="tileprice">${price}</span><span class="tilesku">${esc(it.sku||'')}</span></div>
       <div class="cc" style="margin-top:4px"><span class="livestatus" style="background:${col}1f;color:${col};border:1px solid ${col}55">${esc(st)}</span> ${esc(it.asin||'')} · ${qtyHtml}</div>
       ${shipHtml}
-      <div style="margin-top:5px">${profHtml}</div>
+      <div style="margin-top:5px">${profHtml}${liveComplianceChip(it)}</div>
     </div>
     <div class="tileacts">
       <button class="ib" title="Optimize this live listing" onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i> Optimize</button>

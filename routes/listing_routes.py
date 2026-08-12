@@ -15,6 +15,7 @@ from listing import run_status          # honest run state, independent of the l
 
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
+from listing.sourcing_viability import check_sourcing_viability  # document-demand risk (WARN only)
 
 # Map the screener's field name -> the sheet column header to WRITE a rewrite into.
 # Standard 48-col layout first, then the Miles 12-col layout, so the one-click "Apply
@@ -86,6 +87,33 @@ def _attach_restricted(c, r):
         res = {"matched": False, "matches": [], "overall_action": "NONE",
                "message": "", "caveat": ""}
     c["restricted"] = res
+    return c
+
+
+def _attach_viability(c, r):
+    """Attach the SOURCING VIABILITY result (document-demand risk) for the card's
+    'Compliance requirements' panel.
+
+    Deliberately separate from _attach_restricted above, because it answers a
+    different question. Restricted = "may I list this at all?". Viability = "which
+    safety documents will Amazon demand later, and can I produce them?". The patio
+    heater is why: it was never restricted, so that panel stayed silent while the
+    BS EN 60335 obligation went unseen until the ASIN was already selling.
+
+    Read-only and WARN-only, exactly like the restricted attach, and equally
+    tolerant: a reference-data fault returns an empty result rather than breaking
+    the card."""
+    try:
+        res = check_sourcing_viability(
+            title=c.get("title", ""),
+            bullets=(c.get("bullets") or []),
+            product_type=c.get("product_type", ""),
+            category=c.get("category", ""),
+            marketplace=str(c.get("_marketplace", "") or "").upper())
+    except Exception:
+        res = {"matched": False, "risks": [], "verdict": "VIABLE",
+               "overall_action": "NONE", "warnings": [], "message": "", "caveat": ""}
+    c["viability"] = res
     return c
 
 
@@ -530,6 +558,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     c["row"] = i + 2
                     _attach_claim_flags(c, r)
                     _attach_restricted(c, r)
+                    _attach_viability(c, r)
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:
@@ -546,6 +575,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 c["row"] = i + 2          # actual sheet row number (row 1 = header)
                 _attach_claim_flags(c, r)
                 _attach_restricted(c, r)
+                _attach_viability(c, r)
                 cards.append(c)
             # Report the sheet/tab we ACTUALLY read, straight off the worksheet object,
             # so the header shows the real data source rather than what config claims.
@@ -666,6 +696,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     c["tab_gid"] = str(ws.id)
                     _attach_claim_flags(c, r)
                     _attach_restricted(c, r)
+                    _attach_viability(c, r)
                     cards.append(c)
                     if not _empty_card(c):
                         n += 1                                  # count real listings only
