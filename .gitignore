@@ -33,6 +33,12 @@ sync_capability.json
 # ASIN Monitor: tracked-ASIN list + (later) offer-snapshot history. Runtime state.
 asin_monitor.json
 asin_monitor_history.json
+# User accounts: emails, permissions and PASSWORD HASHES. Never commit -- a hash
+# is not a password, but it is still credential material and it names every
+# person with access to the app.
+users.json
+# Durable live-catalogue snapshots. Runtime state, per-machine, can be large.
+live_snapshots.json
 
 # --- Session baselines (bug-check snapshots, per CLAUDE.md §3 — never commit) ---
 *.baseline.py

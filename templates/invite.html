@@ -1,0 +1,22 @@
+<!doctype html><html><head><title>Set your password</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/css/dash_login.css">
+</head><body>
+{% if done %}
+<form onsubmit="return false">
+  <h1>You're all set</h1>
+  <div class="ok">Your password is saved and you are signed in.</div>
+  <div class="sub"><a href="/">Open AltaScraper</a></div>
+</form>
+{% else %}
+<form method="post">
+  <h1>Choose your password</h1>
+  <div class="hint">This link works once. Pick a password only you know &mdash;
+    nobody else, including the person who invited you, can see it.</div>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <input type="password" name="password"  placeholder="New password" autofocus autocomplete="new-password">
+  <input type="password" name="password2" placeholder="Repeat password" autocomplete="new-password">
+  <button type="submit">Save and sign in</button>
+</form>
+{% endif %}
+</body></html>

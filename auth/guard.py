@@ -1,0 +1,224 @@
+"""auth/guard.py -- which request needs which permission, decided in ONE place.
+
+PLAIN ENGLISH
+Hiding a button in the browser is not security. Anyone can open the browser
+console and call /submit or /delete directly, whatever the screen shows them. So
+permission is checked on the server, on every single request, before the app
+does anything. This file is that check, and it is the only copy of it.
+
+HOW IT DECIDES
+An ordered table of URL prefixes, first match wins, most specific first:
+
+  * a rule mapping to a permission -> the user must hold that permission
+  * a rule mapping to None         -> any signed-in user may do it (reads,
+                                      diagnostics, and the handful of screens
+                                      everyone needs to get started)
+
+Anything NOT in the table:
+
+  * GET / HEAD / OPTIONS -> allowed. These read; anyone with an account may look.
+  * anything else        -> requires "edit". This is the important half: a route
+                            I forgot to list still fails closed for a viewer
+                            rather than silently being wide open. New routes
+                            added later inherit that protection automatically.
+
+WHY A TABLE AND NOT A DECORATOR ON EVERY ROUTE
+There are around 200 routes across 30 files. A decorator per route means 200
+chances to forget one, and no single place to read the policy. Here the whole
+policy is forty lines you can audit in one sitting.
+"""
+from flask import jsonify, redirect, request, session, url_for
+
+from auth import users
+
+# Reachable without being signed in at all.
+PUBLIC_ENDPOINTS = {"_login", "_healthz", "static", "_pubimg",
+                    "invite_page", "invite_accept"}
+
+# (prefix, permission). ORDER MATTERS -- first match wins, so anything more
+# specific must come before the broader prefix it sits under.
+RULES = [
+    # -- user administration. /users/me reports who YOU are and what YOU may do,
+    #    which every signed-in user needs in order to draw their own screen, so
+    #    it is exempted before the broader /users rule.
+    ("/users/me",                       None),
+    ("/users",                          "manage_users"),
+
+    # -- credentials and settings. /accounts/list and /accounts/select are the
+    #    two everyone needs just to open a workspace, so they are exempted here
+    #    BEFORE the broader account rules below.
+    ("/accounts/list",                  None),
+    ("/accounts/select",                None),          # workspace-checked below
+    ("/accounts/save",                  "manage_accounts"),
+    ("/accounts/delete",                "manage_accounts"),
+    ("/accounts/remove_brand",          "manage_accounts"),
+    ("/accounts/set_default_marketplace", "manage_accounts"),
+    ("/accounts/detect_brands",         "manage_accounts"),
+    ("/accounts/detect_marketplaces",   "manage_accounts"),
+    ("/settings",                       "manage_accounts"),
+    ("/sp_diagnose",                    "manage_accounts"),
+
+    # -- publishing to Amazon
+    ("/submit/target",                  None),          # read-only: names the destination
+    ("/submit",                         "publish"),
+    ("/optimize/push",                  "publish"),
+    ("/listing/push_image",             "publish"),
+    ("/handling/bulk_update",           "publish"),     # writes handling time live
+
+    # -- advertising
+    ("/ppc",                            "ppc"),
+
+    # -- destructive / final
+    ("/approve",                        "approve_delete"),
+    ("/delete",                         "approve_delete"),
+    ("/clear_empty",                    "approve_delete"),
+    ("/miles/clear_history",            "approve_delete"),
+
+    # -- work that happens over GET, so the default read rule would let it
+    #    through. Listed explicitly so it needs "edit" like any other mutation.
+    ("/run/health",                     None),          # diagnostics only
+    ("/run/stack",                      None),
+    ("/run",                            "edit"),
+    ("/miles/run_log",                  None),
+    ("/miles/run_csv",                  None),
+    ("/miles/runs",                     None),
+    ("/miles/run_active",               None),
+    ("/miles/run_tail",                 None),
+    ("/miles/results",                  None),
+    ("/miles/run",                      "edit"),
+    ("/miles/generate",                 "edit"),
+    ("/miles/optimize",                 "edit"),
+    ("/rescan/apply",                   "edit"),
+]
+
+# Requests that name a workspace. Enforcing scope HERE is what makes per-user
+# workspace access real: every data route reads whichever account is currently
+# selected, so refusing the switch is the one choke point that covers all of
+# them. Blocking only the UI would leave the data one fetch() away.
+WORKSPACE_SWITCH = {
+    "/accounts/select": "id",
+    "/view/set":        "key",
+}
+
+
+def required_permission(path, method):
+    """The permission this request needs, or None if any signed-in user may do it."""
+    p = str(path or "")
+    for prefix, perm in RULES:
+        if p == prefix or p.startswith(prefix + "/") or p.startswith(prefix + "?"):
+            return perm
+    if str(method or "GET").upper() in ("GET", "HEAD", "OPTIONS"):
+        return None                       # reads are open to anyone signed in
+    return "edit"                         # unlisted mutation -> fails closed
+
+
+def check(path, method, user, json_body=None):
+    """Decide one request. Returns (allowed: bool, message: str).
+
+    `json_body` is only needed for workspace switches; pass the parsed body or
+    None. It is read defensively -- a malformed body must not crash the doorman.
+    """
+    if not user:
+        return False, "Not signed in."
+    if not user.get("active", True):
+        return False, "This account has been disabled."
+
+    p = str(path or "")
+
+    # 1. Workspace scope, before anything else: a user restricted to Nestwell
+    #    must not be able to select Jack Reacherd, whatever else they may do.
+    for prefix, field in WORKSPACE_SWITCH.items():
+        if p == prefix:
+            ws = ""
+            try:
+                ws = str((json_body or {}).get(field, "") or "")
+            except Exception:
+                ws = ""
+            if not users.can_access_workspace(user, ws):
+                return False, "You do not have access to that workspace."
+            return True, ""
+
+    # 2. Ordinary permission check.
+    perm = required_permission(p, method)
+    if perm is None:
+        return True, ""
+    if users.has_permission(user, perm):
+        return True, ""
+    return False, _denial_message(perm)
+
+
+def _denial_message(perm):
+    """Say plainly what is missing, so nobody has to guess why a click failed."""
+    label = users.PERMISSIONS.get(perm, perm)
+    return ("You do not have permission for this action. "
+            "It needs: %s. Ask the account owner to grant it." % label)
+
+
+def make_doorman(config_path, app_password, login_endpoint="_login"):
+    """Build the before_request handler that runs on EVERY request.
+
+    Lives here rather than in dashboard.py so that the decision and its
+    enforcement are the same piece of code -- and so it can be tested directly,
+    which a function defined inside dashboard.py's __main__ block cannot be.
+    """
+    def _require_login():
+        # _pubimg is intentionally public: it serves a single image whose URL
+        # already embeds a valid HMAC token, so Amazon (and only holders of the
+        # token) can fetch it.
+        if request.endpoint in PUBLIC_ENDPOINTS:
+            return
+
+        uid = session.get("uid")
+
+        # Local dev with no shared password AND no accounts: the gate no-ops,
+        # exactly as it did before any of this existed.
+        if not app_password and users.is_bootstrap(config_path) and not uid:
+            return
+
+        if not session.get("authed"):
+            # Carry the destination through the sign-in. Every screen has its own
+            # address now, so without this a bookmarked link followed after the
+            # session expired would silently dump you on the workspace list.
+            nxt = request.full_path if request.method == "GET" else ""
+            if nxt.endswith("?"):
+                nxt = nxt[:-1]
+            return redirect(url_for(login_endpoint, next=nxt) if nxt
+                            else url_for(login_endpoint))
+
+        user = users.get_user(config_path, uid) if uid else None
+
+        # Deleted or disabled mid-session -> sign them out and send them to the
+        # sign-in screen. NOT a 403: that path answers with JSON, which is right
+        # for the app's fetch() calls but would show a disabled person a raw blob
+        # of JSON in place of every page they open.
+        if uid and (user is None or not user.get("active", True)):
+            session.clear()
+            return redirect(url_for(login_endpoint))
+
+        if user is None:
+            if not users.is_bootstrap(config_path):
+                # Accounts exist now, so the shared password is no longer a way in.
+                session.clear()
+                return redirect(url_for(login_endpoint))
+            user = users.bootstrap_user()
+
+        body = request.get_json(silent=True) if request.method == "POST" else None
+        ok, why = check(request.path, request.method, user, body)
+        if not ok:
+            # 403 with a plain reason, as JSON -- every fetch() in the app expects
+            # JSON and would otherwise report a parse error instead of the cause.
+            return jsonify({"ok": False, "error": why, "forbidden": True}), 403
+
+    return _require_login
+
+
+def audit(rules=None):
+    """Every rule, for review. Used by the tests and worth printing when the
+    policy changes -- a permission table you cannot read is one you cannot trust.
+    """
+    out = []
+    for prefix, perm in (rules or RULES):
+        out.append({"prefix": prefix,
+                    "permission": perm or "(any signed-in user)",
+                    "description": users.PERMISSIONS.get(perm, "") if perm else ""})
+    return out

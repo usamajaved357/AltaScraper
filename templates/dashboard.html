@@ -21,6 +21,11 @@
   <button class="barbtn" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</button>
   <button class="barbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i> Privacy</button>
   <button class="barbtn" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</button>
+  <!-- Shown only to people who may manage users. Hiding it is a courtesy, not the
+       control: the server refuses /users/* to everyone else regardless. -->
+  <button class="barbtn" id="usersbtn" onclick="openUsers()" style="display:none" title="Add people and choose what each of them can do"><i class="ti ti-users"></i> Users</button>
+  <span class="barbtn" id="whoami" style="display:none;cursor:default" title="Signed in as"></span>
+  <button class="barbtn" id="signoutbtn" onclick="location.href='/logout'" style="display:none" title="Sign out"><i class="ti ti-logout"></i></button>
   <button class="barbtn" onclick="goHome()"><i class="ti ti-home"></i> Home</button>
 </div>
 
@@ -665,6 +670,15 @@
   </div>
 </div>
 <script src="/static/js/asinresearch.js"></script>
+
+<!-- Users & permissions. Global, not per-workspace, so it lives on the top bar. -->
+<div id="usersmodal" class="modalwrap" style="z-index:120">
+  <div class="modal" style="max-width:860px;position:relative">
+    <button class="x" onclick="closeUsers()">×</button>
+    <div id="usersbody"><div class="cc" style="padding:16px">Loading…</div></div>
+  </div>
+</div>
+<script src="/static/js/users.js"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">

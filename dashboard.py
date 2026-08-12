@@ -140,16 +140,11 @@ def _public_media_url(media_url: str) -> str:
 
 
 
-@app.before_request
-def _require_login():
-    if not _APP_PASSWORD:
-        return  # no password configured (local dev) -> gate disabled
-    # _pubimg is intentionally public: it serves a single image whose URL already
-    # embeds a valid HMAC token, so Amazon (and only holders of the token) can fetch it.
-    if request.endpoint in ("_login", "_healthz", "static", "_pubimg"):
-        return
-    if not session.get("authed"):
-        return redirect(url_for("_login"))
+# The doorman: signed in? and allowed to do this? Both questions are answered by
+# auth/guard.py, which holds the whole policy in one readable table. Nothing about
+# who-may-do-what is decided in this file.
+from auth.guard import make_doorman as _make_doorman
+app.before_request(_make_doorman(CONFIG_PATH, _APP_PASSWORD))
 
 
 @app.route("/img/<token>/<path:relpath>")
@@ -3171,5 +3166,7 @@ if __name__ == "__main__":
                           _resolve_cogs=_resolve_cogs, _state=_state,
                           _APLUS_CACHE=_APLUS_CACHE, _APLUS_TTL=_APLUS_TTL)
     import routes.dash_auth_routes as _dash_auth_routes
-    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD)
+    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
+    import routes.users_routes as _users_routes
+    _users_routes.register(app, CONFIG_PATH=CONFIG_PATH)
     app.run(host=HOST, port=PORT, threaded=True)

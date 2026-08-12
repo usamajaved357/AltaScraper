@@ -29,11 +29,10 @@ This module stores and returns data. It makes no Amazon calls and holds no
 opinion about freshness -- the caller decides what is too old, and every record
 carries the timestamp needed to decide.
 """
-import json
-import os
-import tempfile
 import threading
 import time
+
+from domain import jsonstore
 
 _FILE = "live_snapshots.json"
 _LOCK = threading.RLock()
@@ -41,7 +40,7 @@ _MEM = {"path": None, "data": None}      # process-local mirror of the file
 
 
 def _path(config_path):
-    return os.path.join(os.path.dirname(os.path.abspath(str(config_path))), _FILE)
+    return jsonstore.path_beside_config(config_path, _FILE)
 
 
 def _read_all(config_path):
@@ -50,38 +49,16 @@ def _read_all(config_path):
     with _LOCK:
         if _MEM["path"] == p and isinstance(_MEM["data"], dict):
             return _MEM["data"]
-        data = {}
-        try:
-            with open(p, encoding="utf-8") as fh:
-                loaded = json.load(fh)
-            if isinstance(loaded, dict):
-                data = loaded
-        except Exception:
-            data = {}          # missing or corrupt file is simply "no snapshots yet"
+        loaded = jsonstore.read_json(p, default=None)
+        # A missing or corrupt file is simply "no snapshots yet".
+        data = loaded if isinstance(loaded, dict) else {}
         _MEM["path"], _MEM["data"] = p, data
         return data
 
 
 def _write_all(config_path, data):
-    """Atomic whole-store write: temp file in the same dir, then os.replace()."""
-    p = _path(config_path)
-    d = os.path.dirname(p)
-    try:
-        os.makedirs(d, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=".live_snapshots.", suffix=".tmp", dir=d)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, ensure_ascii=False)
-            os.replace(tmp, p)          # atomic on Windows and Linux
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except Exception:
-                pass
-            raise
-        return True
-    except Exception:
-        return False                    # persistence is best-effort, never fatal
+    """Atomic whole-store write. Persistence is best-effort, never fatal."""
+    return jsonstore.write_json_atomic(_path(config_path), data)
 
 
 def key(account_id, marketplace):
