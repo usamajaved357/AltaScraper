@@ -778,7 +778,7 @@ function editCell(sku,target,key,value,opts,multiline){
   if(multiline) return `<textarea class="ed" rows="3" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">${esc(cur)}</textarea>`;
   return `<input class="ed" value="${esc(cur)}" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">`;
 }
-function edRow(label,ctrl,hint,prov,sub,req,softReq){ const provHtml = (typeof prov==='string') ? srcBadge(prov) : (prov?iBtnEntry(prov):""); const reqHtml = softReq ? '<span class="reqsoft" title="The schema lists this as required, but Amazon\u2019s last Preview accepted the listing WITHOUT it. Fill it only if a later Preview flags it.">\u2606 schema-listed</span>' : (req?'<span class="reqstar" title="Required by Amazon">\u2605</span>':""); return `<tr class="${hint?'flaggedrow':''}${sub?' subrow':''}"><td class="k">${sub?'<span class="subarrow">\u21b3</span> ':''}${esc(_cleanLabel(label))}${reqHtml}${provHtml}${hint?` <span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
+function edRow(label,ctrl,hint,prov,sub,req,softReq,del){ const provHtml = (typeof prov==='string') ? srcBadge(prov) : (prov?iBtnEntry(prov):""); const reqHtml = softReq ? '<span class="reqsoft" title="The schema lists this as required, but Amazon\u2019s last Preview accepted the listing WITHOUT it. Fill it only if a later Preview flags it.">\u2606 schema-listed</span>' : (req?'<span class="reqstar" title="Required by Amazon">\u2605</span>':""); const delHtml = !del ? "" : (del.locked ? `<button class="cdel afdel dis" disabled title="Amazon requires this field \u2014 it can\u2019t be deleted (deleting it would fail on Preview/Submit)">\u2715</button>` : `<button class="cdel afdel" title="Delete this field from the listing" onclick="clearField('${esc(del.sku)}','${del.target}','${esc(del.key)}')">\u2715</button>`); return `<tr class="${hint?'flaggedrow':''}${sub?' subrow':''}"><td class="k">${sub?'<span class="subarrow">\u21b3</span> ':''}${esc(_cleanLabel(label))}${reqHtml}${provHtml}${delHtml}${hint?` <span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
 function _cleanLabel(s){ s=String(s==null?"":s); s=s.replace(/&nbsp;/g,"").replace(/\u21b3/g,"").replace(/[._]/g," ").trim(); return s.charAt(0).toUpperCase()+s.slice(1); }
 function wideRow(label,ctrl){ return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)}</div>${ctrl}</td></tr>`; }
 function ccount(el, cid, limit){
@@ -852,7 +852,7 @@ function contentRow(label, sku, colKey, value, limit, opts){
   const rows = opts.rows||3;
   const tgt = opts.target||"col";
   const ta=`<textarea class="ed" rows="${rows}" data-bkt="${esc(opts.bucket||'')}" data-bytes="${useBytes?1:0}" data-warn="${warnAt}" data-lim="${lim}" oninput="ccount(this,'${cid}',${lim});bulletMeter()" onchange="saveEdit(this,'${esc(sku)}','${tgt}','${esc(colKey)}')">${esc(cur)}</textarea>`;
-  return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)} ${counter} ${idx}</div>${warnmsg}${ta}</td></tr>`;
+  return `<tr><td colspan="2" class="wcell"><div class="wlab">${esc(label)} ${counter} ${idx}${opts.controls?(' '+opts.controls):''}</div>${warnmsg}${ta}</td></tr>`;
 }
 function edRowReq(label,ctrl,hint){ return `<tr class="reqrow"><td class="k"><span class="klabel">${esc(label)}<span class="reqstar" title="Required by Amazon">\u2605</span></span> <span class="reqtag">needs value</span>${hint?`<span class="fixhint">\u26a0 ${esc(hint)}</span>`:""}</td><td class="v">${ctrl}</td></tr>`; }
 function sid(s){ return String(s).replace(/[^a-zA-Z0-9]/g,"_"); }
@@ -891,15 +891,31 @@ const SUBFIELD_HINT={
   "hazmat.value":"Type UN3481 (lithium-ion battery packed with equipment).",
   "hazmat.united_nations_regulatory_id":"Type UN3481."
 };
-function parseFlagged(notes){
+function parseFlagged(notes, isValidField, sink){
   // {field: hint} for every fixable attribute issue Amazon flagged in the last preview.
   // Maps composite dimension errors (item_depth_width_height) to the editable axis field.
+  // isValidField(name) (optional): a predicate that returns true only for names that are
+  // real attributes in the fetched product-type schema. When supplied, any extracted token
+  // that fails it is NOT turned into an editable field -- its raw text is pushed to `sink`
+  // (an array) to be shown as plain prose instead. This is the second guard: a regex must
+  // never be the only thing between Amazon's human message and a rendered form field.
   const out={};
   if(!notes) return out;
   String(notes).split(";").forEach(seg=>{
-    const m=seg.match(/\[[EW]\]\s+([a-z][a-z0-9_]+)\s+([\s\S]*)/i);   // skips non-attribute "fields" like a bare barcode number
+    // CASE-SENSITIVE ON PURPOSE (no /i): real Amazon attribute names are ALWAYS lowercase
+    // snake_case (item_type_keyword, part_number). With /i the [a-z] class also matched the
+    // capitalised first word of Amazon's PROSE ("The Listing data...", "Your offer...") and
+    // rendered "The"/"Your" as phantom input fields. The leading [a-z] now anchors to a real
+    // lowercase attribute token only.
+    const m=seg.match(/\[[EW]\]\s+([a-z][a-z0-9_]+)\s+([\s\S]*)/);   // skips non-attribute "fields" like a bare barcode number
     if(!m) return;
     const field=m[1].toLowerCase(), msg=m[2];
+    // Second guard: the token looks lowercase but isn't a real schema attribute -> don't make
+    // a field for it; surface Amazon's message as plain text.
+    if(typeof isValidField==="function" && !isValidField(field)){
+      if(sink) sink.push(seg.trim());
+      return;
+    }
     if(/required but missing/i.test(msg)){ if(!out[field]) out[field]="required"; return; }
     let mm=msg.match(/at least '([^']+)'\s+(\w+)\s+for '([^']+)'/i);
     if(mm){ out[AXIS_FIELD[mm[3].toLowerCase()]||field]="must be at least "+mm[1]+" "+mm[2]; return; }
@@ -969,6 +985,74 @@ async function saveEdit(el,sku,target,key){
              else updateLocalCol(r,key,value); }
     } else { el.classList.add("err"); toast("Save failed: "+(j.error||"")); }
   }catch(e){ el.classList.remove("saving"); el.classList.add("err"); toast("Save failed: "+e); }
+}
+
+// ============================================================================
+// FULL EDITOR -- field delete + bullet management (Seller-Central-style)
+// ============================================================================
+// Rebuild just the drawer's full-data block after a structural edit (delete /
+// add / reorder), without touching the run panel above it.
+function _rebuildDrawerData(sku){
+  const r=ROWS.find(x=>String(x.sku)===String(sku));
+  const host=document.getElementById("fulldata_"+sid(sku));
+  if(host && r){ host.innerHTML=fullData(r); setTimeout(()=>{ if(typeof bulletMeter==='function') bulletMeter(); }, 40); }
+}
+// Delete/clear a field. Attributes -> the key is REMOVED; columns/content -> the cell
+// is blanked. `refresh` rebuilds the block so a deleted attribute row disappears.
+async function clearField(sku, target, key, refresh){
+  if(!confirm("Delete '"+key+"' from this listing?")) return;
+  try{
+    const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku, target, key, value:""})})).json();
+    if(!j || !j.ok){ toast("Delete failed: "+((j&&j.error)||"unknown")); return; }
+    const r=ROWS.find(x=>String(x.sku)===String(sku));
+    if(r){ if(target==="attr"){ r.attributes=r.attributes||{}; delete r.attributes[key]; }
+           else if(typeof updateLocalCol==="function") updateLocalCol(r,key,""); }
+    toast("Deleted ✓");
+    if(refresh!==false) _rebuildDrawerData(sku);
+  }catch(e){ toast("Delete failed: "+e); }
+}
+
+// ---- bullets (stored as sheet columns "Bullet 1".."Bullet 5", Amazon max 5) ----
+const MAX_BULLETS=5;
+// Persist the whole bullet set: write all 5 columns (blank the unused) so the sheet
+// exactly matches the array -- this is what makes reorder / remove-and-compact stick.
+async function _saveBullets(sku, bullets){
+  const arr=(bullets||[]).slice(0, MAX_BULLETS);
+  for(let i=0;i<MAX_BULLETS;i++){
+    await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku, target:"col", key:"Bullet "+(i+1), value:(arr[i]||"")})});
+  }
+  const r=ROWS.find(x=>String(x.sku)===String(sku));
+  if(r) r.bullets=arr;
+}
+function bulletControls(sku, i, total){
+  const up   = i>0        ? `<button class="bctl" title="Move up" onclick="moveBullet('${esc(sku)}',${i},-1)">↑</button>` : `<button class="bctl dis" disabled>↑</button>`;
+  const down = i<total-1  ? `<button class="bctl" title="Move down" onclick="moveBullet('${esc(sku)}',${i},1)">↓</button>`  : `<button class="bctl dis" disabled>↓</button>`;
+  const del  = `<button class="bctl del" title="Delete this bullet" onclick="removeBullet('${esc(sku)}',${i})">✕</button>`;
+  return `<span class="bctls">${up}${down}${del}</span>`;
+}
+async function addBullet(sku){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
+  r.bullets=r.bullets||[];
+  if(r.bullets.length>=MAX_BULLETS){ toast("Amazon allows a maximum of 5 bullet points"); return; }
+  r.bullets.push("");
+  await _saveBullets(sku, r.bullets);
+  _rebuildDrawerData(sku);
+}
+async function removeBullet(sku, i){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
+  if((r.bullets[i]||"").trim() && !confirm("Delete bullet "+(i+1)+"?")) return;
+  r.bullets.splice(i,1);                         // remove AND compact -> no empty slot
+  await _saveBullets(sku, r.bullets);
+  _rebuildDrawerData(sku);
+}
+async function moveBullet(sku, i, dir){
+  const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
+  const j=i+dir; if(j<0||j>=r.bullets.length) return;
+  const t=r.bullets[i]; r.bullets[i]=r.bullets[j]; r.bullets[j]=t;
+  await _saveBullets(sku, r.bullets);
+  _rebuildDrawerData(sku);
 }
 // Schema-state diagnostic strip. The #1 reason flagged boxes render without
 // dropdowns (or look "empty/shrunk") is that the LIVE Amazon schema for this
@@ -1103,7 +1187,21 @@ function _fullDataInner(r){
   // fields the script fills itself (structural / identity / dimensions) -- never shown as needs-value
   const EXCLUDE_REQ=new Set(["item_name","bullet_point","product_description","generic_keyword","purchasable_offer","fulfillment_availability","brand","condition_type","merchant_shipping_group","supplier_declared_has_product_identifier_exemption","externally_assigned_product_identifier","list_price","manufacturer","model_number","part_number","item_dimensions","item_package_dimensions","item_depth_width_height","item_length_width_height","website_shipping_weight","recommended_browse_nodes","browse_node","browse_nodes"]);
   // required-but-missing = schema top-level required UNION the fields Amazon's last preview flagged
-  const flagged=parseFlagged(r.notes);   // {field: hint} from Amazon's last preview (required / min-max / invalid)
+  // Validate every field name Amazon's message yields against the product-type SCHEMA we
+  // already fetched, BEFORE it can become an input box. If the schema didn't load we can't
+  // validate, so we don't drop anything (the /i removal above still stops the phantom words).
+  const _schemaLoaded=(allAttrs||[]).length>0;
+  const _axisTargets=new Set(Object.values(AXIS_FIELD));            // item_width/depth/height/length
+  const _structOK=new Set(["item_depth_width_height","item_length_width_height"]);
+  const isRealAttr=f=>{
+    if(!_schemaLoaded) return true;
+    const top=String(f).split(".")[0];
+    return (allAttrs.indexOf(top)>=0) || !!enums[top] || !!(sc.subs||{})[top]
+        || ((reqList||[]).indexOf(top)>=0) || !!AXIS_FIELD[top]
+        || _axisTargets.has(top) || _structOK.has(top);
+  };
+  const _plainNotes=[];                  // Amazon prose that isn't a real field -> shown as text
+  const flagged=parseFlagged(r.notes, isRealAttr, _plainNotes);   // {field: hint} from Amazon's last preview (required / min-max / invalid)
   const flaggedKeys=Object.keys(flagged);
   const reqUnion=new Set([...(reqList||[]), ...flaggedKeys]);
   // A field Amazon EXPLICITLY flagged must ALWAYS show a box, even if it's in
@@ -1229,7 +1327,7 @@ function _fullDataInner(r){
                                     : "type the value Amazon expects (free text)");
     return isMissing
       ? edRowReq(lbl(k), editCell(sku,"attr",k,"",enums[k]||null), missHint)
-      : edRow(lbl(k), editCell(sku,"attr",k,a[k],enums[k]||null), flagged[k], _prov&&_prov[k], false, isReq, _flatSchemaOnly);
+      : edRow(lbl(k), editCell(sku,"attr",k,a[k],enums[k]||null), flagged[k], _prov&&_prov[k], false, isReq, _flatSchemaOnly, {sku:sku, target:"attr", key:k, locked:isReq});
   };
   // skip flat dot-keys that belong to a nested group (rendered under their head)
   const isSubKey=k=>k.includes(".")&&subsView[k.split(".")[0]];
@@ -1267,13 +1365,25 @@ function _fullDataInner(r){
   const bulletMeterRow = `<tr><td colspan="2" class="wcell"><div id="bulletIdxMeter" class="bulletmeter"></div></td></tr>`;
   const itemHi = (r.attributes||{}).item_type_keyword===undefined ? "" : "";
   const _highlightVal = (function(){ try{ return (r.attributes||{}).item_highlights || r.item_highlights || ""; }catch(e){ return ""; } })();
+  // ✕ delete control for a content field (blanks the cell; bullets get their own controls)
+  const cDel=(target,key)=>`<button class="cdel" title="Delete this field" onclick="clearField('${esc(sku)}','${target}','${esc(key)}')">✕</button>`;
   const cRows=[
-      contentRow("Backend search terms", sku, "Search Terms / KW", r.search_terms, 249, backendOpts),
+      contentRow("Backend search terms", sku, "Search Terms / KW", r.search_terms, 249, Object.assign({}, backendOpts, {controls:cDel("col","Search Terms / KW")})),
       contentRow("Title", sku, "Title", r.title, 200, titleOpts),
-      contentRow("Item Highlights", sku, "item_highlights", _highlightVal, 125, highlightOpts)
+      contentRow("Item Highlights", sku, "item_highlights", _highlightVal, 125, Object.assign({}, highlightOpts, {controls:cDel("attr","item_highlights")}))
     ]
     .concat([bulletMeterRow])
-    .concat((r.bullets||[]).map((b,i)=>contentRow("Bullet "+(i+1), sku, "Bullet "+(i+1), b, 500, bulletOptsFor(i+1))))
+    .concat((function(){
+        var bl=(r.bullets||[]); var total=bl.length;
+        var rows=bl.map(function(b,i){
+          return contentRow("Bullet "+(i+1), sku, "Bullet "+(i+1), b, 500,
+                            Object.assign({}, bulletOptsFor(i+1), {controls: bulletControls(sku,i,total)}));
+        });
+        if(total<MAX_BULLETS){
+          rows.push('<tr><td colspan="2" class="wcell"><button class="addbulletbtn" onclick="addBullet(\''+esc(sku)+'\')">+ Add bullet ('+total+'/5)</button></td></tr>');
+        }
+        return rows;
+      })())
     .concat([contentRow("Description", sku, "Description (HTML)", r.description, 2000, descOpts)]).join("");
   const rid="raw_"+Math.random().toString(36).slice(2,8);
   const nEnum=Object.keys(enums).length;
@@ -1346,10 +1456,17 @@ function _fullDataInner(r){
     ? `<details class="suball"><summary class="kvsec" style="cursor:pointer">Complete submission data — everything sent to Amazon (${allSubKeys.length} fields, read-only)</summary>
         <table class="kv">${fullSubRows}</table></details>`
     : "";
+  // Amazon messages that don't name a real schema attribute (catalogue-conflict prose,
+  // "The Listing data...", "Your offer...") -> shown as plain text, NEVER as input fields.
+  const plainNoteBlock=(_plainNotes&&_plainNotes.length)
+    ? `<div class="amzprose" style="margin:6px 0;padding:8px 10px;border:1px solid var(--bd,#555);border-radius:6px">
+         <b>Amazon message</b> <span class="cc">(not an editable field — no attribute to fix here)</span><br>
+         ${_plainNotes.map(esc).join("<br>")}</div>`
+    : "";
   return `<details open><summary>Full listing data — click any value to edit; saves automatically${nEnum?'. Dropdowns = Amazon allowed values':''}</summary>
     ${imgBlock}
     <div class="kvsec">Identity &amp; offer</div><table class="kv">${idRows}</table>
-    <div class="kvsec">Attributes${attrHdr}</div>${schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)}${(typeof howWorks==="function")?howWorks('required_fields'):""}${hasAttrs?`<table class="kv">${attrRows}</table>`:''}${reqNote}${addCtrl}${rememberBtn}
+    <div class="kvsec">Attributes${attrHdr}</div>${schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)}${(typeof howWorks==="function")?howWorks('required_fields'):""}${hasAttrs?`<table class="kv">${attrRows}</table>`:''}${plainNoteBlock}${reqNote}${addCtrl}${rememberBtn}
     <div class="kvsec">Content</div>${(typeof howWorks==="function")?howWorks('content_index'):""}<table class="kv">${cRows}</table>
     ${fullSubBlock}
     <span class="rawtoggle" onclick="var e=document.getElementById('${rid}');e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>

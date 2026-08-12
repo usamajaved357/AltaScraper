@@ -138,15 +138,6 @@
       "docs": ["laser_safety_cert"]
     },
     {
-      "id": "mains_electrical",
-      "label": "Mains-powered electrical product",
-      "keywords": ["mains powered", "240v", "230v", "wall charger", "mains adapter", "ac mains adapter"],
-      "status": {"UK": {"value": "RESTRICTED", "source": "unverified"}, "US": {"value": "RESTRICTED", "source": "unverified"}},
-      "reason": "Mains electrical products require safety conformity marking and correct plug. UNVERIFIED -- confirm the exact requirement.",
-      "regulator": {"UK": "UKCA/CE + BS1363 plug", "US": "UL / ETL"},
-      "docs": ["ukca_ce", "plug_cert", "ul_etl"]
-    },
-    {
       "id": "childrens_product",
       "label": "Children's product / toy",
       "keywords": ["toy", "children's", "toddler toy", "baby product", "kids toy", "infant"],
@@ -172,6 +163,24 @@
       "reason": "Weapons-adjacent items are prohibited or heavily restricted, varying by state/region. UNVERIFIED -- confirm the exact requirement.",
       "regulator": {"UK": "gov.uk (offensive weapons)", "US": "State law / Amazon policy"},
       "docs": []
+    },
+    {
+      "id": "electric_heating_appliances",
+      "label": "Electric heating appliance (space / patio / fan heater)",
+      "asin_seen": "B0HCJK9YKH",
+      "notice_date": "2026-08-11",
+      "notice_deadline": "2026-10-10",
+      "keywords": ["electric patio heater", "patio heater"],
+      "keywords_note": "Full trigger-keyword breadth for this category lives in master_restricted_reference.json (electric_heating_appliances); listing/restricted.py unions the two, so these are only the terms naming the ASIN in Amazon's notice.",
+      "status": {
+        "UK": {"value": "GATED -- BS EN 60335-2-30 test report, UKCA DoC and UK Responsible Person required (Amazon notice 11 Aug 2026, ASIN B0HCJK9YKH)", "source": "amazon_notice"},
+        "US": {"value": "GATED -- UL/ETL certification required, FCC if wireless controls", "source": "unverified"}
+      },
+      "reason": "2000W Electric Patio Heater -- Food and Product Safety Issues. Amazon notice dated 11 Aug 2026, documents due 10 Oct 2026. OPSS actively enforces electric heating appliances on Amazon UK.",
+      "regulator": {"UK": "OPSS / UKCA (BS EN 60335-2-30)", "US": "CPSC / UL / ETL"},
+      "docs": {"UK": ["ukca_ce", "plug_cert"], "US": ["ul_etl", "fcc_id"]},
+      "docs_note": "These are the catalogued doc ids only. The itemised requirement (ISO 17025 test report to BS EN 60335-2-30, UK Responsible Person, IP-rating evidence, EN 55014 EMC) is carried as plain text on the master entry and is shown first for the active marketplace.",
+      "source_note": "UK status is confirmed from Amazon's own notice. US status is research, not a US notice -- flip US source to amazon_notice only if a US notice actually exists."
     }
   ]
 }

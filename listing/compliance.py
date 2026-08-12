@@ -917,7 +917,8 @@ def check_numeric_grounding(listing: dict, source_text: str) -> dict:
     return result
 
 
-def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
+def check_ip_violations(listing: dict, brand: str, ip_rules: dict,
+                        competitor_brands=None) -> dict:
     """
     Universal IP scan. Two checks:
       1. Forbidden comparative phrases ("compatible with", "OEM approved", etc.).
@@ -937,7 +938,7 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
     }
     """
     empty = {"has_violations": False, "phrases_found": [],
-             "unknown_caps": [], "summary": ""}
+             "unknown_caps": [], "competitor_hits": [], "summary": ""}
     if not ip_rules:
         return empty
 
@@ -962,6 +963,25 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
             if phrase.lower() in phrase_scan_lower:
                 phrases_found.append(phrase)
 
+    # --- COMPETITOR BRAND (the real IP risk, and it is EVIDENCE not a guess) --
+    # The app pulls the competitor's title/specs to build a NEW listing under the
+    # owner's own brand (CLAUDE.md §1). The genuine exposure is the competitor's
+    # brand name LEAKING into that copy. Until now nothing checked for it: this
+    # function only ever received the OWNER's brand, as a safe word. So the one
+    # name we can prove is a trademark was the one name we never looked for.
+    #
+    # Scanned with the same _wordish boundary guard used by check_forbidden_brands
+    # so a brand never matches inside a longer word ("Esso" in "compressor").
+    competitor_hits = []
+    for cb in (competitor_brands or []):
+        cb = (cb or "").strip()
+        if len(cb) < 3:
+            continue                      # 1-2 char "brands" match far too much
+        if cb.lower() in _split_brand_words(brand):
+            continue                      # same as our own brand -- not a leak
+        if _wordish(cb).search(phrase_scan_text):
+            competitor_hits.append(cb)
+
     # --- Unrecognised capitalised words (title EXCLUDED) ---------------------
     brand_words   = _split_brand_words(brand)
     safe_lc       = ip_rules.get("safe_capitalised_lc", set())
@@ -984,6 +1004,17 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
             if i == 0:                              # sentence opener -- skip
                 continue
             tok_lc = tok.lower()
+            # Contractions and possessives are ordinary English, never brands.
+            # "Father's", "You're" and "Whole'" were all reported as suspected
+            # brands on a real run -- they are a family word, a pronoun and a
+            # stray quote mark. Reduce to the base word and judge THAT.
+            tok_lc = tok_lc.rstrip("'")
+            if "'" in tok_lc:
+                _stem, _, _suffix = tok_lc.rpartition("'")
+                if _stem and _suffix in ("s", "re", "t", "ll", "ve", "d", "m"):
+                    tok_lc = _stem
+            if not tok_lc:
+                continue
             if tok_lc in brand_words:               # our own brand
                 continue
             if tok_lc in safe_lc:                   # explicit allowlist
@@ -1011,17 +1042,22 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict) -> dict:
     threshold = ip_rules.get("max_unrecognised", 4)
     caps_violation = len(unknown_caps) > threshold
 
-    has_violations = bool(phrases_found) or caps_violation
+    # A competitor brand in our copy is PROOF, so it violates on its own. The
+    # capitalised-word scan stays a guess and keeps its tolerance threshold.
+    has_violations = bool(phrases_found) or caps_violation or bool(competitor_hits)
 
     summary_parts = []
+    if competitor_hits:
+        summary_parts.append(f"COMPETITOR BRAND in copy: {', '.join(competitor_hits[:5])}")
     if phrases_found:
         summary_parts.append(f"phrases: {', '.join(phrases_found[:5])}")
     if caps_violation:
-        summary_parts.append(f"suspected brand words: {', '.join(unknown_caps[:8])}")
+        summary_parts.append(f"possible brand words (unconfirmed): {', '.join(unknown_caps[:8])}")
 
     return {
-        "has_violations": has_violations,
-        "phrases_found":  phrases_found,
-        "unknown_caps":   unknown_caps,
-        "summary":        ("IP RISK | " + " | ".join(summary_parts)) if summary_parts else "",
+        "has_violations":  has_violations,
+        "phrases_found":   phrases_found,
+        "unknown_caps":    unknown_caps,
+        "competitor_hits": competitor_hits,
+        "summary":         ("IP RISK | " + " | ".join(summary_parts)) if summary_parts else "",
     }

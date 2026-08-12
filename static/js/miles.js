@@ -53,18 +53,21 @@ function milesParseRows(rows, fname){
   document.getElementById("miles_items").textContent = items.length? ("Items: "+items.slice(0,30).join(", ")+(items.length>30?" …":"")) : "No item numbers found in the file.";
   // upload to server
   fetch("/miles/upload",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({items})}).then(r=>r.json()).then(j=>{
+    body:JSON.stringify({items, filename: fname})}).then(r=>r.json()).then(j=>{
       const btn=document.getElementById("miles_runbtn");
       if(btn) btn.disabled = !(j.ok && j.count>0);
     }).catch(()=>{});
 }
-function milesRun(){
-  if(ES){toast("A run is already streaming");return;}
-  if(!MILES_ITEMS.length){toast("Upload an item-number file first");return;}
+function milesRun(reattach){
+  if(ES){ if(!reattach) toast("A run is already streaming"); return;}
+  if(!reattach && !MILES_ITEMS.length){toast("Upload an item-number file first");return;}
   const log=document.getElementById("miles_log");
-  if(log){ log.style.display="block"; log.textContent=""; }
+  if(log){ log.style.display="block"; if(!reattach) log.textContent=""; }
   const skipDone = document.getElementById("miles_skip_done");
-  const url = "/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0");
+  // On re-attach (page reload while a run is in progress) hit /miles/run with no params --
+  // the backend detects the active run and replays its live log instead of starting a new one.
+  const url = reattach ? "/miles/run"
+              : ("/miles/run" + (skipDone && skipDone.checked ? "?skip_done=1" : "?skip_done=0"));
   ES=new EventSource(url);
   let _sawBusy=false, _sawErr=false;   // so we don't falsely toast "finished" on a busy/blocked run
   const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=true;
@@ -85,6 +88,7 @@ function milesRun(){
     const rb=document.getElementById("miles_runbtn"); if(rb) rb.disabled=false;
     const sb=document.getElementById("miles_stopbtn"); if(sb) sb.disabled=false;   // keep Stop clickable to force-clear a stuck lock
     milesLoadResults();
+    milesLoadRuns();
     toast(_sawBusy ? "Another run is already in progress — click Stop, then retry"
           : _sawErr ? "Harvest finished with errors — check the log"
           : "Harvest + generation finished");});
@@ -94,6 +98,75 @@ function milesRun(){
     if(log){const d=document.createElement("div");d.style.color="#ff8585";d.textContent="[error] stream interrupted — check the app terminal for a Python traceback";log.appendChild(d);}
   }};
 }
+// ROBUST LIVE PROGRESS: poll the server every 2s so you always see where a run is --
+// harvest OR generation -- regardless of whether the live SSE connection is open. This is
+// what survives reloads, view-switches, and dropped connections: the run keeps going
+// server-side and this keeps showing its position.
+let MILES_POLL=null, MILES_TAILFROM=0, MILES_TAILID=null;
+function milesStartPoll(){ if(!MILES_POLL){ MILES_POLL=setInterval(milesPollTick, 2000); } milesPollTick(); }
+function milesPollTick(){
+  const from = MILES_TAILID ? MILES_TAILFROM : 0;
+  const idq = MILES_TAILID ? ("&id="+encodeURIComponent(MILES_TAILID)) : "";
+  fetch("/miles/run_tail?from="+from+idq).then(r=>r.json()).then(t=>{
+    const st=document.getElementById("miles_livestatus");
+    if(!(t && t.ok) || !t.state || t.state==="none"){
+      if(st) st.style.display="none";
+      if(MILES_TAILID){ MILES_TAILID=null; MILES_TAILFROM=0; milesLoadRuns(); try{milesLoadResults();}catch(e){} }
+      return;
+    }
+    if(MILES_TAILID!==t.id){ MILES_TAILID=t.id; MILES_TAILFROM=0; }   // new run -> reset pointer
+    const c=t.counts||{}, running=(t.state==="running");
+    if(st){
+      st.style.display="block";
+      const dot = running ? '<b style="color:#9cc1ff">● Running</b>' : '<b style="color:#7ee08a">✓ Finished</b>';
+      st.innerHTML = dot + (t.source?(' &nbsp;<b>'+t.source+'</b>'):'')
+        + ' &nbsp;—&nbsp; '+(t.done||0)+(t.total?('/'+t.total):'')+' processed'
+        + ' &nbsp;·&nbsp; <span style="color:#7ee08a">drafts '+(c.generated||0)+'</span>'
+        + ' &nbsp;·&nbsp; harvested '+(c.harvested||0)
+        + ' &nbsp;·&nbsp; <span style="color:#e3b768">not found '+(c.not_found||0)+'</span>'
+        + ((c.review||0)?(' &nbsp;·&nbsp; <span style="color:#e3b768">review '+c.review+'</span>'):'');
+    }
+    // Append new log lines ONLY when the live SSE isn't already doing it (avoids doubles).
+    if(!ES && t.lines && t.lines.length){
+      const log=document.getElementById("miles_log");
+      if(log){ log.style.display="block";
+        t.lines.forEach(function(ln){ const d=document.createElement("div");
+          if(ln.indexOf("NOT_FOUND")>=0||ln.indexOf("NEEDS_REVIEW")>=0) d.style.color="#e3b768";
+          else if(ln.indexOf("WROTE draft")>=0) d.style.color="#7ee08a";
+          else if(ln.startsWith("[error]")) d.style.color="#ff8585";
+          d.textContent=ln; log.appendChild(d); });
+        log.scrollTop=log.scrollHeight;
+      }
+    }
+    MILES_TAILFROM=t.next;                          // keep the pointer current either way
+    if(!running){ MILES_TAILID=null; milesLoadRuns(); }
+  }).catch(()=>{});
+}
+// Past runs panel: list saved runs with links to each run's full log + per-SKU CSV.
+function milesLoadRuns(){
+  const host=document.getElementById("miles_runs_list");
+  if(!host) return;
+  const esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});};
+  fetch("/miles/runs").then(r=>r.json()).then(j=>{
+    if(!(j&&j.ok&&j.runs&&j.runs.length)){ host.textContent="No saved runs yet."; return; }
+    host.innerHTML=j.runs.map(function(r){
+      const c=r.counts||{};
+      const badge=(r.state==="running")?'<span style="color:#9cc1ff">● running</span>'
+        :(r.state==="error")?'<span style="color:#ff8585">error</span>'
+        :(r.state==="stopped")?'<span style="color:#e3b768">stopped</span>'
+        :'<span style="color:#7ee08a">done</span>';
+      const counts='harvested '+(c.harvested||0)+' · not found '+(c.not_found||0)+' · review '+(c.review||0);
+      return '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">'
+        +'<div><b>'+esc(r.source||"(run)")+'</b> <span style="opacity:.6">'+esc(r.started||"")+'</span><br>'+badge+' <span style="opacity:.7">— '+counts+'</span></div>'
+        +'<div style="white-space:nowrap">'
+        +'<a href="/miles/run_log?id='+encodeURIComponent(r.id)+'" target="_blank" style="color:#9cc1ff;margin-right:10px">View log</a>'
+        +'<a href="/miles/run_csv?id='+encodeURIComponent(r.id)+'" style="color:#7ee08a">CSV</a>'
+        +'</div></div>';
+    }).join("");
+  }).catch(()=>{ host.textContent="Could not load runs."; });
+}
+window.addEventListener("DOMContentLoaded",function(){ setTimeout(function(){ milesStartPoll(); milesLoadRuns(); }, 900); });
+
 function milesSavePref(){
   // Persist the output Sheet ID/tab so it survives reloads until changed.
   const sheet=(document.getElementById("miles_sheet")||{}).value||"";

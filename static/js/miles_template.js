@@ -733,12 +733,17 @@ function setListSource(src){
   document.querySelectorAll('#srcswitch .mktbtn').forEach(b=>b.classList.toggle('on', b.dataset.src===src));
   if((src==="live"||src==="all") && CUR_ACCOUNT){
     if(!WS_MARKET){ toast("Select a marketplace (US, UK, etc.) first, then click Sync."); render(); return; }
-    // SHOW ONLY — never pull from Amazon just because the tab was clicked. Use whatever
-    // was already synced (browser cache); if nothing's synced yet, render the empty-state
-    // that prompts Sync. Pulling from Amazon happens ONLY on the Sync button now.
     const key=_liveKey();
     if(LIVE_STORE[key]){ LIVE_ITEMS=LIVE_STORE[key].items||[]; render(); updateSyncLabel(); loadAplus(false); }
-    else { LIVE_ITEMS=[]; render(); updateSyncLabel(); }
+    else {
+      // No browser cache yet (e.g. right after a page refresh). Do a NON-FORCE pull: it
+      // reuses the report Amazon already has ready, so it returns in ~1s -- NOT the slow
+      // fresh-report build that the Sync button triggers (force=true). This is what makes
+      // live listings actually appear when you open the tab, instead of a dead empty-state
+      // that forces you onto the slow, hang-prone Sync path every time.
+      LIVE_ITEMS=[];
+      loadLiveCatalog(false);   // paints its own loading state, then renders on return
+    }
   }
   else render();
 }
@@ -778,37 +783,85 @@ async function loadLiveCatalog(force){
     LIVE_ITEMS=LIVE_STORE[key].items; render(); updateSyncLabel(); loadAplus(false); return;
   }
   const grid=document.getElementById("grid");
-  if(grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching live listings from Amazon…<div class="cc" style="margin-top:8px">The first fetch generates a report on Amazon\u2019s side and can take 1\u20134 minutes for larger accounts. After that it\u2019s cached for 30 minutes. Please leave this open.</div></div>';
-  try{
-    const j=await (await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({id:reqAccount,marketplace:reqMkt,force:!!force})})).json();
-    // GUARD: if the user switched account/marketplace while this was loading,
-    // store the result in its own cache slot but do NOT render it into the
-    // current (different) view. This prevents one account's listings leaking
-    // into another.
-    const stillHere = (CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt);
-    if(!j.ok){
-      if(stillHere && grid) grid.innerHTML='<div class="empty">Could not load live catalog: '+esc(j.error||"")+'</div>';
+  if(grid) grid.innerHTML = force
+    ? '<div class="empty"><span class="genspin"></span> Rebuilding the listings report on Amazon...<div class="cc" style="margin-top:8px">A forced Sync builds a fresh report and can take 1-4 minutes for larger accounts. You can keep working - it stops on its own if Amazon is slow.</div></div>'
+    : '<div class="empty"><span class="genspin"></span> Loading your live listings from Amazon...</div>';
+  // GUARD: if the user switched account/marketplace while this was loading, cache the
+  // result but never render it into the current (different) view.
+  const stillHere = ()=> (CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt);
+  // HARD TIMEOUT so the spinner can NEVER sit forever. A forced report can legitimately
+  // take a few minutes; a cached/ready pull should be seconds. When it fires we abort the
+  // fetch and the catch below shows an error + Retry instead of an eternal spinner.
+  const ctl = (typeof AbortController!=="undefined") ? new AbortController() : null;
+  const tmo = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(e){} }, force ? 300000 : 45000);
+  // Whatever happens, the spinner is REPLACED -- with the grid, an error+Retry, or the
+  // last data we already had. It is never left spinning.
+  const fail = function(msg){
+    if(!(stillHere() && grid)) return;
+    const cached = LIVE_STORE[reqAccount+"::"+reqMkt];
+    if(cached && (cached.items||[]).length){        // fall back to the last good sync
+      LIVE_ITEMS=cached.items||[]; render(); updateSyncLabel();
+      toast(msg+" -- showing the last synced copy.");
       return;
     }
-    LIVE_STORE[reqAccount+"::"+reqMkt]={items:(j.items||[]), ts:Date.now()};
-    if(stillHere){
+    grid.innerHTML='<div class="empty">'+esc(msg)
+      +'<div style="margin-top:10px"><button class="mktbtn on" onclick="loadLiveCatalog(true)">'
+      +'<i class="ti ti-refresh"></i> Retry sync</button></div></div>';
+  };
+  try{
+    const resp=await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id:reqAccount,marketplace:reqMkt,force:!!force}),
+      signal: ctl?ctl.signal:undefined});
+    const j=await resp.json();
+    clearTimeout(tmo);
+    if(!j.ok){ fail("Could not load live catalog: "+(j.error||"unknown error")); return; }
+    // Keep the server's own timestamp when the data came from the saved snapshot,
+    // so the label reads "synced 3h ago" instead of pretending it just synced.
+    LIVE_STORE[reqAccount+"::"+reqMkt]={
+      items:(j.items||[]), ts:Date.now(),
+      syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
+      fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+      partial: !!j.partial, warnings: (j.warnings||[]),
+      reportSource: j.report_source||"", reportBuiltAt: j.report_built_at||""};
+    // A short list caused by a failed half of the fetch must SAY so. Silence here
+    // is what made 64 listings look like 16 with nothing to explain it.
+    if((j.warnings||[]).length){ toast(j.warnings.join(" ")); }
+    if(stillHere()){
       LIVE_ITEMS=j.items||[];
-      // If a Preview/Submit started streaming while this fetch was in flight,
-      // cache the result but don't render now -- rendering would wipe the panel.
+      // If a Preview/Submit started streaming while this fetch was in flight, cache the
+      // result but don't render now -- rendering would wipe the panel.
       if(window.RUN_STREAMING){ updateSyncLabel(); startAutoSync(); return; }
       render(); updateSyncLabel(); startAutoSync();
       loadAplus(!!force);            // fire-and-forget: re-renders when the A+ map lands
       reconcileAmazonState();        // deleted vs inactive, straight from Amazon
     }
-  }catch(e){ if(grid && CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt) grid.innerHTML='<div class="empty">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){
+    clearTimeout(tmo);
+    const aborted = !!(e && (e.name==="AbortError" || String(e).indexOf("abort")>=0));
+    fail(aborted
+      ? (force ? "Amazon took too long to build the report (timed out)."
+               : "Loading your live listings timed out.")
+      : ("Error loading live catalog: "+String((e&&e.message)||e)));
+  }
 }
 function updateSyncLabel(){
   const el=document.getElementById("synclabel"); if(!el) return;
   const key=_liveKey(); const c=LIVE_STORE[key];
-  if(c){ const mins=Math.round((Date.now()-c.ts)/60000);
-    el.textContent = mins<1?"synced just now":("synced "+mins+"m ago"); }
-  else el.textContent="";
+  if(!c){ el.textContent=""; return; }
+  // Age is measured from when AMAZON was actually read (syncedAt), not from when
+  // this browser tab happened to receive it -- a snapshot loaded after a restart
+  // is hours old and must not read "synced just now".
+  const when = c.syncedAt || c.ts;
+  const mins = Math.round((Date.now()-when)/60000);
+  let txt = mins<1 ? "synced just now"
+          : mins<60 ? ("synced "+mins+"m ago")
+          : ("synced "+Math.round(mins/60)+"h ago");
+  if(c.fromSnapshot) txt += " (saved copy)";
+  if(c.stale)   txt += " — Amazon unreachable";
+  if(c.partial) txt += " — partial";
+  el.textContent = txt;
+  el.title = (c.warnings&&c.warnings.length) ? c.warnings.join("\n")
+           : (c.reportBuiltAt ? ("Amazon report built "+c.reportBuiltAt) : "");
 }
 function startAutoSync(){
   // SP-API is free (no AI credits), so a periodic background sync is fine.
@@ -928,6 +981,10 @@ async function loadAllMarketplaces(force){
   }
   const reqAccount=CUR_ACCOUNT.id;
   let merged=[]; let done=0;
+  // A marketplace that fails used to contribute zero listings SILENTLY, so an
+  // 11-marketplace account could show a fraction of its catalogue and look simply
+  // "smaller". Failures are now collected and reported.
+  const failed=[];
   for(const mm of mkts){
     if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__")) return; // user moved on
     if(grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching all marketplaces… '+(done)+'/'+mkts.length+' ('+esc(mm)+')<div class="cc" style="margin-top:8px">Each marketplace is a separate Amazon report; this can take a few minutes the first time.</div></div>';
@@ -935,14 +992,35 @@ async function loadAllMarketplaces(force){
       const j=await (await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:reqAccount,marketplace:mm,force:!!force})})).json();
       if(j.ok){
-        LIVE_STORE[reqAccount+"::"+mm]={items:(j.items||[]), ts:Date.now()};
+        LIVE_STORE[reqAccount+"::"+mm]={
+          items:(j.items||[]), ts:Date.now(),
+          syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
+          fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+          partial: !!j.partial, warnings:(j.warnings||[])};
         merged=merged.concat((j.items||[]).map(it=>({...it,_mkt:mm})));
+        if((j.warnings||[]).length) failed.push(mm+" (partial)");
+      } else {
+        failed.push(mm+(j.error?(" — "+String(j.error).slice(0,60)):""));
+        // Never lose a marketplace we already had: fall back to its last copy.
+        const prev=LIVE_STORE[reqAccount+"::"+mm];
+        if(prev && (prev.items||[]).length){
+          merged=merged.concat((prev.items||[]).map(it=>({...it,_mkt:mm})));
+        }
       }
-    }catch(e){}
+    }catch(e){
+      failed.push(mm+" — "+String((e&&e.message)||e).slice(0,60));
+      const prev=LIVE_STORE[reqAccount+"::"+mm];
+      if(prev && (prev.items||[]).length){
+        merged=merged.concat((prev.items||[]).map(it=>({...it,_mkt:mm})));
+      }
+    }
     done++;
   }
   if(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__"){
     LIVE_ITEMS=merged; render(); updateSyncLabel(); startAutoSync();
+    if(failed.length){
+      toast((mkts.length-failed.length)+" of "+mkts.length+" marketplaces loaded. Failed: "+failed.join("; "));
+    }
   }
 }
 function liveTile(it){

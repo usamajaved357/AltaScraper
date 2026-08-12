@@ -40,6 +40,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from listing.barcode import gtin_digits   # single source of barcode truth
+
 
 # =============================================================================
 # SOURCE-LANGUAGE DETECTION  (dependency-free, feeds the dashboard tone dropdown)
@@ -182,7 +184,6 @@ def _detect_delimiter(header_line: str) -> str:
 _TAG_RE      = re.compile(r"<[^>]+>")
 _WS_RE       = re.compile(r"[ \t\r\f\v]+")
 _MULTINL_RE  = re.compile(r"\n{3,}")
-_BARCODE_RE  = re.compile(r"[^0-9]")          # for stripping mojibake off barcodes
 
 
 def strip_html(raw: str) -> str:
@@ -206,12 +207,15 @@ def strip_html(raw: str) -> str:
 
 def clean_barcode(raw: str) -> str:
     """cp1252 decoding can prepend a stray glyph (seen as '?') to EAN/UPC values.
-    Keep digits only; return '' if nothing usable remains."""
-    if not raw:
-        return ""
-    digits = _BARCODE_RE.sub("", raw)
-    # EAN-13 / UPC-A / EAN-8 lengths; anything else we still return as-is digits.
-    return digits
+    Keep digits only; return '' if nothing usable remains.
+
+    Delegates to listing/barcode.py so there is ONE digit-stripping rule in the
+    codebase (CLAUDE.md §12). Import-time behaviour is unchanged: the digits are
+    stored as-is whatever the length. Deciding what the number IS (EAN vs UPC,
+    unwrapping a 14-digit GTIN) happens later via normalize_gtin, at the point
+    the value is actually sent to Amazon.
+    """
+    return gtin_digits(raw)
 
 
 def _price_float(raw: str):

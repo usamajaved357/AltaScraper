@@ -18,6 +18,9 @@ import sys
 
 from flask import request, jsonify, Response
 
+from domain import miles_runlog as _runlog
+from routes.stream_pump import pump_lines, spawn
+
 
 def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MILES_STATE,
              _active_account, _miles_load_history, _miles_save_history, _run_lock, _running):
@@ -45,6 +48,86 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             _running["proc"] = None
             return True
 
+    _BASE_DIR = os.path.dirname(os.path.abspath(str(CONFIG_PATH)))
+
+    def _sse_run(stream_fn):
+        """Wrap a route's SSE stream() with the persistent run-log engine.
+
+        The stream() work now runs on a DAEMON thread that survives browser disconnect and
+        saves every line to miles_runs/<id>.log -- so reloading/navigating away no longer
+        stops the harvest/generate or loses the log. If a run is already in progress, this
+        RE-ATTACHES to it (replays the log so far, then follows live) instead of starting or
+        blocking a second run. Falls back to the plain stream if the engine ever errors."""
+        try:
+            aid = _runlog.active_id()
+            if aid and _runlog.is_running(aid):
+                def _reattach():
+                    import time as _t2
+                    yield f"data: [reattach] resuming the run already in progress ({aid})\n\n"
+                    frm = 0
+                    while True:
+                        tl = _runlog.tail(aid, frm)
+                        for _ln in tl["lines"]:
+                            yield f"data: {_ln}\n\n"
+                        frm = tl["next"]
+                        if tl["state"] != "running":
+                            break
+                        _t2.sleep(0.4)
+                    yield "event: end\ndata: end\n\n"
+                return Response(_reattach(), mimetype="text/event-stream")
+            src = (_MILES_STATE.get("source") or "").strip() or "miles-run"
+            _rid, _tail = _runlog.run_stream(_BASE_DIR, src, stream_fn)
+            return Response(_tail, mimetype="text/event-stream")
+        except Exception:
+            return Response(stream_fn(), mimetype="text/event-stream")
+
+    @app.route("/miles/run_active")
+    def miles_run_active():
+        """Is a harvest/generate run in progress? Powers re-attach after a page reload."""
+        aid = _runlog.active_id()
+        m = _runlog.status(aid) if aid else None
+        if not (aid and m):
+            return jsonify({"ok": True, "active": False})
+        return jsonify({"ok": True, "active": _runlog.is_running(aid), "id": aid,
+                        "source": m.get("source"), "state": m.get("state"),
+                        "total": m.get("total"), "counts": m.get("counts", {})})
+
+    @app.route("/miles/run_tail")
+    def miles_run_tail():
+        """Poll new log lines + status for a run (id + from index). Used by the re-attach UI."""
+        rid = (request.args.get("id") or _runlog.active_id() or "").strip()
+        try:
+            frm = int(request.args.get("from", "0") or "0")
+        except ValueError:
+            frm = 0
+        if not rid:
+            return jsonify({"ok": True, "lines": [], "next": 0, "state": "none"})
+        return jsonify({"ok": True, **_runlog.tail(rid, frm)})
+
+    @app.route("/miles/runs")
+    def miles_runs():
+        """List past runs (newest first): uploaded source, time, state, per-SKU counts."""
+        return jsonify({"ok": True, "runs": _runlog.list_runs(_BASE_DIR)})
+
+    @app.route("/miles/run_log")
+    def miles_run_log():
+        """The full saved log text for a run (survives reloads)."""
+        rid = (request.args.get("id") or "").strip()
+        return Response(_runlog.read_log(_BASE_DIR, rid) or "(no log)",
+                        mimetype="text/plain; charset=utf-8")
+
+    @app.route("/miles/run_csv")
+    def miles_run_csv():
+        """Download a per-SKU status CSV for a run."""
+        rid = (request.args.get("id") or "").strip()
+        p = _runlog.write_csv(_BASE_DIR, rid)
+        if not p or not os.path.exists(p):
+            return jsonify({"ok": False, "error": "run not found"}), 404
+        with open(p, encoding="utf-8") as f:
+            body = f.read()
+        return Response(body, mimetype="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{rid}.csv"'})
+
     @app.route("/miles/sheet_pref", methods=["POST"])
     def miles_sheet_pref_set():
         """Persist the output Sheet ID/tab so the user need not re-paste it each run."""
@@ -71,6 +154,8 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
             if it not in seen:
                 seen.add(it); clean.append(it)
         _MILES_STATE["items"] = clean
+        # remember the uploaded file's name so each run's saved log is headed with it
+        _MILES_STATE["source"] = str(b.get("filename", "") or "").strip()
         done = _miles_load_history()
         already = [it for it in clean if it in done]
         return jsonify({"ok": True, "count": len(clean), "items": clean[:50],
@@ -149,6 +234,10 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         except ValueError:
             _user_limit = 0
         _use_ba = request.args.get("use_ba", "") == "1"
+        # Auto main image is OFF by default: listing-copy generation is TEXT-ONLY. Main
+        # images are created separately from the app, so we no longer bill an image model
+        # on every generate. It runs only if the request explicitly opts in (auto_image=1).
+        _auto_img = request.args.get("auto_image", "") == "1"
 
         def stream():
             # Log what we received so it's visible in the panel
@@ -188,9 +277,11 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 if _use_ba:
                     extra += ["--use-brand-analytics"]
                     yield "data: [BA] real Amazon search data (Brand Analytics) ENABLED for this run\n\n"
-                if _acc and "image_template" in (_acc.get("features") or []):
+                if _auto_img and _acc and "image_template" in (_acc.get("features") or []):
                     extra += ["--auto-image"]
-                    yield "data: [image] Auto main image ENABLED -- a templated main image will be generated per listing\n\n"
+                    yield "data: [image] Auto main image ENABLED for this run (auto_image=1)\n\n"
+                else:
+                    yield "data: [image] Auto main image OFF -- text-only copy (create main images separately)\n\n"
                 if _user_sheet or _user_tab:
                     yield (f"data: [target] writing to sheet '{_out_sheet[:16]}...' / tab "
                            f"'{_out_tab or '(default)'}'\n\n")
@@ -228,11 +319,12 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     yield f"data: [items] could not build item list: {_ie}\n\n"
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
-                p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                     cwd=os.path.dirname(os.path.abspath(_cfg_path)))
+                p = spawn(args, stdin=subprocess.PIPE,
+                          cwd=os.path.dirname(os.path.abspath(_cfg_path)))
                 _running["proc"] = p
-                for line in iter(p.stdout.readline, ""):
+                # drained on a worker thread so a slow browser can't jam the pipe
+                # and freeze the run mid-print -- see routes/stream_pump.py
+                for line in pump_lines(p):
                     if line:
                         yield f"data: {line.rstrip()}\n\n"
                 p.wait()
@@ -266,7 +358,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 _running["on"] = False
             _running["proc"] = None
             yield "event: end\ndata: end\n\n"
-        return Response(stream(), mimetype="text/event-stream")
+        return _sse_run(stream)
 
 
     @app.route("/miles/optimize")
@@ -311,11 +403,12 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                     extra += ["--tab", _out_tab]
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
-                p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                     cwd=os.path.dirname(os.path.abspath(_cfg_path)))
+                p = spawn(args, stdin=subprocess.PIPE,
+                          cwd=os.path.dirname(os.path.abspath(_cfg_path)))
                 _running["proc"] = p
-                for line in iter(p.stdout.readline, ""):
+                # drained on a worker thread so a slow browser can't jam the pipe
+                # and freeze the run mid-print -- see routes/stream_pump.py
+                for line in pump_lines(p):
                     if line:
                         yield f"data: {line.rstrip()}\n\n"
                 p.wait()
@@ -344,7 +437,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 _running["on"] = False
             _running["proc"] = None
             yield "event: end\ndata: end\n\n"
-        return Response(stream(), mimetype="text/event-stream")
+        return _sse_run(stream)
 
 
     @app.route("/miles/run")
@@ -354,6 +447,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
         # Read state in the request context (SSE generator runs outside it).
         _items = list(_MILES_STATE.get("items") or [])
         _skip_done = (request.args.get("skip_done", "1") == "1")
+        _auto_img = (request.args.get("auto_image", "") == "1")   # OFF by default; images made separately
         _cfg_path = str(CONFIG_PATH)
         # Resolve the output target + account HERE (request context) so the harvest
         # can CHAIN generation once it finishes -- the SSE generator below runs
@@ -434,16 +528,18 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                         gen_extra += ["--sheet", _out_sheet]
                     if _out_tab:
                         gen_extra += ["--tab", _out_tab]
-                    if _acc and "image_template" in (_acc.get("features") or []):
+                    if _auto_img and _acc and "image_template" in (_acc.get("features") or []):
                         gen_extra += ["--auto-image"]
-                        yield "data: [image] Auto main image ENABLED for generated listings\n\n"
+                        yield "data: [image] Auto main image ENABLED for this run (auto_image=1)\n\n"
+                    else:
+                        yield "data: [image] Auto main image OFF -- text-only copy (create main images separately)\n\n"
                     args = [sys.executable, "-u", SCRIPT] + gen_extra
                     yield f"data: [start] {' '.join(args)}\n\n"
-                    _gp = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                           stderr=subprocess.STDOUT, text=True, bufsize=1,
-                                           cwd=_base_g)
+                    _gp = spawn(args, stdin=subprocess.PIPE, cwd=_base_g)
                     _running["proc"] = _gp
-                    for _line in iter(_gp.stdout.readline, ""):
+                    # drained on a worker thread so a slow browser can't jam the
+                    # pipe and freeze the run -- see routes/stream_pump.py
+                    for _line in pump_lines(_gp):
                         if _line:
                             yield f"data: {_line.rstrip()}\n\n"
                     _gp.wait()
@@ -715,7 +811,7 @@ def register(app, *, _miles_set_pref, _miles_get_pref, CONFIG_PATH, SCRIPT, _MIL
                 if _running.get("miles_token") == _my_token:
                     _running["on"] = False
             yield "event: end\ndata: end\n\n"
-        return Response(stream(), mimetype="text/event-stream")
+        return _sse_run(stream)
 
 
     @app.route("/miles/results")

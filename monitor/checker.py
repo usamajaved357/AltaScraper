@@ -6,7 +6,7 @@ daemon thread while the app is up (catch-up on startup). Read-only surveillance 
 monitor account (default jack_uk). NO Slack, NO external notifications.
 
 State (gitignored asin_monitor_history.json):
-  baselines    : {"<asin>::<mkt>": <last fetch_offers result>}   -- for the next diff
+  baselines    : {"<asin>::<mkt>": <last fetch_offers_batch result>}  -- for the next diff
   snapshots    : {"<asin>::<mkt>": [ {ts, seller_count, buybox_seller, sellers[], offers[]} ]}
   alerts       : [ {id, ts, type, asin, marketplace, label, seller_id, seller_name, ...} ]
   seller_names : {"<sellerId>::<mkt>": name}   -- one-time storefront resolution cache
@@ -268,7 +268,7 @@ def status():
 
 # ---------------- the diff ----------------
 def diff(prev, cur):
-    """prev/cur = fetch_offers results (prev None on first check). Returns event dicts."""
+    """prev/cur = fetch_offers_batch results (prev None on first check). Returns event dicts."""
     events = []
     cur_off = {o["seller_id"]: o for o in cur.get("offers", []) if o.get("seller_id")}
     if not prev:

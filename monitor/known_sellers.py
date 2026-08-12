@@ -179,5 +179,3 @@ def classify(seller_id, marketplace, cfg, name=""):
     return {"kind": "unknown", "label": (name or k.get("names", {}).get(sid) or sid or "unknown seller")}
 
 
-def is_known(seller_id, marketplace, cfg):
-    return classify(seller_id, marketplace, cfg)["kind"] != "unknown"

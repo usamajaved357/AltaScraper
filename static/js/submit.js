@@ -171,27 +171,26 @@ function _streamRunPanel(url, sku, mode){
           +'<div class="rhint"><b>Try this:</b> 1) Preview again (often works on the next try). 2) If you\u2019re on a VPN/proxy, turn it off \u2014 it adds latency to the EU endpoint. 3) Switch DNS to <code>1.1.1.1</code>. 4) If it keeps timing out, your connection to Amazon EU is slow right now \u2014 wait a moment and retry.</div>';
         return;
       }
-      // Pull Amazon's ACTUAL error detail lines (the [E] lines) straight from the
-      // stream, so we show Amazon's OWN words verbatim -- not our paraphrase. This is
-      // how you can be sure it's Amazon rejecting, not the app claiming it is.
+      // Pull Amazon's ACTUAL error detail lines (the [E] lines) straight from the stream.
       const _eLines=lines.filter(x=>/\[E\]/.test(x))
                          .map(x=>x.replace(/^[^[]*\[E\]\s*/,"").replace(/\s+/g," ").trim())
                          .filter(Boolean);
       const _eText=_eLines.join("  •  ");
       const _allText=lines.join(" ");
-      // Amazon rejected the product barcode / identifier for creating a new ASIN.
-      // "Suggest missing fields" CANNOT fix this -- the barcode itself is invalid, so
-      // tell the truth and offer the two real options (replace it, or use exemption).
-      if(/standard_product_id|externally_assigned_product_identifier|does not match any ASIN|not in the catalog/i.test(_allText)){
-        P.verdict.innerHTML='<div class="rbad">✗ Amazon REJECTED your barcode (GTIN / EAN).</div>'
-          +'<div class="rmsg"><b>This is Amazon’s response, word for word:</b></div>'
-          +'<div class="ramz">'+esc(_eText||verdict.raw)+'</div>'
-          +'<div class="rmsg"><b>Why:</b> Amazon won’t accept this barcode to create a new listing. Purchased / reseller EANs aren’t GS1-registered to your brand, so Amazon’s GS1 check rejects them.</div>'
-          +'<div class="rhint"><b>Two ways forward:</b><br>'
-          +'&nbsp;&nbsp;<b>1) Replace it</b> — put a different purchased EAN in the <b>Barcode / GTIN</b> box above, then Preview again.<br>'
-          +'&nbsp;&nbsp;<b>2) Use the GTIN exemption</b> — <b>empty</b> the Barcode / GTIN box and Preview; the app claims the exemption instead (needs GTIN-exemption approval for this brand + category in Seller Central).</div>';
-        return;
+      // PLAIN-ENGLISH TRANSLATION (display only; raw kept under a "Show original Amazon
+      // message" toggle). Detect known Amazon error patterns -- barcode/catalogue conflict,
+      // not-applicable field, barcode rejection, invalid value -- and say what to DO.
+      // The barcode/product-type come from the row so the message can name them.
+      const _row=(typeof ROWS!=="undefined"&&ROWS.find)?ROWS.find(x=>String(x.sku)===String(sku)):null;
+      const _ctx={barcode:(_row&&_row.barcode)||"", sku:sku, productType:(_row&&_row.product_type)||""};
+      if(typeof renderAmazonErrors==="function"){
+        const _t=renderAmazonErrors(_eLines.length?_eLines:[_allText], _eText||_allText||verdict.raw, _ctx);
+        if(_t.matched){
+          P.verdict.innerHTML='<div class="rbad">✗ Amazon did NOT accept this listing — '+(verdict.n||_eLines.length||"")+' issue(s).</div>'+_t.html;
+          return;
+        }
       }
+      // fallback: no known pattern -> show Amazon's words verbatim (as before)
       const msg=esc(_eText||verdict.raw.replace(/^.*error\(s\)\)?/i,"").trim()||verdict.raw);
       P.verdict.innerHTML='<div class="rbad">✗ Amazon did NOT accept this listing — '+(verdict.n||"")+' issue(s).</div>'
         +'<div class="rmsg"><b>Amazon’s response, word for word:</b></div><div class="ramz">'+msg+'</div>'
@@ -264,7 +263,8 @@ function togglePayloadViewer(cb){
 function _minParam(){ return MINIMAL_MODE_ON ? "&minimal=1" : ""; }
 function previewOne(sku){
   if(!sku) return;
-  _streamRunPanel("/run/api?skus="+encodeURIComponent(sku)+_minParam(), sku, "preview");
+  // background-job path (survives navigation + refresh; queues behind any active run)
+  rqEnqueue(sku, "api", MINIMAL_MODE_ON);
 }
 async function submitOne(sku){
   if(!sku) return;
@@ -297,7 +297,8 @@ async function submitOne(sku){
       +(MINIMAL_MODE_ON?"\n  Mode: MINIMAL (required fields only)":"")
       +"\n\nThis creates/replaces ONLY this listing on the account above. Continue?")) return;
   toast("Submitting "+sku+"…");
-  _streamRunPanel("/run/api_submit?skus="+encodeURIComponent(sku)+_minParam(), sku, "submit");
+  // background-job path (survives navigation + refresh; queues behind any active run)
+  rqEnqueue(sku, "api_submit", MINIMAL_MODE_ON);
 }
 
 async function loadViews(){
@@ -333,8 +334,22 @@ async function loadRows(){
     // just the active tab), tagging each card with its tab, so a multi-tab account
     // (e.g. Miles) is seen in one view. Single-tab sheets return one tab -> identical
     // to the old /rows behaviour (no tab filter, no tags shown).
-    const j=await _fetchJSON("/rows_all", null, 30000);
-    if(!j || j._failed){ toast("Could not load listings: "+((j&&j.error)||"timeout")); return; }
+    // Multi-tab accounts like Miles read EVERY listing tab (5 tabs / ~267 rows for Miles),
+    // which legitimately takes ~50s of sequential Google Sheets reads -- the old 30s cap
+    // aborted before it could finish. Show a loading state so the wait isn't a blank
+    // screen, give it real headroom, and on failure render an in-grid error + Retry
+    // (not a toast that vanishes and leaves an empty page).
+    const _g0=document.getElementById("grid");
+    if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length))
+      _g0.innerHTML='<div class="empty"><span class="genspin"></span> Loading listings from your sheet…<div class="cc" style="margin-top:8px">Accounts with many tabs (e.g. Miles) read every tab and can take up to a minute.</div></div>';
+    const j=await _fetchJSON("/rows_all", null, 120000);
+    if(!j || j._failed){
+      const _g=document.getElementById("grid");
+      if(_g) _g.innerHTML='<div class="empty">Could not load listings: '+esc((j&&j.error)||"timed out")
+        +'<div style="margin-top:10px"><button class="mktbtn on" onclick="loadRows()"><i class="ti ti-refresh"></i> Retry</button></div></div>';
+      else toast("Could not load listings: "+((j&&j.error)||"timeout"));
+      return;
+    }
     if(!j.ok){
       // This workspace has no sheet/tab configured. The app deliberately refuses to
       // fall back to the shared default tab (it holds another account's listings), so

@@ -174,6 +174,24 @@
   .pill.active{color:#fff;border-color:var(--accent);background:rgba(76,141,255,.15)}
   #summary{padding:8px 20px;color:var(--muted);border-bottom:1px solid var(--line);
            background:var(--panel);font-size:13px}
+  /* Run health badge -- sits directly above the log panel. Colour is the state,
+     so a frozen run is visibly different from a working one at a glance. */
+  .runhealth{display:flex;align-items:center;gap:10px;padding:8px 20px;
+       background:var(--panel);border-bottom:1px solid var(--line);font-size:13px}
+  .rh_dot{width:9px;height:9px;border-radius:50%;background:#7f8ba3;flex:0 0 auto}
+  .rh_state{font-weight:600;letter-spacing:.02em}
+  .rh_detail{color:var(--muted)}
+  .rh_why{margin-left:auto;padding:4px 10px;font-size:12px;cursor:pointer;
+       border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit}
+  .rh_why:hover{border-color:#e3b768;color:#e3b768}
+  .rh-running .rh_dot{background:#7fd1a0;box-shadow:0 0 0 3px rgba(127,209,160,.18)}
+  .rh-running .rh_state{color:#7fd1a0}
+  .rh-stalled .rh_dot{background:#e3b768;box-shadow:0 0 0 3px rgba(227,183,104,.20)}
+  .rh-stalled .rh_state{color:#e3b768}
+  .rh-stopped .rh_dot{background:#ff8585}
+  .rh-stopped .rh_state{color:#ff8585}
+  .rh-idle    .rh_dot{background:#7f8ba3}
+  .rh-idle    .rh_state{color:#7f8ba3}
   #log{display:none;margin:0;padding:12px 20px;background:#0b0d11;color:#cbd3e1;
        border-bottom:1px solid var(--line);max-height:230px;overflow:auto;
        font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
@@ -246,6 +264,21 @@
   .ed.err{border-color:#a12a2a !important}
   .ed.saving{opacity:.55}
   select.ed{cursor:pointer}
+  /* Full editor: field delete + bullet controls */
+  .bctls{display:inline-flex;gap:2px;margin-left:6px;vertical-align:middle}
+  .bctl{background:#16233a;border:1px solid #2a3a55;color:#cfe0ff;cursor:pointer;font-size:11px;
+    line-height:1;padding:2px 6px;border-radius:5px}
+  .bctl:hover{background:#213555;color:#fff}
+  .bctl.del{color:#f0a0a0;border-color:#5c2b2b}
+  .bctl.del:hover{background:#3a1616;color:#fff}
+  .bctl.dis,.bctl:disabled{opacity:.35;cursor:default}
+  .cdel{background:none;border:none;color:#c98a8a;cursor:pointer;font-size:12px;padding:0 4px;border-radius:4px}
+  .cdel:hover{background:#3a1616;color:#fff}
+  .cdel.dis,.cdel:disabled{color:#5b6472;cursor:not-allowed}
+  .cdel.dis:hover,.cdel:disabled:hover{background:none;color:#5b6472}
+  .addbulletbtn{background:#12233b;border:1px dashed #2c4a6e;color:#9cc1ff;cursor:pointer;
+    font-size:12px;padding:5px 10px;border-radius:7px;margin-top:2px}
+  .addbulletbtn:hover{background:#16304e;color:#fff}
   td.k{padding-top:9px;white-space:nowrap}
   .ro{color:var(--muted)}
   .safe{background:#10301f;border:1px solid #1f7a3d;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#9fe0b8}
@@ -850,6 +883,39 @@
   .runverdict .rmsg{color:var(--muted);margin-top:3px}
   .runverdict .ramz{margin-top:5px;padding:8px;background:#2a1a1a;border:1px solid #5c2b2b;border-radius:7px;color:#e8b4b4;font-size:12px;white-space:pre-wrap}
   .runverdict .rhint{margin-top:6px;color:#9cc1ff;font-size:12px}
+  /* Plain-English Amazon-error translation cards (amazon_errors.js) */
+  .amztrans{margin-top:6px;padding:9px 11px;background:#141c2b;border:1px solid #2a3a55;border-left:3px solid #e0b84a;border-radius:7px}
+  .amztrans-h{font-size:13px;color:#ffe1a6;margin-bottom:3px}
+  .amztrans-p{font-size:12.5px;color:#dfe8f7;line-height:1.45}
+  .amztrans-p b{color:#fff}
+  .amztrans-a{margin-top:5px;font-size:12px;color:#9fe0b8}
+  .amztrans-raw{border-left-color:#5c6b85}
+  details.amzraw{margin-top:6px}
+  details.amzraw>summary{cursor:pointer;color:#9cc1ff;font-size:12px}
+  details.amzraw .ramz{margin-top:5px;padding:8px;background:#2a1a1a;border:1px solid #5c2b2b;border-radius:7px;color:#e8b4b4;font-size:12px;white-space:pre-wrap}
+  /* Global "Runs" badge + panel (runqueue.js) -- Preview/Submit background jobs */
+  .rqbadge{position:fixed;right:16px;bottom:16px;z-index:1200;display:none;align-items:center;
+    gap:6px;background:#12233b;color:#dfe8f7;border:1px solid #2c4a6e;
+    border-radius:20px;padding:7px 13px;font-size:12.5px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  .rqbadge .rqdot{width:8px;height:8px;border-radius:50%;background:#4bd08a;display:inline-block;
+    animation:rqpulse 1.2s ease-in-out infinite}
+  @keyframes rqpulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .rqpanel{position:fixed;right:16px;bottom:58px;z-index:1200;width:300px;max-height:50vh;overflow:auto;
+    background:#0f1722;border:1px solid #22304a;border-radius:10px;padding:8px;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+  .rqpanel-h{font-size:12px;color:#9cc1ff;font-weight:600;padding:2px 4px 6px;display:flex;align-items:center;justify-content:space-between}
+  .rqpanel-btns{display:inline-flex;gap:2px}
+  .rqmin,.rqx{background:none;border:none;color:#9cc1ff;cursor:pointer;font-size:14px;line-height:1;padding:0 5px;border-radius:5px}
+  .rqmin:hover,.rqx:hover{background:#16233a;color:#fff}
+  .rqrow{display:flex;align-items:center;gap:7px;padding:6px;border-radius:7px;cursor:pointer;font-size:12px}
+  .rqrow:hover{background:#16233a}
+  .rqst{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:10px;text-transform:uppercase}
+  .rqst.run{background:#123a2a;color:#7fe6b0}.rqst.q{background:#3a3312;color:#e6cf7f}
+  .rqst.ok{background:#123021;color:#7fd99a}.rqst.err{background:#3a1616;color:#f0a0a0}
+  .rqst.c{background:#2a2f38;color:#aebbd0}
+  .rqsku{flex:1;color:#cfe0ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rqmode{color:#7f8ea3;font-size:11px}
+  .rqstop{background:none;border:none;color:#f0a0a0;cursor:pointer;font-size:13px;padding:0 2px}
+  .rqempty{color:#7f8ea3;font-size:12px;padding:8px 4px}
   .runlogwrap{margin-top:8px}
   .runlogwrap summary{cursor:pointer;color:var(--muted);font-size:12px}
   .runlog{margin-top:6px;max-height:220px;overflow:auto;background:#0c1320;border:1px solid var(--line);border-radius:7px;padding:8px;font-size:11px;color:#aebbd0;white-space:pre-wrap}

@@ -60,72 +60,6 @@ ERROR        = "ERROR"
 # INPUT: read the item-number column from CSV / XLSX
 # =============================================================================
 
-def read_item_numbers(path: str) -> list:
-    """Return a clean list of item numbers from a CSV or XLSX.
-
-    Accepts a single-column file or a multi-column one with a header that names
-    the item-number column (item, item number, sku, product number, etc.).
-    Whitespace is stripped; blanks dropped; order + de-dup preserved.
-    """
-    p = Path(path)
-    if not p.exists():
-        return []
-    rows = []
-    if p.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
-        try:
-            from openpyxl import load_workbook
-            wb = load_workbook(str(p), read_only=True, data_only=True)
-            ws = wb.active
-            for r in ws.iter_rows(values_only=True):
-                rows.append(["" if c is None else str(c) for c in r])
-        except Exception:
-            return []
-    else:
-        # CSV / TSV with encoding + delimiter tolerance
-        raw = None
-        for enc in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
-            try:
-                raw = p.read_text(encoding=enc)
-                break
-            except Exception:
-                continue
-        if raw is None:
-            return []
-        delim = ";" if raw.count(";") > raw.count(",") else ","
-        rows = [row for row in csv.reader(io.StringIO(raw), delimiter=delim)]
-
-    if not rows:
-        return []
-
-    # Decide which column holds the item numbers.
-    header = [str(c).strip().lower() for c in rows[0]]
-    name_keys = ("item number", "item_number", "item", "sku", "product number",
-                 "product_number", "itemno", "item no", "number")
-    col_idx = 0
-    has_header = False
-    for i, h in enumerate(header):
-        if h in name_keys:
-            col_idx = i
-            has_header = True
-            break
-    # If the first cell looks like an actual item number (not a header word),
-    # treat the file as headerless and read column 0.
-    if not has_header and _looks_like_item(header[0] if header else ""):
-        data_rows = rows
-    else:
-        data_rows = rows[1:] if has_header else rows
-
-    out, seen = [], set()
-    for row in data_rows:
-        if col_idx >= len(row):
-            continue
-        val = str(row[col_idx]).strip()
-        if not val or val.lower() in name_keys:
-            continue
-        if val not in seen:
-            seen.add(val)
-            out.append(val)
-    return out
 
 
 def _looks_like_item(s: str) -> bool:
@@ -152,7 +86,7 @@ def find_product_url(search_html: str, item_number: str):
     # /product/show/... href and the text around it, then match by exact number.
     # We look for the item number appearing as its own token next to a product
     # link. Two passes: structured (anchor) then loose (number proximity).
-    hrefs = re.findall(r'href=["\'](/product/show/[^"\']+)["\']', search_html, re.I)
+    hrefs = re.findall(r'href=["\']((?:https?://[^"\']+)?/product/show/[^"\']+)["\']', search_html, re.I)
     hrefs = [h for h in dict.fromkeys(hrefs)]   # de-dup, keep order
 
     # Find rows: split on table-row boundaries so each chunk is one result.
@@ -161,7 +95,7 @@ def find_product_url(search_html: str, item_number: str):
     for chunk in rows:
         # exact item number as a standalone token in this row?
         if re.search(r"(?<![A-Za-z0-9])" + re.escape(item) + r"(?![A-Za-z0-9])", chunk):
-            m = re.search(r'href=["\'](/product/show/[^"\']+)["\']', chunk, re.I)
+            m = re.search(r'href=["\']((?:https?://[^"\']+)?/product/show/[^"\']+)["\']', chunk, re.I)
             if m:
                 matches.append(m.group(1))
 
@@ -266,6 +200,17 @@ def parse_product_page(page_html: str, page_markdown: str = "") -> dict:
 
     seen = set()
     _raw_links = []
+    # The PDP also renders a "similar products" carousel whose <img> are OTHER
+    # products (49 similar-card blocks on a typical page). Those images live in
+    # /uploads/prod_images/ just like the real one, so the wide net above scoops
+    # them up and the auto-main-image feature could put a NEIGHBOUR's photo on this
+    # listing. Collect the filenames that appear inside the similar-products region
+    # and exclude them from THIS product's images.
+    _similar_files = set()
+    _sim_split = re.split(r'(?is)class\s*=\s*["\'][^"\']*similar-products', page_html, maxsplit=1)
+    if len(_sim_split) > 1:
+        for _si in re.findall(r'["\']([^"\']+\.(?:png|jpe?g|webp)[^"\']*)["\']', _sim_split[1], re.I):
+            _similar_files.add(_si.split("?")[0].split("/")[-1].lower())
     for u in found:
         u = u.strip()
         if not u or u.startswith("#") or u.startswith("javascript:"):
@@ -277,7 +222,9 @@ def parse_product_page(page_html: str, page_markdown: str = "") -> dict:
             # Images: not documents, but capture likely PRODUCT photos so the
             # auto-main-image feature has a real source to restyle. Skip obvious
             # asset/icon/logo files.
+            _fname = low.split("?")[0].split("/")[-1]
             if (low.endswith((".png", ".jpg", ".jpeg", ".webp"))
+                    and _fname not in _similar_files          # not a "similar products" neighbour
                     and not any(skip in low for skip in
                                 ("logo", "icon", "favicon", "sprite", "banner",
                                  "header", "footer", "bg-", "background", "btn",
@@ -594,7 +541,7 @@ def extract_pdf_text(data: bytes) -> str:
     return ""
 
 
-def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-6",
+def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-5",
                        max_pages: int = 3, log=print) -> str:
     """OCR an IMAGE-BASED PDF (near-zero text layer -- e.g. the Miles TDS scans, which carry
     the whole properties table as images) by rendering each page and transcribing it with
@@ -607,6 +554,7 @@ def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-
     try:
         import pdfplumber
         import anthropic
+        import base64
     except Exception:
         return ""
     try:
@@ -644,7 +592,7 @@ def ocr_pdf_via_vision(data: bytes, api_key: str, model: str = "claude-sonnet-4-
 _OCR_TRIGGER_CHARS = 40
 
 
-def extract_pdf_text_smart(data: bytes, api_key: str = "", model: str = "claude-sonnet-4-6",
+def extract_pdf_text_smart(data: bytes, api_key: str = "", model: str = "claude-sonnet-4-5",
                            log=print) -> str:
     """extract_pdf_text() first; if that comes back near-empty (image-based PDF, e.g. a Miles
     TDS) AND an api_key is given, fall back to Claude-vision OCR. Text PDFs never trigger OCR."""
@@ -856,6 +804,8 @@ async def _fetch_page(url: str, timeout: int = 30000, delay: float = 3.0,
             html = (getattr(result, "html", "") or
                     getattr(result, "cleaned_html", "") or
                     getattr(result, "fit_html", "") or "")
+            if not isinstance(html, str):   # a failed/empty crawl can yield a non-string
+                html = ""
             md = ""
             _m = getattr(result, "markdown", "")
             if isinstance(_m, str):
@@ -895,6 +845,24 @@ async def _search_item(item_number: str, timeout: int = 30000, diag: list = None
         except Exception as e:
             diag.append(f"POST {list(fields)[:2]} failed: {type(e).__name__}")
             return ""
+
+    # PRIMARY (matches the CURRENT site form <input name="search"> + <select name="selsearch">):
+    # POST search=<item> + selsearch=2 ("by Item Number"). Verified against the live site --
+    # returns the single exact /product/show/ match. The GET / other-POST attempts below
+    # remain as fallbacks for older or changed form shapes.
+    _primary = _try_post({"search": item_number, "selsearch": "2"})
+    if _primary:
+        _hp = "/product/show/" in _primary
+        diag.append(f"POST search+selsearch=2 -> {len(_primary)} bytes, "
+                    f"{'HAS' if _hp else 'no'} product links")
+        # selsearch=2 IS the authoritative by-item-number search, so TRUST its answer
+        # either way: with a product link -> the exact match; WITHOUT one -> the item
+        # genuinely isn't on the site. Returning the no-results page here lets
+        # find_product_url report NOT_FOUND immediately, instead of spending ~15s per
+        # missing item on the crawl4ai GET fallback below (which only returns the FULL
+        # catalogue and leads to NOT_FOUND anyway). Fall through to the fallbacks ONLY
+        # when the POST itself failed (empty body / network error).
+        return _primary
 
     # The Miles site's search now responds to GET query params (POST endpoints
     # were removed/changed and return URLError). Try GET FIRST -- it's what works
@@ -996,7 +964,8 @@ def download_file_bytes(url: str, timeout: int = 30):
 # =============================================================================
 
 async def harvest_item(item_number: str, drive_service, log=print,
-                       master_id: str = MASTER_FOLDER_ID) -> dict:
+                       master_id: str = MASTER_FOLDER_ID,
+                       api_key: str = "", ocr_model: str = "claude-sonnet-4-5") -> dict:
     """Harvest ONE item number end to end. Returns a result dict:
        {status, item_number, product, message}
     where status is OK / NOT_FOUND / NEEDS_REVIEW / ERROR and `product` is the
@@ -1023,7 +992,27 @@ async def harvest_item(item_number: str, drive_service, log=print,
 
     product_url = url_or_msg
     log(f"  [{item_number}] product page: {product_url}")
-    page_html, page_md = await _fetch_page(product_url, click_tabs=True)
+    # The UPDATED Miles site is fully server-rendered: a plain GET returns the whole
+    # product page (title, spec table, and ALL document links -- SDS + TDS + NSF). The
+    # crawl4ai tab-clicking render (click_tabs) now clicks the site's "SDS" NAV link,
+    # navigates away ("Execution context destroyed"), and captures the WRONG page with
+    # ONLY the NSF certificate -- exactly why SDS/TDS were going missing. So fetch plainly
+    # first; fall back to the browser renderer (WITHOUT tab-clicking) only if the plain
+    # page is missing its /uploads/ document links.
+    page_html, page_md = "", ""
+    _pdata, _pwhy = download_file_bytes(product_url)
+    if _pdata:
+        page_html = _pdata.decode("utf-8", "ignore")
+    # Only try the browser renderer when the plain fetch SUCCEEDED but the page happens to
+    # lack doc links. If the plain fetch failed outright (empty -- e.g. the site returns HTTP
+    # 500 for this specific product), skip the slow/also-failing browser fallback and let the
+    # empty-page check below report a clean error for this one item.
+    if page_html and "/uploads/" not in page_html:
+        _bh, _bm = await _fetch_page(product_url, click_tabs=False)
+        # _fetch_page can hand back a non-string when the browser render fails; guard so a
+        # failed fallback never crashes on len().
+        if isinstance(_bh, str) and _bh and len(_bh) > len(page_html):
+            page_html, page_md = _bh, (_bm if isinstance(_bm, str) else "")
     log(f"  [{item_number}]   page loaded: {len(page_html)} bytes html, {len(page_md)} bytes text")
     if not page_html:
         return {"status": ERROR, "item_number": item_number,
@@ -1104,8 +1093,23 @@ async def harvest_item(item_number: str, drive_service, log=print,
         fname = _upq.unquote(fname)   # restore readable filename
         if not fname.lower().endswith(".pdf"):
             fname += ".pdf"
-        text = extract_pdf_text(data)
-        kind = classify_pdf(fname, text)
+        # extract_pdf_text_smart OCRs ONLY image-based (scanned) PDFs via Claude vision when
+        # a key is available; text-layer PDFs (SDS etc.) never trigger OCR. This is what stops
+        # scanned TDS/spec sheets from landing as blank text on future harvests.
+        text = extract_pdf_text_smart(data, api_key=api_key, model=ocr_model, log=log)
+        # Folder is the most reliable classifier on the Miles site (filenames vary:
+        # "TDS - ...", "PDS ...", "SDS_..."):
+        #   /uploads/msds_docs/    = SDS       /uploads/spec_docs/ = TDS / spec sheet
+        #   /uploads/certificates/ = other (e.g. the shared NSF registration cert)
+        _lp = purl.lower()
+        if "/msds_docs/" in _lp:
+            kind = "sds"
+        elif "/spec_docs/" in _lp:
+            kind = "tds"
+        elif "/certificates/" in _lp:
+            kind = "other"
+        else:
+            kind = classify_pdf(fname, text)
         drive_id = ""
         if drive_service and folder_id:
             drive_id, uerr = upload_bytes_to_drive(drive_service, folder_id, fname, data)
@@ -1121,41 +1125,3 @@ async def harvest_item(item_number: str, drive_service, log=print,
             "message": f"{len(pdf_bundle)} file(s)"}
 
 
-async def harvest_batch(item_numbers: list, config: dict, base_dir,
-                        log=print, master_id: str = MASTER_FOLDER_ID) -> dict:
-    """Harvest a whole batch. Returns:
-       {products: [...], needs_review: [...], not_found: [...], errors: [...]}
-    Builds the Drive service once and reuses it."""
-    from pathlib import Path as _P
-    base_dir = _P(base_dir) if not isinstance(base_dir, _P) else base_dir
-
-    drive_service, derr = build_drive_rw(config, base_dir)
-    if derr:
-        log(f"  Drive unavailable -- files will NOT be saved to Drive: {derr}")
-        drive_service = None
-
-    out = {"products": [], "needs_review": [], "not_found": [], "errors": []}
-    total = len(item_numbers)
-    for i, item in enumerate(item_numbers, 1):
-        log(f"[{i}/{total}] {item}")
-        try:
-            res = await harvest_item(item, drive_service, log=log, master_id=master_id)
-        except Exception as e:
-            out["errors"].append({"item": item, "message": f"{type(e).__name__}: {str(e)[:120]}"})
-            log(f"  [{item}] ERROR: {type(e).__name__}: {str(e)[:120]}")
-            continue
-        st = res.get("status")
-        if st == OK:
-            out["products"].append(res["product"])
-        elif st == NEEDS_REVIEW:
-            out["needs_review"].append({"item": item, "message": res.get("message", "")})
-        elif st == NOT_FOUND:
-            out["not_found"].append({"item": item, "message": res.get("message", "")})
-        else:
-            out["errors"].append({"item": item, "message": res.get("message", "")})
-
-    log("")
-    log(f"Harvest summary: {len(out['products'])} ok | "
-        f"{len(out['needs_review'])} need review | "
-        f"{len(out['not_found'])} not found | {len(out['errors'])} errors")
-    return out

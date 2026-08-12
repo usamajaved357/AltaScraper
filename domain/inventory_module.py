@@ -229,35 +229,6 @@ def fetch_fba_inventory(creds, marketplace: str, marketplace_id: str,
     }
 
 
-def _parse_fba_inventory_tsv(text: str) -> list:
-    """Parse the tab-separated GET_FBA_MYI_ALL_INVENTORY_DATA payload. Normalises
-    column names to snake_case; adds inbound_total = working + shipped + receiving."""
-    lines = text.splitlines()
-    if not lines:
-        return []
-    reader = csv.DictReader(lines, delimiter="\t")
-    out = []
-    for r in reader:
-        # normalise all keys to snake_case
-        norm = {re.sub(r"[^a-z0-9]+", "_", k.lower()).strip("_"): (v.strip() if isinstance(v, str) else v)
-                for k, v in r.items() if k}
-        # Coerce numbers
-        for numkey in ("afn_fulfillable_quantity", "afn_reserved_quantity",
-                        "afn_inbound_working_quantity", "afn_inbound_shipped_quantity",
-                        "afn_inbound_receiving_quantity",
-                        "afn_unsellable_quantity", "afn_total_quantity",
-                        "mfn_fulfillable_quantity", "your_price"):
-            v = norm.get(numkey, "")
-            try:
-                norm[numkey] = float(v) if v not in ("", None) else 0.0
-            except (ValueError, TypeError):
-                norm[numkey] = 0.0
-        # Convenience: inbound total
-        norm["inbound_total"] = (norm.get("afn_inbound_working_quantity", 0)
-                                  + norm.get("afn_inbound_shipped_quantity", 0)
-                                  + norm.get("afn_inbound_receiving_quantity", 0))
-        out.append(norm)
-    return out
 
 
 # ---------------------------------------------------------------------------

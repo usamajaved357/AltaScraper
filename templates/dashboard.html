@@ -131,10 +131,20 @@
         <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
         <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
         <button onclick="bulkDelete()" title="Delete all selected listings" style="color:#ff8a8a;border-color:#5c2424"><i class="ti ti-trash"></i> Delete</button>
+        <button onclick="rescanFlags()" title="Re-judge compliance and IP flags on already-generated rows using the current rules. Costs nothing and never touches your copy — only Status, Notes, Compliance Risk and IP Risk, and only on rows that are NEEDS_REVIEW or held." style="border-color:#7fd1a0;color:#7fd1a0"><i class="ti ti-shield-check"></i> Re-check flags</button>
         <button onclick="selectAllVisible(true)">Select all</button>
         <button onclick="clearSelection()">Clear</button>
       </div>
       <div id="summary">Loading…</div>
+      <!-- Honest run state. Fed by /run/health (heartbeat file + real process
+           liveness), NOT by the log stream below -- a frozen log cannot fake it. -->
+      <div id="runhealth" class="runhealth" style="display:none">
+        <span id="rh_dot" class="rh_dot"></span>
+        <span id="rh_state" class="rh_state">—</span>
+        <span id="rh_detail" class="rh_detail"></span>
+        <button id="rh_why" class="rh_why" style="display:none"
+                onclick="whyStuck()">Why is it stuck?</button>
+      </div>
       <pre id="log"></pre>
       <main id="grid"><div class="empty">Loading listings…</div></main>
       <div id="drawerscrim" class="drawerscrim" onclick="closeDrawer()"></div>
@@ -508,7 +518,17 @@
         <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
       </div>
 
+      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:rgba(76,141,255,.08);font-size:13px"></div>
+
       <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
+
+      <div id="miles_runs_panel" style="margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b style="font-size:13px"><i class="ti ti-history"></i> Past runs</b>
+          <button class="browsemodels sm" onclick="milesLoadRuns()" title="Refresh the saved run history"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+        <div id="miles_runs_list" style="font-size:12px;opacity:.85">Loading…</div>
+      </div>
 
       <div id="miles_results" style="margin-top:14px"></div>
     </div>
@@ -592,6 +612,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="/static/js/amazon_errors.js"></script>
 <script src="/static/js/listings.js"></script>
 <script src="/static/js/autofix.js"></script>
 <script src="/static/js/miles_template.js"></script>
@@ -601,6 +622,7 @@
 <script src="/static/js/ppc.js"></script>
 <script src="/static/js/inventory.js"></script>
 <script src="/static/js/submit.js"></script>
+<script src="/static/js/runqueue.js"></script>
 <script src="/static/js/handling.js"></script>
 <script src="/static/js/pastelisting.js"></script>
 <script src="/static/js/monitor.js"></script>

@@ -1,13 +1,48 @@
 {
   "_meta": {
-    "title": "Master restricted-products reference \u2014 all 30 categories, deep detail",
+    "title": "Master restricted-products reference — all 30 categories, deep detail",
     "purpose": "The comprehensive reference: every Amazon restricted category with status, required docs, trigger keywords, prohibited substances, and marketplace-specific notes. Danger zones (batteries, medical, radio, cosmetics, supplements, hazmat, children's) in full depth; all others at solid category level. Consolidates tier1 + tier2 + tier2b + deep research.",
     "compiled": "2026-07-28",
     "source_tier": "master_deep_research",
     "amazon_policy_ref": "G200164330",
     "confidence_note": "Compiled from Amazon published policy + regulators (FDA, EPA, FCC, Ofcom, CPSC, MHRA, HSE) + industry compliance references, accurate as of compile date. Amazon updates without notice. Definitive per-ASIN/per-account answer = Seller Central Apply-to-Sell.",
     "usage_rule": "SOURCING ALARM + listing warning. PROHIBITED -> block normal submit (logged force-list only). GATED -> warn + show docs, submit allowed. Never a copy tool: never strip a true spec/ingredient to conceal a restricted product (account-ending).",
-    "marketplace_principle": "EU/UK is generally the stricter constraint (esp. cosmetics, children's). Several restrictions are marketplace-specific and must resolve per active marketplace, never globally. Hazmat and category approvals are per-marketplace \u2014 approval in one region does NOT carry to another."
+    "marketplace_principle": "EU/UK is generally the stricter constraint (esp. cosmetics, children's). Several restrictions are marketplace-specific and must resolve per active marketplace, never globally. Hazmat and category approvals are per-marketplace — approval in one region does NOT carry to another.",
+    "category_count": 45,
+    "merged_from_patch": {
+      "source": "restricted_categories_patch.json",
+      "replaced": [
+        "composite_wood",
+        "upholstered_furniture",
+        "pesticides_biocides",
+        "opaque_eyewear",
+        "alcohol",
+        "explosives_fireworks",
+        "drugs_otc",
+        "fine_art",
+        "coins_currency",
+        "tobacco_vaping",
+        "animals",
+        "recalled",
+        "gambling_lottery",
+        "warranties_services",
+        "recycling_electronics",
+        "postage_stamps",
+        "offensive_materials",
+        "strike_matches",
+        "cpap_ozone_cleaners",
+        "polystyrene_wa"
+      ],
+      "appended": [
+        "electronics",
+        "human_parts_burial",
+        "export_controls",
+        "art_home_decor",
+        "subscriptions_periodicals",
+        "prohibited_product_claims"
+      ],
+      "note": "Patch entries carry per-marketplace docs {US:[...],UK:[...]}; listing/restricted.py resolves either shape."
+    }
   },
   "categories": [
     {
@@ -20,7 +55,7 @@
         "UK": "GATED (FSA/MHRA)"
       },
       "prohibited_ingredients": [
-        "Ephedra / ephedrine alkaloids (incl. Sida cordifolia / heartleaf sida \u2014 Amazon treats plant-sourced ephedrine as prohibited)",
+        "Ephedra / ephedrine alkaloids (incl. Sida cordifolia / heartleaf sida — Amazon treats plant-sourced ephedrine as prohibited)",
         "DMAA (1,3-dimethylamylamine)",
         "Phenibut",
         "Tianeptine",
@@ -28,7 +63,7 @@
         "SARMs",
         "Kratom",
         "Kava",
-        "hidden pharmaceuticals (sildenafil, tadalafil \u2014 common in sexual-enhancement products)"
+        "hidden pharmaceuticals (sildenafil, tadalafil — common in sexual-enhancement products)"
       ],
       "restricted_extra_docs": [
         "Caffeine >400mg",
@@ -44,7 +79,7 @@
         "sealed original packaging, English labelling"
       ],
       "amazon_specific_rules": [
-        "EVERY ingredient claim on the detail page must MATCH the Supplement Facts Panel in name, weight, presentation \u2014 'label-led not marketing-led'. Deactivations for mismatched legacy copy from 2026-03-31.",
+        "EVERY ingredient claim on the detail page must MATCH the Supplement Facts Panel in name, weight, presentation — 'label-led not marketing-led'. Deactivations for mismatched legacy copy from 2026-03-31.",
         "No 'equivalent raw material' / potency storytelling that exceeds the panel.",
         "Sexual-enhancement & weight-loss supplements CANNOT be sold in single- or double-pill packs (since 2021-12-06)."
       ],
@@ -187,10 +222,10 @@
       "fba_outcomes": [
         "Non-dangerous: standard FBA",
         "Restricted-dangerous: FBA only if enrolled in Dangerous Goods Program (special centers, higher fees)",
-        "Unfulfillable: Class 1 explosives, Class 7 radioactive, Class 6.2 infectious \u2014 cannot enter FBA at all"
+        "Unfulfillable: Class 1 explosives, Class 7 radioactive, Class 6.2 infectious — cannot enter FBA at all"
       ],
       "classes": [
-        "Class 2 (aerosols \u2014 every aerosol qualifies due to propellant)",
+        "Class 2 (aerosols — every aerosol qualifies due to propellant)",
         "Class 3 flammable liquids (flash point <=60C/140F: perfume, nail polish, lighter fluid, lamp oil)",
         "Class 4 flammable solids (matches, fire starters)",
         "Class 8 corrosives (glycolic acid skincare)",
@@ -225,89 +260,414 @@
         "BS EN 71 / EN 71 (71-1 mechanical, 71-2 flammability, 71-3 toxic elements)",
         "REACH compliance"
       ],
-      "scope": "Toys, apparel, jewelry, books, art materials, children's furniture \u2014 anything for kids <=12. Amazon usually gives ~30 days to provide CPC; non-compliance = removal even after years listed.",
+      "scope": "Toys, apparel, jewelry, books, art materials, children's furniture — anything for kids <=12. Amazon usually gives ~30 days to provide CPC; non-compliance = removal even after years listed.",
       "regulator": "CPSC (US)"
     },
     {
       "id": "composite_wood",
       "label": "Composite wood products",
-      "status": "PROHIBITED_UNLESS_COMPLIANT",
-      "depth": "solid",
+      "status": "RESTRICTED",
+      "depth": "full",
       "marketplaces": {
-        "US": "Prohibited unless EPA TSCA Title VI / CARB formaldehyde compliant"
+        "US": "RESTRICTED — must comply with TSCA Title VI / CARB Phase 2 formaldehyde standards",
+        "UK": "Allowed — no equivalent formaldehyde-specific regulation, but general product safety applies"
       },
-      "docs": [
-        "EPA TSCA Title VI / CARB Phase 2 formaldehyde certification"
+      "trigger_keywords": [
+        "MDF",
+        "medium density fiberboard",
+        "particleboard",
+        "particle board",
+        "hardwood plywood",
+        "composite wood",
+        "engineered wood",
+        "laminated wood",
+        "fiberboard",
+        "fibreboard",
+        "chipboard",
+        "pressed wood"
       ],
-      "note": "Plywood, MDF, particleboard. Also hits children's toys with composite panels.",
-      "regulator": "EPA (US)"
+      "thresholds": {
+        "formaldehyde_limits": {
+          "hardwood_plywood_veneer_core": "< 0.05 ppm",
+          "hardwood_plywood_composite_core": "< 0.05 ppm",
+          "particleboard": "< 0.09 ppm",
+          "MDF": "< 0.11 ppm",
+          "thin_MDF": "< 0.13 ppm"
+        },
+        "testing_standard": "ASTM E1333-16 (large chamber) or ASTM D6007 (small chamber)",
+        "certification": "EPA-recognized TSCA Title VI Third-Party Certifier (TPC)"
+      },
+      "docs": {
+        "US": [
+          "TSCA Title VI / CARB Phase 2 certification",
+          "Third-Party Certifier (TPC) certificate",
+          "Formaldehyde emission test report",
+          "Product labeling as TSCA Title VI compliant"
+        ],
+        "UK": [
+          "General product safety compliance",
+          "No specific formaldehyde regulation but REACH applies"
+        ]
+      }
     },
     {
       "id": "upholstered_furniture",
-      "label": "Upholstered furniture & clothing storage units",
+      "label": "Upholstered furniture & furnishings",
       "status": "GATED",
-      "depth": "solid",
+      "depth": "full",
       "marketplaces": {
-        "US": "Clothing storage units require DV Direct Verification per ASTM F2057-23 (anti-tip/stability)",
-        "UK": "Fire safety regs (fire label) \u2014 changing"
+        "US": "GATED — flammability + formaldehyde + tip-over + law label requirements",
+        "UK": "GATED — Furniture and Furnishings (Fire Safety) Regulations 1988 as amended"
       },
-      "docs": [
-        "ASTM F2057-23 tip-over testing (US dressers)",
-        "UK furniture fire-safety label"
+      "trigger_keywords": [
+        "upholstered",
+        "sofa",
+        "couch",
+        "armchair",
+        "mattress",
+        "cushion",
+        "ottoman",
+        "futon",
+        "loveseat",
+        "recliner",
+        "sectional",
+        "chaise",
+        "headboard padded",
+        "bench upholstered",
+        "foam filled"
       ],
-      "regulator": "CPSC (US)"
+      "docs": {
+        "US": [
+          "TB 117-2013 flammability test report",
+          "CARB Phase 2 certification for composite wood components",
+          "ASTM F2057 tip-over stability test (dressers/chests)",
+          "US Law Label (filling materials, manufacturer info)",
+          "Prop 65 warning if applicable"
+        ],
+        "UK": [
+          "Fire Safety Regulations 1988 compliance label (display label + permanent label)",
+          "BS 5852 ignition test (cigarette + match)",
+          "BS 7177 (mattresses)",
+          "UK Responsible Person",
+          "UKCA marking"
+        ]
+      }
     },
     {
       "id": "pesticides_biocides",
-      "label": "Pesticides & pesticide-claim products",
+      "label": "Pest control products, pesticides & biocides",
       "status": "GATED",
-      "depth": "solid",
+      "depth": "full",
       "marketplaces": {
-        "US": "EPA registration",
-        "UK": "HSE biocide rules"
+        "US": "GATED — EPA registration required under FIFRA",
+        "UK": "GATED — HSE/CRD registration required under UK BPR (Biocidal Products Regulation)"
       },
-      "claims_trap": "NON-pesticide products pulled in by pesticide-CLAIM language (kill/sanitize/antimicrobial/mold-resistant) \u2014 the Mil-Gear case.",
-      "docs": [
-        "US: EPA registration number",
-        "UK: HSE biocide registration"
+      "trigger_keywords": [
+        "kills",
+        "repels",
+        "repellent",
+        "insecticide",
+        "pesticide",
+        "herbicide",
+        "fungicide",
+        "rodenticide",
+        "anti-bacterial",
+        "antibacterial",
+        "anti-microbial",
+        "antimicrobial",
+        "anti-fungal",
+        "antifungal",
+        "anti-viral",
+        "antiviral",
+        "sanitize",
+        "sanitizes",
+        "sanitizer",
+        "disinfect",
+        "disinfects",
+        "disinfectant",
+        "germicide",
+        "germicidal",
+        "biocide",
+        "biocidal",
+        "mould killer",
+        "mold killer",
+        "algaecide",
+        "bactericide",
+        "virucide",
+        "virucidal",
+        "decontaminate",
+        "sterilize",
+        "sterilise",
+        "prevents bacteria",
+        "prevents mold",
+        "prevents mould",
+        "controls pests",
+        "eliminates germs",
+        "destroys bacteria",
+        "mitigates",
+        "treats water",
+        "pest repeller",
+        "insect repeller",
+        "rodent repeller",
+        "mouse repeller",
+        "ultrasonic repeller",
+        "pest control",
+        "insect killer",
+        "bug killer",
+        "kills insects",
+        "kills bugs",
+        "kills pests",
+        "repels insects",
+        "repels pests",
+        "fly killer",
+        "ant killer",
+        "slug killer"
       ],
-      "regulator": "EPA (US) / HSE (UK)"
+      "prohibited_items": [
+        "Unregistered pesticides (no EPA reg number in US, no HSE/CRD number in UK)",
+        "Restricted-use pesticides without applicator certification",
+        "Insecticide chalk",
+        "Products making public health claims (kills disease-causing pathogens) without registration",
+        "Pesticide products not intended for sale in that marketplace"
+      ],
+      "docs": {
+        "US": [
+          "EPA registration number on label",
+          "State registration where required",
+          "Safety Data Sheet (SDS)",
+          "EPA-approved labeling with usage instructions",
+          "FIFRA-compliant label"
+        ],
+        "UK": [
+          "HSE/CRD biocidal product registration number",
+          "UK BPR compliance",
+          "Safety Data Sheet",
+          "UKCA/CE marking where applicable",
+          "UK Responsible Person"
+        ]
+      },
+      "false_positive_warning": "NON-pesticide products get flagged constantly by Amazon's automated scanner when listing copy contains ANY of the trigger keywords. A cleaning cloth described as 'antibacterial' or oil described as 'anti-corrosion' can trigger a pesticide review. This is the MOST COMMON source of false-positive Restricted Product violations for arbitrage/reselling sellers. The claims screener must catch these words regardless of product category.",
+      "your_violations": [
+        "Mil-Gear lubricant flagged for pesticide-claim language in listing copy (v8 session)"
+      ]
     },
     {
       "id": "opaque_eyewear",
-      "label": "Opaque / light-blocking goggles & eyeshields",
+      "label": "Opaque / light-blocking eyewear & goggles",
       "status": "PROHIBITED",
-      "depth": "solid",
+      "depth": "full",
       "marketplaces": {
-        "US": "PROHIBITED \u2014 FDA requires see-through eyewear",
-        "UK": "verify"
+        "US": "PROHIBITED — FDA considers non-transparent eyewear a medical device risk",
+        "UK": "RESTRICTED — general product safety, PPE Regulation 2016/425 if marketed as protective"
       },
-      "matches_user_violation": "B0H4NJN5BM",
-      "note": "Attribute-triggered: see-through eyewear is fine.",
-      "regulator": "FDA"
+      "trigger_keywords": [
+        "blackout goggles",
+        "light blocking goggles",
+        "opaque goggles",
+        "sleep mask goggles",
+        "total darkness goggles",
+        "blind goggles",
+        "sensory deprivation goggles",
+        "light therapy goggles opaque"
+      ],
+      "your_violations": [
+        "B0H4NJN5BM — opaque light-blocking goggles/eyeshields, PROHIBITED (FDA requires see-through eyewear)"
+      ]
     },
     {
       "id": "alcohol",
-      "label": "Alcohol",
-      "status": "PROHIBITED_EXCEPT_WINE_APPROVED",
-      "depth": "solid",
+      "label": "Alcohol / alcoholic beverages",
+      "status": "PROHIBITED_EXCEPT_APPROVED",
+      "depth": "full",
       "marketplaces": {
-        "US": "prohibited except pre-approved wine",
-        "UK": "prohibited except pre-approved wine"
+        "US": "PROHIBITED except pre-approved wine sellers; beer/spirits fully prohibited",
+        "UK": "RESTRICTED — alcohol listings allowed with age verification; must comply with Licensing Act 2003"
+      },
+      "trigger_keywords": [
+        "wine",
+        "beer",
+        "spirits",
+        "vodka",
+        "whisky",
+        "whiskey",
+        "gin",
+        "rum",
+        "tequila",
+        "brandy",
+        "champagne",
+        "prosecco",
+        "sake",
+        "mead",
+        "cider alcoholic",
+        "absinthe",
+        "liqueur",
+        "cocktail mix alcoholic",
+        "homebrew kit alcohol",
+        "red wine",
+        "white wine",
+        "rose wine",
+        "sparkling wine",
+        "dessert wine",
+        "craft beer",
+        "lager beer",
+        "ale beer",
+        "single malt",
+        "blended whisky",
+        "blended whiskey",
+        "spiced rum",
+        "dark rum",
+        "white rum",
+        "london dry gin",
+        "vodka bottle",
+        "whisky bottle",
+        "whiskey bottle",
+        "gin bottle",
+        "alcohol by volume",
+        "abv",
+        "70cl",
+        "75cl",
+        "proof spirit"
+      ],
+      "prohibited_items": [
+        "Distillation equipment / stills (US)",
+        "Homebrew spirits kits (US)",
+        "Any alcohol without proper licensing",
+        "Products marketed to minors"
+      ],
+      "docs": {
+        "US": [
+          "Pre-approval from Amazon wine program",
+          "State alcohol shipping license",
+          "Federal TTB permit",
+          "Age-gate compliance"
+        ],
+        "UK": [
+          "Licensing Act 2003 compliance",
+          "HMRC alcohol duty registration",
+          "Age verification at delivery (18+)",
+          "UK Responsible Person"
+        ]
       }
     },
     {
       "id": "explosives_fireworks",
-      "label": "Explosives, fireworks",
+      "label": "Explosives, weapons & related items",
       "status": "PROHIBITED",
-      "depth": "solid"
+      "depth": "full",
+      "marketplaces": {
+        "US": "PROHIBITED — firearms, ammunition, explosives, fireworks; some non-lethal accessories allowed",
+        "UK": "PROHIBITED — Firearms Act 1968, Explosives Regulations 2014"
+      },
+      "trigger_keywords": [
+        "firearm",
+        "gun",
+        "rifle",
+        "pistol",
+        "shotgun",
+        "ammunition",
+        "ammo",
+        "explosive",
+        "firework",
+        "pyrotechnic",
+        "detonator",
+        "blasting cap",
+        "grenade",
+        "bomb",
+        "C4",
+        "dynamite",
+        "black powder",
+        "gunpowder",
+        "pepper spray",
+        "mace spray",
+        "taser",
+        "stun gun",
+        "brass knuckles",
+        "switchblade",
+        "butterfly knife",
+        "balisong",
+        "knuckle duster",
+        "crossbow",
+        "air rifle pellet",
+        "BB gun"
+      ],
+      "prohibited_items": [
+        "All firearms and firearm parts (receivers, frames, triggers, silencers, bump stocks)",
+        "All ammunition and reloading components",
+        "Explosives and fireworks of any kind",
+        "Assault weapon accessories",
+        "Pepper spray / mace (UK)",
+        "Tasers / stun guns",
+        "Brass knuckles / knuckle dusters",
+        "Switchblades / gravity knives / butterfly knives",
+        "Disguised weapons (pen knives designed as weapons, credit card knives)",
+        "Body armor (some US states restrict)"
+      ],
+      "allowed_exceptions": [
+        "Gun safes and cabinets",
+        "Cleaning kits (non-specific)",
+        "Hunting accessories (scopes, bipods — varies by marketplace)",
+        "Airsoft guns (UK: with orange tip, age-restricted)"
+      ]
     },
     {
       "id": "drugs_otc",
-      "label": "Drugs, OTC medicines, paraphernalia",
+      "label": "Drugs, OTC medicines & drug paraphernalia",
       "status": "GATED",
-      "depth": "solid",
-      "regulator": "FDA/MHRA"
+      "depth": "full",
+      "marketplaces": {
+        "US": "GATED — OTC drugs must have FDA Drug Facts label; prescription drugs PROHIBITED",
+        "UK": "GATED — OTC medicines via MHRA registered sellers only; pharmacy-only medicines (P) require registered pharmacy; prescription-only (POM) PROHIBITED"
+      },
+      "trigger_keywords": [
+        "prescription",
+        "Rx",
+        "antibiotic",
+        "narcotic",
+        "controlled substance",
+        "paracetamol",
+        "ibuprofen",
+        "aspirin",
+        "acetaminophen",
+        "codeine",
+        "morphine",
+        "opioid",
+        "benzodiazepine",
+        "amphetamine",
+        "steroid anabolic",
+        "drug paraphernalia",
+        "bong",
+        "pipe smoking drug",
+        "rolling papers",
+        "purity test kit",
+        "dab rig",
+        "grinder herb"
+      ],
+      "prohibited_items": [
+        "Prescription drugs (all marketplaces)",
+        "Controlled substances (Schedule I-V US, Class A-C UK)",
+        "Veterinary prescription medicines",
+        "Vaccines (human and animal)",
+        "Drug paraphernalia (bongs, dab rigs, purity test kits, crack pipes)",
+        "Anabolic steroids",
+        "Products containing scheduled substances (codeine, ephedrine above thresholds)",
+        "Unapproved new drugs"
+      ],
+      "docs": {
+        "US": [
+          "FDA Drug Facts label (OTC)",
+          "NDC (National Drug Code) number",
+          "FDA establishment registration",
+          "Drug listing with FDA",
+          "GMP compliance"
+        ],
+        "UK": [
+          "MHRA registration as online seller of medicines",
+          "THR (Traditional Herbal Registration) number if herbal",
+          "Pharmacy GPhC registration (P medicines)",
+          "PIL (Patient Information Leaflet)",
+          "UK Responsible Person"
+        ]
+      }
     },
     {
       "id": "cbd_hemp",
@@ -315,10 +675,10 @@
       "status": "PROHIBITED",
       "depth": "full",
       "marketplaces": {
-        "US": "CBD PROHIBITED outright: 'Listings for products containing cannabidiol (CBD) are prohibited.' Only hemp SEED products (hulled seeds, seed protein, seed oil \u2014 no cannabinoids) allowed.",
+        "US": "CBD PROHIBITED outright: 'Listings for products containing cannabidiol (CBD) are prohibited.' Only hemp SEED products (hulled seeds, seed protein, seed oil — no cannabinoids) allowed.",
         "UK": "Ingestible CBD/cannabinoid products (oils, gummies, e-liquids, sprays, lozenges) PROHIBITED except an invite-only pilot NOT accepting sellers. Only cold-pressed hemp SEED oil allowed. THC cap 1mg/container (controlled substance). Novel-food FSA approval pending."
       },
-      "concealment_trap": "CRITICAL: sellers list CBD as 'Hemp Extract'/'Hemp Oil' to dodge the CBD keyword ban. This is exactly the concealment pattern that is account-ending. The app must NOT suggest or enable relabelling CBD as hemp to bypass the ban. If a product IS CBD, it's prohibited \u2014 don't sell it, don't disguise it.",
+      "concealment_trap": "CRITICAL: sellers list CBD as 'Hemp Extract'/'Hemp Oil' to dodge the CBD keyword ban. This is exactly the concealment pattern that is account-ending. The app must NOT suggest or enable relabelling CBD as hemp to bypass the ban. If a product IS CBD, it's prohibited — don't sell it, don't disguise it.",
       "allowed": [
         "hemp seed oil (cold-pressed, from seeds only)",
         "hulled hemp seeds",
@@ -342,7 +702,27 @@
         "hemp extract",
         "hemp gummies"
       ],
-      "regulator": "FDA (US) / MHRA-FSA-Home Office (UK, Misuse of Drugs Act 1971)"
+      "regulator": "FDA (US) / MHRA-FSA-Home Office (UK, Misuse of Drugs Act 1971)",
+      "trigger_keywords": [
+        "cbd",
+        "cannabidiol",
+        "cannabinoid",
+        "cannabinoids",
+        "thc",
+        "cannabis",
+        "marijuana",
+        "cbd oil",
+        "cbd gummies",
+        "cbd cream",
+        "cbd balm",
+        "hemp extract",
+        "hemp oil",
+        "full spectrum",
+        "broad spectrum",
+        "delta-8",
+        "delta 8",
+        "delta-9"
+      ]
     },
     {
       "id": "weapons_knives",
@@ -512,7 +892,7 @@
       "requirements": [
         "Expiration date PERMANENTLY marked on every unit (set is_expiration_dated_product=true in inventory template)",
         "Sesame must be declared (9th US allergen, FASTER Act 2023)",
-        "FDA RACC serving sizes (21 CFR 101.12) mandatory \u2014 foreign serving sizes void the Nutrition Facts panel (#1 import error)",
+        "FDA RACC serving sizes (21 CFR 101.12) mandatory — foreign serving sizes void the Nutrition Facts panel (#1 import error)",
         "FSVP program if importer of record (FDA can demand records in 24h)",
         "English labelling: name, net weight, ingredients, allergens, nutrition, manufacturer"
       ],
@@ -528,7 +908,48 @@
         "certain plant-based items"
       ],
       "dietary_claims_trap": "'organic', 'gluten-free', 'non-GMO', 'keto', 'vegan' need appropriate certification/approval.",
-      "regulator": "FDA/USDA (US) / FSA (UK)"
+      "regulator": "FDA/USDA (US) / FSA (UK)",
+      "trigger_keywords": [
+        "best before",
+        "use by date",
+        "expiry date",
+        "allergen advice",
+        "nutritional information",
+        "nutrition information",
+        "calories per serving",
+        "green tea",
+        "black tea",
+        "herbal tea",
+        "tea bags",
+        "coffee beans",
+        "ground coffee",
+        "instant coffee",
+        "olive oil",
+        "cooking sauce",
+        "breakfast cereal",
+        "protein bar",
+        "chocolate bar",
+        "confectionery",
+        "dietary fibre",
+        "ingredients list",
+        "food",
+        "snack",
+        "biscuit",
+        "chocolate",
+        "candy",
+        "sweets",
+        "tea",
+        "coffee",
+        "spice",
+        "sauce",
+        "seasoning",
+        "flour",
+        "sugar",
+        "edible",
+        "consumable",
+        "allergen",
+        "cooking oil"
+      ]
     },
     {
       "id": "jewelry_precious",
@@ -569,7 +990,7 @@
       "label": "Automotive & powersports",
       "status": "GATED_SUBCATEGORY",
       "depth": "full",
-      "note": "Top-level open, but: EMISSIONS DEFEAT DEVICES prohibited (Title II Clean Air Act) \u2014 tuners/deletes removed even WITH CARB EO docs. Tires/wheels/rims = separate gate. Parts needing EPA Certificate of Conformity gated. Products must retain full OBD/emissions functionality.",
+      "note": "Top-level open, but: EMISSIONS DEFEAT DEVICES prohibited (Title II Clean Air Act) — tuners/deletes removed even WITH CARB EO docs. Tires/wheels/rims = separate gate. Parts needing EPA Certificate of Conformity gated. Products must retain full OBD/emissions functionality.",
       "trigger_keywords": [
         "defeat device",
         "emissions delete",
@@ -589,90 +1010,720 @@
       "id": "fine_art",
       "label": "Fine art",
       "status": "GATED",
-      "depth": "solid",
-      "note": "No mass-produced/unnamed-artist works."
+      "depth": "full",
+      "marketplaces": {
+        "US": "GATED — Amazon Fine Art Store requires pre-approval",
+        "UK": "GATED — same approval requirements"
+      },
+      "trigger_keywords": [
+        "original painting",
+        "fine art",
+        "signed print",
+        "limited edition print",
+        "art gallery",
+        "oil painting original",
+        "watercolor original",
+        "sculpture original",
+        "lithograph signed"
+      ],
+      "prohibited_items": [
+        "Three-dimensional artwork (in Fine Art category)",
+        "Archaeological-based art",
+        "Unauthorized reproductions that violate copyright",
+        "NFT-linked physical art without proper rights documentation"
+      ],
+      "docs": {
+        "US": [
+          "Amazon Fine Art Store approval",
+          "Certificate of Authenticity for originals",
+          "Provenance documentation"
+        ],
+        "UK": [
+          "Same as US",
+          "Artist Resale Right compliance (droit de suite) for secondary sales of works by living/recently deceased artists"
+        ]
+      }
     },
     {
       "id": "coins_currency",
-      "label": "Collectible coins & currency",
+      "label": "Currency, coins, cash equivalents & gift cards",
       "status": "GATED",
-      "depth": "solid",
-      "note": "No altered/counterfeit legal tender."
+      "depth": "full",
+      "marketplaces": {
+        "US": "GATED — Collectible Coins requires pre-approval; counterfeit/altered currency PROHIBITED",
+        "UK": "GATED — same rules; Forgery and Counterfeiting Act 1981"
+      },
+      "trigger_keywords": [
+        "gold coin",
+        "silver coin",
+        "collectible coin",
+        "numismatic",
+        "bullion",
+        "paper money",
+        "banknote",
+        "currency",
+        "legal tender",
+        "gift card",
+        "prepaid card",
+        "store credit",
+        "crypto wallet physical"
+      ],
+      "prohibited_items": [
+        "Altered legal tender",
+        "Counterfeit coins or paper money",
+        "Imitation currency",
+        "Commemorative medals misrepresented as legal tender",
+        "Open-loop gift cards over $2,000",
+        "Cryptocurrency (physical or digital)"
+      ],
+      "docs": {
+        "US": [
+          "Collectible Coins category approval",
+          "31 CFR Part 1027 compliance (precious metals dealers)",
+          "Anti-money laundering program documentation"
+        ],
+        "UK": [
+          "Category approval",
+          "Forgery and Counterfeiting Act 1981 compliance"
+        ]
+      }
     },
     {
       "id": "tobacco_vaping",
-      "label": "Tobacco, e-cigarettes, vaping",
+      "label": "Tobacco, e-cigarettes & vaping products",
       "status": "PROHIBITED",
-      "depth": "solid"
+      "depth": "full",
+      "marketplaces": {
+        "US": "PROHIBITED — all tobacco, nicotine, e-cigarettes, vaping devices, e-liquids",
+        "UK": "MOSTLY PROHIBITED — nicotine e-liquids prohibited; nicotine-free e-cigarette devices allowed with safety compliance; all tobacco products prohibited"
+      },
+      "trigger_keywords": [
+        "cigarette",
+        "cigar",
+        "tobacco",
+        "nicotine",
+        "vape",
+        "vaping",
+        "e-cigarette",
+        "e-liquid",
+        "e-juice",
+        "pod",
+        "coil vape",
+        "hookah",
+        "shisha",
+        "snuff",
+        "snus",
+        "chewing tobacco",
+        "nicotine pouch",
+        "nicotine patch",
+        "nicotine gum",
+        "rolling tobacco",
+        "pipe tobacco",
+        "gutka",
+        "khaini",
+        "zarda"
+      ],
+      "prohibited_items": [
+        "All tobacco products (cigarettes, cigars, pipe tobacco, chewing tobacco, snuff, snus)",
+        "All nicotine-containing e-liquids and refill cartridges",
+        "E-cigarette devices (US — all; UK — only if nicotine-containing)",
+        "Hookah and shisha products",
+        "Gutka, khaini, zarda, dissolvable tobacco",
+        "Herbal cigarettes / herbal smoking mix containing tobacco or nicotine"
+      ],
+      "allowed_exceptions": {
+        "US": [
+          "FDA-approved nicotine replacement therapy (patches, gum, lozenges) — but GATED under drugs_otc"
+        ],
+        "UK": [
+          "Nicotine-free e-cigarette devices (must comply with safety standards)",
+          "Smoking cessation products approved by MHRA",
+          "Vaping accessories (cases, stands) that contain no nicotine/tobacco"
+        ]
+      },
+      "docs": {
+        "UK_nicotine_free_devices": [
+          "MHRA notification (must appear on MHRA Notified Products list)",
+          "Tobacco Products Directive compliance",
+          "UKCA/CE marking",
+          "Age verification (18+)",
+          "UK Responsible Person"
+        ]
+      }
     },
     {
       "id": "animals",
-      "label": "Animals & animal products",
+      "label": "Animals & animal-related products",
       "status": "RESTRICTED",
-      "depth": "solid",
-      "note": "No live pets/endangered fur/feathers/marine mammals."
+      "depth": "full",
+      "marketplaces": {
+        "US": "RESTRICTED — live animals prohibited except certain aquarium species, insects, shellfish",
+        "UK": "RESTRICTED — live animals prohibited; CITES applies to endangered species products"
+      },
+      "trigger_keywords": [
+        "live animal",
+        "live fish",
+        "live insect",
+        "live reptile",
+        "ivory",
+        "shark fin",
+        "shark cartilage",
+        "whale meat",
+        "whale bone",
+        "turtle shell",
+        "tortoiseshell",
+        "rhinoceros horn",
+        "tiger bone",
+        "pangolin",
+        "fur real",
+        "real fur",
+        "mink fur",
+        "fox fur",
+        "endangered species",
+        "CITES",
+        "taxidermy"
+      ],
+      "prohibited_items": [
+        "Live animals (except aquarium species, certain insects, shellfish/crustaceans in US)",
+        "Products containing ivory from any animal",
+        "Products from endangered/CITES-listed species (rhinoceros, tiger, pangolin, etc.)",
+        "Shark fins, whale meat, dolphin/porpoise parts",
+        "Vaccines (rabies, distemper, etc.)",
+        "Tools for ear cropping, tail docking, declawing",
+        "Products violating Lacey Act / Migratory Bird Treaty Act",
+        "Real fur products (California ban applies to Amazon US)"
+      ],
+      "allowed_exceptions": [
+        "Faux/synthetic animal products",
+        "Ethically sourced leather goods (must prove legal sourcing on request)",
+        "Pet food and treats (FDA compliant, separate gating)",
+        "Brine shrimp / sea monkey hatch kits (shipped dry/dormant)",
+        "Live worms and live bait"
+      ],
+      "docs": {
+        "US": [
+          "CITES permit if applicable",
+          "Lacey Act declaration for plant/animal materials",
+          "US Fish & Wildlife compliance",
+          "Certificate of legal sourcing on request"
+        ],
+        "UK": [
+          "CITES permit if applicable",
+          "Wildlife and Countryside Act 1981 compliance",
+          "Control of Trade in Endangered Species Regulations",
+          "Legal sourcing documentation"
+        ]
+      }
     },
     {
       "id": "recalled",
       "label": "Recalled products",
       "status": "PROHIBITED",
-      "depth": "solid",
-      "note": "Amazon ingests CPSC/FDA recall feeds automatically."
+      "depth": "full",
+      "trigger_keywords": [
+        "recalled",
+        "safety recall",
+        "CPSC recall",
+        "product recall"
+      ],
+      "detail": "Any product subject to a recall by CPSC (US), OPSS (UK), or RAPEX (EU) is PROHIBITED. Amazon actively scans for recalled ASINs and removes them. Sellers listing recalled products face immediate listing removal and potential account suspension. Check CPSC.gov (US), product-safety-alerts.beis.gov.uk (UK), and Safety Gate RAPEX (EU) before sourcing.",
+      "docs": {
+        "US": [
+          "CPSC recall database check",
+          "Product not on active recall list"
+        ],
+        "UK": [
+          "OPSS product recall database check",
+          "Product not on active recall list"
+        ]
+      }
     },
     {
       "id": "gambling_lottery",
       "label": "Gambling & lottery",
       "status": "PROHIBITED",
-      "depth": "solid"
+      "depth": "full",
+      "trigger_keywords": [
+        "lottery ticket",
+        "scratch card",
+        "slot machine functional",
+        "gambling device",
+        "casino chip real",
+        "roulette wheel functional",
+        "betting slip",
+        "bookmaker"
+      ],
+      "prohibited_items": [
+        "Lottery tickets and scratch cards",
+        "Functional coin-operated slot machines",
+        "Functional gambling devices",
+        "Real casino chips",
+        "Betting slips or bookmaker products"
+      ],
+      "allowed_exceptions": [
+        "Non-functional slot machines for display/decoration",
+        "Toy slot machines (clearly marketed as toys)",
+        "Card game supplies (poker chips, playing cards)",
+        "Board games involving fictional gambling mechanics"
+      ]
     },
     {
       "id": "warranties_services",
-      "label": "Warranties, service plans, subscriptions",
+      "label": "Warranties, service plans & contracts",
       "status": "GATED",
-      "depth": "solid"
+      "depth": "full",
+      "trigger_keywords": [
+        "extended warranty",
+        "service plan",
+        "protection plan",
+        "service contract",
+        "guarantee plan",
+        "maintenance contract"
+      ],
+      "detail": "Only Amazon-authorized providers can list warranties and service plans. Third-party sellers cannot list standalone warranty products without Amazon's pre-approval. Product warranties included with physical products (manufacturer warranty) are fine — it's standalone warranty-as-a-product listings that are restricted.",
+      "docs": {
+        "US": [
+          "Amazon warranty/service plan program enrollment"
+        ],
+        "UK": [
+          "Same; must also comply with Consumer Rights Act 2015"
+        ]
+      }
     },
     {
       "id": "recycling_electronics",
-      "label": "Electronics recycling / e-waste",
+      "label": "Recycling electronics (WEEE)",
       "status": "RESTRICTED",
-      "depth": "solid",
-      "note": "Recycling-electronics program restrictions apply."
+      "depth": "full",
+      "marketplaces": {
+        "US": "RESTRICTED — state e-waste laws vary; some states require recycling programs",
+        "UK": "RESTRICTED — WEEE Regulations 2013; producers must register with approved compliance scheme"
+      },
+      "trigger_keywords": [
+        "refurbished electronics",
+        "used electronics",
+        "e-waste",
+        "recycled electronics",
+        "WEEE"
+      ],
+      "docs": {
+        "US": [
+          "State-specific e-waste compliance",
+          "EPA electronics recycling guidelines"
+        ],
+        "UK": [
+          "WEEE producer registration with Environment Agency",
+          "WEEE compliance scheme membership",
+          "WEEE marking on product",
+          "Take-back obligation documentation"
+        ]
+      }
     },
     {
       "id": "postage_stamps",
       "label": "Postage meters & stamps",
       "status": "GATED",
-      "depth": "solid",
-      "note": "Collectible stamps allowed; counterfeit stamps & unauthorized postage-meter equipment prohibited."
+      "depth": "full",
+      "trigger_keywords": [
+        "postage meter",
+        "franking machine",
+        "postage stamp unused",
+        "stamp collection",
+        "philately",
+        "first day cover"
+      ],
+      "prohibited_items": [
+        "Counterfeit postage stamps",
+        "Postage meters (regulated by postal services)",
+        "Unused stamps at face value (arbitrage)"
+      ],
+      "allowed_exceptions": [
+        "Collectible stamps (philately — with approval)",
+        "Used/cancelled stamps for collection",
+        "Stamp albums and accessories"
+      ]
     },
     {
       "id": "offensive_materials",
       "label": "Offensive & controversial materials",
       "status": "PROHIBITED",
-      "depth": "solid",
-      "note": "Hate symbols, items promoting violence/intolerance, culturally insensitive content prohibited."
+      "depth": "full",
+      "trigger_keywords": [
+        "hate speech",
+        "nazi",
+        "swastika",
+        "confederate flag",
+        "white supremacist",
+        "terrorism",
+        "bomb making",
+        "child exploitation",
+        "bestiality",
+        "human trafficking"
+      ],
+      "detail": "Amazon reserves the right to determine what is offensive. Products promoting hatred, violence, racial/religious/sexual intolerance, or glorifying human suffering are prohibited. This includes but is not limited to: hate group merchandise, crime scene photos, products trivializing human tragedies, and products promoting illegal activity. Amazon's determination is final and subjective.",
+      "prohibited_items": [
+        "Products promoting hatred or violence against any group",
+        "Products glorifying human suffering or tragedies",
+        "Products promoting illegal activity",
+        "Crime scene or autopsy photographs",
+        "Products with profane or vulgar content (marketplace-dependent)",
+        "Products trivializing sensitive historical events"
+      ]
     },
     {
       "id": "strike_matches",
-      "label": "Strike-anywhere matches",
+      "label": "Strike anywhere matches",
       "status": "PROHIBITED",
-      "depth": "solid",
-      "note": "Fire hazard \u2014 prohibited (safety matches may differ; verify)."
+      "depth": "full",
+      "trigger_keywords": [
+        "strike anywhere match",
+        "strike-anywhere",
+        "friction match"
+      ],
+      "detail": "Amazon prohibits all strike-anywhere matches — matches that can be ignited by friction against any rough surface, not just a designated striker. Safety matches (requiring the specific striker on the box) are allowed but classified as hazmat for shipping and require FBA dangerous goods enrollment.",
+      "prohibited_items": [
+        "All strike-anywhere matches"
+      ],
+      "allowed_exceptions": [
+        "Safety matches (FBA dangerous goods program required)"
+      ]
     },
     {
       "id": "cpap_ozone_cleaners",
-      "label": "Ozone/UV CPAP cleaning devices",
+      "label": "CPAP cleaning & disinfecting devices",
       "status": "PROHIBITED",
-      "depth": "solid",
-      "note": "Devices claiming to clean CPAPs with ozone gas or UV light are FDA-unapproved and prohibited.",
-      "regulator": "FDA"
+      "depth": "full",
+      "trigger_keywords": [
+        "CPAP cleaner",
+        "CPAP sanitizer",
+        "CPAP disinfector",
+        "ozone CPAP",
+        "UV CPAP cleaner",
+        "SoClean",
+        "sleep apnea cleaner"
+      ],
+      "detail": "The FDA has NOT approved or cleared any ozone-gas or UV-light device for cleaning CPAP equipment. The FDA communicated directly to Amazon that these are unapproved medical devices. Both ozone and UV CPAP cleaners are PROHIBITED regardless of brand. CPAP machines themselves (the breathing devices) require 510(k) clearance and fall under medical_devices.",
+      "prohibited_items": [
+        "Ozone-based CPAP cleaning devices",
+        "UV-light-based CPAP cleaning/disinfecting devices",
+        "Any device marketed to clean/sanitize/disinfect CPAP equipment"
+      ]
     },
     {
       "id": "polystyrene_wa",
-      "label": "Washington State expanded polystyrene",
+      "label": "Polystyrene foam (state-level restrictions)",
       "status": "RESTRICTED_STATE",
-      "depth": "solid",
-      "note": "State-specific restriction (US)."
+      "depth": "full",
+      "marketplaces": {
+        "US": "RESTRICTED in some states — Washington, Maine, Maryland, others ban expanded polystyrene food containers",
+        "UK": "No specific ban but general single-use plastics restrictions apply"
+      },
+      "trigger_keywords": [
+        "styrofoam",
+        "polystyrene",
+        "EPS foam",
+        "expanded polystyrene",
+        "foam food container",
+        "foam cup",
+        "foam plate",
+        "foam clamshell"
+      ],
+      "detail": "Several US states ban expanded polystyrene (EPS) foam food service containers. Amazon may restrict listings that ship to those states. Not a federal ban but state-level enforcement varies. Most relevant for food service packaging sellers."
+    },
+    {
+      "id": "electronics",
+      "label": "Electronics (general)",
+      "status": "GATED_SUBCATEGORY",
+      "depth": "full",
+      "marketplaces": {
+        "US": "GATED for some subcategories — FCC compliance required for RF-emitting devices",
+        "UK": "GATED — UKCA/CE marking, EMC Regulations, LVD, RoHS, WEEE"
+      },
+      "trigger_keywords": [
+        "wireless",
+        "bluetooth",
+        "WiFi",
+        "radio frequency",
+        "RF",
+        "transmitter",
+        "receiver",
+        "signal booster",
+        "jammer",
+        "converter",
+        "adapter power",
+        "charger",
+        "power supply",
+        "circuit board",
+        "electronic component"
+      ],
+      "prohibited_items": [
+        "Signal jammers (all — FCC/Ofcom prohibited)",
+        "Devices that bypass copyright protection (mod chips, circumvention devices)",
+        "Radar detectors (some US states / UK prohibited in use)",
+        "Devices interfering with other devices' radio frequency",
+        "Non-FCC-authorized RF devices (US)",
+        "Devices without required UKCA/CE marking (UK)"
+      ],
+      "docs": {
+        "US": [
+          "FCC ID / FCC authorization (RF devices)",
+          "UL/ETL/CSA safety certification",
+          "FCC Declaration of Conformity",
+          "RoHS compliance if applicable"
+        ],
+        "UK": [
+          "UKCA marking (or CE until transitional period ends)",
+          "Declaration of Conformity",
+          "EMC Directive compliance (EN 55014/EN 61000 series)",
+          "Low Voltage Directive compliance (EN IEC 62368-1)",
+          "RoHS compliance",
+          "WEEE registration",
+          "UK Responsible Person on labeling"
+        ]
+      }
+    },
+    {
+      "id": "human_parts_burial",
+      "label": "Human parts & burial artifacts",
+      "status": "PROHIBITED",
+      "depth": "full",
+      "trigger_keywords": [
+        "human skull",
+        "human bone",
+        "human remains",
+        "human organ",
+        "burial artifact",
+        "grave marker historical",
+        "Native American artifact",
+        "NAGPRA",
+        "archaeological artifact",
+        "mummy",
+        "shrunken head"
+      ],
+      "prohibited_items": [
+        "Human body parts, organs, remains, waste, or fluids",
+        "Historical grave markers from protected lands",
+        "Native American burial items (NAGPRA-protected)",
+        "Artifacts taken from protected archaeological sites",
+        "Mummies or preserved human remains"
+      ],
+      "allowed_exceptions": [
+        "Human skulls, bones, and skeletons for medical/educational use (where permitted by local law)",
+        "Human hair products including wigs",
+        "Dental/medical models (synthetic)"
+      ]
+    },
+    {
+      "id": "export_controls",
+      "label": "Export controls",
+      "status": "RESTRICTED",
+      "depth": "full",
+      "detail": "Products subject to US Export Administration Regulations (EAR), International Traffic in Arms Regulations (ITAR), or UK Export Control Act 2002 may not be sold to certain countries/entities. Amazon prohibits products from sanctioned countries (North Korea, Cuba, Syria, Iran, Crimea, DNR/LNR). Encryption software, military/dual-use technology, and certain advanced electronics fall under export controls.",
+      "trigger_keywords": [
+        "export controlled",
+        "ITAR",
+        "EAR",
+        "dual use",
+        "military grade",
+        "encryption",
+        "night vision",
+        "thermal imaging military",
+        "sanctioned country"
+      ],
+      "prohibited_items": [
+        "Products from North Korea, Cuba, Syria, Iran, Crimea, DNR/LNR",
+        "ITAR-controlled defense articles without license",
+        "EAR-controlled dual-use items without proper classification",
+        "Advanced encryption technology (jurisdiction-dependent)"
+      ]
+    },
+    {
+      "id": "art_home_decor",
+      "label": "Art — Home decor",
+      "status": "RESTRICTED",
+      "depth": "full",
+      "trigger_keywords": [
+        "wall art",
+        "canvas print",
+        "poster art",
+        "home decor art",
+        "reproduction art",
+        "art print",
+        "framed print"
+      ],
+      "detail": "Home decor art is less restricted than fine art but must not infringe intellectual property. Wall decals, murals, and decorative art that reproduce copyrighted images without license are prohibited. Original designs and properly licensed reproductions are allowed.",
+      "prohibited_items": [
+        "Unauthorized reproductions of copyrighted artwork",
+        "Counterfeit branded home decor",
+        "Items infringing on character/brand IP (Disney, Marvel, etc.)"
+      ]
+    },
+    {
+      "id": "subscriptions_periodicals",
+      "label": "Subscriptions & periodicals",
+      "status": "GATED",
+      "depth": "full",
+      "trigger_keywords": [
+        "subscription box",
+        "monthly subscription",
+        "magazine subscription",
+        "periodical",
+        "newspaper subscription"
+      ],
+      "detail": "Subscription products and periodicals require Amazon approval. Auto-renewing subscriptions must comply with consumer protection rules around clear pricing, cancellation rights, and billing transparency. Subscribe & Save is Amazon's own program with separate enrollment.",
+      "docs": {
+        "US": [
+          "Amazon subscription program enrollment",
+          "FTC auto-renewal compliance (ROSCA)"
+        ],
+        "UK": [
+          "Consumer Contracts Regulations 2013 compliance (14-day cancellation right)",
+          "Clear pricing and billing transparency"
+        ]
+      }
+    },
+    {
+      "id": "prohibited_product_claims",
+      "label": "Prohibited product claims (cross-category)",
+      "status": "RESTRICTED",
+      "depth": "full",
+      "detail": "This is NOT a product category — it's a CROSS-CUTTING policy. Amazon prohibits certain CLAIMS in listing copy regardless of product category. These claims trigger automated scanning and can result in Restricted Product violations even on perfectly legal products. This is the single biggest source of false-positive violations for sellers.",
+      "trigger_keywords": [
+        "FDA approved",
+        "FDA cleared",
+        "clinically proven",
+        "doctor recommended",
+        "cures",
+        "treats",
+        "prevents disease",
+        "heals",
+        "therapeutic",
+        "medical grade",
+        "hospital grade",
+        "pharmaceutical grade",
+        "anti-cancer",
+        "anti-tumor",
+        "anti-aging",
+        "weight loss guaranteed",
+        "detox",
+        "detoxification",
+        "EPA registered",
+        "EPA approved",
+        "organic (without USDA/Soil Association certification)",
+        "non-toxic (in pesticide/cleaning context)",
+        "hypoallergenic (without testing)",
+        "biodegradable (without certification)",
+        "eco-friendly (without substantiation)",
+        "sustainable (without certification)",
+        "carbon neutral (without certification)"
+      ],
+      "claim_categories": {
+        "medical_disease_claims": [
+          "cures",
+          "treats",
+          "prevents",
+          "diagnoses",
+          "mitigates",
+          "heals",
+          "therapeutic",
+          "remedy"
+        ],
+        "pesticide_claims": [
+          "kills bacteria",
+          "kills germs",
+          "kills viruses",
+          "sanitizes",
+          "disinfects",
+          "antibacterial",
+          "antimicrobial",
+          "antifungal",
+          "antiviral"
+        ],
+        "safety_guarantees": [
+          "100% safe",
+          "completely safe",
+          "no side effects",
+          "risk-free",
+          "guaranteed safe"
+        ],
+        "environmental_claims": [
+          "eco-friendly",
+          "green",
+          "sustainable",
+          "biodegradable",
+          "carbon neutral",
+          "zero waste"
+        ],
+        "superlative_claims": [
+          "best",
+          "best seller",
+          "#1",
+          "top rated",
+          "award winning",
+          "proven",
+          "guaranteed"
+        ]
+      }
+    },
+    {
+      "id": "electric_heating_appliances",
+      "label": "Electric heating appliances (space heaters, patio heaters, fan heaters)",
+      "status": "GATED",
+      "depth": "full",
+      "marketplaces": {
+        "US": "GATED — UL/ETL certification required, FCC if wireless",
+        "UK": "GATED — BS EN 60335-2-30 test report required, UKCA DoC, UK Responsible Person. OPSS actively enforces on Amazon UK. High-risk category."
+      },
+      "trigger_keywords": [
+        "electric heater",
+        "space heater",
+        "patio heater",
+        "fan heater",
+        "convector heater",
+        "panel heater",
+        "oil filled radiator",
+        "oil-filled radiator",
+        "ceramic heater",
+        "halogen heater",
+        "infrared heater",
+        "tower heater",
+        "wall heater electric",
+        "bathroom heater",
+        "greenhouse heater",
+        "garage heater electric",
+        "portable heater",
+        "plug in heater",
+        "mini heater",
+        "radiator electric",
+        "convection heater",
+        "radiant heater",
+        "heat gun",
+        "industrial heater",
+        "wax heater",
+        "wax warmer electric",
+        "towel radiator electric",
+        "heated towel rail electric"
+      ],
+      "prohibited_items": [],
+      "docs": {
+        "US": [
+          "UL/ETL/CSA safety certification",
+          "FCC authorization if wireless controls",
+          "Prop 65 warning if applicable"
+        ],
+        "UK": [
+          "Test report from ISO 17025 lab to BS EN 60335-2-30",
+          "UKCA Declaration of Conformity",
+          "UK Responsible Person on packaging/labeling",
+          "BS 1363 compliant UK plug verification",
+          "IP rating test evidence if IP rating claimed in listing",
+          "EMC test report (EN 55014)"
+        ]
+      },
+      "false_positive_warning": "Amazon's classifier is aggressive on this category. Even hot water heating appliances get wrongly classified as electric space heaters. Any product with 'heater' in the title risks triggering a proactive compliance request.",
+      "your_violations": [
+        "B0HCJK9YKH — 2000W Electric Patio Heater, Food and Product Safety Issues, 11 Aug 2026, deadline 10 Oct 2026"
+      ]
     }
   ],
   "cross_cutting": {

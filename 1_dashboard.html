@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltaScraper — Dashboard (reference)</title>
+<link rel="stylesheet" href="_tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+  .db-metric{background:var(--surface-1); border-radius:12px; padding:14px 16px;}
+  .db-metric .n{font-size:26px; font-weight:500; line-height:1.1; margin:0;}
+  .db-metric .l{font-size:12px; color:var(--text-secondary); margin:4px 0 0;}
+  .db-card{background:var(--surface-2); border:0.5px solid var(--border); border-radius:12px; padding:14px 16px;}
+  .db-h{font-size:14px; font-weight:500; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .db-item{display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:0.5px solid var(--border);}
+  .db-item:last-child{border-bottom:none;}
+  .db-pill{font-size:11px; padding:2px 8px; border-radius:20px; flex-shrink:0; white-space:nowrap;}
+  .db-chip{font-size:12px; padding:6px 10px; border-radius:20px; border:0.5px solid var(--border); background:var(--surface-1); display:inline-flex; align-items:center; gap:5px; color:var(--text-primary);}
+</style></head><body>
+<div class="ref-note">REFERENCE ONLY — match this LAYOUT + BEHAVIOUR, but use the app's own existing theme/CSS variables. These token names are illustrative. Every number here is placeholder; wire real data.</div>
+<div class="ref-frame">
+
+  <div style="font-size:18px; font-weight:500; margin-bottom:4px;">Good evening, Talha</div>
+  <p style="font-size:13px; color:var(--text-secondary); margin:0 0 16px;">Across 6 accounts · <span style="color:var(--text-warning);">9 things need you</span> · everything else is running</p>
+
+  <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:16px;">
+    <div class="db-metric"><p class="n" style="color:var(--text-warning);">7</p><p class="l">Need review</p></div>
+    <div class="db-metric"><p class="n" style="color:var(--text-danger);">2</p><p class="l">Blocked</p></div>
+    <div class="db-metric"><p class="n" style="color:var(--text-success);">31</p><p class="l">Ready to submit</p></div>
+    <div class="db-metric"><p class="n">184</p><p class="l">Live</p></div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+    <div class="db-card">
+      <p class="db-h"><i class="ti ti-bell" style="font-size:16px; color:var(--text-warning);"></i> Needs you first</p>
+      <div class="db-item"><div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">FPV drone goggles 600mW</p><p style="font-size:11px; color:var(--text-danger); margin:1px 0 0;">UK prohibited · Ofcom</p></div><span class="db-pill" style="background:var(--bg-danger); color:var(--text-danger);">Blocked</span></div>
+      <div class="db-item"><div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Pet nebulizer mesh inhaler</p><p style="font-size:11px; color:var(--text-danger); margin:1px 0 0;">FDA medical device · needs docs</p></div><span class="db-pill" style="background:var(--bg-danger); color:var(--text-danger);">Blocked</span></div>
+      <div class="db-item"><div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Window cleaner pole 3.5m</p><p style="font-size:11px; color:var(--text-secondary); margin:1px 0 0;">Selvora · copy ready to check</p></div><span class="db-pill" style="background:var(--bg-warning); color:var(--text-warning);">Review</span></div>
+      <div class="db-item"><div style="flex:1; min-width:0;"><p style="margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Ceiling fan 52-inch remote</p><p style="font-size:11px; color:var(--text-secondary); margin:1px 0 0;">Jack Reacherd · copy ready to check</p></div><span class="db-pill" style="background:var(--bg-warning); color:var(--text-warning);">Review</span></div>
+    </div>
+    <div class="db-card">
+      <p class="db-h"><i class="ti ti-shield-half" style="font-size:16px; color:var(--text-accent);"></i> Compliance watch</p>
+      <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:10px;"><span style="font-size:22px; font-weight:500; color:var(--text-danger);">2</span><span style="font-size:12px; color:var(--text-secondary);">flagged this week</span></div>
+      <div style="font-size:12px; color:var(--text-secondary); line-height:1.9;">
+        <div style="display:flex; justify-content:space-between;"><span>Prohibited (no path)</span><span style="color:var(--text-danger);">1</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Gated (needs docs)</span><span style="color:var(--text-warning);">1</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Reference categories</span><span style="color:var(--text-secondary);">38</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Confirmed from your history</span><span style="color:var(--text-secondary);">5</span></div>
+      </div>
+      <button class="db-chip" style="margin-top:12px; width:100%; justify-content:center;"><i class="ti ti-search"></i> Check a product before sourcing</button>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+    <div class="db-card">
+      <p class="db-h"><i class="ti ti-refresh" style="font-size:16px; color:var(--text-success);"></i> Sync + account health</p>
+      <div style="font-size:12px; line-height:2;">
+        <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-success);"></span> Jack Reacherd (UK) · synced 2m ago</div>
+        <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-success);"></span> Selvora (UK) · synced 5m ago</div>
+        <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-success);"></span> Nestwell (UK) · synced 8m ago</div>
+        <div style="display:flex; align-items:center; gap:8px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-danger);"></span> Sheelady (US) · deactivated</div>
+      </div>
+    </div>
+    <div class="db-card">
+      <p class="db-h"><i class="ti ti-inbox" style="font-size:16px; color:var(--text-accent);"></i> From your hunters</p>
+      <div style="display:flex; align-items:baseline; gap:8px; margin-bottom:8px;"><span style="font-size:22px; font-weight:500;">14</span><span style="font-size:12px; color:var(--text-secondary);">new products found today</span></div>
+      <p style="font-size:12px; color:var(--text-secondary); margin:0 0 12px; line-height:1.6;">Across 9 eBay accounts. 3 already flagged as risky categories before sourcing.</p>
+      <button class="db-chip" style="width:100%; justify-content:center;"><i class="ti ti-arrow-right"></i> Review new finds</button>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <button class="db-chip"><i class="ti ti-list"></i> Open full queue</button>
+    <button class="db-chip"><i class="ti ti-plus"></i> New listing</button>
+    <button class="db-chip"><i class="ti ti-chart-bar"></i> PPC</button>
+    <button class="db-chip"><i class="ti ti-refresh"></i> Sync all</button>
+  </div>
+
+</div></body></html>

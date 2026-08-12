@@ -69,6 +69,8 @@ MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default); MUTABLE — reassigne
 # US_MARKETPLACE_ID moved to listing/constants.py in Phase 5 (immutable, shared). Imported
 # here so amazon_listing_generator.US_MARKETPLACE_ID still resolves for every use below.
 from listing.constants import US_MARKETPLACE_ID
+from listing.barcode import normalize_gtin, gtin_or_reason, gtin_digits   # single source of barcode truth
+from listing import run_status   # heartbeat: lets the dashboard tell running from stuck
 
 # When True (set by --minimal), build_api_attributes keeps ONLY the fields
 # Amazon strictly requires (its `required` list) plus the offer essentials
@@ -965,6 +967,7 @@ async def scrape_pdp(asin: str) -> tuple:
 
     t       = Timer()
     pdp_url = f"https://www.{_amazon_domain()}/dp/{asin}"
+    run_status.beat(stage=f"PDP scrape {asin}")
     console.print(f"  [cyan]  PDP scrape: launching browser + fetching {pdp_url}[/cyan]")
 
     # Background heartbeat: prints every 10s so a slow scrape doesn't look
@@ -2026,22 +2029,26 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
     matched     = []
     all_reqs    = []
     highest     = ""
-    # Some keywords are too generic and cause false positives: a hand tool that
-    # "weighs 540g" is not sports/fitness; copy that says "safe around children"
-    # is not a children's TOY; "powerful" is not "mains-powered electrical". For
-    # these high-false-positive categories, require a STRONGER signal: the match
-    # must be a clear category keyword, AND for electrical we additionally require
-    # a genuine electrical token (not just "power"/"light" used as adjectives).
+    # WEAK KEYWORDS -- why almost every listing used to flag.
+    #
+    # Most category keywords are ordinary English before they are compliance
+    # signals: "pan", "kitchen", "tool", "dog", "led", "light", "baby", "knife".
+    # A single one of those matching flagged the whole category, so an LED desk
+    # lamp read as HIGH electrical, a frying pan as MEDIUM cookware and a dog bed
+    # as MEDIUM pet -- and a flag on everything is a flag on nothing.
+    #
+    # RULE: a weak keyword on its own never flags. Something STRONG from the same
+    # category must also be present ("240v", "pressure cooker", "power tool",
+    # "dog collar", "machete"). Strong keywords still flag on their own.
+    #
+    # The weak lists live in compliance_rules.json next to the keywords they
+    # qualify (CLAUDE.md §12 -- one source, not a second copy in code). The dict
+    # below is only a fallback for a rules file written before that field existed.
     _weak_kw = {
         "sports_fitness": {"weight", "weights", "net", "swing", "training", "resistance"},
         "toys_children":  {"play", "game", "child", "children", "kids", "educational"},
         "electrical":     {"power", "light", "lighting"},
     }
-    _electrical_strong = ("plug", "mains", "240v", "230v", "voltage", "volt", "watt",
-                          "wattage", "rechargeable", "battery", "batteries", "usb",
-                          "charger", "charging", "corded", "cordless", "led", "bulb",
-                          "lamp", "socket", "adapter", "adaptor", "power supply",
-                          "power cable", "power cord", "electric motor")
     for cat_key, rule in rules.items():
         if cat_key == "general":
             continue
@@ -2061,24 +2068,19 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
                 _matched_kw = _k
                 break
         if _matched_kw:
-            # context guard: drop the match if the ONLY thing that matched is a
-            # weak/generic keyword for a false-positive-prone category.
-            _weak = _weak_kw.get(cat_key, set())
+            # Context guard: drop the match if the ONLY thing that matched is a
+            # weak/generic keyword. Same rule for every category -- electrical no
+            # longer needs its own hand-maintained token list, because its strong
+            # signals ("240v", "mains powered", "kettle") are simply the keywords
+            # not marked weak.
+            _weak = set(rule.get("weak_keywords") or _weak_kw.get(cat_key, set()))
             if _matched_kw in _weak:
-                if cat_key == "electrical":
-                    # only keep electrical if a genuine electrical token is present
-                    if not any(re.search(rf"(?<![\w-]){re.escape(t)}(?![\w-])", haystack)
-                               for t in _electrical_strong):
-                        continue
-                else:
-                    # toys/sports: a weak keyword alone isn't enough; need a real
-                    # category keyword too (a non-weak keyword also present)
-                    _strong_hit = any(
-                        (kw.lower() not in _weak) and kw and
-                        re.search(rf"(?<![\w-]){re.escape(kw.lower())}(?![\w-])", haystack)
-                        for kw in kws)
-                    if not _strong_hit:
-                        continue
+                _strong_hit = any(
+                    (kw.lower() not in _weak) and kw and
+                    re.search(rf"(?<![\w-]){re.escape(kw.lower())}(?![\w-])", haystack)
+                    for kw in kws)
+                if not _strong_hit:
+                    continue
             matched.append(cat_key)
             all_reqs.extend(rule.get("requirements", []))
             risk = rule.get("risk_level", "")
@@ -2174,6 +2176,10 @@ from listing.compliance import check_forbidden_brands, forbidden_names_block  # 
 from listing.compliance import check_regulated_claims  # regulated-claim gate (gap close)
 from listing.compliance import check_numeric_grounding  # numeric-grounding gate (unit-normalised)
 from listing.compliance import check_restricted_phrasing  # restricted-phrasing WARN (feature 1)
+from listing.restricted import check_restricted_type       # Shape 2: restricted PRODUCT TYPE at generation
+from listing.sourcing_viability import (                   # document-demand risk (WARN only)
+    check_sourcing_viability, sourcing_warning_lines)
+from listing import flags as _flags                        # single source of the status-precedence rule
 from listing.compliance import category_lane_block, check_category_claims  # category-aware claims (task #18)
 
 
@@ -3129,16 +3135,11 @@ def build_flat_row(sheet_row: dict, brand: str, manufacturer: str,
 
     # Product Id: real barcode if the sheet provides one, else BLANK (GTIN-exempt).
     # Never write the competitor's ASIN -- you cannot list a new product under it.
-    digits_only = re.sub(r"[^\d]", "", upc)
-    if len(digits_only) == 13:
-        prod_id_type = "EAN"
-        prod_id      = digits_only
-    elif len(digits_only) == 12:
-        prod_id_type = "UPC"
-        prod_id      = digits_only
-    else:
-        prod_id_type = ""        # no barcode -> leave blank; requires GTIN exemption on the account
-        prod_id      = ""
+    # normalize_gtin is the ONE place that decides this (listing/barcode.py):
+    # it strips separators and unwraps a 14-digit GTIN back to the EAN-13 it is.
+    # Empty type -> no usable barcode -> leave blank; needs GTIN exemption.
+    prod_id, _pid_type = normalize_gtin(upc)
+    prod_id_type       = _pid_type.upper()
 
     # Per-row brand from sheet wins; fall back to the export-level default.
     row_brand        = str(sheet_row.get("Brand", "")).strip()
@@ -3476,6 +3477,7 @@ async def process_row(row: dict, client, ws_out,
         seen_asins.add(comp_asin)
     taken_skus.add(sku)
 
+    run_status.beat(idx=idx, total=total, sku=sku, stage="pre-flight")
     console.print(f"\n{'='*60}")
     console.print(f"[bold cyan][{idx}/{total}][/bold cyan] {item_name or comp_asin}")
     console.print(f"  ASIN: {comp_asin} | SKU: {sku} | UPC: {upc or 'N/A'}")
@@ -3816,21 +3818,127 @@ async def process_row(row: dict, client, ws_out,
         if top_reqs:
             notes_parts.append("Key reqs: " + " // ".join(top_reqs))
         console.print(f"  [yellow]Compliance: {comp_result['summary']}[/yellow]")
-        if comp_result["highest_risk"] == "HIGH" and status == "NEEDS_REVIEW":
-            status = "COMPLIANCE_HOLD"
-            console.print(f"  [red]Status downgraded to COMPLIANCE_HOLD -- HIGH risk category[/red]")
+
+    # Each check below records WHAT it found; the status decision itself is made
+    # once, at the end, by listing/flags.py:decide_status -- the single place the
+    # precedence rule (IP_HOLD > COMPLIANCE_HOLD > NEEDS_REVIEW, ERROR untouched)
+    # is written. It used to be re-implemented inline at three separate points.
+    _comp_high       = comp_result["highest_risk"] == "HIGH"
+    _restricted_hold = False
+
+    # --- RESTRICTED PRODUCT TYPE (Shape 2) -----------------------------------
+    # The 44-category restricted reference used to run ONLY when you opened a
+    # card in the dashboard, so a generation run could write a prohibited product
+    # type to the sheet without anything saying so. It now runs at generation.
+    #
+    # This asks a different question from the compliance check above: that one
+    # scores regulatory RISK from copy keywords; this one asks whether the
+    # product TYPE is restricted or outright prohibited to sell.
+    #   PROHIBITED / CONDITIONAL -> hold the row
+    #   GATED / RESTRICTED       -> note only (approval is a process, not a
+    #                               defect; holding every gated type would stall
+    #                               ordinary work)
+    #
+    # CONDITIONAL holds too. It is what a status like "PROHIBITED except
+    # pre-approved wine sellers" resolves to -- i.e. prohibited unless you hold a
+    # specific permission. CBD and alcohol land there, and both are account-ending
+    # if you get them wrong, so a note that scrolls past in the log is not enough.
+    # The row can still be approved by hand once the permission is confirmed.
+    try:
+        _rt_text = " ".join([listing.get("title", "")] +
+                            [listing.get(f"bullet_{_i}", "") for _i in range(1, 6)])
+        _rt = check_restricted_type(
+            _rt_text,
+            marketplace=("US" if MARKETPLACE_ID == US_MARKETPLACE_ID else "UK"),
+            product_type=product_type,
+            category_path=" > ".join(comp_data.get("browse_nodes") or []),
+            browse_nodes=comp_data.get("browse_nodes") or [])
+        _HOLD_TIERS = ("PROHIBITED", "CONDITIONAL")
+        _rt_prohibited = [m for m in _rt.get("matches", []) if m.get("tier") in _HOLD_TIERS]
+        _rt_other      = [m for m in _rt.get("matches", []) if m.get("tier") not in _HOLD_TIERS]
+        if _rt_prohibited:
+            _names = ", ".join(sorted({m["label"] for m in _rt_prohibited}))
+            _why   = "; ".join(sorted({(m.get("status") or "")[:120] for m in _rt_prohibited}))
+            _tiers = "/".join(sorted({m.get("tier", "") for m in _rt_prohibited}))
+            notes_parts.append(f"RESTRICTED: {_tiers} product type: {_names} -- {_why}")
+            console.print(f"  [red]{_tiers} product type: {_names}[/red]")
+            console.print(f"  [red]  {_why}[/red]")
+            _restricted_hold = True
+        if _rt_other:
+            _names = ", ".join(sorted({f"{m['label']} [{m.get('tier','')}]" for m in _rt_other}))
+            notes_parts.append(f"REVIEW: restricted product type: {_names}")
+            console.print(f"  [yellow]Restricted/gated product type: {_names}[/yellow]")
+    except Exception as _rte:
+        # A reference-data problem must never stop a row generating.
+        console.print(f"  [yellow]Restricted-type check unavailable: {str(_rte)[:100]}[/yellow]")
+
+    # --- SOURCING VIABILITY (document-demand risk) ---------------------------
+    # Runs AFTER the restricted check and BEFORE the sheet write, and asks the
+    # one question neither of the checks above can answer: this product is not
+    # gated and not restricted, so we may list it freely -- but WHICH SAFETY
+    # DOCUMENTS will Amazon demand months later, and can we produce them?
+    #
+    # The electric patio heater is why this exists. Nothing blocked it, it sold,
+    # and then Amazon asked for a BS EN 60335 test report no reseller can obtain
+    # after the fact. getListingsRestrictions would have said "no restrictions"
+    # the whole time.
+    #
+    # WARN ONLY, never HOLD -- deliberately. Holding every mains appliance would
+    # stop ordinary work; the point is that the operator sees the document bill
+    # before committing to stock. All matched rules are listed, because one
+    # product can owe two sets of papers (a silicone teething toy owes both
+    # children's and food-contact evidence).
+    try:
+        _sv = check_sourcing_viability(
+            title=listing.get("title", ""),
+            bullets=[listing.get(f"bullet_{_i}", "") for _i in range(1, 6)],
+            product_type=product_type,
+            category=" > ".join(comp_data.get("browse_nodes") or []),
+            marketplace=("US" if MARKETPLACE_ID == US_MARKETPLACE_ID else "UK"))
+        for _line in sourcing_warning_lines(_sv):
+            notes_parts.append(_line)
+            console.print(f"  [yellow]{_line}[/yellow]")
+    except Exception as _sve:
+        # Reference-data problems must never stop a row generating.
+        console.print(f"  [yellow]Sourcing-viability check unavailable: {str(_sve)[:100]}[/yellow]")
 
     # --- IP / trademark check ------------------------------------------------
-    ip_result = check_ip_violations(listing, chosen_brand, ip_rules)
+    # Pass the COMPETITOR's brand in, from whichever sources supplied this row's
+    # content. This listing is a new product under our own brand (CLAUDE.md §1);
+    # the competitor's name appearing anywhere in the copy is a genuine
+    # trademark leak, and it is the one brand we can actually prove.
+    _competitor_brands = []
+    try:
+        _cb = (comp_data.get("brand") or "").strip()
+        if _cb:
+            _competitor_brands.append(_cb)
+        _eb = (ebay_supp.get("item_specifics", {}) or {}).get("Brand", "")
+        _eb = str(_eb).strip()
+        if _eb and _eb.lower() not in {b.lower() for b in _competitor_brands}:
+            _competitor_brands.append(_eb)
+    except Exception:
+        pass
+    _competitor_brands = [b for b in _competitor_brands
+                          if b.lower() not in ("unbranded", "generic", "n/a", "none", "no brand")]
+    ip_result = check_ip_violations(listing, chosen_brand, ip_rules,
+                                    competitor_brands=_competitor_brands)
     ip_risk_level = ""
     if ip_result["has_violations"]:
         notes_parts.append(ip_result["summary"])
         console.print(f"  [red]{ip_result['summary']}[/red]")
         ip_risk_level = "HIGH"
-        # IP_HOLD supersedes COMPLIANCE_HOLD and NEEDS_REVIEW. ERROR stays.
-        if status in ("NEEDS_REVIEW", "COMPLIANCE_HOLD"):
-            status = "IP_HOLD"
-            console.print(f"  [red]Status set to IP_HOLD -- brand/trademark risk[/red]")
+
+    # THE single status decision (listing/flags.py). ERROR is passed through
+    # untouched because it is not one of the statuses the flags own.
+    _prev_status = status
+    status = _flags.decide_status(status,
+                                  compliance_high=(_comp_high or _restricted_hold),
+                                  ip_violation=bool(ip_result["has_violations"]))
+    if status != _prev_status:
+        _reason = ("brand/trademark risk" if status == "IP_HOLD" else
+                   "prohibited product type" if _restricted_hold else
+                   "HIGH risk category")
+        console.print(f"  [red]Status {_prev_status} -> {status} -- {_reason}[/red]")
 
     # --- Category-aware claims screener (task #18) -- WARN only, never blocks. Scans
     # the finished copy against the product_type's category rulebook (unknown -> all).
@@ -3863,6 +3971,33 @@ async def process_row(row: dict, client, ws_out,
         if _uc.get("has_ungrounded"):
             _toks = ", ".join(sorted({u["token"] for u in _uc["ungrounded"]}))
             notes_parts.append("REVIEW: unverified spec (not in captured source): " + _toks)
+
+        # REGULATED-CLAIM GATE. Was written, imported and then never called on
+        # this path -- it only ever ran in brand mode. "FDA approved", "NSF",
+        # "food grade", "21 CFR", "USDA" in the copy with nothing in the captured
+        # source to back it is a claim Amazon acts on, so unlike the REVIEW notes
+        # above this one holds the row.
+        _rg = check_regulated_claims(listing, _source_blob)
+        if _rg.get("has_unsupported"):
+            _rg_hits = ", ".join(sorted(set(_rg.get("hits", []))))
+            notes_parts.append("HOLD: unsupported regulated claim: "
+                               f"{_rg_hits} not in source")
+            console.print(f"  [red]Unsupported regulated claim: {_rg_hits}[/red]")
+            if status in ("NEEDS_REVIEW",):
+                status = "COMPLIANCE_HOLD"
+                console.print("  [red]Status -> COMPLIANCE_HOLD -- regulated claim "
+                              "with no supporting source[/red]")
+
+    # RESTRICTED-PHRASING CHECK -- same story: built, imported, never called here.
+    # Wording that reads as a pesticide/medical claim to Amazon's filters even
+    # when the product is neither (CLAUDE.md's own note: the scanner cannot tell
+    # the difference). WARN only -- it never blocks, it just gets surfaced so the
+    # phrasing can be softened before submit. Needs no source text.
+    _rp = check_restricted_phrasing(listing)
+    if _rp.get("has_flagged"):
+        _rp_hits = ", ".join(sorted({h["phrase"] for h in _rp.get("hits", [])}))
+        notes_parts.append("REVIEW: restricted phrasing: " + _rp_hits)
+        console.print(f"  [yellow]Restricted phrasing (review wording): {_rp_hits}[/yellow]")
 
     notes_text = " | ".join(notes_parts)
     row_data = build_sheet_row(
@@ -4179,6 +4314,25 @@ from listing.shaper import _shape_simple
 from listing.shaper import _shape_dimensions
 
 
+def _dim_axis_raw(parent, axis, flat):
+    """Return one dimension axis as a 'value unit' string for _shape_dimensions.
+
+    Reads the NESTED item_dimensions[axis] object the EDITOR actually saves (each axis is
+    {value, unit}, rebuilt by _renest) FIRST, and falls back to the legacy FLAT item_<axis>
+    key only when the nested axis is absent or blank. Before this, the builder read the flat
+    keys only, so any axis present just in nested form (commonly width/height) was silently
+    dropped -- and Amazon rejected the listing as 'height/width missing'."""
+    node = parent.get(axis) if isinstance(parent, dict) else None
+    if isinstance(node, dict):
+        val = node.get("value", node.get("decimal_value", ""))
+        if str(val).strip() != "":
+            unit = str(node.get("unit", "")).strip()
+            return (str(val).strip() + " " + unit).strip()
+    elif node not in (None, ""):
+        return str(node)
+    return flat
+
+
 # _shape_axes moved to listing/shaper.py in Phase 5 (behaviour unchanged).
 from listing.shaper import _shape_axes
 
@@ -4265,17 +4419,41 @@ from listing.hazmat import _build_ghs_from_schema
 
 
 
+def _classify_verify_error(exc) -> str:
+    """Turn a getListingsItem exception into a plain-English REASON the status check
+    failed, so 'unverified' means something (timeout vs not-found vs auth vs other)
+    instead of silently swallowing every error. Returns a short human sentence."""
+    m = (type(exc).__name__ + " " + str(exc)).lower()
+    if "timed out" in m or "timeout" in m or "read operation" in m:
+        return ("status check TIMED OUT (connection to Amazon too slow) -- the listing "
+                "may well be fine; re-check shortly with 'Re-verify live status'")
+    if "404" in m or "not found" in m or "notfound" in m or "does not exist" in m:
+        return ("Amazon has NO record of this SKU yet -- either still processing right "
+                "after submit (re-check shortly), or the submission did not create a listing")
+    if ("403" in m or "401" in m or "forbidden" in m or "unauthorized" in m
+            or "unauthorised" in m or "accessdenied" in m or "access to requested" in m):
+        return ("PERMISSION DENIED reading the listing (the app's SP-API Listings role "
+                "may lack read access) -- fix the role, then re-verify")
+    if "429" in m or "quota" in m or "throttl" in m or "too many requests" in m:
+        return "Amazon THROTTLED the status check (rate limit) -- re-check shortly"
+    return f"status check failed: {str(exc)[:140]}"
+
+
 def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
     """After a SUBMIT is 'accepted', Amazon processes the listing ASYNCHRONOUSLY --
     'accepted' is NOT 'published'. Query the REAL listing state so a row is marked
     LIVE only when Amazon actually shows it BUYABLE/DISCOVERABLE, and reflects a
     downstream rejection (e.g. a blocked main image) instead of a false LIVE.
-    Returns (status_list, error_issues); (None, None) if the check itself failed.
+    Returns (status_list, error_issues, reason, asin): on success reason is "" and asin is
+    the ASIN Amazon assigned (for the LIVE note); if the check itself failed, status/errs
+    are None, reason is a plain-English WHY (timeout / not-found / auth / throttle / other)
+    captured from the LAST exception (never swallowed silently), and asin is "".
 
     settle=True waits a few seconds first (right after a fresh submit, Amazon needs a
     moment). Pass settle=False when RE-verifying an already-submitted listing minutes
     later -- there's nothing to wait for, so skip the delay and check immediately."""
     import time as _t
+    _last_exc = None
     for _attempt in range(2):
         try:
             if settle:
@@ -4286,12 +4464,42 @@ def _verify_live_status(li, seller_id, sku, mid, locale="en_GB", settle=True):
             p = resp.payload if hasattr(resp, "payload") else (resp or {})
             summaries = (p or {}).get("summaries", []) or []
             status = summaries[0].get("status", []) if summaries else []
+            asin = summaries[0].get("asin", "") if summaries else ""
             issues = (p or {}).get("issues", []) or []
             errs = [x for x in issues if str(x.get("severity", "")).upper() == "ERROR"]
-            return status, errs
-        except Exception:
+            return status, errs, "", asin
+        except Exception as _e:
+            _last_exc = _e
             continue
-    return None, None
+    return None, None, (_classify_verify_error(_last_exc) if _last_exc else "status check failed (no response)"), ""
+
+
+def _verify_live_settled(li, seller_id, sku, mid, locale="en_GB",
+                         attempts=8, interval=12, log=None, tag=""):
+    """Poll getListingsItem until the listing SETTLES, instead of judging it from a single
+    snapshot taken ~4s after submit. Amazon processes asynchronously: right after a submit
+    a listing commonly shows ERRORS and a not-yet-DISCOVERABLE status for a few seconds,
+    then goes LIVE. Judging at 4s recorded a FALSE 'NOT live -- rejected' for listings
+    Amazon actually published (see 11.95_3Days_B09JYYJR7H -> ASIN B0HCV5XDBK went
+    DISCOVERABLE moments later). This returns as soon as the listing is BUYABLE/
+    DISCOVERABLE; otherwise it re-checks every `interval`s for up to attempts*interval
+    seconds before returning the SETTLED status. Same (status, errs, reason) shape as
+    _verify_live_status, so the caller's branch logic is unchanged. Safe to run long in
+    the background-job model (the user isn't waiting on a live connection)."""
+    import time as _t
+    last = (None, None, "status check did not complete")
+    n = max(1, int(attempts))
+    for _i in range(n):
+        status, errs, why, _asin = _verify_live_status(li, seller_id, sku, mid, locale, settle=(_i == 0))
+        if status is not None or errs is not None:
+            last = (status, errs, why)
+            if status and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in status):
+                return status, errs, ""            # settled LIVE -> done immediately
+        if _i < n - 1:                             # not live yet -> wait and re-check
+            if log and tag:
+                log(f"  [dim]{tag}: not live yet -- re-checking Amazon ({_i + 1}/{n})…[/dim]")
+            _t.sleep(max(1, int(interval)))
+    return last
 
 
 def _skus_across_all_tabs(ws_out) -> set:
@@ -4574,9 +4782,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         put("merchant_shipping_group", _shape_simple(props["merchant_shipping_group"], msg, mid))
 
     # --- product identifier: real barcode, else claim GTIN exemption ----------
-    barcode = g("UPC")
+    barcode, typ = normalize_gtin(g("UPC"))   # listing/barcode.py -- single source
     if barcode and has("externally_assigned_product_identifier"):
-        typ = "ean" if len(barcode) == 13 else "upc"
         A["externally_assigned_product_identifier"] = [
             {"value": barcode, "type": typ, "marketplace_id": mid}]
     elif has("supplier_declared_has_product_identifier_exemption"):
@@ -4584,15 +4791,24 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
             {"value": True, "marketplace_id": mid}]
 
     # --- dimensions (composite if the type uses it) ---------------------------
+    # Read each axis from the NESTED item_dimensions[axis] object (what the editor saves,
+    # rebuilt by _renest) FIRST, falling back to the legacy flat item_<axis> key. Reading
+    # flat-only used to drop any axis present only in nested form (commonly width/height),
+    # so Amazon rejected the listing as missing them. Same fix for item_package_dimensions.
     if has("item_dimensions"):
+        _idim = pa.get("item_dimensions")
         d = _shape_dimensions(props["item_dimensions"],
-                              pa.get("item_length"), pa.get("item_width"), pa.get("item_height"), mid)
+                              _dim_axis_raw(_idim, "length", pa.get("item_length")),
+                              _dim_axis_raw(_idim, "width",  pa.get("item_width")),
+                              _dim_axis_raw(_idim, "height", pa.get("item_height")), mid)
         if d:
             A["item_dimensions"] = d
     if has("item_package_dimensions"):
+        _pdim = pa.get("item_package_dimensions")
         d = _shape_dimensions(props["item_package_dimensions"],
-                              pa.get("item_package_length"), pa.get("item_package_width"),
-                              pa.get("item_package_height"), mid)
+                              _dim_axis_raw(_pdim, "length", pa.get("item_package_length")),
+                              _dim_axis_raw(_pdim, "width",  pa.get("item_package_width")),
+                              _dim_axis_raw(_pdim, "height", pa.get("item_package_height")), mid)
         if d:
             A["item_package_dimensions"] = d
 
@@ -5852,13 +6068,22 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     #                             the GTIN exemption instead.
     # This guarantees Amazon never receives an AI-guessed or value-less barcode,
     # and that the owner's real purchased EAN in the UPC box is what gets sent.
-    _barcode = g("UPC")
+    # normalize_gtin (listing/barcode.py) is the ONE place that decides the value
+    # and type. It unwraps a 14-digit GTIN to the EAN-13 it really is -- sending
+    # the padded form as "upc" is what made Amazon reject a perfectly valid
+    # barcode over and over, with auto-fix resubmitting the same number forever.
+    _barcode, _typ, _why = gtin_or_reason(g("UPC"))
     if _barcode and has("externally_assigned_product_identifier"):
-        _typ = "ean" if len(_barcode) == 13 else "upc"
         A["externally_assigned_product_identifier"] = [
             {"value": _barcode, "type": _typ, "marketplace_id": mid}]
         A.pop("supplier_declared_has_product_identifier_exemption", None)
     else:
+        # Say so loudly. A barcode is visible in the box but is not being sent,
+        # and silently claiming the exemption instead would hide a data-entry
+        # error until the listing went live under the wrong identity.
+        if _why and gtin_digits(g("UPC")):
+            console.print(f"  [yellow]Barcode not sent -- {_why}. "
+                          f"Claiming GTIN exemption instead.[/yellow]")
         A.pop("externally_assigned_product_identifier", None)
         if has("supplier_declared_has_product_identifier_exemption"):
             A["supplier_declared_has_product_identifier_exemption"] = [
@@ -5959,21 +6184,26 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             # only re-verify rows that were actually submitted or were ready to be
             if _st not in ("SUBMITTED", "API_ERROR", "API_READY", "APPROVED", "PENDING", ""):
                 continue
-            _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
+            _rstatus, _rerrs, _rwhy, _rasin = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale, settle=False)
             _checked += 1
             if _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
+                # CONFIRMED live -> promote to LIVE and capture the ASIN Amazon assigned.
                 queue(i, status_col, "LIVE")
-                queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})")
+                queue(i, notes_col, f"RE-VERIFIED -- LIVE ({', '.join(_rstatus)})" + (f"; ASIN {_rasin}" if _rasin else ""))
                 _wentlive += 1
-                console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})[/green]")
+                console.print(f"  [green]row {i} {sku}: now LIVE ({', '.join(_rstatus)})" + (f" ASIN {_rasin}" if _rasin else "") + "[/green]")
             elif _rerrs:
-                queue(i, status_col, "API_ERROR")
-                queue(i, notes_col, f"RE-VERIFIED -- not live yet: {_issue_str(_rerrs, {})}")
-                console.print(f"  [red]row {i} {sku}: not live -- {len(_rerrs)} issue(s)[/red]")
+                # Amazon still shows issues -- re-verify is a CONFIRMATION, not a verdict, so
+                # DON'T downgrade to ERROR. Leave the row's status as-is; just note it.
+                queue(i, notes_col, f"RE-VERIFIED -- not yet confirmed live; Amazon still shows {len(_rerrs)} issue(s): {_issue_str(_rerrs, {})}. Check Seller Central.")
+                console.print(f"  [yellow]row {i} {sku}: not yet confirmed live -- {len(_rerrs)} issue(s) (status left as-is)[/yellow]")
             elif _rstatus is None and _rerrs is None:
-                console.print(f"  [dim]row {i} {sku}: could not check (Amazon didn't return the listing)[/dim]")
+                queue(i, notes_col, f"RE-VERIFY could not check -- {_rwhy}")
+                console.print(f"  [dim]row {i} {sku}: could not check -- {_rwhy}[/dim]")
             else:
-                console.print(f"  [yellow]row {i} {sku}: still pending Amazon processing (not yet buyable)[/yellow]")
+                # accepted, still processing -> not yet confirmed live (NOT an error).
+                queue(i, notes_col, "RE-VERIFIED -- accepted; not yet confirmed live (still processing at Amazon). Check Seller Central or re-verify later.")
+                console.print(f"  [yellow]row {i} {sku}: not yet confirmed live (still processing)[/yellow]")
             time.sleep(0.3)                   # gentle on the listings rate limit
         flush()
         console.print(f"\n[bold]Live re-verify complete[/bold] -- checked: {_checked}   flipped to LIVE: {_wentlive}")
@@ -6108,49 +6338,36 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             msgs    = _issue_str(issues, attrs)
 
             if submit:
-                # 'Accepted' != 'published'. Amazon processes asynchronously, so the
-                # submit-time issues above are NOT the final outcome (a submit that
-                # reported errors can still be live; a clean submit can be rejected
-                # downstream, e.g. main-image compliance). Set status from the REAL
-                # listing state via getListingsItem.
-                _rstatus, _rerrs = _verify_live_status(li, seller_id, sku, mkt_id, issue_locale)
-                if _rstatus is None and _rerrs is None:
-                    # couldn't verify -> fall back to submit-time verdict, flagged unverified
-                    if errors:
-                        err += 1
-                        queue(i, status_col, "API_ERROR")
-                        queue(i, notes_col, f"API SUBMIT - {len(errors)} error(s) [live status unverified]: {msgs}")
-                        console.print(f"  [red]row {i} {sku}: {len(errors)} submit error(s) (unverified)[/red]")
-                    else:
-                        ok += 1
-                        queue(i, status_col, "SUBMITTED")
-                        queue(i, notes_col, "API SUBMITTED -- accepted; live status could not be verified (re-check shortly).")
-                        console.print(f"  [yellow]row {i} {sku}: SUBMITTED (status unverified)[/yellow]")
-                elif _rstatus and any(str(s).upper() in ("BUYABLE", "DISCOVERABLE") for s in _rstatus):
-                    # Amazon shows it live. If the main image (or other) is flagged,
-                    # keep it LIVE but note it -- the user fixes the image later.
-                    ok += 1
-                    queue(i, status_col, "LIVE")
-                    _rmsg = _issue_str(_rerrs, attrs) if _rerrs else ""
-                    queue(i, notes_col, f"API SUBMITTED -- LIVE ({', '.join(_rstatus)})"
-                                        + (f" | needs attention (fix later): {_rmsg}" if _rmsg else ""))
-                    console.print(f"  [green]row {i} {sku}: LIVE ({', '.join(_rstatus)})[/green]"
-                                  + ("  [yellow](flagged -- fix later)[/yellow]" if _rerrs else ""))
-                elif _rerrs:
-                    # Accepted but Amazon rejected it in processing -> NOT live.
+                # THE SUBMIT RESPONSE IS THE VERDICT. putListingsItem returns status ACCEPTED
+                # (Amazon queued the listing -> it publishes in ~5-30 min) or INVALID (rejected
+                # right now, with the errors above). Amazon's async processing takes 5-30
+                # minutes, so polling getListingsItem for ~2 minutes and declaring failure was
+                # WRONG: it flagged as ERROR listings that Amazon had actually created -- often
+                # under a NEW ASIN, in 'Missing Offer' (e.g. 4.85_3Days_B0DHVTP2P9 -> B0HCVFW53Y).
+                # 'Accepted with warnings' is NOT 'rejected'. Re-verification is now DEFERRED /
+                # on-demand ('Re-verify live status') -- a bonus confirmation, never the verdict.
+                _sub_status = str(payload.get("status", "")).strip().upper()   # ACCEPTED | INVALID | ""
+                _rejected = (_sub_status == "INVALID") or (bool(errors) and _sub_status != "ACCEPTED")
+                if _rejected:
+                    # Amazon rejected the submission synchronously -> a real failure. Show why.
                     err += 1
                     queue(i, status_col, "API_ERROR")
-                    queue(i, notes_col, f"API SUBMIT accepted but NOT live -- Amazon rejected in processing: {_issue_str(_rerrs, attrs)}")
-                    console.print(f"  [red]row {i} {sku}: NOT live -- {len(_rerrs)} issue(s) after processing[/red]")
-                    for _em in (_issue_str(_rerrs, attrs).split("; ")):
+                    queue(i, notes_col, f"API SUBMIT REJECTED by Amazon ({len(errors)} error(s)): {msgs}")
+                    console.print(f"  [red]row {i} {sku}: REJECTED by Amazon -- {len(errors)} error(s)[/red]")
+                    for _em in (msgs.split("; ") if isinstance(msgs, str) else []):
                         if _em.strip():
                             console.print(f"      [red]- {_em.strip()}[/red]")
                 else:
-                    # accepted, no errors yet, but not yet BUYABLE -> still processing
+                    # ACCEPTED -> SUCCESS. Amazon queued it; it publishes shortly. Any issues
+                    # here are non-blocking warnings (kept in the note), NOT a rejection.
                     ok += 1
                     queue(i, status_col, "SUBMITTED")
-                    queue(i, notes_col, "API SUBMITTED -- accepted, pending Amazon processing (not yet live). Re-check shortly.")
-                    console.print(f"  [yellow]row {i} {sku}: SUBMITTED (pending Amazon processing)[/yellow]")
+                    _warn = f" | Amazon warnings: {msgs}" if issues else ""
+                    queue(i, notes_col, "API SUBMITTED -- accepted by Amazon; will be live shortly "
+                                        "(usually ~5-30 min). Run 'Re-verify live status' later to "
+                                        "confirm it went live and capture the ASIN." + _warn)
+                    console.print(f"  [green]row {i} {sku}: SUBMITTED -- accepted by Amazon (live shortly)[/green]"
+                                  + (f"  [yellow]({len(issues)} warning(s))[/yellow]" if issues else ""))
             else:
                 # PREVIEW: the submit-time validation IS the answer.
                 if errors:
@@ -7334,7 +7551,14 @@ async def main():
     success = 0
     skipped = 0
 
+    # Heartbeat: from here on the run reports its own pulse to run_status.json,
+    # independent of the log pipe, so the dashboard can tell RUNNING from STUCK.
+    run_status.start(total=total, mode=mode)
+    run_status.install_console_heartbeat(console)
+
     for idx, row in enumerate(products, 1):
+        run_status.beat(idx=idx, total=total, stage="row start",
+                        sku=str(row.get("sku", "") or row.get("SKU", "") or ""))
         try:
             ok = await process_row(row, client, ws_out, creds, config, idx, total,
                                    user_brand, taken_skus, seen_asins, model_counter,
@@ -7355,6 +7579,10 @@ async def main():
                    f"[yellow]Skipped (already done): {skipped}[/yellow] | "
                    f"[red]Failed: {total-success-skipped}[/red]")
     console.print(f"[bold cyan]{'='*55}[/bold cyan]")
+    # Mark the run finished so the badge says "finished", not "process is gone".
+    run_status.finish(exit_code=0,
+                      summary=f"{success} ok, {skipped} skipped, "
+                              f"{total-success-skipped} failed of {total}")
 
     sheet_url = f"https://docs.google.com/spreadsheets/d/{config['google_spreadsheet_id']}"
     console.print(f"\n[bold green]Results -> '{OUTPUT_TAB}' tab[/bold green]")

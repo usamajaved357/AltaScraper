@@ -62,6 +62,7 @@ from pathlib import Path
 from flask import Response, request, jsonify
 
 import brand_profile
+from routes.stream_pump import pump_lines, spawn
 
 
 BASE_DIR = Path(__file__).parent
@@ -248,10 +249,11 @@ def register(app, _cfg, _ws, _records, _run_lock, _running, _ANSI, SCRIPT, sysmo
                 # args: brand <name> <csv(blank->profile)> <test_limit>
                 args = [sysmod.executable, "-u", SCRIPT, "brand", name, "", test_limit]
                 yield f"data: [start] {' '.join(a for a in args if a)}\n\n"
-                p = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1)
+                p = spawn(args)
                 _running["proc"] = p
-                for line in iter(p.stdout.readline, ""):
+                # drained on a worker thread so a slow browser can't jam the pipe
+                # and freeze the run mid-print -- see routes/stream_pump.py
+                for line in pump_lines(p):
                     clean = _ANSI.sub("", line.rstrip("\n"))
                     if clean.strip():
                         yield f"data: {clean}\n\n"

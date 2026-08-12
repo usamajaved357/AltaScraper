@@ -10,6 +10,9 @@ import re
 import subprocess
 import sys
 
+from routes.stream_pump import pump_lines, spawn
+from listing import run_status          # honest run state, independent of the log pipe
+
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
 
@@ -745,6 +748,109 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
 
+    def _rescan_compute():
+        """Re-judge every eligible row from the sheet. Pure read -- writes nothing."""
+        import json as _json
+        import os as _os
+        from listing import flags as _flags
+        from amazon_listing_generator import load_ip_rules as _lir
+
+        _base = _os.path.dirname(_os.path.abspath(CONFIG_PATH))
+        try:
+            with open(_os.path.join(_base, "compliance_rules.json"), encoding="utf-8") as fh:
+                _crules = _json.load(fh)
+        except Exception:
+            _crules = {}
+        _iprules = _lir()
+
+        ws   = _ws()
+        rows = _records(ws, _use_cache=False)
+        out  = []
+        for r in rows:
+            res = _flags.rescan_row(r, _iprules, _crules)
+            if res["eligible"] and res["changed"]:
+                out.append(res)
+        return ws, rows, out
+
+    @app.route("/rescan/preview")
+    def rescan_preview():
+        """What WOULD change if the flags were re-judged. Writes nothing.
+
+        Exists because a wrong flag rule leaves every already-generated row
+        carrying the wrong flag, and regenerating a row to clear it costs ~50s
+        and Claude credits for copy that was never the problem.
+        """
+        try:
+            _, rows, changes = _rescan_compute()
+            return jsonify({
+                "ok": True, "scanned": len(rows), "changes": len(changes),
+                "rows": [{"sku": c["sku"], "title": c["title"],
+                          "old_status": c["old"]["status"], "new_status": c["new"]["status"],
+                          "old_ip": c["old"]["ip_risk"], "new_ip": c["new"]["ip_risk"],
+                          "old_comp": c["old"]["compliance_risk"],
+                          "new_comp": c["new"]["compliance_risk"],
+                          "new_notes": c["new"]["notes"][:300],
+                          "changed": sorted(c["changed"])}
+                         for c in changes[:500]],
+            })
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}), 500
+
+    @app.route("/rescan/apply", methods=["POST"])
+    def rescan_apply():
+        """Write the re-judged flags back. ONLY the four flag columns, ONLY rows
+        whose status the flags own (NEEDS_REVIEW / IP_HOLD / COMPLIANCE_HOLD).
+        Copy, prices, SKUs and attributes are never touched, and an APPROVED,
+        LIVE, ERROR or API_* row is never rewritten -- those are the operator's
+        decision or Amazon's own state."""
+        try:
+            ws, _rows, changes = _rescan_compute()
+            if not changes:
+                return jsonify({"ok": True, "updated": 0, "note": "nothing to change"})
+
+            headers = ws.row_values(1)
+            col = {h: headers.index(h) + 1 for h in
+                   ("SKU", "Status", "Notes", "Compliance Risk", "IP Risk")
+                   if h in headers}
+            if "SKU" not in col:
+                return jsonify({"ok": False, "error": "SKU column not found"}), 500
+
+            # Map SKU -> sheet row number once, rather than searching per row.
+            sku_rows = {}
+            for i, v in enumerate(ws.col_values(col["SKU"]), start=1):
+                s = str(v).strip()
+                if s and s not in sku_rows:
+                    sku_rows[s] = i
+
+            def a1(r, c):
+                s = ""
+                while c:
+                    c, rem = divmod(c - 1, 26)
+                    s = chr(65 + rem) + s
+                return f"{s}{r}"
+
+            payload, updated = [], 0
+            for ch in changes:
+                rn = sku_rows.get(ch["sku"])
+                if not rn:
+                    continue
+                for key, header in (("status", "Status"), ("notes", "Notes"),
+                                    ("compliance_risk", "Compliance Risk"),
+                                    ("ip_risk", "IP Risk")):
+                    if key in ch["changed"] and header in col:
+                        payload.append({"range": a1(rn, col[header]),
+                                        "values": [[ch["new"][key]]]})
+                updated += 1
+
+            # One batched write -- 87 rows x 4 columns as single cell updates
+            # would be ~350 API calls and would hit Google's per-minute quota.
+            for i in range(0, len(payload), 100):
+                ws.batch_update(payload[i:i + 100])
+            _bust_records_cache()
+            return jsonify({"ok": True, "updated": updated, "cells": len(payload)})
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}), 500
+
     @app.route("/schema/<path:pt>")
     def schema(pt):
         try:
@@ -1050,8 +1156,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     extra += ["--select-type", _req_select_type or "auto"]
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
-                p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, bufsize=1)
+                p = spawn(args, stdin=subprocess.PIPE)
                 _running["proc"] = p
                 try:
                     # generation asks once for a brand; feed the configured one (Enter = auto)
@@ -1061,7 +1166,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     p.stdin.close()
                 except Exception:
                     pass
-                for line in iter(p.stdout.readline, ""):
+                # pump_lines drains the child on its own thread, so a slow browser
+                # can never jam the pipe and freeze the run mid-print. See
+                # routes/stream_pump.py for the full explanation.
+                for line in pump_lines(p):
                     clean = _ANSI.sub("", line.rstrip("\n"))
                     if clean.strip():
                         yield f"data: {clean}\n\n"
@@ -1074,4 +1182,56 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     _running["on"] = False
 
         return Response(stream(), mimetype="text/event-stream")
+
+    @app.route("/run/health")
+    def run_health():
+        """The honest state of the run -- does NOT depend on the log stream.
+
+        The log panel travels down the same pipe that has twice jammed and frozen
+        a run, so it cannot be trusted to report its own health. This reads the
+        generator's heartbeat file and asks the OS whether the process is alive.
+        A jammed pipe can fake neither.
+        """
+        proc = _running.get("proc")
+        alive = None
+        if proc is not None:
+            alive = (proc.poll() is None)   # the real handle beats a PID lookup
+        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
+                                   proc_alive=alive)
+        info["stream_attached"] = bool(_running.get("on"))
+        return jsonify(info)
+
+    @app.route("/run/stack")
+    def run_stack():
+        """Why is it stuck? Dump the frozen process's actual Python stack.
+
+        This is exactly how both freezes were diagnosed. Read-only: py-spy
+        samples the process from outside and never modifies or resumes it.
+        """
+        info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)))
+        pid = info.get("pid")
+        proc = _running.get("proc")
+        if proc is not None and proc.poll() is None:
+            pid = proc.pid
+        if not pid:
+            return jsonify({"ok": False, "error": "no run process to inspect"})
+
+        exe = os.path.join(os.path.dirname(sys.executable), "Scripts", "py-spy.exe")
+        if not os.path.exists(exe):
+            exe = "py-spy"
+        try:
+            out = subprocess.run([exe, "dump", "--pid", str(pid)],
+                                 capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=60)
+            text = (out.stdout or "") + (out.stderr or "")
+            if not text.strip():
+                text = "(py-spy returned nothing)"
+            return jsonify({"ok": out.returncode == 0, "pid": pid, "dump": text})
+        except FileNotFoundError:
+            return jsonify({"ok": False, "pid": pid,
+                            "error": "py-spy is not installed. Install it with:  "
+                                     "python -m pip install py-spy"})
+        except Exception as e:
+            return jsonify({"ok": False, "pid": pid,
+                            "error": f"{type(e).__name__}: {str(e)[:200]}"})
 

@@ -1,0 +1,105 @@
+{
+  "_meta": {
+    "title": "Tier 2 regulator-sourced restriction triggers",
+    "purpose": "Attribute- and ingredient-level triggers that make an otherwise-listable product GATED or PROHIBITED. Sourced from regulators (Ofcom, FDA, FCC, CPSC, UK/EU cosmetics regulation) and Amazon compliance references. Feeds the app's restricted-products checker as the ATTRIBUTE layer, on top of the TYPE layer (Tier 1) and the user's own violation notices (Tier 3).",
+    "compiled": "2026-07-28",
+    "source_tier": "tier2_regulator_research",
+    "confidence_note": "Thresholds are from published regulator/industry sources and are accurate as of compile date but MUST be treated as 'verify before relying' — Amazon and regulators update. The definitive per-ASIN answer is always Seller Central 'Apply to Sell'. NEVER present as legal advice.",
+    "usage_rule": "These triggers are a SOURCING ALARM (buy / don't buy / get docs first) and a listing-time WARNING. They are NOT a copy-editing instruction. NEVER remove a true disqualifying spec to list a prohibited product — that is concealment (account-ending). If PROHIBITED: block normal submit, allow logged force-list only. If GATED: warn + surface required docs, submit allowed."
+  },
+
+  "triggers": [
+
+    {
+      "id": "fpv_vtx_power",
+      "label": "FPV / video transmitter (VTX) power above unlicensed limit",
+      "applies_to_types": ["drone", "fpv goggles", "video transmitter", "vtx", "rc drone", "quadcopter", "fpv"],
+      "trigger_keywords": ["600mw", "800mw", "1w", "1000mw", "2w", "200mw", "high power vtx", "long range vtx", "high-power fpv", "5.8ghz 600", "boosted transmitter"],
+      "trigger_logic": "VTX EIRP above the unlicensed ceiling for the marketplace's country.",
+      "marketplaces": {
+        "UK": {"status": "PROHIBITED", "threshold": "5.8GHz > 25mW EIRP (also 2.4GHz control > 100mW). Anything above 25mW on 5.8GHz is unlicensed-illegal.", "regulator": "Ofcom (IR2030)", "path": "No practical retail path — licences are event/time/location specific. Treat as prohibited for resale.", "matches_user_violation": "B0H7JT6171 FPV goggles"},
+        "US": {"status": "ALLOWED_WITH_LIMIT", "threshold": "5.8GHz up to 1W (1000mW) EIRP licence-free under FCC Part 15. Above 1W needs HAM licence.", "regulator": "FCC Part 15", "path": "Legal if <= 1W. Same physical product that is prohibited in UK can be legal in US."}
+      },
+      "docs_if_gated": [],
+      "note": "This is the clearest MARKETPLACE-SPECIFIC case: a 600mW VTX is PROHIBITED in UK but LEGAL in US. The checker must give different answers per marketplace."
+    },
+
+    {
+      "id": "lithium_battery",
+      "label": "Contains or ships with lithium-ion / lithium-metal battery",
+      "applies_to_types": ["power bank", "portable charger", "power station", "battery", "electronics", "flashlight", "speaker", "earbuds", "toothbrush", "power tool", "toy car", "e-bike", "vacuum", "anything rechargeable"],
+      "trigger_keywords": ["lithium", "li-ion", "li-po", "lipo", "18650", "21700", "rechargeable battery", "mah", "wh", "power bank", "power station", "battery included"],
+      "trigger_logic": "Any product containing OR packed with a lithium cell. 'If it plugs in or charges, it's affected.'",
+      "marketplaces": {
+        "UK": {"status": "GATED", "threshold": "All lithium products need safety + transport docs. FBA generally prohibits > 100Wh without special approval. Wh rating must be consistent across marketplaces.", "regulator": "UK product safety + ICAO/IATA transport"},
+        "US": {"status": "GATED", "threshold": "Same — UN38.3 test summary mandatory; CPSC safety standards apply. FBA > 100Wh restricted.", "regulator": "CPSC + DOT/ICAO", "matches_user_violation": "B0H2WKFN55 power bank"}
+      },
+      "docs_if_gated": ["UN38.3 test summary (mandatory — Amazon rejects lithium listings without it)", "UL 2054 (battery pack safety)", "UL 1642 (cell safety)", "IEC 62133 (international safety)", "UL 2056 (power banks specifically)", "SDS / MSDS with Wh rating stated"],
+      "note": "Amazon tightened this in 2026 — UL2054+UL1642+IEC62133+UN38.3 now expected for EVERY lithium ASIN. Watt-hour rating MUST match across regional listings or it's flagged. Scope is huge: not just power banks — toothbrushes, speakers, toy cars, tools."
+    },
+
+    {
+      "id": "medical_device_nebulizer_class",
+      "label": "Nebulizer / inhaler / medication-delivery or therapeutic device",
+      "applies_to_types": ["nebulizer", "inhaler", "atomizer", "mesh nebulizer", "tens machine", "blood pressure monitor", "medical device", "therapeutic device"],
+      "trigger_keywords": ["nebulizer", "nebuliser", "inhaler", "mesh nebulizer", "medication", "delivers medication", "atomizer for medicine", "tens", "therapeutic", "medical grade", "510k", "fda cleared", "treats", "respiratory therapy"],
+      "trigger_logic": "Product is or is presented as an FDA/MHRA-regulated medical device.",
+      "marketplaces": {
+        "US": {"status": "GATED_HARD", "threshold": "ALL nebulizers are FDA Class II, require 510(k), are prescription-only, and on Amazon are limited to sellers enrolled in the PROFESSIONAL HEALTHCARE PROGRAM (needs Amazon Business account). For most third-party sellers this is effectively closed.", "regulator": "FDA (21 CFR 868.5630)", "matches_user_violation": "B0H5FP3C8S pet nebulizer"},
+        "UK": {"status": "GATED_HARD", "threshold": "Class II medical device — requires UKCA/CE mark + Declaration of Conformity under UK MDR.", "regulator": "MHRA (UK MDR)"}
+      },
+      "docs_if_gated": ["US: FDA 510(k) clearance letter", "US: FDA device establishment registration / owner-operator number", "US: manufacturer invoice (English) confirming purchase from manufacturer", "US: packaging photos (all sides) + instructions for use", "US: enrolment in Amazon Professional Healthcare Program", "UK/EU: UKCA (GB) or CE mark", "UK/EU: signed Declaration of Conformity listing standards met"],
+      "note": "Worse than ordinary 'gated' — the healthcare-program requirement makes this close to closed for most resellers. Also: Amazon's system OVER-triggers medical-device classification from KEYWORDS — beauty products, back straps, snore guards, baby items get flagged. So medical-sounding copy can flip a non-medical product into this bucket. Ties directly to the claims screener."
+    },
+
+    {
+      "id": "opaque_light_blocking_eyewear",
+      "label": "Goggles / eyeshields that block all light",
+      "applies_to_types": ["goggles", "eyeshields", "eye mask", "sleep mask", "eyewear", "blackout goggles"],
+      "trigger_keywords": ["blocks all light", "blackout", "opaque", "total darkness", "light-blocking goggles", "meditation goggles", "sensory deprivation"],
+      "trigger_logic": "Eyewear that is NOT see-through / blocks all light from the user.",
+      "marketplaces": {
+        "US": {"status": "PROHIBITED", "threshold": "FDA requires eyewear to be see-through. Opaque goggles/eyeshields prohibited from sale and listing.", "regulator": "FDA", "matches_user_violation": "B0H4NJN5BM opaque eyewear", "path": "No path — prohibited."},
+        "UK": {"status": "VERIFY", "threshold": "Confirm UK-specific stance in Seller Central; likely similar restriction.", "regulator": "verify"}
+      },
+      "docs_if_gated": [],
+      "note": "ATTRIBUTE-triggered prohibition — same shape as the FPV case. See-through eyewear is fine; the 'blocks all light' attribute is what prohibits it. A normal pair of goggles is sellable."
+    },
+
+    {
+      "id": "cosmetic_topical_ingredient",
+      "label": "Cosmetic / skincare / topical — prohibited ingredient or requires safety docs",
+      "applies_to_types": ["skincare", "cosmetic", "cream", "serum", "moisturizer", "toner", "oil", "face mask", "facial steamer", "essential oil diffuser", "lotion", "nail polish", "topical"],
+      "trigger_keywords": ["mercury", "hydroquinone", "bithionol", "chloroform", "ppd", "black henna", "skin lightening", "skin whitening", "topical", "applied to skin", "essential oil"],
+      "trigger_logic": "Product applied to skin (topical) OR contains a prohibited/restricted cosmetic ingredient.",
+      "marketplaces": {
+        "US": {"status": "GATED", "threshold": "Topicals require approval. Prohibited ingredients: mercury, hydroquinone, bithionol, chloroform, certain skin-lightening actives. Check LegitScript / FDA prohibited list. Corrective/colored contact lenses prohibited.", "regulator": "FDA (FDCA)"},
+        "UK": {"status": "GATED", "threshold": "All cosmetics need CPSR + SCPN notification + INCI labelling + Responsible Person. Prohibited/restricted ingredients per UK Cosmetics Regulation 2020 Annexes II–VI.", "regulator": "UK Cosmetics Regulation 2020 (SI 2020/1466)"}
+      },
+      "docs_if_gated": ["UK/EU: CPSR (Cosmetic Product Safety Report, signed by qualified assessor)", "UK: SCPN notification (EU: CPNP)", "INCI ingredient list on label", "Responsible Person details", "US: FDA registration, GMP certificate, COA, manufacturer invoice (last 180 days)"],
+      "note": "Facial steamer + essential-oil diffuser edges into topical/cosmetic territory. CLAIMS TRAP: anti-acne / anti-aging-treatment / disease claims flip a cosmetic into an OTC DRUG = instant restriction. Ties to claims screener."
+    },
+
+    {
+      "id": "wireless_radio_general",
+      "label": "Wireless / radio-transmitting device (general)",
+      "applies_to_types": ["wireless", "bluetooth", "wifi device", "transmitter", "rf device", "signal booster", "jammer", "surveillance", "walkie talkie", "remote control"],
+      "trigger_keywords": ["transmitter", "signal booster", "jammer", "rf", "wireless", "radio frequency", "surveillance", "hidden camera", "spy"],
+      "trigger_logic": "Radio-transmitting device — needs type approval and must respect power/frequency limits.",
+      "marketplaces": {
+        "UK": {"status": "GATED_OR_PROHIBITED", "threshold": "Must comply with Ofcom IR2030 band/power limits + UKCA marking. Signal JAMMERS are outright prohibited. Surveillance/hidden-camera devices restricted.", "regulator": "Ofcom"},
+        "US": {"status": "GATED_OR_PROHIBITED", "threshold": "FCC certification required (FCC ID). Jammers prohibited by FCC. Surveillance devices restricted.", "regulator": "FCC"}
+      },
+      "docs_if_gated": ["FCC ID / FCC certification (US)", "UKCA marking + Declaration of Conformity (UK)", "RF test report"],
+      "note": "Jammers = always prohibited both marketplaces. Frequency/power over the unlicensed limit = the FPV pattern applies to any RF device, not just drones."
+    }
+
+  ],
+
+  "cross_cutting_notes": {
+    "marketplace_specificity": "Several triggers give DIFFERENT answers per marketplace (FPV: UK-prohibited / US-legal). The checker MUST resolve status per marketplace, never globally.",
+    "claims_interaction": "Medical-device and cosmetic-to-drug classifications are often triggered by COPY KEYWORDS, not just the product. The claims screener and this restricted-type checker overlap here — a medical/therapeutic/treatment claim can pull an ordinary product into a restricted bucket.",
+    "no_match_not_safe": "Absence from this list is NOT a clearance. Only Seller Central 'Apply to Sell' per ASIN is definitive.",
+    "concealment_prohibition": "This data is a sourcing alarm. NEVER use it to strip a true disqualifying spec from copy to list a prohibited product. That is concealment and risks account termination (per the user's own Shee'lady Section 3 history)."
+  }
+}

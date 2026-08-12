@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltaScraper — Detail view (reference)</title>
+<link rel="stylesheet" href="_tokens.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+  .as-pill{font-size:11px; padding:3px 9px; border-radius:20px; flex-shrink:0;}
+  .fld{background:var(--surface-1); border-radius:10px; padding:12px 14px; margin-bottom:8px;}
+  .fld p.k{font-size:12px; color:var(--text-muted); margin:0 0 3px;}
+  .as-dot{width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center; background:transparent; border:0.5px solid var(--border-strong); border-radius:var(--radius);}
+</style></head><body>
+<div class="ref-note">REFERENCE ONLY — match this LAYOUT + BEHAVIOUR, use the app's own theme. Warnings appear ONLY when real: green strip if clean, RED strip with the specific reason if flagged, NOTHING if nothing to say. ONE primary button. Everything else under ⋯. Two versions shown: clean, and blocked.</div>
+
+<div class="ref-frame" style="margin-bottom:16px;">
+  <p style="font-size:12px; color:var(--text-muted); margin:0 0 10px;">— version A: clean listing —</p>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:14px;">
+    <p style="font-size:16px; font-weight:500; margin:0; line-height:1.4;">Telescopic window cleaner pole 3.5m squeegee mop conservatory kit</p>
+    <span class="as-pill" style="background:var(--bg-warning); color:var(--text-warning);">Needs review</span>
+  </div>
+  <div style="display:flex; gap:8px; margin-bottom:16px;">
+    <div style="width:56px;height:56px;border-radius:8px;background:var(--surface-1);display:flex;align-items:center;justify-content:center;color:var(--text-muted);"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+    <div style="width:56px;height:56px;border-radius:8px;background:var(--surface-1);display:flex;align-items:center;justify-content:center;color:var(--text-muted);"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+    <div style="width:56px;height:56px;border-radius:8px;background:var(--surface-1);display:flex;align-items:center;justify-content:center;color:var(--text-muted);"><i class="ti ti-photo" style="font-size:18px;"></i></div>
+  </div>
+  <div class="fld"><p class="k">Title</p><p style="margin:0;">Telescopic window cleaner pole 3.5m squeegee mop conservatory kit</p></div>
+  <div class="fld"><p class="k">Price</p><p style="margin:0;">£12.49</p></div>
+  <div style="display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg-success); border-radius:10px; margin-bottom:16px;">
+    <i class="ti ti-shield-check" style="color:var(--text-success);"></i><span style="font-size:13px; color:var(--text-success);">Compliance clear — no restricted-product or claim flags</span>
+  </div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <button style="height:36px; padding:0 20px; background:var(--fill-accent); color:var(--on-accent); border:none; border-radius:var(--radius); font-size:13px;">Approve</button>
+    <button style="height:36px; padding:0 14px; background:transparent; border:0.5px solid var(--border-strong); border-radius:var(--radius); font-size:13px; color:var(--text-primary);"><i class="ti ti-wand" style="font-size:15px;"></i> Auto-fix</button>
+    <span style="flex:1;"></span>
+    <button class="as-dot" aria-label="More"><i class="ti ti-dots"></i></button>
+  </div>
+</div>
+
+<div class="ref-frame">
+  <p style="font-size:12px; color:var(--text-muted); margin:0 0 10px;">— version B: blocked listing (prohibited) —</p>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:14px;">
+    <p style="font-size:16px; font-weight:500; margin:0; line-height:1.4;">FPV drone goggles 5.8GHz 600mW long range video</p>
+    <span class="as-pill" style="background:var(--bg-danger); color:var(--text-danger);">Blocked</span>
+  </div>
+  <div style="display:flex; align-items:flex-start; gap:8px; padding:12px 14px; background:var(--bg-danger); border-radius:10px; margin-bottom:16px;">
+    <i class="ti ti-shield-x" style="color:var(--text-danger); margin-top:1px;"></i>
+    <div><p style="font-size:13px; color:var(--text-danger); margin:0 0 3px; font-weight:500;">UK prohibited — Ofcom (illegal radio use)</p><p style="font-size:12px; color:var(--text-danger); margin:0; opacity:.85;">High-power FPV VTX above 25mW EIRP on 5.8GHz. No path to list on Amazon.co.uk. Legal in US.</p></div>
+  </div>
+  <div style="display:flex; gap:8px; align-items:center;">
+    <button style="height:36px; padding:0 18px; background:var(--surface-1); color:var(--text-danger); border:0.5px solid var(--border-danger); border-radius:var(--radius); font-size:13px;">See why / appeal</button>
+    <button style="height:36px; padding:0 14px; background:transparent; border:0.5px solid var(--border-strong); border-radius:var(--radius); font-size:12px; color:var(--text-muted);">Force list (logged)</button>
+    <span style="flex:1;"></span>
+    <button class="as-dot" aria-label="More"><i class="ti ti-dots"></i></button>
+  </div>
+</div>
+
+</body></html>

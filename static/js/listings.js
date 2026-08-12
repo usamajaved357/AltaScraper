@@ -222,14 +222,62 @@ function srcBadge(src){
   return '<span class="srcbadge '+cls+'" title="'+tip+'">'+label+'</span>';
 }
 function rowProvenance(r){ try{ return (JSON.parse(r.attrs||'{}')._provenance)||null; }catch(e){ return null; } }
+// ---------------------------------------------------------------------------
+// RE-CHECK FLAGS
+// A wrong flag rule leaves every already-generated row carrying the wrong flag.
+// Regenerating to clear one costs ~50s and Claude credits for copy that was
+// never the problem. This re-runs the checks against the copy already in the
+// sheet. Always previews first: it writes to the live sheet, so nothing changes
+// until you have seen the list and said yes.
+async function rescanFlags(){
+  let r;
+  try{
+    toast("Re-checking flags on stored rows…");
+    r = await (await fetch("/rescan/preview",{cache:"no-store"})).json();
+  }catch(e){ toast("Re-check failed: "+e); return; }
+  if(!r.ok){ toast("Re-check failed: "+(r.error||"unknown")); return; }
+  if(!r.changes){ toast(`Scanned ${r.scanned} rows — no flags need changing`); return; }
+
+  const lines = r.rows.slice(0,40).map(x=>{
+    const bits=[];
+    if(x.old_status!==x.new_status) bits.push(`${x.old_status} → ${x.new_status}`);
+    if(x.old_ip!==x.new_ip)   bits.push(`IP ${x.old_ip||"none"} → ${x.new_ip||"none"}`);
+    if(x.old_comp!==x.new_comp) bits.push(`Compliance ${x.old_comp||"none"} → ${x.new_comp||"none"}`);
+    return `• ${x.sku}  ${bits.join("   ")}`;
+  }).join("\n");
+  const more = r.changes>40 ? `\n…and ${r.changes-40} more` : "";
+
+  const ok = confirm(
+    `Re-check flags\n\n`+
+    `Scanned ${r.scanned} rows. ${r.changes} would change.\n\n`+
+    `${lines}${more}\n\n`+
+    `Only Status, Notes, Compliance Risk and IP Risk are written.\n`+
+    `Your copy, prices and SKUs are NOT touched, and APPROVED / LIVE / ERROR\n`+
+    `rows are skipped entirely.\n\nApply these changes to the sheet?`);
+  if(!ok){ toast("Nothing written"); return; }
+
+  try{
+    const a = await (await fetch("/rescan/apply",{method:"POST"})).json();
+    if(!a.ok){ toast("Apply failed: "+(a.error||"unknown")); return; }
+    toast(`Updated ${a.updated} row(s)`);
+    if(typeof loadRows==="function") loadRows();
+  }catch(e){ toast("Apply failed: "+e); }
+}
+
 function locateFlags(sku, btn){
   const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r) return;
   const out=document.getElementById('loc_'+sid(sku)); if(!out) return;
-  // pull flagged terms from notes: "phrases: a, b" and "suspected brand words: c, d"
+  // Pull flagged terms out of the note. Three shapes, and BOTH wordings of the
+  // brand-word note must be accepted: rows generated before the IP-scanner fix
+  // say "suspected brand words:", rows after it say "possible brand words
+  // (unconfirmed):". Matching only one silently finds nothing on half your sheet.
   const notes=String(r.notes||'')+' '+String(r.comp_notes||'');
   let terms=[];
   let m=notes.match(/phrases?:\s*([^|]+)/i); if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
-  m=notes.match(/suspected brand words?:\s*([^|]+)/i); if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
+  m=notes.match(/(?:suspected|possible) brand words?(?:\s*\(unconfirmed\))?:\s*([^|]+)/i);
+  if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
+  m=notes.match(/COMPETITOR BRAND in copy:\s*([^|]+)/i);
+  if(m) terms=terms.concat(m[1].split(',').map(s=>s.trim()));
   terms=terms.filter(t=>t&&t.length>1);
   if(!terms.length){ out.innerHTML='<div class="cc" style="margin-top:6px">No specific terms parsed from the note — the flag may be a category/compliance signal, not a word match.</div>'; return; }
   // search each content field for each term
@@ -406,11 +454,28 @@ function isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown){
   return norm(r.status)==="LIVE";
 }
 
+// Has Amazon's live catalog actually been fetched for the account+marketplace in view?
+// LIVE_STORE holds a cache entry (even an empty one) only AFTER a Sync completes for
+// that key. Before that, LIVE_ITEMS is empty simply because we never asked -- which is
+// NOT the same as "Amazon returned nothing". Callers that draw a negative conclusion
+// ("not confirmed by Amazon") must gate on this, or they slander live listings as dead
+// before the first Sync.
+function _liveCatalogLoaded(){
+  try{
+    return (typeof LIVE_STORE!=="undefined") && (typeof _liveKey==="function")
+           && (LIVE_STORE[_liveKey()]!==undefined);
+  }catch(e){ return false; }
+}
+
 // The sheet SAYS this row is live, but Amazon's catalog does not list it.
-// Only meaningful once the catalog is loaded.
+// Only meaningful once the catalog is loaded -- we cannot call a LIVE row "not
+// confirmed by Amazon" until we have actually asked Amazon (i.e. a Sync has run).
+// Before that, this returns false so those rows fall back to the sheet's own claim
+// and the alarming "Not confirmed by Amazon" group never appears pre-Sync.
 function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
   const norm = v => String(v||"").trim().toUpperCase();
   if(!liveGroupShown) return false;
+  if(!_liveCatalogLoaded()) return false;
   return norm(r.status)==="LIVE" && !isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown);
 }
 
@@ -723,12 +788,27 @@ function drawerContent(r){
   // mismatches) + our IP note -- NOT a restricted-products / docs verdict. That lives in the
   // separate "Restricted products check" panel. Label it honestly so it never masquerades
   // as "docs required".
+  // Say WHY on the summary line itself. It used to read "IP / trademark review"
+  // with the actual cause hidden inside the collapsed box, so a row could show
+  // IP: HIGH with no visible reason at all -- there was no way to tell a real
+  // trademark leak from a false flag without opening it.
   let reason = (r.ip_risk && r.ip_risk!=="") ? "IP / trademark review" : "Amazon feedback";
+  const _ipNote = String(r.notes||'')+' '+String(r.comp_notes||'');
+  if(r.ip_risk && r.ip_risk!==""){
+    let mm=_ipNote.match(/COMPETITOR BRAND in copy:\s*([^|]+)/i);
+    if(mm) reason = "IP: competitor brand in copy — "+mm[1].trim();
+    else if((mm=_ipNote.match(/phrases?:\s*([^|]+)/i)))
+      reason = "IP: forbidden phrase — "+mm[1].trim();
+    else if((mm=_ipNote.match(/(?:suspected|possible) brand words?(?:\s*\(unconfirmed\))?:\s*([^|]+)/i)))
+      reason = "IP: possible brand words (unconfirmed) — "+mm[1].trim();
+  }
+  if(reason.length>110) reason = reason.slice(0,107)+"…";
   // Is this an ACTUAL blocking problem, or just an informational compliance note
   // (e.g. "lithium battery -> these docs may be requested")? A real problem = an
   // API error/hold or an IP risk. A compliance note on an already-submitted/live
   // listing is informational, so show it ORANGE, not alarming red.
-  const _fbNote = (reason==="IP / trademark review")
+  // Keyed off ip_risk, not off the reason text -- the reason now varies per row.
+  const _fbNote = (r.ip_risk && r.ip_risk!=="")
     ? "Our brand/trademark check — not a docs requirement."
     : "Amazon’s own submission messages (attribute conflicts, catalogue mismatches) — NOT a restricted-products or docs verdict. See the Restricted products check panel for that.";
   const statusBlock = hasFeedback
@@ -948,6 +1028,10 @@ function openDrawer(sku, jumpGen){
   dw.classList.add("open");
   document.getElementById("drawerscrim").classList.add("open");
   dw.scrollTop=0;
+  // Re-attach to any BACKGROUND Preview/Submit job for this SKU: replays its log into
+  // the run panel and resumes polling if still running. This is what makes progress
+  // survive navigating away and coming back (and a full page refresh).
+  if(typeof rqAttach==="function"){ setTimeout(function(){ if(DRAWER_SKU===sku) rqAttach(sku); }, 60); }
   // If this product type's schema (allowed values + nested sub-fields like ghs /
   // battery) isn't loaded yet, fetch it then re-render -- otherwise required
   // nested fields render as flat boxes (or not at all) and you can't see the
@@ -955,6 +1039,7 @@ function openDrawer(sku, jumpGen){
   if(r.product_type && typeof loadSchemas==="function" && !(SCHEMAS[r.product_type] && (SCHEMAS[r.product_type].attrs||[]).length)){
     loadSchemas([r.product_type], false, rowMkt(r)).then(()=>{
       if(DRAWER_SKU===sku){ body.innerHTML=drawerContent(r); var sv=sid(sku);
+        if(typeof rqAttach==="function"){ setTimeout(function(){ if(DRAWER_SKU===sku) rqAttach(sku); }, 60); }
         setTimeout(function(){ if(typeof bulletMeter==='function') bulletMeter(); }, 60); }
     }).catch(()=>{});
   }
@@ -1026,6 +1111,9 @@ function closeDrawer(){
   DRAWER_SKU=null;
   window.RUN_STREAMING=false;
   if(ES){ try{ES.close();}catch(e){} ES=null; }
+  // Stop WATCHING any background Preview/Submit job -- but DON'T stop the job itself.
+  // It keeps running on the server; reopening the drawer re-attaches to its progress.
+  if(typeof rqStopWatch==="function") rqStopWatch();
   document.getElementById("drawer").classList.remove("open");
   document.getElementById("drawerscrim").classList.remove("open");
 }

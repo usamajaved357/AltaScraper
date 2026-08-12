@@ -1,4 +1,4 @@
-# CLAUDE.md — Standing Rules for Every Session
+﻿# CLAUDE.md — Standing Rules for Every Session
 # This file is version-controlled. Every branch inherits these rules.
 # Read this entire file before touching any code, any session, no exceptions.
 
@@ -149,6 +149,14 @@ When Amazon returns an error like "value is invalid" or "does not match":
 
 This is how the leg/cable/decimal_value bugs were eventually solved.
 Every hour spent guessing is wasted. The schema is always available — use it.
+
+### Parsing rule (companion to the above — governs how we READ an error, not how we fix it):
+Never derive an attribute name from Amazon's human-readable message text — use the
+structured field/schema, and validate any derived name against the schema before
+rendering it as an input field. (Origin: the "The"/"Your" phantom-field bug — a
+case-insensitive regex captured the capitalised first word of Amazon's prose and
+rendered it as a required field. Fix was a case-sensitive parse PLUS a schema check
+before any field is drawn.)
 
 ---
 
@@ -309,3 +317,21 @@ Read this file. Then:
 
 If the user's request is unclear, ask one specific clarifying question
 before starting. Do not make assumptions about what they want.
+
+
+## 12. STANDING RULE — NO DUPLICATED LOGIC:
+Before adding, fixing, or touching any logic, grep the ENTIRE 
+codebase for every place that handles the same concept (barcode, 
+price, dimensions, status, hazmat, etc). If the same logic exists 
+in 2+ places, extract it into ONE shared helper FIRST, then make 
+the change in that one place.
+
+Never copy-paste validation logic. Never add a "second pass" or 
+"authoritative override" that reimplements existing logic — fix 
+the original instead.
+
+Before delivering any fix: search for the field/concept name 
+across all files, list every location that touches it, confirm 
+they all call the same shared function. Include this audit in 
+your response so I can verify.
+

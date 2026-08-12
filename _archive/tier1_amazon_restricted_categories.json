@@ -1,0 +1,82 @@
+{
+  "_meta": {
+    "title": "Tier 1 — Amazon published restricted-product categories",
+    "purpose": "The TYPE layer: which whole product categories Amazon restricts or prohibits, per marketplace. Compiled from Amazon's published Restricted Products policy (Seller Central help G200164330) and compliance references. Replaces the earlier offline-guessed category seed.",
+    "compiled": "2026-07-28",
+    "source_tier": "tier1_amazon_published_policy",
+    "amazon_policy_ref": "G200164330 (Seller Central Restricted Products)",
+    "confidence_note": "Category-level status is from Amazon's published policy + industry compliance references, accurate as of compile date. Amazon updates policy without notice. The DEFINITIVE per-ASIN, per-account answer is always Seller Central > Catalog > Add Products > 'Show limitations' / 'Apply to Sell'. 'Sell Yours' does NOT guarantee no restriction (brand approval / hazmat may still apply).",
+    "usage_rule": "SOURCING ALARM + listing warning, never a copy-editing tool. PROHIBITED categories block normal submit (logged force-list only). RESTRICTED/GATED categories warn + surface docs. Absence from this list != safe.",
+    "layer_relationship": "TYPE layer. Sits with tier2_restriction_triggers.json (ATTRIBUTE layer) and the user's Tier 3 violation notices. A product can pass this list but still hit an attribute trigger, or vice versa."
+  },
+
+  "categories": [
+
+    {"id": "alcohol", "label": "Alcohol / alcoholic beverages", "status": "PROHIBITED_EXCEPT_APPROVED", "detail": "Alcohol generally prohibited; only pre-approved sellers may sell wine.", "marketplaces": ["UK","US"], "docs": ["Amazon wine-selling pre-approval"]},
+
+    {"id": "supplements", "label": "Dietary supplements", "status": "GATED", "detail": "Among the most closely monitored. Must be sealed original packaging, new, English labelling with product name/quantity/ingredients/manufacturer. Prohibited ingredients (e.g. ephedra). A supplement claiming to treat a disease becomes an unapproved DRUG.", "marketplaces": ["UK","US"], "docs": ["FDA/FTC/Amazon-compliant labelling","ingredient compliance","manufacturer info","invoices"], "regulator": "FDA (US) / FSA-MHRA (UK)"},
+
+    {"id": "cosmetics_topicals", "label": "Cosmetics / skincare / topicals", "status": "GATED", "detail": "Topicals (applied to skin) require approval. Prohibited ingredients: mercury, hydroquinone, bithionol, chloroform. See tier2 cosmetic_topical_ingredient for detail + docs.", "marketplaces": ["UK","US"], "docs": ["UK/EU: CPSR + SCPN/CPNP + INCI + Responsible Person","US: FDA reg, GMP, COA, invoice (180 days)"], "regulator": "UK Cosmetics Reg 2020 / FDA FDCA", "cross_ref": "tier2:cosmetic_topical_ingredient"},
+
+    {"id": "medical_devices", "label": "Medical devices & accessories", "status": "GATED_HARD", "detail": "Heavily gated. Class II devices need 510(k). Prescription/professional devices (e.g. nebulizers) limited to Professional Healthcare Program sellers. See tier2 medical_device for detail.", "marketplaces": ["UK","US"], "docs": ["US: FDA 510(k) + establishment reg + invoice + healthcare program","UK: UKCA/CE + Declaration of Conformity"], "regulator": "FDA (US) / MHRA (UK)", "cross_ref": "tier2:medical_device_nebulizer_class"},
+
+    {"id": "drugs_otc", "label": "Drugs, OTC medicines & drug paraphernalia", "status": "GATED", "detail": "OTC drugs permitted with compliance; anything resembling prescription medicine or strong health claims restricted quickly. Drug paraphernalia restricted.", "marketplaces": ["UK","US"], "docs": ["FDA compliance","proper labelling"], "regulator": "FDA / MHRA"},
+
+    {"id": "cbd_hemp", "label": "CBD / hemp / cannabis products", "status": "RESTRICTED_HIGH", "detail": "Under increasingly rigorous scrutiny; largely restricted/prohibited on Amazon.", "marketplaces": ["UK","US"], "docs": ["verify per marketplace — often no path"]},
+
+    {"id": "hazmat_dangerous_goods", "label": "Hazmat / dangerous goods (flammable, aerosol, corrosive)", "status": "GATED", "detail": "Flammable liquids, aerosols, corrosives, lithium batteries. Note: nail polish remover (acetone) is hazmat. Requires hazmat review/classification.", "marketplaces": ["UK","US"], "docs": ["SDS/MSDS","hazmat classification","exemption sheets"], "cross_ref": "tier2:lithium_battery"},
+
+    {"id": "lithium_batteries", "label": "Lithium batteries & products containing them", "status": "GATED", "detail": "See tier2 lithium_battery — UN38.3 + UL certs mandatory. Scope huge (anything rechargeable).", "marketplaces": ["UK","US"], "docs": ["UN38.3","UL2054","UL1642","IEC62133"], "cross_ref": "tier2:lithium_battery"},
+
+    {"id": "weapons_knives", "label": "Weapons, firearms, ammunition, certain knives", "status": "PROHIBITED_MOSTLY", "detail": "Firearms, ammunition, many knives (esp. automatic/concealed) prohibited. UK knife laws stricter than US.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "explosives_fireworks", "label": "Explosives, fireworks, pyrotechnics", "status": "PROHIBITED", "detail": "Prohibited.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "lasers", "label": "Laser products", "status": "GATED", "detail": "Laser pointers/products above certain classes restricted; FDA laser product regulation (US).", "marketplaces": ["UK","US"], "docs": ["laser safety classification","FDA laser compliance (US)"], "regulator": "FDA (US)"},
+
+    {"id": "lock_picking", "label": "Lock picking & theft devices", "status": "PROHIBITED_EXCEPT_BLANKS", "detail": "All prohibited EXCEPT blank keys.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "surveillance", "label": "Surveillance / spy / hidden-camera equipment", "status": "RESTRICTED", "detail": "Hidden cameras, covert surveillance devices restricted. Signal jammers prohibited.", "marketplaces": ["UK","US"], "docs": [], "cross_ref": "tier2:wireless_radio_general"},
+
+    {"id": "radio_wireless", "label": "Radio / wireless transmitting equipment", "status": "GATED_OR_PROHIBITED", "detail": "Must meet Ofcom (UK) / FCC (US) power & certification. Jammers prohibited. Over-power transmitters (e.g. high-power FPV) prohibited UK. See tier2.", "marketplaces": ["UK","US"], "docs": ["FCC ID (US)","UKCA + DoC (UK)"], "cross_ref": "tier2:fpv_vtx_power,tier2:wireless_radio_general"},
+
+    {"id": "food_grocery", "label": "Food, beverages & grocery", "status": "GATED", "detail": "Shelf-life standards, labelling, safety. Consumables gated for health/safety.", "marketplaces": ["UK","US"], "docs": ["labelling","expiry/shelf-life","food safety compliance"]},
+
+    {"id": "composite_wood", "label": "Composite wood products", "status": "PROHIBITED_UNLESS_COMPLIANT", "detail": "Prohibited unless meeting EPA formaldehyde emission standards (US TSCA Title VI / CARB).", "marketplaces": ["US"], "docs": ["EPA/CARB formaldehyde compliance"], "regulator": "EPA (US)"},
+
+    {"id": "upholstered_furniture", "label": "Upholstered furniture", "status": "GATED", "detail": "Flammability/safety testing; UK has specific fire-safety regs (fire label).", "marketplaces": ["UK","US"], "docs": ["flammability testing","UK fire safety label"]},
+
+    {"id": "childrens_products", "label": "Children's products / toys (under 12)", "status": "GATED", "detail": "Safety testing + certification. US: CPC (Children's Product Certificate) under CPSIA. UK: toy safety testing.", "marketplaces": ["UK","US"], "docs": ["US: CPC / CPSIA testing","UK: toy safety (EN71) / UKCA"], "regulator": "CPSC (US)"},
+
+    {"id": "pesticides_biocides", "label": "Pesticides & products making pesticide claims", "status": "GATED", "detail": "EPA registration (US) / HSE biocide rules (UK). CRITICAL: a NON-pesticide product can be pulled in by pesticide-CLAIM language (kill/sanitize/antimicrobial) — this is the Mil-Gear case. Ties to claims screener.", "marketplaces": ["UK","US"], "docs": ["US: EPA registration","UK: HSE biocide registration"], "regulator": "EPA (US) / HSE (UK)", "cross_ref": "claims_screener:pesticide"},
+
+    {"id": "jewelry_precious", "label": "Jewelry, fine jewelry & precious gems", "status": "GATED", "detail": "Quality/authenticity requirements; anti-fraud gating.", "marketplaces": ["UK","US"], "docs": ["quality assurance standards","invoices"]},
+
+    {"id": "fine_art", "label": "Fine art", "status": "GATED", "detail": "Approval required. Cannot sell: mass-produced works, promo posters, artwork without named artist, certain anthropological/textile art.", "marketplaces": ["UK","US"], "docs": ["Amazon fine-art approval"]},
+
+    {"id": "coins_currency", "label": "Collectible coins & currency", "status": "GATED", "detail": "Prior approval. Prohibited: altered legal tender, imitation/counterfeit currency, commemorative medals.", "marketplaces": ["UK","US"], "docs": ["Amazon collectible-coins approval"]},
+
+    {"id": "tobacco_vaping", "label": "Tobacco, e-cigarettes & vaping", "status": "PROHIBITED", "detail": "Tobacco and vaping products prohibited.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "animals", "label": "Animals & animal products", "status": "RESTRICTED", "detail": "Cannot sell live pets, livestock, plant pests, marine mammals, endangered-species fur/feathers.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "plants_seeds", "label": "Plant & seed products", "status": "RESTRICTED", "detail": "Import/phytosanitary restrictions; some seeds/plants prohibited across borders.", "marketplaces": ["UK","US"], "docs": ["phytosanitary compliance"]},
+
+    {"id": "recalled", "label": "Recalled products", "status": "PROHIBITED", "detail": "Any recalled product prohibited.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "refrigerants_ozone", "label": "Refrigerants / ozone-depleting substances", "status": "GATED", "detail": "EPA (US) / F-gas (UK) regulated.", "marketplaces": ["UK","US"], "docs": ["EPA/F-gas compliance"]},
+
+    {"id": "automotive", "label": "Automotive & powersports", "status": "GATED_SUBCATEGORY", "detail": "Category technically open but many subcategories (tyres, safety parts, emissions) require approval.", "marketplaces": ["UK","US"], "docs": ["varies by subcategory"]},
+
+    {"id": "gambling_lottery", "label": "Gambling, lottery & games of chance", "status": "PROHIBITED", "detail": "Prohibited.", "marketplaces": ["UK","US"], "docs": []},
+
+    {"id": "warranties_services", "label": "Warranties, service plans, subscriptions", "status": "GATED", "detail": "Require approval.", "marketplaces": ["UK","US"], "docs": ["Amazon approval"]}
+
+  ],
+
+  "subcategory_warning": "Top-level categories like Beauty, Health & Personal Care, Grocery, Clothing, Shoes, Toys, Baby are technically OPEN but have significant GATED subcategories underneath. New sellers hit these unexpectedly. This list captures the known restricted categories; subcategory gating is only fully visible via Seller Central 'Apply to Sell' per ASIN.",
+
+  "verification_method": "Definitive check: Seller Central > Catalog > Add Products > search ASIN/name > 'Show limitations'. 'Apply to Sell' = restricted. 'Sell Yours' = likely open but NOT guaranteed (brand/hazmat may still apply).",
+
+  "account_specific_note": "This is Amazon's GENERAL published policy. Gating is also ACCOUNT-SPECIFIC — a category open for one of the user's accounts may be gated for another. To make this list account-precise, paste the user's own Seller Central Restricted Products page per account."
+}

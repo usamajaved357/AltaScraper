@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltaScraper — navy prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#0a1628; --side:#0d1f3c; --panel:#0f2547; --panel2:#12294f;
+  --line:#1e3058; --line2:#2a4372;
+  --ink:#e8edf5; --ink2:#7a9cc4; --ink3:#4a6fa5; --ink4:#2d4a7a;
+  --accent:#5b8fd4; --accent2:#90b8f0; --accent-bg:#1a3260;
+  --ok:#4ade80; --ok-bg:#0a1f10; --ok-line:#1a4a28;
+  --warn:#e0a020; --warn-bg:#241a05; --danger:#f2555a; --danger-bg:#2a0f12;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;}
+.app{display:flex;min-height:100vh;}
+/* sidebar */
+.side{width:216px;flex-shrink:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
+.logo{padding:18px 18px 14px;border-bottom:1px solid var(--line);}
+.logo .t{font-size:15px;font-weight:600;letter-spacing:.3px;}
+.logo .s{font-size:11px;color:var(--ink3);margin-top:2px;}
+.nav{padding:12px 10px;flex:1;}
+.nav .lbl{font-size:10px;color:var(--ink4);font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:10px 8px 4px;}
+.nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px;color:var(--ink2);text-decoration:none;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:2px;}
+.nav a:hover{background:var(--panel);color:var(--ink);}
+.nav a.on{background:var(--accent-bg);color:var(--accent2);}
+.nav a i{font-size:17px;width:18px;}
+.nav a .b{margin-left:auto;background:var(--panel2);color:var(--accent);font-size:10px;padding:2px 7px;border-radius:10px;}
+.side .foot{padding:12px;border-top:1px solid var(--line);}
+.acctpill{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 10px;}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex-shrink:0;}
+.dot.red{background:var(--danger);}
+/* top bar */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.top{height:52px;background:var(--side);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 22px;}
+.top .ttl{font-size:14px;font-weight:500;}
+.top .sep{width:1px;height:16px;background:var(--line);}
+.top .sub{font-size:13px;color:var(--ink3);}
+.statusbadge{margin-left:auto;display:flex;align-items:center;gap:6px;background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:20px;padding:4px 11px;font-size:11px;color:var(--ok);}
+.sw{width:30px;height:17px;background:var(--accent);border-radius:20px;position:relative;}
+.sw span{position:absolute;right:2px;top:2px;width:13px;height:13px;background:#fff;border-radius:50%;}
+/* content */
+.content{padding:20px 22px;overflow-y:auto;}
+.eyebrow{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);}
+.h1{font-size:19px;font-weight:600;letter-spacing:-.01em;}
+.card{background:var(--side);border:1px solid var(--line);border-radius:12px;padding:15px 16px;}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;}
+.tile .n{font-size:25px;font-weight:600;letter-spacing:-.02em;line-height:1;}
+.tile .l{font-size:12px;color:var(--ink2);margin-top:5px;font-weight:500;}
+.pill{font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;display:inline-block;}
+.p-review{background:var(--warn-bg);color:var(--warn);}
+.p-blocked{background:var(--danger-bg);color:var(--danger);}
+.p-ready{background:var(--ok-bg);color:var(--ok);}
+.p-live{background:var(--panel2);color:var(--ink2);}
+.row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);cursor:pointer;}
+.row:last-child{border-bottom:none;}
+.row:hover{background:var(--panel);}
+.btn{height:34px;padding:0 15px;border-radius:7px;font-size:13px;font-weight:500;border:1px solid var(--line2);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{border-color:var(--accent);}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#06152b;font-weight:600;}
+.btn-danger{border-color:var(--danger);color:var(--danger);background:transparent;}
+.thumb{width:40px;height:40px;border-radius:8px;background:var(--panel2);display:flex;align-items:center;justify-content:center;color:var(--ink3);flex-shrink:0;}
+.screen{display:none;}.screen.on{display:block;}
+.back{background:none;border:none;color:var(--ink2);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:0;}
+.tabs{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;}
+.tab{font-size:12px;padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:transparent;color:var(--ink2);cursor:pointer;}
+.tab.on{background:var(--accent);color:#06152b;border-color:var(--accent);font-weight:600;}
+.bar{height:6px;border-radius:3px;background:var(--panel2);overflow:hidden;}
+.bar>span{display:block;height:100%;background:var(--accent);}
+.acct{background:var(--side);border:1px solid var(--line);border-radius:12px;padding:14px 15px;cursor:pointer;}
+.acct:hover{border-color:var(--line2);}
+.fld{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:8px;}
+.fld .k{font-size:11px;color:var(--ink3);margin-bottom:3px;}
+.fld input,.fld textarea{width:100%;border:none;background:none;font-family:inherit;font-size:13px;color:var(--ink);resize:vertical;outline:none;}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+</style></head>
+<body>
+<div class="app">
+
+  <nav class="side">
+    <div class="logo"><div class="t">AltaScraper</div><div class="s">listing operations</div></div>
+    <div class="nav">
+      <div class="lbl">Workspace</div>
+      <a id="nav-accounts" class="on" onclick="go('accounts')"><i class="ti ti-building-store"></i> Accounts</a>
+      <a id="nav-dashboard" onclick="go('dashboard')"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
+      <a id="nav-queue" onclick="go('queue')"><i class="ti ti-list-check"></i> Listings <span class="b">6</span></a>
+      <div class="lbl">Growth</div>
+      <a onclick="go('queue')"><i class="ti ti-chart-bar"></i> PPC</a>
+      <a onclick="go('queue')"><i class="ti ti-package"></i> Inventory</a>
+      <a onclick="go('queue')"><i class="ti ti-refresh"></i> Sync</a>
+    </div>
+    <div class="foot"><div class="acctpill"><span class="dot"></span><span style="font-size:12px;color:var(--ink2);">New UI</span><span class="sw" style="margin-left:auto;"><span></span></span></div></div>
+  </nav>
+
+  <div class="main">
+    <div class="top">
+      <span class="ttl">AltaScraper</span><span class="sep"></span><span class="sub" id="crumb">All accounts</span>
+      <span class="statusbadge"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok);"></span> 5 of 6 healthy</span>
+    </div>
+    <div class="content">
+
+      <!-- ACCOUNTS -->
+      <section id="s-accounts" class="screen on">
+        <p class="eyebrow" style="margin-bottom:4px;">Your operation</p>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;"><h1 class="h1">Accounts</h1><span style="font-size:12px;color:var(--ink2);">6 connected · <span style="color:var(--warn);">9 need you</span></span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;">
+          <div class="acct" onclick="go('dashboard')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:600;">Jack Reacherd</span><span class="dot"></span></div>
+            <p style="font-size:12px;color:var(--ink3);margin-bottom:10px;">UK · A34CMN3Q5Q4U3Z</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="pill p-review">3 review</span><span class="pill p-blocked">1 blocked</span><span class="pill p-live">88 live</span></div>
+          </div>
+          <div class="acct" onclick="go('dashboard')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:600;">Selvora</span><span class="dot"></span></div>
+            <p style="font-size:12px;color:var(--ink3);margin-bottom:10px;">UK · AV6F4N8287Q6F</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="pill p-review">2 review</span><span class="pill p-ready">14 ready</span><span class="pill p-live">41 live</span></div>
+          </div>
+          <div class="acct" onclick="go('dashboard')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:600;">Nestwell</span><span class="dot"></span></div>
+            <p style="font-size:12px;color:var(--ink3);margin-bottom:10px;">UK · A8YN8LJZAAYT4</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="pill p-review">2 review</span><span class="pill p-live">38 live</span></div>
+          </div>
+          <div class="acct" onclick="go('dashboard')">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="font-weight:600;">Sheelady</span><span class="dot red"></span></div>
+            <p style="font-size:12px;color:var(--ink3);margin-bottom:10px;">US · deactivated</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;"><span class="pill p-blocked">suspended</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section id="s-dashboard" class="screen">
+        <button class="back" onclick="go('accounts')"><i class="ti ti-arrow-left"></i> All accounts</button>
+        <div style="margin-bottom:14px;"><h1 class="h1">Jack Reacherd (UK)</h1><p style="font-size:12px;color:var(--ink3);margin-top:3px;"><span style="color:var(--warn);">4 need you</span> · synced 2m ago</p></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;">
+          <div class="tile" onclick="go('queue')" style="cursor:pointer;"><p class="n" style="color:var(--warn);">3</p><p class="l">Need review</p></div>
+          <div class="tile" onclick="go('queue')" style="cursor:pointer;"><p class="n" style="color:var(--danger);">1</p><p class="l">Blocked</p></div>
+          <div class="tile" onclick="go('queue')" style="cursor:pointer;"><p class="n" style="color:var(--ok);">12</p><p class="l">Ready</p></div>
+          <div class="tile" onclick="go('queue')" style="cursor:pointer;"><p class="n">88</p><p class="l">Live</p></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:12px;margin-bottom:12px;">
+          <div class="card">
+            <p class="eyebrow" style="margin-bottom:10px;">Needs you first</p>
+            <div class="row" onclick="go('detail')"><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;">FPV drone goggles 600mW</p><p style="font-size:11px;color:var(--danger);margin-top:2px;">UK prohibited · Ofcom</p></div><span class="pill p-blocked">Blocked</span></div>
+            <div class="row" onclick="go('detail')"><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;">Window cleaner pole 3.5m</p><p style="font-size:11px;color:var(--ink3);margin-top:2px;">ready to check</p></div><span class="pill p-review">Review</span></div>
+            <div class="row" onclick="go('detail')"><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;">Ceiling fan 52-inch remote</p><p style="font-size:11px;color:var(--ink3);margin-top:2px;">ready to check</p></div><span class="pill p-review">Review</span></div>
+          </div>
+          <div class="card">
+            <p class="eyebrow" style="margin-bottom:10px;">Compliance watch</p>
+            <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:10px;"><span style="font-size:23px;font-weight:600;color:var(--danger);">1</span><span style="font-size:12px;color:var(--ink2);">flagged now</span></div>
+            <div style="font-size:12px;color:var(--ink2);line-height:1.95;">
+              <div style="display:flex;justify-content:space-between;"><span>Prohibited</span><span style="color:var(--danger);font-weight:600;">1</span></div>
+              <div style="display:flex;justify-content:space-between;"><span>Reference categories</span><span style="font-weight:600;">38</span></div>
+            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:11px;justify-content:center;">Check a product</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:12px;">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;"><p class="eyebrow">PPC · last 7 days</p><span style="font-size:11px;color:var(--ink3);">4 campaigns</span></div>
+            <div style="display:flex;gap:18px;margin-bottom:12px;">
+              <div><p style="font-size:19px;font-weight:600;letter-spacing:-.02em;">£342</p><p style="font-size:11px;color:var(--ink3);">Spend</p></div>
+              <div><p style="font-size:19px;font-weight:600;letter-spacing:-.02em;">£1,410</p><p style="font-size:11px;color:var(--ink3);">Sales</p></div>
+              <div><p style="font-size:19px;font-weight:600;letter-spacing:-.02em;color:var(--ok);">24%</p><p style="font-size:11px;color:var(--ink3);">ACOS</p></div>
+            </div>
+            <svg viewBox="0 0 320 50" style="width:100%;height:46px;" preserveAspectRatio="none"><polyline points="0,38 53,34 106,36 159,26 212,28 265,18 320,14" fill="none" stroke="#5b8fd4" stroke-width="2"/><polyline points="0,38 53,34 106,36 159,26 212,28 265,18 320,14 320,50 0,50" fill="#12294f"/></svg>
+          </div>
+          <div class="card">
+            <p class="eyebrow" style="margin-bottom:10px;">Inventory alerts</p>
+            <div class="row" style="cursor:default;"><div style="flex:1;"><p style="font-size:13px;font-weight:500;">Ceiling fan 52-inch</p><div class="bar" style="margin-top:5px;"><span style="width:12%;background:var(--danger);"></span></div></div><span style="font-size:11px;color:var(--danger);font-weight:600;">3 left</span></div>
+            <div class="row" style="cursor:default;"><div style="flex:1;"><p style="font-size:13px;font-weight:500;">Selfie stick tripod</p><div class="bar" style="margin-top:5px;"><span style="width:34%;background:var(--warn);"></span></div></div><span style="font-size:11px;color:var(--warn);font-weight:600;">11 left</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- QUEUE -->
+      <section id="s-queue" class="screen">
+        <button class="back" onclick="go('dashboard')"><i class="ti ti-arrow-left"></i> Dashboard</button>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;"><h1 class="h1">Listings</h1><span style="font-size:12px;color:var(--ink3);">Jack Reacherd (UK)</span></div>
+        <div class="tabs"><button class="tab on">All</button><button class="tab">Needs review</button><button class="tab">Blocked</button><button class="tab">Ready</button><button class="tab">Live</button></div>
+        <div class="card" style="padding:4px 16px;">
+          <div class="row" onclick="go('detail')"><div class="thumb"><i class="ti ti-photo"></i></div><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Telescopic window cleaner pole 3.5m squeegee</p><p style="font-size:12px;color:var(--ink3);margin-top:2px;">£12.49 · 4 img · <span style="color:var(--ok);">clear</span></p></div><span class="pill p-review">Needs review</span><button class="btn btn-primary" onclick="event.stopPropagation();go('detail')">Review</button></div>
+          <div class="row" onclick="go('detail')"><div class="thumb"><i class="ti ti-photo"></i></div><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FPV drone goggles 5.8GHz 600mW</p><p style="font-size:12px;color:var(--ink3);margin-top:2px;">£89 · 6 img · <span style="color:var(--danger);">UK prohibited</span></p></div><span class="pill p-blocked">Blocked</span><button class="btn btn-danger" onclick="event.stopPropagation();go('detail')">See why</button></div>
+          <div class="row" onclick="go('detail')"><div class="thumb"><i class="ti ti-photo"></i></div><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Heavy duty coir and rubber scraper mat</p><p style="font-size:12px;color:var(--ink3);margin-top:2px;">£23.99 · 4 img · <span style="color:var(--ok);">clear</span></p></div><span class="pill p-ready">Ready</span><button class="btn btn-primary" onclick="event.stopPropagation();go('detail')">Submit</button></div>
+          <div class="row" onclick="go('detail')"><div class="thumb"><i class="ti ti-photo"></i></div><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Car seat gap filler organiser 2-pack</p><p style="font-size:12px;color:var(--ink3);margin-top:2px;">£15.99 · 5 img · live 3 days</p></div><span class="pill p-live">Live</span><button class="btn" onclick="event.stopPropagation();go('detail')">View</button></div>
+        </div>
+      </section>
+
+      <!-- DETAIL -->
+      <section id="s-detail" class="screen">
+        <button class="back" onclick="go('queue')"><i class="ti ti-arrow-left"></i> Listings</button>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;"><h1 class="h1" style="max-width:70%;">Telescopic window cleaner pole 3.5m squeegee mop conservatory kit</h1><span class="pill p-review">Needs review</span></div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+          <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+          <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+          <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+          <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 13px;background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:9px;margin-bottom:14px;"><i class="ti ti-shield-check" style="color:var(--ok);"></i><span style="font-size:13px;color:var(--ok);">Compliance clear — no restricted-product or claim flags</span></div>
+        <div class="fld"><p class="k">Title</p><input value="Telescopic window cleaner pole 3.5m squeegee mop conservatory kit"></div>
+        <div class="fld"><p class="k">Price</p><input value="£12.49" style="max-width:120px;"></div>
+        <div class="fld"><p class="k">Bullet points</p><textarea rows="3">Extendable 3.5m reach for high windows and conservatory roofs. Dual squeegee + microfibre mop head. Lightweight aluminium, lock-tight sections.</textarea></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:14px;">
+          <button class="btn btn-primary">Approve</button>
+          <button class="btn"><i class="ti ti-wand"></i> Auto-fix</button>
+          <button class="btn" onclick="go('optimize')"><i class="ti ti-trending-up"></i> Optimize</button>
+          <span style="flex:1;"></span>
+          <button class="btn" aria-label="More"><i class="ti ti-dots"></i></button>
+        </div>
+      </section>
+
+      <!-- OPTIMIZE (matches the app's real editor: editable fields + all-attributes + AI optimize copy + review before push) -->
+      <section id="s-optimize" class="screen">
+        <button class="back" onclick="go('detail')"><i class="ti ti-arrow-left"></i> Listing</button>
+        <h1 class="h1" style="margin-bottom:4px;">Optimize listing</h1>
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;background:var(--warn-bg);border:1px solid #4a3410;border-radius:9px;margin:12px 0 16px;">
+          <i class="ti ti-alert-triangle" style="color:var(--warn);"></i>
+          <span style="font-size:12px;color:var(--warn);">Editing a <b>LIVE</b> listing · Jack Reacherd (UK) · ASIN B09BNLQG2Q · SKU 8.99_5Days · nothing is sent to Amazon until you review and approve each field.</span>
+        </div>
+
+        <p class="eyebrow" style="margin-bottom:10px;">Core listing fields</p>
+        <div class="fld"><p class="k">Title</p><input value="Telescopic window cleaner pole 3.5m squeegee mop conservatory kit"></div>
+        <div class="fld"><p class="k">Bullet points</p><textarea rows="4">Extendable 3.5m reach for high windows and conservatory roofs.
+Dual squeegee + microfibre mop head for streak-free cleaning.
+Lightweight aluminium with lock-tight sections.
+Universal fit — indoor and outdoor use.</textarea></div>
+        <div class="fld"><p class="k">Description</p><textarea rows="3">Reach every high window and conservatory roof without a ladder. The 3.5m telescopic pole locks at any length, and the dual squeegee-and-mop head wipes glass streak-free in one pass.</textarea></div>
+
+        <div class="card" style="margin:8px 0 14px;padding:0;overflow:hidden;">
+          <div style="padding:12px 15px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="var x=document.getElementById('allattrs');x.style.display=x.style.display==='none'?'block':'none';">
+            <span style="font-size:13px;font-weight:500;">All other attributes (24) — required &amp; optional, exactly as Amazon has them</span>
+            <i class="ti ti-chevron-down" style="color:var(--ink3);"></i>
+          </div>
+          <div id="allattrs" style="display:none;border-top:1px solid var(--line);padding:6px 15px 12px;">
+            <div class="fld" style="margin-top:10px;"><p class="k">material</p><input value="Aluminium"></div>
+            <div class="fld"><p class="k">handle_length · value</p><input value="3.5" style="max-width:120px;"></div>
+            <div class="fld"><p class="k">handle_length · unit</p><input value="metres" style="max-width:120px;"></div>
+            <div class="fld" style="margin-bottom:0;"><p class="k">item_form</p><input value="Extendable pole"></div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn" style="border-color:#5b3fb8;color:#b9a5f0;"><i class="ti ti-wand"></i> AI optimize copy</button>
+          <button class="btn btn-primary"><i class="ti ti-eye"></i> Review changes before pushing</button>
+          <button class="btn">Cancel</button>
+          <span style="flex:1;"></span>
+          <button class="btn" style="border-color:#5b3fb8;color:#b9a5f0;"><i class="ti ti-wand"></i> Auto-fix loop</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink3);margin-top:10px;">AI optimize rewrites title, bullets and description for conversions + SEO — you review and edit before pushing. Auto-fix loop runs Suggest → Apply → Preview until Amazon accepts (max 8 rounds).</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+<script>
+  var screens=['accounts','dashboard','queue','detail','optimize'];
+  var crumbs={accounts:'All accounts',dashboard:'Jack Reacherd (UK)',queue:'Jack Reacherd · Listings',detail:'Window cleaner pole',optimize:'Optimize'};
+  function go(name){
+    screens.forEach(function(s){document.getElementById('s-'+s).classList.toggle('on', s===name);});
+    ['accounts','dashboard','queue'].forEach(function(n){var el=document.getElementById('nav-'+n);if(el)el.classList.remove('on');});
+    var navmap={accounts:'accounts',dashboard:'dashboard',queue:'queue',detail:'queue',optimize:'queue'};
+    var nav=document.getElementById('nav-'+navmap[name]);if(nav)nav.classList.add('on');
+    document.getElementById('crumb').textContent=crumbs[name]||'';
+    window.scrollTo(0,0);
+  }
+</script>
+</body></html>
