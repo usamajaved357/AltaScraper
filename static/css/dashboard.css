@@ -68,14 +68,19 @@
   button.danger:hover{background:#8f2626;border-color:#8f2626}
 
   /* ---- top bar (always visible) ---- */
-  .appbar{position:sticky;top:0;z-index:20;background:var(--panel);
+  /* The top bar takes the SIDEBAR colour, not the panel colour, so the bar and
+     the sidebar below it read as one continuous frame around the content. */
+  .appbar{position:sticky;top:0;z-index:20;background:var(--sidebar);
           border-bottom:1px solid var(--line);padding:11px 18px;display:flex;
           align-items:center;gap:12px}
   .appbar .brandmark{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;cursor:pointer}
-  .appbar .brandmark .dot{width:22px;height:22px;border-radius:6px;background:var(--accent);
-        display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+  /* Dark glyph on the teal tile. White on #2dd4a8 is about 1.8:1 and genuinely
+     hard to read; the dark ink is roughly 9:1. Same rule as primary buttons. */
+  .appbar .brandmark .dot{width:22px;height:22px;border-radius:var(--radius-sm);background:var(--accent);
+        display:flex;align-items:center;justify-content:center;color:#0a1628;
+        font-size:13px;font-weight:700}
   .appbar .spacer{flex:1}
-  .appbar .barbtn{font-size:13px;color:var(--muted);background:transparent;border:1px solid transparent;
+  .appbar .barbtn{font-size:13px;color:var(--ink2);background:transparent;border:1px solid transparent;
         padding:6px 10px;border-radius:8px;cursor:pointer}
   .appbar .barbtn:hover{background:var(--panel2);color:var(--ink)}
   .barbtn.privon{color:#ffd479;border-color:#5a4a1e;background:#2a2310}
@@ -208,10 +213,22 @@
   .wsident{display:flex;align-items:center;gap:9px;margin-bottom:18px}
   .wsident .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
   .wsident .nm{font-weight:600;font-size:13.5px}
-  .navitem{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;font-size:13px;
-           color:var(--muted);cursor:pointer;margin-bottom:2px}
+  /* Orbit's active state is a teal LEFT BORDER, not a filled background.
+     The 3px border is declared transparent on every item and only recoloured
+     when active -- declaring it solely on .active would widen the box by 3px at
+     the moment of clicking, so every nav item would twitch sideways as you moved
+     between them. Left padding is 8px rather than 11px for the same reason: 3px
+     of border plus 8px of padding keeps the label on exactly the vertical line
+     it sat on before, in step with the workspace name above it.
+     The radius is dropped on the left so the accent bar reads as a clean edge. */
+  .navitem{display:flex;align-items:center;gap:10px;padding:9px 11px 9px 8px;font-size:13px;
+           color:var(--ink2);cursor:pointer;margin-bottom:2px;
+           border-left:3px solid transparent;
+           border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+           transition:color .12s,background-color .12s,border-color .12s}
   .navitem:hover{background:var(--panel2);color:var(--ink)}
-  .navitem.active{background:rgba(76,141,255,.14);color:#9cc1ff}
+  .navitem.active{background:transparent;border-left-color:var(--accent);color:var(--accent)}
+  .navitem.active:hover{background:var(--panel2)}
   .navitem .ti{font-size:16px;width:18px;text-align:center}
   .wsmain{flex:1;min-width:0;display:flex;flex-direction:column}
   .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
@@ -221,7 +238,10 @@
   .wstoolbar .spacer{flex:1}
   .pill{padding:4px 10px;border-radius:999px;border:1px solid var(--line);
         background:var(--panel2);color:var(--muted);cursor:pointer;font-size:13px}
-  .pill.active{color:#fff;border-color:var(--accent);background:rgba(76,141,255,.15)}
+  /* Was a hardcoded blue fill inside a var(--accent) border. Once the accent
+     turned teal that became a blue pill ringed in teal, which reads as a bug
+     rather than a style. Same fix applied to .tabpill.active and .mktbtn.on. */
+  .pill.active{color:var(--accent2);border-color:var(--accent);background:var(--accent-bg)}
   #summary{padding:8px 20px;color:var(--muted);border-bottom:1px solid var(--line);
            background:var(--panel);font-size:13px}
   /* Run health badge -- sits directly above the log panel. Colour is the state,
@@ -720,7 +740,7 @@
            background:var(--panel2);border:1px solid var(--line);color:#c2c9d6;
            display:inline-flex;align-items:center;gap:6px;line-height:1.2}
   .tabpill:hover{border-color:#3a465c;color:#e8eaed}
-  .tabpill.active{background:rgba(76,141,255,.16);border-color:var(--accent);color:#fff;font-weight:600}
+  .tabpill.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent2);font-weight:600}
   .tabpill .tabcount{font-size:10.5px;padding:0 6px;border-radius:999px;
                      background:rgba(255,255,255,.06);color:var(--muted);
                      font-variant-numeric:tabular-nums}
@@ -996,7 +1016,7 @@
   .mktswitch{display:flex;gap:4px;align-items:center;margin-right:8px}
   .mktbtn{font-size:12px;padding:5px 11px;border-radius:8px;background:var(--panel2);
           border:1px solid var(--line);color:var(--muted);cursor:pointer}
-  .mktbtn.on{background:rgba(76,141,255,.16);border-color:var(--accent);color:#fff;font-weight:600}
+  .mktbtn.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent2);font-weight:600}
   .mktlabel{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .browsemodels{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--accent);
                 text-decoration:none;padding:7px 11px;border:1px solid #2f3a4d;border-radius:8px}
