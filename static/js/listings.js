@@ -536,17 +536,34 @@ function summary(){
   let total = _tabRows.length;
   if(LIST_SOURCE==='live') total = liveCount;
   else if(LIST_SOURCE==='all') total = _tabRows.length + liveCount;
+  // Orbit's four metric tiles replace the old one-line text summary. Each is
+  // clickable and filters the list to that status -- the count was always the
+  // question "which ones need me?", and it now answers it in one click instead
+  // of sending you to the dropdown.
+  //
+  // The counts below the tiles (errors, preview-ready, duplicates) are kept as a
+  // quiet line: they matter, but not enough to spend one of four tiles on, and
+  // dropping them would lose information the old summary gave you.
+  const _cur = (typeof FILTER !== "undefined") ? FILTER : "all";
+  const tile = (n, label, filter) =>
+    `<div class="metric${_cur===filter?' on':''}" onclick="metricFilter('${filter}')"
+          title="Show only these">
+       <p class="n">${n}</p><p class="l">${label}</p></div>`;
+  const extras = [];
+  if(c.ERROR)      extras.push(`<span style="color:var(--red)">${c.ERROR} error</span>`);
+  if(c.API_READY)  extras.push(`<span style="color:var(--accent2)">${c.API_READY} preview-ready</span>`);
+  if(c.HOLD)       extras.push(`<span style="color:var(--red)">${c.HOLD} on hold</span>`);
+  if(countDuplicateSkus()>0){
+    extras.push(`<span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`);
+  }
   document.getElementById("summary").innerHTML =
-    `<b style="color:#e8eaed">${total}</b> listings &nbsp;·&nbsp; `+
-    `${c.NEEDS_REVIEW} needs review &nbsp;·&nbsp; `+
-    `<span style="color:var(--red)">${c.HOLD} on hold</span> &nbsp;·&nbsp; `+
-    `<span style="color:var(--red)">${c.ERROR} error</span> &nbsp;·&nbsp; `+
-    `<span style="color:var(--ok)">${c.APPROVED} approved</span> &nbsp;·&nbsp; `+
-    `<span style="color:var(--accent2)">${c.API_READY} preview-ready</span> &nbsp;·&nbsp; `+
-    `<span style="color:var(--ok)">${c.LIVE} live</span>`+
-    ((countDuplicateSkus()>0)
-      ? ` &nbsp;·&nbsp; <span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`
-      : "");
+    `<div class="metricgrid">`
+    + tile(total,          "Total listings", "all")
+    + tile(c.NEEDS_REVIEW, "Needs review",   "review")
+    + tile(c.APPROVED,     "Ready to submit","approved")
+    + tile(c.LIVE,         "Live",           "live")
+    + `</div>`
+    + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
 }
 
 // Pull a LIVE listing's real data (every Amazon image: main + all secondary) into the row, so
@@ -892,6 +909,155 @@ function drawerContent(r){
     ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+}
+
+// Clicking a metric tile filters the list. It also moves the status dropdown to
+// match: two controls driving one filter that disagree about its value is worse
+// than having only one of them.
+function metricFilter(v){
+  const sel = document.getElementById("statussel");
+  if(sel) sel.value = v;
+  if(typeof setFilterVal === "function") setFilterVal(v);
+}
+
+// ===================== TABLE VIEW =====================================
+// Orbit shows listings as a data table, not a card grid. Both exist: table is
+// the default, the tile grid is one click away, and card() is untouched.
+//
+// The preference is per-browser (localStorage), not per-account: it is a
+// preference about how YOU read a list, not a property of the workspace.
+
+let LIST_VIEW = "table";
+try{ LIST_VIEW = localStorage.getItem("alta_list_view") || "table"; }catch(e){}
+
+// Sync the DOM to whatever LIST_VIEW currently is. Separate from setListView()
+// so it can run on page load without triggering a render before there are any
+// rows to draw.
+function applyListView(){
+  document.querySelectorAll("#viewtoggle button").forEach(function(b){
+    b.classList.toggle("on", b.dataset.view === LIST_VIEW);
+  });
+  const g = document.getElementById("grid");
+  if(g) g.classList.toggle("tableview", LIST_VIEW === "table");
+}
+
+function setListView(v){
+  LIST_VIEW = (v === "grid") ? "grid" : "table";
+  try{ localStorage.setItem("alta_list_view", LIST_VIEW); }catch(e){}
+  applyListView();
+  if(typeof render === "function") render();
+}
+
+// The top-bar health badge. Wired to /healthz so it reports something REAL --
+// can the browser still reach the server? A badge that always reads "healthy"
+// is decoration, and worse than nothing, because it looks like a check.
+async function pollHealth(){
+  const el = document.getElementById("healthbadge");
+  const t  = document.getElementById("healthtxt");
+  if(!el) return;
+  try{
+    const r = await fetch("/healthz", {cache:"no-store"});
+    const ok = r.ok;
+    el.classList.toggle("bad", !ok);
+    if(t) t.textContent = ok ? "System healthy" : "Server error";
+  }catch(e){
+    el.classList.add("bad");
+    if(t) t.textContent = "Server unreachable";
+  }
+}
+
+window.addEventListener("DOMContentLoaded", function(){
+  applyListView();
+  pollHealth();
+  setInterval(pollHealth, 60000);
+});
+
+// One block of listings, drawn the way the user has chosen. Every place that
+// used to say rows.map(card).join("") calls this instead, so the two views can
+// never drift apart into "the table forgot about claimed rows".
+function listBlock(rows, fn){
+  fn = fn || card;
+  if(!rows || !rows.length) return "";
+  if(LIST_VIEW !== "table") return rows.map(fn).join("");
+  const rowFn = (fn === (typeof liveTile === "function" ? liveTile : null))
+                ? liveTableRow : tableRow;
+  return `<div class="card ltwrap"><table class="lt"><thead><tr>
+      <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
+      <th>Price</th><th>Handling</th><th>Status</th><th>Compliance</th>
+      <th style="width:120px">Actions</th></tr></thead><tbody>`
+    + rows.map(rowFn).join("") + `</tbody></table></div>`;
+}
+
+// The compliance cell: one icon and two words, from the SAME data the drawer's
+// banner reads, so a row cannot say "clear" while its detail says "prohibited".
+function _compCell(r){
+  const rr = r.restricted, v = r.viability;
+  if(!rr && !v) return `<span class="comp cc">—</span>`;
+  if(rr && rr.matched && (rr.matches||[]).some(m=>m.tier==="PROHIBITED")){
+    return `<span class="comp" style="color:var(--red)"><i class="ti ti-shield-x"></i> prohibited</span>`;
+  }
+  if(rr && rr.matched){
+    return `<span class="comp" style="color:var(--warn)"><i class="ti ti-shield-half"></i> gated</span>`;
+  }
+  if(v && v.matched){
+    const n = (v.risks||[]).length;
+    return `<span class="comp" style="color:var(--warn)"><i class="ti ti-file-text"></i> needs docs${n?` (${n})`:""}</span>`;
+  }
+  return `<span class="comp" style="color:var(--ok)"><i class="ti ti-shield-check"></i> clear</span>`;
+}
+
+function _statusPill(s){
+  return `<span class="badge ${badgeClass(s)}">${esc(s||"—")}</span>`;
+}
+
+function tableRow(r){
+  // Same image source the tile uses, so the two views cannot disagree about
+  // which picture belongs to a listing.
+  const urls = (typeof _rowImages === "function") ? (_rowImages(r) || []) : [];
+  const thumb = urls.length
+    ? `<div class="thumb"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
+    : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
+  const price = r.price ? `${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}` : "—";
+  const hand  = r.handling_days || r.handling_time || "";
+  const asin  = r.asin
+    ? `<span class="asin">${esc(r.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></span>`
+    : `<span class="cc">no ASIN</span>`;
+  return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}">
+    <td class="pii-img">${thumb}</td>
+    <td>${asin}<br><span class="sku pii">${esc(r.sku||'')}</span></td>
+    <td><span class="ttl pii">${esc(r.title||'(no title)')}</span>
+        ${r.brand?`<span class="brand pii">${esc(r.brand)}</span>`:''}</td>
+    <td class="price">${price}</td>
+    <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
+    <td>${_statusPill(r.status)}</td>
+    <td>${_compCell(r)}</td>
+    <td><div class="acts">
+      <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
+      <button class="dotb" title="More" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-dots"></i></button>
+    </div></td></tr>`;
+}
+
+// Amazon-catalog rows. They are NOT sheet rows -- no SKU to open a drawer with
+// and nothing editable -- so the row does not pretend to be clickable.
+function liveTableRow(it){
+  const img = it.image || it.img || "";
+  const thumb = img
+    ? `<div class="thumb"><img src="${esc(img)}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
+    : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
+  const price = it.price ? `${CUR_SYMBOL}${esc(String(it.price).replace(/^[A-Z]{3}\s?/,''))}` : "—";
+  const c = it.compliance;
+  const comp = (c && (c.risks||[]).length)
+    ? `<span class="comp" style="color:${(c.risks||[]).some(x=>x.risk==="HIGH")?"var(--red)":"var(--warn)"}"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`
+    : `<span class="comp cc">—</span>`;
+  return `<tr style="cursor:default" title="${esc(it.title||'')}">
+    <td class="pii-img">${thumb}</td>
+    <td><span class="asin">${esc(it.asin||'')}</span><br><span class="sku pii">${esc(it.sku||'')}</span></td>
+    <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span></td>
+    <td class="price">${price}</td>
+    <td><span class="cc">—</span></td>
+    <td><span class="badge b-LIVE">LIVE</span></td>
+    <td>${comp}</td>
+    <td><div class="acts"><button class="dotb" title="On Amazon, not in your sheet"><i class="ti ti-brand-amazon"></i></button></div></td></tr>`;
 }
 
 // ---- COMPLIANCE BANNER (detail view) ------------------------------------

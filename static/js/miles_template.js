@@ -483,7 +483,10 @@ function render(){
        </div>`
     : "");
   // SOURCE: drafts (app rows) / live (Amazon catalog) / all (both)
-  let draftHtml = real.length ? real.map(card).join("") : "";
+  // listBlock() draws either the tile grid or the Orbit table, depending on the
+  // saved view preference. Every group goes through it, so a new view can never
+  // support "drafts" but silently forget "claimed" or "live".
+  let draftHtml = listBlock(real);
   // DEDUPE: the same SKU can exist BOTH as an app row marked LIVE and as an
   // Amazon-catalog tile (fetched from Seller Central). Showing both makes one
   // real listing appear twice. Prefer the app row (it has the edit controls +
@@ -507,9 +510,9 @@ function render(){
   // counted as live. Usually: submitted but not yet published, killed by Amazon, or
   // written into the wrong account's tab.
   const _claimSub = '<div class="srcsub" style="color:var(--warn)"><i class="ti ti-alert-triangle"></i> Your sheet says LIVE, but Amazon did not return these — not live</div>';
-  let liveHtml  = (liveRows.length ? _bothSub + liveRows.map(card).join("") : "")
-                + (liveCatalog.length ? _amzSub + liveCatalog.map(liveTile).join("") : "");
-  const claimedHtml = claimedRows.length ? _claimSub + claimedRows.map(card).join("") : "";
+  let liveHtml  = (liveRows.length ? _bothSub + listBlock(liveRows) : "")
+                + (liveCatalog.length ? _amzSub + listBlock(liveCatalog, liveTile) : "");
+  const claimedHtml = claimedRows.length ? _claimSub + listBlock(claimedRows) : "";
   if(LIST_SOURCE==="live"){
     grid.innerHTML = (liveHtml || `<div class="empty">No live listings synced yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync ${esc(WS_MARKET)} from Amazon now</button><div class="cc" style="margin-top:8px">Sync pulls your live listings and their real data (images, A+, bullets, description, item-type-keyword, variations) from Amazon. The first sync can take 1–4 minutes.</div>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
       + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'');
@@ -531,7 +534,7 @@ function render(){
         || (_pubSku.size>0  && _pubSku.has(_norm(r.sku)))
         || (_pubAsin.size>0 && r.asin && _pubAsin.has(_norm(r.asin)));
     const draftsOnly = realAll.filter(r=>!_published(r));
-    const draftsHtml = draftsOnly.length ? draftsOnly.map(card).join("") : "";
+    const draftsHtml = listBlock(draftsOnly);
     const _liveHere = realAll.length - draftsOnly.length;   // published rows hidden from Drafts
     grid.innerHTML = note
       + (draftsHtml?('<div class="srcgroup">Drafts (not yet live on Amazon)</div>'+draftsHtml):'')

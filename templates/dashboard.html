@@ -17,9 +17,11 @@
   </div>
   <div class="crumbs" id="crumbs"></div>
   <span class="spacer"></span>
-  <button class="barbtn" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</button>
-  <button class="barbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i> Privacy</button>
-  <button class="barbtn" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</button>
+  <!-- Orbit keeps the top bar sparse: breadcrumb left, health badge right.
+       Research ASIN and AI settings moved into the sidebar (below the nav,
+       above the footer). Privacy stays here but icon-only. -->
+  <span class="hb" id="healthbadge" title="App health"><span class="dot"></span><span id="healthtxt">System healthy</span></span>
+  <button class="barbtn iconbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i></button>
   <!-- Shown only to people who may manage users. Hiding it is a courtesy, not the
        control: the server refuses /users/* to everyone else regardless. -->
   <button class="barbtn" id="usersbtn" onclick="openUsers()" style="display:none" title="Add people and choose what each of them can do"><i class="ti ti-users"></i> Users</button>
@@ -56,6 +58,13 @@
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
+
+    <!-- Tools moved down from the top bar, per the Orbit layout: they are
+         occasional actions, not navigation, so they sit below the nav and above
+         the footer under their own label. -->
+    <div class="slbl">Tools</div>
+    <div class="navitem" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</div>
+    <div class="navitem" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</div>
   </div>
 
   <div class="wsmain">
@@ -83,6 +92,10 @@
           <option value="approved">Approved</option>
           <option value="live">Live</option>
         </select>
+        <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
+          <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
+          <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
+        </span>
         <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no sheet row needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
         <button class="ghost" onclick="refreshView()" title="Reload this workspace's sheet rows, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
       </div>
