@@ -1,0 +1,18 @@
+# Extra dependencies for the SQLite beta ONLY.
+#
+# Kept separate from requirements.txt on purpose: the migration brief says not to
+# modify any existing file, and the live app must not gain a dependency it does
+# not use. Install alongside the normal requirements:
+#
+#     pip install -r requirements.txt -r requirements-beta.txt
+#
+# SQLite itself needs nothing -- it is in the Python standard library.
+# APScheduler is optional: without it the beta still runs and jobs can be
+# triggered by hand at /sync/run/<job_type>; only the timers are unavailable.
+
+apscheduler>=3.10.0
+
+# gunicorn is for running the beta as a real WSGI server on Linux
+# (gunicorn dashboard_beta:app -w 2 -b 0.0.0.0:5001). It does not run on
+# Windows, so it is listed but not required for local development.
+gunicorn>=21.2.0 ; platform_system != "Windows"
