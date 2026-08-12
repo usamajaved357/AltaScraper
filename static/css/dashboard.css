@@ -1,8 +1,60 @@
+  /* ====================== ORBIT DESIGN SYSTEM ======================
+     The app's only style. The opt-in navy #altui overlay it replaced has been
+     removed entirely -- one UI, one set of tokens.
+
+     NOTE ON THE ALIAS BLOCK BELOW. Orbit names its tokens --ink2/--ok/--warn/
+     --ok-bg; this stylesheet was written against --muted/--green/--amber/
+     --greenbg. Those old names are used ~90 times across 950 lines, and a CSS
+     variable that resolves to nothing does not fall back -- the property is
+     simply dropped. Replacing :root without the aliases would silently strip
+     the colour from every one of those rules: muted text turning default white,
+     status pills losing their backgrounds. So the old names are kept as aliases
+     pointing at the new Orbit values. Identical result on screen, nothing
+     breaks, and they can be retired file-by-file later. ================== */
   :root{
-    --bg:#0f1115; --panel:#181b22; --panel2:#1f232c; --line:#2a2f3a;
-    --ink:#e8eaed; --muted:#9aa3b2; --accent:#4c8dff;
-    --green:#1f7a3d; --greenbg:#15301f; --amber:#9a6b00; --amberbg:#2e2510;
-    --red:#a12a2a; --redbg:#2e1414; --sidebar:#14171d;
+    /* Backgrounds */
+    --bg:#1a1d23;            /* main app background -- charcoal, not black */
+    --sidebar:#13151a;       /* sidebar, slightly darker than bg */
+    --panel:#1e2128;         /* cards, panels, modals */
+    --panel2:#252930;        /* elevated panels, hover states */
+    --panel3:#2c3038;        /* active/selected panel backgrounds */
+
+    /* Borders */
+    --line:#2a2e36;
+    --line2:#363b45;
+
+    /* Text */
+    --ink:#e8eaed;  --ink2:#9aa3b2;  --ink3:#6b7280;  --ink4:#4b5563;
+
+    /* Accent -- teal */
+    --accent:#2dd4a8;  --accent2:#5ee8c2;
+    --accent-bg:#0d2e25;  --accent-line:#1a4a3d;
+
+    /* Financial -- gold. Price, profit, margin, ROI, ACOS. */
+    --gold:#f0b429;  --gold-bg:#2a2310;  --gold-line:#4a3d1a;
+
+    /* Status */
+    --ok:#4ade80;    --ok-bg:#0f1f14;    --ok-line:#1a4a28;
+    --warn:#f59e0b;  --warn-bg:#241a05;  --warn-line:#4a3510;
+    --red:#ef4444;   --red-bg:#2a0f0f;   --red-line:#4a1a1a;
+
+    /* Radius */
+    --radius-sm:6px;  --radius:10px;  --radius-lg:14px;
+
+    /* ---- compatibility aliases (see the note above) ---- */
+    --muted:var(--ink2);
+    --green:var(--ok);      --greenbg:var(--ok-bg);
+    --amber:var(--warn);    --amberbg:var(--warn-bg);
+    --redbg:var(--red-bg);
+
+    /* These four were used but NEVER defined, before this change -- a
+       pre-existing bug, not something the Orbit swap introduced. --bd and
+       --card carry their own fallbacks so they merely rendered a stray grey,
+       but --fg (.claimtext) and --text (.howbox b, howworks.js) had none, so
+       the browser dropped those colour declarations outright. Defining them
+       costs nothing and brings all four into the Orbit palette. */
+    --fg:var(--ink);        --text:var(--ink);
+    --bd:var(--line);       --card:var(--panel);
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
@@ -79,13 +131,11 @@
   .homehd{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px}
   .wsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
 
-  /* ===== Opt-in new dashboard (Stage 1). Uses the app's own theme vars. ===== */
+  /* The .newui-toggle pill lived here; it switched between the classic UI and the
+     navy #altui overlay. Both the toggle and the overlay are gone -- Orbit is the
+     only style now, so there is nothing to switch between. */
   .homebar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
-  .newui-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);
-                cursor:pointer;border:1px solid var(--line);background:var(--panel2);
-                padding:5px 10px;border-radius:20px;user-select:none}
-  .newui-toggle input{accent-color:var(--accent);cursor:pointer}
-  .db-warn-amber{color:#e3b768} .db-warn-red{color:#ef9a9a} .db-ok{color:#7fd99a}
+  .db-warn-amber{color:var(--warn)} .db-warn-red{color:var(--red)} .db-ok{color:var(--ok)}
   .db-greet{font-size:18px;font-weight:600;margin:0 0 4px}
   .db-sub{font-size:13px;color:var(--muted);margin:0 0 16px}
   .db-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
