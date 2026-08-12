@@ -2,10 +2,10 @@
 function _srcBadge(src){
   var map={
     'eBay':['var(--ok-bg)','var(--ok)','eBay source'],
-    'Amazon competitor (SP-API)':['#15233a','var(--accent2)','Amazon competitor'],
-    'AI knowledge':['#2a2440','#c8b6ff','AI knowledge'],
-    'AI inference':['#2e2510','var(--warn)','AI inference'],
-    'none':['#2e1414','var(--red)','no source']
+    'Amazon competitor (SP-API)':['var(--accent-bg)','var(--accent2)','Amazon competitor'],
+    'AI knowledge':['var(--ai-bg2)','var(--ai)','AI knowledge'],
+    'AI inference':['var(--warn-bg)','var(--warn)','AI inference'],
+    'none':['var(--red-bg)','var(--red)','no source']
   };
   var m=map[src]||map['AI inference'];
   return '<span class="srcbadge" style="background:'+m[0]+';color:'+m[1]+'">'+m[2]+'</span>';
@@ -1413,7 +1413,7 @@ function _fullDataInner(r){
     ? `<div class="kvsec">${imgLabel}</div><div class="imgrow">${imgUrls.map((u,i)=>`<div class="thumbwrap"><a href="${esc(u)}" target="_blank" title="${i===0?'MAIN image':'additional #'+i}"><img class="thumb" src="${esc(u)}" loading="lazy"><span class="thumbcap">${i===0?'main':'#'+i}</span></a><button class="thumbedit" title="Edit this image (AI changes only what you ask)" onclick="editListingImage('${esc(sku)}','${esc(u)}',${i})"><i class="ti ti-wand"></i></button></div>`).join("")}</div>${_imgWarn}${_imgActions}`
     : `<div class="kvsec">Images</div><div class="hint">No image captured for this row.</div>`)
     + `<div class="genimg" id="genimg_${sidv}">
-        <div class="kvsec" style="color:#c8b6ff;margin-top:12px"><i class="ti ti-sparkles"></i> AI image generation</div>
+        <div class="kvsec" style="color:var(--ai);margin-top:12px"><i class="ti ti-sparkles"></i> AI image generation</div>
         <div class="genpanel" id="genpanel_${sidv}" style="display:block">
           <div class="gendiag" id="gendiag_${sidv}">Checking OpenRouter connection…</div>
           <div class="genrow">

@@ -33,6 +33,17 @@
     /* Financial -- gold. Price, profit, margin, ROI, ACOS. */
     --gold:#f0b429;  --gold-bg:#2a2310;  --gold-line:#4a3d1a;
 
+    /* AI / A+ content -- violet. NOT part of the Orbit spec: this is a
+       deliberate addition, kept because it marks a category (A+ content, the
+       Image Studio, AI-sourced suggestions) rather than a status. Folding it
+       into teal would give a stricter palette at the cost of losing that
+       category at a glance. Named here so it is an explicit part of the system
+       instead of a dozen stray hexes that look like something I missed. */
+    --ai:#c8b6ff;         --ai-strong:#e8e0ff;
+    --ai-bg:#1b1530;      --ai-bg2:#3a2d5e;
+    --ai-line:#4a3a7a;    --ai-line2:#5a4a8a;
+    --ai-tint:rgba(120,90,200,.10);
+
     /* Status */
     --ok:#4ade80;    --ok-bg:#0f1f14;    --ok-line:#1a4a28;
     --warn:#f59e0b;  --warn-bg:#241a05;  --warn-line:#4a3510;
@@ -434,7 +445,7 @@
   .thumbedit:hover{background:#143842}
   .thumb{width:88px;height:88px;object-fit:cover;border:1px solid #2c3340;border-radius:6px;background:var(--panel)}
   .thumbcap{position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.7);color:var(--ink);padding:1px 5px;border-radius:4px}
-  .askthis{background:#3a2d5e;color:#e8e0ff;border:1px solid #5a4a8a}
+  .askthis{background:var(--ai-bg2);color:var(--ai-strong);border:1px solid var(--ai-line2)}
   .reqnote{font-size:12px;color:var(--warn);background:#2a2410;border:1px solid var(--warn-line);border-radius:8px;padding:8px 10px;margin:8px 0;line-height:1.5}
   .schemadiag{font-size:11.5px;border-radius:8px;padding:7px 10px;margin:6px 0;line-height:1.5}
   .schemadiag.ok{color:#7fb98a;background:#13241a;border:1px solid #244e30}
@@ -514,28 +525,28 @@
   .rememberbtn{margin-top:10px;background:#15241a;border:1px solid var(--ok-line);color:var(--ok);border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;font-weight:600}
   .curlbl{display:inline-block;margin-right:6px;color:var(--ink2);font-weight:600}
   .genimg{margin-top:10px}
-  .genimgbtn{background:#1b1530;border:1px solid #4a3a7a;color:#c8b6ff;border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer;font-weight:600;margin-right:6px}
+  .genimgbtn{background:var(--ai-bg);border:1px solid var(--ai-line);color:var(--ai);border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer;font-weight:600;margin-right:6px}
   .genimgbtn.apply{background:#15241a;border-color:var(--ok-line);color:var(--ok)}
   .genpanel{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
   .genrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0}
   .geninput{width:100%;margin:5px 0;display:block}
   .genpreview img{max-width:260px;border:1px solid var(--line);border-radius:8px;background:#fff;margin:8px 0;display:block}
   .genprompt{white-space:pre-wrap;font-size:11px;color:var(--ink2);max-height:160px;overflow:auto;background:#0a0d12;padding:8px;border-radius:6px;border:1px solid var(--line)}
-  .genspin{display:inline-block;width:12px;height:12px;border:2px solid #4a3a7a;border-top-color:#c8b6ff;
+  .genspin{display:inline-block;width:12px;height:12px;border:2px solid var(--ai-line);border-top-color:var(--ai);
            border-radius:50%;animation:genspin .7s linear infinite;vertical-align:-2px;margin-right:5px}
   @keyframes genspin{to{transform:rotate(360deg)}}
   #genstatus_,.genrow .cc{line-height:1.5}
   .gendiag{font-size:11.5px;padding:7px 10px;border-radius:7px;margin-bottom:8px}
   .gendiag.ok{background:var(--ok-bg);border:1px solid var(--ok-line);color:var(--ok)}
-  .gendiag.bad{background:#2e1414;border:1px solid var(--red-line);color:var(--red)}
-  .suggestbtn{background:#15233a;border:1px solid var(--accent-line);color:var(--accent2);font-weight:600;display:inline-flex;align-items:center;gap:6px}
+  .gendiag.bad{background:var(--red-bg);border:1px solid var(--red-line);color:var(--red)}
+  .suggestbtn{background:var(--accent-bg);border:1px solid var(--accent-line);color:var(--accent2);font-weight:600;display:inline-flex;align-items:center;gap:6px}
   .minlbl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
           background:#1a1410;border:1px solid var(--warn-line);border-radius:8px;padding:5px 10px;cursor:pointer}
   .minlbl input{cursor:pointer}
   .suggestbtn:hover{filter:brightness(1.15)}
   .suggestbox{margin-top:12px}
   .sgtop{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
-  .sgtop .sgall{margin-left:auto;background:#15233a;border:1px solid var(--accent-line);color:var(--accent2);font-size:12px;padding:5px 11px;border-radius:7px;cursor:pointer;font-weight:600}
+  .sgtop .sgall{margin-left:auto;background:var(--accent-bg);border:1px solid var(--accent-line);color:var(--accent2);font-size:12px;padding:5px 11px;border-radius:7px;cursor:pointer;font-weight:600}
   .sgrow{border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-bottom:8px;background:var(--panel)}
   .sgrow.applied{border-color:var(--ok-line);opacity:.75}
   .sghead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -566,11 +577,11 @@
             display:inline-flex;align-items:center;gap:3px;line-height:1.4}
   .mediaedit:hover{background:#143842}
   .medagroup{position:absolute;top:3px;left:3px;font-size:9px;background:rgba(74,58,122,.92);color:#d9ccff;
-            padding:1px 5px;border-radius:5px;border:1px solid #5a4a8a;letter-spacing:.2px}
+            padding:1px 5px;border-radius:5px;border:1px solid var(--ai-line2);letter-spacing:.2px}
   .acctbanner{margin-top:12px;padding:10px 12px;border-radius:9px;font-size:13px;border:1px solid var(--line);background:var(--panel2);color:var(--muted)}
   .acctbanner.ok{background:var(--ok-bg);border-color:var(--ok-line);color:#bfe9cf}
   .acctbanner.ok b{color:#fff}
-  .acctbanner.bad{background:#2e1414;border-color:var(--red-line);color:var(--red)}
+  .acctbanner.bad{background:var(--red-bg);border-color:var(--red-line);color:var(--red)}
   .acctbanner .ti{vertical-align:-2px;margin-right:5px}
   .tile.live{opacity:.92}
   .tile.live .tileimg.noimg{color:var(--ok)}
@@ -638,7 +649,7 @@
   .tone-bad{color:var(--red);border-color:var(--red-line);background:var(--red-bg)}
   .tone-info{color:var(--accent2);border-color:var(--accent-line);background:var(--accent-bg)}
   /* FBM keeps a distinct hue purely so it is separable from FBA at a glance. */
-  .tone-alt{color:#c8b6ff;border-color:#4a3a7a;background:rgba(120,90,200,.12)}
+  .tone-alt{color:var(--ai);border-color:var(--ai-line);background:var(--ai-tint)}
   /* Utility for money rendered inline, where there is no dedicated class to
      hang the colour on: the drawer's profit figure, PPC spend and sales. */
   .financial{color:var(--gold);font-variant-numeric:tabular-nums}
@@ -675,7 +686,7 @@
   .howbox .howbody li{margin-bottom:5px}
   .howbox .howbody b{color:var(--text)}
   .howbox .howbody code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:10.5px}
-  .adminbox{margin-top:14px;border:1px solid #3a3050;background:rgba(120,90,200,.08);border-radius:9px;padding:11px 13px}
+  .adminbox{margin-top:14px;border:1px solid var(--ai-line);background:var(--ai-tint);border-radius:9px;padding:11px 13px}
   .conceptcard{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:7px}
   .conceptcard .ib{white-space:nowrap;align-self:center}
   .secroles{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:4px}
@@ -1020,7 +1031,7 @@
       background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--ink2);
       cursor:pointer;font-size:14px;text-decoration:none}
   .ib:hover{border-color:#3d4658;color:#fff}
-  .ib.gen{color:#c8b6ff;border-color:#4a3a7a}
+  .ib.gen{color:var(--ai);border-color:var(--ai-line)}
   .ib.del:hover,.ib.more:hover{color:#fff}
   /* tile context menu */
   .tilemenu{position:fixed;z-index:85;background:var(--panel);border:1px solid var(--line);
@@ -1045,12 +1056,12 @@
   .dwactions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
   .dwactions button,.dwactions .srcbtn{font-size:12.5px;padding:7px 12px;border-radius:8px;cursor:pointer;text-decoration:none}
   .dwactions .ok{background:var(--green);border:1px solid var(--green);color:#fff;font-weight:600}
-  .dwactions .genmain{background:#1b1530;border:1px solid #4a3a7a;color:#c8b6ff;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+  .dwactions .genmain{background:var(--ai-bg);border:1px solid var(--ai-line);color:var(--ai);font-weight:600;display:inline-flex;align-items:center;gap:6px}
   .dwactions .pushimg{background:#102a30;border:1px solid var(--accent-line);color:var(--accent2);font-weight:600;display:inline-flex;align-items:center;gap:6px}
   .dwactions .pushimg:disabled{opacity:.6;cursor:default}
   .dwactions .genmain:hover{filter:brightness(1.15)}
   .dwactions .hold{background:var(--panel2);border:1px solid var(--line);color:var(--ink)}
-  .dwactions .askthis{background:#3a2d5e;border:1px solid #5a4a8a;color:#e8e0ff}
+  .dwactions .askthis{background:var(--ai-bg2);border:1px solid var(--ai-line2);color:var(--ai-strong)}
   .dwactions .del{background:var(--red-bg);border:1px solid var(--red-line);color:var(--red)}
   .dwactions .srcbtn{background:var(--panel2);border:1px solid var(--line);color:var(--accent);align-self:center}
   .dwactions .prev1{background:#15232e;border:1px solid #2a4257;color:var(--accent2);font-weight:600}
