@@ -143,7 +143,9 @@ async function ppcRunHarvest(){
     let html='<div style="padding:10px;border:1px solid var(--line);border-radius:8px">';
     html+='<div style="font-weight:600;margin-bottom:6px;color:#7fdca0">✓ Harvest complete</div>';
     html+='<div style="font-size:12px;line-height:1.7">';
-    html+='Terms: <b>'+(t.total_terms||0)+'</b> · Total spend: <b>'+(t.total_spend||0)+'</b> · Total sales: <b>'+(t.total_sales||0)+'</b> · Orders: <b>'+(t.total_orders||0)+'</b><br>';
+    // Spend and sales are money and take the gold; terms and orders are counts
+    // and deliberately do not -- gold only means something while it is scarce.
+    html+='Terms: <b>'+(t.total_terms||0)+'</b> · Total spend: <b class="financial">'+(t.total_spend||0)+'</b> · Total sales: <b class="financial">'+(t.total_sales||0)+'</b> · Orders: <b>'+(t.total_orders||0)+'</b><br>';
     html+='Ready for harvest: <b style="color:#7fdca0">'+(t.harvest_ready||0)+'</b> new converting terms (excluded '+j.excluded_already_targeted+' already-targeted)<br>';
     html+='Ready for negation: <b style="color:#e0696b">'+(t.negatives_ready||0)+'</b> past-$10 zero-order terms';
     html+='</div>';

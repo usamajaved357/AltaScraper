@@ -856,7 +856,7 @@ function drawerContent(r){
       <div class="lmeta">
         <span class="lsku">${esc(r.sku)||'\u2014'}</span>
         ${priceStr?`<span class="lprice">${priceStr}</span>`:''}
-        ${r.profit?`<span class="cc">profit ${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span>`:''}
+        ${r.profit?`<span class="cc">profit <span class="financial">${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span></span>`:''}
       </div>
       <div class="dwactions">
         <button class="suggestbtn" onclick="suggestFields('${esc(r.sku)}')"><i class="ti ti-wand"></i> Suggest missing fields</button>

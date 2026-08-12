@@ -1086,8 +1086,12 @@ function liveTile(it){
   // profit margin chip
   var profHtml = '';
   if(it.profit){
-    var mcol = it.profit.margin>=25?'#74e0a3':(it.profit.margin>=10?'#e3b768':'#ef9a9a');
-    profHtml = `<span class="profchip" style="color:${mcol};border-color:${mcol}55;background:${mcol}1a" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}">${it.profit.margin}% · ${CUR_SYMBOL}${it.profit.net}</span>`;
+    // Traffic light on margin health, NOT gold: gold says "this is money", this
+    // chip says whether the money is any good. The colours used to be inline hex
+    // with alpha suffixes appended (mcol+"55"), which forced them to be literal
+    // and locked them out of the theme; as classes they follow the Orbit tokens.
+    var mcls = it.profit.margin>=25?'good':(it.profit.margin>=10?'mid':'bad');
+    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}">${it.profit.margin}% · ${CUR_SYMBOL}${it.profit.net}</span>`;
   } else {
     profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
   }
