@@ -95,10 +95,14 @@ async function renderUsers(){
 
   if(j.bootstrap){
     h += '<div class="cc" style="font-size:12px;margin:6px 0 12px;padding:8px 10px;'
-      +  'border:1px solid #3a4a2a;background:#1b2317;border-radius:6px">'
-      +  'The app is still using the single shared password. It keeps working until '
-      +  'the first person below accepts their invitation — so you cannot lock '
-      +  'yourself out by adding someone.</div>';
+      +  'border:1px solid #4a3d1a;background:#2a2310;border-radius:6px">'
+      +  '<b>Start by adding yourself as an owner.</b><br>'
+      +  'The app is still using the single shared password, and it keeps working '
+      +  'until an <i>owner</i> account exists — not merely until someone accepts. '
+      +  'That is deliberate: if it stopped as soon as any VA accepted, you would '
+      +  'be locked out of your own app with no account of your own. Add yourself '
+      +  'with the <b>owner</b> role, open your own invite link, and the shared '
+      +  'password stops working from that moment.</div>';
   }
 
   h += '<div class="cc" style="font-size:11.5px;margin:4px 0 14px">'

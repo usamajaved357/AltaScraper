@@ -14,12 +14,23 @@ def register(app, *, CONFIG_PATH):
     """Attach the /users/* and /invite/* routes to the existing Flask app."""
 
     def _me():
-        """The signed-in user's full record, or the synthetic shared-password
-        owner while no real accounts exist yet."""
+        """The signed-in user's full record, or the synthetic owner while no real
+        accounts exist yet.
+
+        Reaching any of these routes means the doorman in auth/guard.py has
+        ALREADY authorised the request, so "no uid and still in bootstrap" means
+        the caller is the owner -- whether they got here by typing the shared
+        password or because the gate is switched off entirely.
+
+        An earlier version also required session["authed"], which broke local
+        development: with no APP_PASSWORD set the gate no-ops and nothing ever
+        sets that flag, so /users/me answered 401 and the Users button never
+        appeared on the machine where it most needed testing.
+        """
         uid = session.get("uid")
         if uid:
             return users.get_user(CONFIG_PATH, uid)
-        if users.is_bootstrap(CONFIG_PATH) and session.get("authed"):
+        if users.is_bootstrap(CONFIG_PATH):
             return users.bootstrap_user()
         return None
 

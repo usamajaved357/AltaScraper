@@ -159,16 +159,24 @@ def get_by_email(config_path, email):
 
 
 def is_bootstrap(config_path):
-    """True while no ACTIVE user with a password exists.
+    """True while no real ADMINISTRATOR exists yet.
 
-    In that state the app still accepts the old shared password, so adding the
-    user system can never lock you out of your own app. It stops being true the
-    moment the first person accepts their invitation.
+    While true, the app still accepts the old shared password and treats it as
+    the owner, so adding the user system can never lock you out.
+
+    The test is deliberately "is there an active account that can manage users?"
+    and NOT "is there any account with a password?". The looser version had a
+    trap: invite a VA, let them accept before setting up your own account, and
+    the shared password stopped working while you had no account of your own --
+    locking you out of your own app. That is fatal locally, where there is no
+    APP_PASSWORD to fall back on at all.
+
+    Tying it to an administrator existing gives up nothing. Until one exists the
+    shared password IS the only administrator, so honouring it withholds no
+    access that was not already available; the moment you create your own owner
+    account and accept the invitation, it stops working.
     """
-    for u in _load(config_path)["users"]:
-        if u.get("active", True) and u.get("password_hash"):
-            return False
-    return True
+    return not _has_manager(_load(config_path))
 
 
 def bootstrap_user():
