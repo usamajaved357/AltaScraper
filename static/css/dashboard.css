@@ -60,12 +60,19 @@
   body{margin:0;background:var(--bg);color:var(--ink);
        font:14px/1.45 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   button{font:inherit;border:1px solid var(--line);background:var(--panel2);
-         color:var(--ink);padding:7px 13px;border-radius:7px;cursor:pointer}
-  button:hover{border-color:#3a4150}
-  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-  button.ghost{background:transparent}
+         color:var(--ink);padding:7px 13px;border-radius:var(--radius-sm);cursor:pointer;
+         transition:border-color .12s,background-color .12s,color .12s}
+  button:hover{border-color:var(--accent)}
+  /* Dark ink on teal, not white. White on #2dd4a8 is ~1.8:1 and fails any
+     legibility bar; the dark ink is ~9:1. This is the brief's own rule. */
+  button.primary{background:var(--accent);border-color:var(--accent);color:#0a1628;font-weight:600}
+  button.primary:hover{background:var(--accent2);border-color:var(--accent2)}
+  button.ghost{background:transparent;color:var(--ink2)}
+  button.ghost:hover{color:var(--ink);border-color:var(--accent)}
   button.danger{background:#7a1f1f;border-color:#7a1f1f;color:#fff;font-weight:600}
   button.danger:hover{background:#8f2626;border-color:#8f2626}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button:disabled:hover{border-color:var(--line)}
 
   /* ---- top bar (always visible) ---- */
   /* The top bar takes the SIDEBAR colour, not the panel colour, so the bar and
@@ -186,11 +193,15 @@
   .rc-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.03em}
   .rc-badge.prohibited{background:#c0392b;color:#fff} .rc-badge.gated,.rc-badge.restricted{background:#7a641f;color:#fff}
   .rc-src{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:1px 5px;margin-left:6px}
-  .wscard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;cursor:pointer;
-          transition:border-color .12s,transform .12s;display:flex;flex-direction:column;gap:12px}
-  .wscard:hover{border-color:#3d4658;transform:translateY(-1px)}
-  .wsedit{background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:8px;width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-  .wsedit:hover{color:var(--ink);border-color:#3d4658}
+  /* Orbit cards are FLAT: the hover cue is a teal border, not a lift. The
+     translateY(-1px) is gone deliberately -- "no box-shadow, Orbit is flat, not
+     elevated" applies to the fake-shadow effect of nudging a card upward too. */
+  .wscard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          padding:14px 16px;cursor:pointer;
+          transition:border-color .12s;display:flex;flex-direction:column;gap:12px}
+  .wscard:hover{border-color:var(--accent)}
+  .wsedit{background:var(--panel2);border:1px solid var(--line);color:var(--ink2);border-radius:var(--radius-sm);width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .wsedit:hover{color:var(--ink);border-color:var(--accent)}
   .wscard .ic{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;
               font-size:15px;font-weight:700}
   .wscard .nm{font-weight:600;font-size:14.5px}
@@ -273,23 +284,26 @@
   .wspanel{display:none;padding:20px}
   .wspanel.show{display:block}
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-        padding:14px;display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+        padding:14px 16px;display:flex;flex-direction:column;gap:10px}
   .card.flag{border-color:#5a2230}
   .top{display:flex;align-items:center;gap:8px}
   .badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 9px;
          border-radius:999px;text-transform:uppercase;white-space:nowrap}
-  .b-APPROVED{background:var(--greenbg);color:#7fd1a0;border:1px solid #285c39}
-  .b-NEEDS_REVIEW{background:var(--amberbg);color:#e3b768;border:1px solid #5c4a16}
-  .b-IP_HOLD,.b-COMPLIANCE_HOLD,.b-ERROR{background:var(--redbg);color:#ef9a9a;border:1px solid #5c2424}
-  .b-none{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+  /* Status pills on the Orbit trios: each status owns a background, a text
+     colour and a matching border, so they stay distinguishable by hue AND by
+     weight rather than by hue alone. */
+  .b-APPROVED{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
+  .b-NEEDS_REVIEW{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)}
+  .b-IP_HOLD,.b-COMPLIANCE_HOLD,.b-ERROR{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
+  .b-none{background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
   .risk{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px}
-  .risk.hi{background:var(--redbg);color:#ef9a9a;border:1px solid #5c2424}
-  .risk.med{background:var(--amberbg);color:#e3b768;border:1px solid #5c4a16}
+  .risk.hi{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
+  .risk.med{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)}
   .title{font-weight:600;font-size:14px}
   .meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12.5px}
   .meta b{color:var(--ink);font-weight:600}
-  .findings{background:var(--redbg);border:1px solid #5c2424;border-radius:8px;
+  .findings{background:var(--red-bg);border:1px solid var(--red-line);border-radius:var(--radius-sm);
             padding:8px 10px;font-size:12.5px;color:#f0c4c4;white-space:pre-wrap}
   .findings .h{font-weight:700;color:#ef9a9a;margin-bottom:2px}
   .errlist{display:flex;flex-direction:column;gap:5px;white-space:normal}
@@ -310,9 +324,13 @@
          background:#222a36;border:1px solid var(--line);color:var(--ink);
          padding:9px 16px;border-radius:8px;opacity:0;transition:.2s;pointer-events:none;z-index:80}
   .toast.show{opacity:1}
-  .b-API_READY{background:rgba(76,141,255,.12);color:#9cc1ff;border:1px solid #2f4a73}
-  .b-API_ERROR{background:var(--redbg);color:#ef9a9a;border:1px solid #5c2424}
-  .b-LIVE{background:#10301f;color:#74e0a3;border:1px solid #1f7a3d}
+  .b-API_READY{background:var(--accent-bg);color:var(--accent2);border:1px solid var(--accent-line)}
+  .b-API_ERROR{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
+  /* LIVE is deliberately NEUTRAL, per the brief -- grey, not green. A listing
+     being live is the resting state, not an achievement to celebrate; green is
+     reserved for APPROVED, which is a thing you did. Keeping both green made a
+     grid of live listings glow as if everything needed attention. */
+  .b-LIVE{background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
   table.kv{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;table-layout:fixed}
   table.kv td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere}
@@ -652,16 +670,20 @@
   details.findingsbox>summary::-webkit-details-marker{display:none}
   /* ---- GALLERY GRID ---- */
   main#grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:none;align-content:start}
-  .tile{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;
-        display:flex;flex-direction:column;transition:border-color .12s,transform .12s}
-  .tile:hover{border-color:#3d4658;transform:translateY(-1px)}
+  /* Flat, like .wscard -- teal border on hover, no lift. */
+  .tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+        display:flex;flex-direction:column;transition:border-color .12s}
+  .tile:hover{border-color:var(--accent)}
   .tile.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
-  .tile.flag{border-color:#5a3030}       /* red border: prohibited / blocker only */
-  .tile.flagamber{border-color:#5c4a16}  /* amber border: restricted-needs-docs */
-  .tileimg{position:relative;height:180px;background:#1c2531;display:flex;align-items:center;
+  /* The flag borders keep their own hue and must SURVIVE hover -- a blocked
+     listing turning teal because the mouse passed over it would hide the one
+     thing the border exists to say. Declared after :hover so they win. */
+  .tile.flag,.tile.flag:hover{border-color:var(--red-line)}       /* prohibited / blocker */
+  .tile.flagamber,.tile.flagamber:hover{border-color:var(--warn-line)}  /* restricted-needs-docs */
+  .tileimg{position:relative;height:180px;background:var(--panel2);display:flex;align-items:center;
            justify-content:center;cursor:pointer;overflow:hidden}
   .tileimg img{width:100%;height:100%;object-fit:contain;background:#fff}
-  .tileimg.noimg{color:#4a5260;font-size:34px}
+  .tileimg.noimg{color:var(--ink4);font-size:34px}
   .tiledot{position:absolute;top:8px;left:8px;width:10px;height:10px;border-radius:50%;border:2px solid var(--panel)}
   .tilesel{position:absolute;top:8px;right:8px;width:22px;height:22px;cursor:pointer;accent-color:var(--accent);z-index:5;background:rgba(10,14,20,.6);border-radius:5px;box-shadow:0 0 0 2px rgba(255,255,255,.15)}
   .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}

@@ -582,10 +582,15 @@ function _rowImages(r){
   if(!urls.length) urls=Object.keys(a).filter(k=>/image_locator/i.test(k)).map(k=>a[k]).filter(Boolean);
   return urls;
 }
+// The tile's corner dot. Returns CSS VARIABLES, not literal hex, so the dot and
+// the status pill for the same row can never drift apart -- they now read from
+// one set of tokens. LIVE is neutral grey here for the same reason .b-LIVE is:
+// live is the resting state, not an achievement, and a grid of green dots made
+// every finished listing look like it wanted attention.
 function _statusDot(r){
   var s=r.status||"";
-  var col = s==="LIVE"?"#74e0a3" : (isHold(s)||s==="API_ERROR"||s==="ERROR")?"#ef9a9a"
-          : s==="NEEDS_REVIEW"?"#e3b768" : s==="APPROVED"?"#74e0a3" : "#9aa3b2";
+  var col = s==="LIVE"?"var(--ink2)" : (isHold(s)||s==="API_ERROR"||s==="ERROR")?"var(--red)"
+          : s==="NEEDS_REVIEW"?"var(--warn)" : s==="APPROVED"?"var(--ok)" : "var(--ink3)";
   return col;
 }
 // ---- GALLERY TILE ----
