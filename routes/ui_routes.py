@@ -3,7 +3,9 @@
 Auto-extracted @app.route("paths:/,/ui,/stop,/save_default...") funcs; shared helpers injected. Verified with
 verify_free_vars.py.
 """
-from flask import request, jsonify, Response, send_from_directory, render_template
+from flask import (request, jsonify, Response, send_from_directory,
+                   render_template, redirect)
+from urllib.parse import quote
 import json
 import os
 
@@ -54,6 +56,39 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
 
     @app.route("/")
     def index():
+        return render_template("dashboard.html")
+
+    # ---- Addressable workspace pages -------------------------------------
+    # Plain English: until now the whole app lived at one web address ("/"), so
+    # refreshing always threw you back to the workspace list and no screen could
+    # be bookmarked or opened in a second tab. Each screen now has its own
+    # address, e.g. /w/nestwell/ppc. These serve the SAME dashboard.html as "/";
+    # the browser-side router in static/js/shell.js reads the address on load and
+    # reopens that workspace and section.
+    #
+    # Deliberately an explicit list of sections, not a catch-all rule. A
+    # catch-all would answer a mistyped API path with the dashboard's HTML
+    # instead of an honest 404, which turns a one-line typo into an hour of
+    # debugging.
+    _SECTIONS = ("listings", "imagerefs", "setup", "generate", "ppc",
+                 "inventory", "sync", "monitor", "miles")
+
+    @app.route("/w/<ws>")
+    def workspace_root(ws):
+        """A workspace with no section named opens on its listings."""
+        return redirect("/w/" + quote(ws, safe="") + "/listings")
+
+    @app.route("/w/<ws>/<section>")
+    def workspace_page(ws, section):
+        """Serve the dashboard for a deep link. The workspace name is not checked
+        here on purpose -- which workspaces exist is answered by /accounts/list,
+        and the browser router reports an unknown one to the user rather than
+        silently opening someone else's data."""
+        if section not in _SECTIONS:
+            return Response(
+                "Unknown section '%s'. Valid sections: %s"
+                % (section, ", ".join(_SECTIONS)),
+                status=404, mimetype="text/plain")
         return render_template("dashboard.html")
 
     @app.route("/ui")

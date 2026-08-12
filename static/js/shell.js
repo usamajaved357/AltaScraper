@@ -156,6 +156,12 @@ async function loadHome(){
   }).join("");
   cards += `<div class="wscard add" onclick="openAccountEditor('')">${SVG_PLUS} Add account</div>`;
   grid.innerHTML = cards;
+  // First paint only: now that ACCOUNTS and VIEWS are known, honour the address
+  // the user actually arrived on. Deliberately at the END of loadHome -- opening
+  // a workspace before we know which ones exist can only guess. The early error
+  // returns above skip this, which is correct: if accounts could not be loaded
+  // we cannot reopen anything, and the error on screen is the honest answer.
+  if(!_ALTA_ROUTED){ _ALTA_ROUTED = true; altaRouteFromUrl(); }
 }
 async function openDropshippingSheets(){
   // Reuse the account modal shell to edit the DEFAULT (Dropshipping) sheets.
@@ -275,6 +281,7 @@ async function enterAccount(accountId){
   // marketplace switcher from the account's (detected) marketplaces
   buildAccountMktSwitch(a);
   navTo("listings");
+  altaSyncUrl();
   if(LIST_SOURCE==='all' || LIST_SOURCE==='live'){ loadRows(); loadLiveCatalog(false); }
   else loadRows();
 }
@@ -300,6 +307,7 @@ function enterDropshipping(){
   var sw=document.getElementById('srcswitch'); if(sw) sw.style.display='none';
   LIST_SOURCE='drafts'; LIVE_ITEMS=[];
   navTo("listings");
+  altaSyncUrl();
   loadRows();
 }
 function buildAccountMktSwitch(a){
@@ -629,6 +637,7 @@ function goHome(){
   document.getElementById("workspace").classList.remove("show");
   document.getElementById("home").classList.add("show");
   document.getElementById("crumbs").innerHTML="";
+  altaSyncUrl();
   loadHome();
 }
 
@@ -660,6 +669,7 @@ async function enterWorkspace(key){
   document.getElementById("gen_scope").textContent =
     (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");
   navTo("listings");
+  altaSyncUrl();
   loadRows();
   loadViews();   // keep legacy view <select> in sync if present
 }
@@ -680,6 +690,7 @@ function navTo(sec){
   if(sec==="ppc")       ppcOnOpen();
   if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
   if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
+  altaSyncUrl();
 }
 async function loadTargetAccount(){
   var el=document.getElementById("targetacct"); if(!el) return;
@@ -741,4 +752,122 @@ function enterWorkspaceBlank(){
   document.getElementById("crumbs").innerHTML='<span class="sep">/</span><span class="here">New brand</span>';
   navTo("setup");
 }
+
+// ===================== URL ROUTING (addressable screens) =====================
+// Plain English: the app used to keep every screen behind the single address
+// "/", so refreshing threw you back to the workspace list, nothing could be
+// bookmarked, and Back left the app altogether. Every screen now has a real
+// address -- /w/<workspace>/<section> -- and the browser bar follows you as you
+// move. Nothing is reloaded and nothing is re-fetched: this only RECORDS where
+// you are, so the page can put you back there.
+//
+// Everything below is defensive. Every history call is wrapped, and if any of it
+// throws, the app behaves exactly as it did before -- the sections still switch.
+// Routing can fail to update an address; it can never stop you navigating.
+
+const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
+                       "ppc","inventory","sync","monitor","miles"];
+
+let _ALTA_ROUTED    = false;  // has the one-time restore-from-address already run?
+let _ALTA_RESTORING = false;  // true while replaying an address: replace, never push
+
+// The address for whatever is on screen right now, or null when there is nothing
+// worth recording.
+function altaCurrentPath(){
+  if(!ACTIVE_WS) return "/";
+  // The blank "New brand" screen is a form being filled in, not a place. Giving
+  // it an address would produce a bookmark that reopens an empty form.
+  if(ACTIVE_WS.brand === "new") return null;
+  const slug = String(ACTIVE_WS.key || "") || "dropshipping";
+  const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "listings";
+  let p = "/w/" + encodeURIComponent(slug) + "/" + sec;
+  // Drafts is the default so it stays out of the address; Live and All are worth
+  // recording, because landing back on Drafts after a refresh is the annoyance.
+  if(sec === "listings" && (LIST_SOURCE === "live" || LIST_SOURCE === "all")){
+    p += "?src=" + LIST_SOURCE;
+  }
+  return p;
+}
+
+function altaSyncUrl(){
+  try{
+    const p = altaCurrentPath();
+    if(!p) return;
+    if(p === (location.pathname + location.search)) return;   // nothing moved
+    history[_ALTA_RESTORING ? "replaceState" : "pushState"]({alta:1}, "", p);
+  }catch(e){}
+}
+
+// Read the address bar and reopen that screen. Runs once, from the end of
+// loadHome(), because opening a workspace before ACCOUNTS and VIEWS are known
+// could only guess at which one was meant.
+async function altaRouteFromUrl(){
+  const m = /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
+  if(!m) return;                        // "/" -> the workspace list, already drawn
+  const ws  = decodeURIComponent(m[1] || "");
+  let   sec = m[2] || "listings";
+  if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "listings";
+  let src = "";
+  try{ src = new URLSearchParams(location.search).get("src") || ""; }catch(e){}
+
+  _ALTA_RESTORING = true;
+  try{
+    if(ws === "dropshipping"){
+      enterDropshipping();
+    } else if((ACCOUNTS||[]).some(a => String(a.id) === ws)){
+      await enterAccount(ws);
+    } else if((VIEWS||[]).some(v => String(v.key) === ws)){
+      await enterWorkspace(ws);
+    } else {
+      // The link names a workspace that has since been renamed or removed. Say
+      // so, rather than silently opening whichever one happens to be first.
+      toast("That workspace no longer exists — showing all workspaces.");
+      try{ history.replaceState({alta:1}, "", "/"); }catch(e){}
+      return;
+    }
+    if(sec !== CUR_SEC) navTo(sec);
+    if(sec === "listings" && (src === "live" || src === "all")
+       && typeof setListSource === "function"){
+      setListSource(src);
+    }
+  }catch(e){
+    // Reopening failed. Leave the user on whatever did load rather than
+    // trapping them on a half-drawn screen.
+  }finally{
+    _ALTA_RESTORING = false;
+    altaSyncUrl();   // settle the address on where we actually ended up
+  }
+}
+
+// Back / Forward. altaRouteFromUrl owns the restoring flag for its own run, so
+// it is NOT set here -- that function is async, and setting the flag around a
+// call that returns at its first await would clear it far too early.
+window.addEventListener("popstate", function(){
+  const path = location.pathname || "/";
+  try{
+    if(path === "/" || path === ""){
+      if(ACTIVE_WS){
+        _ALTA_RESTORING = true;
+        try{ goHome(); } finally { _ALTA_RESTORING = false; }
+      }
+    } else {
+      altaRouteFromUrl();
+    }
+  }catch(e){}
+});
+
+// Record the Drafts / Live / All switch in the address too. Wrapped here rather
+// than edited into miles_template.js so that every line of routing lives in one
+// file: the source switch has no business knowing about the address bar. Load
+// order makes this safe -- miles_template.js is loaded before shell.js, so the
+// original function already exists by the time this runs.
+(function(){
+  if(typeof window.setListSource !== "function") return;
+  const _inner = window.setListSource;
+  window.setListSource = function(){
+    const r = _inner.apply(this, arguments);
+    altaSyncUrl();
+    return r;
+  };
+})();
 
