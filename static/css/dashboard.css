@@ -23,6 +23,11 @@
     --line:#2a2e36;
     --line2:#363b45;
 
+    /* Form fields. Lighter than --panel on purpose: in the detail view a field
+       sits ON a panel, so it needs to separate from it. Elsewhere fields sit on
+       --bg and use that instead. */
+    --input:#2a2f38;
+
     /* Text */
     --ink:#e8eaed;  --ink2:#9aa3b2;  --ink3:#6b7280;  --ink4:#4b5563;
 
@@ -392,8 +397,11 @@
   /* Fields sit on --bg, DARKER than the --panel they are drawn on, so an input
      reads as a recess rather than another raised card. It was the reverse
      before, which made fields disappear into the panel behind them. */
-  input.ed,select.ed,textarea.ed{width:100%;background:var(--bg);border:1px solid var(--line);
-    color:var(--ink);border-radius:var(--radius-sm);padding:4px 6px;font:inherit;font-size:12.5px;
+  /* Orbit field geometry: --input, 8px radius, 10px 12px padding, 13px text.
+     Noticeably roomier than the 4px/6px it replaced -- the edit form gets
+     taller, which is the trade the Orbit spec makes for legibility. */
+  input.ed,select.ed,textarea.ed{width:100%;background:var(--input);border:1px solid var(--line);
+    color:var(--ink);border-radius:8px;padding:10px 12px;font:inherit;font-size:13px;
     transition:border-color .12s,box-shadow .12s}
   textarea.ed{resize:vertical;line-height:1.4}
   /* A focus RING as well as a border colour. Border-colour alone is a 1px cue,
@@ -425,7 +433,60 @@
   .ro{color:var(--muted)}
   .safe{background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;font-size:12.5px;color:#9fe0b8}
   td.wcell{padding:6px 8px}
-  .wlab{color:var(--muted);font-size:11.5px;margin-bottom:3px}
+  /* Label above a field, per Orbit: 11px, --ink3. */
+  .wlab{color:var(--ink3);font-size:11px;margin-bottom:4px}
+
+  /* ---- Orbit form field (.fld) ---------------------------------------
+     The prototype's pattern is a styled CONTAINER with a bare input inside it:
+     the box carries the background, border and padding; the input itself has no
+     border and no background of its own. .fld is here for markup that adopts it
+     directly.
+
+     The drawer reaches the same look without any markup change, because its
+     fields are already label-above-input (.wlab + .ed from autofix.js's
+     wideRow()). Styling .ed as the box is visually identical to wrapping it,
+     and it does not touch a single line of JS. */
+  .fld{background:var(--input);border:1px solid var(--line);
+       border-radius:8px;padding:10px 12px;transition:border-color .12s,box-shadow .12s}
+  .fld:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+  .fld > label,.fld .fldlab{display:block;font-size:11px;color:var(--ink3);margin-bottom:4px}
+  .fld input,.fld select,.fld textarea{
+       width:100%;border:none;background:transparent;padding:0;
+       font:inherit;font-size:13px;color:var(--ink);outline:none}
+
+  /* ---- Orbit metric tile ---------------------------------------------
+     Number and label centred, the label small and quiet so the number carries
+     the emphasis. */
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          padding:14px 16px;text-align:center;transition:border-color .12s}
+  .metric:hover{border-color:var(--accent)}
+  .metric .n{font-size:22px;font-weight:600;line-height:1.15;margin:0;
+             font-variant-numeric:tabular-nums}
+  .metric .l{font-size:10px;font-weight:600;text-transform:uppercase;
+             letter-spacing:.06em;color:var(--ink4);margin:4px 0 0}
+  .metricgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+              gap:10px;margin-bottom:14px}
+
+  /* ---- Compliance banner (detail view) --------------------------------
+     Full width, one line, at the top of the drawer: the verdict at a glance,
+     with the panels below giving the detail.
+
+     It states the CLEAR case as well as the bad ones -- unlike the tiles, which
+     stay silent when clean. In a list, silence is the right default; in a detail
+     view you have deliberately opened one listing to ask "what about this one?",
+     and no answer is not an answer.
+
+     The wording says "no flags", never "safe": these are keyword checks, and the
+     banner must not read as a clearance it cannot give. */
+  .compbanner{display:flex;align-items:flex-start;gap:9px;padding:10px 13px;
+              border-radius:var(--radius);border:1px solid var(--line);
+              background:var(--panel2);font-size:12.5px;line-height:1.45;margin:10px 0}
+  .compbanner .ti{font-size:17px;flex:0 0 auto;margin-top:1px}
+  .compbanner b{font-weight:600}
+  .compbanner .cc{display:block;margin-top:2px}
+  .compbanner.clear  {background:var(--ok-bg);  border-color:var(--ok-line);  color:var(--ok)}
+  .compbanner.warn   {background:var(--gold-bg);border-color:var(--gold-line);color:var(--gold)}
+  .compbanner.blocked{background:var(--red-bg); border-color:var(--red-line); color:var(--red)}
   textarea.ed{min-height:42px}
   .reqrow .ed{border-color:#9a6b00}
   .fixhint{color:var(--red);font-size:11px;font-weight:600;display:block;margin-top:2px;white-space:normal;overflow-wrap:anywhere}

@@ -885,12 +885,60 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${complianceBanner(r)}
     ${liveMirrorPanel(r)}
     ${restrictedPanel(r)}
     ${viabilityPanel(r)}
     ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+}
+
+// ---- COMPLIANCE BANNER (detail view) ------------------------------------
+// One full-width line at the top of the drawer giving the overall verdict, with
+// the detailed panels below it. It summarises three checks that already ran --
+// restricted products, document demand, and claim risks -- rather than running
+// anything new, so it can never disagree with the panels underneath it.
+//
+// It returns NOTHING when the checks did not run. Showing "compliance clear"
+// because no data arrived would be the worst possible failure here: a green
+// banner asserting a check passed when it never happened. Silence is honest;
+// a false all-clear is not.
+function complianceBanner(r){
+  const rr = r.restricted, v = r.viability, claims = r.claim_flags || [];
+  if(!rr && !v && !claims.length) return "";      // nothing ran -- say nothing
+
+  const prohibited = !!(rr && rr.matched && (rr.matches||[]).some(m=>m.tier==="PROHIBITED"));
+  const gated      = !!(rr && rr.matched && !prohibited);
+  const docs       = !!(v && v.matched);
+  const redClaim   = claims.some(x=>x.severity==="RED");
+
+  if(prohibited){
+    return `<div class="compbanner blocked"><i class="ti ti-shield-x"></i><div>
+      <b>Blocked — prohibited on this marketplace</b>
+      <span class="cc">There is no compliance path for this product type. See the
+      restricted-products panel below.</span></div></div>`;
+  }
+
+  if(gated || docs || redClaim){
+    const parts = [];
+    if(gated)    parts.push("restricted — documents required to list");
+    if(docs)     parts.push(v.risks && v.risks.length === 1
+                            ? "1 document demand Amazon can make later"
+                            : `${(v.risks||[]).length} document demands Amazon can make later`);
+    if(claims.length) parts.push(`${claims.length} claim risk${claims.length>1?"s":""}`);
+    return `<div class="compbanner warn"><i class="ti ti-alert-triangle"></i><div>
+      <b>Needs attention — ${esc(parts.join(" · "))}</b>
+      <span class="cc">None of this blocks publishing. The panels below say
+      exactly which documents and which wording.</span></div></div>`;
+  }
+
+  // Clear. Worded as "no flags", never "safe" -- these are keyword checks, and
+  // the banner must not read as a clearance it is not in a position to give.
+  return `<div class="compbanner clear"><i class="ti ti-shield-check"></i><div>
+    <b>Compliance clear — no restricted-product or claim flags</b>
+    <span class="cc">Keyword-based checks. A clean result is not a guarantee —
+    a disguised product can still slip past.</span></div></div>`;
 }
 
 // ---- RESTRICTED PRODUCTS CHECK (Shape 2) -- its own panel, separate from Amazon feedback
