@@ -2229,13 +2229,14 @@ def _open_sheet_retry(gc, key: str, what: str = "sheet", tries: int = 5):
 def _data_backend(config: dict) -> str:
     """Where THIS run writes its listings: "sheets" (default) or "db".
 
-    Read from the environment first so the dashboard can launch the generator on
-    a chosen backend without rewriting config.json, then from config. Defaults to
-    sheets, so an unset value can never silently divert a run away from the sheet
-    someone is watching.
+    Delegates to data/choice.py, which is the ONE place this is decided. It used
+    to read ALTA_DATA_BACKEND here directly, while dashboard.py decided from a
+    function argument that the deployed app never set -- so the generator could
+    be writing to SQLite while the dashboard read the Google Sheet, and listings
+    generated here would never appear there.
     """
-    return str(os.environ.get("ALTA_DATA_BACKEND")
-               or config.get("data_backend") or "sheets").strip().lower()
+    from data import choice as _choice
+    return _choice.resolve(config, config.get("_config_path"))
 
 
 def init_sheets(config: dict):

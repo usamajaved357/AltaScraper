@@ -34,8 +34,13 @@ def _writable(path):
         return False
 
 
-def check(config_path):
-    """Everything worth knowing, with a verdict per item."""
+def check(config_path, in_use=None):
+    """Everything worth knowing, with a verdict per item.
+
+    `in_use` is the store the running app actually settled on (build_app records
+    it). Passed in rather than looked up, so this module reports the truth about
+    a specific app instead of guessing from the environment a second time.
+    """
     cfg = os.path.abspath(str(config_path))
     data_dir = os.path.dirname(cfg)
     items = []
@@ -95,10 +100,26 @@ def check(config_path):
             "why": "" if exists else "Normal if the feature has not been used yet.",
         })
 
-    # --- backend -----------------------------------------------------------
-    backend = (os.environ.get("ALTA_DATA_BACKEND") or "sheets").strip().lower()
-    add("Data backend", True, backend,
-        "'sheets' reads and writes Google Sheets; 'db' uses altascraper.db.")
+    # --- which store is in force -------------------------------------------
+    # Reported from the one resolver, never by re-reading the environment. The
+    # environment says what was ASKED FOR; this says what the app is DOING, and
+    # when those differ the difference is the whole story.
+    try:
+        from data import choice as _choice
+        d = _choice.decide(None, cfg)
+        if in_use:
+            d = dict(d, backend=in_use)
+        add("Data store", not d.get("note"),
+            "%s (%s), chosen by %s" % (d["backend"], _choice.label(d["backend"]),
+                                       d.get("source", "?")),
+            d.get("note") or "'sheets' reads and writes Google Sheets; 'db' uses "
+                             "altascraper.db in the folder above.")
+        if d.get("requested") and d["requested"] != d["backend"]:
+            add("Requested store is in use", False,
+                "asked for %r, running on %r" % (d["requested"], d["backend"]),
+                d.get("note") or "")
+    except Exception as e:
+        add("Data store", False, "could not be determined: %s" % e, "")
 
     failures = [i for i in items if not i["ok"]]
     return {"ok": not failures, "config_path": cfg, "data_dir": data_dir,

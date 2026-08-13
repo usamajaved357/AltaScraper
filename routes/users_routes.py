@@ -7,7 +7,7 @@ OUT -- an invited person has no account yet, so they cannot sign in to accept.
 """
 import os
 
-from flask import request, jsonify, render_template, session
+from flask import request, jsonify, render_template, session, current_app
 
 from auth import users
 
@@ -87,7 +87,10 @@ def register(app, *, CONFIG_PATH):
         # otherwise be wrong on one backend -- e.g. "not in your sheet" when there
         # is no sheet, which would send someone looking in a spreadsheet for a row
         # that was never going to be there.
-        _backend = (os.environ.get("ALTA_DATA_BACKEND") or "sheets").strip().lower()
+        # What THIS app is actually using, recorded by build_app. Re-reading the
+        # environment here was the bug: it reported the request, not the result,
+        # so the UI could claim "db" while every route read the Google Sheet.
+        _backend = current_app.config.get("DATA_BACKEND") or "sheets"
         return jsonify({"ok": True, "user": users.public(u),
                         "bootstrap": bool(u.get("bootstrap")),
                         "backend": _backend,

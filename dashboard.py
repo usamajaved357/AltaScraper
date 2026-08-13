@@ -3010,7 +3010,7 @@ def _miles_save_history(done: set):
 
 
 
-def build_app(backend="sheets"):
+def build_app(backend=None):
     """Wire every route onto the app and return it.
 
     WHY THIS IS A FUNCTION AND NOT AN `if __name__` BLOCK
@@ -3025,12 +3025,34 @@ def build_app(backend="sheets"):
     build_app(backend="db") instead of duplicating any of it, so a fix made here
     applies to both.
 
-    backend="sheets" -> Google Sheets, exactly as before (the default; the live
-                        app's behaviour is untouched)
+    backend="sheets" -> Google Sheets, exactly as before (still the default; the
+                        live app's behaviour is untouched)
     backend="db"     -> SQLite, by swapping the two functions every route module
                         is already given by injection
+    backend=None     -> ask data/choice.py, the ONE place that decides.
+
+    Passing None rather than "sheets" is the fix for a genuine split brain: this
+    argument used to be the dashboard's only input, and docker-entrypoint.sh runs
+    `python dashboard.py`, so the deployed app was ALWAYS on sheets no matter
+    what ALTA_DATA_BACKEND said -- while the generator subprocess read that
+    variable and obeyed it. The two halves of the app could therefore be reading
+    and writing different stores at the same time.
     """
     global _ws, _records
+    from data import choice as _choice
+    _decision = _choice.decide(_cfg() if callable(_cfg) else None, CONFIG_PATH)
+    if backend is None:
+        backend = _decision["backend"]
+    else:
+        # An explicit argument still wins (dashboard_beta.py passes "db"), but
+        # record what was asked for so the report below is about THIS app.
+        _decision = dict(_decision, backend=backend, source="how the app was started")
+
+    # Every reporter reads this instead of re-reading the environment, so /diag
+    # and /users/me describe the app that is actually running.
+    app.config["DATA_BACKEND"] = backend
+    app.config["DATA_BACKEND_DECISION"] = _decision
+
     if backend == "db":
         from data import backend as _data_backend
         _ws, _records = _data_backend.make(_state, config_path=CONFIG_PATH)
@@ -3220,7 +3242,7 @@ def build_app(backend="sheets"):
         """
         import domain.deploy_check as _dc
         import domain.selfcheck as _sc
-        res = _dc.check(CONFIG_PATH)
+        res = _dc.check(CONFIG_PATH, in_use=app.config.get("DATA_BACKEND"))
         res["refresher"] = _refresher.status()
         # The configuration and the actual faults belong on ONE page. Split
         # across two, the obvious question -- "is this error caused by that
@@ -3243,7 +3265,9 @@ def build_app(backend="sheets"):
     try:
         import domain.deploy_check as _dc0
         import domain.selfcheck as _sc0
-        print(_sc0.boot_banner(_dc0.check(CONFIG_PATH)), flush=True)
+        print(_sc0.boot_banner(_dc0.check(CONFIG_PATH,
+                                          in_use=app.config.get("DATA_BACKEND"))),
+              flush=True)
     except Exception as _e0:
         print(f"  (deployment check could not run: {_e0})", flush=True)
 
