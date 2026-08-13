@@ -272,6 +272,33 @@ class SheetLikeStore:
     def get_all_records(self):
         return self.store.get_all_rows()
 
+    def col_values(self, c):
+        """One whole column, header first -- what a SKU scan reads.
+
+        listing/repo.locate() reads the SKU column this way, so this is the
+        method the app's single row-lookup depends on.
+        """
+        h = _header_at(int(c))
+        if not h:
+            return []
+        out = [h]
+        for r in self.store.get_all_rows():
+            out.append(r.get(h, ""))
+        return out
+
+    def cell(self, row, col):
+        """gspread returns an object with a .value; callers read .value."""
+        class _Cell:
+            def __init__(self, v):
+                self.value = v
+        vals = self.row_values(int(row))
+        i = int(col) - 1
+        return _Cell(vals[i] if 0 <= i < len(vals) else "")
+
+    def acell(self, ref):
+        cell = _parse_a1(ref)
+        return self.cell(*cell) if cell else self.cell(1, 1)
+
     # -- writes
     def batch_update(self, payload):
         """Accepts gspread's [{'range': 'C5', 'values': [[v]]}, ...].
@@ -298,10 +325,106 @@ class SheetLikeStore:
         return self.store.bulk_update(list(updates.items()))
 
     def update(self, values, range_name=None, **kw):
-        raise NotImplementedError(
-            "SheetLikeStore.update() is deliberately not implemented. Whole-grid "
-            "writes are how the sheet flow worked; on the database use "
-            "ListingStore.upsert_row() so a write names the row it changes.")
+        """Write whole rows, addressed by an A1 range.
+
+        This is how the generator saves a finished listing: a full-width row
+        written into A{n}:{last}{n}. On a database the row number is irrelevant
+        -- the SKU is IN the data, and (workspace, sku) is the real identity --
+        so each row is upserted by its own SKU. That is why re-running a
+        generation updates the listing instead of duplicating it, exactly as
+        refilling the row did on the sheet.
+
+        Row 1 is the header row. A database's columns are fixed by its schema,
+        so writing headers is accepted and ignored rather than refused: callers
+        legitimately do it when setting up a sheet, and failing there would stop
+        a run over something that simply does not apply here.
+        """
+        rows = [list(v) for v in (values or [])]
+        if not rows:
+            return
+        start = 1
+        if range_name:
+            cell = _parse_a1(range_name)
+            if cell:
+                start = cell[0]
+        if start <= 1:
+            rows = rows[1:]                      # drop the header row itself
+        written = 0
+        for vals in rows:
+            rec = self._row_to_record(vals)
+            if (rec.get("SKU") or "").strip():
+                self.store.upsert_row(rec)
+                written += 1
+        return written
+
+    def append_row(self, values, **kw):
+        """Add a listing. Upserted by SKU, so an append can never duplicate one."""
+        rec = self._row_to_record(list(values or []))
+        if not (rec.get("SKU") or "").strip():
+            return 0                             # header row or blank -- nothing to add
+        self.store.upsert_row(rec)
+        return 1
+
+    def insert_row(self, values, index=1, **kw):
+        """Insert. Row position carries no meaning in a database, so this is an
+        append -- and a header row inserted at position 1 is ignored, because the
+        schema already defines the columns."""
+        if int(index) <= 1 and self._looks_like_header(values):
+            return 0
+        return self.append_row(values)
+
+    def update_cell(self, row, col, value):
+        """One cell, resolved back to (sku, column name)."""
+        h = _header_at(int(col))
+        if not h:
+            return 0
+        if int(row) <= 1:
+            return 0                             # a header cell -- schema owns these
+        sku = self._sku_for_row(int(row))
+        if not sku:
+            return 0
+        return self.store.update_fields(sku, {h: value})
+
+    def delete_rows(self, row, end=None):
+        """Delete by row number, resolved to the SKU that occupies it.
+
+        Deleting a RANGE walks bottom-up so the earlier rows keep their numbers
+        while the later ones are being removed -- the same reason the sheet
+        callers sort their deletions in reverse.
+        """
+        first = int(row)
+        last = int(end) if end else first
+        n = 0
+        for r in range(last, first - 1, -1):
+            sku = self._sku_for_row(r)
+            if sku:
+                n += self.store.delete_row(sku)
+        return n
+
+    # Presentation only. A database has no bold text and no frozen panes; these
+    # exist so shared setup code can call them without caring which backend it
+    # got, rather than every caller having to ask first.
+    def format(self, *a, **k):
+        return None
+
+    def freeze(self, *a, **k):
+        return None
+
+    def clear(self):
+        n = 0
+        for r in self.store.get_all_rows():
+            n += self.store.delete_row(r.get("SKU"))
+        return n
+
+    # -- helpers
+    def _row_to_record(self, vals):
+        """Positional row -> dict keyed by SHEET column names."""
+        vals = list(vals) + [""] * (len(ORDERED_HEADERS) - len(vals))
+        return {h: vals[i] for i, h in enumerate(ORDERED_HEADERS)}
+
+    def _looks_like_header(self, values):
+        v = [str(x).strip() for x in (values or [])][:3]
+        return v == [h for h in ORDERED_HEADERS[:3]]
 
     def _sku_for_row(self, row_n):
         rows = self.store.get_all_rows()
@@ -309,6 +432,34 @@ class SheetLikeStore:
         if idx < 0 or idx >= len(rows):
             return None
         return rows[idx].get("SKU")
+
+
+class StoreBook:
+    """A spreadsheet-shaped face on the database, for code that opens tabs.
+
+    listing/repo.ensure_tab() takes a BOOK and asks it for a worksheet, creating
+    one if it is missing. On the database a "tab" is a workspace, and a workspace
+    needs no creating -- it exists as soon as it has rows. So worksheet() always
+    succeeds and add_worksheet() is the same call, which keeps ensure_tab's
+    contract (return the tab, say whether it was created) truthful on both
+    backends.
+    """
+
+    def __init__(self, config_path=None, workspace_ids=None):
+        self.config_path = config_path
+        self._known = list(workspace_ids or [])
+
+    def worksheet(self, title):
+        return SheetLikeStore(ListingStore(title, config_path=self.config_path))
+
+    def get_worksheet(self, index=0):
+        return self.worksheet(self._known[index] if index < len(self._known) else "dropshipping")
+
+    def worksheets(self):
+        return [self.worksheet(w) for w in self._known]
+
+    def add_worksheet(self, title, rows=None, cols=None):
+        return self.worksheet(title)
 
 
 def _header_at(col_n):
