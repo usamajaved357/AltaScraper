@@ -75,27 +75,49 @@ TICK = 30
 # for the same per-minute Amazon quota.
 USER_PRIORITY_QUIET = 120
 
-_USER = {"active": 0, "until": 0.0, "last_key": None}
+# PRIORITY IS PER ACCOUNT, NOT GLOBAL.
+#
+# Amazon's report quota is per SELLING PARTNER ACCOUNT. jack_uk and
+# nestwell_goods have separate buckets, so a manual sync on one does not compete
+# with a background refresh of the other -- and pausing everything because you
+# synced one account would just make every OTHER account go stale for no reason.
+#
+# What genuinely competes is two reports for the SAME account. That is the only
+# case worth standing aside for, and it is the case that matters: you press Sync
+# on Nestwell precisely because you are about to work on Nestwell.
+_USER = {"accounts": {}, "active": {}}
+
+
+def _acct_of(key):
+    return str(key or "").split("::", 1)[0]
 
 
 def user_sync_started(key=None):
     """A user-initiated sync has begun. Called by /live/catalog on force."""
+    aid = _acct_of(key)
     with _LOCK:
-        _USER["active"] += 1
-        if key:
-            _USER["last_key"] = key
+        _USER["active"][aid] = _USER["active"].get(aid, 0) + 1
 
 
-def user_sync_finished():
+def user_sync_finished(key=None):
+    aid = _acct_of(key)
     with _LOCK:
-        _USER["active"] = max(0, _USER["active"] - 1)
-        _USER["until"] = time.time() + USER_PRIORITY_QUIET
+        _USER["active"][aid] = max(0, _USER["active"].get(aid, 0) - 1)
+        _USER["accounts"][aid] = time.time() + USER_PRIORITY_QUIET
 
 
-def user_busy():
-    """True while a user sync is running, or just after one."""
+def user_busy(account_id=None):
+    """Is a user syncing THIS account (or just finished)?
+
+    With no account named, answers for any account -- used only by status().
+    """
     with _LOCK:
-        return _USER["active"] > 0 or time.time() < _USER["until"]
+        if account_id is None:
+            return (any(v > 0 for v in _USER["active"].values())
+                    or any(t > time.time() for t in _USER["accounts"].values()))
+        aid = str(account_id or "")
+        return (_USER["active"].get(aid, 0) > 0
+                or _USER["accounts"].get(aid, 0) > time.time())
 
 
 def status():
@@ -150,6 +172,10 @@ def _stalest(cfg_fn, config_path):
     best, best_score = None, -1.0
     now = time.time()
     for aid, mkt in _targets(cfg_fn, config_path):
+        # Only skip the account the user is actually syncing. Other accounts have
+        # their own Amazon quota and carry on being refreshed.
+        if user_busy(aid):
+            continue
         key = "%s::%s" % (aid, mkt)
         rec = _snap.get(config_path, aid, mkt)
         age = _snap.age_seconds(rec)
@@ -218,11 +244,10 @@ def _refresh_one(app, aid, mkt):
 def _loop(app, cfg_fn, config_path, log=None):
     while True:
         try:
-            # Stand aside while the user is syncing. Their request is what
-            # someone is actually waiting on; this rotation is not.
-            if user_busy():
-                time.sleep(TICK)
-                continue
+            # NOT a global pause. _stalest() skips only the account the user is
+            # syncing, so every other account keeps being refreshed -- pausing
+            # them all would make them go stale for no reason, since they do not
+            # share Amazon quota with the account being synced.
             target = _stalest(cfg_fn, config_path)
             if target:
                 note = _refresh_one(app, target[0], target[1])

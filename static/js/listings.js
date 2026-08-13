@@ -1033,7 +1033,8 @@ function tableRow(r){
     <td>${_compCell(r)}</td>
     <td><div class="acts">
       <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
-      <button class="dotb" title="More" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-dots"></i></button>
+      <button class="dotb" title="Generate images for this product"
+              onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
     </div></td></tr>`;
 }
 
@@ -1057,7 +1058,15 @@ function liveTableRow(it){
     <td><span class="cc">—</span></td>
     <td><span class="badge b-LIVE">LIVE</span></td>
     <td>${comp}</td>
-    <td><div class="acts"><button class="dotb" title="On Amazon, not in your sheet"><i class="ti ti-brand-amazon"></i></button></div></td></tr>`;
+    <td><div class="acts">
+      <button class="dotb" title="Optimize this live listing"
+              onclick="event.stopPropagation();optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i></button>
+      <button class="dotb" title="Generate images for this product"
+              onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i></button>
+      <a class="dotb" title="View on Amazon" target="_blank" rel="noopener"
+         onclick="event.stopPropagation()"
+         href="https://www.amazon.${WS_MARKET==='UK'?'co.uk':'com'}/dp/${esc(it.asin||'')}"><i class="ti ti-external-link"></i></a>
+    </div></td></tr>`;
 }
 
 // ---- COMPLIANCE BANNER (detail view) ------------------------------------

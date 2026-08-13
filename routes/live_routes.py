@@ -520,10 +520,12 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 # of them would be easy to get wrong. This fires on every one,
                 # including an unhandled exception, so the refresher can never be
                 # left permanently paused by a request that died.
+                _prio_key = f"{aid}::{mkt}"
+
                 @after_this_request
-                def _release_priority(resp):
+                def _release_priority(resp, _k=_prio_key):
                     try:
-                        _refresher.user_sync_finished()
+                        _refresher.user_sync_finished(_k)
                     except Exception:
                         pass
                     return resp
