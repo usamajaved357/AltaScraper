@@ -3181,6 +3181,23 @@ def build_app(backend="sheets"):
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes
     _users_routes.register(app, CONFIG_PATH=CONFIG_PATH)
+
+    # Keep EVERY connected account+marketplace's live catalogue fresh, server-side.
+    # The browser timer could only refresh the one workspace that happened to be
+    # open, and only while a tab was open, so every other account stayed stale and
+    # the first visit paid the full report-build wait. This walks them all, one at
+    # a time and spread out so Amazon is not asked for everything at once.
+    import domain.live_refresher as _refresher
+
+    @app.route("/live/refresher")
+    def _live_refresher_status():
+        """What the background refresher is doing, and when each account last ran.
+        Reads real state -- a refresher that cannot be inspected is one you have
+        to take on faith."""
+        return jsonify({"ok": True, **_refresher.status()})
+
+    _refresher.start(app, _cfg, CONFIG_PATH,
+                     log=lambda m: print(f"[refresher] {m}"))
     return app
 
 
