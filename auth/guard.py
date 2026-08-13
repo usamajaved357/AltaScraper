@@ -227,6 +227,32 @@ def _denial_message(perm):
             "It needs: %s. Ask the account owner to grant it." % label)
 
 
+def _wants_json():
+    """Is this an API call rather than someone typing an address?
+
+    A browser NAVIGATION asks for text/html and is a GET. Everything else here --
+    a POST, a JSON body, an explicit JSON Accept, or an XHR marker -- is the
+    app's own code calling an endpoint and expecting JSON back.
+
+    Deliberately generous: answering JSON to something that wanted HTML shows a
+    small technical message instead of a login page, while answering HTML to
+    something that wanted JSON produces the "Unexpected token '<'" error that
+    hides the real cause entirely. The second failure is far worse.
+    """
+    try:
+        if request.method != "GET":
+            return True
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return True
+        accept = str(request.headers.get("Accept") or "")
+        if "application/json" in accept:
+            return True
+        # A real navigation says text/html. A bare fetch() usually says */*.
+        return "text/html" not in accept
+    except Exception:
+        return False
+
+
 def make_doorman(config_path, app_password, login_endpoint="_login"):
     """Build the before_request handler that runs on EVERY request.
 
@@ -249,6 +275,24 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
             return
 
         if not session.get("authed"):
+            # AN API CALL MUST NOT BE REDIRECTED TO AN HTML PAGE.
+            #
+            # Every fetch() in the app parses the reply as JSON. Redirecting one
+            # to /login means the browser quietly follows it, receives the login
+            # PAGE, and the app reports:
+            #     Unexpected token '<', "<!doctype "... is not valid JSON
+            # which says nothing about the real problem -- that the session has
+            # expired. It looks like the feature is broken rather than that you
+            # are signed out, and it sent us hunting in the wrong place.
+            #
+            # Browser navigations still redirect, because for those the login
+            # page IS the right answer.
+            if _wants_json():
+                return jsonify({
+                    "ok": False, "authed": False,
+                    "error": "Your session has expired. Reload the page and sign in again."
+                }), 401
+
             # Carry the destination through the sign-in. Every screen has its own
             # address now, so without this a bookmarked link followed after the
             # session expired would silently dump you on the workspace list.
@@ -266,12 +310,21 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
         # of JSON in place of every page they open.
         if uid and (user is None or not user.get("active", True)):
             session.clear()
+            if _wants_json():
+                return jsonify({"ok": False, "authed": False,
+                                "error": "Your account was changed or disabled. "
+                                         "Reload the page and sign in again."}), 401
             return redirect(url_for(login_endpoint))
 
         if user is None:
             if not users.is_bootstrap(config_path):
                 # Accounts exist now, so the shared password is no longer a way in.
                 session.clear()
+                if _wants_json():
+                    return jsonify({"ok": False, "authed": False,
+                                    "error": "The shared password no longer works now that "
+                                             "user accounts exist. Sign in with your own "
+                                             "email and password."}), 401
                 return redirect(url_for(login_endpoint))
             user = users.bootstrap_user()
 

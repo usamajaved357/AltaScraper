@@ -3196,6 +3196,19 @@ def build_app(backend="sheets"):
     # a time and spread out so Amazon is not asked for everything at once.
     import domain.live_refresher as _refresher
 
+    @app.route("/diag")
+    def _deploy_diag():
+        """Is THIS deployment configured correctly?
+
+        On a server there is no terminal, and a misconfigured deployment looks
+        exactly like an application bug -- listings vanish, users get signed out.
+        This says which it is, from inside the running app.
+        """
+        import domain.deploy_check as _dc
+        res = _dc.check(CONFIG_PATH)
+        res["refresher"] = _refresher.status()
+        return jsonify({"ok": True, **res})
+
     @app.route("/live/refresher")
     def _live_refresher_status():
         """What the background refresher is doing, and when each account last ran.
