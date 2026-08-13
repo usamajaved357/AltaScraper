@@ -216,18 +216,135 @@ def set_fields(ws, row, fields, headers=None, aliases=None):
     return written
 
 
-def batch_write(ws, payload, chunk=100):
+def batch_write(ws, payload, chunk=100, value_input_option=None):
     """Send a prepared payload, in chunks the sheet API will accept.
 
     The 100-row chunking was already being done by hand in listing_routes; it
     lives here so every bulk writer gets it rather than only the one that
     remembered.
+
+    value_input_option is passed through rather than assumed: the generator's
+    flush() writes RAW, while the route-level writers use the API default.
+    Forcing one on all of them would change how values are interpreted -- RAW
+    keeps a leading "+" or "=" as text, the default would treat it as a formula.
     """
     if not payload:
         return 0
     for i in range(0, len(payload), chunk):
-        ws.batch_update(payload[i:i + chunk])
+        part = payload[i:i + chunk]
+        if value_input_option:
+            ws.batch_update(part, value_input_option=value_input_option)
+        else:
+            ws.batch_update(part)
     return len(payload)
+
+
+def write_range(ws, rows, range_name, value_input_option="USER_ENTERED"):
+    """Write a block of rows into an explicit A1 range.
+
+    Two callers wrote this by hand: the generator's write_to_template_sheet and
+    brand_listing's _miles_write_row. Both used USER_ENTERED, which is kept as
+    the default -- it is what makes a price land as a number rather than text.
+    """
+    ws.update(rows, range_name, value_input_option=value_input_option)
+    return True
+
+
+def set_cell(ws, row, col, value):
+    """One cell by NUMBER, for the few callers that compute coordinates."""
+    ws.update_cell(int(row), int(col), value)
+    return True
+
+
+def write_header_row(ws, headers):
+    """Overwrite row 1 in place. Existing data rows are untouched."""
+    ws.update([list(headers)], "A1")
+    return True
+
+
+def insert_header_row(ws, headers):
+    """Insert a header row at the top, pushing existing rows DOWN by one."""
+    ws.insert_row(list(headers), 1)
+    return True
+
+
+def replace_header_row(ws, headers):
+    """Delete row 1 and put these headers in its place.
+
+    Kept separate from insert_header_row because the difference is destructive:
+    this one DISCARDS whatever row 1 held, the other preserves it one row lower.
+    The generator uses this when it finds a header row narrower than
+    FIXED_HEADERS; brand_listing uses insert when row 1 turns out to be data.
+    Naming them apart means neither can be reached by accident.
+    """
+    ws.delete_rows(1)
+    ws.insert_row(list(headers), 1)
+    return True
+
+
+def ensure_column(ws, name, headers=None):
+    """Make sure a column exists, adding it at the far right if not.
+
+    Returns (col_number, headers, added). Existing rows keep their values -- the
+    new column is simply blank for them.
+
+    Written out twice: listing/regen.py adding "Compliance Report" so a HOLD has
+    somewhere to land, and brand_listing adding "Regenerated". Both did the same
+    three steps and both swallowed failures; that behaviour is kept, because a
+    missing optional column must not abort a generation run.
+    """
+    hdrs = list(headers) if headers is not None else read_headers(ws)
+    if name in hdrs:
+        return hdrs.index(name) + 1, hdrs, False
+    if not hdrs:
+        return None, hdrs, False          # nothing read -> do not guess at column 1
+    col = len(hdrs) + 1
+    try:
+        ws.update_cell(1, col, name)
+    except Exception:
+        return None, hdrs, False
+    return col, hdrs + [name], True
+
+
+def ensure_tab(book, title, headers=None, rows=2000, cols=100,
+               freeze_header=True, bold_header=False, header_bg=None):
+    """Open a tab, or create it with its header row. Returns (worksheet, created).
+
+    "Open the output tab, and if it does not exist create it and write the header
+    row" was written out FOUR times: amazon_listing_generator.init_sheets and
+    run_brand, dashboard._ws, and data/store.export_to_sheet. They differed in
+    size, in whether the header was frozen, and in whether it was bolded --
+    differences nobody chose, they just accumulated. Those are options now.
+
+    A tab that already exists is NEVER re-headered here. Rewriting the header of
+    a populated sheet would shift every column's meaning without touching a
+    single value, which is the most destructive thing this module could do by
+    accident.
+    """
+    try:
+        return book.worksheet(title), False
+    except Exception:
+        pass
+
+    ws = book.add_worksheet(title=title, rows=rows, cols=cols)
+    if headers:
+        ws.append_row(list(headers), value_input_option="RAW")
+        if bold_header or header_bg:
+            fmt = {}
+            if bold_header:
+                fmt["textFormat"] = {"bold": True}
+            if header_bg:
+                fmt["backgroundColor"] = header_bg
+            try:
+                ws.format("1:1", fmt)
+            except Exception:
+                pass          # cosmetic only -- never fail a run over formatting
+        if freeze_header:
+            try:
+                ws.freeze(rows=1)
+            except Exception:
+                pass
+    return ws, True
 
 
 def delete_row(ws, row):

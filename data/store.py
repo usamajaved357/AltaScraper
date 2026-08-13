@@ -219,11 +219,13 @@ class ListingStore:
         Rewrites the tab wholesale. Not a sync -- edits made in the sheet are NOT
         read back, and will be overwritten next time this runs.
         """
+        from listing import repo as _repo       # shared open-or-create (Rule 12)
         book = gc.open_by_key(spreadsheet_id)
-        try:
-            ws = book.worksheet(tab)
-        except Exception:
-            ws = book.add_worksheet(title=tab, rows=1000, cols=len(ORDERED_HEADERS))
+        # No headers passed: this method writes the whole grid INCLUDING its own
+        # header row a few lines below, so letting ensure_tab write one too would
+        # put the headers in twice.
+        ws, _created = _repo.ensure_tab(book, tab, rows=1000,
+                                        cols=len(ORDERED_HEADERS))
         rows = self.get_all_rows()
         grid = [ORDERED_HEADERS]
         for r in rows:

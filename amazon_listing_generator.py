@@ -2260,16 +2260,24 @@ def init_sheets(config: dict):
             # Don't force the 48-col FIXED_HEADERS when Miles mode owns this tab
             # (it writes its own column layout).
             if not config.get("_miles_mode") and len(ws_out.row_values(1)) < FIXED_COUNT:
-                ws_out.delete_rows(1)
-                ws_out.insert_row(FIXED_HEADERS, 1)
+                # REPLACE, not insert: row 1 is a header row too narrow for the
+                # current FIXED_HEADERS, so it is discarded rather than pushed
+                # down into the data. repo names the two apart precisely because
+                # that difference is destructive.
+                from listing import repo as _repo
+                _repo.replace_header_row(ws_out, FIXED_HEADERS)
             console.print(f"  Output tab: '[bold]{OUTPUT_TAB}[/bold]'")
         except gspread.WorksheetNotFound:
-            ws_out = sh_out.add_worksheet(title=OUTPUT_TAB, rows=2000, cols=100)
-            if not config.get("_miles_mode"):
-                ws_out.append_row(FIXED_HEADERS, value_input_option="RAW")
-                ws_out.format("1:1", {"textFormat": {"bold": True},
-                                       "backgroundColor": {"red": 0.27, "green": 0.51, "blue": 0.71}})
-                ws_out.freeze(rows=1)
+            # Open-or-create-with-headers lives in listing/repo.py -- the same
+            # thing was written out in run_brand() below, in dashboard._ws() and
+            # in data/store.export_to_sheet(). Miles mode owns its own column
+            # layout, so it gets the tab with no header row written.
+            from listing import repo as _repo
+            ws_out, _ = _repo.ensure_tab(
+                sh_out, OUTPUT_TAB, rows=2000, cols=100,
+                headers=(None if config.get("_miles_mode") else FIXED_HEADERS),
+                bold_header=True,
+                header_bg={"red": 0.27, "green": 0.51, "blue": 0.71})
             console.print(f"  Created new tab: '[bold]{OUTPUT_TAB}[/bold]'")
 
     sh_in = _open_sheet_retry(gc, config["input_spreadsheet_id"], "input sheet")
@@ -3298,9 +3306,10 @@ def write_to_template_sheet(gc, sheet_id: str, data_rows: list,
     console.print(f"  Writing {len(data_rows)} row(s) to {label}...", end=" ")
     end_row    = 6 + len(data_rows)
     range_name = f"A7:{last_col}{end_row}"
+    from listing import repo as _repo
     for attempt in range(1, 4):
         try:
-            ws.update(data_rows, range_name, value_input_option="USER_ENTERED")
+            _repo.write_range(ws, data_rows, range_name)
             console.print("[green]OK[/green]")
             return
         except gspread.exceptions.APIError as e:
@@ -6106,7 +6115,8 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         console.print("[red]Your python-amazon-sp-api is too old for the Listings API.[/red] "
                       "Update it:  pip install --upgrade python-amazon-sp-api")
         return
-    from gspread.utils import rowcol_to_a1
+    from listing.repo import a1 as rowcol_to_a1   # one cell-reference impl (Rule 12)
+    from listing import repo as _repo
     # Build the Listings client with a generous timeout. The default in python-amazon-
     # sp-api is short (~15s); the UK/EU endpoint (sellingpartnerapi-eu) round-trip from
     # Pakistan, combined with heavy product types like GARDEN_TOOL_SET, can exceed it
@@ -6135,7 +6145,9 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             _updates.append({"range": rowcol_to_a1(r, c), "values": [[val]]})
     def flush():
         if _updates:
-            ws.batch_update(_updates, value_input_option="RAW")
+            # RAW is passed through explicitly: it keeps a leading "+" or "="
+            # as text instead of Google reading it as a formula.
+            _repo.batch_write(ws, _updates, value_input_option="RAW")
             _updates.clear()
 
     # ---- VERIFY mode: re-check already-submitted rows and flip them to LIVE ---------
@@ -7019,9 +7031,10 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
         if c_rep >= 0:
             updates.append((ridx + 1, c_rep + 1, "Optimised (SQP)"))
 
+        from listing import repo as _repo
         for (r1, c1, val) in updates:
             try:
-                ws_out.update_cell(r1, c1, val)
+                _repo.set_cell(ws_out, r1, c1, val)
             except Exception as e:
                 console.print(f"  [yellow]cell write failed: {e}[/yellow]")
         optimised += 1
@@ -7083,12 +7096,9 @@ def run_brand(config: dict, gc, creds: dict, ws_out=None,
         try:
             _sh = gc.open_by_key(prof_sheet)
             _tab = prof_tab or OUTPUT_TAB
-            try:
-                ws_out = _sh.worksheet(_tab)
-            except Exception:
-                ws_out = _sh.add_worksheet(title=_tab, rows=2000, cols=100)
-                ws_out.append_row(FIXED_HEADERS, value_input_option="RAW")
-                ws_out.freeze(rows=1)
+            from listing import repo as _repo
+            ws_out, _ = _repo.ensure_tab(_sh, _tab, headers=FIXED_HEADERS,
+                                         rows=2000, cols=100)
             console.print(f"  [cyan]Output -> brand sheet {prof_sheet[:12]}... / "
                           f"tab '{_tab}'[/cyan]")
         except Exception as e:

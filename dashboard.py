@@ -345,9 +345,16 @@ def _ws():
             header = dflt.row_values(1)
         except Exception:
             header = None
-        ws = book.add_worksheet(title=tab, rows=200, cols=max(26, len(header or []) or 26))
-        if header:
-            ws.update("A1", [header])
+        # Open-or-create-with-headers is shared (Rule 12): the same thing was
+        # written out in the generator's init_sheets() and run_brand(), and in
+        # data/store.export_to_sheet(). ensure_tab also returns the EXISTING tab
+        # untouched if it turns out to be there, which matters here -- this path
+        # is reached after a lookup failed, and re-headering a populated tab
+        # would shift every column's meaning without changing a single value.
+        from listing import repo as _repo
+        ws, _created = _repo.ensure_tab(
+            book, tab, headers=header, rows=200,
+            cols=max(26, len(header or []) or 26), freeze_header=False)
         return ws
     except Exception as e:
         # An account workspace must fail loudly rather than serve the shared tab.

@@ -577,11 +577,14 @@ def _miles_write_row(host, ws, row_values: list) -> bool:
         existing = ws.row_values(1)
     except Exception:
         existing = []
+    from listing import repo as _repo
     try:
         if not existing:
-            ws.update([MILES_SHEET_HEADERS], "A1")
+            _repo.write_header_row(ws, MILES_SHEET_HEADERS)
         elif existing[:1] and existing[0].strip().upper() != "SKU":
-            ws.insert_row(MILES_SHEET_HEADERS, 1)
+            # INSERT, not replace: row 1 turned out to be data, so it is pushed
+            # down rather than discarded.
+            _repo.insert_header_row(ws, MILES_SHEET_HEADERS)
     except Exception:
         pass
 
@@ -594,8 +597,7 @@ def _miles_write_row(host, ws, row_values: list) -> bool:
             # Write the row explicitly at that position (A{next_row}).
             end_col = _col_letter(len(row_values))
             rng = f"A{next_row}:{end_col}{next_row}"
-            # gspread 6.x signature: update(values, range_name, ...)
-            ws.update([row_values], rng, value_input_option="USER_ENTERED")
+            _repo.write_range(ws, [row_values], rng)
             # Read-back verification: confirm the SKU actually landed in A{next_row}
             try:
                 check = ws.acell(f"A{next_row}").value
@@ -1116,18 +1118,16 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             # (so a held row that a human cleared and re-ran is re-verified, never
             # laundered blindly -- run_regen refuses rows that still carry a HOLD).
             from datetime import datetime as _dt
-            from gspread.utils import rowcol_to_a1
+            from listing import repo as _repo   # one cell-reference impl (Rule 12)
+            rowcol_to_a1 = _repo.a1
             try:
                 _hdr = host._read_retry(ws_out.row_values, 1) if hasattr(host, "_read_retry") \
                        else ws_out.row_values(1)
             except Exception:
                 _hdr = []
-            if "Regenerated" not in _hdr:
-                try:
-                    ws_out.update_cell(1, len(_hdr) + 1, "Regenerated")
-                    _hdr = _hdr + ["Regenerated"]
-                except Exception:
-                    pass
+            # "add this column if the tab does not have it" -- the same three
+            # steps listing/regen.py does for "Compliance Report".
+            _col, _hdr, _added = _repo.ensure_column(ws_out, "Regenerated", _hdr)
             _stamp = _dt.now().strftime("%Y-%m-%d %H:%M") + (f" -- {regen_reason}" if regen_reason else "")
             _upd = {"Title": miles_row[1], "Item Highlights": miles_row[2],
                     "Bullet Point 1": miles_row[3], "Bullet Point 2": miles_row[4],
@@ -1140,7 +1140,7 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             ok = False
             if _data:
                 try:
-                    ws_out.batch_update(_data)
+                    _repo.batch_write(ws_out, _data)
                     ok = True
                 except Exception as _e:
                     console.print(f"  [red]regen write failed: {str(_e)[:100]}[/red]")

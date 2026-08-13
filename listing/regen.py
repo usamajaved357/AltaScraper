@@ -100,13 +100,15 @@ def run_regen(config, gc, creds, *, skus, marketplace="UK", output_tab=None,
     # are untouched (new column is blank). The "Regenerated" column is added by the
     # in-place writer itself.
     if hdr and "Compliance Report" not in hdr:
-        try:
-            ws.update_cell(1, len(hdr) + 1, "Compliance Report")
+        # Shared with brand_listing's "Regenerated" column, which did the same
+        # three steps. ensure_column swallows a failure the same way this did --
+        # a missing optional column must not abort a regeneration run.
+        from listing import repo as _repo
+        _col, hdr, _added = _repo.ensure_column(ws, "Compliance Report", hdr)
+        if _added:
             vals = G._read_retry(ws.get_all_values)
             hdr  = vals[0] if vals else hdr
             console.print("[regen] added a 'Compliance Report' column (was missing on this tab).")
-        except Exception:
-            pass
     def _ci(name):
         return hdr.index(name) if name in hdr else -1
     sku_c, comp_c = _ci("SKU"), _ci("Compliance Report")
