@@ -132,6 +132,8 @@ def status():
             "uptime_seconds": int(time.time() - _STATE["started"]) if _STATE["started"] else 0,
             "refresh_after_seconds": REFRESH_AFTER,
             "stagger_seconds": STAGGER,
+            "enrich": {"batch": ENRICH_BATCH, "per_pass": ENRICH_PER_PASS,
+                       "pause_seconds": ENRICH_PAUSE},
             "targets": [
                 {"key": k, "last_attempt": v, "age_seconds": int(time.time() - v),
                  "result": _STATE["results"].get(k, "")}
@@ -249,6 +251,138 @@ def _refresh_one(app, aid, mkt):
     return note
 
 
+# --- images and A+ content, fetched the same way the catalogue is ------------
+# WHY THIS IS HERE
+# The catalogue report gives titles, prices and statuses but NOT images, and A+
+# content lives behind a different API again. So opening a workspace meant
+# waiting while the browser pulled images one SKU at a time, and pressing "pull
+# live images" by hand. There is no reason a person should have to ask: it is the
+# same background job that already keeps the catalogue fresh.
+#
+# PACED, BECAUSE IMAGES ARE EXPENSIVE
+# Each image is one getListingsItem call and SP-API is rate limited per account.
+# A catalogue of 500 listings is 500 calls, so a pass takes a BUDGET rather than
+# doing all of them: it chips away, newest gaps first, and the next pass
+# continues. Getting there in an hour without being throttled beats trying to
+# get there in a minute and failing.
+ENRICH_BATCH = 20          # SKUs per call to /live/images (its own cap is 40)
+ENRICH_PER_PASS = 60       # SKUs per account per pass -- the budget
+ENRICH_PAUSE = 3           # seconds between batches, to stay under the rate limit
+
+
+def _needs_images(cfg_fn, config_path, account_id):
+    """The account's marketplace with the most listings still missing an image.
+
+    Most-missing first, so the biggest gap closes fastest instead of the worker
+    nibbling at whichever marketplace happens to sort first.
+    """
+    import domain.live_snapshots as _snap
+    if user_busy(account_id):
+        return None
+    best, most = None, 0
+    for aid, mkt in _targets(cfg_fn, config_path):
+        if aid != account_id:
+            continue
+        rec = _snap.get(config_path, aid, mkt)
+        if not rec:
+            continue
+        missing = sum(1 for i in (rec.get("items") or [])
+                      if i.get("sku") and not i.get("img"))
+        if missing > most:
+            best, most = (aid, mkt), missing
+    return best
+
+
+def _enrich_one(app, config_path, aid, mkt, log=None):
+    """Fill in images (and warm A+ content) for a marketplace already refreshed.
+
+    Calls the REAL /live/images and /live/aplus views, exactly as _refresh_one
+    calls the real /live/catalog -- Rule 12. A background copy of the fetching
+    logic would drift from the one the buttons use, and the difference would show
+    up as "the images are wrong only when nobody clicked".
+    """
+    import domain.live_snapshots as _snap
+    rec = _snap.get(config_path, aid, mkt)
+    if not rec:
+        return "no snapshot"
+    items = rec.get("items") or []
+    # Only listings with no image yet. A gap that Amazon genuinely has no image
+    # for is retried on the next catalogue refresh, not on every pass.
+    need = [str(i.get("sku") or "") for i in items
+            if str(i.get("sku") or "") and not i.get("img")]
+    if not need:
+        return "images complete"
+
+    todo = need[:ENRICH_PER_PASS]
+    got = {}
+    failed = 0
+    fn = app.view_functions.get("live_images")
+    if not fn:
+        return "live_images view is not registered"
+    for i in range(0, len(todo), ENRICH_BATCH):
+        if user_busy(aid):
+            break                      # a person is syncing this account; stand aside
+        chunk = todo[i:i + ENRICH_BATCH]
+        try:
+            with app.test_request_context(
+                    "/live/images", method="POST",
+                    json={"id": aid, "marketplace": mkt, "skus": chunk}):
+                resp = fn()
+            body = resp[0] if isinstance(resp, tuple) else resp
+            data = getattr(body, "json", None) or {}
+            if not data.get("ok"):
+                failed += len(chunk)
+                continue
+            imgs = data.get("images") or {}
+            statuses = data.get("statuses") or {}
+            meta = data.get("meta") or {}
+            failed += len(data.get("failed") or [])
+            for sku in chunk:
+                fields = {}
+                if imgs.get(sku):
+                    fields["img"] = imgs[sku]
+                if statuses.get(sku):
+                    fields["status"] = statuses[sku]
+                m = meta.get(sku) or {}
+                if m.get("fulfillment"):
+                    fields["fulfillment"] = m["fulfillment"]
+                if m.get("handling") is not None:
+                    fields["handling"] = m["handling"]
+                if m.get("title"):
+                    fields["title"] = m["title"]
+                if fields:
+                    got[sku] = fields
+        except Exception as e:
+            failed += len(chunk)
+            if log:
+                log("enrich %s::%s batch failed: %s" % (aid, mkt, str(e)[:80]))
+        time.sleep(ENRICH_PAUSE)
+
+    written = _snap.enrich(config_path, aid, mkt, got) if got else 0
+
+    # A+ content: ONE call per marketplace, and it populates the same cache the
+    # page reads, so the card is complete before anyone opens it.
+    aplus_note = ""
+    afn = app.view_functions.get("live_aplus")
+    if afn and not user_busy(aid):
+        try:
+            with app.test_request_context("/live/aplus", method="POST",
+                                          json={"id": aid, "marketplace": mkt}):
+                aresp = afn()
+            abody = aresp[0] if isinstance(aresp, tuple) else aresp
+            adata = getattr(abody, "json", None) or {}
+            if adata.get("ok"):
+                aplus_note = ", A+ %d" % len(adata.get("by_asin") or {})
+        except Exception:
+            aplus_note = ", A+ failed"
+
+    left = max(0, len(need) - len(todo))
+    return ("images %d/%d saved%s%s%s"
+            % (written, len(todo), aplus_note,
+               (", %d refused" % failed) if failed else "",
+               (", %d still to do" % left) if left else ""))
+
+
 def _loop(app, cfg_fn, config_path, account_id, log=None):
     """One worker, responsible for ONE account.
 
@@ -270,7 +404,28 @@ def _loop(app, cfg_fn, config_path, account_id, log=None):
                 note = _refresh_one(app, target[0], target[1])
                 if log:
                     log("live refresh %s::%s -> %s" % (target[0], target[1], note))
+                # Fill in the images for what was just refreshed. A catalogue
+                # without them is only half a screen, and the person who opens
+                # this workspace should not have to ask for the other half.
+                try:
+                    enote = _enrich_one(app, config_path, target[0], target[1], log)
+                    if log:
+                        log("live enrich %s::%s -> %s" % (target[0], target[1], enote))
+                except Exception:
+                    pass
                 time.sleep(STAGGER)            # one report at a time FOR THIS ACCOUNT
+                continue
+
+            # Nothing needs a fresh REPORT, so spend the idle time finishing the
+            # images on a catalogue that already exists. This is what makes a big
+            # catalogue arrive complete: one pass is budgeted, and the passes keep
+            # coming while there is nothing more urgent to do.
+            gap = _needs_images(cfg_fn, config_path, account_id)
+            if gap:
+                enote = _enrich_one(app, config_path, gap[0], gap[1], log)
+                if log:
+                    log("live enrich %s::%s -> %s" % (gap[0], gap[1], enote))
+                time.sleep(STAGGER)
                 continue
         except Exception:
             pass                               # never let a worker die

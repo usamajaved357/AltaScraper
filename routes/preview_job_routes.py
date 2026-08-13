@@ -45,12 +45,26 @@ def register(app, *, CONFIG_PATH, SCRIPT, _cfg, _active_account, _state, _requir
             active_tab=_state.get("active_tab"),
             active_view=_state.get("active_view") or "",
             cfg=(_cfg() if _cfg else {}), config_path=CONFIG_PATH)
-        jid = _pj.enqueue(sku, mode, args, label=sku)
+        # Name the account and the person. The run is keyed per account and per
+        # SKU rather than against one global lock, so a job now waits only for
+        # work that would genuinely collide with it -- and Stop can tell whose
+        # run it is.
+        from domain import job_owner as _jo
+        jid = _pj.enqueue(sku, mode, args, label=sku,
+                          account_id=str((_acc or {}).get("id", "") or ""),
+                          owner=_jo.current())
         return jsonify({"ok": True, "job": jid, "counts": _pj.counts()})
 
     @app.route("/preview/jobs")
     def preview_jobs():
-        return jsonify({"ok": True, "jobs": _pj.list_jobs(limit=100), "counts": _pj.counts()})
+        """Your queue, not the server's.
+
+        Every job was listed to everyone, so one person's Preview/Submit queue
+        filled another's screen. Same rule as the image and auto-fix registries
+        (domain/job_owner.py): your own, plus everything if you manage users."""
+        from domain import job_owner as _jo
+        jobs = [j for j in _pj.list_jobs(limit=100) if _jo.may_see(j, CONFIG_PATH)]
+        return jsonify({"ok": True, "jobs": jobs, "counts": _pj.counts()})
 
     @app.route("/preview/job")
     def preview_job():

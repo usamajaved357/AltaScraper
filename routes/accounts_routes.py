@@ -19,6 +19,30 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
              OUTPUT_TAB, ConfigError, _client, _save_active_state=lambda: None):
     """Attach the /accounts/* routes to the existing Flask app."""
 
+    def _visible_accounts(accounts):
+        """The workspaces the CALLER may open.
+
+        One implementation, so what the home screen lists and what the doorman
+        allows are the same answer. Falls open when there is no user (background
+        work, or the shared-password owner who is the only user) -- that is the
+        same rule auth/guard.py applies, not a shortcut.
+        """
+        try:
+            from flask import session
+            from auth import users
+            uid = session.get("uid")
+            if not uid:
+                return accounts
+            u = users.get_user(CONFIG_PATH, uid)
+            if not u:
+                return accounts
+            return [a for a in accounts
+                    if users.can_access_workspace(u, str(a.get("id") or ""))]
+        except Exception:
+            # A permissions lookup that fails must not empty someone's home
+            # screen; the doorman still refuses anything they may not open.
+            return accounts
+
     import re as _re
     _SHEET_ID_RE = _re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
     _SHEET_GID_RE = _re.compile(r"[#&?]gid=([0-9]+)")
@@ -210,6 +234,18 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         except ConfigError as e:
             return jsonify({"ok": False, "error": str(e), "config_error": True}), 200
         al = _acc.load_accounts(cfg, CONFIG_PATH)
+
+        # SHOW ONLY THE WORKSPACES THIS PERSON MAY OPEN.
+        # /accounts/select already refuses a workspace someone is not scoped to,
+        # but this list did not filter at all -- so a VA restricted to one
+        # workspace saw all of them on the home screen, along with each one's
+        # label, seller id, brands, marketplaces, sheet links and LWA client id.
+        # That is not a cosmetic difference: it is the whole shape of the
+        # business, handed to someone deliberately scoped away from it.
+        #
+        # Uses auth.users.can_access_workspace -- the same function the doorman
+        # enforces with -- so what is LISTED and what is ALLOWED cannot drift.
+        al = _visible_accounts(al)
 
         def _sheet_url(a, which):
             """The account's sheet link, ALWAYS shown, never blank when we know the ids.

@@ -87,10 +87,9 @@ async function editListingImage(sku, url, idx){
     // if this was the MAIN image, offer to set the edited version as the new main
     if(idx===0 && confirm("Edited image saved. Set it as the MAIN image for this listing?\n(This updates the app copy; use \"Push image to live\" to send it to Amazon.)")){
       var useUrl=sv.url||res.data_url;
-      await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({sku:sku,target:'attr',key:'main_product_image_locator',value:useUrl})});
-      toast("✓ Set as main image (app copy). Use 'Push image to live' to send to Amazon.");
-      loadRows();
+      // ONE implementation of "make this the main image" (listingimages.js).
+      await setMainImage(sku, useUrl,
+        {message:"✓ Set as main image (app copy). Use 'Push image to live' to send to Amazon."});
     } else {
       toast("✓ Edited image saved to "+sku+"'s library.");
     }
@@ -255,8 +254,23 @@ async function pollGenStatus(){
     if(bar&&txt){
       if(j.ok && j.jobs && j.jobs.length){
         let done=0,total=0;
-        j.jobs.forEach(x=>{ done+=(x.done||0); total+=(x.total||0); });
-        txt.textContent="Generating "+done+"/"+total+" image"+(total===1?"":"s")+"…";
+        const products=[];
+        j.jobs.forEach(x=>{
+          done+=(x.done||0); total+=(x.total||0);
+          (x.products||[]).forEach(p=>products.push(p));
+        });
+        // Say how many PRODUCTS as well as how many images. "0/16" for two items
+        // reads as one enormous job and hides which item is where; the products
+        // now generate side by side, so the bar should say so.
+        let label="Generating "+done+"/"+total+" image"+(total===1?"":"s");
+        if(products.length>1){
+          const busy=products.filter(p=>p.done<p.total).length;
+          label+=" · "+products.length+" products";
+          if(busy) label+=" ("+busy+" still running)";
+        }else if(products.length===1 && products[0].sku){
+          label+=" · "+products[0].sku;
+        }
+        txt.textContent=label+"…";
         bar.style.display="flex";
         // adopt an active job for the panel if we don't have one yet
         if(!GEN_ACTIVE_JOB && j.jobs[0]) GEN_ACTIVE_JOB=j.jobs[0].job;

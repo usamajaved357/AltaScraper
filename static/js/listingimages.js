@@ -1,0 +1,259 @@
+/* listingimages.js — a listing's images, in one place.
+ *
+ * WHAT WAS MISSING
+ * The app generated images and filed them under each SKU, but there was no way
+ * to SEE a listing's images from the listing, choose which one is the main, or
+ * upload your own. The images existed and were unreachable.
+ *
+ * RULE 12 FIRST
+ * "Make this the main image" was implemented FOUR times before this file:
+ *   autofix.js  uploadMainImage()   POST /edit  main_product_image_locator
+ *   autofix.js  applyGen()          POST /edit  main_product_image_locator
+ *   miles_template.js milesApply()  POST /edit  main_product_image_locator
+ *   settings.js genApply()          POST /edit  main_product_image_locator
+ * Four copies of one rule, each with slightly different messages and follow-up.
+ * setMainImage() below is the one implementation and those four now call it, so
+ * this panel is a fifth CALLER rather than a fifth copy.
+ *
+ * DRAFTS vs LIVE
+ * On a draft, choosing a main image writes it to the row and the next
+ * Preview/Submit carries it — nothing is sent to Amazon by picking.
+ * On a live listing, "Push to Amazon" patches the live listing, and that button
+ * is gated on the `publish` permission server-side. So a Lister can choose and
+ * stage images all day; only someone who may publish makes them live. Staged and
+ * immediate are the same two buttons, which is why both exist.
+ */
+
+/* ---- the ONE way to set a listing's main image -------------------------- */
+/* Returns true on success. Callers do their own messaging where they need
+ * something specific; the shared behaviour (write the row, refresh the grid) is
+ * here so it cannot drift between the five entry points. */
+async function setMainImage(sku, url, opts){
+  opts = opts || {};
+  if(!sku || !url){ toast("Nothing to set"); return false; }
+  try{
+    const r = await fetch("/edit", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku:sku, target:"attr",
+                           key:"main_product_image_locator", value:url})});
+    const j = await r.json();
+    if(!j || !j.ok){
+      toast("Could not set the main image: " + ((j && j.error) || "unknown"));
+      return false;
+    }
+    if(opts.quiet !== true) toast(opts.message || "Main image set ✓");
+    if(opts.reload !== false && typeof loadRows === "function") loadRows();
+    return true;
+  }catch(e){
+    toast("Could not set the main image: " + ((e && e.message) || e));
+    return false;
+  }
+}
+
+/* ---- the panel ---------------------------------------------------------- */
+let IMGLIB = {sku:"", files:[], main:"", live:false};
+
+function _ilEsc(s){
+  return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];
+  });
+}
+
+/* Which image is this listing's main right now? Read from whatever the row
+ * already holds, so the panel agrees with what a Submit would actually send. */
+function _ilCurrentMain(sku){
+  const r = (typeof ROWS !== "undefined" && ROWS || []).find(function(x){
+    return String(x.sku) === String(sku);
+  });
+  if(!r) return "";
+  if(r.main_product_image_locator) return String(r.main_product_image_locator);
+  if(r.main_image) return String(r.main_image);
+  try{
+    const a = JSON.parse(r.attributes_json || r["Attributes JSON"] || "{}");
+    return String(a.main_product_image_locator || "");
+  }catch(e){ return ""; }
+}
+
+async function openImageLibrary(sku, isLive){
+  IMGLIB = {sku:sku, files:[], main:_ilCurrentMain(sku), live:!!isLive};
+  let host = document.getElementById("imglibwrap");
+  if(!host){
+    host = document.createElement("div");
+    host.id = "imglibwrap";
+    host.className = "modalwrap";
+    host.style.zIndex = "120";
+    host.innerHTML = '<div class="modal" style="max-width:860px"><div id="imglibbody"></div></div>';
+    host.addEventListener("click", function(e){ if(e.target === host) closeImageLibrary(); });
+    document.body.appendChild(host);
+  }
+  host.classList.add("open");
+  _ilRender('<div class="cc" style="padding:20px"><span class="genspin"></span> Loading this listing\'s images…</div>');
+  try{
+    const j = await (await fetch("/media/list?sku=" + encodeURIComponent(sku))).json();
+    if(!j || !j.ok){ _ilRender('<div class="cc" style="padding:20px;color:var(--red)">'
+        + _ilEsc((j && j.error) || "Could not load images") + "</div>"); return; }
+    const folder = (j.folders || [])[0];
+    IMGLIB.files = (folder && folder.files) || [];
+    _ilDraw();
+  }catch(e){
+    _ilRender('<div class="cc" style="padding:20px;color:var(--red)">' + _ilEsc(String(e)) + "</div>");
+  }
+}
+
+function closeImageLibrary(){
+  const h = document.getElementById("imglibwrap");
+  if(h) h.classList.remove("open");
+}
+
+function _ilRender(html){
+  const b = document.getElementById("imglibbody");
+  if(b) b.innerHTML = html;
+}
+
+function _ilDraw(){
+  const sku = IMGLIB.sku;
+  // Group as the library stores them: the SKU root is main/concept work,
+  // "secondary" and "aplus/..." are their own shelves. Same grouping /media/list
+  // already returns, so the panel cannot disagree with the folder on disk.
+  const groups = {};
+  IMGLIB.files.forEach(function(f){
+    const g = f.group || "main";
+    (groups[g] = groups[g] || []).push(f);
+  });
+
+  let h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
+        + '<div style="font-weight:600;font-size:15px">Images</div>'
+        + '<div class="cc" style="font-size:12px">' + _ilEsc(sku) + '</div>'
+        + '<span class="spacer" style="flex:1"></span>'
+        + '<button class="db-chip" onclick="closeImageLibrary()">Close</button></div>';
+
+  h += '<div class="cc" style="font-size:11.5px;margin-bottom:12px">'
+     + 'Choosing a main image writes it to this listing. Nothing reaches Amazon '
+     + 'until you Submit — or, for a listing that is already live, until you '
+     + 'press <b>Push to Amazon</b>.</div>';
+
+  // upload your own
+  h += '<div style="border:1px dashed #2f3a4d;border-radius:8px;padding:10px;margin-bottom:14px">'
+     + '<b style="font-size:12.5px">Upload your own image</b>'
+     + '<div class="cc" style="font-size:11px;margin:4px 0 8px">'
+     + 'Saved to this listing\'s folder and hosted publicly so Amazon can fetch it.</div>'
+     + '<input type="file" accept="image/*" id="il_upload" '
+     + 'onchange="ilUpload(this)" style="font-size:12px">'
+     + '<span id="il_upstatus" class="cc" style="font-size:11px;margin-left:8px"></span></div>';
+
+  if(!IMGLIB.files.length){
+    h += '<div class="empty" style="padding:24px">No images stored for this listing yet.'
+       + '<div class="cc" style="margin-top:6px;font-size:11.5px">'
+       + 'Generate some in Image Studio, or upload one above.</div></div>';
+    _ilRender(h);
+    return;
+  }
+
+  Object.keys(groups).sort().forEach(function(g){
+    h += '<div style="font-size:11.5px;font-weight:600;margin:12px 0 6px;opacity:.85">'
+       + _ilEsc(g === "main" ? "Main / concepts" : g) + '</div>'
+       + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">';
+    groups[g].forEach(function(f){
+      const isMain = IMGLIB.main && (IMGLIB.main === f.url
+                     || String(IMGLIB.main).indexOf(f.name) >= 0);
+      h += '<div style="border:1px solid ' + (isMain ? "var(--ok)" : "var(--line)")
+         + ';border-radius:8px;overflow:hidden;background:var(--panel)">'
+         + '<img src="' + _ilEsc(f.url) + '" loading="lazy" '
+         + 'style="width:100%;height:120px;object-fit:contain;background:#0d1220;display:block">'
+         + '<div style="padding:6px 7px">'
+         + '<div class="cc" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" '
+         + 'title="' + _ilEsc(f.name) + '">' + _ilEsc(f.name) + '</div>'
+         + '<div class="cc" style="font-size:10px;opacity:.7">'
+         + (f.width ? (f.width + "×" + f.height) : "") + '</div>'
+         + (isMain
+             ? '<div style="font-size:10.5px;color:var(--ok);font-weight:600;margin-top:4px">✓ main image</div>'
+             : '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
+               + 'onclick="ilSetMain(' + JSON.stringify(f.url) + ')">Use as main</button>')
+         + '</div></div>';
+    });
+    h += '</div>';
+  });
+
+  // Push to Amazon: only meaningful for a listing that is already live. The
+  // server gates it on `publish` regardless of what is drawn here.
+  if(IMGLIB.live){
+    h += '<div style="margin-top:16px;border-top:1px solid #26303f;padding-top:12px">'
+       + '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+       + 'onclick="ilPushLive()">Push main image to the live Amazon listing</button>'
+       + '<span id="il_pushstatus" class="cc" style="font-size:11px;margin-left:8px"></span>'
+       + '<div class="cc" style="font-size:11px;margin-top:6px">'
+       + 'Updates only the main image on Amazon — no full resubmit. Amazon takes a '
+       + 'few minutes to show it.</div></div>';
+  }
+  _ilRender(h);
+}
+
+async function ilSetMain(url){
+  const ok = await setMainImage(IMGLIB.sku, url, {message:"Main image set ✓", reload:true});
+  if(ok){ IMGLIB.main = url; _ilDraw(); }
+}
+
+function ilUpload(inp){
+  const f = inp && inp.files && inp.files[0];
+  const st = document.getElementById("il_upstatus");
+  if(!f) return;
+  if(!/^image\//.test(f.type || "")){
+    if(st) st.textContent = "That is not an image file.";
+    inp.value = ""; return;
+  }
+  const rd = new FileReader();
+  rd.onload = async function(){
+    if(st) st.innerHTML = '<span class="genspin"></span> uploading…';
+    try{
+      const up = await (await fetch("/media/upload", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sku:IMGLIB.sku, data:rd.result, name:f.name, kind:"main"})})).json();
+      if(!up || !up.ok){
+        if(st) st.textContent = "Upload failed: " + ((up && up.error) || "unknown");
+        return;
+      }
+      // Prefer the PUBLIC Drive url: Amazon has to fetch the image over the open
+      // internet, and a /media/... path is only reachable from inside this app.
+      const pub = up.drive_direct_url || up.url || "";
+      if(up.drive_direct_url){
+        await setMainImage(IMGLIB.sku, pub, {message:"Uploaded and set as main ✓"});
+        IMGLIB.main = pub;
+      }else{
+        if(st) st.textContent = "Uploaded. Set this account's Drive folder to make it "
+                              + "reachable by Amazon" + (up.drive_error ? (" (" + up.drive_error + ")") : "") + ".";
+      }
+      await openImageLibrary(IMGLIB.sku, IMGLIB.live);   // re-read the folder
+    }catch(e){
+      if(st) st.textContent = "Upload error: " + ((e && e.message) || e);
+    }finally{ if(inp) inp.value = ""; }
+  };
+  rd.readAsDataURL(f);
+}
+
+async function ilPushLive(){
+  const st = document.getElementById("il_pushstatus");
+  const r = (typeof ROWS !== "undefined" && ROWS || []).find(function(x){
+    return String(x.sku) === String(IMGLIB.sku);
+  });
+  if(st) st.innerHTML = '<span class="genspin"></span> sending to Amazon…';
+  try{
+    const j = await (await fetch("/listing/push_image", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({confirmed:true, sku:IMGLIB.sku,
+        image_url: IMGLIB.main || "",
+        marketplace:(typeof WS_MARKET !== "undefined" ? WS_MARKET : ""),
+        product_type:((r && r.product_type) || ""),
+        id:(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) || ""})})).json();
+    if(j && j.ok){
+      if(st) st.innerHTML = '<span style="color:var(--ok)">✓ sent ('
+                          + _ilEsc(j.status || "accepted") + ')</span>';
+    }else{
+      const extra = (j && j.issues && j.issues.length)
+        ? (" — " + j.issues.map(function(i){ return (i.message || i.code || ""); }).join("; ")) : "";
+      if(st) st.innerHTML = '<span style="color:var(--red)">'
+        + _ilEsc(((j && j.error) || "failed") + extra) + '</span>';
+    }
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + _ilEsc(String(e)) + '</span>';
+  }
+}

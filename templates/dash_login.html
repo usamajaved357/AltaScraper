@@ -1,6 +1,6 @@
 <!doctype html><html><head><title>Sign in</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="/static/css/dash_login.css">
+<link rel="stylesheet" href="/static/css/dash_login.css?v={{ ASSET_V }}">
 </head><body><form method="post">
 <h1>Listing Dashboard</h1>
 {% if error %}<div class="err">{{ error if error is string else "Wrong password." }}</div>{% endif %}

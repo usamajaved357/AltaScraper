@@ -17,6 +17,15 @@ _REPORT_REUSE_MAX_AGE = 6 * 3600
 
 
 def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800, _MIRROR_CACHE=None, _MIRROR_TTL=6*3600):
+    # How many SKUs one /live/images call will fetch from Amazon. Each SKU is a
+    # separate getListingsItem call and SP-API is rate limited, so this is a real
+    # constraint, not a guess. What was WRONG was doing it silently: the reply now
+    # reports what it did not reach, and the browser asks again for the rest.
+    import os as _os
+    try:
+        _IMG_BATCH = max(10, min(int(_os.environ.get("ALTA_IMG_BATCH") or 40), 200))
+    except Exception:
+        _IMG_BATCH = 40
     """Attach the /live routes to the existing Flask app."""
 
     if _APLUS_CACHE is None:
@@ -278,6 +287,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         statuses = {}
         meta = {}
         todo = []
+        _pending_out = []      # SKUs this call did not reach (see the cap below)
+        _failed = []           # SKUs Amazon refused -- usually throttling
         for sku in skus:
             ck = f"{aid}::{mkt}::{sku}"
             c = _IMG_CACHE.get(ck)
@@ -298,7 +309,17 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 mkt_enum = getattr(Marketplaces, mkt, None) or Marketplaces.US
                 mid = _acc.marketplace_id(mkt) if hasattr(_acc, "marketplace_id") else ""
                 li = LI(credentials=creds, marketplace=mkt_enum)
-                for sku in todo[:40]:
+                # SILENT TRUNCATION WAS THE BUG.
+                # This read todo[:40] and said nothing, so asking for images on a
+                # catalogue of any size returned the first 40 and left the rest
+                # blank with no explanation -- indistinguishable from "Amazon has
+                # no image for these". The cap exists for a reason (one
+                # getListingsItem call per SKU, and SP-API is rate limited), so it
+                # stays; what changes is that the answer now SAYS what it did.
+                _batch = _IMG_BATCH
+                _did = todo[:_batch]
+                _pending = todo[_batch:]
+                for sku in _did:
                     try:
                         resp = li.get_listings_item(seller, sku,
                                                     marketplaceIds=[mid] if mid else None,
@@ -370,12 +391,24 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                             _lt = ""
                         if fulfillment or handling is not None or _lt:
                             meta[sku] = {"fulfillment": fulfillment, "handling": handling, "title": _lt}
-                    except Exception:
+                    except Exception as _ie:
+                        # A SKU that fails here used to vanish silently, so a
+                        # throttled batch was indistinguishable from "Amazon has
+                        # no image for these". getListingsItem is rate limited and
+                        # throttling is the NORMAL failure on a large catalogue,
+                        # so it has to be reported, not swallowed.
+                        _failed.append({"sku": sku, "error": str(_ie)[:120]})
                         continue
+                _pending_out = _pending
             except Exception as e:
                 return jsonify({"ok": False, "error": f"image fetch failed: {str(e)[:160]}",
                                 "images": out, "statuses": statuses, "meta": meta}), 502
-        return jsonify({"ok": True, "images": out, "statuses": statuses, "meta": meta})
+        # Report what was NOT done, so the caller can ask again for the rest
+        # rather than assume it got everything.
+        return jsonify({"ok": True, "images": out, "statuses": statuses, "meta": meta,
+                        "requested": len(skus), "fetched": len(out),
+                        "pending": _pending_out, "failed": _failed,
+                        "batch": _IMG_BATCH})
 
     def _attach_compliance(items, mkt):
         """Work out which documents Amazon can demand, for each live listing.

@@ -209,31 +209,83 @@ def _json_errors(e):
 # --- brand-listing feature (added) ------------------------------------------
 import dashboard_brand_patch
 _run_lock = threading.Lock()
-_running  = {"on": False, "proc": None, "started": 0.0}
+
+
+class _RunningFlag(dict):
+    """The legacy run flag, kept working now that runs are concurrent.
+
+    Fifteen places across dashboard.py, listing_routes.py, miles_routes.py and
+    ui_routes.py end a run by setting _running["on"] = False. That was a correct
+    way to release ONE global lock. With several runs at once it is ambiguous --
+    which run just ended? -- and none of those fifteen sites has the answer.
+
+    The THREAD has the answer: every run occupies its own thread. So setting the
+    flag to False releases whatever slot this thread is holding, and all fifteen
+    call sites keep working exactly as written. Rule 12 again: change the
+    behaviour in one place rather than the call sites in fifteen.
+    """
+
+    def __setitem__(self, key, value):
+        if key == "on" and not value:
+            try:
+                from domain.run_slots import SLOTS as _S
+                _S.release_current()
+            except Exception:
+                pass
+        dict.__setitem__(self, key, value)
+
+
+_running = _RunningFlag({"on": False, "proc": None, "started": 0.0,
+                         "key": None, "busy_reason": ""})
 _RUN_MAX_SECONDS = 600   # a Preview/Submit should never take >10 min; after that the
                           # lock is presumed stuck (abandoned stream) and is reclaimable.
 
-def _acquire_run_lock():
-    """Try to mark a run as started. Returns True if WE acquired it, False if a
-    genuine live run is already going. Self-healing: if the flag is on but the
-    previous run's subprocess has already exited, or the run is older than
-    _RUN_MAX_SECONDS, the lock is considered stale (an abandoned SSE stream never
-    ran its release `finally`) and is reclaimed. This fixes the 'Another run is
-    already in progress' wedge that otherwise needs an app restart."""
+def _acquire_run_lock(account_id=None, sku=""):
+    """Try to start a run. True if we may, False if a limit says otherwise.
+
+    WAS: one flag for the whole app, so ONE Preview or Submit at a time no matter
+    who asked or what for. Two people could not work at once and the second was
+    told "a run is already in progress" however unrelated their listing was.
+
+    NOW: domain/run_slots.py decides, per ACCOUNT and per SKU. The same SKU still
+    never runs twice at once -- that is correctness, two runs would write the same
+    sheet row and submit the same listing twice -- and each Amazon account is
+    capped, because SP-API quota is per selling account and exceeding it turns
+    into throttling that reads as Amazon being broken. Different accounts do not
+    block each other at all.
+
+    Returns a bool so the ~2 existing callers are unchanged; the KEY needed to
+    release it is stashed on _running for them. Callers that can name their
+    account and SKU should pass them -- those that cannot fall back to the active
+    workspace, which is what the single lock effectively assumed anyway.
+    """
+    from domain.run_slots import SLOTS as _SLOTS
+    from domain import job_owner as _jo
+    if account_id is None:
+        account_id = _state.get("active_account_id", "") or ""
+    ok, res = _SLOTS.acquire(account_id, sku, owner=_jo.current())
+    if not ok:
+        _running["busy_reason"] = res
+        return False
     import time as _t
-    with _run_lock:
-        on = _running.get("on")
-        if on:
-            proc = _running.get("proc")
-            started = _running.get("started") or 0.0
-            proc_dead = (proc is None) or (proc.poll() is not None)
-            too_old = (_t.time() - started) > _RUN_MAX_SECONDS
-            if not (proc_dead or too_old):
-                return False          # a real run is genuinely in progress
-            # else: stale lock -> fall through and reclaim it
-        _running["on"] = True
-        _running["started"] = _t.time()
-        return True
+    _running["busy_reason"] = ""
+    # Kept for the existing /stop and status paths, which still read these.
+    _running["on"] = True
+    _running["started"] = _t.time()
+    _running["key"] = res
+    return True
+
+
+def _release_run_lock(key=None):
+    """Give the slot back. Safe to call twice."""
+    from domain.run_slots import SLOTS as _SLOTS
+    k = key or _running.get("key")
+    if k:
+        _SLOTS.release(k)
+    if not _SLOTS.busy():
+        _running["on"] = False
+        _running["proc"] = None
+        _running["started"] = 0.0
 _ACTIVE_KEYS = ("active_account_id", "active_marketplace", "active_sheet_id",
                 "active_tab", "active_tab_gid", "active_view")
 
@@ -1834,7 +1886,7 @@ def _run_img_jobs_bg(jid, jobs, kind):
     flag, which a dead worker never reads). This guarantees the job is always retired.
     """
     try:
-        _run_img_jobs_bg_inner(jid, jobs, kind)
+        _run_img_jobs_parallel(jid, jobs, kind)
     except Exception as _we:
         try:
             _job_finish(jid, error=f"worker crashed: {type(_we).__name__}: {str(_we)[:160]}")
@@ -1852,8 +1904,56 @@ def _run_img_jobs_bg(jid, jobs, kind):
             pass
 
 
-def _run_img_jobs_bg_inner(jid, jobs, kind):
-    """Background worker: runs a list of generation jobs, pushing each result."""
+# How many products may be generated for at the same time. Small on purpose:
+# every image is a paid model call, and the image APIs rate-limit per account, so
+# a large pool converts "faster" into "throttled and more expensive". Three is
+# roughly three times quicker than the old strictly-sequential worker without
+# getting near the limits. ALTA_IMG_WORKERS overrides it.
+def _img_worker_count():
+    try:
+        n = int(os.environ.get("ALTA_IMG_WORKERS") or 3)
+    except Exception:
+        n = 3
+    return max(1, min(n, 8))
+
+
+def _run_img_jobs_parallel(jid, jobs, kind):
+    """Generate for several PRODUCTS at once, images within a product in order.
+
+    The worker ran every image in one sequence, so generating 8 images each for
+    two products meant 16 one after another -- the second product did not start
+    until the first had completely finished. Grouping by SKU and running the
+    groups concurrently is what "side by side" means here, and it keeps each
+    product's own images in their intended order (main before secondaries).
+
+    Splitting by SKU rather than round-robin also keeps a product's images
+    together on one thread, so a rate-limit stall delays one product rather than
+    smearing across all of them.
+    """
+    groups = {}
+    for jb in jobs:
+        groups.setdefault(str(jb.get("sku", "") or "_misc"), []).append(jb)
+    chunks = list(groups.values())
+
+    if len(chunks) <= 1:
+        _run_img_jobs_bg_inner(jid, jobs, kind, finish=False)
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(_img_worker_count(), len(chunks))) as pool:
+            list(pool.map(lambda c: _run_img_jobs_bg_inner(jid, c, kind, finish=False),
+                          chunks))
+    # Finished exactly once, by the dispatcher. Letting each worker finish the
+    # job would retire it the moment the FIRST product was done, and the rest
+    # would keep writing results into a job the UI had already stopped watching.
+    _job_finish(jid)
+
+
+def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
+    """Background worker: runs a list of generation jobs, pushing each result.
+
+    `finish=False` when several of these run as one job (see
+    _run_img_jobs_parallel) -- the dispatcher retires the job after all of them.
+    """
     # Custom instructions the user wants the AI to remember for EVERY image
     # (e.g. "always pure white background", "include our logo top-left", "no people").
     # We append them to each job's brief so they apply on top of the strategist.
@@ -2034,7 +2134,8 @@ def _run_img_jobs_bg_inner(jid, jobs, kind):
             except Exception as e:
                 _job_push(jid, {"ok": False, "label": label, "sku": job.get("sku", ""),
                                 "error": str(e)[:200]})
-    _job_finish(jid)
+    if finish:
+        _job_finish(jid)
 
 
 _IMG_TTL = 86400  # 24h — product images rarely change
@@ -3282,6 +3383,34 @@ def build_app(backend=None):
         Reads real state -- a refresher that cannot be inspected is one you have
         to take on faith."""
         return jsonify({"ok": True, **_refresher.status()})
+
+    # CACHE-BUSTING FOR THE BROWSER.
+    # Every page loaded 22 scripts and stylesheets as bare /static/... URLs. A
+    # browser that has one cached has no reason to ask for it again, so a deploy
+    # could fix a screen on the server while the person looking at it kept
+    # running yesterday's JavaScript -- the fix is live and invisible, which is
+    # the most confusing possible outcome and impossible to tell apart from "the
+    # fix did not work".
+    #
+    # The stamp is the newest modification time under static/, so it changes
+    # exactly when an asset changes and not on every restart (which would throw
+    # away everyone's cache for nothing).
+    def _asset_version():
+        newest = 0.0
+        for root, _dirs, files in os.walk(os.path.join(os.path.dirname(
+                os.path.abspath(__file__)), "static")):
+            for fn in files:
+                try:
+                    newest = max(newest, os.path.getmtime(os.path.join(root, fn)))
+                except OSError:
+                    pass
+        return str(int(newest)) or "0"
+
+    app.config["ASSET_V"] = _asset_version()
+
+    @app.context_processor
+    def _inject_asset_version():
+        return {"ASSET_V": app.config.get("ASSET_V", "0")}
 
     # Say at BOOT whether this deployment is configured correctly. A wiped disk
     # or a missing APP_SECRET_KEY otherwise announces itself hours later as

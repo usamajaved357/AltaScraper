@@ -101,6 +101,54 @@ def save(config_path, account_id, marketplace, items, report_source="",
     return rec
 
 
+def enrich(config_path, account_id, marketplace, by_sku):
+    """Merge extra fields onto items already stored, without re-dating them.
+
+    Images, real statuses and fulfillment details arrive AFTER the catalogue
+    report, from a different Amazon API and one SKU at a time. They belong on the
+    saved listing so the next person to open the workspace sees a complete card
+    immediately, rather than watching thumbnails trickle in.
+
+    Deliberately does NOT touch `ts`, `count`, `partial` or `report_source`. This
+    is not a new catalogue -- it is the same catalogue with more known about it,
+    and moving the timestamp would tell the refresher the listings had been
+    re-fetched from Amazon when they had not, so a genuinely stale catalogue
+    would never come up for refresh again.
+
+    Returns how many items were changed.
+    """
+    if not by_sku:
+        return 0
+    changed = 0
+    with _LOCK:
+        data = dict(_read_all(config_path))
+        k = key(account_id, marketplace)
+        rec = data.get(k)
+        if not isinstance(rec, dict):
+            return 0
+        items = list(rec.get("items") or [])
+        for it in items:
+            extra = by_sku.get(str(it.get("sku") or ""))
+            if not extra:
+                continue
+            touched = False
+            for f, v in extra.items():
+                if v not in (None, "") and it.get(f) != v:
+                    it[f] = v
+                    touched = True
+            if touched:
+                changed += 1
+        if not changed:
+            return 0
+        rec = dict(rec)
+        rec["items"] = items
+        rec["enriched_ts"] = time.time()
+        data[k] = rec
+        _MEM["data"] = data
+        _write_all(config_path, data)
+    return changed
+
+
 def get(config_path, account_id, marketplace):
     """The stored record for one account+marketplace, or None."""
     rec = _read_all(config_path).get(key(account_id, marketplace))
