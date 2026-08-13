@@ -236,6 +236,122 @@ def delete_row(ws, row):
     return True
 
 
+def col_letter(col_0):
+    """Column letter from a ZERO-based index. 0 -> A, 25 -> Z, 26 -> AA.
+
+    A third implementation of this existed: amazon_listing_generator._col_letter
+    and domain/brand_listing._col_letter, on top of the a1() that
+    routes/listing_routes.py had written by hand. Zero-based because that is the
+    signature both callers already use -- changing it would have been a silent
+    off-by-one in code that builds sheet ranges.
+    """
+    return col_letter_1(int(col_0) + 1)
+
+
+def col_letter_1(col):
+    """Column letter from a ONE-based number. 1 -> A, 26 -> Z, 27 -> AA.
+
+    Both conventions are exposed on purpose. The two copies this replaces used
+    DIFFERENT ones -- amazon_listing_generator._col_letter took a 0-based index,
+    domain/brand_listing._col_letter took a 1-based number -- with the same
+    algorithm underneath. Collapsing them onto one convention would have been a
+    silent off-by-one in code that builds sheet ranges, so each caller keeps the
+    convention it already used and says which it means.
+    """
+    s, n = "", int(col)
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+# ---------------------------------------------------------------------------
+# WRITING A WHOLE LISTING ROW
+#
+# This is the generator's core write, moved out of amazon_listing_generator.py.
+# It matters more than the rest: the generator runs as a SEPARATE PROCESS with
+# its own sheet client, so until this lived somewhere a database backend could
+# reach, a database could only ever be a copy that went stale the moment you
+# generated anything.
+#
+# domain/brand_listing.py calls the same function (via host.sheet_write_row), so
+# both writers move together.
+# ---------------------------------------------------------------------------
+
+def find_reusable_row(ws, comp_asin="", headers=None, values=None):
+    """A row this listing may be written INTO, rather than appending below.
+
+    Keeps the generator's existing priority exactly:
+      1) a row with this Competitor ASIN but no SKU -- the row you cleared, so a
+         regenerated listing lands back in its original position
+      2) the first fully blank data row
+      3) None -> the caller appends
+
+    Returns a 1-based sheet row, or None. Never raises.
+    """
+    try:
+        vals = values if values is not None else ws.get_all_values()
+    except Exception:
+        return None
+    if not vals:
+        return None
+
+    hdrs = headers if headers is not None else [norm(h) for h in vals[0]]
+    def idx(name):
+        return hdrs.index(name) if name in hdrs else -1
+
+    a_i, s_i = idx("Competitor ASIN"), idx("SKU")
+    t_i, p_i = idx("Title"), idx("Product Type")
+
+    def cell(rv, i):
+        return norm(rv[i]) if (0 <= i < len(rv)) else ""
+
+    target = norm(comp_asin)
+    if target and a_i >= 0:
+        for r in range(1, len(vals)):
+            if cell(vals[r], a_i) == target and not cell(vals[r], s_i):
+                return r + 1
+
+    keyi = [i for i in (s_i, t_i, a_i, p_i) if i >= 0]
+    if keyi:
+        for r in range(1, len(vals)):
+            if all(not cell(vals[r], i) for i in keyi):
+                return r + 1
+    return None
+
+
+def write_row(ws, row_data, comp_asin="", retries=3, log=None, sleep=None):
+    """Write one whole listing row. Refills a reusable row, else appends.
+
+    Retries because this is the one write that must not be lost -- the row is
+    the product of an entire generation run, including paid model calls. Losing
+    it to a transient sheet error means paying to produce it again.
+
+    `log` is a callable rather than a console object: this module is imported by
+    the generator (Rich console), by Flask routes (no console), and will be
+    imported by a database backend (neither). It must not care which.
+    """
+    import time as _time
+    _sleep = sleep or _time.sleep
+    target = find_reusable_row(ws, comp_asin)
+
+    for attempt in range(1, int(retries) + 1):
+        try:
+            if target:                       # refill in place, keeping its position
+                rng = "A%d:%s%d" % (target, col_letter(len(row_data) - 1), target)
+                ws.update([row_data], rng, value_input_option="USER_ENTERED")
+            else:                            # no gap -> append at the bottom
+                ws.append_row(row_data, value_input_option="USER_ENTERED")
+            return True
+        except Exception as e:
+            if attempt >= int(retries):
+                if log:
+                    log("Sheet write failed: %s" % str(e)[:60])
+                return False
+            _sleep(attempt * 5)
+    return False
+
+
 def locate_in_tabs(book, sku, sku_headers=DEFAULT_SKU_HEADERS, tabs=None):
     """Search several tabs and return (worksheet, Located) for the first hit.
 

@@ -2540,45 +2540,24 @@ def _find_target_row(ws, comp_asin: str):
       3) None  -> caller appends.
     Returns a 1-based sheet row number, or None.
     """
-    try:
-        vals = ws.get_all_values()
-    except Exception:
-        return None
-    if not vals:
-        return None
-    headers = vals[0]
-    cidx = lambda name: headers.index(name) if name in headers else -1
-    a_i, s_i = cidx("Competitor ASIN"), cidx("SKU")
-    t_i, p_i = cidx("Title"),           cidx("Product Type")
-    cell = lambda rv, i: (str(rv[i]).strip() if (0 <= i < len(rv)) else "")
-    # 1) the row you cleared for this ASIN (ASIN still there, SKU gone)
-    if comp_asin and a_i >= 0:
-        for r in range(1, len(vals)):
-            if cell(vals[r], a_i) == comp_asin and not cell(vals[r], s_i):
-                return r + 1
-    # 2) first fully-blank data row
-    keyi = [i for i in (s_i, t_i, a_i, p_i) if i >= 0]
-    for r in range(1, len(vals)):
-        if all(not cell(vals[r], i) for i in keyi):
-            return r + 1
-    return None
+    # MOVED to listing/repo.py. This generator runs as its own process with its
+    # own sheet client, so while this logic lived here nothing else could reach
+    # it -- and a database backend could never replace it. Kept as a thin
+    # delegate because domain/brand_listing.py calls these by name via `host`.
+    from listing import repo as _repo
+    return _repo.find_reusable_row(ws, comp_asin)
 
 
 def sheet_write_row(ws, row_data: list, comp_asin: str = ""):
-    target = _find_target_row(ws, comp_asin)
-    for attempt in range(1, 4):
-        try:
-            if target:                                    # refill in place (keeps position)
-                rng = f"A{target}:{_col_letter(len(row_data) - 1)}{target}"
-                ws.update([row_data], rng, value_input_option="USER_ENTERED")
-            else:                                         # no gap -> append at bottom
-                ws.append_row(row_data, value_input_option="USER_ENTERED")
-            return True
-        except Exception as e:
-            if attempt == 3:
-                console.print(f"  [red]Sheet write failed: {str(e)[:60]}[/red]")
-                return False
-            time.sleep(attempt * 5)
+    """Write one listing row. Body moved to listing/repo.write_row().
+
+    The retry behaviour, the refill-in-place priority and the append fallback are
+    unchanged -- only their address is. `log` is passed as a callable so the repo
+    never has to know this process happens to own a Rich console.
+    """
+    from listing import repo as _repo
+    return _repo.write_row(ws, row_data, comp_asin,
+                           log=lambda m: console.print(f"  [red]{m}[/red]"))
     return False
 
 
@@ -2966,13 +2945,10 @@ def snap_to_valid(value: str, valid_list: list) -> str:
     return best if best_score >= 1 else ""
 
 
-def _col_letter(col_0: int) -> str:
-    result = ""
-    col    = col_0 + 1
-    while col > 0:
-        col, r = divmod(col - 1, 26)
-        result  = chr(65 + r) + result
-    return result
+# Column letter from a 0-based index. Was implemented identically here AND in
+# domain/brand_listing.py, on top of the a1() routes/listing_routes.py had
+# written by hand -- three copies of "which column is this". One now.
+from listing.repo import col_letter as _col_letter
 
 
 # _clean_price moved to listing/builder.py in Phase 5 (self-contained; behaviour unchanged).

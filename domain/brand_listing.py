@@ -620,13 +620,11 @@ def _miles_write_row(host, ws, row_values: list) -> bool:
     return False
 
 
-def _col_letter(n: int) -> str:
-    """1-based column number -> spreadsheet letter (1->A, 27->AA)."""
-    s = ""
-    while n > 0:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s
+# 1-based column number -> letter (1->A, 27->AA). Shared with the rest of the
+# app now. NOTE this takes a ONE-based number while the generator's version of
+# the same helper took a ZERO-based index -- same algorithm, different
+# convention, which is why repo exposes both rather than picking one.
+from listing.repo import col_letter_1 as _col_letter
 
 
 def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
