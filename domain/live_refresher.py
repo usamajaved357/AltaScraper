@@ -34,6 +34,7 @@ import time
 
 _STATE = {
     "thread": None,
+    "workers": {},       # account_id -> its worker thread
     "running": False,
     "last": {},          # "acct::MKT" -> epoch of the last attempt
     "results": {},       # "acct::MKT" -> short outcome string
@@ -125,6 +126,7 @@ def status():
         return {
             "running": bool(_STATE["running"]),
             "current": _STATE["current"],
+            "workers": sorted(_STATE["workers"].keys()),
             "paused_for_user": user_busy(),
             "user_syncs_in_flight": _USER["active"],
             "uptime_seconds": int(time.time() - _STATE["started"]) if _STATE["started"] else 0,
@@ -166,12 +168,18 @@ def _targets(cfg_fn, config_path):
     return out
 
 
-def _stalest(cfg_fn, config_path):
-    """The pair most in need of a refresh, or None if everything is current."""
+def _stalest(cfg_fn, config_path, only_account=None):
+    """The pair most in need of a refresh, or None if everything is current.
+
+    `only_account` restricts the search to one account, so each account's worker
+    minds its own business and cannot pick up another's work.
+    """
     import domain.live_snapshots as _snap
     best, best_score = None, -1.0
     now = time.time()
     for aid, mkt in _targets(cfg_fn, config_path):
+        if only_account is not None and aid != only_account:
+            continue
         # Only skip the account the user is actually syncing. Other accounts have
         # their own Amazon quota and carry on being refreshed.
         if user_busy(aid):
@@ -241,23 +249,57 @@ def _refresh_one(app, aid, mkt):
     return note
 
 
-def _loop(app, cfg_fn, config_path, log=None):
+def _loop(app, cfg_fn, config_path, account_id, log=None):
+    """One worker, responsible for ONE account.
+
+    Accounts get their own worker because Amazon's report quota is per selling
+    partner account -- jack_uk and nestwell_goods draw on separate buckets and
+    genuinely do not compete. A single worker walking all of them in turn made
+    four independent accounts queue behind each other for no reason: with 36
+    pairs that was a rotation measured in tens of minutes, when four workers each
+    handling their own account finish in a quarter of the time.
+
+    Within an account the work IS still serialised, because that is where the
+    shared quota actually is.
+    """
     while True:
         try:
-            # NOT a global pause. _stalest() skips only the account the user is
-            # syncing, so every other account keeps being refreshed -- pausing
-            # them all would make them go stale for no reason, since they do not
-            # share Amazon quota with the account being synced.
-            target = _stalest(cfg_fn, config_path)
+            # Skips this account only while ITS user sync is running.
+            target = _stalest(cfg_fn, config_path, only_account=account_id)
             if target:
                 note = _refresh_one(app, target[0], target[1])
                 if log:
                     log("live refresh %s::%s -> %s" % (target[0], target[1], note))
-                time.sleep(STAGGER)            # one report at a time, spread out
+                time.sleep(STAGGER)            # one report at a time FOR THIS ACCOUNT
                 continue
         except Exception:
-            pass                               # never let the loop die
+            pass                               # never let a worker die
         time.sleep(TICK)
+
+
+def _supervisor(app, cfg_fn, config_path, log=None):
+    """Start one worker per account, and pick up accounts added later.
+
+    Runs as its own thread so that adding an account in the UI does not require
+    an app restart before it starts being kept fresh.
+    """
+    while True:
+        try:
+            accounts = sorted({aid for aid, _ in _targets(cfg_fn, config_path)})
+            with _LOCK:
+                for aid in accounts:
+                    if aid in _STATE["workers"]:
+                        continue
+                    t = threading.Thread(target=_loop,
+                                         args=(app, cfg_fn, config_path, aid, log),
+                                         name="live-refresher-%s" % aid, daemon=True)
+                    _STATE["workers"][aid] = t
+                    t.start()
+                    if log:
+                        log("worker started for %s" % aid)
+        except Exception:
+            pass
+        time.sleep(300)                        # look for new accounts every 5 min
 
 
 def start(app, cfg_fn, config_path, log=None):
@@ -265,9 +307,10 @@ def start(app, cfg_fn, config_path, log=None):
     with _LOCK:
         if _STATE["running"]:
             return {"ok": True, "already_running": True}
-        t = threading.Thread(target=_loop, args=(app, cfg_fn, config_path, log),
-                             name="live-refresher", daemon=True)
+        t = threading.Thread(target=_supervisor, args=(app, cfg_fn, config_path, log),
+                             name="live-refresher-supervisor", daemon=True)
         _STATE.update({"thread": t, "running": True, "started": time.time()})
         t.start()
     return {"ok": True, "started": True,
-            "refresh_after_seconds": REFRESH_AFTER, "stagger_seconds": STAGGER}
+            "refresh_after_seconds": REFRESH_AFTER, "stagger_seconds": STAGGER,
+            "model": "one worker per account (separate Amazon quotas)"}

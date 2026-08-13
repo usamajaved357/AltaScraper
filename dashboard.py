@@ -3095,7 +3095,14 @@ def build_app(backend="sheets"):
                              _reload_cfg=lambda: _state.update(cfg=None))   # drop config cache so edits take effect
     try:
         from monitor import checker as _mon_checker
-        _mon_checker.start_scheduler(_cfg, CONFIG_PATH)     # daemon: hourly getItemOffers diff
+        # DAILY, not hourly. Every tracked ASIN x marketplace was hitting Amazon
+        # 24 times a day, which was the app's largest quota consumer and competed
+        # with the live-catalogue refresh and with anything the user was waiting
+        # on. Hijacker and buy-box detection does not need hourly resolution;
+        # "Check now" still forces an immediate scan.
+        _mon_checker.start_scheduler(
+            _cfg, CONFIG_PATH,
+            interval=int(os.environ.get("MONITOR_INTERVAL_S") or 24 * 3600))
     except Exception as _mon_e:
         print("[asin-monitor] scheduler not started:", str(_mon_e)[:200])
     # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
