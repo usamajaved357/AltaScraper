@@ -3234,6 +3234,11 @@ def build_app(backend=None):
                               live_catalog=(lambda: app.view_functions["live_catalog"]()),
                               OUTPUT_TAB=OUTPUT_TAB, ConfigError=ConfigError, _client=_client,
                               _save_active_state=_save_active_state)
+    # Sales dashboard: one SP-API report (sales AND traffic), stored per day.
+    import routes.sales_routes as _sales_routes
+    _sales_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
+
     # The generator's INPUT, imported on demand instead of read live from Google.
     import routes.input_routes as _input_routes
     _input_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,

@@ -255,6 +255,46 @@ def inventory_sync(workspace_id=None):
             "skus": data.get("count") or data.get("rows") or 0}
 
 
+def sales_sync(workspace_id=None):
+    """Pull yesterday's sales, and chip away at any backlog.
+
+    Every connected account and every marketplace it sells on, paced. Amazon
+    revises the last couple of days as returns settle, so recent days are
+    re-fetched rather than trusted once -- domain/sales_fetch.py owns that rule
+    and this job does not repeat it.
+    """
+    from domain import sales_fetch as _sf
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+    try:
+        import accounts as _acc
+    except Exception as e:
+        raise RuntimeError("accounts module unavailable: %s" % e)
+
+    conf = cfg() if callable(cfg) else cfg
+    done, skipped = [], []
+    for a in (_acc.load_accounts(conf, config_path) or []):
+        aid = str(a.get("id") or "")
+        if workspace_id and aid != workspace_id:
+            continue
+        # A borrowed token authenticates as the LENDER, so its sales would be
+        # someone else's filed under this workspace's name.
+        if not aid or not _acc.has_own_creds(a) or not _acc.seller_scope_allowed(a):
+            skipped.append(aid or "(unnamed)")
+            continue
+        for mkt in (a.get("marketplaces") or []):
+            mkt = str(mkt or "").strip().upper()
+            if not mkt or mkt == "__ALL__":
+                continue
+            res = _sf.sync(config_path, aid, mkt,
+                           _acc.marketplace_id(mkt) if hasattr(_acc, "marketplace_id") else "",
+                           _acc.account_creds(a))
+            done.append({"workspace": aid, "marketplace": mkt,
+                         "fetched": res.get("fetched"), "left": res.get("still_missing")})
+    return {"accounts": len(done), "skipped": skipped, "detail": done[:20]}
+
+
+register_job("sales_sync", sales_sync, hours=6,
+             description="Pull daily sales and traffic from Amazon")
 register_job("catalog_sync", catalog_sync, hours=6,
              description="Pull live listing data from Amazon")
 register_job("asin_monitor", asin_monitor_check, hours=4,

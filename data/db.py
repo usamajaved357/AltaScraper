@@ -40,6 +40,85 @@ CREATE TABLE IF NOT EXISTS workspaces (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- SALES AND TRAFFIC, one row per day per ASIN.
+--
+-- asin '*' is the account+marketplace TOTAL for that day. Amazon reports the
+-- total separately from the per-ASIN breakdown and the two do not always add up
+-- (ASINs delisted mid-period, orders with no ASIN attribution), so the total is
+-- stored as Amazon gives it rather than summed on read. A dashboard that quietly
+-- disagrees with Seller Central by two percent is worse than no dashboard.
+--
+-- Daily grain ONLY. Weekly and monthly are rolled up when read. Storing three
+-- grains means three things to keep in step, and they drift.
+CREATE TABLE IF NOT EXISTS sales_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,                 -- YYYY-MM-DD
+    asin TEXT NOT NULL DEFAULT '*',
+    units INTEGER,
+    units_b2b INTEGER,
+    orders INTEGER,
+    order_items INTEGER,
+    ordered_sales REAL,
+    ordered_sales_b2b REAL,
+    sessions INTEGER,
+    sessions_mobile INTEGER,
+    sessions_browser INTEGER,
+    page_views INTEGER,
+    buy_box_pct REAL,
+    unit_session_pct REAL,             -- Amazon's conversion rate
+    avg_selling_price REAL,
+    currency TEXT,
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_key
+    ON sales_daily(workspace_id, marketplace, date, asin);
+CREATE INDEX IF NOT EXISTS idx_sales_range ON sales_daily(workspace_id, marketplace, date);
+
+-- ADVERTISING, same shape, deliberately separate.
+--
+-- Ad data does NOT come from SP-API -- it is the Amazon Advertising API, a
+-- different API with its own authorisation, and this app has no connection to
+-- it. Today rows arrive from an uploaded Sponsored Products report; when the API
+-- is connected it fills the SAME table and only `source` changes. Shaping it now
+-- means connecting the API later is a data-source swap, not a rebuild.
+CREATE TABLE IF NOT EXISTS ads_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,
+    asin TEXT NOT NULL DEFAULT '*',
+    impressions INTEGER,
+    clicks INTEGER,
+    spend REAL,
+    ad_orders INTEGER,
+    ad_sales REAL,
+    source TEXT,                        -- 'upload' now, 'ads_api' later
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ads_key
+    ON ads_daily(workspace_id, marketplace, date, asin);
+
+-- WHAT DATES ACTUALLY HAVE DATA.
+--
+-- Asked BEFORE any data is requested. Amazon delivers sales with a lag and never
+-- has today, so without this the dashboard draws empty columns for days that were
+-- never going to exist and looks broken. Reading it first is the difference
+-- between "no data yet for 12 Aug" and a chart that appears to say sales were nil.
+CREATE TABLE IF NOT EXISTS data_availability (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    source TEXT NOT NULL,               -- 'sales' | 'ads'
+    first_date TEXT,
+    last_date TEXT,
+    days INTEGER,
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_avail_key
+    ON data_availability(workspace_id, marketplace, source);
+
 -- Products WAITING to be generated: the generator's INPUT.
 --
 -- This is the last thing that had to be read live from Google Sheets. Reading it
