@@ -44,11 +44,24 @@ _LOCK = threading.RLock()
 
 # How stale a saved catalogue may get before it is refreshed.
 REFRESH_AFTER = 10 * 60
-# Gap between two refreshes. One report at a time, spread out, so a dozen
+
+# ...UNLESS the marketplace has no listings in it. This account set has 36
+# account+marketplace pairs, because each account is registered across most of
+# Europe -- but only a handful actually HAVE listings. Refreshing all 36 on the
+# same 10-minute clock would take a 54-minute rotation, so the marketplaces you
+# actually sell in would be refreshed HOURLY, not every ten minutes, and 36
+# reports an hour would be spent mostly on empty ones.
+#
+# So an empty marketplace backs off hard. It is still checked -- a first listing
+# in Poland must eventually show up on its own -- just not at the expense of the
+# marketplaces carrying your catalogue.
+REFRESH_AFTER_EMPTY = 6 * 3600
+
+# Gap between two refreshes. One report at a time, spread out, so many
 # marketplaces never hit Amazon together.
-STAGGER = 90
+STAGGER = 45
 # How often to look for something worth doing.
-TICK = 60
+TICK = 30
 
 
 def status():
@@ -98,24 +111,38 @@ def _targets(cfg_fn, config_path):
 def _stalest(cfg_fn, config_path):
     """The pair most in need of a refresh, or None if everything is current."""
     import domain.live_snapshots as _snap
-    best, best_age = None, -1
+    best, best_score = None, -1.0
     now = time.time()
     for aid, mkt in _targets(cfg_fn, config_path):
         key = "%s::%s" % (aid, mkt)
+        rec = _snap.get(config_path, aid, mkt)
+        age = _snap.age_seconds(rec)
+        never = (rec is None or age is None)
+        # A marketplace with no listings is refreshed on the slow clock. One that
+        # holds your catalogue is refreshed on the fast one.
+        empty = (not never) and int(rec.get("count") or 0) == 0
+        due_after = REFRESH_AFTER_EMPTY if empty else REFRESH_AFTER
+
         # Do not retry the same pair immediately after an attempt, successful or
         # not -- otherwise one permanently failing account starves every other.
         with _LOCK:
             last_try = _STATE["last"].get(key, 0)
-        if now - last_try < REFRESH_AFTER:
+        if now - last_try < due_after:
             continue
-        rec = _snap.get(config_path, aid, mkt)
-        age = _snap.age_seconds(rec)
-        if rec is None or age is None:
+
+        if never:
             age = 10 ** 9                      # never fetched -> highest priority
-        if age < REFRESH_AFTER:
+        elif age < due_after:
             continue
-        if age > best_age:
-            best, best_age = (aid, mkt), age
+
+        # Rank by how far PAST its own deadline a pair is, not by raw age. An
+        # empty marketplace 7 hours old is barely overdue; a live one 20 minutes
+        # old is twice overdue and should go first. Ranking on raw age alone
+        # would let the empty marketplaces -- which are allowed to be old --
+        # crowd out the ones that matter.
+        score = float(age) / float(due_after)
+        if score > best_score:
+            best, best_score = (aid, mkt), score
     return best
 
 
