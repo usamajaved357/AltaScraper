@@ -86,3 +86,6 @@ run_status.json
 
 # Local run logs (beta app, dev server). Per-machine, never useful in the repo.
 *.log
+
+# Word lock files -- created while a .docx is open, deleted when it closes.
+~$*.docx
