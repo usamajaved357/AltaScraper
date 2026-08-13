@@ -168,6 +168,73 @@ check("  and carries the same revenue", "100.0,500.0" in body, True)
 check("  filename names the range",
       'sales_day_2026-08-01_to_2026-08-02.csv' in r.headers.get("Content-Disposition", ""), True)
 
+print("\n=== a parent's variations are kept apart, not collapsed onto the parent ===")
+# asinGranularity CHILD sends BOTH ids on every block. Keying on the parent made
+# every variation the same row, and the unique index then overwrote them one by
+# one -- a parent with five children silently kept only the last.
+def asin_block(child, parent, units, sales, sessions):
+    return {"date": "2026-08-01", "parentAsin": parent, "childAsin": child,
+            "salesByAsin": {"unitsOrdered": units,
+                            "orderedProductSales": {"amount": sales, "currencyCode": "GBP"}},
+            "trafficByAsin": {"sessions": sessions, "pageViews": sessions * 2}}
+
+kids = sd.parse_report({"salesAndTrafficByAsin": [
+    asin_block("BCHILD01", "BPARENT1", 10, 100.0, 40),
+    asin_block("BCHILD02", "BPARENT1", 15, 300.0, 60),
+    asin_block("BCHILD03", "BPARENT1",  5,  50.0, 20),
+]})
+check("three variations parsed", len(kids), 3)
+check("  keyed by the CHILD asin", sorted(r["asin"] for r in kids),
+      ["BCHILD01", "BCHILD02", "BCHILD03"])
+check("  with the parent kept alongside", kids[0]["parent_asin"], "BPARENT1")
+sd.store(CFG, WS, MKT, kids)
+back = sd.series(CFG, WS, MKT, "2026-08-01", "2026-08-01", "BCHILD02")
+check("  and all three SURVIVE the write", len(sd.products(CFG, WS, MKT, "2026-08-01", "2026-08-01")), 3)
+check("  each keeping its own numbers", (back[0]["units"], back[0]["ordered_sales"]), (15, 300.0))
+
+print("\n=== the product filter offers what actually sold, biggest first ===")
+j = c.get("/sales/products?start=2026-08-01&end=2026-08-01").get_json()
+check("products answers", j["ok"], True)
+check("  three products", j["count"], 3)
+check("  ordered by revenue", [p["asin"] for p in j["products"]],
+      ["BCHILD02", "BCHILD01", "BCHILD03"])
+check("  the account total is not offered as a product",
+      any(p["asin"] == "*" for p in j["products"]), False)
+
+j = c.get("/sales/series?start=2026-08-01&end=2026-08-01&asin=BCHILD02").get_json()
+rev = [m for m in j["metrics"] if m["key"] == "ordered_sales"][0]
+check("  filtering to one ASIN returns only its sales", rev["cells"], [300.0])
+
+print("\n=== a price is recomputed, never summed ===")
+j = c.get("/sales/series?start=2026-08-01&end=2026-08-02&granularity=week").get_json()
+def cell(k):
+    m = [x for x in j["metrics"] if x["key"] == k]
+    return m[0]["cells"][0] if m else None
+check("average selling price is revenue / units", cell("avg_selling_price"),
+      round(cell("ordered_sales") / cell("units"), 2))
+check("  which is NOT the sum of the daily prices", cell("avg_selling_price") > 100, False)
+
+print("\n=== a bad custom date falls back instead of reaching SQL ===")
+j = c.get("/sales/series?start=banana&end=2026-08-02").get_json()
+check("nonsense dates do not 500", j["ok"], True)
+check("  and resolve to a preset instead of 'custom'", j["preset"], "30d")
+j = c.get("/sales/series?start=2026-08-02&end=2026-08-01").get_json()
+check("a backwards range is swapped, not left empty", (j["start"], j["end"]),
+      ("2026-08-01", "2026-08-02"))
+
+print("\n=== a fully synced account is not nagged for ever ===")
+from domain import sales_fetch as sf
+WS2 = "syncprobe"
+end = dt.date.today() - dt.timedelta(days=1)
+for i in range(30):
+    d = (end - dt.timedelta(days=i)).strftime("%Y-%m-%d")
+    sd.store(CFG, WS2, MKT, [{"date": d, "asin": "*", "units": 1,
+                              "ordered_sales": 1.0, "currency": "GBP"}])
+check("holding every day, nothing is missing",
+      sf.missing_days(CFG, WS2, MKT, 30), [])
+check("  but the recent ones are still due for revision",
+      len(sf.revisable_days(CFG, WS2, MKT, 30)), sf.REVISE_DAYS)
+
 print("\n=== permissions ===")
 from auth.guard import required_permission, feature_for
 from auth import users

@@ -47,10 +47,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         end = _dt.date.today() - _dt.timedelta(days=1)     # Amazon never has today
         preset = (a.get("preset") or "30d").lower()
         if a.get("start") and a.get("end"):
+            # PARSED, not sliced. A slice accepts "banana!!" and hands it to SQL,
+            # where it silently matches nothing and the screen reads as "no sales"
+            # rather than "that is not a date".
             try:
-                return a["start"][:10], a["end"][:10], "custom"
-            except Exception:
-                pass
+                s = _dt.datetime.strptime(a["start"][:10], "%Y-%m-%d").date()
+                e = _dt.datetime.strptime(a["end"][:10], "%Y-%m-%d").date()
+                if s > e:
+                    s, e = e, s          # a backwards range is a slip, not a request
+                return s.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d"), "custom"
+            except ValueError:
+                pass                     # fall through to the preset below
         if preset == "ytd":
             return "%d-01-01" % end.year, end.strftime("%Y-%m-%d"), preset
         days = {"7d": 7, "14d": 14, "30d": 30, "60d": 60, "90d": 90}.get(preset, 30)
@@ -117,26 +124,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "ads_connected": avail["ads"]["connected"],
                         "ads_note": avail["ads"]["note"]})
 
-    # The metric rows, in the order the grid shows them. `good` says which
-    # direction is an improvement, so a rise in ACOS is never coloured as a win.
-    METRICS = [
-        ("ordered_sales",     "Ordered product sales", "money",  "up"),
-        ("units",             "Units ordered",         "count",  "up"),
-        ("orders",            "Order items",           "count",  "up"),
-        ("avg_selling_price", "Average selling price", "money",  "up"),
-        ("sessions",          "Sessions",              "count",  "up"),
-        ("sessions_mobile",   "Sessions — mobile",     "count",  "up"),
-        ("sessions_browser",  "Sessions — browser",    "count",  "up"),
-        ("page_views",        "Page views",            "count",  "up"),
-        ("unit_session_pct",  "Conversion rate",       "pct",    "up"),
-        ("buy_box_pct",       "Buy box",               "pct",    "up"),
-        ("units_b2b",         "Units — B2B",           "count",  "up"),
-        ("ordered_sales_b2b", "Sales — B2B",           "money",  "up"),
-        ("impressions",       "Ad impressions",        "count",  "up"),
-        ("clicks",            "Ad clicks",             "count",  "up"),
-        ("spend",             "Ad spend",              "money",  "down"),
-        ("ad_sales",          "Ad sales",              "money",  "up"),
-    ]
+    @app.route("/sales/products")
+    def sales_products():
+        """The product filter's options: what actually sold in this window."""
+        from domain import sales_data as _sd
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        start, end, _preset = _range()
+        items = _sd.products(CONFIG_PATH, wsid, mkt, start, end)
+        return jsonify({"ok": True, "start": start, "end": end,
+                        "count": len(items), "products": items})
 
     @app.route("/sales/series")
     def sales_series():
@@ -155,13 +153,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         gran = (request.args.get("granularity") or "day").lower()
 
         rows = _sd.series(CONFIG_PATH, wsid, mkt, start, end, asin)
-        buckets, order = _bucket(rows, gran)
+        buckets, order = _sd.bucket(rows, gran)
 
         metrics = []
-        for key, label, kind, good in METRICS:
-            cells = []
-            for b in order:
-                cells.append(_agg(buckets[b], key, kind))
+        for key, label, kind, good, _how in _sd.METRICS:
+            cells = [_sd.aggregate(buckets[b], key) for b in order]
             if any(c is not None for c in cells):
                 metrics.append({"key": key, "label": label, "kind": kind,
                                 "good": good, "cells": cells})
@@ -170,55 +166,6 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "currency": (rows[0]["currency"] if rows else ""),
                         "columns": order, "metrics": metrics,
                         "empty": not rows})
-
-    def _bucket(rows, gran):
-        buckets, order = {}, []
-        for r in rows:
-            d = r["date"]
-            if gran == "week":
-                dt = _dt.datetime.strptime(d, "%Y-%m-%d").date()
-                key = (dt - _dt.timedelta(days=dt.weekday())).strftime("%Y-%m-%d")
-            elif gran == "month":
-                key = d[:7]
-            else:
-                key = d
-            if key not in buckets:
-                buckets[key] = []
-                order.append(key)
-            buckets[key].append(r)
-        return buckets, order
-
-    def _agg(rows, key, kind):
-        """Sum counts and money; RECOMPUTE rates from their parts.
-
-        Averaging seven daily conversion rates is not the week's conversion rate.
-        The error is small on even days and large on uneven ones, which is exactly
-        when someone is looking.
-        """
-        if kind == "pct":
-            if key == "unit_session_pct":
-                return _rate(rows, "units", "sessions")
-            if key == "buy_box_pct":
-                return _weighted(rows, "buy_box_pct", "page_views")
-        vals = [r.get(key) for r in rows if r.get(key) is not None]
-        if not vals:
-            return None
-        return round(sum(float(v) for v in vals), 2)
-
-    def _rate(rows, a, b):
-        num = sum(float(r.get(a) or 0) for r in rows)
-        den = sum(float(r.get(b) or 0) for r in rows)
-        return round(num / den * 100, 2) if den else None
-
-    def _weighted(rows, field, weight):
-        num = den = 0.0
-        for r in rows:
-            v, w = r.get(field), r.get(weight)
-            if v is None or not w:
-                continue
-            num += float(v) * float(w)
-            den += float(w)
-        return round(num / den, 2) if den else None
 
     @app.route("/sales/export")
     def sales_export():

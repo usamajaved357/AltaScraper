@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS sales_daily (
     workspace_id TEXT NOT NULL,
     marketplace TEXT NOT NULL,
     date TEXT NOT NULL,                 -- YYYY-MM-DD
-    asin TEXT NOT NULL DEFAULT '*',
+    asin TEXT NOT NULL DEFAULT '*',     -- the CHILD asin: the thing that sells
+    parent_asin TEXT,                   -- kept so variations can be grouped later
     units INTEGER,
     units_b2b INTEGER,
     orders INTEGER,
@@ -259,6 +260,30 @@ CREATE INDEX IF NOT EXISTS idx_syncjobs_type      ON sync_jobs(job_type, workspa
 """
 
 
+# Columns added to tables that already exist in the wild. CREATE TABLE IF NOT
+# EXISTS does nothing to a table that is already there, so a column added to
+# SCHEMA above never reaches a database created before it -- the app then fails
+# on a machine that has been running longest, which is the worst place to find
+# out. Each entry is (table, column, type); applying one twice is a no-op.
+_ADDED_COLUMNS = [
+    ("sales_daily", "parent_asin", "TEXT"),
+]
+
+
+def _migrate(conn):
+    """Bring an existing database up to the current SCHEMA. Idempotent."""
+    for table, column, coltype in _ADDED_COLUMNS:
+        try:
+            have = {r["name"] for r in conn.execute("PRAGMA table_info(%s)" % table)}
+        except Exception:
+            continue                       # table not created yet; SCHEMA will do it
+        if column not in have:
+            try:
+                conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coltype))
+            except Exception:
+                pass                       # raced with another thread; harmless
+
+
 def db_path(config_path=None):
     """Where the database file lives. Beside config.json unless overridden."""
     env = os.environ.get("ALTASCRAPER_DB")
@@ -290,6 +315,7 @@ def get_db(config_path=None):
     with _INIT_LOCK:
         if path not in _INITIALISED:
             conn.executescript(SCHEMA)
+            _migrate(conn)
             _INITIALISED.add(path)
 
     _LOCAL.conn, _LOCAL.path = conn, path

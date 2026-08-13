@@ -43,29 +43,53 @@ def yesterday():
     return _dt.date.today() - _dt.timedelta(days=1)
 
 
+def _held(config_path, workspace_id, marketplace, start, end):
+    from data import db as _db
+    conn = _db.get_db(config_path)
+    return {r["date"] for r in conn.execute(
+        "SELECT DISTINCT date FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+        "AND date>=? AND date<=? AND asin='*'",
+        (workspace_id, marketplace, start, end)).fetchall()}
+
+
 def missing_days(config_path, workspace_id, marketplace, days_back=30):
-    """Which dates in the window we do not hold, newest first.
+    """Dates in the window we genuinely do not hold, newest first.
 
     Newest first on purpose: if a backfill is interrupted, what survives is the
     recent data someone is actually looking at, not the oldest.
+
+    Days due for REVISION are deliberately not counted here. They used to be, and
+    because the last few days are always due for revision the count never fell
+    below three -- so a fully synced account was told for ever that it had days
+    left to fetch, and pressing Sync never cleared it. A backlog that cannot
+    reach zero is not a backlog, it is a nag.
     """
-    from data import db as _db
     end = yesterday()
     start = end - _dt.timedelta(days=int(days_back) - 1)
-    conn = _db.get_db(config_path)
-    have = {r["date"] for r in conn.execute(
-        "SELECT DISTINCT date FROM sales_daily WHERE workspace_id=? AND marketplace=? "
-        "AND date>=? AND date<=? AND asin='*'",
-        (workspace_id, marketplace, _s(start), _s(end))).fetchall()}
-    # Recent days are re-fetched even if held -- Amazon revises them.
-    revise = {_s(end - _dt.timedelta(days=i)) for i in range(REVISE_DAYS)}
+    have = _held(config_path, workspace_id, marketplace, _s(start), _s(end))
     out = []
     d = end
     while d >= start:
-        ds = _s(d)
-        if ds not in have or ds in revise:
-            out.append(ds)
+        if _s(d) not in have:
+            out.append(_s(d))
         d -= _dt.timedelta(days=1)
+    return out
+
+
+def revisable_days(config_path, workspace_id, marketplace, days_back=30):
+    """Recent days we DO hold but should re-ask for, newest first.
+
+    Amazon revises the last few days as returns and cancellations settle, so a
+    number read once and kept is a number Amazon itself no longer agrees with.
+    """
+    end = yesterday()
+    start = end - _dt.timedelta(days=int(days_back) - 1)
+    have = _held(config_path, workspace_id, marketplace, _s(start), _s(end))
+    out = []
+    for i in range(REVISE_DAYS):
+        d = end - _dt.timedelta(days=i)
+        if d >= start and _s(d) in have:
+            out.append(_s(d))
     return out
 
 
@@ -101,9 +125,15 @@ def sync(config_path, workspace_id, marketplace, marketplace_id, creds,
     except Exception as e:
         return {"ok": False, "error": "could not open SP-API Reports: %s" % str(e)[:160]}
 
+    # Missing days first -- a day with no data at all matters more than refining a
+    # day that already has some. Revisions use whatever budget is left over.
     todo = missing_days(config_path, workspace_id, marketplace, days_back)[:int(budget)]
+    spare = int(budget) - len(todo)
+    if spare > 0:
+        todo += revisable_days(config_path, workspace_id, marketplace, days_back)[:spare]
     if not todo:
-        return {"ok": True, "fetched": 0, "note": "already up to date",
+        return {"ok": True, "fetched": 0, "rows": 0, "failed": [],
+                "still_missing": 0, "note": "already up to date",
                 **_sd.availability(config_path, workspace_id, marketplace)["sales"]}
 
     written = 0

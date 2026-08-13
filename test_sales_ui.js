@@ -32,6 +32,26 @@ check("navTo calls salesOpen", /sec==="sales"[\s\S]{0,60}salesOpen/.test(shell),
 check("the URL allow-list (browser) has it", /"sales","ppc"/.test(shell), true);
 check("the URL allow-list (server) has it", /"generate", "sales", "ppc"/.test(ui), true);
 
+console.log("\n=== the product filter actually filters ===");
+// It was wired to salesReload(), which rebuilds the query from SALES.asin --
+// a value the select never wrote to. Choosing a product re-requested the range
+// it already had, so the filter looked wired and did nothing.
+check("the select writes its value into the state",
+      /onchange="salesSetAsin\(this\.value\)"/.test(tpl), true);
+check("  and that handler sets SALES.asin",
+      /function salesSetAsin\(v\)\{[\s\S]{0,120}SALES\.asin\s*=/.test(js), true);
+check("  then reloads", /function salesSetAsin\(v\)\{[\s\S]{0,200}salesReload\(\)/.test(js), true);
+check("options come from what SOLD, not the live catalogue",
+      /\/sales\/products\?/.test(js), true);
+check("  so the catalogue global is no longer read", /LIVE_ITEMS/.test(js), false);
+
+console.log("\n=== a custom range exists and is not half-applied ===");
+check("Custom is offered as a preset", /\["custom","Custom"\]/.test(js), true);
+check("  with two date inputs", /id="sales_start"/.test(tpl) && /id="sales_end"/.test(tpl), true);
+check("  hidden until Custom is chosen", /id="sales_custom"[^>]*display:none/.test(tpl), true);
+check("  and not requested until BOTH are filled",
+      /if\(SALES\.preset==="custom" && !\(SALES\.start && SALES\.end\)\) return;/.test(js), true);
+
 console.log("\n=== availability is asked BEFORE the numbers ===");
 check("it fetches availability", /\/sales\/availability\?/.test(js), true);
 check("  before summary and series",

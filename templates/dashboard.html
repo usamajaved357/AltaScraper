@@ -228,7 +228,15 @@
       <div class="salesbar" id="sales_filters">
         <span class="mktswitch" id="sales_presets"></span>
         <span class="mktswitch" id="sales_gran"></span>
-        <select class="rc-in" id="sales_asin" style="width:auto;margin:0" onchange="salesReload()">
+        <span id="sales_custom" style="display:none;gap:6px;align-items:center">
+          <input type="date" class="rc-in" id="sales_start" style="width:auto;margin:0"
+                 onchange="salesSetDates()" aria-label="Range start">
+          <span class="cc">to</span>
+          <input type="date" class="rc-in" id="sales_end" style="width:auto;margin:0"
+                 onchange="salesSetDates()" aria-label="Range end">
+        </span>
+        <select class="rc-in" id="sales_asin" style="width:auto;margin:0"
+                onchange="salesSetAsin(this.value)" aria-label="Product filter">
           <option value="">All products</option>
         </select>
         <span class="spacer" style="flex:1"></span>

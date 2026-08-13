@@ -90,8 +90,15 @@ def parse_report(doc):
     for block in (doc.get("salesAndTrafficByAsin") or []):
         s = block.get("salesByAsin") or {}
         t = block.get("trafficByAsin") or {}
+        # The CHILD asin is the key, not the parent. With asinGranularity CHILD
+        # every block carries BOTH, and preferring the parent files every
+        # variation of a product under one key -- which the unique index then
+        # collapses, so a parent with five children keeps only the last one's
+        # numbers and loses the other four silently. The parent is kept in its
+        # own column so variations can still be grouped.
         row = {"date": str(block.get("date") or doc.get("_date") or "")[:10],
-               "asin": str(block.get("parentAsin") or block.get("childAsin") or "") or "?",
+               "asin": str(block.get("childAsin") or block.get("parentAsin") or "") or "?",
+               "parent_asin": str(block.get("parentAsin") or ""),
                "currency": currency}
         for col, path in _SALES_KEYS:
             row[col] = _dig(s, path)
@@ -103,10 +110,10 @@ def parse_report(doc):
     return rows
 
 
-_COLS = ["units", "units_b2b", "orders", "order_items", "ordered_sales",
-         "ordered_sales_b2b", "sessions", "sessions_mobile", "sessions_browser",
-         "page_views", "buy_box_pct", "unit_session_pct", "avg_selling_price",
-         "currency"]
+_COLS = ["parent_asin", "units", "units_b2b", "orders", "order_items",
+         "ordered_sales", "ordered_sales_b2b", "sessions", "sessions_mobile",
+         "sessions_browser", "page_views", "buy_box_pct", "unit_session_pct",
+         "avg_selling_price", "currency"]
 
 
 def store(config_path, workspace_id, marketplace, rows):
@@ -191,28 +198,121 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None):
     return sales
 
 
-def totals(config_path, workspace_id, marketplace, start, end, asin=None):
-    """Summed metrics for a range, plus the derived ones.
+def products(config_path, workspace_id, marketplace, start, end):
+    """The ASINs that actually sold in a range, biggest first.
 
-    Rates are recomputed from the totals, never averaged from the daily rates:
-    the mean of thirty conversion rates is not the period's conversion rate, and
-    the difference grows with how uneven the days are.
+    Read from sales_daily rather than the live catalogue, because this list only
+    has to contain what the filter can usefully select. An ASIN with no sales in
+    the period filters to an empty screen, and a catalogue-driven list is also
+    empty until someone has synced the catalogue -- which has nothing to do with
+    looking at sales.
     """
+    conn = _db.get_db(config_path)
+    rows = conn.execute(
+        "SELECT asin, MAX(parent_asin) parent_asin, "
+        "       SUM(COALESCE(units,0)) units, SUM(COALESCE(ordered_sales,0)) revenue "
+        "FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+        "  AND date>=? AND date<=? AND asin<>'*' "
+        "GROUP BY asin ORDER BY revenue DESC, units DESC, asin",
+        (workspace_id, marketplace, start, end)).fetchall()
+    return [dict(r) for r in rows]
+
+
+# =============================================================================
+# HOW EACH METRIC AGGREGATES -- the single definition, used by every caller.
+#
+# This table is the reason the grid, the stat cards and the CSV cannot disagree.
+# It previously existed twice, once here and once in the route, and the two had
+# already drifted: the route SUMMED average selling price, so a 30-day column
+# read about thirty times the real price. A metric is defined once, here, or it
+# will be defined twice and one of them will be wrong (CLAUDE.md Rule 12).
+#
+#   sum       -- add the values up (units, revenue, sessions)
+#   ratio     -- divide one total by another (price = revenue / units)
+#   rate      -- the same, as a percentage (conversion = units / sessions)
+#   weighted  -- a share, weighted by the thing it is a share OF
+#
+#   (key, label, kind, good, how)
+# `good` says which direction is an improvement, so a rise in ACOS or ad spend
+# is never coloured as a win.
+# =============================================================================
+METRICS = [
+    ("ordered_sales",     "Ordered product sales", "money", "up",   ("sum",)),
+    ("units",             "Units ordered",         "count", "up",   ("sum",)),
+    ("orders",            "Order items",           "count", "up",   ("sum",)),
+    ("avg_selling_price", "Average selling price", "money", "up",   ("ratio", "ordered_sales", "units")),
+    ("sessions",          "Sessions",              "count", "up",   ("sum",)),
+    ("sessions_mobile",   "Sessions — mobile",     "count", "up",   ("sum",)),
+    ("sessions_browser",  "Sessions — browser",    "count", "up",   ("sum",)),
+    ("page_views",        "Page views",            "count", "up",   ("sum",)),
+    ("unit_session_pct",  "Conversion rate",       "pct",   "up",   ("rate", "units", "sessions")),
+    ("buy_box_pct",       "Buy box",               "pct",   "up",   ("weighted", "page_views")),
+    ("units_b2b",         "Units — B2B",           "count", "up",   ("sum",)),
+    ("ordered_sales_b2b", "Sales — B2B",           "money", "up",   ("sum",)),
+    ("impressions",       "Ad impressions",        "count", "up",   ("sum",)),
+    ("clicks",            "Ad clicks",             "count", "up",   ("sum",)),
+    ("spend",             "Ad spend",              "money", "down", ("sum",)),
+    ("ad_sales",          "Ad sales",              "money", "up",   ("sum",)),
+    ("ad_orders",         "Ad orders",             "count", "up",   ("sum",)),
+    ("acos",              "ACOS",                  "pct",   "down", ("rate", "spend", "ad_sales")),
+    ("roas",              "ROAS",                  "count", "up",   ("ratio", "ad_sales", "spend")),
+    ("tacos",             "TACOS",                 "pct",   "down", ("rate", "spend", "ordered_sales")),
+]
+
+_AGG = {m[0]: m[4] for m in METRICS}
+METRIC_KEYS = [m[0] for m in METRICS]
+
+
+def aggregate(rows, key):
+    """One metric over many rows, by that metric's OWN rule.
+
+    Rates and prices are recomputed from their parts, never averaged from the
+    daily figures: the mean of thirty conversion rates is not the period's
+    conversion rate, and the gap grows the more uneven the days are.
+    """
+    how = _AGG.get(key, ("sum",))
+    if how[0] == "ratio":
+        return _div(_sum(rows, how[1]), _sum(rows, how[2]))
+    if how[0] == "rate":
+        return _pct(_sum(rows, how[1]), _sum(rows, how[2]))
+    if how[0] == "weighted":
+        return _weighted(rows, key, how[1])
+    return _sum(rows, key)
+
+
+def bucket(rows, gran):
+    """Group daily rows into day, week (Mon-start) or month. Returns (map, order)."""
+    import datetime as _dt
+    buckets, order = {}, []
+    for r in rows:
+        d = r["date"]
+        if gran == "week":
+            dt = _dt.datetime.strptime(d, "%Y-%m-%d").date()
+            key = (dt - _dt.timedelta(days=dt.weekday())).strftime("%Y-%m-%d")
+        elif gran == "month":
+            key = d[:7]
+        else:
+            key = d
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(r)
+    return buckets, order
+
+
+def totals(config_path, workspace_id, marketplace, start, end, asin=None):
+    """Every metric over a range, each by its own aggregation rule."""
     rows = series(config_path, workspace_id, marketplace, start, end, asin)
     out = {"days": len(rows), "currency": (rows[0]["currency"] if rows else "")}
-    for k in ("units", "orders", "order_items", "sessions", "page_views",
-              "ordered_sales", "spend", "ad_sales", "clicks", "impressions"):
-        vals = [r.get(k) for r in rows if r.get(k) is not None]
-        out[k] = round(sum(vals), 2) if vals else None
-    out["unit_session_pct"] = _pct(out["units"], out["sessions"])
-    out["avg_selling_price"] = _div(out["ordered_sales"], out["units"])
-    out["acos"] = _pct(out["spend"], out["ad_sales"])
-    out["roas"] = _div(out["ad_sales"], out["spend"])
-    out["tacos"] = _pct(out["spend"], out["ordered_sales"])
-    # Buy box is a share of page views, so it is weighted by them -- a flat mean
-    # would let a day with four views count as much as a day with four thousand.
-    out["buy_box_pct"] = _weighted(rows, "buy_box_pct", "page_views")
+    for key in METRIC_KEYS:
+        out[key] = aggregate(rows, key)
+    out["order_items"] = aggregate(rows, "order_items")
     return out
+
+
+def _sum(rows, key):
+    vals = [r.get(key) for r in rows if r.get(key) is not None]
+    return round(sum(float(v) for v in vals), 2) if vals else None
 
 
 def _div(a, b):

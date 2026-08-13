@@ -20,10 +20,11 @@
  * compare sessions against revenue, which means nothing.
  */
 
-let SALES = {preset:"30d", gran:"day", asin:"", data:null, series:null, busy:false};
+let SALES = {preset:"30d", gran:"day", asin:"", start:"", end:"",
+             data:null, series:null, busy:false};
 
 const SALES_PRESETS = [["7d","7d"],["14d","14d"],["30d","30d"],
-                       ["60d","60d"],["90d","90d"],["ytd","YTD"]];
+                       ["60d","60d"],["90d","90d"],["ytd","YTD"],["custom","Custom"]];
 const SALES_GRAN = [["day","Day"],["week","Week"],["month","Month"]];
 
 function _sEsc(s){
@@ -70,10 +71,32 @@ function salesDrawFilters(){
   if(g) g.innerHTML = SALES_GRAN.map(function(x){
     return '<button class="mktbtn'+(SALES.gran===x[0]?" on":"")+'" '
          + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  const c=document.getElementById("sales_custom");
+  // inline-flex, not "": the element carries gap/align-items, which need a flex
+  // container, and a bare span is not one.
+  if(c) c.style.display = (SALES.preset==="custom") ? "inline-flex" : "none";
 }
+/* Custom shows two date boxes; it does not reload until both are filled, because
+   half a range is not a range and asking for one would blank the screen. */
 function salesSet(what, val){
   if(what==="preset") SALES.preset=val; else SALES.gran=val;
   salesDrawFilters();
+  if(SALES.preset==="custom" && !(SALES.start && SALES.end)) return;
+  salesReload();
+}
+
+function salesSetDates(){
+  const s=document.getElementById("sales_start"), e=document.getElementById("sales_end");
+  SALES.start = s ? s.value : "";
+  SALES.end   = e ? e.value : "";
+  if(SALES.start && SALES.end) salesReload();
+}
+
+/* The product filter. Its own handler, because the select has to write its value
+   into the state the query is built from -- an onchange that only calls reload
+   re-requests the range it already had and the filter appears to do nothing. */
+function salesSetAsin(v){
+  SALES.asin = v || "";
   salesReload();
 }
 
@@ -81,6 +104,10 @@ function salesSet(what, val){
 function _sQuery(){
   const q=["preset="+encodeURIComponent(SALES.preset),
            "granularity="+encodeURIComponent(SALES.gran)];
+  if(SALES.preset==="custom" && SALES.start && SALES.end){
+    q.push("start="+encodeURIComponent(SALES.start));
+    q.push("end="+encodeURIComponent(SALES.end));
+  }
   if(SALES.asin) q.push("asin="+encodeURIComponent(SALES.asin));
   if(typeof WS_MARKET!=="undefined" && WS_MARKET && WS_MARKET!=="__all__")
     q.push("marketplace="+encodeURIComponent(WS_MARKET));
@@ -107,6 +134,9 @@ async function salesReload(){
     salesDrawCards(sum, av);
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
+    // After the numbers, not before: the options depend on the range, and the
+    // grid is what someone is waiting for.
+    salesFillAsins();
   }catch(e){
     const g=document.getElementById("sales_grid");
     if(g) g.innerHTML='<div class="empty">Could not load sales: '+_sEsc(String(e))+'</div>';
@@ -253,28 +283,51 @@ function salesExport(){
   window.location = "/sales/export?" + _sQuery();
 }
 
-/* Populate the product filter from the live catalogue the app already holds, so
-   it cannot list ASINs this workspace does not have. */
-function salesFillAsins(){
+/* Populate the product filter from what actually SOLD in the current range.
+ *
+ * It used to read the live-catalogue array this page never loads, so the filter
+ * was empty unless you had visited the catalogue screen first — and once filled,
+ * it offered ASINs with no sales in the period, every one of which selects an
+ * empty screen. Sales are the right source for a sales filter.
+ *
+ * Ordered biggest-revenue first: the product someone wants is nearly always one
+ * of the top few, and alphabetical order buries it.
+ */
+async function salesFillAsins(){
   const sel=document.getElementById("sales_asin");
   if(!sel) return;
-  const items=(typeof LIVE_ITEMS!=="undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
-  const seen={}, opts=[];
-  items.forEach(function(it){
+  let items=[];
+  try{
+    const j=await (await fetch("/sales/products?"+_sQuery())).json();
+    if(j && j.ok) items=j.products||[];
+  }catch(e){ /* the filter is an aid; losing it must not take the screen down */ }
+
+  const opts=items.map(function(it){
     const a=String(it.asin||"").trim();
-    if(!a || seen[a]) return;
-    seen[a]=1;
-    opts.push('<option value="'+_sEsc(a)+'">'+_sEsc(a+(it.title?(" — "+String(it.title).slice(0,48)):""))+'</option>');
-  });
-  sel.innerHTML='<option value="">All products'+(opts.length?(" ("+opts.length+")"):"")+'</option>'+opts.join("");
+    if(!a) return "";
+    const rev=(it.revenue!==null&&it.revenue!==undefined)
+      ? (" — "+_sNum(it.revenue,"money",(SALES.data&&SALES.data.currency)||"")) : "";
+    return '<option value="'+_sEsc(a)+'">'+_sEsc(a+rev)+'</option>';
+  }).filter(Boolean);
+
+  sel.innerHTML='<option value="">All products'+(opts.length?(" ("+opts.length+")"):"")+'</option>'
+              + opts.join("");
+  // Keep the current selection even if it has dropped out of the new range, so
+  // changing the dates does not silently reset the filter under you.
+  if(SALES.asin && !items.some(function(i){return i.asin===SALES.asin;})){
+    sel.insertAdjacentHTML("beforeend",
+      '<option value="'+_sEsc(SALES.asin)+'">'+_sEsc(SALES.asin+" — no sales in range")+'</option>');
+  }
   sel.value=SALES.asin||"";
 }
 
 function salesOpen(){
+  const s=document.getElementById("sales_start"), e=document.getElementById("sales_end");
+  if(s && !s.value) SALES.start="";
+  if(e && !e.value) SALES.end="";
   salesDrawFilters();
-  salesFillAsins();
-  const sel=document.getElementById("sales_asin");
-  if(sel) SALES.asin=sel.value||"";
   salesReload();
 }
 window.salesOpen = salesOpen;
+window.salesSetAsin = salesSetAsin;
+window.salesSetDates = salesSetDates;
