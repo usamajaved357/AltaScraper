@@ -27,8 +27,11 @@ check("the panel padding is a variable", /\.wspanel\{display:none;padding:var\(-
 check("the bleed derives from the same variable",
       /\.wstoolbar\.bleed\{[\s\S]{0,120}calc\(var\(--wspad,32px\) \* -1\)/.test(css), true);
 check("every inline bleed style is gone", /margin:-20px -20px 16px/.test(tpl), false);
-check("  replaced by the class, seven times",
-      (tpl.match(/class="wstoolbar bleed"/g) || []).length, 7);
+// AT LEAST the seven that were converted. Pinning an exact count made this fail
+// the moment a new section was added -- which is the test objecting to ordinary
+// growth, not catching a fault. What matters is that none was left inline.
+check("  replaced by the class",
+      (tpl.match(/class="wstoolbar bleed"/g) || []).length >= 7, true);
 check("the listings screen is padded to match",
       /#sec_listings > \.datasrc/.test(css) && /main#grid\{padding:18px var\(--wspad,32px\)\}/.test(css), true);
 

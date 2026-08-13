@@ -64,6 +64,7 @@
     <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-table"></i> Account &amp; sheets</div>
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
     <div class="slbl">Analytics</div>
+    <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
@@ -212,6 +213,33 @@
           <div class="cc" style="padding:16px;opacity:.6">Click Refresh to load the input sheet.</div>
         </div>
       </div>
+    </div>
+
+    <!-- SALES section. One filter row above everything it scopes, then the stat
+         cards, then the metrics x dates grid. The grid prints every value as
+         text and uses colour only to shade it, so nothing is readable by colour
+         alone and the table IS the accessible view. -->
+    <div id="sec_sales" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2>Sales</h2>
+        <div class="sub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div></div>
+      </div>
+
+      <div class="salesbar" id="sales_filters">
+        <span class="mktswitch" id="sales_presets"></span>
+        <span class="mktswitch" id="sales_gran"></span>
+        <select class="rc-in" id="sales_asin" style="width:auto;margin:0" onchange="salesReload()">
+          <option value="">All products</option>
+        </select>
+        <span class="spacer" style="flex:1"></span>
+        <span id="sales_range" class="cc" style="font-size:11.5px"></span>
+        <button class="mktbtn" onclick="salesSync(this)" title="Pull the days Amazon has not sent yet"><i class="ti ti-refresh"></i> Sync</button>
+        <button class="mktbtn" onclick="salesExport()" title="Download this exact grid as CSV"><i class="ti ti-download"></i> Export</button>
+      </div>
+
+      <div id="sales_cards" class="stat-row"></div>
+      <div id="sales_note"></div>
+      <div id="sales_grid"></div>
     </div>
 
     <!-- PPC section -->
@@ -677,6 +705,8 @@
      to a live listing. Also holds setMainImage(), the ONE implementation the
      four older "use as main" call sites now share. -->
 <script src="/static/js/listingimages.js?v={{ ASSET_V }}"></script>
+<!-- Sales dashboard: stat cards + the metrics x dates grid. -->
+<script src="/static/js/sales.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
 

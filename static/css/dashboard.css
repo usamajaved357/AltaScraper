@@ -1363,3 +1363,55 @@
 
   /* -- 8. CHART SUBTITLE (new, unused until a screen adopts it) ---------- */
   .chart-subtitle{font-size:12px;color:var(--ink3);margin-top:4px;margin-bottom:16px}
+
+
+  /* =====================================================================
+     SALES DASHBOARD
+     Stat cards + a metrics x dates grid. Every cell prints its number and the
+     tint only shades it, so the grid IS the accessible table view -- nothing is
+     readable by colour alone, and nothing is lost in print or to colour
+     blindness. One hue, light to dark, shaded per ROW: shading across rows
+     would compare sessions against revenue, which means nothing.
+     ===================================================================== */
+
+  /* One filter row, above everything it scopes. Per-card filters would let two
+     cards show different periods, which is worse than no filter at all. */
+  .salesbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+
+  /* The stat cards reuse .stat-row/.stat-card from the Orbit block. The number
+     is deliberately NOT tabular: equal-width digits make a large standalone
+     figure look loose and gappy. tabular-nums belongs where numbers stack
+     vertically -- which is the grid below, not here. */
+  .stat-card .stat-number{font-variant-numeric:normal}
+  .stat-card{text-align:left;cursor:default}
+  .stat-card.is-empty .stat-number{color:var(--ink3)}
+  .stat-delta{font-size:11px;margin-top:6px;font-weight:600}
+  /* Direction AND a word, never colour alone. */
+  .stat-delta.good{color:var(--ok)}
+  .stat-delta.bad{color:var(--red)}
+  .stat-delta.flat{color:var(--ink3)}
+  .salesnote{font-size:11.5px;margin:-6px 0 14px;padding:8px 10px;
+             border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+
+  /* 30+ columns will not fit; the grid scrolls inside its own box rather than
+     making the whole page scroll sideways. The metric column stays put, because
+     a value with its row label scrolled away is unreadable. */
+  .salesgridwrap{overflow:auto;max-height:62vh;border:1px solid var(--line);
+                 border-radius:10px;background:var(--panel)}
+  .salesgrid{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
+  .salesgrid th,.salesgrid td{padding:7px 10px;white-space:nowrap;
+                              border-bottom:1px solid var(--line)}
+  /* Numbers stack vertically here, so tabular figures are right. */
+  .salesgrid td{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .salesgrid thead th{position:sticky;top:0;z-index:2;background:var(--panel2);
+                      font-size:10px;text-transform:uppercase;letter-spacing:.03em;
+                      font-weight:600;color:var(--ink3);text-align:right}
+  .salesgrid th.mcol{position:sticky;left:0;z-index:1;background:var(--panel2);
+                     text-align:left;font-weight:500;color:var(--ink2);
+                     text-transform:none;letter-spacing:0;font-size:11.5px;
+                     max-width:210px;overflow:hidden;text-overflow:ellipsis}
+  .salesgrid thead th.mcol{z-index:3}
+  /* A hairline one shade off the surface -- never dashed, never heavy. */
+  .salesgrid tbody tr:last-child td,
+  .salesgrid tbody tr:last-child th{border-bottom:none}
+  .salesgrid tbody tr:hover td{box-shadow:inset 0 0 0 9999px rgba(255,255,255,.02)}
