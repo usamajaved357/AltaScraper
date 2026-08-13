@@ -302,6 +302,100 @@ CREATE INDEX IF NOT EXISTS idx_listings_ws_status ON listings(workspace_id, stat
 CREATE INDEX IF NOT EXISTS idx_listings_sku       ON listings(sku);
 CREATE INDEX IF NOT EXISTS idx_listings_asin      ON listings(competitor_asin);
 CREATE INDEX IF NOT EXISTS idx_syncjobs_type      ON sync_jobs(job_type, workspace_id);
+
+
+/* ==========================================================================
+   SOURCE REPRICER -- the supplier side of a listing.
+
+   A SKU is only touched by the repricer if it has been ENROLLED. That is the
+   blast radius control: the feature can ship to every account and still change
+   nothing until a SKU is opted in, one at a time.
+   ========================================================================== */
+
+/* Which SKUs the repricer is allowed to act on, and how hard. */
+CREATE TABLE IF NOT EXISTS sourcing_enrolment (
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    sku          TEXT NOT NULL,
+    enrolled     INTEGER DEFAULT 1,
+    mode         TEXT DEFAULT 'dry_run',   -- 'dry_run' decides and logs; 'live' pushes
+    added_at     TEXT,
+    PRIMARY KEY (workspace_id, marketplace, sku)
+);
+
+/* The suppliers for one SKU. Several per SKU is the normal case. */
+CREATE TABLE IF NOT EXISTS sourcing_sources (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    sku          TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    kind         TEXT DEFAULT 'ebay',      -- 'ebay' (API) | 'html' (scraped)
+    label        TEXT,
+    priority     INTEGER DEFAULT 100,      -- lower wins ties; the user's own order
+    enabled      INTEGER DEFAULT 1,
+    added_at     TEXT
+);
+
+/* Every check of a source. History, not just the latest, so a price that moves
+   around can be seen moving rather than inferred from one reading. */
+CREATE TABLE IF NOT EXISTS sourcing_checks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id     INTEGER NOT NULL,
+    checked_at    TEXT,
+    status        TEXT,                    -- 'fetched' | 'gone' | 'failed'
+    price         REAL,
+    shipping      REAL,                    -- NULL means UNKNOWN, never free
+    currency      TEXT,
+    in_stock      INTEGER,                 -- 1 yes, 0 no, NULL unknown
+    dispatch_days INTEGER,
+    error         TEXT
+);
+
+/* Rules. One row per account is the default; a row with a sku overrides it for
+   that SKU alone, so one awkward product cannot force the rest to be loosened. */
+CREATE TABLE IF NOT EXISTS sourcing_rules (
+    workspace_id         TEXT NOT NULL,
+    marketplace          TEXT NOT NULL,
+    sku                  TEXT NOT NULL DEFAULT '',   -- '' = the account default
+    strategy             TEXT,
+    require_in_stock     INTEGER,
+    max_dispatch_days    INTEGER,
+    handling_buffer_days INTEGER,
+    min_margin_pct       REAL,
+    target_margin_pct    REAL,
+    referral_rate        REAL,
+    min_price            REAL,
+    max_price            REAL,
+    max_change_pct       REAL,
+    min_change           REAL,
+    stale_after_hours    REAL,
+    in_stock_quantity    INTEGER,
+    PRIMARY KEY (workspace_id, marketplace, sku)
+);
+
+/* Every decision, whether or not it was pushed. This is the answer to "why did
+   my price change at 3am", and it has to survive being asked weeks later. */
+CREATE TABLE IF NOT EXISTS sourcing_actions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id   TEXT NOT NULL,
+    marketplace    TEXT NOT NULL,
+    sku            TEXT NOT NULL,
+    at             TEXT,
+    action         TEXT,                   -- 'none' | 'update' | 'out_of_stock'
+    source_id      INTEGER,
+    from_price     REAL, to_price     REAL,
+    from_quantity  INTEGER, to_quantity  INTEGER,
+    from_lead_days INTEGER, to_lead_days INTEGER,
+    reason         TEXT,
+    blocked_by     TEXT,
+    applied        INTEGER DEFAULT 0,      -- 0 dry run, 1 pushed, -1 push failed
+    inputs_age_mins REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_srcsources_sku  ON sourcing_sources(workspace_id, marketplace, sku);
+CREATE INDEX IF NOT EXISTS idx_srcchecks_src   ON sourcing_checks(source_id, checked_at);
+CREATE INDEX IF NOT EXISTS idx_srcactions_sku  ON sourcing_actions(workspace_id, marketplace, sku, at);
 """
 
 
