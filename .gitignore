@@ -39,6 +39,16 @@ asin_monitor_history.json
 users.json
 # Durable live-catalogue snapshots. Runtime state, per-machine, can be large.
 live_snapshots.json
+# The SQLite database. This is the DATA -- every listing, price, cost and note.
+# Never commit it: it is large, it is binary (so every change is an unreadable
+# diff), and it holds commercial information that has no business in a git
+# history. -wal and -shm are SQLite's write-ahead sidecar files.
+altascraper.db
+altascraper.db-wal
+altascraper.db-shm
+*.db
+*.db-wal
+*.db-shm
 
 # --- Session baselines (bug-check snapshots, per CLAUDE.md §3 — never commit) ---
 *.baseline.py

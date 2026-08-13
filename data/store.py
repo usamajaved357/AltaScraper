@@ -191,8 +191,12 @@ class ListingStore:
         if not grid:
             return {"imported": 0, "skipped": 0, "errors": ["sheet is empty"]}
 
+        from data.column_map import col_for_header
         header = [str(h).strip() for h in grid[0]]
-        unknown = [h for h in header if h and h not in HEADER_TO_COL]
+        # An alternative spelling ("Our Price ($)") is NOT unknown -- it maps to
+        # the same column. Reporting it as unknown would send you looking for a
+        # problem that is already handled.
+        unknown = [h for h in header if h and not col_for_header(h)]
         imported, skipped, errors = 0, 0, []
 
         for i, values in enumerate(grid[1:], start=2):

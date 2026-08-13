@@ -71,6 +71,41 @@ HEADER_TO_COL = {
 
 COL_TO_HEADER = {v: k for k, v in HEADER_TO_COL.items()}
 
+# Alternative spellings of the SAME column, accepted on IMPORT only.
+#
+# Found by auditing the real spreadsheet before importing anything: the US tab
+# names its money columns "($)" while the UK tabs use "(GBP)". Without these, an
+# import of a US tab would have dropped every price, fee and profit silently --
+# no error, just four blank columns and every margin reading zero.
+#
+# The currency belongs to the marketplace, not to the column: the database column
+# is buy_box_price either way. COL_TO_HEADER is unchanged, so what comes BACK out
+# is always the canonical FIXED_HEADERS name and nothing downstream sees a
+# second spelling.
+HEADER_ALIASES = {
+    "Buy Box Price ($)":   "buy_box_price",
+    "Our Price ($)":       "our_price",
+    "Amazon Fees ($)":     "amazon_fees",
+    "Profit ($)":          "profit",
+    "Buy Box Price (USD)": "buy_box_price",
+    "Our Price (USD)":     "our_price",
+    "Amazon Fees (USD)":   "amazon_fees",
+    "Profit (USD)":        "profit",
+    "Buy Box Price (EUR)": "buy_box_price",
+    "Our Price (EUR)":     "our_price",
+    "Amazon Fees (EUR)":   "amazon_fees",
+    "Profit (EUR)":        "profit",
+    "Buy Box Price (£)":   "buy_box_price",
+    "Our Price (£)":       "our_price",
+    "Amazon Fees (£)":     "amazon_fees",
+    "Profit (£)":          "profit",
+}
+
+
+def col_for_header(header):
+    """DB column for a sheet header, accepting the alternative spellings."""
+    return HEADER_TO_COL.get(header) or HEADER_ALIASES.get(header)
+
 # Columns on the listings table that are NOT sheet columns -- bookkeeping the
 # database keeps for itself. Excluded when a row is handed back to the app so it
 # sees exactly the shape the sheet gave it, no more.
@@ -111,7 +146,7 @@ def header_dict_to_row(header_dict):
     """
     out = {}
     for k, v in (header_dict or {}).items():
-        col = HEADER_TO_COL.get(k)
+        col = col_for_header(k)             # accepts "(GBP)" and "($)" alike
         if col is None:
             if k in COL_TO_HEADER:          # already a DB column name
                 col = k
