@@ -16,6 +16,7 @@ than it looks -- a single missing key would make g("That Header") return "" for
 ever, silently, with no error anywhere. There is a test for it in
 verify_column_map() below; run it after ANY change to FIXED_HEADERS.
 """
+import re
 
 HEADER_TO_COL = {
     "Competitor ASIN":        "competitor_asin",
@@ -159,22 +160,30 @@ def header_dict_to_row(header_dict):
     return out
 
 
+# Money as it is actually written in the sheet. Symbols AND three-letter codes:
+# the real spreadsheet stores "GBP16.00" and "GBP-5.85", not "£16.00". Stripping
+# only the symbols left float("GBP16.00") to fail, which returned None and made
+# the price NULL -- 53 of 55 prices lost on the first real import, silently,
+# because a missing price looks exactly like a blank cell.
+_MONEY_JUNK = re.compile(r"(?i)\b(?:GBP|USD|EUR|AUD|CAD|JPY|SEK|PLN|MXN|BRL|INR)\b"
+                         r"|[£$€¥,%\s]")
+
+
 def _num(v):
-    """A number, or None. Tolerates '£12.34', '45%', '1,234' and ''."""
+    """A number, or None. Tolerates 'GBP16.00', '£12.34', '-26.60%', '1,234', ''."""
     if v is None:
         return None
     if isinstance(v, (int, float)):
         return float(v)
-    s = str(v).strip()
+    s = _MONEY_JUNK.sub("", str(v)).strip()
     if not s:
         return None
-    for ch in "£$€%,":
-        s = s.replace(ch, "")
-    s = s.strip()
     try:
         return float(s)
     except ValueError:
-        return None
+        # Last resort: pull the first number out of something like "approx 12.50"
+        m = re.search(r"-?\d+(?:\.\d+)?", s)
+        return float(m.group(0)) if m else None
 
 
 def verify_column_map(fixed_headers):
