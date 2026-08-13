@@ -164,7 +164,13 @@ async function renderUsers(){
              return '<option value="'+_uesc(r)+'"'+(r==="lister"?" selected":"")+'>'+_uesc(r)+'</option>'; }).join("")
     +    '</select>'
     +  '</div>'
-    +  '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they do?</div>'
+    +  '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they SEE? '
+    +    '(read-only or read-and-write, per area)</div>'
+    +  '<div id="nu_feats" style="display:flex;flex-direction:column;gap:5px;margin-bottom:12px">'
+    +    featureRows("nu", (USERS_META.role_features||{})["lister"])
+    +  '</div>'
+    +  '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they DO? '
+    +    '(these also need the matching area above)</div>'
     +  '<div id="nu_perms" style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">'
     +    permissionCheckboxes("nu", USERS_META.roles["lister"] || [])
     +  '</div>'
@@ -178,6 +184,33 @@ async function renderUsers(){
     +  '</div>';
 
   body.innerHTML = h;
+}
+
+// Per-feature access, the way Amazon's child accounts work: each area is None,
+// View only, or View & edit. This is the "may they SEE it" axis -- the
+// permissions below are the "may they DO it" axis, and both apply.
+function featureRows(prefix, current){
+  const F = (USERS_META && USERS_META.all_features) || {};
+  const cur = current || {};
+  return Object.keys(F).map(function(k){
+    const v = cur[k] || "view";
+    const opt = (val, lbl) =>
+      '<option value="'+val+'"'+(v===val?' selected':'')+'>'+lbl+'</option>';
+    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
+      + '<select class="'+prefix+'_feat" data-feat="'+_uesc(k)+'" '
+      +   'style="width:120px;padding:3px 6px;font-size:12px">'
+      +   opt("none","No access") + opt("view","View only") + opt("edit","View &amp; edit")
+      + '</select>'
+      + '<span class="cc">'+_uesc(F[k])+'</span></div>';
+  }).join("");
+}
+
+function _collectFeatures(prefix){
+  const out = {};
+  document.querySelectorAll("."+prefix+"_feat").forEach(function(s){
+    out[s.getAttribute("data-feat")] = s.value;
+  });
+  return out;
 }
 
 function permissionCheckboxes(prefix, checked){
@@ -222,6 +255,13 @@ function userRolePreset(){
   document.querySelectorAll(".nu_perm").forEach(function(c){
     c.checked = preset.indexOf(c.getAttribute("data-perm")) >= 0;
   });
+  // Roles preset the AREA access too, so picking "lister" hides PPC and
+  // credentials without anyone having to know that is what a lister means.
+  const fpre = (USERS_META.role_features||{})[role] || {};
+  document.querySelectorAll(".nu_feat").forEach(function(s){
+    const k = s.getAttribute("data-feat");
+    if(fpre[k]) s.value = fpre[k];
+  });
 }
 
 async function userCreate(){
@@ -233,6 +273,7 @@ async function userCreate(){
     name:  ((document.getElementById("nu_name")||{}).value||"").trim(),
     role:  (document.getElementById("nu_role")||{}).value || "lister",
     permissions: _collect("nu","data-perm","perm"),
+    features:    _collectFeatures("nu"),
     workspaces:  _collect("nu","data-ws","ws"),
   };
   out.innerHTML = '<span class="cc">Creating…</span>';
@@ -284,6 +325,10 @@ function userEdit(id){
     if(!u) return;
     host.innerHTML =
         '<div style="margin:8px 0 4px;padding:10px;border:1px solid #26303f;border-radius:6px">'
+      + '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they SEE?</div>'
+      + '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">'
+      +   featureRows("ue"+id, u.features||{})
+      + '</div>'
       + '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they do?</div>'
       + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">'
       +   permissionCheckboxes("ue"+id, u.permissions||[])
@@ -303,6 +348,7 @@ async function userSave(id){
   if(st) st.textContent = "Saving…";
   const payload = {id:id,
                    permissions:_collect("ue"+id,"data-perm","perm"),
+                   features:   _collectFeatures("ue"+id),
                    workspaces: _collect("ue"+id,"data-ws","ws")};
   try{
     const j = await (await fetch("/users/update",{method:"POST",

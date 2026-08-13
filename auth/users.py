@@ -58,6 +58,39 @@ ROLES = {
     "viewer":  [],
 }
 
+# ---- per-feature access, the way Amazon's child accounts work ------------
+# A permission answers "may they DO this?". It does not answer "may they SEE
+# this?" -- and until now every signed-in user could see everything, including
+# PPC spend and the credentials screen.
+#
+# FEATURES adds the second axis. Each area can be set to:
+#     none  -- hidden and refused outright
+#     view  -- may look, may not change
+#     edit  -- may look and change
+#
+# The action permissions above still apply on top: `view` on PPC means you can
+# read the campaigns; actually changing a bid still needs the ppc permission.
+# Feature level is the floor, the permission is the ceiling.
+FEATURES = {
+    "listings":  "Listings, drafts and the detail view",
+    "images":    "Image studio and generated images",
+    "ppc":       "PPC campaigns, bids and budgets",
+    "inventory": "Inventory and restock alerts",
+    "monitor":   "ASIN monitor and hijacker alerts",
+    "accounts":  "Amazon credentials, accounts and settings",
+}
+LEVELS = ("none", "view", "edit")
+
+# What a role sees by default. Individually editable afterwards.
+ROLE_FEATURES = {
+    "owner":   {f: "edit" for f in FEATURES},
+    "manager": {"listings": "edit", "images": "edit", "ppc": "edit",
+                "inventory": "edit", "monitor": "edit", "accounts": "view"},
+    "lister":  {"listings": "edit", "images": "edit", "ppc": "none",
+                "inventory": "view", "monitor": "view", "accounts": "none"},
+    "viewer":  {f: "view" for f in FEATURES} | {"accounts": "none"},
+}
+
 ALL_WORKSPACES = "*"          # the wildcard in a user's workspace list
 INVITE_TTL_SECONDS = 7 * 24 * 3600
 
@@ -116,6 +149,10 @@ def public(user):
         "name": user.get("name", ""),
         "role": user.get("role", "viewer"),
         "permissions": list(user.get("permissions") or []),
+        # Resolved, not raw: a user with no explicit settings falls back to their
+        # role preset, and the UI must show what is ACTUALLY in force rather than
+        # an empty box that looks like "no access".
+        "features": {f: feature_level(user, f) for f in FEATURES},
         "workspaces": list(user.get("workspaces") or []),
         "active": bool(user.get("active", True)),
         "created_at": user.get("created_at"),
@@ -199,6 +236,33 @@ def has_permission(user, perm):
     return perm in (user.get("permissions") or [])
 
 
+def feature_level(user, feature):
+    """"none" / "view" / "edit" for one feature area.
+
+    Defaults to the user's ROLE preset when they carry no explicit setting, so
+    accounts created before this existed keep working and get sensible access
+    rather than suddenly being locked out of everything or handed everything.
+    """
+    if not user or not user.get("active", True):
+        return "none"
+    if user.get("bootstrap"):
+        return "edit"                     # the shared-password owner
+    fl = user.get("features") or {}
+    lvl = fl.get(feature)
+    if lvl in LEVELS:
+        return lvl
+    preset = ROLE_FEATURES.get(user.get("role") or "lister", {})
+    return preset.get(feature, "view")
+
+
+def can_view(user, feature):
+    return feature_level(user, feature) in ("view", "edit")
+
+
+def can_edit_feature(user, feature):
+    return feature_level(user, feature) == "edit"
+
+
 def can_access_workspace(user, workspace_id):
     """May this user open this workspace (Amazon account / brand)?
 
@@ -217,7 +281,7 @@ def can_access_workspace(user, workspace_id):
 # ---- mutations -----------------------------------------------------------
 
 def create_user(config_path, email, name="", role="lister", permissions=None,
-                workspaces=None):
+                workspaces=None, features=None):
     """Add a user and return (public_record, invite_token).
 
     The token is returned ONCE, here. Only its hash is stored, so it cannot be
@@ -241,6 +305,9 @@ def create_user(config_path, email, name="", role="lister", permissions=None,
             "name": str(name or "").strip(),
             "role": role,
             "permissions": perms,
+            "features": ({f: lvl for f, lvl in (features or {}).items()
+                          if f in FEATURES and lvl in LEVELS}
+                         or dict(ROLE_FEATURES.get(role, ROLE_FEATURES["lister"]))),
             "workspaces": [str(w) for w in ws],
             "password_hash": "",
             "active": True,
@@ -334,6 +401,12 @@ def update_user(config_path, user_id, **fields):
                 u["role"] = fields["role"]
             if "permissions" in fields and isinstance(fields["permissions"], list):
                 u["permissions"] = [p for p in fields["permissions"] if p in PERMISSIONS]
+            if "features" in fields and isinstance(fields["features"], dict):
+                # Unknown feature names and invalid levels are dropped rather
+                # than stored -- a typo must not become a permanent silent
+                # "none" that nobody can explain later.
+                u["features"] = {f: lvl for f, lvl in fields["features"].items()
+                                 if f in FEATURES and lvl in LEVELS}
             if "workspaces" in fields and isinstance(fields["workspaces"], list):
                 u["workspaces"] = [str(w) for w in fields["workspaces"]] or [ALL_WORKSPACES]
             if "active" in fields:

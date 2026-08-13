@@ -62,6 +62,13 @@ RULES = [
     ("/submit/target",                  None),          # read-only: names the destination
     ("/submit",                         "publish"),
     ("/optimize/push",                  "publish"),
+    # /sync/push/confirm is the LIVE WRITE surface -- it pushes a listing's
+    # fields to Amazon. It was falling through to the "edit" default, so a
+    # Lister could have published changes. That is precisely what `publish`
+    # exists to prevent. (/sync/push itself only PROPOSES a diff, but it is
+    # gated the same way: seeing a proposed push you may not perform is
+    # pointless, and the two are one action to the user.)
+    ("/sync/push",                      "publish"),
     ("/listing/push_image",             "publish"),
     ("/handling/bulk_update",           "publish"),     # writes handling time live
 
@@ -101,6 +108,47 @@ WORKSPACE_SWITCH = {
 }
 
 
+# Which FEATURE AREA a path belongs to. First match wins, most specific first.
+# This is the "may they SEE it" axis; RULES above is "may they DO it".
+#
+# Anything not listed belongs to no feature and is governed by RULES alone --
+# so adding a route cannot accidentally hide it from everyone.
+FEATURE_PATHS = [
+    ("/ppc",                  "ppc"),
+    ("/inventory",            "inventory"),
+    ("/monitor",              "monitor"),
+    ("/genimage",             "images"),
+    ("/media",                "images"),
+    ("/aplus",                "images"),
+    ("/recipes",              "images"),
+    ("/settings",             "accounts"),
+    ("/accounts/list",        None),     # needed to draw the workspace list
+    ("/accounts/select",      None),     # and to open one
+    ("/accounts",             "accounts"),
+    ("/sp_diagnose",          "accounts"),
+    ("/rows",                 "listings"),
+    ("/row",                  "listings"),
+    ("/live",                 "listings"),
+    ("/listing",              "listings"),
+    ("/approve",              "listings"),
+    ("/edit",                 "listings"),
+    ("/delete",               "listings"),
+    ("/suggest",              "listings"),
+    ("/submit",               "listings"),
+    ("/optimize",             "listings"),
+    ("/sync",                 "listings"),
+]
+
+
+def feature_for(path):
+    """The feature area a path belongs to, or None if it belongs to none."""
+    p = str(path or "")
+    for prefix, feat in FEATURE_PATHS:
+        if p == prefix or p.startswith(prefix + "/") or p.startswith(prefix + "?"):
+            return feat
+    return None
+
+
 def required_permission(path, method):
     """The permission this request needs, or None if any signed-in user may do it."""
     p = str(path or "")
@@ -138,7 +186,32 @@ def check(path, method, user, json_body=None):
                 return False, "You do not have access to that workspace."
             return True, ""
 
-    # 2. Ordinary permission check.
+    # 2. FEATURE ACCESS -- "may they see this area at all?"
+    #
+    # Checked before the permission, because a feature set to `none` should be
+    # refused outright rather than producing "you need the ppc permission" for
+    # a screen the person is not supposed to know exists.
+    feat = feature_for(p)
+    is_read = str(method or "GET").upper() in ("GET", "HEAD", "OPTIONS")
+    if feat:
+        lvl = users.feature_level(user, feat)
+        if lvl == "none":
+            return False, ("You do not have access to %s."
+                           % users.FEATURES.get(feat, feat))
+        if lvl == "view" and not is_read:
+            return False, ("You have read-only access to %s."
+                           % users.FEATURES.get(feat, feat))
+        if is_read:
+            # The feature level IS the read gate. Requiring the action
+            # permission as well would make "view" meaningless -- someone given
+            # read-only sight of PPC would still be refused the PPC page,
+            # because `ppc` is the permission for CHANGING bids.
+            #
+            # Feature level is the floor, the action permission the ceiling:
+            # seeing costs view, doing costs the permission.
+            return True, ""
+
+    # 3. Ordinary permission check.
     perm = required_permission(p, method)
     if perm is None:
         return True, ""
