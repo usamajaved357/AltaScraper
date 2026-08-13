@@ -181,31 +181,21 @@ def _read_retry(fn, *args, _tries=7, **kwargs):
     Google's per-minute read quota, with AGGRESSIVE backoff on a 429. The quota is PER-MINUTE and
     shared with the web app, so the CLI waits 45,65,85,90,90s (much longer than the web app's
     30-60s) -- it yields the quota so the web app never crashes. Server-side; the user never sees it."""
-    import time as _t
-    for i in range(_tries):
-        _pace_read()
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            _m = str(e).lower()
-            _code = ""
-            try:
-                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
-            except Exception:
-                _code = ""
-            _throttled = (_code == "429" or "429" in _m or "quota" in _m
-                          or "resource_exhausted" in _m or "rate limit" in _m
-                          or "rate_limit" in _m or "per minute" in _m)
-            if _throttled and i < _tries - 1:
-                _wait = min(90, 45 + 20 * i)            # 45,65,85,90,90 -- CLI defers to the web app
-                try:
-                    console.print(f"  [yellow]Google read throttled (429) -- backing off "
-                                  f"{_wait}s, yielding quota to the web app (attempt {i+1}/{_tries})[/yellow]")
-                except Exception:
-                    pass
-                _t.sleep(_wait)
-                continue
-            raise
+    # Throttle DETECTION is shared (listing/repo.is_throttled) -- it was written
+    # out identically here and in dashboard._sheet_read_retry. The BACKOFF stays
+    # here on purpose: 45/65/85/90s is much longer than the web app's 30-60s
+    # because the per-minute quota is shared and this CLI yields it, so the web
+    # app never crashes while a generation run is going.
+    from listing import repo as _repo
+
+    def _log(wait, attempt, total):
+        console.print(f"  [yellow]Google read throttled (429) -- backing off "
+                      f"{wait}s, yielding quota to the web app "
+                      f"(attempt {attempt}/{total})[/yellow]")
+
+    return _repo.read_retry(fn, *args, tries=_tries, pace=_pace_read,
+                            backoff=lambda i: min(90, 45 + 20 * i),
+                            log=_log, **kwargs)
 
 
 def _safe_records(ws):
@@ -2236,6 +2226,18 @@ def _open_sheet_retry(gc, key: str, what: str = "sheet", tries: int = 5):
         raise last
 
 
+def _data_backend(config: dict) -> str:
+    """Where THIS run writes its listings: "sheets" (default) or "db".
+
+    Read from the environment first so the dashboard can launch the generator on
+    a chosen backend without rewriting config.json, then from config. Defaults to
+    sheets, so an unset value can never silently divert a run away from the sheet
+    someone is watching.
+    """
+    return str(os.environ.get("ALTA_DATA_BACKEND")
+               or config.get("data_backend") or "sheets").strip().lower()
+
+
 def init_sheets(config: dict):
     scopes = ["https://spreadsheets.google.com/feeds",
               "https://www.googleapis.com/auth/drive"]
@@ -2243,12 +2245,28 @@ def init_sheets(config: dict):
         config["google_service_account_json"], scopes=scopes)
     gc     = gspread.authorize(creds)
 
-    sh_out = _open_sheet_retry(gc, config["google_spreadsheet_id"], "output sheet")
+    # DATA BACKEND. On "db" the OUTPUT is a workspace in SQLite and no output
+    # spreadsheet is opened at all -- which also means a run cannot fail because
+    # an output sheet is missing or unshared.
+    #
+    # The INPUT is still a sheet. That is where products come from and nothing
+    # replaces it yet, so this LOWERS the dependency rather than removing it.
+    # Saying that plainly here is better than implying a clean break.
+    ws_out  = None
+    _use_db = (_data_backend(config) == "db")
+    if _use_db:
+        from data.store import ListingStore, SheetLikeStore
+        _wsid = str(config.get("_account_id") or "").strip() or "dropshipping"
+        ws_out = SheetLikeStore(ListingStore(_wsid))
+        console.print(f"  Output -> [bold]SQLite[/bold] (workspace '{_wsid}') "
+                      f"-- no output sheet opened")
+
+    sh_out = None if _use_db else _open_sheet_retry(
+        gc, config["google_spreadsheet_id"], "output sheet")
     # Prefer resolving the exact tab by gid (from the account's sheet URL); fall
     # back to the tab title / OUTPUT_TAB name.
     out_gid = str(config.get("_output_tab_gid") or "").strip()
-    ws_out = None
-    if out_gid.isdigit():
+    if ws_out is None and out_gid.isdigit():
         try:
             ws_out = sh_out.get_worksheet_by_id(int(out_gid))
             console.print(f"  Output tab (by gid {out_gid}): '[bold]{ws_out.title}[/bold]'")
@@ -2259,17 +2277,26 @@ def init_sheets(config: dict):
             ws_out = sh_out.worksheet(OUTPUT_TAB)
             # Don't force the 48-col FIXED_HEADERS when Miles mode owns this tab
             # (it writes its own column layout).
-            if not config.get("_miles_mode") and len(ws_out.row_values(1)) < FIXED_COUNT:
-                ws_out.delete_rows(1)
-                ws_out.insert_row(FIXED_HEADERS, 1)
+            from listing import repo as _repo0
+            if not config.get("_miles_mode") and len(_repo0.read_headers(ws_out)) < FIXED_COUNT:
+                # REPLACE, not insert: row 1 is a header row too narrow for the
+                # current FIXED_HEADERS, so it is discarded rather than pushed
+                # down into the data. repo names the two apart precisely because
+                # that difference is destructive.
+                from listing import repo as _repo
+                _repo.replace_header_row(ws_out, FIXED_HEADERS)
             console.print(f"  Output tab: '[bold]{OUTPUT_TAB}[/bold]'")
         except gspread.WorksheetNotFound:
-            ws_out = sh_out.add_worksheet(title=OUTPUT_TAB, rows=2000, cols=100)
-            if not config.get("_miles_mode"):
-                ws_out.append_row(FIXED_HEADERS, value_input_option="RAW")
-                ws_out.format("1:1", {"textFormat": {"bold": True},
-                                       "backgroundColor": {"red": 0.27, "green": 0.51, "blue": 0.71}})
-                ws_out.freeze(rows=1)
+            # Open-or-create-with-headers lives in listing/repo.py -- the same
+            # thing was written out in run_brand() below, in dashboard._ws() and
+            # in data/store.export_to_sheet(). Miles mode owns its own column
+            # layout, so it gets the tab with no header row written.
+            from listing import repo as _repo
+            ws_out, _ = _repo.ensure_tab(
+                sh_out, OUTPUT_TAB, rows=2000, cols=100,
+                headers=(None if config.get("_miles_mode") else FIXED_HEADERS),
+                bold_header=True,
+                header_bg={"red": 0.27, "green": 0.51, "blue": 0.71})
             console.print(f"  Created new tab: '[bold]{OUTPUT_TAB}[/bold]'")
 
     sh_in = _open_sheet_retry(gc, config["input_spreadsheet_id"], "input sheet")
@@ -2287,7 +2314,11 @@ def init_sheets(config: dict):
 
 
 def read_input_sheet(ws_in) -> list:
-    rows = ws_in.get_all_values()
+    # Still a Google Sheet -- this is the INPUT, where products come from, and
+    # nothing replaces it yet. Reading it through the repo anyway means the day
+    # something does (a paste screen, an upload), this call site does not change.
+    from listing import repo as _repo
+    rows = _repo.read_grid(ws_in)
     if not rows:
         return []
     headers  = [h.strip().lower().replace(" ", "_") for h in rows[0]]
@@ -2540,45 +2571,24 @@ def _find_target_row(ws, comp_asin: str):
       3) None  -> caller appends.
     Returns a 1-based sheet row number, or None.
     """
-    try:
-        vals = ws.get_all_values()
-    except Exception:
-        return None
-    if not vals:
-        return None
-    headers = vals[0]
-    cidx = lambda name: headers.index(name) if name in headers else -1
-    a_i, s_i = cidx("Competitor ASIN"), cidx("SKU")
-    t_i, p_i = cidx("Title"),           cidx("Product Type")
-    cell = lambda rv, i: (str(rv[i]).strip() if (0 <= i < len(rv)) else "")
-    # 1) the row you cleared for this ASIN (ASIN still there, SKU gone)
-    if comp_asin and a_i >= 0:
-        for r in range(1, len(vals)):
-            if cell(vals[r], a_i) == comp_asin and not cell(vals[r], s_i):
-                return r + 1
-    # 2) first fully-blank data row
-    keyi = [i for i in (s_i, t_i, a_i, p_i) if i >= 0]
-    for r in range(1, len(vals)):
-        if all(not cell(vals[r], i) for i in keyi):
-            return r + 1
-    return None
+    # MOVED to listing/repo.py. This generator runs as its own process with its
+    # own sheet client, so while this logic lived here nothing else could reach
+    # it -- and a database backend could never replace it. Kept as a thin
+    # delegate because domain/brand_listing.py calls these by name via `host`.
+    from listing import repo as _repo
+    return _repo.find_reusable_row(ws, comp_asin)
 
 
 def sheet_write_row(ws, row_data: list, comp_asin: str = ""):
-    target = _find_target_row(ws, comp_asin)
-    for attempt in range(1, 4):
-        try:
-            if target:                                    # refill in place (keeps position)
-                rng = f"A{target}:{_col_letter(len(row_data) - 1)}{target}"
-                ws.update([row_data], rng, value_input_option="USER_ENTERED")
-            else:                                         # no gap -> append at bottom
-                ws.append_row(row_data, value_input_option="USER_ENTERED")
-            return True
-        except Exception as e:
-            if attempt == 3:
-                console.print(f"  [red]Sheet write failed: {str(e)[:60]}[/red]")
-                return False
-            time.sleep(attempt * 5)
+    """Write one listing row. Body moved to listing/repo.write_row().
+
+    The retry behaviour, the refill-in-place priority and the append fallback are
+    unchanged -- only their address is. `log` is passed as a callable so the repo
+    never has to know this process happens to own a Rich console.
+    """
+    from listing import repo as _repo
+    return _repo.write_row(ws, row_data, comp_asin,
+                           log=lambda m: console.print(f"  [red]{m}[/red]"))
     return False
 
 
@@ -2902,9 +2912,10 @@ def load_dropdown_values(gc, sheet_id: str, label: str) -> dict:
     """Reads valid dropdown values from template Google Sheet at runtime."""
     console.print(f"  Reading dropdowns from {label}...", end=" ")
     try:
+        from listing import repo as _repo
         sh       = gc.open_by_key(sheet_id)
         ws       = sh.worksheet("Dropdown Lists")
-        all_rows = ws.get_all_values()
+        all_rows = _repo.read_grid(ws)
     except Exception as e:
         console.print(f"[red]FAIL {str(e)[:60]}[/red]")
         return {}
@@ -2966,13 +2977,10 @@ def snap_to_valid(value: str, valid_list: list) -> str:
     return best if best_score >= 1 else ""
 
 
-def _col_letter(col_0: int) -> str:
-    result = ""
-    col    = col_0 + 1
-    while col > 0:
-        col, r = divmod(col - 1, 26)
-        result  = chr(65 + r) + result
-    return result
+# Column letter from a 0-based index. Was implemented identically here AND in
+# domain/brand_listing.py, on top of the a1() routes/listing_routes.py had
+# written by hand -- three copies of "which column is this". One now.
+from listing.repo import col_letter as _col_letter
 
 
 # _clean_price moved to listing/builder.py in Phase 5 (self-contained; behaviour unchanged).
@@ -3322,9 +3330,10 @@ def write_to_template_sheet(gc, sheet_id: str, data_rows: list,
     console.print(f"  Writing {len(data_rows)} row(s) to {label}...", end=" ")
     end_row    = 6 + len(data_rows)
     range_name = f"A7:{last_col}{end_row}"
+    from listing import repo as _repo
     for attempt in range(1, 4):
         try:
-            ws.update(data_rows, range_name, value_input_option="USER_ENTERED")
+            _repo.write_range(ws, data_rows, range_name)
             console.print("[green]OK[/green]")
             return
         except gspread.exceptions.APIError as e:
@@ -6116,10 +6125,16 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                       "Merchant Token (looks like A2XXXXXXXXXXXX).")
         return
 
+    # Imported here, BEFORE first use. An import further down would make _repo a
+    # local for the whole function, so this line would raise UnboundLocalError
+    # rather than falling back to anything -- and only on a live run.
+    from listing import repo as _repo
+    from listing.repo import a1 as rowcol_to_a1   # one cell-reference impl (Rule 12)
+
     sh      = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
     ws      = sh.worksheet(output_tab or OUTPUT_TAB)
     records = _safe_records(ws)
-    headers = ws.row_values(1)
+    headers = _repo.read_headers(ws)
     col     = lambda h: (headers.index(h) + 1) if h in headers else None
     status_col, notes_col = col("Status"), col("Notes")
     payload_col = col("API Payload JSON")   # exact body sent to Amazon (debug view)
@@ -6130,7 +6145,6 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         console.print("[red]Your python-amazon-sp-api is too old for the Listings API.[/red] "
                       "Update it:  pip install --upgrade python-amazon-sp-api")
         return
-    from gspread.utils import rowcol_to_a1
     # Build the Listings client with a generous timeout. The default in python-amazon-
     # sp-api is short (~15s); the UK/EU endpoint (sellingpartnerapi-eu) round-trip from
     # Pakistan, combined with heavy product types like GARDEN_TOOL_SET, can exceed it
@@ -6159,7 +6173,9 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
             _updates.append({"range": rowcol_to_a1(r, c), "values": [[val]]})
     def flush():
         if _updates:
-            ws.batch_update(_updates, value_input_option="RAW")
+            # RAW is passed through explicitly: it keeps a leading "+" or "="
+            # as text instead of Google reading it as a formula.
+            _repo.batch_write(ws, _updates, value_input_option="RAW")
             _updates.clear()
 
     # ---- VERIFY mode: re-check already-submitted rows and flip them to LIVE ---------
@@ -6948,7 +6964,8 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
         console.print("[red]No output sheet bound; cannot optimise.[/red]")
         return
 
-    rows = ws_out.get_all_values()
+    from listing import repo as _repo
+    rows = _repo.read_grid(ws_out)
     if not rows or len(rows) < 2:
         console.print("[yellow]Sheet has no listing rows to optimise.[/yellow]")
         return
@@ -7043,9 +7060,10 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
         if c_rep >= 0:
             updates.append((ridx + 1, c_rep + 1, "Optimised (SQP)"))
 
+        from listing import repo as _repo
         for (r1, c1, val) in updates:
             try:
-                ws_out.update_cell(r1, c1, val)
+                _repo.set_cell(ws_out, r1, c1, val)
             except Exception as e:
                 console.print(f"  [yellow]cell write failed: {e}[/yellow]")
         optimised += 1
@@ -7107,12 +7125,9 @@ def run_brand(config: dict, gc, creds: dict, ws_out=None,
         try:
             _sh = gc.open_by_key(prof_sheet)
             _tab = prof_tab or OUTPUT_TAB
-            try:
-                ws_out = _sh.worksheet(_tab)
-            except Exception:
-                ws_out = _sh.add_worksheet(title=_tab, rows=2000, cols=100)
-                ws_out.append_row(FIXED_HEADERS, value_input_option="RAW")
-                ws_out.freeze(rows=1)
+            from listing import repo as _repo
+            ws_out, _ = _repo.ensure_tab(_sh, _tab, headers=FIXED_HEADERS,
+                                         rows=2000, cols=100)
             console.print(f"  [cyan]Output -> brand sheet {prof_sheet[:12]}... / "
                           f"tab '{_tab}'[/cyan]")
         except Exception as e:

@@ -1,18 +1,18 @@
 // ---- AI sourced suggestions for missing fields ----
 function _srcBadge(src){
   var map={
-    'eBay':['#10301f','#74e0a3','eBay source'],
-    'Amazon competitor (SP-API)':['#15233a','#9cc1ff','Amazon competitor'],
-    'AI knowledge':['#2a2440','#c8b6ff','AI knowledge'],
-    'AI inference':['#2e2510','#e3b768','AI inference'],
-    'none':['#2e1414','#ef9a9a','no source']
+    'eBay':['var(--ok-bg)','var(--ok)','eBay source'],
+    'Amazon competitor (SP-API)':['var(--accent-bg)','var(--accent2)','Amazon competitor'],
+    'AI knowledge':['var(--ai-bg2)','var(--ai)','AI knowledge'],
+    'AI inference':['var(--warn-bg)','var(--warn)','AI inference'],
+    'none':['var(--red-bg)','var(--red)','no source']
   };
   var m=map[src]||map['AI inference'];
   return '<span class="srcbadge" style="background:'+m[0]+';color:'+m[1]+'">'+m[2]+'</span>';
 }
 function _confBadge(c){
   if(!c) return '';
-  var col=c==='high'?'#7fd99a':(c==='medium'?'#e3b768':'#9aa3b2');
+  var col=c==='high'?'var(--ok)':(c==='medium'?'var(--warn)':'var(--ink2)');
   return '<span class="confbadge" style="color:'+col+'">'+esc(c)+'</span>';
 }
 async function suggestFields(sku){
@@ -44,7 +44,7 @@ async function suggestFields(sku){
         });
       }catch(e){}
       if(_emptyReq.length){
-        box.innerHTML='<div class="gendiag" style="color:#e3b768">\u2605 '+_emptyReq.length+' required field'+(_emptyReq.length>1?'s':'')+' still need a value (marked with \u2605 below): <b>'+_emptyReq.map(function(x){return esc(x.replace(/_/g," "));}).join(", ")+'</b>.<br><span class="cc">Amazon hasn\u2019t flagged these yet \u2014 fill them now, or click Preview API to confirm exactly what\u2019s required.</span></div>';
+        box.innerHTML='<div class="gendiag" style="color:var(--warn)">\u2605 '+_emptyReq.length+' required field'+(_emptyReq.length>1?'s':'')+' still need a value (marked with \u2605 below): <b>'+_emptyReq.map(function(x){return esc(x.replace(/_/g," "));}).join(", ")+'</b>.<br><span class="cc">Amazon hasn\u2019t flagged these yet \u2014 fill them now, or click Preview API to confirm exactly what\u2019s required.</span></div>';
       } else {
         box.innerHTML='<div class="gendiag ok">\u2713 No missing required fields detected. (If Amazon flagged some, click Preview API first so they\u2019re known.)</div>';
       }
@@ -58,7 +58,7 @@ async function suggestFields(sku){
         // it's handled and won't try to fill it by hand.
         return '<div class="sgrow applied" id="sg_'+sidv+'">'+
           '<div class="sghead"><span class="sgfield">'+esc(s.field)+'</span>'+
-          '<span class="srcbadge" style="background:#13371f;border-color:#1f7a3a;color:#7fdca0">auto-filled on Preview</span></div>'+
+          '<span class="srcbadge" style="background:#13371f;border-color:#1f7a3a;color:var(--ok)">auto-filled on Preview</span></div>'+
           (s.note?'<div class="sgnote">'+esc(s.note)+'</div>':'')+
         '</div>';
       }
@@ -227,7 +227,7 @@ function _afPanel(){
       '<div style="display:flex;gap:8px;align-items:center">'+
         '<button onclick="_afCopyTrace()" style="background:#5b3fb8;color:#fff;border:none;'+
           'padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">📋 Copy trace</button>'+
-        '<button id="af_stopbtn" onclick="_afStopJob()" style="background:#5c2424;color:#ff8a8a;'+
+        '<button id="af_stopbtn" onclick="_afStopJob()" style="background:var(--red-line);color:var(--red);'+
           'border:1px solid #7a3030;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
           '■ Stop</button>'+
         '<button onclick="document.getElementById(\'autofix_panel\').remove()" title="Close this box '+
@@ -235,11 +235,11 @@ function _afPanel(){
           'cursor:pointer;font-size:16px">✕</button>'+
       '</div>'+
     '</div>'+
-    '<div id="af_status" style="color:#9cc1ff"></div>'+
+    '<div id="af_status" style="color:var(--accent2)"></div>'+
     '<div id="af_bar" style="height:6px;background:#22293a;border-radius:4px;overflow:hidden">'+
       '<div id="af_barfill" style="height:100%;width:0%;background:#4a8cff;transition:width .3s"></div>'+
     '</div>'+
-    '<div style="color:#7f8ba3;font-size:11px">This runs on the server — you can lock your screen, '+
+    '<div style="color:var(--ink3);font-size:11px">This runs on the server — you can lock your screen, '+
       'close this box, or sign out. It keeps going until it finishes or you press Stop.</div>'+
     '<div id="af_steps" style="overflow:auto;max-height:30vh;font-family:ui-monospace,monospace;'+
       'font-size:11px;background:#0f131a;border-radius:6px;padding:8px;white-space:pre-wrap"></div>'+
@@ -268,13 +268,13 @@ function _afRender(job){
         (job.current ? ("Working on <b>" + esc(job.current) + "</b>" +
                         (job.current_round ? (" · round " + job.current_round) : "")) : "Starting…");
     } else if(job.status === "stopped"){
-      s.innerHTML = '<span style="color:#e3b768">■ Stopped by you.</span>';
+      s.innerHTML = '<span style="color:var(--warn)">■ Stopped by you.</span>';
     } else if(job.status === "error"){
-      s.innerHTML = '<span style="color:#ff8a8a">✗ ' + esc(job.error || "failed") + '</span>';
+      s.innerHTML = '<span style="color:var(--red)">✗ ' + esc(job.error || "failed") + '</span>';
     } else {
-      s.innerHTML = '<span style="color:#7fd99a">✓ Finished.</span>';
+      s.innerHTML = '<span style="color:var(--ok)">✓ Finished.</span>';
     }
-    s.innerHTML += ' <span style="color:#7f8ba3">cleared ' + (sum.cleared||0) +
+    s.innerHTML += ' <span style="color:var(--ink3)">cleared ' + (sum.cleared||0) +
                    ' · stuck ' + (sum.stuck||0) + ' · failed ' + (sum.failed||0) +
                    ((sum.not_run) ? (' · not run ' + sum.not_run) : '') + '</span>';
   }
@@ -284,12 +284,12 @@ function _afRender(job){
   }
   if(rs){
     rs.innerHTML = (job.results || []).map(function(r){
-      const col = r.outcome === "cleared" ? "#7fd99a" : (r.outcome === "stuck" ? "#e3b768" : "#ff8a8a");
+      const col = r.outcome === "cleared" ? "var(--ok)" : (r.outcome === "stuck" ? "var(--warn)" : "var(--red)");
       const mark = r.outcome === "cleared" ? "✓" : (r.outcome === "stuck" ? "▲" : "✗");
       return '<div style="border-top:1px solid #22293a;padding:6px 2px">'+
              '<span style="color:'+col+';font-weight:700">'+mark+' '+esc(r.sku)+'</span> '+
-             '<span style="color:#7f8ba3">('+esc(r.outcome)+', '+(r.rounds||[]).length+' round(s))</span>'+
-             (r.diagnosis ? ('<div style="color:#9aa3b2;margin-top:2px">'+esc(r.diagnosis)+'</div>') : '')+
+             '<span style="color:var(--ink3)">('+esc(r.outcome)+', '+(r.rounds||[]).length+' round(s))</span>'+
+             (r.diagnosis ? ('<div style="color:var(--ink2);margin-top:2px">'+esc(r.diagnosis)+'</div>') : '')+
              '</div>';
     }).join("");
   }
@@ -536,7 +536,7 @@ function _autoFixPanel(sku, state){
         'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px">✕</button>'+
       '</div>'+
     '</div>'+
-    '<div id="autofix_status" style="color:#9cc1ff"></div>'+
+    '<div id="autofix_status" style="color:var(--accent2)"></div>'+
     '<div style="display:flex;gap:6px;font-size:10px">'+
       '<button onclick="document.getElementById(\'autofix_traceview\').style.display=\'none\';document.getElementById(\'autofix_log\').style.display=\'block\'" '+
         'style="background:#0d1220;border:1px solid #263145;color:#e8eaed;padding:3px 8px;border-radius:4px;cursor:pointer">Live log</button>'+
@@ -566,15 +566,15 @@ function _autoFixPanel(sku, state){
     },
     done: function(msg){
       const s = document.getElementById('autofix_status');
-      if(s) s.innerHTML = '<span style="color:#74e0a3">'+esc(msg)+'</span>';
+      if(s) s.innerHTML = '<span style="color:var(--ok)">'+esc(msg)+'</span>';
     },
     stop: function(msg){
       const s = document.getElementById('autofix_status');
-      if(s) s.innerHTML = '<span style="color:#e3b768">⚠ '+esc(msg)+'</span>';
+      if(s) s.innerHTML = '<span style="color:var(--warn)">⚠ '+esc(msg)+'</span>';
     },
     fail: function(msg){
       const s = document.getElementById('autofix_status');
-      if(s) s.innerHTML = '<span style="color:#e0696b">✗ '+esc(msg)+'</span>';
+      if(s) s.innerHTML = '<span style="color:var(--red)">✗ '+esc(msg)+'</span>';
     },
     renderTrace: function(){
       const t = document.getElementById('autofix_traceview');
@@ -674,7 +674,7 @@ function _bulkAutoFixPanel(batch){
           'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px" title="Cancel batch and close">✕</button>'+
       '</div>'+
     '</div>'+
-    '<div id="bulk_autofix_status" style="color:#9cc1ff"></div>'+
+    '<div id="bulk_autofix_status" style="color:var(--accent2)"></div>'+
     '<div id="bulk_autofix_summary" style="font-size:11px;color:#bfc7d5"></div>'+
     '<div id="bulk_autofix_traceview" style="background:#0d1220;border:1px solid #263145;border-radius:6px;'+
       'padding:6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:10px;'+
@@ -694,11 +694,11 @@ function _bulkAutoFixPanel(batch){
     },
     done: function(msg){
       const s = document.getElementById('bulk_autofix_status');
-      if(s) s.innerHTML = '<span style="color:#74e0a3">✓ '+esc(msg)+'</span>';
+      if(s) s.innerHTML = '<span style="color:var(--ok)">✓ '+esc(msg)+'</span>';
     },
     stop: function(msg){
       const s = document.getElementById('bulk_autofix_status');
-      if(s) s.innerHTML = '<span style="color:#e3b768">⚠ '+esc(msg)+'</span>';
+      if(s) s.innerHTML = '<span style="color:var(--warn)">⚠ '+esc(msg)+'</span>';
     },
     renderTrace: function(){
       const t = document.getElementById('bulk_autofix_traceview');
@@ -1128,7 +1128,7 @@ function fullData(r){
     // Show what failed so it can be fixed instead of guessed at.
     return `<details open><summary>Full listing data</summary>
       <div style="background:#3a1212;border:1px solid #6b2222;border-radius:8px;padding:12px;margin:8px 0">
-        <b style="color:#ff8a8a">This listing's detail view hit an error while rendering.</b>
+        <b style="color:var(--red)">This listing's detail view hit an error while rendering.</b>
         <div style="font-size:12px;color:#ffb3b3;margin-top:6px">${esc(String(err&&err.message||err))}</div>
         <div style="font-size:11px;color:#c98;margin-top:8px">The raw data is still below so you can read/edit it.</div>
         <pre class="raw" style="display:block;margin-top:8px">${esc(JSON.stringify(r,null,2))}</pre>
@@ -1402,18 +1402,18 @@ function _fullDataInner(r){
   const imgLabel = isBrandRow ? "Images — from brand catalogue" : "Images — from competitor (eBay priority)";
   const _mainIsLocal = imgUrls.length && !/^https?:\/\//i.test(String(imgUrls[0]||""));
   const _imgWarn = _mainIsLocal
-    ? `<div class="hint" style="color:#e3b768;margin-top:4px">⚠ The main image is a LOCAL file Amazon can't fetch — it will block submission. Remove it (submit without an image) or set a public https URL.</div>`
+    ? `<div class="hint" style="color:var(--warn);margin-top:4px">⚠ The main image is a LOCAL file Amazon can't fetch — it will block submission. Remove it (submit without an image) or set a public https URL.</div>`
     : "";
   const _imgActions = imgUrls.length
     ? `<div style="margin-top:6px;display:flex;gap:8px">
-         <button class="suggestbtn" style="background:#2a1414;border-color:#5c2424;color:#ff8a8a" onclick="clearMainImage('${esc(sku)}')" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
+         <button class="suggestbtn" style="background:#2a1414;border-color:var(--red-line);color:var(--red)" onclick="clearMainImage('${esc(sku)}')" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
        </div>`
     : "";
   const imgBlock = (imgUrls.length
     ? `<div class="kvsec">${imgLabel}</div><div class="imgrow">${imgUrls.map((u,i)=>`<div class="thumbwrap"><a href="${esc(u)}" target="_blank" title="${i===0?'MAIN image':'additional #'+i}"><img class="thumb" src="${esc(u)}" loading="lazy"><span class="thumbcap">${i===0?'main':'#'+i}</span></a><button class="thumbedit" title="Edit this image (AI changes only what you ask)" onclick="editListingImage('${esc(sku)}','${esc(u)}',${i})"><i class="ti ti-wand"></i></button></div>`).join("")}</div>${_imgWarn}${_imgActions}`
     : `<div class="kvsec">Images</div><div class="hint">No image captured for this row.</div>`)
     + `<div class="genimg" id="genimg_${sidv}">
-        <div class="kvsec" style="color:#c8b6ff;margin-top:12px"><i class="ti ti-sparkles"></i> AI image generation</div>
+        <div class="kvsec" style="color:var(--ai);margin-top:12px"><i class="ti ti-sparkles"></i> AI image generation</div>
         <div class="genpanel" id="genpanel_${sidv}" style="display:block">
           <div class="gendiag" id="gendiag_${sidv}">Checking OpenRouter connection…</div>
           <div class="genrow">
@@ -1536,11 +1536,11 @@ async function doGen(sku, sidv){
     clearInterval(ticker);
     if(btn){ btn.disabled=false; btn.textContent='Generate'; }
     if(!j.ok){
-      if(st) st.innerHTML='<span style="color:#ef9a9a">\u2717 Failed ('+(j.stage||'')+'): '+esc(j.error||'unknown')+'</span>';
+      if(st) st.innerHTML='<span style="color:var(--red)">\u2717 Failed ('+(j.stage||'')+'): '+esc(j.error||'unknown')+'</span>';
       if(j.detailed_prompt){ var pw=document.getElementById('genpromptwrap_'+sidv); var pp=document.getElementById('genprompt_'+sidv); if(pw&&pp){pw.style.display='block'; pp.textContent=j.detailed_prompt;} }
       return;
     }
-    if(st) st.innerHTML='<span style="color:#7fd99a">\u2713 Done ('+esc(j.text_provider||'')+' \u2192 '+esc(j.image_provider||'')+') \u2014 review below.</span>';
+    if(st) st.innerHTML='<span style="color:var(--ok)">\u2713 Done ('+esc(j.text_provider||'')+' \u2192 '+esc(j.image_provider||'')+') \u2014 review below.</span>';
     var pw=document.getElementById('genpromptwrap_'+sidv); var pp=document.getElementById('genprompt_'+sidv);
     if(pw&&pp){ pw.style.display='block'; pp.textContent=j.detailed_prompt||''; }
     var out=document.getElementById('genresult_'+sidv);
@@ -1549,7 +1549,7 @@ async function doGen(sku, sidv){
       var _sztxt=(j.bytes)?_fmtBytes(j.bytes):'';
       var _meta=(_dimtxt||_sztxt)?('<div class="cc" style="margin:4px 0">'+esc([_dimtxt,_sztxt].filter(Boolean).join(' · '))+'</div>'):'';
       out.innerHTML='<div class="genpreview"><img src="'+j.data_url+'">'+_meta+
-        '<div class="cc" id="gendrive_'+sidv+'" style="margin:2px 0;color:#86d0a8"></div>'+
+        '<div class="cc" id="gendrive_'+sidv+'" style="margin:2px 0;color:var(--ok)"></div>'+
         '<div class="genrow">'+
         '<button class="genimgbtn apply" onclick="applyGen(\''+esc(sku)+'\',\''+sidv+'\')">Use as main image</button>'+
         '<button class="genimgbtn" onclick="document.getElementById(\'genresult_'+sidv+'\').innerHTML=\'\'">Discard</button></div></div>';
@@ -1567,11 +1567,11 @@ async function doGen(sku, sidv){
         if(dr){
           if(svj.drive_direct_url){
             dr.innerHTML='\u2713 Saved to Drive \u2014 <a href="'+esc(svj.drive_view_url||svj.drive_direct_url)+'" target="_blank">open</a> '+
-              '<span class="cc" style="color:#8a93a6">(Amazon-ready link saved)</span>';
+              '<span class="cc" style="color:var(--ink3)">(Amazon-ready link saved)</span>';
             out.dataset.driveurl=svj.drive_direct_url;
           } else {
             var _de = svj.drive_error ? (' Reason: '+esc(svj.drive_error)) : '';
-            dr.innerHTML='<span class="cc" style="color:#e3b768">Saved locally, but NOT uploaded to Drive.'+_de+'</span>';
+            dr.innerHTML='<span class="cc" style="color:var(--warn)">Saved locally, but NOT uploaded to Drive.'+_de+'</span>';
           }
         }
       }
@@ -1579,7 +1579,7 @@ async function doGen(sku, sidv){
   }catch(e){
     clearInterval(ticker);
     if(btn){ btn.disabled=false; btn.textContent='Generate'; }
-    if(st) st.innerHTML='<span style="color:#ef9a9a">\u2717 Error: '+esc(String(e))+'</span>';
+    if(st) st.innerHTML='<span style="color:var(--red)">\u2717 Error: '+esc(String(e))+'</span>';
   }
 }
 function uploadMainImage(sku, inp){

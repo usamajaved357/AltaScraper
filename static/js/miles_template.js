@@ -10,7 +10,7 @@ function milesTemplatePanel(sku, sidv){
   return `<div class="genimg" id="milestpl_${sidv}">
     <div class="kvsec" style="color:#7fd0ff;margin-top:14px"><i class="ti ti-stack"></i> Miles template main image</div>
     <div class="genpanel" style="display:block">
-      <div class="cc" style="margin-bottom:6px">Overlay product text onto your blank Miles template — pixel-faithful, no AI. <a href="#" onclick="openMilesTplManager();return false" style="color:#9cc1ff">Manage templates</a></div>
+      <div class="cc" style="margin-bottom:6px">Overlay product text onto your blank Miles template — pixel-faithful, no AI. <a href="#" onclick="openMilesTplManager();return false" style="color:var(--accent2)">Manage templates</a></div>
       <div class="genrow">
         <span class="cc">Template:</span>
         <select class="ed" id="mtpl_${sidv}" style="flex:1" onfocus="refreshMilesDropdowns()"><option value="">— loading templates —</option></select>
@@ -69,7 +69,7 @@ async function milesAiFill(sku, sidv){
     var j=await (await fetch('/miles_template/ai_fill',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body)})).json();
     if(btn) btn.disabled=false;
-    if(!j.ok){ if(st) st.innerHTML='<span style="color:#ef9a9a">\u2717 '+esc(j.error||'failed')+'</span>'; return; }
+    if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">\u2717 '+esc(j.error||'failed')+'</span>'; return; }
     var sp=j.spec||{};
     // fill title
     var t=document.getElementById('mtitle_'+sidv); if(t) t.value=(sp.title||'');
@@ -79,8 +79,8 @@ async function milesAiFill(sku, sidv){
     // fill application
     var ap=document.getElementById('mapp_'+sidv); if(ap) ap.value=((sp.application||{}).text||'');
     var apL=document.getElementById('mappL_'+sidv); if(apL) apL.checked=(((sp.application||{}).lines||2)>=2);
-    if(st) st.innerHTML='<span style="color:#7fd99a">\u2713 AI filled — review &amp; Generate</span>';
-  }catch(e){ if(btn) btn.disabled=false; if(st) st.innerHTML='<span style="color:#ef9a9a">\u2717 '+esc(String(e))+'</span>'; }
+    if(st) st.innerHTML='<span style="color:var(--ok)">\u2713 AI filled — review &amp; Generate</span>';
+  }catch(e){ if(btn) btn.disabled=false; if(st) st.innerHTML='<span style="color:var(--red)">\u2717 '+esc(String(e))+'</span>'; }
 }
 async function milesRender(sku, sidv){
   var tid=(document.getElementById('mtpl_'+sidv)||{}).value||'';
@@ -100,8 +100,8 @@ async function milesRender(sku, sidv){
     var j=await (await fetch('/miles_template/render',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({template_id:tid, sku:sku, spec:{title:title, subtitles:subs, application:{text:app, lines:appL}}})})).json();
     if(btn){ btn.disabled=false; }
-    if(!j.ok){ if(st) st.innerHTML='<span style="color:#ef9a9a">✗ '+esc(j.error||'failed')+'</span>'; return; }
-    if(st) st.innerHTML='<span style="color:#7fd99a">✓ rendered</span>';
+    if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">✗ '+esc(j.error||'failed')+'</span>'; return; }
+    if(st) st.innerHTML='<span style="color:var(--ok)">✓ rendered</span>';
     var out=document.getElementById('mresult_'+sidv);
     if(out){
       out.dataset.savedurl=j.url||'';
@@ -111,7 +111,7 @@ async function milesRender(sku, sidv){
         '<button class="genimgbtn" onclick="milesDownload(\''+esc(sku)+'\',\''+sidv+'\')"><i class="ti ti-download"></i> Download</button>'+
         '<button class="genimgbtn" onclick="document.getElementById(\'mresult_'+sidv+'\').innerHTML=\'\'">Discard</button></div></div>';
     }
-  }catch(e){ if(btn){btn.disabled=false;} if(st) st.innerHTML='<span style="color:#ef9a9a">✗ '+esc(String(e))+'</span>'; }
+  }catch(e){ if(btn){btn.disabled=false;} if(st) st.innerHTML='<span style="color:var(--red)">✗ '+esc(String(e))+'</span>'; }
 }
 function milesDownload(sku, sidv){
   var out=document.getElementById('mresult_'+sidv);
@@ -141,10 +141,10 @@ let ZE_STATE = null;
 // Zone object: {key, label, color, box:[x0,y0,x1,y1], align, bold, size, text, builtin}
 function _defaultZones(){
   return [
-    {key:'title',       label:'TITLE',          color:'#4c8dff', box:[0.07,0.33,0.40,0.42], align:'left',   bold:true,  size:1.0, builtin:true},
-    {key:'grade',       label:'GRADE',          color:'#ffd479', box:[0.07,0.50,0.40,0.56], align:'center', bold:true,  size:1.0, builtin:true},
+    {key:'title',       label:'TITLE',          color:'var(--accent)', box:[0.07,0.33,0.40,0.42], align:'left',   bold:true,  size:1.0, builtin:true},
+    {key:'grade',       label:'GRADE',          color:'var(--warn)', box:[0.07,0.50,0.40,0.56], align:'center', bold:true,  size:1.0, builtin:true},
     {key:'choice',      label:'CHOICE (fixed)', color:'#9aa0aa', box:[0.07,0.565,0.40,0.60],align:'center', bold:false, size:1.0, builtin:true},
-    {key:'application', label:'APPLICATION',    color:'#7fd99a', box:[0.07,0.78,0.40,0.88], align:'left',   bold:true,  size:1.0, builtin:true}
+    {key:'application', label:'APPLICATION',    color:'var(--ok)', box:[0.07,0.78,0.40,0.88], align:'left',   bold:true,  size:1.0, builtin:true}
   ];
 }
 function _zonesToArray(saved){
@@ -189,7 +189,7 @@ function renderZoneEditor(){
       </div>
       <div class="genrow" style="margin-top:10px">
         <button class="primary" onclick="saveZones()">Save</button>
-        <span id="zesaved" style="display:none;color:#7fd99a;font-size:12px;margin-left:6px"></span>
+        <span id="zesaved" style="display:none;color:var(--ok);font-size:12px;margin-left:6px"></span>
         <button class="genimgbtn" onclick="zonePreview()">Preview with sample text</button>
         <button class="genimgbtn" onclick="zeAddZone()">+ Add text box</button>
         <button class="genimgbtn" onclick="openMilesTplManager()">Back</button>
@@ -341,13 +341,13 @@ async function zonePreview(){
       spec:{title:'INDUSTIAL GEAR OIL', subtitles:[{text:'80W-90',lines:1}],
         application:{text:'HYDRAULIC FLUID',lines:2}, zones:_zonesToSave(), erase:ZE_STATE.erase}})})).json();
   if(box) box.innerHTML = j.ok ? '<img src="'+(j.data_url||j.url)+'" style="max-width:300px;border:1px solid #2a3344">'
-    : '<span style="color:#ef9a9a">'+esc(j.error||'failed')+'</span>';
+    : '<span style="color:var(--red)">'+esc(j.error||'failed')+'</span>';
 }
 async function openMilesTplManager(){
   var tpls=await (await fetch('/miles_template/list')).json().catch(()=>({templates:[]}));
   var list=(tpls.templates||[]).map(t=>`<tr><td><img src="/miles_template/preview/${esc(t.id)}" style="height:48px"></td>`+
     `<td>${esc(t.label)}</td><td>${esc(t.container)}</td>`+
-    `<td>${t.zones?'<span style="color:#7fd99a">✓ zones set</span>':'<span class="cc">no zones</span>'}</td>`+
+    `<td>${t.zones?'<span style="color:var(--ok)">✓ zones set</span>':'<span class="cc">no zones</span>'}</td>`+
     `<td><button class="primary" style="padding:3px 8px" onclick="openZoneEditor('${esc(t.id)}')">Edit zones</button> `+
     `<button class="del" onclick="milesTplDelete('${esc(t.id)}')">Delete</button></td></tr>`).join("")
     || '<tr><td colspan="5" class="cc">No templates yet.</td></tr>';
@@ -476,14 +476,17 @@ function render(){
     ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them from the sheet</button></div>`
     : "")
     + (goneRows.length
-    ? `<div class="emptynote" style="border-color:#5c2424;color:#ff8a8a">
+    ? `<div class="emptynote" style="border-color:var(--red-line);color:var(--red)">
          ${goneRows.length} listing${goneRows.length>1?'s were':' was'} deleted on Amazon and ${goneRows.length>1?'are':'is'} hidden here
          (${goneRows.slice(0,3).map(r=>esc(r.sku)).join(', ')}${goneRows.length>3?', …':''}) —
          <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} from the sheet</button>
        </div>`
     : "");
   // SOURCE: drafts (app rows) / live (Amazon catalog) / all (both)
-  let draftHtml = real.length ? real.map(card).join("") : "";
+  // listBlock() draws either the tile grid or the Orbit table, depending on the
+  // saved view preference. Every group goes through it, so a new view can never
+  // support "drafts" but silently forget "claimed" or "live".
+  let draftHtml = listBlock(real);
   // DEDUPE: the same SKU can exist BOTH as an app row marked LIVE and as an
   // Amazon-catalog tile (fetched from Seller Central). Showing both makes one
   // real listing appear twice. Prefer the app row (it has the edit controls +
@@ -501,15 +504,20 @@ function render(){
   // isActuallyLive() if Amazon returned its SKU/ASIN, and liveCatalog IS Amazon's
   // reply. The sub-captions just say which of them the sheet also knows about, so
   // you can tell an editable row from a catalog-only tile.
-  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in your sheet, so you can edit and push changes</div>';
-  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in your sheet</div>';
+  // "sheet" is only the right word while the sheet IS the store. On the database
+  // backend it is simply wrong, and it would send you looking in a spreadsheet
+  // for a row that was never going to be there. The app reports which backend it
+  // is on (/users/me -> backend), so the caption follows it.
+  const _store = (window.DATA_BACKEND === "db") ? "this app" : "your sheet";
+  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in '+_store+', so you can edit and push changes</div>';
+  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in '+_store+' yet</div>';
   // Rows the sheet claims are LIVE but Amazon never returned. Shown apart, never
   // counted as live. Usually: submitted but not yet published, killed by Amazon, or
   // written into the wrong account's tab.
-  const _claimSub = '<div class="srcsub" style="color:#e3b768"><i class="ti ti-alert-triangle"></i> Your sheet says LIVE, but Amazon did not return these — not live</div>';
-  let liveHtml  = (liveRows.length ? _bothSub + liveRows.map(card).join("") : "")
-                + (liveCatalog.length ? _amzSub + liveCatalog.map(liveTile).join("") : "");
-  const claimedHtml = claimedRows.length ? _claimSub + claimedRows.map(card).join("") : "";
+  const _claimSub = '<div class="srcsub" style="color:var(--warn)"><i class="ti ti-alert-triangle"></i> Your sheet says LIVE, but Amazon did not return these — not live</div>';
+  let liveHtml  = (liveRows.length ? _bothSub + listBlock(liveRows) : "")
+                + (liveCatalog.length ? _amzSub + listBlock(liveCatalog, liveTile) : "");
+  const claimedHtml = claimedRows.length ? _claimSub + listBlock(claimedRows) : "";
   if(LIST_SOURCE==="live"){
     grid.innerHTML = (liveHtml || `<div class="empty">No live listings synced yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync ${esc(WS_MARKET)} from Amazon now</button><div class="cc" style="margin-top:8px">Sync pulls your live listings and their real data (images, A+, bullets, description, item-type-keyword, variations) from Amazon. The first sync can take 1–4 minutes.</div>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
       + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'');
@@ -531,7 +539,7 @@ function render(){
         || (_pubSku.size>0  && _pubSku.has(_norm(r.sku)))
         || (_pubAsin.size>0 && r.asin && _pubAsin.has(_norm(r.asin)));
     const draftsOnly = realAll.filter(r=>!_published(r));
-    const draftsHtml = draftsOnly.length ? draftsOnly.map(card).join("") : "";
+    const draftsHtml = listBlock(draftsOnly);
     const _liveHere = realAll.length - draftsOnly.length;   // published rows hidden from Drafts
     grid.innerHTML = note
       + (draftsHtml?('<div class="srcgroup">Drafts (not yet live on Amazon)</div>'+draftsHtml):'')
@@ -736,13 +744,26 @@ function setListSource(src){
     const key=_liveKey();
     if(LIVE_STORE[key]){ LIVE_ITEMS=LIVE_STORE[key].items||[]; render(); updateSyncLabel(); loadAplus(false); }
     else {
-      // No browser cache yet (e.g. right after a page refresh). Do a NON-FORCE pull: it
-      // reuses the report Amazon already has ready, so it returns in ~1s -- NOT the slow
-      // fresh-report build that the Sync button triggers (force=true). This is what makes
-      // live listings actually appear when you open the tab, instead of a dead empty-state
-      // that forces you onto the slow, hang-prone Sync path every time.
+      // No browser cache yet (e.g. right after a page refresh). A NON-FORCE pull
+      // now returns the SAVED catalogue immediately at any age -- the server never
+      // builds a report on this path -- so this paints in about a second instead
+      // of blocking for the minutes an Amazon report takes to generate.
+      //
+      // If nothing is saved yet the reply says so, and the background refresh
+      // below goes and gets it without holding up the screen.
       LIVE_ITEMS=[];
-      loadLiveCatalog(false);   // paints its own loading state, then renders on return
+      loadLiveCatalog(false).then(()=>{
+        const c = LIVE_STORE[_liveKey()];
+        const nothingYet = !c || !(c.items||[]).length;
+        const old = c && c.syncedAt && (Date.now()-c.syncedAt > LIVE_AUTOSYNC_MS);
+        // Fetch in the BACKGROUND when there is nothing saved, or what is saved
+        // has gone stale. Either way the screen is already painted and stays
+        // usable while Amazon is asked.
+        if(nothingYet || old){
+          if(nothingYet) toast("Fetching this marketplace from Amazon in the background — the first one takes a few minutes.");
+          backgroundSync();
+        }
+      }).catch(()=>{});
     }
   }
   else render();
@@ -821,6 +842,7 @@ async function loadLiveCatalog(force){
       items:(j.items||[]), ts:Date.now(),
       syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
       fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+      amazonFailed: !!j.amazon_failed,
       partial: !!j.partial, warnings: (j.warnings||[]),
       reportSource: j.report_source||"", reportBuiltAt: j.report_built_at||""};
     // A short list caused by a failed half of the fetch must SAY so. Silence here
@@ -853,25 +875,71 @@ function updateSyncLabel(){
   // is hours old and must not read "synced just now".
   const when = c.syncedAt || c.ts;
   const mins = Math.round((Date.now()-when)/60000);
-  let txt = mins<1 ? "synced just now"
+  const hrs  = mins/60;
+  // Always say WHEN, never just how long ago. "synced 14h ago" leaves you doing
+  // arithmetic; anything not from the last hour also carries the actual clock
+  // time and date, so the age of what you are looking at is never in doubt.
+  let txt = mins<1  ? "synced just now"
           : mins<60 ? ("synced "+mins+"m ago")
-          : ("synced "+Math.round(mins/60)+"h ago");
+          : hrs<24  ? ("synced "+Math.round(hrs)+"h ago")
+          :           ("synced "+Math.round(hrs/24)+"d ago");
+  if(mins>=60){
+    try{
+      const d = new Date(when);
+      txt += " · " + d.toLocaleString([], {day:"2-digit", month:"short",
+                                           hour:"2-digit", minute:"2-digit"});
+    }catch(e){}
+  }
   if(c.fromSnapshot) txt += " (saved copy)";
-  if(c.stale)   txt += " — Amazon unreachable";
+  if(c.stale && c.amazonFailed) txt += " — Amazon unreachable";
   if(c.partial) txt += " — partial";
   el.textContent = txt;
-  el.title = (c.warnings&&c.warnings.length) ? c.warnings.join("\n")
-           : (c.reportBuiltAt ? ("Amazon report built "+c.reportBuiltAt) : "");
+  el.className = "cc" + ((c.partial || c.amazonFailed) ? " syncwarn" : "");
+  const tips = [];
+  if(c.warnings && c.warnings.length) tips.push(...c.warnings);
+  if(c.reportBuiltAt) tips.push("Amazon report built " + c.reportBuiltAt);
+  try{ tips.push("Pulled from Amazon: " + new Date(when).toLocaleString()); }catch(e){}
+  el.title = tips.join("\n");
 }
+// Background refresh. The catalogue you SEE always comes from the saved copy and
+// appears instantly; this is what quietly replaces it.
+//
+// Every 10 minutes, not 30: an Amazon report takes a few minutes to build, so a
+// change made on Seller Central shows up here within roughly 10-15 minutes
+// without anyone pressing anything. It runs whenever a connected workspace is
+// open -- not only while the Live tab happens to be showing -- so switching to
+// Live finds data already waiting instead of starting a wait.
+const LIVE_AUTOSYNC_MS = 10*60*1000;
+
 function startAutoSync(){
   // SP-API is free (no AI credits), so a periodic background sync is fine.
   if(LIVE_SYNC_TIMER) return;
   LIVE_SYNC_TIMER=setInterval(()=>{
     if(window.RUN_STREAMING) return;   // don't wipe a streaming drawer panel
-    if((LIST_SOURCE==="live"||LIST_SOURCE==="all") && CUR_ACCOUNT && WS_MARKET){
-      loadLiveCatalog(true);   // refresh quietly every 30 min
+    if(document.hidden) return;        // don't poll Amazon for a tab nobody is looking at
+    if(CUR_ACCOUNT && CUR_ACCOUNT.has_creds && WS_MARKET && WS_MARKET!=="__all__"){
+      backgroundSync();
     }
-  }, 30*60*1000);
+  }, LIVE_AUTOSYNC_MS);
+}
+
+// A forced pull that NEVER blocks what is on screen. The grid keeps showing the
+// saved copy the whole time; when Amazon answers, the new data replaces it and
+// the "synced" label updates. If Amazon fails, the screen is untouched -- the
+// user never sees their listings disappear because a refresh went wrong.
+let _BG_SYNCING = false;
+async function backgroundSync(){
+  if(_BG_SYNCING) return;              // one at a time, per browser tab
+  _BG_SYNCING = true;
+  try{
+    await loadLiveCatalog(true);
+  }catch(e){
+    // Deliberately silent. This runs on a timer that nobody asked for; a toast
+    // for a transient Amazon hiccup would be noise, and the label already shows
+    // when the data was last successfully pulled.
+  }finally{
+    _BG_SYNCING = false;
+  }
 }
 // Re-check submitted listings against Amazon and flip them to LIVE where Amazon has
 // now published them. Streams /run/api_verify quietly to completion. A fresh submit is
@@ -956,13 +1024,13 @@ async function runSpDiagnose(){
     if(!j.ok){ box.textContent = "Error: "+(j.error||"unknown"); return; }
     // colour-tint PASS/FAIL/WARN lines for scannability
     const lines=(j.output||"").split("\n").map(l=>{
-      if(/\bPASS\b/.test(l))  return '<span style="color:#7fd99a">'+esc(l)+'</span>';
-      if(/\bFAIL\b/.test(l))  return '<span style="color:#e0696b">'+esc(l)+'</span>';
-      if(/\bWARN\b/.test(l))  return '<span style="color:#e3b768">'+esc(l)+'</span>';
-      if(/^\[.\d+\]/.test(l)) return '<span style="color:#9cc1ff;font-weight:600">'+esc(l)+'</span>';
+      if(/\bPASS\b/.test(l))  return '<span style="color:var(--ok)">'+esc(l)+'</span>';
+      if(/\bFAIL\b/.test(l))  return '<span style="color:var(--red)">'+esc(l)+'</span>';
+      if(/\bWARN\b/.test(l))  return '<span style="color:var(--warn)">'+esc(l)+'</span>';
+      if(/^\[.\d+\]/.test(l)) return '<span style="color:var(--accent2);font-weight:600">'+esc(l)+'</span>';
       return esc(l);
     }).join("\n");
-    box.innerHTML = lines + '\n\n<span style="color:'+(j.exit_code===0?'#7fd99a':'#e3b768')+'">Exit code: '+j.exit_code+'</span>';
+    box.innerHTML = lines + '\n\n<span style="color:'+(j.exit_code===0?'var(--ok)':'var(--warn)')+'">Exit code: '+j.exit_code+'</span>';
   }catch(e){
     const box=document.getElementById("spdiagout");
     if(box) box.textContent = "Diagnostic failed to start: "+e;
@@ -996,6 +1064,7 @@ async function loadAllMarketplaces(force){
           items:(j.items||[]), ts:Date.now(),
           syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
           fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+      amazonFailed: !!j.amazon_failed,
           partial: !!j.partial, warnings:(j.warnings||[])};
         merged=merged.concat((j.items||[]).map(it=>({...it,_mkt:mm})));
         if((j.warnings||[]).length) failed.push(mm+" (partial)");
@@ -1023,15 +1092,56 @@ async function loadAllMarketplaces(force){
     }
   }
 }
+// COMPLIANCE on a LIVE listing. This is where the document demand actually lands:
+// the patio heater was live and selling for months before Amazon asked for its
+// BS EN 60335 report. The chip states the count on the tile; clicking it lists the
+// documents. Server attaches it.compliance in /live/catalog.
+function liveComplianceChip(it){
+  const c = it.compliance; if(!c || !(c.risks||[]).length) return "";
+  const high = (c.risks||[]).some(x=>x.risk==="HIGH");
+  const tone = high ? "tone-bad" : "tone-warn";
+  const names = (c.risks||[]).map(x=>x.label).join(", ");
+  return `<span class="profchip ${tone}" style="cursor:pointer"
+    title="${esc(names)} — ${c.doc_count} document(s) Amazon can request for this live listing. Click for the list."
+    onclick="event.stopPropagation();showLiveCompliance('${esc(it.sku||'')}')"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`;
+}
+window.showLiveCompliance = function(sku){
+  const it = (LIVE_ITEMS||[]).find(x=>String(x.sku)===String(sku));
+  const c = it && it.compliance;
+  if(!c){ toast("No compliance requirements recorded for this listing."); return; }
+  const body = (c.risks||[]).map(function(x){
+    const docs = (x.docs||[]).map(d=>`<li>${esc(d)}</li>`).join("");
+    return `<div class="restrow ${x.risk==="HIGH"?'red':'amber'}">
+      <div><span class="risk ${x.risk==="HIGH"?'hi':'med'}">${esc(x.risk)} RISK</span> <b>${esc(x.label)}</b></div>
+      <div class="cc" style="margin-top:3px">${esc([x.reason,x.regulator].filter(Boolean).join(" · "))}</div>
+      <div class="cc" style="margin-top:4px"><b>Docs Amazon can request:</b><ul style="margin:4px 0 0 16px;padding:0">${docs}</ul></div>
+    </div>`;
+  }).join("");
+  // Uses the app's existing modal convention: .modalwrap (fixed overlay) toggled
+  // with .open, containing a .modal box with an .x close button.
+  let m = document.getElementById("livecompmodal");
+  if(!m){
+    m = document.createElement("div"); m.id="livecompmodal"; m.className="modalwrap";
+    m.addEventListener("click", function(ev){ if(ev.target===m) m.classList.remove("open"); });
+    document.body.appendChild(m);
+  }
+  m.innerHTML = `<div class="modal" style="max-width:640px">
+    <button class="x" onclick="document.getElementById('livecompmodal').classList.remove('open')">×</button>
+    <h3>Compliance requirements</h3>
+    <div class="cc" style="margin-bottom:10px">${esc(it.title||sku)}</div>
+    <div class="cc" style="margin-bottom:10px">This listing is already live. These are the documents Amazon can ask for at any time — being live is not evidence that nothing is owed.</div>
+    <div class="restlist">${body}</div></div>`;
+  m.classList.add("open");
+};
 function liveTile(it){
   // real status from the report (Active/Inactive/Incomplete), not a hardcoded LIVE
   var st=(it.status||"Active").trim();
   var stl=st.toLowerCase();
   // check inactive/suppressed/incomplete BEFORE active ("inactive" contains "active")
-  var col = (stl.indexOf("inactive")>=0||stl.indexOf("suppress")>=0)?"#ef9a9a"
-          : stl.indexOf("incomplete")>=0?"#e3b768"
-          : stl.indexOf("active")>=0?"#74e0a3"
-          : "#9aa3b2";
+  var tone = (stl.indexOf("inactive")>=0||stl.indexOf("suppress")>=0)?"tone-bad"
+          : stl.indexOf("incomplete")>=0?"tone-warn"
+          : stl.indexOf("active")>=0?"tone-ok"
+          : "";
   var price = it.price ? (CUR_SYMBOL+esc(String(it.price).replace(/^[A-Z]{3}\s?/,''))) : '';
   // image slot — filled from the real getListingsItem image (fetched in batch after render)
   var sidv = sid(it.sku||it.asin||'');
@@ -1045,15 +1155,19 @@ function liveTile(it){
   // profit margin chip
   var profHtml = '';
   if(it.profit){
-    var mcol = it.profit.margin>=25?'#74e0a3':(it.profit.margin>=10?'#e3b768':'#ef9a9a');
-    profHtml = `<span class="profchip" style="color:${mcol};border-color:${mcol}55;background:${mcol}1a" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}">${it.profit.margin}% · ${CUR_SYMBOL}${it.profit.net}</span>`;
+    // Traffic light on margin health, NOT gold: gold says "this is money", this
+    // chip says whether the money is any good. The colours used to be inline hex
+    // with alpha suffixes appended (mcol+"55"), which forced them to be literal
+    // and locked them out of the theme; as classes they follow the Orbit tokens.
+    var mcls = it.profit.margin>=25?'tone-ok':(it.profit.margin>=10?'tone-warn':'tone-bad');
+    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}">${it.profit.margin}% · ${CUR_SYMBOL}${it.profit.net}</span>`;
   } else {
     profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
   }
   // fulfillment (FBA/FBM) + handling time + delivery estimate
   var fch = it.fulfillment||"";
   var fmode = /FBA|AMAZON/i.test(fch) ? "FBA" : (fch ? "FBM" : "");
-  var fcol = fmode==="FBA" ? "#9cc1ff" : "#c9b6e8";
+  var ftone = fmode==="FBA" ? "tone-info" : "tone-alt";
   var shipHtml = "";
   if(fmode){
     var fmt = (d)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
@@ -1069,12 +1183,12 @@ function liveTile(it){
     if(hd!==null){
       var shipBy = new Date(Date.now()+hd*864e5);
       var delBy  = new Date(Date.now()+(hd+transit)*864e5);
-      shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode" style="color:${fcol};border-color:${fcol}55;background:${fcol}1a">${fmode}</span> `+
+      shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode ${ftone}">${fmode}</span> `+
                  `<span title="When it leaves the warehouse if ordered today">📦 ships by ${fmt(shipBy)}</span> · `+
                  `<span title="Estimated arrival for the customer">🚚 delivery ~${fmt(delBy)}</span>`+
                  `${it.ship_group?(' · <span class="cc" title="Shipping template">'+esc(it.ship_group)+'</span>'):''}</div>`;
     } else {
-      shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode" style="color:${fcol};border-color:${fcol}55;background:${fcol}1a">${fmode}</span> <span class="cc">handling time not set</span>${it.ship_group?(' · '+esc(it.ship_group)):''}</div>`;
+      shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode ${ftone}">${fmode}</span> <span class="cc">handling time not set</span>${it.ship_group?(' · '+esc(it.ship_group)):''}</div>`;
     }
   } else {
     shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="cc">fulfillment loading…</span></div>`;
@@ -1085,9 +1199,9 @@ function liveTile(it){
     <div class="tilebody">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
       <div class="tilemeta"><span class="tileprice">${price}</span><span class="tilesku">${esc(it.sku||'')}</span></div>
-      <div class="cc" style="margin-top:4px"><span class="livestatus" style="background:${col}1f;color:${col};border:1px solid ${col}55">${esc(st)}</span> ${esc(it.asin||'')} · ${qtyHtml}</div>
+      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> ${esc(it.asin||'')} · ${qtyHtml}</div>
       ${shipHtml}
-      <div style="margin-top:5px">${profHtml}</div>
+      <div style="margin-top:5px">${profHtml}${liveComplianceChip(it)}</div>
     </div>
     <div class="tileacts">
       <button class="ib" title="Optimize this live listing" onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i> Optimize</button>
@@ -1249,7 +1363,7 @@ async function optDiagnose(){
   try{
     const j=await (await fetch("/optimize/diagnose_fill",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({id:CUR_ACCOUNT?CUR_ACCOUNT.id:"", sku:OPT_CURRENT.sku, marketplace:WS_MARKET})})).json();
-    if(!j.ok){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; return; }
+    if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; return; }
     const box=document.getElementById("opt_diagresults");
     if(!j.flagged || !j.flagged.length){
       if(st) st.innerHTML='';
@@ -1265,7 +1379,7 @@ async function optDiagnose(){
       return `<tr>
         <td class="k"><code>${esc(f.attribute)}</code><div class="cc" style="font-size:10px">${esc(f.message||"")}</div></td>
         <td class="v">
-          ${needs?`<div class="cc" style="color:#e3b768">⚠ ${esc(note)} (you'll need to provide this)</div>`:""}
+          ${needs?`<div class="cc" style="color:var(--warn)">⚠ ${esc(note)} (you'll need to provide this)</div>`:""}
           <input class="ed optfix" data-attr="${esc(f.attribute)}" value="${esc(String(val))}" placeholder="${esc(note||'value')}">
           <label class="cc" style="display:flex;align-items:center;gap:5px;margin-top:3px"><input type="checkbox" class="optfixchk" data-attr="${esc(f.attribute)}" ${val?'checked':''}> apply this fix</label>
         </td></tr>`;
@@ -1274,8 +1388,8 @@ async function optDiagnose(){
       <table class="kv">${rows}</table>
       <div class="cc" style="margin:6px 0">These get added to your approved changes. Simple fields push fine; <b>dimensions with units are safest filled in Seller Central</b> (the form structures them correctly). Tick only what you want.</div>
       <button class="primary" onclick="optApplyFixes()"><i class="ti ti-check"></i> Add ticked fixes to changes</button></div>${typeof howWorks==="function"?howWorks('opt_push'):""}`;
-    if(st) st.innerHTML='<span style="color:#7fd99a">✓ Drafted '+Object.keys(sugg).length+' suggestion(s)</span>';
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">Error: '+esc(String(e))+'</span>'; }
+    if(st) st.innerHTML='<span style="color:var(--ok)">✓ Drafted '+Object.keys(sugg).length+' suggestion(s)</span>';
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">Error: '+esc(String(e))+'</span>'; }
 }
 function optApplyFixes(){
   _captureOptEditor();
@@ -1369,14 +1483,14 @@ async function optRewriteFromSource(){
         current:{title:(document.getElementById("opt_title")||{}).value,
                  bullets:(document.getElementById("opt_bullets")||{}).value,
                  description:(document.getElementById("opt_description")||{}).value}})})).json();
-    if(!j.ok){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; return; }
+    if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; return; }
     const s=j.suggestion||{};
     if(s.title) document.getElementById("opt_title").value=s.title;
     if(Array.isArray(s.bullets)&&s.bullets.length) document.getElementById("opt_bullets").value=s.bullets.join("\n");
     if(s.description) document.getElementById("opt_description").value=s.description;
     _captureOptEditor();
-    if(st) st.innerHTML='<span style="color:#7fd99a">✓ Rewritten per your instructions. Review &amp; edit, then Review changes to approve.</span>';
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">Error: '+esc(String(e))+'</span>'; }
+    if(st) st.innerHTML='<span style="color:var(--ok)">✓ Rewritten per your instructions. Review &amp; edit, then Review changes to approve.</span>';
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">Error: '+esc(String(e))+'</span>'; }
 }
 async function optAISuggest(){
   const st=document.getElementById("opt_aistatus");
@@ -1385,15 +1499,15 @@ async function optAISuggest(){
     const j=await (await fetch("/ask",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({messages:[{role:"user",text:"Optimize this Amazon listing's title, bullets and description for conversions and SEO. Return ONLY JSON {\"title\":\"..\",\"bullets\":[\"..\"],\"description\":\"..\"} no preamble."}],
         context:{title:(document.getElementById("opt_title")||{}).value,bullets:(document.getElementById("opt_bullets")||{}).value,description:(document.getElementById("opt_description")||{}).value,product_type:OPT_CURRENT.product_type}})})).json();
-    if(!j.ok){ if(st) st.innerHTML='<span style="color:#e0696b">AI failed: '+esc(j.error||"")+'</span>'; return; }
+    if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">AI failed: '+esc(j.error||"")+'</span>'; return; }
     let txt=(j.reply||"").trim().replace(/^```json/i,'').replace(/```$/,'').trim();
     let s=JSON.parse(txt);
     if(s.title) document.getElementById("opt_title").value=s.title;
     if(Array.isArray(s.bullets)&&s.bullets.length) document.getElementById("opt_bullets").value=s.bullets.join("\n");
     if(s.description) document.getElementById("opt_description").value=s.description;
     _captureOptEditor();   // save AI copy into state so it survives Back-to-edit / Review
-    if(st) st.innerHTML='<span style="color:#7fd99a">✓ AI suggestions applied — they\u2019re saved. Click Review changes to approve.</span>';
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">Could not parse AI: '+esc(String(e))+'</span>'; }
+    if(st) st.innerHTML='<span style="color:var(--ok)">✓ AI suggestions applied — they\u2019re saved. Click Review changes to approve.</span>';
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">Could not parse AI: '+esc(String(e))+'</span>'; }
 }
 let OPT_EDIT_STATE = null;   // persists edited values across editor<->review
 function _captureOptEditor(){
@@ -1462,7 +1576,7 @@ function optReview(){
     <div class="cc" style="margin-bottom:10px"><b>Review every change.</b> Only the fields you tick will be sent to Amazon. Unticked fields stay exactly as they are on the live listing.</div>
     ${rows}
     <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:sticky;bottom:0;background:var(--panel);padding:12px 0;border-top:1px solid var(--line)">
-      <button id="optpushbtn" disabled onclick="optPush()" style="background:#3a1d1d;border:1px solid #5c2b2b;color:#e0a3a3;padding:9px 16px;border-radius:8px;cursor:pointer;font-weight:600">Push approved fields to LIVE Amazon</button>
+      <button id="optpushbtn" disabled onclick="optPush()" style="background:#3a1d1d;border:1px solid var(--red-line);color:var(--red);padding:9px 16px;border-radius:8px;cursor:pointer;font-weight:600">Push approved fields to LIVE Amazon</button>
       <span id="optapprovedcount" class="cc">0 fields approved</span>
       <button onclick="renderOptEditor(OPT_CURRENT)">← Back to edit</button>
       <button onclick="closeOpt()">Cancel</button>

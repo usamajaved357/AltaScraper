@@ -7,6 +7,8 @@ from flask import request, jsonify, Response, send_from_directory
 import urllib
 import datetime as _dt
 
+from listing.sourcing_viability import check_sourcing_viability as _viability
+
 # How old an already-generated Amazon report may be before we refuse to reuse it.
 # getReports defaults createdSince to 90 DAYS and documents no sort order, so an
 # unbounded reuse could serve a weeks-old catalogue as if it were live. Six hours
@@ -375,6 +377,45 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                                 "images": out, "statuses": statuses, "meta": meta}), 502
         return jsonify({"ok": True, "images": out, "statuses": statuses, "meta": meta})
 
+    def _attach_compliance(items, mkt):
+        """Work out which documents Amazon can demand, for each live listing.
+
+        COMPUTED WHEN SERVED, NOT WHEN FETCHED. It used to run only on a fresh
+        Amazon fetch and get baked into the saved snapshot -- which meant that
+        once saved catalogues began being served at any age, a listing showed
+        whatever compliance data happened to exist when it was pulled, or none at
+        all for anything saved before this feature existed. That is why live
+        listings showed no documents.
+
+        Running it on the way out also means editing
+        sourcing_viability_rules.json takes effect on the next page load, instead
+        of waiting for every marketplace to be re-fetched.
+
+        It is pure pattern matching over the title -- no Amazon calls, no cost --
+        so doing it per request is cheap. A listing already selling is exactly
+        where a document demand lands: the patio heater was live for months
+        before the notice arrived.
+        """
+        for it in (items or []):
+            try:
+                _v = _viability(title=it.get("title", ""),
+                                product_type=it.get("product_type", ""),
+                                marketplace=mkt)
+                if _v.get("matched"):
+                    it["compliance"] = {
+                        "verdict": _v.get("verdict", ""),
+                        "risks": [{"id": x["id"], "label": x["label"], "risk": x["risk"],
+                                   "docs": x["docs"], "regulator": x.get("regulator", ""),
+                                   "reason": x.get("reason", "")}
+                                  for x in _v.get("risks", [])],
+                        "doc_count": sum(len(x.get("docs") or []) for x in _v.get("risks", [])),
+                    }
+                else:
+                    it.pop("compliance", None)   # a rule was removed -> so is the chip
+            except Exception:
+                pass              # a compliance fault must never cost you the catalogue
+        return items
+
     @app.route("/live/catalog", methods=["POST"])
     def live_catalog():
         """Fetch the account's LIVE Amazon listings for a marketplace via the Reports
@@ -407,7 +448,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         import time as _t
         import domain.live_snapshots as _snap
         if not force and ck in _LIVE_CACHE and (_t.time() - _LIVE_CACHE[ck]["ts"] < _LIVE_TTL):
-            return jsonify({"ok": True, "items": _LIVE_CACHE[ck]["items"], "cached": True})
+            return jsonify({"ok": True,
+                            "items": _attach_compliance(_LIVE_CACHE[ck]["items"], mkt),
+                            "cached": True})
         # DURABLE SNAPSHOT (second line of defence). _LIVE_CACHE is process memory:
         # a container restart or redeploy empties it, and on Render that happens on
         # every deploy. Before going back to Amazon, serve the snapshot written by
@@ -416,14 +459,79 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         if not force:
             _rec = _snap.get(CONFIG_PATH, aid, mkt)
             _age = _snap.age_seconds(_rec)
-            if _rec and _age is not None and _age < _LIVE_TTL:
-                _LIVE_CACHE[ck] = {"ts": _t.time() - _age, "items": _rec.get("items") or []}
-                return jsonify({"ok": True, "items": _rec.get("items") or [],
+            # NO AGE LIMIT. The last successful sync is shown whatever its age,
+            # labelled with WHEN it was pulled.
+            #
+            # This used to require _age < _LIVE_TTL, which meant a saved
+            # catalogue older than the cache window was thrown away and the page
+            # went back to Amazon -- so simply leaving the app open for an hour
+            # and returning could show an empty list while a report rebuilt.
+            # Age decides whether to REFRESH; it must never decide whether you
+            # are allowed to see what you already pulled. Until fresher data
+            # arrives, the latest data stands, and says when it was taken.
+            if _rec and (_rec.get("items") or []):
+                _LIVE_CACHE[ck] = {"ts": _t.time() - (_age or 0),
+                                   "items": _rec.get("items") or []}
+                return jsonify({"ok": True,
+                                "items": _attach_compliance(_rec.get("items") or [], mkt),
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "synced_at": _rec.get("ts"),
-                                "age_seconds": _age, "partial": _rec.get("partial", False),
+                                "age_seconds": _age,
+                                "stale": bool(_age and _age > _LIVE_TTL),
+                                "partial": _rec.get("partial", False),
                                 "warnings": _rec.get("warnings") or [],
                                 "report_source": _rec.get("report_source", "")})
+            # NOTHING SAVED YET for this account+marketplace. Return immediately
+            # and let the background refresh fill it in.
+            #
+            # This is the fix for "clicking Live on Amazon hangs for 5-10 minutes".
+            # Building an Amazon report takes minutes; doing that on the click path
+            # meant every visit to the tab blocked on it. Seller Central never does
+            # that -- it shows you what it has and catches up afterwards.
+            #
+            # So the click path NEVER builds a report. It returns what is stored,
+            # or says there is nothing yet. Only a background refresh (the timer,
+            # or the Sync button) ever waits on Amazon.
+            return jsonify({"ok": True, "items": [], "count": 0,
+                            "cached": False, "needs_sync": True,
+                            "message": "No saved catalogue for this marketplace yet. "
+                                       "Fetching it from Amazon in the background -- "
+                                       "this first one takes a few minutes."})
+
+        # A FORCED sync takes priority over the background rotation. The
+        # refresher is topping up marketplaces nobody is looking at; whoever
+        # pressed Sync is waiting at a screen. Telling it we have started makes
+        # it stand aside, so the two do not compete for the same per-minute
+        # Amazon quota and the manual sync is not slowed by a report nobody
+        # asked for.
+        #
+        # The background refresher calls this same view, so it must NOT count
+        # itself as a user -- it sets _bg on the request body.
+        if force and not b.get("_bg"):
+            try:
+                from flask import after_this_request
+                import domain.live_refresher as _refresher
+
+                _refresher.user_sync_started(f"{aid}::{mkt}")
+
+                # Released via after_this_request rather than a finally: this
+                # view has many return paths (early refusals, the snapshot
+                # fallbacks, the error handler), and a finally wrapped around all
+                # of them would be easy to get wrong. This fires on every one,
+                # including an unhandled exception, so the refresher can never be
+                # left permanently paused by a request that died.
+                _prio_key = f"{aid}::{mkt}"
+
+                @after_this_request
+                def _release_priority(resp, _k=_prio_key):
+                    try:
+                        _refresher.user_sync_finished(_k)
+                    except Exception:
+                        pass
+                    return resp
+            except Exception:
+                pass          # priority is an optimisation, never a requirement
+
         # on a forced sync, also drop the per-listing image/status/meta cache for
         # this account+marketplace so titles/images/status/fulfillment all refresh
         if force:
@@ -589,6 +697,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 print(f"[live/catalog] inactive report skipped: {_ie}")
                 warnings.append(f"Inactive/suppressed listings could not be loaded "
                                 f"({type(_ie).__name__}) — this list shows ACTIVE listings only.")
+            _attach_compliance(items, mkt)
             # enrich each item with COGS + profit estimate
             for it in items:
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
@@ -604,6 +713,39 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 hdr = [h.strip() for h in (text.splitlines()[0].split("\t"))] if text else []
             except Exception:
                 hdr = []
+            # AN EMPTY OR SHRUNKEN REPORT MUST NOT ERASE WHAT YOU ALREADY HAVE.
+            # Amazon returns 0 rows for reasons that are not errors -- a report
+            # still generating, a transient empty, a marketplace briefly not
+            # answering. None of those raise, so the last-resort handler below
+            # never sees them, and the catalogue would simply be replaced by
+            # nothing. That is the "sync wiped my listings" symptom.
+            #
+            # The rule mirrors what save() already does on disk: a smaller result
+            # never silently replaces a larger one. It is REPORTED instead, so a
+            # genuine deletion on Amazon is still visible rather than hidden.
+            _prev = _snap.get(CONFIG_PATH, aid, mkt) or {}
+            _prev_items = _prev.get("items") or []
+            if _prev_items and len(items) < len(_prev_items):
+                _shrink = len(_prev_items) - len(items)
+                _age_prev = _snap.age_seconds(_prev)
+                if not items:
+                    # Nothing at all came back -- keep the saved copy verbatim.
+                    return jsonify({
+                        "ok": True, "items": _attach_compliance(_prev_items, mkt),
+                        "count": len(_prev_items), "cached": True,
+                        "from_snapshot": True, "stale": True,
+                        "synced_at": _prev.get("ts"), "age_seconds": _age_prev,
+                        "report_source": _prev.get("report_source", ""),
+                        "warnings": (_prev.get("warnings") or []) + [
+                            "Amazon returned an EMPTY report just now, which usually "
+                            "means the report was still being generated. Your last "
+                            "successful sync is still shown -- nothing was lost. "
+                            "Try Sync again in a minute."]})
+                warnings = list(warnings or []) + [
+                    f"Amazon returned {len(items)} listing(s), {_shrink} fewer than "
+                    f"the last sync ({len(_prev_items)}). Showing the new result. If "
+                    f"that is unexpected, sync again -- a partly-built report can "
+                    f"come back short."]
             _LIVE_CACHE[ck] = {"ts": _t.time(), "items": items}
             # DURABLE WRITE. Everything above is process memory that a restart or a
             # redeploy erases; this is the copy that survives. save() also refuses to
@@ -635,9 +777,14 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             _rec = _snap.get(CONFIG_PATH, aid, mkt)
             if _rec and (_rec.get("items") or []):
                 _age = _snap.age_seconds(_rec)
-                return jsonify({"ok": True, "items": _rec.get("items") or [],
+                return jsonify({"ok": True,
+                                "items": _attach_compliance(_rec.get("items") or [], mkt),
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "stale": True,
+                                # Distinct from merely-old data: Amazon actually
+                                # FAILED. The label says "Amazon unreachable" only
+                                # for this, so old-but-fine never looks broken.
+                                "amazon_failed": True,
                                 "synced_at": _rec.get("ts"), "age_seconds": _age,
                                 "partial": _rec.get("partial", False),
                                 "warnings": (_rec.get("warnings") or []) + [

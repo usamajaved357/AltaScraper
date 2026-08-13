@@ -11,10 +11,12 @@ import subprocess
 import sys
 
 from routes.stream_pump import pump_lines, spawn
+from listing import repo as _repo       # the ONE SKU->row lookup (Rule 12)
 from listing import run_status          # honest run state, independent of the log pipe
 
 from listing.compliance import check_category_claims  # category-aware claims screener (task #18)
 from listing.restricted import check_restricted_type   # restricted-products library (Shape 2)
+from listing.sourcing_viability import check_sourcing_viability  # document-demand risk (WARN only)
 
 # Map the screener's field name -> the sheet column header to WRITE a rewrite into.
 # Standard 48-col layout first, then the Miles 12-col layout, so the one-click "Apply
@@ -86,6 +88,33 @@ def _attach_restricted(c, r):
         res = {"matched": False, "matches": [], "overall_action": "NONE",
                "message": "", "caveat": ""}
     c["restricted"] = res
+    return c
+
+
+def _attach_viability(c, r):
+    """Attach the SOURCING VIABILITY result (document-demand risk) for the card's
+    'Compliance requirements' panel.
+
+    Deliberately separate from _attach_restricted above, because it answers a
+    different question. Restricted = "may I list this at all?". Viability = "which
+    safety documents will Amazon demand later, and can I produce them?". The patio
+    heater is why: it was never restricted, so that panel stayed silent while the
+    BS EN 60335 obligation went unseen until the ASIN was already selling.
+
+    Read-only and WARN-only, exactly like the restricted attach, and equally
+    tolerant: a reference-data fault returns an empty result rather than breaking
+    the card."""
+    try:
+        res = check_sourcing_viability(
+            title=c.get("title", ""),
+            bullets=(c.get("bullets") or []),
+            product_type=c.get("product_type", ""),
+            category=c.get("category", ""),
+            marketplace=str(c.get("_marketplace", "") or "").upper())
+    except Exception:
+        res = {"matched": False, "risks": [], "verdict": "VIABLE",
+               "overall_action": "NONE", "warnings": [], "message": "", "caveat": ""}
+    c["viability"] = res
     return c
 
 
@@ -165,20 +194,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
         try:
             ws = _ws()
-            headers = ws.row_values(1)
-            if "Attributes JSON" not in headers:
+            found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+            if "Attributes JSON" not in found.headers:
                 return jsonify({"ok": False, "error": "no attributes column"}), 400
-            kcol = headers.index(SKU_HEADER) + 1
-            trow = None
-            for i, v in enumerate(ws.col_values(kcol), start=1):
-                if str(v).strip() == sku:
-                    trow = i
-                    break
-            if not trow:
-                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
-            acol = headers.index("Attributes JSON") + 1
+            if not found.ok:
+                return jsonify({"ok": False, "error": found.error}), 404
+            trow = found.row
+            acol = found.col("Attributes JSON")
             try:
-                obj = json.loads(ws.cell(trow, acol).value or "{}")
+                obj = json.loads(_repo.cell_value(ws, trow, acol) or "{}")
             except Exception:
                 obj = {}
             if not isinstance(obj, dict):
@@ -187,7 +211,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             for k in [k for k in list(obj.keys()) if _LIVE_IMG_KEY.match(str(k))]:
                 obj.pop(k, None)
             obj.update(images)
-            ws.update_cell(trow, acol, json.dumps(obj))
+            _repo.set_field(ws, trow, "Attributes JSON", json.dumps(obj),
+                            headers=found.headers)
             try:
                 _bust_records_cache()
             except Exception:
@@ -502,7 +527,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if ws is None:
                 ws = book.sheet1
             title = ws.title
-            grid = ws.get_all_values()
+            grid = _repo.read_grid(ws)
             headers = grid[0] if grid else []
             rows = grid[1:] if len(grid) > 1 else []
             view_url = f"https://docs.google.com/spreadsheets/d/{sid}/edit"
@@ -530,6 +555,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     c["row"] = i + 2
                     _attach_claim_flags(c, r)
                     _attach_restricted(c, r)
+                    _attach_viability(c, r)
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:
@@ -546,6 +572,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 c["row"] = i + 2          # actual sheet row number (row 1 = header)
                 _attach_claim_flags(c, r)
                 _attach_restricted(c, r)
+                _attach_viability(c, r)
                 cards.append(c)
             # Report the sheet/tab we ACTUALLY read, straight off the worksheet object,
             # so the header shows the real data source rather than what config claims.
@@ -647,7 +674,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             tabs, cards = [], []
             for ws in book.worksheets():
                 try:
-                    header = [str(h).strip() for h in ws.row_values(1)]
+                    header = _repo.read_headers(ws)
                 except Exception:
                     continue
                 if not (any(a in header for a in SKU_ALIASES) and "Title" in header):
@@ -666,6 +693,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     c["tab_gid"] = str(ws.id)
                     _attach_claim_flags(c, r)
                     _attach_restricted(c, r)
+                    _attach_viability(c, r)
                     cards.append(c)
                     if not _empty_card(c):
                         n += 1                                  # count real listings only
@@ -731,18 +759,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
         try:
-            ws      = _ws()
-            headers = ws.row_values(1)
-            scol    = headers.index(STATUS_HEADER) + 1
-            kcol    = headers.index(SKU_HEADER) + 1
-            target  = None
-            for i, v in enumerate(ws.col_values(kcol), start=1):
-                if str(v).strip() == sku:
-                    target = i
-                    break
-            if not target:
-                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
-            ws.update_cell(target, scol, status)
+            ws    = _ws()
+            found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+            if not found.ok:
+                return jsonify({"ok": False, "error": found.error}), 404
+            if not _repo.set_field(ws, found.row, STATUS_HEADER, status,
+                                   headers=found.headers):
+                return jsonify({"ok": False, "error": "no Status column"}), 400
             _bust_records_cache()
             return jsonify({"ok": True})
         except Exception as e:
@@ -808,7 +831,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if not changes:
                 return jsonify({"ok": True, "updated": 0, "note": "nothing to change"})
 
-            headers = ws.row_values(1)
+            # Bulk: one pass building SKU -> row for MANY skus, so it shares the
+            # repo's rules (read_headers / find_col / norm) rather than calling
+            # locate() per row, which would be one column read each.
+            headers = _repo.read_headers(ws)
             col = {h: headers.index(h) + 1 for h in
                    ("SKU", "Status", "Notes", "Compliance Risk", "IP Risk")
                    if h in headers}
@@ -816,36 +842,33 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 return jsonify({"ok": False, "error": "SKU column not found"}), 500
 
             # Map SKU -> sheet row number once, rather than searching per row.
+            # Both sides go through repo.norm: the sheet value used to be stripped
+            # while the lookup key below was not, so a SKU carrying a stray space
+            # silently matched nothing and its row was skipped without a word.
             sku_rows = {}
-            for i, v in enumerate(ws.col_values(col["SKU"]), start=1):
-                s = str(v).strip()
+            for i, v in enumerate(_repo.column_values(ws, col["SKU"]), start=1):
+                s = _repo.norm(v)
                 if s and s not in sku_rows:
                     sku_rows[s] = i
 
-            def a1(r, c):
-                s = ""
-                while c:
-                    c, rem = divmod(c - 1, 26)
-                    s = chr(65 + rem) + s
-                return f"{s}{r}"
-
             payload, updated = [], 0
             for ch in changes:
-                rn = sku_rows.get(ch["sku"])
+                rn = sku_rows.get(_repo.norm(ch["sku"]))
                 if not rn:
                     continue
                 for key, header in (("status", "Status"), ("notes", "Notes"),
                                     ("compliance_risk", "Compliance Risk"),
                                     ("ip_risk", "IP Risk")):
                     if key in ch["changed"] and header in col:
-                        payload.append({"range": a1(rn, col[header]),
+                        payload.append({"range": _repo.a1(rn, col[header]),
                                         "values": [[ch["new"][key]]]})
                 updated += 1
 
             # One batched write -- 87 rows x 4 columns as single cell updates
             # would be ~350 API calls and would hit Google's per-minute quota.
-            for i in range(0, len(payload), 100):
-                ws.batch_update(payload[i:i + 100])
+            # The 100-cell chunking lives in the repo so every bulk writer gets
+            # it, not just the one that remembered to write the loop.
+            _repo.batch_write(ws, payload)
             _bust_records_cache()
             return jsonify({"ok": True, "updated": updated, "cells": len(payload)})
         except Exception as e:
@@ -892,25 +915,20 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         if not sku or not key:
             return jsonify({"ok": False, "error": "missing sku/key"}), 400
         try:
-            ws      = _ws()
-            headers = ws.row_values(1)
-            kcol    = headers.index(SKU_HEADER) + 1
-            trow    = None
-            for i, v in enumerate(ws.col_values(kcol), start=1):
-                if str(v).strip() == sku:
-                    trow = i
-                    break
-            if not trow:
-                return jsonify({"ok": False, "error": "sku not found in sheet"}), 404
+            ws    = _ws()
+            found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+            if not found.ok:
+                return jsonify({"ok": False, "error": found.error}), 404
+            trow, headers = found.row, found.headers
             if target == "col":
                 if key not in _EDITABLE_COLS or key not in headers:
                     return jsonify({"ok": False, "error": "column not editable"}), 400
-                ws.update_cell(trow, headers.index(key) + 1, value)
+                _repo.set_field(ws, trow, key, value, headers=headers)
             elif target == "attr":
                 if "Attributes JSON" not in headers:
                     return jsonify({"ok": False, "error": "no attributes column"}), 400
                 acol = headers.index("Attributes JSON") + 1
-                cur  = ws.cell(trow, acol).value or "{}"
+                cur  = _repo.cell_value(ws, trow, acol) or "{}"
                 try:
                     obj = json.loads(cur)
                 except Exception:
@@ -944,7 +962,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         for _stale in [k for k in list(obj.keys()) if k.startswith(_pfx)]:
                             obj.pop(_stale, None)
                     obj[key] = value
-                ws.update_cell(trow, acol, json.dumps(obj, ensure_ascii=False))
+                _repo.set_field(ws, trow, "Attributes JSON",
+                                json.dumps(obj, ensure_ascii=False), headers=headers)
             else:
                 return jsonify({"ok": False, "error": "bad target"}), 400
             _bust_records_cache()
@@ -961,13 +980,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             ws     = _ws()
             target = None
             if sku:                                   # prefer matching by SKU (stable)
-                headers = ws.row_values(1)
-                if SKU_HEADER in headers:
-                    kcol = headers.index(SKU_HEADER) + 1
-                    for i, v in enumerate(ws.col_values(kcol), start=1):
-                        if str(v).strip() == sku:
-                            target = i
-                            break
+                # A miss stays silent here on purpose: this route falls back to the
+                # row number below, which is how a blank row with no SKU is deleted.
+                found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+                if found.ok:
+                    target = found.row
             if target is None and row:                # fall back to row number (blank rows)
                 try:
                     target = int(row)
@@ -975,7 +992,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     target = None
             if not target or target < 2:
                 return jsonify({"ok": False, "error": "row not found"}), 404
-            ws.delete_rows(target)
+            _repo.delete_row(ws, target)
             return jsonify({"ok": True})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
@@ -985,7 +1002,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         """Delete every data row whose SKU, Title, Competitor ASIN and Product Type are all blank."""
         try:
             ws   = _ws()
-            vals = ws.get_all_values()
+            vals = _repo.read_grid(ws)
             if not vals:
                 return jsonify({"ok": True, "deleted": 0})
             headers = vals[0]
@@ -997,7 +1014,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if all((c >= len(rv) or not str(rv[c]).strip()) for c in keycols):
                     blanks.append(r + 1)                        # 1-based sheet row
             for rownum in sorted(blanks, reverse=True):         # bottom-up keeps indices valid
-                ws.delete_rows(rownum)
+                _repo.delete_row(ws, rownum)
             return jsonify({"ok": True, "deleted": len(blanks)})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500

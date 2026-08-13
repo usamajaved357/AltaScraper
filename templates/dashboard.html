@@ -8,19 +8,25 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/css/dashboard.css">
-<link rel="stylesheet" href="/static/css/altui.css">
 </head>
 <body>
 
 <div class="appbar">
   <div class="brandmark" onclick="goHome()">
-    <span class="dot">L</span><span>Listing Generator</span>
+    <span class="dot">A</span><span>AltaScraper</span>
   </div>
   <div class="crumbs" id="crumbs"></div>
   <span class="spacer"></span>
-  <button class="barbtn" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</button>
-  <button class="barbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i> Privacy</button>
-  <button class="barbtn" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</button>
+  <!-- Orbit keeps the top bar sparse: breadcrumb left, health badge right.
+       Research ASIN and AI settings moved into the sidebar (below the nav,
+       above the footer). Privacy stays here but icon-only. -->
+  <span class="hb" id="healthbadge" title="App health"><span class="dot"></span><span id="healthtxt">System healthy</span></span>
+  <button class="barbtn iconbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i></button>
+  <!-- Shown only to people who may manage users. Hiding it is a courtesy, not the
+       control: the server refuses /users/* to everyone else regardless. -->
+  <button class="barbtn" id="usersbtn" onclick="openUsers()" style="display:none" title="Add people and choose what each of them can do"><i class="ti ti-users"></i> Users</button>
+  <span class="barbtn" id="whoami" style="display:none;cursor:default" title="Signed in as"></span>
+  <button class="barbtn" id="signoutbtn" onclick="location.href='/logout'" style="display:none" title="Sign out"><i class="ti ti-logout"></i></button>
   <button class="barbtn" onclick="goHome()"><i class="ti ti-home"></i> Home</button>
 </div>
 
@@ -28,38 +34,9 @@
 <div id="home" class="show">
   <div class="homebar">
     <p class="homehd" id="homehd" style="margin:0">Workspaces</p>
-    <label class="newui-toggle" title="Opt-in preview of the new dashboard. Your classic UI stays the default — flip this off any time to return to it.">
-      <input type="checkbox" id="newui_switch" onchange="toggleNewUI(this.checked)"> New UI
-    </label>
   </div>
   <div class="wsgrid" id="wsgrid">
     <div class="empty" style="grid-column:1/-1">Loading workspaces…</div>
-  </div>
-</div>
-
-<!-- ===== Opt-in NAVY UI shell (Stage 1). Full-screen overlay; shown only when the
-     ALTA_NEW_UI flag is on. Classic UI above stays the untouched default/fallback. ===== -->
-<div id="altui">
-  <nav class="side">
-    <div class="logo"><div class="t">AltaScraper</div><div class="s">listing operations</div></div>
-    <div class="nav">
-      <div class="lbl">Workspace</div>
-      <a class="on"><i class="ti ti-layout-dashboard"></i> <span>Dashboard</span></a>
-      <a onclick="altShowClassic()"><i class="ti ti-list-check"></i> <span>Listings</span></a>
-      <div class="lbl">Tools</div>
-      <a onclick="rcOpen()"><i class="ti ti-shield-half"></i> <span>Check a product</span></a>
-      <a onclick="altShowClassic()"><i class="ti ti-refresh"></i> <span>Sync</span></a>
-    </div>
-    <div class="foot"><div class="acctpill" onclick="toggleNewUI(false)" title="Switch back to your classic UI"><span class="dot"></span><span style="font-size:12px;color:var(--ink2)">New UI</span><span class="sw"><span></span></span></div></div>
-  </nav>
-  <div class="main">
-    <div class="top">
-      <span class="ttl">AltaScraper</span><span class="sep"></span><span class="sub" id="alt_crumb">Dashboard</span>
-      <span class="statusbadge" id="alt_health"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span> —</span>
-    </div>
-    <div class="content" id="alt_content">
-      <div class="muted" style="padding:20px 0">Loading overview…</div>
-    </div>
   </div>
 </div>
 
@@ -77,10 +54,17 @@
     <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-table"></i> Account &amp; sheets</div>
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
-    <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
-    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:#e0696b;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
+
+    <!-- Tools moved down from the top bar, per the Orbit layout: they are
+         occasional actions, not navigation, so they sit below the nav and above
+         the footer under their own label. -->
+    <div class="slbl">Tools</div>
+    <div class="navitem" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</div>
+    <div class="navitem" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</div>
   </div>
 
   <div class="wsmain">
@@ -101,13 +85,17 @@
         </div>
         <div id="mktswitch" class="mktswitch"></div>
         <select id="statussel" onchange="setFilterVal(this.value)" title="Filter by status"
-          style="background:#161b24;color:#c8d3e6;border:1px solid #2f3a4d;border-radius:8px;padding:5px 10px;font-size:13px">
+          style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px">
           <option value="all">All statuses</option>
           <option value="review">Needs review</option>
           <option value="holds">Holds</option>
           <option value="approved">Approved</option>
           <option value="live">Live</option>
         </select>
+        <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
+          <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
+          <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
+        </span>
         <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no sheet row needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
         <button class="ghost" onclick="refreshView()" title="Reload this workspace's sheet rows, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
       </div>
@@ -124,14 +112,14 @@
           <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
           <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
         </span>
-        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:#2563eb;color:#93c5fd"><i class="ti ti-wand"></i> Auto-fix</button>
+        <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
-        <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
-        <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:#4a6cff"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
-        <button onclick="bulkDelete()" title="Delete all selected listings" style="color:#ff8a8a;border-color:#5c2424"><i class="ti ti-trash"></i> Delete</button>
-        <button onclick="rescanFlags()" title="Re-judge compliance and IP flags on already-generated rows using the current rules. Costs nothing and never touches your copy — only Status, Notes, Compliance Risk and IP Risk, and only on rows that are NEEDS_REVIEW or held." style="border-color:#7fd1a0;color:#7fd1a0"><i class="ti ti-shield-check"></i> Re-check flags</button>
+        <button onclick="batchAutoGenerate('secondary')" title="Strategist proposes secondary-image ideas and generates them for every selected product — runs in the background, no pop-up" style="border-color:var(--accent)"><i class="ti ti-bolt"></i> Auto-generate (Secondary)</button>
+        <button onclick="batchAutoGenerate('aplus')" title="Strategist proposes A+ modules and generates them for every selected product — runs in the background, no pop-up" style="border-color:var(--accent)"><i class="ti ti-bolt"></i> Auto-generate (A+)</button>
+        <button onclick="bulkDelete()" title="Delete all selected listings" style="color:var(--red);border-color:var(--red-line)"><i class="ti ti-trash"></i> Delete</button>
+        <button onclick="rescanFlags()" title="Re-judge compliance and IP flags on already-generated rows using the current rules. Costs nothing and never touches your copy — only Status, Notes, Compliance Risk and IP Risk, and only on rows that are NEEDS_REVIEW or held." style="border-color:var(--ok);color:var(--ok)"><i class="ti ti-shield-check"></i> Re-check flags</button>
         <button onclick="selectAllVisible(true)">Select all</button>
         <button onclick="clearSelection()">Clear</button>
       </div>
@@ -518,7 +506,7 @@
         <button class="browsemodels sm" onclick="milesClearHistory()" title="Forget which items were harvested so they can run again">Clear harvested history</button>
       </div>
 
-      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:rgba(76,141,255,.08);font-size:13px"></div>
+      <div id="miles_livestatus" style="display:none;margin:8px 0;padding:10px 12px;border:1px solid #2c4a6b;border-radius:8px;background:var(--accent-bg);font-size:13px"></div>
 
       <pre id="miles_log" style="display:none;background:#0a0d12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;margin:8px 0"></pre>
 
@@ -665,6 +653,15 @@
   </div>
 </div>
 <script src="/static/js/asinresearch.js"></script>
+
+<!-- Users & permissions. Global, not per-workspace, so it lives on the top bar. -->
+<div id="usersmodal" class="modalwrap" style="z-index:120">
+  <div class="modal" style="max-width:860px;position:relative">
+    <button class="x" onclick="closeUsers()">×</button>
+    <div id="usersbody"><div class="cc" style="padding:16px">Loading…</div></div>
+  </div>
+</div>
+<script src="/static/js/users.js"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">

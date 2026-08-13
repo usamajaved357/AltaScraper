@@ -140,16 +140,11 @@ def _public_media_url(media_url: str) -> str:
 
 
 
-@app.before_request
-def _require_login():
-    if not _APP_PASSWORD:
-        return  # no password configured (local dev) -> gate disabled
-    # _pubimg is intentionally public: it serves a single image whose URL already
-    # embeds a valid HMAC token, so Amazon (and only holders of the token) can fetch it.
-    if request.endpoint in ("_login", "_healthz", "static", "_pubimg"):
-        return
-    if not session.get("authed"):
-        return redirect(url_for("_login"))
+# The doorman: signed in? and allowed to do this? Both questions are answered by
+# auth/guard.py, which holds the whole policy in one readable table. Nothing about
+# who-may-do-what is decided in this file.
+from auth.guard import make_doorman as _make_doorman
+app.before_request(_make_doorman(CONFIG_PATH, _APP_PASSWORD))
 
 
 @app.route("/img/<token>/<path:relpath>")
@@ -347,12 +342,20 @@ def _ws():
         header = None
         try:
             dflt = _client().open_by_key(_cfg()["google_spreadsheet_id"]).worksheet(OUTPUT_TAB)
-            header = dflt.row_values(1)
+            from listing import repo as _repo
+            header = _repo.read_headers(dflt)
         except Exception:
             header = None
-        ws = book.add_worksheet(title=tab, rows=200, cols=max(26, len(header or []) or 26))
-        if header:
-            ws.update("A1", [header])
+        # Open-or-create-with-headers is shared (Rule 12): the same thing was
+        # written out in the generator's init_sheets() and run_brand(), and in
+        # data/store.export_to_sheet(). ensure_tab also returns the EXISTING tab
+        # untouched if it turns out to be there, which matters here -- this path
+        # is reached after a lookup failed, and re-headering a populated tab
+        # would shift every column's meaning without changing a single value.
+        from listing import repo as _repo
+        ws, _created = _repo.ensure_tab(
+            book, tab, headers=header, rows=200,
+            cols=max(26, len(header or []) or 26), freeze_header=False)
         return ws
     except Exception as e:
         # An account workspace must fail loudly rather than serve the shared tab.
@@ -2534,24 +2537,16 @@ def _sheet_read_retry(fn, *args, _tries=6, **kwargs):
     exponential backoff on a 429. Because the quota is PER-MINUTE, the backoff waits 30,45,60,60s
     (not 2-8s) so the minute-window actually resets before retrying. Mirrors
     amazon_listing_generator._read_retry (the CLI backs off even harder, deferring to the web app)."""
-    import time as _t
-    for i in range(_tries):
-        _pace_sheet_read()
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            _m = str(e).lower()
-            _code = ""
-            try:
-                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
-            except Exception:
-                _code = ""
-            if ((_code == "429" or "429" in _m or "quota" in _m or "resource_exhausted" in _m
-                 or "rate limit" in _m or "rate_limit" in _m or "per minute" in _m)
-                    and i < _tries - 1):
-                _t.sleep(min(60, 30 + 15 * i))          # 30, 45, 60, 60 ... per-minute reset
-                continue
-            raise
+    # Throttle DETECTION is shared (listing/repo.is_throttled) -- it was written
+    # out identically here and in the generator. The BACKOFF POLICY stays here,
+    # because the two are deliberately different: this is the web app and waits
+    # 30/45/60s, while the CLI waits far longer to yield the shared per-minute
+    # quota to this process.
+    from listing import repo as _repo
+    return _repo.read_retry(fn, *args, tries=_tries,
+                            pace=_pace_sheet_read,
+                            backoff=lambda i: min(60, 30 + 15 * i),
+                            **kwargs)
 
 
 def _bust_records_cache():
@@ -2861,19 +2856,14 @@ _APLUS_MODULES = {
 
 def _write_attrs_for_sku(ws, sku, attrs):
     """Overwrite the Attributes JSON cell for a given SKU with the provided dict."""
-    headers = ws.row_values(1)
-    if "Attributes JSON" not in headers:
+    from listing import repo as _repo          # the ONE SKU->row lookup (Rule 12)
+    found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
+    if "Attributes JSON" not in found.headers:
         raise RuntimeError("no attributes column")
-    kcol = headers.index(SKU_HEADER) + 1
-    trow = None
-    for i, v in enumerate(ws.col_values(kcol), start=1):
-        if str(v).strip() == str(sku).strip():
-            trow = i
-            break
-    if not trow:
-        raise RuntimeError("sku not found")
-    acol = headers.index("Attributes JSON") + 1
-    ws.update_cell(trow, acol, json.dumps(attrs, ensure_ascii=False))
+    if not found.ok:
+        raise RuntimeError(found.error or "sku not found")
+    _repo.set_field(ws, found.row, "Attributes JSON",
+                    json.dumps(attrs, ensure_ascii=False), headers=found.headers)
     _bust_records_cache()
 
 
@@ -3006,14 +2996,31 @@ def _miles_save_history(done: set):
 
 
 
-if __name__ == "__main__":
-    try:
-        with open(".app_port", "w") as _pf:
-            _pf.write(str(PORT))
-    except Exception:
-        pass
-    print(f"\n  Listing Review dashboard -> http://{HOST}:{PORT}")
-    print("  (Ctrl+C to stop)\n")
+def build_app(backend="sheets"):
+    """Wire every route onto the app and return it.
+
+    WHY THIS IS A FUNCTION AND NOT AN `if __name__` BLOCK
+    All of this registration used to sit inside `if __name__ == "__main__":`,
+    which meant importing dashboard.py gave you an app with no routes on it. The
+    SQLite beta needs the same wiring against a different data source, and the
+    only way to reuse it was to copy the whole file -- roughly 2,700 lines that
+    would drift apart from the first fix onward.
+
+    Moving it into a function is a MOVE, not a rewrite: the body below is
+    unchanged, only its wrapper. `dashboard_beta.py` now calls
+    build_app(backend="db") instead of duplicating any of it, so a fix made here
+    applies to both.
+
+    backend="sheets" -> Google Sheets, exactly as before (the default; the live
+                        app's behaviour is untouched)
+    backend="db"     -> SQLite, by swapping the two functions every route module
+                        is already given by injection
+    """
+    global _ws, _records
+    if backend == "db":
+        from data import backend as _data_backend
+        _ws, _records = _data_backend.make(_state, config_path=CONFIG_PATH)
+
     _load_cogs_overrides()
     dashboard_brand_patch.register(app, _cfg, _ws, _records, _run_lock,
                                    _running, _ANSI, SCRIPT, sys, _state, CONFIG_PATH)
@@ -3088,7 +3095,14 @@ if __name__ == "__main__":
                              _reload_cfg=lambda: _state.update(cfg=None))   # drop config cache so edits take effect
     try:
         from monitor import checker as _mon_checker
-        _mon_checker.start_scheduler(_cfg, CONFIG_PATH)     # daemon: hourly getItemOffers diff
+        # DAILY, not hourly. Every tracked ASIN x marketplace was hitting Amazon
+        # 24 times a day, which was the app's largest quota consumer and competed
+        # with the live-catalogue refresh and with anything the user was waiting
+        # on. Hijacker and buy-box detection does not need hourly resolution;
+        # "Check now" still forces an immediate scan.
+        _mon_checker.start_scheduler(
+            _cfg, CONFIG_PATH,
+            interval=int(os.environ.get("MONITOR_INTERVAL_S") or 24 * 3600))
     except Exception as _mon_e:
         print("[asin-monitor] scheduler not started:", str(_mon_e)[:200])
     # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
@@ -3171,5 +3185,36 @@ if __name__ == "__main__":
                           _resolve_cogs=_resolve_cogs, _state=_state,
                           _APLUS_CACHE=_APLUS_CACHE, _APLUS_TTL=_APLUS_TTL)
     import routes.dash_auth_routes as _dash_auth_routes
-    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD)
+    _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
+    import routes.users_routes as _users_routes
+    _users_routes.register(app, CONFIG_PATH=CONFIG_PATH)
+
+    # Keep EVERY connected account+marketplace's live catalogue fresh, server-side.
+    # The browser timer could only refresh the one workspace that happened to be
+    # open, and only while a tab was open, so every other account stayed stale and
+    # the first visit paid the full report-build wait. This walks them all, one at
+    # a time and spread out so Amazon is not asked for everything at once.
+    import domain.live_refresher as _refresher
+
+    @app.route("/live/refresher")
+    def _live_refresher_status():
+        """What the background refresher is doing, and when each account last ran.
+        Reads real state -- a refresher that cannot be inspected is one you have
+        to take on faith."""
+        return jsonify({"ok": True, **_refresher.status()})
+
+    _refresher.start(app, _cfg, CONFIG_PATH,
+                     log=lambda m: print(f"[refresher] {m}"))
+    return app
+
+
+if __name__ == "__main__":
+    try:
+        with open(".app_port", "w") as _pf:
+            _pf.write(str(PORT))
+    except Exception:
+        pass
+    print(f"\n  Listing Review dashboard -> http://{HOST}:{PORT}")
+    print("  (Ctrl+C to stop)\n")
+    build_app()
     app.run(host=HOST, port=PORT, threaded=True)

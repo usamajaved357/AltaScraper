@@ -184,9 +184,9 @@ function showSecondaryResults(images, skus, live){
     : "Applied to the selected draft SKUs and saved to the sheet.";
   host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
     + '<b style="font-size:13px">Secondary images ('+images.length+')</b>'
-    + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:#9cc1ff;cursor:pointer;font-size:16px">✕</button></div>'
-    + '<div style="font-size:11px;color:#9fb2cc;margin-bottom:10px">'+note+'</div>'
-    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,#22304a)"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:#9cc1ff">⬇ Download image '+(i+1)+'</a></div>').join("");
+    + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:16px">✕</button></div>'
+    + '<div style="font-size:11px;color:var(--ink2);margin-bottom:10px">'+note+'</div>'
+    + images.map((u,i)=>'<div style="margin-bottom:10px"><img src="'+u+'" style="width:100%;border-radius:8px;border:1px solid var(--line,#22304a)"><a href="#" onclick="_downloadAsJpeg(\''+u+'\',\'secondary_'+(i+1)+'\');return false;" style="display:inline-block;margin-top:4px;font-size:12px;color:var(--accent2)">⬇ Download image '+(i+1)+'</a></div>').join("");
 }
 async function loadBrandPanel(){
   const host=document.getElementById('brandpanel');
@@ -292,8 +292,8 @@ function locateFlags(sku, btn){
       const v=String(fields[fn]||'');
       if(v && re.test(v)){
         any=true;
-        const hl=esc(v).replace(re,'<mark style="background:#5c4a16;color:#ffe9a8">$1</mark>');
-        html+='<div style="margin:4px 0"><b style="color:#e3b768">'+esc(t)+'</b> in <b>'+fn+'</b>: <span style="color:#cbd3e1">'+hl+'</span></div>';
+        const hl=esc(v).replace(re,'<mark style="background:var(--warn-line);color:#ffe9a8">$1</mark>');
+        html+='<div style="margin:4px 0"><b style="color:var(--warn)">'+esc(t)+'</b> in <b>'+fn+'</b>: <span style="color:var(--ink)">'+hl+'</span></div>';
       }
     });
   });
@@ -536,17 +536,34 @@ function summary(){
   let total = _tabRows.length;
   if(LIST_SOURCE==='live') total = liveCount;
   else if(LIST_SOURCE==='all') total = _tabRows.length + liveCount;
+  // Orbit's four metric tiles replace the old one-line text summary. Each is
+  // clickable and filters the list to that status -- the count was always the
+  // question "which ones need me?", and it now answers it in one click instead
+  // of sending you to the dropdown.
+  //
+  // The counts below the tiles (errors, preview-ready, duplicates) are kept as a
+  // quiet line: they matter, but not enough to spend one of four tiles on, and
+  // dropping them would lose information the old summary gave you.
+  const _cur = (typeof FILTER !== "undefined") ? FILTER : "all";
+  const tile = (n, label, filter) =>
+    `<div class="metric${_cur===filter?' on':''}" onclick="metricFilter('${filter}')"
+          title="Show only these">
+       <p class="n">${n}</p><p class="l">${label}</p></div>`;
+  const extras = [];
+  if(c.ERROR)      extras.push(`<span style="color:var(--red)">${c.ERROR} error</span>`);
+  if(c.API_READY)  extras.push(`<span style="color:var(--accent2)">${c.API_READY} preview-ready</span>`);
+  if(c.HOLD)       extras.push(`<span style="color:var(--red)">${c.HOLD} on hold</span>`);
+  if(countDuplicateSkus()>0){
+    extras.push(`<span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`);
+  }
   document.getElementById("summary").innerHTML =
-    `<b style="color:#e8eaed">${total}</b> listings &nbsp;·&nbsp; `+
-    `${c.NEEDS_REVIEW} needs review &nbsp;·&nbsp; `+
-    `<span style="color:#ef9a9a">${c.HOLD} on hold</span> &nbsp;·&nbsp; `+
-    `<span style="color:#ef9a9a">${c.ERROR} error</span> &nbsp;·&nbsp; `+
-    `<span style="color:#7fd1a0">${c.APPROVED} approved</span> &nbsp;·&nbsp; `+
-    `<span style="color:#9cc1ff">${c.API_READY} preview-ready</span> &nbsp;·&nbsp; `+
-    `<span style="color:#74e0a3">${c.LIVE} live</span>`+
-    ((countDuplicateSkus()>0)
-      ? ` &nbsp;·&nbsp; <span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`
-      : "");
+    `<div class="metricgrid">`
+    + tile(total,          "Total listings", "all")
+    + tile(c.NEEDS_REVIEW, "Needs review",   "review")
+    + tile(c.APPROVED,     "Ready to submit","approved")
+    + tile(c.LIVE,         "Live",           "live")
+    + `</div>`
+    + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
 }
 
 // Pull a LIVE listing's real data (every Amazon image: main + all secondary) into the row, so
@@ -582,10 +599,15 @@ function _rowImages(r){
   if(!urls.length) urls=Object.keys(a).filter(k=>/image_locator/i.test(k)).map(k=>a[k]).filter(Boolean);
   return urls;
 }
+// The tile's corner dot. Returns CSS VARIABLES, not literal hex, so the dot and
+// the status pill for the same row can never drift apart -- they now read from
+// one set of tokens. LIVE is neutral grey here for the same reason .b-LIVE is:
+// live is the resting state, not an achievement, and a grid of green dots made
+// every finished listing look like it wanted attention.
 function _statusDot(r){
   var s=r.status||"";
-  var col = s==="LIVE"?"#74e0a3" : (isHold(s)||s==="API_ERROR"||s==="ERROR")?"#ef9a9a"
-          : s==="NEEDS_REVIEW"?"#e3b768" : s==="APPROVED"?"#74e0a3" : "#9aa3b2";
+  var col = s==="LIVE"?"var(--ink2)" : (isHold(s)||s==="API_ERROR"||s==="ERROR")?"var(--red)"
+          : s==="NEEDS_REVIEW"?"var(--warn)" : s==="APPROVED"?"var(--ok)" : "var(--ink3)";
   return col;
 }
 // ---- GALLERY TILE ----
@@ -662,6 +684,7 @@ function card(r){
       <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
       ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
       ${claimBadge(r)}
+      ${viabilityBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
@@ -684,8 +707,8 @@ function card(r){
       <button class="ib gen" title="Image Studio (creative ideas, prompt &amp; image AI)" onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
       <button class="ib" title="Edit / details" onclick="openDrawer('${esc(r.sku)}')"><i class="ti ti-edit"></i></button>
       <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
-      ${isAmazonLive(r) ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:#c8b6ff" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}
-      ${isAmazonLive(r) ? `<button class="ib" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:#9fe6bd" onclick="event.stopPropagation();pullLiveRow('${esc(r.sku)}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
+      ${isAmazonLive(r) ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}
+      ${isAmazonLive(r) ? `<button class="ib" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:var(--ok)" onclick="event.stopPropagation();pullLiveRow('${esc(r.sku)}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
       <button class="ib more" title="More" onclick="tileMenu(event,'${esc(r.sku)}',${r.row||0})"><i class="ti ti-dots"></i></button>
     </div>
   </div>`;
@@ -825,12 +848,12 @@ function drawerContent(r){
   // Grouped per document, because one ASIN can carry more than one.
   const aplusDocs = aplusFor(r);
   const aplusHtml = aplusDocs.length ? `
-    <div class="kvsec" style="color:#c8b6ff;margin-top:14px"><i class="ti ti-layout-board"></i> A+ content live on Amazon</div>
+    <div class="kvsec" style="color:var(--ai);margin-top:14px"><i class="ti ti-layout-board"></i> A+ content live on Amazon</div>
     ${aplusDocs.map(function(d){ return `
       <div class="aplusdoc">
         <div class="aplushead">
           <b>${esc(d.name||'(untitled)')}</b>
-          <span class="livestatus" style="background:#123021;color:#7fd99a">${esc(d.status||'')}</span>
+          <span class="livestatus" style="background:#123021;color:var(--ok)">${esc(d.status||'')}</span>
           <span class="cc">${d.module_count} module(s) · ${(d.images||[]).length} image(s)</span>
         </div>
         <div class="aplusimgs">
@@ -850,12 +873,12 @@ function drawerContent(r){
       <div class="lmeta">
         <span class="lsku">${esc(r.sku)||'\u2014'}</span>
         ${priceStr?`<span class="lprice">${priceStr}</span>`:''}
-        ${r.profit?`<span class="cc">profit ${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span>`:''}
+        ${r.profit?`<span class="cc">profit <span class="financial">${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span></span>`:''}
       </div>
       <div class="dwactions">
         <button class="suggestbtn" onclick="suggestFields('${esc(r.sku)}')"><i class="ti ti-wand"></i> Suggest missing fields</button>
         <button class="suggestbtn" onclick="refreshSchemaFor('${esc(r.sku)}')" title="Re-fetch Amazon's allowed values so the dropdowns show the latest options. This does NOT pull your listing's data — use 'Pull live data from Amazon' for that."><i class="ti ti-refresh"></i> Refresh dropdown options</button>
-        ${isAmazonLive(r) ? `<button class="suggestbtn" style="background:#123021;border-color:#2c5c3f;color:#9fe6bd" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this listing's real IMAGES from Amazon — the main image and every secondary image — and replace the generation-time ones on this row. Does not pull A+ content, title, bullets or price."><i class="ti ti-cloud-download"></i> Pull live images from Amazon</button>` : ""}
+        ${isAmazonLive(r) ? `<button class="suggestbtn" style="background:#123021;border-color:var(--ok-line);color:var(--ok)" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this listing's real IMAGES from Amazon — the main image and every secondary image — and replace the generation-time ones on this row. Does not pull A+ content, title, bullets or price."><i class="ti ti-cloud-download"></i> Pull live images from Amazon</button>` : ""}
         <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
         <button class="genmain" onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
         <button class="pushimg" onclick="pushImageLive('${esc(r.sku)}',this)" title="Send the current main image to the LIVE Amazon listing (updates just the image, no full resubmit)"><i class="ti ti-cloud-upload"></i> Push image to live</button>
@@ -879,11 +902,218 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${complianceBanner(r)}
     ${liveMirrorPanel(r)}
     ${restrictedPanel(r)}
+    ${viabilityPanel(r)}
     ${claimBox(r)}
     ${statusBlock}
     <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+}
+
+// Clicking a metric tile filters the list. It also moves the status dropdown to
+// match: two controls driving one filter that disagree about its value is worse
+// than having only one of them.
+function metricFilter(v){
+  const sel = document.getElementById("statussel");
+  if(sel) sel.value = v;
+  if(typeof setFilterVal === "function") setFilterVal(v);
+}
+
+// ===================== TABLE VIEW =====================================
+// Orbit shows listings as a data table, not a card grid. Both exist: table is
+// the default, the tile grid is one click away, and card() is untouched.
+//
+// The preference is per-browser (localStorage), not per-account: it is a
+// preference about how YOU read a list, not a property of the workspace.
+
+let LIST_VIEW = "table";
+try{ LIST_VIEW = localStorage.getItem("alta_list_view") || "table"; }catch(e){}
+
+// Sync the DOM to whatever LIST_VIEW currently is. Separate from setListView()
+// so it can run on page load without triggering a render before there are any
+// rows to draw.
+function applyListView(){
+  document.querySelectorAll("#viewtoggle button").forEach(function(b){
+    b.classList.toggle("on", b.dataset.view === LIST_VIEW);
+  });
+  const g = document.getElementById("grid");
+  if(g) g.classList.toggle("tableview", LIST_VIEW === "table");
+}
+
+function setListView(v){
+  LIST_VIEW = (v === "grid") ? "grid" : "table";
+  try{ localStorage.setItem("alta_list_view", LIST_VIEW); }catch(e){}
+  applyListView();
+  if(typeof render === "function") render();
+}
+
+// The top-bar health badge. Wired to /healthz so it reports something REAL --
+// can the browser still reach the server? A badge that always reads "healthy"
+// is decoration, and worse than nothing, because it looks like a check.
+async function pollHealth(){
+  const el = document.getElementById("healthbadge");
+  const t  = document.getElementById("healthtxt");
+  if(!el) return;
+  try{
+    const r = await fetch("/healthz", {cache:"no-store"});
+    const ok = r.ok;
+    el.classList.toggle("bad", !ok);
+    if(t) t.textContent = ok ? "System healthy" : "Server error";
+  }catch(e){
+    el.classList.add("bad");
+    if(t) t.textContent = "Server unreachable";
+  }
+}
+
+window.addEventListener("DOMContentLoaded", function(){
+  applyListView();
+  pollHealth();
+  setInterval(pollHealth, 60000);
+});
+
+// One block of listings, drawn the way the user has chosen. Every place that
+// used to say rows.map(card).join("") calls this instead, so the two views can
+// never drift apart into "the table forgot about claimed rows".
+function listBlock(rows, fn){
+  fn = fn || card;
+  if(!rows || !rows.length) return "";
+  if(LIST_VIEW !== "table") return rows.map(fn).join("");
+  const rowFn = (fn === (typeof liveTile === "function" ? liveTile : null))
+                ? liveTableRow : tableRow;
+  return `<div class="card ltwrap"><table class="lt"><thead><tr>
+      <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
+      <th>Price</th><th>Handling</th><th>Status</th><th>Compliance</th>
+      <th style="width:120px">Actions</th></tr></thead><tbody>`
+    + rows.map(rowFn).join("") + `</tbody></table></div>`;
+}
+
+// The compliance cell: one icon and two words, from the SAME data the drawer's
+// banner reads, so a row cannot say "clear" while its detail says "prohibited".
+function _compCell(r){
+  const rr = r.restricted, v = r.viability;
+  if(!rr && !v) return `<span class="comp cc">—</span>`;
+  if(rr && rr.matched && (rr.matches||[]).some(m=>m.tier==="PROHIBITED")){
+    return `<span class="comp" style="color:var(--red)"><i class="ti ti-shield-x"></i> prohibited</span>`;
+  }
+  if(rr && rr.matched){
+    return `<span class="comp" style="color:var(--warn)"><i class="ti ti-shield-half"></i> gated</span>`;
+  }
+  if(v && v.matched){
+    const n = (v.risks||[]).length;
+    return `<span class="comp" style="color:var(--warn)"><i class="ti ti-file-text"></i> needs docs${n?` (${n})`:""}</span>`;
+  }
+  return `<span class="comp" style="color:var(--ok)"><i class="ti ti-shield-check"></i> clear</span>`;
+}
+
+function _statusPill(s){
+  return `<span class="badge ${badgeClass(s)}">${esc(s||"—")}</span>`;
+}
+
+function tableRow(r){
+  // Same image source the tile uses, so the two views cannot disagree about
+  // which picture belongs to a listing.
+  const urls = (typeof _rowImages === "function") ? (_rowImages(r) || []) : [];
+  const thumb = urls.length
+    ? `<div class="thumb"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
+    : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
+  const price = r.price ? `${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}` : "—";
+  const hand  = r.handling_days || r.handling_time || "";
+  const asin  = r.asin
+    ? `<span class="asin">${esc(r.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></span>`
+    : `<span class="cc">no ASIN</span>`;
+  return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}">
+    <td class="pii-img">${thumb}</td>
+    <td>${asin}<br><span class="sku pii">${esc(r.sku||'')}</span></td>
+    <td><span class="ttl pii">${esc(r.title||'(no title)')}</span>
+        ${r.brand?`<span class="brand pii">${esc(r.brand)}</span>`:''}</td>
+    <td class="price">${price}</td>
+    <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
+    <td>${_statusPill(r.status)}</td>
+    <td>${_compCell(r)}</td>
+    <td><div class="acts">
+      <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
+      <button class="dotb" title="Generate images for this product"
+              onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
+    </div></td></tr>`;
+}
+
+// Amazon-catalog rows. They are NOT sheet rows -- no SKU to open a drawer with
+// and nothing editable -- so the row does not pretend to be clickable.
+function liveTableRow(it){
+  const img = it.image || it.img || "";
+  const thumb = img
+    ? `<div class="thumb"><img src="${esc(img)}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
+    : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
+  const price = it.price ? `${CUR_SYMBOL}${esc(String(it.price).replace(/^[A-Z]{3}\s?/,''))}` : "—";
+  const c = it.compliance;
+  const comp = (c && (c.risks||[]).length)
+    ? `<span class="comp" style="color:${(c.risks||[]).some(x=>x.risk==="HIGH")?"var(--red)":"var(--warn)"}"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`
+    : `<span class="comp cc">—</span>`;
+  return `<tr style="cursor:default" title="${esc(it.title||'')}">
+    <td class="pii-img">${thumb}</td>
+    <td><span class="asin">${esc(it.asin||'')}</span><br><span class="sku pii">${esc(it.sku||'')}</span></td>
+    <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span></td>
+    <td class="price">${price}</td>
+    <td><span class="cc">—</span></td>
+    <td><span class="badge b-LIVE">LIVE</span></td>
+    <td>${comp}</td>
+    <td><div class="acts">
+      <button class="dotb" title="Optimize this live listing"
+              onclick="event.stopPropagation();optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i></button>
+      <button class="dotb" title="Generate images for this product"
+              onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i></button>
+      <a class="dotb" title="View on Amazon" target="_blank" rel="noopener"
+         onclick="event.stopPropagation()"
+         href="https://www.amazon.${WS_MARKET==='UK'?'co.uk':'com'}/dp/${esc(it.asin||'')}"><i class="ti ti-external-link"></i></a>
+    </div></td></tr>`;
+}
+
+// ---- COMPLIANCE BANNER (detail view) ------------------------------------
+// One full-width line at the top of the drawer giving the overall verdict, with
+// the detailed panels below it. It summarises three checks that already ran --
+// restricted products, document demand, and claim risks -- rather than running
+// anything new, so it can never disagree with the panels underneath it.
+//
+// It returns NOTHING when the checks did not run. Showing "compliance clear"
+// because no data arrived would be the worst possible failure here: a green
+// banner asserting a check passed when it never happened. Silence is honest;
+// a false all-clear is not.
+function complianceBanner(r){
+  const rr = r.restricted, v = r.viability, claims = r.claim_flags || [];
+  if(!rr && !v && !claims.length) return "";      // nothing ran -- say nothing
+
+  const prohibited = !!(rr && rr.matched && (rr.matches||[]).some(m=>m.tier==="PROHIBITED"));
+  const gated      = !!(rr && rr.matched && !prohibited);
+  const docs       = !!(v && v.matched);
+  const redClaim   = claims.some(x=>x.severity==="RED");
+
+  if(prohibited){
+    return `<div class="compbanner blocked"><i class="ti ti-shield-x"></i><div>
+      <b>Blocked — prohibited on this marketplace</b>
+      <span class="cc">There is no compliance path for this product type. See the
+      restricted-products panel below.</span></div></div>`;
+  }
+
+  if(gated || docs || redClaim){
+    const parts = [];
+    if(gated)    parts.push("restricted — documents required to list");
+    if(docs)     parts.push(v.risks && v.risks.length === 1
+                            ? "1 document demand Amazon can make later"
+                            : `${(v.risks||[]).length} document demands Amazon can make later`);
+    if(claims.length) parts.push(`${claims.length} claim risk${claims.length>1?"s":""}`);
+    return `<div class="compbanner warn"><i class="ti ti-alert-triangle"></i><div>
+      <b>Needs attention — ${esc(parts.join(" · "))}</b>
+      <span class="cc">None of this blocks publishing. The panels below say
+      exactly which documents and which wording.</span></div></div>`;
+  }
+
+  // Clear. Worded as "no flags", never "safe" -- these are keyword checks, and
+  // the banner must not read as a clearance it is not in a position to give.
+  return `<div class="compbanner clear"><i class="ti ti-shield-check"></i><div>
+    <b>Compliance clear — no restricted-product or claim flags</b>
+    <span class="cc">Keyword-based checks. A clean result is not a guarantee —
+    a disguised product can still slip past.</span></div></div>`;
 }
 
 // ---- RESTRICTED PRODUCTS CHECK (Shape 2) -- its own panel, separate from Amazon feedback
@@ -921,6 +1151,55 @@ function restrictedPanel(r){
     <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">Your restricted-products library (SP-API-independent). Warning only — publishing is never blocked here.</div>
     <div class="restlist">${rows}</div>
     <div class="cc" style="margin-top:6px;font-size:11px;font-style:italic">${esc(rr.caveat||"")}</div></details>`;
+}
+
+// ---- COMPLIANCE REQUIREMENTS (sourcing viability) -------------------------------
+// A DIFFERENT question from the restricted panel above. That one answers "may I list
+// this at all?"; this one answers "which safety documents will Amazon demand later?".
+// The patio heater passed every restriction check, listed freely, and cost the ASIN
+// months later when Amazon asked for a BS EN 60335 test report — so a clean panel
+// above is NOT evidence that nothing is owed. Server attaches r.viability.
+// WARN only: nothing here blocks publishing.
+function _viabRiskClass(lvl){ return lvl==="HIGH" ? "hi" : "med"; }
+// Tile badge: the document count, visible WITHOUT opening the listing. The whole
+// failure this fixes was a requirement nobody saw until Amazon asked.
+function viabilityBadge(r){
+  const v=r.viability; if(!v || !v.matched || !(v.risks||[]).length) return "";
+  const high=(v.risks||[]).some(x=>x.risk==="HIGH");
+  const docs=(v.risks||[]).reduce((n,x)=>n+((x.docs||[]).length),0);
+  const names=(v.risks||[]).map(x=>x.label).join(", ");
+  // Own class/position: .tileflag sits bottom-RIGHT (restricted) and .tileclaim
+  // bottom-LEFT (claims), so a third badge reusing either would land on top of it.
+  return `<span class="tiledocs ${high?'red':'amber'}" title="Compliance: ${esc(names)} — ${docs} document(s) Amazon can request. Click to see the list." onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-file-text"></i>${docs}</span>`;
+}
+function viabilityPanel(r){
+  const v = r.viability;
+  if(!v) return "";
+  if(!v.matched){
+    // Clean stays quiet — same doormat rule as the restricted panel.
+    return `<div class="restclear"><i class="ti ti-file-check"></i> Compliance requirements: no document demand detected <span class="cc">— not a clearance</span></div>`;
+  }
+  const anyHigh = (v.risks||[]).some(x=>x.risk==="HIGH");
+  const head = anyHigh ? "Compliance requirements — documents Amazon will likely request"
+                       : "Compliance requirements — documents Amazon may request";
+  const rows = (v.risks||[]).map(function(x){
+    const docs = (x.docs&&x.docs.length)
+      ? `<div class="cc" style="margin-top:4px"><b>Docs required:</b><ul style="margin:4px 0 0 16px;padding:0">`
+        + x.docs.map(d=>`<li>${esc(d)}</li>`).join("") + `</ul></div>`
+      : "";
+    const sig = (x.signals&&x.signals.length)
+      ? `<div class="cc" style="margin-top:3px;color:var(--muted)">Detected: ${esc(x.signals.join("; "))}</div>` : "";
+    const meta = [x.reason, x.regulator, v.marketplace].filter(Boolean).map(esc).join(" · ");
+    return `<div class="restrow ${x.risk==="HIGH"?'red':'amber'}">
+      <div><span class="risk ${_viabRiskClass(x.risk)}">${esc(x.risk||"")} RISK</span> <b>${esc(x.label)}</b>
+        <span class="cc restconf">${esc(x.id||"")}</span></div>
+      <div class="cc" style="margin-top:3px">${meta}</div>${sig}${docs}
+      <div class="cc" style="margin-top:5px;font-style:italic">As a reseller you probably cannot provide these — confirm before committing to stock.</div></div>`;
+  }).join("");
+  return `<details class="findingsbox" open><summary class="findsum ${anyHigh?'bad':'info'}">${anyHigh?'📄':'📄'} ${esc(head)}</summary>
+    <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">Not a listing restriction — this is the paperwork Amazon can demand after the listing goes live. Warning only; publishing is never blocked here.</div>
+    <div class="restlist">${rows}</div>
+    <div class="cc" style="margin-top:6px;font-size:11px;font-style:italic">${esc(v.caveat||"")}</div></details>`;
 }
 
 // ---- CATEGORY-AWARE CLAIM RISK (task #18 UI) -----------------------------------
@@ -1161,7 +1440,7 @@ async function uploadRef(input, sku, sidv){
     var j=await res.json();
     if(!j.ok){ if(st) st.textContent='Upload failed: '+(j.error||''); return; }
     var fld=document.getElementById('genraw_'+sidv); if(fld) fld.value=j.url;
-    if(st) st.innerHTML='<span style="color:#7fd99a">\u2713 Reference uploaded \u2014 saved to this SKU\u2019s media folder.</span>';
+    if(st) st.innerHTML='<span style="color:var(--ok)">\u2713 Reference uploaded \u2014 saved to this SKU\u2019s media folder.</span>';
   }catch(e){ if(st) st.textContent='Upload error: '+e; }
 }
 

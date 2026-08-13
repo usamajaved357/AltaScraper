@@ -47,7 +47,7 @@ function renderDataSource(){
 
 function _wsColor(v){
   // deterministic accent per workspace
-  if(!v || !v.brand) return {bg:"rgba(76,141,255,.16)", fg:"#9cc1ff"};
+  if(!v || !v.brand) return {bg:"var(--accent-bg)", fg:"var(--accent2)"};
   const palette=[["#E1F5EE","#0F6E56"],["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],
                  ["#E6F1FB","#185FA5"],["#FBEAF0","#993556"],["#FAEEDA","#854F0B"]];
   let h=0; for(const c of v.key) h=(h*31+c.charCodeAt(0))>>>0;
@@ -102,14 +102,14 @@ async function loadHome(){
   let acctData=await _fetchJSON("/accounts/list");
   if(acctData && acctData.config_error){
     grid.innerHTML='<div class="empty" style="grid-column:1/-1;text-align:left">'
-      +'<div style="color:#ef9a9a;font-weight:600;margin-bottom:8px">⚠ Your config.json has an error</div>'
+      +'<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ Your config.json has an error</div>'
       +'<div class="cc" style="white-space:pre-wrap">'+esc(acctData.error||"")+'</div>'
       +'<div class="cc" style="margin-top:10px">Fix the file, save it, then click Home to retry.</div></div>';
     return;
   }
   if(acctData && acctData._failed){
     grid.innerHTML='<div class="empty" style="grid-column:1/-1;text-align:left">'
-      +'<div style="color:#ef9a9a;font-weight:600;margin-bottom:8px">⚠ Could not load accounts</div>'
+      +'<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ Could not load accounts</div>'
       +'<div class="cc">'+esc(acctData.error||"")+'</div>'
       +'<div class="cc" style="margin-top:8px">Try clicking Home again. If this persists, check the terminal where the app runs for an error.</div></div>';
     return;
@@ -127,7 +127,7 @@ async function loadHome(){
   cards += `<div class="wscard" onclick='enterDropshipping()'>
       <button class="peek" title="Reveal" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
       <div style="display:flex;align-items:center;gap:11px">
-        <div class="ic" style="background:rgba(76,141,255,.16);color:#9cc1ff">${SVG_CART}</div>
+        <div class="ic" style="background:var(--accent-bg);color:var(--accent2)">${SVG_CART}</div>
         <div style="flex:1"><div class="nm pii">Dropshipping</div><div class="sub pii">eBay → Amazon arbitrage</div></div>
         <button class="wsedit" title="Assign input &amp; output sheets" onclick='event.stopPropagation();openDropshippingSheets()'><i class="ti ti-settings"></i></button>
       </div>
@@ -156,6 +156,12 @@ async function loadHome(){
   }).join("");
   cards += `<div class="wscard add" onclick="openAccountEditor('')">${SVG_PLUS} Add account</div>`;
   grid.innerHTML = cards;
+  // First paint only: now that ACCOUNTS and VIEWS are known, honour the address
+  // the user actually arrived on. Deliberately at the END of loadHome -- opening
+  // a workspace before we know which ones exist can only guess. The early error
+  // returns above skip this, which is correct: if accounts could not be loaded
+  // we cannot reopen anything, and the error on screen is the honest answer.
+  if(!_ALTA_ROUTED){ _ALTA_ROUTED = true; altaRouteFromUrl(); }
 }
 async function openDropshippingSheets(){
   // Reuse the account modal shell to edit the DEFAULT (Dropshipping) sheets.
@@ -186,8 +192,8 @@ async function saveDropshippingSheets(){
     const j=await (await fetch("/settings/dropshipping_sheets",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({output_sheet_url:out, input_sheet_url:inp})})).json();
     if(j.ok){ toast("Dropshipping sheets saved"+(j.output_tab?(" · tab: "+j.output_tab):"")); closeAccountEditor(); loadHome(); }
-    else { if(st) st.innerHTML='<span style="color:#e0696b">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:#e0696b">'+esc(String(e))+'</span>'; }
+    else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
 }
 function _wsColorKey(key){
   const palette=[["#E1F5EE","#0F6E56"],["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],
@@ -255,7 +261,7 @@ async function enterAccount(accountId){
   if(window.WS_READONLY){
     const _lender=(ACCOUNTS||[]).find(x=>x.id===window.WS_CREDS_SOURCE);
     document.getElementById("ws_sub").innerHTML =
-      '<span style="color:#e3b768;font-weight:600"><i class="ti ti-lock"></i> Read-only</span>'
+      '<span style="color:var(--warn);font-weight:600"><i class="ti ti-lock"></i> Read-only</span>'
       + (_lender ? ' · generating with '+esc(_lender.label)+"'s Amazon app" : ' · no Amazon app')
       + ' · cannot publish';
   } else {
@@ -275,6 +281,15 @@ async function enterAccount(accountId){
   // marketplace switcher from the account's (detected) marketplaces
   buildAccountMktSwitch(a);
   navTo("listings");
+  altaSyncUrl();
+  // Start the background refresh as soon as a CONNECTED workspace is open, not
+  // only once someone has visited the Live tab. That is what makes switching to
+  // "Live on Amazon" find data already waiting instead of starting a wait --
+  // previously the timer was only armed by a successful live load, so the very
+  // first visit always paid the full report-build time.
+  if(hasCreds && !window.WS_READONLY && typeof startAutoSync === "function"){
+    try{ startAutoSync(); }catch(e){}
+  }
   if(LIST_SOURCE==='all' || LIST_SOURCE==='live'){ loadRows(); loadLiveCatalog(false); }
   else loadRows();
 }
@@ -285,7 +300,7 @@ function enterDropshipping(){
   document.getElementById("home").classList.remove("show");
   document.getElementById("workspace").classList.add("show");
   const icEl=document.getElementById("ws_ic");
-  icEl.style.background="rgba(76,141,255,.16)"; icEl.style.color="#9cc1ff";
+  icEl.style.background="var(--accent-bg)"; icEl.style.color="var(--accent2)";
   icEl.innerHTML='<i class="ti ti-shopping-cart"></i>';
   document.getElementById("ws_nm").textContent="Dropshipping";
   document.getElementById("ws_sub").textContent="eBay → Amazon";
@@ -300,12 +315,13 @@ function enterDropshipping(){
   var sw=document.getElementById('srcswitch'); if(sw) sw.style.display='none';
   LIST_SOURCE='drafts'; LIVE_ITEMS=[];
   navTo("listings");
+  altaSyncUrl();
   loadRows();
 }
 function buildAccountMktSwitch(a){
   const host=document.getElementById("mktswitch"); if(!host) return;
   if(!a.has_creds){
-    host.innerHTML='<span class="mktlabel" title="Add SP-API credentials to enable live features">draft-only · <a href="#" onclick="openAccountEditor(\''+esc(a.id)+'\');return false" style="color:#9cc1ff">connect account</a></span>';
+    host.innerHTML='<span class="mktlabel" title="Add SP-API credentials to enable live features">draft-only · <a href="#" onclick="openAccountEditor(\''+esc(a.id)+'\');return false" style="color:var(--accent2)">connect account</a></span>';
     return;
   }
   const mkts=a.marketplaces&&a.marketplaces.length?a.marketplaces:[];
@@ -322,7 +338,7 @@ function buildAccountMktSwitch(a){
     `<button class="mktbtn ${WS_MARKET==='__all__'?'on':''}" title="Show listings across every marketplace (fetches each — can be slow)" onclick="switchAccountMarket('__all__')">All</button>`
     + mkts.map(m=>{
         const isDflt = a.default_marketplace===m;
-        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" onclick="switchAccountMarket('${esc(m)}')">${esc(m)}${isDflt?' <span title="default" style="color:#e3b768">\u2605</span>':''}</button>`;
+        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" onclick="switchAccountMarket('${esc(m)}')">${esc(m)}${isDflt?' <span title="default" style="color:var(--warn)">\u2605</span>':''}</button>`;
       }).join("")
     + `<button class="mktbtn" title="Set current marketplace (${esc(WS_MARKET||'')}) as this account\u2019s default" onclick="setDefaultMarketplace()">\u2606 default</button>`
     + '<button class="mktbtn" title="Re-detect" onclick="detectMarketplaces(\''+esc(a.id)+'\')"><i class="ti ti-refresh"></i></button>';
@@ -409,7 +425,7 @@ function openAccountEditor(id){
             `<option value="${esc(x.id)}" ${a.credentials_source_account_id===x.id?'selected':''}>${esc(x.label)}</option>`).join("")}
         </select>
         <div class="cc" style="font-size:11px;margin-top:3px">${a.can_publish===false
-          ? '<span style="color:#e3b768"><i class="ti ti-lock"></i> This workspace is read-only: it can generate listings, but not preview, verify or publish them.</span>'
+          ? '<span style="color:var(--warn)"><i class="ti ti-lock"></i> This workspace is read-only: it can generate listings, but not preview, verify or publish them.</span>'
           : 'This account can publish to Amazon.'}</div>
       </td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shopping-cart"></i> eBay source credentials</div><div class="cc" style="font-size:11.5px">Used to scrape the source eBay listing for each row.</div></td></tr>
@@ -489,8 +505,8 @@ function _showParsed(boxId, url){
   const p=parseSheetUrl(url); const el=document.getElementById(boxId);
   if(!el) return;
   if(!url.trim()){ el.innerHTML=""; return; }
-  if(p.id){ el.innerHTML='<span style="color:#7fd99a">✓ sheet '+esc(p.id.slice(0,10))+'…'+(p.gid?(' · tab gid '+esc(p.gid)):' · first tab')+'</span>'; }
-  else { el.innerHTML='<span style="color:#e0696b">✗ couldn\u2019t read a sheet ID from that link</span>'; }
+  if(p.id){ el.innerHTML='<span style="color:var(--ok)">✓ sheet '+esc(p.id.slice(0,10))+'…'+(p.gid?(' · tab gid '+esc(p.gid)):' · first tab')+'</span>'; }
+  else { el.innerHTML='<span style="color:var(--red)">✗ couldn\u2019t read a sheet ID from that link</span>'; }
 }
 // Show/hide the per-account eBay boxes. Ticked = use the app-wide eBay keys, which
 // is what the backend already does whenever an account has no eBay App ID of its own
@@ -559,9 +575,9 @@ async function detectFromEditor(id){
   if(out) out.innerHTML='<span class="genspin"></span> Calling Amazon (getMarketplaceParticipations)…';
   try{
     var j=await (await fetch("/accounts/detect_marketplaces",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})})).json();
-    if(j.ok){ if(out) out.innerHTML='<span style="color:#7fd99a">\u2713 Detected: '+(j.marketplaces||[]).join(", ")+'</span>'; loadHome(); }
-    else { if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(String(e))+'</span>'; }
+    if(j.ok){ if(out) out.innerHTML='<span style="color:var(--ok)">\u2713 Detected: '+(j.marketplaces||[]).join(", ")+'</span>'; loadHome(); }
+    else { if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(String(e))+'</span>'; }
 }
 async function detectBrandsFromEditor(id){
   var out=document.getElementById("ac_detectout");
@@ -571,11 +587,11 @@ async function detectBrandsFromEditor(id){
     if(j.ok){
       // reflect into the brands field
       var bf=document.getElementById("ac_brands"); if(bf) bf.value=(j.brands||[]).join(", ");
-      if(out) out.innerHTML='<span style="color:#7fd99a">\u2713 Brands ('+esc(j.source||"")+'): '+esc((j.brands||[]).join(", ")||"none found")+'</span>'
+      if(out) out.innerHTML='<span style="color:var(--ok)">\u2713 Brands ('+esc(j.source||"")+'): '+esc((j.brands||[]).join(", ")||"none found")+'</span>'
         +'<div class="cc" style="margin-top:4px">'+esc(j.note||"")+'</div>';
       loadHome();
-    } else { if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(out) out.innerHTML='<span style="color:#e0696b">\u2717 '+esc(String(e))+'</span>'; }
+    } else { if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(j.error||"failed")+'</span>'; }
+  }catch(e){ if(out) out.innerHTML='<span style="color:var(--red)">\u2717 '+esc(String(e))+'</span>'; }
 }
 function buildMktSwitch(g){
   const host=document.getElementById("mktswitch"); if(!host) return;
@@ -629,6 +645,7 @@ function goHome(){
   document.getElementById("workspace").classList.remove("show");
   document.getElementById("home").classList.add("show");
   document.getElementById("crumbs").innerHTML="";
+  altaSyncUrl();
   loadHome();
 }
 
@@ -660,6 +677,7 @@ async function enterWorkspace(key){
   document.getElementById("gen_scope").textContent =
     (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");
   navTo("listings");
+  altaSyncUrl();
   loadRows();
   loadViews();   // keep legacy view <select> in sync if present
 }
@@ -680,6 +698,7 @@ function navTo(sec){
   if(sec==="ppc")       ppcOnOpen();
   if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
   if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
+  altaSyncUrl();
 }
 async function loadTargetAccount(){
   var el=document.getElementById("targetacct"); if(!el) return;
@@ -700,7 +719,7 @@ async function loadInputSheet(){
   if(meta) meta.textContent="";
   try{
     var j=await (await fetch('/input_sheet')).json();
-    if(!j.ok){ body.innerHTML='<div class="cc" style="padding:16px;color:#e3b768">'+esc(j.error||'could not load')+'</div>'; return; }
+    if(!j.ok){ body.innerHTML='<div class="cc" style="padding:16px;color:var(--warn)">'+esc(j.error||'could not load')+'</div>'; return; }
     var openA=document.getElementById("inputsheet_open");
     if(openA && j.view_url){ openA.href=j.view_url; openA.style.display="inline-flex"; }
     if(meta) meta.textContent='\u201c'+(j.title||'')+'\u201d \u00b7 '+j.row_count+' rows \u00d7 '+j.col_count+' cols';
@@ -716,7 +735,7 @@ async function loadInputSheet(){
     });
     html+='</tbody></table>';
     body.innerHTML=html;
-  }catch(e){ body.innerHTML='<div class="cc" style="padding:16px;color:#e0696b">Error: '+esc(String(e))+'</div>'; }
+  }catch(e){ body.innerHTML='<div class="cc" style="padding:16px;color:var(--red)">Error: '+esc(String(e))+'</div>'; }
 }
 function filterInputSheet(){
   var q=((document.getElementById("inputsheet_filter")||{}).value||"").toLowerCase().trim();
@@ -741,4 +760,122 @@ function enterWorkspaceBlank(){
   document.getElementById("crumbs").innerHTML='<span class="sep">/</span><span class="here">New brand</span>';
   navTo("setup");
 }
+
+// ===================== URL ROUTING (addressable screens) =====================
+// Plain English: the app used to keep every screen behind the single address
+// "/", so refreshing threw you back to the workspace list, nothing could be
+// bookmarked, and Back left the app altogether. Every screen now has a real
+// address -- /w/<workspace>/<section> -- and the browser bar follows you as you
+// move. Nothing is reloaded and nothing is re-fetched: this only RECORDS where
+// you are, so the page can put you back there.
+//
+// Everything below is defensive. Every history call is wrapped, and if any of it
+// throws, the app behaves exactly as it did before -- the sections still switch.
+// Routing can fail to update an address; it can never stop you navigating.
+
+const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
+                       "ppc","inventory","sync","monitor","miles"];
+
+let _ALTA_ROUTED    = false;  // has the one-time restore-from-address already run?
+let _ALTA_RESTORING = false;  // true while replaying an address: replace, never push
+
+// The address for whatever is on screen right now, or null when there is nothing
+// worth recording.
+function altaCurrentPath(){
+  if(!ACTIVE_WS) return "/";
+  // The blank "New brand" screen is a form being filled in, not a place. Giving
+  // it an address would produce a bookmark that reopens an empty form.
+  if(ACTIVE_WS.brand === "new") return null;
+  const slug = String(ACTIVE_WS.key || "") || "dropshipping";
+  const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "listings";
+  let p = "/w/" + encodeURIComponent(slug) + "/" + sec;
+  // Drafts is the default so it stays out of the address; Live and All are worth
+  // recording, because landing back on Drafts after a refresh is the annoyance.
+  if(sec === "listings" && (LIST_SOURCE === "live" || LIST_SOURCE === "all")){
+    p += "?src=" + LIST_SOURCE;
+  }
+  return p;
+}
+
+function altaSyncUrl(){
+  try{
+    const p = altaCurrentPath();
+    if(!p) return;
+    if(p === (location.pathname + location.search)) return;   // nothing moved
+    history[_ALTA_RESTORING ? "replaceState" : "pushState"]({alta:1}, "", p);
+  }catch(e){}
+}
+
+// Read the address bar and reopen that screen. Runs once, from the end of
+// loadHome(), because opening a workspace before ACCOUNTS and VIEWS are known
+// could only guess at which one was meant.
+async function altaRouteFromUrl(){
+  const m = /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
+  if(!m) return;                        // "/" -> the workspace list, already drawn
+  const ws  = decodeURIComponent(m[1] || "");
+  let   sec = m[2] || "listings";
+  if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "listings";
+  let src = "";
+  try{ src = new URLSearchParams(location.search).get("src") || ""; }catch(e){}
+
+  _ALTA_RESTORING = true;
+  try{
+    if(ws === "dropshipping"){
+      enterDropshipping();
+    } else if((ACCOUNTS||[]).some(a => String(a.id) === ws)){
+      await enterAccount(ws);
+    } else if((VIEWS||[]).some(v => String(v.key) === ws)){
+      await enterWorkspace(ws);
+    } else {
+      // The link names a workspace that has since been renamed or removed. Say
+      // so, rather than silently opening whichever one happens to be first.
+      toast("That workspace no longer exists — showing all workspaces.");
+      try{ history.replaceState({alta:1}, "", "/"); }catch(e){}
+      return;
+    }
+    if(sec !== CUR_SEC) navTo(sec);
+    if(sec === "listings" && (src === "live" || src === "all")
+       && typeof setListSource === "function"){
+      setListSource(src);
+    }
+  }catch(e){
+    // Reopening failed. Leave the user on whatever did load rather than
+    // trapping them on a half-drawn screen.
+  }finally{
+    _ALTA_RESTORING = false;
+    altaSyncUrl();   // settle the address on where we actually ended up
+  }
+}
+
+// Back / Forward. altaRouteFromUrl owns the restoring flag for its own run, so
+// it is NOT set here -- that function is async, and setting the flag around a
+// call that returns at its first await would clear it far too early.
+window.addEventListener("popstate", function(){
+  const path = location.pathname || "/";
+  try{
+    if(path === "/" || path === ""){
+      if(ACTIVE_WS){
+        _ALTA_RESTORING = true;
+        try{ goHome(); } finally { _ALTA_RESTORING = false; }
+      }
+    } else {
+      altaRouteFromUrl();
+    }
+  }catch(e){}
+});
+
+// Record the Drafts / Live / All switch in the address too. Wrapped here rather
+// than edited into miles_template.js so that every line of routing lives in one
+// file: the source switch has no business knowing about the address bar. Load
+// order makes this safe -- miles_template.js is loaded before shell.js, so the
+// original function already exists by the time this runs.
+(function(){
+  if(typeof window.setListSource !== "function") return;
+  const _inner = window.setListSource;
+  window.setListSource = function(){
+    const r = _inner.apply(this, arguments);
+    altaSyncUrl();
+    return r;
+  };
+})();
 

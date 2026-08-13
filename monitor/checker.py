@@ -31,7 +31,21 @@ _CALL_PACING_S = 1.5          # (legacy single-call pacing; batch path uses _BAT
 _BATCH_SIZE = 20              # getItemOffersBatch does up to 20 (asin x marketplace) per call
 _BATCH_PACING_S = 2.0         # spacing between batch calls (the batch endpoint is heavier)
 _RESCAN_DEAD_AFTER = 24 * 3600  # re-check a DEAD marketplace at most once a day (catch expansion)
-_SCHED_INTERVAL = 3600        # set by start_scheduler; used for next-run ETA + overload warning
+_SCHED_INTERVAL = 24 * 3600   # set by start_scheduler; used for next-run ETA + overload warning
+
+# MINIMUM GAP BETWEEN CHECKS OF THE SAME LIVE MARKETPLACE.
+#
+# This did not exist. A LIVE marketplace was re-checked on EVERY cycle, and the
+# cycle ran hourly -- so every tracked ASIN in every marketplace it sells in was
+# hitting Amazon 24 times a day. With a few dozen ASINs across a dozen
+# marketplaces that is the single largest consumer of the SP-API quota in the
+# app, and it competes with the live-catalogue refresh and with anything the user
+# is actually waiting on.
+#
+# Hijackers and buy-box changes do not need hourly detection to be useful; daily
+# is what this is for. Pressing "Check now" still forces an immediate scan, so
+# nothing is lost when you genuinely want an answer.
+_MIN_RECHECK_LIVE = 24 * 3600
 
 _LOCK = threading.Lock()
 _SCHED_STARTED = False
@@ -383,9 +397,15 @@ def _should_check(state_entry, force):
     """Decide whether to check a marketplace this cycle (dead-marketplace skipping)."""
     if force or not state_entry:
         return True                              # forced, or never checked (first run)
+    since = time.time() - state_entry.get("last_checked_ts", 0)
     if state_entry.get("live"):
-        return True                              # a live marketplace is always checked
-    return (time.time() - state_entry.get("last_checked_ts", 0)) >= _RESCAN_DEAD_AFTER  # stale dead -> re-scan
+        # A live marketplace used to be re-checked on EVERY cycle. With an hourly
+        # cycle that was 24 checks a day per ASIN per marketplace -- the app's
+        # biggest quota consumer, competing with everything the user is waiting
+        # on. Once a day is what hijacker detection actually needs; "Check now"
+        # still forces an immediate scan.
+        return since >= _MIN_RECHECK_LIVE
+    return since >= _RESCAN_DEAD_AFTER           # stale dead -> re-scan
 
 
 def _process_result(d, it, mkt, res, cfg, config_path, log):

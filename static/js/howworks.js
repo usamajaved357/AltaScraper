@@ -189,11 +189,11 @@ function _studioAddResult(job, j, grid){
     if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload, label:(job.strategy||job.sku)}; }
     const canReroll = !!(j._kind&&j._payload);
     const _driveLine = j.drive_direct_url
-      ? `<div class="cc" style="color:#86d0a8;font-size:10.5px;padding:0 8px 4px">\u2713 saved to Drive</div>`
+      ? `<div class="cc" style="color:var(--ok);font-size:10.5px;padding:0 8px 4px">\u2713 saved to Drive</div>`
       : (j.drive_error
-          ? `<div class="cc" style="color:#e3b768;font-size:10.5px;padding:0 8px 4px">Drive: ${esc(j.drive_error)}</div>`
+          ? `<div class="cc" style="color:var(--warn);font-size:10.5px;padding:0 8px 4px">Drive: ${esc(j.drive_error)}</div>`
           : (j.save_error
-              ? `<div class="cc" style="color:#e0696b;font-size:10.5px;padding:0 8px 4px">Save: ${esc(j.save_error)}</div>`
+              ? `<div class="cc" style="color:var(--red);font-size:10.5px;padding:0 8px 4px">Save: ${esc(j.save_error)}</div>`
               : ""));
     inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
       <div class="srescap">${label}</div>

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AltaScraper — Orbit-style prototype</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+:root{--bg:#1a1d23;--side-bg:#1a1d23;--card:#22262e;--card2:#272b34;--input:#2a2f38;
+  --brd:#2e333c;--brd2:#383e48;--ink:#e8ecf1;--ink2:#9ca3af;--ink3:#6b7280;--ink4:#4b5563;
+  --teal:#2dd4a8;--teal-dim:#1a8a6e;--teal-bg:#0d2e26;
+  --gold:#f0b429;--gold-bg:#2e2510;
+  --green:#4ade80;--green-bg:#0a2618;--red:#f06050;--red-bg:#2a1210;--grey-bg:#2a2f38;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;}
+.app{display:flex;min-height:100vh;}
+/* sidebar */
+.side{width:210px;flex-shrink:0;background:var(--side-bg);border-right:1px solid var(--brd);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.logo{padding:16px 14px;border-bottom:1px solid var(--brd);font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
+.logo .sq{width:8px;height:8px;border-radius:2px;background:var(--teal);}
+.slbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);padding:14px 14px 4px;}
+.snv{display:flex;align-items:center;gap:9px;padding:8px 14px;color:var(--ink2);font-size:12px;font-weight:500;cursor:pointer;border-left:3px solid transparent;text-decoration:none;}
+.snv:hover{color:var(--ink);background:var(--card);}
+.snv.on{color:var(--teal);background:var(--teal-bg);border-left-color:var(--teal);}
+.snv i{font-size:16px;width:16px;}
+.nbadge{margin-left:auto;background:var(--card);color:var(--teal);font-size:10px;padding:1px 6px;border-radius:10px;}
+.sfoot{margin-top:auto;padding:12px 14px;border-top:1px solid var(--brd);}
+.acctpill{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink2);background:var(--bg);border-radius:8px;padding:7px 10px;}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.dot-g{background:var(--green);}.dot-r{background:var(--red);}
+/* topbar */
+.mn{flex:1;min-width:0;display:flex;flex-direction:column;}
+.top{height:48px;background:var(--card);border-bottom:1px solid var(--brd);display:flex;align-items:center;gap:12px;padding:0 20px;font-size:13px;}
+.top .hb{display:flex;align-items:center;gap:5px;margin-left:auto;background:var(--green-bg);border:1px solid #1a4a28;border-radius:16px;padding:3px 10px;font-size:11px;color:var(--green);}
+.cnt{padding:20px;overflow-y:auto;flex:1;}
+/* shared */
+.h1{font-size:18px;font-weight:600;letter-spacing:-.01em;}
+.card{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px 16px;}
+.card-gold{border-color:var(--gold);}
+.met{background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:12px;text-align:center;}
+.met .n{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1;}
+.met .l{font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;}
+.pill{font-size:10px;font-weight:600;padding:2px 8px;border-radius:16px;white-space:nowrap;display:inline-block;}
+.p-rev{background:var(--gold-bg);color:var(--gold);}.p-blk{background:var(--red-bg);color:var(--red);}
+.p-rdy{background:var(--green-bg);color:var(--green);}.p-live{background:var(--grey-bg);color:var(--ink2);}
+.p-teal{background:var(--teal-bg);color:var(--teal);}
+.rw{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--brd);}
+.rw:last-child{border-bottom:none;}
+.lbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);margin-bottom:8px;}
+.tab{font-size:11px;padding:5px 12px;border-radius:16px;border:1px solid var(--brd);background:transparent;color:var(--ink2);cursor:pointer;font-weight:500;}
+.tab.on{background:var(--teal);color:#0a1a14;border-color:var(--teal);font-weight:600;}
+.btn{height:30px;padding:0 12px;border-radius:7px;font-size:12px;font-weight:500;border:1px solid var(--brd2);background:var(--card2);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:5px;}
+.btn:hover{border-color:var(--teal);color:var(--teal);}
+.btn-t{background:var(--teal);border-color:var(--teal);color:#0a1a14;font-weight:600;}
+.btn-r{border-color:var(--red);color:var(--red);}
+.btn-g{background:var(--gold);border-color:var(--gold);color:#1a1d23;font-weight:600;}
+.dotb{width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid var(--brd);background:var(--card2);color:var(--ink3);cursor:pointer;}
+.back{background:none;border:none;color:var(--ink2);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:0;margin-bottom:14px;}
+/* table */
+table.lt{width:100%;border-collapse:collapse;}
+.lt th{text-align:left;font-size:11px;font-weight:600;color:var(--ink3);letter-spacing:.03em;padding:10px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;}
+.lt td{padding:10px 8px;border-bottom:1px solid var(--brd);vertical-align:middle;font-size:13px;}
+.lt tr:hover td{background:var(--card);cursor:pointer;}
+.thumb{width:44px;height:44px;border-radius:6px;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--ink4);flex-shrink:0;}
+.asin{color:var(--teal);font-size:12px;font-weight:500;}
+.brand{color:var(--gold);font-size:11px;}
+.ttl{font-size:13px;font-weight:500;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
+.comp{font-size:11px;display:inline-flex;align-items:center;gap:4px;}
+/* fields */
+.fld{background:var(--input);border:1px solid var(--brd);border-radius:8px;padding:10px 12px;margin-bottom:8px;}
+.fld .k{font-size:11px;color:var(--ink3);margin-bottom:3px;}
+.fld input,.fld textarea{width:100%;border:none;background:none;font-family:inherit;font-size:13px;color:var(--ink);resize:vertical;outline:none;}
+/* account cards */
+.acct{background:var(--card);border:1px solid var(--brd);border-radius:12px;padding:14px;cursor:pointer;}
+.acct:hover{border-color:var(--brd2);}
+.screen{display:none;}.screen.on{display:block;}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+</style></head>
+<body>
+<div class="app">
+<nav class="side">
+  <div class="logo"><span class="sq"></span> AltaScraper</div>
+  <div class="slbl">Workspace</div>
+  <a class="snv on" id="nav-accounts" onclick="go('accounts')"><i class="ti ti-building-store"></i> Accounts</a>
+  <a class="snv" id="nav-dashboard" onclick="go('dashboard')"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
+  <a class="snv" id="nav-queue" onclick="go('queue')"><i class="ti ti-list-check"></i> Listings <span class="nbadge">6</span></a>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-photo"></i> Image Studio</a>
+  <div class="slbl">Growth</div>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-chart-bar"></i> PPC</a>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-package"></i> Inventory</a>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-eye"></i> ASIN Monitor</a>
+  <div class="slbl">Operations</div>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-refresh"></i> Sync</a>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-shield-check"></i> Compliance</a>
+  <a class="snv" onclick="go('queue')"><i class="ti ti-settings"></i> Settings</a>
+  <div class="sfoot"><div class="acctpill"><span class="dot dot-g"></span> Jack Reacherd (UK)</div></div>
+</nav>
+<div class="mn">
+<div class="top"><span style="font-weight:500;" id="crumb">All accounts</span><div class="hb"><span class="dot dot-g"></span> Healthy</div></div>
+<div class="cnt">
+
+<!-- ACCOUNTS -->
+<section id="s-accounts" class="screen on">
+  <div style="margin-bottom:14px;"><span class="h1">Accounts</span><span style="color:var(--ink3);font-size:13px;margin-left:10px;">6 connected · <span style="color:var(--gold);">9 need you</span></span></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+    <div class="acct" onclick="go('dashboard')"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:600;">Jack Reacherd</span><span class="dot dot-g"></span></div><p style="font-size:12px;color:var(--ink3);margin-bottom:8px;">UK · A34CMN3Q5Q4U3Z</p><div style="display:flex;gap:5px;flex-wrap:wrap;"><span class="pill p-rev">3 review</span><span class="pill p-blk">1 blocked</span><span class="pill p-live">88 live</span></div></div>
+    <div class="acct" onclick="go('dashboard')"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:600;">Selvora</span><span class="dot dot-g"></span></div><p style="font-size:12px;color:var(--ink3);margin-bottom:8px;">UK · AV6F4N8287Q6F</p><div style="display:flex;gap:5px;flex-wrap:wrap;"><span class="pill p-rev">2 review</span><span class="pill p-rdy">14 ready</span><span class="pill p-live">41 live</span></div></div>
+    <div class="acct" onclick="go('dashboard')"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:600;">Nestwell</span><span class="dot dot-g"></span></div><p style="font-size:12px;color:var(--ink3);margin-bottom:8px;">UK · A8YN8LJZAAYT4</p><div style="display:flex;gap:5px;flex-wrap:wrap;"><span class="pill p-rev">2 review</span><span class="pill p-live">38 live</span></div></div>
+    <div class="acct" onclick="go('dashboard')"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-weight:600;">Sheelady</span><span class="dot dot-r"></span></div><p style="font-size:12px;color:var(--ink3);margin-bottom:8px;">US · deactivated</p><div style="display:flex;gap:5px;"><span class="pill p-blk">suspended</span></div></div>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<section id="s-dashboard" class="screen">
+  <button class="back" onclick="go('accounts')"><i class="ti ti-arrow-left"></i> All accounts</button>
+  <div style="margin-bottom:14px;"><span class="h1">Jack Reacherd (UK)</span><p style="font-size:12px;color:var(--ink3);margin-top:3px;"><span style="color:var(--gold);">4 need you</span> · synced 2m ago</p></div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;">
+    <div class="met" style="cursor:pointer;" onclick="go('queue')"><p class="n" style="color:var(--gold);">3</p><p class="l">Review</p></div>
+    <div class="met" style="cursor:pointer;" onclick="go('queue')"><p class="n" style="color:var(--red);">1</p><p class="l">Blocked</p></div>
+    <div class="met" style="cursor:pointer;" onclick="go('queue')"><p class="n" style="color:var(--green);">12</p><p class="l">Ready</p></div>
+    <div class="met" style="cursor:pointer;" onclick="go('queue')"><p class="n">88</p><p class="l">Live</p></div>
+    <div class="met"><p class="n" style="color:var(--gold);">£4.2k</p><p class="l">30d Rev</p></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px;margin-bottom:12px;">
+    <div class="card"><p class="lbl">Needs you first</p>
+      <div class="rw" onclick="go('detail')" style="cursor:pointer;"><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;">FPV drone goggles 600mW</p><p style="font-size:11px;color:var(--red);margin-top:2px;">UK prohibited · Ofcom</p></div><span class="pill p-blk">Blocked</span></div>
+      <div class="rw" onclick="go('detail')" style="cursor:pointer;"><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;">Window cleaner pole 3.5m</p><p style="font-size:11px;color:var(--ink3);margin-top:2px;">ready to check</p></div><span class="pill p-rev">Review</span></div>
+      <div class="rw" onclick="go('detail')" style="cursor:pointer;"><div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:500;">Ceiling fan 52-inch remote</p><p style="font-size:11px;color:var(--ink3);margin-top:2px;">ready to check</p></div><span class="pill p-rev">Review</span></div>
+    </div>
+    <div class="card"><p class="lbl">Compliance watch</p>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px;"><span style="font-size:22px;font-weight:600;color:var(--red);">1</span><span style="font-size:11px;color:var(--ink3);">flagged now</span></div>
+      <div style="font-size:12px;color:var(--ink2);line-height:1.9;"><div style="display:flex;justify-content:space-between;"><span>Prohibited</span><span style="color:var(--red);font-weight:600;">1</span></div><div style="display:flex;justify-content:space-between;"><span>Reference categories</span><span style="font-weight:600;">38</span></div></div>
+      <button class="btn btn-t" style="width:100%;margin-top:11px;justify-content:center;">Check a product</button>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:12px;">
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;"><p class="lbl" style="margin:0;">PPC · last 30 days</p><span style="font-size:11px;color:var(--ink4);">4 campaigns</span></div>
+      <div style="display:flex;gap:18px;margin-bottom:10px;"><div><p style="font-size:18px;font-weight:600;color:var(--gold);">£342</p><p style="font-size:10px;color:var(--ink3);">Spend</p></div><div><p style="font-size:18px;font-weight:600;color:var(--gold);">£1,410</p><p style="font-size:10px;color:var(--ink3);">Sales</p></div><div><p style="font-size:18px;font-weight:600;color:var(--green);">24%</p><p style="font-size:10px;color:var(--ink3);">ACOS</p></div></div>
+      <svg viewBox="0 0 320 48" style="width:100%;height:42px;" preserveAspectRatio="none"><rect x="0" y="20" width="40" height="28" rx="3" fill="#2dd4a822"/><rect x="48" y="14" width="40" height="34" rx="3" fill="#2dd4a833"/><rect x="96" y="18" width="40" height="30" rx="3" fill="#2dd4a822"/><rect x="144" y="8" width="40" height="40" rx="3" fill="#2dd4a844"/><rect x="192" y="10" width="40" height="38" rx="3" fill="#2dd4a833"/><rect x="240" y="4" width="40" height="44" rx="3" fill="#2dd4a844"/><rect x="288" y="6" width="32" height="42" rx="3" fill="#2dd4a833"/><polyline points="20,18 68,12 116,16 164,6 212,8 260,2 304,4" fill="none" stroke="#67e8f9" stroke-width="1.5"/></svg>
+    </div>
+    <div class="card"><p class="lbl">ASIN Monitor</p>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:10px;"><span style="font-size:22px;font-weight:600;color:var(--teal);">0</span><span style="font-size:11px;color:var(--ink3);">new sellers</span></div>
+      <div style="font-size:12px;color:var(--ink2);line-height:1.9;"><div style="display:flex;justify-content:space-between;"><span>Tracked ASINs</span><span style="font-weight:600;">—</span></div><div style="display:flex;justify-content:space-between;"><span>Marketplaces</span><span style="font-weight:600;">10 EU</span></div><div style="display:flex;justify-content:space-between;"><span>Next check</span><span style="color:var(--teal);">47m</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- LISTINGS TABLE -->
+<section id="s-queue" class="screen">
+  <button class="back" onclick="go('dashboard')"><i class="ti ti-arrow-left"></i> Dashboard</button>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;"><span class="h1">Listings</span><span style="font-size:12px;color:var(--ink3);">Jack Reacherd (UK) · 104 listings</span></div>
+  <div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap;"><button class="tab on">All</button><button class="tab">Drafts</button><button class="tab">Live</button><button class="tab">Needs review</button><button class="tab">Blocked</button></div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;">
+    <div class="met"><p class="n" style="color:var(--gold);">3</p><p class="l">Review</p></div>
+    <div class="met"><p class="n" style="color:var(--red);">1</p><p class="l">Blocked</p></div>
+    <div class="met"><p class="n" style="color:var(--green);">12</p><p class="l">Ready</p></div>
+    <div class="met"><p class="n">88</p><p class="l">Live</p></div>
+    <div class="met"><p class="n" style="color:var(--gold);">£4.2k</p><p class="l">30d Rev</p></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="lt">
+      <thead><tr><th style="width:52px;">Image</th><th>ASIN</th><th>Title</th><th>Price</th><th>Handling</th><th>Status</th><th>Compliance</th><th style="width:130px;">Actions</th></tr></thead>
+      <tbody>
+        <tr onclick="go('detail')"><td><div class="thumb"><i class="ti ti-photo"></i></div></td><td><span class="asin">B0DZ6NBZ... <i class="ti ti-external-link" style="font-size:10px;"></i></span><br><span style="font-size:10px;color:var(--ink4);">7.99_3Days</span></td><td><span class="ttl">Solar Deck Fence Lights Warm White LED Outdoor Step Lights 8 Pack</span><br><span class="brand">Jack Reacherd</span></td><td style="font-weight:500;">£12.74</td><td><span style="color:var(--teal);">2d</span></td><td><span class="pill p-rev">Review</span></td><td><span class="comp" style="color:var(--green);"><i class="ti ti-shield-check" style="font-size:12px;"></i> clear</span></td><td><div style="display:flex;gap:4px;"><button class="btn btn-t" onclick="event.stopPropagation();go('detail')">Review</button><button class="dotb" onclick="event.stopPropagation();"><i class="ti ti-dots"></i></button></div></td></tr>
+        <tr onclick="go('detail')"><td><div class="thumb"><i class="ti ti-photo"></i></div></td><td><span class="asin">B0G7M53... <i class="ti ti-external-link" style="font-size:10px;"></i></span><br><span style="font-size:10px;color:var(--ink4);">19.99_2Days</span></td><td><span class="ttl">Foldable 4K Dual Camera Drone WiFi FPV RC Quadcopter 2 Batteries</span><br><span class="brand">Jack Reacherd</span></td><td style="font-weight:500;">£39.99</td><td><span style="color:var(--teal);">2d</span></td><td><span class="pill p-blk">Blocked</span></td><td><span class="comp" style="color:var(--red);"><i class="ti ti-shield-x" style="font-size:12px;"></i> UK prohib.</span></td><td><div style="display:flex;gap:4px;"><button class="btn btn-r" onclick="event.stopPropagation();go('detail')">See why</button><button class="dotb" onclick="event.stopPropagation();"><i class="ti ti-dots"></i></button></div></td></tr>
+        <tr onclick="go('detail')"><td><div class="thumb"><i class="ti ti-photo"></i></div></td><td><span class="asin">B09BNL... <i class="ti ti-external-link" style="font-size:10px;"></i></span><br><span style="font-size:10px;color:var(--ink4);">8.99_5Days</span></td><td><span class="ttl">Heavy Duty Coir and Rubber Scraper Mat Natural</span><br><span class="brand">Jack Reacherd</span></td><td style="font-weight:500;">£23.99</td><td><span style="color:var(--ink3);">—</span></td><td><span class="pill p-rdy">Ready</span></td><td><span class="comp" style="color:var(--green);"><i class="ti ti-shield-check" style="font-size:12px;"></i> clear</span></td><td><div style="display:flex;gap:4px;"><button class="btn btn-t" onclick="event.stopPropagation();go('detail')">Submit</button><button class="dotb" onclick="event.stopPropagation();"><i class="ti ti-dots"></i></button></div></td></tr>
+        <tr onclick="go('detail')"><td><div class="thumb"><i class="ti ti-photo"></i></div></td><td><span class="asin">B0DXPX... <i class="ti ti-external-link" style="font-size:10px;"></i></span><br><span style="font-size:10px;color:var(--ink4);">9.99_2Days</span></td><td><span class="ttl">24V Dual Head Car Fan 360 Rotatable 2-Speed Cigarette Lighter Plug-In</span><br><span class="brand">Jack Reacherd</span></td><td style="font-weight:500;">£24.99</td><td><span style="color:var(--teal);">3d</span></td><td><span class="pill p-live">Live</span></td><td><span class="comp" style="color:var(--green);"><i class="ti ti-shield-check" style="font-size:12px;"></i> clear</span></td><td><div style="display:flex;gap:4px;"><button class="btn" onclick="event.stopPropagation();go('detail')">View</button><button class="dotb" onclick="event.stopPropagation();"><i class="ti ti-dots"></i></button></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- DETAIL -->
+<section id="s-detail" class="screen">
+  <button class="back" onclick="go('queue')"><i class="ti ti-arrow-left"></i> Listings</button>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;"><span class="h1" style="max-width:70%;">Solar Deck Fence Lights Warm White LED Outdoor Step Lights 8 Pack</span><span class="pill p-rev">Review</span></div>
+  <div style="display:flex;gap:8px;margin-bottom:14px;">
+    <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+    <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+    <div class="thumb" style="width:60px;height:60px;"><i class="ti ti-photo" style="font-size:20px;"></i></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--green-bg);border:1px solid #1a4a28;border-radius:8px;margin-bottom:14px;"><i class="ti ti-shield-check" style="color:var(--green);"></i><span style="font-size:12px;color:var(--green);">Compliance clear — no restricted-product or claim flags</span></div>
+  <div class="fld"><p class="k">Title</p><input value="Solar Deck Fence Lights Warm White LED Outdoor Step Lights 8 Pack"></div>
+  <div class="fld"><p class="k">Price</p><input value="£12.74" style="max-width:120px;"></div>
+  <div class="fld"><p class="k">Bullet points</p><textarea rows="3">Warm white glow for decks, fences, and steps. Solar-powered, no wiring. IP65 weatherproof for year-round outdoor use. Easy peel-and-stick install.</textarea></div>
+  <div style="display:flex;gap:6px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+    <button class="btn btn-t">Approve</button>
+    <button class="btn"><i class="ti ti-wand"></i> Auto-fix</button>
+    <button class="btn" onclick="go('optimize')"><i class="ti ti-trending-up"></i> Optimize</button>
+    <span style="flex:1;"></span>
+    <button class="dotb"><i class="ti ti-dots"></i></button>
+  </div>
+</section>
+
+<!-- OPTIMIZE -->
+<section id="s-optimize" class="screen">
+  <button class="back" onclick="go('detail')"><i class="ti ti-arrow-left"></i> Listing</button>
+  <span class="h1">Optimize listing</span>
+  <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--gold-bg);border:1px solid #5a4010;border-radius:8px;margin:12px 0 16px;"><i class="ti ti-alert-triangle" style="color:var(--gold);"></i><span style="font-size:12px;color:var(--gold);">Editing a <b>LIVE</b> listing · Jack Reacherd (UK) · ASIN B0DZ6NBZV2 · nothing sent until you approve</span></div>
+  <p class="lbl">Core listing fields</p>
+  <div class="fld"><p class="k">Title</p><input value="Solar Deck Fence Lights Warm White LED Outdoor Step Lights 8 Pack"></div>
+  <div class="fld"><p class="k">Bullet points</p><textarea rows="4">Warm white glow for decks, fences, and steps.
+Solar-powered, no wiring needed.
+IP65 weatherproof for year-round outdoor use.
+Easy peel-and-stick installation — no tools.</textarea></div>
+  <div class="fld"><p class="k">Description</p><textarea rows="3">Light up your outdoor space without wiring. These solar-powered deck lights charge during the day and glow warm white at dusk. IP65 rated for rain, snow, and humidity.</textarea></div>
+  <div class="card" style="margin:8px 0 14px;padding:0;overflow:hidden;">
+    <div style="padding:12px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;" onclick="var x=document.getElementById('attrs');x.style.display=x.style.display==='none'?'block':'none';"><span style="font-size:13px;font-weight:500;">All other attributes (18)</span><i class="ti ti-chevron-down" style="color:var(--ink3);"></i></div>
+    <div id="attrs" style="display:none;border-top:1px solid var(--brd);padding:6px 14px 12px;">
+      <div class="fld" style="margin-top:10px;"><p class="k">material</p><input value="ABS Plastic"></div>
+      <div class="fld"><p class="k">wattage · value</p><input value="0.2" style="max-width:120px;"></div>
+      <div class="fld" style="margin-bottom:0;"><p class="k">ip_rating</p><input value="IP65"></div>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+    <button class="btn" style="border-color:#7c3aed;color:#b9a5f0;"><i class="ti ti-wand"></i> AI optimize copy</button>
+    <button class="btn btn-t"><i class="ti ti-eye"></i> Review changes before pushing</button>
+    <button class="btn">Cancel</button>
+    <span style="flex:1;"></span>
+    <button class="btn" style="border-color:#7c3aed;color:#b9a5f0;"><i class="ti ti-wand"></i> Auto-fix loop</button>
+  </div>
+  <p style="font-size:11px;color:var(--ink4);margin-top:10px;">AI optimize rewrites title, bullets and description — you review before pushing. Auto-fix loop: Suggest → Apply → Preview (max 8 rounds).</p>
+</section>
+
+</div></div></div>
+<script>
+var screens=['accounts','dashboard','queue','detail','optimize'];
+var crumbs={accounts:'All accounts',dashboard:'Jack Reacherd (UK)',queue:'Jack Reacherd · Listings',detail:'Listing detail',optimize:'Optimize'};
+function go(n){screens.forEach(function(s){document.getElementById('s-'+s).classList.toggle('on',s===n);});
+['accounts','dashboard','queue'].forEach(function(x){var e=document.getElementById('nav-'+x);if(e)e.classList.remove('on');});
+var m={accounts:'accounts',dashboard:'dashboard',queue:'queue',detail:'queue',optimize:'queue'};
+var nav=document.getElementById('nav-'+m[n]);if(nav)nav.classList.add('on');
+document.getElementById('crumb').textContent=crumbs[n]||'';window.scrollTo(0,0);}
+</script>
+</body></html>

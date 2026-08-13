@@ -5,8 +5,8 @@ async function invRunBuild(){
   const sales = document.getElementById("inv_sales");
   const yoy = document.getElementById("inv_yoy");
   const pd = document.getElementById("inv_pd");
-  if(!pl3.files || !pl3.files[0]){ resBox.innerHTML='<div style="color:#e0696b;font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">3PL stock CSV is required.</div>'; return; }
-  if(!sales.files || !sales.files[0]){ resBox.innerHTML='<div style="color:#e0696b;font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">Daily sales CSV is required.</div>'; return; }
+  if(!pl3.files || !pl3.files[0]){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">3PL stock CSV is required.</div>'; return; }
+  if(!sales.files || !sales.files[0]){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">Daily sales CSV is required.</div>'; return; }
   resBox.innerHTML='<div class="cc"><span class="genspin"></span> Pulling FBA inventory from SP-API + computing replenishment for every SKU…</div>';
   const fd = new FormData();
   fd.append("pl3_file", pl3.files[0]);
@@ -21,19 +21,19 @@ async function invRunBuild(){
   try{
     const j = await (await fetch("/inventory/build",{method:"POST", body:fd})).json();
     if(!j.ok){
-      resBox.innerHTML='<div style="color:#e0696b;font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"build failed")+'</div>';
+      resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"build failed")+'</div>';
       return;
     }
     const s = j.summary || {};
     const c = j.sku_coverage || {};
     let html = '<div style="padding:12px;border:1px solid var(--line);border-radius:8px">';
-    html += '<div style="font-weight:600;margin-bottom:8px;color:#7fdca0">✓ Replenishment sheet built</div>';
+    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">✓ Replenishment sheet built</div>';
     html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:10px">';
     html += '<div><b>'+j.row_count+'</b> SKUs total</div>';
     html += '<div><b style="color:#ffd76b">'+(s.replenish_yes||0)+'</b> flagged for replenishment</div>';
-    html += '<div><b style="color:#7fdca0">'+(s.units_flagged||0)+'</b> units to reorder</div>';
+    html += '<div><b style="color:var(--ok)">'+(s.units_flagged||0)+'</b> units to reorder</div>';
     if(s.stockout_risk_skus){
-      html += '<div><b style="color:#e0696b">'+s.stockout_risk_skus+'</b> stockout-risk SKUs (DOS &lt; 14)</div>';
+      html += '<div><b style="color:var(--red)">'+s.stockout_risk_skus+'</b> stockout-risk SKUs (DOS &lt; 14)</div>';
     }
     html += '</div>';
     html += '<div style="font-size:11px;opacity:.75;margin-bottom:10px">SKU coverage — FBA (SP-API): '+(c.in_fba||0)+' · 3PL upload: '+(c.in_3pl||0)+' · Sales upload: '+(c.in_sales||0);
@@ -41,7 +41,7 @@ async function invRunBuild(){
     if(c.in_pd) html += ' · PD: '+c.in_pd;
     html += ' · Union: <b>'+(c.union||0)+'</b></div>';
     if(j.warnings && j.warnings.length){
-      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:#e3b768;font-size:11px">';
+      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:11px">';
       html += '<b>SP-API warnings:</b><br>' + j.warnings.map(esc).join("<br>");
       html += '</div>';
     }
@@ -49,7 +49,7 @@ async function invRunBuild(){
     html += '</div>';
     resBox.innerHTML = html;
   }catch(e){
-    resBox.innerHTML='<div style="color:#e0696b;font-size:12px;padding:8px">Request failed: '+esc(String(e))+'</div>';
+    resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px">Request failed: '+esc(String(e))+'</div>';
   }
 }
 
@@ -58,7 +58,7 @@ async function inv2Run(){
   const resBox = document.getElementById("inv2_result");
   const acctId = (CUR_ACCOUNT && CUR_ACCOUNT.id) || "";
   if(!acctId){
-    resBox.innerHTML = '<div style="color:#e0696b;font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">No workspace/account selected. Pick one from the sidebar first.</div>';
+    resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">No workspace/account selected. Pick one from the sidebar first.</div>';
     return;
   }
   resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model — fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)…</div>';
@@ -78,19 +78,19 @@ async function inv2Run(){
   try{
     const j = await (await fetch("/inventory/v2/run",{method:"POST", body:fd})).json();
     if(!j.ok){
-      resBox.innerHTML = '<div style="color:#e0696b;font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"run failed")+'</div>';
+      resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"run failed")+'</div>';
       return;
     }
     const s = j.summary || {};
     let html = '<div style="padding:12px;border:1px solid var(--line);border-radius:8px">';
-    html += '<div style="font-weight:600;margin-bottom:8px;color:#7fdca0">✓ Inventory model complete</div>';
+    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">✓ Inventory model complete</div>';
 
     // Bucket counts
     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">';
     html += '<div style="padding:4px 10px;border-radius:4px;background:#1c3a1c;color:#8adca0;border:1px solid #2a7a2a">ACTIVE '+(s.active||0)+'</div>';
     html += '<div style="padding:4px 10px;border-radius:4px;background:#3a3a1c;color:#ffe066;border:1px solid #7a7a2a">NEW_LAUNCH '+(s.new_launch||0)+'</div>';
     html += '<div style="padding:4px 10px;border-radius:4px;background:#3a2f1a;color:#ffce7a;border:1px solid #7a5a2a">DORMANT '+(s.dormant||0)+'</div>';
-    html += '<div style="padding:4px 10px;border-radius:4px;background:#3a1f1f;color:#ff8a8a;border:1px solid #7a2a2a">DEAD '+(s.dead||0)+'</div>';
+    html += '<div style="padding:4px 10px;border-radius:4px;background:#3a1f1f;color:var(--red);border:1px solid #7a2a2a">DEAD '+(s.dead||0)+'</div>';
     html += '<div style="padding:4px 10px;border-radius:4px;background:#1c2a3a;color:#8ac0ff;border:1px solid #2a5a7a">Total '+(s.total_skus||0)+'</div>';
     html += '</div>';
 
@@ -109,7 +109,7 @@ async function inv2Run(){
 
     // Sample alerts
     if(j.alerts_sample && j.alerts_sample.length){
-      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:#e3b768;font-size:11px">';
+      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:11px">';
       html += '<b>Sample alerts (first 10):</b>';
       html += '<ul style="margin:6px 0 0 18px">';
       j.alerts_sample.forEach(a=>{
@@ -118,7 +118,7 @@ async function inv2Run(){
       html += '</ul></div>';
     }
     if(j.three_pl_warnings && j.three_pl_warnings.length){
-      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:#e3b768;font-size:11px">';
+      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:11px">';
       html += '<b>3PL CSV warnings:</b><br>'+j.three_pl_warnings.map(esc).join("<br>");
       html += '</div>';
     }
@@ -129,7 +129,7 @@ async function inv2Run(){
     // Refresh the sidebar alert badge
     invBadgeRefresh();
   }catch(e){
-    resBox.innerHTML = '<div style="color:#e0696b;font-size:12px;padding:8px">Request failed: '+esc(String(e))+'</div>';
+    resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px">Request failed: '+esc(String(e))+'</div>';
   }
 }
 
