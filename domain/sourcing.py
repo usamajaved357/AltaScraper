@@ -29,6 +29,21 @@ THREE THINGS A CHECK CAN TELL US, NOT TWO
     This is the same rule as 0.00 not meaning free in domain/cogs.py. Unknown is
     not a value.
 
+THE PRICE COMES FROM listing/pricing.py, NOT FROM HERE
+    The price is the user's existing pricing rule and nothing else:
+
+        price = source_cost + Amazon fee + postage label + ads allowance + min profit
+
+    That is the same rule the generator uses to price a listing when it creates
+    it, which is the point -- a listing repriced here must not jump away from the
+    price it was created at. The competitor Buy Box is deliberately NOT consulted:
+    the user asked for price to follow the supplier only.
+
+    Two costs in that formula are easy to confuse and both are real:
+      * the supplier's postage TO US is part of landed_cost below;
+      * the postage label WE buy to send it on is shipping_label in the rule.
+    Leaving either out prices the unit at a loss.
+
 THREE GUARDS, AND WHAT EACH ONE ACTUALLY STOPS
     A supplier page can be misread -- a "from GBP 2.99", an accessory's price, a
     quantity break, the wrong currency. All of those make the source look CHEAPER
@@ -36,26 +51,29 @@ THREE GUARDS, AND WHAT EACH ONE ACTUALLY STOPS
     complaint. It is worth being exact about which guard catches which fault,
     because it is tempting to believe the floor catches everything and it does not:
 
-      floor_price   stops us pricing below our MARGIN RULE. It is computed FROM
-                    the source cost, so if that cost is wrong the floor is wrong
-                    with it. It cannot catch a misparse. This is the guard people
-                    assume covers them, and it is the one that does not.
-      min_price     an absolute number the user sets per SKU. This IS the backstop
-                    against a misread cost, because it does not depend on the
-                    reading. Nothing should be armed to 'live' without one.
+      the floor    stops us pricing below our COSTS. It is computed FROM the
+                   source cost, so if that cost is wrong the floor is wrong with
+                   it. It cannot catch a misparse. This is the guard people assume
+                   covers them, and it is the one that does not.
+      min_price    an absolute number the user sets per SKU. This IS the backstop
+                   against a misread cost, because it does not depend on the
+                   reading. Nothing should be armed to 'live' without one.
       max_change_pct catches the sudden misparse -- a cost that halves overnight
-                    produces a price move far outside the limit, and the decision
-                    is held for a human instead of pushed.
+                   produces a price move far outside the limit, and the decision
+                   is held for a human instead of pushed.
 
 A NOTE ON THE FEE RATE
-    referral_rate defaults to 0.15, matching _estimate_profit in dashboard.py.
-    Amazon's real referral fee varies by category (8% to 15%+), so this default
-    is a guide, not a quote. Where it is too LOW the floor is too low, which is
-    the dangerous direction -- so it is per-rule and should be set per category
-    for any SKU where margin is thin.
+    referral_rate defaults to 0.15, matching _estimate_profit in dashboard.py and
+    the generator's own fallback. Amazon's real referral fee varies by category
+    (8% to 15%+), and the generator can fetch the exact figure from SP-API's
+    Product Fees API. Doing that per SKU on a timer would be far too many calls,
+    so this uses the rate -- which means where the rate is too LOW the floor is
+    too low, the dangerous direction. It is per-rule for that reason and should be
+    set per category on any SKU where the margin is thin.
 """
-import math
 import datetime as _dt
+
+from listing import pricing as _pricing   # the ONE definition of the pricing rule
 
 
 # ---- what a check can be ---------------------------------------------------
@@ -70,9 +88,13 @@ DEFAULT_RULE = {
     "require_in_stock":     1,
     "max_dispatch_days":    None,         # None = no limit
     "handling_buffer_days": 2,            # promised time is ALWAYS above the source's
-    "min_margin_pct":       10.0,         # below this we will not sell at all
-    "target_margin_pct":    25.0,         # what we aim for when we can
     "referral_rate":        DEFAULT_REFERRAL_RATE,
+    # The three per-unit costs of the user's pricing rule. Defaults come from
+    # listing/pricing.py so there is one definition of what a unit costs to sell;
+    # they are here so a SKU that posts in a bigger box can say so.
+    "shipping_label":       _pricing.PRICING_RULE_SHIPPING_LABEL,
+    "ads_margin":           _pricing.PRICING_RULE_ADS_MARGIN,
+    "min_profit":           _pricing.PRICING_RULE_MIN_PROFIT,
     "min_price":            None,         # absolute floor, whatever the maths says
     "max_price":            None,         # absolute ceiling
     "max_change_pct":       25.0,         # a bigger jump than this waits for a human
@@ -106,16 +128,6 @@ def _num(v):
     except (TypeError, ValueError):
         return None
     return f if f == f and f not in (float("inf"), float("-inf")) else None
-
-
-def _round_up(v):
-    """2dp, rounded UP.
-
-    Always up, because every price this module produces is bounded below by a
-    floor. Rounding a floor DOWN would put the price under it, which is the one
-    direction that costs money.
-    """
-    return math.ceil(round(v * 100, 6)) / 100.0
 
 
 def _parse_ts(s):
@@ -245,41 +257,22 @@ def choose(pairs, rule, now):
 
 # ---- prices ----------------------------------------------------------------
 
-def _price_for_margin(cost, margin_pct, referral_rate):
-    """The price at which `margin_pct` of it is left after cost and referral fee.
+def floor_price(cost, rule=None):
+    """What this unit has to fetch, by the user's pricing rule. None if impossible.
 
-        price - price*fee - cost >= price*margin
-        price >= cost / (1 - fee - margin)
-
-    None when the denominator is zero or negative, which means the rule is
-    asking for a margin that cannot exist at that fee -- 90% margin on a 15%
-    fee, say. Returning None (and refusing to price) is right: any number
-    produced there would be nonsense, and a negative denominator would flip the
-    division and hand back a NEGATIVE price that still passes a "> 0" check.
+    Delegates to listing/pricing.py -- the same rule the generator prices with --
+    rather than working it out again here. `cost` is the LANDED cost of buying
+    the unit (supplier price plus their postage to us); the postage label we then
+    buy to send it to the customer is a separate line inside the rule.
     """
+    rule = rule_with_defaults(rule)
     c = _num(cost)
     if c is None or c < 0:
         return None
-    fee = _num(referral_rate)
-    m = _num(margin_pct)
-    if fee is None or m is None:
-        return None
-    denom = 1.0 - fee - (m / 100.0)
-    if denom <= 0.01:                  # 0.01 not 0: past here prices explode
-        return None
-    return _round_up(c / denom)
-
-
-def floor_price(cost, rule=None):
-    """The lowest price we are willing to sell at. Nothing may go below this."""
-    rule = rule_with_defaults(rule)
-    return _price_for_margin(cost, rule["min_margin_pct"], rule["referral_rate"])
-
-
-def target_price(cost, rule=None):
-    """The price we would like, if nothing else constrains it."""
-    rule = rule_with_defaults(rule)
-    return _price_for_margin(cost, rule["target_margin_pct"], rule["referral_rate"])
+    return _pricing.floor_from_rate(c, rule["referral_rate"],
+                                    shipping_label=rule["shipping_label"],
+                                    ads_margin=rule["ads_margin"],
+                                    min_profit=rule["min_profit"])
 
 
 # ---- the decision ----------------------------------------------------------
@@ -361,15 +354,18 @@ def decide(current, pairs, rule=None, now=None):
     out["source_id"] = src.get("id")
     out["inputs_age_mins"] = age_minutes(chk, now)
 
+    # The price IS the floor. The user asked for price to follow the supplier
+    # only, so unlike listing creation there is no competitor Buy Box pulling it
+    # up -- see compute_selling_price in listing/pricing.py, which does that and
+    # is deliberately not called here.
     floor = floor_price(cost, rule)
     if floor is None:
-        out["blocked_by"] = "margin rule cannot be met at any price"
-        out["reason"] = ("min margin %.1f%% plus %.0f%% referral fee leaves nothing "
-                         "to price into" % (rule["min_margin_pct"],
-                                            rule["referral_rate"] * 100))
+        out["blocked_by"] = "the pricing rule cannot be met at any price"
+        out["reason"] = ("a referral rate of %.0f%% leaves nothing to price into"
+                         % (rule["referral_rate"] * 100))
         return out
 
-    price = max(target_price(cost, rule) or floor, floor)
+    price = floor
     if rule["min_price"] is not None:
         price = max(price, float(rule["min_price"]))
 
@@ -380,10 +376,9 @@ def decide(current, pairs, rule=None, now=None):
         if floor > float(rule["max_price"]):
             out["action"] = "out_of_stock"
             out["quantity"] = 0
-            out["reason"] = ("cheapest source costs %.2f, which needs %.2f to make "
-                             "%.1f%% -- above the %.2f ceiling"
-                             % (cost, floor, rule["min_margin_pct"],
-                                float(rule["max_price"])))
+            out["reason"] = ("this costs %.2f landed and needs %.2f to cover fees, "
+                             "postage and profit -- above the %.2f ceiling"
+                             % (cost, floor, float(rule["max_price"])))
             return out
         price = min(price, float(rule["max_price"]))
 
@@ -392,11 +387,15 @@ def decide(current, pairs, rule=None, now=None):
     qty = int(rule["in_stock_quantity"])
 
     out.update({"price": price, "quantity": qty, "lead_days": lead})
+    # The breakdown goes in the reason because this line IS the audit trail --
+    # "why is it 18.24" has to be answerable from the log alone, months later.
     out["reason"] = ("%s of %d usable source(s): %s at %.2f landed; price %.2f "
-                     "(floor %.2f)%s"
+                     "= %.2f cost + %.2f fee + %.2f postage + %.2f ads + %.2f profit%s"
                      % (rule["strategy"], len(live) - len(rejections),
-                        src.get("label") or src.get("url"), cost, price, floor,
-                        "" if lead is None else ", handling %d days (%d + %d buffer)"
+                        src.get("label") or src.get("url"), cost, price,
+                        cost, price * rule["referral_rate"], rule["shipping_label"],
+                        rule["ads_margin"], rule["min_profit"],
+                        "" if lead is None else "; handling %d days (%d + %d buffer)"
                         % (lead, int(disp), int(rule["handling_buffer_days"]))))
 
     # ---- guards against acting on a number that only LOOKS right ----------

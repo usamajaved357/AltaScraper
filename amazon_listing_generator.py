@@ -712,48 +712,18 @@ def get_fees(asin: str, price: float, creds: dict) -> dict:
 # If the competitor is HIGHER than the floor -> use competitor (more profit).
 # If the competitor is LOWER or MISSING -> use the floor (never sell at a loss).
 # Defaults come from constants below but can be overridden per-account/product.
-
-PRICING_RULE_SHIPPING_LABEL = 3.00   # £ per unit -- Royal Mail Tracked 48 baseline
-PRICING_RULE_ADS_MARGIN     = 2.00   # £ per unit -- estimated CPA / PPC budget
-PRICING_RULE_MIN_PROFIT     = 1.00   # £ per unit -- absolute minimum to accept an order
-
-
-def compute_selling_price(source_cost: float,
-                          amazon_fees: float,
-                          competitor_price: float,
-                          shipping_label: float = PRICING_RULE_SHIPPING_LABEL,
-                          ads_margin:     float = PRICING_RULE_ADS_MARGIN,
-                          min_profit:     float = PRICING_RULE_MIN_PROFIT) -> dict:
-    """Apply the user's pricing rule.
-
-    Returns dict with:
-      selling_price -- what to charge on the listing
-      floor         -- the calculated cost-plus floor
-      rule_source   -- 'competitor' (matched Buy Box) | 'floor' (used cost formula)
-      breakdown     -- component list for the log line
-
-    NOTE: Amazon fees are price-sensitive (referral fee is a % of selling price),
-    so a naive floor with a fixed fee estimate under-prices. This is handled by
-    the caller: it computes an initial fee at a reasonable seed price, calls this
-    function, then re-fetches fees at the new price and calls this again once.
-    Two passes is enough to converge for standard referral rates.
-    """
-    floor = round(source_cost + amazon_fees + shipping_label + ads_margin + min_profit, 2)
-    competitor_price = float(competitor_price or 0)
-    if competitor_price > floor:
-        chosen = competitor_price
-        source = "competitor (higher than floor)"
-    else:
-        chosen = floor
-        source = "floor (competitor missing or below floor)"
-    return {
-        "selling_price": chosen,
-        "floor":         floor,
-        "rule_source":   source,
-        "breakdown":     (f"cost {source_cost:.2f} + fees {amazon_fees:.2f} "
-                          f"+ ship {shipping_label:.2f} + ads {ads_margin:.2f} "
-                          f"+ profit {min_profit:.2f} = floor {floor:.2f}"),
-    }
+#
+# MOVED to listing/pricing.py, unchanged, because the source repricer has to
+# price against the SAME rule -- a second formula would have drifted from this
+# one immediately, and its first draft already had (it left out the postage
+# label and the ads allowance, £5 a unit). Imported here so every existing
+# caller and every reference to the constants keeps working exactly as before.
+from listing.pricing import (          # single source of the pricing rule
+    PRICING_RULE_SHIPPING_LABEL,
+    PRICING_RULE_ADS_MARGIN,
+    PRICING_RULE_MIN_PROFIT,
+    compute_selling_price,
+)
 
 
 def calculate_financials(source_cost: float, selling_price: float,

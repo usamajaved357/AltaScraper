@@ -131,6 +131,14 @@ function LOGIC_REGISTRY(){
       `<b>Bulk upload.</b> The COGS CSV (<code>/cogs/upload</code>) accepts SKU + cost rows and stores them as per-account overrides, so you can set many at once.`,
       `<b>Profit is an estimate.</b> <code>_estimate_profit</code> = price − COGS − a <b>15% referral fee</b> (default). It's a quick margin guide, not Amazon's exact fee — real fees vary by category and include other charges.`,
       `<b>Stored locally</b> in your COGS overrides file, keyed by account+SKU.` ]},
+    // ---------- PRICING RULE ----------
+    pricing_rule: { title:"How your selling price is worked out", steps:[
+      `<b>The rule, in full.</b> <code>price = what the item cost you + Amazon's referral fee + £3 postage label + £2 ads allowance + £1 minimum profit</code>. Every part of that is money that actually leaves your account for that one unit.`,
+      `<b>The two everyone forgets.</b> The <b>£3 postage label</b> (Royal Mail Tracked 48) and the <b>£2 ads allowance</b> are real costs and they add up to £5 a unit. Leave them out and a sale that looks profitable is quietly a loss — on a £9.50 item, a rule without them would price at about £15.84 when £18.24 is what actually breaks even with a pound of profit.`,
+      `<b>The fee is a percentage of the price, which depends on the fee.</b> Two honest ways round it: when creating a listing the app asks Amazon's Fees API for the exact figure and prices twice to settle; when the repricer is checking many products on a timer it solves the sum directly at your category's rate instead of making an API call per product.`,
+      `<b>Creating vs repricing differ in ONE way.</b> When a listing is <b>created</b>, if a competitor's Buy Box sits <i>above</i> your floor the price is raised to match it — more profit for the same unit. When the <b>repricer</b> follows a supplier's price change it uses the floor only, so your price tracks your supplier and nothing else.`,
+      `<b>One definition, two callers.</b> Both live in <code>listing/pricing.py</code>. They were deliberately not written twice — a second copy drifted from this one immediately during development and produced a floor £5.57 too low.`,
+      `<b>Change the £3 / £2 / £1</b> in <code>listing/pricing.py</code>. It re-prices everything, so it is a visible edit rather than a settings box.` ]},
     // ---------- SUBMIT LIVE ----------
     submit_live: { title:"How 'Submit · go live' publishes to Amazon", steps:[
       `<b>Double-confirms the destination.</b> First it calls <code>/submit/target</code> to find the <b>active account</b> and marketplace, then shows you a confirm dialog <b>naming that exact account</b> — so you can't publish to the wrong store.`,
@@ -170,7 +178,7 @@ function howWorks(which){
 function refreshStaticHowPanels(){
   const map = {
     "genhow":  ['gen_pipeline','gen_compliance','gen_ip','submit_live'],
-    "gridhow": ['grid_load','grid_enrich','grid_sync','cogs']
+    "gridhow": ['grid_load','grid_enrich','grid_sync','cogs','pricing_rule']
   };
   Object.keys(map).forEach(function(id){
     const el=document.getElementById(id);

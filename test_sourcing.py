@@ -49,24 +49,47 @@ check("an ended listing has no cost", S.landed_cost(chk(status=S.GONE)), None)
 check("a negative price is not a bargain", S.landed_cost(chk(price=-5.0)), None)
 
 
-print("\n=== the price that leaves the margin we asked for ===")
-# 15% referral + 10% min margin -> price = cost / 0.75
-check("floor on a 10.00 cost", S.floor_price(10.00), 13.34)
-check("  rounded UP, never down (13.333 -> 13.34)", S.floor_price(10.00) >= 10 / 0.75, True)
-check("  an exact answer is not inflated a penny", S.floor_price(15.00), 20.0)
-# 15% referral + 25% target margin -> price = cost / 0.60
-check("target on a 10.00 cost", S.target_price(10.00), 16.67)
-check("floor on a 9.50 cost", S.floor_price(9.50), 12.67)
-check("target on a 9.50 cost", S.target_price(9.50), 15.84)
+print("\n=== the price is the user's own rule, not a second one ===")
+# cost + 15% fee + 3.00 postage label + 2.00 ads + 1.00 profit, solved for price:
+#   (cost + 6.00) / 0.85
+from listing import pricing as P
 
-print("  -- a margin that cannot exist --")
-check("90% margin on a 15% fee is impossible",
-      S.floor_price(10.00, {"min_margin_pct": 90.0}), None)
-check("  and does NOT come back as a negative price",
-      S.floor_price(10.00, {"min_margin_pct": 95.0}), None)
-check("  85% is refused too, not priced at thousands",
-      S.floor_price(10.00, {"min_margin_pct": 84.5}), None)
+check("9.50 landed -> 18.24", S.floor_price(9.50), 18.24)
+check("10.00 landed -> 18.83", S.floor_price(10.00), 18.83)
+check("15.00 landed -> 24.71", S.floor_price(15.00), 24.71)
+check("rounded UP, never down", S.floor_price(9.50) >= 15.50 / 0.85, True)
 check("no cost, no floor", S.floor_price(None), None)
+
+print("  -- it is the SAME rule the generator prices with --")
+# The generator knows the fee in pounds; the repricer only knows the rate. The
+# two must land on the same number or a repriced listing would jump away from
+# the price it was created at.
+r = S.floor_price(9.50)
+check("solved from the rate", r, 18.24)
+check("  agrees with the generator's own function fed that price's fee",
+      P.floor_from_fees(9.50, round(r * 0.15, 3)), 18.24)
+check("  and the generator still prices as it always did",
+      P.compute_selling_price(9.50, 2.736, 0)["floor"], 18.24)
+check("  competitor above the floor still wins THERE (creation only)",
+      P.compute_selling_price(9.50, 2.736, 25.00)["selling_price"], 25.00)
+
+print("  -- and it is NOT the percentage-margin model that was wrong --")
+check("the discarded formula would have said 12.67; this does not",
+      S.floor_price(9.50) != 12.67, True)
+check("  because postage and ads are real money",
+      round(S.floor_price(9.50) - (9.50 / 0.75), 2), 5.57)
+
+print("  -- a SKU that posts in a bigger box can say so --")
+check("6.00 postage instead of 3.00",
+      S.floor_price(9.50, {"shipping_label": 6.00}), 21.77)
+
+print("  -- a rate that cannot be priced against --")
+check("a 100% referral rate is refused, not divided by zero",
+      S.floor_price(10.00, {"referral_rate": 1.0}), None)
+check("  and does NOT come back as a negative price",
+      S.floor_price(10.00, {"referral_rate": 1.5}), None)
+check("  99% is refused too, not priced at thousands",
+      S.floor_price(10.00, {"referral_rate": 0.995}), None)
 
 
 print("\n=== a source is only usable if we can say why it is ===")
@@ -159,23 +182,26 @@ print("\n=== a normal day: the price follows the supplier ===")
 d = S.decide(CUR, [(src(1, label="eBay A"), chk(price=8.00, shipping=1.50, dispatch=3))],
              {}, NOW)
 check("it updates", d["action"], "update")
-check("  9.50 landed -> 15.84 at a 25% target", d["price"], 15.84)
+check("  8.00 + 1.50 postage = 9.50 landed -> 18.24", d["price"], 18.24)
 check("  handling is the supplier's 3 days plus a 2 day buffer", d["lead_days"], 5)
 check("  never the supplier's promise on its own", d["lead_days"] > 3, True)
 check("  quantity restored", d["quantity"], 5)
 check("  and it names the source it used", d["source_id"], 1)
-truthy("  the reason is readable", "landed" in d["reason"])
+truthy("  the reason shows the whole sum", "+ 3.00 postage + 2.00 ads" in d["reason"])
 
 print("  -- the supplier drops their price, so do we --")
-cheaper = S.decide({"price": 15.84, "quantity": 5, "lead_days": 5},
+cheaper = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
                    [(src(1), chk(price=7.00, shipping=1.50, dispatch=3))], {}, NOW)
-check("cheaper source -> lower price", cheaper["price"], 14.17)
-check("  which is a real drop", cheaper["price"] < 15.84, True)
+check("cheaper source -> lower price", cheaper["price"], 17.06)
+check("  which is a real drop", cheaper["price"] < 18.24, True)
 
 print("  -- and when they put it up --")
-dearer = S.decide({"price": 15.84, "quantity": 5, "lead_days": 5},
+dearer = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
                   [(src(1), chk(price=9.00, shipping=1.50, dispatch=3))], {}, NOW)
-check("dearer source -> higher price", dearer["price"], 17.50)
+check("dearer source -> higher price", dearer["price"], 19.42)
+
+print("  -- the competitor is NOT consulted (you asked for source-only) --")
+check("no competitor field is even accepted", "competitor" in S.DEFAULT_RULE, False)
 
 print("  -- a slower supplier stretches the handling time --")
 slow = S.decide(CUR, [(src(1), chk(price=8.00, shipping=1.50, dispatch=8))], {}, NOW)
@@ -184,30 +210,30 @@ check("8 day dispatch -> 10 day handling", slow["lead_days"], 10)
 
 print("\n=== the guards, and what each one actually catches ===")
 print("  -- min_price is the backstop against a MISREAD cost --")
-# The floor cannot help here: it is computed from the same wrong cost. 0.50
-# 'landed' yields a floor of 0.67 and a price of 0.84, all internally consistent
-# and all catastrophic. Only an absolute number the user set stops it.
+# The floor cannot help here: it is computed from the same wrong cost. A 0.50
+# 'landed' reading yields a floor of 7.65, internally consistent and still a
+# disaster. Only an absolute number the user set stops it.
 misread = chk(price=0.50, shipping=0.0, dispatch=3)
-d = S.decide({"price": 15.84, "quantity": 5, "lead_days": 5},
+d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
              [(src(1), misread)], {"max_change_pct": 100.0}, NOW)
-check("without min_price the floor does NOT save you", d["price"], 0.84)
-d = S.decide({"price": 15.84, "quantity": 5, "lead_days": 5},
+check("without min_price the floor does NOT save you", d["price"], 7.65)
+d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
              [(src(1), misread)], {"max_change_pct": 100.0, "min_price": 12.00}, NOW)
 check("with min_price the price cannot go under it", d["price"], 12.0)
 
 print("  -- max_change_pct catches the sudden misparse --")
-d = S.decide({"price": 15.84, "quantity": 5, "lead_days": 5},
+d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
              [(src(1), misread)], {}, NOW)
-check("a 95% drop is held, not pushed", d["action"], "none")
+check("a 58% drop is held, not pushed", d["action"], "none")
 truthy("  and says how far out it was", "exceeds" in d["blocked_by"])
 check("a move inside the limit goes through",
       S.decide({"price": 15.00, "quantity": 5, "lead_days": 5},
                [(src(1), chk(price=8.00, shipping=1.50))], {}, NOW)["action"], "update")
 
-print("  -- floor_price stops the MARGIN rule being broken --")
+print("  -- the floor still holds when min_price is BELOW it --")
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0, dispatch=3))],
-             {"target_margin_pct": 0.0}, NOW)
-check("a 0% target still cannot price below the floor", d["price"], 12.67)
+             {"min_price": 5.00}, NOW)
+check("a low min_price cannot drag the price under the rule", d["price"], 18.24)
 
 print("  -- a ceiling under the floor means we cannot sell it at all --")
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
@@ -215,30 +241,33 @@ d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
 check("out of stock rather than at a loss", d["action"], "out_of_stock")
 truthy("  explaining the arithmetic", "ceiling" in d["reason"])
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
-             {"max_price": 14.00}, NOW)
-check("a ceiling above the floor just caps the price", d["price"], 14.0)
+             {"min_price": 25.00, "max_price": 20.00}, NOW)
+check("a ceiling above the floor caps a raised price", d["price"], 20.0)
 
-print("  -- an impossible margin rule prices nothing --")
-d = S.decide(CUR, [(src(1), chk(price=10.0))], {"min_margin_pct": 90.0}, NOW)
+print("  -- a rate the rule cannot price against stops everything --")
+d = S.decide(CUR, [(src(1), chk(price=10.0))], {"referral_rate": 1.0}, NOW)
 check("held, not guessed", d["action"], "none")
-truthy("  and named", "margin" in d["blocked_by"])
+truthy("  and named", "pricing rule" in d["blocked_by"])
 
 print("  -- and we do not push trivia --")
-d = S.decide({"price": 15.90, "quantity": 5, "lead_days": 5},
+d = S.decide({"price": 18.30, "quantity": 5, "lead_days": 5},
              [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], {}, NOW)
 check("a 6p difference is left alone", d["action"], "none")
 truthy("  politely", "already within" in d["reason"])
-d = S.decide({"price": 15.90, "quantity": 5, "lead_days": 9},
+d = S.decide({"price": 18.30, "quantity": 5, "lead_days": 9},
              [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], {}, NOW)
 check("but a wrong handling time is still worth fixing", d["action"], "update")
 
 
 print("\n=== rules: unset falls back, set wins ===")
-r = S.rule_with_defaults({"min_margin_pct": 20.0})
-check("the one you set", r["min_margin_pct"], 20.0)
+r = S.rule_with_defaults({"shipping_label": 6.0})
+check("the one you set", r["shipping_label"], 6.0)
 check("  the rest defaulted", r["referral_rate"], 0.15)
 check("a NULL column does not wipe a default",
-      S.rule_with_defaults({"min_margin_pct": None})["min_margin_pct"], 10.0)
+      S.rule_with_defaults({"shipping_label": None})["shipping_label"], 3.00)
+check("the per-unit costs default to the shared pricing rule",
+      (r["ads_margin"], r["min_profit"]),
+      (P.PRICING_RULE_ADS_MARGIN, P.PRICING_RULE_MIN_PROFIT))
 check("'no limit' is the default anyway",
       S.rule_with_defaults({})["max_dispatch_days"], None)
 check("nothing at all is still a complete rule",
