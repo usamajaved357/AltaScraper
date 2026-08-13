@@ -137,6 +137,7 @@ async function salesReload(){
     // After the numbers, not before: the options depend on the range, and the
     // grid is what someone is waiting for.
     salesFillAsins();
+    salesLoadToday();
   }catch(e){
     const g=document.getElementById("sales_grid");
     if(g) g.innerHTML='<div class="empty">Could not load sales: '+_sEsc(String(e))+'</div>';
@@ -154,6 +155,40 @@ function salesDrawRange(sum, av){
   let t = sum.start+" to "+sum.end;
   if(a.last_date) t += " · Amazon has data to "+a.last_date;
   el.textContent=t;
+}
+
+/* ---- today so far ------------------------------------------------------
+ * Kept visually apart from the grid, because it is a DIFFERENT measurement:
+ * orders counted as they are placed, not as Amazon finally settled them. It will
+ * not tie out to the grid and is not meant to, so it says where it came from and
+ * what it is being compared against.
+ */
+async function salesLoadToday(){
+  const el=document.getElementById("sales_today");
+  if(!el) return;
+  try{
+    const j=await (await fetch("/sales/today?"+_sQuery())).json();
+    if(!j || !j.ok){ el.innerHTML=""; return; }
+    const t=j.today||{}, y=j.yesterday||null, d=j.delta_pct||{};
+    const cur=t.currency||"";
+    function bit(label, v, kind, key){
+      const dp=d[key];
+      const arrow = (dp===null||dp===undefined) ? "" :
+        ' <span class="'+(dp>=0?"good":"bad")+'">'+(dp>=0?"↑":"↓")+Math.abs(dp).toFixed(1)+'%</span>';
+      return '<span class="todaybit"><b>'+_sEsc(_sNum(v,kind,cur))+'</b>'+arrow
+           + ' <span class="cc">'+_sEsc(label)+'</span></span>';
+    }
+    let extra="";
+    if(t.pending) extra += ' · '+t.pending+' pending (no value yet)';
+    if(j.truncated) extra += ' · partial — very busy day';
+    el.innerHTML = '<div class="todaystrip"><span class="todaylead">Today so far</span>'
+      + bit("revenue", t.revenue, "money", "revenue")
+      + bit("orders", t.orders, "count", "orders")
+      + bit("units", t.units, "count", "units")
+      + '<span class="cc todaynote">live from orders'
+      + (y ? ' · vs '+_sEsc(j.compared_to||"the same time yesterday") : "")
+      + _sEsc(extra) + '</span></div>';
+  }catch(e){ el.innerHTML=""; }
 }
 
 /* ---- stat cards -------------------------------------------------------- */

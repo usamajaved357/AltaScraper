@@ -210,9 +210,81 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                             "%s has no Amazon account of its own, so it cannot have "
                             "its own sales." % (acc.get("label") or wsid)}), 400
         b = request.get_json(silent=True) or {}
+        days = int(b.get("days") or 30)
+        creds = _acc_mod.account_creds(acc)
         res = _sf.sync(CONFIG_PATH, wsid, mkt,
                        _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
-                       _acc_mod.account_creds(acc),
-                       days_back=int(b.get("days") or 30),
+                       creds, days_back=days,
                        budget=int(b.get("budget") or _sf.BACKFILL_PER_PASS))
+
+        # Fees and refunds come from a DIFFERENT Amazon API, so it gets its own
+        # result rather than being folded into the sales one. If Finances fails
+        # and Sales succeeded, that is a partial success and the screen should be
+        # able to say which half worked.
+        if b.get("finance", True):
+            from domain import finance_fetch as _ff
+            res["finance"] = _ff.sync(CONFIG_PATH, wsid, mkt, creds,
+                                      account_id=(acc or {}).get("id") or wsid,
+                                      days_back=days,
+                                      next_token=b.get("finance_token"))
         return jsonify(res), (200 if res.get("ok") else 502)
+
+    @app.route("/sales/today")
+    def sales_today():
+        """Today so far, from the Orders API -- the one thing the report cannot have.
+
+        Deliberately NOT merged into the grid. Orders are counted here the moment
+        they are placed and in the report only once Amazon has settled what the
+        order finally was, so the two disagree by design. Shown beside the grid,
+        labelled as live, rather than as a column pretending to be the same
+        measurement.
+        """
+        from domain import orders_live as _ol
+        try:
+            import accounts as _acc_mod
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        if not acc or not _acc_mod.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error":
+                            "Live orders need this workspace's own Amazon "
+                            "account."}), 400
+        try:
+            return jsonify(_ol.today(
+                mkt,
+                _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
+                _acc_mod.account_creds(acc),
+                compare=(request.args.get("compare", "1") != "0")))
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 502
+
+    @app.route("/sales/finance-raw")
+    def sales_finance_raw():
+        """One page of financial events, EXACTLY as Amazon sends it.
+
+        A diagnostic, not part of the dashboard. The finance parser is written to
+        Amazon's documented shape, and documented is not observed -- CLAUDE.md
+        Rule 4 says read the real response rather than assume it. Open this once
+        against a live account, confirm the field names, then it has done its job.
+        """
+        from domain import finance_fetch as _ff
+        try:
+            import accounts as _acc_mod
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        acc, wsid, mkt = _scope()
+        if not mkt or not acc:
+            return jsonify({"ok": False, "error": "open an account workspace first"}), 400
+        if not _acc_mod.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error":
+                            "borrowed credentials cannot read another account's "
+                            "finances"}), 400
+        start, end, _p = _range()
+        try:
+            return jsonify({"ok": True, "start": start, "end": end,
+                            "raw": _ff.raw_sample(mkt, _acc_mod.account_creds(acc),
+                                                  start, end)})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:400]}), 502

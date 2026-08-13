@@ -101,6 +101,48 @@ CREATE TABLE IF NOT EXISTS ads_daily (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ads_key
     ON ads_daily(workspace_id, marketplace, date, asin);
 
+-- WHAT AMAZON TOOK, AND WHAT WENT BACK TO BUYERS.
+--
+-- From the Finances API (listFinancialEvents), which is a different thing from
+-- the Sales & Traffic report: that one says what was ORDERED, this says what was
+-- actually CHARGED and REFUNDED once the money moved. The two never agree
+-- exactly and are not meant to -- an order placed on the 1st and refunded on the
+-- 9th is revenue on the 1st and a refund on the 9th.
+--
+-- FEES ARE STORED POSITIVE. Amazon sends them negative, because from its side
+-- they are money leaving. On a screen "Amazon fees: 3.00" is what a person
+-- means, and a column that is sometimes negative and sometimes not is the kind
+-- of thing that silently flips a profit calculation.
+--
+-- Financial events are keyed by SELLER SKU, not ASIN. The SKU is mapped to an
+-- ASIN through the live catalogue snapshot where one exists; where it does not,
+-- the row still lands on the account total (asin '*') so the headline figures
+-- stay right even when a SKU cannot be attributed. A fee that cannot be placed
+-- against a product is still a fee you paid.
+CREATE TABLE IF NOT EXISTS finance_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,
+    asin TEXT NOT NULL DEFAULT '*',
+    referral_fees REAL,                 -- Amazon's commission
+    fba_fees REAL,                      -- fulfilment, storage, weight-based
+    other_fees REAL,                    -- everything else Amazon charged
+    refunds REAL,                       -- principal returned to buyers
+    refund_units INTEGER,
+    refund_fees_returned REAL,          -- the part of the fee Amazon gave back
+    reimbursements REAL,                -- money Amazon paid back for its own errors
+    promos REAL,                        -- discounts you funded
+    principal REAL,                     -- what buyers were charged, per Finances
+    currency TEXT,
+    source TEXT,                        -- 'finances_api' | 'settlement' later
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_key
+    ON finance_daily(workspace_id, marketplace, date, asin);
+CREATE INDEX IF NOT EXISTS idx_finance_range
+    ON finance_daily(workspace_id, marketplace, date);
+
 -- WHAT DATES ACTUALLY HAVE DATA.
 --
 -- Asked BEFORE any data is requested. Amazon delivers sales with a lag and never

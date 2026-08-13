@@ -179,23 +179,67 @@ def availability(config_path, workspace_id, marketplace):
     return out
 
 
+_FIN_COLS = ("referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
+             "refund_fees_returned", "reimbursements", "promos", "principal")
+
+
 def series(config_path, workspace_id, marketplace, start, end, asin=None):
-    """Daily rows for a range. asin=None means the account total ('*')."""
+    """Daily rows for a range, sales joined with ads and finance.
+
+    The dates come from the UNION of the three sources, not from sales alone. A
+    refund posts on the day the money went back, which can easily be a day with
+    no sales of its own -- keying off sales would drop that refund entirely and
+    quietly overstate what you kept.
+    """
     conn = _db.get_db(config_path)
-    rows = conn.execute(
+    key = asin or "*"
+    sales = {r["date"]: dict(r) for r in conn.execute(
         "SELECT * FROM sales_daily WHERE workspace_id=? AND marketplace=? "
-        "AND date>=? AND date<=? AND asin=? ORDER BY date",
-        (workspace_id, marketplace, start, end, asin or "*")).fetchall()
-    sales = [dict(r) for r in rows]
+        "AND date>=? AND date<=? AND asin=?",
+        (workspace_id, marketplace, start, end, key)).fetchall()}
     ads = {r["date"]: dict(r) for r in conn.execute(
         "SELECT * FROM ads_daily WHERE workspace_id=? AND marketplace=? "
         "AND date>=? AND date<=? AND asin=?",
-        (workspace_id, marketplace, start, end, asin or "*")).fetchall()}
-    for s in sales:
-        a = ads.get(s["date"]) or {}
+        (workspace_id, marketplace, start, end, key)).fetchall()}
+    from domain import finance_data as _fd
+    fin = _fd.series(config_path, workspace_id, marketplace, start, end, key)
+
+    out = []
+    for d in sorted(set(sales) | set(ads) | set(fin)):
+        row = dict(sales.get(d) or {"date": d, "asin": key, "currency": ""})
+        row["date"] = d
+        a = ads.get(d) or {}
         for k in ("impressions", "clicks", "spend", "ad_orders", "ad_sales"):
-            s[k] = a.get(k)
-    return sales
+            row[k] = a.get(k)
+        f = fin.get(d) or {}
+        for k in _FIN_COLS:
+            row[k] = f.get(k)
+        if not row.get("currency"):
+            row["currency"] = f.get("currency") or ""
+        # Derived per DAY as well as per bucket, because a bucket that sums
+        # already-derived days would be summing ratios. These two are additive,
+        # so summing them is safe; the rates below are recomputed instead.
+        fees = [row.get(k) for k in ("referral_fees", "fba_fees", "other_fees")]
+        fees = [float(x) for x in fees if x is not None]
+        row["total_fees"] = round(sum(fees), 2) if fees else None
+        if row["total_fees"] is not None or row.get("refunds") is not None:
+            # PRINCIPAL, not ordered_sales. Both are revenue, but they are dated
+            # differently -- ordered_sales by order date, principal by the date
+            # the money moved, which is the same basis as the fees and refunds
+            # below. Mixing the two produces a figure that is neither: on a live
+            # UK account it read 246.53 when the money-basis answer was 281.52,
+            # and nothing on screen could have shown which was meant.
+            gross = float(row.get("principal") or 0.0)
+            row["net_proceeds"] = round(
+                gross - float(row.get("total_fees") or 0.0)
+                      - float(row.get("refunds") or 0.0)
+                      - float(row.get("promos") or 0.0)
+                      + float(row.get("refund_fees_returned") or 0.0)
+                      + float(row.get("reimbursements") or 0.0), 2)
+        else:
+            row["net_proceeds"] = None
+        out.append(row)
+    return out
 
 
 def products(config_path, workspace_id, marketplace, start, end):
@@ -257,6 +301,26 @@ METRICS = [
     ("acos",              "ACOS",                  "pct",   "down", ("rate", "spend", "ad_sales")),
     ("roas",              "ROAS",                  "count", "up",   ("ratio", "ad_sales", "spend")),
     ("tacos",             "TACOS",                 "pct",   "down", ("rate", "spend", "ordered_sales")),
+    # ---- from the Finances API: what Amazon took and what went back ---------
+    ("referral_fees",     "Referral fees",         "money", "down", ("sum",)),
+    ("fba_fees",          "FBA fees",              "money", "down", ("sum",)),
+    ("other_fees",        "Other fees",            "money", "down", ("sum",)),
+    ("total_fees",        "Amazon fees",           "money", "down", ("sum",)),
+    # Over PRINCIPAL, not ordered_sales: fees are dated when the money moved and
+    # ordered_sales when the order was placed, so dividing one by the other gives
+    # a rate for no period at all. On live data that read 70% when the true share
+    # of what buyers were charged was 18%.
+    ("fee_rate",          "Fees as % of charged",  "pct",   "down", ("rate", "total_fees", "principal")),
+    ("refunds",           "Refunds",               "money", "down", ("sum",)),
+    ("refund_units",      "Units refunded",        "count", "down", ("sum",)),
+    ("refund_rate",       "Refund rate",           "pct",   "down", ("rate", "refund_units", "units")),
+    ("promos",            "Promotions funded",     "money", "down", ("sum",)),
+    ("reimbursements",    "Reimbursements",        "money", "up",   ("sum",)),
+    # What is left after Amazon's cut, refunds and funded discounts. NOT profit:
+    # it is before cost of goods, and calling it profit would be a wrong number
+    # dressed as a right one.
+    ("principal",         "Charged to buyers",     "money", "up",   ("sum",)),
+    ("net_proceeds",      "Net proceeds",          "money", "up",   ("sum",)),
 ]
 
 _AGG = {m[0]: m[4] for m in METRICS}
