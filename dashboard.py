@@ -342,7 +342,8 @@ def _ws():
         header = None
         try:
             dflt = _client().open_by_key(_cfg()["google_spreadsheet_id"]).worksheet(OUTPUT_TAB)
-            header = dflt.row_values(1)
+            from listing import repo as _repo
+            header = _repo.read_headers(dflt)
         except Exception:
             header = None
         # Open-or-create-with-headers is shared (Rule 12): the same thing was
@@ -2536,24 +2537,16 @@ def _sheet_read_retry(fn, *args, _tries=6, **kwargs):
     exponential backoff on a 429. Because the quota is PER-MINUTE, the backoff waits 30,45,60,60s
     (not 2-8s) so the minute-window actually resets before retrying. Mirrors
     amazon_listing_generator._read_retry (the CLI backs off even harder, deferring to the web app)."""
-    import time as _t
-    for i in range(_tries):
-        _pace_sheet_read()
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            _m = str(e).lower()
-            _code = ""
-            try:
-                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
-            except Exception:
-                _code = ""
-            if ((_code == "429" or "429" in _m or "quota" in _m or "resource_exhausted" in _m
-                 or "rate limit" in _m or "rate_limit" in _m or "per minute" in _m)
-                    and i < _tries - 1):
-                _t.sleep(min(60, 30 + 15 * i))          # 30, 45, 60, 60 ... per-minute reset
-                continue
-            raise
+    # Throttle DETECTION is shared (listing/repo.is_throttled) -- it was written
+    # out identically here and in the generator. The BACKOFF POLICY stays here,
+    # because the two are deliberately different: this is the web app and waits
+    # 30/45/60s, while the CLI waits far longer to yield the shared per-minute
+    # quota to this process.
+    from listing import repo as _repo
+    return _repo.read_retry(fn, *args, tries=_tries,
+                            pace=_pace_sheet_read,
+                            backoff=lambda i: min(60, 30 + 15 * i),
+                            **kwargs)
 
 
 def _bust_records_cache():

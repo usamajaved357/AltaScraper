@@ -202,7 +202,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             trow = found.row
             acol = found.col("Attributes JSON")
             try:
-                obj = json.loads(ws.cell(trow, acol).value or "{}")
+                obj = json.loads(_repo.cell_value(ws, trow, acol) or "{}")
             except Exception:
                 obj = {}
             if not isinstance(obj, dict):
@@ -527,7 +527,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if ws is None:
                 ws = book.sheet1
             title = ws.title
-            grid = ws.get_all_values()
+            grid = _repo.read_grid(ws)
             headers = grid[0] if grid else []
             rows = grid[1:] if len(grid) > 1 else []
             view_url = f"https://docs.google.com/spreadsheets/d/{sid}/edit"
@@ -674,7 +674,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             tabs, cards = [], []
             for ws in book.worksheets():
                 try:
-                    header = [str(h).strip() for h in ws.row_values(1)]
+                    header = _repo.read_headers(ws)
                 except Exception:
                     continue
                 if not (any(a in header for a in SKU_ALIASES) and "Title" in header):
@@ -846,7 +846,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # while the lookup key below was not, so a SKU carrying a stray space
             # silently matched nothing and its row was skipped without a word.
             sku_rows = {}
-            for i, v in enumerate(ws.col_values(col["SKU"]), start=1):
+            for i, v in enumerate(_repo.column_values(ws, col["SKU"]), start=1):
                 s = _repo.norm(v)
                 if s and s not in sku_rows:
                     sku_rows[s] = i
@@ -928,7 +928,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if "Attributes JSON" not in headers:
                     return jsonify({"ok": False, "error": "no attributes column"}), 400
                 acol = headers.index("Attributes JSON") + 1
-                cur  = ws.cell(trow, acol).value or "{}"
+                cur  = _repo.cell_value(ws, trow, acol) or "{}"
                 try:
                     obj = json.loads(cur)
                 except Exception:
@@ -1002,7 +1002,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         """Delete every data row whose SKU, Title, Competitor ASIN and Product Type are all blank."""
         try:
             ws   = _ws()
-            vals = ws.get_all_values()
+            vals = _repo.read_grid(ws)
             if not vals:
                 return jsonify({"ok": True, "deleted": 0})
             headers = vals[0]

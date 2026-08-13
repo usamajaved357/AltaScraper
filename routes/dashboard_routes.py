@@ -84,7 +84,8 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             ws = book.get_worksheet_by_id(int(gid)) if gid.isdigit() else None
             if ws is None:
                 ws = book.sheet1
-            values = ws.get_all_values()
+            from listing import repo as _repo
+            values = _repo.read_grid(ws)
         except Exception:
             return None, None
         if not values:

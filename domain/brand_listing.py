@@ -573,11 +573,8 @@ def _miles_write_row(host, ws, row_values: list) -> bool:
     """Append a row to the Miles sheet at the first truly empty row (by scanning
     column A / SKU), ensuring the Miles header is in row 1 first. Using an
     explicit row index avoids gspread append_row landing far below the data."""
-    try:
-        existing = ws.row_values(1)
-    except Exception:
-        existing = []
     from listing import repo as _repo
+    existing = _repo.read_headers(ws)
     try:
         if not existing:
             _repo.write_header_row(ws, MILES_SHEET_HEADERS)
@@ -592,17 +589,14 @@ def _miles_write_row(host, ws, row_values: list) -> bool:
         try:
             # Find the next empty row by reading column A (SKU). The first row
             # with no SKU value is where we write -- right below the last listing.
-            col_a = ws.col_values(1)            # includes header at index 0
+            col_a = _repo.column_values(ws, 1)   # includes header at index 0
             next_row = len(col_a) + 1           # 1-based row just after last filled
             # Write the row explicitly at that position (A{next_row}).
             end_col = _col_letter(len(row_values))
             rng = f"A{next_row}:{end_col}{next_row}"
             _repo.write_range(ws, [row_values], rng)
             # Read-back verification: confirm the SKU actually landed in A{next_row}
-            try:
-                check = ws.acell(f"A{next_row}").value
-            except Exception:
-                check = None
+            check = _repo.cell_value(ws, next_row, 1, default=None)
             wrote_sku = (row_values[0] if row_values else "")
             if check and str(check).strip() == str(wrote_sku).strip():
                 host.console.print(f"  [green]   -> CONFIRMED row {next_row} of "
@@ -1121,8 +1115,8 @@ def process_brand_row(product: dict, profile: dict, *, host, client, ws_out,
             from listing import repo as _repo   # one cell-reference impl (Rule 12)
             rowcol_to_a1 = _repo.a1
             try:
-                _hdr = host._read_retry(ws_out.row_values, 1) if hasattr(host, "_read_retry") \
-                       else ws_out.row_values(1)
+                _hdr = ([str(h).strip() for h in host._read_retry(ws_out.row_values, 1)]
+                        if hasattr(host, "_read_retry") else _repo.read_headers(ws_out))
             except Exception:
                 _hdr = []
             # "add this column if the tab does not have it" -- the same three

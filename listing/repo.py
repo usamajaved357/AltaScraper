@@ -87,6 +87,94 @@ def read_headers(ws):
         return []
 
 
+def read_grid(ws):
+    """The whole tab as a list of rows, header first. Never raises."""
+    try:
+        return ws.get_all_values() or []
+    except Exception:
+        return []
+
+
+def column_values(ws, col):
+    """One whole column, header first. Never raises."""
+    try:
+        return ws.col_values(int(col)) or []
+    except Exception:
+        return []
+
+
+def cell_value(ws, row, col, default=""):
+    """One cell's value. gspread returns an object with .value; this returns the
+    value itself, which is what every caller actually wanted."""
+    try:
+        c = ws.cell(int(row), int(col))
+        v = getattr(c, "value", c)
+        return default if v is None else v
+    except Exception:
+        return default
+
+
+# ---------------------------------------------------------------------------
+# THROTTLING
+#
+# "Is this Google saying too many reads?" was written out twice, identically:
+# dashboard._sheet_read_retry and amazon_listing_generator._read_retry. The
+# DETECTION is shared here.
+#
+# The BACKOFF POLICIES are deliberately NOT shared. The web app waits
+# 30/45/60s over 6 tries; the CLI waits 45/65/85/90s over 7, because the
+# per-minute quota is shared between them and the CLI is designed to yield it so
+# the web app never crashes. Both docstrings say so. Collapsing them onto one
+# number would quietly undo that, and the symptom would be the dashboard failing
+# while a generation run is going -- so the policy stays with each caller and
+# only the mechanism is shared.
+# ---------------------------------------------------------------------------
+
+def is_throttled(exc):
+    """True when an exception is Google refusing a read for rate/quota reasons."""
+    m = str(exc).lower()
+    code = ""
+    try:
+        code = str(getattr(getattr(exc, "response", None), "status_code", "") or "")
+    except Exception:
+        code = ""
+    return (code == "429" or "429" in m or "quota" in m or "resource_exhausted" in m
+            or "rate limit" in m or "rate_limit" in m or "per minute" in m)
+
+
+def read_retry(fn, *args, tries=6, backoff=None, pace=None, log=None, **kwargs):
+    """Call `fn`, retrying only when Google says it is throttled.
+
+    `backoff(i) -> seconds` is the CALLER'S policy, because the web app and the
+    CLI deliberately differ. Anything that is not a throttle is raised
+    immediately -- a bad range or a missing tab must not be retried six times
+    before the user is told.
+    """
+    import time as _t
+    last = None
+    for i in range(int(tries)):
+        if pace:
+            try:
+                pace()
+            except Exception:
+                pass
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            last = e
+            if not (is_throttled(e) and i < int(tries) - 1):
+                raise
+            wait = backoff(i) if backoff else min(60, 30 + 15 * i)
+            if log:
+                try:
+                    log(wait, i + 1, int(tries))
+                except Exception:
+                    pass
+            _t.sleep(wait)
+    if last:
+        raise last
+
+
 def find_col(headers, names):
     """1-based column for the first of `names` present in `headers`, else None.
 

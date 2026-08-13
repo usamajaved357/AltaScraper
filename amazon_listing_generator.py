@@ -181,31 +181,21 @@ def _read_retry(fn, *args, _tries=7, **kwargs):
     Google's per-minute read quota, with AGGRESSIVE backoff on a 429. The quota is PER-MINUTE and
     shared with the web app, so the CLI waits 45,65,85,90,90s (much longer than the web app's
     30-60s) -- it yields the quota so the web app never crashes. Server-side; the user never sees it."""
-    import time as _t
-    for i in range(_tries):
-        _pace_read()
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:
-            _m = str(e).lower()
-            _code = ""
-            try:
-                _code = str(getattr(getattr(e, "response", None), "status_code", "") or "")
-            except Exception:
-                _code = ""
-            _throttled = (_code == "429" or "429" in _m or "quota" in _m
-                          or "resource_exhausted" in _m or "rate limit" in _m
-                          or "rate_limit" in _m or "per minute" in _m)
-            if _throttled and i < _tries - 1:
-                _wait = min(90, 45 + 20 * i)            # 45,65,85,90,90 -- CLI defers to the web app
-                try:
-                    console.print(f"  [yellow]Google read throttled (429) -- backing off "
-                                  f"{_wait}s, yielding quota to the web app (attempt {i+1}/{_tries})[/yellow]")
-                except Exception:
-                    pass
-                _t.sleep(_wait)
-                continue
-            raise
+    # Throttle DETECTION is shared (listing/repo.is_throttled) -- it was written
+    # out identically here and in dashboard._sheet_read_retry. The BACKOFF stays
+    # here on purpose: 45/65/85/90s is much longer than the web app's 30-60s
+    # because the per-minute quota is shared and this CLI yields it, so the web
+    # app never crashes while a generation run is going.
+    from listing import repo as _repo
+
+    def _log(wait, attempt, total):
+        console.print(f"  [yellow]Google read throttled (429) -- backing off "
+                      f"{wait}s, yielding quota to the web app "
+                      f"(attempt {attempt}/{total})[/yellow]")
+
+    return _repo.read_retry(fn, *args, tries=_tries, pace=_pace_read,
+                            backoff=lambda i: min(90, 45 + 20 * i),
+                            log=_log, **kwargs)
 
 
 def _safe_records(ws):
@@ -2287,7 +2277,8 @@ def init_sheets(config: dict):
             ws_out = sh_out.worksheet(OUTPUT_TAB)
             # Don't force the 48-col FIXED_HEADERS when Miles mode owns this tab
             # (it writes its own column layout).
-            if not config.get("_miles_mode") and len(ws_out.row_values(1)) < FIXED_COUNT:
+            from listing import repo as _repo0
+            if not config.get("_miles_mode") and len(_repo0.read_headers(ws_out)) < FIXED_COUNT:
                 # REPLACE, not insert: row 1 is a header row too narrow for the
                 # current FIXED_HEADERS, so it is discarded rather than pushed
                 # down into the data. repo names the two apart precisely because
@@ -2323,7 +2314,11 @@ def init_sheets(config: dict):
 
 
 def read_input_sheet(ws_in) -> list:
-    rows = ws_in.get_all_values()
+    # Still a Google Sheet -- this is the INPUT, where products come from, and
+    # nothing replaces it yet. Reading it through the repo anyway means the day
+    # something does (a paste screen, an upload), this call site does not change.
+    from listing import repo as _repo
+    rows = _repo.read_grid(ws_in)
     if not rows:
         return []
     headers  = [h.strip().lower().replace(" ", "_") for h in rows[0]]
@@ -2917,9 +2912,10 @@ def load_dropdown_values(gc, sheet_id: str, label: str) -> dict:
     """Reads valid dropdown values from template Google Sheet at runtime."""
     console.print(f"  Reading dropdowns from {label}...", end=" ")
     try:
+        from listing import repo as _repo
         sh       = gc.open_by_key(sheet_id)
         ws       = sh.worksheet("Dropdown Lists")
-        all_rows = ws.get_all_values()
+        all_rows = _repo.read_grid(ws)
     except Exception as e:
         console.print(f"[red]FAIL {str(e)[:60]}[/red]")
         return {}
@@ -6129,10 +6125,16 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
                       "Merchant Token (looks like A2XXXXXXXXXXXX).")
         return
 
+    # Imported here, BEFORE first use. An import further down would make _repo a
+    # local for the whole function, so this line would raise UnboundLocalError
+    # rather than falling back to anything -- and only on a live run.
+    from listing import repo as _repo
+    from listing.repo import a1 as rowcol_to_a1   # one cell-reference impl (Rule 12)
+
     sh      = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
     ws      = sh.worksheet(output_tab or OUTPUT_TAB)
     records = _safe_records(ws)
-    headers = ws.row_values(1)
+    headers = _repo.read_headers(ws)
     col     = lambda h: (headers.index(h) + 1) if h in headers else None
     status_col, notes_col = col("Status"), col("Notes")
     payload_col = col("API Payload JSON")   # exact body sent to Amazon (debug view)
@@ -6143,8 +6145,6 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         console.print("[red]Your python-amazon-sp-api is too old for the Listings API.[/red] "
                       "Update it:  pip install --upgrade python-amazon-sp-api")
         return
-    from listing.repo import a1 as rowcol_to_a1   # one cell-reference impl (Rule 12)
-    from listing import repo as _repo
     # Build the Listings client with a generous timeout. The default in python-amazon-
     # sp-api is short (~15s); the UK/EU endpoint (sellingpartnerapi-eu) round-trip from
     # Pakistan, combined with heavy product types like GARDEN_TOOL_SET, can exceed it
@@ -6964,7 +6964,8 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
         console.print("[red]No output sheet bound; cannot optimise.[/red]")
         return
 
-    rows = ws_out.get_all_values()
+    from listing import repo as _repo
+    rows = _repo.read_grid(ws_out)
     if not rows or len(rows) < 2:
         console.print("[yellow]Sheet has no listing rows to optimise.[/yellow]")
         return

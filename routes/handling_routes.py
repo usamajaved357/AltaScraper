@@ -47,9 +47,8 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
             if not hcol or not kcol:
                 continue                                  # tab has no handling column -> skip
             had_col = True
-            try:
-                col_vals = ws.col_values(kcol)
-            except Exception:
+            col_vals = _repo.column_values(ws, kcol)
+            if not col_vals:
                 continue
             data = []
             for idx, v in enumerate(col_vals, start=1):
