@@ -14,6 +14,28 @@ import threading
 def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOCK, _SECONDARY_ROLES, _active_brand, _cfg, _imgresult, _load_img_instructions, _load_recipes, _new_img_job, _records, _run_img_jobs_bg, _safe_sku, _save_img_instructions, _sku_dir, _state, _write_attrs_for_sku, _ws):
     """Attach the /genimage routes to the existing Flask app."""
 
+    def _by_product(j):
+        """Progress per PRODUCT, not just a single running total.
+
+        A batch of 8 images each for two products reported "0/16", which reads as
+        one enormous job and says nothing about which product is where. The plan
+        already carries the SKU for every planned image, so the breakdown costs
+        nothing to produce and answers the question actually being asked: how far
+        along is each item?
+        """
+        planned, done, failed = {}, {}, {}
+        for p in (j.get("plan") or []):
+            sku = str(p.get("sku") or "") or "(unassigned)"
+            planned[sku] = planned.get(sku, 0) + 1
+        for r in (j.get("results") or []):
+            sku = str((r or {}).get("sku") or "") or "(unassigned)"
+            done[sku] = done.get(sku, 0) + 1
+            if not (r or {}).get("ok"):
+                failed[sku] = failed.get(sku, 0) + 1
+        return [{"sku": s, "total": planned[s], "done": done.get(s, 0),
+                 "failed": failed.get(s, 0)}
+                for s in sorted(planned)]
+
     @app.route("/genimage/jobs_active")
     def genimage_jobs_active():
         """List the caller's still-running image jobs so a floating status bar can
@@ -33,7 +55,8 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 if j.get("status") == "running" and _jo.may_see(j, CONFIG_PATH):
                     out.append({"job": jid, "total": j.get("total", 0),
                                 "done": j.get("done", 0), "label": j.get("label", ""),
-                                "ts": j.get("ts", 0), "mine": _jo.mine_only(j)})
+                                "ts": j.get("ts", 0), "mine": _jo.mine_only(j),
+                                "products": _by_product(j)})
         out.sort(key=lambda x: x.get("ts", 0))
         return jsonify({"ok": True, "jobs": out})
 
@@ -93,7 +116,8 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 return jsonify({"ok": False, "error": "job not found"}), 404
             return jsonify({"ok": True, "status": j["status"], "total": j["total"],
                             "done": j["done"], "results": j["results"], "error": j["error"],
-                            "plan": j.get("plan", []), "cancel": j.get("cancel", False)})
+                            "plan": j.get("plan", []), "cancel": j.get("cancel", False),
+                            "products": _by_product(j)})
 
     @app.route("/genimage/instructions", methods=["GET", "POST"])
     def genimage_instructions():

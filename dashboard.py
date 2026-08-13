@@ -1834,7 +1834,7 @@ def _run_img_jobs_bg(jid, jobs, kind):
     flag, which a dead worker never reads). This guarantees the job is always retired.
     """
     try:
-        _run_img_jobs_bg_inner(jid, jobs, kind)
+        _run_img_jobs_parallel(jid, jobs, kind)
     except Exception as _we:
         try:
             _job_finish(jid, error=f"worker crashed: {type(_we).__name__}: {str(_we)[:160]}")
@@ -1852,8 +1852,56 @@ def _run_img_jobs_bg(jid, jobs, kind):
             pass
 
 
-def _run_img_jobs_bg_inner(jid, jobs, kind):
-    """Background worker: runs a list of generation jobs, pushing each result."""
+# How many products may be generated for at the same time. Small on purpose:
+# every image is a paid model call, and the image APIs rate-limit per account, so
+# a large pool converts "faster" into "throttled and more expensive". Three is
+# roughly three times quicker than the old strictly-sequential worker without
+# getting near the limits. ALTA_IMG_WORKERS overrides it.
+def _img_worker_count():
+    try:
+        n = int(os.environ.get("ALTA_IMG_WORKERS") or 3)
+    except Exception:
+        n = 3
+    return max(1, min(n, 8))
+
+
+def _run_img_jobs_parallel(jid, jobs, kind):
+    """Generate for several PRODUCTS at once, images within a product in order.
+
+    The worker ran every image in one sequence, so generating 8 images each for
+    two products meant 16 one after another -- the second product did not start
+    until the first had completely finished. Grouping by SKU and running the
+    groups concurrently is what "side by side" means here, and it keeps each
+    product's own images in their intended order (main before secondaries).
+
+    Splitting by SKU rather than round-robin also keeps a product's images
+    together on one thread, so a rate-limit stall delays one product rather than
+    smearing across all of them.
+    """
+    groups = {}
+    for jb in jobs:
+        groups.setdefault(str(jb.get("sku", "") or "_misc"), []).append(jb)
+    chunks = list(groups.values())
+
+    if len(chunks) <= 1:
+        _run_img_jobs_bg_inner(jid, jobs, kind, finish=False)
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(_img_worker_count(), len(chunks))) as pool:
+            list(pool.map(lambda c: _run_img_jobs_bg_inner(jid, c, kind, finish=False),
+                          chunks))
+    # Finished exactly once, by the dispatcher. Letting each worker finish the
+    # job would retire it the moment the FIRST product was done, and the rest
+    # would keep writing results into a job the UI had already stopped watching.
+    _job_finish(jid)
+
+
+def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
+    """Background worker: runs a list of generation jobs, pushing each result.
+
+    `finish=False` when several of these run as one job (see
+    _run_img_jobs_parallel) -- the dispatcher retires the job after all of them.
+    """
     # Custom instructions the user wants the AI to remember for EVERY image
     # (e.g. "always pure white background", "include our logo top-left", "no people").
     # We append them to each job's brief so they apply on top of the strategist.
@@ -2034,7 +2082,8 @@ def _run_img_jobs_bg_inner(jid, jobs, kind):
             except Exception as e:
                 _job_push(jid, {"ok": False, "label": label, "sku": job.get("sku", ""),
                                 "error": str(e)[:200]})
-    _job_finish(jid)
+    if finish:
+        _job_finish(jid)
 
 
 _IMG_TTL = 86400  # 24h — product images rarely change

@@ -255,8 +255,23 @@ async function pollGenStatus(){
     if(bar&&txt){
       if(j.ok && j.jobs && j.jobs.length){
         let done=0,total=0;
-        j.jobs.forEach(x=>{ done+=(x.done||0); total+=(x.total||0); });
-        txt.textContent="Generating "+done+"/"+total+" image"+(total===1?"":"s")+"…";
+        const products=[];
+        j.jobs.forEach(x=>{
+          done+=(x.done||0); total+=(x.total||0);
+          (x.products||[]).forEach(p=>products.push(p));
+        });
+        // Say how many PRODUCTS as well as how many images. "0/16" for two items
+        // reads as one enormous job and hides which item is where; the products
+        // now generate side by side, so the bar should say so.
+        let label="Generating "+done+"/"+total+" image"+(total===1?"":"s");
+        if(products.length>1){
+          const busy=products.filter(p=>p.done<p.total).length;
+          label+=" · "+products.length+" products";
+          if(busy) label+=" ("+busy+" still running)";
+        }else if(products.length===1 && products[0].sku){
+          label+=" · "+products[0].sku;
+        }
+        txt.textContent=label+"…";
         bar.style.display="flex";
         // adopt an active job for the panel if we don't have one yet
         if(!GEN_ACTIVE_JOB && j.jobs[0]) GEN_ACTIVE_JOB=j.jobs[0].job;
