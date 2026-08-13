@@ -107,7 +107,8 @@ def _blank(date, asin):
     return {"date": date, "asin": asin, "currency": "",
             "referral_fees": 0.0, "fba_fees": 0.0, "other_fees": 0.0,
             "refunds": 0.0, "refund_units": 0, "refund_fees_returned": 0.0,
-            "reimbursements": 0.0, "promos": 0.0, "principal": 0.0}
+            "reimbursements": 0.0, "promos": 0.0, "principal": 0.0,
+            "units": 0, "cogs": 0.0, "cogs_units": 0}
 
 
 def _day(posted):
@@ -148,6 +149,29 @@ class _Acc:
             return None
         return a
 
+    def count(self, date, sku, units, cost_lookup=None):
+        """Units shipped, and what they cost -- on the SAME day basis as the fees.
+
+        Priced HERE, at the line, because this is the only point at which the SKU
+        is still in hand. One step later there is only an ASIN, and the SKUs that
+        could not be mapped to one would lose their cost entirely -- which would
+        understate cost of goods and overstate profit, in that direction, always.
+        """
+        if not date or not units:
+            return
+        cost, _src = (cost_lookup(sku) if cost_lookup else (None, ""))
+        line = round(float(cost) * int(units), 4) if cost is not None else 0.0
+        targets = ["*"]
+        a = self.asin_for(sku)
+        if a:
+            targets.append(a)
+        for t in targets:
+            r = self._get(date, t)
+            r["units"] = int(r.get("units", 0) + int(units))
+            if cost is not None:
+                r["cogs"] = round(r.get("cogs", 0.0) + line, 4)
+                r["cogs_units"] = int(r.get("cogs_units", 0) + int(units))
+
     def add(self, date, sku, field, value, currency="", units=0):
         if not value and not units:
             return
@@ -170,7 +194,7 @@ class _Acc:
                 r["currency"] = currency
 
 
-def parse_events(payload, sku_to_asin=None, fallback_date=None):
+def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None):
     """Amazon's FinancialEvents -> rows ready for finance_daily.
 
     Returns (rows, notes). `notes` carries what could not be classified, so an
@@ -194,6 +218,7 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None):
         d = _day(sh.get("PostedDate"))
         for item in (sh.get("ShipmentItemList") or []):
             sku = item.get("SellerSKU")
+            acc.count(d, sku, item.get("QuantityShipped") or 0, cost_lookup)
             for ch in (item.get("ItemChargeList") or []):
                 if str(ch.get("ChargeType") or "").lower() == "principal":
                     acc.add(d, sku, "principal", _amt(ch.get("ChargeAmount")),
@@ -256,7 +281,11 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None):
                     _cur(adj.get("AdjustmentAmount")))
 
     rows = [r for r in acc.rows.values() if r["date"]]
-    notes = {"unknown_fee_types": sorted(acc.unknown_fees),
+    tot_u = sum(r["units"] for r in rows if r["asin"] == "*")
+    kno_u = sum(r["cogs_units"] for r in rows if r["asin"] == "*")
+    notes = {"units": tot_u, "cogs_units": kno_u,
+             "cogs_coverage_pct": (round(kno_u / tot_u * 100, 1) if tot_u else None),
+             "unknown_fee_types": sorted(acc.unknown_fees),
              "unmapped_skus": sorted(acc.unmapped_skus)[:50],
              "unmapped_sku_count": len(acc.unmapped_skus),
              "unattributed": acc.unattributed,
@@ -268,9 +297,14 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None):
     return rows, notes
 
 
+# A refunded unit's cost is NOT credited back. The stock left, and whether it
+# comes back saleable is not something Amazon tells us here. Not crediting it
+# understates profit slightly; crediting it would overstate profit whenever the
+# return is damaged, and of the two errors only one gets someone to reorder
+# stock that is not selling.
 _COLS = ["referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
          "refund_fees_returned", "reimbursements", "promos", "principal",
-         "currency", "source"]
+         "units", "cogs", "cogs_units", "currency", "source"]
 
 
 def store(config_path, workspace_id, marketplace, rows, source="finances_api"):

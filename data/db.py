@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS finance_daily (
     reimbursements REAL,                -- money Amazon paid back for its own errors
     promos REAL,                        -- discounts you funded
     principal REAL,                     -- what buyers were charged, per Finances
+    units INTEGER,                      -- units shipped, on the SAME basis as the fees
+    cogs REAL,                          -- what those units cost, where the cost is known
+    cogs_units INTEGER,                 -- how many of the units had a known cost
     currency TEXT,
     source TEXT,                        -- 'finances_api' | 'settlement' later
     fetched_at TEXT
@@ -309,6 +312,9 @@ CREATE INDEX IF NOT EXISTS idx_syncjobs_type      ON sync_jobs(job_type, workspa
 # out. Each entry is (table, column, type); applying one twice is a no-op.
 _ADDED_COLUMNS = [
     ("sales_daily", "parent_asin", "TEXT"),
+    ("finance_daily", "units", "INTEGER"),
+    ("finance_daily", "cogs", "REAL"),
+    ("finance_daily", "cogs_units", "INTEGER"),
 ]
 
 

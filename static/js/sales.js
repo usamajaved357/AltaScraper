@@ -214,9 +214,17 @@ function salesDrawCards(sum, av){
   }).join("");
 
   if(note){
-    note.innerHTML = sum.ads_connected ? "" :
-      '<div class="cc salesnote"><i class="ti ti-info-circle"></i> '
-      + _sEsc(sum.ads_note||"") + '</div>';
+    let n = "";
+    if(!sum.ads_connected)
+      n += '<div class="cc salesnote"><i class="ti ti-info-circle"></i> '
+         + _sEsc(sum.ads_note||"") + '</div>';
+    // Why a Profit row may be blank. Without this the em-dash reads as a fault
+    // rather than as "some of these products have never been costed".
+    const cov = sum.cogs_coverage;
+    if(cov && cov.note)
+      n += '<div class="cc salesnote"><i class="ti ti-info-circle"></i> '
+         + _sEsc(cov.note) + '</div>';
+    note.innerHTML = n;
   }
 }
 

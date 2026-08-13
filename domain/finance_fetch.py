@@ -105,7 +105,8 @@ def fetch_range(marketplace, creds, start, end, max_pages=PAGES_PER_PASS,
 
 
 def sync(config_path, workspace_id, marketplace, creds, account_id=None,
-         days_back=30, max_pages=PAGES_PER_PASS, next_token=None, log=None):
+         days_back=30, max_pages=PAGES_PER_PASS, next_token=None, log=None,
+         cogs_overrides=None):
     """Pull fees and refunds for a window. Never raises.
 
     Runs on a timer as well as a button, and a scheduled job that throws kills
@@ -123,8 +124,11 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
         return {"ok": False, "error": "Finances API: %s" % str(ex)[:200]}
 
     smap = _fd.sku_map(config_path, account_id or workspace_id, marketplace)
+    from domain import cogs as _cogs
     # Undated charges land on the last day of the window rather than being lost.
-    rows, notes = _fd.parse_events(events, smap, fallback_date=e)
+    rows, notes = _fd.parse_events(
+        events, smap, fallback_date=e,
+        cost_lookup=_cogs.lookup(cogs_overrides, account_id or workspace_id))
     written = _fd.store(config_path, workspace_id, marketplace, rows)
 
     out = {"ok": True, "pages": pages, "rows": written, "days": len({r["date"] for r in rows}),

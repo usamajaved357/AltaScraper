@@ -36,6 +36,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                or _state.get("active_marketplace") or "").upper()
         return acc, wsid, mkt
 
+    def _cogs_overrides():
+        """The manual COGS overrides dashboard.py holds, if it is loaded.
+
+        Read through rather than copied: the overrides are one dict, owned in one
+        place, and a second copy here would go stale the moment someone typed a
+        cost on the listings screen.
+        """
+        try:
+            import dashboard as _d
+            return getattr(_d, "_COGS_OVERRIDE", None)
+        except Exception:
+            return None
+
     def _range():
         """The requested window, resolved to two dates.
 
@@ -115,6 +128,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                           "value": cur.get(key), "previous": prev.get(key),
                           "delta_pct": delta(key)})
         avail = _sd.availability(CONFIG_PATH, wsid, mkt)
+
+        # Why profit may be blank. Without this the screen can only show an
+        # em-dash, and an em-dash where a profit should be reads as a fault
+        # rather than as "three of these products have never been costed".
+        from domain import cogs as _cogs
+        cov = _cogs.coverage(CONFIG_PATH, (_acc or {}).get("id") or wsid, mkt,
+                             _cogs_overrides())
+        # "and it fills in" would NOT have been true. Cost is priced onto each day
+        # when that day's finance data is pulled, so a cost typed today does not
+        # reach days already stored -- pressing Sync re-fetches them and re-prices
+        # them, and only then does profit appear. Saying so is the difference
+        # between a screen that looks broken and one that tells you the next step.
+        cov["note"] = ("" if cov["unknown"] == 0 else
+                       "%d of %d SKUs have no cost, so profit is only shown for "
+                       "periods where every unit shipped was costed. Set a cost on "
+                       "the listings screen, or rebuild the SKU, then press Sync -- "
+                       "costs are applied when each day is pulled, so already-pulled "
+                       "days need re-pulling before profit appears."
+                       % (cov["unknown"], cov["total"]))
+
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "start": start, "end": end, "preset": preset,
                         "asin": asin, "currency": cur.get("currency"),
@@ -122,7 +155,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "compared_to": {"start": p_start.strftime("%Y-%m-%d"),
                                         "end": p_end.strftime("%Y-%m-%d")},
                         "ads_connected": avail["ads"]["connected"],
-                        "ads_note": avail["ads"]["note"]})
+                        "ads_note": avail["ads"]["note"],
+                        "cogs_coverage": cov})
 
     @app.route("/sales/products")
     def sales_products():
@@ -226,7 +260,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             res["finance"] = _ff.sync(CONFIG_PATH, wsid, mkt, creds,
                                       account_id=(acc or {}).get("id") or wsid,
                                       days_back=days,
-                                      next_token=b.get("finance_token"))
+                                      next_token=b.get("finance_token"),
+                                      cogs_overrides=_cogs_overrides())
         return jsonify(res), (200 if res.get("ok") else 502)
 
     @app.route("/sales/today")

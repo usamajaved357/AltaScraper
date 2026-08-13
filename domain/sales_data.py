@@ -180,7 +180,8 @@ def availability(config_path, workspace_id, marketplace):
 
 
 _FIN_COLS = ("referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
-             "refund_fees_returned", "reimbursements", "promos", "principal")
+             "refund_fees_returned", "reimbursements", "promos", "principal",
+             "units_shipped", "cogs", "cogs_units")
 
 
 def series(config_path, workspace_id, marketplace, start, end, asin=None):
@@ -214,6 +215,10 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None):
         f = fin.get(d) or {}
         for k in _FIN_COLS:
             row[k] = f.get(k)
+        # finance_daily.units is units SHIPPED (money basis); sales_daily.units is
+        # units ORDERED (order-date basis). Same word, different measurements, and
+        # letting one land on the other would silently replace one with the other.
+        row["units_shipped"] = f.get("units")
         if not row.get("currency"):
             row["currency"] = f.get("currency") or ""
         # Derived per DAY as well as per bucket, because a bucket that sums
@@ -238,6 +243,22 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None):
                       + float(row.get("reimbursements") or 0.0), 2)
         else:
             row["net_proceeds"] = None
+
+        # PROFIT -- only when the cost of every unit shipped that day is known.
+        #
+        # A partial cost is not a small error, it is a number in the wrong
+        # direction: the units missing a cost contribute revenue and no cost, so
+        # profit comes out HIGH, and it comes out high exactly on the products
+        # nobody has costed. Better to say nothing for that day and show the
+        # coverage than to publish a figure that flatters.
+        u, cu = row.get("units_shipped"), row.get("cogs_units")
+        if row["net_proceeds"] is not None and u and cu == u:
+            row["profit"] = round(row["net_proceeds"] - float(row.get("cogs") or 0.0), 2)
+            p = float(row.get("principal") or 0.0)
+            row["margin_pct"] = round(row["profit"] / p * 100, 2) if p else None
+        else:
+            row["profit"] = None
+            row["margin_pct"] = None
         out.append(row)
     return out
 
@@ -321,6 +342,13 @@ METRICS = [
     # dressed as a right one.
     ("principal",         "Charged to buyers",     "money", "up",   ("sum",)),
     ("net_proceeds",      "Net proceeds",          "money", "up",   ("sum",)),
+    # ---- cost of goods, from the cost written into each generated SKU -------
+    ("units_shipped",     "Units shipped",         "count", "up",   ("sum",)),
+    ("cogs",              "Cost of goods",         "money", "down", ("sum",)),
+    # Profit and margin are recomputed from the parts, and are None for any
+    # bucket containing a unit whose cost is unknown -- see profit_for() below.
+    ("profit",            "Profit",                "money", "up",   ("profit",)),
+    ("margin_pct",        "Margin",                "pct",   "up",   ("margin",)),
 ]
 
 _AGG = {m[0]: m[4] for m in METRICS}
@@ -341,7 +369,31 @@ def aggregate(rows, key):
         return _pct(_sum(rows, how[1]), _sum(rows, how[2]))
     if how[0] == "weighted":
         return _weighted(rows, key, how[1])
+    if how[0] == "profit":
+        return profit_for(rows)
+    if how[0] == "margin":
+        p, charged = profit_for(rows), _sum(rows, "principal")
+        return _pct(p, charged) if p is not None else None
     return _sum(rows, key)
+
+
+def profit_for(rows):
+    """Profit across rows, or None if ANY unit in them has no known cost.
+
+    Not the sum of the daily profits: a week containing one uncosted day would
+    then report the other six days' profit as the week's, which is a smaller
+    number presented as a complete one. Recomputed from the parts, and withheld
+    entirely unless every unit in the bucket is costed -- because a partial cost
+    of goods only ever makes profit look BETTER than it is.
+    """
+    units = _sum(rows, "units_shipped")
+    costed = _sum(rows, "cogs_units")
+    if not units or costed != units:
+        return None
+    net = _sum(rows, "net_proceeds")
+    if net is None:
+        return None
+    return round(net - float(_sum(rows, "cogs") or 0.0), 2)
 
 
 def bucket(rows, gran):

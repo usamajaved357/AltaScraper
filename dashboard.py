@@ -2159,32 +2159,22 @@ def _save_cogs_overrides():
         pass
 
 
+# MOVED to domain/cogs.py so the Sales dashboard resolves cost the same way this
+# screen does. Same parse, same override precedence -- these are now the one
+# definition, called from two places instead of copied into two (Rule 12).
+from domain import cogs as _cogs_mod
+
+
 def _cogs_from_sku(sku):
     """Dropshipping SKUs are formatted {source_price}_{N}Days_{ASIN}; the first
     number is the source cost (incl. shipping). Returns float or None."""
-    try:
-        first = str(sku).split("_", 1)[0]
-        v = float(first)
-        if v > 0:
-            return v
-    except Exception:
-        pass
-    return None
+    return _cogs_mod.cost_from_sku(sku)
 
 
 def _resolve_cogs(account_id, sku):
     """COGS priority: manual override (by SKU) -> price embedded in SKU. Returns
     (cost_or_None, source_label)."""
-    key = f"{account_id}::{sku}"
-    if key in _COGS_OVERRIDE:
-        try:
-            return float(_COGS_OVERRIDE[key]), "manual"
-        except Exception:
-            pass
-    c = _cogs_from_sku(sku)
-    if c is not None:
-        return c, "sku"
-    return None, ""
+    return _cogs_mod.resolve(_COGS_OVERRIDE, account_id, sku)
 
 
 def _estimate_profit(price, cogs, referral_rate=0.15):
