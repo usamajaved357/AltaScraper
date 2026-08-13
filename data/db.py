@@ -334,6 +334,10 @@ CREATE TABLE IF NOT EXISTS sourcing_sources (
     label        TEXT,
     priority     INTEGER DEFAULT 100,      -- lower wins ties; the user's own order
     enabled      INTEGER DEFAULT 1,
+    /* A postage cost the supplier does not publish, typed once by the user.
+       Unknown postage is not free postage -- without this the source is skipped
+       for want of a cost, which is visible and fixable. Guessing is not. */
+    shipping_override REAL,
     added_at     TEXT
 );
 
@@ -409,6 +413,7 @@ _ADDED_COLUMNS = [
     ("finance_daily", "units", "INTEGER"),
     ("finance_daily", "cogs", "REAL"),
     ("finance_daily", "cogs_units", "INTEGER"),
+    ("sourcing_sources", "shipping_override", "REAL"),
 ]
 
 

@@ -256,37 +256,24 @@ def sp_creds_LEGACY_REMOVED(config: dict) -> dict:
 # EBAY BROWSE API -- OPTIONAL ENRICHMENT
 # =============================================================================
 
-_EBAY_TOKEN_CACHE = {"token": None, "expires_at": 0}
+# MOVED to api/ebay.py so the source repricer calls the SAME client on the same
+# items -- one token cache, one item-id regex, one opinion about what an eBay
+# error means. These stay as thin delegates so every existing caller is
+# untouched. The console lines moved OUT of the client (api/ has no UI, Rule 7)
+# and are printed here instead, so the CLI output is exactly as it was.
+from api import ebay as _ebay_api          # single source of the eBay client
 
 
 def _get_ebay_token(app_id: str, cert_id: str) -> str:
     """OAuth client_credentials token from eBay. Cached per script run."""
-    if _EBAY_TOKEN_CACHE["token"] and time.time() < _EBAY_TOKEN_CACHE["expires_at"] - 60:
-        return _EBAY_TOKEN_CACHE["token"]
-    try:
-        creds_b64 = base64.b64encode(f"{app_id}:{cert_id}".encode()).decode()
-        req = urllib.request.Request(
-            "https://api.ebay.com/identity/v1/oauth2/token",
-            data=b"grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope",
-            headers={
-                "Authorization": f"Basic {creds_b64}",
-                "Content-Type":  "application/x-www-form-urlencoded",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            payload = json.loads(r.read().decode("utf-8"))
-        _EBAY_TOKEN_CACHE["token"]      = payload.get("access_token", "")
-        _EBAY_TOKEN_CACHE["expires_at"] = time.time() + payload.get("expires_in", 7200)
-        return _EBAY_TOKEN_CACHE["token"]
-    except Exception as e:
-        console.print(f"  [yellow]eBay token fetch failed: {str(e)[:80]}[/yellow]")
-        return ""
+    tok = _ebay_api.token(app_id, cert_id)
+    if not tok:
+        console.print("  [yellow]eBay token fetch failed[/yellow]")
+    return tok
 
 
 def _extract_ebay_item_id(url: str) -> str:
-    m = re.search(r"/itm/(?:[^/?]+/)?(\d{9,15})", url)
-    return m.group(1) if m else ""
+    return _ebay_api.item_id_from_url(url)
 
 
 def fetch_ebay_supplement(ebay_url: str, app_id: str, cert_id: str) -> dict:
@@ -300,41 +287,28 @@ def fetch_ebay_supplement(ebay_url: str, app_id: str, cert_id: str) -> dict:
              "image_count": 0, "condition": "", "category_path": ""}
     if not ebay_url or not app_id or not cert_id:
         return empty
-    item_id = _extract_ebay_item_id(ebay_url)
+
+    res = _ebay_api.get_item(ebay_url, app_id, cert_id)
+    item_id = res["item_id"]
     if not item_id:
         return empty
 
-    token = _get_ebay_token(app_id, cert_id)
-    if not token:
-        return empty
-
-    try:
-        url = f"https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id={item_id}"
-        req = urllib.request.Request(
-            url,
-            headers={
-                "Authorization":             f"Bearer {token}",
-                "X-EBAY-C-MARKETPLACE-ID":   "EBAY_GB",
-                "Accept":                    "application/json",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            data = json.loads(r.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
+    if res["status"] != _ebay_api.OK:
         # 400/404 usually means the listing ENDED, was removed, or never existed.
         # eBay's Browse API doesn't serve ended listings, BUT the item page HTML
         # often stays viewable for ~90 days -- we don't scrape here (adds
         # complexity), but the honest log line makes clear WHY it failed so the
         # user knows the eBay side is unrecoverable (not a bug on our end).
-        if e.code in (400, 404):
-            console.print(f"  [yellow]eBay item {item_id}: ended or removed (HTTP {e.code}). "
+        if res["status"] == _ebay_api.GONE:
+            console.print(f"  [yellow]eBay item {item_id}: ended or removed "
+                          f"(HTTP {res['http_code']}). "
                           f"Amazon competitor data is still authoritative -- continuing.[/yellow]")
+        elif res["http_code"]:
+            console.print(f"  [yellow]eBay fetch ({item_id}): {res['error']}[/yellow]")
         else:
-            console.print(f"  [yellow]eBay fetch ({item_id}): HTTP {e.code} {e.reason}[/yellow]")
+            console.print(f"  [yellow]eBay fetch ({item_id}): {res['error'][:80]}[/yellow]")
         return empty
-    except Exception as e:
-        console.print(f"  [yellow]eBay fetch ({item_id}): {str(e)[:80]}[/yellow]")
-        return empty
+    data = res["data"]
 
     # Parse item specifics (list of {name, value} into a flat dict)
     specifics = {}

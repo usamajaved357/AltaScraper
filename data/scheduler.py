@@ -293,6 +293,24 @@ def sales_sync(workspace_id=None):
     return {"accounts": len(done), "skipped": skipped, "detail": done[:20]}
 
 
+def sourcing_check(workspace_id=None):
+    """Re-read every supplier of every SKU enrolled in the repricer.
+
+    domain/source_fetch.py owns the sweep, including the rule that enrolment
+    bounds it: a SKU nobody opted in is never checked and its suppliers are never
+    contacted. This job only supplies the config and gets out of the way.
+
+    Four-hourly against a 24-hour staleness limit, so a reading has to fail six
+    times running before the decision engine starts calling it stale -- which is
+    the point at which it stops acting on it rather than acting on old numbers.
+    """
+    from domain import source_fetch as _sfetch
+    _, config_path, cfg = _need("app", "config_path", "cfg")
+    return _sfetch.sweep(config_path, cfg, workspace_id=workspace_id)
+
+
+register_job("sourcing_check", sourcing_check, hours=4,
+             description="Re-read supplier prices and stock for enrolled SKUs")
 register_job("sales_sync", sales_sync, hours=6,
              description="Pull daily sales and traffic from Amazon")
 register_job("catalog_sync", catalog_sync, hours=6,
