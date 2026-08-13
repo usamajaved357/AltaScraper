@@ -83,3 +83,6 @@ miles_runs/
 
 # Live run heartbeat -- rewritten constantly while a run is going, local only
 run_status.json
+
+# Local run logs (beta app, dev server). Per-machine, never useful in the repo.
+*.log
