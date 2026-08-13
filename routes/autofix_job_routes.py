@@ -15,7 +15,8 @@ until every SKU is done or the user presses Stop.
 from flask import request, jsonify
 
 
-def register(app, *, _af_new, _af_get, _af_active, _af_stop, _run_autofix_bg, _state, _threading):
+def register(app, *, _af_new, _af_get, _af_active, _af_stop, _run_autofix_bg, _state, _threading,
+             CONFIG_PATH=None):
     """Attach the /autofix/* job routes to the existing Flask app."""
 
     @app.route("/autofix/start", methods=["POST"])
@@ -43,15 +44,25 @@ def register(app, *, _af_new, _af_get, _af_active, _af_stop, _run_autofix_bg, _s
     @app.route("/autofix/state")
     def autofix_state():
         """The live job. With no ?job= it returns whichever run is active, so a browser
-        that just signed in can attach to work that was already under way."""
+        that just signed in can attach to work that was already under way --
+        their OWN work. Without the owner check, "attach to whatever is running"
+        meant one person's screen filling with another person's auto-fix run,
+        SKU by SKU, with a Stop button attached to it."""
+        from domain import job_owner as _jo
         jid = (request.args.get("job") or "").strip()
         j = _af_get(jid) if jid else _af_active()
-        if not j:
+        if not j or not _jo.may_see(j, CONFIG_PATH):
             return jsonify({"ok": True, "job": None})
         return jsonify({"ok": True, "job": j})
 
     @app.route("/autofix/stop", methods=["POST"])
     def autofix_stop():
+        from domain import job_owner as _jo
         b = request.get_json(silent=True) or {}
-        n = _af_stop((b.get("job") or "").strip())
+        jid = (b.get("job") or "").strip()
+        j = _af_get(jid) if jid else _af_active()
+        if j and not _jo.mine_only(j):
+            return jsonify({"ok": False, "forbidden": True,
+                            "error": "That auto-fix run belongs to someone else."}), 403
+        n = _af_stop(jid)
         return jsonify({"ok": True, "stopped": n})

@@ -85,6 +85,15 @@ RULES = [
     ("/clear_empty",                    "approve_delete"),
     ("/miles/clear_history",            "approve_delete"),
 
+    # -- shared, long-running work. These are gated by OWNERSHIP in the route
+    #    (domain/job_owner.py) rather than by permission: everyone who may do
+    #    the work may watch and stop THEIR OWN. Listed here so the gap is a
+    #    decision on the record rather than an oversight -- /genimage/jobs_active
+    #    and /preview/jobs previously needed no permission at all, so a
+    #    view-only user could watch what everyone was working on.
+    ("/genimage/jobs_active",           "edit"),
+    ("/preview/jobs",                   "edit"),
+
     # -- work that happens over GET, so the default read rule would let it
     #    through. Listed explicitly so it needs "edit" like any other mutation.
     ("/run/health",                     None),          # diagnostics only

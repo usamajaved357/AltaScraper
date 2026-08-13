@@ -16,16 +16,24 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
 
     @app.route("/genimage/jobs_active")
     def genimage_jobs_active():
-        """List every still-running image job so a floating status bar can show
-        'Generating X/Y' on ANY page, and survive navigation (jobs live server-side)."""
+        """List the caller's still-running image jobs so a floating status bar can
+        show 'Generating X/Y' on ANY page, and survive navigation (jobs live
+        server-side).
+
+        Filtered by owner. It used to return EVERY running job on the server, so
+        with two people signed in the owner's status bar reported their VA's
+        image generation -- work they had not started and could not act on.
+        Someone who can manage users still sees everything, deliberately: they
+        are accountable for what it costs."""
         import time as _t
+        from domain import job_owner as _jo
         out = []
         with _IMG_JOBS_LOCK:
             for jid, j in _IMG_JOBS.items():
-                if j.get("status") == "running":
+                if j.get("status") == "running" and _jo.may_see(j, CONFIG_PATH):
                     out.append({"job": jid, "total": j.get("total", 0),
                                 "done": j.get("done", 0), "label": j.get("label", ""),
-                                "ts": j.get("ts", 0)})
+                                "ts": j.get("ts", 0), "mine": _jo.mine_only(j)})
         out.sort(key=lambda x: x.get("ts", 0))
         return jsonify({"ok": True, "jobs": out})
 
@@ -38,11 +46,17 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         exception -- never cleared its job. The job stayed "running" forever, the UI kept
         spinning, and Stop looked broken. Retiring the job here clears it at once; a live
         worker still sees `cancel` and exits cleanly at its next check.
+
+        Stops only the CALLER'S jobs. "Stop all" means all of yours -- cancelling
+        a colleague's half-finished batch from a button on your own screen is
+        never what was meant, and a manager who can SEE another job still cannot
+        end it from here.
         """
+        from domain import job_owner as _jo
         n = 0
         with _IMG_JOBS_LOCK:
             for j in _IMG_JOBS.values():
-                if j.get("status") == "running":
+                if j.get("status") == "running" and _jo.mine_only(j):
                     j["cancel"] = True
                     j["status"] = "error"          # same shape the worker's own cancel path uses
                     j["error"] = j.get("error") or "stopped by user"
@@ -52,9 +66,13 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
     @app.route("/genimage/stop_job", methods=["POST"])
     def genimage_stop_job():
         """Cancel ONE job and retire it immediately (see genimage_stop_all)."""
+        from domain import job_owner as _jo
         jid = (request.get_json(silent=True) or {}).get("job", "")
         with _IMG_JOBS_LOCK:
             j = _IMG_JOBS.get(jid)
+            if j and not _jo.mine_only(j):
+                return jsonify({"ok": False, "forbidden": True,
+                                "error": "That job belongs to someone else."}), 403
             if j and j.get("status") == "running":
                 j["cancel"] = True
                 j["status"] = "error"
@@ -63,10 +81,15 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
 
     @app.route("/genimage/job_status")
     def genimage_job_status():
+        from domain import job_owner as _jo
         jid = request.args.get("job", "")
         with _IMG_JOBS_LOCK:
             j = _IMG_JOBS.get(jid)
             if not j:
+                return jsonify({"ok": False, "error": "job not found"}), 404
+            if not _jo.may_see(j, CONFIG_PATH):
+                # Same answer as "not found" on purpose: whether a job id exists
+                # is itself information about someone else's work.
                 return jsonify({"ok": False, "error": "job not found"}), 404
             return jsonify({"ok": True, "status": j["status"], "total": j["total"],
                             "done": j["done"], "results": j["results"], "error": j["error"],

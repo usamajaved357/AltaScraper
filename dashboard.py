@@ -234,7 +234,22 @@ def _acquire_run_lock():
         _running["on"] = True
         _running["started"] = _t.time()
         return True
-_state    = {"cfg": None, "gc": None, "schemas": {}, "vv": None}
+_ACTIVE_KEYS = ("active_account_id", "active_marketplace", "active_sheet_id",
+                "active_tab", "active_tab_gid", "active_view")
+
+# _state used to be a plain dict, which meant ONE selected workspace for the
+# whole server. With two people signed in that is not a limitation, it is a
+# hazard: when a VA opened their workspace the owner's changed too, and the
+# owner's next Approve/Delete/Submit went to the VA's sheet with no warning.
+#
+# WorkspaceState answers the workspace keys per signed-in user and everything
+# else -- cfg, gc, schemas, vv -- from the one shared cache, exactly as before.
+# The ~40 call sites that read _state are untouched: changing the answer is one
+# edit, changing the question would have been forty, and forty edits is forty
+# chances to miss the one that writes to the wrong Amazon account.
+from domain.workspace_state import WorkspaceState as _WorkspaceState
+_state    = _WorkspaceState({"cfg": None, "gc": None, "schemas": {}, "vv": None},
+                            scoped=_ACTIVE_KEYS)
 
 # The selected workspace (the account AND its sheet/tab scope) lived ONLY in the in-memory
 # _state dict, so EVERY restart -- a Render redeploy, an instance recycle -- silently dropped
@@ -243,14 +258,20 @@ _state    = {"cfg": None, "gc": None, "schemas": {}, "vv": None}
 # links had "reverted". Persist the selection next to config.json (Render's persistent disk)
 # and restore it on boot, so the chosen workspace survives restarts.
 _ACTIVE_STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "app_state.json")
-_ACTIVE_KEYS = ("active_account_id", "active_marketplace", "active_sheet_id",
-                "active_tab", "active_tab_gid", "active_view")
 
 
 def _save_active_state():
-    """Persist the chosen workspace so a restart can't silently switch accounts."""
+    """Persist the SHARED default workspace so a restart can't silently switch
+    accounts.
+
+    Reads through .shared() on purpose. app_state.json is the starting point for
+    someone who has not chosen a workspace yet and the only thing background work
+    can use -- so writing one user's personal choice into it would put the
+    original bug back on disk, where it would outlive the process.
+    """
     try:
-        data = {k: _state.get(k) for k in _ACTIVE_KEYS if _state.get(k) is not None}
+        data = {k: _state.shared(k) for k in _ACTIVE_KEYS
+                if _state.shared(k) is not None}
         with open(_ACTIVE_STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:
@@ -265,8 +286,8 @@ def _load_active_state():
             data = json.load(f)
         if isinstance(data, dict):
             for k in _ACTIVE_KEYS:
-                if k in data and not _state.get(k):
-                    _state[k] = data[k]
+                if k in data and not _state.shared(k):
+                    _state.set_shared(k, data[k])
     except Exception:
         pass
 
@@ -1113,9 +1134,11 @@ def _new_img_job(total, label="", plan=None):
     import time as _t, uuid as _u
     jid = _u.uuid4().hex[:12]
     with _IMG_JOBS_LOCK:
-        _IMG_JOBS[jid] = {"status": "running", "total": total, "done": 0,
-                          "results": [], "error": "", "ts": _t.time(),
-                          "cancel": False, "label": label, "plan": plan or []}
+        from domain import job_owner as _jo
+        _IMG_JOBS[jid] = _jo.stamp(
+            {"status": "running", "total": total, "done": 0,
+             "results": [], "error": "", "ts": _t.time(),
+             "cancel": False, "label": label, "plan": plan or []})
     try:
         with _IMG_JOBS_LOCK:
             for k in [k for k, v in _IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
@@ -1176,7 +1199,8 @@ def _af_new(skus, account_id, label=""):
         # retire anything older than an hour so the registry can't grow forever
         for k in [k for k, v in _AF_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
             _AF_JOBS.pop(k, None)
-        _AF_JOBS[jid] = {
+        from domain import job_owner as _jo
+        _AF_JOBS[jid] = _jo.stamp({
             "id": jid, "status": "running", "cancel": False, "error": "",
             "ts": _t.time(), "started_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
             "account_id": account_id, "label": label,
@@ -1185,7 +1209,7 @@ def _af_new(skus, account_id, label=""):
             "summary": {"cleared": 0, "stuck": 0, "failed": 0, "not_run": len(skus)},
             "results": [],          # one entry per finished SKU
             "steps": [],            # human-readable progress lines
-        }
+        })
     return jid
 
 
@@ -3117,7 +3141,8 @@ def build_app(backend=None):
     import routes.autofix_job_routes as _autofix_job_routes
     _autofix_job_routes.register(app, _af_new=_af_new, _af_get=_af_get, _af_active=_af_active,
                                  _af_stop=_af_stop, _run_autofix_bg=_run_autofix_bg,
-                                 _state=_state, _threading=threading)
+                                 _state=_state, _threading=threading,
+                                 CONFIG_PATH=CONFIG_PATH)
     import routes.sync_routes as _sync_routes
     _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
                           _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
