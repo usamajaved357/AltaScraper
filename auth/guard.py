@@ -62,6 +62,16 @@ RULES = [
     # useful to whoever runs the deployment, and no business of a VA's.
     ("/diag",                           "manage_accounts"),
 
+    # -- the source repricer. Reading the dry run is how anyone finds out what
+    #    the app is about to do to live listings, so it is open to any signed-in
+    #    user and exempted BEFORE the broader rule. Everything that changes what
+    #    it will do -- enrolling a SKU, adding a supplier, editing the rules --
+    #    needs 'publish', because that is what enrolling a SKU eventually causes,
+    #    even though no publish happens at the moment the button is pressed.
+    ("/sourcing/list",                  None),
+    ("/sourcing/log",                   None),
+    ("/sourcing",                       "publish"),
+
     # -- publishing to Amazon
     ("/submit/target",                  None),          # read-only: names the destination
     ("/submit",                         "publish"),
@@ -156,6 +166,10 @@ FEATURE_PATHS = [
     ("/accounts/select",      None),     # and to open one
     ("/accounts",             "accounts"),
     ("/sp_diagnose",          "accounts"),
+    # The repricer acts on listings, so it rides on the listings area: someone
+    # with no access to listings has no business seeing what is about to happen
+    # to their prices either.
+    ("/sourcing",             "listings"),
     ("/rows",                 "listings"),
     ("/row",                  "listings"),
     ("/live",                 "listings"),
