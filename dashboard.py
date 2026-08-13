@@ -209,31 +209,83 @@ def _json_errors(e):
 # --- brand-listing feature (added) ------------------------------------------
 import dashboard_brand_patch
 _run_lock = threading.Lock()
-_running  = {"on": False, "proc": None, "started": 0.0}
+
+
+class _RunningFlag(dict):
+    """The legacy run flag, kept working now that runs are concurrent.
+
+    Fifteen places across dashboard.py, listing_routes.py, miles_routes.py and
+    ui_routes.py end a run by setting _running["on"] = False. That was a correct
+    way to release ONE global lock. With several runs at once it is ambiguous --
+    which run just ended? -- and none of those fifteen sites has the answer.
+
+    The THREAD has the answer: every run occupies its own thread. So setting the
+    flag to False releases whatever slot this thread is holding, and all fifteen
+    call sites keep working exactly as written. Rule 12 again: change the
+    behaviour in one place rather than the call sites in fifteen.
+    """
+
+    def __setitem__(self, key, value):
+        if key == "on" and not value:
+            try:
+                from domain.run_slots import SLOTS as _S
+                _S.release_current()
+            except Exception:
+                pass
+        dict.__setitem__(self, key, value)
+
+
+_running = _RunningFlag({"on": False, "proc": None, "started": 0.0,
+                         "key": None, "busy_reason": ""})
 _RUN_MAX_SECONDS = 600   # a Preview/Submit should never take >10 min; after that the
                           # lock is presumed stuck (abandoned stream) and is reclaimable.
 
-def _acquire_run_lock():
-    """Try to mark a run as started. Returns True if WE acquired it, False if a
-    genuine live run is already going. Self-healing: if the flag is on but the
-    previous run's subprocess has already exited, or the run is older than
-    _RUN_MAX_SECONDS, the lock is considered stale (an abandoned SSE stream never
-    ran its release `finally`) and is reclaimed. This fixes the 'Another run is
-    already in progress' wedge that otherwise needs an app restart."""
+def _acquire_run_lock(account_id=None, sku=""):
+    """Try to start a run. True if we may, False if a limit says otherwise.
+
+    WAS: one flag for the whole app, so ONE Preview or Submit at a time no matter
+    who asked or what for. Two people could not work at once and the second was
+    told "a run is already in progress" however unrelated their listing was.
+
+    NOW: domain/run_slots.py decides, per ACCOUNT and per SKU. The same SKU still
+    never runs twice at once -- that is correctness, two runs would write the same
+    sheet row and submit the same listing twice -- and each Amazon account is
+    capped, because SP-API quota is per selling account and exceeding it turns
+    into throttling that reads as Amazon being broken. Different accounts do not
+    block each other at all.
+
+    Returns a bool so the ~2 existing callers are unchanged; the KEY needed to
+    release it is stashed on _running for them. Callers that can name their
+    account and SKU should pass them -- those that cannot fall back to the active
+    workspace, which is what the single lock effectively assumed anyway.
+    """
+    from domain.run_slots import SLOTS as _SLOTS
+    from domain import job_owner as _jo
+    if account_id is None:
+        account_id = _state.get("active_account_id", "") or ""
+    ok, res = _SLOTS.acquire(account_id, sku, owner=_jo.current())
+    if not ok:
+        _running["busy_reason"] = res
+        return False
     import time as _t
-    with _run_lock:
-        on = _running.get("on")
-        if on:
-            proc = _running.get("proc")
-            started = _running.get("started") or 0.0
-            proc_dead = (proc is None) or (proc.poll() is not None)
-            too_old = (_t.time() - started) > _RUN_MAX_SECONDS
-            if not (proc_dead or too_old):
-                return False          # a real run is genuinely in progress
-            # else: stale lock -> fall through and reclaim it
-        _running["on"] = True
-        _running["started"] = _t.time()
-        return True
+    _running["busy_reason"] = ""
+    # Kept for the existing /stop and status paths, which still read these.
+    _running["on"] = True
+    _running["started"] = _t.time()
+    _running["key"] = res
+    return True
+
+
+def _release_run_lock(key=None):
+    """Give the slot back. Safe to call twice."""
+    from domain.run_slots import SLOTS as _SLOTS
+    k = key or _running.get("key")
+    if k:
+        _SLOTS.release(k)
+    if not _SLOTS.busy():
+        _running["on"] = False
+        _running["proc"] = None
+        _running["started"] = 0.0
 _ACTIVE_KEYS = ("active_account_id", "active_marketplace", "active_sheet_id",
                 "active_tab", "active_tab_gid", "active_view")
 

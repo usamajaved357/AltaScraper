@@ -1047,8 +1047,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                                 mimetype="text/event-stream")
 
         def stream():
-            if not _acquire_run_lock():
-                yield "data: [busy] a run is already in progress -- wait for it to finish\n\n"
+            # Keyed on THIS account and THESE SKUs, not on one flag for the whole
+            # app: two people in two workspaces are genuinely independent, and a
+            # run should only wait for something it would actually collide with.
+            _run_acct = str(_state.get("active_account_id", "") or "")
+            _run_sku = str(_req_skus or "") if mode == "regen" else ""
+            if not _acquire_run_lock(_run_acct, _run_sku):
+                _why = (_running.get("busy_reason")
+                        or "a run is already in progress -- wait for it to finish")
+                yield "data: [busy] %s\n\n" % _why
                 yield "event: end\ndata: end\n\n"
                 return
             try:

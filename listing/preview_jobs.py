@@ -17,7 +17,7 @@ _LOCK = threading.Lock()       # guards the registry/queue below
 _JOBS = {}                     # id -> job dict
 _QUEUE = []                    # ids waiting to run (FIFO)
 _ORDER = []                    # every id in creation order (for listing / pruning)
-_WORKER = {"on": False}
+_WORKER = {"n": 0}      # how many worker threads are alive right now
 _SEQ = {"n": 0}
 _DEPS = {}                     # injected run-lock handles (see configure)
 _MAX_JOBS = 200                # bound the registry
@@ -47,19 +47,24 @@ def _public(j):
     return {k: v for k, v in j.items() if k != "_args"}
 
 
-def enqueue(sku, mode, args, label=""):
+def enqueue(sku, mode, args, label="", account_id="", owner=""):
     """Create a job and add it to the FIFO queue. Returns the job id. Starts the worker
-    thread if it isn't already running."""
+    thread if it isn't already running.
+
+    account_id and owner are recorded so the run can be keyed per account and per
+    SKU rather than against one global lock, and so Stop can tell whose run it is.
+    """
     with _LOCK:
         _SEQ["n"] += 1
         jid = "pj%d" % _SEQ["n"]
         _JOBS[jid] = {"id": jid, "sku": sku, "mode": mode, "label": label or sku,
                       "status": "queued", "log": [], "summary": "", "exit_code": None,
-                      "created": _now(), "started": "", "ended": "", "_args": list(args)}
+                      "created": _now(), "started": "", "ended": "", "_args": list(args),
+                      "account_id": str(account_id or ""), "owner": str(owner or "")}
         _QUEUE.append(jid)
         _ORDER.append(jid)
         _prune_locked()
-    _ensure_worker()
+    _ensure_workers()
     return jid
 
 
@@ -73,12 +78,29 @@ def _prune_locked():
         _JOBS.pop(old, None)
 
 
-def _ensure_worker():
+def _ensure_workers():
+    """Keep enough workers alive to fill the available run slots.
+
+    There was exactly ONE worker thread, so even after the global lock was split
+    per account and per SKU, jobs would still have come off the queue one at a
+    time -- the queue itself was the bottleneck. The number of workers follows
+    the slot limit, so the two cannot disagree.
+    """
+    try:
+        from domain.run_slots import total_limit
+        want = total_limit()
+    except Exception:
+        want = 1
+    to_start = 0
     with _LOCK:
-        if _WORKER["on"]:
-            return
-        _WORKER["on"] = True
-    threading.Thread(target=_worker, daemon=True).start()
+        # Never more workers than there is work for, and never more than the
+        # slot limit -- a worker beyond that would only sit spinning on acquire().
+        need = min(want, _WORKER["n"] + len(_QUEUE))
+        while _WORKER["n"] < need:
+            _WORKER["n"] += 1
+            to_start += 1
+    for _ in range(to_start):
+        threading.Thread(target=_worker, daemon=True).start()
 
 
 def _worker():
@@ -86,7 +108,7 @@ def _worker():
         with _LOCK:
             jid = _QUEUE.pop(0) if _QUEUE else None
             if jid is None:
-                _WORKER["on"] = False
+                _WORKER["n"] = max(0, _WORKER["n"] - 1)
                 return
             job = _JOBS.get(jid)
         if not job or job.get("status") == "cancelled":
@@ -100,9 +122,13 @@ def _run_one(job):
     running = _DEPS.get("running")
     ansi = _DEPS.get("ansi_re")
 
-    # Wait for the global run lock so we never run concurrently with an SSE run / generate.
+    # Wait for a run slot. Keyed on THIS job's account and SKU, so a job only
+    # waits for work that would genuinely collide with it -- the same listing, or
+    # the same Amazon account already at its quota -- instead of for whatever
+    # single run happened to be going anywhere in the app.
     waited = 0
-    while acquire is not None and not acquire():
+    while acquire is not None and not acquire(job.get("account_id", ""),
+                                              job.get("sku", "")):
         if job.get("status") == "cancelled":
             job["ended"] = _now()
             return

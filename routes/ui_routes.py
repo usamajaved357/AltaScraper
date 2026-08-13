@@ -107,20 +107,37 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
 
     @app.route("/stop", methods=["POST"])
     def stop():
-        p = _running.get("proc")
+        """Stop YOUR runs.
+
+        This used to end whatever single run existed, from anyone holding "edit"
+        -- so a Lister pressing Stop killed the owner's submit mid-flight. Runs
+        are now per account and per SKU, and each records who started it, so Stop
+        ends the caller's own and leaves colleagues alone. The shared-password
+        owner is the only user, so for them it still means everything.
+        """
+        from domain.run_slots import SLOTS as _SLOTS
+        from domain import job_owner as _jo
         was_on = bool(_running.get("on"))
-        # Kill the child if it's still alive.
-        if p is not None:
-            try:
-                _kill_proc(p)
-            except Exception:
-                pass
-        # ALWAYS clear the lock -- even if proc was already gone. This is what makes
-        # Stop a reliable un-stick for a wedged lock (stream abandoned, on=True,
-        # proc=None) instead of returning "nothing is running" and leaving it stuck.
-        with _run_lock:
-            _running["on"] = False
-            _running["proc"] = None
-            _running["started"] = 0.0
-        return jsonify({"ok": True, "was_running": was_on})
+        uid = _jo.current()
+        stopped = _SLOTS.stop(owner=(uid or None))
+
+        # The legacy single-proc handle, for a run started before slots existed
+        # or one that never attached its subprocess. Only touched when the caller
+        # has nothing of their own left running, so it cannot reach across into
+        # somebody else's work.
+        if not stopped and not _SLOTS.busy():
+            p = _running.get("proc")
+            if p is not None:
+                try:
+                    _kill_proc(p)
+                except Exception:
+                    pass
+            # ALWAYS clear the flag -- even if proc was already gone. This is what
+            # makes Stop a reliable un-stick for a wedged run (stream abandoned,
+            # on=True, proc=None) rather than "nothing is running, still stuck".
+            with _run_lock:
+                _running["on"] = False
+                _running["proc"] = None
+                _running["started"] = 0.0
+        return jsonify({"ok": True, "was_running": was_on, "stopped": stopped})
 
