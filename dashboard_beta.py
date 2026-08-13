@@ -112,7 +112,11 @@ if __name__ == "__main__":
     print("  listening : http://%s:%s" % (HOST, PORT))
     print("  the live app on :5000 is untouched and still using Google Sheets")
 
-    res = _sched.register_jobs(app)
+    # The jobs delegate to the app's own views and modules rather than talking to
+    # Amazon themselves, so they need the app, the config path and the config
+    # reader. Without these they raise "scheduler is not bound", which is the
+    # honest answer -- better than a job that appears to run and does nothing.
+    res = _sched.register_jobs(app, config_path=_d.CONFIG_PATH, cfg=_d._cfg)
     if not res.get("ok"):
         # Not fatal: the app is fully usable, only the timers are missing, and
         # every job can still be triggered by hand at /jobs/run/<job_type>.

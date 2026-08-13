@@ -40,6 +40,39 @@ CREATE TABLE IF NOT EXISTS workspaces (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Products WAITING to be generated: the generator's INPUT.
+--
+-- This is the last thing that had to be read live from Google Sheets. Reading it
+-- live meant no listing could be started without Google being reachable and the
+-- sheet being shared correctly. Now the sheet is IMPORTED on demand -- you press
+-- a button, the rows land here, and nothing reads Google again until you press it
+-- again. The sheet stays exactly as you use it today; it just stops being a
+-- dependency.
+--
+-- `raw` keeps the original row as it arrived. Column names in these sheets vary
+-- (ebay_link vs ebay_url, delivery_time vs handling_time) and the normalised
+-- columns below are a best reading of them -- keeping the original means a
+-- mis-read column can be diagnosed later instead of being lost on import.
+CREATE TABLE IF NOT EXISTS input_products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    row_index INTEGER,
+    amazon_url TEXT,
+    competitor_asin TEXT,
+    ebay_url TEXT,
+    item_name TEXT,
+    source_cost TEXT,
+    selling_price TEXT,
+    handling_time TEXT,
+    upc TEXT,
+    raw TEXT,
+    imported_at TEXT,
+    source TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_input_ws ON input_products(workspace_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_input_ws_row
+    ON input_products(workspace_id, row_index);
+
 CREATE TABLE IF NOT EXISTS listings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

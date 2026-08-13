@@ -232,7 +232,13 @@ def load_config() -> dict:
         console.print("[red]config.json not found.[/red]")
         sys.exit(1)
     with open(CONFIG_PATH) as f:
-        return json.load(f)
+        cfg = json.load(f)
+    # Where this config came from. Everything else the app stores -- the
+    # database, users, saved catalogues -- lives beside it, so anything given the
+    # config needs the path too rather than guessing "config.json" relative to
+    # whatever directory it happens to be started from.
+    cfg["_config_path"] = str(CONFIG_PATH)
+    return cfg
 
 class Timer:
     def __init__(self): self.t = time.time()
@@ -2299,6 +2305,29 @@ def init_sheets(config: dict):
                 bold_header=True,
                 header_bg={"red": 0.27, "green": 0.51, "blue": 0.71})
             console.print(f"  Created new tab: '[bold]{OUTPUT_TAB}[/bold]'")
+
+    # INPUT. On the database backend the products come from the imported queue,
+    # not from Google. That is the last live Sheets dependency gone: nothing here
+    # needs Google to be reachable, the service account to still have access, or
+    # the sheet to keep its name and tab.
+    #
+    # The queue is presented as a worksheet (data/input_import.InputGrid) so
+    # read_input_sheet below is UNCHANGED. That is what reading through
+    # listing/repo.py was for: the day something replaced the sheet, the call
+    # site would not have to change.
+    if _use_db:
+        from data.input_import import InputGrid, summary as _in_summary
+        _wsid = str(config.get("_account_id") or "").strip() or "dropshipping"
+        _cfgp = str(config.get("_config_path") or "config.json")
+        ws_in = InputGrid(_cfgp, _wsid)
+        _s = _in_summary(_cfgp, _wsid)
+        if len(ws_in):
+            console.print(f"  Input  -> [bold]imported queue[/bold] ({_s['count']} products, "
+                          f"imported {_s['imported_at']})")
+        else:
+            console.print("  Input  -> [bold]imported queue is EMPTY[/bold] -- "
+                          "press Import in the app to bring the sheet in")
+        return gc, ws_in, ws_out
 
     sh_in = _open_sheet_retry(gc, config["input_spreadsheet_id"], "input sheet")
     in_gid = str(config.get("_input_tab_gid") or "").strip()

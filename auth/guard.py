@@ -94,6 +94,14 @@ RULES = [
     ("/genimage/jobs_active",           "edit"),
     ("/preview/jobs",                   "edit"),
 
+    # -- the generator's input queue. Importing REPLACES what is generated next,
+    #    and clearing throws work away, so they are gated accordingly rather than
+    #    falling through to the default read rule.
+    ("/input/status",                   None),
+    ("/input/rows",                     None),
+    ("/input/import",                   "edit"),
+    ("/input/clear",                    "approve_delete"),
+
     # -- work that happens over GET, so the default read rule would let it
     #    through. Listed explicitly so it needs "edit" like any other mutation.
     ("/run/health",                     None),          # diagnostics only

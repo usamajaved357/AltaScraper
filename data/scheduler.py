@@ -154,27 +154,105 @@ def shutdown():
 
 
 # ---- the jobs themselves ------------------------------------------------
-# Left as explicit stubs. Each needs the beta's SP-API wiring, which does not
-# exist until dashboard_beta.py is built, and a stub that returns "not
-# implemented" is honest -- one that silently returns success would make
-# /jobs/status show green for work that never happened.
+# These were stubs that raised NotImplementedError, on the grounds that each
+# needed "the beta's SP-API client". That reasoning has expired: dashboard_beta.py
+# calls build_app(backend="db"), which is the SAME app with the SAME routes, so
+# every one of these already exists and works. What was missing was not a client
+# but a way to reach it from a timer.
+#
+# So none of them talks to Amazon. Each delegates to the code that already owns
+# that job (Rule 12) -- a second implementation would drift from the one the
+# buttons use, and the difference would show as "the scheduled sweep disagrees
+# with the screen".
+_APP = {"app": None, "config_path": None, "cfg": None}
+
+
+def bind(app=None, config_path=None, cfg=None):
+    """Give the jobs the app and config they need to reach the real code.
+
+    Held in a module global because APScheduler calls these with no context at
+    all. Set once by register_jobs().
+    """
+    if app is not None:
+        _APP["app"] = app
+    if config_path is not None:
+        _APP["config_path"] = config_path
+    if cfg is not None:
+        _APP["cfg"] = cfg
+
+
+def _need(*keys):
+    missing = [k for k in keys if not _APP.get(k)]
+    if missing:
+        raise RuntimeError("scheduler is not bound to %s -- call bind() first"
+                           % ", ".join(missing))
+    return [_APP[k] for k in keys]
+
 
 def catalog_sync(workspace_id=None):
-    """Pull live listing data from SP-API. Buy box price, offers, status."""
-    raise NotImplementedError(
-        "catalog_sync needs the beta's SP-API client, wired in dashboard_beta.py")
+    """Refresh live listing data, and the images that go with it.
+
+    Delegates to domain/live_refresher.py, which already does this per account
+    and does it BETTER than a fixed timer could: it ranks marketplaces by how far
+    past their own deadline they are, backs off on empty ones, and stands aside
+    while a person is syncing. A second six-hourly catalogue sweep next to it
+    would not add freshness, it would add contention for the same Amazon quota.
+
+    So this job's real work is to make sure that refresher is running, and to
+    report what it is doing. Running it by hand forces one account's stalest
+    marketplace immediately, which is the part a timer usefully adds.
+    """
+    import domain.live_refresher as _ref
+    app, config_path, cfg = _need("app", "config_path", "cfg")
+    st = _ref.status()
+    if not st.get("running"):
+        _ref.start(app, cfg, config_path)
+        return {"started_refresher": True}
+    target = _ref._stalest(cfg, config_path, only_account=workspace_id)
+    if not target:
+        return {"refreshed": None, "note": "every marketplace is current",
+                "workers": st.get("workers")}
+    note = _ref._refresh_one(app, target[0], target[1])
+    enote = _ref._enrich_one(app, config_path, target[0], target[1])
+    return {"refreshed": "%s::%s" % target, "catalogue": note, "images": enote}
 
 
 def asin_monitor_check(workspace_id=None):
-    """Check tracked ASINs for seller changes."""
-    raise NotImplementedError(
-        "asin_monitor_check needs the beta's SP-API client")
+    """Check tracked ASINs for seller changes.
+
+    monitor/checker.py already owns this, including the 24-hour throttle that
+    exists so the monitor stops exhausting the Amazon quota. Calling check_all
+    directly respects that throttle; reimplementing the sweep here would not,
+    which is precisely the bug the throttle was added for.
+    """
+    from monitor import checker as _checker
+    _, config_path, cfg = _need("app", "config_path", "cfg")
+    res = _checker.check_all(cfg() if callable(cfg) else cfg, config_path,
+                             log=lambda m: None)
+    return res if isinstance(res, dict) else {"result": str(res)[:400]}
 
 
 def inventory_sync(workspace_id=None):
-    """Pull FBA inventory levels."""
-    raise NotImplementedError(
-        "inventory_sync needs the beta's SP-API client")
+    """Refresh FBA inventory levels.
+
+    Calls the real /inventory/v2/run view inside a request context, the same way
+    live_refresher calls /live/catalog. The inventory model -- reorder points,
+    cover days, the alert thresholds -- lives in that route, and a copy of it
+    here would quietly disagree with the numbers on the Inventory screen.
+    """
+    app, _config_path, _cfg = _need("app", "config_path", "cfg")
+    fn = app.view_functions.get("inventory_v2_run")
+    if not fn:
+        raise RuntimeError("inventory_v2_run view is not registered")
+    with app.test_request_context("/inventory/v2/run", method="POST",
+                                  json={"id": workspace_id or ""}):
+        resp = fn()
+    body = resp[0] if isinstance(resp, tuple) else resp
+    data = getattr(body, "json", None) or {}
+    if not data.get("ok"):
+        raise RuntimeError("inventory run failed: %s" % str(data.get("error"))[:200])
+    return {"alerts": len(data.get("alerts") or []),
+            "skus": data.get("count") or data.get("rows") or 0}
 
 
 register_job("catalog_sync", catalog_sync, hours=6,
@@ -185,7 +263,7 @@ register_job("inventory_sync", inventory_sync, hours=24,
              description="Pull FBA inventory levels")
 
 
-def register_jobs(app, workspace_ids=None):
+def register_jobs(app, workspace_ids=None, config_path=None, cfg=None):
     """Attach /jobs/status and /jobs/run/<job_type>, and start the timers.
 
     NOT /sync/*. The app already owns that prefix for AMAZON sync -- pulling a
@@ -195,6 +273,10 @@ def register_jobs(app, workspace_ids=None):
     the beta at startup with an endpoint collision, which is how this was found.
     """
     from flask import jsonify
+
+    # The jobs reach the real code through these; APScheduler gives them no
+    # context of its own.
+    bind(app=app, config_path=config_path, cfg=cfg)
 
     @app.route("/jobs/status")
     def jobs_status():
