@@ -168,19 +168,33 @@ def _pubimg(token, relpath):
 @app.errorhandler(500)
 @app.errorhandler(Exception)
 def _json_errors(e):
-    """Ensure API routes (anything under our JSON endpoints) return JSON on error,
-    never Flask's HTML error page — that HTML is what causes 'Unexpected token <,
-    <!doctype ... is not valid JSON' in the browser."""
+    """Ensure API calls return JSON on error, never Flask's HTML error page —
+    that HTML is what causes 'Unexpected token <, <!doctype ... is not valid
+    JSON' in the browser.
+
+    Which callers want JSON is decided by auth.guard.wants_json(), the same
+    function the login doorman uses. It used to be a hardcoded list of URL
+    prefixes here, which had gone stale: /users, /ppc, /inventory, /monitor,
+    /miles, /submit, /preview and /suggest were all missing, so a crash in any
+    of them still sent an HTML page to code expecting JSON.
+    """
     import traceback as _tb
+    from auth.guard import wants_json as _wants_json
     code = getattr(e, "code", 500) or 500
-    try:
-        path = request.path or ""
-    except Exception:
-        path = ""
-    # for our JSON API routes, always return JSON
-    if any(path.startswith(p) for p in ("/genimage", "/aplus", "/optimize", "/recipes",
-                                         "/live", "/media", "/accounts", "/ai", "/brand",
-                                         "/cogs", "/rows", "/run")):
+
+    # Record it before answering. A server error the user only ever sees as a
+    # broken screen is one they have to describe from memory; recorded, it can
+    # be read back at /diag with the URL, the time and the real line number.
+    # Only genuine faults -- a 404 or a 403 is the app working correctly.
+    if code == 500:
+        try:
+            import domain.selfcheck as _sc
+            _sc.record(getattr(request, "path", ""), getattr(request, "method", ""),
+                       code, e, user=(session.get("email") or session.get("uid") or ""))
+        except Exception:
+            pass
+
+    if _wants_json():
         msg = str(e)
         if code == 500:
             # include a short traceback tail to make debugging possible
@@ -3196,12 +3210,42 @@ def build_app(backend="sheets"):
     # a time and spread out so Amazon is not asked for everything at once.
     import domain.live_refresher as _refresher
 
+    @app.route("/diag")
+    def _deploy_diag():
+        """Is THIS deployment configured correctly?
+
+        On a server there is no terminal, and a misconfigured deployment looks
+        exactly like an application bug -- listings vanish, users get signed out.
+        This says which it is, from inside the running app.
+        """
+        import domain.deploy_check as _dc
+        import domain.selfcheck as _sc
+        res = _dc.check(CONFIG_PATH)
+        res["refresher"] = _refresher.status()
+        # The configuration and the actual faults belong on ONE page. Split
+        # across two, the obvious question -- "is this error caused by that
+        # misconfiguration?" -- needs two tabs and a guess.
+        res["recent"] = _sc.recent(25)
+        res["text"] = _sc.as_text(res)      # the copy-to-clipboard block
+        return jsonify({"ok": True, **res})
+
     @app.route("/live/refresher")
     def _live_refresher_status():
         """What the background refresher is doing, and when each account last ran.
         Reads real state -- a refresher that cannot be inspected is one you have
         to take on faith."""
         return jsonify({"ok": True, **_refresher.status()})
+
+    # Say at BOOT whether this deployment is configured correctly. A wiped disk
+    # or a missing APP_SECRET_KEY otherwise announces itself hours later as
+    # missing data, which reads as an application bug. The server log is the one
+    # place a deployment always has, so the verdict goes there, every start.
+    try:
+        import domain.deploy_check as _dc0
+        import domain.selfcheck as _sc0
+        print(_sc0.boot_banner(_dc0.check(CONFIG_PATH)), flush=True)
+    except Exception as _e0:
+        print(f"  (deployment check could not run: {_e0})", flush=True)
 
     _refresher.start(app, _cfg, CONFIG_PATH,
                      log=lambda m: print(f"[refresher] {m}"))
