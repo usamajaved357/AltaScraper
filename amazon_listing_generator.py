@@ -2236,6 +2236,18 @@ def _open_sheet_retry(gc, key: str, what: str = "sheet", tries: int = 5):
         raise last
 
 
+def _data_backend(config: dict) -> str:
+    """Where THIS run writes its listings: "sheets" (default) or "db".
+
+    Read from the environment first so the dashboard can launch the generator on
+    a chosen backend without rewriting config.json, then from config. Defaults to
+    sheets, so an unset value can never silently divert a run away from the sheet
+    someone is watching.
+    """
+    return str(os.environ.get("ALTA_DATA_BACKEND")
+               or config.get("data_backend") or "sheets").strip().lower()
+
+
 def init_sheets(config: dict):
     scopes = ["https://spreadsheets.google.com/feeds",
               "https://www.googleapis.com/auth/drive"]
@@ -2243,12 +2255,28 @@ def init_sheets(config: dict):
         config["google_service_account_json"], scopes=scopes)
     gc     = gspread.authorize(creds)
 
-    sh_out = _open_sheet_retry(gc, config["google_spreadsheet_id"], "output sheet")
+    # DATA BACKEND. On "db" the OUTPUT is a workspace in SQLite and no output
+    # spreadsheet is opened at all -- which also means a run cannot fail because
+    # an output sheet is missing or unshared.
+    #
+    # The INPUT is still a sheet. That is where products come from and nothing
+    # replaces it yet, so this LOWERS the dependency rather than removing it.
+    # Saying that plainly here is better than implying a clean break.
+    ws_out  = None
+    _use_db = (_data_backend(config) == "db")
+    if _use_db:
+        from data.store import ListingStore, SheetLikeStore
+        _wsid = str(config.get("_account_id") or "").strip() or "dropshipping"
+        ws_out = SheetLikeStore(ListingStore(_wsid))
+        console.print(f"  Output -> [bold]SQLite[/bold] (workspace '{_wsid}') "
+                      f"-- no output sheet opened")
+
+    sh_out = None if _use_db else _open_sheet_retry(
+        gc, config["google_spreadsheet_id"], "output sheet")
     # Prefer resolving the exact tab by gid (from the account's sheet URL); fall
     # back to the tab title / OUTPUT_TAB name.
     out_gid = str(config.get("_output_tab_gid") or "").strip()
-    ws_out = None
-    if out_gid.isdigit():
+    if ws_out is None and out_gid.isdigit():
         try:
             ws_out = sh_out.get_worksheet_by_id(int(out_gid))
             console.print(f"  Output tab (by gid {out_gid}): '[bold]{ws_out.title}[/bold]'")
