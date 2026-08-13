@@ -179,18 +179,13 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache):
             return jsonify({"ok": False, "error": found.error}), 400
         if not found.ok:
             return jsonify({"ok": False, "error": found.error}), 404
-        trow, headers = found.row, found.headers
-        applied = []
-        from gspread.utils import rowcol_to_a1
-        data = []
-        for f, val in fields.items():
-            names = _FIELD_ALIASES.get(f, [f])
-            col = next((headers.index(n) + 1 for n in names if n in headers), None)
-            if col:
-                data.append({"range": rowcol_to_a1(trow, col), "values": [[val]]})
-                applied.append(f)
-        if data:
-            ws.batch_update(data)
+        # set_fields reports what actually landed: a field whose column is absent
+        # is skipped and left out of `applied`, rather than being counted as
+        # written. That was already this route's behaviour and is now every
+        # caller's, because it lives in the repo.
+        applied = _repo.set_fields(ws, found.row, fields,
+                                   headers=found.headers, aliases=_FIELD_ALIASES)
+        if applied:
             _bust_records_cache()
         return jsonify({"ok": True, "applied": applied, "note": "pulled Amazon copy into the sheet"})
 

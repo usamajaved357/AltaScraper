@@ -133,6 +133,109 @@ def locate(ws, sku, sku_headers=DEFAULT_SKU_HEADERS, headers=None):
     return Located(headers=hdrs, sku_col=kcol, error="sku not found in sheet")
 
 
+# ---------------------------------------------------------------------------
+# WRITES
+#
+# "Which cell is this?" had TWO implementations: routes/listing_routes.py wrote
+# its own a1() by hand, while handling_routes, sync_routes and brand_listing all
+# imported rowcol_to_a1 from gspread. And "build a batch payload of
+# {range, values} for these named fields" was written out four separate times.
+#
+# Both live here now. These are also the functions a database backend has to
+# replace, so keeping them in one place is what makes that swap a small change
+# rather than a hunt through eight files.
+# ---------------------------------------------------------------------------
+
+def a1(row, col):
+    """A1 notation for a 1-based (row, col). One implementation.
+
+    gspread's rowcol_to_a1 is used when it is importable, so behaviour matches
+    the three call sites that already relied on it; the pure-Python fallback
+    keeps this module usable without gspread (tests, and any future backend that
+    has no Google client at all).
+    """
+    try:
+        from gspread.utils import rowcol_to_a1
+        return rowcol_to_a1(row, col)
+    except Exception:
+        s, c = "", int(col)
+        while c:
+            c, rem = divmod(c - 1, 26)
+            s = chr(65 + rem) + s
+        return "%s%d" % (s, int(row))
+
+
+def cell_updates(row, headers, fields, aliases=None):
+    """Batch payload for writing named fields to one row.
+
+    Returns ([{range, values}, ...], written_names). Fields whose column is
+    absent are SKIPPED and left out of written_names, so the caller can report
+    what actually landed instead of assuming all of it did -- which is what
+    sync_routes already did by hand, and what the others silently did not.
+
+    `aliases` maps a field name to several acceptable column headings, matching
+    sync_routes' _FIELD_ALIASES behaviour.
+    """
+    payload, written = [], []
+    for name, value in (fields or {}).items():
+        names = (aliases or {}).get(name, [name])
+        col = find_col(headers, names)
+        if not col:
+            continue
+        payload.append({"range": a1(row, col), "values": [[value]]})
+        written.append(name)
+    return payload, written
+
+
+def set_field(ws, row, header, value, headers=None):
+    """Write ONE cell, addressed by column NAME rather than number.
+
+    Deliberately uses update_cell, exactly as every current single-cell caller
+    did, so the write semantics are unchanged. Returns True if it was written,
+    False if that column does not exist.
+    """
+    hdrs = headers if headers is not None else read_headers(ws)
+    col = find_col(hdrs, header)
+    if not col:
+        return False
+    ws.update_cell(row, col, value)
+    return True
+
+
+def set_fields(ws, row, fields, headers=None, aliases=None):
+    """Write several named fields to one row in a SINGLE batch call.
+
+    Returns the list of field names actually written. One call instead of one
+    per field matters: the sheet API is quota'd per minute, and this is on the
+    path that bulk operations take.
+    """
+    hdrs = headers if headers is not None else read_headers(ws)
+    payload, written = cell_updates(row, hdrs, fields, aliases=aliases)
+    if payload:
+        ws.batch_update(payload)
+    return written
+
+
+def batch_write(ws, payload, chunk=100):
+    """Send a prepared payload, in chunks the sheet API will accept.
+
+    The 100-row chunking was already being done by hand in listing_routes; it
+    lives here so every bulk writer gets it rather than only the one that
+    remembered.
+    """
+    if not payload:
+        return 0
+    for i in range(0, len(payload), chunk):
+        ws.batch_update(payload[i:i + chunk])
+    return len(payload)
+
+
+def delete_row(ws, row):
+    """Remove a row. Named here because a database backend must implement it."""
+    ws.delete_rows(int(row))
+    return True
+
+
 def locate_in_tabs(book, sku, sku_headers=DEFAULT_SKU_HEADERS, tabs=None):
     """Search several tabs and return (worksheet, Located) for the first hit.
 

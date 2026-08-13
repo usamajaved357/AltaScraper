@@ -211,7 +211,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             for k in [k for k in list(obj.keys()) if _LIVE_IMG_KEY.match(str(k))]:
                 obj.pop(k, None)
             obj.update(images)
-            ws.update_cell(trow, acol, json.dumps(obj))
+            _repo.set_field(ws, trow, "Attributes JSON", json.dumps(obj),
+                            headers=found.headers)
             try:
                 _bust_records_cache()
             except Exception:
@@ -762,10 +763,9 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
             if not found.ok:
                 return jsonify({"ok": False, "error": found.error}), 404
-            scol = found.col(STATUS_HEADER)
-            if not scol:
+            if not _repo.set_field(ws, found.row, STATUS_HEADER, status,
+                                   headers=found.headers):
                 return jsonify({"ok": False, "error": "no Status column"}), 400
-            ws.update_cell(found.row, scol, status)
             _bust_records_cache()
             return jsonify({"ok": True})
         except Exception as e:
@@ -851,13 +851,6 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if s and s not in sku_rows:
                     sku_rows[s] = i
 
-            def a1(r, c):
-                s = ""
-                while c:
-                    c, rem = divmod(c - 1, 26)
-                    s = chr(65 + rem) + s
-                return f"{s}{r}"
-
             payload, updated = [], 0
             for ch in changes:
                 rn = sku_rows.get(_repo.norm(ch["sku"]))
@@ -867,14 +860,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                                     ("compliance_risk", "Compliance Risk"),
                                     ("ip_risk", "IP Risk")):
                     if key in ch["changed"] and header in col:
-                        payload.append({"range": a1(rn, col[header]),
+                        payload.append({"range": _repo.a1(rn, col[header]),
                                         "values": [[ch["new"][key]]]})
                 updated += 1
 
             # One batched write -- 87 rows x 4 columns as single cell updates
             # would be ~350 API calls and would hit Google's per-minute quota.
-            for i in range(0, len(payload), 100):
-                ws.batch_update(payload[i:i + 100])
+            # The 100-cell chunking lives in the repo so every bulk writer gets
+            # it, not just the one that remembered to write the loop.
+            _repo.batch_write(ws, payload)
             _bust_records_cache()
             return jsonify({"ok": True, "updated": updated, "cells": len(payload)})
         except Exception as e:
@@ -929,7 +923,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if target == "col":
                 if key not in _EDITABLE_COLS or key not in headers:
                     return jsonify({"ok": False, "error": "column not editable"}), 400
-                ws.update_cell(trow, headers.index(key) + 1, value)
+                _repo.set_field(ws, trow, key, value, headers=headers)
             elif target == "attr":
                 if "Attributes JSON" not in headers:
                     return jsonify({"ok": False, "error": "no attributes column"}), 400
@@ -968,7 +962,8 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         for _stale in [k for k in list(obj.keys()) if k.startswith(_pfx)]:
                             obj.pop(_stale, None)
                     obj[key] = value
-                ws.update_cell(trow, acol, json.dumps(obj, ensure_ascii=False))
+                _repo.set_field(ws, trow, "Attributes JSON",
+                                json.dumps(obj, ensure_ascii=False), headers=headers)
             else:
                 return jsonify({"ok": False, "error": "bad target"}), 400
             _bust_records_cache()
@@ -997,7 +992,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     target = None
             if not target or target < 2:
                 return jsonify({"ok": False, "error": "row not found"}), 404
-            ws.delete_rows(target)
+            _repo.delete_row(ws, target)
             return jsonify({"ok": True})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
@@ -1019,7 +1014,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if all((c >= len(rv) or not str(rv[c]).strip()) for c in keycols):
                     blanks.append(r + 1)                        # 1-based sheet row
             for rownum in sorted(blanks, reverse=True):         # bottom-up keeps indices valid
-                ws.delete_rows(rownum)
+                _repo.delete_row(ws, rownum)
             return jsonify({"ok": True, "deleted": len(blanks)})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500

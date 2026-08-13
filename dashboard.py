@@ -2862,8 +2862,8 @@ def _write_attrs_for_sku(ws, sku, attrs):
         raise RuntimeError("no attributes column")
     if not found.ok:
         raise RuntimeError(found.error or "sku not found")
-    ws.update_cell(found.row, found.col("Attributes JSON"),
-                   json.dumps(attrs, ensure_ascii=False))
+    _repo.set_field(ws, found.row, "Attributes JSON",
+                    json.dumps(attrs, ensure_ascii=False), headers=found.headers)
     _bust_records_cache()
 
 

@@ -25,7 +25,6 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
         the active sheet (some accounts spread listings over many tabs; Miles tabs have no
         handling column at all, so those are simply skipped). Returns (updated_skus, tabs_touched,
         had_column)."""
-        from gspread.utils import rowcol_to_a1
         updated, tabs_touched, had_col = set(), [], False
         try:
             book = _ws().spreadsheet
@@ -56,11 +55,11 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
             for idx, v in enumerate(col_vals, start=1):
                 s = _repo.norm(v)
                 if s and s in skus_set:
-                    data.append({"range": rowcol_to_a1(idx, hcol), "values": [[days]]})
+                    data.append({"range": _repo.a1(idx, hcol), "values": [[days]]})
                     updated.add(s)
             if data:
                 try:
-                    ws.batch_update(data)
+                    _repo.batch_write(ws, data)
                     tabs_touched.append(ws.title)
                 except Exception:
                     pass
