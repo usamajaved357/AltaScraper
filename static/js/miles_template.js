@@ -729,6 +729,34 @@ let LIVE_SYNC_TIMER = null;   // auto-sync interval handle
 
 function _liveKey(){ return (CUR_ACCOUNT?CUR_ACCOUNT.id:"")+"::"+(WS_MARKET||""); }
 
+// ---- "a sync is running" without taking the screen away -------------------
+// A refresh is server-side work. The listings already on screen stay correct
+// until it finishes, so there is no reason to remove them -- and every reason
+// not to: a forced report takes minutes, during which the whole page was unusable.
+//
+// The note goes in #synclabel, the element that already reports sync state, so
+// there is ONE place that answers "how fresh is this?" rather than two that can
+// disagree. updateSyncLabel() overwrites it as soon as real data lands.
+let LIVE_WORKING = "";
+
+function _liveWorking(msg){
+  LIVE_WORKING = msg || "";
+  try{ updateSyncLabel(); }catch(e){}
+}
+
+function _liveWorkingDone(){ _liveWorking(""); }
+
+// Paint whatever we already hold for this account+marketplace. Returns true if
+// there was something to paint, so the caller knows whether a placeholder is
+// still needed.
+function _liveShowCached(key){
+  const c = LIVE_STORE[key];
+  if(!c || !(c.items||[]).length) return false;
+  LIVE_ITEMS = c.items;
+  try{ render(); updateSyncLabel(); }catch(e){ return false; }
+  return true;
+}
+
 function setListSource(src){
   if((src==="live"||src==="all") && CUR_ACCOUNT && !CUR_ACCOUNT.has_creds){
     toast("Live listings need a connected account. Add SP-API credentials to this account first.");
@@ -804,9 +832,23 @@ async function loadLiveCatalog(force){
     LIVE_ITEMS=LIVE_STORE[key].items; render(); updateSyncLabel(); loadAplus(false); return;
   }
   const grid=document.getElementById("grid");
-  if(grid) grid.innerHTML = force
-    ? '<div class="empty"><span class="genspin"></span> Rebuilding the listings report on Amazon...<div class="cc" style="margin-top:8px">A forced Sync builds a fresh report and can take 1-4 minutes for larger accounts. You can keep working - it stops on its own if Amazon is slow.</div></div>'
-    : '<div class="empty"><span class="genspin"></span> Loading your live listings from Amazon...</div>';
+  // Show the listings we ALREADY have while the new report is built. Replacing
+  // the grid with a spinner used to hide every listing for the 1-4 minutes a
+  // forced report takes -- so asking for fresher data cost you the data you had,
+  // and there was nothing to work on until Amazon finished. The work was always
+  // happening on the server; only the screen was blocked.
+  //
+  // The grid is blanked only when there is genuinely nothing to show.
+  _liveWorking(force
+    ? "rebuilding the report on Amazon — this can take 1-4 minutes"
+    : "checking Amazon for newer listings");
+  if(_liveShowCached(key)){
+    // already painted from cache; leave it alone
+  } else if(grid){
+    grid.innerHTML = force
+      ? '<div class="empty"><span class="genspin"></span> Rebuilding the listings report on Amazon...<div class="cc" style="margin-top:8px">A forced Sync builds a fresh report and can take 1-4 minutes for larger accounts. You can keep working - it stops on its own if Amazon is slow.</div></div>'
+      : '<div class="empty"><span class="genspin"></span> Loading your live listings from Amazon...</div>';
+  }
   // GUARD: if the user switched account/marketplace while this was loading, cache the
   // result but never render it into the current (different) view.
   const stillHere = ()=> (CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt);
@@ -864,10 +906,23 @@ async function loadLiveCatalog(force){
       ? (force ? "Amazon took too long to build the report (timed out)."
                : "Loading your live listings timed out.")
       : ("Error loading live catalog: "+String((e&&e.message)||e)));
+  }finally{
+    // ONE exit point for the in-flight note, so no path can leave a spinner
+    // running for ever -- success, failure, timeout, or an early return because
+    // a Preview started streaming. It also repaints the label with the real
+    // freshness, replacing whatever the branches above put there.
+    _liveWorkingDone();
   }
 }
 function updateSyncLabel(){
   const el=document.getElementById("synclabel"); if(!el) return;
+  // A refresh in flight is reported HERE rather than by replacing the grid, so
+  // the listings stay on screen and usable while Amazon is being asked. This is
+  // the single place that answers "how fresh is this?", in-flight or not.
+  if(LIVE_WORKING){
+    el.innerHTML = '<span class="genspin"></span> ' + esc(LIVE_WORKING);
+    return;
+  }
   const key=_liveKey(); const c=LIVE_STORE[key];
   if(!c){ el.textContent=""; return; }
   // Age is measured from when AMAZON was actually read (syncedAt), not from when
@@ -1049,13 +1104,28 @@ async function loadAllMarketplaces(force){
   }
   const reqAccount=CUR_ACCOUNT.id;
   let merged=[]; let done=0;
+  // Same rule as the single-marketplace path: keep whatever is already on screen
+  // while the marketplaces are fetched one by one. Blanking the grid here hid the
+  // entire catalogue for the several minutes an 11-marketplace account takes.
+  const _anyCached = mkts.some(mm => (LIVE_STORE[reqAccount+"::"+mm]||{}).items
+                                     && LIVE_STORE[reqAccount+"::"+mm].items.length);
+  if(_anyCached){
+    LIVE_ITEMS = mkts.flatMap(mm => ((LIVE_STORE[reqAccount+"::"+mm]||{}).items||[])
+                                      .map(it=>({...it,_mkt:mm})));
+    try{ render(); }catch(e){}
+  }
   // A marketplace that fails used to contribute zero listings SILENTLY, so an
   // 11-marketplace account could show a fraction of its catalogue and look simply
   // "smaller". Failures are now collected and reported.
   const failed=[];
   for(const mm of mkts){
-    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__")) return; // user moved on
-    if(grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching all marketplaces… '+(done)+'/'+mkts.length+' ('+esc(mm)+')<div class="cc" style="margin-top:8px">Each marketplace is a separate Amazon report; this can take a few minutes the first time.</div></div>';
+    // User moved on. Clear the note as well as leaving -- LIVE_WORKING is global,
+    // so an abandoned run would otherwise leave a spinner on the next view.
+    if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__")){
+      _liveWorkingDone(); return;
+    }
+    _liveWorking("fetching marketplace "+(done+1)+" of "+mkts.length+" ("+mm+")");
+    if(!_anyCached && grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching all marketplaces… '+(done)+'/'+mkts.length+' ('+esc(mm)+')<div class="cc" style="margin-top:8px">Each marketplace is a separate Amazon report; this can take a few minutes the first time.</div></div>';
     try{
       const j=await (await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:reqAccount,marketplace:mm,force:!!force})})).json();
@@ -1085,6 +1155,7 @@ async function loadAllMarketplaces(force){
     }
     done++;
   }
+  _liveWorkingDone();     // clear the in-flight note before painting the real one
   if(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET==="__all__"){
     LIVE_ITEMS=merged; render(); updateSyncLabel(); startAutoSync();
     if(failed.length){
