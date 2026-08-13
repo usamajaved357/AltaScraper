@@ -176,12 +176,14 @@ async function openDropshippingSheets(){
     <table class="kv">
       <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ds_output_url" value="${esc(S.output_sheet_url||'')}" oninput="_showParsed('ds_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ds_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
       <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ds_input_url" value="${esc(S.input_sheet_url||'')}" oninput="_showParsed('ds_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ds_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
+      ${_importInputRow()}
     </table>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <button class="primary" onclick="saveDropshippingSheets()">Save sheets</button>
       <button onclick="closeAccountEditor()">Cancel</button>
       <span id="ds_status" class="cc"></span>
     </div>`;
+  refreshInputStatus();
 }
 async function saveDropshippingSheets(){
   const out=((document.getElementById("ds_output_url")||{}).value||"").trim();
@@ -195,6 +197,62 @@ async function saveDropshippingSheets(){
     else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
   }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
 }
+// ---- importing the input sheet ------------------------------------------
+// The input sheet USED to be read live, every run. It is now imported: press
+// this, the rows land in the app, and nothing reads Google again until you press
+// it again. The sheet is unchanged -- it just stops being a dependency.
+//
+// ONE block, rendered by both sheet editors (the account one and the
+// Dropshipping one). Two copies of a button that imports your product queue
+// would be two places to fix when the wording or the endpoint changes.
+function _importInputRow(){
+  return `<tr><td class="k">Products in the app</td><td class="v">
+      <button class="db-chip" id="in_importbtn" onclick="importInputSheet()">
+        <i class="ti ti-download"></i> Import from this sheet</button>
+      <span id="in_importstatus" class="cc" style="font-size:11px;margin-left:8px">…</span>
+      <div class="cc" style="font-size:11px;margin-top:4px">
+        Copies the rows above into the app. Nothing is read from Google again
+        until you press this. Importing never deletes — rows removed from the
+        sheet stay here until you clear them.</div></td></tr>`;
+}
+
+async function refreshInputStatus(){
+  const el=document.getElementById("in_importstatus");
+  if(!el) return;
+  try{
+    const j=await (await fetch("/input/status")).json();
+    if(!j || !j.ok){ el.textContent=""; return; }
+    // Always say WHEN. A count with no date on it is indistinguishable from a
+    // fresh one, which is how you end up generating last month's list.
+    el.textContent = j.count
+      ? (j.count+" product"+(j.count===1?"":"s")+" imported"
+         + (j.imported_at ? (" · "+j.imported_at) : ""))
+      : "nothing imported yet";
+  }catch(e){ el.textContent=""; }
+}
+
+async function importInputSheet(){
+  const btn=document.getElementById("in_importbtn");
+  const el=document.getElementById("in_importstatus");
+  if(btn) btn.disabled=true;
+  if(el) el.innerHTML='<span class="genspin"></span> reading the sheet…';
+  try{
+    const j=await (await fetch("/input/import",{method:"POST",
+      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+    if(!j || !j.ok){
+      if(el) el.innerHTML='<span style="color:var(--red)">'+esc((j&&j.error)||"failed")+'</span>';
+      return;
+    }
+    // Say what changed, not just that something did: "read 40" with "added 0,
+    // updated 40" is a re-import, and that is worth being able to tell.
+    toast("Imported "+j.read+" row"+(j.read===1?"":"s")+" — "
+          +j.added+" new, "+j.updated+" updated");
+    refreshInputStatus();
+  }catch(e){
+    if(el) el.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>';
+  }finally{ if(btn) btn.disabled=false; }
+}
+
 function _wsColorKey(key){
   const palette=[["#E1F5EE","#0F6E56"],["#EEEDFE","#3C3489"],["#FAECE7","#993C1D"],
                  ["#E6F1FB","#185FA5"],["#FBEAF0","#993556"],["#FAEEDA","#854F0B"]];
@@ -409,6 +467,7 @@ function openAccountEditor(id){
       <tr><td class="k">Primary marketplace</td><td class="v"><select class="ed" id="ac_marketplace"><option value="UK"${(a.default_marketplace||'UK')==='UK'?' selected':''}>UK — amazon.co.uk (GBP)</option><option value="US"${(a.default_marketplace||'')==='US'?' selected':''}>US — amazon.com (USD)</option></select><div class="cc" style="font-size:11px;margin-top:2px">Drives pricing, fees, SP-API and the flat-file route for this account's listings.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-table"></i> Google Sheets for this account</div><div class="cc" style="font-size:11.5px">Paste the <b>full Google Sheets link</b> (with the tab open). The app reads the spreadsheet ID and the tab (gid) from the URL — so each account's US/UK listings go to the right place.</div></td></tr>
       <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ac_input_url" value="${esc(a.input_sheet_url||'')}" oninput="_showParsed('ac_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div>${_savedSheetLine('Currently saved', a.input_sheet_url, a.input_tab_gid)}</td></tr>
+      ${_importInputRow()}
       <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ac_output_url" value="${esc(a.output_sheet_url||'')}" oninput="_showParsed('ac_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ac_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div>${_savedSheetLine('Currently saved', a.output_sheet_url, a.output_tab_gid)}</td></tr>
       <tr><td class="k">Drive image folder URL <span class="cc">(image storage)</span></td><td class="v"><input class="ed" id="ac_drive_url" value="${esc(a.drive_folder_url||'')}" placeholder="https://drive.google.com/drive/folders/…"><div class="cc" id="ac_drive_share" style="font-size:11px;margin-top:3px">Generated images upload here into per-product <code>SKU_ProductName</code> subfolders. <b>Share this folder (Editor) with the service account</b> shown below, or uploads will be denied.</div></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-shield-check"></i> UK Responsible Person <span class="cc">(only needed for Amazon.co.uk listings)</span></div><div class="cc" style="font-size:11.5px">Selling on Amazon.co.uk from outside the UK legally requires a UK Responsible Person (name + real UK address + contact). Fill this once and every UK listing inherits it. Leave blank for US-only — US listings are unaffected.</div></td></tr>
@@ -461,6 +520,9 @@ function openAccountEditor(id){
     ${typeof howWorks==="function"?(howWorks('acct_connect')+howWorks('acct_marketplaces')+howWorks('acct_brands')):""}
     <div id="ac_detectout" class="cc" style="margin-top:8px"></div>
     <p class="cc" style="margin-top:10px">Secrets are stored only in your local config.json. Leave secret/refresh blank when editing to keep the existing values. Marketplaces are auto-detected (next step) once credentials are valid.</p>`;
+  // How many products are already imported, and when. Runs after the modal is
+  // drawn, so the row it writes into exists.
+  refreshInputStatus();
   // populate the service-account email for the Drive folder share hint
   (async function(){
     try{

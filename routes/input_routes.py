@@ -52,13 +52,25 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
         except Exception:
             acc = None
         cfg = _cfg() or {}
-        sid = str((acc or {}).get("input_spreadsheet_id")
-                  or cfg.get("input_spreadsheet_id") or "").strip()
+        # THREE places an input sheet can be configured, in priority order:
+        #   the account's own            -- a real workspace
+        #   dropshipping_*               -- the built-in Dropshipping workspace,
+        #                                   which has no account object and keeps
+        #                                   its sheets under its own config keys
+        #   the app-wide default         -- what everything used before accounts
+        # Missing the middle one would have made Import silently read the WRONG
+        # sheet for Dropshipping, or refuse when a sheet was plainly configured.
+        if acc:
+            sid = str(acc.get("input_spreadsheet_id") or "").strip()
+            gid = str(acc.get("input_tab_gid") or "").strip()
+        else:
+            sid = str(cfg.get("dropshipping_input_spreadsheet_id")
+                      or cfg.get("input_spreadsheet_id") or "").strip()
+            gid = str(cfg.get("dropshipping_input_tab_gid") or "").strip()
         if not sid:
             return jsonify({"ok": False, "error":
                             "This workspace has no input sheet configured. Open "
                             "Account & sheets and paste the input sheet link."}), 400
-        gid = str((acc or {}).get("input_tab_gid") or "").strip()
 
         try:
             if _client is None:
