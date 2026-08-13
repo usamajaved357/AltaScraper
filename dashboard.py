@@ -3428,6 +3428,21 @@ def build_app(backend=None):
                  or os.environ.get("DYNO"))
     _av = {"ts": 0.0}
 
+    # AND THE TEMPLATE ITSELF.
+    # Flask compiles templates/dashboard.html once and keeps it in memory unless
+    # told otherwise. Without debug mode that means a locally running app serves
+    # the HTML it read at startup FOR EVER -- so an edit to the page could not
+    # appear no matter how many times the browser was refreshed, and the only
+    # symptom was "nothing changed". Stamping the assets did not help, because
+    # the stamp is written INTO the cached template.
+    #
+    # On a server this is right and stays off: a deploy restarts the app, and
+    # re-reading the file per request would be pure cost. Off-server, correctness
+    # while editing beats a saving nobody can measure on one machine.
+    if not _paas:
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+        app.jinja_env.auto_reload = True
+
     @app.context_processor
     def _inject_asset_version():
         if not _paas:
