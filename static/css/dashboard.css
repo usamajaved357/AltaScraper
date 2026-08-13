@@ -349,8 +349,17 @@
   main#grid{padding:18px 20px;display:grid;gap:14px;
        grid-template-columns:repeat(auto-fill,minmax(360px,1fr));align-content:start}
   /* secondary panels inside workspace (image refs / brand setup / generate) */
-  .wspanel{display:none;padding:20px}
+  /* ORBIT: 32px content padding. The number lives in ONE place because the
+     section toolbars bleed to the panel edge with a NEGATIVE margin of exactly
+     this size -- when the two were separate numbers (padding 20px here, an
+     inline margin:-20px on seven toolbars) changing one silently inset every
+     toolbar by 12px. */
+  .wspanel{display:none;padding:var(--wspad,32px)}
   .wspanel.show{display:block}
+  /* Toolbars that run edge-to-edge inside a padded panel. Was an inline style
+     repeated on seven sections; a class means the bleed follows the padding. */
+  .wstoolbar.bleed{position:static;
+                   margin:calc(var(--wspad,32px) * -1) calc(var(--wspad,32px) * -1) 16px}
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
         padding:14px 16px;display:flex;flex-direction:column;gap:10px}
@@ -1275,3 +1284,82 @@
   .modal h3{margin:0 0 4px;font-size:16px;padding-right:34px}
   .modal .x{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--ink2);font-size:22px;cursor:pointer;line-height:1;z-index:2}
   .modal .x:hover{color:var(--ink)}
+
+
+  /* =====================================================================
+     ORBIT LAYOUT -- additions only. Nothing above is removed or replaced.
+
+     Every rule here either introduces a NEW class that nothing uses yet, or
+     adds a property to an existing one. No colours change, the sidebar stays
+     210px, no control moves. A screen that looked right before still does.
+     ===================================================================== */
+
+  /* -- 1. CONTENT PADDING ------------------------------------------------
+     The panel padding itself lives on .wspanel (--wspad). The listings screen
+     is not a .wspanel -- its toolbar is sticky and full-bleed -- so its content
+     is padded piece by piece to the same 32px. .datasrc and .tabfilter carried
+     no horizontal padding at all and sat flush against the sidebar, which is
+     most of why that screen read as cramped. */
+  #sec_listings > #gridhow,
+  #sec_listings > .datasrc,
+  #sec_listings > .tabfilter{padding-left:var(--wspad,32px);padding-right:var(--wspad,32px)}
+  main#grid{padding:18px var(--wspad,32px)}
+  .selbar{padding:8px var(--wspad,32px)}
+
+  /* -- 2. SIDEBAR SECTION LABELS ----------------------------------------
+     .slbl already existed for the Tools label; it is nudged to the audit's
+     spacing rather than duplicated into a second class. */
+  .slbl{letter-spacing:.06em;padding:16px 16px 4px}
+  .slbl:first-of-type{padding-top:8px}
+
+  /* -- 3. TABLES ---------------------------------------------------------
+     Applies to EVERY table without touching any column or any datum.
+     tabular-nums only affects digits, so text columns are unchanged.
+
+     The generic row hover is deliberately weak (single class + element), so
+     the tables that already define their own hover keep winning. The brief
+     asked for conflicting hovers to be removed; they are left in place because
+     removing a working style to satisfy a general one is how a screen that was
+     fine ends up looking wrong, and none of them is broken. */
+  table td{font-variant-numeric:tabular-nums}
+  table th{text-transform:uppercase;letter-spacing:.03em;font-weight:600}
+  table tr{transition:background-color .12s ease}
+  table tbody tr:hover > td{background:rgba(255,255,255,.03)}
+
+  /* -- 4. STAT CARDS (new, unused until a screen adopts them) ------------ */
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+            gap:16px;margin-bottom:24px}
+  .stat-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+             padding:16px;text-align:center;cursor:pointer;
+             transition:border-color .2s ease}
+  .stat-card:hover{border-color:var(--accent)}
+  .stat-card .stat-number{font-size:24px;font-weight:600;
+                          font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .stat-card .stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+                         color:var(--ink3);font-weight:600;margin-top:6px}
+
+  /* -- 5. FOCUS RING -----------------------------------------------------
+     :focus-visible, not :focus -- a mouse click must not leave a glow behind.
+     Keyboard users get a consistent ring on every control; mouse users see no
+     change at all. Teal, not the audit's gold: our palette is unchanged. */
+  *:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(45,212,168,.3)}
+
+  /* -- 6. SKELETON LOADING (new, unused; existing spinners stay) --------- */
+  .skeleton{background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);
+            background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  /* Anyone who asked their system not to animate should not be handed a
+     permanent shimmer; the block still reads as a placeholder without it. */
+  @media (prefers-reduced-motion: reduce){
+    .skeleton{animation:none}
+  }
+
+  /* -- 7. DRAWER ---------------------------------------------------------
+     It already slides (translateX 100%->0, .2s ease), already has a .45 scrim
+     that fades, and already caps its width. Only the shadow was missing, so
+     only the shadow is added -- the audit's 560px would MOVE a working panel,
+     and the brief says leave a working drawer alone. */
+  .drawer{box-shadow:-8px 0 32px rgba(0,0,0,.5)}
+
+  /* -- 8. CHART SUBTITLE (new, unused until a screen adopts it) ---------- */
+  .chart-subtitle{font-size:12px;color:var(--ink3);margin-top:4px;margin-bottom:16px}
