@@ -115,7 +115,7 @@ if __name__ == "__main__":
     res = _sched.register_jobs(app)
     if not res.get("ok"):
         # Not fatal: the app is fully usable, only the timers are missing, and
-        # every job can still be triggered by hand at /sync/run/<job_type>.
+        # every job can still be triggered by hand at /jobs/run/<job_type>.
         print("  scheduler : %s" % res.get("error"))
     else:
         print("  scheduler : %d job(s) scheduled" % res.get("jobs", 0))

@@ -10,13 +10,13 @@ WHY EVERY RUN IS RECORDED
 A background job that silently fails is worse than no job at all: the screen
 keeps showing old numbers and nothing says they are old. That is exactly the
 class of bug that caused the 64-listings-becomes-16 problem. So every run writes
-a row to sync_jobs -- start, finish, result or error -- and /sync/status reads
+a row to sync_jobs -- start, finish, result or error -- and /jobs/status reads
 back from that table rather than from anything held in memory.
 
 APSCHEDULER IS OPTIONAL
 It is not installed here yet, and an import error at startup would stop the beta
 from booting at all. So the import is guarded: without APScheduler the jobs can
-still be run by hand through /sync/run/<job_type>, and /sync/status reports that
+still be run by hand through /jobs/run/<job_type>, and /jobs/status reports that
 scheduling is unavailable rather than pretending jobs are queued.
     pip install apscheduler
 """
@@ -125,7 +125,7 @@ def start(workspace_ids=None):
     if not HAVE_APSCHEDULER:
         return {"ok": False,
                 "error": "APScheduler is not installed -- jobs can still be run "
-                         "manually via /sync/run/<job_type>. pip install apscheduler"}
+                         "manually via /jobs/run/<job_type>. pip install apscheduler"}
     with _LOCK:
         if _scheduler and _scheduler.running:
             return {"ok": True, "already_running": True}
@@ -157,7 +157,7 @@ def shutdown():
 # Left as explicit stubs. Each needs the beta's SP-API wiring, which does not
 # exist until dashboard_beta.py is built, and a stub that returns "not
 # implemented" is honest -- one that silently returns success would make
-# /sync/status show green for work that never happened.
+# /jobs/status show green for work that never happened.
 
 def catalog_sync(workspace_id=None):
     """Pull live listing data from SP-API. Buy box price, offers, status."""
@@ -186,15 +186,22 @@ register_job("inventory_sync", inventory_sync, hours=24,
 
 
 def register_jobs(app, workspace_ids=None):
-    """Attach /sync/status and /sync/run/<job_type>, and start the timers."""
+    """Attach /jobs/status and /jobs/run/<job_type>, and start the timers.
+
+    NOT /sync/*. The app already owns that prefix for AMAZON sync -- pulling a
+    listing's live data back from Seller Central -- and it already has a
+    /sync/status endpoint. These are background JOBS, a different thing, and
+    naming them apart keeps both readable. Registering on /sync/status crashed
+    the beta at startup with an endpoint collision, which is how this was found.
+    """
     from flask import jsonify
 
-    @app.route("/sync/status")
-    def sync_status():
+    @app.route("/jobs/status")
+    def jobs_status():
         return jsonify({"ok": True, **status()})
 
-    @app.route("/sync/run/<job_type>", methods=["POST"])
-    def sync_run(job_type):
+    @app.route("/jobs/run/<job_type>", methods=["POST"])
+    def jobs_run(job_type):
         from flask import request
         ws = (request.get_json(silent=True) or {}).get("workspace_id")
         res = run_job(job_type, ws)
