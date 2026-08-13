@@ -3414,8 +3414,27 @@ def build_app(backend=None):
 
     app.config["ASSET_V"] = _asset_version()
 
+    # ON A SERVER the stamp is computed once and left alone: a deploy restarts
+    # the app, so the value is always current and walking static/ on every page
+    # load would be waste.
+    #
+    # RUNNING LOCALLY there is no restart. The stamp stayed at whatever it was
+    # when the app booted, so the browser kept being handed the SAME
+    # dashboard.css?v=... it already had cached, and edits to CSS or JS were
+    # invisible until the app was restarted -- which looks exactly like "the
+    # change didn't work". Re-checked at most once every few seconds, which is
+    # cheap and only happens off-server.
+    _paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
+                 or os.environ.get("DYNO"))
+    _av = {"ts": 0.0}
+
     @app.context_processor
     def _inject_asset_version():
+        if not _paas:
+            import time as _t
+            if _t.time() - _av["ts"] > 2:
+                app.config["ASSET_V"] = _asset_version()
+                _av["ts"] = _t.time()
         return {"ASSET_V": app.config.get("ASSET_V", "0")}
 
     # Say at BOOT whether this deployment is configured correctly. A wiped disk
