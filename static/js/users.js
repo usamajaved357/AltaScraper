@@ -8,7 +8,26 @@
 // controls that would fail, and reports the reason plainly when one does.
 
 let ME = null;              // {id,email,name,role,permissions,workspaces,...}
-let USERS_META = null;      // {all_permissions:{...}, roles:{...}}
+let USERS_META = null;      // the vocabulary the screens are drawn from
+
+// The ONE place USERS_META is assembled. It was being built by hand in two
+// places, and BOTH listed only all_permissions and roles -- so all_features,
+// role_features and levels were thrown away the moment they arrived, even
+// though the server had sent them. featureRows() then found nothing to draw and
+// returned an empty string, so the whole "What may they SEE?" section silently
+// vanished from both the Add form and the Edit panel. Saving then submitted an
+// empty set of feature levels.
+//
+// It MERGES rather than replaces: whichever response carries a key, that key is
+// kept. That is what makes the bug unrepeatable -- a future endpoint that omits
+// a field can no longer erase what another endpoint already provided.
+function _setMeta(j){
+  const keep = ["all_permissions", "roles", "all_features", "role_features", "levels"];
+  const next = USERS_META || {};
+  keep.forEach(function(k){ if(j && j[k] != null) next[k] = j[k]; });
+  USERS_META = next;
+  return USERS_META;
+}
 
 function _uesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -22,7 +41,7 @@ async function loadMe(){
   try{
     const j = await (await fetch("/users/me")).json();
     if(!j || !j.ok) return;
-    ME = j.user; USERS_META = {all_permissions:j.all_permissions, roles:j.roles};
+    ME = j.user; _setMeta(j);
     // Which store the app is on. Used for wording that is only correct on one
     // backend -- see the "not in your sheet" caption in miles_template.js.
     window.DATA_BACKEND = j.backend || "sheets";
@@ -92,7 +111,7 @@ async function renderUsers(){
     body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_uesc((j&&j.error)||"Could not load users")+'</div>';
     return;
   }
-  USERS_META = {all_permissions:j.all_permissions, roles:j.roles};
+  _setMeta(j);
 
   let h = '<div style="font-weight:600;font-size:15px;margin-bottom:2px">Users &amp; permissions</div>';
 

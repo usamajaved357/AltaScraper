@@ -62,6 +62,18 @@ def register(app, *, CONFIG_PATH):
                 base = request.url_root.rstrip("/")
         return base + "/invite/" + token
 
+    # The vocabulary every user screen is drawn from: the list of areas, the
+    # list of permissions, the access levels, and what each role presets. Built
+    # in ONE place so /users/me and /users/list cannot describe the app
+    # differently -- when they did, whichever call answered last decided which
+    # controls existed, and the "What may they SEE?" section disappeared.
+    def _vocabulary():
+        return {"all_permissions": users.PERMISSIONS,
+                "all_features": users.FEATURES,
+                "levels": list(users.LEVELS),
+                "role_features": users.ROLE_FEATURES,
+                "roles": users.ROLES}
+
     # ---- who am I -------------------------------------------------------
     @app.route("/users/me")
     def users_me():
@@ -79,19 +91,14 @@ def register(app, *, CONFIG_PATH):
         return jsonify({"ok": True, "user": users.public(u),
                         "bootstrap": bool(u.get("bootstrap")),
                         "backend": _backend,
-                        "all_permissions": users.PERMISSIONS,
-                        "roles": users.ROLES})
+                        **_vocabulary()})
 
     # ---- administration -------------------------------------------------
     @app.route("/users/list")
     def users_list():
         return jsonify({"ok": True, "users": users.list_users(CONFIG_PATH),
-                        "all_permissions": users.PERMISSIONS,
-                        "all_features": users.FEATURES,
-                        "levels": list(users.LEVELS),
-                        "role_features": users.ROLE_FEATURES,
-                        "roles": users.ROLES,
-                        "bootstrap": users.is_bootstrap(CONFIG_PATH)})
+                        "bootstrap": users.is_bootstrap(CONFIG_PATH),
+                        **_vocabulary()})
 
     @app.route("/users/create", methods=["POST"])
     def users_create():
