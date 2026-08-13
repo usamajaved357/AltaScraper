@@ -504,8 +504,13 @@ function render(){
   // isActuallyLive() if Amazon returned its SKU/ASIN, and liveCatalog IS Amazon's
   // reply. The sub-captions just say which of them the sheet also knows about, so
   // you can tell an editable row from a catalog-only tile.
-  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in your sheet, so you can edit and push changes</div>';
-  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in your sheet</div>';
+  // "sheet" is only the right word while the sheet IS the store. On the database
+  // backend it is simply wrong, and it would send you looking in a spreadsheet
+  // for a row that was never going to be there. The app reports which backend it
+  // is on (/users/me -> backend), so the caption follows it.
+  const _store = (window.DATA_BACKEND === "db") ? "this app" : "your sheet";
+  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in '+_store+', so you can edit and push changes</div>';
+  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in '+_store+' yet</div>';
   // Rows the sheet claims are LIVE but Amazon never returned. Shown apart, never
   // counted as live. Usually: submitted but not yet published, killed by Amazon, or
   // written into the wrong account's tab.

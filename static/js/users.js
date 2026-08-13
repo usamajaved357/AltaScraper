@@ -23,6 +23,9 @@ async function loadMe(){
     const j = await (await fetch("/users/me")).json();
     if(!j || !j.ok) return;
     ME = j.user; USERS_META = {all_permissions:j.all_permissions, roles:j.roles};
+    // Which store the app is on. Used for wording that is only correct on one
+    // backend -- see the "not in your sheet" caption in miles_template.js.
+    window.DATA_BACKEND = j.backend || "sheets";
     const btn = document.getElementById("usersbtn");
     if(btn && can("manage_users")) btn.style.display = "";
     const who = document.getElementById("whoami");

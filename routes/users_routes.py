@@ -49,8 +49,15 @@ def register(app, *, CONFIG_PATH):
         u = _me()
         if not u:
             return jsonify({"ok": False, "error": "not signed in"}), 401
+        # Which store the app is reading. The UI uses this for wording that would
+        # otherwise be wrong on one backend -- e.g. "not in your sheet" when there
+        # is no sheet, which would send someone looking in a spreadsheet for a row
+        # that was never going to be there.
+        import os as _os
+        _backend = (_os.environ.get("ALTA_DATA_BACKEND") or "sheets").strip().lower()
         return jsonify({"ok": True, "user": users.public(u),
                         "bootstrap": bool(u.get("bootstrap")),
+                        "backend": _backend,
                         "all_permissions": users.PERMISSIONS,
                         "roles": users.ROLES})
 

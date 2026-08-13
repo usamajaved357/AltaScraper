@@ -377,6 +377,45 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                                 "images": out, "statuses": statuses, "meta": meta}), 502
         return jsonify({"ok": True, "images": out, "statuses": statuses, "meta": meta})
 
+    def _attach_compliance(items, mkt):
+        """Work out which documents Amazon can demand, for each live listing.
+
+        COMPUTED WHEN SERVED, NOT WHEN FETCHED. It used to run only on a fresh
+        Amazon fetch and get baked into the saved snapshot -- which meant that
+        once saved catalogues began being served at any age, a listing showed
+        whatever compliance data happened to exist when it was pulled, or none at
+        all for anything saved before this feature existed. That is why live
+        listings showed no documents.
+
+        Running it on the way out also means editing
+        sourcing_viability_rules.json takes effect on the next page load, instead
+        of waiting for every marketplace to be re-fetched.
+
+        It is pure pattern matching over the title -- no Amazon calls, no cost --
+        so doing it per request is cheap. A listing already selling is exactly
+        where a document demand lands: the patio heater was live for months
+        before the notice arrived.
+        """
+        for it in (items or []):
+            try:
+                _v = _viability(title=it.get("title", ""),
+                                product_type=it.get("product_type", ""),
+                                marketplace=mkt)
+                if _v.get("matched"):
+                    it["compliance"] = {
+                        "verdict": _v.get("verdict", ""),
+                        "risks": [{"id": x["id"], "label": x["label"], "risk": x["risk"],
+                                   "docs": x["docs"], "regulator": x.get("regulator", ""),
+                                   "reason": x.get("reason", "")}
+                                  for x in _v.get("risks", [])],
+                        "doc_count": sum(len(x.get("docs") or []) for x in _v.get("risks", [])),
+                    }
+                else:
+                    it.pop("compliance", None)   # a rule was removed -> so is the chip
+            except Exception:
+                pass              # a compliance fault must never cost you the catalogue
+        return items
+
     @app.route("/live/catalog", methods=["POST"])
     def live_catalog():
         """Fetch the account's LIVE Amazon listings for a marketplace via the Reports
@@ -409,7 +448,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         import time as _t
         import domain.live_snapshots as _snap
         if not force and ck in _LIVE_CACHE and (_t.time() - _LIVE_CACHE[ck]["ts"] < _LIVE_TTL):
-            return jsonify({"ok": True, "items": _LIVE_CACHE[ck]["items"], "cached": True})
+            return jsonify({"ok": True,
+                            "items": _attach_compliance(_LIVE_CACHE[ck]["items"], mkt),
+                            "cached": True})
         # DURABLE SNAPSHOT (second line of defence). _LIVE_CACHE is process memory:
         # a container restart or redeploy empties it, and on Render that happens on
         # every deploy. Before going back to Amazon, serve the snapshot written by
@@ -431,7 +472,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             if _rec and (_rec.get("items") or []):
                 _LIVE_CACHE[ck] = {"ts": _t.time() - (_age or 0),
                                    "items": _rec.get("items") or []}
-                return jsonify({"ok": True, "items": _rec.get("items") or [],
+                return jsonify({"ok": True,
+                                "items": _attach_compliance(_rec.get("items") or [], mkt),
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "synced_at": _rec.get("ts"),
                                 "age_seconds": _age,
@@ -653,27 +695,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 print(f"[live/catalog] inactive report skipped: {_ie}")
                 warnings.append(f"Inactive/suppressed listings could not be loaded "
                                 f"({type(_ie).__name__}) — this list shows ACTIVE listings only.")
-            # COMPLIANCE REQUIREMENTS per live listing. A listing already selling on
-            # Amazon is exactly where the document demand lands -- the patio heater was
-            # live for months before the notice arrived -- so the requirement has to be
-            # visible here, not only on drafts. Pure pattern matching over the title, no
-            # extra Amazon calls, and it rides into the durable snapshot with the item.
-            for it in items:
-                try:
-                    _v = _viability(title=it.get("title", ""),
-                                    product_type=it.get("product_type", ""),
-                                    marketplace=mkt)
-                    if _v.get("matched"):
-                        it["compliance"] = {
-                            "verdict": _v.get("verdict", ""),
-                            "risks": [{"id": x["id"], "label": x["label"], "risk": x["risk"],
-                                       "docs": x["docs"], "regulator": x.get("regulator", ""),
-                                       "reason": x.get("reason", "")}
-                                      for x in _v.get("risks", [])],
-                            "doc_count": sum(len(x.get("docs") or []) for x in _v.get("risks", [])),
-                        }
-                except Exception:
-                    pass          # a compliance fault must never cost you the catalogue
+            _attach_compliance(items, mkt)
             # enrich each item with COGS + profit estimate
             for it in items:
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
@@ -707,7 +729,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 if not items:
                     # Nothing at all came back -- keep the saved copy verbatim.
                     return jsonify({
-                        "ok": True, "items": _prev_items,
+                        "ok": True, "items": _attach_compliance(_prev_items, mkt),
                         "count": len(_prev_items), "cached": True,
                         "from_snapshot": True, "stale": True,
                         "synced_at": _prev.get("ts"), "age_seconds": _age_prev,
@@ -753,7 +775,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             _rec = _snap.get(CONFIG_PATH, aid, mkt)
             if _rec and (_rec.get("items") or []):
                 _age = _snap.age_seconds(_rec)
-                return jsonify({"ok": True, "items": _rec.get("items") or [],
+                return jsonify({"ok": True,
+                                "items": _attach_compliance(_rec.get("items") or [], mkt),
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "stale": True,
                                 # Distinct from merely-old data: Amazon actually
