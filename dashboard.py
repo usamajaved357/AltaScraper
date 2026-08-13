@@ -168,19 +168,20 @@ def _pubimg(token, relpath):
 @app.errorhandler(500)
 @app.errorhandler(Exception)
 def _json_errors(e):
-    """Ensure API routes (anything under our JSON endpoints) return JSON on error,
-    never Flask's HTML error page — that HTML is what causes 'Unexpected token <,
-    <!doctype ... is not valid JSON' in the browser."""
+    """Ensure API calls return JSON on error, never Flask's HTML error page —
+    that HTML is what causes 'Unexpected token <, <!doctype ... is not valid
+    JSON' in the browser.
+
+    Which callers want JSON is decided by auth.guard.wants_json(), the same
+    function the login doorman uses. It used to be a hardcoded list of URL
+    prefixes here, which had gone stale: /users, /ppc, /inventory, /monitor,
+    /miles, /submit, /preview and /suggest were all missing, so a crash in any
+    of them still sent an HTML page to code expecting JSON.
+    """
     import traceback as _tb
+    from auth.guard import wants_json as _wants_json
     code = getattr(e, "code", 500) or 500
-    try:
-        path = request.path or ""
-    except Exception:
-        path = ""
-    # for our JSON API routes, always return JSON
-    if any(path.startswith(p) for p in ("/genimage", "/aplus", "/optimize", "/recipes",
-                                         "/live", "/media", "/accounts", "/ai", "/brand",
-                                         "/cogs", "/rows", "/run")):
+    if _wants_json():
         msg = str(e)
         if code == 500:
             # include a short traceback tail to make debugging possible

@@ -227,7 +227,7 @@ def _denial_message(perm):
             "It needs: %s. Ask the account owner to grant it." % label)
 
 
-def _wants_json():
+def wants_json():
     """Is this an API call rather than someone typing an address?
 
     A browser NAVIGATION asks for text/html and is a GET. Everything else here --
@@ -260,6 +260,14 @@ def _wants_json():
         return "text/html" not in accept
     except Exception:
         return False
+
+
+# The ONE place this question is answered. The doorman asks it to decide between
+# a JSON 401 and a redirect to the login page; dashboard.py's error handler asks
+# it to decide between a JSON error and Flask's HTML error page. They must agree:
+# two copies of this rule would drift, and every disagreement shows up in the
+# browser as "Unexpected token '<'".
+_wants_json = wants_json
 
 
 def make_doorman(config_path, app_password, login_endpoint="_login"):
