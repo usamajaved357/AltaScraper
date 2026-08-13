@@ -63,12 +63,48 @@ STAGGER = 45
 # How often to look for something worth doing.
 TICK = 30
 
+# YOU ALWAYS COME FIRST.
+#
+# When you press Sync on an account -- because you just changed something on
+# Amazon and want it in the app NOW -- the background rotation stands aside. It
+# is refreshing marketplaces nobody is looking at; you are waiting at a screen.
+#
+# It keeps standing aside for a short while AFTER your sync finishes, because a
+# manual sync is usually followed by more work on that account (edit, push,
+# sync again) and a background report starting in the gap would compete with it
+# for the same per-minute Amazon quota.
+USER_PRIORITY_QUIET = 120
+
+_USER = {"active": 0, "until": 0.0, "last_key": None}
+
+
+def user_sync_started(key=None):
+    """A user-initiated sync has begun. Called by /live/catalog on force."""
+    with _LOCK:
+        _USER["active"] += 1
+        if key:
+            _USER["last_key"] = key
+
+
+def user_sync_finished():
+    with _LOCK:
+        _USER["active"] = max(0, _USER["active"] - 1)
+        _USER["until"] = time.time() + USER_PRIORITY_QUIET
+
+
+def user_busy():
+    """True while a user sync is running, or just after one."""
+    with _LOCK:
+        return _USER["active"] > 0 or time.time() < _USER["until"]
+
 
 def status():
     with _LOCK:
         return {
             "running": bool(_STATE["running"]),
             "current": _STATE["current"],
+            "paused_for_user": user_busy(),
+            "user_syncs_in_flight": _USER["active"],
             "uptime_seconds": int(time.time() - _STATE["started"]) if _STATE["started"] else 0,
             "refresh_after_seconds": REFRESH_AFTER,
             "stagger_seconds": STAGGER,
@@ -155,7 +191,10 @@ def _refresh_one(app, aid, mkt):
     try:
         with app.test_request_context(
                 "/live/catalog", method="POST",
-                json={"id": aid, "marketplace": mkt, "force": True}):
+                # _bg marks this as the ROTATION, not a person. Without it the
+                # refresher would register itself as a user sync and then stand
+                # aside for itself -- pausing after every single refresh.
+                json={"id": aid, "marketplace": mkt, "force": True, "_bg": True}):
             fn = app.view_functions.get("live_catalog")
             if not fn:
                 raise RuntimeError("live_catalog view is not registered")
@@ -179,6 +218,11 @@ def _refresh_one(app, aid, mkt):
 def _loop(app, cfg_fn, config_path, log=None):
     while True:
         try:
+            # Stand aside while the user is syncing. Their request is what
+            # someone is actually waiting on; this rotation is not.
+            if user_busy():
+                time.sleep(TICK)
+                continue
             target = _stalest(cfg_fn, config_path)
             if target:
                 note = _refresh_one(app, target[0], target[1])

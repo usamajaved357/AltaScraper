@@ -456,6 +456,38 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                                        "Fetching it from Amazon in the background -- "
                                        "this first one takes a few minutes."})
 
+        # A FORCED sync takes priority over the background rotation. The
+        # refresher is topping up marketplaces nobody is looking at; whoever
+        # pressed Sync is waiting at a screen. Telling it we have started makes
+        # it stand aside, so the two do not compete for the same per-minute
+        # Amazon quota and the manual sync is not slowed by a report nobody
+        # asked for.
+        #
+        # The background refresher calls this same view, so it must NOT count
+        # itself as a user -- it sets _bg on the request body.
+        if force and not b.get("_bg"):
+            try:
+                from flask import after_this_request
+                import domain.live_refresher as _refresher
+
+                _refresher.user_sync_started(f"{aid}::{mkt}")
+
+                # Released via after_this_request rather than a finally: this
+                # view has many return paths (early refusals, the snapshot
+                # fallbacks, the error handler), and a finally wrapped around all
+                # of them would be easy to get wrong. This fires on every one,
+                # including an unhandled exception, so the refresher can never be
+                # left permanently paused by a request that died.
+                @after_this_request
+                def _release_priority(resp):
+                    try:
+                        _refresher.user_sync_finished()
+                    except Exception:
+                        pass
+                    return resp
+            except Exception:
+                pass          # priority is an optimisation, never a requirement
+
         # on a forced sync, also drop the per-listing image/status/meta cache for
         # this account+marketplace so titles/images/status/fulfillment all refresh
         if force:
