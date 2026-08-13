@@ -57,6 +57,10 @@ RULES = [
     ("/accounts/detect_marketplaces",   "manage_accounts"),
     ("/settings",                       "manage_accounts"),
     ("/sp_diagnose",                    "manage_accounts"),
+    # /diag reports where state is stored, which environment variables are set,
+    # and the tail of recent server tracebacks. That is operator information --
+    # useful to whoever runs the deployment, and no business of a VA's.
+    ("/diag",                           "manage_accounts"),
 
     # -- publishing to Amazon
     ("/submit/target",                  None),          # read-only: names the destination
