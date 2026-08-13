@@ -739,13 +739,26 @@ function setListSource(src){
     const key=_liveKey();
     if(LIVE_STORE[key]){ LIVE_ITEMS=LIVE_STORE[key].items||[]; render(); updateSyncLabel(); loadAplus(false); }
     else {
-      // No browser cache yet (e.g. right after a page refresh). Do a NON-FORCE pull: it
-      // reuses the report Amazon already has ready, so it returns in ~1s -- NOT the slow
-      // fresh-report build that the Sync button triggers (force=true). This is what makes
-      // live listings actually appear when you open the tab, instead of a dead empty-state
-      // that forces you onto the slow, hang-prone Sync path every time.
+      // No browser cache yet (e.g. right after a page refresh). A NON-FORCE pull
+      // now returns the SAVED catalogue immediately at any age -- the server never
+      // builds a report on this path -- so this paints in about a second instead
+      // of blocking for the minutes an Amazon report takes to generate.
+      //
+      // If nothing is saved yet the reply says so, and the background refresh
+      // below goes and gets it without holding up the screen.
       LIVE_ITEMS=[];
-      loadLiveCatalog(false);   // paints its own loading state, then renders on return
+      loadLiveCatalog(false).then(()=>{
+        const c = LIVE_STORE[_liveKey()];
+        const nothingYet = !c || !(c.items||[]).length;
+        const old = c && c.syncedAt && (Date.now()-c.syncedAt > LIVE_AUTOSYNC_MS);
+        // Fetch in the BACKGROUND when there is nothing saved, or what is saved
+        // has gone stale. Either way the screen is already painted and stays
+        // usable while Amazon is asked.
+        if(nothingYet || old){
+          if(nothingYet) toast("Fetching this marketplace from Amazon in the background — the first one takes a few minutes.");
+          backgroundSync();
+        }
+      }).catch(()=>{});
     }
   }
   else render();
@@ -883,15 +896,45 @@ function updateSyncLabel(){
   try{ tips.push("Pulled from Amazon: " + new Date(when).toLocaleString()); }catch(e){}
   el.title = tips.join("\n");
 }
+// Background refresh. The catalogue you SEE always comes from the saved copy and
+// appears instantly; this is what quietly replaces it.
+//
+// Every 10 minutes, not 30: an Amazon report takes a few minutes to build, so a
+// change made on Seller Central shows up here within roughly 10-15 minutes
+// without anyone pressing anything. It runs whenever a connected workspace is
+// open -- not only while the Live tab happens to be showing -- so switching to
+// Live finds data already waiting instead of starting a wait.
+const LIVE_AUTOSYNC_MS = 10*60*1000;
+
 function startAutoSync(){
   // SP-API is free (no AI credits), so a periodic background sync is fine.
   if(LIVE_SYNC_TIMER) return;
   LIVE_SYNC_TIMER=setInterval(()=>{
     if(window.RUN_STREAMING) return;   // don't wipe a streaming drawer panel
-    if((LIST_SOURCE==="live"||LIST_SOURCE==="all") && CUR_ACCOUNT && WS_MARKET){
-      loadLiveCatalog(true);   // refresh quietly every 30 min
+    if(document.hidden) return;        // don't poll Amazon for a tab nobody is looking at
+    if(CUR_ACCOUNT && CUR_ACCOUNT.has_creds && WS_MARKET && WS_MARKET!=="__all__"){
+      backgroundSync();
     }
-  }, 30*60*1000);
+  }, LIVE_AUTOSYNC_MS);
+}
+
+// A forced pull that NEVER blocks what is on screen. The grid keeps showing the
+// saved copy the whole time; when Amazon answers, the new data replaces it and
+// the "synced" label updates. If Amazon fails, the screen is untouched -- the
+// user never sees their listings disappear because a refresh went wrong.
+let _BG_SYNCING = false;
+async function backgroundSync(){
+  if(_BG_SYNCING) return;              // one at a time, per browser tab
+  _BG_SYNCING = true;
+  try{
+    await loadLiveCatalog(true);
+  }catch(e){
+    // Deliberately silent. This runs on a timer that nobody asked for; a toast
+    // for a transient Amazon hiccup would be noise, and the label already shows
+    // when the data was last successfully pulled.
+  }finally{
+    _BG_SYNCING = false;
+  }
 }
 // Re-check submitted listings against Amazon and flip them to LIVE where Amazon has
 // now published them. Streams /run/api_verify quietly to completion. A fresh submit is

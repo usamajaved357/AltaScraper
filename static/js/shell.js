@@ -282,6 +282,14 @@ async function enterAccount(accountId){
   buildAccountMktSwitch(a);
   navTo("listings");
   altaSyncUrl();
+  // Start the background refresh as soon as a CONNECTED workspace is open, not
+  // only once someone has visited the Live tab. That is what makes switching to
+  // "Live on Amazon" find data already waiting instead of starting a wait --
+  // previously the timer was only armed by a successful live load, so the very
+  // first visit always paid the full report-build time.
+  if(hasCreds && !window.WS_READONLY && typeof startAutoSync === "function"){
+    try{ startAutoSync(); }catch(e){}
+  }
   if(LIST_SOURCE==='all' || LIST_SOURCE==='live'){ loadRows(); loadLiveCatalog(false); }
   else loadRows();
 }

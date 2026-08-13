@@ -439,6 +439,23 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                                 "partial": _rec.get("partial", False),
                                 "warnings": _rec.get("warnings") or [],
                                 "report_source": _rec.get("report_source", "")})
+            # NOTHING SAVED YET for this account+marketplace. Return immediately
+            # and let the background refresh fill it in.
+            #
+            # This is the fix for "clicking Live on Amazon hangs for 5-10 minutes".
+            # Building an Amazon report takes minutes; doing that on the click path
+            # meant every visit to the tab blocked on it. Seller Central never does
+            # that -- it shows you what it has and catches up afterwards.
+            #
+            # So the click path NEVER builds a report. It returns what is stored,
+            # or says there is nothing yet. Only a background refresh (the timer,
+            # or the Sync button) ever waits on Amazon.
+            return jsonify({"ok": True, "items": [], "count": 0,
+                            "cached": False, "needs_sync": True,
+                            "message": "No saved catalogue for this marketplace yet. "
+                                       "Fetching it from Amazon in the background -- "
+                                       "this first one takes a few minutes."})
+
         # on a forced sync, also drop the per-listing image/status/meta cache for
         # this account+marketplace so titles/images/status/fulfillment all refresh
         if force:
