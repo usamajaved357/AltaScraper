@@ -1255,6 +1255,10 @@
   .selbar button{font-size:12px;padding:5px 10px}
   #selcount{font-weight:600}
   /* marketplace switcher */
+  /* The sync label turns amber ONLY when something is actually wrong -- a
+     partial result or an Amazon failure. Data that is merely old is not a
+     problem, it is just old, and it says so in words. */
+  .syncwarn{color:var(--warn) !important}
   .mktswitch{display:flex;gap:4px;align-items:center;margin-right:8px}
   .mktbtn{font-size:12px;padding:5px 11px;border-radius:8px;background:var(--panel2);
           border:1px solid var(--line);color:var(--muted);cursor:pointer}

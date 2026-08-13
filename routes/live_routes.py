@@ -418,12 +418,25 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         if not force:
             _rec = _snap.get(CONFIG_PATH, aid, mkt)
             _age = _snap.age_seconds(_rec)
-            if _rec and _age is not None and _age < _LIVE_TTL:
-                _LIVE_CACHE[ck] = {"ts": _t.time() - _age, "items": _rec.get("items") or []}
+            # NO AGE LIMIT. The last successful sync is shown whatever its age,
+            # labelled with WHEN it was pulled.
+            #
+            # This used to require _age < _LIVE_TTL, which meant a saved
+            # catalogue older than the cache window was thrown away and the page
+            # went back to Amazon -- so simply leaving the app open for an hour
+            # and returning could show an empty list while a report rebuilt.
+            # Age decides whether to REFRESH; it must never decide whether you
+            # are allowed to see what you already pulled. Until fresher data
+            # arrives, the latest data stands, and says when it was taken.
+            if _rec and (_rec.get("items") or []):
+                _LIVE_CACHE[ck] = {"ts": _t.time() - (_age or 0),
+                                   "items": _rec.get("items") or []}
                 return jsonify({"ok": True, "items": _rec.get("items") or [],
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "synced_at": _rec.get("ts"),
-                                "age_seconds": _age, "partial": _rec.get("partial", False),
+                                "age_seconds": _age,
+                                "stale": bool(_age and _age > _LIVE_TTL),
+                                "partial": _rec.get("partial", False),
                                 "warnings": _rec.get("warnings") or [],
                                 "report_source": _rec.get("report_source", "")})
         # on a forced sync, also drop the per-listing image/status/meta cache for
@@ -627,6 +640,39 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 hdr = [h.strip() for h in (text.splitlines()[0].split("\t"))] if text else []
             except Exception:
                 hdr = []
+            # AN EMPTY OR SHRUNKEN REPORT MUST NOT ERASE WHAT YOU ALREADY HAVE.
+            # Amazon returns 0 rows for reasons that are not errors -- a report
+            # still generating, a transient empty, a marketplace briefly not
+            # answering. None of those raise, so the last-resort handler below
+            # never sees them, and the catalogue would simply be replaced by
+            # nothing. That is the "sync wiped my listings" symptom.
+            #
+            # The rule mirrors what save() already does on disk: a smaller result
+            # never silently replaces a larger one. It is REPORTED instead, so a
+            # genuine deletion on Amazon is still visible rather than hidden.
+            _prev = _snap.get(CONFIG_PATH, aid, mkt) or {}
+            _prev_items = _prev.get("items") or []
+            if _prev_items and len(items) < len(_prev_items):
+                _shrink = len(_prev_items) - len(items)
+                _age_prev = _snap.age_seconds(_prev)
+                if not items:
+                    # Nothing at all came back -- keep the saved copy verbatim.
+                    return jsonify({
+                        "ok": True, "items": _prev_items,
+                        "count": len(_prev_items), "cached": True,
+                        "from_snapshot": True, "stale": True,
+                        "synced_at": _prev.get("ts"), "age_seconds": _age_prev,
+                        "report_source": _prev.get("report_source", ""),
+                        "warnings": (_prev.get("warnings") or []) + [
+                            "Amazon returned an EMPTY report just now, which usually "
+                            "means the report was still being generated. Your last "
+                            "successful sync is still shown -- nothing was lost. "
+                            "Try Sync again in a minute."]})
+                warnings = list(warnings or []) + [
+                    f"Amazon returned {len(items)} listing(s), {_shrink} fewer than "
+                    f"the last sync ({len(_prev_items)}). Showing the new result. If "
+                    f"that is unexpected, sync again -- a partly-built report can "
+                    f"come back short."]
             _LIVE_CACHE[ck] = {"ts": _t.time(), "items": items}
             # DURABLE WRITE. Everything above is process memory that a restart or a
             # redeploy erases; this is the copy that survives. save() also refuses to
@@ -661,6 +707,10 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 return jsonify({"ok": True, "items": _rec.get("items") or [],
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "stale": True,
+                                # Distinct from merely-old data: Amazon actually
+                                # FAILED. The label says "Amazon unreachable" only
+                                # for this, so old-but-fine never looks broken.
+                                "amazon_failed": True,
                                 "synced_at": _rec.get("ts"), "age_seconds": _age,
                                 "partial": _rec.get("partial", False),
                                 "warnings": (_rec.get("warnings") or []) + [

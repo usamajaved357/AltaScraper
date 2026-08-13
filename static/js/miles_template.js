@@ -824,6 +824,7 @@ async function loadLiveCatalog(force){
       items:(j.items||[]), ts:Date.now(),
       syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
       fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+      amazonFailed: !!j.amazon_failed,
       partial: !!j.partial, warnings: (j.warnings||[]),
       reportSource: j.report_source||"", reportBuiltAt: j.report_built_at||""};
     // A short list caused by a failed half of the fetch must SAY so. Silence here
@@ -856,15 +857,31 @@ function updateSyncLabel(){
   // is hours old and must not read "synced just now".
   const when = c.syncedAt || c.ts;
   const mins = Math.round((Date.now()-when)/60000);
-  let txt = mins<1 ? "synced just now"
+  const hrs  = mins/60;
+  // Always say WHEN, never just how long ago. "synced 14h ago" leaves you doing
+  // arithmetic; anything not from the last hour also carries the actual clock
+  // time and date, so the age of what you are looking at is never in doubt.
+  let txt = mins<1  ? "synced just now"
           : mins<60 ? ("synced "+mins+"m ago")
-          : ("synced "+Math.round(mins/60)+"h ago");
+          : hrs<24  ? ("synced "+Math.round(hrs)+"h ago")
+          :           ("synced "+Math.round(hrs/24)+"d ago");
+  if(mins>=60){
+    try{
+      const d = new Date(when);
+      txt += " · " + d.toLocaleString([], {day:"2-digit", month:"short",
+                                           hour:"2-digit", minute:"2-digit"});
+    }catch(e){}
+  }
   if(c.fromSnapshot) txt += " (saved copy)";
-  if(c.stale)   txt += " — Amazon unreachable";
+  if(c.stale && c.amazonFailed) txt += " — Amazon unreachable";
   if(c.partial) txt += " — partial";
   el.textContent = txt;
-  el.title = (c.warnings&&c.warnings.length) ? c.warnings.join("\n")
-           : (c.reportBuiltAt ? ("Amazon report built "+c.reportBuiltAt) : "");
+  el.className = "cc" + ((c.partial || c.amazonFailed) ? " syncwarn" : "");
+  const tips = [];
+  if(c.warnings && c.warnings.length) tips.push(...c.warnings);
+  if(c.reportBuiltAt) tips.push("Amazon report built " + c.reportBuiltAt);
+  try{ tips.push("Pulled from Amazon: " + new Date(when).toLocaleString()); }catch(e){}
+  el.title = tips.join("\n");
 }
 function startAutoSync(){
   // SP-API is free (no AI credits), so a periodic background sync is fine.
@@ -999,6 +1016,7 @@ async function loadAllMarketplaces(force){
           items:(j.items||[]), ts:Date.now(),
           syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
           fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
+      amazonFailed: !!j.amazon_failed,
           partial: !!j.partial, warnings:(j.warnings||[])};
         merged=merged.concat((j.items||[]).map(it=>({...it,_mkt:mm})));
         if((j.warnings||[]).length) failed.push(mm+" (partial)");
