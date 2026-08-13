@@ -3332,6 +3332,34 @@ def build_app(backend=None):
         to take on faith."""
         return jsonify({"ok": True, **_refresher.status()})
 
+    # CACHE-BUSTING FOR THE BROWSER.
+    # Every page loaded 22 scripts and stylesheets as bare /static/... URLs. A
+    # browser that has one cached has no reason to ask for it again, so a deploy
+    # could fix a screen on the server while the person looking at it kept
+    # running yesterday's JavaScript -- the fix is live and invisible, which is
+    # the most confusing possible outcome and impossible to tell apart from "the
+    # fix did not work".
+    #
+    # The stamp is the newest modification time under static/, so it changes
+    # exactly when an asset changes and not on every restart (which would throw
+    # away everyone's cache for nothing).
+    def _asset_version():
+        newest = 0.0
+        for root, _dirs, files in os.walk(os.path.join(os.path.dirname(
+                os.path.abspath(__file__)), "static")):
+            for fn in files:
+                try:
+                    newest = max(newest, os.path.getmtime(os.path.join(root, fn)))
+                except OSError:
+                    pass
+        return str(int(newest)) or "0"
+
+    app.config["ASSET_V"] = _asset_version()
+
+    @app.context_processor
+    def _inject_asset_version():
+        return {"ASSET_V": app.config.get("ASSET_V", "0")}
+
     # Say at BOOT whether this deployment is configured correctly. A wiped disk
     # or a missing APP_SECRET_KEY otherwise announces itself hours later as
     # missing data, which reads as an application bug. The server log is the one

@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
-<link rel="stylesheet" href="/static/css/dashboard.css">
+<link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
 </head>
 <body>
 
@@ -600,23 +600,23 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="/static/js/amazon_errors.js"></script>
-<script src="/static/js/listings.js"></script>
-<script src="/static/js/autofix.js"></script>
-<script src="/static/js/miles_template.js"></script>
-<script src="/static/js/genimage.js"></script>
-<script src="/static/js/howworks.js"></script>
-<script src="/static/js/miles.js"></script>
-<script src="/static/js/ppc.js"></script>
-<script src="/static/js/inventory.js"></script>
-<script src="/static/js/submit.js"></script>
-<script src="/static/js/runqueue.js"></script>
-<script src="/static/js/handling.js"></script>
-<script src="/static/js/pastelisting.js"></script>
-<script src="/static/js/monitor.js"></script>
-<script src="/static/js/shell.js"></script>
-<script src="/static/js/settings.js"></script>
-<script src="/static/js/sync.js"></script>
+<script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/listings.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/genimage.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/howworks.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/miles.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ppc.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/inventory.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/submit.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/runqueue.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/handling.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/pastelisting.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/monitor.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/sync.js?v={{ ASSET_V }}"></script>
 <!-- Shape-1: manual pre-source restricted-product check -->
 <div class="rc-modal" id="rc_modal">
   <div class="rc-box">
@@ -635,7 +635,7 @@
     <div class="rc-res" id="rc_res"></div>
   </div>
 </div>
-<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/dashboard.js?v={{ ASSET_V }}"></script>
 <!-- ASIN research (read-only lookup -> hand off to Image Studio + copy generator) -->
 <div class="rc-modal" id="asin_modal">
   <div class="rc-box" style="width:min(760px,100%)">
@@ -652,7 +652,7 @@
     <div id="asin_res" style="margin-top:14px"></div>
   </div>
 </div>
-<script src="/static/js/asinresearch.js"></script>
+<script src="/static/js/asinresearch.js?v={{ ASSET_V }}"></script>
 
 <!-- Users & permissions. Global, not per-workspace, so it lives on the top bar. -->
 <div id="usersmodal" class="modalwrap" style="z-index:120">
@@ -661,9 +661,9 @@
     <div id="usersbody"><div class="cc" style="padding:16px">Loading…</div></div>
   </div>
 </div>
-<script src="/static/js/users.js"></script>
+<script src="/static/js/users.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
-<script src="/static/js/diag.js"></script>
+<script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">
