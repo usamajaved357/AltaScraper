@@ -34,6 +34,24 @@ function _uesc(s){
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+// An argument for an inline onclick="..." handler.
+//
+// JSON.stringify was used here, and it returns a string wrapped in DOUBLE
+// quotes -- the same character that delimits the attribute it was being pasted
+// into. onclick="userSave("u_abc")" makes the browser read the handler as
+// `userSave(` and stop, so the button did nothing at all: no error on screen,
+// no request, no clue. Every button that passed an id was dead this way --
+// Edit, Invite, Enable/Disable, Delete and Save changes -- while "Add", which
+// takes no argument, kept working and made the screen look alive.
+//
+// So: quote for JavaScript with SINGLE quotes, then escape for the HTML
+// attribute. The browser un-escapes the entities first, leaving valid JS.
+function _uarg(s){
+  const js = String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  return "'" + js.replace(/&/g,"&amp;").replace(/"/g,"&quot;")
+                 .replace(/</g,"&lt;").replace(/>/g,"&gt;") + "'";
+}
+
 // ---- who am I -----------------------------------------------------------
 // Drives the top bar. Runs on every page load; failures are silent because a
 // signed-out visitor is already being redirected to the sign-in screen.
@@ -159,13 +177,13 @@ async function renderUsers(){
       +    '<div class="cc" style="font-size:11px;margin-top:4px">Workspaces: '+_uesc(ws)+'</div>'
       +  '</div>'
       +  '<div style="display:flex;gap:6px;flex-wrap:wrap">'
-      +    '<button class="db-chip" onclick="userEdit('+JSON.stringify(u.id)+')">Edit</button>'
-      +    '<button class="db-chip" onclick="userInvite('+JSON.stringify(u.id)+')" '
+      +    '<button class="db-chip" onclick="userEdit('+_uarg(u.id)+')">Edit</button>'
+      +    '<button class="db-chip" onclick="userInvite('+_uarg(u.id)+')" '
       +      'title="Issue a fresh one-time link. Also use this as a password reset — it clears the old password.">New link</button>'
-      +    '<button class="db-chip" onclick="userToggle('+JSON.stringify(u.id)+','+(u.active?"false":"true")+')">'
+      +    '<button class="db-chip" onclick="userToggle('+_uarg(u.id)+','+(u.active?"false":"true")+')">'
       +      (u.active?"Disable":"Enable")+'</button>'
       +    '<button class="db-chip" style="color:var(--red);border-color:var(--red-line)" '
-      +      'onclick="userDelete('+JSON.stringify(u.id)+')">Delete</button>'
+      +      'onclick="userDelete('+_uarg(u.id)+')">Delete</button>'
       +  '</div></div>'
       +  '<div id="uedit_'+_uesc(u.id)+'"></div>'
       +  '</td></tr>';
@@ -356,7 +374,7 @@ function userEdit(id){
       + '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">'
       +   workspaceCheckboxes("ue"+id, u.workspaces||[])
       + '</div>'
-      + '<button class="db-chip" onclick="userSave('+JSON.stringify(id)+')">Save changes</button>'
+      + '<button class="db-chip" onclick="userSave('+_uarg(id)+')">Save changes</button>'
       + '<span id="uesave_'+_uesc(id)+'" class="cc" style="margin-left:8px;font-size:11px"></span>'
       + '</div>';
   });

@@ -102,6 +102,11 @@ RULES = [
     ("/input/import",                   "edit"),
     ("/input/clear",                    "approve_delete"),
 
+    # -- sales. The feature gate above already decides who may SEE any of it;
+    #    pulling from Amazon is work, so it needs "edit" like other mutations.
+    ("/sales/sync",                     "edit"),
+    ("/sales",                          None),
+
     # -- work that happens over GET, so the default read rule would let it
     #    through. Listed explicitly so it needs "edit" like any other mutation.
     ("/run/health",                     None),          # diagnostics only
@@ -135,6 +140,10 @@ WORKSPACE_SWITCH = {
 # Anything not listed belongs to no feature and is governed by RULES alone --
 # so adding a route cannot accidentally hide it from everyone.
 FEATURE_PATHS = [
+    # Revenue is commercially sensitive, so it is its own feature rather than
+    # riding on "listings" -- a lister needs listings and has no business
+    # reading turnover.
+    ("/sales",                "sales"),
     ("/ppc",                  "ppc"),
     ("/inventory",            "inventory"),
     ("/monitor",              "monitor"),

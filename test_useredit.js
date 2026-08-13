@@ -11,7 +11,10 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const src = fs.readFileSync("D:/AltaScraper/static/js/users.js", "utf8");
+// Overridable so a regression can be demonstrated against a patched copy --
+// a test nobody has ever seen fail is not yet known to test anything.
+const src = fs.readFileSync(
+  process.env.USERS_JS || "D:/AltaScraper/static/js/users.js", "utf8");
 const LIST = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const ME = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
 
@@ -101,5 +104,92 @@ const listerPpc = (add.match(/data-feat="ppc"[\s\S]*?<\/select>/) || [""])[0];
 check("  a lister is preset to no PPC access",
       /<option value="none" selected>/.test(listerPpc), true);
 
-console.log("\nFAILURES: " + fails);
-process.exit(fails ? 1 : 0);
+console.log("\n=== every button's onclick is actually runnable JavaScript ===");
+// The bug this pins down: the handlers were built with JSON.stringify(id),
+// which returns a DOUBLE-quoted string -- the same character that closes the
+// onclick="..." attribute it was pasted into. The browser read the handler as
+// `userSave(` and stopped, so Edit, Invite, Enable/Disable, Delete and Save
+// changes all did nothing at all: no error, no request, no clue. Only "Add",
+// which passes no id, kept working, which made the screen look alive.
+//
+// Rendering the REAL markup and parsing every handler out of it is the only
+// check that would have caught it -- the JS is valid, the HTML is valid, and
+// only their combination is broken.
+function handlersIn(html) {
+  const out = [];
+  const re = /onclick="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(html))) {
+    out.push(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&")
+                 .replace(/&lt;/g, "<").replace(/&gt;/g, ">"));
+  }
+  return out;
+}
+
+function domSandbox(listJson) {
+  const captured = {};
+  const el = (id) => ({
+    get innerHTML() { return captured[id] || ""; },
+    set innerHTML(v) { captured[id] = v; },
+    style: {}, textContent: "", classList: { add() {}, remove() {} },
+    scrollIntoView() {}, setAttribute() {}, getAttribute: () => null,
+  });
+  const nodes = {};
+  const s = {
+    document: {
+      getElementById: (id) => (nodes[id] = nodes[id] || el(id)),
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+    },
+    window: { addEventListener: () => {} },
+    fetch: () => Promise.resolve({ json: () => Promise.resolve(listJson) }),
+    toast: () => {},
+    console,
+  };
+  s.window.document = s.document;
+  vm.createContext(s);
+  vm.runInContext(src, s);
+  return { s, nodes };
+}
+
+(async () => {
+  const { s, nodes } = domSandbox(LIST);
+  s.J = LIST;
+  vm.runInContext("_setMeta(J)", s);
+
+  // --- the list of people, with its four buttons per row ---
+  await vm.runInContext("renderUsers()", s);
+  const listHtml = nodes["usersbody"].innerHTML;
+  const rowHandlers = handlersIn(listHtml);
+  check("the user list drew its buttons", rowHandlers.length > 0, true);
+  rowHandlers.forEach(function (h) {
+    let ok = true, why = "";
+    try { new Function(h); } catch (e) { ok = false; why = e.message; }
+    check("  runs: " + h.slice(0, 46), ok ? true : why, true);
+  });
+  ["userEdit", "userInvite", "userToggle", "userDelete"].forEach(function (fn) {
+    check("  " + fn + " is wired to a row",
+          rowHandlers.some((h) => h.indexOf(fn + "(") === 0), true);
+  });
+  check("  and the id survives into the call",
+        rowHandlers.some((h) => h.indexOf(LIST.users[0].id) > 0), true);
+
+  // --- the Edit panel's Save button ---
+  await vm.runInContext('userEdit(' + JSON.stringify(LIST.users[0].id) + ')', s);
+  await new Promise((r) => setImmediate(r));      // let the fetch().then settle
+  const panel = nodes["uedit_" + LIST.users[0].id].innerHTML;
+  const saveHandlers = handlersIn(panel).filter((h) => h.indexOf("userSave") === 0);
+  check("the Edit panel drew a Save button", saveHandlers.length, 1);
+  let saveOk = true, saveWhy = "";
+  try { new Function(saveHandlers[0] || ""); } catch (e) { saveOk = false; saveWhy = e.message; }
+  check("  Save changes runs", saveOk ? true : saveWhy, true);
+  check("  and carries the user id", (saveHandlers[0] || "").indexOf(LIST.users[0].id) > 0, true);
+
+  // --- the escaping helper itself ---
+  const awkward = vm.runInContext("_uarg(\"a'b\\\\c&d\\\"e\")", s);
+  check("_uarg never emits a bare double quote", /"/.test(awkward), false);
+  check("  and escapes a single quote for JS", awkward.indexOf("\\'") > 0, true);
+
+  console.log("\nFAILURES: " + fails);
+  process.exit(fails ? 1 : 0);
+})();

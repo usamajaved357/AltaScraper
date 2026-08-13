@@ -749,7 +749,7 @@ function navTo(sec){
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","ppc","inventory","sync","monitor"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -757,6 +757,7 @@ function navTo(sec){
   if(sec==="imagerefs") loadImageRefs();
   if(sec==="generate"){ loadTargetAccount(); loadInputSheet(); }
   if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
+  if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
   if(sec==="ppc")       ppcOnOpen();
   if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
   if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
@@ -836,7 +837,7 @@ function enterWorkspaceBlank(){
 // Routing can fail to update an address; it can never stop you navigating.
 
 const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
-                       "ppc","inventory","sync","monitor","miles"];
+                       "sales","ppc","inventory","sync","monitor","miles"];
 
 let _ALTA_ROUTED    = false;  // has the one-time restore-from-address already run?
 let _ALTA_RESTORING = false;  // true while replaying an address: replace, never push

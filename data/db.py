@@ -40,6 +40,131 @@ CREATE TABLE IF NOT EXISTS workspaces (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- SALES AND TRAFFIC, one row per day per ASIN.
+--
+-- asin '*' is the account+marketplace TOTAL for that day. Amazon reports the
+-- total separately from the per-ASIN breakdown and the two do not always add up
+-- (ASINs delisted mid-period, orders with no ASIN attribution), so the total is
+-- stored as Amazon gives it rather than summed on read. A dashboard that quietly
+-- disagrees with Seller Central by two percent is worse than no dashboard.
+--
+-- Daily grain ONLY. Weekly and monthly are rolled up when read. Storing three
+-- grains means three things to keep in step, and they drift.
+CREATE TABLE IF NOT EXISTS sales_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,                 -- YYYY-MM-DD
+    asin TEXT NOT NULL DEFAULT '*',     -- the CHILD asin: the thing that sells
+    parent_asin TEXT,                   -- kept so variations can be grouped later
+    units INTEGER,
+    units_b2b INTEGER,
+    orders INTEGER,
+    order_items INTEGER,
+    ordered_sales REAL,
+    ordered_sales_b2b REAL,
+    sessions INTEGER,
+    sessions_mobile INTEGER,
+    sessions_browser INTEGER,
+    page_views INTEGER,
+    buy_box_pct REAL,
+    unit_session_pct REAL,             -- Amazon's conversion rate
+    avg_selling_price REAL,
+    currency TEXT,
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_key
+    ON sales_daily(workspace_id, marketplace, date, asin);
+CREATE INDEX IF NOT EXISTS idx_sales_range ON sales_daily(workspace_id, marketplace, date);
+
+-- ADVERTISING, same shape, deliberately separate.
+--
+-- Ad data does NOT come from SP-API -- it is the Amazon Advertising API, a
+-- different API with its own authorisation, and this app has no connection to
+-- it. Today rows arrive from an uploaded Sponsored Products report; when the API
+-- is connected it fills the SAME table and only `source` changes. Shaping it now
+-- means connecting the API later is a data-source swap, not a rebuild.
+CREATE TABLE IF NOT EXISTS ads_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,
+    asin TEXT NOT NULL DEFAULT '*',
+    impressions INTEGER,
+    clicks INTEGER,
+    spend REAL,
+    ad_orders INTEGER,
+    ad_sales REAL,
+    source TEXT,                        -- 'upload' now, 'ads_api' later
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ads_key
+    ON ads_daily(workspace_id, marketplace, date, asin);
+
+-- WHAT AMAZON TOOK, AND WHAT WENT BACK TO BUYERS.
+--
+-- From the Finances API (listFinancialEvents), which is a different thing from
+-- the Sales & Traffic report: that one says what was ORDERED, this says what was
+-- actually CHARGED and REFUNDED once the money moved. The two never agree
+-- exactly and are not meant to -- an order placed on the 1st and refunded on the
+-- 9th is revenue on the 1st and a refund on the 9th.
+--
+-- FEES ARE STORED POSITIVE. Amazon sends them negative, because from its side
+-- they are money leaving. On a screen "Amazon fees: 3.00" is what a person
+-- means, and a column that is sometimes negative and sometimes not is the kind
+-- of thing that silently flips a profit calculation.
+--
+-- Financial events are keyed by SELLER SKU, not ASIN. The SKU is mapped to an
+-- ASIN through the live catalogue snapshot where one exists; where it does not,
+-- the row still lands on the account total (asin '*') so the headline figures
+-- stay right even when a SKU cannot be attributed. A fee that cannot be placed
+-- against a product is still a fee you paid.
+CREATE TABLE IF NOT EXISTS finance_daily (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    date TEXT NOT NULL,
+    asin TEXT NOT NULL DEFAULT '*',
+    referral_fees REAL,                 -- Amazon's commission
+    fba_fees REAL,                      -- fulfilment, storage, weight-based
+    other_fees REAL,                    -- everything else Amazon charged
+    refunds REAL,                       -- principal returned to buyers
+    refund_units INTEGER,
+    refund_fees_returned REAL,          -- the part of the fee Amazon gave back
+    reimbursements REAL,                -- money Amazon paid back for its own errors
+    promos REAL,                        -- discounts you funded
+    principal REAL,                     -- what buyers were charged, per Finances
+    units INTEGER,                      -- units shipped, on the SAME basis as the fees
+    cogs REAL,                          -- what those units cost, where the cost is known
+    cogs_units INTEGER,                 -- how many of the units had a known cost
+    currency TEXT,
+    source TEXT,                        -- 'finances_api' | 'settlement' later
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_key
+    ON finance_daily(workspace_id, marketplace, date, asin);
+CREATE INDEX IF NOT EXISTS idx_finance_range
+    ON finance_daily(workspace_id, marketplace, date);
+
+-- WHAT DATES ACTUALLY HAVE DATA.
+--
+-- Asked BEFORE any data is requested. Amazon delivers sales with a lag and never
+-- has today, so without this the dashboard draws empty columns for days that were
+-- never going to exist and looks broken. Reading it first is the difference
+-- between "no data yet for 12 Aug" and a chart that appears to say sales were nil.
+CREATE TABLE IF NOT EXISTS data_availability (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace TEXT NOT NULL,
+    source TEXT NOT NULL,               -- 'sales' | 'ads'
+    first_date TEXT,
+    last_date TEXT,
+    days INTEGER,
+    fetched_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_avail_key
+    ON data_availability(workspace_id, marketplace, source);
+
 -- Products WAITING to be generated: the generator's INPUT.
 --
 -- This is the last thing that had to be read live from Google Sheets. Reading it
@@ -177,7 +302,133 @@ CREATE INDEX IF NOT EXISTS idx_listings_ws_status ON listings(workspace_id, stat
 CREATE INDEX IF NOT EXISTS idx_listings_sku       ON listings(sku);
 CREATE INDEX IF NOT EXISTS idx_listings_asin      ON listings(competitor_asin);
 CREATE INDEX IF NOT EXISTS idx_syncjobs_type      ON sync_jobs(job_type, workspace_id);
+
+
+/* ==========================================================================
+   SOURCE REPRICER -- the supplier side of a listing.
+
+   A SKU is only touched by the repricer if it has been ENROLLED. That is the
+   blast radius control: the feature can ship to every account and still change
+   nothing until a SKU is opted in, one at a time.
+   ========================================================================== */
+
+/* Which SKUs the repricer is allowed to act on, and how hard. */
+CREATE TABLE IF NOT EXISTS sourcing_enrolment (
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    sku          TEXT NOT NULL,
+    enrolled     INTEGER DEFAULT 1,
+    mode         TEXT DEFAULT 'dry_run',   -- 'dry_run' decides and logs; 'live' pushes
+    added_at     TEXT,
+    PRIMARY KEY (workspace_id, marketplace, sku)
+);
+
+/* The suppliers for one SKU. Several per SKU is the normal case. */
+CREATE TABLE IF NOT EXISTS sourcing_sources (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    sku          TEXT NOT NULL,
+    url          TEXT NOT NULL,
+    kind         TEXT DEFAULT 'ebay',      -- 'ebay' (API) | 'html' (scraped)
+    label        TEXT,
+    priority     INTEGER DEFAULT 100,      -- lower wins ties; the user's own order
+    enabled      INTEGER DEFAULT 1,
+    /* A postage cost the supplier does not publish, typed once by the user.
+       Unknown postage is not free postage -- without this the source is skipped
+       for want of a cost, which is visible and fixable. Guessing is not. */
+    shipping_override REAL,
+    added_at     TEXT
+);
+
+/* Every check of a source. History, not just the latest, so a price that moves
+   around can be seen moving rather than inferred from one reading. */
+CREATE TABLE IF NOT EXISTS sourcing_checks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id     INTEGER NOT NULL,
+    checked_at    TEXT,
+    status        TEXT,                    -- 'fetched' | 'gone' | 'failed'
+    price         REAL,
+    shipping      REAL,                    -- NULL means UNKNOWN, never free
+    currency      TEXT,
+    in_stock      INTEGER,                 -- 1 yes, 0 no, NULL unknown
+    dispatch_days INTEGER,
+    error         TEXT
+);
+
+/* Rules. One row per account is the default; a row with a sku overrides it for
+   that SKU alone, so one awkward product cannot force the rest to be loosened. */
+CREATE TABLE IF NOT EXISTS sourcing_rules (
+    workspace_id         TEXT NOT NULL,
+    marketplace          TEXT NOT NULL,
+    sku                  TEXT NOT NULL DEFAULT '',   -- '' = the account default
+    strategy             TEXT,
+    require_in_stock     INTEGER,
+    max_dispatch_days    INTEGER,
+    handling_buffer_days INTEGER,
+    min_margin_pct       REAL,
+    target_margin_pct    REAL,
+    referral_rate        REAL,
+    min_price            REAL,
+    max_price            REAL,
+    max_change_pct       REAL,
+    min_change           REAL,
+    stale_after_hours    REAL,
+    in_stock_quantity    INTEGER,
+    PRIMARY KEY (workspace_id, marketplace, sku)
+);
+
+/* Every decision, whether or not it was pushed. This is the answer to "why did
+   my price change at 3am", and it has to survive being asked weeks later. */
+CREATE TABLE IF NOT EXISTS sourcing_actions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id   TEXT NOT NULL,
+    marketplace    TEXT NOT NULL,
+    sku            TEXT NOT NULL,
+    at             TEXT,
+    action         TEXT,                   -- 'none' | 'update' | 'out_of_stock'
+    source_id      INTEGER,
+    from_price     REAL, to_price     REAL,
+    from_quantity  INTEGER, to_quantity  INTEGER,
+    from_lead_days INTEGER, to_lead_days INTEGER,
+    reason         TEXT,
+    blocked_by     TEXT,
+    applied        INTEGER DEFAULT 0,      -- 0 dry run, 1 pushed, -1 push failed
+    inputs_age_mins REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_srcsources_sku  ON sourcing_sources(workspace_id, marketplace, sku);
+CREATE INDEX IF NOT EXISTS idx_srcchecks_src   ON sourcing_checks(source_id, checked_at);
+CREATE INDEX IF NOT EXISTS idx_srcactions_sku  ON sourcing_actions(workspace_id, marketplace, sku, at);
 """
+
+
+# Columns added to tables that already exist in the wild. CREATE TABLE IF NOT
+# EXISTS does nothing to a table that is already there, so a column added to
+# SCHEMA above never reaches a database created before it -- the app then fails
+# on a machine that has been running longest, which is the worst place to find
+# out. Each entry is (table, column, type); applying one twice is a no-op.
+_ADDED_COLUMNS = [
+    ("sales_daily", "parent_asin", "TEXT"),
+    ("finance_daily", "units", "INTEGER"),
+    ("finance_daily", "cogs", "REAL"),
+    ("finance_daily", "cogs_units", "INTEGER"),
+    ("sourcing_sources", "shipping_override", "REAL"),
+]
+
+
+def _migrate(conn):
+    """Bring an existing database up to the current SCHEMA. Idempotent."""
+    for table, column, coltype in _ADDED_COLUMNS:
+        try:
+            have = {r["name"] for r in conn.execute("PRAGMA table_info(%s)" % table)}
+        except Exception:
+            continue                       # table not created yet; SCHEMA will do it
+        if column not in have:
+            try:
+                conn.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, coltype))
+            except Exception:
+                pass                       # raced with another thread; harmless
 
 
 def db_path(config_path=None):
@@ -211,6 +462,7 @@ def get_db(config_path=None):
     with _INIT_LOCK:
         if path not in _INITIALISED:
             conn.executescript(SCHEMA)
+            _migrate(conn)
             _INITIALISED.add(path)
 
     _LOCAL.conn, _LOCAL.path = conn, path

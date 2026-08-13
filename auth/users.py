@@ -77,6 +77,7 @@ FEATURES = {
     "ppc":       "PPC campaigns, bids and budgets",
     "inventory": "Inventory and restock alerts",
     "monitor":   "ASIN monitor and hijacker alerts",
+    "sales":     "Sales dashboard: revenue, orders, traffic",
     "accounts":  "Amazon credentials, accounts and settings",
 }
 LEVELS = ("none", "view", "edit")
@@ -85,9 +86,14 @@ LEVELS = ("none", "view", "edit")
 ROLE_FEATURES = {
     "owner":   {f: "edit" for f in FEATURES},
     "manager": {"listings": "edit", "images": "edit", "ppc": "edit",
-                "inventory": "edit", "monitor": "edit", "accounts": "view"},
+                "inventory": "edit", "monitor": "edit", "sales": "view",
+                "accounts": "view"},
+    # A lister gets NO sales access by default. Revenue is commercially
+    # sensitive and nothing about writing a listing needs it; anyone who should
+    # see it can be given it individually.
     "lister":  {"listings": "edit", "images": "edit", "ppc": "none",
-                "inventory": "view", "monitor": "view", "accounts": "none"},
+                "inventory": "view", "monitor": "view", "sales": "none",
+                "accounts": "none"},
     "viewer":  {f: "view" for f in FEATURES} | {"accounts": "none"},
 }
 

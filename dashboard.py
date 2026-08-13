@@ -2159,32 +2159,22 @@ def _save_cogs_overrides():
         pass
 
 
+# MOVED to domain/cogs.py so the Sales dashboard resolves cost the same way this
+# screen does. Same parse, same override precedence -- these are now the one
+# definition, called from two places instead of copied into two (Rule 12).
+from domain import cogs as _cogs_mod
+
+
 def _cogs_from_sku(sku):
     """Dropshipping SKUs are formatted {source_price}_{N}Days_{ASIN}; the first
     number is the source cost (incl. shipping). Returns float or None."""
-    try:
-        first = str(sku).split("_", 1)[0]
-        v = float(first)
-        if v > 0:
-            return v
-    except Exception:
-        pass
-    return None
+    return _cogs_mod.cost_from_sku(sku)
 
 
 def _resolve_cogs(account_id, sku):
     """COGS priority: manual override (by SKU) -> price embedded in SKU. Returns
     (cost_or_None, source_label)."""
-    key = f"{account_id}::{sku}"
-    if key in _COGS_OVERRIDE:
-        try:
-            return float(_COGS_OVERRIDE[key]), "manual"
-        except Exception:
-            pass
-    c = _cogs_from_sku(sku)
-    if c is not None:
-        return c, "sku"
-    return None, ""
+    return _cogs_mod.resolve(_COGS_OVERRIDE, account_id, sku)
 
 
 def _estimate_profit(price, cogs, referral_rate=0.15):
@@ -3234,6 +3224,11 @@ def build_app(backend=None):
                               live_catalog=(lambda: app.view_functions["live_catalog"]()),
                               OUTPUT_TAB=OUTPUT_TAB, ConfigError=ConfigError, _client=_client,
                               _save_active_state=_save_active_state)
+    # Sales dashboard: one SP-API report (sales AND traffic), stored per day.
+    import routes.sales_routes as _sales_routes
+    _sales_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
+
     # The generator's INPUT, imported on demand instead of read live from Google.
     import routes.input_routes as _input_routes
     _input_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
@@ -3414,8 +3409,42 @@ def build_app(backend=None):
 
     app.config["ASSET_V"] = _asset_version()
 
+    # ON A SERVER the stamp is computed once and left alone: a deploy restarts
+    # the app, so the value is always current and walking static/ on every page
+    # load would be waste.
+    #
+    # RUNNING LOCALLY there is no restart. The stamp stayed at whatever it was
+    # when the app booted, so the browser kept being handed the SAME
+    # dashboard.css?v=... it already had cached, and edits to CSS or JS were
+    # invisible until the app was restarted -- which looks exactly like "the
+    # change didn't work". Re-checked at most once every few seconds, which is
+    # cheap and only happens off-server.
+    _paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
+                 or os.environ.get("DYNO"))
+    _av = {"ts": 0.0}
+
+    # AND THE TEMPLATE ITSELF.
+    # Flask compiles templates/dashboard.html once and keeps it in memory unless
+    # told otherwise. Without debug mode that means a locally running app serves
+    # the HTML it read at startup FOR EVER -- so an edit to the page could not
+    # appear no matter how many times the browser was refreshed, and the only
+    # symptom was "nothing changed". Stamping the assets did not help, because
+    # the stamp is written INTO the cached template.
+    #
+    # On a server this is right and stays off: a deploy restarts the app, and
+    # re-reading the file per request would be pure cost. Off-server, correctness
+    # while editing beats a saving nobody can measure on one machine.
+    if not _paas:
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+        app.jinja_env.auto_reload = True
+
     @app.context_processor
     def _inject_asset_version():
+        if not _paas:
+            import time as _t
+            if _t.time() - _av["ts"] > 2:
+                app.config["ASSET_V"] = _asset_version()
+                _av["ts"] = _t.time()
         return {"ASSET_V": app.config.get("ASSET_V", "0")}
 
     # Say at BOOT whether this deployment is configured correctly. A wiped disk

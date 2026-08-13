@@ -48,11 +48,23 @@
       <div class="ic" id="ws_ic">··</div>
       <div><div class="nm pii" id="ws_nm">Workspace</div><div class="sub cc pii" id="ws_sub"></div></div>
     </div>
+    <!-- Section labels, per the Orbit layout. They use the SAME .slbl class the
+         Tools label already used -- a second "nav-section-label" class would be
+         two styles to keep in step for one thing.
+
+         The brief groups Account & sheets under Tools, but it also says do not
+         reorder, and that rule wins: the labels are placed around the nav as it
+         already stands rather than the items being moved to suit the labels.
+         No label sits directly above Supplier Import, which is hidden for most
+         accounts -- a label with nothing under it looks like a broken screen. -->
+    <div class="slbl">Operations</div>
     <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> Listings</div>
     <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
     <div class="navitem" data-sec="setup" id="nav_setup" onclick="navTo('setup')"><i class="ti ti-settings"></i> Brand setup</div>
     <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-table"></i> Account &amp; sheets</div>
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
+    <div class="slbl">Analytics</div>
+    <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
@@ -141,7 +153,7 @@
 
     <!-- IMAGE REFS section -->
     <div id="sec_imagerefs" class="wspanel">
-      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px"><div><h2>Image references</h2><div class="sub">Saved reference images used for AI main-image generation in this workspace</div></div></div>
+      <div class="wstoolbar bleed"><div><h2>Image references</h2><div class="sub">Saved reference images used for AI main-image generation in this workspace</div></div></div>
       <div id="imagerefsbody"></div>
     </div>
 
@@ -152,7 +164,7 @@
 
     <!-- GENERATE & SUBMIT section -->
     <div id="sec_generate" class="wspanel">
-      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px"><div><h2>Generate &amp; submit</h2><div class="sub">Run generation, export, preview the API, and submit live — scoped to this workspace</div></div></div>
+      <div class="wstoolbar bleed"><div><h2>Generate &amp; submit</h2><div class="sub">Run generation, export, preview the API, and submit live — scoped to this workspace</div></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <button class="primary" onclick="runMode('generate')"><i class="ti ti-player-play"></i> Generate</button>
         <button onclick="runMode('retry')">Retry holds</button>
@@ -203,9 +215,45 @@
       </div>
     </div>
 
+    <!-- SALES section. One filter row above everything it scopes, then the stat
+         cards, then the metrics x dates grid. The grid prints every value as
+         text and uses colour only to shade it, so nothing is readable by colour
+         alone and the table IS the accessible view. -->
+    <div id="sec_sales" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2>Sales</h2>
+        <div class="sub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div></div>
+      </div>
+
+      <div class="salesbar" id="sales_filters">
+        <span class="mktswitch" id="sales_presets"></span>
+        <span class="mktswitch" id="sales_gran"></span>
+        <span id="sales_custom" style="display:none;gap:6px;align-items:center">
+          <input type="date" class="rc-in" id="sales_start" style="width:auto;margin:0"
+                 onchange="salesSetDates()" aria-label="Range start">
+          <span class="cc">to</span>
+          <input type="date" class="rc-in" id="sales_end" style="width:auto;margin:0"
+                 onchange="salesSetDates()" aria-label="Range end">
+        </span>
+        <select class="rc-in" id="sales_asin" style="width:auto;margin:0"
+                onchange="salesSetAsin(this.value)" aria-label="Product filter">
+          <option value="">All products</option>
+        </select>
+        <span class="spacer" style="flex:1"></span>
+        <span id="sales_range" class="cc" style="font-size:11.5px"></span>
+        <button class="mktbtn" onclick="salesSync(this)" title="Pull the days Amazon has not sent yet"><i class="ti ti-refresh"></i> Sync</button>
+        <button class="mktbtn" onclick="salesExport()" title="Download this exact grid as CSV"><i class="ti ti-download"></i> Export</button>
+      </div>
+
+      <div id="sales_today"></div>
+      <div id="sales_cards" class="stat-row"></div>
+      <div id="sales_note"></div>
+      <div id="sales_grid"></div>
+    </div>
+
     <!-- PPC section -->
     <div id="sec_ppc" class="wspanel">
-      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+      <div class="wstoolbar bleed">
         <div><h2>PPC</h2>
         <div class="sub">Amazon Sponsored Products — campaign builder, harvest, audits, forecasts, weekly decks. Ask the agent below or use a shortcut. Every deliverable is scoped to this workspace's account and marketplace.</div></div>
       </div>
@@ -337,7 +385,7 @@
 
     <!-- INVENTORY REPLENISHMENT -->
     <div id="sec_inventory" class="wspanel">
-      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+      <div class="wstoolbar bleed">
         <div><h2>Inventory replenishment</h2>
         <div class="sub">Fully automated. Pulls FBA inventory + sales velocity from SP-API. Applies four-bucket zero-velocity classification (Active / New Launch / Dormant / Dead). Coloured xlsx output mirrors your original Excel model.</div></div>
       </div>
@@ -401,7 +449,7 @@
 
     <!-- MILES LUBRICANTS IMPORT -->
     <div id="sec_monitor" class="wspanel">
-      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+      <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
         <div class="sub">Track competitor ASINs and get alerted the moment a new seller appears (also seller removed / price change / buy-box change). Read-only surveillance through Jack Reacherd (UK)'s credentials &mdash; it never writes to or affects the tracked listings.</div></div>
       </div>
@@ -449,7 +497,7 @@
     </div>
 
     <div id="sec_miles" class="wspanel">
-      <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+      <div class="wstoolbar bleed">
         <div><h2>Miles Lubricants Import</h2>
         <div class="sub">Harvest products from mileslubricants.com by item number — pulls page text, spec table, and the PDF spec/SDS sheets into Drive, then drafts Amazon listings with compliance &amp; IP checks.</div></div>
       </div>
@@ -540,7 +588,7 @@
 </div>
 
 <div id="sec_sync" class="wspanel">
-  <div class="wstoolbar" style="position:static;margin:-20px -20px 16px">
+  <div class="wstoolbar bleed">
     <div><h2>Amazon &harr; App sync</h2>
     <div class="sub">Pull Amazon's live copy into the app, or push app copy to Amazon. Both directions PROPOSE a side-by-side &mdash; nothing is overwritten without your per-field choice. Push is locked until you unlock it, refuses to run through borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
   </div>
@@ -666,6 +714,8 @@
      to a live listing. Also holds setMainImage(), the ONE implementation the
      four older "use as main" call sites now share. -->
 <script src="/static/js/listingimages.js?v={{ ASSET_V }}"></script>
+<!-- Sales dashboard: stat cards + the metrics x dates grid. -->
+<script src="/static/js/sales.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
 
