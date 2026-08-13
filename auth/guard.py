@@ -247,6 +247,15 @@ def _wants_json():
         accept = str(request.headers.get("Accept") or "")
         if "application/json" in accept:
             return True
+        # PAGE ROUTES ARE ALWAYS NAVIGATIONS, whatever the headers say. Deciding
+        # purely on Accept is fragile -- not every client sends text/html, and
+        # answering a page request with JSON would show a bare error string
+        # instead of the login screen. The page routes are a short, known list,
+        # so treat them as certain and use the header only for the rest.
+        p = str(request.path or "")
+        if p == "/" or p.startswith("/w/") or p.startswith("/login") \
+                or p.startswith("/invite/") or p.startswith("/logout"):
+            return False
         # A real navigation says text/html. A bare fetch() usually says */*.
         return "text/html" not in accept
     except Exception:
