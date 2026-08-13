@@ -1035,6 +1035,8 @@ function tableRow(r){
       <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
       <button class="dotb" title="Generate images for this product"
               onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
+      <button class="dotb" title="This listing's images — choose the main one, or upload your own"
+              onclick="event.stopPropagation();openImageLibrary('${esc(r.sku)}', ${isAmazonLive(r) ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
     </div></td></tr>`;
 }
 
@@ -1063,6 +1065,8 @@ function liveTableRow(it){
               onclick="event.stopPropagation();optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i></button>
       <button class="dotb" title="Generate images for this product"
               onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i></button>
+      <button class="dotb" title="This listing's images — choose the main one, upload your own, or push it to Amazon"
+              onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i></button>
       <a class="dotb" title="View on Amazon" target="_blank" rel="noopener"
          onclick="event.stopPropagation()"
          href="https://www.amazon.${WS_MARKET==='UK'?'co.uk':'com'}/dp/${esc(it.asin||'')}"><i class="ti ti-external-link"></i></a>

@@ -87,10 +87,9 @@ async function editListingImage(sku, url, idx){
     // if this was the MAIN image, offer to set the edited version as the new main
     if(idx===0 && confirm("Edited image saved. Set it as the MAIN image for this listing?\n(This updates the app copy; use \"Push image to live\" to send it to Amazon.)")){
       var useUrl=sv.url||res.data_url;
-      await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({sku:sku,target:'attr',key:'main_product_image_locator',value:useUrl})});
-      toast("✓ Set as main image (app copy). Use 'Push image to live' to send to Amazon.");
-      loadRows();
+      // ONE implementation of "make this the main image" (listingimages.js).
+      await setMainImage(sku, useUrl,
+        {message:"✓ Set as main image (app copy). Use 'Push image to live' to send to Amazon."});
     } else {
       toast("✓ Edited image saved to "+sku+"'s library.");
     }

@@ -1600,10 +1600,9 @@ function uploadMainImage(sku, inp){
       if(!up || !up.ok){ toast("Upload failed: "+((up&&up.error)||"unknown")); return; }
       const pub = up.drive_direct_url || "";
       if(!pub){ toast("Uploaded, but no public URL"+(up.drive_error?(" ("+up.drive_error+")"):"")+". Set the account's Drive folder so Amazon can fetch it."); return; }
-      const sv = await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:sku, target:"attr", key:"main_product_image_locator", value:pub})})).json();
-      if(sv && sv.ok){ toast("Main image set ✓ — Preview/Submit to send it to Amazon"); loadRows(); }
-      else { toast("Image hosted but couldn't save to the row: "+((sv&&sv.error)||"")); }
+      // ONE implementation of "make this the main image" (listingimages.js).
+      await setMainImage(sku, pub,
+        {message:"Main image set ✓ — Preview/Submit to send it to Amazon"});
     }catch(e){ toast("Upload error: "+((e&&e.message)||e)); }
     finally { if(inp) inp.value=""; }
   };
@@ -1638,10 +1637,7 @@ async function applyGen(sku, sidv){
   // prefer the saved file URL (real hosted path) over the inline data URL
   var savedUrl=out?out.dataset.savedurl:'';
   var useUrl=savedUrl||dataUrl;
-  try{
-    await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sku:sku,target:'attr',key:'main_product_image_locator',value:useUrl})});
-    toast(savedUrl?'Set as main image (saved to media)':'Set as main image');
-    loadRows();
-  }catch(e){ toast('Could not apply: '+e); }
+  // ONE implementation of "make this the main image" (listingimages.js).
+  await setMainImage(sku, useUrl,
+    {message: savedUrl ? 'Set as main image (saved to media)' : 'Set as main image'});
 }

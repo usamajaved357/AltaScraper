@@ -129,11 +129,8 @@ async function milesApply(sku, sidv){
   var out=document.getElementById('mresult_'+sidv);
   var url=out?out.dataset.savedurl:'';
   if(!url){ toast('Nothing to apply'); return; }
-  try{
-    await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sku:sku,target:'attr',key:'main_product_image_locator',value:url})});
-    toast('Set as main image'); loadRows();
-  }catch(e){ toast('Could not apply: '+e); }
+  // ONE implementation of "make this the main image" (listingimages.js).
+  await setMainImage(sku, url, {message:'Set as main image'});
 }
 // ===== Visual zone editor: drag boxes onto the template to place text =====
 let ZE_STATE = null;
@@ -1318,6 +1315,12 @@ async function fetchLiveImages(){
   const need=(LIVE_ITEMS||[]).filter(it=>!it.img && it.sku).map(it=>it.sku);
   if(!need.length) return;
   _imgFetchBusy=true;
+  // Count what Amazon refused. Each SKU is one getListingsItem call and the API
+  // is rate limited, so on a large catalogue THROTTLING is the normal failure --
+  // and it used to be swallowed per SKU, which looked exactly like "Amazon has
+  // no image for this listing". Silence about a partial result is what made
+  // "pull live images" seem to return an incomplete set for no reason.
+  let _failedTotal=0, _pendingTotal=0;
   const reqAccount=CUR_ACCOUNT?CUR_ACCOUNT.id:"", reqMkt=WS_MARKET;
   try{
     // fetch in chunks so images appear progressively
@@ -1355,11 +1358,19 @@ async function fetchLiveImages(){
           const it=(LIVE_ITEMS||[]).find(x=>x.sku===sku);
           if(it && !it.img){ it._noImg=true; }
         });
+        _failedTotal += ((j.failed||[]).length);
+        _pendingTotal += ((j.pending||[]).length);
         const key=_liveKey(); if(LIVE_STORE[key]) LIVE_STORE[key].items=LIVE_ITEMS;
         if(changed) render();   // refresh so corrected statuses/colors show
       }
     }
   }catch(e){ /* silent — images are best-effort */ }
+  if(_failedTotal || _pendingTotal){
+    const bits=[];
+    if(_failedTotal) bits.push(_failedTotal+" Amazon would not return (usually rate limiting — try again shortly)");
+    if(_pendingTotal) bits.push(_pendingTotal+" not reached in this pass");
+    toast("Images: "+bits.join("; ")+".");
+  }
   _imgFetchBusy=false;
 }
 async function setCogs(sku, price){
