@@ -408,6 +408,9 @@
      reserved for APPROVED, which is a thing you did. Keeping both green made a
      grid of live listings glow as if everything needed attention. */
   .b-LIVE{background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
+  /* The group of a variation family. Not a product: nothing buys it, it carries
+     no price, and it is deliberately outside the approve-and-submit flow. */
+  .b-PARENT{background:var(--panel2);color:var(--ink2);border:1px dashed var(--accent)}
   table.kv{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;table-layout:fixed}
   table.kv td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere}
@@ -1429,3 +1432,143 @@
   .todaybit .good{color:var(--green,#2dd4a8);font-size:11.5px}
   .todaybit .bad{color:var(--red,#f87171);font-size:11.5px}
   .todaynote{margin-left:auto;font-size:10.5px}
+
+/* =========================================================================
+   MOBILE  --  everything below 860px
+   =========================================================================
+   The app was built for a desktop and on a phone it fell apart in four ways,
+   all of them structural rather than cosmetic:
+
+     1. the sidebar is 210px of a 360px screen, and it is sticky and full
+        height, so it took most of the viewport and never went away;
+     2. the app bar and the toolbar are BOTH sticky, one under the other, so
+        about a third of a phone screen was permanently spent on chrome
+        before any content;
+     3. #workspace lays out as a row, so the content column was squeezed into
+        whatever the sidebar left;
+     4. the modals are fixed at 560-860px wide, which simply overflowed.
+
+   The nav becomes a horizontal strip that scrolls, rather than a drawer.
+   A drawer needs a button, state and JavaScript on every screen; a strip
+   needs none of that and cannot get stuck open. Everything here is CSS, so
+   there is no new behaviour to go wrong -- and no desktop rule is touched.
+   ========================================================================= */
+@media (max-width: 860px){
+
+  /* Nothing may push the page sideways. One overflowing table used to make the
+     WHOLE page scroll horizontally, which moves the nav off-screen and feels
+     broken in a way that is very hard to attribute to a table. */
+  html, body{ max-width:100%; overflow-x:hidden; }
+
+  /* ---- top bar: one line, no wrapping into a tall block ---- */
+  .appbar{ padding:0 10px; gap:4px; }
+  .appbar .brandmark span:not(.dot){ display:none; }   /* keep the mark, drop the word */
+  .crumbs{ display:none; }                              /* the sidebar says where you are */
+  .appbar .hb #healthtxt{ display:none; }               /* the dot alone is the signal */
+  .appbar .hb{ padding:4px 6px; }
+  .appbar .barbtn{ font-size:12px; padding:6px 8px; }
+  .appbar .barbtn span{ display:none; }
+  #whoami{ display:none !important; }
+
+  /* ---- workspace: stack, do not sit side by side ---- */
+  #workspace.show{ flex-direction:column; min-height:auto; }
+
+  /* ---- the sidebar becomes a scrolling nav strip ---- */
+  .sidebar{
+    width:auto; height:auto; flex-shrink:1;
+    position:sticky; top:49px; z-index:15;          /* stays reachable while scrolling */
+    padding:0; border-right:0; border-bottom:1px solid var(--line);
+    flex-direction:row; align-items:stretch;
+    overflow-x:auto; overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .sidebar::-webkit-scrollbar{ display:none; }
+  /* Section labels and the workspace identity do not belong in a strip: they
+     are headings for a vertical list. The identity is already in the toolbar. */
+  .sidebar .slbl, .sidebar .wsident{ display:none; }
+  .backlink{ margin:0; padding:10px 12px; white-space:nowrap; align-self:center; }
+  .navitem{
+    white-space:nowrap; padding:11px 13px; font-size:12.5px;
+    border-left:0; border-bottom:3px solid transparent;   /* active moves to the underside */
+    min-height:42px;                                      /* a real touch target */
+  }
+  .navitem.active{ border-left:0; border-bottom-color:var(--accent); }
+
+  /* ---- content ---- */
+  .wsmain{ width:100%; }
+  .wspanel{ --wspad:12px; }
+  #sec_listings{ padding:12px; }
+
+  /* ONE sticky bar, not two. The app bar is the one worth keeping; a second
+     sticky strip under it costs another 60px of a screen that has ~640. */
+  .wstoolbar{
+    position:static; padding:12px; gap:8px;
+    flex-wrap:wrap; align-items:flex-start;
+  }
+  .wstoolbar h2{ font-size:14px; }
+  .wstoolbar .sub{ font-size:11.5px; }
+  .wstoolbar .spacer{ display:none; }        /* it only forces a wide row */
+
+  /* Button rows: let them wrap instead of overflowing. */
+  .mktswitch{ flex-wrap:wrap; }
+  .mktbtn, .db-chip{ min-height:34px; }
+
+  /* ---- grids: one or two columns, never a squeezed three ---- */
+  .wsgrid{ grid-template-columns:1fr; gap:10px; }
+  .stat-row{ grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:8px; }
+  .db-metrics, .metricgrid{ grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); }
+  .mediagrid{ grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); }
+  main#grid{ grid-template-columns:1fr !important; }
+
+  /* ---- wide tables scroll INSIDE their own box ---- */
+  /* Every wide table in the app already sits in an overflow-x wrapper; this
+     makes that scroll feel native and keeps the table from setting the page
+     width. The tables keep their min-width on purpose: a squashed financial
+     table is unreadable, and sideways scroll is the honest trade. */
+  [style*="overflow-x"]{ -webkit-overflow-scrolling:touch; }
+  table.kv{ font-size:11.5px; }
+  table.kv td, table.kv th{ padding:6px 7px; }
+
+  /* ---- modals: use the screen ---- */
+  .modalwrap{ padding:0; align-items:stretch; }
+  .modal{
+    width:100% !important; max-width:100% !important;
+    border-radius:0; border-left:0; border-right:0;
+    max-height:100vh; overflow-y:auto; padding:14px;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  /* ---- forms: 16px stops iOS zooming the whole page on focus ---- */
+  input, select, textarea{ font-size:16px !important; max-width:100%; }
+  input[type="date"]{ min-height:36px; }
+}
+
+/* Phones proper. Two columns of tiles is still readable at 480px; below that
+   a tile is too narrow to show a title and a price on one line. */
+@media (max-width: 520px){
+  .grid, main#grid{ grid-template-columns:1fr !important; }
+  .stat-row{ grid-template-columns:1fr 1fr; }
+  .wstoolbar{ padding:10px; }
+  .wspanel{ --wspad:10px; }
+  .navitem{ padding:11px 11px; font-size:12px; }
+}
+
+/* ---- a group that is kept but folded away ------------------------------
+   Listings the app records as live that Amazon did not return are real data
+   worth keeping -- submitted-not-yet-published, taken down, or filed against
+   the wrong account -- but they are NOT things you sell, and they were getting
+   a full heading and a wall of tiles ahead of the listings that are. One line,
+   openable, nothing deleted. */
+.foldgroup{ margin:10px 0 4px; border:1px solid var(--line); border-radius:var(--radius-sm);
+            background:var(--panel); }
+.foldgroup > summary{ cursor:pointer; list-style:none; padding:9px 12px;
+                      font-size:12px; color:var(--warn); display:flex;
+                      align-items:center; gap:7px; flex-wrap:wrap; }
+.foldgroup > summary::-webkit-details-marker{ display:none; }
+.foldgroup > summary::after{ content:"show"; margin-left:auto; font-size:11px;
+                             color:var(--muted); }
+.foldgroup[open] > summary::after{ content:"hide"; }
+.foldgroup > summary:hover{ background:var(--panel2); }
+.foldgroup > summary .cc{ font-weight:400; }
+.foldgroup .grid, .foldgroup > div{ padding:0 12px 12px; }

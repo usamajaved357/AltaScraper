@@ -3281,6 +3281,13 @@ def build_app(backend=None):
     _sales_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
 
+    # Import an eBay seller's catalogue as DRAFTS. Nothing here reaches Amazon:
+    # it finds, screens and writes rows into this app's own store, and the
+    # existing approve-and-submit path publishes them.
+    import routes.seller_routes as _seller_routes
+    _seller_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
+
     # Variation families. Preview decides and explains; apply sends exactly what
     # preview showed. _schema_for gives it the live product-type schema, which is
     # where the allowed variation themes come from (Rule 4).

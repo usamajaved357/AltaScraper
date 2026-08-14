@@ -9,7 +9,43 @@
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
 </head>
+<script>
+/* WHY THIS RUNS BEFORE ANYTHING IS DRAWN.
+   Every screen has a real address (/w/<workspace>/<section>), and refreshing one
+   DOES reopen it -- but the workspace list is marked `show` in the markup and
+   the accounts have to be fetched before the right screen can be opened. So the
+   browser painted the home page first and the workspace a moment later, and a
+   refresh on a listings page flashed the workspace list on the way back.
+   Amazon does not show you the dashboard on the way to Manage Inventory, and
+   there is no reason this should either.
+   Inline and synchronous ON PURPOSE: a stylesheet or a deferred script cannot
+   suppress a paint that has already happened. The class is cleared by
+   altaRouteFromUrl once it knows where it landed, and by a timeout in case that
+   never runs -- a permanently hidden home screen would be a worse bug than the
+   flash it replaces. */
+(function(){
+  try{
+    if(/^\/w\/[^\/]+/.test(location.pathname || "")){
+      document.documentElement.className += " alta-routing";
+      setTimeout(function(){
+        document.documentElement.classList.remove("alta-routing");
+      }, 4000);
+    }
+  }catch(e){}
+})();
+</script>
+<style>
+  /* Held back only while the address says we are going somewhere else. */
+  html.alta-routing #home{ display:none !important; }
+  html.alta-routing #alta-booting{ display:flex !important; }
+</style>
 <body>
+<!-- Shown only during that hand-off, so the screen is never blank OR wrong. -->
+<div id="alta-booting" style="display:none;position:fixed;inset:0;z-index:5;
+     align-items:center;justify-content:center;background:var(--bg,#0d1117);
+     color:var(--muted,#8b949e);font-size:13px;gap:9px">
+  <span class="genspin"></span> Opening…
+</div>
 
 <div class="appbar">
   <div class="brandmark" onclick="goHome()">
@@ -71,6 +107,7 @@
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
+    <div class="navitem" data-sec="sellerimport" onclick="navTo('sellerimport')"><i class="ti ti-download"></i> Import seller</div>
     <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
 
@@ -455,6 +492,14 @@
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_sellerimport" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-download"></i> Import an eBay seller</h2>
+        <div class="sub">Find everything a seller lists, review it with the pictures, check what Amazon allows, and draft the ones you want. Nothing is sent to Amazon &mdash; they arrive here as drafts and you publish them the usual way.</div></div>
+      </div>
+      <div id="simpbody" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_variations" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-binary-tree"></i> Variation families</h2>
@@ -703,6 +748,7 @@
 <script src="/static/js/sourcing.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/sellerimport.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

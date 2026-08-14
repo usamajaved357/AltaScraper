@@ -192,6 +192,35 @@ check("  and every row of it is unapplied",
       all(a["applied"] == 0 for a in lg["actions"]), True)
 
 
+print("\n=== the marketplace resolves even when nothing set it ===")
+# The bug: mkt came only from the request or from _state["active_marketplace"],
+# and the Repricer is not the screen that selects a marketplace. Opening it
+# directly left mkt as "", so it looked up jack_uk::"" , found nothing, and
+# reported "no live listings cached" for an account with 55 of them.
+_bare = Flask(__name__); _bare.secret_key = "t"
+sr.register(_bare, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
+            _active_account=lambda: {"id": WS},          # no default_marketplace
+            _state={"active_account_id": WS})            # and NO active_marketplace
+bc = _bare.test_client()
+j0 = bc.get("/sourcing/candidates").get_json()
+check("it still finds the marketplace with the data", j0["marketplace"], MKT)
+check("  and returns the listings", j0["count"] > 0, True)
+check("  with no misleading 'press Sync'", "press Sync" in (j0["note"] or ""), False)
+
+print("  -- the request always wins when it says --")
+j1 = c.get("/sourcing/candidates?marketplace=" + MKT).get_json()
+check("explicit marketplace honoured", j1["marketplace"], MKT)
+
+print("  -- and an empty list says WHICH reason --")
+j2 = c.get("/sourcing/candidates?marketplace=ZZ").get_json()
+check("a marketplace with no cache", j2["count"], 0)
+truthy("  names the account and the marketplace",
+       WS in (j2["note"] or "") and "ZZ" in (j2["note"] or ""))
+j3 = c.get("/sourcing/candidates?q=zzzznope").get_json()
+truthy("a filter that matches nothing says so, not 'press Sync'",
+       "match that filter" in (j3["note"] or ""))
+
+
 print("\n=== enrolling is a PICK from what is live, not a typed SKU ===")
 # A typed SKU with a typo in it enrols a product that does not exist: the sweep
 # finds no sources, the row never decides anything, and nothing says it was wrong.

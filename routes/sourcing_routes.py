@@ -57,14 +57,52 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 str(acc.get("seller_id") or ""))
 
     def _where():
-        """(account_id, marketplace) for the request, defaulting to the active one."""
+        """(account_id, marketplace) for the request.
+
+        The marketplace used to come only from the request or from
+        _state["active_marketplace"], and neither is reliably set when this
+        screen is opened directly -- the Repricer is not the screen that selects
+        a marketplace, so opening it first left mkt as "". Everything then looked
+        up jack_uk::"" , found nothing, and reported "no live listings cached",
+        which is a completely different problem from the real one and sent you to
+        press Sync on an account that had 55 listings already cached.
+
+        So it now falls back, in order, to the account's default marketplace and
+        then to the one that actually HAS a snapshot -- because a marketplace
+        with cached listings is a better guess than none at all, and there is
+        usually exactly one.
+        """
         acc = _active_account() or {}
-        wsid = (request.args.get("id") or (request.get_json(silent=True) or {}).get("id")
+        body = request.get_json(silent=True) or {}
+        wsid = (request.args.get("id") or body.get("id")
                 or acc.get("id") or _state.get("active_account_id") or "")
-        mkt = (request.args.get("marketplace")
-               or (request.get_json(silent=True) or {}).get("marketplace")
-               or _state.get("active_marketplace") or "").upper()
+        mkt = (request.args.get("marketplace") or body.get("marketplace")
+               or _state.get("active_marketplace")
+               or acc.get("default_marketplace") or "").upper()
+        if not mkt and wsid:
+            mkt = _only_marketplace_with_data(wsid)
         return wsid, mkt
+
+    def _only_marketplace_with_data(wsid):
+        """The marketplace this account has cached listings for, if just one.
+
+        Deliberately only when there is exactly ONE. Picking the largest of
+        several would be a guess that is right most of the time and silently
+        wrong the rest, on a screen that changes live prices.
+        """
+        try:
+            from domain import live_snapshots as _ls
+            allrec = _ls._read_all(CONFIG_PATH) or {}
+        except Exception:
+            return ""
+        found = []
+        for key, rec in allrec.items():
+            if "::" not in str(key):
+                continue
+            a, m = str(key).split("::", 1)
+            if a == wsid and ((rec or {}).get("items") or []):
+                found.append(m.upper())
+        return found[0] if len(found) == 1 else ""
 
     def _body():
         return request.get_json(force=True, silent=True) or {}
@@ -138,11 +176,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "sources": len(_repo.sources_for(CONFIG_PATH, wsid, mkt, sku)) if row else 0,
             })
         out.sort(key=lambda r: (not r["enrolled"], r["sku"]))
+        # An empty list has three quite different causes and they need three
+        # different actions. Telling everyone to press Sync when the real problem
+        # is that no marketplace was resolved sends them to fix something that
+        # was never broken.
+        note = ""
+        if not out:
+            if not wsid:
+                note = "No account is selected — open a workspace first."
+            elif not mkt:
+                note = ("No marketplace is selected, so there was nothing to look "
+                        "up. Pick one on the Listings screen and come back.")
+            elif not rec.get("items"):
+                note = ("No live listings are cached for %s on %s yet — press Sync "
+                        "on the Listings screen first." % (wsid, mkt))
+            else:
+                note = "No listings match that filter."
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
-                        "count": len(out), "items": out,
-                        "note": ("" if out else
-                                 "No live listings are cached for this account yet "
-                                 "— press Sync on the Listings screen first.")})
+                        "count": len(out), "items": out, "note": note})
 
     # ---- enrolment ------------------------------------------------------
     @app.route("/sourcing/enrol", methods=["POST"])
@@ -173,17 +224,38 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         kind = (b.get("kind") or "").strip().lower()
         if not kind:
             kind = "ebay" if "ebay." in url.lower() else "html"
+        from api import ebay as _ebay
         if kind == "ebay":
-            from api import ebay as _ebay
             if not _ebay.item_id_from_url(url):
                 return jsonify({"ok": False, "error": (
                     "that does not look like an eBay item link -- it should "
                     "contain /itm/ and the item number")}), 400
-        sid = _repo.add_source(CONFIG_PATH, wsid, mkt, sku, url, kind=kind,
-                               label=(b.get("label") or "").strip(),
-                               priority=int(b.get("priority") or 100),
-                               shipping_override=b.get("shipping_override"))
-        return jsonify({"ok": True, "id": sid})
+        # Refused at the point you can still fix it. A variation listing has no
+        # one price or stock level, so this source could never produce a usable
+        # reading -- it would sit in every sweep answering "could not tell", and
+        # the repricer would correctly do nothing, silently, for ever.
+        if kind == "ebay" and not _ebay.variation_id_from_url(url):
+            _c = _cfg() if callable(_cfg) else (_cfg or {})
+            app_id = str(_c.get("ebay_app_id", "") or "")
+            cert_id = str(_c.get("ebay_cert_id", "") or "")
+            if app_id and cert_id:
+                probe = _ebay.get_item(url, app_id, cert_id,
+                                       marketplace=_ebay.site_for(mkt))
+                if probe["status"] == _ebay.GROUP:
+                    return jsonify({"ok": False, "error": probe["error"]}), 400
+
+        # Not add_source: the same supplier link twice is two fetches of the same
+        # answer on every sweep, and that supplier then counts twice in the
+        # ranking. ensure_source says whether it was already there.
+        sid, created = _repo.ensure_source(
+            CONFIG_PATH, wsid, mkt, sku, url, kind=kind,
+            label=(b.get("label") or "").strip(),
+            priority=int(b.get("priority") or 100),
+            shipping_override=b.get("shipping_override"))
+        return jsonify({"ok": True, "id": sid, "created": created,
+                        "note": ("" if created else
+                                 "That link was already a source for this SKU, "
+                                 "so nothing was added.")})
 
     @app.route("/sourcing/source/update", methods=["POST"])
     def sourcing_source_update():

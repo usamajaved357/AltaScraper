@@ -233,14 +233,21 @@ function _ilDraw(){
              // The button rendered perfectly and did nothing when pressed.
              : '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
                + 'onclick="ilSetMain(' + jsArg(f.url) + ')">Use as main</button>')
-         // Straight to Amazon, from the image you are looking at. Only for a
-         // listing that is actually live -- there is nothing to update otherwise.
-         + (IMGLIB.live
-             ? '<button class="db-chip" style="margin-top:4px;font-size:10.5px;'
-               + 'background:var(--accent);color:#fff;border-color:var(--accent)" '
-               + 'title="Set this as the main image AND send it to the live listing" '
-               + 'onclick="ilPushThis(' + jsArg(f.url) + ')">Send to Amazon</button>'
-             : '')
+         // ALWAYS offered. This used to be hidden unless IMGLIB.live was true --
+         // a flag the caller guesses from whatever the row happens to hold, and
+         // which is false for a live listing whose catalogue has not been loaded
+         // yet. So the one control that chooses a slot was invisible on listings
+         // that were perfectly live, with nothing on screen to say why.
+         //
+         // Whether a listing is on Amazon is Amazon's answer, not ours: pressing
+         // this reads the real listing, and if Amazon does not have it the reply
+         // says exactly that. A wrong guess that HIDES a control is worse than a
+         // request that comes back with a clear no.
+         + '<button class="db-chip" style="margin-top:4px;font-size:10.5px;'
+           + 'background:var(--accent);color:#fff;border-color:var(--accent)" '
+           + 'title="Choose which image this is on Amazon — main, PT1-PT8 or the '
+           + 'variation swatch — and send it" '
+           + 'onclick="ilPushThis(' + jsArg(f.url) + ')">Send to Amazon…</button>'
          + '</div></div>';
     });
     h += '</div>';
@@ -248,18 +255,21 @@ function _ilDraw(){
 
   // Push to Amazon: only meaningful for a listing that is already live. The
   // server gates it on `publish` regardless of what is drawn here.
+  // The picker and its status line always exist; only the standing "push the
+  // main image" button below is about a listing already known to be live.
+  h += '<span id="il_pushstatus" class="cc" style="font-size:11.5px"></span>'
+     + '<div id="il_slotpick"></div>';
   if(IMGLIB.live){
     h += '<div style="margin-top:16px;border-top:1px solid #26303f;padding-top:12px">'
        + '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
        + 'onclick="ilPushLive()">Push main image to the live Amazon listing</button>'
-       + '<span id="il_pushstatus" class="cc" style="font-size:11px;margin-left:8px"></span>'
+       // The status line and the picker host live ABOVE, outside this block, so
+       // there is exactly one of each. Two elements sharing an id means
+       // getElementById quietly picks the first and the other never updates.
        + '<div class="cc" style="font-size:11px;margin-top:6px">'
        + 'Updates only that one image on Amazon — no full resubmit. Amazon takes a '
        + 'few minutes to show it. Use <b>Send to Amazon…</b> on an image above to '
-       + 'choose which slot it goes in (main, PT1–PT8, swatch).</div>'
-       // Where the slot picker draws. Inside the live block because there is
-       // nothing to send to on a listing that is not live.
-       + '<div id="il_slotpick"></div></div>';
+       + 'choose which slot it goes in (main, PT1–PT8, swatch).</div></div>';
   }
   _ilRender(h);
 }
