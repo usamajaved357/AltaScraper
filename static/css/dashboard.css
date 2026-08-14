@@ -1824,3 +1824,106 @@ html{ scroll-behavior:smooth; }
 .pct-badge.flat{ color:rgb(156,163,175); }
 
 .stat-card.is-empty .stat-number{ color:rgb(107,114,128); }
+
+
+/* =====================================================================
+   SALES DASHBOARD — Orbit's page chrome, measured
+   =====================================================================
+   Read off the live dashboard with tools/orbit_capture.py; the raw
+   figures are in orbit_interactions.md. Nothing here is a judgement call.
+
+       page background   rgb(26,29,41), 12px padding
+       panel             rgb(37,41,55), 1px rgb(55,65,81), radius 12, pad 12
+       panel title       18px / 600, line-height 27
+       page title        28px / 600, line-height 30.8, 4px below
+       stat card         rgb(45,50,66), 1px rgb(55,65,81), radius 8, pad 12
+       preset group      rgb(45,50,66), radius 8, padding 2, gap 2
+       preset button     28 high, radius 6, padding 4/12, 10px
+       preset active     gold, with rgb(26,29,41) text
+   ===================================================================== */
+.salespanel{
+  background:rgb(37,41,55);
+  border:1px solid rgb(55,65,81);
+  border-radius:12px;
+  padding:12px;
+}
+.salespanel + .salespanel{ margin-top:12px; }
+
+.panelhead{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.paneltitle{
+  font-size:18px;
+  font-weight:600;
+  line-height:27px;
+  color:rgb(243,244,246);
+  margin:0;
+}
+.panelsub{
+  font-size:12px;
+  line-height:18px;
+  color:rgb(156,163,175);
+  margin:0;
+}
+.panelhead .spacer{ flex:1; }
+
+/* The two cards along the top. Side by side on a wide screen, stacked on a
+   narrow one -- which is what Orbit does too: measured at 681px wide its own
+   two cards were stacked and full width. */
+.sales-toprow{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
+  gap:12px;
+  margin-bottom:12px;
+}
+
+/* The segmented preset control: one tray, buttons inside it, the active one
+   filled gold with dark text. */
+.seg{
+  display:inline-flex;
+  gap:2px;
+  background:rgb(45,50,66);
+  border-radius:8px;
+  padding:2px;
+}
+.seg > button{
+  height:28px;
+  border-radius:6px;
+  padding:4px 12px;
+  font-size:10px;
+  font-weight:500;
+  line-height:normal;
+  border:1px solid transparent;
+  background:transparent;
+  color:rgb(243,244,246);
+  cursor:pointer;
+  transition:background .15s ease, color .15s ease;
+}
+.seg > button:hover{ background:rgba(255,255,255,.05); }
+.seg > button.on{
+  background:#fbbf24;
+  color:rgb(26,29,41);
+  font-weight:600;
+}
+.seg > button.on:hover{ background:#fbbf24; }
+
+/* The ⓘ beside a panel's subtitle, as Orbit has it: an 18px circle, not an
+   icon font, so it lines up with the text at any size. */
+.infodot{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:14px;height:14px;
+  border:1px solid rgb(107,114,128);
+  border-radius:50%;
+  font-size:9px;
+  line-height:1;
+  color:rgb(156,163,175);
+  margin-left:4px;
+  cursor:help;
+  vertical-align:middle;
+}

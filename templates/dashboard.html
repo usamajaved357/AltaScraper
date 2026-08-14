@@ -279,10 +279,52 @@
          cards, then the metrics x dates grid. The grid prints every value as
          text and uses colour only to shade it, so nothing is readable by colour
          alone and the table IS the accessible view. -->
+    <!-- SALES — laid out as Orbit lays it out, measured rather than eyeballed:
+         a page title, then the two "how is it going right now" cards side by
+         side, then the Sales Report panel carrying its own toolbar, figures and
+         one combined chart. The chrome is at the end of dashboard.css and every
+         value in it came off Orbit's live page. -->
     <div id="sec_sales" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2>Sales</h2>
-        <div class="sub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div></div>
+      <div style="margin:0 0 12px">
+        <div style="font-size:28px;font-weight:600;line-height:30.8px;margin:0 0 4px"
+             id="sales_title">Sales</div>
+        <div class="panelsub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div>
+      </div>
+
+      <div class="sales-toprow">
+        <div class="salespanel">
+          <div class="panelhead">
+            <div>
+              <p class="paneltitle">Today so far</p>
+              <p class="panelsub">Counted as orders are placed<span class="infodot"
+                 title="Orders as Amazon records them arriving. A different measurement from the settled figures below, and it will not tie out to them.">i</span></p>
+            </div>
+            <span class="spacer"></span>
+            <span id="sales_today_delta"></span>
+          </div>
+          <div id="sales_today"></div>
+        </div>
+        <div class="salespanel">
+          <div class="panelhead">
+            <div>
+              <p class="paneltitle">Week to date</p>
+              <p class="panelsub">This week against the one before<span class="infodot"
+                 title="Monday to today, drawn against the same days of last week.">i</span></p>
+            </div>
+            <span class="spacer"></span>
+            <span id="sales_week_delta"></span>
+          </div>
+          <div id="sales_week"></div>
+        </div>
+      </div>
+
+      <div class="salespanel">
+      <div class="panelhead">
+        <div>
+          <p class="paneltitle">Sales report</p>
+          <p class="panelsub">Settled figures, on the money basis<span class="infodot"
+             title="Units shipped, dated when the money moved, so the fees and the units beside them describe the same sales.">i</span></p>
+        </div>
       </div>
 
       <div class="salesbar" id="sales_filters">
@@ -299,13 +341,29 @@
                 onchange="salesSetAsin(this.value)" aria-label="Product filter">
           <option value="">All products</option>
         </select>
+        <!-- COMPARE TO, as Orbit has it. The dashed line and every "was: …"
+             figure follow this. Two choices only, because they are the two
+             that mean something: the period immediately before answers "is
+             this week better than last", and the same period a year ago
+             answers it for anything seasonal. -->
+        <span class="cc" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">compare to</span>
+        <select class="rc-in" id="sales_compare" style="width:auto;margin:0"
+                onchange="salesSetCompare(this.value)" aria-label="Compare against">
+          <option value="period">Prior period</option>
+          <option value="year">Prior year</option>
+          <option value="none">Nothing</option>
+        </select>
         <span class="spacer" style="flex:1"></span>
         <span id="sales_range" class="cc" style="font-size:11.5px"></span>
         <button class="mktbtn" onclick="salesSync(this)" title="Pull the days Amazon has not sent yet"><i class="ti ti-refresh"></i> Sync</button>
         <button class="mktbtn" onclick="salesExport()" title="Download this exact grid as CSV"><i class="ti ti-download"></i> Export</button>
       </div>
 
-      <div id="sales_today"></div>
+      <!-- sales_today moved into its own card at the top of the screen, where
+           Orbit puts "Live Sales": it answers a different question from
+           everything below it (orders as placed, not money as settled) and
+           reading it in the middle of the settled figures invited exactly the
+           comparison it does not support. -->
       <div id="sales_cards" class="stat-row"></div>
       <div id="sales_note"></div>
       <!-- Shape first, then which products made it, then the full grid. Reading
@@ -313,6 +371,7 @@
       <div id="sales_charts"></div>
       <div id="sales_breakdown"></div>
       <div id="sales_grid"></div>
+      </div>
     </div>
 
     <!-- PPC section -->

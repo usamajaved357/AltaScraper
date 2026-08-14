@@ -9,9 +9,17 @@
 // most misleading thing a sales chart can do. A missing day breaks the line and
 // is shaded, so the gap looks like a gap.
 //
-// They also never invent a second axis. Two series on one chart share a scale
-// only when they share a unit; revenue and units do not, so they get separate
-// charts rather than a twin axis whose crossings mean nothing.
+// A SECOND AXIS IS ALLOWED IN EXACTLY ONE PLACE, and it is worth saying where
+// the line is. Two series that are COMPARED to each other must share a scale --
+// a twin axis makes their crossing point look meaningful when it is an artefact
+// of how the two scales were chosen, and the eye reads the crossing first. So
+// the single-metric charts refuse one.
+//
+// salesCombo() at the bottom of this file does use one, because its bars are a
+// COUNT of orders and its lines are MONEY. Nobody reads "orders crossed above
+// revenue"; they read the shape of each. The alternative is two charts that
+// cannot be scanned in one glance. Both axes are labelled, so which is which is
+// never a guess.
 
 // Orbit's chart palette and line styles, MEASURED off its live Sales Dashboard
 // on 15 Aug 2026 (tools/orbit_capture.py -> orbit_interactions.md), not copied
@@ -361,4 +369,184 @@ function salesChart(points, opts){
                style="display:block;height:auto;background:#0d1220;
                       border:1px solid #1e2733;border-radius:8px">`
        + defs + grid + gaps + paths + dots + xl + hits + '</svg></div>';
+}
+
+
+// ===================== THE COMBO CHART =====================
+// Orbit's main Sales Report chart, rebuilt from measurements rather than from
+// the look of it: gold bars for orders against a right-hand count axis, and
+// money lines against the left-hand axis, with the key underneath.
+//
+// EVERY VALUE HERE WAS MEASURED off the live dashboard (orbit_interactions.md):
+//   bars           #fbbf24 at 0.3 opacity, 28px wide
+//   grid lines     rgb(55,65,81), 1px
+//   axis labels    11px, rgb(156,163,175)
+//   legend text    12px
+//   sales line     #10b981 2px      profit line  #38bdf8 2px
+//   prior year     #6366f1 1.5px dashed 5,3
+//   prior period   #6b7280 2px dashed 5,5
+//
+// WHY TWO AXES, when the single-metric charts deliberately refuse one.
+// A twin axis is dishonest when the two series are compared to each other --
+// the crossing point is meaningless and the eye reads it anyway. Here the bars
+// are a COUNT and the lines are MONEY, they are never read against each other,
+// and the alternative is two charts that cannot be scanned in one glance. Orbit
+// makes the same call. The axes are labelled so which is which is never a
+// guess.
+const SC_SERIES = {
+  sales:      {label: "Sales",            color: "#10b981", width: 2,   dash: ""},
+  profit:     {label: "Profit",           color: "#38bdf8", width: 2,   dash: ""},
+  prior_year: {label: "Prior Year Sales", color: "#6366f1", width: 1.5, dash: "5 3"},
+  prior:      {label: "Prior period",     color: "#6b7280", width: 2,   dash: "5 5"},
+};
+
+function salesCombo(o){
+  const cols  = o.columns || [];
+  const bars  = o.bars || null;              // {key,label,values[]}
+  const lines = (o.lines || []).filter(function(l){
+    return (l.values || []).some(function(v){ return _scNum(v) !== null; });
+  });
+  if(!cols.length) return "";
+
+  const W = o.width || 1240, H = o.height || 420;
+  // Room for BOTH axes. The right-hand one was the thing that made the first
+  // attempt look wrong: without space reserved for it the last bar sat under
+  // the labels.
+  const padL = 64, padR = 56, padT = 16, padB = 62;
+  const iw = W - padL - padR, ih = H - padT - padB;
+
+  const moneyVals = [];
+  lines.forEach(function(l){
+    (l.values || []).forEach(function(v){
+      const n = _scNum(v); if(n !== null) moneyVals.push(n);
+    });
+  });
+  const barVals = (bars && bars.values || []).map(_scNum).filter(function(v){ return v !== null; });
+
+  const mLo = Math.min(0, moneyVals.length ? Math.min.apply(null, moneyVals) : 0);
+  const mHi = _scNiceMax(moneyVals.length ? Math.max.apply(null, moneyVals) : 1);
+  const mSpan = (mHi - mLo) || 1;
+  const bHi = _scNiceMax(barVals.length ? Math.max.apply(null, barVals) : 1);
+
+  const x  = i => padL + (cols.length === 1 ? iw / 2 : (i * iw) / (cols.length - 1));
+  const yM = v => padT + ih - ((v - mLo) / mSpan) * ih;
+  const yB = v => padT + ih - (v / (bHi || 1)) * ih;
+
+  // Gridlines and both sets of tick labels, at the same five heights so the
+  // two scales line up visually instead of drawing two sets of rules.
+  let grid = "";
+  [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
+    const yy = padT + ih - f * ih;
+    grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
+                   stroke="rgb(55,65,81)" stroke-width="1"/>`
+         +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
+                  fill="rgb(156,163,175)">${_scEsc(_scFmt(mLo + mSpan * f, "money"))}</text>`
+         +  `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
+                  fill="rgb(156,163,175)">${_scEsc(String(Math.round(bHi * f)))}</text>`;
+  });
+
+  // BARS FIRST, so the lines sit over them. 28px measured, but never wider than
+  // the space one column actually has -- a 90-day range at 28px would overlap
+  // into a solid block.
+  let barsSvg = "";
+  if(bars){
+    const slot = cols.length > 1 ? iw / (cols.length - 1) : iw;
+    const bw = Math.max(2, Math.min(28, slot * 0.62));
+    (bars.values || []).forEach(function(v, i){
+      const n = _scNum(v);
+      if(n === null || n <= 0) return;
+      const top = yB(n), h = (padT + ih) - top;
+      barsSvg += `<rect class="bar" x="${(x(i) - bw / 2).toFixed(1)}" y="${top.toFixed(1)}"
+                        width="${bw.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}"
+                        fill="#fbbf24" fill-opacity="0.3" rx="2"/>`;
+    });
+  }
+
+  // Lines, each broken wherever a day has no figure -- the same refusal to draw
+  // through a gap that the single-metric charts make.
+  let linesSvg = "";
+  lines.forEach(function(l){
+    const spec = SC_SERIES[l.key] || {color: "#8fd694", width: 2, dash: ""};
+    let run = [], runs = [];
+    (l.values || []).forEach(function(v, i){
+      const n = _scNum(v);
+      if(n === null){ if(run.length) runs.push(run); run = []; }
+      else run.push({i: i, v: n});
+    });
+    if(run.length) runs.push(run);
+    runs.forEach(function(r){
+      if(r.length === 1){
+        linesSvg += `<circle cx="${x(r[0].i)}" cy="${yM(r[0].v)}" r="2.6" fill="${spec.color}"/>`;
+        return;
+      }
+      const d = r.map((p, k) => (k ? "L" : "M") + x(p.i).toFixed(1) + " " + yM(p.v).toFixed(1)).join(" ");
+      linesSvg += `<path class="series" d="${d}" fill="none" stroke="${spec.color}"
+                         stroke-width="${spec.width}"
+                         ${spec.dash ? `stroke-dasharray="${spec.dash}"` : ""}
+                         stroke-linejoin="round" stroke-linecap="round"/>`;
+    });
+  });
+
+  // x labels, thinned so they can be read
+  let xl = "";
+  const step = Math.max(1, Math.ceil(cols.length / 16));
+  cols.forEach(function(c, i){
+    if(i % step && i !== cols.length - 1) return;
+    xl += `<text x="${x(i)}" y="${H - 34}" text-anchor="middle" font-size="11"
+                 fill="rgb(156,163,175)">${_scEsc(String(c).slice(5))}</text>`;
+  });
+
+  // Hover: one readout for every series at that column, which is the whole
+  // reason to put them on one chart.
+  const cid = o.id || "combo";
+  let hits = `<line id="${cid}_vl" x1="0" y1="${padT}" x2="0" y2="${padT + ih}"
+                    stroke="rgb(156,163,175)" stroke-width="1" opacity="0"/>`;
+  cols.forEach(function(c, i){
+    const half = cols.length > 1 ? iw / (cols.length - 1) / 2 : iw / 2;
+    const parts = [];
+    if(bars){
+      const bv = _scNum((bars.values || [])[i]);
+      parts.push((bars.label || "Orders") + " " + (bv === null ? "—" : Math.round(bv)));
+    }
+    lines.forEach(function(l){
+      const spec = SC_SERIES[l.key] || {};
+      const v = _scNum((l.values || [])[i]);
+      parts.push((spec.label || l.key) + " " + (v === null ? "—" : _scFmt(v, "money")));
+    });
+    hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
+                   width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
+                   style="cursor:crosshair"
+                   onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},-1,
+                       '${_scAttr(c)}','${_scAttr(parts.join("  ·  "))}')"
+                   onmouseleave="_scLeave('${cid}')"></rect>`;
+  });
+
+  // The key, underneath and centred, with the coloured marks Orbit uses: a
+  // filled square for the bars, a line for each line.
+  let key = '<div style="display:flex;gap:18px;justify-content:center;'
+          + 'flex-wrap:wrap;margin-top:6px;font-size:12px">';
+  if(bars){
+    key += '<span style="display:inline-flex;align-items:center;gap:6px">'
+        +  '<span style="width:11px;height:11px;border-radius:2px;background:#fbbf24;'
+        +  'opacity:.55;display:inline-block"></span>' + _scEsc(bars.label || "Orders")
+        +  '</span>';
+  }
+  lines.forEach(function(l){
+    const spec = SC_SERIES[l.key] || {color: "#8fd694", width: 2, dash: ""};
+    key += '<span style="display:inline-flex;align-items:center;gap:6px">'
+        +  '<svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="'
+        +  spec.color + '" stroke-width="' + spec.width + '"'
+        +  (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : "") + '/></svg>'
+        +  _scEsc(spec.label) + '</span>';
+  });
+  key += '</div>';
+
+  return '<div style="margin:4px 0 0">'
+       + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">'
+       + '<span id="' + cid + '_read" style="font-size:11.5px;margin-left:auto;'
+       + 'font-variant-numeric:tabular-nums"></span></div>'
+       + `<svg class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
+               style="display:block;height:auto;background:transparent;border:0">`
+       + grid + barsSvg + linesSvg + xl + hits + '</svg>'
+       + key + '</div>';
 }

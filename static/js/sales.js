@@ -21,7 +21,15 @@
  */
 
 let SALES = {preset:"30d", gran:"day", asin:"", start:"", end:"",
-             data:null, series:null, busy:false};
+             data:null, series:null, busy:false,
+             // What the dashed line and every "was:" figure compare against.
+             // Remembered on this browser, because it is a way of reading the
+             // business rather than a one-off question.
+             compareKind:(function(){
+               try{ return localStorage.getItem("alta_sales_compare") || "period"; }
+               catch(e){ return "period"; }
+             })(),
+             compare:null, compareOffsetDays:0, compareRange:""};
 
 const SALES_PRESETS = [["7d","7d"],["14d","14d"],["30d","30d"],
                        ["60d","60d"],["90d","90d"],["ytd","YTD"],["custom","Custom"]];
@@ -67,14 +75,25 @@ function _sShort(v, kind, cur){
 
 /* ---- the filter row (one row, above everything it scopes) -------------- */
 function salesDrawFilters(){
+  // SEGMENTED, as Orbit has them: one tray at rgb(45,50,66) with the chosen one
+  // filled gold. Measured -- tray radius 8 with 2px padding and 2px gaps, each
+  // button 28 high, radius 6, padding 4/12, 10px text.
   const p=document.getElementById("sales_presets");
-  if(p) p.innerHTML = SALES_PRESETS.map(function(x){
-    return '<button class="mktbtn'+(SALES.preset===x[0]?" on":"")+'" '
-         + 'onclick="salesSet(\'preset\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  if(p){
+    p.className = "seg";
+    p.innerHTML = SALES_PRESETS.map(function(x){
+      return '<button class="'+(SALES.preset===x[0]?"on":"")+'" '
+           + 'onclick="salesSet(\'preset\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  }
   const g=document.getElementById("sales_gran");
-  if(g) g.innerHTML = SALES_GRAN.map(function(x){
-    return '<button class="mktbtn'+(SALES.gran===x[0]?" on":"")+'" '
-         + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  if(g){
+    g.className = "seg";
+    g.innerHTML = SALES_GRAN.map(function(x){
+      return '<button class="'+(SALES.gran===x[0]?"on":"")+'" '
+           + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  }
+  const cmp = document.getElementById("sales_compare");
+  if(cmp && cmp.value !== (SALES.compareKind || "period")) cmp.value = SALES.compareKind || "period";
   const c=document.getElementById("sales_custom");
   // inline-flex, not "": the element carries gap/align-items, which need a flex
   // container, and a bare span is not one.
@@ -310,6 +329,68 @@ function salesDrawCharts(ser){
      keys: [["unit_session_pct", "Sales & Traffic report"]]},
   ];
 
+  // ---- ORBIT'S ONE CHART, BEFORE THE SEPARATE ONES --------------------
+  //
+  // Orbit's Sales Report is a single combined chart -- gold bars for orders
+  // against a right-hand count axis, money lines against the left -- with the
+  // key underneath. Five separate panels answer the same questions but cannot
+  // be read in one glance, which is the whole reason its dashboard feels
+  // different from ours.
+  //
+  // Built from the same series as the panels below and with the same rules: a
+  // day Amazon has not delivered stays null and is drawn as a gap, and a series
+  // that is entirely zero is not drawn at all.
+  let comboHtml = "";
+  if(typeof salesCombo === "function"){
+    const cells = function(key){
+      const m = byKey[key];
+      return m ? dates.map(function(d, i){ return m.cells[i]; }) : null;
+    };
+    const anyReal = function(vals){
+      return vals && vals.some(function(v){
+        return v !== null && v !== undefined && Number(v) !== 0; });
+    };
+    const salesCells  = anyReal(cells("net_revenue")) ? cells("net_revenue")
+                                                      : cells("ordered_sales");
+    const orderCells  = anyReal(cells("orders")) ? cells("orders") : cells("units");
+    const profitCells = cells("profit");
+
+    // The comparison, on the same axis as Sales, matched by date exactly as the
+    // single-metric charts match it.
+    let cmpCells = null;
+    if(SALES.compare && SALES.compare.metrics && SALES.compareOffsetDays){
+      const key = anyReal(cells("net_revenue")) ? "net_revenue" : "ordered_sales";
+      const cm = SALES.compare.metrics.filter(function(m){ return m.key === key; })[0];
+      if(cm && cm.cells){
+        const was = {};
+        (SALES.compare.columns || []).forEach(function(d, i){ was[d] = cm.cells[i]; });
+        const off = SALES.compareOffsetDays * 86400000;
+        cmpCells = dates.map(function(d){
+          const dt = new Date(String(d) + "T00:00:00Z");
+          if(isNaN(dt)) return null;
+          const back = new Date(dt.getTime() - off).toISOString().slice(0, 10);
+          return (back in was) ? was[back] : null;
+        });
+        if(!anyReal(cmpCells)) cmpCells = null;
+      }
+    }
+
+    const comboLines = [];
+    if(anyReal(salesCells))  comboLines.push({key: "sales",  values: salesCells});
+    if(anyReal(profitCells)) comboLines.push({key: "profit", values: profitCells});
+    if(cmpCells) comboLines.push({
+      key: (SALES.compareKind === "year") ? "prior_year" : "prior",
+      values: cmpCells});
+
+    if(comboLines.length || anyReal(orderCells)){
+      comboHtml = salesCombo({
+        id: "sales_combo", columns: dates,
+        bars: anyReal(orderCells) ? {label: "Orders", values: orderCells} : null,
+        lines: comboLines,
+      });
+    }
+  }
+
   // Usable means: at least one real number, and not every one of them zero.
   // All-zero is what a feed that has not arrived looks like, and it is the one
   // shape a chart must never present as a fact.
@@ -329,6 +410,13 @@ function salesDrawCharts(ser){
       +  '</b> → <b>' + _sEsc(SALES.end) + '</b>'
       +  '<button class="db-chip" style="margin-left:auto" onclick="salesZoomOut()">'
       +  'Back to the full range</button></div>';
+  }
+  // The combined chart FIRST and full width, as Orbit has it: orders, sales,
+  // profit and the comparison in one picture. The per-metric panels follow for
+  // the things it cannot carry -- margin and conversion are percentages and
+  // would need a third scale.
+  if(comboHtml){
+    h += '<div class="salespanel" style="margin:0 0 16px">' + comboHtml + '</div>';
   }
   // TWO ACROSS, not three or four. At a third of the width a chart was a couple
   // of centimetres of squiggle -- too small to read a shape off, which is the
@@ -442,6 +530,9 @@ async function salesReload(){
     // grid is what someone is waiting for.
     salesFillAsins();
     salesLoadToday();
+    // The week card is independent of the chosen range -- it is always this
+    // week -- so it loads on its own and does not hold anything else up.
+    salesLoadWeek().catch(function(){});
   }catch(e){
     const g=document.getElementById("sales_grid");
     if(g) g.innerHTML='<div class="empty">Could not load sales: '+_sEsc(String(e))+'</div>';
@@ -461,15 +552,46 @@ async function salesReload(){
  * If it is slow the charts are already up; if it fails there is simply no
  * second line, and nothing on the screen is wrong.
  */
+/* WHAT THE DASHED LINE IS COMPARED AGAINST. Two answers that mean something --
+   the period immediately before ("is this week better than last") and the same
+   period a year ago ("is this Christmas better than last Christmas") -- plus
+   the option of neither, because on a screen this dense a second line you are
+   not using is just ink. */
+function salesSetCompare(v){
+  SALES.compareKind = v || "period";
+  SALES.compare = null;
+  SALES.compareOffsetDays = 0;
+  try{ localStorage.setItem("alta_sales_compare", SALES.compareKind); }catch(e){}
+  // Redraw immediately so the old line goes at once, then fetch the new one.
+  if(SALES.series) salesDrawCharts(SALES.series);
+  if(SALES.data) salesDrawCards(SALES.data, null);
+  if(SALES.compareKind !== "none" && SALES.data) salesLoadCompare(SALES.data).catch(function(){});
+}
+
 async function salesLoadCompare(sum){
+  if(SALES.compareKind === "none") return;
   if(!sum || !sum.ok || !sum.start || !sum.end) return;
   const start = new Date(sum.start + "T00:00:00Z");
   const end   = new Date(sum.end   + "T00:00:00Z");
   if(isNaN(start) || isNaN(end)) return;
   const days = Math.round((end - start) / 86400000) + 1;
   if(days < 2 || days > 400) return;             // nothing to compare against
-  const prevEnd   = new Date(start.getTime() - 86400000);
-  const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
+
+  // WHERE THE COMPARISON WINDOW SITS depends on what is being compared against.
+  //
+  //   prior period   the same number of days immediately before this range
+  //   prior year     the SAME dates, 364 days back
+  //
+  // 364 and not 365: it is exactly 52 weeks, so Monday lines up with Monday.
+  // Retail weeks are the thing that actually repeats -- comparing a Saturday
+  // against a Friday would put a weekend against a weekday and call the
+  // difference a trend.
+  const year = (SALES.compareKind === "year");
+  const offsetDays = year ? 364 : days;
+  const prevEnd   = year ? new Date(end.getTime()   - 364 * 86400000)
+                         : new Date(start.getTime() - 86400000);
+  const prevStart = year ? new Date(start.getTime() - 364 * 86400000)
+                         : new Date(prevEnd.getTime() - (days - 1) * 86400000);
   const iso = d => d.toISOString().slice(0, 10);
 
   // The same query as the main series, with the dates replaced -- so the
@@ -492,9 +614,97 @@ async function salesLoadCompare(sum){
   // buckets that have figures. Pairing them by position would have compared
   // June 15th against July 15th; requiring equal lengths would have meant the
   // comparison never drew at all.
-  SALES.compareOffsetDays = days;
+  SALES.compareOffsetDays = offsetDays;
   SALES.compareRange = iso(prevStart) + " to " + iso(prevEnd);
   salesDrawCharts(SALES.series);
+}
+
+/* ---- week to date ------------------------------------------------------
+ * The second of Orbit's two "how is it going right now" cards: Monday to
+ * today, drawn against the same days of the week before.
+ *
+ * Built from a request of its own rather than sliced out of the main range,
+ * because the main range is whatever the user last picked -- on a 90-day view
+ * there would be no "this week" in it to slice, and on a custom range there
+ * might be no Monday at all.
+ */
+async function salesLoadWeek(){
+  const host = document.getElementById("sales_week");
+  const badge = document.getElementById("sales_week_delta");
+  if(!host) return;
+  const today = new Date();
+  const dow = (today.getUTCDay() + 6) % 7;          // Monday = 0
+  const mon = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),
+                                today.getUTCDate() - dow));
+  const lastMon = new Date(mon.getTime() - 7 * 86400000);
+  const lastEnd = new Date(mon.getTime() - 86400000);
+  const iso = d => d.toISOString().slice(0, 10);
+  const base = function(a, b){
+    const q = ["preset=custom", "start=" + iso(a), "end=" + iso(b), "granularity=day"];
+    if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
+    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+      q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+    return q.join("&");
+  };
+  host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">Loading…</div>';
+  let now, before;
+  try{
+    now    = await (await fetch("/sales/series?" + base(mon, today))).json();
+    before = await (await fetch("/sales/series?" + base(lastMon, lastEnd))).json();
+  }catch(e){
+    host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
+      + 'Could not load this week.</div>';
+    return;
+  }
+  if(!now || !now.ok){ host.innerHTML = ""; return; }
+
+  const key = function(j){
+    const has = function(k){
+      const m = ((j.metrics)||[]).filter(function(x){ return x.key === k; })[0];
+      return m && (m.cells||[]).some(function(v){ return v !== null && Number(v) !== 0; })
+             ? m : null;
+    };
+    return has("net_revenue") || has("ordered_sales");
+  };
+  const mNow = key(now), mBefore = key(before);
+  if(!mNow){
+    host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
+      + 'Nothing recorded for this week yet.</div>';
+    if(badge) badge.innerHTML = "";
+    return;
+  }
+
+  // Both weeks laid out Monday-first, so day 1 sits under day 1 whatever dates
+  // they carry -- which is the whole point of a week-on-week picture.
+  const cols = now.columns || [];
+  const pts = cols.map(function(d, i){ return {label: d, value: mNow.cells[i]}; });
+  let cmp = null;
+  if(mBefore && (before.columns||[]).length){
+    const byPos = (before.columns||[]).map(function(d, i){ return mBefore.cells[i]; });
+    cmp = cols.map(function(d, i){
+      return {label: (before.columns||[])[i] || "", value: (i < byPos.length ? byPos[i] : null)};
+    });
+    if(!cmp.some(function(p){ return p.value !== null && Number(p.value) !== 0; })) cmp = null;
+  }
+
+  host.innerHTML = salesChart(pts, {
+    title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
+    width: 700, height: 210, compare: cmp,
+    subtitle: cmp ? ("dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""});
+
+  // The change against the same days last week, as a chip beside the heading.
+  if(badge){
+    const sum = function(m){ return (m ? (m.cells||[]) : [])
+      .reduce(function(a, v){ return a + (Number(v) || 0); }, 0); };
+    const a = sum(mNow), b = sum(mBefore);
+    if(!b){ badge.innerHTML = ""; }
+    else {
+      const pct = ((a - b) / Math.abs(b)) * 100;
+      const up = pct >= 0;
+      badge.innerHTML = '<span class="pct-badge ' + (up ? "up" : "down") + '">'
+        + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
+    }
+  }
 }
 
 function salesDrawRange(sum, av){
