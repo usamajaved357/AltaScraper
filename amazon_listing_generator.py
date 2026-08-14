@@ -2127,8 +2127,54 @@ from listing.compliance import category_lane_block, check_category_claims  # cat
 # EXISTING SKU / DUP HELPERS
 # =============================================================================
 
-def load_existing_skus_and_asins(ws_out) -> tuple:
-    """Read the output sheet once at start, return (set of SKUs, set of ASINs)
+def _legacy_skus_and_asins(config) -> tuple:
+    """What earlier runs generated, wherever they filed it.
+
+    THE MIGRATION HOLE THIS CLOSES. Until the account id was passed through,
+    every generate wrote its output to the workspace literally named
+    "dropshipping", whatever account it was for. Fixing that sent new output to
+    the right workspace -- and left the whole history behind in the old one. The
+    duplicate guard reads the CURRENT workspace, found it empty, concluded that
+    nothing had ever been generated, and regenerated the lot: full AI spend, and
+    a second copy of every listing.
+
+    So the guard also looks where the app used to put things. A SKU is
+    {cost}_{days}_{competitor ASIN} and identifies one product either way, so a
+    match in the old place is still a match.
+
+    Deliberately NOT every workspace: two accounts may legitimately list the
+    same competitor product, and blocking that would be a different bug of the
+    same size.
+    """
+    try:
+        from data import choice as _choice
+        if _choice.resolve(config, config.get("_config_path")) != "db":
+            return set(), set()
+        from data.store import ListingStore, SheetLikeStore
+        cur = str(config.get("_account_id") or "").strip()
+        if not cur or cur == "dropshipping":
+            return set(), set()
+        legacy = SheetLikeStore(ListingStore(
+            "dropshipping",
+            config_path=str(config.get("_config_path") or "") or None))
+        rows = _safe_records(legacy)
+    except Exception:
+        return set(), set()
+    skus = {str(r.get("SKU", "")).strip() for r in rows
+            if str(r.get("SKU", "")).strip()}
+    asins = {str(r.get("Competitor ASIN", "")).strip() for r in rows
+             if str(r.get("Competitor ASIN", "")).strip()
+             and str(r.get("SKU", "")).strip()}
+    if skus:
+        console.print(f"  [yellow]Found {len(skus)} listing(s) generated before "
+                      f"output was account-scoped (workspace 'dropshipping'). "
+                      f"Counting them as already made so they are not "
+                      f"regenerated.[/yellow]")
+    return skus, asins
+
+
+def load_existing_skus_and_asins(ws_out, config=None) -> tuple:
+    """Read the output store once at start, return (set of SKUs, set of ASINs)
     already present so we can detect duplicates from previous runs."""
     try:
         all_rows = _safe_records(ws_out)
@@ -2141,6 +2187,10 @@ def load_existing_skus_and_asins(ws_out) -> tuple:
     # block regeneration -- it gets refilled in place instead.
     asins = {str(r.get("Competitor ASIN", "")).strip() for r in all_rows
              if str(r.get("Competitor ASIN", "")).strip() and str(r.get("SKU", "")).strip()}
+    if config:
+        l_skus, l_asins = _legacy_skus_and_asins(config)
+        skus |= l_skus
+        asins |= l_asins
     return skus, asins
 
 
@@ -7555,7 +7605,7 @@ async def main():
             return
 
     # Load duplicate-detection state and the per-category model counter.
-    taken_skus, seen_asins = load_existing_skus_and_asins(ws_out)
+    taken_skus, seen_asins = load_existing_skus_and_asins(ws_out, config)
     console.print(f"  Existing rows -- SKUs: {len(taken_skus)} | ASINs: {len(seen_asins)}")
     model_counter    = load_model_counter()
     compliance_rules = load_compliance_rules()

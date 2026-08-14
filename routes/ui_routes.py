@@ -134,10 +134,17 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
                 if not acct or str(s.get("account") or "") != acct]
 
         # The legacy single-proc handle, for a run started before slots existed
-        # or one that never attached its subprocess. Only touched when the caller
-        # has nothing of their own left running, so it cannot reach across into
-        # somebody else's work.
-        if not stopped and not _SLOTS.busy():
+        # or one that never attached its subprocess.
+        #
+        # THE CONDITION USED TO INCLUDE `not _SLOTS.busy()`, and that made Stop
+        # useless in the case it was most needed: a run whose slot exists but
+        # whose subprocess never attached, or one whose slot belongs to another
+        # account. Nothing was stopped, the slots were busy, so the fallback was
+        # skipped too, and Stop cheerfully reported success while the generator
+        # carried on spending. Now: if nothing of the caller's was stopped and
+        # there is a live process, end it. `left` above already records what
+        # belongs to somebody else, and that is what the reply reports.
+        if not stopped:
             p = _running.get("proc")
             if p is not None:
                 try:

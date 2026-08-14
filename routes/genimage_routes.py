@@ -14,6 +14,31 @@ import threading
 def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOCK, _SECONDARY_ROLES, _active_brand, _cfg, _imgresult, _load_img_instructions, _load_recipes, _new_img_job, _records, _run_img_jobs_bg, _safe_sku, _save_img_instructions, _sku_dir, _state, _write_attrs_for_sku, _ws):
     """Attach the /genimage routes to the existing Flask app."""
 
+    def _listing_for(b):
+        """The listing's own content, for grounding the image in what the thing
+        actually IS.
+
+        The browser has the row on screen and sends it; where it did not, the
+        SKU is enough to find it here. A photograph cannot say how big something
+        is or what it is for -- with no scale a model renders a hand tool the
+        size of a machine, convincingly -- and all of it was already in the
+        listing, one lookup away.
+
+        Returns None when nothing is known, so generation behaves exactly as it
+        did before rather than failing.
+        """
+        given = (b or {}).get("listing")
+        if isinstance(given, dict) and given:
+            return given
+        sku = str((b or {}).get("sku") or "").strip()
+        if not sku:
+            return None
+        try:
+            from domain import listing_lookup as _ll
+            return _ll.row_by_sku(_ws(), sku) or None
+        except Exception:
+            return None
+
     def _by_product(j):
         """Progress per PRODUCT, not just a single running total.
 
@@ -277,7 +302,9 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # read the product first so the strategist's ideas fit the real item
         spec = ""
         try:
-            d = ai_providers.describe_product(_cfg(), product_images, title, provider=tprov)
+            d = ai_providers.describe_product(_cfg(), product_images, title,
+                                              provider=tprov,
+                                              listing=_listing_for(b))
             if d.get("ok"):
                 spec = d.get("description", "")
         except Exception:
@@ -477,7 +504,9 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # read the actual product first (faithful spec, incl. any logo/text)
         spec = ""
         try:
-            d = ai_providers.describe_product(_cfg(), product_image, title, provider=tprov)
+            d = ai_providers.describe_product(_cfg(), product_image, title,
+                                              provider=tprov,
+                                              listing=_listing_for(b))
             if d.get("ok"):
                 spec = d.get("description", "")
         except Exception:
@@ -677,7 +706,9 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # 3) generate: prompt AI -> image AI, with product reference (+ direct competitor refs if any)
         # read the actual product first so the model keeps it faithful (exact label text, shape)
         try:
-            _pdesc = ai_providers.describe_product(_cfg(), product_image, title, provider=tprov)
+            _pdesc = ai_providers.describe_product(_cfg(), product_image, title,
+                                                   provider=tprov,
+                                                   listing=_listing_for(b))
             if _pdesc.get("ok") and _pdesc.get("description"):
                 brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely — same shape, colours, "
                           "layout, logo, and ALL label text exactly as written; do not alter it):\n"

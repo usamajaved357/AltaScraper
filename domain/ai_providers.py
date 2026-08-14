@@ -742,8 +742,113 @@ def clear_product_spec_cache():
     _SPEC_CACHE.clear()
 
 
+# Attribute names that carry a real-world measurement. The listing keeps these
+# in Attributes JSON; a photograph cannot supply any of them.
+_DIM_KEYS = {
+    "item_length": "length", "item_width": "width", "item_height": "height",
+    "item_depth": "depth", "item_weight": "weight", "item_diameter": "diameter",
+    "item_display_length": "length", "item_display_weight": "weight",
+    "item_display_height": "height", "item_display_width": "width",
+    "item_display_diameter": "diameter", "item_display_volume": "volume",
+    "capacity": "capacity", "wattage": "wattage", "voltage": "voltage",
+}
+
+
+def _flat_attr(v):
+    """Amazon attributes are lists of objects; pull out a readable value."""
+    if isinstance(v, list) and v:
+        v = v[0]
+    if isinstance(v, dict):
+        for a, b in (("value", "unit"), ("decimal_value", "unit")):
+            if v.get(a) is not None:
+                return "%s %s" % (v[a], v.get(b) or "")
+        for k in ("value", "name"):
+            if v.get(k) is not None:
+                return str(v[k])
+        return ""
+    return str(v) if v is not None else ""
+
+
+def listing_facts(row) -> str:
+    """What the SELLER'S OWN LISTING says this product is, for, and how big.
+
+    WHY THIS EXISTS. The vision model was given the photograph and the title and
+    nothing else. A photograph cannot say how big something is -- a weed slasher
+    photographed against a plain background could be six inches or six feet, and
+    the model picks one, confidently. Nor can it say what the thing is FOR, so
+    the "uses" in a lifestyle image get invented from what the shape resembles.
+
+    Meanwhile the listing itself carries all of it: the bullets say what it does,
+    the description says how it is used, and the attributes carry real
+    dimensions in centimetres. It was sitting one function call away and never
+    being passed.
+
+    Returns "" when there is nothing to say, so a caller with no listing behaves
+    exactly as before.
+    """
+    r = row or {}
+    g = lambda *names: next((str(r.get(n)).strip() for n in names
+                             if r.get(n) not in (None, "", "None")), "")
+    parts = []
+
+    kind = g("product_type", "Product Type")
+    cat = g("amazon_category", "Amazon Category", "subcategory", "Subcategory")
+    if kind or cat:
+        parts.append("WHAT IT IS: %s" % " / ".join(x for x in (kind, cat) if x))
+
+    bullets = [g("bullet_%d" % i, "Bullet %d" % i) for i in range(1, 6)]
+    bullets = [b for b in bullets if b]
+    if bullets:
+        parts.append("WHAT THE LISTING SAYS IT DOES:\n" +
+                     "\n".join("- " + b[:300] for b in bullets))
+
+    desc = g("description_html", "Description (HTML)")
+    if desc:
+        import re as _re
+        plain = _re.sub(r"<[^>]+>", " ", desc)
+        plain = " ".join(plain.split())
+        if plain:
+            parts.append("DESCRIPTION: " + plain[:700])
+
+    # THE SIZE, which is the one a photograph cannot supply.
+    dims = []
+    for key, label in (("size", "size"), ("Size", "size"),
+                       ("number_of_items", "pieces in the pack"),
+                       ("Number of Items", "pieces in the pack"),
+                       ("material", "material"), ("Material", "material"),
+                       ("colour", "colour"), ("Colour", "colour")):
+        v = g(key)
+        if v:
+            dims.append("%s: %s" % (label, v))
+    try:
+        import json as _json
+        attrs = r.get("attributes_json") or r.get("Attributes JSON") or "{}"
+        obj = _json.loads(attrs) if isinstance(attrs, str) else (attrs or {})
+        if isinstance(obj, dict):
+            for k, label in _DIM_KEYS.items():
+                if k in obj:
+                    val = _flat_attr(obj[k]).strip()
+                    if val:
+                        dims.append("%s: %s" % (label, val))
+    except Exception:
+        pass
+    if dims:
+        # Deduplicated but ordered: "length: 80 centimetres" twice reads as two
+        # different measurements.
+        seen, uniq = set(), []
+        for d in dims:
+            if d.lower() not in seen:
+                seen.add(d.lower())
+                uniq.append(d)
+        parts.append("MEASURED FACTS (authoritative — the photograph cannot "
+                     "show these):\n" + "\n".join("- " + d for d in uniq))
+
+    return "\n\n".join(parts).strip()
+
+
 def describe_product(config: dict, image="", product_title: str = "",
-                     provider: str = None, media_root: str = "") -> dict:
+                     provider: str = None, media_root: str = "",
+                     listing=None) -> dict:
     """Vision AI reads the seller's ACTUAL product in fine detail so the image
     model reproduces it faithfully. Captures: exact product type/shape, every
     colour, ALL text on labels/packaging verbatim, logo placement, materials,
@@ -756,8 +861,13 @@ def describe_product(config: dict, image="", product_title: str = "",
         return {"ok": False, "error": "No text model selected/available"}
     # The cache key is the reference itself plus the title: same product photo,
     # same spec, every time, for every image in the batch.
+    _facts = listing_facts(listing) if listing else ""
     _key_img = image if isinstance(image, str) else repr(image)
-    _ck = (str(_key_img)[:400], str(product_title)[:200], str(model))
+    # The facts are part of the key. Without them a spec built BEFORE the
+    # listing content was available would be handed back for every later image,
+    # and the whole point of reading the listing would be cached away.
+    _ck = (str(_key_img)[:400], str(product_title)[:200], str(model),
+           hash(_facts))
     _hit = _SPEC_CACHE.get(_ck)
     if _hit:
         return dict(_hit, cached=True)
@@ -803,14 +913,45 @@ def describe_product(config: dict, image="", product_title: str = "",
         "no wheels, no markings on this face, no visible fixings. Describing only what IS present leaves an "
         "image model free to add whatever it expects to see, and it adds it confidently. This section is what "
         "stops that.\n"
+        "11. WHAT IT IS FOR: state plainly what the product does and how it is USED — who holds it, what "
+        "they do with it, where. If the seller's own listing is given below, that is the authority on this; "
+        "do not infer a use from what the shape resembles. A tool photographed alone gets shown being used "
+        "for the wrong job otherwise, and the picture looks entirely convincing.\n"
         "Be exhaustive, literal and measurement-oriented — this is a reproduction spec, not a description. "
         "Do NOT beautify, summarise, or omit anything. Never describe a feature you cannot actually see; if "
         "something is partly unclear, say it is unclear rather than filling it in. If something is genuinely "
         "hidden by the angle, say 'not visible in this image' rather than inferring it. "
         "Write 450-750 words of precise, structured detail."
     )
-    content = [{"type": "text", "text": f"Product title (for context): {product_title}\n\nDocument this exact product for faithful recreation, transcribing ALL label text verbatim."},
-               ref]
+    if _facts:
+        # WHICH SOURCE WINS, stated explicitly, because they answer different
+        # questions and the model will otherwise average them. The photograph is
+        # the only evidence of what the thing LOOKS like; the listing is the only
+        # evidence of how big it is and what it is for. A photograph cannot say
+        # whether a slasher is 20cm or 200cm, and a listing cannot say what
+        # colour the handle is.
+        sys += (
+            "\n\nTHE SELLER'S OWN LISTING FOR THIS PRODUCT IS GIVEN BELOW. Use it and the photograph "
+            "together, and understand which answers what:\n"
+            "  - The PHOTOGRAPH is the authority on APPEARANCE: shape, colour, finish, label text, "
+            "which parts exist. Never contradict it about how the product looks.\n"
+            "  - The LISTING is the authority on FACTS the photograph cannot carry: real-world SIZE, "
+            "what the product is FOR, how it is used, what it is made of, how many are in the pack. "
+            "Never overrule a measurement in the listing with an impression from the photograph.\n"
+            "  - Where the two genuinely conflict, say so in the spec rather than silently picking one.\n"
+            "Section 8 (SCALE) must use the listing's measurements where it gives any, converted to "
+            "something a person can picture — 'the head is 25cm across, about the width of a dinner "
+            "plate; the whole tool is 80cm, about the length of a baseball bat'. This is the single "
+            "most common way a generated image goes wrong: with no sense of scale a model renders a "
+            "hand tool the size of a machine, or a machine the size of a toy.\n"
+            "Section 11 (WHAT IT IS FOR) must come from the listing, not from the shape."
+        )
+    _user = "Product title (for context): %s" % product_title
+    if _facts:
+        _user += "\n\n--- THE SELLER'S LISTING ---\n" + _facts + "\n--- END OF LISTING ---"
+    _user += ("\n\nDocument this exact product for faithful recreation, transcribing ALL label "
+              "text verbatim, and state its real size in a way a person can picture.")
+    content = [{"type": "text", "text": _user}, ref]
     body = {"model": model,
             "messages": [{"role": "system", "content": sys},
                          {"role": "user", "content": content}],
@@ -883,6 +1024,16 @@ def _resize_to_exact(image_b64: str, target_w: int, target_h: int) -> str:
     return _b64.b64encode(buf.getvalue()).decode("ascii")
 
 
+import re as _re_mod
+# A real measurement, or a comparison to something everyone can picture.
+_re_scale = _re_mod.compile(
+    r"(\d+\s?(mm|cm|m\b|inch|inches|in\b|ft\b|feet|kg|g\b|lb|ml|l\b|litre|liter))"
+    r"|about the (size|length|width|height) of"
+    r"|roughly the (size|length) of"
+    r"|(compared|comparable) to a",
+    _re_mod.I)
+
+
 def hard_constraints(product_spec):
     """The lines from the spec that must reach the image model untouched.
 
@@ -898,8 +1049,13 @@ def hard_constraints(product_spec):
     if not spec.strip():
         return ""
 
+    # SCALE and WHAT IT IS FOR are on this list for the same reason the absences
+    # are: a model rewriting a prompt is writing about light and composition,
+    # and "the whole tool is 80cm, about the length of a baseball bat" is not
+    # that, so it goes. It is also the single most common way a generated image
+    # is wrong -- a hand tool rendered the size of a machine, convincingly.
     want_head = ("what is not there", "scale", "edges, profile", "working parts",
-                 "counts")
+                 "counts", "what it is for", "measured facts", "how big")
     keep, in_section = [], False
     for raw in spec.splitlines():
         line = raw.strip()
@@ -912,9 +1068,20 @@ def hard_constraints(product_spec):
             keep.append(line)
             continue
         # A heading for some OTHER section closes the one we were in.
-        if in_section and (line.endswith(":") and len(line) < 60
-                           and low[:1].isalpha() and line.isupper()):
-            in_section = False
+        #
+        # Detected on the part BEFORE the colon. Requiring the whole LINE to be
+        # uppercase never matched, because a real heading looks like
+        # "COLOURS: the handle is natural wood" -- so once a wanted section
+        # opened, nothing closed it and every line to the end of the spec was
+        # pulled in as a non-negotiable fact, including the lighting and the
+        # depth of field. A list of forty "non-negotiable" items, most of them
+        # about composition, is one the model reads as tone.
+        if in_section:
+            head = line.split(":", 1)[0] if ":" in line else ""
+            if (head and len(head) < 60 and head.strip().isupper()
+                    and any(c.isalpha() for c in head)
+                    and not any(low.startswith(h) for h in want_head)):
+                in_section = False
         if in_section:
             keep.append(line)
             continue
@@ -925,6 +1092,12 @@ def hard_constraints(product_spec):
         if (" no " in l2 or l2.startswith("no ") or " without " in l2
                 or " none " in l2 or " not present" in l2 or " absent" in l2
                 or " exactly " in l2):
+            keep.append(line)
+            continue
+        # A measurement or a comparison to a familiar object, wherever it sits.
+        # These are the sentences that stop a slasher being drawn the size of an
+        # ant or a bed, and they are exactly what a rewrite drops.
+        if _re_scale.search(line):
             keep.append(line)
 
     keep = [k for k in keep if len(k) > 3][:40]
@@ -942,7 +1115,7 @@ def run_pipeline(config: dict, brief: str, reference_image="",
                  image_provider: str = None, image_kind: str = "main",
                  read_product: bool = True, strength: float = 0.25,
                  extra_reference: str = "", target_w: int = 0, target_h: int = 0,
-                 media_root: str = "", spec_image: str = "") -> dict:
+                 media_root: str = "", spec_image: str = "", listing=None) -> dict:
     """Vision-first pipeline:
     1) (optional) vision AI reads the ACTUAL product in detail (exact label text,
        shape, colours, material) so the model can't alter it,
@@ -962,8 +1135,12 @@ def run_pipeline(config: dict, brief: str, reference_image="",
     product_spec = ""
     _spec_src = spec_image or reference_image
     if read_product and _spec_src:
+        # The listing goes with it: the photograph cannot say how big the thing
+        # is or what it is for, and those are the two ways a generated image is
+        # most often wrong.
         desc = describe_product(config, _spec_src, product_title,
-                                provider=text_provider, media_root=media_root)
+                                provider=text_provider, media_root=media_root,
+                                listing=listing)
         if desc.get("ok"):
             product_spec = desc.get("description", "")
     # fold the exact product spec into the brief so the prompt AI anchors to it

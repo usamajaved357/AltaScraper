@@ -92,6 +92,67 @@ truthy("the bar offers stopping just the batch it is showing",
 truthy("  and Stop-all says it is limited to this account",
        "running in this account" in JS)
 
+print("\n=== STOP ACTUALLY STOPS ===")
+# Reported live: pressing Generate then Stop did not stop it. Two causes, both
+# fatal on their own.
+class _Proc(object):
+    def __init__(self): self.pid = 999999; self.ended = False
+    def terminate(self): self.ended = True
+    def kill(self): self.ended = True
+    def wait(self, timeout=None): return 0
+    def poll(self): return None
+
+SLOTS._slots.clear()
+_ok, _k = SLOTS.acquire("jack_uk", "SKU-X", owner="")
+_p = _Proc()
+SLOTS.attach(_k, _p)
+check("a run with its process attached is stopped",
+      SLOTS.stop(account="jack_uk"), 1)
+check("  and its slot is gone", len(SLOTS.active()), 0)
+# HOW it is ended is platform code: taskkill /T on Windows, killpg on POSIX.
+# A fake process cannot observe taskkill, so only POSIX can assert the object
+# was touched -- and asserting it on Windows would be asserting the fake, not
+# the behaviour.
+import os as _os
+if _os.name != "nt":
+    truthy("  and the process was actually ended", _p.ended)
+else:
+    truthy("  (Windows: the kill goes through taskkill, not the object)", True)
+
+# CAUSE 1: the process was never attached to the slot, so Stop removed the slot
+# and terminated nothing -- Stop reported success while the run kept spending.
+LR = open(r"D:\AltaScraper\routes\listing_routes.py", encoding="utf-8").read()
+truthy("the generate run attaches its process to its slot",
+       "_SLOTS_ATTACH.attach(" in LR)
+
+# CAUSE 2: a slot with no account could not be matched once Stop filtered by
+# account, so it became unstoppable.
+SLOTS._slots.clear()
+_ok, _k2 = SLOTS.acquire("", "SKU-Y", owner="")
+SLOTS.attach(_k2, _Proc())
+check("a run with NO account is still stoppable",
+      SLOTS.stop(account="jack_uk"), 1)
+check("  but one belonging to another account is not",
+      (SLOTS._slots.clear(),
+       SLOTS.acquire("nestwell_goods", "SKU-Z", owner=""),
+       SLOTS.stop(account="jack_uk"))[2], 0)
+SLOTS._slots.clear()
+
+# And the whole tree, not just the child: the generator launches a browser.
+RS = open(r"D:\AltaScraper\domain\run_slots.py", encoding="utf-8").read()
+truthy("stopping ends the process GROUP, not only the child", "killpg" in RS)
+truthy("  and escalates to SIGKILL if it ignores the first ask", "SIGKILL" in RS)
+truthy("  with taskkill /T on Windows", "taskkill" in RS)
+SP = open(r"D:\AltaScraper\routes\stream_pump.py", encoding="utf-8").read()
+truthy("every run is spawned into its own group so it CAN be",
+       "start_new_session" in SP)
+
+# The fallback used to require the slots to be idle, which skipped it in exactly
+# the case it existed for.
+UI = open(r"D:\AltaScraper\routes\ui_routes.py", encoding="utf-8").read()
+check("the fallback kill is no longer blocked by other runs existing",
+      "if not stopped and not _SLOTS.busy():" in UI, False)
+
 print("\n=== /stop reports what it deliberately left alone ===")
 USRC = open(r"D:\AltaScraper\routes\ui_routes.py", encoding="utf-8").read()
 truthy("it passes the account to the slots", "account=(acct or None)" in USRC)
