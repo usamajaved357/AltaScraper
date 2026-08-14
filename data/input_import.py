@@ -200,6 +200,65 @@ def delete_row(config_path, workspace_id, row_id):
     return n
 
 
+def sheet_for(account, config):
+    """(spreadsheet_id, tab_gid) for a workspace's INPUT sheet.
+
+    Three places one can be configured, in priority order:
+        the account's own          -- a real workspace
+        dropshipping_*             -- the built-in Dropshipping workspace, which
+                                      has no account object and keeps its sheets
+                                      under its own config keys
+        the app-wide default       -- what everything used before accounts
+    Missing the middle one made Import silently read the WRONG sheet for
+    Dropshipping, or refuse when a sheet was plainly configured.
+    """
+    cfg = config or {}
+    if account:
+        return (str(account.get("input_spreadsheet_id") or "").strip(),
+                str(account.get("input_tab_gid") or "").strip())
+    return (str(cfg.get("dropshipping_input_spreadsheet_id")
+                or cfg.get("input_spreadsheet_id") or "").strip(),
+            str(cfg.get("dropshipping_input_tab_gid") or "").strip())
+
+
+def import_for_workspace(config_path, workspace_id, account, config, client):
+    """Bring a workspace's input sheet in. -> (added, updated, read, error).
+
+    THE ONE COPY. It was written out inside the /input/import route, and then
+    the generate path needed exactly the same thing -- open the account's sheet,
+    resolve the tab by gid, read it with the generator's own reader, store it.
+    Two copies of that would be two opinions about which sheet an account's
+    products come from, which is the kind of disagreement nobody notices until
+    listings appear in the wrong place (CLAUDE.md Rule 12).
+
+    Never raises: both callers have something better to do with an error than
+    die, and one of them is a streaming run.
+    """
+    sid, gid = sheet_for(account, config)
+    if not sid:
+        return 0, 0, 0, ("This workspace has no input sheet configured. Open "
+                         "Account & sheets and paste the input sheet link.")
+    if client is None:
+        return 0, 0, 0, "no Google client is configured"
+    try:
+        sh = client().open_by_key(sid)
+        ws = None
+        if gid.isdigit():
+            try:
+                ws = sh.get_worksheet_by_id(int(gid))
+            except Exception:
+                ws = None
+        if ws is None:
+            ws = sh.get_worksheet(0)
+        added, updated, total = import_from_worksheet(config_path, workspace_id, ws)
+        return added, updated, total, ""
+    except Exception as e:
+        # Name the sheet. "Import failed" on an account with several configured
+        # sends you looking through all of them.
+        return 0, 0, 0, ("Could not read the input sheet (%s…): %s"
+                         % (sid[:12], str(e)[:200]))
+
+
 def rows(config_path, workspace_id):
     """Everything queued for this workspace, in the order it was imported."""
     conn = _db.get_db(config_path)
