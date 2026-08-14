@@ -124,6 +124,9 @@ async function loadHome(){
       +'<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ Your config.json has an error</div>'
       +'<div class="cc" style="white-space:pre-wrap">'+esc(acctData.error||"")+'</div>'
       +'<div class="cc" style="margin-top:10px">Fix the file, save it, then click Home to retry.</div></div>';
+    // Nothing can be reopened, so let the error be SEEN rather than sit behind
+    // the routing veil until its timeout.
+    _altaBootDone();
     return;
   }
   if(acctData && acctData._failed){
@@ -131,6 +134,7 @@ async function loadHome(){
       +'<div style="color:var(--red);font-weight:600;margin-bottom:8px">⚠ Could not load accounts</div>'
       +'<div class="cc">'+esc(acctData.error||"")+'</div>'
       +'<div class="cc" style="margin-top:8px">Try clicking Home again. If this persists, check the terminal where the app runs for an error.</div></div>';
+    _altaBootDone();
     return;
   }
   ACCOUNTS=(acctData&&acctData.accounts)||[];
@@ -896,7 +900,7 @@ function altaSyncUrl(){
 // could only guess at which one was meant.
 async function altaRouteFromUrl(){
   const m = /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
-  if(!m) return;                        // "/" -> the workspace list, already drawn
+  if(!m){ _altaBootDone(); return; }    // "/" -> the workspace list, already drawn
   const ws  = decodeURIComponent(m[1] || "");
   let   sec = m[2] || "listings";
   if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "listings";
@@ -929,7 +933,19 @@ async function altaRouteFromUrl(){
   }finally{
     _ALTA_RESTORING = false;
     altaSyncUrl();   // settle the address on where we actually ended up
+    _altaBootDone();
   }
+}
+
+// The hand-off is over: let the home screen exist again and take the veil down.
+// Called from every path out of routing, including the ones that gave up --
+// a home screen that stays hidden is a worse bug than the flash it replaced.
+function _altaBootDone(){
+  try{
+    document.documentElement.classList.remove("alta-routing");
+    const b = document.getElementById("alta-booting");
+    if(b) b.style.display = "none";
+  }catch(e){}
 }
 
 // Back / Forward. altaRouteFromUrl owns the restoring flag for its own run, so

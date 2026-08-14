@@ -9,7 +9,43 @@
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
 </head>
+<script>
+/* WHY THIS RUNS BEFORE ANYTHING IS DRAWN.
+   Every screen has a real address (/w/<workspace>/<section>), and refreshing one
+   DOES reopen it -- but the workspace list is marked `show` in the markup and
+   the accounts have to be fetched before the right screen can be opened. So the
+   browser painted the home page first and the workspace a moment later, and a
+   refresh on a listings page flashed the workspace list on the way back.
+   Amazon does not show you the dashboard on the way to Manage Inventory, and
+   there is no reason this should either.
+   Inline and synchronous ON PURPOSE: a stylesheet or a deferred script cannot
+   suppress a paint that has already happened. The class is cleared by
+   altaRouteFromUrl once it knows where it landed, and by a timeout in case that
+   never runs -- a permanently hidden home screen would be a worse bug than the
+   flash it replaces. */
+(function(){
+  try{
+    if(/^\/w\/[^\/]+/.test(location.pathname || "")){
+      document.documentElement.className += " alta-routing";
+      setTimeout(function(){
+        document.documentElement.classList.remove("alta-routing");
+      }, 4000);
+    }
+  }catch(e){}
+})();
+</script>
+<style>
+  /* Held back only while the address says we are going somewhere else. */
+  html.alta-routing #home{ display:none !important; }
+  html.alta-routing #alta-booting{ display:flex !important; }
+</style>
 <body>
+<!-- Shown only during that hand-off, so the screen is never blank OR wrong. -->
+<div id="alta-booting" style="display:none;position:fixed;inset:0;z-index:5;
+     align-items:center;justify-content:center;background:var(--bg,#0d1117);
+     color:var(--muted,#8b949e);font-size:13px;gap:9px">
+  <span class="genspin"></span> Opening…
+</div>
 
 <div class="appbar">
   <div class="brandmark" onclick="goHome()">
