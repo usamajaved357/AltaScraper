@@ -40,9 +40,27 @@ for _stream in ("stdout", "stderr"):
     except Exception:
         pass
 
-import anthropic
-import gspread
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+# SAY SOMETHING BEFORE THE SLOW PART.
+#
+# This file is launched as a FRESH PROCESS every time Generate is pressed, so
+# every import below is paid again on every press. Measured 15 Aug 2026 on the
+# owner's machine: 8.2 seconds from launch to the first line of output, of which
+# crawl4ai 2.1s, anthropic 2.1s, gspread 1.2s, the rule files 1.0s. Nothing was
+# printed during any of it.
+#
+# That silence is why "checking which listings already exist" felt slow: the
+# check itself reads 55 rows in 50ms. The gap was the program loading, and with
+# no output the last line on screen was the one about checking -- so the wait
+# was attributed to it. This line goes out first, unbuffered, so the run is
+# visibly alive from the moment it starts.
+print("Starting up...", flush=True)
+
+# The heavy third-party libraries are imported INSIDE the functions that use
+# them (see _browser_cfg, init_sheets, _claude, run_export_unified). They are
+# each needed on some runs and none of them on all runs: a generate against the
+# database never touches gspread, and a run that scrapes no reviews never needs
+# a browser engine. Deferring them cut startup from 8.2s to the figure printed
+# by --time-startup.
 from google.oauth2.service_account import Credentials
 from rich.console import Console
 
@@ -60,9 +78,19 @@ from sp_api.base import Marketplaces
 # ListingsItemsV20210801 / Sellers are imported lazily inside the api-mode
 # functions so an older sp_api install can't break generate/export/retry.
 
-import unified_export
-
 console     = Console()
+
+
+def _claude(config):
+    """The Claude client. ONE place, so the library loads only when it is used.
+
+    Written out identically at four call sites (generate, retry, optimise,
+    Miles). Beyond the duplication, each of those copies is reached only on the
+    run it belongs to, while the import at the top of the file was paid on all
+    of them -- 2.1 seconds, on runs like export that never call Claude at all.
+    """
+    import anthropic
+    return anthropic.Anthropic(api_key=config["anthropic_api_key"])
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH", str(Path(__file__).parent / "config.json")))
 
 MARKETPLACE_ID = "A1F83G8C2ARO7P"          # UK (default); MUTABLE — reassigned on marketplace switch
@@ -815,25 +843,42 @@ def get_product_type_schema(product_type: str, creds: dict, marketplace: str = N
 # CRAWL4AI -- REVIEW SCRAPING
 # =============================================================================
 
-BROWSER_CFG = BrowserConfig(
-    headless=True, verbose=False,
-    headers={
+_BROWSER_CFG = {}     # built on first use; see _browser_cfg()
+
+
+def _browser_cfg():
+    """The scraping browser's settings, built the first time a page is scraped.
+
+    This used to be a module-level constant, which meant importing crawl4ai --
+    2.1 seconds, and with it numpy, aiohttp and two copies of Playwright -- every
+    time this program started, including the many runs that scrape nothing at
+    all. The settings themselves are unchanged; only WHEN they are built moved.
+    """
+    if "cfg" in _BROWSER_CFG:
+        return _BROWSER_CFG["cfg"]
+    from crawl4ai import BrowserConfig
+    _BROWSER_CFG["cfg"] = BrowserConfig(
+        headless=True, verbose=False,
+        headers={
         "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                            "AppleWebKit/537.36 (KHTML, like Gecko) "
                            "Chrome/120.0.0.0 Safari/537.36",
-        "Accept-Language": "en-GB,en;q=0.9",
-    },
-    # Pin the amazon.co.uk delivery location to a UK postcode BEFORE any page
-    # loads. Without this, a non-UK visitor (e.g. from Pakistan) gets served a
-    # location-fallback view: prices hidden, no Buy Box, "cannot ship to your
-    # location" banners -- exactly why the scraper was returning thin data on
-    # UK PDPs when SP-API fell back. SW1A 1AA = London postcode.
-    cookies=[
-        {"name": "lc-main",     "value": "en_GB", "domain": ".amazon.co.uk", "path": "/"},
-        {"name": "i18n-prefs",  "value": "GBP",   "domain": ".amazon.co.uk", "path": "/"},
-        {"name": "sp-cdn",      "value": "L5Z9:GB", "domain": ".amazon.co.uk", "path": "/"},
-    ],
-)
+            "Accept-Language": "en-GB,en;q=0.9",
+        },
+        # Pin the amazon.co.uk delivery location to a UK postcode BEFORE any
+        # page loads. Without this, a non-UK visitor (e.g. from Pakistan) gets
+        # served a location-fallback view: prices hidden, no Buy Box, "cannot
+        # ship to your location" banners -- exactly why the scraper was
+        # returning thin data on UK PDPs when SP-API fell back. SW1A 1AA =
+        # London postcode.
+        cookies=[
+            {"name": "lc-main",    "value": "en_GB",   "domain": ".amazon.co.uk", "path": "/"},
+            {"name": "i18n-prefs", "value": "GBP",     "domain": ".amazon.co.uk", "path": "/"},
+            {"name": "sp-cdn",     "value": "L5Z9:GB", "domain": ".amazon.co.uk", "path": "/"},
+        ],
+    )
+    return _BROWSER_CFG["cfg"]
+
 
 NOISE_RE = re.compile(
     r"(https?://|amazon|basket|account|sign.in|navigation|menu|header|footer|"
@@ -847,6 +892,9 @@ REVIEW_CSS = "[data-hook='review-body'], .review-text-content, [data-hook='revie
 
 async def _scrape(url: str, css: str = None, timeout: int = 25000,
                   delay: float = 2.0) -> str:
+    # Imported here rather than at the top of the file: this is the only place
+    # the browser engine is needed, and loading it costs 2.1s of every run.
+    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
     run_cfg = CrawlerRunConfig(
         css_selector=css, word_count_threshold=15,
         remove_overlay_elements=True, exclude_external_links=True,
@@ -854,7 +902,7 @@ async def _scrape(url: str, css: str = None, timeout: int = 25000,
         excluded_tags=["nav", "header", "footer", "script", "style"] if not css else [],
     )
     async def _run():
-        async with AsyncWebCrawler(config=BROWSER_CFG) as crawler:
+        async with AsyncWebCrawler(config=_browser_cfg()) as crawler:
             result = await crawler.arun(url=url, config=run_cfg)
             return (result.markdown or result.cleaned_html or "").strip()
     # Hard ceiling: the page_timeout above is crawl4ai-internal and can still
@@ -2240,6 +2288,9 @@ def _data_backend(config: dict) -> str:
 
 
 def init_sheets(config: dict):
+    # Google's client is loaded here, where it is first needed, instead of at
+    # the top of the file: 1.2s that a run has to pay before anything happens.
+    import gspread
     scopes = ["https://spreadsheets.google.com/feeds",
               "https://www.googleapis.com/auth/drive"]
     creds  = Credentials.from_service_account_file(
@@ -3356,6 +3407,9 @@ def build_flat_row(sheet_row: dict, brand: str, manufacturer: str,
 
 def write_to_template_sheet(gc, sheet_id: str, data_rows: list,
                               label: str, total_cols: int):
+    # Needed for the APIError caught below. Free here: reaching this function at
+    # all means gspread is already loaded -- `gc` is one of its clients.
+    import gspread
     sh       = gc.open_by_key(sheet_id)
     ws       = sh.worksheet("Template")
     last_col = _col_letter(total_cols - 1)
@@ -6880,7 +6934,7 @@ def run_miles(config: dict, gc, creds: dict, ws_out=None):
     if _ba_block:
         _miles_compliance_block = _ba_block + "\n\n" + _miles_compliance_block
 
-    client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    client = _claude(config)
     taken_skus, _ = load_existing_skus_and_asins(ws_out)
     # Miles copies are spread across MANY tabs in the same spreadsheet -- skip an
     # item if its SKU exists on ANY tab, not just the one we write to, so a re-run
@@ -7036,7 +7090,7 @@ def run_miles_optimize(config: dict, gc, creds: dict, ws_out=None):
 
     # ASIN may live in a column named ASIN, or be supplied via --asin for a
     # single-row optimise. If there's no ASIN column we can only do --asin mode.
-    client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    client = _claude(config)
     optimised = 0
 
     for ridx in range(1, len(rows)):
@@ -7255,7 +7309,7 @@ def run_brand(config: dict, gc, creds: dict, ws_out=None,
         competitor_specs = "\n".join(bits)
 
     console.print(f"[bold]Step 4:[/bold] Generating {len(products)} brand listing(s)")
-    client           = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    client           = _claude(config)
     taken_skus, _    = load_existing_skus_and_asins(ws_out)
     compliance_rules = load_compliance_rules()
     ip_rules         = load_ip_rules()
@@ -7343,6 +7397,19 @@ async def main():
     # whole time; nothing downstream was reading it.
     if _cli_account_id:
         config["_account_id"] = _cli_account_id
+    # AI SPEND. This runs as its OWN process, so the recorder the web app
+    # installs at boot does not exist here -- and this process is where most of
+    # the money goes, one listing at a time. Installed with the account already
+    # parsed above, so a run's spend lands against the account that launched it
+    # rather than in an unattributed pile.
+    try:
+        from domain import ai_usage as _aiu_gen
+        _aiu_gen.install_anthropic_recorder("config.json")
+        _aiu_gen.set_context(workspace_id=_cli_account_id or "",
+                             config_path="config.json",
+                             feature="listing: write the copy")
+    except Exception:
+        pass
     _acc_default_mkt = ""   # marketplace the account itself declares (authority)
     _acc_brand = ""         # brand this account sells under (its own, not global)
     if _cli_account_id:
@@ -7630,7 +7697,7 @@ async def main():
         console.print(f"  [yellow]valid_values.json not found -- Claude will guess attribute formats[/yellow]")
 
     total   = len(products)
-    client  = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    client  = _claude(config)
     success = 0
     skipped = 0
 
@@ -7757,6 +7824,9 @@ def run_export_unified(config: dict, gc, status_filter: str = "APPROVED"):
         return
 
     # Step 1: dynamic column map from the template's field-ID row.
+    # The spreadsheet library it uses (openpyxl, ~0.5s) loads here, on the one
+    # command that writes a flat file, rather than on every generate.
+    import unified_export
     console.print("[bold]Step 1:[/bold] Mapping template columns by field ID")
     cols_map = unified_export.build_field_map(template_path)
     console.print(f"  Template width: {cols_map['TOTAL_COLS']} columns; "

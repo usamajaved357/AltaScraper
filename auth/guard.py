@@ -173,6 +173,11 @@ RULES = [
     ("/returns/report",                 None),
     ("/returns/upload",                 None),
 
+    # -- what the AI cost. Reads a ledger this app wrote; spends nothing and
+    #    changes nothing, so it needs no more than seeing the figures does.
+    ("/aiusage/summary",                None),
+    ("/aiusage/calls",                  None),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),
@@ -236,6 +241,10 @@ FEATURE_PATHS = [
     # Returns are revenue going back out, with what it cost. Same
     # commercially-sensitive area as sales.
     ("/returns",              "sales"),
+    # What the AI cost is a running bill, and it names which account ran it up.
+    # That is the same commercially-sensitive area as the sales dashboard: it
+    # reveals how much work each account is doing and what the operation spends.
+    ("/aiusage",              "sales"),
     ("/ppc",                  "ppc"),
     ("/inventory",            "inventory"),
     ("/monitor",              "monitor"),

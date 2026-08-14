@@ -382,5 +382,19 @@ async function stopAllGenerations(){
 }
 
 // boot into the home screen
-window.addEventListener("DOMContentLoaded", function(){ try{ if(localStorage.getItem("priv_on")==="1"){ togglePrivacy(); } }catch(e){} loadAISettings().then(function(){ if(typeof refreshStaticHowPanels==="function") refreshStaticHowPanels(); }); loadHome(); startGenStatusPoll(); if(typeof loadViews==="function") loadViews(); if(typeof loadRows==="function") loadRows(); });
+//
+// NOTE THE MISSING loadRows(). It used to be called here, and it was the cause
+// of another account's listings appearing on screen for a few seconds.
+//
+// At this point in the boot NO ACCOUNT HAS BEEN CHOSEN yet: loadHome() is not
+// awaited, and it is what eventually calls enterAccount(), which is what tells
+// the server which account the user means. So this request reached /rows_all
+// several round-trips early and was answered for whichever account was open in
+// the LAST session -- the server remembers it. Its rows were painted, and then
+// the real request landed and replaced them. Exactly the reported "shows me
+// listings from other accounts, then loads back".
+//
+// Every path that opens a workspace already loads the rows itself, after the
+// account switch has completed. Nothing is lost by not asking here.
+window.addEventListener("DOMContentLoaded", function(){ try{ if(localStorage.getItem("priv_on")==="1"){ togglePrivacy(); } }catch(e){} loadAISettings().then(function(){ if(typeof refreshStaticHowPanels==="function") refreshStaticHowPanels(); }); loadHome(); startGenStatusPoll(); if(typeof loadViews==="function") loadViews(); });
 

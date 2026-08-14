@@ -332,6 +332,28 @@ async function enterAccount(accountId){
   window.WS_READONLY = (a.can_publish === false);
   window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
   LIVE_ITEMS=[]; APLUS_BY_ASIN={}; AMZ_STATE={};   // never carry one account's data into another
+  // AND THE DRAFTS. These were left behind when only the live-side caches were
+  // cleared, so opening Jack Reacherd painted Green Haven's listings and held
+  // them on screen for the whole of the new fetch -- up to a minute on a
+  // multi-tab account. Reported as "it shows me listings from other accounts
+  // for some seconds and then loads back".
+  //
+  // An empty grid for a moment is the correct thing to show: this account's
+  // listings are not known yet, and the previous account's are not an
+  // approximation of them.
+  ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
+  if(typeof DUP_INDEX!=="undefined" && DUP_INDEX && DUP_INDEX.clear) DUP_INDEX.clear();
+  var _g=document.getElementById("grid"); if(_g) _g.innerHTML="";
+  var _sm=document.getElementById("summary"); if(_sm) _sm.innerHTML="";
+  // EVERY OTHER SCREEN TOO -- Sales, Finance, Orders, Returns and the rest all
+  // keep their rendered contents in their panels. Those panels are hidden, not
+  // emptied, so without this the new account's Sales screen would open showing
+  // the last account's figures until its own load finished.
+  if(typeof screenForgetAll === "function") screenForgetAll();
+  // The counting numbers remember what they last showed, so they animate only a
+  // real change. Every one of those figures is about to describe something
+  // else, so that memory goes with the rest.
+  if(typeof altaCountReset === "function") altaCountReset();
   // Open on DRAFTS only -- loading the workspace must be fully local. A live Amazon
   // read (the Reports API call in /live/catalog) is slow and must never fire just from
   // opening the page; the user triggers it explicitly by clicking the Live/All source
@@ -400,10 +422,15 @@ async function enterAccount(accountId){
   if(LIST_SOURCE==='all' || LIST_SOURCE==='live'){ loadRows(); loadLiveCatalog(false); }
   else loadRows();
 }
-function enterDropshipping(){
+async function enterDropshipping(){
   CUR_ACCOUNT=null;
   WS_SOURCE=null; renderDataSource();   // dropshipping uses the config default sheet
-  try{ fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:""})}); }catch(e){}
+  // AWAITED. This was fire-and-forget, so loadRows() at the end of this function
+  // could reach the server before the switch did and be answered for whichever
+  // account was open a moment ago.
+  try{ await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:""})}); }catch(e){}
+  ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
+  var _g0=document.getElementById("grid"); if(_g0) _g0.innerHTML="";
   document.getElementById("home").classList.remove("show");
   document.getElementById("workspace").classList.add("show");
   const icEl=document.getElementById("ws_ic");
@@ -484,6 +511,15 @@ async function setDefaultMarketplace(){
 async function switchAccountMarket(m){
   WS_MARKET=m;
   CUR_SYMBOL=(m==="US"||m==="CA"||m==="MX")?"$":(m==="UK"?"\u00a3":(m==="EU"||["DE","FR","IT","ES","NL"].includes(m))?"\u20ac":"\u00a3");
+  // A marketplace is as different as an account: UK sales are not US sales.
+  // Remembered screens are keyed by both, so they will reload -- but what is
+  // already painted has to go, or the UK figures sit under the US heading until
+  // the reload lands.
+  if(typeof screenForgetAll === "function") screenForgetAll();
+  // The counting numbers remember what they last showed, so they animate only a
+  // real change. Every one of those figures is about to describe something
+  // else, so that memory goes with the rest.
+  if(typeof altaCountReset === "function") altaCountReset();
   try{ await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:CUR_ACCOUNT?CUR_ACCOUNT.id:"",marketplace:m})}); }catch(e){}
   if(CUR_ACCOUNT) buildAccountMktSwitch(CUR_ACCOUNT);
@@ -809,24 +845,40 @@ function navTo(sec){
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor","sourcing","orders","returns","finance","variations","sellerimport"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor","sourcing","orders","returns","aiusage","finance","variations","sellerimport"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
-  if(sec==="setup")     loadBrandPanel();
-  if(sec==="imagerefs") loadImageRefs();
-  if(sec==="generate"){ loadTargetAccount(); loadInputSheet(); }
-  if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
-  if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
-  if(sec==="ppc")       ppcOnOpen();
-  if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
-  if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
-  if(sec==="sourcing"){ if(typeof sourcingOnOpen==="function") sourcingOnOpen(); }
-  if(sec==="orders"){   if(typeof ordersOnOpen==="function")   ordersOnOpen(); }
-  if(sec==="returns"){  if(typeof returnsOnOpen==="function")  returnsOnOpen(); }
-  if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
-  if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
-  if(sec==="sellerimport"){ if(typeof sellerImportOnOpen==="function") sellerImportOnOpen(); }
+  // LOAD ONLY IF THERE IS SOMETHING TO LOAD.
+  //
+  // Every one of these used to run on every visit, so going Sales -> Orders ->
+  // Sales made you wait for Sales twice. The rendered content was never gone:
+  // its panel is hidden, not emptied. Skipping the loader shows it again
+  // instantly, which is what every other app does and what was asked for.
+  //
+  // screenNeedsLoad() is true the first time, true again once the content is
+  // old, and true immediately after an account or marketplace change -- see
+  // static/js/screenstate.js for why that last one is the important part.
+  const _fresh = (typeof screenNeedsLoad === "function") ? screenNeedsLoad(sec) : true;
+  const _mark  = function(){ if(typeof screenLoaded === "function") screenLoaded(sec); };
+  if(_fresh){
+    if(sec==="setup")     loadBrandPanel();
+    if(sec==="imagerefs") loadImageRefs();
+    if(sec==="generate"){ loadTargetAccount(); loadInputSheet(); }
+    if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
+    if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
+    if(sec==="ppc")       ppcOnOpen();
+    if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
+    if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
+    if(sec==="sourcing"){ if(typeof sourcingOnOpen==="function") sourcingOnOpen(); }
+    if(sec==="orders"){   if(typeof ordersOnOpen==="function")   ordersOnOpen(); }
+    if(sec==="returns"){  if(typeof returnsOnOpen==="function")  returnsOnOpen(); }
+    if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
+    if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
+    if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
+    if(sec==="sellerimport"){ if(typeof sellerImportOnOpen==="function") sellerImportOnOpen(); }
+    _mark();
+  }
   altaSyncUrl();
 }
 async function loadTargetAccount(){

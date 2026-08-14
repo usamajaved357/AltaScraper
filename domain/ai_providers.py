@@ -51,11 +51,87 @@ def _get(url, config, timeout=30):
         return json.loads(r.read().decode("utf-8"))
 
 
+# WHAT THE CURRENT CALL IS FOR, and whose it is.
+#
+# _post is the single place every OpenRouter call passes through, which makes it
+# the one place worth recording spend from -- but it is handed a URL and a body,
+# not a purpose. Rather than thread a feature name through nine call sites and
+# their optional arguments, the caller sets this immediately before calling and
+# _post reads it.
+#
+# Module-level rather than thread-local ON PURPOSE: image batches run on worker
+# threads, and a thread-local set on the request thread would be invisible to
+# them, so every generated image would be recorded as "unknown". The window
+# between set and use is one function call.
+#
+# ONE context, shared with the Anthropic recorder. Both providers must answer
+# "whose call was that, and what for" the same way, or the same run would be
+# split between two ledgers -- OpenRouter's half attributed and Anthropic's half
+# filed under "unknown". This name is kept as an alias so the call sites here
+# read naturally; the dictionary itself lives in ai_usage.
+from domain.ai_usage import CONTEXT as _AI_CONTEXT
+
+
+def set_usage_context(feature="", workspace_id="", sku="", config_path=""):
+    """Name what the next AI calls are for, so the spend can be attributed."""
+    from domain import ai_usage as _usage
+    _usage.set_context(feature=feature or "", workspace_id=workspace_id or "",
+                       sku=sku or "", config_path=config_path or "")
+
+
+def _feature(name):
+    """Name the STEP, keeping whose it is.
+
+    The route says which account and where the ledger lives; each step here says
+    what it is. Split that way because a route cannot know that generating one
+    image is four billable calls -- read the reference, think of concepts, write
+    the prompt, draw it -- and those four are exactly what someone looking at a
+    bill wants told apart.
+    """
+    _AI_CONTEXT["feature"] = name
+
+
+def _record_openrouter(body, payload, ok=True, error="", ms=0):
+    """Log one OpenRouter call against whatever context was set. Never raises."""
+    try:
+        cp = _AI_CONTEXT.get("config_path") or ""
+        if not cp:
+            return                      # nowhere to write it; not worth guessing
+        from domain import ai_usage as _usage
+        model = (body or {}).get("model") or ""
+        i, o = _usage.tokens_from_openrouter(payload or {})
+        # An image reply carries no token usage; count the pictures instead.
+        n_img = 0
+        for ch in ((payload or {}).get("choices") or []):
+            msg = (ch or {}).get("message") or {}
+            n_img += len(msg.get("images") or [])
+        _usage.record(cp, feature=_AI_CONTEXT.get("feature") or "unknown",
+                      provider="openrouter", model=model,
+                      workspace_id=_AI_CONTEXT.get("workspace_id") or "",
+                      input_tokens=i, output_tokens=o, images=n_img,
+                      kind=("image" if n_img else "text"),
+                      ok=ok, error=error, sku=_AI_CONTEXT.get("sku") or "", ms=ms)
+    except Exception:
+        pass
+
+
 def _post(url, config, body, timeout=120):
+    _t0 = time.time()
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                  headers=_headers(config), method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            payload = json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        # A failed call still spent its input tokens, and a month of retries
+        # must not look free.
+        if "chat/completions" in str(url):
+            _record_openrouter(body, None, ok=False, error=str(e)[:200],
+                               ms=int((time.time() - _t0) * 1000))
+        raise
+    if "chat/completions" in str(url):
+        _record_openrouter(body, payload, ms=int((time.time() - _t0) * 1000))
+    return payload
 
 
 _FALLBACK_TEXT = [
@@ -374,6 +450,7 @@ def describe_image(config: dict, images: list, focus: str = "", provider: str = 
         "Be concrete and concise (120-200 words) so another AI can reproduce the STYLE on a new product."
         + (f" Focus especially on: {focus}." if focus else "")
     )
+    _feature("image: read style reference")
     content = [{"type": "text", "text": "Describe the reusable visual style/technique of these reference image(s)."}]
     for im in images[:3]:
         try:                                    # skip any invalid reference; describe the rest
@@ -532,6 +609,7 @@ def strategize_images(config: dict, image="", product_title: str = "",
             # higher temperature so concepts vary product-to-product and run-to-run
             # instead of converging on the same safe list every time.
             "temperature": 0.9}
+    _feature("image: think of concepts")
     try:
         resp = _post(f"{OPENROUTER_BASE}/chat/completions", config, body, timeout=90)
         text = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
@@ -618,6 +696,7 @@ def strategize_images(config: dict, image="", product_title: str = "",
 
 def enhance_prompt(config: dict, brief: str, product_title: str = "",
                    provider: str = None, image_kind: str = "main") -> dict:
+    _feature("image: write the prompt")
     model = provider or select(config, "prompt_enhance")
     if not _key(config):
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
@@ -652,6 +731,7 @@ def generate_image(config: dict, prompt: str, reference_image="",
                    provider: str = None, strength: float = None,
                    aspect_ratio: str = "1:1", image_size: str = None,
                    extra_reference: str = "", media_root: str = "") -> dict:
+    _feature("image: generate")
     model = provider or select(config, "image_generate")
     if not _key(config):
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
@@ -861,6 +941,7 @@ def describe_product(config: dict, image="", product_title: str = "",
         return {"ok": False, "error": "No text model selected/available"}
     # The cache key is the reference itself plus the title: same product photo,
     # same spec, every time, for every image in the batch.
+    _feature("image: read the product")
     _facts = listing_facts(listing) if listing else ""
     _key_img = image if isinstance(image, str) else repr(image)
     # The facts are part of the key. Without them a spec built BEFORE the

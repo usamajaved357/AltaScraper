@@ -519,7 +519,19 @@ function render(){
   // difference: Amazon has this listing and we do not, so there is nothing here
   // to edit and the usual buttons will not work on it.
   const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon</div>';
-  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — <b>not in '+_store+'</b>, so it cannot be edited here yet</div>';
+  // WHAT IS ACTUALLY TRUE OF THESE NOW.
+  //
+  // This said "not in the app, so it cannot be edited here yet". That stopped
+  // being true: the price editor, the optimiser, the image studio and the image
+  // library all work from a SKU and read the live listing from Amazon, so none
+  // of them needs a draft row -- and every one of those buttons is on these
+  // tiles. The sentence was telling people they could not do something they
+  // could, which is worse than saying nothing.
+  //
+  // The real difference is still worth marking, so it says what it is: Amazon
+  // has this listing and this app holds no draft of it, which is what Sync
+  // changes.
+  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — <b>no draft in '+_store+'</b>. Price, images and optimisation still work; Sync brings the full listing in.</div>';
   // Rows the app records as LIVE but Amazon never returned. Usually: submitted
   // and not yet published, taken down by Amazon, or written into the wrong
   // account. They are NOT live, so they must never be counted as such -- but
@@ -557,12 +569,11 @@ function render(){
     // actually lists its SKU/ASIN. Published rows belong in Live/All — never in Drafts —
     // even if they started life as a draft in this app. This is what stops live listings
     // from appearing under the Drafts filter.
-    const _pubSku  = new Set((LIVE_ITEMS||[]).map(r=>_norm(r.sku)).filter(Boolean));
-    const _pubAsin = new Set((LIVE_ITEMS||[]).map(r=>_norm(r.asin)).filter(Boolean));
-    const _published = r => _norm(r.status)==="LIVE"
-        || (_pubSku.size>0  && _pubSku.has(_norm(r.sku)))
-        || (_pubAsin.size>0 && r.asin && _pubAsin.has(_norm(r.asin)));
-    const draftsOnly = realAll.filter(r=>!_published(r));
+    // isPublishedRow lives in listings.js so the counters above the list and the
+    // list itself cannot disagree about what a draft is. It was written out here
+    // and NOT there, which is exactly how the tiles came to count 86 listings
+    // over a list showing 74.
+    const draftsOnly = realAll.filter(r=>!isPublishedRow(r));
     const draftsHtml = listBlock(draftsOnly);
     const _liveHere = realAll.length - draftsOnly.length;   // published rows hidden from Drafts
     grid.innerHTML = note
@@ -572,6 +583,10 @@ function render(){
             ? `<div class="empty">No drafts here — all ${_liveHere} listing${_liveHere>1?'s are':' is'} live on Amazon. Switch to <b>Live on Amazon</b> or <b>All</b> to see them.</div>`
             : `<div class="empty">No listings in this view.${ROWS.length?'':' Run Generate to create some.'}</div>`)):'');
   }
+  // Rows arrive in a short cascade rather than as one block. Purely visual,
+  // and capped at twenty rows so a long list is not slower to appear -- see
+  // altaStagger. Called after the grid's HTML is set, on whatever it contains.
+  if(typeof altaStagger === "function") altaStagger(grid, ".lt tbody tr");
   summary();
   // fetch real product images for live tiles that don't have one yet
   if((LIST_SOURCE==="live"||LIST_SOURCE==="all") && LIVE_ITEMS.length){ fetchLiveImages(); }
@@ -1321,6 +1336,13 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
            tiles had no way to reach any of that -- the drafts grid did, and this
            renderer simply never got the button. -->
       <button class="ib" title="See this listing's images, upload your own, and push one to Amazon" onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i> Library</button>
+      <!-- CHANGING THE PRICE WORKS ON THESE TOO.
+           The price editor needs a SKU and nothing else -- it reads the live
+           offer from Amazon and edits that, rather than any row this app holds.
+           So it always worked on a listing the app has no draft for; the button
+           was simply never drawn here, which is part of why the caption above
+           still claimed these could not be edited. -->
+      <button class="ib" title="Change this listing's selling price on Amazon" onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}','${esc(String(it.price||'').replace(/^[A-Z]{3}\s?/,''))}')"><i class="ti ti-tag"></i> Price</button>
       <!-- _dpUrl (listings.js) knows every marketplace domain. This link was
            hand-rolled and sent DE/FR/IT/ES to amazon.com. -->
       <a class="ib" title="View on Amazon" href="${esc(_dpUrl(it.asin||''))}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a>

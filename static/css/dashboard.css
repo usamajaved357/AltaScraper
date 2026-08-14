@@ -1572,3 +1572,151 @@
 .foldgroup > summary:hover{ background:var(--panel2); }
 .foldgroup > summary .cc{ font-weight:400; }
 .foldgroup .grid, .foldgroup > div{ padding:0 12px 12px; }
+
+
+/* =====================================================================
+   MOTION AND POLISH
+   =====================================================================
+   "the visuals of it the animation it feels like it is lagging."
+
+   Nothing here changes what any screen does, what it shows, or where
+   anything sits. It is entirely about how the app moves.
+
+   THE ONE RULE EVERYTHING BELOW OBEYS: animation must MASK waiting, never
+   add to it. Every duration here is between .12s and .3s, which is under
+   the threshold where motion starts to feel like something you are waiting
+   for. Nothing animates that the user did not just do -- no idle motion, no
+   decoration, nothing playing on a screen sitting untouched.
+
+   Deliberately NOT here, per the brief: ripples, parallax, 3D transforms,
+   ambient particles, sound.
+   ===================================================================== */
+
+/* -- 1. PAGE TRANSITIONS ------------------------------------------------
+   Switching sections was instant, which sounds ideal and does not read that
+   way: with nothing to mark the change, a new screen looks like the old one
+   redrew wrongly. A short rise-and-fade says "this is a different place". */
+@keyframes fadeIn{
+  from{ opacity:0; transform:translateY(8px); }
+  to  { opacity:1; transform:translateY(0); }
+}
+/* .wspanel is hidden/shown by the .show class, and #sec_listings by display.
+   Both get the same entrance so no screen feels different from the others. */
+.wspanel.show{ animation:fadeIn .25s ease; }
+
+/* -- 2. SKELETON LOADING -----------------------------------------------
+   .skeleton and @keyframes shimmer were added in the layout pass and never
+   used. These are the shapes that make them usable: a placeholder that
+   occupies the space the real content will, so nothing jumps when it lands.
+   The shimmer already stops under prefers-reduced-motion. */
+.skrow{ height:44px; margin:6px 0; }
+.skline{ height:12px; margin:6px 0; }
+.skline.short{ width:40%; }
+.skline.half { width:60%; }
+.skcard{ height:78px; }
+.skchart{ height:240px; }
+.skgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
+         gap:10px; margin-bottom:14px; }
+
+/* -- 3. SMOOTH SCROLLING ------------------------------------------------
+   And containment, so flicking a table to its end does not then start
+   scrolling the page behind it -- which is most of what "janky" describes. */
+html{ scroll-behavior:smooth; }
+.wsmain, .ltwrap, .tablewrap, .drawer, .modalbody, .foldgroup{
+  overscroll-behavior:contain;
+}
+
+/* -- 4. CHART ENTRANCES -------------------------------------------------
+   A chart appearing fully-formed is the moment the app looks most like a
+   page of printed numbers. It fades and settles; the line draws itself. */
+@keyframes chartFadeIn{
+  from{ opacity:0; transform:scale(.97); }
+  to  { opacity:1; transform:scale(1); }
+}
+@keyframes chartSweep{
+  from{ clip-path:inset(0 100% 0 0); }
+  to  { clip-path:inset(0 0 0 0); }
+}
+.chartcard, .chartbox{ animation:chartFadeIn .28s ease; }
+/* The drawn-line effect, on the path only -- the axes and labels must not
+   sweep in with it or the chart reads as unfinished while it plays. */
+.chartcard svg path.series, .chartbox svg path.series{
+  animation:chartSweep .5s ease-out;
+}
+
+/* -- 5. TABLE ROW STAGGER ----------------------------------------------
+   Rows arrive in a cascade rather than as one block. The delays are
+   generated in JS (see altaStagger in static/js/motion.js) rather than
+   written out twenty times here, and they stop after the twentieth row: a
+   hundred-row table must not take three seconds to finish appearing. */
+.trow-enter{ animation:fadeIn .2s ease backwards; }
+
+/* -- 6. HOVER MICROINTERACTIONS ----------------------------------------
+   Small, fast, and only on things that are actually clickable. The table
+   row is the fastest of them because rows are SCANNED -- anything slower
+   than .12s smears as the pointer travels down a list. */
+.metric{ transition:transform .2s ease, box-shadow .2s ease, border-color .15s ease; }
+.metric:hover{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
+.mktbtn.on, .db-chip{ transition:transform .15s ease, box-shadow .2s ease,
+                                 border-color .15s ease, background .15s ease; }
+.mktbtn.on:hover, .db-chip:hover{ transform:translateY(-1px);
+                                  box-shadow:0 4px 16px rgba(0,0,0,.25); }
+.mktbtn.on:active, .db-chip:active{ transform:translateY(0); box-shadow:none; }
+.navitem{ transition:background .2s ease, color .2s ease, border-color .2s ease; }
+.tile{ transition:border-color .15s ease, transform .15s ease; }
+.lt tbody tr{ transition:background .12s ease; }
+
+/* -- 7. DRAWER AND MODAL MOTION ----------------------------------------
+   The drawer already slides. What it lacked was a settle at the end: a
+   slight overshoot is what makes a panel feel like an object with weight
+   rather than a rectangle whose left edge moved. */
+@keyframes slideLeft{
+  from{ transform:translateX(100%); }
+  to  { transform:translateX(0); }
+}
+@keyframes modalIn{
+  from{ opacity:0; transform:scale(.95); }
+  to  { opacity:1; transform:scale(1); }
+}
+.drawer.show, .drawer.open{
+  animation:slideLeft .22s cubic-bezier(.34,1.56,.64,1);
+}
+.scrim.show, .modal.show, .modalbg.show{ animation:fadeIn .15s ease; }
+.modalcard, .modalbox, .modal .card{ animation:modalIn .3s ease; }
+
+/* -- 8. TOOLTIPS --------------------------------------------------------
+   The delay is the point: a tooltip that appears the instant the pointer
+   crosses it fires constantly while you are on your way somewhere else. */
+.tipwrap{ position:relative; }
+.tipwrap .tip{
+  position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--line); border-radius:6px;
+  padding:8px 12px; font-size:12px; line-height:1.5; max-width:240px; width:max-content;
+  color:var(--ink); box-shadow:0 4px 12px rgba(0,0,0,.4);
+  opacity:0; visibility:hidden; pointer-events:none; z-index:60;
+  transition:opacity .15s ease, visibility .15s ease;
+  transition-delay:0s;
+}
+.tipwrap:hover .tip{ opacity:1; visibility:visible; transition-delay:.2s; }
+/* Near the right-hand edge, anchor to the right so it cannot run off. */
+.tipwrap.tipleft .tip{ left:auto; right:0; transform:none; }
+.tipwrap.tipbelow .tip{ bottom:auto; top:calc(100% + 6px); }
+
+/* -- 9. NUMBERS ---------------------------------------------------------
+   Counting numbers must not reflow the layout as their width changes,
+   which is what makes a count-up look broken rather than alive. */
+.metric .n, .statnum, .countup{ font-variant-numeric:tabular-nums; }
+
+/* -- 10. REDUCED MOTION -------------------------------------------------
+   An operating-system preference, and it is not a suggestion. Everything
+   above collapses to effectively instant -- not removed, because a
+   zero-length animation still fires the events some of this relies on. */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+  html{ scroll-behavior:auto; }
+}

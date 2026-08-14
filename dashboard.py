@@ -3367,6 +3367,12 @@ def build_app(backend=None):
     _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # What the AI cost, per account and per feature. Reads the ledger written by
+    # domain/ai_usage.py; spends nothing itself.
+    import routes.aiusage_routes as _aiusage_routes
+    _aiusage_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+
     # The source repricer. Dry run only: it decides and records, and nothing
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes
@@ -3604,6 +3610,31 @@ def build_app(backend=None):
               flush=True)
     except Exception as _e0:
         print(f"  (deployment check could not run: {_e0})", flush=True)
+
+    # ---- AI spend: record every call, and know whose it was --------------
+    # Installed here, once, rather than at each of the fourteen places that call
+    # a model. See domain/ai_usage.install_anthropic_recorder for why it is done
+    # by interception: a per-site wrapper is a per-site chance to forget one, and
+    # a spend report that quietly omits a feature is worse than none.
+    try:
+        from domain import ai_usage as _aiu
+        _aiu.install_anthropic_recorder(CONFIG_PATH)
+
+        @app.before_request
+        def _stamp_ai_account():
+            # Which account is spending. Set per request from the same resolver
+            # every screen uses, so attribution cannot drift from what the header
+            # says. The feature name is added by each AI step itself.
+            try:
+                from routes import scope as _scope
+                _aiu.set_context(
+                    workspace_id=_scope.workspace_id(
+                        state=_state, account=_active_account() or {}),
+                    config_path=CONFIG_PATH, feature="", sku="")
+            except Exception:
+                _aiu.set_context(config_path=CONFIG_PATH)
+    except Exception as _e1:
+        print(f"  (AI usage recording could not start: {_e1})", flush=True)
 
     _refresher.start(app, _cfg, CONFIG_PATH,
                      log=lambda m: print(f"[refresher] {m}"))
