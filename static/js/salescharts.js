@@ -59,15 +59,74 @@ function _scHash(s){
 // for why the handlers are inline.
 const _SC_DRAG = {};
 
-function _scHover(cid, i, px, py, label, shown){
-  const out = document.getElementById(cid + "_read");
-  if(out) out.innerHTML = '<b>' + label + '</b> · ' + shown;
+// A ROW ON THE HOVER CARD. Encoded into one attribute because these handlers
+// are inline (see the note beside the hit targets): name, colour, value,
+// and the y position of that series' dot, joined by characters that cannot
+// appear in a formatted number or a series name.
+const _SC_ROW = "";     // between fields
+const _SC_SEP = "";     // between rows
+
+function _scRows(rows){
+  return rows.map(function(r){
+    return [r.name, r.color, r.value, (r.y === null || r.y === undefined) ? "" : r.y]
+      .join(_SC_ROW);
+  }).join(_SC_SEP);
+}
+
+function _scHover(cid, i, px, py, label, rowsEnc){
+  // THE FLOATING CARD, measured off Orbit: rgb(45,50,66) on a rgb(75,85,99)
+  // border, radius 6, padding 8/12, min-width 160, and a gold-tinted shadow.
+  // Its wrapper carries `transition: transform .4s`, so it GLIDES to each new
+  // column rather than jumping -- which is the movement that makes the chart
+  // feel alive, and the thing a corner readout cannot do.
+  const tip = document.getElementById(cid + "_tip");
+  const svg = document.getElementById(cid + "_svg");
+  const rows = String(rowsEnc || "").split(_SC_SEP).filter(Boolean)
+    .map(function(s){
+      const p = s.split(_SC_ROW);
+      return {name: p[0], color: p[1], value: p[2], y: p[3]};
+    });
+
+  if(tip && svg){
+    tip.innerHTML =
+      '<p class="charttip-time">' + label + '</p>'
+      + rows.map(function(r){
+          return '<div class="charttip-row">'
+               + '<span class="charttip-name" style="color:' + r.color + '">'
+               + r.name + ':</span>'
+               + '<span class="charttip-val">' + r.value + '</span></div>';
+        }).join("");
+    // The SVG is drawn in viewBox units and displayed at whatever width the
+    // panel is, so a position inside it has to be scaled before it can place an
+    // HTML element on top.
+    let scale = 1;
+    try{
+      const vb = svg.viewBox.baseVal;
+      if(vb && vb.width) scale = (svg.clientWidth || vb.width) / vb.width;
+    }catch(e){}
+    const w = tip.offsetWidth || 160;
+    const host = svg.parentElement;
+    const hostW = (host && host.clientWidth) || (svg.clientWidth || 0);
+    // Flip to the left of the crosshair when the card would run off the panel,
+    // which on the right-hand third of any chart it otherwise does.
+    let left = px * scale + 14;
+    if(left + w > hostW) left = Math.max(0, px * scale - w - 14);
+    tip.style.transform = "translate(" + Math.round(left) + "px, 12px)";
+    tip.style.opacity = "1";
+  }
+
   const vl = document.getElementById(cid + "_vl");
-  if(vl){ vl.setAttribute("x1", px); vl.setAttribute("x2", px); vl.setAttribute("opacity", "0.55"); }
-  const dot = document.getElementById(cid + "_dot");
-  if(dot){
-    if(py >= 0){ dot.setAttribute("cx", px); dot.setAttribute("cy", py); dot.setAttribute("opacity", "1"); }
-    else { dot.setAttribute("opacity", "0"); }
+  if(vl){ vl.setAttribute("x1", px); vl.setAttribute("x2", px); vl.setAttribute("opacity", "1"); }
+
+  // A DOT ON EVERY SERIES at the hovered column, not just the first: gold and
+  // grey circles with a white ring, radius 5 and 2px stroke, as measured.
+  const dots = document.getElementById(cid + "_dots");
+  if(dots){
+    dots.innerHTML = rows.filter(function(r){ return r.y !== "" && r.y !== undefined; })
+      .map(function(r){
+        return '<circle cx="' + px + '" cy="' + r.y + '" r="5" fill="' + r.color
+             + '" stroke="#ffffff" stroke-width="2"/>';
+      }).join("");
   }
   // Mid-drag: shade from where the press began to here, so the range being
   // chosen is visible while choosing it.
@@ -83,10 +142,14 @@ function _scHover(cid, i, px, py, label, shown){
 }
 
 function _scLeave(cid){
-  ["_vl", "_dot"].forEach(function(s){
-    const el = document.getElementById(cid + s);
-    if(el) el.setAttribute("opacity", "0");
-  });
+  const vl = document.getElementById(cid + "_vl");
+  if(vl) vl.setAttribute("opacity", "0");
+  const dots = document.getElementById(cid + "_dots");
+  if(dots) dots.innerHTML = "";
+  const tip = document.getElementById(cid + "_tip");
+  // Faded rather than emptied: the card keeps its size while it goes, so
+  // nothing reflows behind it on the way out.
+  if(tip) tip.style.opacity = "0";
   const out = document.getElementById(cid + "_read");
   if(out) out.innerHTML = "";
 }
@@ -165,6 +228,11 @@ function salesChart(points, opts){
   // previous period that has no figure for a day must not be drawn as zero any
   // more than the current one.
   const cmp = (o.compare && o.compare.length === points.length) ? o.compare : null;
+  // Declared HERE, once, because the hover rows, the dashes and the legend all
+  // ask it -- and a `const` used before its declaration is a dead-zone crash,
+  // not a hoisted undefined. It was declared beside the legend, which is after
+  // the hover code that reads it.
+  const _cIsYear = (o.compareKind === "year");
   const cmpVals = cmp ? cmp.map(p => _scNum(p && p.value)).filter(v => v !== null) : [];
 
   // BOTH SERIES SHARE ONE SCALE. They have to: two lines on separate scales
@@ -265,9 +333,11 @@ function salesChart(points, opts){
   // a touch screen does not exist at all. Reported as "nothing comes up when I
   // hover", which was accurate.
   //
-  // Now each column reports through one shared readout above the chart, with a
-  // marker line and a dot on the point. It appears instantly, follows the
-  // pointer, and says the date and the value.
+  // Now each column raises a floating CARD beside the pointer -- the time at
+  // the top, then a row per series in that series' own colour, with a dot on
+  // each line and a crosshair down the column. Measured off Orbit, including
+  // the 0.4s transform transition that makes the card glide from column to
+  // column instead of jumping.
   //
   // The handlers are inline attributes on purpose: this HTML is built as a
   // string and inserted with innerHTML, so there is no element to bind to until
@@ -278,17 +348,25 @@ function salesChart(points, opts){
   points.forEach(function(p, i){
     const half = points.length > 1 ? iw / (points.length - 1) / 2 : iw / 2;
     const v = _scNum(p.value);
-    let shown = (v === null ? "no data yet" : _scFmt(v, o.kind));
-    // With a comparison drawn, the hover has to answer the comparison too --
-    // otherwise the second line is decoration you cannot read a number off.
+    // One row per series on the floating card, each named in its own colour --
+    // Orbit's layout, measured. The comparison gets a row too: a second line
+    // you cannot read a number off is decoration.
+    const rows = [{name: (o.seriesName || "This period"), color: LINE,
+                   value: (v === null ? "no data yet" : _scFmt(v, o.kind)),
+                   y: (v === null ? null : y(v).toFixed(1))}];
     if(cmp){
       const cv = _scNum(cmp[i] && cmp[i].value);
-      shown += "  ·  before: " + (cv === null ? "—" : _scFmt(cv, o.kind));
+      let cvText = (cv === null ? "—" : _scFmt(cv, o.kind));
       if(v !== null && cv !== null && cv !== 0){
         const pct = ((v - cv) / Math.abs(cv)) * 100;
-        shown += " (" + (pct >= 0 ? "+" : "") + pct.toFixed(0) + "%)";
+        cvText += "  (" + (pct >= 0 ? "+" : "") + pct.toFixed(0) + "%)";
       }
+      rows.push({name: (_cIsYear ? "Last year" : "Before"),
+                 color: (_cIsYear ? SC_PRIORYEAR : SC_COMPARE),
+                 value: cvText,
+                 y: (cv === null ? null : y(cv).toFixed(1))});
     }
+    const shown = _scRows(rows);
     hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
                    width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
@@ -300,10 +378,11 @@ function salesChart(points, opts){
   });
   // The marker: a vertical line and a dot, moved by the handler rather than
   // redrawn, so hovering costs nothing.
+  // The crosshair is GOLD and solid at full opacity -- measured off Orbit's,
+  // which is rgb(251,191,36) at 1px. Ours was the series colour at 0.55.
   hits = `<line id="${cid}_vl" x1="0" y1="${padT}" x2="0" y2="${padT + ih}"
-                stroke="${LINE}" stroke-width="1" opacity="0"/>`
-       + `<circle id="${cid}_dot" cx="0" cy="0" r="3.5" fill="${LINE}"
-                 opacity="0"/>`
+                stroke="${SC_GOLD}" stroke-width="1" opacity="0"/>`
+       + `<g id="${cid}_dots"></g>`
        + `<rect id="${cid}_sel" x="0" y="${padT}" width="0" height="${ih}"
                 fill="${LINE}" opacity="0.14" pointer-events="none"/>`
        + hits;
@@ -320,7 +399,6 @@ function salesChart(points, opts){
 
   // A legend, only when there are two things to tell apart. One line needs no
   // key, and a key for one line is furniture.
-  const _cIsYear = (o.compareKind === "year");
   const legend = cmp
     ? '<span style="font-size:10.5px;display:inline-flex;align-items:center;gap:10px">'
       + '<span style="display:inline-flex;align-items:center;gap:4px">'
@@ -368,10 +446,15 @@ function salesChart(points, opts){
        // panel happened to be -- and the line's stroke thickened in one direction
        // only. Scaling uniformly costs a taller chart on a wide screen and makes
        // the text legible at every width, including on a phone.
-       + `<svg class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
+       // position:relative so the floating hover card can be placed over the
+       // chart in page pixels while the chart itself is drawn in viewBox units.
+       + '<div style="position:relative">'
+       + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:auto;background:#0d1220;
                       border:1px solid #1e2733;border-radius:8px">`
-       + defs + grid + gaps + paths + dots + xl + hits + '</svg></div>';
+       + defs + grid + gaps + paths + dots + xl + hits + '</svg>'
+       + `<div id="${cid}_tip" class="charttip"></div>`
+       + '</div></div>';
 }
 
 
@@ -502,25 +585,33 @@ function salesCombo(o){
   // Hover: one readout for every series at that column, which is the whole
   // reason to put them on one chart.
   const cid = o.id || "combo";
+  // Gold crosshair, as measured on Orbit -- rgb(251,191,36) at 1px, solid.
   let hits = `<line id="${cid}_vl" x1="0" y1="${padT}" x2="0" y2="${padT + ih}"
-                    stroke="rgb(156,163,175)" stroke-width="1" opacity="0"/>`;
+                    stroke="${SC_GOLD}" stroke-width="1" opacity="0"/>`
+           + `<g id="${cid}_dots"></g>`;
   cols.forEach(function(c, i){
     const half = cols.length > 1 ? iw / (cols.length - 1) / 2 : iw / 2;
-    const parts = [];
+    // A ROW PER SERIES on the floating card, each in its own colour, with the
+    // dot placed on that series' own line. Bars get a row too but no dot --
+    // a dot on a bar has nothing to sit on.
+    const rows = [];
     if(bars){
       const bv = _scNum((bars.values || [])[i]);
-      parts.push((bars.label || "Orders") + " " + (bv === null ? "—" : Math.round(bv)));
+      rows.push({name: (bars.label || "Orders"), color: SC_GOLD,
+                 value: (bv === null ? "—" : String(Math.round(bv))), y: null});
     }
     lines.forEach(function(l){
-      const spec = SC_SERIES[l.key] || {};
+      const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694"};
       const v = _scNum((l.values || [])[i]);
-      parts.push((spec.label || l.key) + " " + (v === null ? "—" : _scFmt(v, "money")));
+      rows.push({name: (spec.label || l.key), color: spec.color,
+                 value: (v === null ? "—" : _scFmt(v, "money")),
+                 y: (v === null ? null : yM(v).toFixed(1))});
     });
     hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
                    width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
                    onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},-1,
-                       '${_scAttr(c)}','${_scAttr(parts.join("  ·  "))}')"
+                       '${_scAttr(c)}','${_scAttr(_scRows(rows))}')"
                    onmouseleave="_scLeave('${cid}')"></rect>`;
   });
 
@@ -545,11 +636,11 @@ function salesCombo(o){
   key += '</div>';
 
   return '<div style="margin:4px 0 0">'
-       + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">'
-       + '<span id="' + cid + '_read" style="font-size:11.5px;margin-left:auto;'
-       + 'font-variant-numeric:tabular-nums"></span></div>'
-       + `<svg class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
+       + '<div style="position:relative">'
+       + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:auto;background:transparent;border:0">`
        + grid + barsSvg + linesSvg + xl + hits + '</svg>'
+       + `<div id="${cid}_tip" class="charttip"></div>`
+       + '</div>'
        + key + '</div>';
 }

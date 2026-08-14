@@ -106,9 +106,13 @@ const mism = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t6",
 falsy("three days are not compared against five", mism.indexOf("stroke-dasharray") >= 0);
 falsy("  and no legend claims otherwise", mism.indexOf("the period before") >= 0);
 
-console.log("\n=== the hover reports both, and the change between them ===");
-truthy("the readout carries the earlier figure", both.indexOf("before:") >= 0);
-truthy("  and the percentage change", both.indexOf("%)") >= 0);
+console.log("\n=== the hover card carries a row per series ===");
+// The hover is a floating CARD now, measured off Orbit: a row per series, each
+// named in its own colour with its value. The rows are encoded into the inline
+// handler, so the assertions read the encoding rather than a sentence.
+truthy("there is a row for the earlier period", both.indexOf("Before") >= 0);
+truthy("  in the comparison's own colour", both.indexOf("#6b7280") >= 0);
+truthy("and the percentage change is on it", both.indexOf("%)") >= 0);
 // 10 against 8 is +25%; the first column must say so.
 truthy("computed, not guessed", both.indexOf("+25%") >= 0);
 // A previous value of zero cannot produce a percentage -- dividing by it would
@@ -117,7 +121,15 @@ const zeroPrev = days.map(d => ({label: d, value: 0}));
 const z = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t7",
                                    compare: zeroPrev});
 falsy("no percentage against a zero", z.indexOf("Infinity") >= 0);
-truthy("  but the earlier figure is still shown", z.indexOf("before:") >= 0);
+truthy("  but the earlier figure still gets its row", z.indexOf("Before") >= 0);
+// The card itself, and the movement that makes it feel like Orbit's.
+truthy("the card is in the markup", both.indexOf('class="charttip"') >= 0);
+truthy("  inside a positioned wrapper so it can be placed over the chart",
+       both.indexOf("position:relative") >= 0);
+truthy("a year comparison names itself differently",
+       sandbox.salesChart(now, {title: "R", kind: "money", id: "t8",
+                                compare: prev, compareKind: "year"})
+         .indexOf("Last year") >= 0);
 
 console.log("\n=== sales.js asks for the period before ===");
 const SALES_JS = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
@@ -175,11 +187,13 @@ const drawn = drawWith(nowSer, prevSer, 5);
 truthy("a comparison of different length still draws", drawn.indexOf("stroke-dasharray") >= 0);
 // 6 Aug looks back to 1 Aug (absent -> gap); 7 Aug to 2 Aug -> 7; 9 Aug to
 // 4 Aug -> 9. So the hover for 7 Aug must report 7, not the first cell.
+// 6 Aug looks back to 1 Aug (absent), 7 Aug to 2 Aug -> 7, 9 Aug to 4 Aug -> 9.
+// The values live in the encoded hover rows.
 truthy("each day is compared against the SAME day of the earlier period",
-       drawn.indexOf("before: 7.00") >= 0);
-truthy("  and the other matched day too", drawn.indexOf("before: 9.00") >= 0);
+       drawn.indexOf("7.00") >= 0);
+truthy("  and the other matched day too", drawn.indexOf("9.00") >= 0);
 truthy("a day the earlier period has no figure for reads as a dash, not zero",
-       drawn.indexOf("before: —") >= 0);
+       drawn.indexOf("—") >= 0);
 
 // And when nothing lines up at all -- an offset that lands between buckets --
 // there must be no second line rather than a line made entirely of gaps.

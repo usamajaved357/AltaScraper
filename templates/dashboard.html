@@ -106,7 +106,10 @@
     <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="orders" onclick="navTo('orders')" title="Every account's orders on one screen"><i class="ti ti-receipt"></i> Orders</div>
-    <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs"><i class="ti ti-arrow-back-up"></i> Returns</div>
+    <!-- Named "Returns Intelligence" because that is what it was asked for and
+         what the report it was built from is called. It was labelled plain
+         "Returns", and was looked for repeatedly without being found. -->
+    <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs — the Returns Intelligence report"><i class="ti ti-arrow-back-up"></i> Returns Intelligence</div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
@@ -329,6 +332,10 @@
 
       <div class="salesbar" id="sales_filters">
         <span class="mktswitch" id="sales_presets"></span>
+        <!-- The last three whole months, as Orbit has them beside the presets.
+             A month is the unit a business actually reports in, and picking one
+             from two date boxes is the step nobody takes. -->
+        <span class="mktswitch" id="sales_months"></span>
         <span class="mktswitch" id="sales_gran"></span>
         <span id="sales_custom" style="display:none;gap:6px;align-items:center">
           <input type="date" class="rc-in" id="sales_start" style="width:auto;margin:0"
@@ -628,7 +635,7 @@
          fallback: it is how the richest two sections get filled at all. -->
     <div id="sec_returns" class="wspanel">
       <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-arrow-back-up"></i> Returns</h2>
+        <div><h2><i class="ti ti-arrow-back-up"></i> Returns Intelligence</h2>
         <div class="sub">Why things come back, which of it you can fix, and what it actually cost you. Amazon's fifty reason codes grouped into the four things you can do something about.</div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="db-chip" onclick="returnsSetDays(7)">7 days</button>
@@ -957,6 +964,9 @@
 <script src="/static/js/priceedit.js?v={{ ASSET_V }}"></script>
 <!-- Adding a colour or size to a product that is already listed. -->
 <script src="/static/js/addvariant.js?v={{ ASSET_V }}"></script>
+<!-- What a marketplace code means: its flag, its name, its currency. One table,
+     loaded BEFORE shell.js, which draws the flags from it. -->
+<script src="/static/js/marketplaces.js?v={{ ASSET_V }}"></script>
 <!-- Remembers which screens have already loaded, per account and marketplace,
      so revisiting a tab is instant. Must load BEFORE shell.js, which asks it. -->
 <script src="/static/js/screenstate.js?v={{ ASSET_V }}"></script>

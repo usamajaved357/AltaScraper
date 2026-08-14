@@ -186,8 +186,31 @@ async function loadHome(){
   cards += ACCOUNTS.map(a=>{
     const col=_wsColorKey(a.id||a.label);
     const connected=a.has_creds;
-    const mkts=(a.marketplaces&&a.marketplaces.length)?a.marketplaces.join(" · ")
-      :(connected?'<span class="cc">marketplaces not detected</span>':'<span class="cc">draft-only · not connected</span>');
+    // MARKETPLACES AS FLAGS YOU CAN CLICK.
+    //
+    // This card is the only thing the home screen does -- it chooses an
+    // account. Orbit chooses an account AND a marketplace, with the country
+    // shown as a flag, and that is the better shape: nearly every one of these
+    // accounts sells in more than one country, and picking the account only to
+    // then hunt for the marketplace switcher is a step that need not exist.
+    //
+    // Clicking a flag opens the account already on that marketplace. Clicking
+    // anywhere else on the card opens it on the account's own default, exactly
+    // as before.
+    const mktList = (a.marketplaces && a.marketplaces.length) ? a.marketplaces : [];
+    const dfltM = a.default_marketplace || "";
+    const mkts = mktList.length
+      ? mktList.map(function(m){
+          const on = (m === dfltM);
+          return '<button class="mktflag' + (on ? " on" : "") + '" '
+               + 'title="Open ' + esc(a.label) + ' on ' + esc(mktName(m))
+               + (on ? " (its default)" : "") + '" '
+               + "onclick='event.stopPropagation();enterAccountAt("
+               + JSON.stringify(a.id) + "," + JSON.stringify(m) + ")'>"
+               + mktFlag(m) + ' <span>' + esc(mktShort(m)) + '</span></button>';
+        }).join("")
+      : (connected ? '<span class="cc">marketplaces not detected</span>'
+                   : '<span class="cc">draft-only · not connected</span>');
     const brandcount=(a.brands&&a.brands.length)?(a.brands.length+" trademark"+(a.brands.length>1?"s":"")):"";
     const stateBadge = connected
       ? '<span class="connpill on" title="SP-API credentials present">'+SVG_PLUG+' connected</span>'
@@ -363,7 +386,7 @@ async function enterAccount(accountId){
   // default marketplace: account's configured default, else first detected
   const dflt = a.default_marketplace && (a.marketplaces||[]).indexOf(a.default_marketplace)>=0 ? a.default_marketplace : null;
   WS_MARKET = dflt || ((a.marketplaces && a.marketplaces.length) ? a.marketplaces[0] : "");
-  CUR_SYMBOL = (WS_MARKET==="US"||WS_MARKET==="CA"||WS_MARKET==="MX") ? "$" : ((WS_MARKET==="EU"||["DE","FR","IT","ES","NL"].includes(WS_MARKET)) ? "\u20ac" : "\u00a3");
+  CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
   // A read-only workspace has no live catalog at all -- /live/catalog refuses it --
   // so don't offer the Live / All / Sync controls that can only fail.
   var sw=document.getElementById('srcswitch');
@@ -422,6 +445,20 @@ async function enterAccount(accountId){
   if(LIST_SOURCE==='all' || LIST_SOURCE==='live'){ loadRows(); loadLiveCatalog(false); }
   else loadRows();
 }
+/* Open an account already on a chosen marketplace.
+ *
+ * enterAccount picks the account's own default; this picks the one that was
+ * clicked. Done by setting WS_MARKET after the account is open rather than
+ * before, because enterAccount RESETS it to the default -- setting it first
+ * would be silently overwritten, which is the kind of thing that looks like
+ * "the flag button does nothing". */
+async function enterAccountAt(accountId, marketplace){
+  await enterAccount(accountId);
+  const m = String(marketplace || "");
+  if(!m || m === WS_MARKET) return;
+  await switchAccountMarket(m);
+}
+
 async function enterDropshipping(){
   CUR_ACCOUNT=null;
   WS_SOURCE=null; renderDataSource();   // dropshipping uses the config default sheet
@@ -466,13 +503,18 @@ function buildAccountMktSwitch(a){
   // keep the current selection if it's valid for this account; else default to first
   if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){ WS_MARKET=mkts[0]; }
   if(WS_MARKET!=="__all__"){
-    CUR_SYMBOL=(WS_MARKET==="US"||WS_MARKET==="CA"||WS_MARKET==="MX")?"$":((WS_MARKET==="EU"||["DE","FR","IT","ES","NL"].includes(WS_MARKET))?"\u20ac":"\u00a3");
+    // One table of what a marketplace code means, in static/js/marketplaces.js.
+    // This was an inline ternary here AND another in switchAccountMarket, and
+    // the two had already drifted apart on which countries use the euro.
+    CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";
   }
   host.innerHTML =
     `<button class="mktbtn ${WS_MARKET==='__all__'?'on':''}" title="Show listings across every marketplace (fetches each — can be slow)" onclick="switchAccountMarket('__all__')">All</button>`
     + mkts.map(m=>{
         const isDflt = a.default_marketplace===m;
-        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" onclick="switchAccountMarket('${esc(m)}')">${esc(m)}${isDflt?' <span title="default" style="color:var(--warn)">\u2605</span>':''}</button>`;
+        // The flag AND the code. A flag alone is guesswork at this size, and
+        // several of these are blue-and-white European ones.
+        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" title="${esc(mktName(m))}" onclick="switchAccountMarket('${esc(m)}')">${mktFlag(m)} ${esc(mktShort(m))}${isDflt?' <span title="default" style="color:var(--warn)">\u2605</span>':''}</button>`;
       }).join("")
     + `<button class="mktbtn" title="Set current marketplace (${esc(WS_MARKET||'')}) as this account\u2019s default" onclick="setDefaultMarketplace()">\u2606 default</button>`
     + '<button class="mktbtn" title="Re-detect" onclick="detectMarketplaces(\''+esc(a.id)+'\')"><i class="ti ti-refresh"></i></button>';
@@ -510,7 +552,7 @@ async function setDefaultMarketplace(){
 }
 async function switchAccountMarket(m){
   WS_MARKET=m;
-  CUR_SYMBOL=(m==="US"||m==="CA"||m==="MX")?"$":(m==="UK"?"\u00a3":(m==="EU"||["DE","FR","IT","ES","NL"].includes(m))?"\u20ac":"\u00a3");
+  CUR_SYMBOL = mktSymbol(m) || "\u00a3";   // one table, in static/js/marketplaces.js
   // A marketplace is as different as an account: UK sales are not US sales.
   // Remembered screens are keyed by both, so they will reload -- but what is
   // already painted has to go, or the UK figures sit under the US heading until
@@ -830,7 +872,9 @@ async function enterWorkspace(key){
   window.WS_BRAND = isDrop ? "" : (v.brand||"");
   // currency + marketplace for this workspace
   WS_MARKET = _mktOf(v) || (isDrop ? "" : "");
-  CUR_SYMBOL = (WS_MARKET==="US") ? "$" : "\u00a3";
+  // This one only knew about dollars and pounds, so a German or Irish
+  // marketplace showed euro amounts with a pound sign in front of them.
+  CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";   // one table: static/js/marketplaces.js
   SELECTED.clear(); updateSelBar();
   document.getElementById("gen_scope").textContent =
     (v.label? "\u201c"+v.label+"\u201d" : "this workspace\u2019s");

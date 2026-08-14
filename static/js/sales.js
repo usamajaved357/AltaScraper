@@ -92,6 +92,28 @@ function salesDrawFilters(){
       return '<button class="'+(SALES.gran===x[0]?"on":"")+'" '
            + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
   }
+  // THE LAST THREE WHOLE MONTHS. Orbit puts Aug / Jul / Jun beside the presets,
+  // and a month is the unit a business reports in -- picking one out of two date
+  // boxes is the step nobody takes.
+  const mo = document.getElementById("sales_months");
+  if(mo){
+    mo.className = "seg";
+    const now = new Date();
+    let html = "";
+    for(let back = 1; back <= 3; back++){
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+      const start = d.toISOString().slice(0, 10);
+      const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
+                    .toISOString().slice(0, 10);
+      const name = ["Jan","Feb","Mar","Apr","May","Jun",
+                    "Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()];
+      const on = (SALES.preset === "custom" && SALES.start === start && SALES.end === end);
+      html += '<button class="' + (on ? "on" : "") + '" '
+           +  'onclick="salesSetMonth(\'' + start + '\',\'' + end + '\')" '
+           +  'title="' + start + ' to ' + end + '">' + name + '</button>';
+    }
+    mo.innerHTML = html;
+  }
   const cmp = document.getElementById("sales_compare");
   if(cmp && cmp.value !== (SALES.compareKind || "period")) cmp.value = SALES.compareKind || "period";
   const c=document.getElementById("sales_custom");
@@ -557,6 +579,22 @@ async function salesReload(){
    period a year ago ("is this Christmas better than last Christmas") -- plus
    the option of neither, because on a screen this dense a second line you are
    not using is just ink. */
+/* One whole month, from its chip. Sets the same custom range the date boxes
+   would, so everything downstream -- the comparison, the export, the zoom --
+   behaves exactly as it does for any other range. */
+function salesSetMonth(start, end){
+  SALES.preset = "custom";
+  SALES.start = start;
+  SALES.end = end;
+  const a = document.getElementById("sales_start");
+  const b = document.getElementById("sales_end");
+  if(a) a.value = start;
+  if(b) b.value = end;
+  SALES._zoomBack = null;
+  salesDrawFilters();
+  salesReload();
+}
+
 function salesSetCompare(v){
   SALES.compareKind = v || "period";
   SALES.compare = null;
@@ -787,10 +825,23 @@ async function salesLoadHourly(){
     return {label: label((j.hours || [])[i]), value: v};
   });
 
+  // The strip along the bottom of Orbit's card is AD SPEND TODAY and TACOS.
+  // Both come from the Advertising API, which is not connected -- ads_daily is
+  // empty. Said out loud, in the place the figures would sit, rather than
+  // leaving a gap that looks like a design that forgot something.
+  const adsFoot = '<div class="cc" style="margin-top:8px;padding-top:8px;'
+    + 'border-top:1px solid rgb(55,65,81);font-size:11px;'
+    + 'text-transform:uppercase;letter-spacing:.04em">'
+    + 'Ad spend today <b>not connected</b> · Tacos <b>not connected</b>'
+    + '<span style="text-transform:none;letter-spacing:normal"> — these need '
+    + 'the Advertising API, which this account has not been connected to.</span>'
+    + '</div>';
+
   el.innerHTML = salesChart(pts, {
     title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
     width: 700, height: 210, compare: cmp,
-    subtitle: (j.note || "") + " Orders as placed, " + _sEsc(j.timezone || "")});
+    subtitle: (j.note || "") + " Orders as placed, " + _sEsc(j.timezone || "")})
+    + adsFoot;
 
   // Against the SAME HOUR yesterday, never yesterday's full day -- otherwise
   // every morning shows a collapse and every evening a recovery.

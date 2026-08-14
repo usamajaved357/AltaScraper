@@ -1937,3 +1937,103 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   cursor:help;
   vertical-align:middle;
 }
+
+
+/* ---- marketplace flags on the home cards ------------------------------
+   The home screen's one job is choosing an account, and nearly every account
+   here sells in more than one country. Orbit chooses the account AND the
+   marketplace in one step, with the country shown as a flag; picking the
+   account only to then hunt for the marketplace switcher is a step that need
+   not exist. Clicking a flag opens the account already on that marketplace. */
+.wscard .mktflag{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  height:24px;
+  padding:0 8px;
+  margin:0 4px 0 0;
+  border:1px solid rgb(55,65,81);
+  border-radius:6px;
+  background:rgb(45,50,66);
+  color:rgb(209,213,219);
+  font-size:11px;
+  font-weight:500;
+  line-height:1;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.wscard .mktflag span{ letter-spacing:.02em; }
+.wscard .mktflag:hover{
+  border-color:#fbbf24;
+  background:rgb(55,60,78);
+  transform:translateY(-1px);
+}
+/* The account's own default, marked so the card says which one a plain click
+   will open -- otherwise the flags look like the only way in. */
+.wscard .mktflag.on{
+  border-color:#fbbf24;
+  color:rgb(243,244,246);
+}
+.wscard .stats{ flex-wrap:wrap; row-gap:6px; }
+
+
+/* ---- the chart hover card ----------------------------------------------
+   Measured off Orbit's own tooltip (orbit_interactions.md, tooltip.json):
+
+       card     rgb(45,50,66), 1px rgb(75,85,99), radius 6, padding 8/12,
+                min-width 160, shadow rgba(251,191,36,.3) 0 4px 6px
+       time     12px / 600, rgb(243,244,246), 4px below it
+       label    12px / 500, in the series' OWN colour
+       value    12px / 600, rgb(243,244,246), pushed right
+       movement transform .4s -- it GLIDES from column to column
+
+   That last line is the one that matters. Ours put a readout in the corner of
+   the panel, which cannot move with the pointer and so never felt like
+   anything. The card following the cursor IS the interaction. */
+.charttip{
+  position:absolute;
+  top:0; left:0;
+  pointer-events:none;          /* never eat a drag-to-zoom */
+  z-index:5;
+  min-width:160px;
+  background:rgb(45,50,66);
+  border:1px solid rgb(75,85,99);
+  border-radius:6px;
+  padding:8px 12px;
+  box-shadow:rgba(251,191,36,.3) 0 4px 6px 0;
+  opacity:0;
+  transition:transform .4s ease, opacity .15s ease;
+  will-change:transform;
+}
+.charttip-time{
+  margin:0 0 4px;
+  padding:0;
+  font-size:12px;
+  font-weight:600;
+  line-height:18px;
+  color:rgb(243,244,246);
+}
+.charttip-row{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  line-height:18px;
+}
+.charttip-name{
+  font-size:12px;
+  font-weight:500;
+  white-space:nowrap;
+}
+.charttip-val{
+  margin-left:auto;
+  font-size:12px;
+  font-weight:600;
+  color:rgb(243,244,246);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+/* Someone who asked their system not to animate should not be chased around the
+   screen by a gliding card; it still appears, it just does not travel. */
+@media (prefers-reduced-motion: reduce){
+  .charttip{ transition:opacity .01ms; }
+}
