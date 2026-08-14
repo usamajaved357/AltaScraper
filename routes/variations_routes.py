@@ -126,6 +126,102 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                                  "No live listings cached yet — press Sync on the "
                                  "Listings screen first.")})
 
+    @app.route("/listing/image_slots")
+    def listing_image_slots():
+        """Which image slots this listing has, and what is in each one now.
+
+        Lives beside the variation routes because both answer the same kind of
+        question -- "what does the schema say this product type supports" -- and
+        both read the live listing rather than a cache. What is IN a slot matters
+        as much as which slots exist: sending to an occupied one replaces its
+        image and Amazon keeps no copy, so the screen has to be able to say so
+        before the click rather than after.
+        """
+        from listing import images as _img
+        _acc, wsid, mkt = _scope()
+        sku = (request.args.get("sku") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "no sku"}), 400
+
+        live = _live_attributes(sku, wsid, mkt)
+        if live is None:
+            return jsonify({"ok": False, "error": (
+                "Amazon would not return %s, so its image slots could not be "
+                "read." % sku)}), 502
+
+        pt = live.get("product_type") or ""
+        sch = _schema(pt, mkt)
+        if sch is None:
+            return jsonify({"ok": True, "sku": sku, "product_type": pt,
+                            "slots": [], "checked": False,
+                            "note": ("Could not read this product type's schema, "
+                                     "so its image slots are unknown. Amazon "
+                                     "rejects a slot a type does not have.")})
+
+        attrs = live.get("attributes") or {}
+        slots = []
+        for s in _img.slots_from_schema(sch):
+            cur = attrs.get(s["key"]) or ""
+            slots.append({**s, "current": cur, "occupied": bool(cur)})
+        return jsonify({"ok": True, "sku": sku, "product_type": pt,
+                        "slots": slots, "checked": True,
+                        "is_variation_child": bool(live.get("parent_sku")),
+                        "note": ("" if slots else
+                                 "This product type defines no image slots at "
+                                 "all, which would be unusual — check the "
+                                 "product type is right.")})
+
+    @app.route("/listing/image_push", methods=["POST"])
+    def listing_image_push():
+        """Send one image to one named slot. Refuses what Amazon cannot fetch."""
+        from listing import images as _img
+        from api import amazon_listings as _al
+        from domain import accounts as _acc_mod
+
+        b = _body()
+        acc, wsid, mkt = _scope()
+        sku = (b.get("sku") or "").strip()
+        slot = (b.get("slot") or "").strip()
+        url = (b.get("url") or "").strip()
+        if not b.get("confirmed"):
+            return jsonify({"ok": False, "error": "not confirmed"}), 400
+        if not (sku and slot):
+            return jsonify({"ok": False, "error": "need a sku and a slot"}), 400
+
+        bad = _img.check_url(url)
+        if bad:
+            return jsonify({"ok": False, "error": bad}), 400
+
+        live = _live_attributes(sku, wsid, mkt)
+        if live is None:
+            return jsonify({"ok": False, "error": (
+                "Amazon would not return %s, so nothing was sent." % sku)}), 502
+        pt = live.get("product_type") or ""
+        sch = _schema(pt, mkt)
+        if sch is not None:
+            allowed = {s["key"] for s in _img.slots_from_schema(sch)}
+            if slot not in allowed:
+                # Re-checked against the schema, not trusted from the dropdown:
+                # a slot this type does not define is rejected by Amazon with an
+                # error that does not name the slot.
+                return jsonify({"ok": False, "error": (
+                    "%s is not an image slot %s has." % (slot, pt))}), 400
+
+        mkt_id = _acc_mod.marketplace_id(mkt)
+        res = _al.patch(_acc_mod.account_creds(acc or {}), mkt,
+                        str((acc or {}).get("seller_id") or ""), sku, mkt_id, pt,
+                        [_img.build_patch(slot, url, mkt_id)],
+                        issue_locale=("en_US" if mkt == "US" else "en_GB"))
+        if res["status"] != _al.OK:
+            why = res["error"] or "Amazon rejected it"
+            if res["issues"]:
+                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
+                                          for i in res["issues"][:3])
+            return jsonify({"ok": False, "error": why}), 502
+        return jsonify({"ok": True, "slot": slot, "sku": sku,
+                        "submission_id": res["submission_id"],
+                        "note": "Amazon usually shows a new image within a few minutes."})
+
     @app.route("/variations/themes")
     def variations_themes():
         """Which themes a product type allows, read from its live schema."""

@@ -254,8 +254,12 @@ function _ilDraw(){
        + 'onclick="ilPushLive()">Push main image to the live Amazon listing</button>'
        + '<span id="il_pushstatus" class="cc" style="font-size:11px;margin-left:8px"></span>'
        + '<div class="cc" style="font-size:11px;margin-top:6px">'
-       + 'Updates only the main image on Amazon — no full resubmit. Amazon takes a '
-       + 'few minutes to show it.</div></div>';
+       + 'Updates only that one image on Amazon — no full resubmit. Amazon takes a '
+       + 'few minutes to show it. Use <b>Send to Amazon…</b> on an image above to '
+       + 'choose which slot it goes in (main, PT1–PT8, swatch).</div>'
+       // Where the slot picker draws. Inside the live block because there is
+       // nothing to send to on a listing that is not live.
+       + '<div id="il_slotpick"></div></div>';
   }
   _ilRender(h);
 }
@@ -307,20 +311,103 @@ function ilUpload(inp){
 // to be done in that order, so picking an image and pressing push sent whatever
 // the main image happened to be already. This does both, and says which image it
 // is sending.
+// WHICH SLOT. Amazon has eighteen image attributes on a live listing, not one,
+// and the rules differ per slot: a lifestyle shot is fine as PT3 and gets the
+// listing suppressed as MAIN. The slots come from the product type's own schema,
+// with what is already in each, so replacing one is never a surprise.
 async function ilPushThis(url){
   if(!url) return;
-  if(!confirm("Send this image to the live Amazon listing as its MAIN image?\n\n"
-            + "Amazon has to fetch it over the internet, so it must be publicly "
-            + "reachable — the app uses the Drive copy where there is one.\n\n"
-            + "It usually appears within a few minutes.")) return;
   const st = document.getElementById("il_pushstatus");
-  if(st) st.innerHTML = '<span class="genspin"></span> setting as main…';
-  // Set it first so the app's own copy and Amazon agree; pushing without this
-  // leaves the listing showing one image and the app claiming another.
-  await setMainImage(IMGLIB.sku, url, {quiet:true});   // the option is `quiet`
-  IMGLIB.main = url;
-  await ilPushLive();
-  await openImageLibrary(IMGLIB.sku, IMGLIB.live);
+  if(st) st.innerHTML = '<span class="genspin"></span> reading this listing\'s image slots…';
+  let j;
+  try{ j = await (await fetch("/listing/image_slots?sku="+encodeURIComponent(IMGLIB.sku))).json(); }
+  catch(e){ if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(String(e))+'</span>'; return; }
+  if(!j || !j.ok){
+    if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc((j&&j.error)||"Could not read the slots")+'</span>';
+    return;
+  }
+  if(!j.checked || !(j.slots||[]).length){
+    if(st) st.innerHTML = '<span style="color:var(--warn)">'+_ilEsc(j.note||"No slots to send to")+'</span>';
+    return;
+  }
+  IMGLIB.slots = j.slots;
+  IMGLIB.isChild = !!j.is_variation_child;
+  IMGLIB.pending = url;
+  if(st) st.innerHTML = "";
+  _ilSlotPicker(url);
+}
+
+function _ilSlotPicker(url){
+  const host = document.getElementById("il_slotpick");
+  if(!host) return;
+  let h = '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin:10px 0">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    + '<b style="font-size:12.5px">Which image is this?</b>'
+    + '<span style="flex:1"></span>'
+    + '<button class="db-chip" onclick="ilSlotCancel()">Cancel</button></div>'
+    + '<img src="'+_ilEsc(url)+'" style="max-height:90px;border-radius:6px;'
+    + 'background:#0d1220;display:block;margin-bottom:8px">';
+
+  (IMGLIB.slots||[]).forEach(function(s){
+    h += '<div style="display:flex;gap:9px;align-items:flex-start;font-size:11.5px;'
+      +  'padding:7px 0;border-top:1px solid #1c2531">'
+      +  '<div style="min-width:120px"><b>'+_ilEsc(s.label)+'</b>'
+      +  (s.occupied ? '<div style="font-size:10px;color:var(--warn)">has an image</div>'
+                     : '<div class="cc" style="font-size:10px">empty</div>')
+      +  '</div>'
+      +  '<div style="flex:1" class="cc">'+_ilEsc(s.help||"")+'</div>'
+      +  '<button class="db-chip" onclick="ilSlotSend('+jsArg(s.key)+')">Send</button>'
+      +  '</div>';
+  });
+  h += '</div>';
+  host.innerHTML = h;
+  host.scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+
+function ilSlotCancel(){
+  const host = document.getElementById("il_slotpick");
+  if(host) host.innerHTML = "";
+  IMGLIB.pending = "";
+}
+
+async function ilSlotSend(slotKey){
+  const url = IMGLIB.pending;
+  const slot = (IMGLIB.slots||[]).find(s => s.key === slotKey) || {};
+  // Every warning, spelled out, at the moment of the decision. Replacing an
+  // occupied slot is the one that matters most: Amazon keeps no copy of what
+  // was there.
+  let msg = "Send this image as " + (slot.label || slotKey) + "?\n\n" + (slot.help || "");
+  if(slot.occupied) msg += "\n\nThis slot ALREADY has an image. Sending replaces "
+                         + "it, and Amazon does not keep the old one.";
+  if(slot.key === "swatch_product_image_locator" && !IMGLIB.isChild){
+    msg += "\n\nThis listing is not part of a variation family, so a swatch would "
+         + "have nowhere to show.";
+  }
+  msg += "\n\nAmazon fetches the image itself and usually shows it within a few minutes.";
+  if(!confirm(msg)) return;
+
+  const st = document.getElementById("il_pushstatus");
+  if(st) st.innerHTML = '<span class="genspin"></span> sending…';
+  try{
+    const j = await (await fetch("/listing/image_push",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({confirmed:true, sku:IMGLIB.sku, slot:slotKey, url:url})})).json();
+    if(!j.ok){
+      if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(j.error||"failed")+'</span>';
+      return;
+    }
+    ilSlotCancel();
+    if(st) st.innerHTML = '<span style="color:var(--ok)">✓ sent as '
+                        + _ilEsc(slot.label||slotKey)+' — '+_ilEsc(j.note||"")+'</span>';
+    // The app's own main-image copy only tracks MAIN, so only update it for that.
+    if(slotKey === "main_product_image_locator"){
+      await setMainImage(IMGLIB.sku, url, {quiet:true});
+      IMGLIB.main = url;
+    }
+    await openImageLibrary(IMGLIB.sku, IMGLIB.live);
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(String(e))+'</span>';
+  }
 }
 
 async function ilPushLive(){
