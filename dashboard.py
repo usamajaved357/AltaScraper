@@ -3360,6 +3360,13 @@ def build_app(backend=None):
     _orders_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                             _active_account=_active_account, _state=_state)
 
+    # Why things come back, and what it costs. Pulls the returns report, or
+    # reads one you upload -- an FBA file carries two columns the API will not
+    # give a seller-fulfilled account.
+    import routes.returns_routes as _returns_routes
+    _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+
     # The source repricer. Dry run only: it decides and records, and nothing
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes

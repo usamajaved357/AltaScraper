@@ -68,7 +68,10 @@ async function ordersLoad(){
   try{
     const qs = "days=" + encodeURIComponent(ORD.days)
              + "&account=" + encodeURIComponent(ORD.account)
-             + (ORD.q ? "&q=" + encodeURIComponent(ORD.q) : "");
+             + (ORD.q ? "&q=" + encodeURIComponent(ORD.q) : "")
+             // Opt-in: it costs one Amazon call per order, because an order row
+             // carries no SKU and without a SKU there is no cost.
+             + (ORD.profit ? "&with_profit=1" : "");
     const j = await (await fetch("/orders/list?" + qs)).json();
     if(!j || !j.ok){
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
@@ -84,6 +87,12 @@ async function ordersLoad(){
 }
 
 function ordersSetDays(d){ ORD.days = d; ordersLoad(); }
+function ordersToggleProfit(){
+  ORD.profit = !ORD.profit;
+  const b = document.getElementById("ord_profit");
+  if(b) b.classList.toggle("on", ORD.profit);
+  ordersLoad();
+}
 function ordersSetAccount(a){ ORD.account = a; ordersLoad(); }
 let _ordTimer = null;
 function ordersFilter(v){
@@ -130,10 +139,15 @@ function ordersRender(){
     body.innerHTML = h; return;
   }
 
+  if(m.profit_note){
+    h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+      +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.profit_note) + '</div>';
+  }
+
   h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:900px">'
     +  '<thead><tr>'
     +  ['Order', 'Account', 'Placed', 'Status', 'Units', 'Total',
-        'Ships to', 'Channel'].map(function(t){
+        'Profit', 'Ships to', 'Channel'].map(function(t){
          return '<th style="text-align:left;font-size:10.5px;padding:6px 8px;'
               + 'white-space:nowrap">' + t + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
@@ -158,6 +172,23 @@ function ordersRender(){
       +  '<td style="padding:6px 8px;font-size:11.5px">' + (r.units||0) + '</td>'
       +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
       +  _oEsc(_oMoney(r.total, r.currency)) + '</td>'
+      // WHAT IT EARNED. Blank rather than zero when a cost is unknown -- a
+      // partial cost only ever makes an order look better than it was, and the
+      // order whose cost is missing is exactly the one someone would use to
+      // justify buying more.
+      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap"'
+      +  (r.profit_note ? ' title="' + _oEsc(r.profit_note) + '"' : '') + '>'
+      +  (r.profit === undefined
+          ? '<span class="cc" style="opacity:.5">—</span>'
+          : r.profit === null
+            ? '<span class="cc" title="' + _oEsc(r.profit_note || "")
+              + '">not known</span>'
+            : '<span style="color:' + (r.profit > 0 ? "var(--ok,#8fd694)" : "var(--red)")
+              + '">' + _oEsc(_oMoney(r.profit, r.currency))
+              + (r.margin_pct !== null && r.margin_pct !== undefined
+                  ? ' <span class="cc">' + Number(r.margin_pct).toFixed(1) + '%</span>'
+                  : '') + '</span>')
+      +  '</td>'
       +  '<td style="padding:6px 8px;font-size:11.5px">'
       +  (r.region ? _oEsc(r.region) : '<span class="cc">—</span>') + '</td>'
       +  '<td style="padding:6px 8px;font-size:11px" class="cc">'
@@ -165,7 +196,7 @@ function ordersRender(){
       +  (r.business ? ' · Business' : '') + '</td>'
       +  '</tr>';
     if(isOpen){
-      h += '<tr><td colspan="8" style="padding:0 8px 10px">'
+      h += '<tr><td colspan="9" style="padding:0 8px 10px">'
         +  '<div id="orddet_' + _oEsc(r.order_id) + '">'
         +  (ORD.details[r.order_id] ? _ordDetailHtml(r) :
             '<div class="cc" style="padding:10px"><span class="genspin"></span> '
@@ -211,6 +242,20 @@ function _ordDetailHtml(r){
       +  '</div>';
   });
   const o = d.order || {};
+  // What it earned, worked out from the lines that are already here.
+  if(o.profit !== undefined){
+    h += '<div style="margin-top:8px;padding-top:7px;border-top:1px solid #1c2531;'
+      +  'font-size:11.5px">'
+      +  (o.profit === null
+          ? '<span class="cc">Profit not known — ' + _oEsc(o.profit_note || "") + '</span>'
+          : '<b>Earned ' + _oEsc(_oMoney(o.profit, o.currency)) + '</b>'
+            + (o.margin_pct !== null && o.margin_pct !== undefined
+                ? ' <span class="cc">(' + Number(o.margin_pct).toFixed(1) + '% margin)</span>'
+                : '')
+            + '<div class="cc" style="font-size:10.5px;margin-top:2px">'
+            + _oEsc(o.profit_note || "") + '</div>')
+      +  '</div>';
+  }
   h += '<div class="cc" style="font-size:11px;margin-top:8px;padding-top:7px;'
     +  'border-top:1px solid #1c2531">'
     +  'Ship by ' + _oEsc(_oWhen(o.ship_by)) + ' · deliver by '

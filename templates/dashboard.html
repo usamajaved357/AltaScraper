@@ -106,6 +106,7 @@
     <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="orders" onclick="navTo('orders')" title="Every account's orders on one screen"><i class="ti ti-receipt"></i> Orders</div>
+    <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs"><i class="ti ti-arrow-back-up"></i> Returns</div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
     <div class="navitem" data-sec="sellerimport" onclick="navTo('sellerimport')"><i class="ti ti-download"></i> Import seller</div>
@@ -174,6 +175,10 @@
           <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
         </span>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
+        <!-- Costs in bulk. The per-row way is to click the COGS cell; this is
+             for when a supplier sends a whole price list. -->
+        <button onclick="cogsUploadOpen()" title="Upload a CSV of SKU and cost to set what many items cost at once. Overrides what the SKU says, for this account."><i class="ti ti-file-upload"></i> Upload COGS</button>
+        <input type="file" id="cogs_file" accept=".csv,.tsv,.txt" style="display:none" onchange="cogsUploadFile(this)">
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
@@ -546,8 +551,35 @@
                 style="font-size:12px;padding:5px 8px">
           <option value="__all__">Every account</option>
         </select>
+        <!-- Opt-in: an order row carries no SKU, so working out what it earned
+             costs one Amazon call per order. The list loads instantly without
+             it, and the count fetched is always reported. -->
+        <button class="db-chip" id="ord_profit" onclick="ordersToggleProfit()"
+                title="Work out what each order earned — order total minus Amazon's fee minus what the stock cost. One Amazon call per order, so it is slower.">
+          <i class="ti ti-coins"></i> Work out profit
+        </button>
       </div>
       <div id="ordbody" style="padding:4px 0"></div>
+    </div>
+
+    <!-- RETURNS: why things come back, and what it costs. Two ways in — pull
+         the report, or upload one. An FBA returns file carries two columns the
+         API will not give a seller-fulfilled account, so the upload is not a
+         fallback: it is how the richest two sections get filled at all. -->
+    <div id="sec_returns" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-arrow-back-up"></i> Returns</h2>
+        <div class="sub">Why things come back, which of it you can fix, and what it actually cost you. Amazon's fifty reason codes grouped into the four things you can do something about.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="returnsSetDays(7)">7 days</button>
+          <button class="db-chip" onclick="returnsSetDays(30)">30 days</button>
+          <button class="db-chip" onclick="returnsSetDays(60)" title="Amazon will not build this report for a wider window than 60 days">60 days</button>
+          <button class="db-chip" onclick="returnsLoad()"><i class="ti ti-refresh"></i> Pull from Amazon</button>
+          <button class="db-chip" onclick="returnsUploadOpen()" title="Upload a returns report you downloaded from Seller Central. An FBA Customer Returns file also fills in the condition returns came back in and the customers' own comments, which the API will not give a seller-fulfilled account."><i class="ti ti-file-upload"></i> Upload a report</button>
+          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" style="display:none" onchange="returnsUploadFile(this)">
+        </div>
+      </div>
+      <div id="retbody" style="padding:4px 0"></div>
     </div>
 
     <div id="sec_finance" class="wspanel">
@@ -812,6 +844,9 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
+<!-- What the stock cost: click a cell to set one, upload a sheet to set many.
+     Before listings.js, which calls cogsCell() while drawing every row. -->
+<script src="/static/js/cogs.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/listings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
@@ -829,6 +864,8 @@
 <script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
 <!-- Every account's orders on one screen. -->
 <script src="/static/js/orders.js?v={{ ASSET_V }}"></script>
+<!-- Why things come back, and what it costs. -->
+<script src="/static/js/returns.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sellerimport.js?v={{ ASSET_V }}"></script>
 <!-- The product queue, which owns loadInputSheet/filterInputSheet outright --

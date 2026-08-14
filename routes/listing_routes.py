@@ -1140,6 +1140,43 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 yield "event: end\ndata: end\n\n"
                 return
             try:
+                # GENERATE BRINGS THE SHEET IN BY ITSELF.
+                #
+                # The queue moved into the database, and the generator started
+                # saying "imported queue is EMPTY -- press Import in the app".
+                # That reads as an instruction but it is really a trap: Import
+                # is a different button on a different part of the screen,
+                # nobody pressed it, and Generate -- which had worked the same
+                # way for months -- reported "No products found in input sheet"
+                # over a sheet with 84 products in it. Twice, on the live app.
+                #
+                # A step the user must remember, on a path that used to have no
+                # such step, is a step the app should take. So: if the queue is
+                # empty and a sheet is configured, import it now and say so.
+                # Pressing Import by hand still works and still means the same
+                # thing; it is just no longer the difference between generating
+                # and not.
+                if mode in ("generate", "retry"):
+                    try:
+                        from data import choice as _choice
+                        from data import input_import as _ii
+                        if _choice.resolve(_cfg(), CONFIG_PATH) == "db":
+                            _wsid = _scope_acct_id or "dropshipping"
+                            if not _ii.summary(CONFIG_PATH, _wsid).get("count"):
+                                yield ("data: [input] the queue is empty — "
+                                       "reading this account's input sheet…\n\n")
+                                _a, _u, _t, _err = _ii.import_for_workspace(
+                                    CONFIG_PATH, _wsid, _scope_acc, _cfg(), _client)
+                                if _err:
+                                    yield "data: [input] %s\n\n" % str(_err)[:300]
+                                else:
+                                    yield ("data: [input] imported %d product(s) "
+                                           "from the sheet (%d new)\n\n" % (_t, _a))
+                    except Exception as _e:
+                        # Never fatal: a run that could not pre-import still has
+                        # whatever is already queued, and the generator says so.
+                        yield "data: [input] could not import: %s\n\n" % str(_e)[:200]
+
                 # -u = unbuffered child stdout so progress streams live
                 extra = ([] if mode == "generate"
                          else ["api", "submit"] if mode == "api_submit"

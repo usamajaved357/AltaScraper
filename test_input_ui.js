@@ -9,6 +9,13 @@ function check(label, got, want) {
 }
 const shell = fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
 const routes = fs.readFileSync("D:/AltaScraper/routes/input_routes.py", "utf8");
+// WHERE THE SHEET-FINDING LIVES NOW. It was written out inside the import route,
+// and then Generate needed exactly the same thing -- open the account's sheet,
+// resolve the tab by gid, read it with the generator's own reader. Two copies
+// would be two opinions about which sheet an account's products come from, and
+// that kind of disagreement is invisible until listings appear in the wrong
+// place. It moved to data/input_import.py and both callers use it (Rule 12).
+const impl = fs.readFileSync("D:/AltaScraper/data/input_import.py", "utf8");
 
 console.log("=== one definition, two editors ===");
 check("the row is built in one place",
@@ -51,16 +58,28 @@ check("failures show the server's reason",
       /esc\(\(j&&j\.error\)\|\|"failed"\)/.test(shell), true);
 
 console.log("\n=== the server finds the sheet wherever it is configured ===");
-check("an account's own input sheet", /acc\.get\("input_spreadsheet_id"\)/.test(routes), true);
+check("an account's own input sheet",
+      /account\.get\("input_spreadsheet_id"\)/.test(impl), true);
 check("the Dropshipping workspace's own keys",
-      /dropshipping_input_spreadsheet_id/.test(routes), true);
-check("  including its tab", /dropshipping_input_tab_gid/.test(routes), true);
+      /dropshipping_input_spreadsheet_id/.test(impl), true);
+check("  including its tab", /dropshipping_input_tab_gid/.test(impl), true);
 check("and the app-wide default last",
-      /cfg\.get\("input_spreadsheet_id"\)/.test(routes), true);
+      /cfg\.get\("input_spreadsheet_id"\)/.test(impl), true);
 check("a missing sheet is a clear refusal, not a crash",
-      /has no input sheet configured/.test(routes), true);
+      /has no input sheet configured/.test(impl), true);
+// The point of moving it: Generate no longer tells you to press Import, it
+// imports. Both paths call the same function.
+check("the import route calls the shared one",
+      /import_for_workspace\(/.test(routes), true);
+const listing = fs.readFileSync("D:/AltaScraper/routes/listing_routes.py", "utf8");
+check("  and so does Generate, when the queue is empty",
+      /import_for_workspace\(/.test(listing), true);
+check("  saying so in the run log rather than silently",
+      /the queue is empty/.test(listing), true);
+// "Import failed" on an account with several sheets configured sends you
+// looking through all of them.
 check("a failed read names WHICH sheet",
-      /Could not read the input sheet \(%s\)/.test(routes), true);
+      /Could not read the input sheet \(%s/.test(impl), true);
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

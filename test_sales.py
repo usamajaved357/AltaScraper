@@ -131,11 +131,27 @@ check("availability answers", j["ok"], True)
 check("  naming the workspace", j["workspace"], WS)
 
 j = c.get("/sales/summary?start=2026-08-01&end=2026-08-02").get_json()
-check("summary returns four cards", len(j["cards"]), 4)
-check("  in the Orbit order",
-      [x["label"] for x in j["cards"]], ["Revenue", "Orders", "Units", "Ad Spend"])
+_labels = [x["label"] for x in j["cards"]]
+# PROFIT AND MARGIN ARE CARDS NOW. They were already being calculated -- the
+# totals carried profit and margin_pct all along -- and the cards showed only
+# revenue, orders, units and ad spend, so the screen worked out the one number
+# the business runs on and then did not display it.
+check("summary returns the full card row",
+      _labels,
+      ["Revenue", "Net of VAT", "Profit", "Margin", "Stock cost",
+       "Amazon fees", "Orders", "Units", "Refunds", "Ad Spend"])
+# The order is the order the question gets asked in: what came in, what was
+# left, on what margin, off how many units.
+check("  revenue first", _labels[0], "Revenue")
+check("  profit and margin sit together, before the volume counts",
+      _labels.index("Margin") - _labels.index("Profit"), 1)
+check("  and both come before Units", _labels.index("Margin") < _labels.index("Units"), True)
 check("  revenue card carries the total", j["cards"][0]["value"], 600.0)
-check("  ad spend is None, not 0", j["cards"][3]["value"], None)
+_by = {x["label"]: x for x in j["cards"]}
+check("  ad spend is None, not 0", _by["Ad Spend"]["value"], None)
+# A margin is a percentage; formatting it as money would put a currency symbol
+# in front of "20".
+check("  margin is typed as a percentage", _by["Margin"]["kind"], "pct")
 check("  and the page is told ads are not connected", j["ads_connected"], False)
 check("the comparison window is the SAME LENGTH just before",
       (j["compared_to"]["start"], j["compared_to"]["end"]),

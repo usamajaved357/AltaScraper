@@ -54,6 +54,10 @@ function _sShort(v, kind, cur){
   if(v===null||v===undefined) return "—";
   const n=Number(v); if(!isFinite(n)) return "—";
   const sym = kind==="money" ? _sCur(cur) : "";
+  // A margin is a percentage and belongs to one decimal: rounding 20.4% to
+  // "20" throws away the difference between a healthy month and a thin one,
+  // and shortening it to "20k" would be nonsense.
+  if(kind==="pct") return n.toFixed(1)+"%";
   const a=Math.abs(n);
   if(a>=1e6) return sym+(n/1e6).toFixed(1)+"m";
   if(a>=1e4) return sym+(n/1e3).toFixed(1)+"k";
@@ -466,8 +470,20 @@ function salesDrawCards(sum, av){
   host.innerHTML = (sum.cards||[]).map(function(c){
     const missing = (c.value===null||c.value===undefined);
     const adsOff = (c.key==="spend" && !sum.ads_connected);
-    return '<div class="stat-card'+(missing?" is-empty":"")+'">'
-      + '<p class="stat-number">'+_sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
+    // PROFIT AND MARGIN READ AT A GLANCE. They are the two numbers the business
+    // runs on, and a loss has to be obvious without reading the minus sign.
+    const isProfit = (c.key==="profit" || c.key==="margin_pct");
+    const neg = isProfit && Number(c.value) < 0;
+    const col = missing ? "" :
+      (neg ? ";color:var(--red)" :
+       isProfit ? ";color:var(--ok,#8fd694)" : "");
+    return '<div class="stat-card'+(missing?" is-empty":"")+'"'
+      + (isProfit ? ' title="Revenue after Amazon\'s fees, refunds and what the '
+                    + 'stock cost. Withheld entirely when any unit shipped has no '
+                    + 'recorded cost — a partial cost only ever flatters."' : '')
+      + '>'
+      + '<p class="stat-number" style="'+col.replace(/^;/,"")+'">'
+      + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
       + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
       + (adsOff
           ? '<p class="stat-delta cc" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'

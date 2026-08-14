@@ -51,47 +51,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
             acc = _active_account()
         except Exception:
             acc = None
-        cfg = _cfg() or {}
-        # THREE places an input sheet can be configured, in priority order:
-        #   the account's own            -- a real workspace
-        #   dropshipping_*               -- the built-in Dropshipping workspace,
-        #                                   which has no account object and keeps
-        #                                   its sheets under its own config keys
-        #   the app-wide default         -- what everything used before accounts
-        # Missing the middle one would have made Import silently read the WRONG
-        # sheet for Dropshipping, or refuse when a sheet was plainly configured.
-        if acc:
-            sid = str(acc.get("input_spreadsheet_id") or "").strip()
-            gid = str(acc.get("input_tab_gid") or "").strip()
-        else:
-            sid = str(cfg.get("dropshipping_input_spreadsheet_id")
-                      or cfg.get("input_spreadsheet_id") or "").strip()
-            gid = str(cfg.get("dropshipping_input_tab_gid") or "").strip()
-        if not sid:
-            return jsonify({"ok": False, "error":
-                            "This workspace has no input sheet configured. Open "
-                            "Account & sheets and paste the input sheet link."}), 400
-
-        try:
-            if _client is None:
-                raise RuntimeError("no Google client is configured")
-            gc = _client()
-            sh = gc.open_by_key(sid)
-            ws = None
-            if gid.isdigit():
-                try:
-                    ws = sh.get_worksheet_by_id(int(gid))
-                except Exception:
-                    ws = None
-            if ws is None:
-                ws = sh.get_worksheet(0)
-            added, updated, total = _ii.import_from_worksheet(CONFIG_PATH, wsid, ws)
-        except Exception as e:
-            # Say which sheet failed. "Import failed" on an account with several
-            # sheets configured sends you looking through all of them.
-            return jsonify({"ok": False,
-                            "error": "Could not read the input sheet (%s): %s"
-                                     % (sid[:12] + "…", str(e)[:200])}), 502
+        # The one copy, shared with the generate path -- see
+        # data/input_import.import_for_workspace.
+        added, updated, total, err = _ii.import_for_workspace(
+            CONFIG_PATH, wsid, acc, _cfg() or {}, _client)
+        if err:
+            return jsonify({"ok": False, "error": err}), 502
 
         return jsonify({"ok": True, "workspace": wsid, "added": added,
                         "updated": updated, "read": total,
