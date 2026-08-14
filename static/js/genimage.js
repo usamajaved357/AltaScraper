@@ -27,6 +27,79 @@ function _refCandidates(it){
   out.forEach(function(u){ if(u && !seen[u]){ seen[u]=1; uniq.push(u); } });
   return uniq;
 }
+// ONE way to ask for an edit of an already-generated image (Rule 12).
+//
+// There were three call sites and they disagreed. Only one of them sent
+// original_reference -- the ORIGINAL product photo, which the server attaches as
+// a second reference and treats as the source of truth for the product itself.
+// From the other two the model had only the picture it was editing, so each
+// round drifted a little further from the real product: the label text softened,
+// colours shifted, and after a few edits it plainly "knew nothing about the
+// product". It genuinely did not.
+//
+// Every caller now goes through here, so the original photo can never be
+// forgotten by one button and remembered by another.
+async function refineImage(opts){
+  const o = opts || {};
+  const sku = o.sku || "";
+  const it = o.item || _itemForSku(sku);
+  const payload = {
+    image: o.image,
+    original_reference: o.original_reference || _refImgForItem(it) || "",
+    instruction: String(o.instruction || "").trim(),
+    kind: o.kind || "main",
+    title: o.title || (it && it.title) || sku || "",
+    text_provider: (window.AI_TEXT || null),
+    image_provider: (window.AI_IMAGE || null),
+  };
+  const r = await fetch("/genimage/refine", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)});
+  return await r.json();
+}
+
+// ---- what this SKU already has --------------------------------------------
+// One reader for the media library, used by the "you already have these"
+// warning and by the picker that chooses an image to push (Rule 12).
+// /media/list?sku= tags each file with a `group`: "" for the ordinary images
+// and "aplus/basic" etc for A+ modules, which is how the two are told apart.
+async function skuMedia(sku){
+  const out = {images: [], aplus: [], all: []};
+  if(!sku) return out;
+  try{
+    const j = await (await fetch("/media/list?sku="+encodeURIComponent(sku))).json();
+    const folder = ((j && j.folders) || [])[0];
+    (folder ? folder.files || [] : []).forEach(function(f){
+      out.all.push(f);
+      if(String(f.group||"").indexOf("aplus") === 0) out.aplus.push(f);
+      else out.images.push(f);
+    });
+  }catch(e){}
+  return out;
+}
+
+// Ask before making a second set. Generating again is not free and it does not
+// replace anything -- the old files stay, so it is easy to end up with four
+// near-identical images and no idea which is the current one. The warning names
+// what is already there rather than asking a vague "are you sure?".
+async function confirmIfExisting(skus, kind){
+  const list = (skus || []).filter(Boolean);
+  if(!list.length) return true;
+  let hits = [];
+  for(const sku of list.slice(0, 12)){
+    const m = await skuMedia(sku);
+    const n = (kind === "aplus") ? m.aplus.length : m.images.length;
+    if(n) hits.push(sku + " (" + n + ")");
+  }
+  if(!hits.length) return true;
+  const what = (kind === "aplus") ? "A+ module image" : "image";
+  return confirm(
+    "These already have " + what + "s:\n\n  " + hits.join("\n  ") + "\n\n"
+    + "Generating again ADDS a new set — it does not replace the old ones, and "
+    + "nothing is deleted. You will have both, and will need to pick which to use.\n\n"
+    + "Generate anyway?");
+}
+
 async function openStudioSingle(sku){
   const it=_itemForSku(sku);
   STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), recipes:[], results:{} };
@@ -430,6 +503,7 @@ async function studioRunSecondary(){
   });
   const total=jobs.length;
   if(total>4 && !confirm("This will generate "+total+" secondary image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+roles.length+" image(s)).\nEach is a paid OpenRouter call. Continue?")) return;
+  if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   studioRunBackground("secondary", jobs, total);
 }
 
@@ -517,6 +591,7 @@ async function studioRunAplus(){
   });
   const total=jobs.length;
   if(total>4 && !confirm("This will generate "+total+" A+ module image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+mods.length+" module(s)).\nEach is a paid OpenRouter call. Continue?")) return;
+  if(!await confirmIfExisting(STUDIO.skus, "aplus")) return;
   studioRunBackground("aplus", jobs, total);
 }
 function _aplusAddResult(job, j, grid){
@@ -804,5 +879,6 @@ async function studioRun(mode){
   });
   const total=jobs.length;
   if(total>4 && !confirm("This will generate "+total+" image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s)"+(mode==="creative"?" × 3 variations":"")+").\nEach is a paid OpenRouter call. Continue?")) return;
+  if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   studioRunBackground(mode==="creative"?"creative":"recipe", jobs, total);
 }

@@ -76,10 +76,10 @@ async function editListingImage(sku, url, idx){
   toast("Editing image…");
   try{
     var r=(ROWS||[]).find(x=>String(x.sku)===String(sku));
-    var res=await (await fetch("/genimage/refine",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({image:url, instruction:instruction.trim(),
-        title:(r&&r.title)||"", kind:"main",
-        text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null)})})).json();
+    // refineImage (genimage.js) attaches the ORIGINAL product photo. This call
+    // used to omit it, so the edit had nothing anchoring the real product.
+    var res=await refineImage({sku:sku, item:r, image:url, kind:"main",
+                               instruction:instruction, title:(r&&r.title)||""});
     if(!res.ok){ toast("Edit failed: "+(res.error||"unknown")); return; }
     var sv=await (await fetch("/media/upload",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({sku:sku, data:res.data_url, kind:"generated"})})).json();
@@ -103,10 +103,8 @@ async function editMediaImage(url, sku){
   try{
     // the refine endpoint accepts a URL or data-url as the base image
     var it=_itemForSku(sku);
-    var res=await (await fetch("/genimage/refine",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({image:url, instruction:instruction.trim(),
-        title:(it&&it.title)||"", kind:"main",
-        text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null)})})).json();
+    var res=await refineImage({sku:sku, item:it, image:url, kind:"main",
+                               instruction:instruction, title:(it&&it.title)||""});
     if(!res.ok){ toast("Edit failed: "+(res.error||"unknown")); return; }
     // save the edited image back into the same SKU's media library
     var sv=await (await fetch("/media/upload",{method:"POST",headers:{"Content-Type":"application/json"},

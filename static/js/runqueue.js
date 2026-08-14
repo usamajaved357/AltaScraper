@@ -68,7 +68,7 @@ function _rqFinish(st, P, sku, mode){
   if(!verdict){ P.verdict.innerHTML='<span class="rwarn">Finished, but no result line was found for this SKU. Open the log below to read exactly what happened.</span>'; return; }
   if(verdict.kind==="nocreds"){ P.verdict.innerHTML='<span class="rbad">✗ No SP-API credentials for this account/marketplace.</span> Add them in the account editor before publishing.'; return; }
   if(verdict.kind==="missing"){
-    P.verdict.innerHTML='<div class="rbad">✗ This row is missing a SKU or Product Type in the sheet.</div>'
+    P.verdict.innerHTML='<div class="rbad">✗ This row is missing a SKU or Product Type.</div>'
       +'<div class="ramz">'+esc(verdict.raw.trim())+'</div>'
       +'<div class="rhint">Fill both <b>SKU</b> and <b>Product Type</b>, then Preview again.</div>';
     return;

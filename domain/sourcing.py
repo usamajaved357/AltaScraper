@@ -83,6 +83,20 @@ FAILED  = "failed"       # we learned nothing at all
 
 DEFAULT_REFERRAL_RATE = 0.15
 
+# What a marketplace charges in. Used to refuse a supplier quoting in another
+# currency, which would otherwise be the quietest way to lose money here: a
+# supplier at "10.00" USD read as though it were GBP looks about 20% cheaper
+# than it is, so the floor comes out 20% low and the listing is underpriced --
+# with every guard in this module agreeing that the number is fine, because the
+# arithmetic IS fine. Only the units are wrong.
+CURRENCY_FOR = {
+    "UK": "GBP", "US": "USD", "CA": "CAD", "MX": "MXN", "BR": "BRL",
+    "DE": "EUR", "FR": "EUR", "IT": "EUR", "ES": "EUR", "NL": "EUR",
+    "BE": "EUR", "IE": "EUR", "AT": "EUR", "PL": "PLN", "SE": "SEK",
+    "TR": "TRY", "AE": "AED", "SA": "SAR", "EG": "EGP", "IN": "INR",
+    "JP": "JPY", "AU": "AUD", "SG": "SGD",
+}
+
 DEFAULT_RULE = {
     "strategy":             "cheapest",   # 'cheapest' | 'fastest' | 'priority'
     "require_in_stock":     1,
@@ -95,6 +109,11 @@ DEFAULT_RULE = {
     "shipping_label":       _pricing.PRICING_RULE_SHIPPING_LABEL,
     "ads_margin":           _pricing.PRICING_RULE_ADS_MARGIN,
     "min_profit":           _pricing.PRICING_RULE_MIN_PROFIT,
+    # What this listing sells in. Set from the marketplace by source_run.py; a
+    # supplier quoting anything else is refused rather than silently converted
+    # at 1:1. None disables the check, which is only right where every source is
+    # known to quote in the listing's own currency.
+    "currency":             None,
     "min_price":            None,         # absolute floor, whatever the maths says
     "max_price":            None,         # absolute ceiling
     "max_change_pct":       25.0,         # a bigger jump than this waits for a human
@@ -201,6 +220,18 @@ def usable(source, check, rule, now):
     cost = landed_cost(check)
     if cost is None:
         return False, "price or postage unknown"
+
+    # Units, not arithmetic. Nothing downstream can catch this: a USD figure
+    # treated as GBP produces a floor that is internally consistent and about a
+    # fifth too low. Refused outright rather than converted, because a stale or
+    # invented exchange rate would be a second way to be confidently wrong.
+    want_cur = str(rule.get("currency") or "").upper()
+    got_cur = str(check.get("currency") or "").upper()
+    if want_cur and got_cur and got_cur != want_cur:
+        return False, ("priced in %s, but this listing sells in %s"
+                       % (got_cur, want_cur))
+    if want_cur and not got_cur:
+        return False, "the supplier's currency is unknown"
 
     if rule["require_in_stock"]:
         if check.get("in_stock") is None:

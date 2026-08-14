@@ -190,6 +190,22 @@ function domSandbox(listJson) {
   check("_uarg never emits a bare double quote", /"/.test(awkward), false);
   check("  and escapes a single quote for JS", awkward.indexOf("\\'") > 0, true);
 
+  console.log("\n=== no other screen builds a handler the same broken way ===");
+  // The Users screen was not the only place: "Use as main" in the image library
+  // had it too, and rendered perfectly while doing nothing. A double-quoted
+  // onclick with JSON.stringify inside it is always this bug, so the whole
+  // static/js tree is scanned rather than trusting that the two known cases were
+  // all of them. onclick='...' with SINGLE quotes is fine and is left alone.
+  const dir = "D:/AltaScraper/static/js";
+  const offenders = [];
+  for (const fn of fs.readdirSync(dir).filter((f) => f.endsWith(".js"))) {
+    const text = fs.readFileSync(dir + "/" + fn, "utf8");
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (/onclick="[^"]*JSON\.stringify/.test(line)) offenders.push(fn + ":" + (i + 1));
+    });
+  }
+  check("no double-quoted onclick uses JSON.stringify", offenders, []);
+
   console.log("\nFAILURES: " + fails);
   process.exit(fails ? 1 : 0);
 })();

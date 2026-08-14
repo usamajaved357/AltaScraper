@@ -181,7 +181,7 @@ function showSecondaryResults(images, skus, live){
   }
   const note = live
     ? "These are generated as a shared set. Download each, then upload to your live listings via Amazon → Manage Images (live listings can't be image-updated automatically)."
-    : "Applied to the selected draft SKUs and saved to the sheet.";
+    : "Applied to the selected draft SKUs and saved to "+storeName()+".";
   host.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
     + '<b style="font-size:13px">Secondary images ('+images.length+')</b>'
     + '<button onclick="document.getElementById(\'secresults\').remove()" style="background:none;border:none;color:var(--accent2);cursor:pointer;font-size:16px">✕</button></div>'
@@ -253,7 +253,7 @@ async function rescanFlags(){
     `${lines}${more}\n\n`+
     `Only Status, Notes, Compliance Risk and IP Risk are written.\n`+
     `Your copy, prices and SKUs are NOT touched, and APPROVED / LIVE / ERROR\n`+
-    `rows are skipped entirely.\n\nApply these changes to the sheet?`);
+    `rows are skipped entirely.\n\nApply these changes to ${storeName()}?`);
   if(!ok){ toast("Nothing written"); return; }
 
   try{

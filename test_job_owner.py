@@ -126,8 +126,21 @@ from auth.guard import required_permission
 check("/genimage/jobs_active needs edit",
       required_permission("/genimage/jobs_active", "GET"), "edit")
 check("/preview/jobs needs edit", required_permission("/preview/jobs", "GET"), "edit")
-check("  and /genimage/start still needs edit",
-      required_permission("/genimage/start_batch", "POST"), "edit")
+# Starting an image job no longer needs the `edit` PERMISSION -- that one is for
+# rewriting listing drafts, and requiring it here meant "may design images" could
+# not be granted without also granting "may rewrite listings". Generating is now
+# gated by the Images FEATURE at edit level instead, which is a real gate and not
+# an absence of one: test_image_permissions.py proves a user with images=none or
+# images=view is refused. What must NOT happen is it becoming open to everyone.
+from auth.guard import feature_for, check as guard_check
+check("  starting a job needs no listing-editing permission",
+      required_permission("/genimage/start_batch", "POST"), None)
+check("  but the Images area still gates it",
+      feature_for("/genimage/start_batch"), "images")
+_viewer = {"role": "viewer", "permissions": [], "active": True,
+           "features": {"images": "view"}, "workspaces": ["*"]}
+check("  and read-only access cannot start one",
+      guard_check("/genimage/start_batch", "POST", _viewer, {})[0], False)
 
 shutil.rmtree(TMP, ignore_errors=True)
 print("\nFAILURES: %d" % len(fails))

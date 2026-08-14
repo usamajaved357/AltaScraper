@@ -102,7 +102,7 @@ function LOGIC_REGISTRY(){
       `<b>Pulls your live listings from Amazon.</b> <code>/live/catalog</code> requests a Reports-API report (<code>GET_MERCHANT_LISTINGS_ALL_DATA</code>) for the connected account + marketplace, then parses each row.`,
       `<b>Reads real fields per listing.</b> From the report it captures SKU, ASIN, title, price, quantity, status, brand, and — importantly — <code>fulfillment-channel</code> (FBA/FBM) and <code>merchant-shipping-group</code>.`,
       `<b>Caches briefly</b> so re-opening is instant. A normal load reuses a recent report/cache; it does <i>not</i> hit Amazon every time.`,
-      `<b>Drafts vs Live vs All</b> just filters what's shown — Drafts are from your sheet, Live are pulled from Amazon, All merges both.` ]},
+      `<b>Drafts vs Live vs All</b> just filters what's shown — Drafts are the ones this app holds, Live are pulled from Amazon, All merges both.` ]},
     grid_enrich: { title:"How each card gets its image, title, FBA/FBM & shipping", steps:[
       `<b>Enriches in batches.</b> <code>/live/images</code> calls <code>getListingsItem</code> with <code>includedData="summaries,issues,fulfillmentAvailability,attributes"</code> for the visible SKUs.`,
       `<b>Pulls the real main image and live title</b> (from <code>summaries</code>) — so the title reflects any edit you made immediately, not the cached report.`,
@@ -264,20 +264,15 @@ async function studioRefine(cardId){
   if(r&&r.kind){ kind = (r.kind==="concept")?"main":(r.kind==="aplus"?"aplus":(r.kind==="secondary"?"secondary":"main")); }
   const card=document.getElementById(cardId);
   if(card){ card.innerHTML='<div class="srescap"><span class="genspin"></span> refining…</div>'; }
-  // attach the ORIGINAL product reference so the edit can't drift the real product
-  let origRef="";
+  // The studio may be working on a batch, so fall back to the first item it
+  // holds when the SKU is not in the grid. refineImage (genimage.js) attaches
+  // the ORIGINAL product photo so the edit cannot drift the real product.
+  let it=null;
+  try{ it=_itemForSku(cur.sku||"") || (STUDIO.items&&STUDIO.items[0]); }catch(e){}
   try{
-    const sku=cur.sku||"";
-    const it=_itemForSku(sku) || (STUDIO.items&&STUDIO.items[0]);
-    origRef=_refImgForItem(it)||"";
-  }catch(e){}
-  const payload={
-    image:cur.data_url, original_reference:origRef, instruction:instruction.trim(), kind:kind,
-    title:(cur.sku||""), text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null)
-  };
-  try{
-    const j=await (await fetch("/genimage/refine",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(payload)})).json();
+    const j=await refineImage({sku:(cur.sku||""), item:it, image:cur.data_url,
+                               kind:kind, instruction:instruction,
+                               title:(cur.sku||"")});
     if(j&&j.ok&&j.data_url){
       try{ await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({sku:cur.sku||"", data_url:j.data_url})}); }catch(e){}

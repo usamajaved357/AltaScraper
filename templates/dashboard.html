@@ -69,6 +69,7 @@
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
 
     <!-- Tools moved down from the top bar, per the Orbit layout: they are
@@ -448,6 +449,14 @@
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_sourcing" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-arrows-down-up"></i> Repricer</h2>
+        <div class="sub">Follows your suppliers: when their price moves, yours moves; when they run out, the listing goes out of stock; when they slow down, the handling time stretches. Only SKUs you enrol here are ever touched, and right now it is in <b>dry run</b> &mdash; it decides and records, and changes nothing.</div></div>
+      </div>
+      <div id="srcbody" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_monitor" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
@@ -662,6 +671,7 @@
 <script src="/static/js/handling.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/pastelisting.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/monitor.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/sourcing.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

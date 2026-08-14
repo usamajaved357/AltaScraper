@@ -41,7 +41,13 @@ _LOCK = threading.RLock()
 # Every permission is a thing a person can DO. Reading is not on this list:
 # anyone with an account can look. These are the actions worth withholding.
 PERMISSIONS = {
-    "edit":            "Create and edit drafts, generate copy and images",
+    "edit":            "Create and edit listing drafts and copy",
+    # Making an image and KEEPING one are different acts. Generating is governed
+    # by the Images area alone (set it to "View & edit"), so this permission is
+    # what lets someone save a generated image into the library, upload their own
+    # file, or delete one -- "may design, may not add or remove files" is a real
+    # arrangement and used to be impossible to express.
+    "upload_images":   "Save, upload and delete images in the library",
     "approve_delete":  "Approve, hold and delete listings",
     "publish":         "Publish and push changes live to Amazon",
     "ppc":             "Change PPC campaigns, bids and budgets",
@@ -52,9 +58,13 @@ PERMISSIONS = {
 # Roles are presets, not a separate mechanism -- picking a role fills in the
 # permission list, which remains individually editable afterwards.
 ROLES = {
-    "owner":   ["edit", "approve_delete", "publish", "ppc", "manage_accounts", "manage_users"],
-    "manager": ["edit", "approve_delete", "publish", "ppc"],
-    "lister":  ["edit"],
+    "owner":   ["edit", "upload_images", "approve_delete", "publish", "ppc",
+                "manage_accounts", "manage_users"],
+    "manager": ["edit", "upload_images", "approve_delete", "publish", "ppc"],
+    # A lister keeps what they had: drafts and the image library. Take
+    # upload_images away and they can still design images but not keep them;
+    # take `edit` away and they can work on images without touching listings.
+    "lister":  ["edit", "upload_images"],
     "viewer":  [],
 }
 
@@ -303,7 +313,12 @@ def create_user(config_path, email, name="", role="lister", permissions=None,
         role = role if role in ROLES else "lister"
         perms = permissions if isinstance(permissions, list) else ROLES[role]
         perms = [p for p in perms if p in PERMISSIONS]
-        ws = workspaces if isinstance(workspaces, list) and workspaces else [ALL_WORKSPACES]
+        # An EMPTY list means "no workspaces", not "every workspace". It used to
+        # mean the latter: `... and workspaces else [ALL_WORKSPACES]` turned a
+        # cleared selection into the wildcard, so unticking every box to lock
+        # someone down granted them the whole estate instead. Only workspaces=None
+        # -- the field not supplied at all -- still defaults to the wildcard.
+        ws = workspaces if isinstance(workspaces, list) else [ALL_WORKSPACES]
         token = secrets.token_urlsafe(32)
         user = {
             "id": _new_id(),
@@ -414,7 +429,11 @@ def update_user(config_path, user_id, **fields):
                 u["features"] = {f: lvl for f, lvl in fields["features"].items()
                                  if f in FEATURES and lvl in LEVELS}
             if "workspaces" in fields and isinstance(fields["workspaces"], list):
-                u["workspaces"] = [str(w) for w in fields["workspaces"]] or [ALL_WORKSPACES]
+                # Same fail-open as create_user had: `or [ALL_WORKSPACES]` turned
+                # "I unticked everything" into "give them everything". An empty
+                # list is now stored as an empty list, which shows on screen as
+                # no access and is trivially fixable -- unlike silent full access.
+                u["workspaces"] = [str(w) for w in fields["workspaces"]]
             if "active" in fields:
                 u["active"] = bool(fields["active"])
             if _lost_last_manager(had_manager, data):

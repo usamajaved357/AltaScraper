@@ -309,8 +309,34 @@ def sourcing_check(workspace_id=None):
     return _sfetch.sweep(config_path, cfg, workspace_id=workspace_id)
 
 
+def sourcing_apply(workspace_id=None):
+    """Push price/stock/handling changes for SKUs that have been ARMED.
+
+    Does nothing at all unless the master switch is on AND a SKU has been moved
+    out of dry run AND that SKU has a minimum price -- three separate deliberate
+    acts. domain/source_apply.py owns every one of those gates; this job supplies
+    the credentials and nothing else, so there is no path to Amazon that skips
+    them by coming in through the timer.
+    """
+    from domain import source_apply as _sapply
+    from domain import accounts as _acc
+    app, config_path, cfg = _need("app", "config_path", "cfg")
+    c = cfg() if callable(cfg) else cfg
+
+    def creds_for(ws, mkt):
+        for a in (c.get("accounts") or []):
+            if str(a.get("id")) == str(ws):
+                return (_acc.account_creds(a), _acc.marketplace_id(mkt),
+                        str(a.get("seller_id") or ""))
+        raise RuntimeError("no account called %s" % ws)
+
+    return _sapply.run_live(config_path, cfg, creds_for, workspace_id=workspace_id)
+
+
 register_job("sourcing_check", sourcing_check, hours=4,
              description="Re-read supplier prices and stock for enrolled SKUs")
+register_job("sourcing_apply", sourcing_apply, hours=4,
+             description="Push repricer changes for armed SKUs (off unless armed)")
 register_job("sales_sync", sales_sync, hours=6,
              description="Pull daily sales and traffic from Amazon")
 register_job("catalog_sync", catalog_sync, hours=6,

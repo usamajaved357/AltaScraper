@@ -46,11 +46,21 @@ function _uesc(s){
 //
 // So: quote for JavaScript with SINGLE quotes, then escape for the HTML
 // attribute. The browser un-escapes the entities first, leaving valid JS.
-function _uarg(s){
+//
+// (onclick='...' with SINGLE quotes is fine and a few screens do that. This is
+// for the double-quoted majority.)
+//
+// It lives here, in the file whose bug it was and whose tests cover it, and is
+// exported under the neutral name jsArg because the same fault turned up in the
+// image library's "Use as main". Classic scripts share one global scope and
+// these are only ever called from a click, so load order does not matter --
+// but keeping the definition where the test loads it does.
+function jsArg(s){
   const js = String(s==null?"":s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
   return "'" + js.replace(/&/g,"&amp;").replace(/"/g,"&quot;")
                  .replace(/</g,"&lt;").replace(/>/g,"&gt;") + "'";
 }
+function _uarg(s){ return jsArg(s); }        // the name this file already used
 
 // ---- who am I -----------------------------------------------------------
 // Drives the top bar. Runs on every page load; failures are silent because a

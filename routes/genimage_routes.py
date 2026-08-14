@@ -398,10 +398,18 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         _ciR = (b.get("custom_instructions", "") or "").strip() or _load_img_instructions()
         if _ciR:
             brief = brief + "\n\nAlso keep honoring these standing rules where relevant (do not let them override the requested change): " + _ciR
+        # READ THE PRODUCT. This was off, and it is why refine felt like it knew
+        # nothing about the item: with read_product=False the pipeline skips the
+        # vision stage entirely, so no EXACT PRODUCT SPEC is ever folded into the
+        # brief and the prompt AI rewrites the picture from the instruction alone.
+        # The spec is read from the ORIGINAL product photo where we have one --
+        # reading it from the generated image would describe a copy of a copy and
+        # let every edit compound the last one's mistakes.
         res = ai_providers.run_pipeline(
             _cfg(), brief=brief, reference_image=base_image, product_title=title,
             text_provider=tprov, image_provider=iprov, image_kind=kind,
-            read_product=False, strength=_strength, extra_reference=orig_ref)
+            read_product=True, spec_image=(orig_ref or base_image),
+            strength=_strength, extra_reference=orig_ref)
         if not res.get("ok"):
             return jsonify(res), 400
         return _imgresult(res, extra={"refined": True, "instruction": instruction})
