@@ -192,6 +192,32 @@ check("  and every row of it is unapplied",
       all(a["applied"] == 0 for a in lg["actions"]), True)
 
 
+print("\n=== enrolling is a PICK from what is live, not a typed SKU ===")
+# A typed SKU with a typo in it enrols a product that does not exist: the sweep
+# finds no sources, the row never decides anything, and nothing says it was wrong.
+cand = c.get("/sourcing/candidates").get_json()
+check("it lists this account's live listings", cand["ok"], True)
+skus = [i["sku"] for i in cand["items"]]
+check("  including the enrolled one", SKU in skus, True)
+check("  and the FBA one, marked so it can be skipped knowingly",
+      FBA_SKU in skus, True)
+row = [i for i in cand["items"] if i["sku"] == SKU][0]
+check("  showing it is already enrolled", row["enrolled"], True)
+check("  and how many suppliers it has", row["sources"], 3)   # 1 + the 2 added above
+check("  with the fulfilment channel, so FBA is visible before enrolling",
+      [i for i in cand["items"] if i["sku"] == FBA_SKU][0]["fulfillment"], "AFN")
+check("enrolled ones sort first", cand["items"][0]["enrolled"], True)
+check("filtering by sku works",
+      [i["sku"] for i in c.get("/sourcing/candidates?q=" + SKU[:8]).get_json()["items"]],
+      [SKU])
+check("  and by title", len(c.get("/sourcing/candidates?q=zzzznope").get_json()["items"]), 0)
+from auth import guard as _g0
+check("reading the list of candidates is open, like the rest of the view",
+      _g0.required_permission("/sourcing/candidates", "GET"), None)
+check("  but enrolling one still needs publish",
+      _g0.required_permission("/sourcing/enrol", "POST"), "publish")
+
+
 print("\n=== permissions: looking is open, changing needs publish ===")
 from auth import guard
 def needs(path, method="POST"):

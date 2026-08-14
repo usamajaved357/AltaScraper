@@ -233,6 +233,14 @@ function _ilDraw(){
              // The button rendered perfectly and did nothing when pressed.
              : '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
                + 'onclick="ilSetMain(' + jsArg(f.url) + ')">Use as main</button>')
+         // Straight to Amazon, from the image you are looking at. Only for a
+         // listing that is actually live -- there is nothing to update otherwise.
+         + (IMGLIB.live
+             ? '<button class="db-chip" style="margin-top:4px;font-size:10.5px;'
+               + 'background:var(--accent);color:#fff;border-color:var(--accent)" '
+               + 'title="Set this as the main image AND send it to the live listing" '
+               + 'onclick="ilPushThis(' + jsArg(f.url) + ')">Send to Amazon</button>'
+             : '')
          + '</div></div>';
     });
     h += '</div>';
@@ -294,11 +302,37 @@ function ilUpload(inp){
   rd.readAsDataURL(f);
 }
 
+// Push ONE image, named. Getting an image onto Amazon used to be two separate
+// steps -- "Use as main", then "Push main image" -- with nothing saying they had
+// to be done in that order, so picking an image and pressing push sent whatever
+// the main image happened to be already. This does both, and says which image it
+// is sending.
+async function ilPushThis(url){
+  if(!url) return;
+  if(!confirm("Send this image to the live Amazon listing as its MAIN image?\n\n"
+            + "Amazon has to fetch it over the internet, so it must be publicly "
+            + "reachable — the app uses the Drive copy where there is one.\n\n"
+            + "It usually appears within a few minutes.")) return;
+  const st = document.getElementById("il_pushstatus");
+  if(st) st.innerHTML = '<span class="genspin"></span> setting as main…';
+  // Set it first so the app's own copy and Amazon agree; pushing without this
+  // leaves the listing showing one image and the app claiming another.
+  await setMainImage(IMGLIB.sku, url, {quiet:true});   // the option is `quiet`
+  IMGLIB.main = url;
+  await ilPushLive();
+  await openImageLibrary(IMGLIB.sku, IMGLIB.live);
+}
+
 async function ilPushLive(){
   const st = document.getElementById("il_pushstatus");
   const r = (typeof ROWS !== "undefined" && ROWS || []).find(function(x){
     return String(x.sku) === String(IMGLIB.sku);
   });
+  if(!IMGLIB.main){
+    if(st) st.innerHTML = '<span style="color:var(--warn)">Pick an image first — '
+                        + 'use “Send to Amazon” on the one you want.</span>';
+    return;
+  }
   if(st) st.innerHTML = '<span class="genspin"></span> sending to Amazon…';
   try{
     const j = await (await fetch("/listing/push_image", {method:"POST",

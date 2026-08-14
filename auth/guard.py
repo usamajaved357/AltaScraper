@@ -70,6 +70,11 @@ RULES = [
     #    even though no publish happens at the moment the button is pressed.
     ("/sourcing/list",                  None),
     ("/sourcing/log",                   None),
+    # The pick-list is the account's own live listings, which anyone who may see
+    # the Listings screen can already see, plus which of them are enrolled --
+    # which /sourcing/list shows too. Reading it changes nothing; enrolling from
+    # it is a separate call and still needs publish.
+    ("/sourcing/candidates",            None),
     ("/sourcing",                       "publish"),
 
     # -- publishing to Amazon
