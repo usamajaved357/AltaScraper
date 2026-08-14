@@ -123,15 +123,34 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                 continue
             out.append({"sku": sku, "asin": str(it.get("asin") or ""),
                         "title": title, "price": it.get("price"),
+                        # Deciding which products are the same thing in different
+                        # colours is a VISUAL judgement. Doing it from SKUs like
+                        # 10.06_3Days_B0081ZHHTS is guesswork, and a wrong family
+                        # does not fail loudly -- Amazon accepts it and the
+                        # products quietly stop appearing.
+                        "img": str(it.get("img") or ""),
                         "product_type": str(it.get("product_type") or ""),
                         # Already in a family? Then it is not free to join another.
                         "parent_sku": str(it.get("parent_sku") or ""),
                         "variation_theme": str(it.get("variation_theme") or "")})
         out.sort(key=lambda r: r["sku"])
+        # An empty list has more than one cause and they need different actions.
+        # "Press Sync" is the wrong advice when the real problem is that no
+        # marketplace was resolved -- which is what this screen used to do, on an
+        # account with 55 listings already cached.
+        note = ""
+        if not out:
+            if not mkt:
+                note = ("No marketplace could be worked out for this account, so "
+                        "there is nothing to list. Pick one at the top, or set the "
+                        "account's default marketplace under Settings.")
+            elif q:
+                note = "Nothing matches %r in %s." % (q, mkt)
+            else:
+                note = ("No live listings are cached for %s yet — press Sync on "
+                        "the Listings screen first." % (mkt or "this account"))
         return jsonify({"ok": True, "items": out, "count": len(out),
-                        "note": ("" if out else
-                                 "No live listings cached yet — press Sync on the "
-                                 "Listings screen first.")})
+                        "marketplace": mkt, "note": note})
 
     @app.route("/listing/image_slots")
     def listing_image_slots():

@@ -150,9 +150,21 @@ RULES = [
     # -- the generator's input queue. Importing REPLACES what is generated next,
     #    and clearing throws work away, so they are gated accordingly rather than
     #    falling through to the default read rule.
+    # -- changing a live selling price. The preview sends nothing to Amazon, so
+    #    it needs only what seeing a listing needs. Applying changes what buyers
+    #    pay on a real listing, which is publishing.
+    ("/listing/price/preview",          None),
+    ("/listing/price/apply",            "publish"),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),
+    # Adding and changing a queued product is the same act as editing the input
+    # sheet, so "edit". Deleting one throws work away like clearing does, but a
+    # single row rather than the queue -- still a deletion, still gated as one.
+    ("/input/add",                      "edit"),
+    ("/input/update",                   "edit"),
+    ("/input/delete",                   "approve_delete"),
     ("/input/clear",                    "approve_delete"),
 
     # -- sales. The feature gate above already decides who may SEE any of it;

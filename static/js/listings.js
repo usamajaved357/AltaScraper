@@ -1079,6 +1079,8 @@ function liveTableRow(it){
     <td><span class="badge b-LIVE">LIVE</span></td>
     <td>${comp}</td>
     <td><div class="acts">
+      <button class="dotb" title="Change what this sells for on Amazon"
+              onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}',${Number(String(it.price||'').replace(/[^0-9.]/g,''))||0})"><i class="ti ti-currency-pound"></i></button>
       <button class="dotb" title="Optimize this live listing"
               onclick="event.stopPropagation();optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i></button>
       <button class="dotb" title="Generate images for this product"

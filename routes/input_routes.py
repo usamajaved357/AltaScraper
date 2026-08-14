@@ -97,6 +97,63 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
                         "updated": updated, "read": total,
                         **_ii.summary(CONFIG_PATH, wsid)})
 
+    # ---- adding products WITHOUT a spreadsheet ---------------------------
+    # The queue is the same queue an import fills, so a workspace can be fed
+    # from a sheet, by hand, or both, and the generator neither knows nor cares
+    # which. This is what makes the spreadsheet optional rather than merely
+    # imported: paste the links here and press Generate.
+
+    def _product(b):
+        """A posted row, reduced to the columns the queue actually has."""
+        from data import input_import as _ii
+        return {k: str((b or {}).get(k, "") or "").strip() for k in _ii.COLUMNS}
+
+    @app.route("/input/add", methods=["POST"])
+    def input_add():
+        """Queue one product typed into the app."""
+        from data import input_import as _ii
+        b = request.get_json(silent=True) or {}
+        p = _product(b)
+        # SOMETHING has to identify the product. A row with neither a source
+        # link nor an ASIN nor a name cannot be generated from and would sit in
+        # the queue looking like work.
+        if not (p["ebay_url"] or p["amazon_url"] or p["competitor_asin"]
+                or p["item_name"]):
+            return jsonify({"ok": False, "error": (
+                "Give at least a source link, an Amazon link or ASIN, or a "
+                "product name — otherwise there is nothing to generate from.")}), 400
+        wsid = _wsid()
+        rid = _ii.add_row(CONFIG_PATH, wsid, p)
+        return jsonify({"ok": True, "id": rid, "workspace": wsid,
+                        **_ii.summary(CONFIG_PATH, wsid)})
+
+    @app.route("/input/update", methods=["POST"])
+    def input_update():
+        """Change one queued product in place."""
+        from data import input_import as _ii
+        b = request.get_json(silent=True) or {}
+        rid = b.get("id")
+        if not rid:
+            return jsonify({"ok": False, "error": "no row id"}), 400
+        fields = {k: v for k, v in (b or {}).items() if k in _ii.COLUMNS}
+        n = _ii.update_row(CONFIG_PATH, _wsid(), rid, fields)
+        if not n:
+            return jsonify({"ok": False, "error": (
+                "That row is not in this workspace's queue.")}), 404
+        return jsonify({"ok": True, "updated": n})
+
+    @app.route("/input/delete", methods=["POST"])
+    def input_delete():
+        """Remove one queued product."""
+        from data import input_import as _ii
+        b = request.get_json(silent=True) or {}
+        rid = b.get("id")
+        if not rid:
+            return jsonify({"ok": False, "error": "no row id"}), 400
+        n = _ii.delete_row(CONFIG_PATH, _wsid(), rid)
+        return jsonify({"ok": bool(n), "removed": n,
+                        **_ii.summary(CONFIG_PATH, _wsid())})
+
     @app.route("/input/clear", methods=["POST"])
     def input_clear():
         """Empty the queue for this workspace. Deliberately explicit -- an import

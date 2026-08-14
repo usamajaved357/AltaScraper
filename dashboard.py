@@ -3303,6 +3303,13 @@ def build_app(backend=None):
     _finance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # Changing a live selling price by hand. Composes the patch with the SAME
+    # builder the repricer uses, which edits the offer Amazon returned rather
+    # than inventing a purchasable_offer shape (Rule 4 and Rule 12).
+    import routes.price_routes as _price_routes
+    _price_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
+
     # The source repricer. Dry run only: it decides and records, and nothing
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes

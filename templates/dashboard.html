@@ -238,19 +238,24 @@
       <div class="reqnote">Runs here only touch <b id="gen_scope">this workspace's</b> sheet/marketplace — nothing else is affected.</div>
       <div id="targetacct" class="acctbanner">Resolving destination account…</div>
 
-      <!-- INPUT SHEET VIEWER: see the source sheet right here, no need to open Google Sheets -->
+      <!-- THE PRODUCT QUEUE: what Generate will make, added and edited here.
+           This was a read-only view of the Google sheet, so changing anything
+           meant leaving the app. The queue already lived in the database; only
+           the way IN was still a spreadsheet. Importing a sheet still works and
+           fills the SAME queue. -->
       <div id="inputsheetwrap" style="margin-top:18px;border:1px solid var(--line,#2a2f3a);border-radius:10px;overflow:hidden">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2,rgba(255,255,255,.02));flex-wrap:wrap">
-          <b style="font-size:14px"><i class="ti ti-table"></i> Input sheet</b>
+          <b style="font-size:14px"><i class="ti ti-list-check"></i> Products to generate</b>
           <span class="cc" id="inputsheet_meta" style="font-size:12px;opacity:.7"></span>
           <span class="spacer" style="flex:1"></span>
-          <input id="inputsheet_filter" placeholder="Filter rows…" oninput="filterInputSheet()"
-                 style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:160px">
-          <button class="ib" onclick="loadInputSheet()"><i class="ti ti-refresh"></i> Refresh</button>
+          <input id="inputsheet_filter" placeholder="Filter…" oninput="filterInputSheet()"
+                 style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:150px">
+          <button class="ib" onclick="inputQueueLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+          <button class="ib" onclick="inputQueueImport(this)" title="Bring in an input spreadsheet. Adds to this queue; never deletes from it."><i class="ti ti-table-import"></i> Import from sheet</button>
           <a class="ib" id="inputsheet_open" href="#" target="_blank" rel="noopener" style="display:none"><i class="ti ti-external-link"></i> Open in Google Sheets</a>
         </div>
-        <div id="inputsheet_body" style="max-height:520px;overflow:auto">
-          <div class="cc" style="padding:16px;opacity:.6">Click Refresh to load the input sheet.</div>
+        <div id="inputsheet_body" style="max-height:560px;overflow:auto">
+          <div class="cc" style="padding:16px;opacity:.6">Loading…</div>
         </div>
       </div>
     </div>
@@ -756,6 +761,11 @@
 <script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sellerimport.js?v={{ ASSET_V }}"></script>
+<!-- The product queue, which owns loadInputSheet/filterInputSheet outright --
+     shell.js no longer defines them, so load order cannot decide behaviour. -->
+<script src="/static/js/inputqueue.js?v={{ ASSET_V }}"></script>
+<!-- Changing a live selling price: preview, then send exactly that. -->
+<script src="/static/js/priceedit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

@@ -33,22 +33,62 @@ async function variationsLoad(q){
   }
 }
 
+// Where you are, out of how many. Three named steps beat a screen that changes
+// under you with no indication that it was ever going to.
+const VAR_STEPS = ["Pick the products", "Say what differs", "Check and join"];
+
+function _varSteps(now){
+  let h = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
+        + 'margin:0 0 12px">';
+  VAR_STEPS.forEach(function(t, i){
+    const n = i + 1, on = n === now, done = n < now;
+    h += '<span style="display:inline-flex;align-items:center;gap:5px;'
+      +  'font-size:11.5px;padding:4px 9px;border-radius:20px;'
+      +  (on ? 'background:var(--accent);color:#fff;font-weight:600'
+            : done ? 'border:1px solid var(--ok,#8fd694);color:var(--ok,#8fd694)'
+                   : 'border:1px solid #26303f;opacity:.6')
+      +  '">' + (done ? '✓' : n) + ' ' + _vesc(t) + '</span>';
+    if(n < VAR_STEPS.length) h += '<span class="cc" style="opacity:.4">→</span>';
+  });
+  return h + '</div>';
+}
+
 function variationsRender(q){
   const host = document.getElementById("varbody");
-  let h = '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
-    + 'border:1px solid #26303f;border-radius:6px">'
-    + 'Pick the listings that are the same product in different sizes, colours or '
-    + 'styles, say what makes them different, and they become one product on Amazon '
-    + 'with a picker. <b>Nothing is sent until you have seen exactly what would be.</b>'
+
+  // WHAT THIS SCREEN IS, before what to do on it.
+  //
+  // "Variation family", "parent", "theme" and "child" are Amazon's words, not
+  // anybody's ordinary ones, and the screen used to open with all four and a
+  // list of SKUs. Someone who has not met the concept cannot act on that. So:
+  // one concrete example first, then numbered steps, then the list.
+  h += '<div style="font-size:12.5px;margin:2px 0 12px;padding:11px 13px;'
+    + 'border:1px solid #26303f;border-radius:8px;line-height:1.55">'
+    + '<b>What this does.</b> If you sell the same product in several colours or '
+    + 'sizes, each one is its own listing and they compete with each other — '
+    + 'reviews and sales split between them. Joining them makes Amazon show '
+    + '<i>one</i> product with a colour or size picker, and the reviews add up.'
+    + '<div class="cc" style="margin-top:6px">'
+    + 'Example: a ceiling fan in white and in black, listed separately, become one '
+    + 'fan with a colour choice.</div>'
+    + '<div class="cc" style="margin-top:6px">'
+    + '<b>Nothing is sent to Amazon until you have seen exactly what would be.</b> '
+    + 'Amazon accepts a half-finished family without complaining and the products '
+    + 'then quietly stop showing up, so every check runs first.</div>'
     + '</div>';
 
-  h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">'
-    + '<input id="varq" placeholder="filter by SKU or title" value="'+_vesc(q||"")+'" '
+  h += _varSteps(1);
+
+  h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
+    + '<input id="varq" placeholder="Search your listings…" value="'+_vesc(q||"")+'" '
     + 'oninput="variationsFilter(this.value)" style="font-size:12px;padding:5px 8px;min-width:240px">'
-    + '<span class="cc" style="font-size:11.5px">'+VARS.picked.length+' selected</span>'
+    + '<span class="cc" style="font-size:11.5px">'+VARS.picked.length+' picked</span>'
     + (VARS.picked.length>=2
-        ? '<button class="db-chip" onclick="variationsStep2()">Next — describe the family</button>'
-        : '<span class="cc" style="font-size:11px">pick at least two</span>')
+        ? '<button class="db-chip" style="background:var(--accent);color:#fff;'
+          + 'border-color:var(--accent)" onclick="variationsStep2()">'
+          + 'Next: say what makes them different →</button>'
+        : '<span class="cc" style="font-size:11px">Tick at least two products that '
+          + 'are the same thing in different colours or sizes.</span>')
     + '</div>';
 
   if(VARS.note){
@@ -66,9 +106,20 @@ function variationsRender(q){
       +  (on?'background:#12222c':'')+'">'
       +  '<input type="checkbox" '+(on?'checked':'')+' '+(inFamily?'disabled':'')
       +  ' onchange="variationsPick('+jsArg(it.sku)+', this.checked)">'
-      +  '<code style="min-width:150px">'+_vesc(it.sku)+'</code>'
-      +  '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" '
-      +  'title="'+_vesc(it.title)+'">'+_vesc(it.title||"(no title)")+'</span>'
+      // Deciding two products are the same thing in different colours is a
+      // VISUAL judgement. Doing it from SKUs like 10.06_3Days_B0081ZHHTS is
+      // guesswork, and a wrong family does not fail loudly.
+      +  (it.img
+          ? '<img src="'+_vesc(it.img)+'" loading="lazy" alt="" '
+            + 'style="width:40px;height:40px;object-fit:contain;background:#0d1220;'
+            + 'border-radius:5px;flex:0 0 auto">'
+          : '<span style="width:40px;height:40px;border-radius:5px;flex:0 0 auto;'
+            + 'background:#0d1220;display:inline-block"></span>')
+      +  '<span style="flex:1;min-width:0">'
+      +  '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
+      +  'white-space:nowrap" title="'+_vesc(it.title)+'">'
+      +  _vesc(it.title||"(no title)")+'</span>'
+      +  '<code class="cc" style="font-size:10px">'+_vesc(it.sku)+'</code></span>'
       +  (it.product_type ? '<span class="cc">'+_vesc(it.product_type)+'</span>' : '')
       +  (inFamily
           ? '<span class="db-chip" style="opacity:.7" title="Amazon allows one parent per child">already in '+_vesc(it.parent_sku)+'</span>'
@@ -105,7 +156,8 @@ async function variationsStep2(){
   }
   VARS.themes = th.themes || [];
 
-  let h = '<div style="margin-bottom:10px"><button class="db-chip" onclick="variationsRender(\'\')">'
+  let h = _varSteps(2);
+  h += '<div style="margin-bottom:10px"><button class="db-chip" onclick="variationsRender(\'\')">'
         + '← back to the list</button></div>';
   h += '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin-bottom:12px">'
     + '<div style="font-weight:600;font-size:13px;margin-bottom:8px">'
@@ -117,23 +169,36 @@ async function variationsStep2(){
       + '<i class="ti ti-alert-triangle"></i> '+_vesc(th.note)+'</div>';
   }
 
-  h += '<div class="cc" style="font-size:11.5px;margin-bottom:4px">What makes them different?</div>';
+  h += '<div style="font-size:12px;font-weight:600;margin-bottom:2px">'
+    + 'What is different between them?</div>'
+    + '<div class="cc" style="font-size:11px;margin-bottom:5px">'
+    + 'This is what shoppers will choose from — a colour picker, a size picker. '
+    + 'Only the options Amazon allows for this kind of product are listed, because '
+    + 'anything else is rejected or, worse, accepted and ignored.</div>';
   if(VARS.themes.length){
-    h += '<select id="var_theme" style="font-size:12px;padding:5px 8px;min-width:220px">'
-      + '<option value="">— pick one —</option>'
+    h += '<select id="var_theme" onchange="variationsPreview()" '
+      + 'style="font-size:12px;padding:5px 8px;min-width:220px">'
+      + '<option value="">— choose —</option>'
       + VARS.themes.map(t => '<option value="'+_vesc(t)+'">'+_vesc(t)+'</option>').join("")
       + '</select>';
   } else {
-    h += '<input id="var_theme" placeholder="e.g. SIZE" style="font-size:12px;padding:5px 8px;min-width:220px">';
+    h += '<input id="var_theme" placeholder="e.g. SIZE" onchange="variationsPreview()" '
+      + 'style="font-size:12px;padding:5px 8px;min-width:220px">';
   }
 
-  h += '<div class="cc" style="font-size:11.5px;margin:12px 0 4px">'
-    + 'A code for the family itself — nobody buys this one</div>'
-    + '<input id="var_parent" placeholder="parent SKU" style="font-size:12px;padding:5px 8px;min-width:260px">'
-    + '<div class="cc" style="font-size:10.5px;margin-top:3px">Permanent on Amazon once created, so it is worth reading.</div>';
+  h += '<div style="font-size:12px;font-weight:600;margin:14px 0 2px">'
+    + 'A code for the group itself</div>'
+    + '<div class="cc" style="font-size:11px;margin-bottom:5px">'
+    + 'Every family needs its own code, separate from the products in it. Nobody '
+    + 'can buy this one — it exists to hold the others together. We suggest one; '
+    + 'change it if you like. It is <b>permanent on Amazon</b> once created.</div>'
+    + '<input id="var_parent" placeholder="parent SKU" style="font-size:12px;padding:5px 8px;min-width:260px">';
 
-  h += '<div class="cc" style="font-size:11.5px;margin:12px 0 4px">'
+  h += '<div style="font-size:12px;font-weight:600;margin:14px 0 2px">'
     + 'The title shoppers see for the group</div>'
+    + '<div class="cc" style="font-size:11px;margin-bottom:5px">'
+    + 'Describe the product without the colour or size — those become the picker. '
+    + '“Ceiling fan with light and remote”, not “…, white”.</div>'
     + '<input id="var_title" placeholder="parent title" style="font-size:12px;padding:5px 8px;width:100%;max-width:560px">';
 
   h += '<div style="margin-top:14px"><button class="db-chip" onclick="variationsPreview()">'

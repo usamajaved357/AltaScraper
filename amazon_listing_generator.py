@@ -2316,7 +2316,22 @@ def read_input_sheet(ws_in) -> list:
             "handling_time": item.get("delivery_time", item.get("handling_time", "")),
             "upc":           item.get("ean",           item.get("upc",            "")),
         }
-        if norm["amazon_url"].strip():
+        # A ROW NEEDS A SOURCE, NOT NECESSARILY A COMPETITOR.
+        #
+        # This required amazon_url and dropped everything else without a word. On
+        # a spreadsheet that was invisible -- a row with only an eBay link simply
+        # never generated and nobody knew why. Once products can be typed into
+        # the app it becomes a trap: you paste the eBay link you buy from, the
+        # row appears in the queue, and generation silently ignores it.
+        #
+        # Per CLAUDE.md Rule 1 the Amazon ASIN is a COMPETITOR REFERENCE used to
+        # pull product data, not the thing being listed. The eBay link is a
+        # source of that same data -- fetch_ebay_supplement already reads title,
+        # specifics and images from it, and the eBay seller import creates drafts
+        # with no competitor ASIN at all. So either link is enough to start from.
+        #
+        # A row with NEITHER is still dropped: there is nothing to generate from.
+        if norm["amazon_url"].strip() or norm["ebay_url"].strip():
             products.append(norm)
     return products
 
