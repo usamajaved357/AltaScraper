@@ -883,6 +883,60 @@ def _resize_to_exact(image_b64: str, target_w: int, target_h: int) -> str:
     return _b64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def hard_constraints(product_spec):
+    """The lines from the spec that must reach the image model untouched.
+
+    Pulled out by section heading and by the words that carry an absence or a
+    count, because those are what a rewriting model discards: it is writing about
+    light and composition, and "the blade has NO teeth" is not that. Appended
+    after the prompt is written, so nothing downstream can paraphrase it away.
+
+    Returns "" when there is nothing to add, so a caller with no spec is
+    unaffected.
+    """
+    spec = str(product_spec or "")
+    if not spec.strip():
+        return ""
+
+    want_head = ("what is not there", "scale", "edges, profile", "working parts",
+                 "counts")
+    keep, in_section = [], False
+    for raw in spec.splitlines():
+        line = raw.strip()
+        if not line:
+            in_section = False
+            continue
+        low = line.lower().lstrip("0123456789. )-*#").strip()
+        if any(low.startswith(h) for h in want_head):
+            in_section = True
+            keep.append(line)
+            continue
+        # A heading for some OTHER section closes the one we were in.
+        if in_section and (line.endswith(":") and len(line) < 60
+                           and low[:1].isalpha() and line.isupper()):
+            in_section = False
+        if in_section:
+            keep.append(line)
+            continue
+        # Outside the sections, keep any sentence that states an absence or a
+        # count -- specs do not always use the headings, and these are the facts
+        # that get invented when they go missing.
+        l2 = " " + low + " "
+        if (" no " in l2 or l2.startswith("no ") or " without " in l2
+                or " none " in l2 or " not present" in l2 or " absent" in l2
+                or " exactly " in l2):
+            keep.append(line)
+
+    keep = [k for k in keep if len(k) > 3][:40]
+    if not keep:
+        return ""
+    return ("\n\nNON-NEGOTIABLE FACTS ABOUT THIS PRODUCT — these override anything "
+            "above and must be obeyed exactly. Do NOT add any feature that is not "
+            "listed as present, and do NOT omit one that is. If a feature is "
+            "stated as absent, it must not appear in the image at all:\n"
+            + "\n".join("- " + k for k in keep))
+
+
 def run_pipeline(config: dict, brief: str, reference_image="",
                  product_title: str = "", text_provider: str = None,
                  image_provider: str = None, image_kind: str = "main",
@@ -925,6 +979,17 @@ def run_pipeline(config: dict, brief: str, reference_image="",
     if not enh.get("ok"):
         return {"ok": False, "error": "Prompt stage: " + enh.get("error", ""), "stage": "prompt"}
     detailed = enh["prompt"]
+    # THE FACTS SURVIVE THE REWRITE.
+    #
+    # enhance_prompt does not pass the spec through -- it REWRITES it into an
+    # evocative 350-650 word photography brief. And the things it drops first are
+    # precisely the ones that matter here: "NO teeth", "12 cm long", "four slots,
+    # not five". They read as dull constraints in a paragraph about lighting and
+    # mood, and a model writing prose leaves them out.
+    #
+    # That is why a better spec alone did not fix the pictures. The hard facts are
+    # therefore appended AFTER the rewrite, verbatim, where nothing can edit them.
+    detailed = detailed + hard_constraints(product_spec)
     # strength LOW so the model preserves the actual product from the reference
     # (only the scene/angle/background change, not the product itself).
     # size '4K' = Seedream's max (4096px); SAME $0.04 cost as 2K, and gives
