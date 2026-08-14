@@ -1654,7 +1654,12 @@ html{ scroll-behavior:smooth; }
 svg.chartbox path.series,
 .chartcard svg path.series,
 .chartbox svg path.series{
-  animation:chartSweep .5s ease-out;
+  /* 1.5s, which is what Recharts animates a series over and therefore what
+     Orbit's charts do -- measured, and three times slower than the .5s guess
+     that was here. At half a second the line is drawn before the eye has found
+     it, which reads as "no animation" rather than as a fast one. `ease` is
+     Recharts' default curve. */
+  animation:chartSweep 1.5s ease;
 }
 /* Bars grow from the baseline rather than appearing at full height, which is
    what Recharts does by default and what the 2500ms frame shows. */
@@ -1668,7 +1673,9 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
      transform-box:fill-box makes "bottom" mean the bottom of the bar. */
   transform-box:fill-box;
   transform-origin:bottom;
-  animation:barGrow .45s ease-out;
+  /* Same 1.5s as the lines, so the whole series arrives together rather than
+     the bars finishing while the lines are still drawing. */
+  animation:barGrow 1.5s ease;
 }
 
 /* -- 5. TABLE ROW STAGGER ----------------------------------------------

@@ -178,6 +178,62 @@ function _scDragEnd(cid, i){
   if(b - a < 1) return;
   if(typeof salesZoomTo === "function") salesZoomTo(a, b);
 }
+// ---- THE CURVE ----------------------------------------------------------
+//
+// Orbit's lines are SMOOTH. Measured off its live chart: every path is made of
+// `C` commands -- cubic beziers -- and contains not one `L`. Ours joined the
+// points with straight segments, and that is the difference that survived
+// every colour, size and spacing fix: the same numbers drawn as a polyline
+// simply do not read like the same chart.
+//
+// This is the monotone cubic that Recharts draws with (d3's curveMonotoneX,
+// Fritsch-Carlson tangents). MONOTONE is the important word, not just smooth:
+// an ordinary spline overshoots between points, so a run of small values
+// followed by a large one would bulge BELOW the axis on the way up and draw
+// negative sales that never happened. A monotone curve cannot leave the range
+// of the points it joins.
+function _scCurve(pts){
+  const n = pts.length;
+  if(n === 0) return "";
+  const f = v => v.toFixed(2);
+  if(n === 1) return "M" + f(pts[0].x) + "," + f(pts[0].y);
+  if(n === 2){
+    return "M" + f(pts[0].x) + "," + f(pts[0].y)
+         + "L" + f(pts[1].x) + "," + f(pts[1].y);
+  }
+
+  const dx = [], dy = [], s = [];
+  for(let i = 0; i < n - 1; i++){
+    dx[i] = pts[i + 1].x - pts[i].x;
+    dy[i] = pts[i + 1].y - pts[i].y;
+    s[i]  = dx[i] ? dy[i] / dx[i] : 0;
+  }
+
+  // Tangent at each point. Zero wherever the slope changes sign -- that is
+  // what pins the curve to a local peak or trough instead of sailing past it.
+  const m = new Array(n);
+  m[0] = s[0];
+  m[n - 1] = s[n - 2];
+  for(let i = 1; i < n - 1; i++){
+    if(s[i - 1] * s[i] <= 0){
+      m[i] = 0;
+    } else {
+      const w1 = 2 * dx[i] + dx[i - 1];
+      const w2 = dx[i] + 2 * dx[i - 1];
+      m[i] = (w1 + w2) / (w1 / s[i - 1] + w2 / s[i]);
+    }
+  }
+
+  let d = "M" + f(pts[0].x) + "," + f(pts[0].y);
+  for(let i = 0; i < n - 1; i++){
+    const h = dx[i] / 3;
+    d += "C" + f(pts[i].x + h) + "," + f(pts[i].y + m[i] * h)
+       + "," + f(pts[i + 1].x - h) + "," + f(pts[i + 1].y - m[i + 1] * h)
+       + "," + f(pts[i + 1].x) + "," + f(pts[i + 1].y);
+  }
+  return d;
+}
+
 function _scNum(v){
   if(v===null || v===undefined || v==="") return null;
   const n = Number(v);
@@ -299,7 +355,7 @@ function salesChart(points, opts){
     const cDash = cIsYear ? SC_DASH_YEAR : SC_DASH;
     cruns.forEach(function(r){
       if(r.length < 2) return;               // one point is not a trend
-      const d = r.map((pt, k) => (k ? "L" : "M") + x(pt.i).toFixed(1) + " " + y(pt.v).toFixed(1)).join(" ");
+      const d = _scCurve(r.map(pt => ({x: x(pt.i), y: y(pt.v)})));
       paths += `<path d="${d}" fill="none" stroke="${cCol}" stroke-width="${cW}"
                       stroke-dasharray="${cDash}" stroke-linejoin="round"
                       stroke-linecap="round"/>`;
@@ -311,11 +367,14 @@ function salesChart(points, opts){
       dots += `<circle cx="${x(r[0].i)}" cy="${y(r[0].v)}" r="2.6" fill="${LINE}"/>`;
       return;
     }
-    const d = r.map((pt, k) => (k ? "L" : "M") + x(pt.i).toFixed(1) + " " + y(pt.v).toFixed(1)).join(" ");
+    const d = _scCurve(r.map(pt => ({x: x(pt.i), y: y(pt.v)})));
     // A GRADIENT under the line rather than a flat wash -- the area fades to
     // nothing at the axis, so the line stays the thing being read and the fill
     // only gives it weight. The class is what the stylesheet animates the sweep
     // on, so the line appears to draw itself.
+    //
+    // The fill follows the SAME curve and then drops to the axis, so its top
+    // edge is the line itself rather than a polyline sitting slightly off it.
     const area = d + ` L ${x(r[r.length-1].i).toFixed(1)} ${y(lo).toFixed(1)}`
                + ` L ${x(r[0].i).toFixed(1)} ${y(lo).toFixed(1)} Z`;
     // The fill carries the same class as the line so the two sweep in TOGETHER.
@@ -581,7 +640,7 @@ function salesCombo(o){
         linesSvg += `<circle cx="${x(r[0].i)}" cy="${yM(r[0].v)}" r="2.6" fill="${spec.color}"/>`;
         return;
       }
-      const d = r.map((p, k) => (k ? "L" : "M") + x(p.i).toFixed(1) + " " + yM(p.v).toFixed(1)).join(" ");
+      const d = _scCurve(r.map(p => ({x: x(p.i), y: yM(p.v)})));
       linesSvg += `<path class="series" d="${d}" fill="none" stroke="${spec.color}"
                          stroke-width="${spec.width}"
                          ${spec.dash ? `stroke-dasharray="${spec.dash}"` : ""}

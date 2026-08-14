@@ -134,6 +134,50 @@ truthy("  which is offered on screen, not just in the date boxes",
 check("a click is not a drag -- one column zooms to nothing",
       /if\(b - a < 1\) return;/.test(src), true);
 
+console.log("\n=== the lines are CURVES, as Orbit's are ===");
+// Measured off Orbit's live chart: every one of its paths is made of `C`
+// commands -- cubic beziers -- and contains not a single `L`. Ours joined the
+// points with straight segments, and that was the difference that survived
+// every colour, size and spacing fix. The same numbers drawn as a polyline do
+// not read like the same chart.
+{
+  // Same style as the rest of this file: the real source, run in a function
+  // whose return value is what the chart produced.
+  const mk = new Function("PTS", "CMP", `
+    ${src}
+    const document = { getElementById: () => null };
+    return {html: salesChart(PTS, {title:"R", kind:"money", id:"curvetest",
+                                   compare: CMP}),
+            curve: _scCurve};
+  `);
+  const days = ["2026-08-01","2026-08-02","2026-08-03","2026-08-04","2026-08-05"];
+  const pts = days.map((d, i) => ({label: d, value: [10, 45, 20, 60, 35][i]}));
+  const res = mk(pts, days.map((d, i) => ({label: d, value: [8, 30, 25, 40, 30][i]})));
+  const out = res.html;
+  const paths = [...out.matchAll(/<path[^>]*d="([^"]+)"/g)].map(m => m[1]);
+  truthy("paths were drawn", paths.length >= 2);
+  const curves = paths.reduce((a, d) => a + (d.match(/C/g) || []).length, 0);
+  truthy("they are made of cubic beziers", curves > 0);
+  // The ONLY L commands allowed are the two that drop the area fill to the
+  // axis and close it -- which is exactly what Orbit's area path does too.
+  const lines = paths.reduce((a, d) => a + (d.match(/L/g) || []).length, 0);
+  check("and no line is drawn as straight segments", lines <= 2, true);
+
+  // MONOTONE, not merely smooth. An ordinary spline overshoots between points,
+  // so a flat run followed by a drop would bulge past the values on either
+  // side -- on a sales chart, drawing money that was never taken.
+  const curve = res.curve;
+  const d2 = curve([{x:0,y:100},{x:10,y:100},{x:20,y:100},{x:30,y:10}]);
+  const ys = [...d2.matchAll(/[-\d.]+,([-\d.]+)/g)].map(m => parseFloat(m[1]));
+  truthy("the curve never leaves the range of the points it joins",
+         ys.every(y => y >= 10 - 0.01 && y <= 100 + 0.01));
+  // Two points cannot have a tangent; a straight join is correct there.
+  truthy("two points are joined without inventing a curve",
+         curve([{x:0,y:0},{x:10,y:10}]).indexOf("L") >= 0);
+  check("and one point draws no line at all",
+        curve([{x:0,y:0}]).indexOf("C") >= 0, false);
+}
+
 console.log("\n=== Orbit's geometry, to the pixel ===");
 // Measured off Orbit at 1600px (orbit_sales_spec.md): its two top charts are
 // 597x200 with a 512x160 plot area, and the padding around it is 65 / 5 / 20 /
