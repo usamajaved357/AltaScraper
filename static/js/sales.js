@@ -440,85 +440,41 @@ function salesDrawCharts(ser){
   if(comboHtml){
     h += '<div class="salespanel" style="margin:0 0 16px">' + comboHtml + '</div>';
   }
-  // TWO ACROSS, not three or four. At a third of the width a chart was a couple
-  // of centimetres of squiggle -- too small to read a shape off, which is the
-  // only reason to draw one.
-  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:16px">';
-  let drew = 0;
-  const skipped = [];
-  want.forEach(function(w){
-    let chosen = null, source = "", chosenAt = -1;
-    for(let i = 0; i < w.keys.length; i++){
-      const p = pts(w.keys[i][0]);
-      if(usable(p)){ chosen = p; source = w.keys[i][1]; chosenAt = i; break; }
-    }
-    if(!chosen){
-      // Present but empty is a different thing from absent, and only the first
-      // is worth telling someone about.
-      if(w.keys.some(function(k){ return pts(k[0]); })) skipped.push(w.title);
-      return;
-    }
-    // EVERY other feed is checked, not just the ones ahead of the winner. The
-    // disagreement is the point: if the finance records show sales for a period
-    // and the report shows zero for the same period, that is worth knowing, and
-    // stopping at the first usable series would never surface it.
-    const disagrees = w.keys.filter(function(k, i){
-      const p = pts(k[0]);
-      return i !== chosenAt && p && !usable(p);
-    }).map(function(k){ return k[1]; });
-    drew++;
-    // The same metric over the period before, if it arrived. Matched by KEY, so
-    // a chart that fell back to the finance feed is compared against the
-    // finance feed and not against a different measurement of the same trade.
-    // MATCHED BY DATE, one entry per column of the chart being drawn.
-    //
-    // Not by position: the reply carries only the buckets that have figures, so
-    // the two periods routinely come back with different numbers of columns.
-    // Each column here looks up its own date minus the offset; a date the
-    // earlier period has no figure for becomes null, which the chart draws as a
-    // gap rather than as zero.
-    let cmp = null;
-    if(SALES.compare && SALES.compare.metrics && SALES.compareOffsetDays){
-      const key = w.keys[chosenAt][0];
-      const cm = SALES.compare.metrics.filter(function(m){ return m.key === key; })[0];
-      if(cm && cm.cells){
-        const was = {};
-        (SALES.compare.columns || []).forEach(function(d, i){ was[d] = cm.cells[i]; });
-        const off = SALES.compareOffsetDays * 86400000;
-        cmp = chosen.map(function(pt){
-          const d = new Date(String(pt.label) + "T00:00:00Z");
-          if(isNaN(d)) return {label: "", value: null};
-          const back = new Date(d.getTime() - off).toISOString().slice(0, 10);
-          return {label: back,
-                  value: (back in was) ? was[back] : null};
-        });
-        // Nothing lined up at all -- weekly or monthly buckets that the offset
-        // does not land on. Better no second line than a line made of gaps.
-        if(!cmp.some(function(p){ return p.value !== null && p.value !== undefined; })) cmp = null;
-      }
-    }
-    h += salesChart(chosen, {
-      title: w.title, kind: w.kind, color: w.color, compare: cmp,
-      // Said on every chart, not only when it falls back: which of Amazon's two
-      // feeds a number came from decides what it means, and the two disagree.
-      subtitle: "from the " + source
-        + (cmp && SALES.compareRange
-             ? " · dashed line is " + SALES.compareRange : "")
-        + (disagrees.length ? " — the " + _sEsc(disagrees.join(" and "))
-                            + " shows zero for the same period, so it is not "
-                            + "drawn" : "")});
+  // ONE CHART, NOT SIX.
+  //
+  // Orbit's Sales Dashboard has exactly three: Live Sales, Week to Date, and
+  // this combined one. Ours drew five separate panels -- Revenue, Units,
+  // Profit, Margin, Conversion -- and when the combined chart was added they
+  // were left in place, so the screen had six. That is not "close to Orbit
+  // with some extras"; it is a different screen.
+  //
+  // Everything the five panels showed is still reachable: revenue, orders and
+  // profit are ON the combined chart, and every metric including margin and
+  // conversion is in the grid below it, per day, in full. What is gone is five
+  // charts nobody asked for competing with the one that matters.
+  //
+  // The feed-disagreement warning the panels carried moves here, because it is
+  // about the data rather than about any one chart: if the report says zero for
+  // a period the finance records have sales for, that is worth knowing and it
+  // was the whole reason those panels named their source.
+  const zeroed = [];
+  [["Revenue", ["net_revenue", "ordered_sales"]],
+   ["Units",   ["units_shipped", "units"]],
+   ["Profit",  ["profit"]]].forEach(function(pair){
+    const anyPresent = pair[1].some(function(k){ return pts(k); });
+    const anyUsable  = pair[1].some(function(k){ return usable(pts(k)); });
+    if(anyPresent && !anyUsable) zeroed.push(pair[0]);
   });
-  h += '</div>';
-
-  if(skipped.length){
-    h += '<div class="cc" style="font-size:11.5px;margin-top:2px;padding:9px 11px;'
+  if(zeroed.length){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:10px;padding:9px 11px;'
       +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
-      +  '<i class="ti ti-info-circle"></i> Not drawn: ' + _sEsc(skipped.join(", "))
-      +  ' — every value Amazon has sent for this period is zero. That is what a '
-      +  'feed which has not arrived looks like, so it is left blank rather than '
-      +  'charted as no sales. Press <b>Sync</b> to keep backfilling.</div>';
+      +  '<i class="ti ti-info-circle"></i> ' + _sEsc(zeroed.join(", "))
+      +  ': every value Amazon has sent for this period is zero. That is what a '
+      +  'feed which has not arrived looks like, so it is left off the chart '
+      +  'rather than drawn as no sales. Press <b>Sync</b> to keep '
+      +  'backfilling.</div>';
   }
-  host.innerHTML = drew ? h : (skipped.length ? h : "");
+  host.innerHTML = (comboHtml || zeroed.length) ? h : "";
 }
 
 async function salesReload(){
@@ -727,7 +683,7 @@ async function salesLoadWeek(){
 
   host.innerHTML = salesChart(pts, {
     title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
-    width: 700, height: 210, compare: cmp,
+    width: 597, height: 200, compare: cmp,
     subtitle: cmp ? ("dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""});
 
   // The change against the same days last week, as a chip beside the heading.
@@ -829,17 +785,18 @@ async function salesLoadHourly(){
   // Both come from the Advertising API, which is not connected -- ads_daily is
   // empty. Said out loud, in the place the figures would sit, rather than
   // leaving a gap that looks like a design that forgot something.
-  const adsFoot = '<div class="cc" style="margin-top:8px;padding-top:8px;'
-    + 'border-top:1px solid rgb(55,65,81);font-size:11px;'
-    + 'text-transform:uppercase;letter-spacing:.04em">'
-    + 'Ad spend today <b>not connected</b> · Tacos <b>not connected</b>'
-    + '<span style="text-transform:none;letter-spacing:normal"> — these need '
-    + 'the Advertising API, which this account has not been connected to.</span>'
-    + '</div>';
+  // Measured: 10px uppercase label with 0.4px tracking, the value beside it at
+  // 12px, 4px between, 8px above with a 4px lead-in. Orbit puts figures here;
+  // we say what is missing and why, in the same shape.
+  const adsFoot = '<div class="adfooter">'
+    + '<span class="lbl">Ad spend today</span> <b>not connected</b>'
+    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
+    + '<span style="color:rgb(156,163,175)"> — both need the Advertising API, '
+    + 'which this account is not connected to.</span></div>';
 
   el.innerHTML = salesChart(pts, {
     title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
-    width: 700, height: 210, compare: cmp,
+    width: 597, height: 200, compare: cmp,
     subtitle: (j.note || "") + " Orders as placed, " + _sEsc(j.timezone || "")})
     + adsFoot;
 

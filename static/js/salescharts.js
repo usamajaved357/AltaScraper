@@ -206,8 +206,19 @@ function salesChart(points, opts){
   // a chart was a couple of centimetres of squiggle -- too small to read a shape
   // off, which is the only reason to draw one. Fewer, larger charts beat more,
   // smaller ones.
-  const W = o.width || 720, H = o.height || 260;
-  const padL = 56, padR = 12, padT = 14, padB = 30;
+  // ORBIT'S GEOMETRY, MEASURED (orbit_sales_spec.md, scanned at 1600px):
+  //
+  //   svg        597 x 200   -- a 2.98 ratio. Ours was 720 x 260 (2.77), which
+  //                             is why the same data read as a different shape
+  //                             however closely the colours matched.
+  //   plot area  512 x 160
+  //   padding    left 65, top 5, right 20, bottom 35
+  //
+  // The left padding is what the money labels need and the bottom is what the
+  // dates need; the top is deliberately almost nothing, so the line uses the
+  // full height of the panel.
+  const W = o.width || 597, H = o.height || 200;
+  const padL = 65, padR = 20, padT = 5, padB = 35;
   const iw = W - padL - padR, ih = H - padT - padB;
   const vals = points.map(p => _scNum(p.value)).filter(v => v !== null);
 
@@ -494,11 +505,16 @@ function salesCombo(o){
   });
   if(!cols.length) return "";
 
-  const W = o.width || 1240, H = o.height || 420;
-  // Room for BOTH axes. The right-hand one was the thing that made the first
-  // attempt look wrong: without space reserved for it the last bar sat under
-  // the labels.
-  const padL = 64, padR = 56, padT = 16, padB = 62;
+  // Measured: the Sales Report panel is 1261 wide with 16px padding, so the
+  // chart has 1229 to work in, and the panel's height leaves it about 330 once
+  // the header and the row of stat cards are taken out.
+  //
+  // The left and top padding match the small charts exactly; the right is wider
+  // because a SECOND axis lives there. Without space reserved for it the last
+  // bar sat under the labels, which was most of why the first attempt looked
+  // wrong.
+  const W = o.width || 1229, H = o.height || 330;
+  const padL = 65, padR = 56, padT = 5, padB = 46;
   const iw = W - padL - padR, ih = H - padT - padB;
 
   const moneyVals = [];
@@ -607,13 +623,23 @@ function salesCombo(o){
                  value: (v === null ? "—" : _scFmt(v, "money")),
                  y: (v === null ? null : yM(v).toFixed(1))});
     });
+    // DRAG TO ZOOM, on this chart too. The per-metric panels had it and this
+    // one replaced them, so without it the gesture simply disappeared from the
+    // screen -- and it is the only way anyone actually looks closely at an
+    // interesting week.
     hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
                    width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
                    onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},-1,
                        '${_scAttr(c)}','${_scAttr(_scRows(rows))}')"
-                   onmouseleave="_scLeave('${cid}')"></rect>`;
+                   onmouseleave="_scLeave('${cid}')"
+                   onmousedown="_scDragStart('${cid}',${i},event)"
+                   onmouseup="_scDragEnd('${cid}',${i})"></rect>`;
   });
+  // The shaded band that shows the range while it is being chosen, and the
+  // readout the drag writes into.
+  hits = `<rect id="${cid}_sel" x="0" y="${padT}" width="0" height="${ih}"
+                fill="${SC_GOLD}" opacity="0.14" pointer-events="none"/>` + hits;
 
   // The key, underneath and centred, with the coloured marks Orbit uses: a
   // filled square for the bars, a line for each line.
@@ -636,6 +662,10 @@ function salesCombo(o){
   key += '</div>';
 
   return '<div style="margin:4px 0 0">'
+       // Says the gesture exists. Nobody discovers drag-to-zoom by accident.
+       + '<div class="cc" style="font-size:10px;margin:0 0 4px;opacity:.65">'
+       + 'Hover for the day’s figures · drag across to zoom into those days'
+       + '<span id="' + cid + '_read" style="margin-left:auto"></span></div>'
        + '<div style="position:relative">'
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:auto;background:transparent;border:0">`

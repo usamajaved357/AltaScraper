@@ -1,0 +1,653 @@
+# Orbit Sales page — the whole thing, measured
+
+Scanned at 1600px wide. Every element that carries visible weight, in reading order: its box as [w, h, x, y], its text, and the styling that decides how it reads.
+
+Boxes are page pixels. `y` is from the top of the document, so the order below is the order down the screen.
+
+264 elements.
+
+- `main`._content_qc1hv_843 — **1340×1000** at (260, 0)
+    - background-color: `rgb(26, 29, 41)`; border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; padding: `32px`; position: `relative`
+-         `h1`._title_elwne_16 — **1261×30.8** at (292, 32)
+    - text: `Flux Footwear - USA`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `28px`; font-weight: `600`; line-height: `30.8px`; margin: `0px 0px 4px`; opacity: `1`; overflow: `visible`
+-         `p`._subtitle_elwne_27 — **1261×18** at (292, 67)
+    - text: `Dashboard Overview • Sales data updated hourly`
+    - border: `0px none rgb(209, 213, 219)`; color: `rgb(209, 213, 219)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-           `div`._container_1bxno_1 — **622.5×320** at (292, 109)
+    - background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `12px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`
+-           `div`._container_44bp7_1 — **622.5×320** at (930.5, 109)
+    - background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `12px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`
+-             `div`._header_1bxno_12 — **596.5×54** at (305, 122)
+    - align-items: `center`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; gap: `12px`; justify-content: `space-between`; line-height: `24px`; margin: `0px 0px 8px`; opacity: `1`; overflow: `visible`; padding: `0px 0px 4px`
+-                 `h3`._title_1msts_1 — **132.4×27** at (305, 122)
+    - text: `Live Sales`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `visible`
+-             `div`._header_44bp7_12 — **596.5×54** at (943.5, 122)
+    - align-items: `center`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; gap: `12px`; justify-content: `space-between`; line-height: `24px`; margin: `0px 0px 8px`; opacity: `1`; overflow: `visible`; padding: `0px 0px 4px`
+-                 `h3`._title_1msts_1 — **132.4×27** at (943.5, 122)
+    - text: `Week to Date`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `visible`
+-                 `span` — **97.7×18** at (531.9, 137)
+    - text: `Pacific Time (PDT)`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._currentTime_1bxno_44 — **52.6×18** at (629.7, 137)
+    - text: `• 3:05 PM`
+    - border: `0px none rgb(209, 213, 219)`; color: `rgb(209, 213, 219)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._todayIndicator_1bxno_81 — **52.2×18** at (706.2, 137)
+    - text: `Today`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; gap: `4px`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._yesterdayIndicator_1bxno_82 — **74×18** at (774.4, 137)
+    - text: `Yesterday`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; gap: `4px`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._pctBadge_1bxno_111 — **35.1×18** at (866.4, 137)
+    - text: `↑  8.7 %`
+    - align-items: `center`; border: `0px none rgb(16, 185, 129)`; color: `rgb(16, 185, 129)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; margin: `0px 0px 0px 2px`; opacity: `1`; overflow: `visible`
+-                 `span`._thisWeekIndicator_44bp7_28 — **67.6×18** at (1353.4, 137)
+    - text: `This Week`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._lastWeekIndicator_44bp7_29 — **67.5×18** at (1429, 137)
+    - text: `Last Week`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._pctBadge_44bp7_60 — **33.5×18** at (1506.5, 137)
+    - text: `↓  1.6 %`
+    - align-items: `center`; border: `0px none rgb(239, 68, 68)`; color: `rgb(239, 68, 68)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; margin: `0px 0px 0px 2px`; opacity: `1`; overflow: `visible`
+-                 `p`._subtitle_1msts_43 — **112.4×18** at (305, 153)
+    - text: `Based on order dates`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `2px 0px 0px`; opacity: `1`; overflow: `visible`
+-                 `p`._subtitle_1msts_43 — **112.4×18** at (943.5, 153)
+    - text: `Based on order dates`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `2px 0px 0px`; opacity: `1`; overflow: `visible`
+-                 `svg`.lucide — **14×14** at (423.4, 154)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `hidden`
+-                 `svg`.lucide — **14×14** at (1061.9, 154)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `hidden`
+-                 `svg`.recharts-surface — **597×200** at (305, 184)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `hidden`
+-                 `svg`.recharts-surface — **597×200** at (943.5, 184)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `hidden`
+-             `div`._adFooter_1bxno_267 — **596.5×23** at (305, 393)
+    - align-items: `baseline`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; gap: `4px`; line-height: `18px`; margin: `8px 0px 0px`; opacity: `1`; overflow: `visible`; padding: `4px 0px 0px`
+-             `div`._adFooter_44bp7_153 — **596.5×23** at (943.5, 393)
+    - align-items: `baseline`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; gap: `4px`; line-height: `18px`; margin: `8px 0px 0px`; opacity: `1`; overflow: `visible`; padding: `4px 0px 0px`
+-                 `span`._adFooterValue_1bxno_291 — **36.2×18** at (392.4, 398)
+    - text: `$ 1,218`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-               `span`._adFooterSep_1bxno_297 — **2.6×18** at (432.6, 398)
+    - text: `·`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._adFooterValue_1bxno_291 — **26.3×18** at (472.8, 398)
+    - text: `8.3%`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._adFooterValue_44bp7_177 — **42.9×18** at (1050.4, 398)
+    - text: `$ 10,460`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-               `span`._adFooterSep_44bp7_183 — **2.6×18** at (1097.3, 398)
+    - text: `·`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._adFooterValue_44bp7_177 — **26.3×18** at (1137.5, 398)
+    - text: `9.8%`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span`._adFooterLabel_1bxno_284 — **85.4×15** at (305, 401)
+    - text: `Ad spend today`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; letter-spacing: `0.4px`; line-height: `15px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `span`._adFooterLabel_1bxno_284 — **31.6×15** at (439.2, 401)
+    - text: `TACOS`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; letter-spacing: `0.4px`; line-height: `15px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `span`._adFooterLabel_44bp7_170 — **104.9×15** at (943.5, 401)
+    - text: `Ad spend this week`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; letter-spacing: `0.4px`; line-height: `15px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `span`._adFooterLabel_44bp7_170 — **31.6×15** at (1103.9, 401)
+    - text: `TACOS`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; letter-spacing: `0.4px`; line-height: `15px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-         `div`._container_xa5pv_1 — **1261×552** at (292, 449)
+    - background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `12px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `16px`
+-           `div`._header_xa5pv_12 — **1227×62** at (309, 466)
+    - align-items: `flex-start`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; gap: `12px`; justify-content: `space-between`; line-height: `24px`; margin: `0px 0px 16px`; opacity: `1`; overflow: `visible`; padding: `0px 0px 12px`
+-                 `h3`._title_1msts_1 — **132.4×27** at (309, 466)
+    - text: `Sales Report`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `visible`
+-               `div`._buttonGroup_xa5pv_94 — **180.4×38** at (688, 466)
+    - align-items: `center`; background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; gap: `2px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `2px`
+-               `div`._buttonGroup_xa5pv_94 — **134.6×38** at (872.4, 466)
+    - align-items: `center`; background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; gap: `2px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `2px`
+-                 `div`._customDateDisplay_xa5pv_264 — **178.1×38** at (1011, 466)
+    - align-items: `center`; background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; gap: `4px`; line-height: `18px`; opacity: `1`; overflow: `visible`; padding: `2px 8px`
+-                 `select`._rangeSelect_xa5pv_131 — **150×38** at (1273.3, 466)
+    - align-items: `center`; background-color: `rgb(26, 29, 41)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; opacity: `1`; overflow: `clip`; padding: `4px 8px`
+-                 `button`._button_1osxa_2 — **108.8×36** at (1427.3, 467)
+    - text: `Export`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `8px 16px`
+-                 `button`._button_1osxa_2 — **37.4×28** at (691, 471)
+    - text: `7d`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `button`._button_1osxa_2 — **43.1×28** at (730.4, 471)
+    - text: `30d`
+    - align-items: `center`; border: `1px solid rgba(0, 0, 0, 0)`; border-radius: `6px`; color: `rgb(26, 29, 41)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `button`._button_1osxa_2 — **43.2×28** at (775.5, 471)
+    - text: `90d`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `button`._button_1osxa_2 — **44.7×28** at (820.7, 471)
+    - text: `YTD`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `button`._button_1osxa_2 — **44.6×28** at (875.4, 471)
+    - text: `Aug`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `button`._button_1osxa_2 — **38.4×28** at (922, 471)
+    - text: `Jul`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `button`._button_1osxa_2 — **41.6×28** at (962.4, 471)
+    - text: `Jun`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-                 `span`._dateDisplayValue_xa5pv_309 — **140.1×18** at (1040, 476)
+    - text: `2026-07-15 to 2026-08-13`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `svg` — **16×16** at (1020, 477)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `hidden`
+-                 `span` — **72.1×16.5** at (1193.1, 477)
+    - text: `Compare to`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `11px`; font-weight: `600`; letter-spacing: `0.44px`; line-height: `16.5px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `svg`.lucide — **14×14** at (1444.3, 478)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; opacity: `1`; overflow: `hidden`
+-                 `svg`.lucide — **13×13** at (1506, 478)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; opacity: `1`; overflow: `hidden`
+-                 `p`._subtitle_1msts_43 — **112.4×18** at (309, 497)
+    - text: `Based on order dates`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `2px 0px 0px`; opacity: `1`; overflow: `visible`
+-                 `svg`.lucide — **14×14** at (427.4, 498)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `hidden`
+-             `div`._statCard_xa5pv_431 — **235.8×104** at (309, 544)
+    - background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; gap: `4px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`
+-             `div`._statCard_xa5pv_431 — **235.8×104** at (556.8, 544)
+    - background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; gap: `4px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`
+-             `div`._statCard_xa5pv_431 — **235.8×104** at (804.6, 544)
+    - background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; gap: `4px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`
+-             `div`._statCard_xa5pv_431 — **235.8×104** at (1052.4, 544)
+    - background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; gap: `4px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`
+-             `div`._statCard_xa5pv_431 — **235.8×104** at (1300.2, 544)
+    - background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `column`; font-size: `16px`; font-weight: `400`; gap: `4px`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `12px`; position: `relative`
+-               `span`._statLabel_xa5pv_441 — **209.8×18** at (322, 557)
+    - text: `Total Sales`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-               `span`._statLabel_xa5pv_441 — **209.8×18** at (569.8, 557)
+    - text: `Daily Average`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-               `span`._statLabel_xa5pv_441 — **209.8×18** at (817.6, 557)
+    - text: `Total Orders`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-               `span`._statLabel_xa5pv_441 — **209.8×18** at (1065.4, 557)
+    - text: `Total Units`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-               `span`._statLabel_xa5pv_441 — **209.8×18** at (1313.2, 557)
+    - text: `Profit`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `svg`.lucide — **12×12** at (1346.4, 559)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `500`; line-height: `18px`; opacity: `1`; overflow: `hidden`
+-               `span`._statValue_xa5pv_447 — **209.8×30** at (322, 579)
+    - text: `$580,521.27`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `20px`; font-weight: `600`; line-height: `30px`; opacity: `1`; overflow: `visible`
+-               `span`._statValue_xa5pv_447 — **209.8×30** at (569.8, 579)
+    - text: `$19,350.71`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `20px`; font-weight: `600`; line-height: `30px`; opacity: `1`; overflow: `visible`
+-               `span`._statValue_xa5pv_447 — **209.8×30** at (817.6, 579)
+    - text: `3,936`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `20px`; font-weight: `600`; line-height: `30px`; opacity: `1`; overflow: `visible`
+-               `span`._statValue_xa5pv_447 — **209.8×30** at (1065.4, 579)
+    - text: `4,118`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `20px`; font-weight: `600`; line-height: `30px`; opacity: `1`; overflow: `visible`
+-                 `span` — **80.9×18** at (322, 617)
+    - text: `LY : $ 551,866.01`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **34.6×18** at (408.9, 617)
+    - text: `+5.2%`
+    - border: `0px none rgb(16, 185, 129)`; color: `rgb(16, 185, 129)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `600`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **74.4×18** at (569.8, 617)
+    - text: `LY : $ 18,395.53`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **34.6×18** at (650.2, 617)
+    - text: `+5.2%`
+    - border: `0px none rgb(16, 185, 129)`; color: `rgb(16, 185, 129)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `600`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **46×18** at (817.6, 617)
+    - text: `LY : 3,752`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **34.9×18** at (869.5, 617)
+    - text: `+4.9%`
+    - border: `0px none rgb(16, 185, 129)`; color: `rgb(16, 185, 129)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `600`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **46×18** at (1065.4, 617)
+    - text: `LY : 4,002`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **34.7×18** at (1117.3, 617)
+    - text: `+2.9%`
+    - border: `0px none rgb(16, 185, 129)`; color: `rgb(16, 185, 129)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `600`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `svg`.recharts-surface — **1227×320** at (309, 664)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `hidden`
+-                 `tspan` — **32.1×15** at (339.4, 666)
+    - text: `$28.0k`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **17.9×15** at (1454, 666)
+    - text: `160`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **32.1×15** at (339.4, 727)
+    - text: `$21.0k`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **17.9×15** at (1454, 727)
+    - text: `120`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **32.1×15** at (339.4, 788)
+    - text: `$14.0k`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **11.9×15** at (1454, 788)
+    - text: `80`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **26.2×15** at (345.3, 849)
+    - text: `$7.0k`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **12.9×15** at (1453, 849)
+    - text: `40`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **11.9×15** at (359.1, 910)
+    - text: `$0`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **6×15** at (1454, 910)
+    - text: `0`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (381.9, 922)
+    - text: `Jul 15`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (417.5, 922)
+    - text: `Jul 16`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (453.1, 922)
+    - text: `Jul 17`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (488.6, 922)
+    - text: `Jul 18`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (524.2, 922)
+    - text: `Jul 19`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (559.8, 922)
+    - text: `Jul 20`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.7×15** at (595.3, 922)
+    - text: `Jul 21`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (630.9, 922)
+    - text: `Jul 22`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (666.5, 922)
+    - text: `Jul 23`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (702, 922)
+    - text: `Jul 24`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (737.6, 922)
+    - text: `Jul 25`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (773.2, 922)
+    - text: `Jul 26`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (808.7, 922)
+    - text: `Jul 27`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (844.3, 922)
+    - text: `Jul 28`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (879.9, 922)
+    - text: `Jul 29`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.8×15** at (915.4, 922)
+    - text: `Jul 30`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **28.7×15** at (951, 922)
+    - text: `Jul 31`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (986, 922)
+    - text: `Aug 1`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1021.6, 922)
+    - text: `Aug 2`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1057.2, 922)
+    - text: `Aug 3`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1092.7, 922)
+    - text: `Aug 4`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1128.3, 922)
+    - text: `Aug 5`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1163.9, 922)
+    - text: `Aug 6`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1199.4, 922)
+    - text: `Aug 7`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1235, 922)
+    - text: `Aug 8`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **29.8×15** at (1270.6, 922)
+    - text: `Aug 9`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **35.7×15** at (1338.7, 922)
+    - text: `Aug 11`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `tspan` — **35.7×15** at (1409.9, 922)
+    - text: `Aug 13`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline`; flex-direction: `row`; font-size: `11px`; font-weight: `400`; line-height: `16.5px`; opacity: `1`; overflow: `visible`
+-                 `span` — **35.8×16** at (788.6, 957)
+    - text: `Orders`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `inline`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **80.5×16** at (852.5, 957)
+    - text: `Prior Year Sales`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `inline`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **28.7×16** at (960.9, 957)
+    - text: `Profit`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `inline`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `span` — **26.8×16** at (1017.6, 957)
+    - text: `Sales`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `inline`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; opacity: `1`; overflow: `visible`
+-                 `svg`.recharts-surface — **14×14** at (770.6, 960)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline-block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `0px 4px 0px 0px`; opacity: `1`; overflow: `hidden`
+-                 `svg`.recharts-surface — **14×14** at (834.5, 960)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline-block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `0px 4px 0px 0px`; opacity: `1`; overflow: `hidden`
+-                 `svg`.recharts-surface — **14×14** at (942.9, 960)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline-block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `0px 4px 0px 0px`; opacity: `1`; overflow: `hidden`
+-                 `svg`.recharts-surface — **14×14** at (999.6, 960)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `inline-block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; line-height: `18px`; margin: `0px 4px 0px 0px`; opacity: `1`; overflow: `hidden`
+-         `div`._section_2vd43_2 — **1261×482.5** at (292, 1021)
+    - background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `16px`
+-                 `h3`._sectionTitle_2vd43_18 — **224.7×27** at (309, 1038)
+    - text: `Organic vs PPC Sales`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `visible`
+-                 `span`._controlLabel_2vd43_38 — **240×16.5** at (1112.5, 1038)
+    - text: `Products`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `11px`; font-weight: `600`; letter-spacing: `0.44px`; line-height: `16.5px`; margin: `0px 0px 4px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `svg`.lucide — **14×14** at (483.2, 1044)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `hidden`
+-                 `button`._trigger_nx1ue_6 — **240×36** at (1112.5, 1058)
+    - align-items: `center`; background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `13px`; font-weight: `400`; gap: `8px`; opacity: `1`; overflow: `visible`; padding: `7px 12px`
+-                 `p`._sectionSubtitle_2vd43_25 — **224.7×15** at (309, 1067)
+    - text: `Daily breakdown of organic and paid sales revenue`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; margin: `2px 0px 0px`; opacity: `1`; overflow: `visible`
+-                 `span`._triggerText_nx1ue_28 — **192×15** at (1125.5, 1069)
+    - text: `All Products (0)`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `13px`; font-weight: `400`; opacity: `1`; overflow: `hidden`
+-                 `svg`.lucide — **14×14** at (1325.5, 1069)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; opacity: `1`; overflow: `hidden`
+-                 `button`._dateButton_bfwpe_160 — **175.5×24** at (1360.5, 1070)
+    - align-items: `center`; background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; gap: `4px`; opacity: `1`; overflow: `visible`; padding: `4px 8px`
+-                 `svg`.lucide — **14×14** at (1369.5, 1075)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; opacity: `1`; overflow: `hidden`
+-                 `span` — **139.5×14** at (1387.5, 1075)
+    - text: `2026-07-14 to 2026-08-13`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; opacity: `1`; overflow: `visible`
+-         `div`._section_2vd43_2 — **1261×441** at (292, 1523)
+    - background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `16px`
+-                 `h3`._sectionTitle_2vd43_18 — **280.8×27** at (309, 1540)
+    - text: `P&L Heatmap`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `visible`
+-                 `span`._controlLabel_2vd43_38 — **240×16.5** at (794.5, 1540)
+    - text: `Products`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `11px`; font-weight: `600`; letter-spacing: `0.44px`; line-height: `16.5px`; margin: `0px 0px 4px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `svg`.lucide — **14×14** at (426, 1546)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `18px`; font-weight: `600`; line-height: `27px`; opacity: `1`; overflow: `hidden`
+-                 `span`._controlLabel_2vd43_38 — **141.3×16.5** at (1042.5, 1550)
+    - text: `Granularity`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `11px`; font-weight: `600`; letter-spacing: `0.44px`; line-height: `16.5px`; margin: `0px 0px 4px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `span`._controlLabel_2vd43_38 — **241.4×16.5** at (1191.8, 1550)
+    - text: `Period`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `11px`; font-weight: `600`; letter-spacing: `0.44px`; line-height: `16.5px`; margin: `0px 0px 4px`; opacity: `1`; overflow: `visible`; text-transform: `uppercase`
+-                 `button`._trigger_nx1ue_6 — **240×36** at (794.5, 1561)
+    - align-items: `center`; background-color: `rgb(45, 50, 66)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `13px`; font-weight: `400`; gap: `8px`; opacity: `1`; overflow: `visible`; padding: `7px 12px`
+-                 `div`._sectionSubtitle_2vd43_25 — **280.8×15** at (309, 1569)
+    - text: `Performance metrics with heatmap coloring across time periods`
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; margin: `2px 0px 0px`; opacity: `1`; overflow: `visible`
+-                 `button`._button_1osxa_2 — **94.8×28** at (1441.2, 1569)
+    - text: `Export`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `0.6`; overflow: `visible`; padding: `4px 12px`
+-                 `span`._triggerText_nx1ue_28 — **192×15** at (807.5, 1571)
+    - text: `All Products (0)`
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `13px`; font-weight: `400`; opacity: `1`; overflow: `hidden`
+-                 `div`._control_wl90e_1 — **141.3×26** at (1042.5, 1571)
+    - align-items: `stretch`; background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `3px`
+-                 `div`._control_wl90e_1 — **241.4×26** at (1191.8, 1571)
+    - align-items: `stretch`; background-color: `rgb(37, 41, 55)`; border: `1px solid rgb(75, 85, 99)`; border-radius: `8px`; color: `rgb(243, 244, 246)`; display: `flex`; flex-direction: `row`; font-size: `16px`; font-weight: `400`; line-height: `24px`; opacity: `1`; overflow: `visible`; padding: `3px`
+-                 `svg`.lucide — **14×14** at (1007.5, 1572)
+    - border: `0px none rgb(156, 163, 175)`; color: `rgb(156, 163, 175)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; opacity: `1`; overflow: `hidden`
+-                 `button`._option_wl90e_11 — **37.5×18** at (1046.5, 1575)
+    - text: `Day`
+    - align-items: `center`; background-color: `rgb(251, 191, 36)`; border: `0px none rgb(26, 29, 41)`; border-radius: `4px`; box-shadow: `rgba(0, 0, 0, 0.25) 0px 1px 2px 0px`; color: `rgb(26, 29, 41)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **45.3×18** at (1084, 1575)
+    - text: `Week`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **50.5×18** at (1129.3, 1575)
+    - text: `Month`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **31.4×18** at (1195.8, 1575)
+    - text: `7d`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **35.8×18** at (1227.2, 1575)
+    - text: `14d`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **37.1×18** at (1263, 1575)
+    - text: `30d`
+    - align-items: `center`; background-color: `rgb(251, 191, 36)`; border: `0px none rgb(26, 29, 41)`; border-radius: `4px`; box-shadow: `rgba(0, 0, 0, 0.25) 0px 1px 2px 0px`; color: `rgb(26, 29, 41)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **37.2×18** at (1300.1, 1575)
+    - text: `60d`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **37.2×18** at (1337.3, 1575)
+    - text: `90d`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `button`._option_wl90e_11 — **54.8×18** at (1374.5, 1575)
+    - text: `Custom`
+    - align-items: `center`; border: `0px none rgb(209, 213, 219)`; border-radius: `4px`; color: `rgb(209, 213, 219)`; display: `flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; justify-content: `center`; line-height: `10px`; opacity: `1`; overflow: `visible`; padding: `4px 10px`
+-                 `svg`.lucide — **14×14** at (1454.2, 1576)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; opacity: `1`; overflow: `hidden`
+-                 `svg`.lucide — **13×13** at (1510, 1576)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `block`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; opacity: `1`; overflow: `hidden`
+-                 `button`._button_1osxa_2 — **100×28** at (309, 1592)
+    - text: `33 / 33 Metrics`
+    - align-items: `center`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(243, 244, 246)`; display: `inline-flex`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; gap: `6px`; justify-content: `center`; opacity: `1`; overflow: `visible`; padding: `4px 12px`
+-           `div`._cogsProvenance_2vd43_328 — **1227×32** at (309, 1632)
+    - align-items: `center`; background-color: `rgba(255, 255, 255, 0.02)`; border: `1px solid rgb(55, 65, 81)`; border-radius: `6px`; color: `rgb(156, 163, 175)`; display: `flex`; flex-direction: `row`; font-size: `12px`; font-weight: `400`; gap: `8px`; line-height: `18px`; margin: `8px 0px 0px`; opacity: `1`; overflow: `visible`; padding: `8px 12px`
+-             `table`._heatmapTable_2vd43_83 — **1227×275** at (309, 1672)
+    - border: `0px none rgb(243, 244, 246)`; color: `rgb(243, 244, 246)`; display: `table`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`
+-                 `th` — **245.4×24.5** at (309, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (554.4, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (677.1, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (799.8, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (922.5, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (1045.1, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (1167.8, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.7×24.5** at (1290.5, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `th` — **122.8×24.5** at (1413.2, 1672)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(156, 163, 175)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `500`; letter-spacing: `0.3px`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`; text-transform: `uppercase`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1697)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1697)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1722)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1722)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1747)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1747)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1772)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1772)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1797)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1797)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1822)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1822)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1847)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1847)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1872)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1872)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1897)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1897)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._metricCell_2vd43_110 — **245.4×25** at (309, 1922)
+    - background-color: `rgb(37, 41, 55)`; color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `600`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`; position: `sticky`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (554.4, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (677.1, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (799.8, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (922.5, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1045.1, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1167.8, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.7×25** at (1290.5, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`
+-                 `td`._dataCell_2vd43_131 — **122.8×25** at (1413.2, 1922)
+    - color: `rgb(243, 244, 246)`; display: `table-cell`; flex-direction: `row`; font-size: `10px`; font-weight: `400`; line-height: `15px`; opacity: `1`; overflow: `visible`; padding: `6px 10px`

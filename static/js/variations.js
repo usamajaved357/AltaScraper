@@ -56,6 +56,16 @@ function _varSteps(now){
 function variationsRender(q){
   const host = document.getElementById("varbody");
 
+  // DECLARED. This function built its markup with `h += ...` from the first
+  // line onwards and never declared `h`, so the whole screen died on
+  // "ReferenceError: h is not defined" before drawing anything -- the page was
+  // not broken in some subtle way, it never ran at all.
+  //
+  // It read as a working function because `let h` DOES appear a few lines
+  // above, at the top of _varSteps(), which is a different function that
+  // returns its own string.
+  let h = "";
+
   // WHAT THIS SCREEN IS, before what to do on it.
   //
   // "Variation family", "parent", "theme" and "child" are Amazon's words, not

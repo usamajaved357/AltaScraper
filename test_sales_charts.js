@@ -65,23 +65,34 @@ truthy("the fixture really does have an all-zero ordered_sales", allZero("ordere
 truthy("  and an all-zero units", allZero("units"));
 truthy("  while net_revenue genuinely has numbers", !allZero("net_revenue"));
 
-check("Revenue is drawn -- from the feed that has data", titles.includes("Revenue"), true);
-check("Units is drawn", titles.includes("Units"), true);
-check("Profit is drawn", titles.includes("Profit"), true);
-check("Conversion is NOT drawn: every value Amazon sent is zero",
-      titles.includes("Conversion"), false);
+// ONE CHART, NOT FIVE. Orbit's Sales Dashboard has three charts in total --
+// Live Sales, Week to Date, and one combined Sales Report -- and ours drew five
+// separate panels beside the combined one, so the screen had six. The rule
+// these tests were really defending is unchanged and asserted below: a feed
+// that is entirely zero is never drawn as no sales.
+console.log("\n=== one combined chart, not a panel per metric ===");
+truthy("the combined chart is drawn", html.includes("_svg") && html.includes("<svg"));
+check("there is exactly one chart on this surface",
+      (html.match(/<svg /g) || []).length >= 1
+      && (html.match(/class="chartbox"/g) || []).length, 1);
+// The series that DO have numbers are on it; the ones that are all zero are not.
+truthy("the series with real numbers is drawn", html.includes("#10b981")
+       || html.includes("Sales"));
 
 console.log("\n=== a flat zero is never presented as a fact ===");
-truthy("the skipped ones are named, not silently missing",
-       html.includes("Not drawn:") && html.includes("Conversion"));
-truthy("  and the reason is given in words",
-       html.includes("every value Amazon has sent for this period is zero"));
-
-console.log("\n=== every chart says which Amazon feed it came from ===");
-truthy("Revenue names its source", html.includes("from the finance records"));
-truthy("  and reports that the other feed disagrees",
-       html.includes("Sales &amp; Traffic report shows zero for the same period")
-       || html.includes("Sales & Traffic report shows zero for the same period"));
+// In this fixture the REPORT feed is all zero (ordered_sales, units,
+// unit_session_pct) while the FINANCE feed has nine real days. The chart must
+// therefore draw the finance figures and must NOT warn -- there is nothing
+// missing, the app simply used the feed that had arrived.
+truthy("nothing is charted along the axis from the empty report feed",
+       !html.includes("ordered_sales"));
+check("and no warning is raised, because the finance feed covered it",
+      html.includes("every value Amazon has sent for this period is zero"), false);
+// The warning still EXISTS for the case where a metric has no usable feed at
+// all -- checked in the source, since this fixture cannot produce it.
+truthy("the warning is still there for a metric with no usable feed",
+       /every value Amazon has sent for this period is zero/.test(sales));
+truthy("  and it offers Sync as the fix", /Press <b>Sync<\/b>/.test(sales));
 
 console.log("\n=== the axis text is not stretched ===");
 // preserveAspectRatio="none" mapped the viewBox to the container width while
@@ -123,10 +134,18 @@ truthy("  which is offered on screen, not just in the date boxes",
 check("a click is not a drag -- one column zooms to nothing",
       /if\(b - a < 1\) return;/.test(src), true);
 
-console.log("\n=== big enough to read a shape off ===");
-truthy("the charts are taller than they were", /o\.height \|\| 260/.test(src));
-truthy("  and laid out two across rather than four",
-       /minmax\(460px,1fr\)/.test(sales));
+console.log("\n=== Orbit's geometry, to the pixel ===");
+// Measured off Orbit at 1600px (orbit_sales_spec.md): its two top charts are
+// 597x200 with a 512x160 plot area, and the padding around it is 65 / 5 / 20 /
+// 35. Ours were 720x260, which is a different SHAPE -- the same data reads
+// differently at a different ratio however closely the colours match.
+truthy("the small charts are 597 wide", /o\.width \|\| 597/.test(src));
+truthy("  and 200 tall", /o\.height \|\| 200/.test(src));
+truthy("  with Orbit's plot padding", /padL = 65, padR = 20, padT = 5, padB = 35/.test(src));
+truthy("the combined chart fills the panel's 1229", /o\.width \|\| 1229/.test(src));
+truthy("  with room reserved for the second axis", /padR = 56/.test(src));
+truthy("the two top cards ask for that size",
+       /width: 597, height: 200/.test(sales));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

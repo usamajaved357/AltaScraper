@@ -1895,8 +1895,12 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    filled gold with dark text. */
 .seg{
   display:inline-flex;
+  align-items:center;
   gap:2px;
   background:rgb(45,50,66);
+  /* Measured: the tray has a BORDER too, rgb(75,85,99) -- without it the group
+     floats on the panel instead of reading as one control. */
+  border:1px solid rgb(75,85,99);
   border-radius:8px;
   padding:2px;
 }
@@ -2036,4 +2040,77 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    screen by a gliding card; it still appears, it just does not travel. */
 @media (prefers-reduced-motion: reduce){
   .charttip{ transition:opacity .01ms; }
+}
+
+
+/* ---- the Sales page, to the spec ---------------------------------------
+   From orbit_sales_spec.md, a full scan of Orbit's page at 1600px. These are
+   the numbers that decide whether the screen reads the same, and they are the
+   ones that were wrong: the panels were the right colour at the wrong size,
+   with the wrong gaps, so the same data looked like a different dashboard. */
+
+/* The page itself: 32px around everything, on rgb(26,29,41). */
+#sec_sales{
+  padding:32px;
+  background:rgb(26,29,41);
+}
+
+/* The two top cards: 622.5 wide with a 16px gap, 12px padding.
+   The Sales Report panel below them takes 16px padding instead -- measured,
+   and it is the difference between a card and a section. */
+.sales-toprow{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(430px,1fr));
+  gap:16px;
+  margin-bottom:16px;
+}
+.sales-toprow > .salespanel{ padding:12px; }
+#sec_sales > .salespanel{ padding:16px; }
+
+/* The panel header: title and subtitle on the left, indicators and the change
+   badge pushed right, 12px between them, a 12px rule under it. */
+.panelhead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:0 0 16px;
+  padding:0 0 12px;
+}
+.sales-toprow .panelhead{ margin:0 0 8px; padding:0 0 4px; }
+.paneltitle{ font-size:18px; font-weight:600; line-height:27px;
+             color:rgb(243,244,246); margin:0; }
+.panelsub{ font-size:12px; font-weight:400; line-height:18px;
+           color:rgb(156,163,175); margin:2px 0 0; }
+
+/* Five stat cards across, 12px apart -- measured pitch 247.8 on a 235.8 card. */
+#sales_cards.stat-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+  margin:0 0 16px;
+}
+
+/* The ad-spend strip under each live card: 10px uppercase labels with a
+   0.4px letter-spacing, values in normal case beside them. */
+#sec_sales .adfooter{
+  display:flex;
+  align-items:baseline;
+  gap:4px;
+  flex-wrap:wrap;
+  margin:8px 0 0;
+  padding:4px 0 0;
+  font-size:12px;
+  line-height:18px;
+  color:rgb(209,213,219);
+}
+#sec_sales .adfooter b{ font-weight:600; }
+#sec_sales .adfooter .lbl{
+  font-size:10px;
+  font-weight:400;
+  line-height:15px;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:rgb(156,163,175);
 }
