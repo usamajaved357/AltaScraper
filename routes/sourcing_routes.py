@@ -168,6 +168,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             row = enrolled.get(sku)
             out.append({
                 "sku": sku, "asin": str(it.get("asin") or ""), "title": title,
+                # The picture, because a SKU is "10.06_3Days_B0081ZHHTS" and a
+                # title is forty words of keywords -- neither tells you what the
+                # thing IS at a glance, and enrolling the wrong product means
+                # repricing it against somebody else's supplier. It is already in
+                # the snapshot; it simply was not being passed on.
+                "img": str(it.get("img") or ""),
                 "price": it.get("price"), "qty": it.get("qty"),
                 "status": str(it.get("status") or ""),
                 "fulfillment": str(it.get("fulfillment") or ""),

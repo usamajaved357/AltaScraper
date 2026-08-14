@@ -10,7 +10,70 @@
 //     partial cost only ever makes a product look better than it is.
 // Both are stated on screen rather than left for the reader to notice.
 
-let FIN = {rows: [], totals: {}, sort: "revenue", desc: true};
+let FIN = {rows: [], totals: {}, sort: "revenue", desc: true,
+           preset: "30d", filter: "all"};
+
+// The window, as periods people actually ask for. The date boxes stayed EMPTY
+// while the screen quietly showed the last thirty days, so the one thing a
+// money screen must be unambiguous about -- which days it is counting -- was
+// the one thing it never said. Picking a preset fills the boxes, and typing in
+// the boxes clears the preset, so the two can never disagree.
+const FIN_PRESETS = [
+  {k: "7d",  t: "7 days",       days: 7},
+  {k: "30d", t: "30 days",      days: 30},
+  {k: "90d", t: "90 days",      days: 90},
+  {k: "mtd", t: "This month",   month: true},
+  {k: "qtd", t: "This quarter", quarter: true},
+];
+
+const FIN_FILTERS = [
+  {k: "all",    t: "All"},
+  {k: "profit", t: "Profitable"},
+  {k: "loss",   t: "Loss-making"},
+  {k: "blank",  t: "No contribution"},
+];
+
+function _finIso(d){ return d.toISOString().slice(0, 10); }
+
+function financePreset(k){
+  FIN.preset = k || "";
+  if(k){
+    const p = FIN_PRESETS.filter(x => x.k === k)[0];
+    if(p){
+      const end = new Date(), start = new Date();
+      if(p.month){ start.setDate(1); }
+      else if(p.quarter){ start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1); }
+      else { start.setDate(start.getDate() - (p.days - 1)); }
+      const a = document.getElementById("fin_start"), b = document.getElementById("fin_end");
+      if(a) a.value = _finIso(start);
+      if(b) b.value = _finIso(end);
+    }
+  }
+  financeLoad();
+}
+
+function financeFilter(k){ FIN.filter = k; financeRender(); }
+
+function _finChips(){
+  const p = document.getElementById("fin_presets");
+  if(p){
+    p.innerHTML = FIN_PRESETS.map(function(x){
+      return '<button class="db-chip'+(FIN.preset===x.k?" on":"")+'" '
+           + 'onclick="financePreset('+jsArg(x.k)+')">'+_fesc(x.t)+'</button>';
+    }).join("");
+  }
+  const f = document.getElementById("fin_filters");
+  if(f){
+    // Each filter carries its own count, so choosing one is never a guess about
+    // whether it will show anything.
+    f.innerHTML = FIN_FILTERS.map(function(x){
+      const n = _finMatching(x.k).length;
+      return '<button class="db-chip'+(FIN.filter===x.k?" on":"")+'"'
+           + (n ? "" : ' style="opacity:.45"')
+           + ' onclick="financeFilter('+jsArg(x.k)+')">'+_fesc(x.t)+' '+n+'</button>';
+    }).join("");
+  }
+}
 
 function _fesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -26,7 +89,9 @@ function _fpct(v){
                                            : Number(v).toFixed(1)+"%";
 }
 
-function financeOnOpen(){ financeLoad(); }
+// Opens on the preset it was already silently using, with the dates FILLED IN
+// rather than left blank for the reader to wonder about.
+function financeOnOpen(){ financePreset(FIN.preset || "30d"); }
 
 async function financeLoad(){
   const body = document.getElementById("finbody");
@@ -54,9 +119,68 @@ function financeSort(key){
   financeRender();
 }
 
+// A product with NO contribution is its own answer, not a loss and not a
+// profit. Lumping it in with either would be the quiet lie on this screen:
+// "loss-making" would fill up with products whose cost simply is not known.
+function _finMatching(f){
+  return FIN.rows.filter(function(r){
+    const c = r.contribution;
+    if(f === "profit") return c !== null && c !== undefined && c > 0;
+    if(f === "loss")   return c !== null && c !== undefined && c <= 0;
+    if(f === "blank")  return c === null || c === undefined;
+    return true;
+  });
+}
+
+// Children rolled into their parent. Money adds up; margin does NOT -- it is
+// recomputed from the rolled-up parts, because averaging percentages weights a
+// product that sold twice the same as one that sold two hundred times. And a
+// parent containing ONE product whose contribution is unknown reports no
+// contribution for the whole family, exactly as a single product does: a
+// partial total only ever flatters.
+function _finRollup(rows){
+  const out = {}, order = [];
+  rows.forEach(function(r){
+    const key = r.parent_asin || r.asin;
+    if(!out[key]){
+      out[key] = {asin: key, title: r.title || "", parent_asin: "", _n: 0,
+                  units: 0, revenue: 0, vat: 0, fees: 0, cogs: 0, refunds: 0,
+                  ad_spend: null, uncosted_units: 0, contribution: 0,
+                  _blank: false, _isGroup: false};
+      order.push(key);
+    }
+    const g = out[key];
+    g._n++;
+    if(r.parent_asin) g._isGroup = true;
+    ["units", "revenue", "vat", "fees", "cogs", "refunds", "uncosted_units"]
+      .forEach(function(k){ g[k] += Number(r[k] || 0); });
+    if(r.ad_spend !== null && r.ad_spend !== undefined){
+      g.ad_spend = Number(g.ad_spend || 0) + Number(r.ad_spend);
+    }
+    if(r.contribution === null || r.contribution === undefined) g._blank = true;
+    else g.contribution += Number(r.contribution);
+    if(!g.title && r.title) g.title = r.title;
+  });
+  return order.map(function(k){
+    const g = out[k];
+    if(g._blank) g.contribution = null;
+    g.margin_pct = (g.contribution !== null && g.revenue)
+                 ? Number((g.contribution / g.revenue * 100).toFixed(2)) : null;
+    if(g._isGroup) g.title = (g.title || "") + " (" + g._n + " children)";
+    return g;
+  });
+}
+
+function _finVisible(){
+  let rows = _finMatching(FIN.filter);
+  const box = document.getElementById("fin_by_parent");
+  if(box && box.checked) rows = _finRollup(rows);
+  return rows;
+}
+
 function _finSorted(){
   const k = FIN.sort, dir = FIN.desc ? -1 : 1;
-  return FIN.rows.slice().sort(function(a, b){
+  return _finVisible().slice().sort(function(a, b){
     let x = a[k], y = b[k];
     // Blanks sort to the bottom whichever way the column is pointing: a withheld
     // contribution is not "the smallest", it is "not known".
@@ -80,10 +204,64 @@ const FIN_COLS = [
   {k:"margin_pct",   t:"Margin",        kind:"pct"},
 ];
 
+// Totals for whatever is on screen. NOT the server's whole-period totals: with
+// a filter on, showing those under a filtered table invites reading the two as
+// the same thing, and "Loss-making" with a healthy total underneath it is the
+// most misleading arrangement this screen could produce. Contribution is
+// withheld if ANY visible row withholds it -- the same rule one product follows.
+function _finTotals(rows){
+  const t = {products: rows.length, units: 0, revenue: 0, vat: 0, fees: 0,
+             cogs: 0, refunds: 0, ad_spend: null, contribution: 0};
+  let blank = false, anyAds = false;
+  rows.forEach(function(r){
+    ["units", "revenue", "vat", "fees", "cogs", "refunds"].forEach(function(k){
+      t[k] += Number(r[k] || 0);
+    });
+    if(r.ad_spend !== null && r.ad_spend !== undefined){
+      anyAds = true; t.ad_spend = Number(t.ad_spend || 0) + Number(r.ad_spend);
+    }
+    if(r.contribution === null || r.contribution === undefined) blank = true;
+    else t.contribution += Number(r.contribution);
+  });
+  if(!anyAds) t.ad_spend = null;
+  if(blank) t.contribution = null;
+  t.margin_pct = (t.contribution !== null && t.revenue)
+               ? Number((t.contribution / t.revenue * 100).toFixed(2)) : null;
+  ["revenue", "vat", "fees", "cogs", "refunds"].forEach(function(k){
+    t[k] = Number(t[k].toFixed(2));
+  });
+  if(t.contribution !== null) t.contribution = Number(t.contribution.toFixed(2));
+  return t;
+}
+
 function financeRender(){
   const body = document.getElementById("finbody");
-  const t = FIN.totals || {}, cur = (FIN.meta && FIN.meta.currency) || "";
+  _finChips();
+  const visible = _finVisible();
+  const t = _finTotals(visible), cur = (FIN.meta && FIN.meta.currency) || "";
   let h = "";
+
+  // Which days this screen is counting, said out loud. It defaulted to the last
+  // thirty while the date boxes sat empty, so the number on screen belonged to a
+  // period nobody had been told about.
+  if(FIN.meta && FIN.meta.start){
+    h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+      // WHOSE money, and in which country. This screen is per account and per
+      // marketplace and said neither, so a figure could not be placed.
+      +  (FIN.meta.account_label
+          ? '<b>'+_fesc(FIN.meta.account_label)+'</b>'
+            + (FIN.meta.marketplace ? ' · '+_fesc(FIN.meta.marketplace) : '')
+            + ' — '
+          : '')
+      +  'money that moved between <b>'+_fesc(FIN.meta.start)+'</b> and <b>'
+      +  _fesc(FIN.meta.end)+'</b>'
+      +  (FIN.filter !== "all"
+          ? ' — showing <b>'+_fesc((FIN_FILTERS.filter(x=>x.k===FIN.filter)[0]||{}).t)
+            +'</b> only, and the totals below are for those '+visible.length
+            +' row'+(visible.length===1?'':'s')+', not the whole period.'
+          : '.')
+      +  '</div>';
+  }
 
   ((FIN.meta && FIN.meta.notes) || []).forEach(function(n){
     h += '<div class="cc" style="font-size:12px;margin:2px 0 10px;padding:9px 11px;'
@@ -95,6 +273,15 @@ function financeRender(){
     h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
       +  'Nothing in this period yet. Finance data is pulled per day — press '
       +  '<b>Sync</b> on the Sales screen and come back.</div>';
+    body.innerHTML = h; return;
+  }
+  if(!visible.length){
+    // The period HAS products; this filter has none. Two different facts, and
+    // the empty-period wording above would have said the wrong one.
+    h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
+      +  'None of the '+FIN.rows.length+' products in this period are '
+      +  _fesc(((FIN_FILTERS.filter(x=>x.k===FIN.filter)[0])||{}).t||"").toLowerCase()
+      +  '. Pick <b>All</b> to see them.</div>';
     body.innerHTML = h; return;
   }
 
@@ -116,7 +303,14 @@ function financeRender(){
       const v = r[c.k];
       let cell;
       if(c.kind === "text"){
-        cell = '<code style="font-size:11.5px">'+_fesc(v)+'</code>';
+        // The product, not just its code. An ASIN alone is unreadable, and a
+        // table of unreadable identifiers is one nobody checks.
+        cell = r.title
+          ? '<div style="max-width:290px"><div style="font-size:11.5px;'
+            + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'
+            + _fesc(r.title)+'">'+_fesc(r.title)+'</div>'
+            + '<code class="cc" style="font-size:10px">'+_fesc(v)+'</code></div>'
+          : '<code style="font-size:11.5px">'+_fesc(v)+'</code>';
         if(r.uncosted_units){
           cell += '<span class="cc" style="font-size:10px;color:var(--warn);margin-left:6px" '
                 + 'title="These units have no cost recorded, so no contribution is shown">'

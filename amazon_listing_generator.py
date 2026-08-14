@@ -2208,7 +2208,12 @@ def init_sheets(config: dict):
     if _use_db:
         from data.store import ListingStore, SheetLikeStore
         _wsid = str(config.get("_account_id") or "").strip() or "dropshipping"
-        ws_out = SheetLikeStore(ListingStore(_wsid))
+        # The SAME database the app reads. Without the path this resolves via
+        # CONFIG_PATH in the environment, which is one inherited variable away
+        # from writing into a different file entirely -- listings that generate
+        # successfully and then are nowhere to be found.
+        ws_out = SheetLikeStore(ListingStore(
+            _wsid, config_path=str(config.get("_config_path") or "") or None))
         console.print(f"  Output -> [bold]SQLite[/bold] (workspace '{_wsid}') "
                       f"-- no output sheet opened")
 
@@ -2311,7 +2316,22 @@ def read_input_sheet(ws_in) -> list:
             "handling_time": item.get("delivery_time", item.get("handling_time", "")),
             "upc":           item.get("ean",           item.get("upc",            "")),
         }
-        if norm["amazon_url"].strip():
+        # A ROW NEEDS A SOURCE, NOT NECESSARILY A COMPETITOR.
+        #
+        # This required amazon_url and dropped everything else without a word. On
+        # a spreadsheet that was invisible -- a row with only an eBay link simply
+        # never generated and nobody knew why. Once products can be typed into
+        # the app it becomes a trap: you paste the eBay link you buy from, the
+        # row appears in the queue, and generation silently ignores it.
+        #
+        # Per CLAUDE.md Rule 1 the Amazon ASIN is a COMPETITOR REFERENCE used to
+        # pull product data, not the thing being listed. The eBay link is a
+        # source of that same data -- fetch_ebay_supplement already reads title,
+        # specifics and images from it, and the eBay seller import creates drafts
+        # with no competitor ASIN at all. So either link is enough to start from.
+        #
+        # A row with NEITHER is still dropped: there is nothing to generate from.
+        if norm["amazon_url"].strip() or norm["ebay_url"].strip():
             products.append(norm)
     return products
 
@@ -7255,6 +7275,24 @@ async def main():
     # ACCOUNT-SCOPED CREDENTIALS: load the active account's SP-API creds so submit
     # / preview publish to the CORRECT seller account in this workspace.
     _cli_account_id = _early_argval("--account-id")
+    # WHICH WORKSPACE THIS RUN BELONGS TO.
+    #
+    # Set here, unconditionally, the moment the argument is read. It used to be
+    # set ONLY inside the Miles-specific config block, so an ordinary generate
+    # never had it -- and both the places that ask for it fall back to the
+    # string "dropshipping":
+    #
+    #   the OUTPUT store   (SQLite workspace the new listings are written to)
+    #   the INPUT queue    (SQLite workspace the imported products are read from)
+    #
+    # So a run launched with --account-id nestwell_goods wrote its listings into
+    # the dropshipping workspace and looked for its input in the dropshipping
+    # workspace, and reported "imported queue is EMPTY" because the products had
+    # been imported under the account's own workspace, where nothing was
+    # looking. The account name was on the command line and in the log the
+    # whole time; nothing downstream was reading it.
+    if _cli_account_id:
+        config["_account_id"] = _cli_account_id
     _acc_default_mkt = ""   # marketplace the account itself declares (authority)
     _acc_brand = ""         # brand this account sells under (its own, not global)
     if _cli_account_id:

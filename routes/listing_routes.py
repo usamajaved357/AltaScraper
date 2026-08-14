@@ -1034,6 +1034,38 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         _req_select_type = (request.args.get("select_type") or "auto").strip()
         _req_minimal = (request.args.get("minimal") or "") == "1"
 
+        # WHICH ACCOUNT THIS RUN IS FOR -- named by the page, not by a global.
+        #
+        # _state["active_account_id"] is ONE variable for the whole process. It
+        # is not per browser, not per tab, and it is restored from disk on
+        # restart, so it drifts from what any given screen is showing. Pressing
+        # Generate while looking at Jack Reacherd ran the generator with
+        # Nestwell Goods' credentials against Nestwell's sheet, and every line of
+        # the log said Nestwell while the screen still said Jack.
+        #
+        # The page now sends the account it is displaying. Where the two differ
+        # the RUN IS REFUSED -- not silently switched to either one. A generate
+        # writes listings and a submit reaches Amazon; if there is any doubt
+        # about whose account that is, the only safe answer is to do nothing and
+        # say so. Reloading the page settles it.
+        _req_account = (request.args.get("account_id") or "").strip()
+        _state_account = str(_state.get("active_account_id", "") or "")
+        _mismatch = ""
+        if _req_account and _req_account != _state_account:
+            _mismatch = (
+                "ACCOUNT_MISMATCH This page is showing %s but the server has %s "
+                "selected, so nothing was run. A run uses real credentials and "
+                "writes real listings, so it will not guess which account you "
+                "meant — reselecting %s and retrying."
+                % (_req_account, _state_account or "no account", _req_account))
+        elif not _req_account and not _state_account:
+            _mismatch = ("No account is selected, so there is nothing to run "
+                         "against. Choose an account at the top of the screen.")
+        if _mismatch:
+            return Response("data: [error] %s\n\nevent: end\ndata: end\n\n"
+                            % _mismatch.replace("\n", " "),
+                            mimetype="text/event-stream")
+
         # PUBLISH GATE. api_submit writes to Amazon. A workspace with no Amazon app of
         # its own must never reach the generator: the generator falls back to the global
         # sp_api_* credential block, which is jack_uk's -- so a submit from a read-only

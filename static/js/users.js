@@ -73,6 +73,28 @@ async function loadMe(){
     // Which store the app is on. Used for wording that is only correct on one
     // backend -- see the "not in your sheet" caption in miles_template.js.
     window.DATA_BACKEND = j.backend || "sheets";
+    window.DATA_BACKEND_SOURCE = j.backend_source || "";
+    window.DATA_BACKEND_NOTE = j.backend_note || "";
+    // SAY IT ON SCREEN when the app fell back to spreadsheets.
+    //
+    // "Still using sheets" and "the migration failed" look identical from the
+    // outside and need completely different actions. The usual cause is that the
+    // database file is not where the app looked -- a deploy replaced the disk it
+    // was on -- and that is invisible unless something says so. Shown only when
+    // it is NOT on the database, because that is the only case worth a banner.
+    if(window.DATA_BACKEND !== "db"){
+      const host = document.getElementById("storebanner");
+      if(host){
+        host.style.display = "";
+        host.innerHTML = '<i class="ti ti-alert-triangle"></i> '
+          + 'This app is reading <b>Google Sheets</b>, not its database — '
+          + (window.DATA_BACKEND_NOTE
+              ? String(window.DATA_BACKEND_NOTE)
+              : 'chosen by ' + String(window.DATA_BACKEND_SOURCE || 'the default'))
+          + ' Anything generated goes to the sheet, and screens will say "your '
+          + 'sheet" because that is where it really is.';
+      }
+    }
     const btn = document.getElementById("usersbtn");
     if(btn && can("manage_users")) btn.style.display = "";
     const who = document.getElementById("whoami");

@@ -802,39 +802,13 @@ async function loadTargetAccount(){
   }catch(e){ el.className="acctbanner bad"; el.textContent="Could not resolve destination account."; }
 }
 
-async function loadInputSheet(){
-  var body=document.getElementById("inputsheet_body"); if(!body) return;
-  var meta=document.getElementById("inputsheet_meta");
-  body.innerHTML='<div class="cc" style="padding:16px;opacity:.7"><span class="genspin"></span> Loading input sheet\u2026</div>';
-  if(meta) meta.textContent="";
-  try{
-    var j=await (await fetch('/input_sheet')).json();
-    if(!j.ok){ body.innerHTML='<div class="cc" style="padding:16px;color:var(--warn)">'+esc(j.error||'could not load')+'</div>'; return; }
-    var openA=document.getElementById("inputsheet_open");
-    if(openA && j.view_url){ openA.href=j.view_url; openA.style.display="inline-flex"; }
-    if(meta) meta.textContent='\u201c'+(j.title||'')+'\u201d \u00b7 '+j.row_count+' rows \u00d7 '+j.col_count+' cols';
-    var H=j.headers||[], R=j.rows||[];
-    if(!H.length && !R.length){ body.innerHTML='<div class="cc" style="padding:16px;opacity:.6">This sheet is empty.</div>'; return; }
-    var html='<table class="ishtable"><thead><tr><th class="isgut">#</th>';
-    H.forEach(function(h){ html+='<th>'+esc(h||'')+'</th>'; });
-    html+='</tr></thead><tbody id="ishbody">';
-    R.forEach(function(row,ri){
-      html+='<tr><td class="isgut">'+(ri+2)+'</td>';
-      for(var c=0;c<H.length;c++){ html+='<td>'+esc(row[c]!=null?row[c]:'')+'</td>'; }
-      html+='</tr>';
-    });
-    html+='</tbody></table>';
-    body.innerHTML=html;
-  }catch(e){ body.innerHTML='<div class="cc" style="padding:16px;color:var(--red)">Error: '+esc(String(e))+'</div>'; }
-}
-function filterInputSheet(){
-  var q=((document.getElementById("inputsheet_filter")||{}).value||"").toLowerCase().trim();
-  var body=document.getElementById("ishbody"); if(!body) return;
-  Array.prototype.forEach.call(body.querySelectorAll("tr"), function(tr){
-    if(!q){ tr.style.display=""; return; }
-    tr.style.display = (tr.textContent.toLowerCase().indexOf(q)>=0) ? "" : "none";
-  });
-}
+// loadInputSheet and filterInputSheet MOVED to static/js/inputqueue.js.
+//
+// They rendered the Google input sheet read-only, from /input_sheet. The screen
+// now edits the queue itself, so keeping these here would have been two
+// functions of the same name in two files, with whichever script loaded last
+// deciding what the button did -- and shell.js loads late, so the old read-only
+// pair would have quietly won.
 
 function navToBrandCreate(){
   // open a blank brand setup so the user can create a new brand profile

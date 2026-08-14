@@ -120,6 +120,14 @@
   </div>
 
   <div class="wsmain">
+    <!-- WHICH STORE THIS APP IS ACTUALLY ON. Shown only when it has fallen back
+         to Google Sheets, with the reason — usually that the database file is
+         not where the app looked, because a deploy replaced the disk it was on.
+         "Still using sheets" and "the migration failed" look identical from the
+         outside and need completely different actions. -->
+    <div id="storebanner" class="cc" style="display:none;margin:0 0 12px;padding:9px 12px;
+         border:1px solid #3a3320;background:#241f10;border-radius:7px;font-size:12px"></div>
+
     <!-- LISTINGS section -->
     <div id="sec_listings">
       <div class="wstoolbar">
@@ -238,19 +246,24 @@
       <div class="reqnote">Runs here only touch <b id="gen_scope">this workspace's</b> sheet/marketplace — nothing else is affected.</div>
       <div id="targetacct" class="acctbanner">Resolving destination account…</div>
 
-      <!-- INPUT SHEET VIEWER: see the source sheet right here, no need to open Google Sheets -->
+      <!-- THE PRODUCT QUEUE: what Generate will make, added and edited here.
+           This was a read-only view of the Google sheet, so changing anything
+           meant leaving the app. The queue already lived in the database; only
+           the way IN was still a spreadsheet. Importing a sheet still works and
+           fills the SAME queue. -->
       <div id="inputsheetwrap" style="margin-top:18px;border:1px solid var(--line,#2a2f3a);border-radius:10px;overflow:hidden">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2,rgba(255,255,255,.02));flex-wrap:wrap">
-          <b style="font-size:14px"><i class="ti ti-table"></i> Input sheet</b>
+          <b style="font-size:14px"><i class="ti ti-list-check"></i> Products to generate</b>
           <span class="cc" id="inputsheet_meta" style="font-size:12px;opacity:.7"></span>
           <span class="spacer" style="flex:1"></span>
-          <input id="inputsheet_filter" placeholder="Filter rows…" oninput="filterInputSheet()"
-                 style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:160px">
-          <button class="ib" onclick="loadInputSheet()"><i class="ti ti-refresh"></i> Refresh</button>
+          <input id="inputsheet_filter" placeholder="Filter…" oninput="filterInputSheet()"
+                 style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:150px">
+          <button class="ib" onclick="inputQueueLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+          <button class="ib" onclick="inputQueueImport(this)" title="Bring in an input spreadsheet. Adds to this queue; never deletes from it."><i class="ti ti-table-import"></i> Import from sheet</button>
           <a class="ib" id="inputsheet_open" href="#" target="_blank" rel="noopener" style="display:none"><i class="ti ti-external-link"></i> Open in Google Sheets</a>
         </div>
-        <div id="inputsheet_body" style="max-height:520px;overflow:auto">
-          <div class="cc" style="padding:16px;opacity:.6">Click Refresh to load the input sheet.</div>
+        <div id="inputsheet_body" style="max-height:560px;overflow:auto">
+          <div class="cc" style="padding:16px;opacity:.6">Loading…</div>
         </div>
       </div>
     </div>
@@ -512,12 +525,19 @@
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
         <div class="sub">What each product left behind after Amazon's fees, refunds and what the stock cost. Everything here is on the money basis — units shipped, dated when the money moved — so the fees and the units beside them describe the same sales.</div></div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="date" id="fin_start" onchange="financeLoad()" style="font-size:12px;padding:4px 6px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="date" id="fin_start" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <span class="cc" style="font-size:11px">to</span>
-          <input type="date" id="fin_end" onchange="financeLoad()" style="font-size:12px;padding:4px 6px">
+          <input type="date" id="fin_end" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <button class="db-chip" onclick="financeLoad()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
+        <div id="fin_presets" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+        <div id="fin_filters" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+        <label class="cc" style="font-size:11.5px;display:flex;gap:5px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="fin_by_parent" onchange="financeRender()"> Group by parent
+        </label>
       </div>
       <div id="finbody" style="padding:4px 0"></div>
     </div>
@@ -673,7 +693,7 @@
 <div id="sec_sync" class="wspanel">
   <div class="wstoolbar bleed">
     <div><h2>Amazon &harr; App sync</h2>
-    <div class="sub">Pull Amazon's live copy into the app, or push app copy to Amazon. Both directions PROPOSE a side-by-side &mdash; nothing is overwritten without your per-field choice. Push is locked until you unlock it, refuses to run through borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
+    <div class="sub">Compare one listing against Amazon's live copy, field by field, and choose which side wins for each. <b>Easiest way in:</b> press the <i class="ti ti-arrows-exchange"></i> button on any live listing &mdash; it opens this screen with that SKU already filled in. Nothing is overwritten without your per-field choice; push is locked until you unlock it, refuses borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
   </div>
 
   <h4 style="margin:0 0 8px">Account capability (live)</h4>
@@ -749,6 +769,13 @@
 <script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sellerimport.js?v={{ ASSET_V }}"></script>
+<!-- The product queue, which owns loadInputSheet/filterInputSheet outright --
+     shell.js no longer defines them, so load order cannot decide behaviour. -->
+<script src="/static/js/inputqueue.js?v={{ ASSET_V }}"></script>
+<!-- Changing a live selling price: preview, then send exactly that. -->
+<script src="/static/js/priceedit.js?v={{ ASSET_V }}"></script>
+<!-- Adding a colour or size to a product that is already listed. -->
+<script src="/static/js/addvariant.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

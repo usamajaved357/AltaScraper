@@ -315,6 +315,15 @@ async function sourcingPickerLoad(q){
   (j.items||[]).forEach(function(it){
     h += '<div style="display:flex;gap:9px;align-items:center;font-size:11.5px;'
       +  'padding:6px 4px;border-top:1px solid #1c2531">'
+      // The product, at a glance. A SKU is "10.06_3Days_B0081ZHHTS" and a title
+      // is forty words of keywords; neither says what the thing is, and
+      // enrolling the wrong one reprices it against somebody else's supplier.
+      +  (it.img
+          ? '<img src="'+_sesc(it.img)+'" loading="lazy" alt="" '
+            + 'style="width:38px;height:38px;object-fit:contain;background:#0d1220;'
+            + 'border-radius:5px;flex:0 0 auto">'
+          : '<span style="width:38px;height:38px;border-radius:5px;flex:0 0 auto;'
+            + 'background:#0d1220;display:inline-block"></span>')
       +  '<code style="min-width:150px">'+_sesc(it.sku)+'</code>'
       +  '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" '
       +  'title="'+_sesc(it.title)+'">'+_sesc(it.title||"(no title)")+'</span>'

@@ -408,6 +408,100 @@ truthy("  and a link that names a variation goes straight through",
 truthy("  the same link twice does not become two sources",
        "ensure_source(" in _ssrc)
 
+print("\n=== eBay answers an unknown seller with the WHOLE CATALOGUE ===")
+# Measured on the live API, 15 Aug 2026, and this is the entire reason this
+# section exists:
+#
+#   sellers:{worldcarparts_uk}             HTTP 200  total 24,947   all matched
+#   sellers:{definitely_not_a_seller_xyz}  HTTP 200  total 96,686,299  0 matched
+#   nonsensefield:{x}                      HTTP 200  total 96,686,299  0 matched
+#
+# 96.7 million is the whole of eBay. An unrecognised filter is not rejected, it
+# is DISCARDED, and the query runs without it. Two real shop names the owner
+# supplied were unrecognised on every eBay site in every capitalisation, so
+# "import this seller" imported thousands of other people's products and
+# presented them as one seller's range.
+_calls = {"n": 0}
+def _fake_search(pages):
+    """Stand in for urlopen, handing back pre-built pages."""
+    import json as _j, io
+    def _open(req, timeout=None):
+        i = min(_calls["n"], len(pages) - 1)
+        _calls["n"] += 1
+        body = _j.dumps(pages[i]).encode("utf-8")
+        class _R:
+            def read(self_inner): return body
+            def __enter__(self_inner): return self_inner
+            def __exit__(self_inner, *a): return False
+        return _R()
+    return _open
+
+def _item(n, who):
+    return {"itemId": "v1|%d|0" % n, "legacyItemId": str(n),
+            "title": "thing %d" % n, "seller": {"username": who},
+            "price": {"value": "9.99", "currency": "GBP"}}
+
+import urllib.request as _ur
+_real_open = _ur.urlopen
+E._TOKEN_CACHE["token"] = "t"
+E._TOKEN_CACHE["expires_at"] = 9e18
+try:
+    # 1. eBay ignored the filter: a page of OTHER people's items.
+    _calls["n"] = 0
+    _ur.urlopen = _fake_search([{"total": 96686299,
+                                 "itemSummaries": [_item(i, "someone_else")
+                                                   for i in range(10)]}])
+    items, meta = E.search_seller("5277RON-OFFICIAL", "a", "b",
+                                  terms=("a",), pages_per_term=1, per_page=10)
+    check("not one of those items is imported", len(items), 0)
+    check("  and it is recorded as an unknown seller", meta["seller_known"], False)
+    check("  every foreign item was counted, not quietly dropped",
+          meta["rejected"], 10)
+    truthy("  the error says eBay answered with its whole catalogue",
+           any("whole catalogue" in e for e in meta["errors"]))
+
+    # 2. A real seller: everything comes through untouched.
+    _calls["n"] = 0
+    _ur.urlopen = _fake_search([{"total": 24947,
+                                 "itemSummaries": [_item(i, "worldcarparts_uk")
+                                                   for i in range(10)]}])
+    items2, meta2 = E.search_seller("worldcarparts_uk", "a", "b",
+                                    terms=("a",), pages_per_term=1, per_page=10)
+    check("a real seller's items all come through", len(items2), 10)
+    check("  nothing rejected", meta2["rejected"], 0)
+    check("  and it is recorded as known", meta2["seller_known"], True)
+
+    # 3. The dangerous middle case: MOSTLY theirs, with strangers mixed in.
+    _calls["n"] = 0
+    mixed = ([_item(i, "worldcarparts_uk") for i in range(6)]
+             + [_item(100 + i, "somebody_else") for i in range(4)])
+    _ur.urlopen = _fake_search([{"total": 500, "itemSummaries": mixed}])
+    items3, meta3 = E.search_seller("worldcarparts_uk", "a", "b",
+                                    terms=("a",), pages_per_term=1, per_page=10)
+    check("strangers are dropped even when most of the page is right",
+          len(items3), 6)
+    check("  and counted", meta3["rejected"], 4)
+
+    # 4. Case never decides it. eBay usernames are not case sensitive and
+    #    refusing on capitalisation would reject a seller who does exist.
+    _calls["n"] = 0
+    _ur.urlopen = _fake_search([{"total": 5,
+                                 "itemSummaries": [_item(1, "WorldCarParts_UK")]}])
+    items4, meta4 = E.search_seller("worldcarparts_uk", "a", "b",
+                                    terms=("a",), pages_per_term=1, per_page=10)
+    check("capitalisation does not reject a real seller", len(items4), 1)
+finally:
+    _ur.urlopen = _real_open
+    E._TOKEN_CACHE["token"] = None
+
+truthy("a link can be used instead of a name", hasattr(E, "seller_of"))
+_fsrc = _insp.getsource(__import__("routes.seller_routes",
+                                   fromlist=["x"]).register)
+truthy("  and the route accepts one where a name is asked for",
+       "seller_of(" in _fsrc)
+truthy("  an unknown seller is REFUSED, not returned as a catalogue",
+       'meta.get("seller_known") is False' in _fsrc)
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)

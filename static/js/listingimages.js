@@ -112,23 +112,36 @@ async function _ilLoad(){
         + _ilEsc((j && j.error) || "Could not load images") + "</div>"); return; }
     const folders = j.folders || [];
     if(all){
-      // This SKU first, then the rest alphabetically, each tile tagged with its
-      // owner so nothing is picked from the wrong product by mistake.
+      // FOLDERS, not one long scroll of everything.
+      //
+      // Flattening every listing's images into a single grid meant hundreds of
+      // tiles from dozens of products, and the only thing separating them was a
+      // small label. Folders open as their own screen, the way folders do
+      // everywhere else, and you come back out with Back.
+      //
+      // This SKU first, then the rest alphabetically.
       const mine = folders.filter(function(f){ return String(f.sku) === String(IMGLIB.sku); });
       const others = folders.filter(function(f){ return String(f.sku) !== String(IMGLIB.sku); })
                             .sort(function(a, b){ return String(a.sku) < String(b.sku) ? -1 : 1; });
-      IMGLIB.files = [];
-      mine.concat(others).forEach(function(fo){
-        (fo.files || []).forEach(function(f){
-          IMGLIB.files.push(Object.assign({}, f, {owner: fo.sku}));
-        });
-      });
+      IMGLIB.folders = mine.concat(others);
       IMGLIB.otherCount = others.reduce(function(n, f){ return n + (f.files || []).length; }, 0);
-    } else {
-      const folder = folders[0];
-      IMGLIB.files = (folder && folder.files) || [];
-      IMGLIB.otherCount = 0;
+      if(IMGLIB.openFolder){
+        const fo = IMGLIB.folders.filter(function(f){
+          return String(f.sku) === String(IMGLIB.openFolder); })[0];
+        IMGLIB.files = (fo && fo.files || []).map(function(f){
+          return Object.assign({}, f, {owner: fo.sku}); });
+        _ilDraw();
+      } else {
+        IMGLIB.files = [];
+        _ilDrawFolders();
+      }
+      return;
     }
+    IMGLIB.openFolder = "";
+    IMGLIB.folders = null;
+    const folder = folders[0];
+    IMGLIB.files = (folder && folder.files) || [];
+    IMGLIB.otherCount = 0;
     _ilDraw();
   }catch(e){
     _ilRender('<div class="cc" style="padding:20px;color:var(--red)">' + _ilEsc(String(e)) + "</div>");
@@ -137,7 +150,87 @@ async function _ilLoad(){
 
 async function ilToggleAll(){
   IMGLIB.showAll = !IMGLIB.showAll;
+  IMGLIB.openFolder = "";        // always land on the folder list, not inside one
   await _ilLoad();
+}
+
+// ---- the folder list, which is its own screen ---------------------------
+async function ilOpenFolder(sku){
+  IMGLIB.openFolder = sku;
+  await _ilLoad();
+}
+async function ilCloseFolder(){
+  IMGLIB.openFolder = "";
+  await _ilLoad();
+}
+
+function _ilDrawFolders(){
+  const list = IMGLIB.folders || [];
+  let h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
+        + '<div style="font-weight:600;font-size:15px">Image library</div>'
+        + '<div class="cc" style="font-size:12px">' + list.length + ' product'
+        + (list.length === 1 ? '' : 's') + '</div>'
+        + '<span class="spacer" style="flex:1"></span>'
+        + '<button class="db-chip" onclick="ilToggleAll()">'
+        + '<i class="ti ti-photo"></i> Back to ' + _ilEsc(IMGLIB.sku) + '</button>'
+        + '<button class="db-chip" onclick="closeImageLibrary()">Close</button></div>';
+  h += '<div class="cc" style="font-size:11.5px;margin-bottom:12px">'
+     + 'One folder per product. Open one to see its images, set a main image, '
+     + 'send one to Amazon, or download the lot.</div>';
+
+  if(!list.length){
+    h += '<div class="empty" style="padding:24px">No images stored for this account yet.</div>';
+    _ilRender(h); return;
+  }
+
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px">';
+  list.forEach(function(fo){
+    const files = fo.files || [];
+    const cover = files[0];
+    const isMine = String(fo.sku) === String(IMGLIB.sku);
+    h += '<div onclick="ilOpenFolder(' + jsArg(fo.sku) + ')" '
+       + 'style="border:1px solid ' + (isMine ? 'var(--accent)' : 'var(--line)')
+       + ';border-radius:10px;overflow:hidden;background:var(--panel);cursor:pointer">'
+       + (cover
+           ? '<img src="' + _ilEsc(cover.url) + '" loading="lazy" '
+             + 'style="width:100%;height:110px;object-fit:contain;background:#0d1220;display:block">'
+           : '<div style="height:110px;background:#0d1220;display:flex;align-items:center;'
+             + 'justify-content:center"><i class="ti ti-folder" style="font-size:34px;opacity:.5"></i></div>')
+       + '<div style="padding:7px 9px">'
+       + '<div style="font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;'
+       + 'text-overflow:ellipsis" title="' + _ilEsc(fo.sku) + '">'
+       + '<i class="ti ti-folder"></i> ' + _ilEsc(fo.sku) + '</div>'
+       + '<div class="cc" style="font-size:10.5px">' + files.length + ' image'
+       + (files.length === 1 ? '' : 's')
+       + (isMine ? ' · this listing' : '') + '</div>'
+       + '<button class="db-chip" style="margin-top:5px;font-size:10.5px" '
+       + 'onclick="event.stopPropagation();ilDownloadAll(' + jsArg(fo.sku) + ')">'
+       + '<i class="ti ti-download"></i> Download all</button>'
+       + '</div></div>';
+  });
+  h += '</div>';
+  _ilRender(h);
+}
+
+// ---- downloads ----------------------------------------------------------
+// One image: a plain link with `download`, which is what the attribute is for.
+// A whole folder: ONE zip from the server. Twenty separate downloads means
+// twenty save dialogs, and a browser blocks most of them as unwanted popups
+// after the first two or three -- so "download all" would appear to half-work.
+function ilDownloadOne(url, name){
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name || "image";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function ilDownloadAll(sku){
+  const s = sku || IMGLIB.openFolder || IMGLIB.sku;
+  if(!s){ toast("No folder to download."); return; }
+  toast("Preparing the zip…");
+  window.location.href = "/media/zip?sku=" + encodeURIComponent(s);
 }
 
 function closeImageLibrary(){
@@ -161,10 +254,25 @@ function _ilDraw(){
     (groups[g] = groups[g] || []).push(f);
   });
 
-  let h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
-        + '<div style="font-weight:600;font-size:15px">Images</div>'
-        + '<div class="cc" style="font-size:12px">' + _ilEsc(sku) + '</div>'
+  // Inside a folder opened from the library, the way out is Back -- not the
+  // toggle that dumps you at the top of everything.
+  const inFolder = !!IMGLIB.openFolder;
+  const shown = inFolder ? IMGLIB.openFolder : sku;
+  let h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">'
+        + (inFolder
+            ? '<button class="db-chip" onclick="ilCloseFolder()">'
+              + '<i class="ti ti-arrow-left"></i> All folders</button>'
+            : '')
+        + '<div style="font-weight:600;font-size:15px">'
+        + (inFolder ? '<i class="ti ti-folder-open"></i> ' : '') + 'Images</div>'
+        + '<div class="cc" style="font-size:12px">' + _ilEsc(shown) + '</div>'
         + '<span class="spacer" style="flex:1"></span>'
+        + (IMGLIB.files.length
+            ? '<button class="db-chip" onclick="ilDownloadAll()" '
+              + 'title="Every image in this folder, as one zip">'
+              + '<i class="ti ti-download"></i> Download all ('
+              + IMGLIB.files.length + ')</button>'
+            : '')
         + '<button class="db-chip" onclick="closeImageLibrary()">Close</button></div>';
 
   h += '<div class="cc" style="font-size:11.5px;margin-bottom:10px">'
@@ -174,15 +282,12 @@ function _ilDraw(){
 
   h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
      + '<button class="db-chip" onclick="ilToggleAll()">'
-     + (IMGLIB.showAll ? '<i class="ti ti-photo"></i> Show only this listing\'s images'
-                       : '<i class="ti ti-library-photo"></i> Show every listing\'s images')
+     + (IMGLIB.showAll ? '<i class="ti ti-photo"></i> Just this listing'
+                       : '<i class="ti ti-library-photo"></i> Browse all products')
      + '</button>'
      + '<span class="cc" style="font-size:11px">'
-     + (IMGLIB.showAll
-         ? ('Showing the whole library' + (IMGLIB.otherCount
-              ? ' — ' + IMGLIB.otherCount + ' image' + (IMGLIB.otherCount===1?'':'s')
-                + ' belong to other listings and are labelled'
-              : ''))
+     + (inFolder
+         ? 'Inside ' + _ilEsc(IMGLIB.openFolder)
          : 'Showing only ' + _ilEsc(sku))
      + '</span></div>';
 
@@ -248,6 +353,12 @@ function _ilDraw(){
            + 'title="Choose which image this is on Amazon — main, PT1-PT8 or the '
            + 'variation swatch — and send it" '
            + 'onclick="ilPushThis(' + jsArg(f.url) + ')">Send to Amazon…</button>'
+         // Saving one image was "right-click, Save as, find it again". A link
+         // with `download` is what the attribute exists for.
+         + '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
+           + 'title="Save this image" '
+           + 'onclick="ilDownloadOne(' + jsArg(f.url) + ',' + jsArg(f.name) + ')">'
+           + '<i class="ti ti-download"></i> Download</button>'
          + '</div></div>';
     });
     h += '</div>';

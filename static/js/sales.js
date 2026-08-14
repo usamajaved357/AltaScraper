@@ -241,22 +241,87 @@ function salesDrawCharts(ser){
     return dates.map(function(d, i){ return {label: d, value: m.cells[i]}; });
   };
 
+  // WHY EACH CHART HAS MORE THAN ONE SOURCE
+  // Two different Amazon feeds describe the same trade. The Sales & Traffic
+  // REPORT gives ordered_sales / units / conversion; the FINANCE records give
+  // net_revenue / units_shipped / profit. They arrive separately and one can be
+  // days behind the other -- measured on jack_uk: the finance records held nine
+  // days of real sales (13.33 to 116.64) while the report had three days, all of
+  // them zeroes, because the rest had not been backfilled past Amazon's
+  // one-report-a-minute quota.
+  //
+  // The charts were pinned to the report columns, so three of the four drew a
+  // confident flat line along the axis for an account that was selling. A flat
+  // zero is not a neutral thing to draw: it reads as "sales collapsed", which is
+  // worse than drawing nothing. So each chart names the series it would rather
+  // have and falls back to the other feed, a series is only drawn if it has a
+  // number that is not zero, and the chart says which feed it came from.
   const want = [
-    {key: "ordered_sales", title: "Revenue",       kind: "money", color: "#6ac7e8"},
-    {key: "units",         title: "Units ordered", kind: "count", color: "#8fd694"},
-    {key: "profit",        title: "Profit",        kind: "money", color: "#e8c66a"},
-    {key: "unit_session_pct", title: "Conversion", kind: "pct",   color: "#c79ae8"},
+    {title: "Revenue", kind: "money", color: "#6ac7e8",
+     keys: [["net_revenue", "finance records"], ["ordered_sales", "Sales & Traffic report"]]},
+    {title: "Units", kind: "count", color: "#8fd694",
+     keys: [["units_shipped", "finance records"], ["units", "Sales & Traffic report"]]},
+    {title: "Profit", kind: "money", color: "#e8c66a",
+     keys: [["profit", "finance records"]]},
+    {title: "Margin", kind: "pct", color: "#c79ae8",
+     keys: [["margin_pct", "finance records"]]},
+    {title: "Conversion", kind: "pct", color: "#7fb2f0",
+     keys: [["unit_session_pct", "Sales & Traffic report"]]},
   ];
+
+  // Usable means: at least one real number, and not every one of them zero.
+  // All-zero is what a feed that has not arrived looks like, and it is the one
+  // shape a chart must never present as a fact.
+  const usable = function(p){
+    if(!p) return false;
+    const real = p.filter(function(x){ return x.value !== null && x.value !== undefined; });
+    return real.length > 0 && real.some(function(x){ return Number(x.value) !== 0; });
+  };
+
   let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">';
   let drew = 0;
+  const skipped = [];
   want.forEach(function(w){
-    const p = pts(w.key);
-    if(!p) return;
+    let chosen = null, source = "", chosenAt = -1;
+    for(let i = 0; i < w.keys.length; i++){
+      const p = pts(w.keys[i][0]);
+      if(usable(p)){ chosen = p; source = w.keys[i][1]; chosenAt = i; break; }
+    }
+    if(!chosen){
+      // Present but empty is a different thing from absent, and only the first
+      // is worth telling someone about.
+      if(w.keys.some(function(k){ return pts(k[0]); })) skipped.push(w.title);
+      return;
+    }
+    // EVERY other feed is checked, not just the ones ahead of the winner. The
+    // disagreement is the point: if the finance records show sales for a period
+    // and the report shows zero for the same period, that is worth knowing, and
+    // stopping at the first usable series would never surface it.
+    const disagrees = w.keys.filter(function(k, i){
+      const p = pts(k[0]);
+      return i !== chosenAt && p && !usable(p);
+    }).map(function(k){ return k[1]; });
     drew++;
-    h += salesChart(p, {title: w.title, kind: w.kind, color: w.color});
+    h += salesChart(chosen, {
+      title: w.title, kind: w.kind, color: w.color,
+      // Said on every chart, not only when it falls back: which of Amazon's two
+      // feeds a number came from decides what it means, and the two disagree.
+      subtitle: "from the " + source
+        + (disagrees.length ? " — the " + _sEsc(disagrees.join(" and "))
+                            + " shows zero for the same period, so it is not "
+                            + "drawn" : "")});
   });
   h += '</div>';
-  host.innerHTML = drew ? h : "";
+
+  if(skipped.length){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:2px;padding:9px 11px;'
+      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      +  '<i class="ti ti-info-circle"></i> Not drawn: ' + _sEsc(skipped.join(", "))
+      +  ' — every value Amazon has sent for this period is zero. That is what a '
+      +  'feed which has not arrived looks like, so it is left blank rather than '
+      +  'charted as no sales. Press <b>Sync</b> to keep backfilling.</div>';
+  }
+  host.innerHTML = drew ? h : (skipped.length ? h : "");
 }
 
 async function salesReload(){

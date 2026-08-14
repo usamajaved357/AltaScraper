@@ -1,0 +1,94 @@
+"""routes/scope.py -- WHICH ACCOUNT and WHICH MARKETPLACE a request is about.
+
+WHY THIS FILE EXISTS
+Every screen has to answer the same two questions before it can do anything, and
+every screen was answering them for itself. An audit on 15 Aug 2026 found the
+marketplace resolved in twenty-four places across fifteen route files, in three
+mutually incompatible ways:
+
+    ...or _state["active_marketplace"] or ""              14 places
+    ...or _state["active_marketplace"] or acc default      6 places
+    ...or _state["active_marketplace"] or "UK"             4 places
+
+The first group is a bug, and it is the bug the owner keeps hitting. Nothing
+guarantees _state["active_marketplace"] is set: it is written when a marketplace
+is CHOSEN, and most screens are not the screen that chooses one. Open the app and
+go straight to Finance and it is "", so:
+
+    Finance      "no marketplace selected", on an account with real sales
+    Repricer     "no live listings are cached", on an account with 55 cached
+
+Both messages describe a different problem from the real one and send you off to
+fix something that was never broken. The third group is worse in a quieter way:
+defaulting to "UK" gives a US account a confident answer about the wrong country.
+
+So the resolution order lives here, once:
+
+    1. what the request explicitly asked for   -- always wins
+    2. the marketplace currently selected
+    3. the ACCOUNT'S OWN default               -- the missing step
+    4. the only marketplace that has data      -- see below
+    5. "" -- and then the caller must say so, not guess
+
+Step 4 is deliberately only ever used when there is exactly ONE candidate.
+Picking the biggest of several would be right most of the time and silently
+wrong the rest, on screens that change live prices.
+
+Nothing here reads a request or touches Flask, so it can be tested directly.
+"""
+
+
+def workspace_id(*, state=None, account=None, asked=None):
+    """Which account. The request wins, then the account, then what is selected."""
+    for v in (asked, (account or {}).get("id"),
+              (state or {}).get("active_account_id")):
+        s = str(v or "").strip()
+        if s:
+            return s
+    return ""
+
+
+def marketplace(*, state=None, account=None, asked=None, with_data=None):
+    """Which marketplace, by the order above. "" means genuinely unknown.
+
+    `with_data` is an optional callable taking the workspace id and returning a
+    marketplace, used only as the last resort before giving up. It is passed in
+    rather than imported so this module stays free of storage concerns and the
+    caller decides what "has data" means for its own screen.
+    """
+    for v in (asked, (state or {}).get("active_marketplace"),
+              (account or {}).get("default_marketplace")):
+        s = str(v or "").strip().upper()
+        if s:
+            return s
+    if with_data:
+        wsid = workspace_id(state=state, account=account)
+        if wsid:
+            try:
+                return str(with_data(wsid) or "").strip().upper()
+            except Exception:
+                # A lookup that fails is "we could not tell", which is the same
+                # answer as none -- never a reason to fail the whole request.
+                return ""
+    return ""
+
+
+def resolve(*, state=None, account=None, asked_id=None, asked_marketplace=None,
+            with_data=None):
+    """Both answers at once: (account, workspace_id, marketplace)."""
+    acc = account or {}
+    wsid = workspace_id(state=state, account=acc, asked=asked_id)
+    mkt = marketplace(state=state, account=acc, asked=asked_marketplace,
+                      with_data=with_data)
+    return acc, wsid, mkt
+
+
+# What a screen should SAY when it still has nothing. One sentence, in the same
+# words everywhere, naming the thing to do rather than the thing that is missing:
+# "no marketplace selected" tells you what is absent and not how to supply it.
+NO_MARKETPLACE = ("No marketplace could be worked out for this account. Pick one "
+                  "at the top of the screen, or set a default marketplace for the "
+                  "account under Settings.")
+
+NO_ACCOUNT = ("No account is open. Choose one at the top of the screen — this "
+              "screen is per account, because the figures are.")
