@@ -205,7 +205,10 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
                 continue
             if str(s.get("kind") or "ebay").lower() == "ebay" and not (app_id and cert_id):
                 missing_creds = True
-            chk = check_source(s, app_id, cert_id, now=now)
+            # The eBay SITE has to match the Amazon marketplace: a US account's
+            # supplier asked of eBay UK answers 404, which reads as "ended".
+            chk = check_source(s, app_id, cert_id, now=now,
+                               marketplace=_ebay.site_for(row["marketplace"]))
             _repo.record_check(config_path, s["id"], chk)
             counts["sources"] += 1
             counts[chk["status"]] = counts.get(chk["status"], 0) + 1

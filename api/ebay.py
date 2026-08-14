@@ -42,6 +42,22 @@ FAILED = "failed"
 
 DEFAULT_MARKETPLACE = "EBAY_GB"     # what the generator has always used
 
+# Which eBay site to ask, for a given Amazon marketplace. Asking the wrong one
+# does not fail loudly -- eBay answers 404 for an item that exists on a
+# different site, which this layer reports as GONE, so a US account's suppliers
+# would have looked like a catalogue of ended listings.
+SITE_FOR = {
+    "UK": "EBAY_GB", "US": "EBAY_US", "DE": "EBAY_DE", "FR": "EBAY_FR",
+    "IT": "EBAY_IT", "ES": "EBAY_ES", "IE": "EBAY_IE", "NL": "EBAY_NL",
+    "BE": "EBAY_BE", "AT": "EBAY_AT", "PL": "EBAY_PL", "CA": "EBAY_CA",
+    "AU": "EBAY_AU",
+}
+
+
+def site_for(marketplace):
+    """The eBay site matching an Amazon marketplace, defaulting to the UK."""
+    return SITE_FOR.get(str(marketplace or "").upper(), DEFAULT_MARKETPLACE)
+
 # One cache for the whole process. Shared with the generator on purpose: a token
 # is valid for ~2 hours and there is no reason for two callers to fetch two.
 _TOKEN_CACHE = {"token": None, "expires_at": 0.0}

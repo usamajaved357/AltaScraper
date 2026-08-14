@@ -118,6 +118,35 @@ check("but dispatch may be unknown when no limit is set",
       S.usable(src(1), chk(dispatch=None), {}, NOW)[0], True)
 
 
+print("\n=== units, not arithmetic: a supplier in the wrong currency ===")
+# The quietest way to lose money here. 10.00 USD read as 10.00 GBP looks about a
+# fifth cheaper than it is, so the floor comes out a fifth low -- and every other
+# guard agrees the number is fine, because the arithmetic IS fine.
+GBP = dict(chk(price=10.0, shipping=0.0), currency="GBP")
+USD = dict(chk(price=10.0, shipping=0.0), currency="USD")
+check("a GBP source for a GBP listing is usable",
+      S.usable(src(1), GBP, {"currency": "GBP"}, NOW)[0], True)
+check("a USD source for a GBP listing is refused",
+      why(src(1), USD, {"currency": "GBP"}),
+      "priced in USD, but this listing sells in GBP")
+check("  and a source with no currency at all is refused too",
+      why(src(1), dict(GBP, currency=""), {"currency": "GBP"}),
+      "the supplier's currency is unknown")
+check("with no expected currency the check is skipped",
+      S.usable(src(1), USD, {}, NOW)[0], True)
+check("a USD source for a US listing is fine",
+      S.usable(src(1), USD, {"currency": "USD"}, NOW)[0], True)
+print("  -- and it is NOT silently converted --")
+d = S.decide({"price": 20.00, "quantity": 5, "lead_days": 5},
+             [(src(1), USD)], {"currency": "GBP"}, NOW)
+check("nothing is priced from it", d["action"], "out_of_stock")
+truthy("  saying which currency it was", "USD" in d["reason"])
+print("  -- the marketplace decides the currency, not a setting --")
+check("UK", S.CURRENCY_FOR["UK"], "GBP")
+check("US", S.CURRENCY_FOR["US"], "USD")
+check("DE", S.CURRENCY_FOR["DE"], "EUR")
+
+
 print("\n=== which source wins: your strategy decides, and they disagree ===")
 # A cheapest-is-B, fastest-is-C, priority-is-A arrangement, so no two strategies
 # can pass by accident.

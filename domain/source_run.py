@@ -80,6 +80,12 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     pairs = _repo.pairs_for(config_path, workspace_id, marketplace, sku)
     rule = _repo.rule_for(config_path, workspace_id, marketplace, sku)
 
+    # The listing's own currency, from its marketplace. Set here rather than
+    # stored, because it is a fact about the marketplace and not a preference --
+    # and a stored copy could be edited into disagreeing with reality.
+    rule.setdefault("currency", _sourcing.CURRENCY_FOR.get(
+        str(marketplace or "").upper()))
+
     if _is_fba(current):
         return current, {"action": "none", "price": None, "quantity": None,
                          "lead_days": None, "source_id": None, "rejections": [],
