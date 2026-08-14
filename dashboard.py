@@ -3367,6 +3367,13 @@ def build_app(backend=None):
     _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # Moving a workspace's listings out of Google Sheets and into the app. The
+    # import has always existed as a command line; it has to be runnable HERE,
+    # because it must run where the database is and that is not a laptop.
+    import routes.migrate_routes as _migrate_routes
+    _migrate_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _client=_client, _state=_state)
+
     # What the AI cost, per account and per feature. Reads the ledger written by
     # domain/ai_usage.py; spends nothing itself.
     import routes.aiusage_routes as _aiusage_routes

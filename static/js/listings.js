@@ -1,4 +1,7 @@
 let ROWS = [], FILTER = "all", SHIP = "", SCHEMAS = {}, PTYPES = [];
+// Where the rows on screen came from: {from_database, from_sheet, store, ...}.
+// Set by loadRows. See the migration note in summary().
+let ROWS_SOURCE = {};
 // Multi-tab view: TABS = manifest [{tab,tab_gid,count,url}] from /rows_all.
 // TAB_FILTER = "__all__" (show every tab) or a tab_gid to show just that tab.
 let TABS = [], TAB_FILTER = "__all__";
@@ -633,6 +636,22 @@ function summary(){
         : tile(c.LIVE, "Live", "live"))
     + `</div>`
     + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
+  // STILL ON THE SPREADSHEET. Said here, where the listings are, rather than on
+  // a settings page nobody visits -- and it disappears by itself once the
+  // account is migrated, which is the only kind of notice worth adding.
+  const _fromSheet = Number(ROWS_SOURCE.from_sheet || 0);
+  if(_fromSheet > 0){
+    _sumHost.insertAdjacentHTML("beforeend",
+      '<div style="border:1px solid #3d3520;background:#221d10;border-radius:8px;'
+      + 'padding:9px 12px;margin:0 0 12px;font-size:12px;line-height:1.6">'
+      + '<b>' + _fromSheet + ' of these listings are still only in the Google Sheet.</b> '
+      + 'They are shown here, but they live outside the app, which is why they can '
+      + 'appear and disappear when the app changes where it reads from. '
+      + 'Bringing them in copies them into the app; the sheet is only read and is '
+      + 'not changed.'
+      + '<div style="margin-top:7px"><button class="db-chip" onclick="migrateCheck()">'
+      + 'Check what would be brought in</button></div></div>');
+  }
   // Numbers count into place, but only the ones that actually changed --
   // see altaCountMetrics. This runs on every render, including a filter click,
   // and animating an unchanged figure would say "this just moved" about

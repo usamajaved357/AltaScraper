@@ -178,6 +178,13 @@ RULES = [
     ("/aiusage/summary",                None),
     ("/aiusage/calls",                  None),
 
+    # -- moving listings out of Google Sheets. Reading the status changes
+    #    nothing. Running the import writes several hundred rows into this
+    #    account's store, which is an operator action rather than day-to-day
+    #    work, so it sits with the other account-level settings.
+    ("/migrate/status",                 None),
+    ("/migrate/import",                 "manage_accounts"),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),

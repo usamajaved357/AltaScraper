@@ -417,6 +417,11 @@ async function loadRows(){
       toast("Sheet error: "+(j.error||"unknown")); return;
     }
     ROWS=j.rows||[]; SHIP=j.shipping_group||""; PTYPES=j.product_types||[];
+    // WHICH STORE THESE CAME FROM. Kept so the screen can say when some of
+    // these listings are still only in the spreadsheet, and offer to bring them
+    // in -- the app is mid-migration and that is the fact that keeps surfacing
+    // as "my listings disappeared".
+    ROWS_SOURCE = j.source || {};
     // Tabs manifest for the multi-tab filter. TABS=[{tab,tab_gid,count,url}]. When a
     // sheet has >1 listing tab the filter + per-card tab tags appear; with 1 tab they
     // stay hidden and the view is exactly as before.
