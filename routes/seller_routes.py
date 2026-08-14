@@ -52,12 +52,38 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False, "error": (
                 "eBay credentials are not set — add them under Settings.")}), 400
 
+        # A LINK IS ACCEPTED WHERE A NAME IS ASKED FOR.
+        # An eBay shopfront shows a STORE name, and the API only knows
+        # usernames, which are frequently different -- two real store names sent
+        # in by the owner were recognised on no eBay site at all. Reading the
+        # username off any of their items removes the guesswork.
+        if "ebay." in seller.lower() or seller.lower().startswith("http"):
+            who, why = _ebay.seller_of(seller, app_id, cert_id,
+                                       marketplace=_ebay.site_for(mkt))
+            if not who:
+                return jsonify({"ok": False, "error": (
+                    "That looks like an eBay link, but %s." % why)}), 400
+            seller = who
+
         terms = b.get("terms") or None
         items, meta = _ebay.search_seller(
             seller, app_id, cert_id,
             marketplace=_ebay.site_for(mkt),
             terms=terms,
             pages_per_term=int(b.get("pages_per_term") or 3))
+
+        # Refused rather than half-delivered. eBay answers an unrecognised
+        # seller with its entire catalogue instead of an error, so "nothing of
+        # theirs came back" has to be a refusal here or it becomes thousands of
+        # other people's products presented as this seller's range.
+        if meta.get("seller_known") is False:
+            return jsonify({
+                "ok": False, "seller": seller, "meta": meta,
+                "error": ((meta.get("errors") or ["that seller could not be found"])[0]
+                          + " Check the name on one of their listings — or paste "
+                            "a link to any item they are selling into this box "
+                            "and the username will be read off it.")}), 404
+
         rows = [_si.to_review_row(i) for i in items]
         rows.sort(key=lambda r: (r["title"] or "").lower())
         return jsonify({

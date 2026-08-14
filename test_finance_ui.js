@@ -97,7 +97,9 @@ truthy("picking a preset fills the date boxes", /fin_start/.test(src) && /_finIs
 truthy("  and typing a date clears the preset",
        /financePreset\(''\)/.test(fs.readFileSync(
          path.join(__dirname, "templates/dashboard.html"), "utf8")));
-truthy("the screen says which days it counted", /Money that moved between/.test(src));
+truthy("the screen says which days it counted", /money that moved between/.test(src));
+truthy("  and whose money, on which marketplace",
+       /account_label/.test(src) && /FIN\.meta\.marketplace/.test(src));
 truthy("  and warns when the totals are a filtered subset",
        /not the whole period/.test(src));
 

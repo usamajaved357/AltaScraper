@@ -34,12 +34,22 @@ function sellerImportRender(){
     + 'and draft the ones you want. <b>Nothing is sent to Amazon</b> — the ones '
     + 'you keep become drafts here, and you publish them the usual way.</div>';
 
-  h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">'
-    + '<input id="simp_seller" placeholder="eBay seller username" value="'+_siEsc(SIMP.seller)+'" '
-    + 'style="font-size:13px;padding:6px 10px;min-width:220px" '
+  h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">'
+    + '<input id="simp_seller" placeholder="eBay username, or a link to any of their items" '
+    + 'value="'+_siEsc(SIMP.seller)+'" '
+    + 'style="font-size:13px;padding:6px 10px;min-width:320px;flex:1;max-width:520px" '
     + 'onkeydown="if(event.key===\'Enter\')sellerFind()">'
     + '<button class="db-chip" onclick="sellerFind()"><i class="ti ti-search"></i> Find their items</button>'
     + '</div>';
+  // The shopfront name and the username are DIFFERENT things and eBay's API only
+  // knows the second. Said here rather than left to be discovered, because when
+  // it is wrong eBay does not say so -- it answers with its whole catalogue.
+  h += '<div class="cc" style="font-size:11.5px;margin:0 0 12px">'
+    + 'The <b>username</b>, not the shop name — they are often different. '
+    + 'A shop at <code>ebay.co.uk/str/…</code> shows the shop name; the username '
+    + 'is on any of their listings under “Sold by”. '
+    + 'Easiest: <b>paste a link to anything they are selling</b> and the username '
+    + 'is read off it.</div>';
 
   h += '<div id="simp_results"></div>';
   host.innerHTML = h;
@@ -61,6 +71,14 @@ async function sellerFind(){
     if(!j.ok){ if(out) out.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'
         +_siEsc(j.error||"Could not search")+'</div>'; return; }
     SIMP.rows = j.rows || []; SIMP.meta = j;
+    // A pasted link comes back resolved to the username. Put it in the box so
+    // it is visible, reusable, and obviously what was actually searched for.
+    if(j.seller && j.seller !== seller){
+      SIMP.seller = j.seller;
+      const box = document.getElementById("simp_seller");
+      if(box) box.value = j.seller;
+      toast("That link belongs to " + j.seller + " — searched for them.");
+    }
     sellerImportResults();
   }catch(e){
     if(out) out.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_siEsc(String(e))+'</div>';
@@ -99,7 +117,12 @@ function sellerImportResults(){
     + '<i class="ti ti-shield-check"></i> Check what Amazon allows</button>'
     + '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
     + 'onclick="sellerDraft()">Draft the selected</button>'
-    + '</div>';
+    + '</div>'
+    // Where the count moves while a long check runs. Outside the button, because
+    // the button is re-rendered as results come in and would lose its own text.
+    + '<div id="simp_progress" class="cc" style="display:none;font-size:11.5px;'
+    + 'margin:-4px 0 10px;padding:7px 10px;border:1px solid #26303f;'
+    + 'border-radius:6px"></div>';
 
   if(!SIMP.rows.length){
     h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
@@ -155,26 +178,69 @@ function sellerAll(on){
   sellerImportResults();
 }
 
+// Screened in batches, with the count moving.
+//
+// It used to be ONE request carrying every selected row. Measured against the
+// real endpoint: 200 rows 2.2s, 1000 rows 12s, 5000 rows 59s on a 2.85MB POST.
+// A minute of a disabled button with no number changing is indistinguishable
+// from a dead button -- which is exactly what it was reported as -- and behind a
+// hosting proxy that request does not slowly succeed, it times out and the whole
+// check is lost. Batches of 200 come back in about two seconds each, so
+// something moves on screen continuously and one failure costs one batch.
+const SI_BATCH = 200;
+
 async function sellerScreen(btn){
   const sel = SIMP.rows.filter(r => r.selected);
-  if(!sel.length){ toast("Nothing selected."); return; }
-  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> checking…'; }
+  if(!sel.length){ toast("Nothing selected — tick at least one item first."); return; }
+  const label = '<i class="ti ti-shield-check"></i> Check what Amazon allows';
+  if(btn) btn.disabled = true;
+  const bar = document.getElementById("simp_progress");
+  const say = function(msg){
+    if(bar){ bar.style.display = ""; bar.innerHTML = msg; }
+    if(btn) btn.innerHTML = '<span class="genspin"></span> ' + msg.replace(/<[^>]+>/g, "");
+  };
+
+  const totals = {blocked: 0, docs: 0, caution: 0, unknown: 0, clear: 0};
+  let done = 0, failed = 0;
   try{
-    const j = await (await fetch("/seller/screen",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:_siBody({rows:sel})})).json();
-    if(!j.ok){ toast(j.error||"Could not check"); return; }
-    // Merge verdicts back by item id -- the reply only covers what was sent.
-    const by = {};
-    (j.rows||[]).forEach(function(r){ by[r.item_id] = r.screen; });
-    SIMP.rows.forEach(function(r){ if(by[r.item_id]) r.screen = by[r.item_id]; });
+    for(let i = 0; i < sel.length; i += SI_BATCH){
+      const chunk = sel.slice(i, i + SI_BATCH);
+      say("Checking " + (done + 1) + "–" + Math.min(done + chunk.length, sel.length)
+          + " of " + sel.length + "…");
+      let j;
+      try{
+        j = await (await fetch("/seller/screen",{method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:_siBody({rows:chunk})})).json();
+      }catch(err){ j = null; }
+      if(!j || !j.ok){
+        // One batch failing does not throw away the ones that worked.
+        failed += chunk.length;
+        done += chunk.length;
+        continue;
+      }
+      const by = {};
+      (j.rows||[]).forEach(function(r){ by[r.item_id] = r.screen; });
+      SIMP.rows.forEach(function(r){ if(by[r.item_id]) r.screen = by[r.item_id]; });
+      const c = (j.summary || {}).counts || {};
+      Object.keys(totals).forEach(function(k){ totals[k] += (c[k] || 0); });
+      done += chunk.length;
+      // Redrawn as it goes, so the verdicts appear while the rest is still running.
+      sellerImportResults();
+    }
     SIMP.screened = true;
-    const s = j.summary || {}, c = s.counts || {};
-    toast("Checked "+(s.total||0)+" — "+(c.blocked||0)+" blocked, "
-          +(c.docs||0)+" need documents, "+(c.unknown||0)+" could not be checked");
+    let msg = "Checked " + (done - failed) + " of " + sel.length + " — "
+            + totals.blocked + " blocked, " + totals.docs + " need documents, "
+            + totals.unknown + " could not be checked";
+    if(failed) msg += ". " + failed + " could not be sent — press it again to retry those.";
+    toast(msg);
+    if(bar){ bar.style.display = "none"; }
     sellerImportResults();
-  }catch(e){ toast(String(e)); }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-shield-check"></i> Check what Amazon allows'; } }
+  }catch(e){
+    toast(String(e));
+    if(bar){ bar.style.display = "none"; }
+  }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = label; } }
 }
 
 async function sellerDraft(){

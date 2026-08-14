@@ -256,31 +256,71 @@ document.addEventListener("DOMContentLoaded",startRunHealth);
 function runMode(mode, skus){
   if(ES){toast("A run is already streaming");return;}
   const log=document.getElementById("log");
+  // Reset on a fresh click, so the one automatic retry is per press and a
+  // genuinely stuck account cannot loop.
+  if(!runMode._inRetry) runMode._retried=false;
+  runMode._inRetry=false;
   _logReset();
   log.style.display="block"; log.textContent="";
   startRunHealth();
   let url="/run/"+mode;
+  // WHICH ACCOUNT, SENT FROM THE SCREEN YOU ARE LOOKING AT.
+  //
+  // This used to send nothing, and the server chose the account from a single
+  // process-wide variable. That variable is not per browser and not per tab: it
+  // is whatever was selected LAST by anything at all, and it is restored from
+  // disk after a restart. So pressing Generate while looking at Jack Reacherd
+  // ran the generator against Nestwell Goods -- Nestwell's credentials,
+  // Nestwell's sheet -- with the screen still saying Jack Reacherd throughout.
+  // The account is now named by the page that has the human on it, and the
+  // server refuses if the two disagree rather than quietly preferring its own.
+  const _runParams=new URLSearchParams();
+  if(typeof CUR_ACCOUNT!=="undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id){
+    _runParams.set("account_id", CUR_ACCOUNT.id);
+  }
+  if(typeof WS_MARKET!=="undefined" && WS_MARKET){
+    _runParams.set("marketplace", WS_MARKET);
+  }
   // Generate-only: pass the row selection (value + type). Empty -> generate all.
   if(mode==="generate"){
     const valEl=document.getElementById("gensel_value");
     const typeEl=document.getElementById("gensel_type");
     const val=(valEl&&valEl.value||"").trim();
     if(val){
-      const params=new URLSearchParams();
-      params.set("select", val);
+      _runParams.set("select", val);
       // when a URL is pasted the dropdown is disabled; send 'auto' so the server auto-detects
-      params.set("select_type", (typeEl&&!typeEl.disabled)? typeEl.value : "auto");
-      url += "?"+params.toString();
+      _runParams.set("select_type", (typeEl&&!typeEl.disabled)? typeEl.value : "auto");
     }
   }
   // Preview/Submit: if specific SKUs are passed (the user's SELECTION), scope the
   // run to exactly those. Empty -> the server's default (all approved/ready rows).
   if((mode==="api"||mode==="api_submit") && skus && skus.length){
-    url += (url.indexOf("?")>=0?"&":"?")+"skus="+encodeURIComponent(skus.join(","));
+    _runParams.set("skus", skus.join(","));
   }
+  const _qs=_runParams.toString();
+  if(_qs) url += "?"+_qs;
   ES=new EventSource(url);
   showStop(true);
   ES.onmessage=e=>{
+    // The server refused because its idea of the open account had drifted from
+    // this page's. Put it right using the SAME select call the account picker
+    // uses -- which also resets the sheet, tab and marketplace that go with the
+    // account -- then run once more. Setting the account id alone would leave
+    // the previous account's sheet ids in place, which is the other half of the
+    // same bug: a run for one account writing into another's sheet.
+    if(e.data.indexOf("[error] ACCOUNT_MISMATCH")===0 && !runMode._retried){
+      runMode._retried=true;
+      if(ES){ES.close();ES=null;}
+      showStop(false);
+      _logPush(log,"l","[fix] Re-selecting this account and retrying…");
+      fetch("/accounts/select",{method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({id:(CUR_ACCOUNT&&CUR_ACCOUNT.id)||"",
+                             marketplace:(typeof WS_MARKET!=="undefined"?WS_MARKET:"")})})
+        .then(()=>{ runMode._inRetry=true; runMode(mode,skus); })
+        .catch(()=>{ toast("Could not reselect the account — reload the page."); });
+      return;
+    }
     const cls = e.data.startsWith("[start]")?"start":e.data.startsWith("[done]")?"done":"l";
     _logPush(log, cls, e.data);
   };

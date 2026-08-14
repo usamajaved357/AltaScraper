@@ -187,7 +187,8 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
     """
     out = {}
     meta = {"seller": seller, "terms": [], "calls": 0, "errors": [],
-            "complete": False, "reported_totals": []}
+            "complete": False, "reported_totals": [], "seller_known": None,
+            "rejected": 0}
     if not seller:
         meta["errors"].append("no seller given")
         return [], meta
@@ -196,6 +197,8 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
     if not tok:
         meta["errors"].append("could not get an eBay token")
         return [], meta
+
+    want = seller.strip().lower()
 
     for term in (terms or SWEEP_TERMS):
         meta["terms"].append(term)
@@ -222,20 +225,92 @@ def search_seller(seller, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
             got = data.get("itemSummaries") or []
             if data.get("total") is not None:
                 meta["reported_totals"].append(int(data.get("total") or 0))
+
+            # EVERY ITEM IS CHECKED AGAINST THE SELLER WE ASKED FOR.
+            #
+            # eBay does not reject a seller filter it cannot resolve -- it
+            # DISCARDS it and answers the query without it, with HTTP 200 and no
+            # warning of any kind. Measured on the live API, 15 Aug 2026:
+            #
+            #   sellers:{worldcarparts_uk}            total 24,947, all matched
+            #   sellers:{definitely_not_a_seller_xyz} total 96,686,299, 0 matched
+            #   nonsensefield:{x}                     total 96,686,299, 0 matched
+            #
+            # 96.7 million is the whole of eBay. So one unrecognised username --
+            # a store name instead of an API username, a typo, a seller with
+            # nothing visible -- turned "import this seller's catalogue" into
+            # "import eBay", and thousands of other people's products were
+            # offered up as one seller's range with nothing anywhere saying
+            # otherwise. That is not a filter that failed; it is a filter that
+            # lied, and the only defence is to stop believing it.
+            kept = 0
             for it in got:
+                who = str(((it.get("seller") or {}).get("username")) or "").lower()
+                if who and who != want:
+                    meta["rejected"] += 1
+                    continue
                 key = str(it.get("legacyItemId") or it.get("itemId") or "")
                 if key and key not in out:
                     out[key] = it
+                kept += 1
+
+            if got and not kept and not out:
+                # A full page of somebody else's items on the FIRST thing we
+                # asked for. The filter was dropped; carrying on would spend ten
+                # more calls collecting more of the same wrong catalogue.
+                meta["seller_known"] = False
+                meta["errors"].append(
+                    "eBay does not recognise %r as a seller, so it ignored the "
+                    "filter and answered with its whole catalogue instead of "
+                    "refusing. Nothing was imported." % seller)
+                meta["found"] = 0
+                meta["highest_reported_total"] = max(meta["reported_totals"] or [0])
+                return [], meta
+            if kept:
+                meta["seller_known"] = True
+
             if log:
-                log("%s '%s' offset %d -> %d items (%d unique so far)"
-                    % (seller, term, offset, len(got), len(out)))
+                log("%s '%s' offset %d -> %d items, %d theirs (%d unique so far)"
+                    % (seller, term, offset, len(got), kept, len(out)))
             if len(got) < int(per_page):
                 break                       # that term is exhausted
             offset += int(per_page)
 
     meta["found"] = len(out)
     meta["highest_reported_total"] = max(meta["reported_totals"] or [0])
+    if meta["seller_known"] is None and not out:
+        meta["seller_known"] = False
+        meta["errors"].append(
+            "Nothing came back for %r. Either the seller has no items eBay will "
+            "return, or that is not their eBay username." % seller)
     return list(out.values()), meta
+
+
+def seller_of(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
+              timeout=15):
+    """The seller's USERNAME, read off one of their item links.
+
+    Here because an eBay shopfront URL shows a STORE name -- ebay.co.uk/str/
+    something -- and the API only knows usernames, which are often different.
+    Measured 15 Aug 2026: two real store names the owner supplied were not
+    recognised on any eBay site in any capitalisation, while a username taken
+    off an item worked first time. Pasting a link to anything the seller is
+    selling is therefore a far more reliable way in than typing a name, and it
+    is the fix the error message points at.
+    """
+    res = get_item(url_or_id, app_id, cert_id, marketplace=marketplace,
+                   timeout=timeout)
+    if res["status"] not in (OK, GROUP) or not res.get("data"):
+        return "", (res.get("error")
+                    or "that eBay link could not be read, so the seller behind "
+                       "it is unknown")
+    data = res["data"]
+    if isinstance(data.get("items"), list) and data["items"]:
+        data = data["items"][0]            # a variation family: any child will do
+    who = str(((data.get("seller") or {}).get("username")) or "").strip()
+    if not who:
+        return "", "eBay did not say who is selling that item"
+    return who, ""
 
 
 def item_group(group_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,

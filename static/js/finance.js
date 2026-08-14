@@ -246,7 +246,14 @@ function financeRender(){
   // period nobody had been told about.
   if(FIN.meta && FIN.meta.start){
     h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
-      +  'Money that moved between <b>'+_fesc(FIN.meta.start)+'</b> and <b>'
+      // WHOSE money, and in which country. This screen is per account and per
+      // marketplace and said neither, so a figure could not be placed.
+      +  (FIN.meta.account_label
+          ? '<b>'+_fesc(FIN.meta.account_label)+'</b>'
+            + (FIN.meta.marketplace ? ' · '+_fesc(FIN.meta.marketplace) : '')
+            + ' — '
+          : '')
+      +  'money that moved between <b>'+_fesc(FIN.meta.start)+'</b> and <b>'
       +  _fesc(FIN.meta.end)+'</b>'
       +  (FIN.filter !== "all"
           ? ' — showing <b>'+_fesc((FIN_FILTERS.filter(x=>x.k===FIN.filter)[0]||{}).t)

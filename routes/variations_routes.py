@@ -19,6 +19,7 @@ Amazon accepts silently and which makes products vanish from search.
 from flask import request, jsonify
 
 from listing import variations as _var
+from routes import scope as _scope_mod
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
@@ -28,7 +29,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
     def _scope():
         acc = _active_account() or {}
         wsid = str(acc.get("id") or _state.get("active_account_id") or "")
-        mkt = str(_state.get("active_marketplace") or "").upper()
+        # Same resolution as every other screen, from routes/scope.py: this one
+        # stopped at active_marketplace, which is only set when a marketplace has
+        # been CHOSEN, and Variations is not where you choose one.
+        mkt = _scope_mod.marketplace(
+            state=_state, account=acc,
+            asked=(request.args.get("marketplace")
+                   or (request.get_json(silent=True) or {}).get("marketplace")))
         return acc, wsid, mkt
 
     def _body():
