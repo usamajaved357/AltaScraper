@@ -127,3 +127,15 @@ body {
 }
 
 code { background: #eef2f7; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+/* ---- MOBILE ----------------------------------------------------------
+   The card is already fluid (width:100% inside max-width:360px), so the only
+   real problem on a phone is the 16px rule: any input under 16px makes iOS
+   zoom the whole page the moment it is focused, and the sign-in box then sits
+   half off-screen with no obvious way back. */
+@media (max-width: 520px){
+  body{ padding:16px; }
+  input, button, select{ font-size:16px !important; }
+  input{ min-height:44px; }
+  button{ min-height:46px; }
+}

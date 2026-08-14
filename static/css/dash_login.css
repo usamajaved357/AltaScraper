@@ -11,3 +11,15 @@ form{width:300px}
 .hint{color:#9aa4b2;font-size:12px;line-height:1.5;margin:-4px 0 14px}
 .sub{color:#9aa4b2;font-size:12px;margin:14px 0 0;text-align:center}
 .sub a{color:#4c8bf5}
+/* ---- MOBILE ----------------------------------------------------------
+   The form was a FIXED 280px (300px on the wider breakpoint). On a 320px
+   phone, that plus the body padding is wider than the screen, so the sign-in
+   box overflowed and the page scrolled sideways before anyone had typed
+   anything. Fluid with a ceiling, and 16px inputs so iOS does not zoom. */
+@media (max-width: 520px){
+  body{ padding:16px; }
+  form{ width:100% !important; max-width:340px; padding:24px 20px; box-sizing:border-box; }
+  input, button{ font-size:16px !important; }
+  input{ min-height:44px; }
+  button{ min-height:46px; }
+}

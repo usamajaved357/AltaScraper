@@ -508,21 +508,36 @@ function render(){
   const _store = storeName();          // shell.js -- one definition for every screen
   const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in '+_store+', so you can edit and push changes</div>';
   const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in '+_store+' yet</div>';
-  // Rows the app records as LIVE but Amazon never returned. Shown apart, never
-  // counted as live. Usually: submitted but not yet published, killed by Amazon, or
-  // written into the wrong account's tab.
-  const _claimSub = '<div class="srcsub" style="color:var(--warn)"><i class="ti ti-alert-triangle"></i> '+storeNameCap()+' says LIVE, but Amazon did not return these — not live</div>';
+  // Rows the app records as LIVE but Amazon never returned. Usually: submitted
+  // and not yet published, taken down by Amazon, or written into the wrong
+  // account. They are NOT live, so they must never be counted as such -- but
+  // they were getting a full heading and a wall of tiles of their own, which
+  // pushed the listings you actually sell down the page behind a section about
+  // listings you do not.
+  //
+  // So: kept in full, shown folded. One line you can open when you want it, and
+  // nothing is deleted -- the row keeps every detail it had, which is the point
+  // of holding onto them at all.
   let liveHtml  = (liveRows.length ? _bothSub + listBlock(liveRows) : "")
                 + (liveCatalog.length ? _amzSub + listBlock(liveCatalog, liveTile) : "");
-  const claimedHtml = claimedRows.length ? _claimSub + listBlock(claimedRows) : "";
+  const claimedHtml = claimedRows.length
+    ? ('<details class="foldgroup"><summary>'
+       + '<i class="ti ti-alert-triangle"></i> ' + claimedRows.length
+       + ' listing' + (claimedRows.length === 1 ? '' : 's')
+       + ' not confirmed by Amazon'
+       + '<span class="cc"> — ' + storeName() + ' records ' + (claimedRows.length === 1 ? 'it' : 'them')
+       + ' as live, Amazon did not return ' + (claimedRows.length === 1 ? 'it' : 'them')
+       + '. Kept here in full.</span></summary>'
+       + listBlock(claimedRows) + '</details>')
+    : "";
   if(LIST_SOURCE==="live"){
     grid.innerHTML = (liveHtml || `<div class="empty">No live listings synced yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync ${esc(WS_MARKET)} from Amazon now</button><div class="cc" style="margin-top:8px">Sync pulls your live listings and their real data (images, A+, bullets, description, item-type-keyword, variations) from Amazon. The first sync can take 1–4 minutes.</div>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
-      + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'');
+      + claimedHtml;   // already its own folded block -- no heading needed
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
       + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
       + (liveHtml?('<div class="srcgroup">Live on Amazon</div>'+liveHtml):'')
-      + (claimedHtml?('<div class="srcgroup">Not confirmed by Amazon</div>'+claimedHtml):'')
+      + claimedHtml
       + ((!draftHtml&&!liveHtml&&!claimedHtml)?'<div class="empty">Nothing to show yet.</div>':'');
   } else {
     // DRAFTS = ONLY listings that are NOT live/published on Amazon. A row is "published"
