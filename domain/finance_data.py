@@ -108,6 +108,15 @@ def _is_known(fee_type):
 # out would understate what is owed and overstate what was kept.
 _TAX_TYPES = {"tax", "shippingtax", "giftwraptax", "shipping tax", "giftwrap tax"}
 
+# What the buyer paid US, as opposed to what they paid the taxman. Postage and
+# gift wrap are revenue: the buyer hands it over and it lands in the settlement
+# exactly as the item price does. Kept in `principal` rather than in columns of
+# their own, because every downstream figure -- net proceeds, profit,
+# contribution, margin -- means "what the buyer was charged", and splitting them
+# out would mean remembering to add them back in five places.
+_REVENUE_TYPES = {"principal", "shippingcharge", "giftwrap",
+                  "shipping charge", "gift wrap"}
+
 
 def _blank(date, asin):
     return {"date": date, "asin": asin, "currency": "",
@@ -227,7 +236,14 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
             acc.count(d, sku, item.get("QuantityShipped") or 0, cost_lookup)
             for ch in (item.get("ItemChargeList") or []):
                 _ct = str(ch.get("ChargeType") or "").lower()
-                if _ct == "principal":
+                # Principal, and the other things the BUYER paid us. A live UK
+                # account sends six charge types (probe_finance.py, 14 Aug 2026):
+                # Principal, Tax, ShippingCharge, ShippingTax, GiftWrap,
+                # GiftWrapTax. Only Principal was kept, so postage a buyer paid
+                # was money received and counted nowhere -- zero on that account
+                # today because everything ships free, and simply missing the
+                # moment anything does not.
+                if _ct in _REVENUE_TYPES:
                     acc.add(d, sku, "principal", _amt(ch.get("ChargeAmount")),
                             _cur(ch.get("ChargeAmount")))
                 # TAX. Previously dropped on the floor -- it appeared in neither
@@ -261,7 +277,7 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
             units = abs(int(item.get("QuantityShipped") or 0))
             for ch in (item.get("ItemChargeAdjustmentList") or []):
                 _ct = str(ch.get("ChargeType") or "").lower()
-                if _ct == "principal":
+                if _ct in _REVENUE_TYPES:
                     acc.add(d, sku, "refunds", abs(_amt(ch.get("ChargeAmount"))),
                             _cur(ch.get("ChargeAmount")), units=units)
                     units = 0          # count the units once, not per charge line

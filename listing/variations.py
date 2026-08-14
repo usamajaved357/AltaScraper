@@ -35,52 +35,51 @@ PARENT = "parent"
 CHILD = "child"
 
 
+def _theme_node(schema):
+    """The variation_theme name node, wherever the schema keeps it."""
+    vt = ((schema or {}).get("properties") or {}).get("variation_theme") or {}
+    node = ((vt.get("items") or {}).get("properties") or {}).get("name")
+    return node if isinstance(node, dict) else vt
+
+
 def themes_from_schema(schema):
-    """The variation themes this product type allows, straight from its schema.
+    """The themes this product type allows TODAY, straight from its schema.
 
-    Returns [] when the type has no variation_theme -- which means it does not
-    support variations at all, and is a refusal rather than an empty dropdown.
+    Measured against the live UK account on 14 Aug 2026: SPACE_HEATER lists 76
+    themes of which 47 are marked $lifecycle.enumDeprecated, TOOLS 122 of which
+    111 are. Offering a deprecated one is offering something Amazon no longer
+    accepts, so they are removed -- an earlier version collected every enum value
+    it could find and would have put all 47 dead SPACE_HEATER themes in the list.
+
+    Returns [] when the type has no variation_theme at all, which means it cannot
+    have variations and is a refusal rather than an empty dropdown.
     """
-    props = ((schema or {}).get("properties") or {})
-    vt = props.get("variation_theme") or {}
-    # Amazon nests this as an array of objects with a `name` enum. Several
-    # shapes exist across product types, so each is tried rather than assumed.
-    out = []
-
-    def _collect(node):
-        if not isinstance(node, dict):
-            return
-        for key in ("enum", "examples"):
-            for v in (node.get(key) or []):
-                if isinstance(v, str) and v and v not in out:
-                    out.append(v)
-        for sub in ("items", "properties", "anyOf", "oneOf", "allOf"):
-            n = node.get(sub)
-            if isinstance(n, dict):
-                for v in n.values():
-                    _collect(v)
-                _collect(n)
-            elif isinstance(n, list):
-                for v in n:
-                    _collect(v)
-
-    _collect(vt)
-    return out
+    node = _theme_node(schema)
+    if not isinstance(node, dict):
+        return []
+    live = [v for v in (node.get("enum") or []) if isinstance(v, str) and v]
+    dead = set((node.get("$lifecycle") or {}).get("enumDeprecated") or [])
+    out = [v for v in live if v not in dead]
+    if out or live:
+        return out
+    # Some schemas describe the field without an enum; examples are all there is.
+    return [v for v in (node.get("examples") or []) if isinstance(v, str) and v]
 
 
 def theme_axes(theme):
-    """The attributes a theme varies on. SIZECOLOR varies on two, not one."""
-    t = str(theme or "").upper().replace("_", "").replace("-", "")
-    known = ["SIZE", "COLOR", "COLOUR", "STYLE", "MATERIAL", "FLAVOR", "FLAVOUR",
-             "SCENT", "PATTERN", "COUNT", "MODEL", "PACKAGE_QUANTITY"]
-    axes = []
-    rest = t
-    for k in sorted(known, key=len, reverse=True):
-        flat = k.replace("_", "")
-        if flat in rest:
-            axes.append(k.lower().replace("colour", "color").replace("flavour", "flavor"))
-            rest = rest.replace(flat, "", 1)
-    return axes or [t.lower()]
+    """The attribute names a theme varies on.
+
+    Amazon writes a theme as its attribute names joined by "/" -- COLOR/SIZE,
+    VOLTAGE/WATTAGE, COLOR/SPECIFIC_USES_FOR_PRODUCT/FINISH_TYPE/SIZE -- and each
+    part lowercased IS the attribute key. Confirmed against SPACE_HEATER, TOOLS
+    and KITCHEN on the live account: every part of every theme resolves to a real
+    property in the schema.
+
+    An earlier version matched known words inside a flattened name, which got
+    SIZE_COLOR right by luck and would have mangled the four-part themes
+    entirely, inventing axes that do not exist and missing the ones that do.
+    """
+    return [p.strip().lower() for p in str(theme or "").split("/") if p.strip()]
 
 
 def check(parent_sku, children, theme, schema=None, product_type=""):
