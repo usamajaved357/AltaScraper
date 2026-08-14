@@ -239,7 +239,10 @@ function salesChart(points, opts){
     // on, so the line appears to draw itself.
     const area = d + ` L ${x(r[r.length-1].i).toFixed(1)} ${y(lo).toFixed(1)}`
                + ` L ${x(r[0].i).toFixed(1)} ${y(lo).toFixed(1)} Z`;
-    paths += `<path d="${area}" fill="url(#${cid0}_grad)"/>`;
+    // The fill carries the same class as the line so the two sweep in TOGETHER.
+    // Without it the shading appeared complete while the line was still drawing
+    // across it, which reads as a rendering fault rather than an animation.
+    paths += `<path class="series" d="${area}" fill="url(#${cid0}_grad)"/>`;
     paths += `<path class="series" d="${d}" fill="none" stroke="${LINE}" stroke-width="2"
                     stroke-linejoin="round" stroke-linecap="round"/>`;
   });

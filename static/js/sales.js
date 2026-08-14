@@ -741,14 +741,70 @@ async function salesLoadToday(){
     let extra="";
     if(t.pending) extra += ' · '+t.pending+' pending (no value yet)';
     if(j.truncated) extra += ' · partial — very busy day';
-    el.innerHTML = '<div class="todaystrip"><span class="todaylead">Today so far</span>'
+    el.innerHTML = '<div class="todaystrip">'
       + bit("revenue", t.revenue, "money", "revenue")
       + bit("orders", t.orders, "count", "orders")
       + bit("units", t.units, "count", "units")
       + '<span class="cc todaynote">live from orders'
       + (y ? ' · vs '+_sEsc(j.compared_to||"the same time yesterday") : "")
-      + _sEsc(extra) + '</span></div>';
+      + _sEsc(extra) + '</span></div>'
+      + '<div id="sales_hourly"></div>';
+    // The curve underneath, which is the shape Orbit's Live Sales card is.
+    salesLoadHourly().catch(function(){});
   }catch(e){ el.innerHTML=""; }
+}
+
+/* ---- the hourly curve --------------------------------------------------
+ * Orbit's Live Sales card: today climbing across the day in gold, yesterday
+ * running the full 24 hours behind it in grey dashes, so "am I ahead of
+ * yesterday" is answered by which line is higher at the same hour.
+ *
+ * Built from order timestamps, which the app already pulls -- see
+ * domain/hourly_sales.py for why this is a different measurement from
+ * everything on the settled report below, and why the card says so.
+ */
+async function salesLoadHourly(){
+  const el = document.getElementById("sales_hourly");
+  const badge = document.getElementById("sales_today_delta");
+  if(!el) return;
+  let j;
+  try{
+    j = await (await fetch("/sales/hourly?" + _sQuery())).json();
+  }catch(e){ return; }
+  if(!j || !j.ok || !(j.hours || []).length) return;
+
+  // Midnight, 3am, 6am … as Orbit labels them, rather than 00:00..23:00.
+  const label = function(h){
+    const n = Number(String(h).slice(0, 2));
+    const ampm = n < 12 ? "AM" : "PM";
+    const hh = (n % 12) === 0 ? 12 : (n % 12);
+    return hh + " " + ampm;
+  };
+  const pts = (j.hours || []).map(function(h, i){
+    return {label: label(h), value: (j.today || [])[i]};
+  });
+  const cmp = (j.yesterday || []).map(function(v, i){
+    return {label: label((j.hours || [])[i]), value: v};
+  });
+
+  el.innerHTML = salesChart(pts, {
+    title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
+    width: 700, height: 210, compare: cmp,
+    subtitle: (j.note || "") + " Orders as placed, " + _sEsc(j.timezone || "")});
+
+  // Against the SAME HOUR yesterday, never yesterday's full day -- otherwise
+  // every morning shows a collapse and every evening a recovery.
+  if(badge){
+    const a = Number(j.today_total || 0), b = Number(j.yesterday_so_far || 0);
+    if(!b){ badge.innerHTML = ""; }
+    else {
+      const pct = ((a - b) / Math.abs(b)) * 100;
+      const up = pct >= 0;
+      badge.innerHTML = '<span class="pct-badge ' + (up ? "up" : "down")
+        + '" title="against the same time yesterday">'
+        + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
+    }
+  }
 }
 
 /* ---- stat cards -------------------------------------------------------- */

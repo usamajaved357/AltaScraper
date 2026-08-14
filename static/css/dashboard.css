@@ -1647,7 +1647,13 @@ html{ scroll-behavior:smooth; }
    axis labels while someone is reading them and makes the panel feel like it
    is still arriving after it has arrived. So the container is left alone and
    the animation is on the series only. */
-.chartcard svg path.series, .chartbox svg path.series{
+/* BOTH SHAPES. `chartbox` is the <svg> ITSELF, so ".chartbox svg path" asks for
+   an svg inside an svg and matches nothing -- which is why the line never drew
+   itself despite the keyframes being right. Kept alongside the descendant form
+   so a chart wrapped in a card still animates. */
+svg.chartbox path.series,
+.chartcard svg path.series,
+.chartbox svg path.series{
   animation:chartSweep .5s ease-out;
 }
 /* Bars grow from the baseline rather than appearing at full height, which is
@@ -1656,7 +1662,11 @@ html{ scroll-behavior:smooth; }
   from{ transform:scaleY(0); }
   to  { transform:scaleY(1); }
 }
-.chartbox .bar, .chartcard .bar{
+svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
+  /* An SVG rect scales about the viewBox origin unless told otherwise, so
+     without this the bars would grow from the TOP of the chart downwards.
+     transform-box:fill-box makes "bottom" mean the bottom of the bar. */
+  transform-box:fill-box;
   transform-origin:bottom;
   animation:barGrow .45s ease-out;
 }
