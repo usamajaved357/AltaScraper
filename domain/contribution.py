@@ -88,6 +88,48 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         "  AND date>=? AND date<=? AND asin<>'*' GROUP BY asin",
         (workspace_id, marketplace, start, end)).fetchall()}
 
+    # WHO EACH ASIN IS, so the screen can say what the product is rather than
+    # only B0H7N2Q5GG. A row you cannot identify at a glance is a row nobody
+    # reads, and the identity is already in the app -- it just was not joined.
+    #
+    # FROM THE LIVE SNAPSHOT, which is what Amazon says is on this account.
+    # NOT from listings.competitor_asin: per CLAUDE.md Rule 1 that column holds
+    # the COMPETITOR's ASIN, the reference the listing was generated from, and
+    # our own product carries a different ASIN entirely. Joining on it looks
+    # right and would silently print a competitor's product name against our
+    # revenue on any ASIN that happened to match. It is the same snapshot
+    # domain/finance_data.sku_map already uses to attribute the fees in these
+    # very rows, so the two cannot disagree about which product is which.
+    #
+    # Both are LOOKUPS, never filters: an ASIN with no name still gets its row,
+    # because a product missing from the snapshot is exactly the one whose
+    # contribution you most need to see.
+    names, parents = {}, {}
+    try:
+        from domain import live_snapshots as _ls
+        rec = _ls.get(config_path, workspace_id, marketplace) or {}
+        for it in (rec.get("items") or []):
+            a = str(it.get("asin") or "").strip()
+            if a and not names.get(a):
+                names[a] = str(it.get("title") or it.get("item_name") or "").strip()
+    except Exception:
+        names = {}
+    try:
+        for r in conn.execute(
+                "SELECT asin, MAX(parent_asin) parent_asin FROM sales_daily "
+                "WHERE workspace_id=? AND marketplace=? AND asin<>'*' "
+                "  AND parent_asin IS NOT NULL AND parent_asin<>'' "
+                "GROUP BY asin", (workspace_id, marketplace)).fetchall():
+            # Amazon reports a standalone product as its own parent. Treated as
+            # NO parent: grouping by it would otherwise build a family of one
+            # around every single product and call that a rollup.
+            if r["parent_asin"] != r["asin"]:
+                parents[r["asin"]] = r["parent_asin"]
+    except Exception:
+        # An older database without the column is not a reason to fail the
+        # screen; it only means nothing can be grouped by parent.
+        parents = {}
+
     rows = []
     for r in fin:
         d = dict(r)
@@ -112,6 +154,11 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
 
         row = {
             "asin": asin,
+            "title": names.get(asin) or "",
+            # "" rather than falling back to the ASIN itself: a product with no
+            # parent must not be grouped under a parent of one, which is what
+            # defaulting to its own ASIN would silently produce.
+            "parent_asin": parents.get(asin) or "",
             "units": units,                       # shipped -- the money basis
             "units_ordered": int(s.get("units_ordered") or 0),
             "revenue": round(_f(d["principal"]), 2),   # what buyers were charged

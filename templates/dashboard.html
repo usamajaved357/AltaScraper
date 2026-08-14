@@ -512,12 +512,19 @@
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
         <div class="sub">What each product left behind after Amazon's fees, refunds and what the stock cost. Everything here is on the money basis — units shipped, dated when the money moved — so the fees and the units beside them describe the same sales.</div></div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="date" id="fin_start" onchange="financeLoad()" style="font-size:12px;padding:4px 6px">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="date" id="fin_start" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <span class="cc" style="font-size:11px">to</span>
-          <input type="date" id="fin_end" onchange="financeLoad()" style="font-size:12px;padding:4px 6px">
+          <input type="date" id="fin_end" onchange="financePreset('')" style="font-size:12px;padding:4px 6px">
           <button class="db-chip" onclick="financeLoad()"><i class="ti ti-refresh"></i> Refresh</button>
         </div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:0 0 10px">
+        <div id="fin_presets" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+        <div id="fin_filters" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+        <label class="cc" style="font-size:11.5px;display:flex;gap:5px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="fin_by_parent" onchange="financeRender()"> Group by parent
+        </label>
       </div>
       <div id="finbody" style="padding:4px 0"></div>
     </div>

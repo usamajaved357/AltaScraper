@@ -122,12 +122,24 @@ function salesChart(points, opts){
 
   const missing = points.filter(p => _scNum(p.value) === null).length;
   return '<div style="margin-bottom:14px">'
-       + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px">'
+       + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap">'
        + '<div style="font-size:12.5px;font-weight:600">' + _scEsc(o.title || "") + '</div>'
        + (missing ? '<span class="cc" style="font-size:10.5px">' + missing
                     + ' day' + (missing===1?'':'s') + ' not in from Amazon yet — shaded, not zero</span>' : '')
        + '</div>'
-       + `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none"
-               style="display:block;background:#0d1220;border:1px solid #1e2733;border-radius:8px">`
+       // Every chart says where its numbers came from. Amazon has two feeds that
+       // describe the same trade and they disagree for days at a time, so a
+       // shape without its source is a shape you cannot act on.
+       + (o.subtitle ? '<div class="cc" style="font-size:10.5px;margin:-1px 0 5px">'
+                       + _scEsc(o.subtitle) + '</div>' : '')
+       // NOT preserveAspectRatio="none". That stretched the viewBox horizontally
+       // to whatever the container was and left the vertical scale at 1, so every
+       // axis label, date and tooltip was squashed or smeared by however wide the
+       // panel happened to be -- and the line's stroke thickened in one direction
+       // only. Scaling uniformly costs a taller chart on a wide screen and makes
+       // the text legible at every width, including on a phone.
+       + `<svg viewBox="0 0 ${W} ${H}" width="100%"
+               style="display:block;height:auto;background:#0d1220;
+                      border:1px solid #1e2733;border-radius:8px">`
        + grid + gaps + paths + dots + xl + hits + '</svg></div>';
 }
