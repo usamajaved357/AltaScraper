@@ -688,43 +688,68 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # injection, and they already point at whichever store is in use.
             # Going through them is what makes this screen agree with the rest
             # of the app instead of having its own opinion.
+            # BOTH STORES, MERGED -- and this is the correction to a change that
+            # blanked a live screen.
+            #
+            # The first version of this branch read the database INSTEAD of the
+            # spreadsheet whenever the backend was "db". That is right in
+            # principle and wrong in fact: the app is mid-migration, and a
+            # workspace's listings can be in either store or split across both.
+            # On the server the database did not hold Nestwell Goods' history,
+            # so the Listings screen went from "a lot" to "No listings in this
+            # view" the moment it deployed. Nothing was deleted; the screen had
+            # simply been pointed at the emptier of the two places.
+            #
+            # So neither store is authoritative and neither is a fallback. Both
+            # are read, and the rows are merged on SKU with the database
+            # winning, because that is where edits and new runs land. A row in
+            # only one of them still appears. The reply says how many came from
+            # each, so "where is my listing" is answerable from the screen
+            # rather than by reading this file.
+            db_cards, db_error, db_store = [], "", None
             try:
                 from data import choice as _choice_mod
                 _backend = _choice_mod.resolve(_cfg(), None)
             except Exception:
                 _backend = "sheets"
             if _backend == "db":
-                store = _ws()
-                recs = _records(store)
-                cards = []
-                for r in recs:
-                    c = _card(r)
-                    # One store, so one "tab". The multi-tab manifest exists for
-                    # workbooks with several listing tabs; the database has a
-                    # workspace per account instead, which is the same idea
-                    # already enforced a level up.
-                    c["tab"] = getattr(store, "title", "listings")
-                    c["tab_gid"] = ""
-                    _attach_claim_flags(c, r)
-                    _attach_restricted(c, r)
-                    _attach_viability(c, r)
-                    cards.append(c)
-                _real = [c for c in cards
-                         if any(str(c.get(k) or "").strip()
-                                for k in ("sku", "title", "asin", "product_type", "price"))]
-                return jsonify({
-                    "ok": True,
-                    "shipping_group": _cfg().get("merchant_shipping_group", ""),
-                    "product_types": _product_types(),
-                    "source": {"store": "database",
-                               "workspace": str(_aid or "dropshipping")},
-                    "tabs": [{"tab": getattr(store, "title", "listings"),
-                              "tab_gid": "", "count": len(_real), "url": ""}],
-                    "rows": cards})
+                try:
+                    db_store = _ws()
+                    for r in _records(db_store):
+                        c = _card(r)
+                        # One store, so one "tab". The multi-tab manifest exists
+                        # for workbooks with several listing tabs; the database
+                        # has a workspace per account instead.
+                        c["tab"] = getattr(db_store, "title", "listings")
+                        c["tab_gid"] = ""
+                        c["store"] = "database"
+                        _attach_claim_flags(c, r)
+                        _attach_restricted(c, r)
+                        _attach_viability(c, r)
+                        db_cards.append(c)
+                except Exception as _dbe:
+                    # A database that cannot be read must not take the sheet's
+                    # rows down with it.
+                    db_error = str(_dbe)[:200]
 
             _who = _state.get("active_view") or _aid or "This workspace"
             sid  = _state.get("active_sheet_id") or ""
             if _aid and not sid:
+                # No sheet configured. Only an error if there is also nothing in
+                # the database -- otherwise this is simply an account that has
+                # finished migrating, and saying "nothing was read" over a
+                # screenful of listings would be false.
+                if db_cards:
+                    return jsonify({
+                        "ok": True,
+                        "shipping_group": _cfg().get("merchant_shipping_group", ""),
+                        "product_types": _product_types(),
+                        "source": {"store": "database", "from_database": len(db_cards),
+                                   "from_sheet": 0,
+                                   "workspace": str(_aid or "dropshipping")},
+                        "tabs": [{"tab": getattr(db_store, "title", "listings"),
+                                  "tab_gid": "", "count": len(db_cards), "url": ""}],
+                        "rows": db_cards})
                 return jsonify({"ok": False, "sheet_scope_error": True,
                     "error": (f"{_who} has no output sheet configured, so nothing was read. "
                               f"Open Account & sheets and paste this account's output Google "
@@ -775,6 +800,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     _attach_claim_flags(c, r)
                     _attach_restricted(c, r)
                     _attach_viability(c, r)
+                    c["store"] = "sheet"
                     cards.append(c)
                     if not _empty_card(c):
                         n += 1                                  # count real listings only
@@ -782,7 +808,29 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 try: _url = ws.url
                 except Exception: _url = ""
                 tabs.append({"tab": ws.title, "tab_gid": str(ws.id), "count": n, "url": _url})
-            src = {"sheet_id": sid, "tab_count": len(tabs)}
+
+            # MERGE. The database wins a clash, because that is where edits and
+            # new runs land -- but a SKU that exists only in the spreadsheet is
+            # still shown, which is the whole point of doing this rather than
+            # choosing one store.
+            sheet_only = cards
+            if db_cards:
+                seen = {str(c.get("sku") or "").strip().upper()
+                        for c in db_cards if str(c.get("sku") or "").strip()}
+                sheet_only = [c for c in cards
+                              if str(c.get("sku") or "").strip().upper() not in seen
+                              or not str(c.get("sku") or "").strip()]
+                # The database rows first: they are the current ones.
+                cards = db_cards + sheet_only
+                tabs = ([{"tab": getattr(db_store, "title", "listings"),
+                          "tab_gid": "", "count": len(db_cards), "url": ""}] + tabs)
+
+            src = {"sheet_id": sid, "tab_count": len(tabs),
+                   "from_database": len(db_cards), "from_sheet": len(sheet_only),
+                   "store": ("both" if (db_cards and sheet_only)
+                             else ("database" if db_cards else "sheet"))}
+            if db_error:
+                src["database_error"] = db_error
             try: src["url"] = book.url
             except Exception: pass
             return jsonify({"ok": True,
@@ -790,6 +838,22 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                             "product_types": _product_types(),
                             "source": src, "tabs": tabs, "rows": cards})
         except Exception as e:
+            # THE SHEET FAILED. If the database has rows, show them rather than
+            # an error page: an unreachable spreadsheet is not a reason to hide
+            # listings this app is holding perfectly well.
+            try:
+                if db_cards:
+                    return jsonify({
+                        "ok": True,
+                        "shipping_group": _cfg().get("merchant_shipping_group", ""),
+                        "product_types": _product_types(),
+                        "source": {"store": "database", "from_database": len(db_cards),
+                                   "from_sheet": 0, "sheet_error": str(e)[:200]},
+                        "tabs": [{"tab": getattr(db_store, "title", "listings"),
+                                  "tab_gid": "", "count": len(db_cards), "url": ""}],
+                        "rows": db_cards})
+            except Exception:
+                pass
             _scope = type(e).__name__ == "SheetScopeError"
             return (jsonify({"ok": False, "error": str(e), "sheet_scope_error": _scope}),
                     200 if _scope else 500)

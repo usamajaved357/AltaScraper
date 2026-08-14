@@ -374,11 +374,14 @@ async function loadRows(){
     if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length)){
       // A SKELETON, NOT A SPINNER. A spinner says "waiting" and nothing else;
       // grey rows the size of the real ones say what is coming and stop the
-      // page jumping when it lands. The sentence stays -- on a slow account it
-      // is the only thing that explains why this is taking a minute.
+      // page jumping when it lands.
+      //
+      // And it no longer talks about tabs and spreadsheets. That wording was
+      // written when this screen read a Google workbook, and it is now the app
+      // describing its own plumbing at someone who asked to see their listings
+      // -- fairly reported as "why is it talking about tabs and sheets again".
       _g0.innerHTML = (typeof altaSkeletonScreen === "function"
-        ? '<div class="cc" style="margin:0 0 10px">Loading listings… <span class="cc">'
-          + 'accounts with many tabs read every tab and can take up to a minute.</span></div>'
+        ? '<div class="cc" style="margin:0 0 10px">Loading listings…</div>'
           + altaSkeletonScreen({cards: 4, rows: 8})
         : '<div class="empty"><span class="genspin"></span> Loading listings…</div>');
     }

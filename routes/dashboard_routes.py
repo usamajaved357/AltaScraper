@@ -91,22 +91,29 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             _backend = _choice_mod.resolve(_cfg(), None)
         except Exception:
             _backend = "sheets"
-        if _backend == "db":
-            if not aid:
-                return None, None
+        # BOTH STORES. Reading the database INSTEAD of the sheet is what blanked
+        # the Listings screen on the server -- the database did not hold that
+        # account's history, so every count went to zero the moment it deployed.
+        # The same mistake here would have zeroed the home screen's cards.
+        #
+        # The database is read first and the sheet's rows are appended, minus
+        # any SKU the database already has. Mid-migration, a workspace's
+        # listings can be in either place or split across both.
+        db_rows, db_header = [], []
+        if _backend == "db" and aid:
             try:
                 from data.store import ListingStore, SheetLikeStore
                 values = SheetLikeStore(ListingStore(aid)).get_all_values()
+                if values:
+                    db_header, db_rows = values[0], values[1:]
             except Exception:
-                return None, None
-            if not values:
-                return [], []
-            return values[0], values[1:]
+                db_header, db_rows = [], []
 
         sid = str(acc.get("output_spreadsheet_id") or "").strip()
         gid = str(acc.get("output_tab_gid") or "").strip()
         if not sid:
-            return None, None
+            # No spreadsheet is only "unreadable" if the database is empty too.
+            return (db_header, db_rows) if db_rows else (None, None)
         try:
             book = book_cache.get(sid)
             if book is None:
@@ -118,10 +125,43 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             from listing import repo as _repo
             values = _repo.read_grid(ws)
         except Exception:
-            return None, None
+            # An unreachable spreadsheet must not zero an account that has rows
+            # in the database.
+            return (db_header, db_rows) if db_rows else (None, None)
         if not values:
-            return [], []
-        return values[0], values[1:]
+            return (db_header, db_rows) if db_rows else ([], [])
+        if not db_rows:
+            return values[0], values[1:]
+
+        # MERGED, on SKU, database first.
+        #
+        # The two grids are REMAPPED BY COLUMN NAME, not concatenated. They
+        # usually share an order -- the database's ORDERED_HEADERS is the
+        # sheet's own -- but "usually" is not good enough when the result is
+        # read positionally by the caller: one account with an extra column
+        # would shift every field of every sheet row by one, and the screen
+        # would show plausible nonsense rather than an error.
+        sheet_header = values[0]
+        def _at(header, *names):
+            low = {str(h).strip().lower(): i for i, h in enumerate(header or [])}
+            for n in names:
+                if n in low:
+                    return low[n]
+            return -1
+        di = _at(db_header, "sku", "seller-sku", "seller_sku")
+        si = _at(sheet_header, "sku", "seller-sku", "seller_sku")
+        if di < 0 or si < 0:
+            return db_header, db_rows          # cannot merge safely; show the current store
+        have = {str(r[di]).strip().upper() for r in db_rows
+                if di < len(r) and str(r[di]).strip()}
+        # Where each of the database's columns is found in the sheet's row.
+        where = [_at(sheet_header, str(h).strip().lower()) for h in db_header]
+        extra = []
+        for r in values[1:]:
+            if si < len(r) and str(r[si]).strip().upper() in have:
+                continue                        # the database's copy wins
+            extra.append([(r[w] if (0 <= w < len(r)) else "") for w in where])
+        return db_header, db_rows + extra
 
     def _col(header, *names):
         low = {str(h).strip().lower(): i for i, h in enumerate(header or [])}
