@@ -438,7 +438,28 @@ function salesDrawCharts(ser){
   // the things it cannot carry -- margin and conversion are percentages and
   // would need a third scale.
   if(comboHtml){
-    h += '<div class="salespanel" style="margin:0 0 16px">' + comboHtml + '</div>';
+    // A CHART WITH ONE COLUMN LOOKS BROKEN, and it is not -- it is one day of
+    // figures, drawn correctly: a single bar with three dots stacked at the
+    // same position, because there is nothing to draw a line between.
+    // Reported as "3 lines and 1 pillar displaying at a single spot", which is
+    // an exact description of it. So the chart says how many days it actually
+    // has rather than leaving that to be worked out.
+    const withData = dates.filter(function(d, i){
+      return (rows || []).some(function(m){
+        const v = (m.cells || [])[i];
+        return v !== null && v !== undefined && Number(v) !== 0;
+      });
+    }).length;
+    let note = "";
+    if(withData <= 2){
+      note = '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
+        + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
+        + '<i class="ti ti-info-circle"></i> Only <b>' + withData + ' day'
+        + (withData === 1 ? '' : 's') + '</b> in this range has figures, so there '
+        + 'is nothing to draw a line between — the marks sit at that one day. '
+        + 'Press <b>Sync</b> to pull the rest, or widen the range.</div>';
+    }
+    h += '<div class="salespanel" style="margin:0 0 16px">' + note + comboHtml + '</div>';
   }
   // ONE CHART, NOT SIX.
   //

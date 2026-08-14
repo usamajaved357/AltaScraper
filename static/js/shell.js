@@ -432,6 +432,11 @@ async function enterAccount(accountId){
   ACTIVE_WS={key:a.id, label:a.label, account:true};
   // marketplace switcher from the account's (detected) marketplaces
   buildAccountMktSwitch(a);
+  // The two sidebar rows say what is open. Updated here, where the account
+  // actually changes, so they cannot disagree with the screen.
+  if(typeof renderSwitchRows === "function") renderSwitchRows();
+  // Remembered so the next visit opens here instead of a grid of cards.
+  try{ localStorage.setItem("alta_last_account", String(a.id || "")); }catch(e){}
   navTo("listings");
   altaSyncUrl();
   // Start the background refresh as soon as a CONNECTED workspace is open, not
@@ -485,6 +490,7 @@ async function enterDropshipping(){
   document.getElementById("mktswitch").innerHTML="";
   var sw=document.getElementById('srcswitch'); if(sw) sw.style.display='none';
   LIST_SOURCE='drafts'; LIVE_ITEMS=[];
+  if(typeof renderSwitchRows === "function") renderSwitchRows();
   navTo("listings");
   altaSyncUrl();
   loadRows();
@@ -565,6 +571,7 @@ async function switchAccountMarket(m){
   try{ await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:CUR_ACCOUNT?CUR_ACCOUNT.id:"",marketplace:m})}); }catch(e){}
   if(CUR_ACCOUNT) buildAccountMktSwitch(CUR_ACCOUNT);
+  if(typeof renderSwitchRows === "function") renderSwitchRows();
   if(LIST_SOURCE==='live'||LIST_SOURCE==='all'){ loadLiveCatalog(false); } else { loadRows(); }
 }
 
@@ -1010,7 +1017,32 @@ function altaSyncUrl(){
 // could only guess at which one was meant.
 async function altaRouteFromUrl(){
   const m = /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
-  if(!m){ _altaBootDone(); return; }    // "/" -> the workspace list, already drawn
+  if(!m){
+    // NO ADDRESS -- so land on the account that was open last, not on a grid of
+    // cards. Orbit has no landing page at all: you arrive on a working screen
+    // and switch from the sidebar, and a session that begins on a screen with
+    // no work on it is a click everyone pays every time.
+    //
+    // The grid still exists and is one click away ("Manage accounts…"), because
+    // it is where accounts are added and edited. It is just no longer the door.
+    let last = "";
+    try{ last = localStorage.getItem("alta_last_account") || ""; }catch(e){}
+    const known = (ACCOUNTS || []).some(a => String(a.id) === last);
+    if(last && known){
+      enterAccount(last).then(_altaBootDone).catch(_altaBootDone);
+      return;
+    }
+    // Nothing remembered: the first CONNECTED account, since a draft-only one
+    // opens onto half a working screen. Failing that, the grid, which is the
+    // right answer for a fresh install with nothing set up.
+    const first = (ACCOUNTS || []).filter(a => a.has_creds)[0] || (ACCOUNTS || [])[0];
+    if(first){
+      enterAccount(first.id).then(_altaBootDone).catch(_altaBootDone);
+      return;
+    }
+    _altaBootDone();
+    return;
+  }
   const ws  = decodeURIComponent(m[1] || "");
   let   sec = m[2] || "listings";
   if(ALTA_SECTIONS.indexOf(sec) < 0) sec = "listings";

@@ -93,6 +93,26 @@
          already stands rather than the items being moved to suit the labels.
          No label sits directly above Supplier Import, which is hidden for most
          accounts -- a label with nothing under it looks like a broken screen. -->
+    <!-- ACCOUNT AND MARKETPLACE, IN THE SIDEBAR, as Orbit has them.
+         Orbit has no landing page: you arrive on a working screen and switch
+         from here. Measured on its own sidebar -- the marketplace row is a nav
+         item 34px tall with 8/16 padding, 14px/500 text in gold
+         (rgb(251,191,36)) when it is the live one, with the country's flag
+         beside it. Ours does the same for the account above it. -->
+    <div class="slbl">Account</div>
+    <div class="navitem switchrow" id="nav_acctswitch" onclick="openAccountSwitch(event)"
+         title="Change account">
+      <i class="ti ti-building-store"></i>
+      <span id="nav_acct_label" class="pii">No account</span>
+      <i class="ti ti-chevron-down chev"></i>
+    </div>
+    <div class="navitem switchrow gold" id="nav_mktswitch" onclick="openMarketSwitch(event)"
+         title="Change marketplace">
+      <span id="nav_mkt_flag">🌐</span>
+      <span id="nav_mkt_label">All</span>
+      <i class="ti ti-chevron-down chev"></i>
+    </div>
+
     <div class="slbl">Operations</div>
     <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> Listings</div>
     <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
@@ -967,6 +987,9 @@
 <!-- What a marketplace code means: its flag, its name, its currency. One table,
      loaded BEFORE shell.js, which draws the flags from it. -->
 <script src="/static/js/marketplaces.js?v={{ ASSET_V }}"></script>
+<!-- The account and marketplace rows in the sidebar, so switching does not mean
+     going back to a landing page first. -->
+<script src="/static/js/switcher.js?v={{ ASSET_V }}"></script>
 <!-- Remembers which screens have already loaded, per account and marketplace,
      so revisiting a tab is instant. Must load BEFORE shell.js, which asks it. -->
 <script src="/static/js/screenstate.js?v={{ ASSET_V }}"></script>
