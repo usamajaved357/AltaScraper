@@ -291,6 +291,21 @@ check("  each carrying its own cost", sorted(d["sku"] for d in drafts[1:]),
 truthy("  and every one of them fits Amazon's SKU limit",
        all(len(d["sku"]) <= SI.SKU_MAX for d in drafts))
 
+print("\n--- the screening verdict survives the expansion ---")
+# A family is ONE product on eBay, so its verdict is every child's verdict. If
+# it stayed on the parent alone it would sit on the one row nobody submits, and
+# 104 children would each look clear.
+_screened = dict(FAMILY_ROW, screen={"verdict": SI.DOCS,
+                                     "notes": ["Amazon will demand a test certificate."]})
+_sd, _ = SI.family_drafts(SI.expand_group(GROUP, _screened), _screened,
+                          account_id="a", marketplace="UK")
+truthy("the parent keeps the warning that was paid for before drafting",
+       "test certificate" in _sd[0]["notes"])
+truthy("  and still says it is the group",
+       "not for sale" in _sd[0]["notes"])
+check("every child carries it too, not just the parent",
+      sum(1 for d in _sd[1:] if "test certificate" in d["notes"]), 3)
+
 parent = drafts[0]
 check("the parent is named after the eBay listing, not after a child",
       parent["sku"], "PARENT_223778867020")

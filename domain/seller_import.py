@@ -542,13 +542,17 @@ def family_drafts(expanded, base_row, *, account_id, marketplace, days=3):
     # track. Saying so on the row keeps it out of the repricer and out of every
     # profit figure, where a parent counts as a product with no cost.
     parent["status"] = "PARENT"
-    parent["notes"] = ("The group itself — not for sale, and not priced. Its %d "
-                       "variations carry the price and the stock. %s"
-                       % (len(kids),
-                          ("Proposed grouping: %s (checked against Amazon's "
-                           "schema when you merge them)." % theme) if theme
-                          else "No Amazon variation theme could be worked out "
-                               "for it yet."))[:900]
+    # PREPENDED, not replacing: the screening verdict is already in these notes
+    # -- "Amazon is likely to demand documents for this" -- and overwriting them
+    # would throw away the one warning that was paid for before drafting.
+    parent["notes"] = " | ".join(filter(None, [
+        ("The group itself — not for sale, and not priced. Its %d variations "
+         "carry the price and the stock. %s"
+         % (len(kids),
+            ("Proposed grouping: %s, which is checked against Amazon's schema "
+             "when you merge them." % theme) if theme
+            else "No Amazon variation theme could be worked out for it yet.")),
+        parent.get("notes") or ""]))[:900]
     parent["_source"]["role"] = "parent"
     drafts.append(parent)
 
@@ -558,7 +562,14 @@ def family_drafts(expanded, base_row, *, account_id, marketplace, days=3):
                "axis_values": {axis_of[n]: v
                                for n, v in (k.get("aspects") or {}).items()
                                if n in axis_of}}
-        d = to_draft(k, account_id=account_id, marketplace=marketplace,
+        # The screening was done on the FAMILY, and a family is one product on
+        # eBay -- so its verdict is every child's verdict. Without this the
+        # "needs documents" warning would sit on the parent alone, which is the
+        # one row nobody submits, and 104 children would each look clear.
+        kid = dict(k)
+        if base_row and base_row.get("screen") and not kid.get("screen"):
+            kid["screen"] = base_row["screen"]
+        d = to_draft(kid, account_id=account_id, marketplace=marketplace,
                      days=days, family=fam)
         drafts.append(d)
     return drafts, problems
