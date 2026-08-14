@@ -69,6 +69,7 @@
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+    <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
 
@@ -449,6 +450,20 @@
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_finance" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
+        <div class="sub">What each product left behind after Amazon's fees, refunds and what the stock cost. Everything here is on the money basis — units shipped, dated when the money moved — so the fees and the units beside them describe the same sales.</div></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="date" id="fin_start" onchange="financeLoad()" style="font-size:12px;padding:4px 6px">
+          <span class="cc" style="font-size:11px">to</span>
+          <input type="date" id="fin_end" onchange="financeLoad()" style="font-size:12px;padding:4px 6px">
+          <button class="db-chip" onclick="financeLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+        </div>
+      </div>
+      <div id="finbody" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_sourcing" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-arrows-down-up"></i> Repricer</h2>
@@ -672,6 +687,7 @@
 <script src="/static/js/pastelisting.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/monitor.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sourcing.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

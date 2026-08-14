@@ -3229,6 +3229,12 @@ def build_app(backend=None):
     _sales_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
 
+    # Finance: contribution per product. Read-only, and built from finance rows
+    # already stored per ASIN -- it pulls nothing new from Amazon.
+    import routes.finance_routes as _finance_routes
+    _finance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+
     # The source repricer. Dry run only: it decides and records, and nothing
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes

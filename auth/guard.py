@@ -172,6 +172,9 @@ FEATURE_PATHS = [
     # riding on "listings" -- a lister needs listings and has no business
     # reading turnover.
     ("/sales",                "sales"),
+    # Contribution per product is revenue and cost, so it belongs to the same
+    # commercially-sensitive area as the sales dashboard rather than to listings.
+    ("/finance",              "sales"),
     ("/ppc",                  "ppc"),
     ("/inventory",            "inventory"),
     ("/monitor",              "monitor"),
