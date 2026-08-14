@@ -18,9 +18,16 @@ def truthy(l, g):
 
 from listing import variations as V
 
+# The real shape, copied from what Amazon returned for SPACE_HEATER on the live
+# UK account (14 Aug 2026): themes are slash-separated attribute names, and the
+# node carries a $lifecycle.enumDeprecated list of ones no longer accepted.
 SCHEMA = {"properties": {"variation_theme": {
     "type": "array",
-    "items": {"properties": {"name": {"enum": ["SIZE", "COLOR", "SIZE_COLOR"]}}},
+    "items": {"properties": {"name": {
+        "enum": ["SIZE", "COLOR", "SIZE/COLOR", "COLOR/VOLTAGE/WATTAGE",
+                 "SIZE_NAME", "COLOR_NAME/SIZE_NAME"],
+        "$lifecycle": {"enumDeprecated": ["SIZE_NAME", "COLOR_NAME/SIZE_NAME"]},
+    }}},
 }}}
 NO_VAR_SCHEMA = {"properties": {"item_name": {"type": "array"}}}
 
@@ -37,13 +44,21 @@ KIDS = [kid("SH-RED-S", size="Small"), kid("SH-RED-M", size="Medium"),
 
 print("=== the theme comes out of the schema, never out of us ===")
 check("themes read from the product type", V.themes_from_schema(SCHEMA),
-      ["SIZE", "COLOR", "SIZE_COLOR"])
+      ["SIZE", "COLOR", "SIZE/COLOR", "COLOR/VOLTAGE/WATTAGE"])
+check("  deprecated themes are NOT offered",
+      [t for t in V.themes_from_schema(SCHEMA) if "_NAME" in t], [])
 check("a type with no variation_theme supports none",
       V.themes_from_schema(NO_VAR_SCHEMA), [])
 check("  and neither does an empty schema", V.themes_from_schema({}), [])
 check("SIZE varies on one axis", V.theme_axes("SIZE"), ["size"])
-check("SIZE_COLOR varies on TWO", sorted(V.theme_axes("SIZE_COLOR")), ["color", "size"])
-check("  British spelling lands on the same axis", V.theme_axes("COLOUR"), ["color"])
+check("SIZE/COLOR varies on TWO, in order", V.theme_axes("SIZE/COLOR"), ["size", "color"])
+check("  a three-part theme gives three", V.theme_axes("COLOR/VOLTAGE/WATTAGE"),
+      ["color", "voltage", "wattage"])
+check("  and a four-part one, verbatim from the live TOOLS schema",
+      V.theme_axes("COLOR/SPECIFIC_USES_FOR_PRODUCT/FINISH_TYPE/SIZE"),
+      ["color", "specific_uses_for_product", "finish_type", "size"])
+check("  the part IS the attribute name, underscores and all",
+      V.theme_axes("ITEM_WEIGHT"), ["item_weight"])
 
 
 print("\n=== a good merge passes ===")
@@ -84,10 +99,10 @@ truthy("children of different product types",
 print("  -- a two-axis theme checks BOTH axes --")
 two = [kid("A", size="S", color="Red"), kid("B", size="S", color="Blue")]
 check("same size, different colour is a valid SIZE_COLOR family",
-      V.check("P", two, "SIZE_COLOR", SCHEMA, "SHIRT"), [])
+      V.check("P", two, "SIZE/COLOR", SCHEMA, "SHIRT"), [])
 same_both = [kid("A", size="S", color="Red"), kid("B", size="S", color="Red")]
 truthy("identical on both axes is refused",
-       V.check("P", same_both, "SIZE_COLOR", SCHEMA, "SHIRT"))
+       V.check("P", same_both, "SIZE/COLOR", SCHEMA, "SHIRT"))
 
 
 print("\n=== the preview IS the payload ===")
@@ -185,7 +200,8 @@ check("  and say which are already in a family",
 check("filtering works", cl.get("/variations/candidates?q=red").get_json()["count"], 2)
 
 th = cl.get("/variations/themes?product_type=SHIRT").get_json()
-check("themes come from the schema", th["themes"], ["SIZE", "COLOR", "SIZE_COLOR"])
+check("themes come from the schema", th["themes"],
+      ["SIZE", "COLOR", "SIZE/COLOR", "COLOR/VOLTAGE/WATTAGE"])
 check("  and it says the check really ran", th["checked"], True)
 
 def prev(skus, theme, parent=""):

@@ -206,6 +206,40 @@ function domSandbox(listJson) {
   }
   check("no double-quoted onclick uses JSON.stringify", offenders, []);
 
+  console.log("\n=== every Amazon link actually points at Amazon ===");
+  // _dpUrl was refactored from whole domains ("amazon.co.uk") to TLDs ("co.uk")
+  // so the ASIN monitor could reuse the table for seller links -- and the
+  // "amazon." was left out of the prefix, so every link became
+  // https://www.co.uk/dp/B0... It rendered, it was blue, it was clickable, and
+  // it went somewhere else entirely. A link that is plausibly wrong is worse
+  // than one that fails.
+  const ls = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
+  const box = {
+    WS_MARKET: "UK", console,
+    document: { getElementById: () => null, querySelectorAll: () => [], addEventListener: () => {} },
+    window: { addEventListener: () => {} },
+    fetch: () => Promise.reject(new Error("no network")),
+  };
+  box.window.document = box.document;
+  vm.createContext(box);
+  try { vm.runInContext(ls, box); } catch (e) { /* only _dpUrl is needed */ }
+  const dp = (m, a) =>
+    vm.runInContext("_dpUrl(" + JSON.stringify(a) + "," + JSON.stringify(m) + ")", box);
+
+  check("UK", dp("UK", "B0H66K5QWX"), "https://www.amazon.co.uk/dp/B0H66K5QWX");
+  check("US", dp("US", "B0X"), "https://www.amazon.com/dp/B0X");
+  check("DE", dp("DE", "B0X"), "https://www.amazon.de/dp/B0X");
+  check("JP", dp("JP", "B0X"), "https://www.amazon.co.jp/dp/B0X");
+  check("an unknown market falls back to the UK, not to nowhere",
+        dp("ZZ", "B0X"), "https://www.amazon.co.uk/dp/B0X");
+  check("no market given uses the workspace's own",
+        dp("", "B0X"), "https://www.amazon.co.uk/dp/B0X");
+  ["UK", "US", "DE", "FR", "IT", "ES", "CA", "AU", "JP", "IN", "SE", "PL"].forEach(
+    function (m) {
+      const u = dp(m, "B0TEST");
+      check("  " + m + " goes to an amazon domain", /^https:\/\/www\.amazon\.[a-z.]+\/dp\//.test(u), true);
+    });
+
   console.log("\nFAILURES: " + fails);
   process.exit(fails ? 1 : 0);
 })();

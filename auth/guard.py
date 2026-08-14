@@ -96,6 +96,10 @@ RULES = [
     # pointless, and the two are one action to the user.)
     ("/sync/push",                      "publish"),
     ("/listing/push_image",             "publish"),
+    # Reading which slots exist sends nothing; writing one to Amazon is
+    # publishing, the same as push_image beside it.
+    ("/listing/image_slots",            None),
+    ("/listing/image_push",             "publish"),
     ("/handling/bulk_update",           "publish"),     # writes handling time live
 
     # -- advertising

@@ -723,6 +723,25 @@ def generate_image(config: dict, prompt: str, reference_image="",
         return {"ok": False, "error": f"OpenRouter image failed: {str(e)[:200]}"}
 
 
+# ONE spec per product, reused by every image made from it.
+#
+# Each image used to call describe_product for itself. The vision model is not
+# deterministic, so five secondary images meant five slightly different specs --
+# one calling the handle "charcoal", the next "dark grey", one counting four
+# slots and the next five. Every image was then faithful to a DIFFERENT product,
+# which is exactly the complaint: the item changes from picture to picture.
+#
+# Cached on the reference image and title, so a batch describes the product once
+# and every image in it is built from the same words. Cleared when the app
+# restarts, which is often enough -- a product's appearance does not change while
+# the server is up.
+_SPEC_CACHE = {}
+
+
+def clear_product_spec_cache():
+    _SPEC_CACHE.clear()
+
+
 def describe_product(config: dict, image="", product_title: str = "",
                      provider: str = None, media_root: str = "") -> dict:
     """Vision AI reads the seller's ACTUAL product in fine detail so the image
@@ -735,6 +754,14 @@ def describe_product(config: dict, image="", product_title: str = "",
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No text model selected/available"}
+    # The cache key is the reference itself plus the title: same product photo,
+    # same spec, every time, for every image in the batch.
+    _key_img = image if isinstance(image, str) else repr(image)
+    _ck = (str(_key_img)[:400], str(product_title)[:200], str(model))
+    _hit = _SPEC_CACHE.get(_ck)
+    if _hit:
+        return dict(_hit, cached=True)
+
     try:
         ref = _resolve_ref_block(image, media_root)
     except ImageRefError as e:
@@ -763,20 +790,41 @@ def describe_product(config: dict, image="", product_title: str = "",
         "stripe — describe its shape, colour, thickness, and exact location.\n"
         "7. LABEL LAYOUT: describe the full top-to-bottom arrangement of everything on the front so it can be "
         "reproduced element by element in the right positions and proportions.\n"
+        "8. SCALE — HOW BIG IS IT REALLY: state the real-world size in cm or mm. Say what it is held or used "
+        "with (one hand, two hands, sits on a worktop, stands on the floor) and how it compares to a familiar "
+        "object. A model with no sense of scale renders a hand tool the size of a machine, and the picture "
+        "looks entirely convincing.\n"
+        "9. EDGES, PROFILE AND WORKING PARTS: for anything with a blade, edge, tine, prong, bristle or tooth "
+        "— is the edge straight, curved, hooked, bevelled, serrated or plain? Sharp or blunt? Single or double "
+        "sided? COUNT the teeth, tines, prongs, holes, slots or segments and give the number. If it has NONE "
+        "of a thing, say so explicitly: 'the blade is plain-edged with NO teeth and NO serrations'.\n"
+        "10. WHAT IS NOT THERE — the most important section. List what the product visibly does NOT have, "
+        "especially anything a similar product usually would: no teeth, no guard, no second handle, no strap, "
+        "no wheels, no markings on this face, no visible fixings. Describing only what IS present leaves an "
+        "image model free to add whatever it expects to see, and it adds it confidently. This section is what "
+        "stops that.\n"
         "Be exhaustive, literal and measurement-oriented — this is a reproduction spec, not a description. "
-        "Do NOT beautify, summarise, or omit anything. If something is partly unclear, give your best reading "
-        "and mark it. Write 400-650 words of precise, structured detail."
+        "Do NOT beautify, summarise, or omit anything. Never describe a feature you cannot actually see; if "
+        "something is partly unclear, say it is unclear rather than filling it in. If something is genuinely "
+        "hidden by the angle, say 'not visible in this image' rather than inferring it. "
+        "Write 450-750 words of precise, structured detail."
     )
     content = [{"type": "text", "text": f"Product title (for context): {product_title}\n\nDocument this exact product for faithful recreation, transcribing ALL label text verbatim."},
                ref]
     body = {"model": model,
             "messages": [{"role": "system", "content": sys},
                          {"role": "user", "content": content}],
-            "max_tokens": 1200}
+            "max_tokens": 1600}
     try:
         resp = _post(f"{OPENROUTER_BASE}/chat/completions", config, body, timeout=90)
         text = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
-        return {"ok": bool(text), "description": (text or "").strip(), "provider": model}
+        _out = {"ok": bool(text), "description": (text or "").strip(), "provider": model}
+        if _out["ok"]:
+            # Only a SUCCESSFUL read is cached. Caching a failure would stick an
+            # empty spec to the product until restart, and every image after it
+            # would be generated with no spec at all.
+            _SPEC_CACHE[_ck] = _out
+        return _out
     except urllib.error.HTTPError as e:
         d = ""
         try:
@@ -835,6 +883,60 @@ def _resize_to_exact(image_b64: str, target_w: int, target_h: int) -> str:
     return _b64.b64encode(buf.getvalue()).decode("ascii")
 
 
+def hard_constraints(product_spec):
+    """The lines from the spec that must reach the image model untouched.
+
+    Pulled out by section heading and by the words that carry an absence or a
+    count, because those are what a rewriting model discards: it is writing about
+    light and composition, and "the blade has NO teeth" is not that. Appended
+    after the prompt is written, so nothing downstream can paraphrase it away.
+
+    Returns "" when there is nothing to add, so a caller with no spec is
+    unaffected.
+    """
+    spec = str(product_spec or "")
+    if not spec.strip():
+        return ""
+
+    want_head = ("what is not there", "scale", "edges, profile", "working parts",
+                 "counts")
+    keep, in_section = [], False
+    for raw in spec.splitlines():
+        line = raw.strip()
+        if not line:
+            in_section = False
+            continue
+        low = line.lower().lstrip("0123456789. )-*#").strip()
+        if any(low.startswith(h) for h in want_head):
+            in_section = True
+            keep.append(line)
+            continue
+        # A heading for some OTHER section closes the one we were in.
+        if in_section and (line.endswith(":") and len(line) < 60
+                           and low[:1].isalpha() and line.isupper()):
+            in_section = False
+        if in_section:
+            keep.append(line)
+            continue
+        # Outside the sections, keep any sentence that states an absence or a
+        # count -- specs do not always use the headings, and these are the facts
+        # that get invented when they go missing.
+        l2 = " " + low + " "
+        if (" no " in l2 or l2.startswith("no ") or " without " in l2
+                or " none " in l2 or " not present" in l2 or " absent" in l2
+                or " exactly " in l2):
+            keep.append(line)
+
+    keep = [k for k in keep if len(k) > 3][:40]
+    if not keep:
+        return ""
+    return ("\n\nNON-NEGOTIABLE FACTS ABOUT THIS PRODUCT — these override anything "
+            "above and must be obeyed exactly. Do NOT add any feature that is not "
+            "listed as present, and do NOT omit one that is. If a feature is "
+            "stated as absent, it must not appear in the image at all:\n"
+            + "\n".join("- " + k for k in keep))
+
+
 def run_pipeline(config: dict, brief: str, reference_image="",
                  product_title: str = "", text_provider: str = None,
                  image_provider: str = None, image_kind: str = "main",
@@ -877,6 +979,17 @@ def run_pipeline(config: dict, brief: str, reference_image="",
     if not enh.get("ok"):
         return {"ok": False, "error": "Prompt stage: " + enh.get("error", ""), "stage": "prompt"}
     detailed = enh["prompt"]
+    # THE FACTS SURVIVE THE REWRITE.
+    #
+    # enhance_prompt does not pass the spec through -- it REWRITES it into an
+    # evocative 350-650 word photography brief. And the things it drops first are
+    # precisely the ones that matter here: "NO teeth", "12 cm long", "four slots,
+    # not five". They read as dull constraints in a paragraph about lighting and
+    # mood, and a model writing prose leaves them out.
+    #
+    # That is why a better spec alone did not fix the pictures. The hard facts are
+    # therefore appended AFTER the rewrite, verbatim, where nothing can edit them.
+    detailed = detailed + hard_constraints(product_spec)
     # strength LOW so the model preserves the actual product from the reference
     # (only the scene/angle/background change, not the product itself).
     # size '4K' = Seedream's max (4096px); SAME $0.04 cost as 2K, and gives

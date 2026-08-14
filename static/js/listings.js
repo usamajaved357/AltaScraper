@@ -154,7 +154,12 @@ function _amzTld(market){
 // market is optional: omit it and the workspace's own marketplace is used. Pass
 // it where a row carries its own (the ASIN monitor watches several at once).
 function _dpUrl(asin, market){
-  return "https://www." + _amzTld(market) + "/dp/" + encodeURIComponent(asin || "");
+  // "amazon." belongs here. The old table held whole domains ("amazon.co.uk");
+  // this one holds TLDs ("co.uk") so the ASIN monitor can reuse it for seller
+  // links, and when it was swapped in the prefix was left as "https://www." --
+  // which built https://www.co.uk/dp/B0... A link that goes somewhere plausible
+  // and wrong is worse than one that fails.
+  return "https://www.amazon." + _amzTld(market) + "/dp/" + encodeURIComponent(asin || "");
 }
 async function batchSecondaryImages(){
   const skus=selectedSkus();

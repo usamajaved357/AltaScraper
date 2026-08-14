@@ -209,7 +209,17 @@ def vat_for(row, vat_rate=None):
     """(vat, net_revenue, basis) for one row. Never invents a number."""
     gross = float((row or {}).get("principal") or 0.0)
     tax = (row or {}).get("tax")
-    if tax:                                   # Amazon itemised it
+    # `is not None`, NOT truthiness. A stored 0.00 means "we read Amazon's tax
+    # lines and they came to zero"; NULL means "this row predates us capturing
+    # tax at all". Treating a legitimate zero as absent falls through to the
+    # derived branch and subtracts VAT from a principal that is ALREADY net of
+    # it -- deducting it twice, on exactly the zero-rated days.
+    #
+    # Measured on the live UK account 14 Aug 2026 (probe_finance.py): Amazon
+    # sends Tax as its own ChargeType, 80.47 against 402.39 of Principal, which
+    # is 20.0% ON TOP. So Principal is the VAT-EXCLUSIVE price and there is
+    # nothing to take out of it.
+    if tax is not None:
         return round(float(tax), 2), round(gross, 2), VAT_FROM_AMAZON
     if vat_rate in (None, "", 0, 0.0):
         # A rate of 0 is a real answer -- not registered -- but None is not.

@@ -809,16 +809,39 @@ def _variation_schema(product_type: str, marketplace: str = "") -> dict:
     check" instead of quietly treating as "no themes allowed", because those two
     lead to opposite conclusions.
     """
+    # Fetched raw rather than read from the cached enums, because the cache keeps
+    # only the values and the DEPRECATION list is what matters here: measured on
+    # the live UK account, SPACE_HEATER lists 76 themes of which 47 are dead and
+    # TOOLS 122 of which 111 are. Offering a dead one is offering something
+    # Amazon will not accept.
+    _ck = "vt::%s::%s" % (product_type, marketplace or _state.get("active_marketplace") or "UK")
+    cached = _state.setdefault("variation_themes", {}).get(_ck)
+    if cached is not None:
+        return cached
     try:
-        enums = _schema_enums(product_type) or {}
+        import urllib.request                 # imported per-function in this file
+        from sp_api.api import ProductTypeDefinitions
+        from sp_api.base import Marketplaces
+        mkt = (marketplace or _state.get("active_marketplace") or "UK").upper()
+        enum_ = Marketplaces.US if mkt == "US" else getattr(Marketplaces, mkt,
+                                                            Marketplaces.UK)
+        ptd = ProductTypeDefinitions(credentials=_sp_creds(mkt),
+                                     marketplace=enum_, timeout=30)
+        d = ptd.get_definitions_product_type(
+            productType=product_type, requirements="LISTING",
+            locale=("en_US" if mkt == "US" else "en_GB"))
+        pay = d.payload if hasattr(d, "payload") else d
+        link = ((pay.get("schema") or {}).get("link") or {}).get("resource", "")
+        if not link:
+            return None
+        with urllib.request.urlopen(link, timeout=60) as r:
+            raw = json.loads(r.read().decode("utf-8"))
     except Exception:
-        return None
-    if not enums:
-        return None
-    vals = enums.get("variation_theme")
-    if isinstance(vals, dict):                 # some entries are {value: label}
-        vals = list(vals.keys())
-    return {"properties": {"variation_theme": {"enum": list(vals or [])}}}
+        return None                      # "could not check", not "none allowed"
+    out = {"properties": {"variation_theme":
+                          (raw.get("properties") or {}).get("variation_theme") or {}}}
+    _state["variation_themes"][_ck] = out
+    return out
 
 
 def _valid_values() -> dict:

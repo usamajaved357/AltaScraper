@@ -31,15 +31,32 @@ ENV_VAR = "ALTA_DATA_BACKEND"
 CONFIG_KEY = "data_backend"
 
 
-def _raw(config=None):
-    """The requested value and where it came from, before any validation."""
+def _raw(config=None, config_path=None):
+    """The requested value and where it came from, before any validation.
+
+    WHEN NOBODY HAS SAID, THE DATABASE WINS -- IF THERE IS ONE.
+    The default used to be the sheet unconditionally. That is how an account with
+    a fully migrated database, 283 listings in it and the input sheet imported on
+    demand still spent a whole session reading Google Sheets: nothing was wrong,
+    nobody had said "db", and the default quietly sent it back to spreadsheets.
+    Every screen then correctly said "your sheet", which looked like the
+    migration had failed when it was the default that had.
+
+    So: an existing database is now taken as the answer. It is not a guess -- a
+    database file only exists because it was created and written to. Where there
+    is none, the sheet is still the answer, and that is the case this cannot get
+    wrong: a brand new install has no database and must not start empty.
+    """
     env = str(os.environ.get(ENV_VAR) or "").strip().lower()
     if env:
         return env, "the %s environment variable" % ENV_VAR
     cfg = str((config or {}).get(CONFIG_KEY) or "").strip().lower()
     if cfg:
         return cfg, "%s in config.json" % CONFIG_KEY
-    return SHEETS, "the default"
+    path = db_path(config_path)
+    if path and os.path.exists(path):
+        return DB, "the default (a database exists at %s)" % path
+    return SHEETS, "the default (no database exists yet)"
 
 
 def decide(config=None, config_path=None):
@@ -49,7 +66,7 @@ def decide(config=None, config_path=None):
 
     Never raises. A caller that only wants the answer should use resolve().
     """
-    requested, source = _raw(config)
+    requested, source = _raw(config, config_path)
     out = {"backend": requested, "requested": requested, "source": source, "note": ""}
 
     if requested not in VALID:

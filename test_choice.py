@@ -25,11 +25,35 @@ def clean_env():
     for k in ("ALTA_DATA_BACKEND", "ALTASCRAPER_DB", "CONFIG_PATH"):
         os.environ.pop(k, None)
 
-print("=== the default is unchanged ===")
+print("=== with NO database, the sheet is still the default ===")
+# The case this must never get wrong: a fresh install has no database, and
+# starting it on one would show an empty app, which reads as lost data.
 clean_env()
-check("nothing set -> sheets", choice.resolve(None, CFG), "sheets")
-check("empty config -> sheets", choice.resolve({}, CFG), "sheets")
-check("  and it says why", choice.decide({}, CFG)["source"], "the default")
+check("nothing set, no database -> sheets", choice.resolve(None, CFG), "sheets")
+check("empty config, no database -> sheets", choice.resolve({}, CFG), "sheets")
+check("  and it says WHY it chose the sheet",
+      choice.decide({}, CFG)["source"], "the default (no database exists yet)")
+
+print("\n=== but once a database EXISTS, it becomes the default ===")
+# The bug this closes: an account fully migrated, 283 listings in the database,
+# the input sheet imported on demand -- and still reading Google Sheets, because
+# nobody had written "db" anywhere and the default sent it back. Every screen
+# then correctly said "your sheet", which looked like the migration had failed
+# when it was the default that had.
+open(DB, "wb").write(b"")
+clean_env()
+check("nothing set, database present -> db", choice.resolve(None, CFG), "db")
+check("  and it names the file it found",
+      DB in choice.decide({}, CFG)["source"], True)
+check("  with no complaint", choice.decide({}, CFG)["note"], "")
+check("an explicit 'sheets' still wins over the default",
+      choice.resolve({"data_backend": "sheets"}, CFG), "sheets")
+clean_env()
+os.environ["ALTA_DATA_BACKEND"] = "sheets"
+check("  and so does the environment variable", choice.resolve({}, CFG), "sheets")
+clean_env()
+os.remove(DB)
+check("delete the database and it falls back again", choice.resolve(None, CFG), "sheets")
 
 print("\n=== the environment variable is honoured, once a database exists ===")
 clean_env()
