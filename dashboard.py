@@ -1235,7 +1235,14 @@ def _new_img_job(total, label="", plan=None):
         _IMG_JOBS[jid] = _jo.stamp(
             {"status": "running", "total": total, "done": 0,
              "results": [], "error": "", "ts": _t.time(),
-             "cancel": False, "label": label, "plan": plan or []})
+             "cancel": False, "label": label, "plan": plan or [],
+             # WHICH ACCOUNT THIS BATCH BELONGS TO. Jobs carried an owner but no
+             # account, so one person's batches were indistinguishable across
+             # workspaces: the progress bar for a Nestwell batch appeared while
+             # you were in Jack Reacherd, and "Stop all" on that screen ended it.
+             # Accounts are independent; their jobs and their Stop buttons have
+             # to be too.
+             "account": str(_state.get("active_account_id", "") or "")})
     try:
         with _IMG_JOBS_LOCK:
             for k in [k for k, v in _IMG_JOBS.items() if _t.time() - v.get("ts", 0) > 3600]:
@@ -1326,11 +1333,26 @@ def _af_active():
     lives in the registry) so the outcome is always readable, including by someone who
     signs in after it ended.
     """
+    # SCOPED TO THE ACCOUNT ASKING. The registry is process-wide and this
+    # returned the newest job of ANY account, so opening Jack Reacherd showed a
+    # Nestwell auto-fix in progress -- somebody else's SKUs, somebody else's
+    # errors, and a Stop button next to them. The job already records the
+    # account it was started for; it simply was not being read.
+    #
+    # A job stamped before accounts were recorded has none, and is still shown:
+    # hiding work that is genuinely running is the worse failure.
+    acct = str(_state.get("active_account_id", "") or "")
     with _AF_JOBS_LOCK:
         if not _AF_JOBS:
             return None
-        run = [v for v in _AF_JOBS.values() if v.get("status") == "running"]
-        pool = run or list(_AF_JOBS.values())
+        def _mine(v):
+            a = str(v.get("account_id") or "")
+            return (not a) or (not acct) or a == acct
+        pool_all = [v for v in _AF_JOBS.values() if _mine(v)]
+        if not pool_all:
+            return None
+        run = [v for v in pool_all if v.get("status") == "running"]
+        pool = run or pool_all
         return dict(sorted(pool, key=lambda x: x.get("ts", 0))[-1])
 
 
@@ -1341,13 +1363,28 @@ def _af_cancelled(jid):
 
 
 def _af_stop(jid=""):
-    """Stop one job, or every running job when jid is empty."""
+    """Stop one job, or every running job IN THIS ACCOUNT when jid is empty.
+
+    "Every running job" meant every one on the server, so Stop in one workspace
+    cancelled an auto-fix loop running in another -- work that was part-way
+    through rewriting listings and had to be started again from the beginning.
+    Naming a job id still stops exactly that job, wherever it belongs.
+    """
+    acct = str(_state.get("active_account_id", "") or "")
     n = 0
     with _AF_JOBS_LOCK:
         for k, j in _AF_JOBS.items():
-            if (not jid or k == jid) and j.get("status") == "running":
-                j["cancel"] = True
-                n += 1
+            if j.get("status") != "running":
+                continue
+            if jid:
+                if k != jid:
+                    continue
+            else:
+                a = str(j.get("account_id") or "")
+                if a and acct and a != acct:
+                    continue
+            j["cancel"] = True
+            n += 1
     return n
 
 
@@ -3317,6 +3354,12 @@ def build_app(backend=None):
     _variant_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # Orders from every account on one screen, so seeing what sold does not mean
+    # opening each Amazon account in turn. Read-only.
+    import routes.orders_routes as _orders_routes
+    _orders_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
+
     # The source repricer. Dry run only: it decides and records, and nothing
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes
@@ -3433,7 +3476,8 @@ def build_app(backend=None):
                                  _require_publish=_require_publish)
     import routes.ui_routes as _ui_routes
     _ui_routes.register(app, CONFIG_PATH=CONFIG_PATH, _kill_proc=_kill_proc,
-                        _records=_records, _run_lock=_run_lock, _running=_running, _ws=_ws)
+                        _records=_records, _run_lock=_run_lock, _running=_running,
+                        _ws=_ws, _state=_state)
     import routes.live_routes as _live_routes
     _live_routes.register(app, CONFIG_PATH=CONFIG_PATH, _IMG_CACHE=_IMG_CACHE, _IMG_TTL=_IMG_TTL,
                           _LIVE_CACHE=_LIVE_CACHE, _LIVE_TTL=_LIVE_TTL, _cfg=_cfg,

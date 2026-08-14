@@ -1078,11 +1078,60 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 return Response(f"data: [error] {_msg}\n\nevent: end\ndata: end\n\n",
                                 mimetype="text/event-stream")
 
+        # ============ EVERYTHING ABOUT WHO THIS RUN IS FOR, RESOLVED HERE ======
+        #
+        # THE BUG THIS EXISTS TO KILL. _state is not a plain dict: it keeps a
+        # PERSONAL value per signed-in user and falls back to a SHARED,
+        # process-wide one whenever there is no request to attribute the read to
+        # (domain/workspace_state.py -- _mine() returns None, and the lookup goes
+        # to the shared bag).
+        #
+        # The streaming generator below runs OUTSIDE the request context, by
+        # design -- that is why request.args is read up here. But _state and
+        # _active_account() were still being read down there, so they did not
+        # return the signed-in user's account at all. They returned whatever the
+        # SHARED value happened to be, which any background worker or any other
+        # session had been free to overwrite.
+        #
+        # Result: a run started from Jack Reacherd executed as Nestwell Goods --
+        # Nestwell's credentials, Nestwell's sheet, Nestwell's workspace -- while
+        # the screen said Jack Reacherd throughout, twice, on the live app.
+        #
+        # An earlier attempt compared the browser's account with _state INSIDE
+        # the request, where both correctly said jack_uk, found no mismatch, and
+        # let the run proceed to read the shared value later anyway. Comparing
+        # the right things in the wrong place proves nothing.
+        #
+        # So the account, the marketplace and the sheet are all captured NOW, in
+        # the request, where the session exists, and the generator is given the
+        # values. Nothing inside stream() consults _state again.
+        _scope_acc = None
+        try:
+            _scope_acc = _active_account()
+        except Exception:
+            _scope_acc = None
+        _scope_acct_id = str((_scope_acc or {}).get("id") or "") or _state_account
+        _scope_sheet = _state.get("active_sheet_id")
+        _scope_tab = _state.get("active_tab")
+        _scope_mkt = str(_state.get("active_marketplace") or "")
+        _scope_view = _state.get("active_view") or ""
+
+        # The browser named an account and it is not the one this request
+        # resolves to. Refuse -- a run writes listings and a submit reaches
+        # Amazon, and there is no safe way to guess whose account that is.
+        if _req_account and _scope_acct_id and _req_account != _scope_acct_id:
+            return Response(
+                "data: [error] ACCOUNT_MISMATCH This page is showing %s but the "
+                "server resolved %s, so nothing was run. Reselecting %s and "
+                "retrying.\n\nevent: end\ndata: end\n\n"
+                % (_req_account, _scope_acct_id, _req_account),
+                mimetype="text/event-stream")
+
         def stream():
             # Keyed on THIS account and THESE SKUs, not on one flag for the whole
             # app: two people in two workspaces are genuinely independent, and a
             # run should only wait for something it would actually collide with.
-            _run_acct = str(_state.get("active_account_id", "") or "")
+            _run_acct = _scope_acct_id
             _run_sku = str(_req_skus or "") if mode == "regen" else ""
             if not _acquire_run_lock(_run_acct, _run_sku):
                 _why = (_running.get("busy_reason")
@@ -1100,9 +1149,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # active sheet/tab/marketplace. Needs generator support for --skus.
                 if mode == "regen":
                     skus = _req_skus
-                    _sid = _state.get("active_sheet_id")
-                    _tab = _state.get("active_tab")
-                    _mkt = _state.get("active_marketplace") or ""
+                    # Captured in the request, not read here: see the block above.
+                    _sid = _scope_sheet
+                    _tab = _scope_tab
+                    _mkt = _scope_mkt
                     extra = ["regen"]
                     if skus: extra += ["--skus", skus]
                     if _sid: extra += ["--sheet", _sid]
@@ -1112,10 +1162,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 # generate) so listings are created on the CORRECT account's sheet --
                 # not the default dropshipping sheet. Account sheet/tab take priority;
                 # brand-view scoping (below) refines marketplace for api/submit.
-                try:
-                    _acc = _active_account()
-                except Exception:
-                    _acc = None
+                # Captured in the request context above. Calling
+                # _active_account() from in here read the SHARED account, not
+                # this user's -- which is exactly how a Jack Reacherd run
+                # executed as Nestwell Goods.
+                _acc = _scope_acc
                 if _acc:
                     _acc_id = _acc.get("id") or ""
                     if _acc_id and "--account-id" not in extra:
@@ -1184,11 +1235,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         extra += ["--skus", _api_skus]
                     if _req_minimal and "--minimal" not in extra:
                         extra += ["--minimal"]
-                    _sid = _state.get("active_sheet_id")
-                    _tab = _state.get("active_tab")
+                    # All captured in the request context above. Read here they
+                    # would come from the SHARED bag -- another user's sheet and
+                    # another user's brand view, on a path that submits to
+                    # Amazon.
+                    _sid = _scope_sheet
+                    _tab = _scope_tab
                     _mkt = ""
                     # resolve marketplace from the active brand profile, if any
-                    _vk = _state.get("active_view") or ""
+                    _vk = _scope_view
                     if _vk:
                         try:
                             import glob as _glob, os as _os
@@ -1248,6 +1303,38 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         generator's heartbeat file and asks the OS whether the process is alive.
         A jammed pipe can fake neither.
         """
+        # SCOPED TO THE ACCOUNT ASKING.
+        #
+        # _running is ONE flag for the whole process and the heartbeat is ONE
+        # file, so this reported "RUNNING" to every account whenever anything
+        # anywhere was running -- the generation bar appeared in accounts that
+        # had started nothing, describing somebody else's work. Accounts are
+        # independent; their progress bars have to be too.
+        #
+        # domain/run_slots.py already knows which account each run belongs to,
+        # so the slots decide, and the heartbeat only refines the state of a run
+        # this account actually owns.
+        from domain.run_slots import SLOTS as _SLOTS
+        from domain import job_owner as _jo
+        _who = ""
+        try:
+            _who = _jo.current()
+        except Exception:
+            _who = ""
+        _acct = str(_state.get("active_account_id", "") or "")
+        _all = _SLOTS.active()
+        mine = [s for s in _all
+                if str(s.get("account") or "") == _acct
+                and (not _who or not s.get("owner") or str(s.get("owner")) == str(_who))]
+
+        if not mine:
+            # Nothing of THIS account's is running. Say idle, and say nothing
+            # about anyone else's -- a bar that reports another workspace's run
+            # is worse than no bar, because it invites you to press Stop on it.
+            return jsonify({"state": "IDLE", "detail": "", "total": 0,
+                            "stream_attached": False, "mine": 0,
+                            "elsewhere": len(_all) - len(mine)})
+
         proc = _running.get("proc")
         alive = None
         if proc is not None:
@@ -1255,6 +1342,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         info = run_status.classify(app_dir=os.path.dirname(os.path.abspath(CONFIG_PATH)),
                                    proc_alive=alive)
         info["stream_attached"] = bool(_running.get("on"))
+        info["mine"] = len(mine)
+        info["elsewhere"] = len(_all) - len(mine)
+        # Which of this account's runs it is, so the bar names the SKU rather
+        # than describing "a run" in the abstract.
+        info["skus"] = [s.get("sku") for s in mine if s.get("sku")]
         return jsonify(info)
 
     @app.route("/run/stack")

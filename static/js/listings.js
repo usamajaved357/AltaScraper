@@ -723,6 +723,13 @@ function card(r){
     <div class="tileacts">
       <button class="ib" title="Approve" onclick="setStatus('${esc(r.sku)}','APPROVED',this)"><i class="ti ti-check"></i></button>
       <button class="ib gen" title="Image Studio (creative ideas, prompt &amp; image AI)" onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
+      <!-- The image library. It is on the table row and was missing from the
+           card, so on a screen showing cards there was no way to reach a
+           listing's images at all -- to upload your own from this computer, to
+           pick one from another product, or to choose which is the main one.
+           Drafts need it MORE than live listings do, because a draft is exactly
+           when you are still deciding what its pictures should be. -->
+      <button class="ib" title="This listing's images — upload your own, pick one from the library, or set the main image" onclick="event.stopPropagation();openImageLibrary('${esc(r.sku)}', ${isAmazonLive(r) ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
       <button class="ib" title="Edit / details" onclick="openDrawer('${esc(r.sku)}')"><i class="ti ti-edit"></i></button>
       <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
       ${isAmazonLive(r) ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}

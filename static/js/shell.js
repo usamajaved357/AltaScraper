@@ -53,6 +53,32 @@ function renderDataSource(){
   if(!el) return;
   const s = WS_SOURCE;
   if(!s){ el.innerHTML = ""; return; }
+
+  // WHERE THE DATA ACTUALLY IS.
+  //
+  // This header advertised the Output SHEET as the data source. On the database
+  // nothing is written there at all -- generated listings go into the app's own
+  // store -- so the one line whose whole job is to say where your data lives was
+  // pointing at a spreadsheet that had not been touched in weeks. It is the
+  // single most misleading thing on the screen, and it is why the app still
+  // looks like it runs on Sheets.
+  //
+  // On the database: name the database, and keep the INPUT sheet only as what it
+  // now is -- an optional place to import products from.
+  if(window.DATA_BACKEND === "db"){
+    let html = `<span style="opacity:.7"><i class="ti ti-database"></i> Data source</span>`
+             + `<span class="srcchip" title="Listings, prices, sales and finance are stored in this app. `
+             + `Nothing is written to a spreadsheet."><i class="ti ti-database"></i> This app's database</span>`;
+    // Shown only if one is configured. An absent input sheet is not a problem
+    // to warn about any more -- products can be typed straight into the queue.
+    if(s.in_id){
+      html += _srcChip("Import from", s.in_id, s.in_gid, "")
+            + `<span class="cc" style="font-size:11px;opacity:.75">optional — only read when you press Import</span>`;
+    }
+    el.innerHTML = html;
+    return;
+  }
+
   let html = `<span style="opacity:.7"><i class="ti ti-database"></i> Data source</span>`
            + _srcChip("Output", s.out_id, s.out_gid, s.out_tab)
            + _srcChip("Input",  s.in_id,  s.in_gid,  "");
@@ -783,7 +809,7 @@ function navTo(sec){
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor","sourcing","finance","variations","sellerimport"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor","sourcing","orders","finance","variations","sellerimport"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -796,6 +822,7 @@ function navTo(sec){
   if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
   if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
   if(sec==="sourcing"){ if(typeof sourcingOnOpen==="function") sourcingOnOpen(); }
+  if(sec==="orders"){   if(typeof ordersOnOpen==="function")   ordersOnOpen(); }
   if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
   if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
   if(sec==="sellerimport"){ if(typeof sellerImportOnOpen==="function") sellerImportOnOpen(); }

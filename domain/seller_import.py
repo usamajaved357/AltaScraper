@@ -405,6 +405,22 @@ def to_draft(row, *, account_id, marketplace, source_cost=None, days=3,
     # title and nobody would be told why.
     notes = []
     scr = (row.get("screen") or {})
+    # THE VERDICT, IN WORDS, AT THE FRONT.
+    #
+    # The reasons were carried onto the draft but the verdict itself was not, so
+    # a row that Amazon will demand a test certificate for read the same as one
+    # with nothing against it until you got to the end of the sentence. The
+    # check is run precisely to decide what is worth spending generation credits
+    # on; its answer belongs where that decision is made, not only on the screen
+    # where it was run.
+    _SAYS = {
+        BLOCKED: "AMAZON BLOCKS THIS",
+        DOCS: "AMAZON WILL ASK FOR DOCUMENTS",
+        CAUTION: "WORTH CHECKING BEFORE YOU SPEND ON IT",
+        UNKNOWN: "COULD NOT BE CHECKED — not the same as fine",
+    }
+    if scr.get("verdict") in _SAYS:
+        notes.append(_SAYS[scr["verdict"]])
     if scr.get("notes"):
         notes.extend(scr["notes"])
     if row.get("is_group"):

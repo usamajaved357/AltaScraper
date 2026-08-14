@@ -162,6 +162,12 @@ RULES = [
     ("/variant/plan",                   None),
     ("/variant/queue",                  "edit"),
 
+    # -- orders. Read-only and it changes nothing on Amazon, so it needs only
+    #    what seeing sales figures needs. The feature gate below puts it with
+    #    sales, which is where someone who may not see money must not see it.
+    ("/orders/list",                    None),
+    ("/orders/detail",                  None),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),
@@ -218,6 +224,10 @@ FEATURE_PATHS = [
     # Contribution per product is revenue and cost, so it belongs to the same
     # commercially-sensitive area as the sales dashboard rather than to listings.
     ("/finance",              "sales"),
+    # Orders are turnover, order by order, with where they went. Same
+    # commercially-sensitive area as the sales dashboard: someone who may not
+    # see revenue must not see it one order at a time either.
+    ("/orders",               "sales"),
     ("/ppc",                  "ppc"),
     ("/inventory",            "inventory"),
     ("/monitor",              "monitor"),

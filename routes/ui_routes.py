@@ -10,7 +10,8 @@ import json
 import os
 
 
-def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws):
+def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws,
+             _state=None):
     """Attach the paths:/,/ui,/stop,/save_default routes to the existing Flask app."""
 
     @app.route("/save_default", methods=["POST"])
@@ -119,7 +120,18 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         from domain import job_owner as _jo
         was_on = bool(_running.get("on"))
         uid = _jo.current()
-        stopped = _SLOTS.stop(owner=(uid or None))
+        # AND ONLY IN THIS ACCOUNT. Owner was the only filter, and for the
+        # shared-password owner -- the only user on most installs -- owner is
+        # empty, so Stop meant every run on the server. Pressing it in Jack
+        # Reacherd ended a Nestwell Goods submit that was halfway through.
+        # Defaults to None when the caller did not inject state, in which case
+        # Stop keeps its old meaning rather than silently stopping nothing.
+        acct = str((_state or {}).get("active_account_id", "") or "")
+        stopped = _SLOTS.stop(owner=(uid or None), account=(acct or None))
+        # What was deliberately left alone, so Stop never silently does less
+        # than it appears to.
+        left = [s for s in _SLOTS.active()
+                if not acct or str(s.get("account") or "") != acct]
 
         # The legacy single-proc handle, for a run started before slots existed
         # or one that never attached its subprocess. Only touched when the caller
@@ -139,5 +151,11 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
                 _running["on"] = False
                 _running["proc"] = None
                 _running["started"] = 0.0
-        return jsonify({"ok": True, "was_running": was_on, "stopped": stopped})
+        return jsonify({"ok": True, "was_running": was_on, "stopped": stopped,
+                        "account": acct,
+                        "left_running_elsewhere": len(left),
+                        "note": ("" if not left else
+                                 "%d run%s in your other accounts %s left alone."
+                                 % (len(left), "" if len(left) == 1 else "s",
+                                    "was" if len(left) == 1 else "were"))})
 
