@@ -264,20 +264,15 @@ async function studioRefine(cardId){
   if(r&&r.kind){ kind = (r.kind==="concept")?"main":(r.kind==="aplus"?"aplus":(r.kind==="secondary"?"secondary":"main")); }
   const card=document.getElementById(cardId);
   if(card){ card.innerHTML='<div class="srescap"><span class="genspin"></span> refining…</div>'; }
-  // attach the ORIGINAL product reference so the edit can't drift the real product
-  let origRef="";
+  // The studio may be working on a batch, so fall back to the first item it
+  // holds when the SKU is not in the grid. refineImage (genimage.js) attaches
+  // the ORIGINAL product photo so the edit cannot drift the real product.
+  let it=null;
+  try{ it=_itemForSku(cur.sku||"") || (STUDIO.items&&STUDIO.items[0]); }catch(e){}
   try{
-    const sku=cur.sku||"";
-    const it=_itemForSku(sku) || (STUDIO.items&&STUDIO.items[0]);
-    origRef=_refImgForItem(it)||"";
-  }catch(e){}
-  const payload={
-    image:cur.data_url, original_reference:origRef, instruction:instruction.trim(), kind:kind,
-    title:(cur.sku||""), text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null)
-  };
-  try{
-    const j=await (await fetch("/genimage/refine",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(payload)})).json();
+    const j=await refineImage({sku:(cur.sku||""), item:it, image:cur.data_url,
+                               kind:kind, instruction:instruction,
+                               title:(cur.sku||"")});
     if(j&&j.ok&&j.data_url){
       try{ await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({sku:cur.sku||"", data_url:j.data_url})}); }catch(e){}

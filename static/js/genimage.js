@@ -27,6 +27,37 @@ function _refCandidates(it){
   out.forEach(function(u){ if(u && !seen[u]){ seen[u]=1; uniq.push(u); } });
   return uniq;
 }
+// ONE way to ask for an edit of an already-generated image (Rule 12).
+//
+// There were three call sites and they disagreed. Only one of them sent
+// original_reference -- the ORIGINAL product photo, which the server attaches as
+// a second reference and treats as the source of truth for the product itself.
+// From the other two the model had only the picture it was editing, so each
+// round drifted a little further from the real product: the label text softened,
+// colours shifted, and after a few edits it plainly "knew nothing about the
+// product". It genuinely did not.
+//
+// Every caller now goes through here, so the original photo can never be
+// forgotten by one button and remembered by another.
+async function refineImage(opts){
+  const o = opts || {};
+  const sku = o.sku || "";
+  const it = o.item || _itemForSku(sku);
+  const payload = {
+    image: o.image,
+    original_reference: o.original_reference || _refImgForItem(it) || "",
+    instruction: String(o.instruction || "").trim(),
+    kind: o.kind || "main",
+    title: o.title || (it && it.title) || sku || "",
+    text_provider: (window.AI_TEXT || null),
+    image_provider: (window.AI_IMAGE || null),
+  };
+  const r = await fetch("/genimage/refine", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)});
+  return await r.json();
+}
+
 async function openStudioSingle(sku){
   const it=_itemForSku(sku);
   STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), recipes:[], results:{} };

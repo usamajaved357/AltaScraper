@@ -286,7 +286,33 @@ def _resolve_ref_block(image, media_root: str = ""):
     return _img_to_ref(image, media_root)
 
 
-_ENHANCE_SYSTEM = (
+# THE HOUSE STYLE -- a preference, not a rule.
+#
+# This sentence used to sit inside the ABSOLUTE NON-NEGOTIABLE list below, which
+# is why every image came back lit exactly the same way and no amount of asking
+# changed it. Amazon has no opinion about lighting: it requires the pure white
+# background, the frame fill, and no added text. The lighting was ours.
+#
+# It is still the default, so nothing changes for anyone who liked it -- but it
+# is now ONE string, in ONE place, and setting "image_style_note" in config.json
+# replaces it. Setting it to "" removes styling guidance altogether and lets the
+# brief (or the standing instructions box) decide the look.
+DEFAULT_STYLE_NOTE = (
+    "Even soft daylight-balanced (5500K) studio lighting, a subtle natural contact "
+    "shadow under the product, sRGB colour."
+)
+
+
+def style_note(config):
+    """The house style for generated images, or "" if it has been cleared."""
+    if not isinstance(config, dict):
+        return DEFAULT_STYLE_NOTE
+    v = config.get("image_style_note", None)
+    return DEFAULT_STYLE_NOTE if v is None else str(v).strip()
+
+
+# What Amazon actually requires. Nothing here is a matter of taste.
+_ENHANCE_RULES = (
     "You are a product-photography art director. Expand the user's short brief "
     "into a single, richly detailed image-generation prompt for a professional "
     "Amazon MAIN product image that meets Amazon's 2025 technical standards. "
@@ -298,16 +324,32 @@ _ENHANCE_SYSTEM = (
     "- Perfect 1:1 square aspect ratio.\n"
     "- Maximum resolution and sharpness — crisp, high-definition, professional studio quality, every "
     "detail in sharp focus (target 2500x2500 pixels, never below 1600x1600).\n"
-    "- Even soft daylight-balanced (5500K) studio lighting, a subtle natural contact shadow under the "
-    "product, sRGB colour.\n"
     "- NO text added by you, NO logos added, NO watermarks, NO badges, NO props, NO people, single "
     "product only, shown OUTSIDE its packaging.\n"
+)
+
+_ENHANCE_FIDELITY = (
     "CRITICAL — PRODUCT FIDELITY: an EXACT PRODUCT SPEC may be provided. Reproduce the product PRECISELY "
     "from it and from the reference image — keep the identical shape, colours, materials, layout, logo "
     "placement, and reproduce ALL label text exactly as written, letter for letter. Do NOT invent, "
-    "redesign, restyle, translate, or omit any text or feature. Be specific about lighting, angle, "
-    "shadow, and finish. Output ONLY the prompt text, no preamble, 350-650 words."
+    "redesign, restyle, translate, or omit any text or feature. "
+    "Output ONLY the prompt text, no preamble, 350-650 words."
 )
+
+
+def _enhance_system(config=None):
+    """The main-image system prompt: Amazon's rules, then the house style if any.
+
+    Assembled rather than stored, so the style can be changed or removed without
+    touching what Amazon requires -- the two used to be one paragraph, and that
+    is why the look could not be changed without weakening the compliance rules.
+    """
+    note = style_note(config)
+    style = ""
+    if note:
+        style = ("HOUSE STYLE (follow unless the brief asks for something else):\n- %s\n"
+                 "Be specific about lighting, angle, shadow and finish.\n" % note)
+    return _ENHANCE_RULES + style + _ENHANCE_FIDELITY
 
 
 def describe_image(config: dict, images: list, focus: str = "", provider: str = None) -> dict:
@@ -581,8 +623,9 @@ def enhance_prompt(config: dict, brief: str, product_title: str = "",
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No text model selected/available"}
-    sysmsg = {"main": _ENHANCE_SYSTEM, "secondary": _SECONDARY_SYSTEM,
-              "aplus": _APLUS_SYSTEM}.get(image_kind, _ENHANCE_SYSTEM)
+    _main = _enhance_system(config)
+    sysmsg = {"main": _main, "secondary": _SECONDARY_SYSTEM,
+              "aplus": _APLUS_SYSTEM}.get(image_kind, _main)
     user_msg = (f"Product: {product_title}\n\n" if product_title else "") + \
                f"Brief from seller: {brief or 'clean professional Amazon image'}\n\n" \
                "Write the detailed image prompt now."
@@ -797,7 +840,7 @@ def run_pipeline(config: dict, brief: str, reference_image="",
                  image_provider: str = None, image_kind: str = "main",
                  read_product: bool = True, strength: float = 0.25,
                  extra_reference: str = "", target_w: int = 0, target_h: int = 0,
-                 media_root: str = "") -> dict:
+                 media_root: str = "", spec_image: str = "") -> dict:
     """Vision-first pipeline:
     1) (optional) vision AI reads the ACTUAL product in detail (exact label text,
        shape, colours, material) so the model can't alter it,
@@ -806,10 +849,18 @@ def run_pipeline(config: dict, brief: str, reference_image="",
        LOW strength so the product is preserved (lower = more faithful).
     extra_reference: an optional SECOND reference image. Used by refine so the
     model edits the generated image while staying anchored to the ORIGINAL product.
+
+    spec_image: WHICH image step 1 should read the product from, when that is not
+    the image being edited. Refine needs this: its reference_image is the
+    already-generated picture, so reading the product from it would describe a
+    copy of a copy and let small errors compound with every edit. Reading the
+    ORIGINAL product photo instead keeps every round anchored to the real thing.
+    Defaults to reference_image, so every existing caller is unaffected.
     """
     product_spec = ""
-    if read_product and reference_image:
-        desc = describe_product(config, reference_image, product_title,
+    _spec_src = spec_image or reference_image
+    if read_product and _spec_src:
+        desc = describe_product(config, _spec_src, product_title,
                                 provider=text_provider, media_root=media_root)
         if desc.get("ok"):
             product_spec = desc.get("description", "")

@@ -75,6 +75,40 @@ for secret in ("Green Haven", "Jack Reacherd", "AGH1", "A34C", "green_haven", "j
     check("  %r is absent" % secret, secret in body, False)
 check("  their own workspace is present", "Selvora" in body, True)
 
+print("\n=== an empty selection means NO workspaces, never all of them ===")
+# The fail-open this pins down: both create_user and update_user turned an empty
+# workspace list into [*]. So unticking every box to lock someone down handed
+# them the whole estate instead -- silently, and looking exactly like success.
+empty, _tok = users.create_user(CFG, "locked@x.com", "Locked", role="lister",
+                                workspaces=[])
+check("created with none selected -> none", empty["workspaces"], [])
+locked = users.get_user(CFG, empty["id"])
+check("  and they can reach nothing",
+      any(users.can_access_workspace(locked, w)
+          for w in ("jack_uk", "selvora", "dropshipping", "")), False)
+
+two, _t2 = users.create_user(CFG, "two@x.com", "Two", role="lister",
+                             workspaces=["jack_uk", "selvora"])
+u2 = users.get_user(CFG, two["id"])
+check("two workspaces means exactly two",
+      [users.can_access_workspace(u2, w) for w in ("jack_uk", "selvora", "nestwell_goods")],
+      [True, True, False])
+
+users.update_user(CFG, two["id"], workspaces=[])
+check("clearing them on edit does NOT grant everything",
+      users.get_user(CFG, two["id"])["workspaces"], [])
+check("  and access really is gone",
+      users.can_access_workspace(users.get_user(CFG, two["id"]), "jack_uk"), False)
+
+users.update_user(CFG, two["id"], workspaces=["jack_uk"])
+check("and it can be put back",
+      users.can_access_workspace(users.get_user(CFG, two["id"]), "jack_uk"), True)
+
+nofield, _t3 = users.create_user(CFG, "nofield@x.com", "NoField", role="lister")
+check("NOT supplying the field at all still defaults to everything",
+      nofield["workspaces"], ["*"])
+
+
 print("\n=== one implementation, not two (Rule 12) ===")
 s = open(r"D:\AltaScraper\routes\accounts_routes.py", encoding="utf-8").read()
 check("the list calls the shared rule", "users.can_access_workspace" in s, True)

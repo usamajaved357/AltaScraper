@@ -303,7 +303,12 @@ def create_user(config_path, email, name="", role="lister", permissions=None,
         role = role if role in ROLES else "lister"
         perms = permissions if isinstance(permissions, list) else ROLES[role]
         perms = [p for p in perms if p in PERMISSIONS]
-        ws = workspaces if isinstance(workspaces, list) and workspaces else [ALL_WORKSPACES]
+        # An EMPTY list means "no workspaces", not "every workspace". It used to
+        # mean the latter: `... and workspaces else [ALL_WORKSPACES]` turned a
+        # cleared selection into the wildcard, so unticking every box to lock
+        # someone down granted them the whole estate instead. Only workspaces=None
+        # -- the field not supplied at all -- still defaults to the wildcard.
+        ws = workspaces if isinstance(workspaces, list) else [ALL_WORKSPACES]
         token = secrets.token_urlsafe(32)
         user = {
             "id": _new_id(),
@@ -414,7 +419,11 @@ def update_user(config_path, user_id, **fields):
                 u["features"] = {f: lvl for f, lvl in fields["features"].items()
                                  if f in FEATURES and lvl in LEVELS}
             if "workspaces" in fields and isinstance(fields["workspaces"], list):
-                u["workspaces"] = [str(w) for w in fields["workspaces"]] or [ALL_WORKSPACES]
+                # Same fail-open as create_user had: `or [ALL_WORKSPACES]` turned
+                # "I unticked everything" into "give them everything". An empty
+                # list is now stored as an empty list, which shows on screen as
+                # no access and is trivially fixable -- unlike silent full access.
+                u["workspaces"] = [str(w) for w in fields["workspaces"]]
             if "active" in fields:
                 u["active"] = bool(fields["active"])
             if _lost_last_manager(had_manager, data):
