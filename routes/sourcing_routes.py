@@ -224,17 +224,38 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         kind = (b.get("kind") or "").strip().lower()
         if not kind:
             kind = "ebay" if "ebay." in url.lower() else "html"
+        from api import ebay as _ebay
         if kind == "ebay":
-            from api import ebay as _ebay
             if not _ebay.item_id_from_url(url):
                 return jsonify({"ok": False, "error": (
                     "that does not look like an eBay item link -- it should "
                     "contain /itm/ and the item number")}), 400
-        sid = _repo.add_source(CONFIG_PATH, wsid, mkt, sku, url, kind=kind,
-                               label=(b.get("label") or "").strip(),
-                               priority=int(b.get("priority") or 100),
-                               shipping_override=b.get("shipping_override"))
-        return jsonify({"ok": True, "id": sid})
+        # Refused at the point you can still fix it. A variation listing has no
+        # one price or stock level, so this source could never produce a usable
+        # reading -- it would sit in every sweep answering "could not tell", and
+        # the repricer would correctly do nothing, silently, for ever.
+        if kind == "ebay" and not _ebay.variation_id_from_url(url):
+            _c = _cfg() if callable(_cfg) else (_cfg or {})
+            app_id = str(_c.get("ebay_app_id", "") or "")
+            cert_id = str(_c.get("ebay_cert_id", "") or "")
+            if app_id and cert_id:
+                probe = _ebay.get_item(url, app_id, cert_id,
+                                       marketplace=_ebay.site_for(mkt))
+                if probe["status"] == _ebay.GROUP:
+                    return jsonify({"ok": False, "error": probe["error"]}), 400
+
+        # Not add_source: the same supplier link twice is two fetches of the same
+        # answer on every sweep, and that supplier then counts twice in the
+        # ranking. ensure_source says whether it was already there.
+        sid, created = _repo.ensure_source(
+            CONFIG_PATH, wsid, mkt, sku, url, kind=kind,
+            label=(b.get("label") or "").strip(),
+            priority=int(b.get("priority") or 100),
+            shipping_override=b.get("shipping_override"))
+        return jsonify({"ok": True, "id": sid, "created": created,
+                        "note": ("" if created else
+                                 "That link was already a source for this SKU, "
+                                 "so nothing was added.")})
 
     @app.route("/sourcing/source/update", methods=["POST"])
     def sourcing_source_update():

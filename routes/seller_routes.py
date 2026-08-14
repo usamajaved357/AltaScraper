@@ -210,14 +210,71 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "or send include_blocked to draft them anyway."
                 % len(blocked))}), 400
 
-        drafts = [_si.to_draft(r, account_id=wsid, marketplace=mkt,
-                               days=int(b.get("handling_days") or 3))
-                  for r in rows]
+        days = int(b.get("handling_days") or 3)
+        expand = b.get("expand_variations") is not False   # default on
+        max_drafts = int(b.get("max_drafts") or 250)
+
+        # ---- variation families become a parent and its children ------------
+        # NOT one row. Measured on a real 104-child listing: every child shares
+        # the listing id, so one row per family would give all 104 the same SKU
+        # and the store upserts on SKU -- 103 would silently overwrite each
+        # other. And their prices run 9.99 to 23.49, so whichever one survived
+        # would price the whole range off one arbitrary variation.
+        from api import ebay as _ebay
+        app_id, cert_id = _ebay_creds()
+        drafts, notes, errors = [], [], []
+        for r in rows:
+            gid = (_ebay.group_id_from_href(r.get("group_href"))
+                   or str(r.get("item_id") or ""))
+            if not (r.get("is_group") and expand and gid):
+                drafts.append(_si.to_draft(r, account_id=wsid, marketplace=mkt,
+                                           days=days))
+                continue
+            got = _ebay.item_group(gid, app_id, cert_id,
+                                   marketplace=_ebay.site_for(mkt))
+            if got["status"] != _ebay.OK:
+                # Skipped, not flattened. Drafting it as a single product would
+                # take one variation's price and sell every size and colour at
+                # it -- a quiet, expensive wrong answer, where a skip is a
+                # visible one you can retry.
+                errors.append({"sku": r.get("item_id") or "",
+                               "error": ("%s is a variation listing and its "
+                                         "variations could not be read (%s), so "
+                                         "it was left out rather than drafted at "
+                                         "one price."
+                                         % (r.get("title") or gid,
+                                            got["error"] or got["status"]))})
+                continue
+            exp = _si.expand_group(got["data"], r)
+            fam, probs = _si.family_drafts(exp, r, account_id=wsid,
+                                           marketplace=mkt, days=days)
+            if not fam:
+                errors.append({"sku": r.get("item_id") or "",
+                               "error": "; ".join(probs) or "not a family"})
+                continue
+            drafts.extend(fam)
+            if probs:
+                notes.append("%s: %s" % (r.get("title") or gid, " ".join(probs)))
+            notes.append("%s came across as a family: 1 parent and %d variations."
+                         % (r.get("title") or gid, len(fam) - 1))
+
+        if not drafts:
+            return jsonify({"ok": False, "errors": errors,
+                            "error": "nothing could be drafted"}), 400
+        if len(drafts) > max_drafts:
+            # A ceiling you are told about, not one applied quietly. 12 families
+            # can be 400 drafts, each of which costs generation spend later.
+            return jsonify({"ok": False, "error": (
+                "%d items would become %d drafts once their variations are "
+                "expanded, which is over the %d limit. Untick some, or send "
+                "max_drafts to raise it."
+                % (len(rows), len(drafts), max_drafts)),
+                "would_draft": len(drafts)}), 400
 
         # ListingStore is the app's own draft store, one per workspace, and
         # upsert_row keys on SKU -- so re-importing a seller updates the rows it
         # already made instead of piling up duplicates of the same product.
-        written, errors = 0, []
+        written = 0
         try:
             from data.store import ListingStore
             store = ListingStore(wsid, config_path=CONFIG_PATH)
@@ -225,15 +282,59 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": False,
                             "error": "could not open the draft store: %s"
                                      % str(e)[:160]}), 500
+        saved = []
         for d in drafts:
             try:
                 store.upsert_row(d)
                 written += 1
+                saved.append(d)
             except Exception as e:
                 errors.append({"sku": d["sku"], "error": str(e)[:160]})
 
-        return jsonify({"ok": not errors, "drafted": written,
+        # ---- and the repricer starts watching them ---------------------------
+        # From the moment the draft exists, not from whenever somebody remembers
+        # to enrol it. The eBay item this came from IS the supplier, and its URL
+        # is already in hand -- the gap between drafting and enrolling is exactly
+        # the window where the source's price moves and nobody notices.
+        #
+        # DRY RUN, always. A dry-run enrolment watches and records what it WOULD
+        # do without changing a price or a stock level. Arming it is a separate,
+        # deliberate act that needs a floor price per SKU, and an import that
+        # armed 104 SKUs with no floor could reprice them to whatever a supplier
+        # happened to be charging.
+        enrolled, enrol_errors = 0, []
+        if b.get("enrol") is not False:
+            from domain import source_repo as _repo
+            for d in saved:
+                src = d.get("_source") or {}
+                # The parent is not a product. Nothing buys it, nothing supplies
+                # it, and it has no price to track -- enrolling it would put a
+                # permanently unreadable source in every sweep.
+                if src.get("role") == "parent":
+                    continue
+                url = src.get("url") or ""
+                if not url:
+                    continue
+                try:
+                    _repo.enrol(CONFIG_PATH, wsid, mkt, d["sku"], mode="dry_run")
+                    _repo.ensure_source(CONFIG_PATH, wsid, mkt, d["sku"], url,
+                                        kind="ebay",
+                                        label=(d.get("title") or "")[:120])
+                    enrolled += 1
+                except Exception as e:
+                    # A draft that saved is not lost because its enrolment
+                    # failed. Reported separately so the two are not confused.
+                    enrol_errors.append({"sku": d["sku"], "error": str(e)[:160]})
+
+        note = ("Drafted into this app only — nothing has been sent to Amazon. "
+                "Review them on the Listings screen and submit the ones you want.")
+        if enrolled:
+            note += (" %d are now watched by the repricer in dry run: it records "
+                     "what it would do as the eBay price and stock move, and "
+                     "changes nothing until you set a floor price and arm it."
+                     % enrolled)
+        return jsonify({"ok": not (errors or enrol_errors), "drafted": written,
+                        "enrolled": enrolled, "enrol_errors": enrol_errors,
                         "errors": errors, "skus": [d["sku"] for d in drafts],
-                        "note": ("Drafted into this app only — nothing has been "
-                                 "sent to Amazon. Review them on the Listings "
-                                 "screen and submit the ones you want.")})
+                        "families": [n for n in notes if n],
+                        "note": note})

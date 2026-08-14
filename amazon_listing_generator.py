@@ -4553,10 +4553,16 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         pa = {}
     if not isinstance(pa, dict):
         pa = {}
-    # _provenance is dashboard metadata (which source filled each field) -- never
-    # send it to Amazon.
-    pa.pop("_provenance", None)
-    pa.pop("provenance", None)
+    # A LEADING UNDERSCORE MEANS "OURS, NOT AMAZON'S".
+    # Attributes JSON doubles as the app's own scratch space -- _provenance
+    # records which source filled each field, _family records the eBay variation
+    # group a draft came from -- and none of it is an Amazon attribute. This was
+    # a list of one key to pop, which meant every new piece of metadata was one
+    # forgotten line away from being posted to Amazon as an unknown attribute.
+    # It is a rule now, so nothing has to remember to add itself to it.
+    for _k in [k for k in pa if str(k).startswith("_")]:
+        pa.pop(_k, None)
+    pa.pop("provenance", None)     # the one metadata key without the underscore
 
     # Re-nest flat dot-keys saved by the dashboard's nested sub-field editor.
     # e.g. "battery.weight.value":"180" + "battery.weight.unit":"grams"

@@ -39,6 +39,12 @@ import urllib.request
 OK     = "ok"
 GONE   = "gone"
 FAILED = "failed"
+# The URL is a variation FAMILY, not one buyable thing. Measured: asking
+# get_item_by_legacy_id for a family's id answers HTTP 400, which this layer
+# would otherwise report as GONE -- i.e. "the listing has ended" -- and the
+# repricer would take a perfectly healthy product out of stock and keep it
+# there. It has not ended; the URL just does not say WHICH variation.
+GROUP  = "group"
 
 DEFAULT_MARKETPLACE = "EBAY_GB"     # what the generator has always used
 
@@ -63,12 +69,60 @@ def site_for(marketplace):
 _TOKEN_CACHE = {"token": None, "expires_at": 0.0}
 
 _ITEM_ID_RE = re.compile(r"/itm/(?:[^/?]+/)?(\d{9,15})")
+# A child of a variation listing is the SAME /itm/ id with ?var= on the end.
+_VAR_ID_RE = re.compile(r"[?&]var=(\d+)")
 
 
 def item_id_from_url(url):
-    """The numeric item id out of an eBay URL, or "" if it is not one."""
+    """The numeric item id out of an eBay URL, or "" if it is not one.
+
+    NOTE this is the LISTING's id. For a variation listing every child shares it
+    -- see variation_id_from_url, which is what tells them apart.
+    """
     m = _ITEM_ID_RE.search(url or "")
     return m.group(1) if m else ""
+
+
+def variation_id_from_url(url):
+    """The ?var= id -- WHICH child of a variation listing this URL points at.
+
+    Measured against the live API on 14 Aug 2026, on a 104-child listing:
+
+        104 children -> 1 distinct legacyItemId
+        104 children -> 104 distinct itemId
+
+    So the numeric /itm/ id does NOT identify a child. All 104 carry
+    223778867020; only the var= id (522519025283, ...284, ...285) separates
+    them, and their prices genuinely differ -- 9.99 to 23.49 across that one
+    listing. Tracking a child by the listing id alone would price and stock
+    every size and colour off whichever one eBay happened to answer with.
+    """
+    m = _VAR_ID_RE.search(url or "")
+    return m.group(1) if m else ""
+
+
+def full_item_id(listing_id, variation_id=""):
+    """The v1|listing|variation id the Browse API uses for ONE buyable thing."""
+    if not listing_id:
+        return ""
+    return "v1|%s|%s" % (listing_id, variation_id or "0")
+
+
+def split_item_id(item_id):
+    """v1|listing|variation -> (listing, variation). ("", "") if it is not one."""
+    parts = str(item_id or "").split("|")
+    if len(parts) != 3 or not parts[1].isdigit():
+        return "", ""
+    var = parts[2] if parts[2].isdigit() and parts[2] != "0" else ""
+    return parts[1], var
+
+
+def group_id_from_href(href):
+    """The item_group_id out of an itemGroupHref, or ""."""
+    s = str(href or "")
+    if "item_group_id=" not in s:
+        return ""
+    return s.split("item_group_id=")[1].split("&")[0].strip()
 
 
 def token(app_id, cert_id, timeout=15):
@@ -230,11 +284,20 @@ def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE, timeou
     ended listings even though the web page often stays up for another 90 days.
     Every other failure is FAILED, which callers must treat as "no information".
     """
-    out = {"status": FAILED, "data": None, "http_code": None, "error": "", "item_id": ""}
+    out = {"status": FAILED, "data": None, "http_code": None, "error": "",
+           "item_id": "", "variation_id": ""}
 
     s = str(url_or_id or "").strip()
-    item_id = s if s.isdigit() else item_id_from_url(s)
+    # Three shapes reach here: a bare numeric listing id, a full v1|x|y item id,
+    # and a URL -- which may carry ?var= naming one child of a family.
+    if "|" in s:
+        item_id, var_id = split_item_id(s)
+    elif s.isdigit():
+        item_id, var_id = s, ""
+    else:
+        item_id, var_id = item_id_from_url(s), variation_id_from_url(s)
     out["item_id"] = item_id
+    out["variation_id"] = var_id
     if not item_id:
         out["error"] = "not an eBay item URL"
         return out
@@ -247,16 +310,28 @@ def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE, timeou
         out["error"] = "could not get an eBay token"
         return out
 
-    try:
-        url = ("https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id"
-               "?legacy_item_id=%s" % urllib.parse.quote(item_id))
+    def _get(url):
         req = urllib.request.Request(url, headers={
             "Authorization":           "Bearer %s" % tok,
             "X-EBAY-C-MARKETPLACE-ID": marketplace,
             "Accept":                  "application/json",
         })
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            out["data"] = json.loads(r.read().decode("utf-8"))
+            return json.loads(r.read().decode("utf-8"))
+
+    # A named child is fetched BY that child. The legacy endpoint cannot express
+    # "the black one in a medium" -- it answers with whichever variation eBay
+    # picks -- and on a listing whose children run 9.99 to 23.49 that is a price
+    # taken from the wrong product.
+    if var_id:
+        url = ("https://api.ebay.com/buy/browse/v1/item/%s"
+               % urllib.parse.quote(full_item_id(item_id, var_id), safe=""))
+    else:
+        url = ("https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id"
+               "?legacy_item_id=%s" % urllib.parse.quote(item_id))
+
+    try:
+        out["data"] = _get(url)
         out["status"] = OK
         return out
     except urllib.error.HTTPError as e:
@@ -264,7 +339,23 @@ def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE, timeou
         out["error"] = "HTTP %s %s" % (e.code, getattr(e, "reason", ""))
         # 400/404 == ended or removed. A fact, not a failure to look.
         out["status"] = GONE if e.code in (400, 404) else FAILED
-        return out
     except Exception as e:
         out["error"] = str(e)[:200]
         return out
+
+    # ...unless it is a variation FAMILY, which answers 400 to the very same
+    # question while being entirely alive. Before calling a product dead --
+    # which stops it selling -- ask the one question that tells the two apart.
+    if out["status"] == GONE and not var_id:
+        grp = item_group(item_id, app_id, cert_id, marketplace=marketplace,
+                         timeout=timeout)
+        if grp["status"] == OK and (grp["data"] or {}).get("items"):
+            out["status"] = GROUP
+            out["data"] = grp["data"]
+            out["error"] = (
+                "This eBay URL is a variation listing with %d variations, not a "
+                "single product, so there is no one price or stock level to read "
+                "from it. Use the link to the exact variation — it ends in "
+                "?var=… — or import the seller's listing as a family."
+                % len(grp["data"]["items"]))
+    return out

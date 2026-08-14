@@ -162,6 +162,237 @@ truthy("  and keeps eBay's own reported total apart from what we found",
        "highest_reported_total" in src)
 check("no seller, no calls", E.search_seller("", "a", "b")[0], [])
 
+print("\n=== a variation family is not one product ===")
+# Shaped exactly as get_items_by_item_group returned it, probed 14 Aug 2026 on a
+# real 104-child listing. The two numbers that matter:
+#     104 children -> 1 distinct legacyItemId
+#     104 children -> 104 distinct itemId
+# and child prices running 9.99 to 23.49.
+def _kid(var, colour, size, price, img):
+    return {
+        "itemId": "v1|223778867020|%s" % var,
+        "legacyItemId": "223778867020",         # THE SAME ON EVERY CHILD
+        "title": "Fruit of The Loom Mens T Shirts",
+        "image": {"imageUrl": img},
+        "price": {"value": price, "currency": "GBP"},
+        "itemWebUrl": "https://www.ebay.co.uk/itm/223778867020?var=%s" % var,
+        "shippingOptions": [{"shippingCost": {"value": "0.00", "currency": "GBP"}}],
+        "estimatedAvailabilities": [{"estimatedAvailabilityStatus": "IN_STOCK"}],
+        "localizedAspects": [
+            {"name": "Colour", "value": colour},
+            {"name": "Size", "value": size},
+            {"name": "Brand", "value": "Fruit of The Loom"},   # never varies
+            {"name": "Garment Care", "value": "Machine Washable"},
+        ],
+    }
+
+# Priced as the real one is: sizes of the same colour share a price, colours do
+# not. That is what makes the listing id useless as a key -- 104 children over
+# only 6 distinct prices.
+GROUP = {"items": [
+    _kid("522519025283", "Black", "S", "14.49", "https://i.ebayimg.com/b.jpg"),
+    _kid("522519025284", "Black", "M", "14.49", "https://i.ebayimg.com/b.jpg"),
+    _kid("522519025285", "Grey",  "L", "23.49", "https://i.ebayimg.com/g.jpg"),
+]}
+FAMILY_ROW = dict(SI.to_review_row({
+    "legacyItemId": "223778867020",
+    "itemGroupType": "SELLER_DEFINED_VARIATIONS",
+    "itemGroupHref": ("https://api.ebay.com/buy/browse/v1/item/"
+                      "get_items_by_item_group?item_group_id=223778867020"),
+    "title": "Fruit of The Loom Mens T Shirts",
+    "categories": [{"categoryName": "T-Shirts"}],
+}))
+
+truthy("a family is recognised as one", FAMILY_ROW["is_group"])
+check("the group id comes out of the href",
+      E.group_id_from_href(FAMILY_ROW["group_href"]), "223778867020")
+check("  and a href without one gives nothing", E.group_id_from_href("x"), "")
+
+print("\n--- which id actually tells the children apart ---")
+check("the /itm/ id is the same for every child",
+      len({k["legacyItemId"] for k in GROUP["items"]}), 1)
+check("  so the ?var= id is the only thing that differs",
+      E.variation_id_from_url(GROUP["items"][0]["itemWebUrl"]), "522519025283")
+check("a plain item URL has no variation id",
+      E.variation_id_from_url("https://www.ebay.co.uk/itm/223778867020"), "")
+check("  and the listing id still reads off it",
+      E.item_id_from_url(GROUP["items"][2]["itemWebUrl"]), "223778867020")
+check("the full id is rebuilt from the two",
+      E.full_item_id("223778867020", "522519025283"), "v1|223778867020|522519025283")
+check("  a non-variation item ends in |0", E.full_item_id("223"), "v1|223|0")
+check("  and split undoes it",
+      E.split_item_id("v1|223778867020|522519025283"), ("223778867020", "522519025283"))
+check("  |0 means 'no variation', not variation zero",
+      E.split_item_id("v1|223|0"), ("223", ""))
+check("  nonsense splits to nothing", E.split_item_id("223778867020"), ("", ""))
+
+print("\n--- only what VARIES is a variation axis ---")
+check("colour and size vary; brand and care instructions do not",
+      SI.varying_aspects(GROUP["items"]), ["Colour", "Size"])
+check("one child on its own varies by nothing",
+      SI.varying_aspects(GROUP["items"][:1]), [])
+theme, probs = SI.suggest_theme(["Colour", "Size"])
+check("the UK spelling maps onto Amazon's axis names", theme, "COLOR/SIZE")
+check("  with nothing to complain about", probs, [])
+theme2, probs2 = SI.suggest_theme(["Colour", "Bundle Listing"])
+check("an aspect with no Amazon axis is REPORTED, not silently dropped",
+      len(probs2), 1)
+truthy("  and it is named", "Bundle Listing" in probs2[0])
+check("  the axes that do map are still used", theme2, "COLOR")
+check("nothing mappable at all is a refusal, not an empty theme",
+      SI.suggest_theme(["Bundle Listing"])[0], "")
+# Against a real schema the theme must be one the product type ALLOWS (Rule 4).
+check("the schema's own ordering wins over ours",
+      SI.suggest_theme(["Colour", "Size"], allowed=["SIZE/COLOR", "COLOR"])[0],
+      "SIZE/COLOR")
+check("  and a type with no such theme is refused, not approximated",
+      SI.suggest_theme(["Colour", "Size"], allowed=["SIZE", "COLOR"])[0], "")
+
+print("\n--- the collision, shown rather than asserted ---")
+# What keying children on the LISTING id does, run against the same fixture.
+# The store upserts on SKU, so every collision here is a draft that silently
+# overwrites another one -- no error, just fewer rows than variations.
+_old = ["%.2f_3Days_%s" % (float(k["price"]["value"]), k["legacyItemId"])
+        for k in GROUP["items"]]
+_new = ["%.2f_3Days_%sv%s" % (float(k["price"]["value"]), k["legacyItemId"],
+                              k["itemId"].split("|")[2]) for k in GROUP["items"]]
+check("keyed on the listing id, two of these three collapse into one",
+      len(set(_old)), 2)          # Black/S and Black/M become the same SKU
+check("  because only the COST tells them apart, and sizes share a cost",
+      _old[0] == _old[1], True)
+check("keyed on the variation id, all three survive", len(set(_new)), 3)
+# On the measured 104-child listing this is 104 children over 6 distinct prices:
+# 98 drafts lost. In the shipped code it was worse still -- a family was drafted
+# as ONE row, so 103 never existed at all.
+
+exp = SI.expand_group(GROUP, FAMILY_ROW)
+check("every variation came across", exp["count"], 3)
+check("the family knows what it varies by", exp["theme"], "COLOR/SIZE")
+kids = exp["children"]
+check("each child gets its OWN id",
+      len({k["item_id"] for k in kids}), 3)
+check("  keyed on listing + variation", kids[0]["item_id"], "223778867020v522519025283")
+check("each child keeps its own price", [k["price"] for k in kids],
+      [14.49, 14.49, 23.49])
+check("  and its own image, because the colour is what changed",
+      [k["image"][-5:] for k in kids], ["b.jpg", "b.jpg", "g.jpg"])
+check("  and a URL that names WHICH child",
+      E.variation_id_from_url(kids[2]["url"]), "522519025285")
+check("the category comes down from the family", kids[0]["category"], "T-Shirts")
+
+drafts, fprobs = SI.family_drafts(exp, FAMILY_ROW, account_id="a", marketplace="UK")
+check("one parent plus one draft per variation", len(drafts), 4)
+check("THREE DISTINCT SKUS -- one row per family would have made one",
+      len({d["sku"] for d in drafts[1:]}), 3)
+check("  each carrying its own cost", sorted(d["sku"] for d in drafts[1:]),
+      ["14.49_3Days_223778867020v522519025283",
+       "14.49_3Days_223778867020v522519025284",
+       "23.49_3Days_223778867020v522519025285"])
+truthy("  and every one of them fits Amazon's SKU limit",
+       all(len(d["sku"]) <= SI.SKU_MAX for d in drafts))
+
+parent = drafts[0]
+check("the parent is named after the eBay listing, not after a child",
+      parent["sku"], "PARENT_223778867020")
+check("  it is not for sale", parent["status"], "PARENT")
+truthy("  and it says so in words", "not for sale" in parent["notes"])
+check("  it has no cost baked into a SKU", "_3Days_" in parent["sku"], False)
+
+import json as _j
+kid = drafts[2]
+fam = _j.loads(kid["attributes_json"])["_family"]
+check("a child knows its parent", fam["parent_sku"], "PARENT_223778867020")
+check("  and which variation of the eBay listing it is",
+      fam["variation_id"], "522519025284")
+check("the theme is recorded as PROPOSED, never as settled",
+      (fam["proposed_theme"], fam["theme_confirmed"]), ("COLOR/SIZE", False))
+check("what makes this child different is on the row itself",
+      (kid["colour"], kid["size"]), ("Black", "M"))
+_unknown2 = [k for k in kid if not k.startswith("_") and k not in _known]
+check("every key a child writes is one the store actually has", _unknown2, [])
+
+print("\n--- _family is ours, and must never be posted to Amazon ---")
+import amazon_listing_generator as GEN
+import inspect as _insp
+_bsrc = _insp.getsource(GEN.build_api_attributes)
+truthy("underscore keys are stripped as a RULE, not one name at a time",
+       'startswith("_")' in _bsrc)
+truthy("  which is what keeps _family out", "pa.pop(_k" in _bsrc)
+
+print("\n--- a family that cannot be read is skipped, not guessed at ---")
+check("one readable variation is not a family",
+      SI.family_drafts(SI.expand_group({"items": GROUP["items"][:1]}, FAMILY_ROW),
+                       FAMILY_ROW, account_id="a", marketplace="UK")[0], [])
+_bad = {"items": [dict(_kid("0", "Black", "S", "9.99", "x"), itemId="v1|223|0")]}
+check("a child with no variation id is left out rather than colliding",
+      SI.expand_group(_bad, FAMILY_ROW)["count"], 0)
+truthy("  and the drop is counted, not silent",
+       any("left out" in p for p in SI.expand_group(_bad, FAMILY_ROW)["problems"]))
+
+print("\n=== a family URL is not an ended listing ===")
+# Measured: get_item_by_legacy_id answers HTTP 400 for a variation family's id,
+# exactly as it does for a listing that has ended. Reading the two as the same
+# thing would take a live, selling product out of stock and keep it there.
+from domain import source_fetch as SF
+from domain import sourcing as S
+check("the transport has a word for it", E.GROUP, "group")
+check("every transport status is still translated",
+      sorted(SF._FROM_TRANSPORT), sorted([E.OK, E.GONE, E.FAILED, E.GROUP]))
+check("a family reads as 'we learned nothing'",
+      SF._FROM_TRANSPORT[E.GROUP], S.FAILED)
+check("  and NOT as 'the supplier stopped selling it'",
+      SF._FROM_TRANSPORT[E.GROUP] == S.GONE, False)
+_gsrc = _insp.getsource(E.get_item)
+truthy("get_item asks the group endpoint before calling anything dead",
+       "item_group(" in _gsrc)
+truthy("  and fetches a named child by its own id, not the listing's",
+       "full_item_id(item_id, var_id)" in _gsrc)
+
+print("\n=== drafted items are watched from the moment they exist ===")
+import os, tempfile, json as _json2
+_tmp = tempfile.mkdtemp()
+_cfgp = os.path.join(_tmp, "config.json")
+open(_cfgp, "w").write(_json2.dumps({"db_path": os.path.join(_tmp, "t.db")}))
+from domain import source_repo as SR
+_id1, _new1 = SR.ensure_source(_cfgp, "w", "UK", "SKU1",
+                               "https://www.ebay.co.uk/itm/1?var=2", kind="ebay")
+truthy("the first import adds the source", _new1)
+_id2, _new2 = SR.ensure_source(_cfgp, "w", "UK", "SKU1",
+                               "https://www.ebay.co.uk/itm/1?var=2", kind="ebay")
+check("importing the same seller again does NOT add it twice", _new2, False)
+check("  it is the same row", _id2, _id1)
+_id3, _new3 = SR.ensure_source(_cfgp, "w", "UK", "SKU1",
+                               "https://www.ebay.co.uk/itm/1?var=3", kind="ebay")
+truthy("a different VARIATION of the same listing is a different source", _new3)
+check("  so the SKU now has two", len(SR.sources_for(_cfgp, "w", "UK", "SKU1")), 2)
+check("an empty URL adds nothing",
+      SR.ensure_source(_cfgp, "w", "UK", "SKU1", "")[1], False)
+
+_rsrc = _insp.getsource(__import__("routes.seller_routes", fromlist=["x"]).register)
+truthy("enrolment is DRY RUN -- it watches, it does not reprice",
+       'mode="dry_run"' in _rsrc)
+truthy("  the parent is never enrolled: nothing supplies it",
+       'src.get("role") == "parent"' in _rsrc)
+truthy("  a failed enrolment does not lose the draft that saved",
+       "enrol_errors" in _rsrc)
+truthy("  and a family whose variations cannot be read is skipped, not flattened",
+       "left out rather than drafted" in _rsrc)
+truthy("  the expansion ceiling is reported, never applied quietly",
+       "would_draft" in _rsrc)
+
+# Adding a supplier BY HAND goes through the same two rules, in the one place
+# that adds sources -- otherwise a family URL pasted into the repricer would sit
+# in every sweep answering "could not tell", and the repricer would correctly do
+# nothing, silently, for ever.
+_ssrc = _insp.getsource(__import__("routes.sourcing_routes",
+                                   fromlist=["x"]).register)
+truthy("a family URL is refused where you can still fix it",
+       "_ebay.GROUP" in _ssrc)
+truthy("  and a link that names a variation goes straight through",
+       "variation_id_from_url(url)" in _ssrc)
+truthy("  the same link twice does not become two sources",
+       "ensure_source(" in _ssrc)
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)

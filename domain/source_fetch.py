@@ -41,7 +41,15 @@ from domain.sourcing import FETCHED, GONE, FAILED   # the ONE check vocabulary
 # unreadable to the decision engine, and the repricer did nothing at all --
 # silently, because "no usable data" correctly means "change nothing". Translated
 # here, in one table, so the two can never drift apart again.
-_FROM_TRANSPORT = {_ebay.OK: FETCHED, _ebay.GONE: GONE, _ebay.FAILED: FAILED}
+#
+# GROUP maps to FAILED, deliberately, and NOT to GONE. A variation-family URL is
+# a live product we simply cannot read a single price or stock level from, so the
+# honest answer is "we learned nothing" -- which changes nothing. Reading it as
+# GONE would be a definite statement that the supplier has stopped selling, and
+# domain/sourcing.py acts on definite statements: it would take the listing out
+# of stock. The error text names the fix, so it is a FAILED that explains itself.
+_FROM_TRANSPORT = {_ebay.OK: FETCHED, _ebay.GONE: GONE, _ebay.FAILED: FAILED,
+                   _ebay.GROUP: FAILED}
 
 
 def _num(v):

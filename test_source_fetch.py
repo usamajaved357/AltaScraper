@@ -297,7 +297,15 @@ print("\n=== the two vocabularies stay joined up ===")
 # then looked unreadable to the decision engine and the repricer did nothing at
 # all -- silently, because "no usable data" correctly means "change nothing".
 check("every transport status is translated",
-      sorted(SF._FROM_TRANSPORT), sorted([E.OK, E.GONE, E.FAILED]))
+      sorted(SF._FROM_TRANSPORT), sorted([E.OK, E.GONE, E.FAILED, E.GROUP]))
+# GROUP is the fourth. A variation-family URL answers HTTP 400 to the same
+# question an ENDED listing does -- measured on the live API -- so without this
+# the repricer would read a live, selling product as gone and take it out of
+# stock. It maps to FAILED, meaning "we learned nothing", which changes nothing.
+check("a variation family is not a dead listing",
+      SF._FROM_TRANSPORT[E.GROUP], S.FAILED)
+check("  and definitely not GONE, which would stop it selling",
+      SF._FROM_TRANSPORT[E.GROUP] == S.GONE, False)
 check("  and only ever into a status the decision engine knows",
       sorted(set(SF._FROM_TRANSPORT.values())),
       sorted([S.FETCHED, S.GONE, S.FAILED]))

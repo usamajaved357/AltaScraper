@@ -76,6 +76,32 @@ def add_source(config_path, workspace_id, marketplace, sku, url,
     return cur.lastrowid
 
 
+def ensure_source(config_path, workspace_id, marketplace, sku, url, **kw):
+    """add_source, but only if that SKU does not already have that URL.
+
+    -> (source_id, created). add_source INSERTs unconditionally, which is right
+    when a person clicks "add a supplier" -- two links to the same shop are their
+    business. It is wrong for anything automatic: importing the same eBay seller
+    twice would give every SKU a second identical source, then a third, and the
+    repricer would fetch each of them on every sweep, paying for the same answer
+    over and over and weighting that supplier more heavily each time it ran.
+
+    Matched on the URL exactly. A URL differing only by its ?var= is a DIFFERENT
+    variation of the same eBay listing and a genuinely different supplier row --
+    see api/ebay.variation_id_from_url.
+    """
+    u = str(url or "").strip()
+    if not u:
+        return None, False
+    conn = _db.get_db(config_path)
+    row = conn.execute(
+        "SELECT id FROM sourcing_sources WHERE workspace_id=? AND marketplace=? "
+        "AND sku=? AND url=?", (workspace_id, marketplace, sku, u)).fetchone()
+    if row:
+        return row["id"], False
+    return add_source(config_path, workspace_id, marketplace, sku, u, **kw), True
+
+
 def set_shipping_override(config_path, source_id, cost):
     """The postage this supplier charges, when they do not publish it."""
     conn = _db.get_db(config_path)

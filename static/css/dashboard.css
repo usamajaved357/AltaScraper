@@ -408,6 +408,9 @@
      reserved for APPROVED, which is a thing you did. Keeping both green made a
      grid of live listings glow as if everything needed attention. */
   .b-LIVE{background:var(--panel2);color:var(--ink2);border:1px solid var(--line)}
+  /* The group of a variation family. Not a product: nothing buys it, it carries
+     no price, and it is deliberately outside the approve-and-submit flow. */
+  .b-PARENT{background:var(--panel2);color:var(--ink2);border:1px dashed var(--accent)}
   table.kv{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;table-layout:fixed}
   table.kv td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere}

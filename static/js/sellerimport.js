@@ -181,8 +181,19 @@ async function sellerDraft(){
   const sel = SIMP.rows.filter(r => r.selected);
   if(!sel.length){ toast("Nothing selected."); return; }
   const blocked = sel.filter(r => (r.screen||{}).verdict === "blocked").length;
+  const fams = sel.filter(r => r.is_group).length;
   let msg = "Draft "+sel.length+" item"+(sel.length===1?"":"s")+" into this app?\n\n"
           + "They arrive as drafts to review — nothing is sent to Amazon.";
+  // A family is not one product. eBay lists up to a few hundred variations under
+  // one listing, so "12 items" can mean 400 drafts -- and each of those costs
+  // generation spend later. Said BEFORE the click; the exact number comes back
+  // from the server, which is the only side that can count them.
+  if(fams){
+    msg += "\n\n" + fams + " of these " + (fams===1?"is a":"are") + " variation "
+         + "listing" + (fams===1?"":"s") + " on eBay. Each becomes a parent plus "
+         + "one draft per variation — so the real total will be higher, and you "
+         + "will be told the number before anything more is written.";
+  }
   if(!SIMP.screened){
     msg += "\n\nYou have not checked what Amazon allows yet. Drafting something "
          + "blocked spends generation credits on a listing that can never be "
@@ -192,12 +203,37 @@ async function sellerDraft(){
     msg += "\n\n" + blocked + " of these are BLOCKED by Amazon and will be refused.";
   }
   if(!confirm(msg)) return;
+  await _siDraft(sel, {});
+}
+
+// Separated so the "that is more drafts than you thought" answer can retry with
+// a raised ceiling WITHOUT re-asking the first question.
+async function _siDraft(sel, extra){
   try{
+    const body = Object.assign({confirmed:true, rows:sel}, extra||{});
     const j = await (await fetch("/seller/draft",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:_siBody({confirmed:true, rows:sel})})).json();
-    if(!j.ok){ toast(j.error||"Could not draft"); return; }
-    toast("Drafted "+j.drafted+" — "+(j.note||""));
+      body:_siBody(body)})).json();
+    if(!j.ok){
+      // The server counted the expanded families and it is over the ceiling.
+      // A real number, asked about once, rather than a silent cap.
+      if(j.would_draft){
+        if(confirm(j.error + "\n\nDraft all " + j.would_draft + "?")){
+          return _siDraft(sel, Object.assign({}, extra||{},
+                                             {max_drafts: j.would_draft}));
+        }
+        return;
+      }
+      toast(j.error||"Could not draft"); return;
+    }
+    (j.families||[]).forEach(function(n){ console.log("[seller import] "+n); });
+    let m = "Drafted "+j.drafted;
+    if(j.enrolled) m += ", "+j.enrolled+" now watched by the repricer";
+    toast(m+" — "+(j.note||""));
+    if((j.errors||[]).length){
+      toast((j.errors||[]).length+" could not be drafted: "
+            + (j.errors[0].error||""));
+    }
     if(typeof loadRows === "function") loadRows();
   }catch(e){ toast(String(e)); }
 }

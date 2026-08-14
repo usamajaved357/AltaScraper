@@ -91,6 +91,211 @@ def to_review_row(summary):
     }
 
 
+# ---- variation families ----------------------------------------------------
+#
+# WHY A FAMILY CANNOT BE FLATTENED INTO ONE DRAFT
+# Measured against the live Browse API on 14 Aug 2026, on one real listing:
+#
+#     104 children, 1 distinct legacyItemId, 104 distinct itemId
+#     child prices from 9.99 to 23.49
+#
+# So drafting a family as a single row takes one price -- whichever variation
+# eBay answers with -- and sells every size and colour at it, wrong by up to
+# 2.3x in both directions. And because all 104 share the listing id, the SKU
+# shape {cost}_{N}Days_{id} would produce the SAME SKU for all of them: the
+# store upserts on SKU, so 103 of the 104 would silently overwrite each other
+# and 1 draft would appear where 104 were expected, with no error anywhere.
+#
+# Children are therefore keyed on {listing}v{variation}, which is the only thing
+# that tells them apart, and which api/ebay.get_item can read back.
+
+# eBay's aspect names -> the attribute name Amazon builds a variation axis from.
+# Deliberately short: an axis that is guessed wrong is worse than one left out,
+# because listing/variations.check() will refuse a theme the schema does not
+# allow, but a WRONG theme that the schema does allow is accepted by Amazon and
+# quietly groups products by something they do not actually vary on.
+AXIS_FOR = {
+    "colour": "COLOR", "color": "COLOR",
+    "size": "SIZE", "size type": "SIZE",
+    "style": "STYLE",
+    "material": "MATERIAL",
+    "pattern": "PATTERN",
+    "flavour": "FLAVOR", "flavor": "FLAVOR",
+    "scent": "SCENT",
+    "voltage": "VOLTAGE",
+    "wattage": "WATTAGE",
+}
+
+# Amazon's SKU length limit. Over it we say so rather than truncating: two
+# truncated SKUs can collide, and a collision here overwrites a real product.
+SKU_MAX = 40
+
+
+def _aspects(item):
+    """One eBay item's aspects as a plain dict."""
+    out = {}
+    for a in (item or {}).get("localizedAspects") or []:
+        if isinstance(a, dict) and a.get("name"):
+            out[str(a["name"])] = str(a.get("value") or "")
+    return out
+
+
+def _child_url(child, base=None):
+    """The URL that points at THIS variation and no other sibling.
+
+    eBay's own itemWebUrl normally carries ?var=, and when it does it is used
+    unchanged. When it does not, one is built -- on whichever eBay domain the
+    family itself came from, because .co.uk answers 404 for a .com listing and
+    api/ebay reports a 404 as GONE, which reads as "the supplier stopped selling
+    it" and would take a live product out of stock.
+    """
+    web = str((child or {}).get("itemWebUrl") or "")
+    if "var=" in web:
+        return web
+    iid = str((child or {}).get("itemId") or "").split("|")
+    listing = str((child or {}).get("legacyItemId") or "")
+    listing = listing or (iid[1] if len(iid) == 3 else "")
+    var = iid[2] if len(iid) == 3 and iid[2] not in ("", "0") else ""
+    if not (listing and var):
+        return web
+    host = "www.ebay.co.uk"
+    for cand in (web, str((base or {}).get("url") or "")):
+        if "://" in cand:
+            host = cand.split("://", 1)[1].split("/", 1)[0]
+            break
+    return "https://%s/itm/%s?var=%s" % (host, listing, var)
+
+
+def varying_aspects(children):
+    """The aspect names that actually DIFFER across these children.
+
+    eBay returns every aspect on every child -- brand, material, care
+    instructions, the lot -- and only a few of them vary. The ones that vary are
+    the variation axes; the rest are shared product facts. Told apart by counting
+    distinct values, not by matching names against a list, because a seller can
+    vary anything they like.
+    """
+    seen, order = {}, []
+    for c in children or []:
+        for name, val in _aspects(c).items():
+            if name not in seen:
+                seen[name] = set()
+                order.append(name)
+            seen[name].add(val)
+    return [n for n in order if len(seen[n]) > 1]
+
+
+def suggest_theme(aspect_names, allowed=None):
+    """The Amazon variation theme these axes point at. -> (theme, problems).
+
+    theme is "" whenever we cannot say honestly, and problems says why in
+    sentences. NOTHING here writes variation_theme onto a listing: the theme is
+    a per-product-type enum and must be checked against the live schema
+    (CLAUDE.md Rule 4), which is listing/variations.check()'s job at merge time.
+    This only proposes.
+    """
+    problems, axes, unmapped = [], [], []
+    for n in aspect_names or []:
+        a = AXIS_FOR.get(str(n).strip().lower())
+        if a and a not in axes:
+            axes.append(a)
+        elif not a:
+            unmapped.append(str(n))
+    if unmapped:
+        problems.append(
+            "eBay varies these by %s, which has no matching Amazon variation "
+            "axis, so that difference cannot be carried across."
+            % ", ".join(sorted(set(unmapped))))
+    if not axes:
+        return "", problems + ["Nothing here maps onto an Amazon variation "
+                               "theme, so the family cannot be grouped."]
+    if allowed is None:
+        # No schema to check against -- the caller has no product type yet. Say
+        # so; do not let it read as confirmed.
+        return "/".join(axes), problems
+
+    want = set(axes)
+    for t in allowed:
+        if {p.strip().upper() for p in str(t).split("/") if p.strip()} == want:
+            return t, problems
+    problems.append(
+        "This product type has no variation theme for %s. It allows: %s."
+        % (" and ".join(axes), ", ".join(list(allowed)[:12]) or "none at all"))
+    return "", problems
+
+
+def group_children(group_data, base_row=None):
+    """An eBay item-group response -> one review row per buyable variation.
+
+    Each child keeps its OWN price, image and stock, because those are what
+    differ; what it inherits from the family is the category, which eBay does not
+    repeat on every child.
+    """
+    base = base_row or {}
+    out = []
+    for c in (group_data or {}).get("items") or []:
+        row = to_review_row(c)
+        listing_id = str(c.get("legacyItemId") or "")
+        _l, var_id = ("", "")
+        iid = str(c.get("itemId") or "")
+        if "|" in iid:
+            parts = iid.split("|")
+            if len(parts) == 3:
+                listing_id = listing_id or parts[1]
+                var_id = parts[2] if parts[2] not in ("", "0") else ""
+        if not (listing_id and var_id):
+            # Without both we cannot tell this child from its siblings, and a
+            # SKU that cannot tell them apart overwrites them. Skipped, counted.
+            continue
+        asp = _aspects(c)
+        avail = (c.get("estimatedAvailabilities") or [{}])[0] or {}
+        row.update({
+            "item_id": "%sv%s" % (listing_id, var_id),
+            "listing_id": listing_id,
+            "variation_id": var_id,
+            # The URL the repricer will read this child by. ?var= is the only
+            # part of it that says WHICH child, so a child URL without one is
+            # rebuilt -- on the family's own eBay domain, never a hardcoded one.
+            "url": _child_url(c, base),
+            "aspects": asp,
+            "in_stock": str(avail.get("estimatedAvailabilityStatus") or ""),
+            "is_group": False,
+            "is_child": True,
+            "category": row.get("category") or base.get("category") or "",
+            "categories": row.get("categories") or base.get("categories") or [],
+            "selected": True,
+        })
+        if not row.get("title"):
+            row["title"] = base.get("title") or ""
+        out.append(row)
+    return out
+
+
+def expand_group(group_data, base_row=None):
+    """A family, ready to draft. -> {"children", "axes", "theme", "problems"}.
+
+    Refuses rather than half-delivers: a family with one readable child is not a
+    family, and drafting it as one would put a parent on Amazon with a single
+    child underneath, which Amazon accepts and then shows to nobody.
+    """
+    base = base_row or {}
+    kids = group_children(group_data, base)
+    raw = (group_data or {}).get("items") or []
+    axes = varying_aspects(raw)
+    theme, problems = suggest_theme(axes)
+    if len(kids) < len(raw):
+        problems.append(
+            "%d of eBay's %d variations could not be told apart from their "
+            "siblings and were left out." % (len(raw) - len(kids), len(raw)))
+    if len(kids) < 2:
+        problems.append(
+            "Only %d variation could be read, and a family needs at least two."
+            % len(kids))
+    return {"children": kids, "axes": axes, "theme": theme,
+            "problems": problems, "count": len(kids),
+            "listing_id": (kids[0]["listing_id"] if kids else "")}
+
+
 def landed_cost(row):
     """What one unit costs us: the item plus the postage TO US.
 
@@ -179,7 +384,8 @@ def screen(rows, **kw):
     }
 
 
-def to_draft(row, *, account_id, marketplace, source_cost=None, days=3):
+def to_draft(row, *, account_id, marketplace, source_cost=None, days=3,
+             family=None):
     """A screened, wanted item -> the draft row the rest of the app understands.
 
     The SKU carries the source cost and the eBay item id in the shape the app
@@ -214,20 +420,67 @@ def to_draft(row, *, account_id, marketplace, source_cost=None, days=3):
         "status": "NEEDS_REVIEW",
         "notes": " | ".join(n for n in notes if n)[:900],
     }
+    attrs = {}
     if row.get("image"):
         # There is no image COLUMN. The app keeps a listing's main image inside
         # attributes_json under Amazon's own attribute name, which is what the
         # image library and the submit path both read -- so a draft written any
         # other way would show a blank tile and nothing would say why.
+        attrs["main_product_image_locator"] = row["image"]
+
+    if family:
+        # The eBay family, recorded so it can be rebuilt on Amazon LATER.
+        #
+        # It cannot be built now, and pretending otherwise would be the bug: a
+        # variation family is three attributes written onto listings that ALREADY
+        # EXIST on Amazon (listing/variations.py), and these are drafts that do
+        # not exist there yet. /variations/candidates reads live listings for
+        # exactly that reason. So this is the note that lets the Variations
+        # screen fill itself in once the children are published, rather than a
+        # claim that the family is done.
+        #
+        # The leading underscore keeps it out of what is sent to Amazon --
+        # build_api_attributes drops every key that starts with one.
+        attrs["_family"] = {
+            "role": family.get("role") or "child",
+            "parent_sku": family.get("parent_sku") or "",
+            "listing_id": family.get("listing_id") or "",
+            "variation_id": row.get("variation_id") or "",
+            # PROPOSED, not confirmed: variation_theme is a per-product-type enum
+            # and no product type has been chosen yet. listing/variations.check()
+            # tests it against the live schema at merge time (Rule 4).
+            "proposed_theme": family.get("theme") or "",
+            "theme_confirmed": False,
+            "axis_values": family.get("axis_values") or {},
+            "ebay_aspects": row.get("aspects") or {},
+        }
+        # Where an axis maps onto a column the store already has, fill it: the
+        # generator and the editor both read these, so a child arrives knowing
+        # what makes it different instead of needing it typed back in.
+        for axis, val in (family.get("axis_values") or {}).items():
+            col = {"COLOR": "colour", "SIZE": "size",
+                   "MATERIAL": "material"}.get(str(axis).upper())
+            if col and val:
+                out[col] = str(val)[:120]
+
+    if attrs:
         import json as _json
-        out["attributes_json"] = _json.dumps(
-            {"main_product_image_locator": row["image"]})
+        out["attributes_json"] = _json.dumps(attrs)
+    if len(out["sku"]) > SKU_MAX:
+        # Not truncated: two truncated SKUs can land on the same string, and the
+        # store upserts on SKU, so a collision silently overwrites a real product.
+        notes.append("This SKU is %d characters and Amazon's limit is %d — "
+                     "shorten it before submitting."
+                     % (len(out["sku"]), SKU_MAX))
+        out["notes"] = " | ".join(n for n in notes if n)[:900]
     if row.get("category"):
         out["subcategory"] = row["category"][:120]
     out["platform"] = "ebay"          # where this draft came from
     # Carried for the caller and for tests; the store ignores what it does not
     # know, and these are how the importer explains itself afterwards.
     out["_source"] = {
+        "role": (family or {}).get("role") or "single",
+        "url": row.get("url") or "",
         "item_id": row.get("item_id") or "",
         "cost": cost,
         "currency": row.get("currency") or "",
@@ -239,3 +492,73 @@ def to_draft(row, *, account_id, marketplace, source_cost=None, days=3):
         "verdict": scr.get("verdict") or "",
     }
     return out
+
+
+def parent_sku_for(listing_id):
+    """The SKU of the family itself -- the thing nobody buys.
+
+    Deliberately NOT listing/variations.suggest_parent_sku, which builds a parent
+    SKU out of the text its children share. These children share almost nothing:
+    the SKU shape leads with the source cost and the costs differ (9.99 to 23.49
+    on the measured listing), so the shared stem collapses to a character or two
+    and the fallback is the whole of the first child's SKU with -PARENT on the
+    end -- 44 characters, past Amazon's limit, and named after one arbitrary
+    child. The eBay listing id is what the family actually is.
+    """
+    return "PARENT_%s" % str(listing_id or "").strip()
+
+
+def family_drafts(expanded, base_row, *, account_id, marketplace, days=3):
+    """An expanded eBay family -> the parent draft and one draft per child.
+
+    Returns (drafts, problems). Refuses -- empty drafts, problems said plainly --
+    rather than producing something half-formed, because Amazon accepts a
+    half-formed family without complaint and the products simply stop appearing.
+    """
+    problems = list(expanded.get("problems") or [])
+    kids = expanded.get("children") or []
+    if len(kids) < 2:
+        return [], problems or ["This family has fewer than two variations."]
+
+    listing_id = expanded.get("listing_id") or ""
+    psku = parent_sku_for(listing_id)
+    theme = expanded.get("theme") or ""
+    # eBay aspect name -> Amazon axis, for the axes that actually vary.
+    axis_of = {}
+    for n in expanded.get("axes") or []:
+        a = AXIS_FOR.get(str(n).strip().lower())
+        if a:
+            axis_of[n] = a
+
+    drafts = []
+    parent_row = dict(base_row or {})
+    parent_row.setdefault("image", kids[0].get("image") or "")
+    parent = to_draft(parent_row, account_id=account_id, marketplace=marketplace,
+                      source_cost=None, days=days,
+                      family={"role": "parent", "parent_sku": psku,
+                              "listing_id": listing_id, "theme": theme})
+    parent["sku"] = psku
+    # The parent is not buyable, so it has no price, no stock and no supplier to
+    # track. Saying so on the row keeps it out of the repricer and out of every
+    # profit figure, where a parent counts as a product with no cost.
+    parent["status"] = "PARENT"
+    parent["notes"] = ("The group itself — not for sale, and not priced. Its %d "
+                       "variations carry the price and the stock. %s"
+                       % (len(kids),
+                          ("Proposed grouping: %s (checked against Amazon's "
+                           "schema when you merge them)." % theme) if theme
+                          else "No Amazon variation theme could be worked out "
+                               "for it yet."))[:900]
+    parent["_source"]["role"] = "parent"
+    drafts.append(parent)
+
+    for k in kids:
+        fam = {"role": "child", "parent_sku": psku, "listing_id": listing_id,
+               "theme": theme,
+               "axis_values": {axis_of[n]: v
+                               for n, v in (k.get("aspects") or {}).items()
+                               if n in axis_of}}
+        d = to_draft(k, account_id=account_id, marketplace=marketplace,
+                     days=days, family=fam)
+        drafts.append(d)
+    return drafts, problems
