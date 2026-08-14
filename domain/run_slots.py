@@ -145,10 +145,22 @@ class RunSlots(object):
                      "seconds": int(time.time() - (s.get("started") or 0))}
                     for k, s in self._slots.items()]
 
-    def stop(self, owner=None, key=None):
+    def stop(self, owner=None, key=None, account=None):
         """Terminate runs. With an owner, only THAT person's -- pressing Stop on
-        your own screen must not end a colleague's submit. With neither, all of
-        them (the shared-password owner, who is the only user)."""
+        your own screen must not end a colleague's submit. With an ACCOUNT, only
+        that workspace's.
+
+        WHY ACCOUNT MATTERS EVEN WITH ONE USER. Owner alone was the only filter,
+        and for the shared-password owner -- who IS the only user on most of
+        these installs -- owner is empty, so Stop meant every run on the server.
+        Pressing Stop while looking at Jack Reacherd killed a Nestwell Goods
+        submit that was halfway through, from a button nowhere near it. Accounts
+        are independent businesses; a control in one must not reach into
+        another.
+
+        With none of the three, all of them -- which is still what an explicit
+        "stop everything" wants.
+        """
         stopped = 0
         with self._lock:
             self._reap()
@@ -156,6 +168,8 @@ class RunSlots(object):
                 if key is not None and k != key:
                     continue
                 if owner is not None and str(s.get("owner") or "") != str(owner):
+                    continue
+                if account is not None and str(s.get("account") or "") != str(account):
                     continue
                 proc = s.get("proc")
                 if proc is not None:

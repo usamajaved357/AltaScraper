@@ -49,16 +49,34 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         are accountable for what it costs."""
         import time as _t
         from domain import job_owner as _jo
-        out = []
+        # AND BY ACCOUNT. Owner alone was not enough: one person working across
+        # several workspaces saw a Nestwell batch's progress bar while looking at
+        # Jack Reacherd, describing work that belongs to a different business and
+        # offering a Stop button that would end it.
+        #
+        # A job stamped before accounts were recorded has no account at all --
+        # shown rather than hidden, because making existing work disappear from
+        # its own progress bar is the worse failure.
+        _acct = str(_state.get("active_account_id", "") or "")
+        out, elsewhere = [], 0
         with _IMG_JOBS_LOCK:
             for jid, j in _IMG_JOBS.items():
-                if j.get("status") == "running" and _jo.may_see(j, CONFIG_PATH):
-                    out.append({"job": jid, "total": j.get("total", 0),
-                                "done": j.get("done", 0), "label": j.get("label", ""),
-                                "ts": j.get("ts", 0), "mine": _jo.mine_only(j),
-                                "products": _by_product(j)})
+                if j.get("status") != "running" or not _jo.may_see(j, CONFIG_PATH):
+                    continue
+                j_acct = str(j.get("account") or "")
+                if j_acct and _acct and j_acct != _acct:
+                    elsewhere += 1
+                    continue
+                out.append({"job": jid, "total": j.get("total", 0),
+                            "done": j.get("done", 0), "label": j.get("label", ""),
+                            "ts": j.get("ts", 0), "mine": _jo.mine_only(j),
+                            "account": j_acct,
+                            "products": _by_product(j)})
         out.sort(key=lambda x: x.get("ts", 0))
-        return jsonify({"ok": True, "jobs": out})
+        # Reported, not hidden: "nothing running" and "nothing running HERE" are
+        # different, and only one of them means you can safely close the laptop.
+        return jsonify({"ok": True, "jobs": out, "elsewhere": elsewhere,
+                        "account": _acct})
 
     @app.route("/genimage/stop_all", methods=["POST"])
     def genimage_stop_all():
@@ -76,15 +94,26 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         end it from here.
         """
         from domain import job_owner as _jo
-        n = 0
+        # AND ONLY IN THIS ACCOUNT. "Stop all" pressed in Jack Reacherd must not
+        # end a Nestwell batch: they are different businesses, the images cost
+        # money, and the button is nowhere near the work it was killing. Scoped
+        # to the account the same way the progress bar is, so what Stop ends is
+        # exactly what the bar was showing.
+        _acct = str(_state.get("active_account_id", "") or "")
+        n, skipped = 0, 0
         with _IMG_JOBS_LOCK:
             for j in _IMG_JOBS.values():
-                if j.get("status") == "running" and _jo.mine_only(j):
-                    j["cancel"] = True
-                    j["status"] = "error"          # same shape the worker's own cancel path uses
-                    j["error"] = j.get("error") or "stopped by user"
-                    n += 1
-        return jsonify({"ok": True, "stopped": n})
+                if j.get("status") != "running" or not _jo.mine_only(j):
+                    continue
+                j_acct = str(j.get("account") or "")
+                if j_acct and _acct and j_acct != _acct:
+                    skipped += 1
+                    continue
+                j["cancel"] = True
+                j["status"] = "error"          # same shape the worker's own cancel path uses
+                j["error"] = j.get("error") or "stopped by user"
+                n += 1
+        return jsonify({"ok": True, "stopped": n, "left_running_elsewhere": skipped})
 
     @app.route("/genimage/stop_job", methods=["POST"])
     def genimage_stop_job():

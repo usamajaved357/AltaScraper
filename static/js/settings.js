@@ -345,11 +345,37 @@ async function refreshGenPanel(){
     grid.innerHTML=html || '<div class="cc">No jobs.</div>';
   }
 }
+// Stop THIS batch. The bar showed only "Stop all", so watching one product
+// generate and wanting to end it meant ending every batch you had running.
+async function stopThisGeneration(jobId){
+  const id = jobId || GEN_ACTIVE_JOB;
+  if(!id){ toast("No batch to stop."); return; }
+  if(!confirm("Stop this batch?\n\nImages already being drawn will finish; the "
+              + "rest are cancelled. Other batches keep running.")) return;
+  try{
+    const j=await (await fetch("/genimage/stop_job",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({job:id})})).json();
+    if(!j.ok){ toast(j.error||"Could not stop that batch"); return; }
+    toast("Stopping that batch…");
+    setTimeout(pollGenStatus, 800);
+  }catch(e){ toast("Could not stop: "+e); }
+}
+
 async function stopAllGenerations(){
-  if(!confirm("Stop ALL image generations currently running?")) return;
+  // Scoped to THIS account server-side, and the wording says so -- "ALL" used to
+  // mean every batch you had anywhere, including in workspaces you were not
+  // looking at.
+  if(!confirm("Stop every image batch running in this account?\n\n"
+              + "Images already being drawn will finish; the rest are cancelled. "
+              + "Batches in your other accounts are not touched.")) return;
   try{
     const j=await (await fetch("/genimage/stop_all",{method:"POST"})).json();
-    toast("Stopping "+(j.stopped||0)+" batch(es)… in-flight images finish, the rest are cancelled.");
+    let m = "Stopping "+(j.stopped||0)+" batch(es)… in-flight images finish, the rest are cancelled.";
+    if(j.left_running_elsewhere){
+      m += " "+j.left_running_elsewhere+" left running in your other accounts.";
+    }
+    toast(m);
     if(typeof STUDIO_POLL!=="undefined" && STUDIO_POLL){ clearInterval(STUDIO_POLL); STUDIO_POLL=null; }
     setTimeout(pollGenStatus, 800);
   }catch(e){ toast("Could not stop: "+e); }

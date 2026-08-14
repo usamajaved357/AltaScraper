@@ -852,7 +852,11 @@
   <span class="genspin"></span>
   <span id="genstatustext">Generating…</span>
   <button onclick="openGenPanel()" style="background:#1b2942;border:1px solid #2c3a55;color:#cfe0ff;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-eye"></i> View</button>
-  <button onclick="stopAllGenerations()" style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-player-stop"></i> Stop all</button>
+  <!-- STOP THIS ONE, then stop the account's. The bar offered only "Stop all",
+       so ending the batch you were watching meant ending every batch you had
+       running — including ones in other workspaces. -->
+  <button id="genstop_one" onclick="stopThisGeneration()" title="Stop only the batch this bar is showing" style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-player-stop"></i> Stop this</button>
+  <button onclick="stopAllGenerations()" title="Stop every image batch running in THIS account. Other accounts are not touched." style="background:#3a1d24;border:1px solid #5c2a33;color:#ffb3b3;border-radius:7px;padding:5px 12px;cursor:pointer;font-size:12px"><i class="ti ti-player-stop"></i> Stop all here</button>
 </div>
 <button class="fab" id="fab" onclick="toggleChat()" title="Ask Claude about this product">✦ Ask Claude</button>
 <div class="chatwrap" id="chatwrap">
