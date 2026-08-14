@@ -554,6 +554,9 @@ const SC_SERIES = {
   profit:     {label: "Profit",           color: "#38bdf8", width: 2,   dash: ""},
   prior_year: {label: "Prior Year Sales", color: "#6366f1", width: 1.5, dash: "5 3"},
   prior:      {label: "Prior period",     color: "#6b7280", width: 2,   dash: "5 5"},
+  // Orbit's own organic/paid colours, from its gradientOrganic and gradientPpc.
+  organic:    {label: "Organic",          color: "#10b981", width: 2,   dash: ""},
+  ppc:        {label: "PPC",              color: "#8b5cf6", width: 2,   dash: ""},
 };
 
 function salesCombo(o){
@@ -584,6 +587,7 @@ function salesCombo(o){
   });
   const barVals = (bars && bars.values || []).map(_scNum).filter(function(v){ return v !== null; });
 
+  const cid0 = o.id || "combo";
   const mLo = Math.min(0, moneyVals.length ? Math.min.apply(null, moneyVals) : 0);
   const mHi = _scNiceMax(moneyVals.length ? Math.max.apply(null, moneyVals) : 1);
   const mSpan = (mHi - mLo) || 1;
@@ -641,6 +645,21 @@ function salesCombo(o){
         return;
       }
       const d = _scCurve(r.map(p => ({x: x(p.i), y: yM(p.v)})));
+      // THE SHADOW UNDER THE LINE. Orbit fills beneath every one of its money
+      // lines with a gradient of that line's own colour -- 0.30 at the top
+      // fading to nothing at the axis (measured: goldGradient, blueGradient,
+      // salesGradient). This chart had no fill at all, which is why it read as
+      // flat beside Orbit's however well the line itself matched.
+      //
+      // Drawn BEFORE the line, so the stroke sits on top of its own shading,
+      // and only for solid series: a comparison line is context and filling
+      // under it would give the past the same visual weight as the present.
+      if(!spec.dash){
+        const area = d + ` L ${x(r[r.length-1].i).toFixed(1)} ${yM(mLo).toFixed(1)}`
+                       + ` L ${x(r[0].i).toFixed(1)} ${yM(mLo).toFixed(1)} Z`;
+        linesSvg += `<path class="series" d="${area}"
+                           fill="url(#${cid0}_g_${l.key})"/>`;
+      }
       linesSvg += `<path class="series" d="${d}" fill="none" stroke="${spec.color}"
                          stroke-width="${spec.width}"
                          ${spec.dash ? `stroke-dasharray="${spec.dash}"` : ""}
@@ -659,7 +678,17 @@ function salesCombo(o){
 
   // Hover: one readout for every series at that column, which is the whole
   // reason to put them on one chart.
-  const cid = o.id || "combo";
+  // One gradient per series, since each fills in its own colour. Stops measured
+  // off Orbit's: 0.30 at 5%, fading to 0 at 95%.
+  const defs = "<defs>" + lines.map(function(l){
+    const spec = SC_SERIES[l.key] || {color: "#8fd694"};
+    return `<linearGradient id="${cid0}_g_${l.key}" x1="0" y1="0" x2="0" y2="1">`
+         + `<stop offset="5%" stop-color="${spec.color}" stop-opacity="0.30"/>`
+         + `<stop offset="95%" stop-color="${spec.color}" stop-opacity="0"/>`
+         + `</linearGradient>`;
+  }).join("") + "</defs>";
+
+  const cid = cid0;
   // Gold crosshair, as measured on Orbit -- rgb(251,191,36) at 1px, solid.
   let hits = `<line id="${cid}_vl" x1="0" y1="${padT}" x2="0" y2="${padT + ih}"
                     stroke="${SC_GOLD}" stroke-width="1" opacity="0"/>`
@@ -728,7 +757,7 @@ function salesCombo(o){
        + '<div style="position:relative">'
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:auto;background:transparent;border:0">`
-       + grid + barsSvg + linesSvg + xl + hits + '</svg>'
+       + defs + grid + barsSvg + linesSvg + xl + hits + '</svg>'
        + `<div id="${cid}_tip" class="charttip"></div>`
        + '</div>'
        + key + '</div>';

@@ -72,7 +72,16 @@ KPIS.forEach(k => truthy("  figure: " + k, empty.indexOf(k) >= 0));
 // The honesty half.
 truthy("it says at the top that these are samples",
        empty.indexOf("No returns recorded for this period") >= 0);
-truthy("  and that nothing is stored", empty.indexOf("nothing here is") >= 0);
+truthy("  and that they are placeholders, not data",
+       empty.indexOf("placeholders, not") >= 0);
+truthy("  and that nothing is stored", empty.indexOf("not stored") >= 0);
+// The two reports, named, with where to find each -- Amazon's own naming is
+// not guessable ("Customer Concessions").
+truthy("both reports are named", empty.indexOf("FBA Customer Returns") >= 0
+       && empty.indexOf("Seller-fulfilled returns") >= 0);
+truthy("  with where to find them", empty.indexOf("Customer Concessions") >= 0);
+truthy("  and what each one fills in", empty.indexOf("Fills in:") >= 0);
+truthy("  and a button for each", (empty.match(/Upload this one/g) || []).length === 2);
 truthy("every sample figure is marked", empty.indexOf("ri-sample") >= 0);
 check("  and there are several of them",
       (empty.match(/ri-sample/g) || []).length > 5, true);
@@ -132,6 +141,23 @@ truthy("  and so are the missing comments",
        partial.indexOf("carries no customer comments") >= 0);
 truthy("  naming the file that would fix it",
        partial.indexOf("FBA Customer Returns") >= 0);
+
+console.log("\n=== a report Amazon could not build is not an error page ===");
+// "Amazon is still building the report" and "this account is seller-fulfilled
+// so there is no FBA report" are ordinary states. A red message where the
+// screen should be tells you nothing about returns and hides the layout.
+const d = sandbox();
+vm.runInContext(`RET.data = {ok:true, total_returns:0, natures:{}, reasons:{},
+  dispositions:{}, statuses:{}, daily:{}, asins:[], comments:[],
+  no_report:"Amazon is still building the report. Try again in a minute."};
+  returnsRender();`, d);
+const blocked = d.els.retbody.innerHTML || "";
+truthy("the page still renders", blocked.length > 1000);
+truthy("it says there is no report yet", blocked.indexOf("No report yet") >= 0);
+truthy("  and repeats Amazon's own reason",
+       blocked.indexOf("still building the report") >= 0);
+truthy("  and offers the upload instead", blocked.indexOf("upload one instead") >= 0);
+PANELS.forEach(p => truthy("  panel still drawn: " + p, blocked.indexOf(p) >= 0));
 
 console.log("\n=== the report's design system is in the stylesheet ===");
 const css = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");

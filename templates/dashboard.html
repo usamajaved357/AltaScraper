@@ -396,8 +396,26 @@
       <!-- Shape first, then which products made it, then the full grid. Reading
            order matches the questions people actually ask, in that order. -->
       <div id="sales_charts"></div>
-      <div id="sales_breakdown"></div>
-      <div id="sales_grid"></div>
+      </div>
+
+      <!-- ORGANIC VS PPC. Orbit's split of what sold by itself against what was
+           paid for. The advertising figures are not connected yet, so the panel
+           is built and says exactly what it is missing rather than being absent
+           until the day the API arrives. -->
+      <div class="salespanel" style="margin-top:16px">
+        <div class="panelhead">
+          <div>
+            <p class="paneltitle">Organic vs PPC</p>
+            <p class="panelsub">What sold on its own against what advertising paid for<span class="infodot"
+               title="Organic is total sales minus sales attributed to advertising. Both come from Amazon: the totals from the Sales & Traffic report, the attributed half from the Advertising API.">i</span></p>
+          </div>
+        </div>
+        <div id="sales_orgppc"></div>
+      </div>
+
+      <div class="salespanel" style="margin-top:16px">
+        <div id="sales_breakdown"></div>
+        <div id="sales_grid"></div>
       </div>
     </div>
 
@@ -662,7 +680,17 @@
           <button class="db-chip" onclick="returnsSetDays(30)">30 days</button>
           <button class="db-chip" onclick="returnsSetDays(60)" title="Amazon will not build this report for a wider window than 60 days">60 days</button>
           <button class="db-chip" onclick="returnsLoad()"><i class="ti ti-refresh"></i> Pull from Amazon</button>
-          <button class="db-chip" onclick="returnsUploadOpen()" title="Upload a returns report you downloaded from Seller Central. An FBA Customer Returns file also fills in the condition returns came back in and the customers' own comments, which the API will not give a seller-fulfilled account."><i class="ti ti-file-upload"></i> Upload a report</button>
+          <!-- ONE BUTTON PER REPORT, because there are two and they fill in
+               different halves of this page. A single "upload a report" button
+               does not say which report, and picking the wrong one and being
+               told afterwards is the whole problem. Each button names its
+               report, and the panel below says where to find it in Seller
+               Central. The file is still identified by its COLUMNS, so
+               choosing the wrong button is corrected rather than punished. -->
+          <button class="db-chip" onclick="returnsUploadOpen('fba')"
+                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns"><i class="ti ti-file-upload"></i> Upload FBA returns</button>
+          <button class="db-chip" onclick="returnsUploadOpen('mfn')"
+                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns"><i class="ti ti-file-upload"></i> Upload seller-fulfilled returns</button>
           <input type="file" id="ret_file" accept=".csv,.tsv,.txt" style="display:none" onchange="returnsUploadFile(this)">
         </div>
       </div>

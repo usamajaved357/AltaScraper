@@ -124,11 +124,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return [], [], "__EMPTY__"
         return rows[0], rows[1:], ""
 
-    def _answer(returns, kind, wsid, mkt, start, end, skipped=0, note=""):
+    def _answer(returns, kind, wsid, mkt, start, end, skipped=0, note="",
+                no_report=""):
         s = _rv.summarise(returns, _sold(wsid, mkt, start, end))
         s.update({
             "ok": True, "source": kind, "workspace": wsid, "marketplace": mkt,
             "start": start, "end": end, "skipped": skipped, "note": note,
+            # WHY there is no report, when there is none. A separate field from
+            # `unavailable` below, which lists the SECTIONS a report cannot
+            # support: one is "this whole thing did not arrive", the other is
+            # "it arrived and cannot answer these parts".
+            "no_report": no_report,
             # WHICH SECTIONS THIS DATA CAN SUPPORT, said plainly, so a section
             # that is missing never looks like a fault.
             "unavailable": ([] if kind == "fba" else [
@@ -172,12 +178,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                          "%d days — which for returns is good "
                                          "news, not a failure." % days)))
         if err:
-            return jsonify({"ok": False, "error": err}), 502
+            # NOT AN ERROR PAGE. Amazon being slow, or an account that is
+            # seller-fulfilled and has no FBA report to give, are ordinary
+            # states -- and a red message where the screen should be tells you
+            # nothing about returns and hides the layout entirely.
+            #
+            # So the page is still answered, with no data and the reason. The
+            # screen draws its own placeholders and marks every one of them;
+            # nothing is invented here, and the moment a real report lands the
+            # same answer carries real figures.
+            return jsonify(_answer([], "", wsid, mkt, start.isoformat(),
+                                   end.isoformat(), no_report=err))
         returns, kind, skipped = _rv.parse_rows(headers, rows)
         if not kind:
-            return jsonify({"ok": False, "error": (
-                "That report's columns were not recognised. Found: %s"
-                % ", ".join(str(h) for h in headers[:12]))}), 502
+            return jsonify(_answer(
+                [], "", wsid, mkt, start.isoformat(), end.isoformat(),
+                no_report=("That report's columns were not recognised. "
+                           "Found: %s"
+                           % ", ".join(str(h) for h in headers[:12]))))
         return jsonify(_answer(returns, kind, wsid, mkt, start.isoformat(),
                                end.isoformat(), skipped))
 

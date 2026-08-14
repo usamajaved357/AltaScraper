@@ -59,7 +59,32 @@ async function returnsLoad(){
   }finally{ RET.busy = false; }
 }
 
-function returnsUploadOpen(){
+/* WHICH REPORT, AND WHERE TO GET IT. Two reports fill different halves of this
+   page, and "upload a report" said neither which nor where. Amazon's own naming
+   is not guessable -- the FBA one lives under Customer Concessions, which is
+   not a phrase anybody would search for. */
+const RET_REPORTS = {
+  fba: {
+    name: "FBA Customer Returns",
+    where: "Seller Central → Reports → Fulfilment → Customer Concessions → "
+         + "FBA Customer Returns",
+    gives: "Everything on this page, including the condition each return came "
+         + "back in and the customers' own comments — two things Amazon's API "
+         + "will not give a seller-fulfilled account at all.",
+  },
+  mfn: {
+    name: "Seller-fulfilled returns",
+    where: "Seller Central → Reports → Return Reports → Seller-fulfilled returns",
+    gives: "Reasons, dates, quantities and the amount actually refunded. No "
+         + "condition grading and no customer comments — Amazon never handles "
+         + "these returns, so it has nothing to grade or record.",
+  },
+};
+
+let RET_WANT = "";
+
+function returnsUploadOpen(which){
+  RET_WANT = which || "";
   const i = document.getElementById("ret_file");
   if(i) i.click();
 }
@@ -74,6 +99,15 @@ async function returnsUploadFile(input){
     const fd = new FormData();
     fd.append("file", f);
     const j = await (await fetch("/returns/upload", {method:"POST", body: fd})).json();
+    // The file is identified by its COLUMNS, not by which button was pressed --
+    // so choosing the wrong one is corrected rather than punished. Said out
+    // loud, because silently reading it as the other kind would leave you
+    // wondering why half the page is still empty.
+    if(j && j.ok && RET_WANT && j.source && j.source !== RET_WANT){
+      const got = RET_REPORTS[j.source];
+      toast("That looks like the " + ((got && got.name) || j.source)
+            + " report — read as that.");
+    }
     if(!j || !j.ok){
       if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _rEsc((j&&j.error)||"Could not read that file") + '</div>';
@@ -191,11 +225,40 @@ function returnsRender(){
   let h = '<div class="ri-main">';
 
   if(noData){
-    h += '<div class="ri-samplebar"><b>No returns recorded for this period.</b> '
-      +  'The layout below is the real page with sample figures in it, dimmed '
-      +  'and in italics, so the format is visible. It fills with your own '
-      +  'numbers as soon as a report is pulled or uploaded — nothing here is '
-      +  'stored, and no sample figure is ever mixed in with a real one.</div>';
+    // WHY there is nothing, first -- "Amazon is still building the report" and
+    // "this account is seller-fulfilled so there is no FBA report" are
+    // completely different problems and only one of them is worth waiting on.
+    if(d.no_report){
+      h += '<div class="ri-samplebar"><b>No report yet.</b> ' + _rEsc(d.no_report)
+        +  '<div style="margin-top:6px">You can upload one instead — the two '
+        +  'Amazon reports this page reads are listed below.</div></div>';
+    } else {
+      h += '<div class="ri-samplebar"><b>No returns recorded for this period.</b> '
+        +  'For a returns page that is good news rather than a fault.</div>';
+    }
+    h += '<div class="ri-samplebar" style="border-color:var(--line);'
+      +  'background:var(--panel2)"><b>The figures below are placeholders, not '
+      +  'your data.</b> Every one of them is dimmed and in italics so the '
+      +  'layout can be judged now. They are not stored, they are never mixed '
+      +  'in with real ones, and they disappear entirely the moment a report '
+      +  'lands.</div>';
+
+    // WHICH REPORTS, named, with where to find each and what each one can
+    // actually fill in. Amazon's own naming is not guessable: the FBA one
+    // lives under "Customer Concessions".
+    h += '<div class="ri-2" style="margin-bottom:24px">'
+      + Object.keys(RET_REPORTS).map(function(k){
+          const r = RET_REPORTS[k];
+          return '<div class="ri-card"><div class="ri-card-head">'
+            + '<div class="ri-card-title">' + _rEsc(r.name) + '</div>'
+            + '<button class="db-chip" onclick="returnsUploadOpen(\'' + k + '\')">'
+            + '<i class="ti ti-file-upload"></i> Upload this one</button></div>'
+            + '<div class="cc" style="font-size:11.5px;line-height:1.6">'
+            + '<b>Where:</b> ' + _rEsc(r.where) + '</div>'
+            + '<div class="cc" style="font-size:11.5px;line-height:1.6;margin-top:6px">'
+            + '<b>Fills in:</b> ' + _rEsc(r.gives) + '</div></div>';
+        }).join("")
+      + '</div>';
   }
   if(d.note){
     h += '<div class="cc" style="font-size:12px;margin:0 0 14px;padding:9px 11px;'

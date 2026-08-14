@@ -372,10 +372,35 @@ function salesDrawCharts(ser){
       return vals && vals.some(function(v){
         return v !== null && v !== undefined && Number(v) !== 0; });
     };
-    const salesCells  = anyReal(cells("net_revenue")) ? cells("net_revenue")
-                                                      : cells("ordered_sales");
-    const orderCells  = anyReal(cells("orders")) ? cells("orders") : cells("units");
-    const profitCells = cells("profit");
+    // ONE DATE BASIS FOR THE WHOLE CHART. This is the bug behind "it shows
+    // sales and profit but the orders are zero, it can not be possible to
+    // generate sales without orders".
+    //
+    // It IS possible, and both figures were right. Amazon dates the two feeds
+    // differently:
+    //
+    //   Sales & Traffic report   dated by ORDER date
+    //   finance records          dated by when the MONEY MOVED (shipment)
+    //
+    // So an order placed on the 5th and shipped on the 7th is an order on the
+    // 5th and a profit on the 7th. Measured on jack_uk: EIGHT days carried
+    // profit against a delivered, genuine zero for orders. Drawing the two
+    // together on one chart, unlabelled, states something impossible.
+    //
+    // Orbit does not have this problem because it commits to one basis and says
+    // so on the card -- "Based on order dates". So does this chart now: the
+    // order basis when the report has delivered, because that is the one that
+    // carries orders at all, and the money basis otherwise. Whichever it picks,
+    // every series on the chart comes from it, and the panel says which.
+    const orderBasis = anyReal(cells("orders")) || anyReal(cells("ordered_sales"));
+    SALES._chartBasis = orderBasis ? "order" : "money";
+    const salesCells  = orderBasis ? cells("ordered_sales") : cells("net_revenue");
+    const orderCells  = orderBasis ? cells("orders") : cells("units_shipped");
+    // Profit exists ONLY on the money basis -- Amazon reports no profit against
+    // an order date. Plotting it beside order-dated bars would reintroduce
+    // exactly the mismatch above, so on the order basis it is left off the
+    // chart and stays in the grid below, where its own basis is stated.
+    const profitCells = orderBasis ? null : cells("profit");
 
     // The comparison, on the same axis as Sales, matched by date exactly as the
     // single-metric charts match it.
@@ -399,7 +424,7 @@ function salesDrawCharts(ser){
 
     const comboLines = [];
     if(anyReal(salesCells))  comboLines.push({key: "sales",  values: salesCells});
-    if(anyReal(profitCells)) comboLines.push({key: "profit", values: profitCells});
+    if(profitCells && anyReal(profitCells)) comboLines.push({key: "profit", values: profitCells});
     if(cmpCells) comboLines.push({
       key: (SALES.compareKind === "year") ? "prior_year" : "prior",
       values: cmpCells});
@@ -450,9 +475,21 @@ function salesDrawCharts(ser){
         return v !== null && v !== undefined && Number(v) !== 0;
       });
     }).length;
-    let note = "";
+    // WHICH BASIS, said on the panel exactly as Orbit says "Based on order
+    // dates". Without it the same product appears to have sold on two
+    // different days depending on which screen you are looking at, and there
+    // is no way to tell that both are right.
+    let note = (SALES._chartBasis === "order")
+      ? '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+        + 'Based on <b>order dates</b> — counted when the order was placed. '
+        + 'Profit is not on this chart because Amazon reports no profit against '
+        + 'an order date; it is in the grid below, on the money basis.</div>'
+      : '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+        + 'Based on <b>when the money moved</b> — units shipped, dated at '
+        + 'settlement. The Sales &amp; Traffic report has not delivered order '
+        + 'counts for this period yet.</div>';
     if(withData <= 2){
-      note = '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
+      note += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
         + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
         + '<i class="ti ti-info-circle"></i> Only <b>' + withData + ' day'
         + (withData === 1 ? '' : 's') + '</b> in this range has figures, so there '
@@ -523,6 +560,7 @@ async function salesReload(){
     salesLoadCompare(sum).catch(function(){});
     salesDrawCards(sum, av);
     salesDrawCharts(ser);
+    salesDrawOrgPpc(ser);
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
     // After the numbers, not before: the options depend on the range, and the
@@ -720,6 +758,92 @@ async function salesLoadWeek(){
         + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
     }
   }
+}
+
+/* ---- organic vs PPC -----------------------------------------------------
+ * Orbit's split of what sold on its own against what advertising paid for:
+ * two stacked areas in its own measured colours (#10b981 organic, #8b5cf6
+ * PPC), a share bar above them, and the percentages named.
+ *
+ * THE ADVERTISING API IS NOT CONNECTED, and this is built anyway -- with the
+ * shape drawn from a sample series and every figure marked as such, so the
+ * panel exists and is judgeable now and fills with real numbers the moment
+ * ads_daily has rows. The one thing it must never do is show a plausible
+ * split as though it were measured: an organic/paid ratio drives what you
+ * spend, and a made-up one is worse than a blank panel.
+ */
+function salesDrawOrgPpc(ser){
+  const host = document.getElementById("sales_orgppc");
+  if(!host || typeof salesCombo !== "function") return;
+  const cols = (ser && ser.columns) || [];
+  const by = {};
+  ((ser && ser.metrics) || []).forEach(function(m){ by[m.key] = m.cells || []; });
+
+  const total = by["ordered_sales"] || by["net_revenue"] || [];
+  // ad_sales is what the Advertising API would give. Absent today.
+  const adSales = by["ad_sales"] || [];
+  const haveAds = adSales.some(function(v){
+    return v !== null && v !== undefined && Number(v) !== 0; });
+
+  let organic, ppc, sample = false, note = "";
+  if(haveAds){
+    ppc = adSales.slice();
+    organic = total.map(function(t, i){
+      const a = Number(adSales[i] || 0);
+      if(t === null || t === undefined) return null;
+      // Attributed sales cannot exceed the total; if they do, the two feeds
+      // disagree and the honest answer is zero organic, not a negative.
+      return Math.max(0, Number(t) - a);
+    });
+  } else {
+    // The SHAPE, from this account's own real sales, split on a fixed ratio so
+    // the panel is not a straight line. Marked, never presented as measured.
+    sample = true;
+    const base = total.length ? total : cols.map(function(){ return null; });
+    organic = base.map(function(v){ return v === null || v === undefined ? null : Number(v) * 0.7; });
+    ppc     = base.map(function(v){ return v === null || v === undefined ? null : Number(v) * 0.3; });
+    note = '<div class="ri-samplebar" style="margin:0 0 12px">'
+      + '<b>This split is a placeholder, not your data.</b> It divides your real '
+      + 'sales 70/30 purely to show the shape. The real split needs the '
+      + 'Advertising API, which this account is not connected to — until then '
+      + 'nothing here is measured, and the app will not guess at a ratio that '
+      + 'decides what you spend.</div>';
+  }
+
+  const sum = function(a){ return a.reduce(function(x, v){ return x + (Number(v) || 0); }, 0); };
+  const o = sum(organic), p = sum(ppc), t = o + p;
+  const oPct = t ? Math.round((o / t) * 100) : 0;
+  const pPct = t ? (100 - oPct) : 0;
+
+  // The share bar Orbit puts above the chart.
+  const bar = '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;'
+    + 'background:var(--panel2);margin:0 0 6px">'
+    + '<div style="width:' + oPct + '%;background:#10b981"></div>'
+    + '<div style="width:' + pPct + '%;background:#8b5cf6"></div></div>'
+    + '<div style="display:flex;gap:16px;font-size:12px;margin:0 0 10px"'
+    + (sample ? ' class="ri-sample"' : '') + '>'
+    + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+    + 'background:#10b981;margin-right:6px"></span>Organic <b>' + oPct + '%</b>'
+    + ' <span class="cc">' + _sShort(o, "money", ser && ser.currency) + '</span></span>'
+    + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+    + 'background:#8b5cf6;margin-right:6px"></span>PPC <b>' + pPct + '%</b>'
+    + ' <span class="cc">' + _sShort(p, "money", ser && ser.currency) + '</span></span>'
+    + '</div>';
+
+  if(!cols.length || !t){
+    host.innerHTML = note
+      + '<div class="cc" style="font-size:12px;padding:12px 0">'
+      + 'No sales in this period to split.</div>';
+    return;
+  }
+
+  const chart = salesCombo({
+    id: "orgppc", columns: cols, bars: null,
+    lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
+    height: 260,
+  });
+  host.innerHTML = note + bar
+    + (sample ? '<div class="ri-sample">' + chart + '</div>' : chart);
 }
 
 function salesDrawRange(sum, av){
@@ -955,7 +1079,7 @@ function salesDrawGrid(ser){
     const hi=Math.max.apply(null, nums.length?nums:[0]);
     h += '<tr><th class="mcol" title="'+_sEsc(m.label)+'">'+_sEsc(m.label)+'</th>'
        + m.cells.map(function(v){
-           const t=_sTint(v, lo, hi);
+           const t=_sTint(v, lo, hi, m.key);
            const txt=_sNum(v, m.kind, ser.currency);
            return '<td'+(t?' style="background:'+t+'"':'')
                 + ' title="'+_sEsc(m.label+": "+txt)+'">'+_sEsc(txt)+'</td>';
@@ -975,10 +1099,50 @@ function _sColLabel(c, gran){
 /* ONE hue, light→dark, five steps. Five rather than a continuous ramp because
    past about seven classes adjacent shades blur; and the number is printed in
    every cell regardless, so the tint is an aid, never the reading. */
-function _sTint(v, lo, hi){
+/* Metrics that can legitimately go NEGATIVE, and where the sign is the whole
+   point. A loss is not a small profit. */
+const _S_SIGNED = ["profit", "margin_pct", "net_proceeds", "roi_pct"];
+
+/* The shading behind a cell.
+ *
+ * THE FAULT THIS FIXES. Every row was shaded on ONE green scale running from
+ * the row's lowest value to its highest. On a Profit row that ranges from -50
+ * to +100 it made a fifty-pound LOSS the palest green on the row -- green
+ * meaning good, and a faint green reading as "a quiet day" rather than "money
+ * went out". The sign, which is the only thing anyone looks at on a profit row,
+ * was the one thing the colour did not carry.
+ *
+ * So a signed metric DIVERGES AT ZERO: red below, green above, and the
+ * intensity from how far it is from zero rather than from where it sits
+ * between the row's two extremes. Everything else -- sessions, units, revenue,
+ * which cannot be negative -- keeps the single-hue scale, where it is right.
+ *
+ * Colour is never the only carrier: every cell prints its number, so the grid
+ * still reads correctly in black and white and to anyone who cannot separate
+ * red from green.
+ */
+function _sTint(v, lo, hi, key){
   if(v===null||v===undefined) return "";
+  const n = Number(v);
+  if(!isFinite(n)) return "";
+
+  if(_S_SIGNED.indexOf(String(key||"")) >= 0){
+    if(n === 0) return "";
+    // Scale each side against its own worst case, so one huge loss does not
+    // flatten every profit on the row into the same shade.
+    const worst = Math.abs(Math.min(0, lo)) || 1;
+    const best  = Math.max(0, hi) || 1;
+    const f = n < 0 ? Math.min(1, Math.abs(n) / worst) : Math.min(1, n / best);
+    const step = Math.min(4, Math.max(0, Math.floor(f * 5)));
+    return n < 0
+      ? ["rgba(239,68,68,.08)","rgba(239,68,68,.15)","rgba(239,68,68,.24)",
+         "rgba(239,68,68,.34)","rgba(239,68,68,.45)"][step]
+      : ["rgba(45,212,168,.05)","rgba(45,212,168,.10)","rgba(45,212,168,.17)",
+         "rgba(45,212,168,.25)","rgba(45,212,168,.34)"][step];
+  }
+
   if(!(hi>lo)) return "";
-  const f=(Number(v)-lo)/(hi-lo);
+  const f=(n-lo)/(hi-lo);
   const step=Math.min(4, Math.max(0, Math.floor(f*5)));
   return ["rgba(45,212,168,.05)","rgba(45,212,168,.10)","rgba(45,212,168,.17)",
           "rgba(45,212,168,.25)","rgba(45,212,168,.34)"][step];
