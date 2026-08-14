@@ -112,14 +112,42 @@ def check(parent_sku, children, theme, schema=None, product_type=""):
     if dupes:
         problems.append("The same SKU is listed twice: %s." % ", ".join(sorted(dupes)))
 
-    types = {str(c.get("product_type") or "").strip().upper()
-             for c in kids if c.get("product_type")}
-    if product_type:
-        types.add(str(product_type).strip().upper())
-    if len(types) > 1:
-        problems.append("These are different product types (%s). Amazon only "
-                        "groups products of the same type."
-                        % ", ".join(sorted(t for t in types if t)))
+    # ---- what every member of a family must share --------------------------
+    # These are Amazon's constraints, not ours, and each is checked against what
+    # Amazon CURRENTLY HOLDS for the SKU rather than against anything cached --
+    # the caller fetches live attributes for exactly this reason. Where a value
+    # is missing from Amazon's own response it is reported as unknown rather than
+    # treated as matching, because "we could not read it" and "they agree" are
+    # different answers and only one of them is safe to act on.
+    #
+    # probe_variation.py reads a family that already exists on the account and
+    # prints what its parent and children actually share, so this list can be
+    # confirmed against reality instead of taken on trust (CLAUDE.md Rule 4).
+    for field, label, why in (
+            ("product_type", "product type",
+             "Amazon only groups products of the same type"),
+            ("brand", "brand",
+             "every product in a family has to carry the same brand"),
+            ("item_type_keyword", "item type keyword",
+             "Amazon uses it to place the family in the catalogue, so it has to "
+             "be the same on all of them"),
+    ):
+        vals, unknown = set(), []
+        for c in kids:
+            v = str(c.get(field) or "").strip()
+            if not v:
+                unknown.append(str(c.get("sku")))
+            else:
+                vals.add(v.upper())
+        if field == "product_type" and product_type:
+            vals.add(str(product_type).strip().upper())
+        if len(vals) > 1:
+            problems.append("These have different %s values (%s). %s."
+                            % (label, ", ".join(sorted(vals)), why))
+        elif unknown:
+            problems.append("Could not read the %s for %s, so it cannot be "
+                            "confirmed that they match — and %s."
+                            % (label, ", ".join(unknown), why))
 
     if not theme:
         problems.append("Pick what makes these products different from each "

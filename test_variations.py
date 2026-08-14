@@ -25,7 +25,11 @@ SCHEMA = {"properties": {"variation_theme": {
 NO_VAR_SCHEMA = {"properties": {"item_name": {"type": "array"}}}
 
 def kid(sku, **attrs):
-    return {"sku": sku, "product_type": "SHIRT", "attributes": attrs}
+    # brand and item_type_keyword are now part of what a family must share, so a
+    # fixture without them is a fixture that cannot form one -- which is the
+    # point of the rule, and is asserted separately below.
+    return {"sku": sku, "product_type": "SHIRT", "brand": "Acme",
+            "item_type_keyword": "shirt", "attributes": attrs}
 
 KIDS = [kid("SH-RED-S", size="Small"), kid("SH-RED-M", size="Medium"),
         kid("SH-RED-L", size="Large")]
@@ -71,11 +75,11 @@ truthy("  and it explains why that is not a family",
        "compete with each other" in why("P", same, "SIZE"))
 blank = [kid("A", size="Small"), kid("B")]
 truthy("a child with no value on the axis", "no size set" in why("P", blank, "SIZE"))
-truthy("  naming which one", why("P", blank, "SIZE").startswith("B has no size"))
+truthy("  naming which one", "B has no size" in why("P", blank, "SIZE"))
 mixed = [dict(kid("A", size="S"), product_type="SHIRT"),
          dict(kid("B", size="M"), product_type="SHOES")]
 truthy("children of different product types",
-       "different product types" in why("P", mixed, "SIZE", SCHEMA, ""))
+       "different product type values" in why("P", mixed, "SIZE", SCHEMA, ""))
 
 print("  -- a two-axis theme checks BOTH axes --")
 two = [kid("A", size="S", color="Red"), kid("B", size="S", color="Blue")]
@@ -143,6 +147,29 @@ LS.save(CFG, WS, MKT, [
      "attributes": {"size": "Large"}, "parent_sku": "OTHER-PARENT"},
 ], report_source="test")
 
+# Preview now reads each SKU from AMAZON rather than from the snapshot, because
+# the constraints are about what Amazon holds right now -- merging on a stale
+# brand produces a family Amazon accepts and then does not show. So the client is
+# stubbed with what Amazon would return, including one SKU it refuses.
+from api import amazon_listings as _AL
+_LIVE = {
+    "SH-RED-S": {"brand": "Acme", "item_type_keyword": "shirt", "size": "Small"},
+    "SH-RED-M": {"brand": "Acme", "item_type_keyword": "shirt", "size": "Medium"},
+    "SH-DUP":   {"brand": "Acme", "item_type_keyword": "shirt", "size": "Medium"},
+    "SH-TAKEN": {"brand": "Acme", "item_type_keyword": "shirt", "size": "Large",
+                 "child_parent_sku_relationship": "OTHER-PARENT"},
+    "SH-OTHERBRAND": {"brand": "Rival", "item_type_keyword": "shirt", "size": "XL"},
+}
+def _fake_get_item(creds, mkt, seller, sku, mkt_id, included=None, timeout=60):
+    d = _LIVE.get(sku)
+    if d is None:
+        return {"status": _AL.FAILED, "attributes": None, "product_type": "",
+                "error": "not found", "http_code": 404, "raw": None}
+    attrs = {k: [{"value": v}] for k, v in d.items()}
+    return {"status": _AL.OK, "attributes": attrs, "product_type": "SHIRT",
+            "error": "", "http_code": None, "raw": {}}
+_AL.get_item = _fake_get_item
+
 app = Flask(__name__); app.secret_key = "t"
 vr.register(app, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
             _active_account=lambda: {"id": WS, "seller_id": "S1"},
@@ -181,6 +208,49 @@ truthy("  and it says why", any("same size" in x for x in bad["problems"]))
 taken = prev(["SH-RED-S", "SH-TAKEN"], "SIZE")
 check("a product already in a family cannot apply", taken["can_apply"], False)
 truthy("  naming it", any("SH-TAKEN" in x for x in taken["problems"]))
+
+print("  -- what a family must SHARE, checked against Amazon's live answer --")
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-RED-S", "asin": "B01", "title": "Shirt Small", "product_type": "SHIRT"},
+    {"sku": "SH-RED-M", "asin": "B02", "title": "Shirt Medium", "product_type": "SHIRT"},
+    {"sku": "SH-DUP", "asin": "B03", "title": "Dup", "product_type": "SHIRT"},
+    {"sku": "SH-TAKEN", "asin": "B04", "title": "Taken", "product_type": "SHIRT"},
+    {"sku": "SH-OTHERBRAND", "asin": "B05", "title": "Other brand", "product_type": "SHIRT"},
+], report_source="test")
+brand = prev(["SH-RED-S", "SH-OTHERBRAND"], "SIZE")
+check("a different BRAND cannot join the family", brand["can_apply"], False)
+truthy("  naming both brands", any("ACME" in x and "RIVAL" in x
+                                   for x in brand["problems"]))
+truthy("  and saying why it matters",
+       any("same brand" in x for x in brand["problems"]))
+
+_LIVE["SH-NOKW"] = {"brand": "Acme", "size": "XS"}      # no item_type_keyword
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-RED-S", "asin": "B01", "title": "S", "product_type": "SHIRT"},
+    {"sku": "SH-NOKW", "asin": "B06", "title": "No keyword", "product_type": "SHIRT"},
+], report_source="test")
+nokw = prev(["SH-RED-S", "SH-NOKW"], "SIZE")
+check("an unreadable item type keyword is not treated as a match",
+      nokw["can_apply"], False)
+truthy("  it says it could not be CONFIRMED, not that it differs",
+       any("cannot be confirmed" in x for x in nokw["problems"]))
+
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-RED-S", "asin": "B01", "title": "S", "product_type": "SHIRT"},
+    {"sku": "SH-RED-M", "asin": "B02", "title": "M", "product_type": "SHIRT"},
+    {"sku": "SH-GHOST", "asin": "B07", "title": "Ghost", "product_type": "SHIRT"},
+], report_source="test")
+ghost = prev(["SH-RED-S", "SH-GHOST"], "SIZE")
+check("a SKU Amazon will not return blocks the merge", ghost["can_apply"], False)
+truthy("  rather than being merged on data we could not read",
+       any("could not read" in x for x in ghost["problems"]))
+
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-RED-S", "asin": "B01", "title": "Shirt Small", "product_type": "SHIRT"},
+    {"sku": "SH-RED-M", "asin": "B02", "title": "Shirt Medium", "product_type": "SHIRT"},
+    {"sku": "SH-DUP", "asin": "B03", "title": "Dup", "product_type": "SHIRT"},
+    {"sku": "SH-TAKEN", "asin": "B04", "title": "Taken", "product_type": "SHIRT"},
+], report_source="test")
 
 gone = prev(["SH-RED-S", "NOT-A-SKU"], "SIZE")
 check("a SKU that is not in the catalogue cannot apply", gone["can_apply"], False)

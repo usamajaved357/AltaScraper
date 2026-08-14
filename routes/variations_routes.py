@@ -41,6 +41,52 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         except Exception:
             return []
 
+    def _one(attrs, key):
+        """An attribute's plain value, whatever wrapper Amazon put it in."""
+        v = (attrs or {}).get(key)
+        if isinstance(v, list) and v:
+            f = v[0]
+            if isinstance(f, dict):
+                for k in ("value", "name"):
+                    if k in f:
+                        return str(f[k])
+                return ""
+            return str(f)
+        if isinstance(v, dict):
+            for k in ("value", "name"):
+                if k in v:
+                    return str(v[k])
+        return str(v) if v not in (None, "") else ""
+
+    def _live_attributes(sku, wsid, mkt):
+        """What Amazon holds for this SKU right now, flattened for the checker.
+
+        None means it could not be read -- which is reported as such rather than
+        as an empty listing, because "no brand" and "could not read the brand"
+        lead to opposite decisions.
+        """
+        from api import amazon_listings as _al
+        from domain import accounts as _acc_mod
+        acc = _active_account() or {}
+        got = _al.get_item(_acc_mod.account_creds(acc), mkt,
+                           str(acc.get("seller_id") or ""), sku,
+                           _acc_mod.marketplace_id(mkt))
+        if got["status"] != _al.OK:
+            return None
+        a = got.get("attributes") or {}
+        flat = {}
+        for k, v in a.items():
+            val = _one(a, k)
+            if val:
+                flat[k] = val
+        return {"sku": sku,
+                "product_type": got.get("product_type") or "",
+                "brand": _one(a, "brand"),
+                "item_type_keyword": _one(a, "item_type_keyword"),
+                "parent_sku": _one(a, "child_parent_sku_relationship"),
+                "title": _one(a, "item_name"),
+                "attributes": flat}
+
     def _schema(pt, mkt):
         """The product type's live schema, for the themes it allows.
 
@@ -113,22 +159,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
 
         items = {str(i.get("sku") or "").strip(): i for i in _live_items(wsid, mkt)}
-        children = []
-        missing = []
+        children, missing, unreadable = [], [], []
         for s in skus:
-            it = items.get(s)
-            if not it:
+            if s not in items:
                 missing.append(s)
                 continue
-            children.append({
-                "sku": s,
-                "product_type": str(it.get("product_type") or ""),
-                "title": str(it.get("title") or ""),
-                # Whatever the snapshot holds; the axis values are read from here
-                # by the checker, so a missing size shows up as a refusal rather
-                # than as a family that silently cannot be selected.
-                "attributes": {k: v for k, v in (it.get("attributes") or {}).items()},
-            })
+            # READ FROM AMAZON, not from the cached snapshot. The constraints a
+            # family has to satisfy -- same brand, same item type keyword, values
+            # that genuinely differ on the theme's axis -- are about what Amazon
+            # HOLDS RIGHT NOW. A snapshot is what it held whenever it was last
+            # synced, and merging on a stale brand produces a family Amazon
+            # accepts and then does not show.
+            live = _live_attributes(s, wsid, mkt)
+            if live is None:
+                unreadable.append(s)
+                continue
+            children.append(live)
 
         pt = next((c["product_type"] for c in children if c["product_type"]), "")
         if not parent_sku:
@@ -140,8 +186,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             problems.insert(0, "Not in the cached catalogue: %s. Press Sync on the "
                                "Listings screen, then try again."
                                % ", ".join(missing))
-        already = [c["sku"] for c in children
-                   if (items.get(c["sku"]) or {}).get("parent_sku")]
+        if unreadable:
+            problems.insert(0, "Amazon would not return %s, so nothing about them "
+                               "could be checked. Nothing is merged on data we "
+                               "could not read." % ", ".join(unreadable))
+        already = [c["sku"] for c in children if c.get("parent_sku")]
         if already:
             problems.append("%s already belong%s to another family. Amazon allows "
                             "one parent per child, so it would have to be removed "
@@ -171,17 +220,32 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         title = (b.get("parent_title") or "").strip()
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
 
-        items = {str(i.get("sku") or "").strip(): i for i in _live_items(wsid, mkt)}
-        children = [{"sku": s,
-                     "product_type": str((items.get(s) or {}).get("product_type") or ""),
-                     "attributes": dict((items.get(s) or {}).get("attributes") or {})}
-                    for s in skus]
+        # Re-read from AMAZON, exactly as preview did. Re-checking against a
+        # cached snapshot instead would make this weaker than the check it is
+        # meant to repeat -- which would let through precisely the merges preview
+        # refused, and only when something had changed since.
+        children, unread = [], []
+        for s in skus:
+            live = _live_attributes(s, wsid, mkt)
+            if live is None:
+                unread.append(s)
+            else:
+                children.append(live)
+        if unread:
+            return jsonify({"ok": False, "error": (
+                "Amazon would not return %s, so nothing about them could be "
+                "checked. Nothing is merged on data we could not read."
+                % ", ".join(unread))}), 400
         pt = next((c["product_type"] for c in children if c["product_type"]), "")
 
         problems = _var.check(parent_sku, children, theme, _schema(pt, mkt), pt)
+        already = [c["sku"] for c in children if c.get("parent_sku")]
+        if already:
+            problems.append("%s already belong%s to another family."
+                            % (", ".join(already), "s" if len(already) == 1 else ""))
         if problems:
-            # Re-checked here, not trusted from the preview: the browser could be
-            # showing a preview from before someone changed something.
+            # Not trusted from the preview: the browser could be showing one from
+            # before someone changed something.
             return jsonify({"ok": False, "error": "; ".join(problems)}), 400
 
         creds = _acc_mod.account_creds(acc or {})
