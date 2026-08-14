@@ -75,7 +75,8 @@ function _ilCurrentMain(sku){
 }
 
 async function openImageLibrary(sku, isLive){
-  IMGLIB = {sku:sku, files:[], main:_ilCurrentMain(sku), live:!!isLive};
+  IMGLIB = {sku:sku, files:[], main:_ilCurrentMain(sku), live:!!isLive,
+            showAll:false, otherCount:0};
   let host = document.getElementById("imglibwrap");
   if(!host){
     host = document.createElement("div");
@@ -88,16 +89,55 @@ async function openImageLibrary(sku, isLive){
   }
   host.classList.add("open");
   _ilRender('<div class="cc" style="padding:20px"><span class="genspin"></span> Loading this listing\'s images…</div>');
+  await _ilLoad();
+}
+
+// THIS listing's images by default, every listing's on request.
+//
+// Showing the whole library by default would mean scrolling past other products
+// to find the one in front of you, and makes it easy to set another product's
+// photo as this one's main image by accident. But sometimes the image you want
+// IS filed under a sibling SKU -- a variation, or a re-listed item -- so the
+// whole library is one click away, and every tile from another SKU is labelled
+// with the SKU it belongs to.
+async function _ilLoad(){
+  const all = !!IMGLIB.showAll;
+  _ilRender('<div class="cc" style="padding:20px"><span class="genspin"></span> Loading '
+            + (all ? "every listing's images" : "this listing's images") + '…</div>');
   try{
-    const j = await (await fetch("/media/list?sku=" + encodeURIComponent(sku))).json();
+    const url = all ? "/media/list"
+                    : "/media/list?sku=" + encodeURIComponent(IMGLIB.sku);
+    const j = await (await fetch(url)).json();
     if(!j || !j.ok){ _ilRender('<div class="cc" style="padding:20px;color:var(--red)">'
         + _ilEsc((j && j.error) || "Could not load images") + "</div>"); return; }
-    const folder = (j.folders || [])[0];
-    IMGLIB.files = (folder && folder.files) || [];
+    const folders = j.folders || [];
+    if(all){
+      // This SKU first, then the rest alphabetically, each tile tagged with its
+      // owner so nothing is picked from the wrong product by mistake.
+      const mine = folders.filter(function(f){ return String(f.sku) === String(IMGLIB.sku); });
+      const others = folders.filter(function(f){ return String(f.sku) !== String(IMGLIB.sku); })
+                            .sort(function(a, b){ return String(a.sku) < String(b.sku) ? -1 : 1; });
+      IMGLIB.files = [];
+      mine.concat(others).forEach(function(fo){
+        (fo.files || []).forEach(function(f){
+          IMGLIB.files.push(Object.assign({}, f, {owner: fo.sku}));
+        });
+      });
+      IMGLIB.otherCount = others.reduce(function(n, f){ return n + (f.files || []).length; }, 0);
+    } else {
+      const folder = folders[0];
+      IMGLIB.files = (folder && folder.files) || [];
+      IMGLIB.otherCount = 0;
+    }
     _ilDraw();
   }catch(e){
     _ilRender('<div class="cc" style="padding:20px;color:var(--red)">' + _ilEsc(String(e)) + "</div>");
   }
+}
+
+async function ilToggleAll(){
+  IMGLIB.showAll = !IMGLIB.showAll;
+  await _ilLoad();
 }
 
 function closeImageLibrary(){
@@ -127,10 +167,24 @@ function _ilDraw(){
         + '<span class="spacer" style="flex:1"></span>'
         + '<button class="db-chip" onclick="closeImageLibrary()">Close</button></div>';
 
-  h += '<div class="cc" style="font-size:11.5px;margin-bottom:12px">'
+  h += '<div class="cc" style="font-size:11.5px;margin-bottom:10px">'
      + 'Choosing a main image writes it to this listing. Nothing reaches Amazon '
      + 'until you Submit — or, for a listing that is already live, until you '
      + 'press <b>Push to Amazon</b>.</div>';
+
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'
+     + '<button class="db-chip" onclick="ilToggleAll()">'
+     + (IMGLIB.showAll ? '<i class="ti ti-photo"></i> Show only this listing\'s images'
+                       : '<i class="ti ti-library-photo"></i> Show every listing\'s images')
+     + '</button>'
+     + '<span class="cc" style="font-size:11px">'
+     + (IMGLIB.showAll
+         ? ('Showing the whole library' + (IMGLIB.otherCount
+              ? ' — ' + IMGLIB.otherCount + ' image' + (IMGLIB.otherCount===1?'':'s')
+                + ' belong to other listings and are labelled'
+              : ''))
+         : 'Showing only ' + _ilEsc(sku))
+     + '</span></div>';
 
   // upload your own
   h += '<div style="border:1px dashed #2f3a4d;border-radius:8px;padding:10px;margin-bottom:14px">'
@@ -163,12 +217,22 @@ function _ilDraw(){
          + '<div style="padding:6px 7px">'
          + '<div class="cc" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" '
          + 'title="' + _ilEsc(f.name) + '">' + _ilEsc(f.name) + '</div>'
+         // Whose image this is, whenever it is not this listing's. Without it,
+         // "Use as main" on a sibling SKU's photo looks identical to the right one.
+         + ((f.owner && String(f.owner) !== String(sku))
+             ? '<div style="font-size:10px;color:var(--warn);white-space:nowrap;overflow:hidden;'
+               + 'text-overflow:ellipsis" title="' + _ilEsc(f.owner) + '">from '
+               + _ilEsc(f.owner) + '</div>'
+             : '')
          + '<div class="cc" style="font-size:10px;opacity:.7">'
          + (f.width ? (f.width + "×" + f.height) : "") + '</div>'
          + (isMain
              ? '<div style="font-size:10.5px;color:var(--ok);font-weight:600;margin-top:4px">✓ main image</div>'
+             // jsArg, not JSON.stringify: the latter emits DOUBLE quotes, which
+             // closed this onclick attribute and left the handler as `ilSetMain(`.
+             // The button rendered perfectly and did nothing when pressed.
              : '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
-               + 'onclick="ilSetMain(' + JSON.stringify(f.url) + ')">Use as main</button>')
+               + 'onclick="ilSetMain(' + jsArg(f.url) + ')">Use as main</button>')
          + '</div></div>';
     });
     h += '</div>';

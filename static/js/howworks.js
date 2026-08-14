@@ -102,7 +102,7 @@ function LOGIC_REGISTRY(){
       `<b>Pulls your live listings from Amazon.</b> <code>/live/catalog</code> requests a Reports-API report (<code>GET_MERCHANT_LISTINGS_ALL_DATA</code>) for the connected account + marketplace, then parses each row.`,
       `<b>Reads real fields per listing.</b> From the report it captures SKU, ASIN, title, price, quantity, status, brand, and — importantly — <code>fulfillment-channel</code> (FBA/FBM) and <code>merchant-shipping-group</code>.`,
       `<b>Caches briefly</b> so re-opening is instant. A normal load reuses a recent report/cache; it does <i>not</i> hit Amazon every time.`,
-      `<b>Drafts vs Live vs All</b> just filters what's shown — Drafts are from your sheet, Live are pulled from Amazon, All merges both.` ]},
+      `<b>Drafts vs Live vs All</b> just filters what's shown — Drafts are the ones this app holds, Live are pulled from Amazon, All merges both.` ]},
     grid_enrich: { title:"How each card gets its image, title, FBA/FBM & shipping", steps:[
       `<b>Enriches in batches.</b> <code>/live/images</code> calls <code>getListingsItem</code> with <code>includedData="summaries,issues,fulfillmentAvailability,attributes"</code> for the visible SKUs.`,
       `<b>Pulls the real main image and live title</b> (from <code>summaries</code>) — so the title reflects any edit you made immediately, not the cached report.`,

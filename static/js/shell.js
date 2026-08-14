@@ -1,3 +1,22 @@
+// ---- where listings actually live -----------------------------------------
+// The app moved to a local database; the input sheet is imported on demand and
+// is no longer the store. Every screen that still said "the sheet" was sending
+// people to a spreadsheet to fix something that is not in it any more.
+//
+// ONE helper, so the wording cannot be right on one screen and wrong on the
+// next. window.DATA_BACKEND is what /users/me reports the app is ACTUALLY using,
+// not what the config asks for, so this follows reality rather than intent.
+function storeName(){
+  return (window.DATA_BACKEND === "db") ? "this app" : "your sheet";
+}
+function storeNameCap(){
+  return (window.DATA_BACKEND === "db") ? "This app" : "Your sheet";
+}
+// "…from the sheet" / "…from this app" — the phrase most of the buttons need.
+function storeFrom(){
+  return (window.DATA_BACKEND === "db") ? "from this app" : "from your sheet";
+}
+
 // ---- shell navigation ----
 // ===================== SHELL NAVIGATION (new layout) =====================
 // Drives home <-> workspace screens and the in-workspace section switching.

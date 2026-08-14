@@ -470,13 +470,13 @@ function render(){
   const claimedRows = realAll.filter(_isClaimedOnly);
   const real     = realAll.filter(r=>!_isActuallyLive(r) && !_isClaimedOnly(r));
   const note = (empties.length
-    ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them from the sheet</button></div>`
+    ? `<div class="emptynote">${empties.length} empty row${empties.length>1?'s':''} hidden — <button class="linkbtn" onclick="clearEmpty(this)">clear them ${storeFrom()}</button></div>`
     : "")
     + (goneRows.length
     ? `<div class="emptynote" style="border-color:var(--red-line);color:var(--red)">
          ${goneRows.length} listing${goneRows.length>1?'s were':' was'} deleted on Amazon and ${goneRows.length>1?'are':'is'} hidden here
          (${goneRows.slice(0,3).map(r=>esc(r.sku)).join(', ')}${goneRows.length>3?', …':''}) —
-         <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} from the sheet</button>
+         <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} ${storeFrom()}</button>
        </div>`
     : "");
   // SOURCE: drafts (app rows) / live (Amazon catalog) / all (both)
@@ -505,13 +505,13 @@ function render(){
   // backend it is simply wrong, and it would send you looking in a spreadsheet
   // for a row that was never going to be there. The app reports which backend it
   // is on (/users/me -> backend), so the caption follows it.
-  const _store = (window.DATA_BACKEND === "db") ? "this app" : "your sheet";
+  const _store = storeName();          // shell.js -- one definition for every screen
   const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in '+_store+', so you can edit and push changes</div>';
   const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in '+_store+' yet</div>';
-  // Rows the sheet claims are LIVE but Amazon never returned. Shown apart, never
+  // Rows the app records as LIVE but Amazon never returned. Shown apart, never
   // counted as live. Usually: submitted but not yet published, killed by Amazon, or
   // written into the wrong account's tab.
-  const _claimSub = '<div class="srcsub" style="color:var(--warn)"><i class="ti ti-alert-triangle"></i> Your sheet says LIVE, but Amazon did not return these — not live</div>';
+  const _claimSub = '<div class="srcsub" style="color:var(--warn)"><i class="ti ti-alert-triangle"></i> '+storeNameCap()+' says LIVE, but Amazon did not return these — not live</div>';
   let liveHtml  = (liveRows.length ? _bothSub + listBlock(liveRows) : "")
                 + (liveCatalog.length ? _amzSub + listBlock(liveCatalog, liveTile) : "");
   const claimedHtml = claimedRows.length ? _claimSub + listBlock(claimedRows) : "";
@@ -558,7 +558,7 @@ function render(){
   }
 }
 async function delRow(sku, row, btn){
-  if(!confirm("Delete this row from the sheet? This cannot be undone.")) return;
+  if(!confirm("Delete this row "+storeFrom()+"? This cannot be undone.")) return;
   btn.disabled=true;
   try{
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
@@ -594,7 +594,7 @@ async function bulkStatus(status){
 async function bulkDelete(){
   const skus=selectedSkus();
   if(!skus.length){ toast("Nothing selected"); return; }
-  if(!confirm("Delete "+skus.length+" selected listing(s) from the sheet? This cannot be undone.")) return;
+  if(!confirm("Delete "+skus.length+" selected listing(s) "+storeFrom()+"? This cannot be undone.")) return;
   let ok=0, fail=0;
   toast("Deleting "+skus.length+"…");
   // delete from the BOTTOM up so row numbers don't shift mid-loop
@@ -642,7 +642,7 @@ async function clearMainImage(sku){
   }catch(e){ toast("Could not remove image: "+e); }
 }
 async function clearEmpty(btn){
-  if(!confirm("Remove all empty rows from the sheet?")) return;
+  if(!confirm("Remove all empty rows "+storeFrom()+"?")) return;
   btn.disabled=true;
   try{
     const res=await fetch("/clear_empty",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});

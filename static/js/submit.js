@@ -152,9 +152,9 @@ function _streamRunPanel(url, sku, mode){
     if(!verdict){ P.verdict.innerHTML='<span class="rwarn">Finished, but no result line was found for this SKU. Open the log below to read exactly what happened.</span>'; return; }
     if(verdict.kind==="nocreds"){ P.verdict.innerHTML='<span class="rbad">✗ No SP-API credentials for this account/marketplace.</span> Add them in the account editor before publishing.'; return; }
     if(verdict.kind==="missing"){
-      P.verdict.innerHTML='<div class="rbad">✗ This row is missing a SKU or Product Type in the sheet.</div>'
+      P.verdict.innerHTML='<div class="rbad">✗ This row is missing a SKU or Product Type.</div>'
         +'<div class="ramz">'+esc(verdict.raw.trim())+'</div>'
-        +'<div class="rhint">Open the listing in the sheet/editor and make sure both <b>SKU</b> and <b>Product Type</b> are filled, then Preview again.</div>';
+        +'<div class="rhint">Open the listing in the editor and make sure both <b>SKU</b> and <b>Product Type</b> are filled, then Preview again.</div>';
       return;
     }
     if(verdict.kind==="notfound"){
@@ -341,7 +341,7 @@ async function loadRows(){
     // (not a toast that vanishes and leaves an empty page).
     const _g0=document.getElementById("grid");
     if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length))
-      _g0.innerHTML='<div class="empty"><span class="genspin"></span> Loading listings from your sheet…<div class="cc" style="margin-top:8px">Accounts with many tabs (e.g. Miles) read every tab and can take up to a minute.</div></div>';
+      _g0.innerHTML='<div class="empty"><span class="genspin"></span> Loading listings…<div class="cc" style="margin-top:8px">Accounts with many tabs (e.g. Miles) read every tab and can take up to a minute.</div></div>';
     const j=await _fetchJSON("/rows_all", null, 120000);
     if(!j || j._failed){
       const _g=document.getElementById("grid");

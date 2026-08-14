@@ -104,6 +104,24 @@ RULES = [
     ("/genimage/jobs_active",           "edit"),
     ("/preview/jobs",                   "edit"),
 
+    # -- IMAGES. Two different jobs, and they used to need the same permission.
+    #
+    # MAKING an image is gated by the `images` FEATURE at "edit" level, which the
+    # doorman checks above -- so these need no action permission of their own.
+    # They used to fall through to the default "edit", which is the permission for
+    # creating and editing listing DRAFTS, so there was no way to let someone make
+    # images without also letting them rewrite listings.
+    #
+    # KEEPING an image -- saving it into the library, uploading a file, deleting
+    # one -- is a separate permission, so "may generate, may not add or remove
+    # files" is expressible. Pushing an image to Amazon stays "publish", which is
+    # the strongest of the three and already correct.
+    ("/genimage/save_to_media",         "upload_images"),
+    ("/media/upload",                   "upload_images"),
+    ("/media/delete",                   "upload_images"),
+    ("/genimage",                       None),          # feature level is the gate
+    ("/recipes",                        None),          # ditto -- saved treatments
+
     # -- the generator's input queue. Importing REPLACES what is generated next,
     #    and clearing throws work away, so they are gated accordingly rather than
     #    falling through to the default read rule.

@@ -41,7 +41,13 @@ _LOCK = threading.RLock()
 # Every permission is a thing a person can DO. Reading is not on this list:
 # anyone with an account can look. These are the actions worth withholding.
 PERMISSIONS = {
-    "edit":            "Create and edit drafts, generate copy and images",
+    "edit":            "Create and edit listing drafts and copy",
+    # Making an image and KEEPING one are different acts. Generating is governed
+    # by the Images area alone (set it to "View & edit"), so this permission is
+    # what lets someone save a generated image into the library, upload their own
+    # file, or delete one -- "may design, may not add or remove files" is a real
+    # arrangement and used to be impossible to express.
+    "upload_images":   "Save, upload and delete images in the library",
     "approve_delete":  "Approve, hold and delete listings",
     "publish":         "Publish and push changes live to Amazon",
     "ppc":             "Change PPC campaigns, bids and budgets",
@@ -52,9 +58,13 @@ PERMISSIONS = {
 # Roles are presets, not a separate mechanism -- picking a role fills in the
 # permission list, which remains individually editable afterwards.
 ROLES = {
-    "owner":   ["edit", "approve_delete", "publish", "ppc", "manage_accounts", "manage_users"],
-    "manager": ["edit", "approve_delete", "publish", "ppc"],
-    "lister":  ["edit"],
+    "owner":   ["edit", "upload_images", "approve_delete", "publish", "ppc",
+                "manage_accounts", "manage_users"],
+    "manager": ["edit", "upload_images", "approve_delete", "publish", "ppc"],
+    # A lister keeps what they had: drafts and the image library. Take
+    # upload_images away and they can still design images but not keep them;
+    # take `edit` away and they can work on images without touching listings.
+    "lister":  ["edit", "upload_images"],
     "viewer":  [],
 }
 
