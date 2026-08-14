@@ -92,6 +92,39 @@ function salesSetDates(){
   if(SALES.start && SALES.end) salesReload();
 }
 
+/* DRAG ACROSS A CHART TO ZOOM INTO THOSE DAYS.
+   Called by salescharts.js with two COLUMN positions; the dates that go with
+   them are whatever the last draw used, which is why the columns are kept.
+
+   A custom range already existed in the date boxes, but reading a shape off a
+   chart and then translating it into two dates typed into two fields is the
+   step nobody takes -- so the interesting week never got looked at closely.
+   The previous range is remembered so there is a way back out. */
+function salesZoomTo(i, j){
+  const dates = (SALES._chartDates || []);
+  const from = dates[Math.max(0, Math.min(i, j))];
+  const to   = dates[Math.min(dates.length - 1, Math.max(i, j))];
+  if(!from || !to) return;
+  SALES._zoomBack = {preset: SALES.preset, start: SALES.start, end: SALES.end};
+  SALES.preset = "custom"; SALES.start = from; SALES.end = to;
+  const a = document.getElementById("sales_start"), b = document.getElementById("sales_end");
+  if(a) a.value = from;
+  if(b) b.value = to;
+  salesReload();
+}
+
+function salesZoomOut(){
+  const z = SALES._zoomBack;
+  if(!z) return;
+  SALES.preset = z.preset || "30d";
+  SALES.start = z.start || ""; SALES.end = z.end || "";
+  SALES._zoomBack = null;
+  const a = document.getElementById("sales_start"), b = document.getElementById("sales_end");
+  if(a) a.value = SALES.start;
+  if(b) b.value = SALES.end;
+  salesReload();
+}
+
 /* The product filter. Its own handler, because the select has to write its value
    into the state the query is built from -- an onchange that only calls reload
    re-requests the range it already had and the filter appears to do nothing. */
@@ -230,6 +263,10 @@ function salesDrawCharts(ser){
   const rows  = (ser && ser.metrics) || [];
   if(!dates.length){ host.innerHTML = ""; return; }
 
+  // Remembered so a drag on any chart can turn two column positions back into
+  // two dates. The charts all share one set of columns, so any of them can zoom.
+  SALES._chartDates = dates;
+
   const byKey = {};
   rows.forEach(function(m){ byKey[m.key] = m; });
   const pts = function(key){
@@ -278,7 +315,21 @@ function salesDrawCharts(ser){
     return real.length > 0 && real.some(function(x){ return Number(x.value) !== 0; });
   };
 
-  let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">';
+  // A way OUT of a zoom, beside the charts rather than in a date box. Without
+  // it the only route back is remembering what the range used to be.
+  let h = "";
+  if(SALES._zoomBack){
+    h += '<div style="display:flex;align-items:center;gap:9px;margin:0 0 10px;'
+      +  'padding:8px 11px;border:1px solid var(--accent);border-radius:7px;font-size:12px">'
+      +  '<i class="ti ti-zoom-in"></i> Zoomed to <b>' + _sEsc(SALES.start)
+      +  '</b> → <b>' + _sEsc(SALES.end) + '</b>'
+      +  '<button class="db-chip" style="margin-left:auto" onclick="salesZoomOut()">'
+      +  'Back to the full range</button></div>';
+  }
+  // TWO ACROSS, not three or four. At a third of the width a chart was a couple
+  // of centimetres of squiggle -- too small to read a shape off, which is the
+  // only reason to draw one.
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:16px">';
   let drew = 0;
   const skipped = [];
   want.forEach(function(w){
