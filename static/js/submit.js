@@ -374,11 +374,14 @@ async function loadRows(){
     if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length)){
       // A SKELETON, NOT A SPINNER. A spinner says "waiting" and nothing else;
       // grey rows the size of the real ones say what is coming and stop the
-      // page jumping when it lands. The sentence stays -- on a slow account it
-      // is the only thing that explains why this is taking a minute.
+      // page jumping when it lands.
+      //
+      // And it no longer talks about tabs and spreadsheets. That wording was
+      // written when this screen read a Google workbook, and it is now the app
+      // describing its own plumbing at someone who asked to see their listings
+      // -- fairly reported as "why is it talking about tabs and sheets again".
       _g0.innerHTML = (typeof altaSkeletonScreen === "function"
-        ? '<div class="cc" style="margin:0 0 10px">Loading listings… <span class="cc">'
-          + 'accounts with many tabs read every tab and can take up to a minute.</span></div>'
+        ? '<div class="cc" style="margin:0 0 10px">Loading listings…</div>'
           + altaSkeletonScreen({cards: 4, rows: 8})
         : '<div class="empty"><span class="genspin"></span> Loading listings…</div>');
     }
@@ -414,6 +417,11 @@ async function loadRows(){
       toast("Sheet error: "+(j.error||"unknown")); return;
     }
     ROWS=j.rows||[]; SHIP=j.shipping_group||""; PTYPES=j.product_types||[];
+    // WHICH STORE THESE CAME FROM. Kept so the screen can say when some of
+    // these listings are still only in the spreadsheet, and offer to bring them
+    // in -- the app is mid-migration and that is the fact that keeps surfacing
+    // as "my listings disappeared".
+    ROWS_SOURCE = j.source || {};
     // Tabs manifest for the multi-tab filter. TABS=[{tab,tab_gid,count,url}]. When a
     // sheet has >1 listing tab the filter + per-card tab tags appear; with 1 tab they
     // stay hidden and the view is exactly as before.

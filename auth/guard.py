@@ -178,6 +178,23 @@ RULES = [
     ("/aiusage/summary",                None),
     ("/aiusage/calls",                  None),
 
+    # -- moving listings out of Google Sheets. Reading the status changes
+    #    nothing. Running the import writes several hundred rows into this
+    #    account's store, which is an operator action rather than day-to-day
+    #    work, so it sits with the other account-level settings.
+    ("/migrate/status",                 None),
+    ("/migrate/import",                 "manage_accounts"),
+
+    # -- backups. Reading the status and checking whether the app has
+    #    everything the sheet has change nothing. Running a backup writes to a
+    #    spreadsheet, and the download hands over the ENTIRE dataset in one
+    #    file -- every account's listings, costs and prices at once -- so it is
+    #    held to the highest bar in the app.
+    ("/backup/status",                  None),
+    ("/backup/verify",                  None),
+    ("/backup/run",                     "manage_accounts"),
+    ("/backup/download",                "manage_accounts"),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),

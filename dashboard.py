@@ -3367,6 +3367,19 @@ def build_app(backend=None):
     _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # Moving a workspace's listings out of Google Sheets and into the app. The
+    # import has always existed as a command line; it has to be runnable HERE,
+    # because it must run where the database is and that is not a laptop.
+    import routes.migrate_routes as _migrate_routes
+    _migrate_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _client=_client, _state=_state)
+
+    # What protects the data once the database is the only store. Sheets stops
+    # being the store and becomes the backup -- written to, never read back.
+    import routes.backup_routes as _backup_routes
+    _backup_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _client=_client, _state=_state)
+
     # What the AI cost, per account and per feature. Reads the ledger written by
     # domain/ai_usage.py; spends nothing itself.
     import routes.aiusage_routes as _aiusage_routes
@@ -3638,6 +3651,23 @@ def build_app(backend=None):
 
     _refresher.start(app, _cfg, CONFIG_PATH,
                      log=lambda m: print(f"[refresher] {m}"))
+
+    # ---- the daily backup ------------------------------------------------
+    # Armed here so it runs wherever the app runs, rather than depending on
+    # somebody remembering. It writes each account's listings to its own
+    # backup_ tab and never reads one back, so it cannot become a source.
+    try:
+        from domain import backup as _backup_mod
+
+        def _backup_accounts():
+            from domain import accounts as _acc
+            return _acc.load_accounts(_cfg(), CONFIG_PATH) or []
+
+        _backup_mod.NIGHTLY.start(_client, CONFIG_PATH, _backup_accounts,
+                                  log=lambda m: print(f"[backup] {m}", flush=True))
+    except Exception as _eb:
+        print(f"  (the daily backup could not be armed: {_eb})", flush=True)
+
     return app
 
 

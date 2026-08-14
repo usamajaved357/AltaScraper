@@ -100,6 +100,27 @@ HEADER_ALIASES = {
     "Our Price (£)":       "our_price",
     "Amazon Fees (£)":     "amazon_fees",
     "Profit (£)":          "profit",
+
+    # MILES' SHEETS SPELL THE COPY COLUMNS DIFFERENTLY, and these are the
+    # listing's actual words -- the bullets, the description, the backend
+    # keywords. Without these aliases an import reads the sheet, finds no
+    # column it recognises for any of them, and writes the rows in with the
+    # copy silently missing. Every other field would look right, which is
+    # exactly how that would have gone unnoticed.
+    #
+    # Found by /backup/verify, which reports the columns an import does not
+    # understand rather than dropping them quietly: 74 Miles rows, 11 unknown
+    # columns, six of them the product copy.
+    "Bullet Point 1":      "bullet_1",
+    "Bullet Point 2":      "bullet_2",
+    "Bullet Point 3":      "bullet_3",
+    "Bullet Point 4":      "bullet_4",
+    "Bullet Point 5":      "bullet_5",
+    "Description":         "description_html",
+    "Backend Keywords":    "search_terms",
+    # "Column 1", "Column 12", "Column 13" and "Uploaded" are deliberately NOT
+    # mapped. They are spreadsheet scaffolding, not listing data, and inventing
+    # a home for them would put junk into columns that mean something.
 }
 
 

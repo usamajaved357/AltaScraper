@@ -13,10 +13,23 @@
 // only when they share a unit; revenue and units do not, so they get separate
 // charts rather than a twin axis whose crossings mean nothing.
 
-// Orbit's chart palette, from its own :root (orbit_full_audit.md 5.1 and 4.11):
-// the current period in brand gold, the period before it in neutral grey.
-const SC_GOLD    = "#fbbf24";
-const SC_COMPARE = "#6b7280";
+// Orbit's chart palette and line styles, MEASURED off its live Sales Dashboard
+// on 15 Aug 2026 (tools/orbit_capture.py -> orbit_interactions.md), not copied
+// from a screenshot. Every value here was read from the drawn SVG:
+//
+//   current period    #fbbf24, 2px, solid
+//   period before     #6b7280, 2px, dashed 5,5
+//   same period last  #6366f1, 1.5px, dashed 5,3   -- a different comparison,
+//     year              so a different line, which is why it is not the same
+//                       grey with a different dash
+//   area gradient     the line's own colour, 0.30 at 5% fading to 0 at 95%
+//                     (prior-year's is fainter, 0.15, because context should
+//                      not compete with the subject)
+const SC_GOLD      = "#fbbf24";
+const SC_COMPARE   = "#6b7280";
+const SC_PRIORYEAR = "#6366f1";
+const SC_DASH      = "5 5";     // the period before
+const SC_DASH_YEAR = "5 3";     // the same period a year earlier
 
 function _scEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -189,12 +202,20 @@ function salesChart(points, opts){
       else crun.push({i: i, v: v});
     });
     if(crun.length) cruns.push(crun);
+    // Measured off Orbit: 2px and a 5,5 dash for the period before, 1.5px and
+    // 5,3 in indigo for the same period a year earlier. A year-ago line is a
+    // different question from a period-ago line, so it does not get the same
+    // grey with a slightly different dash -- at a glance that reads as noise.
+    const cIsYear = (o.compareKind === "year");
+    const cCol  = cIsYear ? SC_PRIORYEAR : SC_COMPARE;
+    const cW    = cIsYear ? "1.5" : "2";
+    const cDash = cIsYear ? SC_DASH_YEAR : SC_DASH;
     cruns.forEach(function(r){
       if(r.length < 2) return;               // one point is not a trend
       const d = r.map((pt, k) => (k ? "L" : "M") + x(pt.i).toFixed(1) + " " + y(pt.v).toFixed(1)).join(" ");
-      paths += `<path d="${d}" fill="none" stroke="${SC_COMPARE}" stroke-width="1.4"
-                      stroke-dasharray="4 3" stroke-linejoin="round"
-                      stroke-linecap="round" opacity="0.85"/>`;
+      paths += `<path d="${d}" fill="none" stroke="${cCol}" stroke-width="${cW}"
+                      stroke-dasharray="${cDash}" stroke-linejoin="round"
+                      stroke-linecap="round"/>`;
     });
   }
 
@@ -279,21 +300,27 @@ function salesChart(points, opts){
   // The gradient the area is painted with. Defined per chart because the colour
   // is per chart, and referenced by id -- two charts on one page must not share
   // one definition and therefore one colour.
+  // Stops measured off Orbit's own gradients (goldGradient, blueGradient,
+  // salesGradient): 0.30 at 5%, fading to 0 at 95%.
   const defs = `<defs><linearGradient id="${cid}_grad" x1="0" y1="0" x2="0" y2="1">`
-             + `<stop offset="0%" stop-color="${LINE}" stop-opacity="0.28"/>`
-             + `<stop offset="100%" stop-color="${LINE}" stop-opacity="0.02"/>`
+             + `<stop offset="5%" stop-color="${LINE}" stop-opacity="0.30"/>`
+             + `<stop offset="95%" stop-color="${LINE}" stop-opacity="0"/>`
              + `</linearGradient></defs>`;
 
   // A legend, only when there are two things to tell apart. One line needs no
   // key, and a key for one line is furniture.
+  const _cIsYear = (o.compareKind === "year");
   const legend = cmp
     ? '<span style="font-size:10.5px;display:inline-flex;align-items:center;gap:10px">'
       + '<span style="display:inline-flex;align-items:center;gap:4px">'
       + '<svg width="16" height="6"><line x1="0" y1="3" x2="16" y2="3" stroke="' + LINE
       + '" stroke-width="2"/></svg>this period</span>'
       + '<span style="display:inline-flex;align-items:center;gap:4px" class="cc">'
-      + '<svg width="16" height="6"><line x1="0" y1="3" x2="16" y2="3" stroke="' + SC_COMPARE
-      + '" stroke-width="1.4" stroke-dasharray="4 3"/></svg>the period before</span></span>'
+      + '<svg width="16" height="6"><line x1="0" y1="3" x2="16" y2="3" stroke="'
+      + (_cIsYear ? SC_PRIORYEAR : SC_COMPARE)
+      + '" stroke-width="' + (_cIsYear ? "1.5" : "2") + '" stroke-dasharray="'
+      + (_cIsYear ? SC_DASH_YEAR : SC_DASH) + '"/></svg>'
+      + (_cIsYear ? "the same period last year" : "the period before") + '</span></span>'
     : "";
 
   // Only a few x labels, or they collide and none of them can be read.
