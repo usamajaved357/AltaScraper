@@ -107,6 +107,7 @@
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
+    <div class="navitem" data-sec="sellerimport" onclick="navTo('sellerimport')"><i class="ti ti-download"></i> Import seller</div>
     <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
 
@@ -491,6 +492,14 @@
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_sellerimport" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-download"></i> Import an eBay seller</h2>
+        <div class="sub">Find everything a seller lists, review it with the pictures, check what Amazon allows, and draft the ones you want. Nothing is sent to Amazon &mdash; they arrive here as drafts and you publish them the usual way.</div></div>
+      </div>
+      <div id="simpbody" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_variations" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-binary-tree"></i> Variation families</h2>
@@ -739,6 +748,7 @@
 <script src="/static/js/sourcing.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/sellerimport.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

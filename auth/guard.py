@@ -77,6 +77,15 @@ RULES = [
     ("/sourcing/candidates",            None),
     ("/sourcing",                       "publish"),
 
+    # -- importing an eBay seller. Finding and screening send NOTHING anywhere;
+    #    screening only ASKS Amazon what is allowed. Drafting writes into this
+    #    app's own store -- the same act as creating a draft by hand -- so it
+    #    needs "edit", not "publish". Publishing those drafts is still /submit,
+    #    gated as it always was.
+    ("/seller/find",                    None),
+    ("/seller/screen",                  None),
+    ("/seller/draft",                   "edit"),
+
     # -- variation families. Looking at candidates, the themes a product type
     #    allows, and the preview all send NOTHING to Amazon, so they are open to
     #    anyone who may see listings. /variations/apply creates a listing and
@@ -208,6 +217,7 @@ FEATURE_PATHS = [
     # to their prices either.
     ("/sourcing",             "listings"),
     ("/variations",           "listings"),
+    ("/seller",               "listings"),
     ("/rows",                 "listings"),
     ("/row",                  "listings"),
     ("/live",                 "listings"),
