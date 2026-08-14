@@ -57,6 +57,26 @@ async function syncRenderMatrix(){
 
 function _syncSku(){ var e=document.getElementById('sync_sku'); return e?(e.value||'').trim():''; }
 
+// Reached FROM a listing, instead of by typing its SKU into a box on another
+// screen.
+//
+// What this screen does is genuinely useful and genuinely hard to guess at:
+// "Pull from Amazon" is the only way to bring Amazon's live copy of a listing
+// into the app and compare it field by field with ours. But it sat behind an
+// empty text box, so you had to already know a SKU, copy it from elsewhere, and
+// know that this was where it went -- which is why it read as a screen that did
+// nothing. The action belongs on the listing; the screen stays as the place the
+// comparison is shown and where account capability is reported.
+function syncForSku(sku){
+  if(!sku){ toast("No SKU for that row."); return; }
+  if(typeof navTo === "function") navTo("sync");
+  var box = document.getElementById("sync_sku");
+  if(box){ box.value = sku; }
+  // Run the check straight away: arriving at a screen that still needs a button
+  // pressed is most of what made this hard to find in the first place.
+  if(typeof syncCheckStatus === "function") syncCheckStatus();
+}
+
 async function syncCheckStatus(){
   var sku=_syncSku(); var pill=document.getElementById('sync_pill');
   if(!sku){ pill.innerHTML=''; return; }

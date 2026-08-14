@@ -3310,6 +3310,13 @@ def build_app(backend=None):
     _price_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
 
+    # Adding a colour or size to something already listed. Queues the new
+    # product; the family itself is built on the Variations screen once it is
+    # live, because Amazon can only build one over listings that exist.
+    import routes.variant_routes as _variant_routes
+    _variant_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+
     # The source repricer. Dry run only: it decides and records, and nothing
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes

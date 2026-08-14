@@ -685,7 +685,7 @@
 <div id="sec_sync" class="wspanel">
   <div class="wstoolbar bleed">
     <div><h2>Amazon &harr; App sync</h2>
-    <div class="sub">Pull Amazon's live copy into the app, or push app copy to Amazon. Both directions PROPOSE a side-by-side &mdash; nothing is overwritten without your per-field choice. Push is locked until you unlock it, refuses to run through borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
+    <div class="sub">Compare one listing against Amazon's live copy, field by field, and choose which side wins for each. <b>Easiest way in:</b> press the <i class="ti ti-arrows-exchange"></i> button on any live listing &mdash; it opens this screen with that SKU already filled in. Nothing is overwritten without your per-field choice; push is locked until you unlock it, refuses borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
   </div>
 
   <h4 style="margin:0 0 8px">Account capability (live)</h4>
@@ -766,6 +766,8 @@
 <script src="/static/js/inputqueue.js?v={{ ASSET_V }}"></script>
 <!-- Changing a live selling price: preview, then send exactly that. -->
 <script src="/static/js/priceedit.js?v={{ ASSET_V }}"></script>
+<!-- Adding a colour or size to a product that is already listed. -->
+<script src="/static/js/addvariant.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>

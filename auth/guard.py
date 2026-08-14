@@ -156,6 +156,12 @@ RULES = [
     ("/listing/price/preview",          None),
     ("/listing/price/apply",            "publish"),
 
+    # -- adding a variant. Planning reads and sends nothing; queueing writes a
+    #    product into this workspace's own queue, which is the same act as
+    #    adding one by hand.
+    ("/variant/plan",                   None),
+    ("/variant/queue",                  "edit"),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),

@@ -203,6 +203,56 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
             return jsonify({"ok": False, "error": str(e)}), 500
         return jsonify({"ok": True, "folders": out})
 
+    @app.route("/media/zip")
+    def media_zip():
+        """Every image for one SKU, as a single zip. ?sku= is required.
+
+        Built here rather than in the browser: downloading twenty images one at
+        a time means twenty save dialogs, and a browser will block most of them
+        as an unwanted popup after the first few. One file, one dialog.
+
+        Streamed from memory rather than written to disk -- a listing's images
+        are a few megabytes, and a temporary file is one crash away from being
+        left behind.
+        """
+        import io
+        import zipfile
+        from flask import send_file
+
+        sku = (request.args.get("sku") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "no sku"}), 400
+        aid = _state.get("active_account_id", "") or ""
+        root = _account_media_root(aid)
+        # _safe_sku, and then a check that the resolved path is still INSIDE the
+        # media root: a SKU is user data, and "../../config.json" is a SKU as far
+        # as this endpoint knows.
+        sd = os.path.join(root, _safe_sku(sku))
+        if not os.path.isdir(sd):
+            return jsonify({"ok": False, "error": "no images for %s" % sku}), 404
+        if os.path.commonpath([os.path.abspath(sd), os.path.abspath(root)]) \
+                != os.path.abspath(root):
+            return jsonify({"ok": False, "error": "bad sku"}), 400
+
+        buf = io.BytesIO()
+        n = 0
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for dirpath, _dirs, filenames in os.walk(sd):
+                for fn in sorted(filenames):
+                    if fn.lower().rsplit(".", 1)[-1] not in (
+                            "png", "jpg", "jpeg", "webp", "gif"):
+                        continue
+                    full = os.path.join(dirpath, fn)
+                    # Keep the folder structure inside the zip, so A+ and
+                    # secondary images stay in their own folders when unpacked.
+                    z.write(full, os.path.relpath(full, sd))
+                    n += 1
+        if not n:
+            return jsonify({"ok": False, "error": "no images for %s" % sku}), 404
+        buf.seek(0)
+        return send_file(buf, mimetype="application/zip", as_attachment=True,
+                         download_name="%s-images.zip" % _safe_sku(sku))
+
     @app.route("/media/delete", methods=["POST"])
     def media_delete():
         b = request.get_json(force=True) or {}
