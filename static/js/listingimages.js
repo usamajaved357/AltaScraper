@@ -333,6 +333,8 @@ async function ilPushThis(url){
   IMGLIB.slots = j.slots;
   IMGLIB.isChild = !!j.is_variation_child;
   IMGLIB.pending = url;
+  // What the app made this image for, from the folder it filed it in.
+  IMGLIB.pendingMadeAs = ((IMGLIB.files||[]).find(function(f){ return f.url===url; })||{}).group || "";
   if(st) st.innerHTML = "";
   _ilSlotPicker(url);
 }
@@ -348,15 +350,33 @@ function _ilSlotPicker(url){
     + '<img src="'+_ilEsc(url)+'" style="max-height:90px;border-radius:6px;'
     + 'background:#0d1220;display:block;margin-bottom:8px">';
 
+  // An image the app generated as a SECONDARY or an A+ module cannot become the
+  // main image: those are made under rules that allow text, graphics and
+  // lifestyle scenes, which are the things Amazon suppresses a listing for on
+  // the main image. Shown but disabled, with the reason — hiding it entirely
+  // would just look like the main slot was missing.
+  const madeAs = String(IMGLIB.pendingMadeAs || "");
+  const blocked = (madeAs.indexOf("secondary") === 0)
+                    ? "the app generated this as a secondary image"
+                    : (madeAs.indexOf("aplus") === 0)
+                        ? "this is an A+ module image" : "";
+
   (IMGLIB.slots||[]).forEach(function(s){
+    const no = (s.key === "main_product_image_locator" && blocked) ? blocked : "";
     h += '<div style="display:flex;gap:9px;align-items:flex-start;font-size:11.5px;'
-      +  'padding:7px 0;border-top:1px solid #1c2531">'
+      +  'padding:7px 0;border-top:1px solid #1c2531'+(no?';opacity:.55':'')+'">'
       +  '<div style="min-width:120px"><b>'+_ilEsc(s.label)+'</b>'
       +  (s.occupied ? '<div style="font-size:10px;color:var(--warn)">has an image</div>'
                      : '<div class="cc" style="font-size:10px">empty</div>')
       +  '</div>'
-      +  '<div style="flex:1" class="cc">'+_ilEsc(s.help||"")+'</div>'
-      +  '<button class="db-chip" onclick="ilSlotSend('+jsArg(s.key)+')">Send</button>'
+      +  '<div style="flex:1" class="cc">'
+      +  (no ? '<b style="color:var(--warn)">Not allowed — '+_ilEsc(no)
+             + ', and Amazon suppresses listings whose main image carries text or '
+             + 'a scene. Use a PT slot.</b>'
+           : _ilEsc(s.help||""))
+      +  '</div>'
+      +  (no ? '<button class="db-chip" disabled title="'+_ilEsc(no)+'">Send</button>'
+            : '<button class="db-chip" onclick="ilSlotSend('+jsArg(s.key)+')">Send</button>')
       +  '</div>';
   });
   h += '</div>';
@@ -391,7 +411,8 @@ async function ilSlotSend(slotKey){
   try{
     const j = await (await fetch("/listing/image_push",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({confirmed:true, sku:IMGLIB.sku, slot:slotKey, url:url})})).json();
+      body:JSON.stringify({confirmed:true, sku:IMGLIB.sku, slot:slotKey, url:url,
+                           made_as:(IMGLIB.pendingMadeAs||"")})})).json();
     if(!j.ok){
       if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(j.error||"failed")+'</span>';
       return;

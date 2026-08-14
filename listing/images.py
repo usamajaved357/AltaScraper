@@ -124,6 +124,38 @@ def check_url(url):
     return ""
 
 
+def refuse_slot(slot_key, made_as=""):
+    """Why this image may not go in this slot, or "" if it may.
+
+    A REFUSAL, not a warning: the app knows what it made each image FOR, because
+    it files them that way -- the SKU folder root is main/concept work, and
+    "secondary" and "aplus/..." are their own shelves.
+
+    A secondary or A+ image is generated under rules that permit text, graphics,
+    lifestyle scenes and props. Those are exactly the things Amazon suppresses a
+    listing for when they appear on the MAIN image. So the app must not offer to
+    send one there -- it would be handing over an image it had itself made
+    unsuitable, and the listing would go down for it.
+
+    The other direction is left open: a main image is generated under the
+    strictest rules, so it is always acceptable as a PT image.
+    """
+    made = str(made_as or "").strip().lower()
+    if slot_key != MAIN:
+        return ""
+    if made.startswith("aplus"):
+        return ("This is an A+ module image. A+ images carry text and graphics, "
+                "which Amazon suppresses listings for when they appear on the "
+                "main image — so it cannot go in the main slot. Use a PT slot, "
+                "or generate a main image for this product.")
+    if made.startswith("secondary"):
+        return ("The app generated this as a SECONDARY image, under rules that "
+                "allow text, graphics and lifestyle scenes. Those are the things "
+                "Amazon suppresses a listing for on the MAIN image, so it cannot "
+                "go there. Send it to a PT slot, or generate a main image.")
+    return ""
+
+
 def warnings(slot_key, url, current_value="", is_variation_child=False):
     """Things worth saying before sending, that are not refusals.
 

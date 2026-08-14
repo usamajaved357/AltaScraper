@@ -191,6 +191,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         bad = _img.check_url(url)
         if bad:
             return jsonify({"ok": False, "error": bad}), 400
+        # What the app MADE this image for. The browser sends it, but the refusal
+        # is decided here -- a dropdown cannot be trusted to have withheld an
+        # option, and this one stops a listing being suppressed.
+        bad = _img.refuse_slot(slot, b.get("made_as") or "")
+        if bad:
+            return jsonify({"ok": False, "error": bad}), 400
 
         live = _live_attributes(sku, wsid, mkt)
         if live is None:

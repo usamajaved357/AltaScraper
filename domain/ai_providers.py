@@ -723,6 +723,25 @@ def generate_image(config: dict, prompt: str, reference_image="",
         return {"ok": False, "error": f"OpenRouter image failed: {str(e)[:200]}"}
 
 
+# ONE spec per product, reused by every image made from it.
+#
+# Each image used to call describe_product for itself. The vision model is not
+# deterministic, so five secondary images meant five slightly different specs --
+# one calling the handle "charcoal", the next "dark grey", one counting four
+# slots and the next five. Every image was then faithful to a DIFFERENT product,
+# which is exactly the complaint: the item changes from picture to picture.
+#
+# Cached on the reference image and title, so a batch describes the product once
+# and every image in it is built from the same words. Cleared when the app
+# restarts, which is often enough -- a product's appearance does not change while
+# the server is up.
+_SPEC_CACHE = {}
+
+
+def clear_product_spec_cache():
+    _SPEC_CACHE.clear()
+
+
 def describe_product(config: dict, image="", product_title: str = "",
                      provider: str = None, media_root: str = "") -> dict:
     """Vision AI reads the seller's ACTUAL product in fine detail so the image
@@ -735,6 +754,14 @@ def describe_product(config: dict, image="", product_title: str = "",
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No text model selected/available"}
+    # The cache key is the reference itself plus the title: same product photo,
+    # same spec, every time, for every image in the batch.
+    _key_img = image if isinstance(image, str) else repr(image)
+    _ck = (str(_key_img)[:400], str(product_title)[:200], str(model))
+    _hit = _SPEC_CACHE.get(_ck)
+    if _hit:
+        return dict(_hit, cached=True)
+
     try:
         ref = _resolve_ref_block(image, media_root)
     except ImageRefError as e:
@@ -763,20 +790,41 @@ def describe_product(config: dict, image="", product_title: str = "",
         "stripe — describe its shape, colour, thickness, and exact location.\n"
         "7. LABEL LAYOUT: describe the full top-to-bottom arrangement of everything on the front so it can be "
         "reproduced element by element in the right positions and proportions.\n"
+        "8. SCALE — HOW BIG IS IT REALLY: state the real-world size in cm or mm. Say what it is held or used "
+        "with (one hand, two hands, sits on a worktop, stands on the floor) and how it compares to a familiar "
+        "object. A model with no sense of scale renders a hand tool the size of a machine, and the picture "
+        "looks entirely convincing.\n"
+        "9. EDGES, PROFILE AND WORKING PARTS: for anything with a blade, edge, tine, prong, bristle or tooth "
+        "— is the edge straight, curved, hooked, bevelled, serrated or plain? Sharp or blunt? Single or double "
+        "sided? COUNT the teeth, tines, prongs, holes, slots or segments and give the number. If it has NONE "
+        "of a thing, say so explicitly: 'the blade is plain-edged with NO teeth and NO serrations'.\n"
+        "10. WHAT IS NOT THERE — the most important section. List what the product visibly does NOT have, "
+        "especially anything a similar product usually would: no teeth, no guard, no second handle, no strap, "
+        "no wheels, no markings on this face, no visible fixings. Describing only what IS present leaves an "
+        "image model free to add whatever it expects to see, and it adds it confidently. This section is what "
+        "stops that.\n"
         "Be exhaustive, literal and measurement-oriented — this is a reproduction spec, not a description. "
-        "Do NOT beautify, summarise, or omit anything. If something is partly unclear, give your best reading "
-        "and mark it. Write 400-650 words of precise, structured detail."
+        "Do NOT beautify, summarise, or omit anything. Never describe a feature you cannot actually see; if "
+        "something is partly unclear, say it is unclear rather than filling it in. If something is genuinely "
+        "hidden by the angle, say 'not visible in this image' rather than inferring it. "
+        "Write 450-750 words of precise, structured detail."
     )
     content = [{"type": "text", "text": f"Product title (for context): {product_title}\n\nDocument this exact product for faithful recreation, transcribing ALL label text verbatim."},
                ref]
     body = {"model": model,
             "messages": [{"role": "system", "content": sys},
                          {"role": "user", "content": content}],
-            "max_tokens": 1200}
+            "max_tokens": 1600}
     try:
         resp = _post(f"{OPENROUTER_BASE}/chat/completions", config, body, timeout=90)
         text = (resp.get("choices") or [{}])[0].get("message", {}).get("content", "")
-        return {"ok": bool(text), "description": (text or "").strip(), "provider": model}
+        _out = {"ok": bool(text), "description": (text or "").strip(), "provider": model}
+        if _out["ok"]:
+            # Only a SUCCESSFUL read is cached. Caching a failure would stick an
+            # empty spec to the product until restart, and every image after it
+            # would be generated with no spec at all.
+            _SPEC_CACHE[_ck] = _out
+        return _out
     except urllib.error.HTTPError as e:
         d = ""
         try:

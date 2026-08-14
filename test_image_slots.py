@@ -98,6 +98,26 @@ truthy("a swatch on a non-variation listing is pointless, and says so",
 check("  but is fine on a child of a family",
       I.warnings(I.SWATCH, "https://x/y.jpg", is_variation_child=True), [])
 
+print("\n=== an image the app made as SECONDARY may not become the MAIN ===")
+# A refusal, not a warning. Secondary and A+ images are generated under rules
+# that ALLOW text, graphics and lifestyle scenes -- exactly what Amazon
+# suppresses a listing for on the main image. The app knows which is which
+# because it files them that way.
+truthy("a secondary image is refused from the main slot",
+       I.refuse_slot(I.MAIN, "secondary"))
+truthy("  and says the app made it that way",
+       "generated this as a SECONDARY" in I.refuse_slot(I.MAIN, "secondary"))
+truthy("  and offers the alternative", "PT slot" in I.refuse_slot(I.MAIN, "secondary"))
+truthy("an A+ module image is refused too", I.refuse_slot(I.MAIN, "aplus/basic"))
+truthy("  naming what it is", "A+ module" in I.refuse_slot(I.MAIN, "aplus/premium"))
+check("the same secondary image is FINE as PT3",
+      I.refuse_slot("other_product_image_locator_3", "secondary"), "")
+check("  and as a swatch", I.refuse_slot(I.SWATCH, "secondary"), "")
+check("a main-image generation may be the main image",
+      I.refuse_slot(I.MAIN, ""), "")
+check("  and an uploaded file is not blocked either",
+      I.refuse_slot(I.MAIN, "main"), "")
+
 print("\n=== the patch is the shape the schema requires ===")
 p = I.build_patch("other_product_image_locator_3", "https://x/y.jpg", "A1F83G8C2ARO7P")
 check("replace, at the slot's own path", (p["op"], p["path"]),
