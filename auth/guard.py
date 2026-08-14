@@ -168,6 +168,11 @@ RULES = [
     ("/orders/list",                    None),
     ("/orders/detail",                  None),
 
+    # -- returns. Reading is read-only; uploading a file only parses it and
+    #    stores nothing, so it needs no more than seeing the figures does.
+    ("/returns/report",                 None),
+    ("/returns/upload",                 None),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),
@@ -228,6 +233,9 @@ FEATURE_PATHS = [
     # commercially-sensitive area as the sales dashboard: someone who may not
     # see revenue must not see it one order at a time either.
     ("/orders",               "sales"),
+    # Returns are revenue going back out, with what it cost. Same
+    # commercially-sensitive area as sales.
+    ("/returns",              "sales"),
     ("/ppc",                  "ppc"),
     ("/inventory",            "inventory"),
     ("/monitor",              "monitor"),
