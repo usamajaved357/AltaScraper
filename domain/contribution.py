@@ -45,7 +45,7 @@ def _f(v):
         return 0.0
 
 
-def by_product(config_path, workspace_id, marketplace, start, end):
+def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None):
     """One row per ASIN that had money move in the window, biggest revenue first.
 
     Returns (rows, totals). Every row carries its own coverage, so a product
@@ -96,8 +96,11 @@ def by_product(config_path, workspace_id, marketplace, start, end):
         a = ads.get(asin)
 
         fees = round(_f(d["referral_fees"]) + _f(d["fba_fees"]) + _f(d["other_fees"]), 2)
-        net = round(_f(d["principal"]) - fees - _f(d["refunds"])
-                    + _f(d["reimbursements"]), 2)
+        # VAT out before anything else -- it was collected, never earned. Same
+        # function the dashboard uses, so the two screens cannot disagree about
+        # what a product's revenue actually was (Rule 12).
+        vat, net_rev, basis = _sd.vat_for(d, vat_rate)
+        net = round(net_rev - fees - _f(d["refunds"]) + _f(d["reimbursements"]), 2)
 
         units = int(d["units"] or 0)
         costed = int(d["cogs_units"] or 0)
@@ -111,7 +114,10 @@ def by_product(config_path, workspace_id, marketplace, start, end):
             "asin": asin,
             "units": units,                       # shipped -- the money basis
             "units_ordered": int(s.get("units_ordered") or 0),
-            "revenue": round(_f(d["principal"]), 2),
+            "revenue": round(_f(d["principal"]), 2),   # what buyers were charged
+            "vat": vat,                                # None when nobody has said
+            "net_revenue": net_rev,                    # what is actually yours
+            "vat_basis": basis,
             "ordered_sales": round(_f(s.get("ordered_sales")), 2),
             "fees": fees,
             "refunds": round(_f(d["refunds"]), 2),
@@ -146,14 +152,19 @@ def totals_for(rows):
     t = {k: 0 for k in ("units", "units_ordered", "refund_units", "cogs_units",
                         "uncosted_units")}
     for k in ("revenue", "ordered_sales", "fees", "refunds", "reimbursements",
-              "promos", "cogs", "net_proceeds"):
+              "promos", "cogs", "net_proceeds", "net_revenue"):
         t[k] = 0.0
     for r in rows:
         for k in list(t):
             t[k] += (r.get(k) or 0)
     for k in ("revenue", "ordered_sales", "fees", "refunds", "reimbursements",
-              "promos", "cogs", "net_proceeds"):
+              "promos", "cogs", "net_proceeds", "net_revenue"):
         t[k] = round(t[k], 2)
+    # VAT stays None if it is unknown ANYWHERE -- a total that quietly counts the
+    # unknown rows as zero would understate what is owed.
+    t["vat"] = (None if any(r.get("vat") is None for r in rows)
+                else round(sum(r.get("vat") or 0 for r in rows), 2))
+    t["vat_basis"] = next((r.get("vat_basis") for r in rows if r.get("vat_basis")), "")
 
     t["products"] = len(rows)
     t["ad_spend"] = None if all(r.get("ad_spend") is None for r in rows) \
@@ -170,6 +181,19 @@ def totals_for(rows):
 def notes(rows, totals):
     """What the screen has to say out loud, so no figure is read as more than it is."""
     out = []
+    basis = totals.get("vat_basis") or ""
+    if basis == _sd.VAT_UNKNOWN:
+        out.append("VAT is not set for this account, so nothing has been taken out "
+                   "for it. If you are VAT-registered and Amazon's figures include "
+                   "VAT, every contribution here is overstated by roughly a sixth. "
+                   "Set the account's VAT rate and press Sync.")
+    elif basis == _sd.VAT_DERIVED:
+        out.append("Amazon did not itemise VAT, so it has been taken out of the "
+                   "charged amount at the account's rate. Revenue below is what "
+                   "buyers paid; contribution is worked out on the figure after VAT.")
+    elif basis == _sd.VAT_FROM_AMAZON:
+        out.append("Amazon reported VAT separately, so the revenue below is already "
+                   "net of it — nothing further has been deducted.")
     if totals.get("ad_spend") is None:
         out.append("Ad spend is not connected, so this is contribution BEFORE "
                    "advertising. On any product you advertise, the real "

@@ -146,10 +146,55 @@ check("it answers", j["ok"], True)
 check("  with the rows", len(j["rows"]), 3)
 check("  the totals", j["totals"]["products"], 3)
 check("  reporting whether ads are connected", j["ads_connected"], True)
-# By now every unit is costed AND an ad row exists, so there is nothing left to
-# warn about -- the notes list going quiet is the point of it, not a failure.
-check("  no warnings left once nothing is unknown", j["notes"], [])
+# Every unit is costed and an ad row exists, so the only thing left unknown is
+# VAT -- and it says so rather than staying quiet, which is the point.
+check("  one warning left: VAT is not configured", len(j["notes"]), 1)
+truthy("  and it says which way the number is wrong",
+       "overstated" in j["notes"][0])
 check("  and a contribution the screen can show", j["totals"]["contribution"], 71.0)
+
+
+print("\n=== VAT: taken out first, and never invented ===")
+from domain import sales_data as SD
+
+print("  -- Amazon itemised it: revenue is already net --")
+v, net, basis = SD.vat_for({"principal": 100.0, "tax": 20.0})
+check("the tax Amazon reported", v, 20.0)
+check("  revenue is left alone", net, 100.0)
+check("  basis", basis, SD.VAT_FROM_AMAZON)
+
+print("  -- no tax line, VAT-registered: it comes OUT of the charged amount --")
+v, net, basis = SD.vat_for({"principal": 120.0}, 0.20)
+check("120.00 gross at 20% -> 20.00 of VAT", v, 20.0)
+check("  and 100.00 left", net, 100.0)
+check("  basis", basis, SD.VAT_DERIVED)
+check("the classic error is NOT made (120 x 0.20 = 24.00 would be wrong)",
+      v != 24.0, True)
+
+print("  -- nobody has said: refuse to guess --")
+v, net, basis = SD.vat_for({"principal": 120.0}, None)
+check("no VAT figure", v, None)
+check("  revenue unchanged", net, 120.0)
+check("  and it is flagged as unknown", basis, SD.VAT_UNKNOWN)
+
+print("  -- a rate of 0 is a real answer: not registered --")
+v, net, basis = SD.vat_for({"principal": 120.0}, 0)
+check("zero VAT", v, 0.0)
+check("  basis says so", basis, SD.VAT_NONE)
+check("a nonsense rate is refused", SD.vat_for({"principal": 120.0}, 1.5)[2],
+      SD.VAT_UNKNOWN)
+
+print("  -- and it changes the contribution --")
+rows4, tot4 = C.by_product(CFG, WS, MKT, "2026-08-01", "2026-08-31", vat_rate=0.20)
+b4 = {r["asin"]: r for r in rows4}
+# A1: 100.00 charged -> 16.67 VAT -> 83.33 net -> - 15.00 fees - 40.00 cogs
+check("A1 VAT out of 100.00", b4[A1]["vat"], 16.67)
+check("  revenue after VAT", b4[A1]["net_revenue"], 83.33)
+check("  contribution drops by the VAT", b4[A1]["contribution"], 28.33)
+check("  which is lower than before", b4[A1]["contribution"] < 45.0, True)
+truthy("  and the screen explains which basis was used",
+       any("did not itemise" in n for n in C.notes(rows4, tot4)))
+check("the total moves too", tot4["contribution"], 41.0)
 check("no marketplace -> a clear refusal",
       Flask(__name__) and c.get("/finance/contribution").status_code, 200)
 

@@ -166,7 +166,8 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
     blocked = why_not(config_path, cfg, ws, mkt, sku, decision, now)
     if blocked:
         out = dict(decision, blocked_by=blocked)
-        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=0)
+        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=0,
+                            at=now.strftime("%Y-%m-%d %H:%M:%S"))
         return {"sku": sku, "applied": 0, "blocked_by": blocked, "decision": out}
 
     got = _al.get_item(creds, mkt, seller_id, sku, marketplace_id)
@@ -174,13 +175,15 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
         note = ("Amazon does not have this SKU" if got["status"] == _al.GONE
                 else "could not read the listing from Amazon: %s" % got["error"])
         out = dict(decision, blocked_by=note)
-        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=0)
+        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=0,
+                            at=now.strftime("%Y-%m-%d %H:%M:%S"))
         return {"sku": sku, "applied": 0, "blocked_by": note, "decision": out}
 
     patches, err = build_patches(got["attributes"], decision, marketplace_id)
     if err:
         out = dict(decision, blocked_by=err)
-        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=0)
+        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=0,
+                            at=now.strftime("%Y-%m-%d %H:%M:%S"))
         return {"sku": sku, "applied": 0, "blocked_by": err, "decision": out}
 
     res = _al.patch(creds, mkt, seller_id, sku, marketplace_id,
@@ -192,12 +195,14 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
             why += " -- " + "; ".join(
                 str(i.get("message") or "")[:120] for i in res["issues"][:3])
         out = dict(decision, blocked_by=why)
-        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=-1)
+        _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=-1,
+                        at=now.strftime("%Y-%m-%d %H:%M:%S"))
         return {"sku": sku, "applied": -1, "blocked_by": why, "decision": out}
 
     out = dict(decision, reason=(decision.get("reason", "") +
                                  " [pushed, Amazon submission %s]" % res["submission_id"]))
-    _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=1)
+    _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=1,
+                        at=now.strftime("%Y-%m-%d %H:%M:%S"))
     return {"sku": sku, "applied": 1, "blocked_by": "", "decision": out,
             "submission_id": res["submission_id"]}
 

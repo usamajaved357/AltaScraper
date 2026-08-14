@@ -103,11 +103,17 @@ def _is_known(fee_type):
     return any(k in t for k in _KNOWN_OTHER)
 
 
+# Everything Amazon calls tax on an item line. Shipping tax and gift-wrap tax are
+# VAT just the same -- collected from the buyer and owed onward -- so leaving them
+# out would understate what is owed and overstate what was kept.
+_TAX_TYPES = {"tax", "shippingtax", "giftwraptax", "shipping tax", "giftwrap tax"}
+
+
 def _blank(date, asin):
     return {"date": date, "asin": asin, "currency": "",
             "referral_fees": 0.0, "fba_fees": 0.0, "other_fees": 0.0,
             "refunds": 0.0, "refund_units": 0, "refund_fees_returned": 0.0,
-            "reimbursements": 0.0, "promos": 0.0, "principal": 0.0,
+            "reimbursements": 0.0, "promos": 0.0, "principal": 0.0, "tax": 0.0, "refund_tax": 0.0,
             "units": 0, "cogs": 0.0, "cogs_units": 0}
 
 
@@ -220,8 +226,20 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
             sku = item.get("SellerSKU")
             acc.count(d, sku, item.get("QuantityShipped") or 0, cost_lookup)
             for ch in (item.get("ItemChargeList") or []):
-                if str(ch.get("ChargeType") or "").lower() == "principal":
+                _ct = str(ch.get("ChargeType") or "").lower()
+                if _ct == "principal":
                     acc.add(d, sku, "principal", _amt(ch.get("ChargeAmount")),
+                            _cur(ch.get("ChargeAmount")))
+                # TAX. Previously dropped on the floor -- it appeared in neither
+                # revenue nor cost, so VAT was invisible in every figure the app
+                # produced. Kept now whatever it turns out to mean, because the
+                # two possibilities need telling apart and only the data can do
+                # that: a Tax line ALONGSIDE principal means principal is the
+                # ex-VAT price and this is the VAT collected on top; NO tax line
+                # on a VAT-registered account means principal is the gross price
+                # and the VAT is buried inside it. See vat_for() in sales_data.py.
+                elif _ct in _TAX_TYPES:
+                    acc.add(d, sku, "tax", _amt(ch.get("ChargeAmount")),
                             _cur(ch.get("ChargeAmount")))
             for fee in (item.get("ItemFeeList") or []):
                 ft = fee.get("FeeType")
@@ -242,10 +260,17 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
             sku = item.get("SellerSKU")
             units = abs(int(item.get("QuantityShipped") or 0))
             for ch in (item.get("ItemChargeAdjustmentList") or []):
-                if str(ch.get("ChargeType") or "").lower() == "principal":
+                _ct = str(ch.get("ChargeType") or "").lower()
+                if _ct == "principal":
                     acc.add(d, sku, "refunds", abs(_amt(ch.get("ChargeAmount"))),
                             _cur(ch.get("ChargeAmount")), units=units)
                     units = 0          # count the units once, not per charge line
+                elif _ct in _TAX_TYPES:
+                    # VAT handed back with the refund. Tracked apart from the tax
+                    # collected so neither is quietly netted into the other -- the
+                    # two belong to different VAT returns.
+                    acc.add(d, sku, "refund_tax", abs(_amt(ch.get("ChargeAmount"))),
+                            _cur(ch.get("ChargeAmount")))
             for fee in (item.get("ItemFeeAdjustmentList") or []):
                 # On a refund the fee adjustment is POSITIVE -- Amazon giving
                 # part of its commission back. Kept separate from fees charged so
@@ -304,6 +329,7 @@ def parse_events(payload, sku_to_asin=None, fallback_date=None, cost_lookup=None
 # stock that is not selling.
 _COLS = ["referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
          "refund_fees_returned", "reimbursements", "promos", "principal",
+         "tax", "refund_tax",
          "units", "cogs", "cogs_units", "currency", "source"]
 
 

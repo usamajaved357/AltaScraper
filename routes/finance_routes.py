@@ -42,7 +42,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not mkt:
             return jsonify({"ok": False, "error": "no marketplace selected"}), 400
         start, end = _range()
-        rows, totals = _contrib.by_product(CONFIG_PATH, wsid, mkt, start, end)
+        from domain import sales_data as _sd
+        rows, totals = _contrib.by_product(CONFIG_PATH, wsid, mkt, start, end,
+                                           vat_rate=_sd.vat_rate_for(_cfg, wsid))
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "start": start, "end": end,
                         "rows": rows, "totals": totals,

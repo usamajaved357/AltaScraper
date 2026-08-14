@@ -102,13 +102,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         start, end, preset = _range()
         asin = (request.args.get("asin") or "").strip() or None
 
-        cur = _sd.totals(CONFIG_PATH, wsid, mkt, start, end, asin)
+        _vat = _sd.vat_rate_for(_cfg, wsid)
+        cur = _sd.totals(CONFIG_PATH, wsid, mkt, start, end, asin, _vat)
         span = (_dt.datetime.strptime(end, "%Y-%m-%d")
                 - _dt.datetime.strptime(start, "%Y-%m-%d")).days + 1
         p_end = (_dt.datetime.strptime(start, "%Y-%m-%d") - _dt.timedelta(days=1))
         p_start = p_end - _dt.timedelta(days=span - 1)
         prev = _sd.totals(CONFIG_PATH, wsid, mkt, p_start.strftime("%Y-%m-%d"),
-                          p_end.strftime("%Y-%m-%d"), asin)
+                          p_end.strftime("%Y-%m-%d"), asin, _vat)
 
         def delta(k):
             a, b = cur.get(k), prev.get(k)
@@ -186,7 +187,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         asin = (request.args.get("asin") or "").strip() or None
         gran = (request.args.get("granularity") or "day").lower()
 
-        rows = _sd.series(CONFIG_PATH, wsid, mkt, start, end, asin)
+        rows = _sd.series(CONFIG_PATH, wsid, mkt, start, end, asin,
+                          vat_rate=_sd.vat_rate_for(_cfg, wsid))
         buckets, order = _sd.bucket(rows, gran)
 
         metrics = []
