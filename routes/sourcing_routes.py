@@ -12,8 +12,11 @@ everything that changes what it WILL do needs 'publish', which is the permission
 for pushing changes to Amazon -- and that is precisely what enrolling a SKU
 eventually causes.
 """
+import json
+
 from flask import request, jsonify
 
+from domain import source_apply as _apply
 from domain import source_fetch as _fetch
 from domain import source_repo as _repo
 from domain import source_run as _run
@@ -22,6 +25,36 @@ from domain import sourcing as _sourcing
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach the /sourcing/* routes to the existing Flask app."""
+
+    def _read_config():
+        try:
+            return json.load(open(CONFIG_PATH, encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _write_config(raw):
+        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"),
+                  indent=2, ensure_ascii=False)
+        _state["cfg"] = None            # drop the cache so the switch takes effect
+
+    def _creds_for(workspace_id, marketplace):
+        """(creds, marketplace_id, seller_id) for one account.
+
+        Read through domain/accounts.py, which every other Amazon call already
+        uses -- a second way of assembling credentials here would eventually
+        disagree with the one the rest of the app publishes through.
+        """
+        from domain import accounts as _acc
+        cfg = _cfg() if callable(_cfg) else (_cfg or {})
+        acc = None
+        for a in (cfg.get("accounts") or []):
+            if str(a.get("id")) == str(workspace_id):
+                acc = a
+                break
+        if not acc:
+            raise RuntimeError("no account called %s" % workspace_id)
+        return (_acc.account_creds(acc), _acc.marketplace_id(marketplace),
+                str(acc.get("seller_id") or ""))
 
     def _where():
         """(account_id, marketplace) for the request, defaulting to the active one."""
@@ -46,11 +79,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],
                                     d["marketplace"], d["sku"])
-            rows.append({**d, "sources": [
-                {**s, "check": c} for s, c in pairs]})
+            # The SKU's own rule travels with the row because min_price's ABSENCE
+            # is what stops it being armed, and that belongs next to the Arm
+            # button rather than in the error you get after pressing it.
+            rows.append({**d, "sources": [{**s, "check": c} for s, c in pairs],
+                         "rule": _sourcing.rule_with_defaults(
+                             _repo.rule_for(CONFIG_PATH, d["workspace_id"],
+                                            d["marketplace"], d["sku"]))})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],
                         "note": run["note"],
+                        "master_enabled": _apply.is_enabled(_cfg),
                         "rule": _sourcing.rule_with_defaults(
                             _repo.rule_for(CONFIG_PATH, wsid, mkt, "")),
                         "defaults": _sourcing.DEFAULT_RULE})
@@ -148,3 +187,54 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         run = _run.dry_run(CONFIG_PATH, wsid, mkt)
         return jsonify({"ok": True, "fetch": got, "counts": run["counts"],
                         "skus": run["skus"]})
+
+    # ---- arming ---------------------------------------------------------
+    @app.route("/sourcing/arm", methods=["POST"])
+    def sourcing_arm():
+        """Move one SKU from dry run to live, or back.
+
+        Refuses to arm without a minimum price. That is not a formality: the
+        floor is worked out FROM the supplier's cost, so a misread cost produces
+        a wrong floor just as confidently, and min_price is the only guard that
+        does not depend on the reading.
+        """
+        b = _body()
+        wsid, mkt = _where()
+        sku = (b.get("sku") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "no sku"}), 400
+        if not b.get("live"):
+            _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            return jsonify({"ok": True, "mode": "dry_run"})
+
+        rule = _sourcing.rule_with_defaults(_repo.rule_for(CONFIG_PATH, wsid, mkt, sku))
+        if rule.get("min_price") is None:
+            return jsonify({"ok": False, "error": (
+                "Set a minimum price for this SKU first. It is the one guard that "
+                "still works when a supplier's page is misread, so nothing is "
+                "armed without it.")}), 400
+        _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="live")
+        return jsonify({"ok": True, "mode": "live",
+                        "note": ("Armed. It will push at most one change every "
+                                 "%.0f hours, and never below %.2f."
+                                 % (_apply.COOLDOWN_HOURS, rule["min_price"]))})
+
+    @app.route("/sourcing/master", methods=["GET", "POST"])
+    def sourcing_master():
+        """The master switch. Off by default, and off means nothing is pushed
+        however many SKUs are armed -- one place to stop everything at once."""
+        if request.method == "GET":
+            return jsonify({"ok": True, "enabled": _apply.is_enabled(_cfg)})
+        b = _body()
+        raw = _read_config()
+        raw["repricer_enabled"] = bool(b.get("enabled"))
+        _write_config(raw)
+        return jsonify({"ok": True, "enabled": bool(b.get("enabled"))})
+
+    @app.route("/sourcing/apply", methods=["POST"])
+    def sourcing_apply():
+        """Push now for every armed SKU. Same gates as the timer, no shortcuts."""
+        wsid, mkt = _where()
+        res = _apply.run_live(CONFIG_PATH, _cfg, _creds_for,
+                              workspace_id=wsid, marketplace=mkt)
+        return jsonify({"ok": True, **res})

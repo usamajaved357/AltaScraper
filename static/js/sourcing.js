@@ -12,6 +12,7 @@
 
 let SRC_ROWS = [];
 let SRC_RULE = null;
+let SRC_MASTER = false;     // the master switch, as the SERVER reports it
 
 function _sesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -44,7 +45,52 @@ async function sourcingLoad(){
   }
   SRC_ROWS = j.rows || [];
   SRC_RULE = j.rule || j.defaults || {};
+  // Read from the server, never remembered from the last click: whether the app
+  // is currently allowed to change prices is not something to guess at.
+  try{ SRC_MASTER = !!(await (await fetch("/sourcing/master")).json()).enabled; }
+  catch(e){ SRC_MASTER = false; }
   sourcingRender(j);
+}
+
+async function sourcingMaster(on){
+  if(on && !confirm("Turn the master switch ON?\n\nArmed SKUs will then have their "
+                  + "price, stock and handling time changed on Amazon automatically. "
+                  + "SKUs still in dry run are unaffected.")) return;
+  try{
+    const j = await (await fetch("/sourcing/master",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({enabled:!!on})})).json();
+    if(!j.ok){ toast(j.error||"failed"); return; }
+    toast(j.enabled ? "Master switch ON" : "Master switch off — nothing will be pushed");
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
+async function sourcingArm(sku, live){
+  if(live && !confirm("Arm "+sku+"?\n\nFrom then on the app may change this listing's "
+                    + "price, stock and handling time on Amazon by itself.")) return;
+  try{
+    const j = await (await fetch("/sourcing/arm",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku:sku, live:!!live})})).json();
+    if(!j.ok){ toast(j.error||"Could not arm"); return; }
+    toast(j.note || (j.mode==="live" ? "Armed" : "Back to dry run"));
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
+async function sourcingMinPrice(sku){
+  const v = prompt("Lowest price you will ever sell "+sku+" at.\n\nThis is the one "
+                 + "guard that still works if a supplier's page is misread, so the "
+                 + "app will not arm a SKU without it.");
+  if(v===null) return;
+  try{
+    const j = await (await fetch("/sourcing/rules",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({sku:sku, rule:{min_price: v===""? null : parseFloat(v)}})})).json();
+    if(!j.ok){ toast(j.error||"failed"); return; }
+    toast("Minimum price saved"); sourcingLoad();
+  }catch(e){ toast(String(e)); }
 }
 
 function sourcingRender(j){
@@ -52,21 +98,39 @@ function sourcingRender(j){
   const c = j.counts || {};
   let h = "";
 
-  // The standing statement of what this screen is NOT doing. It sits at the top
-  // rather than in a footnote because "is this live?" is the only question that
-  // really matters while it is being set up.
-  h += '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
-    +  'border:1px solid #26403a;background:#10231f;border-radius:6px">'
-    +  '<b>Dry run.</b> Nothing here changes a live listing. The app reads your '
-    +  'suppliers every 4 hours, works out what it would do, and writes it down. '
-    +  'Read this for a while before it is armed &mdash; if a decision looks wrong '
-    +  'here, it would have been wrong on Amazon.</div>';
+  // The standing statement of what the app is doing to real listings right now.
+  // It sits at the top rather than in a footnote because "is this live?" is the
+  // only question that really matters, and the answer must never be a guess.
+  const live = SRC_ROWS.filter(function(r){ return r.mode==="live"; }).length;
+  if(SRC_MASTER && live){
+    h += '<div style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
+      +  'border:1px solid #4a2323;background:#2a1212;border-radius:6px">'
+      +  '<b style="color:#e88a8a">Live.</b> '+live+' SKU'+(live===1?" is":"s are")
+      +  ' armed and can have their price, stock and handling time changed on '
+      +  'Amazon without anyone watching. At most one change each per 4 hours, '
+      +  'and never below the minimum price you set. '
+      +  '<button class="db-chip" onclick="sourcingMaster(false)" '
+      +  'style="margin-left:6px">Stop everything</button></div>';
+  } else {
+    h += '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
+      +  'border:1px solid #26403a;background:#10231f;border-radius:6px">'
+      +  '<b>Dry run.</b> Nothing here changes a live listing. The app reads your '
+      +  'suppliers every 4 hours, works out what it would do, and writes it down. '
+      +  'Read this for a while before it is armed &mdash; if a decision looks wrong '
+      +  'here, it would have been wrong on Amazon.'
+      +  (SRC_MASTER ? ' The master switch is on, but no SKU is armed yet.'
+                     : ' The master switch is off.')
+      +  '</div>';
+  }
 
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
     +  '<button class="db-chip" onclick="sourcingCheckNow(this)">'
     +  '<i class="ti ti-refresh"></i> Re-read suppliers now</button>'
     +  '<button class="db-chip" onclick="sourcingAddPrompt()">'
     +  '<i class="ti ti-plus"></i> Enrol a SKU</button>'
+    +  '<button class="db-chip" onclick="sourcingMaster('+(SRC_MASTER?"false":"true")+')">'
+    +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Master switch: ON'
+                   : '<i class="ti ti-lock"></i> Master switch: off')+'</button>'
     +  '<span class="cc" style="font-size:11.5px;align-self:center">'
     +  (c.update||0)+' would change &middot; '+(c.out_of_stock||0)+' would go out of stock &middot; '
     +  (c.none||0)+' unchanged'
@@ -108,6 +172,10 @@ function sourcingRow(r, i){
       +  (d.lead_days!=null ? ' &middot; '+d.lead_days+'d' : '')+'</span>';
   }
   h += '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
+    +  (r.mode==="live"
+        ? '<button class="db-chip" style="background:#3a1b1b;color:#e88a8a" '
+          + 'onclick="sourcingArm('+_sarg(r.sku)+',false)">Armed &mdash; disarm</button>'
+        : '<button class="db-chip" onclick="sourcingArm('+_sarg(r.sku)+',true)">Arm</button>')
     +  '<button class="db-chip" onclick="sourcingUnenrol('+_sarg(r.sku)+')">Remove</button>'
     +  '</div>';
 
@@ -144,6 +212,16 @@ function sourcingRow(r, i){
   h += '<div style="margin-top:7px"><button class="db-chip" '
     +  'onclick="sourcingAddSourcePrompt('+_sarg(r.sku)+')">'
     +  '<i class="ti ti-plus"></i> Add a supplier link</button></div>';
+  // The minimum price is shown whether or not it is set, because its ABSENCE is
+  // the reason a SKU cannot be armed, and that has to be visible at the point of
+  // trying rather than only in the error message afterwards.
+  const mp = (r.rule||{}).min_price;
+  h += '<div class="cc" style="font-size:11.5px;margin-top:7px">Never sell below: '
+    +  (mp==null
+        ? '<b style="color:#e8c66a">not set</b> — required before this SKU can be armed'
+        : '<b>'+_smoney(mp)+'</b>')
+    +  ' <button class="db-chip" onclick="sourcingMinPrice('+_sarg(r.sku)+')">'
+    +  (mp==null?'Set':'Change')+'</button></div>';
   if(d.inputs_age_mins!=null){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';
