@@ -125,6 +125,61 @@ def to_item(item):
     }
 
 
+# ---- what an order actually earned -----------------------------------------
+#
+# The order total is what the buyer paid, which is not what you keep. Three
+# things come out of it and each is a different kind of certainty:
+#
+#   Amazon's referral fee   a PERCENTAGE, known only approximately here. The
+#                           exact figure arrives later in the finance records,
+#                           per shipment. This is an estimate and is labelled as
+#                           one.
+#   the stock               from domain/cogs.py -- the SKU carries it, or you
+#                           typed it. NOT KNOWN for hand-made SKUs, and unknown
+#                           is not zero.
+#   VAT                     already excluded: Amazon reports the order total
+#                           ex-VAT on these accounts (measured: Tax arrives as
+#                           its own charge, 20% on top of Principal).
+#
+# THE RULE THAT KEEPS THIS HONEST: if the cost of any line is unknown, the
+# order's profit is NOT shown. A partial cost only ever makes an order look
+# better than it was, and the one order whose cost is missing is exactly the one
+# somebody would use to justify buying more.
+DEFAULT_REFERRAL_RATE = 0.15
+
+
+def profit_for(items, order_total, cost_of, referral_rate=None):
+    """(profit, margin_pct, note) for one order, or (None, None, why).
+
+    `cost_of` is a function sku -> (cost_or_None, source), which is
+    domain/cogs.lookup -- so the SKU costs, the manual overrides and their
+    precedence are decided in exactly one place (Rule 12).
+    """
+    if order_total is None:
+        return None, None, "Amazon has not released this order's total yet"
+    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
+
+    cogs, unknown = 0.0, []
+    for it in items or []:
+        sku = str((it or {}).get("sku") or "")
+        qty = int((it or {}).get("qty") or 0) or 1
+        cost, _src = cost_of(sku) if cost_of else (None, "")
+        if cost is None:
+            unknown.append(sku or "(no sku)")
+        else:
+            cogs += float(cost) * qty
+    if unknown:
+        return None, None, ("no cost recorded for %s, so this order's profit "
+                            "cannot be worked out" % ", ".join(unknown[:3]))
+
+    fees = round(float(order_total) * rate, 2)
+    profit = round(float(order_total) - fees - cogs, 2)
+    margin = (round(profit / float(order_total) * 100, 1)
+              if float(order_total) else None)
+    return profit, margin, ("estimated: Amazon's exact fee for this order "
+                            "arrives with the finance records")
+
+
 def sort_rows(rows):
     """Newest first, across every account.
 

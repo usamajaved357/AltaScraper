@@ -120,10 +120,27 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except Exception:
                 return None
 
+        # PROFIT AND MARGIN ARE CARDS TOO.
+        #
+        # They were already being calculated -- totals carried profit 80.11,
+        # margin_pct 20.0, cogs 215.78 -- and the cards showed only revenue,
+        # orders, units and ad spend. So the screen computed the one number the
+        # business actually runs on and then did not display it, and "I cannot
+        # see the profit margin on the sales tab" was exactly right.
+        #
+        # Placed after revenue and before the volume counts, because that is the
+        # order the question gets asked in: what came in, what was left, on what
+        # margin, off how many units.
         cards = []
         for key, label, kind in (("ordered_sales", "Revenue", "money"),
+                                 ("net_revenue", "Net of VAT", "money"),
+                                 ("profit", "Profit", "money"),
+                                 ("margin_pct", "Margin", "pct"),
+                                 ("cogs", "Stock cost", "money"),
+                                 ("total_fees", "Amazon fees", "money"),
                                  ("orders", "Orders", "count"),
                                  ("units", "Units", "count"),
+                                 ("refunds", "Refunds", "money"),
                                  ("spend", "Ad Spend", "money")):
             cards.append({"key": key, "label": label, "kind": kind,
                           "value": cur.get(key), "previous": prev.get(key),

@@ -98,9 +98,24 @@ function variationsRender(q){
   }
 
   h += '<div style="max-height:360px;overflow:auto;border:1px solid #1c2531;border-radius:6px">';
+  // ONCE ONE IS PICKED, ONLY ITS OWN KIND CAN JOIN IT.
+  //
+  // Amazon only groups products of the same type, and the screen let you tick a
+  // ceiling light and a tow hitch and only objected three steps later, after
+  // you had named the family and written a title. The rule is known up front,
+  // so it belongs up front -- greyed out with the reason, not hidden, because
+  // silently removing something you were looking for is its own confusion.
+  const pickedType = (function(){
+    if(!VARS.picked.length) return "";
+    const first = (VARS.items||[]).filter(x => x.sku === VARS.picked[0])[0];
+    return (first && first.product_type) || "";
+  })();
+
   (VARS.items||[]).forEach(function(it){
     const on = VARS.picked.indexOf(it.sku) >= 0;
-    const inFamily = !!it.parent_sku;
+    const wrongType = !!(pickedType && it.product_type
+                         && it.product_type !== pickedType && !on);
+    const inFamily = !!it.parent_sku || wrongType;
     h += '<label style="display:flex;gap:9px;align-items:center;font-size:11.5px;'
       +  'padding:6px 8px;border-top:1px solid #1c2531;cursor:'+(inFamily?'not-allowed':'pointer')+';'
       +  (on?'background:#12222c':'')+'">'
@@ -121,9 +136,12 @@ function variationsRender(q){
       +  _vesc(it.title||"(no title)")+'</span>'
       +  '<code class="cc" style="font-size:10px">'+_vesc(it.sku)+'</code></span>'
       +  (it.product_type ? '<span class="cc">'+_vesc(it.product_type)+'</span>' : '')
-      +  (inFamily
+      +  (it.parent_sku
           ? '<span class="db-chip" style="opacity:.7" title="Amazon allows one parent per child">already in '+_vesc(it.parent_sku)+'</span>'
-          : '')
+          : wrongType
+            ? '<span class="db-chip" style="opacity:.7" title="Amazon only groups products of the same type, so this cannot join a '
+              + _vesc(pickedType) + ' family">not a ' + _vesc(pickedType) + '</span>'
+            : '')
       +  '</label>';
   });
   h += '</div>';
@@ -134,6 +152,22 @@ let _varTimer=null;
 function variationsFilter(v){
   clearTimeout(_varTimer);
   _varTimer = setTimeout(function(){ variationsLoad(v); }, 200);
+}
+
+// Narrow the theme list as you type. Rebuilds the options rather than filtering
+// the DOM, so the selected value survives and the counts stay honest.
+function variationsThemeFilter(q){
+  const sel = document.getElementById("var_theme");
+  if(!sel) return;
+  const want = String(q || "").trim().toUpperCase();
+  const keep = want ? VARS.themes.filter(t => t.indexOf(want) >= 0) : VARS.themes;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— choose —</option>'
+    + keep.map(t => '<option value="'+_vesc(t)+'"'+(t===cur?' selected':'')+'>'
+                    + _vesc(t)+'</option>').join("");
+  if(want && !keep.length){
+    sel.innerHTML = '<option value="">nothing matches “'+_vesc(q)+'”</option>';
+  }
 }
 
 function variationsPick(sku, on){
@@ -149,11 +183,17 @@ async function variationsStep2(){
   const pt = first.product_type || "";
   host.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> Reading what this product type allows…</div>';
 
+  // Ask by SKU as well as by type. The list this screen reads from does not
+  // always carry a product type, and when it did not the request was simply
+  // never made -- leaving an empty dropdown, no theme to pick, and no way
+  // forward. The server can work the type out from the SKUs.
   let th = {themes: [], checked: false, note: ""};
-  if(pt){
-    try{ th = await (await fetch("/variations/themes?product_type="+encodeURIComponent(pt))).json(); }
-    catch(e){}
-  }
+  try{
+    const qs = (pt ? "product_type=" + encodeURIComponent(pt) + "&" : "")
+             + "skus=" + encodeURIComponent(VARS.picked.join(","));
+    th = await (await fetch("/variations/themes?" + qs)).json();
+    if(th && th.product_type && !pt) pt = th.product_type;
+  }catch(e){}
   VARS.themes = th.themes || [];
 
   let h = _varSteps(2);
@@ -176,11 +216,31 @@ async function variationsStep2(){
     + 'Only the options Amazon allows for this kind of product are listed, because '
     + 'anything else is rejected or, worse, accepted and ignored.</div>';
   if(VARS.themes.length){
-    h += '<select id="var_theme" onchange="variationsPreview()" '
-      + 'style="font-size:12px;padding:5px 8px;min-width:220px">'
-      + '<option value="">— choose —</option>'
-      + VARS.themes.map(t => '<option value="'+_vesc(t)+'">'+_vesc(t)+'</option>').join("")
-      + '</select>';
+    // SEARCHABLE, because LIGHT_FIXTURE alone allows 774 of these. A dropdown
+    // with 774 entries is a list you scroll past, not one you choose from —
+    // and picking the wrong grouping is not a loud failure: Amazon accepts a
+    // theme the products do not actually vary by and the family just does not
+    // work.
+    //
+    // The common ones first: what most products actually differ by.
+    const COMMON = ["COLOR", "SIZE", "COLOR/SIZE", "SIZE/COLOR", "STYLE",
+                    "MATERIAL", "PATTERN", "COLOR/STYLE", "SIZE/STYLE"];
+    const common = VARS.themes.filter(t => COMMON.indexOf(t) >= 0);
+    h += '<input id="var_theme_q" placeholder="Type to narrow — colour, size…" '
+      +  'oninput="variationsThemeFilter(this.value)" '
+      +  'style="font-size:12px;padding:5px 8px;min-width:220px;margin-right:6px">'
+      +  '<select id="var_theme" onchange="variationsPreview()" '
+      +  'style="font-size:12px;padding:5px 8px;min-width:260px">'
+      +  '<option value="">— choose —</option>'
+      +  (common.length
+          ? '<optgroup label="Most products differ by one of these">'
+            + common.map(t => '<option value="'+_vesc(t)+'">'+_vesc(t)+'</option>').join("")
+            + '</optgroup>'
+          : '')
+      +  '<optgroup label="Everything this product type allows ('
+      +  VARS.themes.length + ')">'
+      +  VARS.themes.map(t => '<option value="'+_vesc(t)+'">'+_vesc(t)+'</option>').join("")
+      +  '</optgroup></select>';
   } else {
     h += '<input id="var_theme" placeholder="e.g. SIZE" onchange="variationsPreview()" '
       + 'style="font-size:12px;padding:5px 8px;min-width:220px">';

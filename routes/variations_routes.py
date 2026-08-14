@@ -113,6 +113,30 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         """The account's live listings, with what they vary by, for picking from."""
         _acc, wsid, mkt = _scope()
         q = (request.args.get("q") or "").strip().lower()
+
+        # THE PRODUCT TYPE, WHICH THE SNAPSHOT DOES NOT CARRY.
+        #
+        # This screen dead-ended here. The live snapshot holds sku, asin, price,
+        # image and so on but NO product type, so every candidate came back with
+        # product_type "" -- and step 2 asks /variations/themes for the themes a
+        # product type allows, which answered "no product type", left the
+        # dropdown empty, and stopped the flow dead with nothing on screen
+        # explaining why.
+        #
+        # The app already knows: every one of the 55 listings has a product_type
+        # in its own table. Joining it here costs one query instead of 55 calls
+        # to Amazon.
+        types = {}
+        try:
+            from data import db as _db
+            for r in _db.get_db(CONFIG_PATH).execute(
+                    "SELECT sku, product_type FROM listings WHERE workspace_id=? "
+                    "AND product_type IS NOT NULL AND product_type<>''",
+                    (wsid,)):
+                types[str(r["sku"])] = str(r["product_type"])
+        except Exception:
+            types = {}
+
         out = []
         for it in _live_items(wsid, mkt):
             sku = str(it.get("sku") or "").strip()
@@ -129,7 +153,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                         # does not fail loudly -- Amazon accepts it and the
                         # products quietly stop appearing.
                         "img": str(it.get("img") or ""),
-                        "product_type": str(it.get("product_type") or ""),
+                        # Snapshot first (if it ever gains one), then the app's
+                        # own record. "" only when neither knows, which the
+                        # screen can now resolve live rather than giving up.
+                        "product_type": (str(it.get("product_type") or "")
+                                         or types.get(sku, "")),
                         # Already in a family? Then it is not free to join another.
                         "parent_sku": str(it.get("parent_sku") or ""),
                         "variation_theme": str(it.get("variation_theme") or "")})
@@ -256,11 +284,43 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
 
     @app.route("/variations/themes")
     def variations_themes():
-        """Which themes a product type allows, read from its live schema."""
-        _acc, _wsid, mkt = _scope()
+        """Which themes a product type allows, read from its live schema.
+
+        Takes EITHER a product_type or the SKUs, and works out the type itself
+        when only the SKUs are known. It used to demand the type and refuse with
+        "no product type" when the screen did not have one -- and the screen
+        frequently did not, because the source it read from carries no type.
+        Refusing to answer a question the caller cannot phrase is how a flow
+        stops dead with nothing on screen to explain it.
+        """
+        acc, wsid, mkt = _scope()
         pt = (request.args.get("product_type") or "").strip()
         if not pt:
-            return jsonify({"ok": False, "error": "no product type"}), 400
+            skus = [s.strip() for s in
+                    (request.args.get("skus") or "").split(",") if s.strip()]
+            # 1. What the app already recorded.
+            if skus:
+                try:
+                    from data import db as _db
+                    row = _db.get_db(CONFIG_PATH).execute(
+                        "SELECT product_type FROM listings WHERE workspace_id=? "
+                        "AND sku=? AND product_type IS NOT NULL AND product_type<>''",
+                        (wsid, skus[0])).fetchone()
+                    if row:
+                        pt = str(row["product_type"])
+                except Exception:
+                    pass
+            # 2. Failing that, ask Amazon for the listing itself. One call, and
+            #    only when the cheap answer was not there.
+            if not pt and skus:
+                live = _live_attributes(skus[0], wsid, mkt)
+                pt = str((live or {}).get("product_type") or "")
+        if not pt:
+            return jsonify({"ok": False, "error": (
+                "Could not work out what kind of product this is, so the "
+                "groupings Amazon allows for it cannot be listed. Sync the "
+                "Listings screen, or open the listing once so its product type "
+                "is recorded.")}), 400
         sch = _schema(pt, mkt)
         if sch is None:
             return jsonify({"ok": True, "product_type": pt, "themes": [],

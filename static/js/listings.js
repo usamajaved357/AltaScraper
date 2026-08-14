@@ -1006,10 +1006,14 @@ function listBlock(rows, fn){
   if(LIST_VIEW !== "table") return rows.map(fn).join("");
   const rowFn = (fn === (typeof liveTile === "function" ? liveTile : null))
                 ? liveTableRow : tableRow;
+  // COGS gets its own column, and it is EDITABLE. What a thing cost is the one
+  // number every profit figure on every other screen is built from, and it was
+  // only visible by opening a listing. Click the cell, type, done.
   return `<div class="card ltwrap"><table class="lt"><thead><tr>
       <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
-      <th>Price</th><th>Handling</th><th>Status</th><th>Compliance</th>
-      <th style="width:120px">Actions</th></tr></thead><tbody>`
+      <th>Price</th><th title="What the stock cost you. Read from the SKU where the SKU carries it; click to type your own.">COGS</th>
+      <th>Handling</th><th>Status</th><th>Compliance</th>
+      <th style="width:150px">Actions</th></tr></thead><tbody>`
     + rows.map(rowFn).join("") + `</tbody></table></div>`;
 }
 
@@ -1053,6 +1057,7 @@ function tableRow(r){
     <td><span class="ttl pii">${esc(r.title||'(no title)')}</span>
         ${r.brand?`<span class="brand pii">${esc(r.brand)}</span>`:''}</td>
     <td class="price">${price}</td>
+    ${cogsCell(r)}
     <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
     <td>${_statusPill(r.status)}</td>
     <td>${_compCell(r)}</td>
@@ -1082,6 +1087,7 @@ function liveTableRow(it){
     <td><span class="asin">${esc(it.asin||'')}</span><br><span class="sku pii">${esc(it.sku||'')}</span></td>
     <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span></td>
     <td class="price">${price}</td>
+    ${cogsCell(it)}
     <td><span class="cc">—</span></td>
     <td><span class="badge b-LIVE">LIVE</span></td>
     <td>${comp}</td>
