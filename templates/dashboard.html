@@ -250,6 +250,10 @@
       <div id="sales_today"></div>
       <div id="sales_cards" class="stat-row"></div>
       <div id="sales_note"></div>
+      <!-- Shape first, then which products made it, then the full grid. Reading
+           order matches the questions people actually ask, in that order. -->
+      <div id="sales_charts"></div>
+      <div id="sales_breakdown"></div>
       <div id="sales_grid"></div>
     </div>
 
@@ -742,6 +746,7 @@
      four older "use as main" call sites now share. -->
 <script src="/static/js/listingimages.js?v={{ ASSET_V }}"></script>
 <!-- Sales dashboard: stat cards + the metrics x dates grid. -->
+<script src="/static/js/salescharts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>

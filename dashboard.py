@@ -2189,9 +2189,16 @@ def _estimate_profit(price, cogs, referral_rate=0.15):
     referral = price * referral_rate
     net = price - float(cogs) - referral
     margin = (net / price) if price else 0
+    # MARGIN and ROI answer different questions and the card only ever showed the
+    # first. Margin is "how much of the sale price do I keep" -- it decides
+    # whether a price is healthy. ROI is "how hard is my cash working" -- it
+    # decides what to buy next, and on cheap stock it is a far bigger number:
+    # 9.50 of goods sold at 18.24 keeps 14.6% margin and returns 28% on the cash.
+    roi = (net / float(cogs)) if float(cogs) else None
     return {"price": round(price, 2), "cogs": round(float(cogs), 2),
             "referral": round(referral, 2), "net": round(net, 2),
-            "margin": round(margin * 100, 1)}
+            "margin": round(margin * 100, 1),
+            "roi": (round(roi * 100, 1) if roi is not None else None)}
 
 
 

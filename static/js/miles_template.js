@@ -1228,7 +1228,15 @@ function liveTile(it){
     // with alpha suffixes appended (mcol+"55"), which forced them to be literal
     // and locked them out of the theme; as classes they follow the Orbit tokens.
     var mcls = it.profit.margin>=25?'tone-ok':(it.profit.margin>=10?'tone-warn':'tone-bad');
-    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}">${it.profit.margin}% · ${CUR_SYMBOL}${it.profit.net}</span>`;
+    // The chip said "14.6%" and never said of WHAT. Margin is the share of the
+    // sale price you keep; ROI is what the cash returned. They are different
+    // numbers answering different questions -- margin says whether the price is
+    // healthy, ROI says what to buy more of -- so both are shown and both are
+    // labelled, rather than one bare percentage that could be either.
+    var roiHtml = (it.profit.roi === null || it.profit.roi === undefined) ? ''
+      : ` · <span title="Return on the cash: profit ÷ what the stock cost">ROI ${it.profit.roi}%</span>`;
+    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}
+Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale price you keep">margin ${it.profit.margin}%</span>${roiHtml} · ${CUR_SYMBOL}${it.profit.net}</span>`;
   } else {
     profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
   }

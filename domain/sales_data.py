@@ -328,6 +328,48 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
     return out
 
 
+def breakdown(config_path, workspace_id, marketplace, start, end, group="asin"):
+    """Sales per product for a range, optionally rolled up to the PARENT.
+
+    group='asin'   -> one row per child ASIN, which is the thing that sells
+    group='parent' -> variations grouped, so a parent with five children reads as
+                      one product rather than five unrelated ones
+
+    parent_asin has been stored on every row since the sales report was first
+    parsed and has never been shown anywhere. A t-shirt in six sizes looked like
+    six weak products instead of one strong one, which is the opposite of the
+    conclusion the numbers support.
+    """
+    conn = _db.get_db(config_path)
+    # COALESCE, not parent_asin alone: a product with no variations has an empty
+    # parent, and grouping on that would collapse every standalone product in the
+    # account into a single nameless row.
+    key = ("CASE WHEN COALESCE(parent_asin,'')<>'' THEN parent_asin ELSE asin END"
+           if group == "parent" else "asin")
+    rows = conn.execute(
+        "SELECT %s k, MAX(COALESCE(parent_asin,'')) parent_asin, "
+        "  COUNT(DISTINCT asin) children, "
+        "  SUM(COALESCE(units,0)) units, SUM(COALESCE(ordered_sales,0)) revenue, "
+        "  SUM(COALESCE(sessions,0)) sessions, SUM(COALESCE(page_views,0)) page_views, "
+        "  SUM(COALESCE(order_items,0)) orders, MAX(currency) currency "
+        "FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+        "  AND date>=? AND date<=? AND asin<>'*' "
+        "GROUP BY k ORDER BY revenue DESC, units DESC, k" % key,
+        (workspace_id, marketplace, start, end)).fetchall()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        u, s = d["units"] or 0, d["sessions"] or 0
+        # Recomputed from the totals, never averaged from the daily rates: the
+        # mean of seven daily conversion rates is not the week's conversion rate,
+        # and the gap widens the more the daily traffic varies.
+        d["conversion"] = round(u / s * 100, 2) if s else None
+        d["avg_price"] = round((d["revenue"] or 0) / u, 2) if u else None
+        out.append(d)
+    return out
+
+
 def products(config_path, workspace_id, marketplace, start, end):
     """The ASINs that actually sold in a range, biggest first.
 

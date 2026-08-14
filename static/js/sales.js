@@ -114,6 +114,151 @@ function _sQuery(){
   return q.join("&");
 }
 
+// ---- per-product breakdown ------------------------------------------------
+// Which products the period was actually made of. The dashboard could filter TO
+// one product but never showed them side by side, so "how did we do" could be
+// answered and "what did it" could not.
+let SALES_BD = {group: "asin", rows: [], sort: "revenue", desc: true};
+
+function salesBdGroup(g){ SALES_BD.group = g; salesLoadBreakdown(); }
+function salesBdSort(k){
+  if(SALES_BD.sort === k) SALES_BD.desc = !SALES_BD.desc;
+  else { SALES_BD.sort = k; SALES_BD.desc = true; }
+  salesDrawBreakdown();
+}
+
+async function salesLoadBreakdown(){
+  const host = document.getElementById("sales_breakdown");
+  if(!host) return;
+  host.innerHTML = '<div class="cc" style="padding:14px"><span class="genspin"></span> Loading products…</div>';
+  try{
+    const j = await (await fetch("/sales/breakdown?"+_sQuery()
+                                 +"&group="+encodeURIComponent(SALES_BD.group))).json();
+    if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'
+      + _sEsc((j&&j.error)||"Could not load") + '</div>'; return; }
+    SALES_BD.rows = j.rows || [];
+    SALES_BD.meta = j;
+    salesDrawBreakdown();
+  }catch(e){
+    host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sEsc(String(e))+'</div>';
+  }
+}
+
+const _BD_COLS = [
+  {k:"k",          t:"Product",    kind:"text"},
+  {k:"units",      t:"Units",      kind:"int"},
+  {k:"revenue",    t:"Revenue",    kind:"money"},
+  {k:"avg_price",  t:"Avg price",  kind:"money"},
+  {k:"orders",     t:"Orders",     kind:"int"},
+  {k:"sessions",   t:"Sessions",   kind:"int"},
+  {k:"conversion", t:"Conversion", kind:"pct"},
+];
+
+function salesDrawBreakdown(){
+  const host = document.getElementById("sales_breakdown");
+  const m = SALES_BD.meta || {};
+  let h = '<div style="display:flex;align-items:center;gap:8px;margin:6px 0 8px">'
+    + '<div style="font-size:12.5px;font-weight:600">By product</div>'
+    + '<div class="mktswitch">'
+    + '<button class="mktbtn'+(SALES_BD.group==="asin"?" on":"")+'" onclick="salesBdGroup(\'asin\')">Each ASIN</button>'
+    + '<button class="mktbtn'+(SALES_BD.group==="parent"?" on":"")+'" onclick="salesBdGroup(\'parent\')">Grouped by parent</button>'
+    + '</div>'
+    + '<span class="cc" style="font-size:11px">'+(SALES_BD.rows.length)+' product'
+    + (SALES_BD.rows.length===1?'':'s')
+    + (SALES_BD.group==="parent" ? ' — variations of one product counted together' : '')
+    + '</span></div>';
+
+  if(!SALES_BD.rows.length){
+    h += '<div class="cc" style="padding:14px;border:1px dashed #2a3446;border-radius:6px;font-size:12px">'
+      + _sEsc(m.note || "Nothing yet.") + '</div>';
+    host.innerHTML = h; return;
+  }
+
+  const dir = SALES_BD.desc ? -1 : 1;
+  const rows = SALES_BD.rows.slice().sort(function(a,b){
+    let x=a[SALES_BD.sort], y=b[SALES_BD.sort];
+    if(x===null||x===undefined) return 1;      // unknown is not "smallest"
+    if(y===null||y===undefined) return -1;
+    if(typeof x==="string") return dir*(x<y?1:x>y?-1:0);
+    return dir*(x-y);
+  });
+
+  h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:640px"><thead><tr>';
+  _BD_COLS.forEach(function(c){
+    h += '<th style="text-align:'+(c.kind==="text"?"left":"right")+';font-size:11px;'
+      +  'cursor:pointer;white-space:nowrap;padding:6px 8px" onclick="salesBdSort('+jsArg(c.k)+')">'
+      +  _sEsc(c.t) + (SALES_BD.sort===c.k ? (SALES_BD.desc?" ▾":" ▴") : "") + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+  rows.forEach(function(r){
+    h += '<tr>';
+    _BD_COLS.forEach(function(c){
+      const v = r[c.k];
+      let cell;
+      if(c.kind==="text"){
+        cell = '<a href="'+_sEsc(_dpUrl(r.k))+'" target="_blank" rel="noopener" '
+             + 'title="Open on Amazon">'+_sEsc(r.k)+'</a>';
+        if(SALES_BD.group==="parent" && (r.children||0) > 1){
+          cell += '<span class="cc" style="font-size:10px;margin-left:6px">'
+                + r.children+' variations</span>';
+        }
+      } else if(v===null||v===undefined){ cell = '<span class="cc">—</span>'; }
+      else if(c.kind==="money") cell = Number(v).toFixed(2);
+      else if(c.kind==="pct")   cell = Number(v).toFixed(2)+"%";
+      else cell = String(Math.round(v));
+      h += '<td style="text-align:'+(c.kind==="text"?"left":"right")+';white-space:nowrap;'
+        +  'padding:5px 8px">'+cell+'</td>';
+    });
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  host.innerHTML = h;
+}
+
+// The shape of the period, before the table of numbers.
+//
+// Four charts rather than one with four lines: they do not share a unit, and two
+// series on one scale means the crossings look meaningful when they are an
+// artefact of the axis. Each is drawn from the SAME series the grid below shows,
+// so a shape and a number can never disagree.
+function salesDrawCharts(ser){
+  const host = document.getElementById("sales_charts");
+  if(!host || typeof salesChart !== "function") return;
+  // `columns` is the response's name for the buckets -- day, week or month
+  // depending on the granularity picked, so the charts follow it automatically.
+  const dates = (ser && ser.columns) || [];
+  const rows  = (ser && ser.metrics) || [];
+  if(!dates.length){ host.innerHTML = ""; return; }
+
+  const byKey = {};
+  rows.forEach(function(m){ byKey[m.key] = m; });
+  const pts = function(key){
+    const m = byKey[key];
+    if(!m) return null;
+    // A cell Amazon has not delivered arrives as null and STAYS null all the way
+    // to the chart, which draws a gap. Coercing it to 0 here is exactly how a
+    // chart comes to say "sales collapsed" about a day that has not landed.
+    return dates.map(function(d, i){ return {label: d, value: m.cells[i]}; });
+  };
+
+  const want = [
+    {key: "ordered_sales", title: "Revenue",       kind: "money", color: "#6ac7e8"},
+    {key: "units",         title: "Units ordered", kind: "count", color: "#8fd694"},
+    {key: "profit",        title: "Profit",        kind: "money", color: "#e8c66a"},
+    {key: "unit_session_pct", title: "Conversion", kind: "pct",   color: "#c79ae8"},
+  ];
+  let h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px">';
+  let drew = 0;
+  want.forEach(function(w){
+    const p = pts(w.key);
+    if(!p) return;
+    drew++;
+    h += salesChart(p, {title: w.title, kind: w.kind, color: w.color});
+  });
+  h += '</div>';
+  host.innerHTML = drew ? h : "";
+}
+
 async function salesReload(){
   if(SALES.busy) return;
   SALES.busy=true;
@@ -132,6 +277,7 @@ async function salesReload(){
     ]);
     SALES.data=sum; SALES.series=ser;
     salesDrawCards(sum, av);
+    salesDrawCharts(ser);
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
     // After the numbers, not before: the options depend on the range, and the

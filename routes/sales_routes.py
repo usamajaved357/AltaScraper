@@ -171,6 +171,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return jsonify({"ok": True, "start": start, "end": end,
                         "count": len(items), "products": items})
 
+    @app.route("/sales/breakdown")
+    def sales_breakdown():
+        """Sales per product, optionally rolled up to the parent."""
+        from domain import sales_data as _sd
+        _acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        start, end, _preset = _range()
+        group = "parent" if (request.args.get("group") or "").lower() == "parent" else "asin"
+        rows = _sd.breakdown(CONFIG_PATH, wsid, mkt, start, end, group)
+        return jsonify({"ok": True, "start": start, "end": end, "group": group,
+                        "rows": rows, "count": len(rows),
+                        "currency": (rows[0].get("currency") if rows else ""),
+                        "note": ("" if rows else
+                                 "No per-product sales in this period yet — press "
+                                 "Sync to pull them from Amazon.")})
+
     @app.route("/sales/series")
     def sales_series():
         """Metrics x dates, the shape the grid draws.

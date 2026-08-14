@@ -245,8 +245,65 @@ check("every /sales path is feature-gated", feature_for("/sales/summary"), "sale
 check("pulling from Amazon needs edit", required_permission("/sales/sync", "POST"), "edit")
 check("  but reading does not", required_permission("/sales/summary", "GET"), None)
 
+print("\n=== per-product breakdown, and the parent rollup ===")
+# parent_asin has been stored since the report was first parsed and never shown.
+# A t-shirt in six sizes read as six weak products instead of one strong one.
+from data import db as _dbmod
+_sdbd = sd
+_c = _dbmod.get_db(CFG)
+for _d, _asin, _par, _u, _rev, _sess in (
+        ("2026-08-01", "B0CHILD001", "B0PARENT01", 3, 60.0, 100),
+        ("2026-08-01", "B0CHILD002", "B0PARENT01", 2, 40.0,  50),
+        ("2026-08-02", "B0CHILD001", "B0PARENT01", 1, 20.0,  25),
+        ("2026-08-01", "B0SOLO0001", "",           4, 80.0, 200)):
+    _c.execute("INSERT OR REPLACE INTO sales_daily (workspace_id, marketplace, date, "
+               "asin, parent_asin, units, ordered_sales, sessions, order_items) "
+               "VALUES (?,?,?,?,?,?,?,?,?)",
+               (WS, MKT, _d, _asin, _par, _u, _rev, _sess, _u))
+_c.commit()
+
+by_asin = _sdbd.breakdown(CFG, WS, MKT, "2026-08-01", "2026-08-31", "asin")
+ids = [r["k"] for r in by_asin]
+# Earlier sections of this test seeded their own ASINs, so assert about the rows
+# added HERE rather than about the whole account -- a test that only passes on an
+# empty database is a test that will break the moment anything else is added.
+check("one row per child ASIN",
+      sorted(i for i in ids if i.startswith("B0")),
+      ["B0CHILD001", "B0CHILD002", "B0SOLO0001"])
+check("  no ASIN appears twice", len(ids), len(set(ids)))
+c1 = [r for r in by_asin if r["k"] == "B0CHILD001"][0]
+check("  units summed across days", c1["units"], 4)
+check("  revenue too", c1["revenue"], 80.0)
+check("  conversion is recomputed from the totals, not averaged",
+      c1["conversion"], round(4 / 125 * 100, 2))
+check("  average price from the totals", c1["avg_price"], 20.0)
+
+by_par = _sdbd.breakdown(CFG, WS, MKT, "2026-08-01", "2026-08-31", "parent")
+pids = [r["k"] for r in by_par]
+check("variations collapse into the parent",
+      sorted(i for i in pids if i.startswith("B0")), ["B0PARENT01", "B0SOLO0001"])
+check("  and the children no longer appear on their own",
+      any(i in pids for i in ("B0CHILD001", "B0CHILD002")), False)
+p = [r for r in by_par if r["k"] == "B0PARENT01"][0]
+check("  its units are the children's added up", p["units"], 6)
+check("  and its revenue", p["revenue"], 120.0)
+check("  it says how many variations", p["children"], 2)
+solo = [r for r in by_par if r["k"] == "B0SOLO0001"][0]
+check("a product with NO parent keeps its own identity", solo["units"], 4)
+check("  and is not lumped in with every other parentless product",
+      solo["children"], 1)
+_revs = [r["revenue"] or 0 for r in by_par]
+check("biggest revenue first", _revs, sorted(_revs, reverse=True))
+
+j = c.get("/sales/breakdown?preset=30d&group=parent").get_json()
+check("the endpoint answers", j["ok"], True)
+check("  honouring the grouping", j["group"], "parent")
+check("  an unknown grouping falls back to per-ASIN",
+      c.get("/sales/breakdown?preset=30d&group=nonsense").get_json()["group"], "asin")
+
 os.environ.pop("ALTASCRAPER_DB", None)
 shutil.rmtree(TMP, ignore_errors=True)
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)
