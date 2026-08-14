@@ -2114,3 +2114,157 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   text-transform:uppercase;
   color:rgb(156,163,175);
 }
+
+
+/* =====================================================================
+   RETURNS INTELLIGENCE — the Promixx report's design, in the app
+   =====================================================================
+   Taken from Promixx-USA-FBA-Returns-Intelligence-May2026.html: the same
+   six KPI cards, the same nine panels, the same type scale and spacing.
+   Its own tokens are mapped onto the app's so the page belongs here
+   rather than looking like a document someone pasted in.
+   ===================================================================== */
+#sec_returns .ri-main{ max-width:1440px; margin:0 auto; }
+
+/* Six across, as the report has them. */
+.ri-kpis{
+  display:grid;
+  grid-template-columns:repeat(6, 1fr);
+  gap:14px;
+  margin-bottom:24px;
+}
+@media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
+@media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
+
+.ri-kpi{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px 20px;
+  position:relative;
+  transition:border-color .15s ease;
+}
+.ri-kpi:hover{ border-color:var(--accent); }
+.ri-kpi .lbl{
+  font-size:11px; font-weight:500; color:var(--ink3);
+  text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;
+}
+.ri-kpi .val{ font-size:26px; font-weight:700; line-height:1.1; }
+.ri-kpi .sub{ font-size:12px; color:var(--ink2); margin-top:6px; }
+
+.ri-badge{
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:11px; font-weight:600; padding:2px 7px; border-radius:4px;
+}
+.ri-badge.red  { background:var(--red-bg);  color:var(--red); }
+.ri-badge.amber{ background:var(--warn-bg); color:var(--warn); }
+.ri-badge.teal { background:var(--accent-bg); color:var(--accent2); }
+
+.ri-2-1{ display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:24px; }
+.ri-2  { display:grid; grid-template-columns:1fr 1fr;  gap:16px; margin-bottom:24px; }
+.ri-3  { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
+@media (max-width:1000px){
+  .ri-2-1, .ri-2, .ri-3{ grid-template-columns:1fr; }
+}
+
+.ri-card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:20px;
+  overflow:hidden;
+}
+.ri-card-head{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:16px; gap:12px; flex-wrap:wrap;
+}
+.ri-card-title{ font-size:14px; font-weight:600; }
+.ri-card-meta { font-size:11px; color:var(--ink3); }
+
+/* The daily volume chart: one bar per day, tooltip on hover. */
+.ri-daily{ display:flex; align-items:flex-end; gap:2px; height:100px; padding-top:8px; }
+.ri-daily-bar{
+  flex:1; min-width:4px;
+  background:var(--accent2);
+  border-radius:2px 2px 0 0;
+  opacity:.75;
+  position:relative;
+  cursor:pointer;
+  transition:opacity .15s ease, background .15s ease;
+}
+.ri-daily-bar:hover{ opacity:1; background:var(--accent); }
+.ri-daily-bar .tip{
+  display:none; position:absolute; bottom:calc(100% + 6px); left:50%;
+  transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--line); border-radius:6px;
+  padding:6px 9px; font-size:11px; white-space:nowrap; z-index:4;
+  box-shadow:0 4px 12px rgba(0,0,0,.4);
+}
+.ri-daily-bar:hover .tip{ display:block; }
+
+/* Horizontal bars, for reasons and dispositions. */
+.ri-hbar{ margin-bottom:10px; }
+.ri-hbar-head{ display:flex; justify-content:space-between; margin-bottom:4px; gap:10px; }
+.ri-hbar-name{ font-size:12px; color:var(--ink2); }
+.ri-hbar-val { font-size:12px; font-weight:600; }
+.ri-hbar-track{ height:8px; background:var(--panel2); border-radius:4px; overflow:hidden; }
+.ri-hbar-fill { height:100%; border-radius:4px; transition:width .6s ease; }
+
+/* The nature mix: one strip, segments sized by share. */
+.ri-mini{ display:flex; height:6px; border-radius:3px; overflow:hidden;
+          background:var(--panel2); width:100%; }
+.ri-mini-seg{ height:100%; transition:width .4s ease; }
+
+.ri-legend{ display:flex; flex-direction:column; gap:8px; flex:1; }
+.ri-leg{ display:flex; align-items:center; gap:8px; font-size:12px; }
+.ri-dot{ width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+.ri-leg-label{ color:var(--ink2); flex:1; }
+.ri-leg-val{ font-weight:600; }
+.ri-leg-pct{ color:var(--ink3); font-size:11px; min-width:36px; text-align:right; }
+
+/* Customer comments, colour-coded down the left edge by what they are about. */
+.ri-comment{
+  background:var(--panel2); border-radius:6px; padding:12px 14px;
+  margin-bottom:8px; font-size:12px; line-height:1.5;
+  border-left:3px solid var(--line);
+}
+.ri-comment.quality { border-left-color:var(--red); }
+.ri-comment.listing { border-left-color:var(--warn); }
+.ri-comment.shipping{ border-left-color:#a78bfa; }
+.ri-comment.customer{ border-left-color:var(--accent2); }
+.ri-comment-meta{ font-size:10px; color:var(--ink3); margin-top:6px; }
+
+/* The insights, with a severity dot that glows for the urgent ones. */
+.ri-insight{
+  background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+  padding:14px 16px; margin-bottom:10px;
+}
+.ri-insight-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.ri-sev{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.ri-sev.high  { background:var(--red);  box-shadow:0 0 6px var(--red); }
+.ri-sev.medium{ background:var(--warn); box-shadow:0 0 6px var(--warn); }
+.ri-sev.low   { background:var(--accent2); }
+.ri-insight-title{ font-size:13px; font-weight:600; }
+.ri-insight-body { font-size:12px; color:var(--ink2); line-height:1.55; }
+.ri-insight-action{ font-size:11px; color:var(--accent2); margin-top:6px; font-weight:500; }
+
+.ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
+.ri-tag{
+  display:inline-flex; padding:3px 8px; border-radius:4px;
+  font-size:10px; font-weight:600; letter-spacing:.02em; white-space:nowrap;
+}
+.ri-tag.quality { background:var(--red-bg);  color:var(--red); }
+.ri-tag.listing { background:var(--warn-bg); color:var(--warn); }
+.ri-tag.shipping{ background:rgba(167,139,250,.15); color:#a78bfa; }
+.ri-tag.customer{ background:var(--accent-bg); color:var(--accent2); }
+
+/* PLACEHOLDER FIGURES. The layout is shown before the data exists so the
+   format can be judged -- but a sample number that looks like a real one is
+   the single worst thing this page could do, so every one of them is dimmed
+   and struck through with a label saying what it is. */
+.ri-sample{ opacity:.45; font-style:italic; }
+.ri-samplebar{
+  margin:0 0 18px; padding:10px 13px; border-radius:8px;
+  border:1px solid var(--warn-line); background:var(--warn-bg);
+  font-size:12px; line-height:1.6;
+}
