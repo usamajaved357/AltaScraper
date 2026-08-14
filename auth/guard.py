@@ -77,6 +77,13 @@ RULES = [
     ("/sourcing/candidates",            None),
     ("/sourcing",                       "publish"),
 
+    # -- variation families. Looking at candidates, the themes a product type
+    #    allows, and the preview all send NOTHING to Amazon, so they are open to
+    #    anyone who may see listings. /variations/apply creates a listing and
+    #    rewrites others, which is publishing by any measure.
+    ("/variations/apply",               "publish"),
+    ("/variations",                     None),
+
     # -- publishing to Amazon
     ("/submit/target",                  None),          # read-only: names the destination
     ("/submit",                         "publish"),
@@ -196,6 +203,7 @@ FEATURE_PATHS = [
     # with no access to listings has no business seeing what is about to happen
     # to their prices either.
     ("/sourcing",             "listings"),
+    ("/variations",           "listings"),
     ("/rows",                 "listings"),
     ("/row",                  "listings"),
     ("/live",                 "listings"),

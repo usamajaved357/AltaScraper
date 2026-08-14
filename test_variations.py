@@ -120,6 +120,93 @@ check("nothing in common falls back to the first",
       V.suggest_parent_sku([kid("XX"), kid("ZZZZ")]), "XX-PARENT")
 check("no children, no suggestion", V.suggest_parent_sku([]), "")
 
+print("\n=== the endpoints: preview decides, apply sends ===")
+import os, json, tempfile, shutil
+from flask import Flask
+import routes.variations_routes as vr
+
+TMP = tempfile.mkdtemp(prefix="altavar_")
+CFG = os.path.join(TMP, "config.json")
+json.dump({"accounts": [{"id": "jack_uk", "seller_id": "S1"}]}, open(CFG, "w"))
+os.environ["ALTASCRAPER_DB"] = os.path.join(TMP, "v.db")
+
+from domain import live_snapshots as LS
+WS, MKT = "jack_uk", "UK"
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-RED-S", "asin": "B01", "title": "Shirt Small", "product_type": "SHIRT",
+     "attributes": {"size": "Small"}},
+    {"sku": "SH-RED-M", "asin": "B02", "title": "Shirt Medium", "product_type": "SHIRT",
+     "attributes": {"size": "Medium"}},
+    {"sku": "SH-DUP",   "asin": "B03", "title": "Shirt Medium too", "product_type": "SHIRT",
+     "attributes": {"size": "Medium"}},
+    {"sku": "SH-TAKEN", "asin": "B04", "title": "Already grouped", "product_type": "SHIRT",
+     "attributes": {"size": "Large"}, "parent_sku": "OTHER-PARENT"},
+], report_source="test")
+
+app = Flask(__name__); app.secret_key = "t"
+vr.register(app, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
+            _active_account=lambda: {"id": WS, "seller_id": "S1"},
+            _state={"active_account_id": WS, "active_marketplace": MKT},
+            _sp_creds=lambda m="UK": {},
+            _schema_for=lambda pt, mkt: SCHEMA)
+cl = app.test_client()
+
+cand = cl.get("/variations/candidates").get_json()
+check("candidates come from the cached catalogue", cand["count"], 4)
+check("  and say which are already in a family",
+      [i["sku"] for i in cand["items"] if i["parent_sku"]], ["SH-TAKEN"])
+check("filtering works", cl.get("/variations/candidates?q=red").get_json()["count"], 2)
+
+th = cl.get("/variations/themes?product_type=SHIRT").get_json()
+check("themes come from the schema", th["themes"], ["SIZE", "COLOR", "SIZE_COLOR"])
+check("  and it says the check really ran", th["checked"], True)
+
+def prev(skus, theme, parent=""):
+    return cl.post("/variations/preview",
+                   json={"skus": skus, "theme": theme, "parent_sku": parent}).get_json()
+
+p = prev(["SH-RED-S", "SH-RED-M"], "SIZE")
+check("a good merge can apply", p["can_apply"], True)
+check("  with no problems", p["problems"], [])
+check("  and suggests a parent SKU", p["parent_sku"], "SH-RED-PARENT")
+check("  the preview carries the real payload",
+      p["payload"]["parent"]["attributes"]["variation_theme"], [{"name": "SIZE"}])
+check("  which the parent has no price in",
+      "purchasable_offer" in p["payload"]["parent"]["attributes"], False)
+
+bad = prev(["SH-RED-M", "SH-DUP"], "SIZE")
+check("two products of the same size cannot apply", bad["can_apply"], False)
+truthy("  and it says why", any("same size" in x for x in bad["problems"]))
+
+taken = prev(["SH-RED-S", "SH-TAKEN"], "SIZE")
+check("a product already in a family cannot apply", taken["can_apply"], False)
+truthy("  naming it", any("SH-TAKEN" in x for x in taken["problems"]))
+
+gone = prev(["SH-RED-S", "NOT-A-SKU"], "SIZE")
+check("a SKU that is not in the catalogue cannot apply", gone["can_apply"], False)
+truthy("  and says to sync", any("Press Sync" in x for x in gone["problems"]))
+
+check("apply refuses without confirmation",
+      cl.post("/variations/apply", json={"skus": ["SH-RED-S", "SH-RED-M"],
+                                         "theme": "SIZE"}).status_code, 400)
+r = cl.post("/variations/apply", json={"confirmed": True, "theme": "SIZE",
+                                       "parent_sku": "P", "skus": ["SH-RED-M", "SH-DUP"]})
+check("apply re-checks rather than trusting the browser", r.status_code, 400)
+truthy("  with the same reason the preview gave", "same size" in r.get_json()["error"])
+
+print("\n=== permissions ===")
+from auth import guard as G
+check("looking sends nothing, so it is open",
+      G.required_permission("/variations/preview", "POST"), None)
+check("  and so is the candidate list",
+      G.required_permission("/variations/candidates", "GET"), None)
+check("but applying is publishing",
+      G.required_permission("/variations/apply", "POST"), "publish")
+check("the screen belongs to listings", G.feature_for("/variations/preview"), "listings")
+
+os.environ.pop("ALTASCRAPER_DB", None)
+shutil.rmtree(TMP, ignore_errors=True)
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)

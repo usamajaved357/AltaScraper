@@ -768,7 +768,7 @@ function navTo(sec){
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor","sourcing","finance"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","ppc","inventory","sync","monitor","sourcing","finance","variations"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -782,6 +782,7 @@ function navTo(sec){
   if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
   if(sec==="sourcing"){ if(typeof sourcingOnOpen==="function") sourcingOnOpen(); }
   if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
+  if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
   altaSyncUrl();
 }
 async function loadTargetAccount(){
