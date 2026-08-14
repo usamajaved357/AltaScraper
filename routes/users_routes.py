@@ -91,9 +91,18 @@ def register(app, *, CONFIG_PATH):
         # environment here was the bug: it reported the request, not the result,
         # so the UI could claim "db" while every route read the Google Sheet.
         _backend = current_app.config.get("DATA_BACKEND") or "sheets"
+        # AND WHY. Knowing the app is on sheets is half an answer; the useful
+        # half is that it fell back because no database exists at the path it
+        # looked in -- which is what happens when a deploy replaces the disk the
+        # database was on. Without the reason, "it is still using sheets" looks
+        # like the migration failed rather than like the file being absent, and
+        # those need completely different actions.
+        _why = current_app.config.get("DATA_BACKEND_DECISION") or {}
         return jsonify({"ok": True, "user": users.public(u),
                         "bootstrap": bool(u.get("bootstrap")),
                         "backend": _backend,
+                        "backend_source": _why.get("source") or "",
+                        "backend_note": _why.get("note") or "",
                         **_vocabulary()})
 
     # ---- administration -------------------------------------------------

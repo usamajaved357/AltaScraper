@@ -120,6 +120,14 @@
   </div>
 
   <div class="wsmain">
+    <!-- WHICH STORE THIS APP IS ACTUALLY ON. Shown only when it has fallen back
+         to Google Sheets, with the reason — usually that the database file is
+         not where the app looked, because a deploy replaced the disk it was on.
+         "Still using sheets" and "the migration failed" look identical from the
+         outside and need completely different actions. -->
+    <div id="storebanner" class="cc" style="display:none;margin:0 0 12px;padding:9px 12px;
+         border:1px solid #3a3320;background:#241f10;border-radius:7px;font-size:12px"></div>
+
     <!-- LISTINGS section -->
     <div id="sec_listings">
       <div class="wstoolbar">
