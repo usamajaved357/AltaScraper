@@ -1267,14 +1267,28 @@ function liveTile(it){
     <div class="tilebody">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
       <div class="tilemeta"><span class="tileprice">${price}</span><span class="tilesku">${esc(it.sku||'')}</span></div>
-      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> ${esc(it.asin||'')} · ${qtyHtml}</div>
+      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> ${
+        it.asin
+          ? `<a href="${esc(_dpUrl(it.asin))}" target="_blank" rel="noopener"
+                title="Open this listing on Amazon" onclick="event.stopPropagation()"
+                style="color:var(--accent2)">${esc(it.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
+          : ''
+      } · ${qtyHtml}</div>
       ${shipHtml}
       <div style="margin-top:5px">${profHtml}${liveComplianceChip(it)}</div>
     </div>
     <div class="tileacts">
       <button class="ib" title="Optimize this live listing" onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i> Optimize</button>
-      <button class="ib" title="Generate images for this product" onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i> Images</button>
-      <a class="ib" title="View on Amazon" href="https://www.amazon.${WS_MARKET==='UK'?'co.uk':(WS_MARKET==='US'?'com':'com')}/dp/${esc(it.asin||'')}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i></a>
+      <button class="ib" title="Generate new images for this product" onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i> Images</button>
+      <!-- The LIBRARY, which the "Images" button above does not open: that one
+           generates, this one shows what already exists, takes an upload from
+           your computer, and pushes the chosen image to the live listing. These
+           tiles had no way to reach any of that -- the drafts grid did, and this
+           renderer simply never got the button. -->
+      <button class="ib" title="See this listing's images, upload your own, and push one to Amazon" onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i> Library</button>
+      <!-- _dpUrl (listings.js) knows every marketplace domain. This link was
+           hand-rolled and sent DE/FR/IT/ES to amazon.com. -->
+      <a class="ib" title="View on Amazon" href="${esc(_dpUrl(it.asin||''))}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a>
     </div>
   </div>`;
 }

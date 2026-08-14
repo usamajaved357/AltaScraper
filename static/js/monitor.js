@@ -154,7 +154,7 @@ function renderMonitorOverview(rows, s, unknowns){
 }
 
 function monAsinBlock(r){
-  const dp = `https://www.amazon.co.uk/dp/${esc(r.asin)}`;
+  const dp = _dpUrl(r.asin, r.marketplace || r.mkt);   // per-row market, not always UK
   const badge = r.has_unknown ? '<span class="monchip warn">⚠ unknown seller</span>'
               : (r.checked ? '<span class="monchip ok">clean</span>' : '<span class="cc">not checked yet</span>');
   const head = `<div class="monasin-head">
@@ -434,7 +434,7 @@ function renderMonitorList(){
       ? '<span class="monchip all">all EU</span>'
       : mkts.map(m=>`<span class="monchip">${esc(m)}</span>`).join(" ");
     html += '<tr>'
-      + `<td><a href="https://www.amazon.co.uk/dp/${esc(r.asin)}" target="_blank" rel="noopener" class="monasin">${esc(r.asin)}</a></td>`
+      + `<td><a href="${esc(_dpUrl(r.asin, r.marketplace || r.mkt))}" target="_blank" rel="noopener" class="monasin">${esc(r.asin)}</a></td>`
       + `<td>${esc(r.label||"")||'<span class="cc">—</span>'}</td>`
       + `<td>${mkChips}</td>`
       + `<td>${esc(r.condition||"New")}</td>`
