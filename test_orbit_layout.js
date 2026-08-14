@@ -54,9 +54,15 @@ check("no label sits directly above the hidden Supplier Import",
       (between.match(/class="navitem"/g) || []).length > 0, true);
 
 console.log("\n=== NOTHING WAS REORDERED OR REMOVED ===");
+// "Sync" was renamed to "Compare with Amazon" deliberately: asked what that
+// screen was for, the honest answer was that its name described a mechanism
+// rather than a job, and it opened on a diagnostic matrix. The guard here is
+// about ORDER and PRESENCE -- that nothing was silently dropped or shuffled --
+// so it follows the rename rather than pinning a label we chose to improve.
 const NAV = ["Listings", "Image refs", "Brand setup", "Account &amp; sheets",
-             "Generate &amp; submit", "PPC", "Inventory", "Sync", "ASIN Monitor",
-             "Supplier Import", "Research ASIN", "AI &amp; settings"];
+             "Generate &amp; submit", "PPC", "Inventory", "Compare with Amazon",
+             "ASIN Monitor", "Supplier Import", "Research ASIN",
+             "AI &amp; settings"];
 let pos = -1, ordered = true;
 for (const item of NAV) {
   const at = tpl.indexOf(item, pos + 1);

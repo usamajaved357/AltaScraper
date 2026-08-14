@@ -107,6 +107,37 @@ function sellerImportResults(){
     + 'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
     + '<i class="ti ti-info-circle"></i> '+_siEsc(m.note||"")+'</div>';
 
+  // THE SCREENING RESULT, STANDING. Stays until the next check replaces it.
+  const _ss = SIMP.screenSummary;
+  if(_ss){
+    const c = _ss.counts || {};
+    const bits = [
+      {k:"blocked", t:"blocked by Amazon", col:"#e88a8a"},
+      {k:"docs",    t:"need documents",    col:"#e8c66a"},
+      {k:"caution", t:"worth a look",      col:"#e8c66a"},
+      {k:"unknown", t:"could not be checked", col:"#8b949e"},
+      {k:"clear",   t:"nothing against them", col:"#8fd694"},
+    ].filter(x => c[x.k]);
+    h += '<div style="border:1px solid #26303f;border-radius:8px;padding:10px 12px;'
+      +  'margin-bottom:10px;background:var(--panel2,rgba(255,255,255,.02))">'
+      +  '<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">'
+      +  '<b style="font-size:12.5px"><i class="ti ti-shield-check"></i> '
+      +  'Checked ' + _ss.checked + ' of ' + _ss.of + '</b>'
+      +  '<span class="cc" style="font-size:11px">' + _siEsc(_ss.when) + '</span>'
+      +  (_ss.failed ? '<span style="color:var(--warn);font-size:11px">'
+                       + _ss.failed + ' could not be sent — press the button '
+                       + 'again to retry those</span>' : '')
+      +  '</div>'
+      +  '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:11.5px">'
+      +  bits.map(x => '<span style="color:'+x.col+'"><b>'+c[x.k]+'</b> '
+                       + _siEsc(x.t)+'</span>').join("")
+      +  '</div>'
+      +  '<div class="cc" style="font-size:11px;margin-top:6px">'
+      +  'Click any tile below to read exactly why — the reasons are carried onto '
+      +  'the draft, so they are still there when you come back to it.</div>'
+      +  '</div>';
+  }
+
   h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'
     + '<button class="db-chip" onclick="sellerAll(true)">Select all</button>'
     + '<button class="db-chip" onclick="sellerAll(false)">Select none</button>'
@@ -155,10 +186,28 @@ function sellerImportResults(){
       + (r.price==null?'—':Number(r.price).toFixed(2))
       + (r.shipping!=null && r.shipping>0 ? ' + '+Number(r.shipping).toFixed(2)+' post' : '')
       + (r.category ? ' · '+_siEsc(r.category) : '')+'</div>'
+      // THE VERDICT, AND A WAY TO READ IT. A tooltip is not a record: it needs a
+      // steady hand, disappears on the way to anything else, and does not exist
+      // at all on a phone. The reasons -- which documents Amazon will demand,
+      // which rule flagged it, why it could not be checked -- are the whole
+      // point of running the check, so they open in place and stay open.
       + (meta
-          ? '<div style="font-size:10.5px;color:'+meta.c+'" title="'+_siEsc(
-              ((r.screen||{}).notes||[]).join(' | '))+'">'
-            + _siEsc(v)+' — '+_siEsc(meta.t)+'</div>'
+          ? '<div onclick="event.preventDefault();event.stopPropagation();sellerWhy('+i+')" '
+            + 'style="font-size:10.5px;color:'+meta.c+';cursor:pointer;'
+            + 'text-decoration:underline dotted;text-underline-offset:2px" '
+            + 'title="Click to read the full reasons">'
+            + _siEsc(v)+' — '+_siEsc(meta.t)
+            + (((r.screen||{}).notes||[]).length
+                ? ' <b>(' + (r.screen.notes.length) + ')</b>' : '')
+            + '</div>'
+            + '<div id="siwhy_'+i+'" style="display:none;font-size:10.5px;'
+            + 'border-top:1px solid #26303f;margin-top:4px;padding-top:4px;'
+            + 'line-height:1.5">'
+            + (((r.screen||{}).notes||[]).length
+                ? r.screen.notes.map(function(n){
+                    return '<div style="margin-bottom:3px">• '+_siEsc(n)+'</div>'; }).join("")
+                : '<div class="cc">Nothing was recorded against this one.</div>')
+            + '</div>'
           : '')
       + '<a href="'+_siEsc(r.url)+'" target="_blank" rel="noopener" '
       + 'onclick="event.stopPropagation()" class="cc" style="font-size:10.5px">on eBay ↗</a>'
@@ -166,6 +215,13 @@ function sellerImportResults(){
   });
   h += '</div>';
   out.innerHTML = h;
+}
+
+// Open one item's reasons in place. Toggles, so several can be read at once and
+// compared -- which is what you are actually doing when deciding what to draft.
+function sellerWhy(i){
+  const el = document.getElementById("siwhy_" + i);
+  if(el) el.style.display = (el.style.display === "none") ? "" : "none";
 }
 
 function sellerPick(i, on){
@@ -229,11 +285,18 @@ async function sellerScreen(btn){
       sellerImportResults();
     }
     SIMP.screened = true;
-    let msg = "Checked " + (done - failed) + " of " + sel.length + " — "
-            + totals.blocked + " blocked, " + totals.docs + " need documents, "
-            + totals.unknown + " could not be checked";
-    if(failed) msg += ". " + failed + " could not be sent — press it again to retry those.";
-    toast(msg);
+    // KEPT ON SCREEN, not announced and lost.
+    //
+    // The result arrived as a toast, which fades after a few seconds. Click
+    // anywhere and the answer to "which of these needs documents, and which
+    // documents" was gone with no way back to it -- on the one screen whose
+    // whole purpose is deciding what is safe to spend generation credits on.
+    // The summary now stays until the next check, and every verdict is
+    // openable on its own tile.
+    SIMP.screenSummary = {
+      counts: totals, checked: done - failed, of: sel.length, failed: failed,
+      when: new Date().toLocaleString(),
+    };
     if(bar){ bar.style.display = "none"; }
     sellerImportResults();
   }catch(e){

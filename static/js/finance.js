@@ -54,6 +54,16 @@ function financePreset(k){
 
 function financeFilter(k){ FIN.filter = k; financeRender(); }
 
+// Jump straight to the days this account actually has, instead of leaving
+// someone to work out the dates from a sentence.
+function financeShowAll(from, to){
+  const a = document.getElementById("fin_start"), b = document.getElementById("fin_end");
+  if(a) a.value = from;
+  if(b) b.value = to;
+  FIN.preset = "";
+  financeLoad();
+}
+
 function _finChips(){
   const p = document.getElementById("fin_presets");
   if(p){
@@ -270,9 +280,25 @@ function financeRender(){
   });
 
   if(!FIN.rows.length){
-    h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
-      +  'Nothing in this period yet. Finance data is pulled per day — press '
-      +  '<b>Sync</b> on the Sales screen and come back.</div>';
+    // The server says WHICH kind of empty this is: data outside the window,
+    // data on another marketplace, or none ever pulled. One sentence for all
+    // three was wrong for two of them.
+    const why = (FIN.meta && FIN.meta.empty_note) || '';
+    const have = (FIN.meta && FIN.meta.have) || {};
+    h += '<div class="cc" style="padding:18px;border:1px dashed #2a3446;border-radius:6px;'
+      +  'font-size:12.5px;line-height:1.6">'
+      +  (why ? _fesc(why)
+             : 'Nothing in this period yet. Finance data is pulled per day — press '
+               + '<b>Sync</b> on the Sales screen and come back.');
+    // A one-click way out of the commonest case, rather than a date box to work
+    // out for yourself.
+    if(have.first && have.last){
+      h += '<div style="margin-top:10px">'
+        +  '<button class="db-chip" onclick="financeShowAll('+jsArg(have.first)
+        +  ','+jsArg(have.last)+')">Show me those '+have.rows+' days ('
+        +  _fesc(have.first)+' → '+_fesc(have.last)+')</button></div>';
+    }
+    h += '</div>';
     body.innerHTML = h; return;
   }
   if(!visible.length){

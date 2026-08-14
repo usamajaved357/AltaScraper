@@ -75,6 +75,11 @@ async function loadMe(){
     window.DATA_BACKEND = j.backend || "sheets";
     window.DATA_BACKEND_SOURCE = j.backend_source || "";
     window.DATA_BACKEND_NOTE = j.backend_note || "";
+    // The header describes the store, and it may have been drawn before this
+    // answer arrived -- in which case it drew the spreadsheet version. Redraw it
+    // now that the truth is known, rather than leaving whichever version won the
+    // race on screen.
+    if(typeof renderDataSource === "function"){ try{ renderDataSource(); }catch(e){} }
     // SAY IT ON SCREEN when the app fell back to spreadsheets.
     //
     // "Still using sheets" and "the migration failed" look identical from the

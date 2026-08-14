@@ -77,8 +77,61 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         from domain import sales_data as _sd
         rows, totals = _contrib.by_product(CONFIG_PATH, wsid, mkt, start, end,
                                            vat_rate=_sd.vat_rate_for(_cfg, wsid))
+        # WHY IT IS EMPTY, WHEN IT IS EMPTY.
+        #
+        # "Nothing in this period yet — press Sync" was the same sentence for
+        # three completely different situations, and it was wrong for two of
+        # them: pressing Sync does not help if the data is simply outside the
+        # window you are looking at, and it does not help if the account has
+        # never had a successful finance pull. Someone presses Sync, nothing
+        # changes, and there is nothing on screen to say why.
+        #
+        # So when there are no rows, look at what this account has AT ALL and
+        # say which of the three it is.
+        empty_note, have = "", {}
+        if not rows:
+            try:
+                from data import db as _db
+                r = _db.get_db(CONFIG_PATH).execute(
+                    "SELECT COUNT(*) n, MIN(date) a, MAX(date) b FROM finance_daily "
+                    "WHERE workspace_id=? AND marketplace=?",
+                    (wsid, mkt)).fetchone()
+                have = {"rows": (r["n"] if r else 0) or 0,
+                        "first": (r["a"] if r else None),
+                        "last": (r["b"] if r else None)}
+                other = _db.get_db(CONFIG_PATH).execute(
+                    "SELECT marketplace, COUNT(*) n FROM finance_daily "
+                    "WHERE workspace_id=? GROUP BY marketplace",
+                    (wsid,)).fetchall()
+                have["other_marketplaces"] = {x["marketplace"]: x["n"]
+                                              for x in other
+                                              if x["marketplace"] != mkt}
+            except Exception:
+                have = {}
+            if have.get("rows"):
+                empty_note = (
+                    "This account has %d days of finance data, from %s to %s — "
+                    "but none between %s and %s. Change the dates above to look "
+                    "at a period that has data; syncing again will not add days "
+                    "Amazon has no money movements for."
+                    % (have["rows"], have["first"], have["last"], start, end))
+            elif have.get("other_marketplaces"):
+                empty_note = (
+                    "Nothing for %s, but this account does have finance data for "
+                    "%s. Switch marketplace at the top of the screen."
+                    % (mkt, ", ".join(have["other_marketplaces"])))
+            else:
+                empty_note = (
+                    "No finance data has ever been pulled for %s on %s. Press "
+                    "Sync on the Sales screen — and watch what it reports: "
+                    "Amazon limits these reports to roughly one a minute, so a "
+                    "first pull often has to be pressed several times before it "
+                    "has everything."
+                    % (acc.get("label") or wsid, mkt))
+
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "account_label": acc.get("label") or wsid,
+                        "empty_note": empty_note, "have": have,
                         "start": start, "end": end,
                         "rows": rows, "totals": totals,
                         "notes": _contrib.notes(rows, totals),

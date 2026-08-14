@@ -103,7 +103,7 @@
     <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
     <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
     <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
-    <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
+    <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
@@ -692,15 +692,35 @@
 
 <div id="sec_sync" class="wspanel">
   <div class="wstoolbar bleed">
-    <div><h2>Amazon &harr; App sync</h2>
-    <div class="sub">Compare one listing against Amazon's live copy, field by field, and choose which side wins for each. <b>Easiest way in:</b> press the <i class="ti ti-arrows-exchange"></i> button on any live listing &mdash; it opens this screen with that SKU already filled in. Nothing is overwritten without your per-field choice; push is locked until you unlock it, refuses borrowed credentials, and the first live write is a reviewed one-listing test.</div></div>
+    <div><h2>Compare with Amazon</h2>
+    <div class="sub">When the app and Amazon disagree about a listing, this shows you both, field by field, and lets you pick which side wins for each.</div></div>
   </div>
 
-  <h4 style="margin:0 0 8px">Account capability (live)</h4>
-  <div id="sync_matrix" class="cc">Loading&hellip;</div>
+  <!-- WHAT IT IS FOR, IN THE CASE THAT BRINGS PEOPLE HERE.
+       The screen was called "Amazon ↔ App sync" and opened with an empty SKU
+       box and a capability matrix — so it read as a diagnostic panel with no
+       obvious purpose, which is exactly how it was described. It does one
+       useful thing and the name now says it. -->
+  <div style="font-size:12.5px;margin:2px 0 14px;padding:11px 13px;
+       border:1px solid #26303f;border-radius:8px;line-height:1.55">
+    <b>When you would use this.</b> You changed a title in the app but Amazon
+    still shows the old one. Or someone edited the listing in Seller Central and
+    the app does not know. Pull brings Amazon's version in so you can see exactly
+    what differs; push sends yours the other way.
+    <div class="cc" style="margin-top:6px">
+      <b>You do not normally come here directly.</b> Press the
+      <i class="ti ti-arrows-exchange"></i> button on any live listing and it
+      opens here with that SKU filled in and already checked.
+    </div>
+    <div class="cc" style="margin-top:6px">
+      Nothing is overwritten without your per-field choice. Push stays locked
+      until you unlock it, refuses borrowed credentials, and the first live write
+      is a reviewed one-listing test.
+    </div>
+  </div>
 
-  <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
-    <h4 style="margin:0 0 8px">Sync a listing &mdash; active workspace</h4>
+  <div>
+    <h4 style="margin:0 0 8px">Compare one listing</h4>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input id="sync_sku" placeholder="SKU" style="padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:inherit">
       <button class="btn" onclick="syncCheckStatus()">Check status</button>
@@ -714,6 +734,17 @@
       <input type="checkbox" id="sync_push_unlock" onchange="syncTogglePushLock(this)"> Unlock push buttons (backend still halts the actual write until the reviewed first-push test, and always refuses borrowed credentials)
     </label>
   </div>
+
+  <!-- The capability matrix, moved BELOW the thing people come here to do and
+       folded away. It is a real diagnostic — what each account's credentials can
+       actually reach — but it was the first thing on the screen, which made a
+       one-job screen look like a control panel. -->
+  <details class="foldgroup" style="margin-top:20px">
+    <summary><i class="ti ti-stethoscope"></i> What each account's Amazon connection can do
+      <span class="cc">&mdash; a diagnostic, only useful when something is refusing to work</span>
+    </summary>
+    <div id="sync_matrix" class="cc" style="margin-top:10px">Loading&hellip;</div>
+  </details>
 </div>
 
 <div class="modalwrap" id="sync_modal">

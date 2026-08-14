@@ -408,6 +408,32 @@ truthy("  and a link that names a variation goes straight through",
 truthy("  the same link twice does not become two sources",
        "ensure_source(" in _ssrc)
 
+print("\n=== the screening verdict survives onto the draft, in words ===")
+# It was a toast on one screen. Click anywhere and the answer to "which of these
+# needs documents, and which documents" was gone, on the screen whose whole
+# purpose is deciding what to spend generation credits on.
+for _v, _expect in ((SI.BLOCKED, "AMAZON BLOCKS THIS"),
+                    (SI.DOCS, "AMAZON WILL ASK FOR DOCUMENTS"),
+                    (SI.CAUTION, "WORTH CHECKING"),
+                    (SI.UNKNOWN, "COULD NOT BE CHECKED")):
+    _d = SI.to_draft(dict(r, screen={"verdict": _v,
+                                     "notes": ["A test certificate is required."]}),
+                     account_id="a", marketplace="UK")
+    truthy("a %s draft says so at the front of its notes" % _v,
+           _d["notes"].startswith(_expect[:20]))
+    truthy("  and still carries the reason", "test certificate" in _d["notes"])
+_clear = SI.to_draft(dict(r, screen={"verdict": SI.CLEAR, "notes": []}),
+                     account_id="a", marketplace="UK")
+check("a clear draft gets no scary heading", _clear["notes"], "")
+
+_js = open(r"D:\AltaScraper\static\js\sellerimport.js", encoding="utf-8").read()
+truthy("the screen keeps the summary instead of toasting it",
+       "SIMP.screenSummary" in _js)
+truthy("  and every verdict opens its own reasons in place",
+       "function sellerWhy" in _js)
+truthy("  rather than hiding them in a tooltip nobody can hold still for",
+       "Click to read the full reasons" in _js)
+
 print("\n=== eBay answers an unknown seller with the WHOLE CATALOGUE ===")
 # Measured on the live API, 15 Aug 2026, and this is the entire reason this
 # section exists:

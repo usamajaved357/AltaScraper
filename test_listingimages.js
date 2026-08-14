@@ -56,6 +56,19 @@ check("draft rows get a library button",
       /openImageLibrary\('\$\{esc\(r\.sku\)\}'/.test(listings), true);
 check("live rows get one too",
       /openImageLibrary\('\$\{esc\(it\.sku\|\|''\)\}', true\)/.test(listings), true);
+// THE CARD, not only the table. It was on the table row and missing from the
+// card, so on a screen showing cards there was no way to reach a listing's
+// images at all -- to upload your own, pick one from another product, or set
+// the main one. Drafts need it MORE than live listings do, because a draft is
+// exactly when you are still deciding what its pictures should be.
+//
+// Counted rather than merely matched: one occurrence is the table row, and it
+// passed this check for as long as the card had none.
+check("the library button is on the CARD as well as the table row",
+      (listings.match(/openImageLibrary\(/g) || []).length >= 3, true);
+check("  and the card's is inside the card's own action bar",
+      /tileacts[\s\S]{0,2000}?openImageLibrary\('\$\{esc\(r\.sku\)\}'/.test(listings),
+      true);
 check("the file is loaded by the page",
       /\/static\/js\/listingimages\.js\?v=/.test(tpl), true);
 
