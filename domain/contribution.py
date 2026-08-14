@@ -68,6 +68,23 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         "  SUM(COALESCE(units,0))            units, "
         "  SUM(COALESCE(cogs,0))             cogs, "
         "  SUM(COALESCE(cogs_units,0))       cogs_units, "
+        # THE TAX AMAZON ITSELF REPORTED. Without this the aggregated row had no
+        # 'tax' key at all, so sales_data.vat_for saw None -- "no tax recorded"
+        # -- and fell through to deriving VAT out of the principal. Measured on
+        # jack_uk: Amazon sends Tax as its own charge, 80.47 against 402.39 of
+        # Principal, which is 20.0% ON TOP, so the principal is already
+        # VAT-exclusive and there is nothing to take out. Deriving it anyway
+        # removed 67.06 that was never there and cut the reported contribution
+        # from 85.62 to 18.56 -- the double deduction the comment in vat_for
+        # warns about, arriving by a route it could not see.
+        #
+        # NOT COALESCE'd to zero: SUM returns NULL when every row is NULL, and
+        # that NULL is the difference between "Amazon said no tax" and "we never
+        # recorded any". Flattening it to 0.0 would report every pre-tax-capture
+        # period as zero-rated.
+        "  SUM(tax)                          tax, "
+        "  COUNT(tax)                        tax_rows, "
+        "  COUNT(*)                          all_rows, "
         "  MAX(currency)                     currency "
         "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
         "  AND date>=? AND date<=? AND asin<>'*' "
@@ -141,6 +158,13 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         # VAT out before anything else -- it was collected, never earned. Same
         # function the dashboard uses, so the two screens cannot disagree about
         # what a product's revenue actually was (Rule 12).
+        # PARTIAL TAX COVERAGE IS NOT TAX. Where only some days in the window
+        # carried Amazon's tax lines, summing them gives a figure that is right
+        # for part of the period and presented as the whole -- which is worse
+        # than admitting the gap, because it looks like an answer. Dropped back
+        # to unknown, and the rate (if one is set) decides instead.
+        if d.get("tax") is not None and d.get("tax_rows") != d.get("all_rows"):
+            d["tax"] = None
         vat, net_rev, basis = _sd.vat_for(d, vat_rate)
         net = round(net_rev - fees - _f(d["refunds"]) + _f(d["reimbursements"]), 2)
 

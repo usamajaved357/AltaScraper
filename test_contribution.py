@@ -214,6 +214,78 @@ check("  read-only sales access is enough to look",
 
 os.environ.pop("ALTASCRAPER_DB", None)
 shutil.rmtree(TMP, ignore_errors=True)
+print("\n=== VAT is not deducted twice ===")
+# THE BUG, found when asked to set vat_rate=0.20 on a real account.
+#
+# by_product aggregated finance_daily WITHOUT the tax column, so the row handed
+# to sales_data.vat_for had no 'tax' key at all. vat_for read that as "no tax
+# recorded" and fell through to deriving VAT out of the principal -- which
+# Amazon had already reported separately.
+#
+# Measured on jack_uk: Amazon sends Tax as its own charge, 80.47 against 402.39
+# of Principal, which is 20.0% ON TOP. So the principal is already
+# VAT-exclusive. Deriving it anyway removed 67.06 that was never there and cut
+# the reported contribution from 85.62 to 18.56 -- a third of the profit, gone,
+# the moment someone answered "yes, I am VAT registered".
+import sqlite3 as _sq3
+_conn = _db.get_db(CFG)
+_conn.execute("DELETE FROM finance_daily WHERE workspace_id='vatws'")
+for _d, _tax in (("2026-08-01", 20.0), ("2026-08-02", 20.0)):
+    _conn.execute(
+        "INSERT INTO finance_daily (workspace_id, marketplace, date, asin, "
+        " principal, tax, referral_fees, units, cogs, cogs_units, currency) "
+        "VALUES ('vatws','UK',?,'B0TAX',100.0,?,15.0,1,40.0,1,'GBP')", (_d, _tax))
+_conn.commit()
+
+_r_norate, _t_norate = C.by_product(CFG, "vatws", "UK", "2026-08-01", "2026-08-31")
+_r_rate, _t_rate = C.by_product(CFG, "vatws", "UK", "2026-08-01", "2026-08-31",
+                                vat_rate=0.20)
+check("Amazon's own tax is used when it has it",
+      _t_norate["vat"], 40.0)
+check("  and the revenue stays what Amazon charged", _t_norate["revenue"], 200.0)
+# The whole point: answering "I am VAT registered" must not change a figure
+# Amazon has already told us.
+check("setting a VAT rate changes NOTHING where Amazon reported it",
+      (_t_rate["vat"], _t_rate["contribution"]),
+      (_t_norate["vat"], _t_norate["contribution"]))
+check("  and the basis says where the number came from",
+      _r_rate[0]["vat_basis"], "amazon")
+
+print("\n--- and where Amazon reported none, the rate is used ---")
+_conn.execute("DELETE FROM finance_daily WHERE workspace_id='vatws2'")
+_conn.execute(
+    "INSERT INTO finance_daily (workspace_id, marketplace, date, asin, "
+    " principal, tax, referral_fees, units, cogs, cogs_units, currency) "
+    "VALUES ('vatws2','UK','2026-08-01','B0OLD',120.0,NULL,15.0,1,40.0,1,'GBP')")
+_conn.commit()
+_r2, _t2 = C.by_product(CFG, "vatws2", "UK", "2026-08-01", "2026-08-31",
+                        vat_rate=0.20)
+check("a row with no tax recorded derives it from the rate",
+      _r2[0]["vat_basis"], "derived")
+check("  taking it OUT of the gross, not adding it on", _t2["vat"], 20.0)
+_r3, _t3 = C.by_product(CFG, "vatws2", "UK", "2026-08-01", "2026-08-31")
+check("with no rate set it stays unknown rather than becoming zero",
+      (_r3[0]["vat"], _r3[0]["vat_basis"]), (None, "unknown"))
+
+print("\n--- partial coverage is not an answer ---")
+# Half a period's tax summed and presented as the period's is worse than a gap:
+# it looks like an answer.
+_conn.execute("DELETE FROM finance_daily WHERE workspace_id='vatws3'")
+_conn.execute(
+    "INSERT INTO finance_daily (workspace_id, marketplace, date, asin, "
+    " principal, tax, referral_fees, units, cogs, cogs_units, currency) "
+    "VALUES ('vatws3','UK','2026-08-01','B0MIX',100.0,20.0,15.0,1,40.0,1,'GBP')")
+_conn.execute(
+    "INSERT INTO finance_daily (workspace_id, marketplace, date, asin, "
+    " principal, tax, referral_fees, units, cogs, cogs_units, currency) "
+    "VALUES ('vatws3','UK','2026-08-02','B0MIX',100.0,NULL,15.0,1,40.0,1,'GBP')")
+_conn.commit()
+_r4, _t4 = C.by_product(CFG, "vatws3", "UK", "2026-08-01", "2026-08-31")
+check("some days taxed and some not is NOT reported as Amazon's figure",
+      _r4[0]["vat_basis"] == "amazon", False)
+check("  it is unknown until a rate says otherwise",
+      _r4[0]["vat_basis"], "unknown")
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)

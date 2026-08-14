@@ -506,8 +506,20 @@ function render(){
   // for a row that was never going to be there. The app reports which backend it
   // is on (/users/me -> backend), so the caption follows it.
   const _store = storeName();          // shell.js -- one definition for every screen
-  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — also in '+_store+', so you can edit and push changes</div>';
-  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — not in '+_store+' yet</div>';
+  // SAY THE UNUSUAL THING, NOT THE ORDINARY ONE.
+  //
+  // "Live on Amazon — also in this app, so you can edit and push changes" sat
+  // above the main group of listings, which is where nearly everything is. A
+  // caption that describes the normal case appears on almost every row and
+  // carries no information; it just reads as the app talking about itself. The
+  // group underneath it is plainly the live listings, and every tile already
+  // has its own edit controls.
+  //
+  // The OTHER caption stays, because it marks a real and easily-missed
+  // difference: Amazon has this listing and we do not, so there is nothing here
+  // to edit and the usual buttons will not work on it.
+  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon</div>';
+  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — <b>not in '+_store+'</b>, so it cannot be edited here yet</div>';
   // Rows the app records as LIVE but Amazon never returned. Usually: submitted
   // and not yet published, taken down by Amazon, or written into the wrong
   // account. They are NOT live, so they must never be counted as such -- but
