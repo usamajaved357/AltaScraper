@@ -75,8 +75,14 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
                 "product (same shape, colour, proportions, label text), only changing angle or context "
                 "between the small images."
             )
+        # THE LISTING'S OWN WORDS GO WITH THE PHOTOGRAPH.
+        # A photograph cannot say how big something is or what it is for, and
+        # those are the two ways a generated image is most often wrong. The
+        # browser already has the row on screen, so it sends it.
+        _listing = b.get("listing") or None
         try:
-            _pdesc = ai_providers.describe_product(_cfg(), product_image, title, provider=tprov)
+            _pdesc = ai_providers.describe_product(_cfg(), product_image, title,
+                                                   provider=tprov, listing=_listing)
             if _pdesc.get("ok") and _pdesc.get("description"):
                 brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely — same shape, colours, "
                           "layout, logo, and ALL label text exactly as written):\n" + _pdesc["description"])

@@ -59,6 +59,16 @@ def spawn(args, **kwargs):
     kwargs.setdefault("encoding", "utf-8")
     kwargs.setdefault("errors", "replace")
     kwargs.setdefault("bufsize", 1)
+    # ITS OWN PROCESS GROUP, so Stop can end the whole tree.
+    #
+    # The generator launches a browser of its own to scrape product pages.
+    # Signalling only the child leaves that browser running, holding the work
+    # open and the CPU busy, and Stop appears to do nothing. A group can be
+    # signalled as a unit. On Windows the equivalent is a job the taskkill /T in
+    # _kill_proc already handles, so only POSIX needs this.
+    import os as _os
+    if _os.name != "nt":
+        kwargs.setdefault("start_new_session", True)
     return subprocess.Popen(args, **kwargs)
 
 

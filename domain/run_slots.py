@@ -51,6 +51,50 @@ def total_limit():
     return _int_env("ALTA_RUNS_TOTAL", 6, 1, 24)
 
 
+def _end(proc):
+    """End a run and everything it started. Never raises.
+
+    proc.terminate() alone was not enough. It signals the child only, so the
+    browser the generator launches to scrape product pages carries on -- the
+    work stays open, the machine stays busy, and Stop looks like it did nothing.
+    And a Python child sitting inside a long HTTP call does not always act on
+    SIGTERM promptly, so a plain terminate can be quietly ignored.
+
+    So: the whole process GROUP where the platform has them (spawn puts each run
+    in its own), the tree via taskkill on Windows, and SIGKILL as the answer to
+    anything still alive five seconds later. Stop has to actually stop.
+    """
+    import os as _os
+    import signal as _sig
+    import subprocess as _sp
+    try:
+        if _os.name == "nt":
+            _sp.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            return
+        try:
+            _os.killpg(_os.getpgid(proc.pid), _sig.SIGTERM)
+        except Exception:
+            proc.terminate()
+        try:
+            proc.wait(timeout=5)
+            return
+        except Exception:
+            pass
+        try:
+            _os.killpg(_os.getpgid(proc.pid), _sig.SIGKILL)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
 class RunSlots(object):
     def __init__(self):
         self._lock = threading.Lock()
@@ -169,14 +213,19 @@ class RunSlots(object):
                     continue
                 if owner is not None and str(s.get("owner") or "") != str(owner):
                     continue
-                if account is not None and str(s.get("account") or "") != str(account):
+                # A slot with NO account belongs to nobody, so anyone may stop
+                # it. Requiring an exact match made such a slot unstoppable:
+                # Stop filtered it out, matched nothing, reported success and
+                # left the run going -- which is worse than the cross-account
+                # reach it was added to prevent, because the run carries on
+                # spending. Only a slot that names a DIFFERENT account is left
+                # alone.
+                s_acct = str(s.get("account") or "")
+                if account is not None and s_acct and s_acct != str(account):
                     continue
                 proc = s.get("proc")
                 if proc is not None:
-                    try:
-                        proc.terminate()
-                    except Exception:
-                        pass
+                    _end(proc)
                 self._slots.pop(k, None)
                 stopped += 1
         return stopped

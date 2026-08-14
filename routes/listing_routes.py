@@ -1306,6 +1306,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 yield f"data: [start] {' '.join(args)}\n\n"
                 p = spawn(args, stdin=subprocess.PIPE)
                 _running["proc"] = p
+                # ATTACH THE PROCESS TO ITS SLOT. Without this Stop finds the
+                # slot, sees no process on it, removes the slot and terminates
+                # nothing -- so Stop reported success while the generator kept
+                # running and kept spending. The slot has always had somewhere
+                # to put this; nobody ever put it there.
+                try:
+                    from domain.run_slots import SLOTS as _SLOTS_ATTACH
+                    _SLOTS_ATTACH.attach(_running.get("key"), p)
+                except Exception:
+                    pass
                 try:
                     # generation asks once for a brand; feed the configured one (Enter = auto)
                     if mode == "generate":
