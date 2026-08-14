@@ -77,6 +77,44 @@ def get_item(creds, marketplace, seller_id, sku, marketplace_id,
     return out
 
 
+def put(creds, marketplace, seller_id, sku, marketplace_id, product_type,
+        attributes, issue_locale="en_GB", timeout=90):
+    """Create or fully replace a listing. Never raises.
+
+    Used for a VARIATION PARENT, which does not exist until it is made. Always
+    requirements="LISTING" -- a new product under our own brand, per CLAUDE.md
+    Rule 1. Never LISTING_OFFER_ONLY, and no merchant_suggested_asin: a parent is
+    a container for our own children, not an offer on somebody else's ASIN.
+    """
+    out = {"status": FAILED, "submission_id": "", "amazon_status": "",
+           "issues": [], "error": ""}
+    if not product_type:
+        out["error"] = "no product type"
+        return out
+    try:
+        li = _client(creds, marketplace, timeout)
+        res = li.put_listings_item(
+            seller_id, sku,
+            marketplaceIds=[marketplace_id],
+            body={"productType": product_type,
+                  "requirements": "LISTING",
+                  "attributes": attributes or {}},
+            issueLocale=issue_locale)
+        data = res.payload if hasattr(res, "payload") else res
+    except Exception as e:
+        out["error"] = str(e)[:300]
+        return out
+
+    data = data or {}
+    out["submission_id"] = str(data.get("submissionId") or "")
+    out["amazon_status"] = str(data.get("status") or "")
+    out["issues"] = list(data.get("issues") or [])
+    out["status"] = OK if out["amazon_status"].upper() == "ACCEPTED" else FAILED
+    if out["status"] != OK and not out["error"]:
+        out["error"] = "Amazon answered %s" % (out["amazon_status"] or "nothing")
+    return out
+
+
 def patch(creds, marketplace, seller_id, sku, marketplace_id, product_type,
           patches, issue_locale="en_GB", timeout=60):
     """Send a patch. Never raises. Returns Amazon's verdict, not our hope of it.

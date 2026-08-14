@@ -71,6 +71,7 @@ const FIN_COLS = [
   {k:"asin",         t:"Product",       kind:"text"},
   {k:"units",        t:"Units",         kind:"int",   tip:"Units SHIPPED — the same basis as the fees and refunds beside them"},
   {k:"revenue",      t:"Revenue",       kind:"money", tip:"Charged to buyers, from Amazon's finance records"},
+  {k:"vat",          t:"VAT",           kind:"money", tip:"Collected from the buyer and owed onward — never yours"},
   {k:"ad_spend",     t:"Ad spend",      kind:"money", tip:"Not connected yet"},
   {k:"fees",         t:"Amazon fees",   kind:"money", tip:"Referral + FBA + other"},
   {k:"cogs",         t:"COGS",          kind:"money", tip:"What the units cost, from the cost written into each SKU"},

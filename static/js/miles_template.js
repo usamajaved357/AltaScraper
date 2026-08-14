@@ -1228,7 +1228,15 @@ function liveTile(it){
     // with alpha suffixes appended (mcol+"55"), which forced them to be literal
     // and locked them out of the theme; as classes they follow the Orbit tokens.
     var mcls = it.profit.margin>=25?'tone-ok':(it.profit.margin>=10?'tone-warn':'tone-bad');
-    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}">${it.profit.margin}% · ${CUR_SYMBOL}${it.profit.net}</span>`;
+    // The chip said "14.6%" and never said of WHAT. Margin is the share of the
+    // sale price you keep; ROI is what the cash returned. They are different
+    // numbers answering different questions -- margin says whether the price is
+    // healthy, ROI says what to buy more of -- so both are shown and both are
+    // labelled, rather than one bare percentage that could be either.
+    var roiHtml = (it.profit.roi === null || it.profit.roi === undefined) ? ''
+      : ` · <span title="Return on the cash: profit ÷ what the stock cost">ROI ${it.profit.roi}%</span>`;
+    profHtml = `<span class="profchip ${mcls}" title="Price ${CUR_SYMBOL}${it.profit.price} − COGS ${CUR_SYMBOL}${it.profit.cogs} − ~15% referral ${CUR_SYMBOL}${it.profit.referral} = ${CUR_SYMBOL}${it.profit.net}
+Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale price you keep">margin ${it.profit.margin}%</span>${roiHtml} · ${CUR_SYMBOL}${it.profit.net}</span>`;
   } else {
     profHtml = `<span class="profchip cc" style="cursor:pointer" title="Set cost to see margin" onclick="event.stopPropagation();setCogs('${esc(it.sku||'')}','${esc(String(it.price||''))}')">+ COGS</span>`;
   }
@@ -1267,14 +1275,28 @@ function liveTile(it){
     <div class="tilebody">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
       <div class="tilemeta"><span class="tileprice">${price}</span><span class="tilesku">${esc(it.sku||'')}</span></div>
-      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> ${esc(it.asin||'')} · ${qtyHtml}</div>
+      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> ${
+        it.asin
+          ? `<a href="${esc(_dpUrl(it.asin))}" target="_blank" rel="noopener"
+                title="Open this listing on Amazon" onclick="event.stopPropagation()"
+                style="color:var(--accent2)">${esc(it.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
+          : ''
+      } · ${qtyHtml}</div>
       ${shipHtml}
       <div style="margin-top:5px">${profHtml}${liveComplianceChip(it)}</div>
     </div>
     <div class="tileacts">
       <button class="ib" title="Optimize this live listing" onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i> Optimize</button>
-      <button class="ib" title="Generate images for this product" onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i> Images</button>
-      <a class="ib" title="View on Amazon" href="https://www.amazon.${WS_MARKET==='UK'?'co.uk':(WS_MARKET==='US'?'com':'com')}/dp/${esc(it.asin||'')}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i></a>
+      <button class="ib" title="Generate new images for this product" onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i> Images</button>
+      <!-- The LIBRARY, which the "Images" button above does not open: that one
+           generates, this one shows what already exists, takes an upload from
+           your computer, and pushes the chosen image to the live listing. These
+           tiles had no way to reach any of that -- the drafts grid did, and this
+           renderer simply never got the button. -->
+      <button class="ib" title="See this listing's images, upload your own, and push one to Amazon" onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i> Library</button>
+      <!-- _dpUrl (listings.js) knows every marketplace domain. This link was
+           hand-rolled and sent DE/FR/IT/ES to amazon.com. -->
+      <a class="ib" title="View on Amazon" href="${esc(_dpUrl(it.asin||''))}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a>
     </div>
   </div>`;
 }

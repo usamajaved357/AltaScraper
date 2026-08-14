@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS finance_daily (
     reimbursements REAL,                -- money Amazon paid back for its own errors
     promos REAL,                        -- discounts you funded
     principal REAL,                     -- what buyers were charged, per Finances
+    tax REAL,                           -- VAT/tax Amazon reported ON TOP of principal
+    refund_tax REAL,                    -- tax handed back with a refund
     units INTEGER,                      -- units shipped, on the SAME basis as the fees
     cogs REAL,                          -- what those units cost, where the cost is known
     cogs_units INTEGER,                 -- how many of the units had a known cost
@@ -413,6 +415,8 @@ _ADDED_COLUMNS = [
     ("finance_daily", "units", "INTEGER"),
     ("finance_daily", "cogs", "REAL"),
     ("finance_daily", "cogs_units", "INTEGER"),
+    ("finance_daily", "tax", "REAL"),
+    ("finance_daily", "refund_tax", "REAL"),
     ("sourcing_sources", "shipping_override", "REAL"),
 ]
 

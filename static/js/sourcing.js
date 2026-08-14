@@ -251,16 +251,80 @@ async function sourcingCheckNow(btn){
   finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-refresh"></i> Re-read suppliers now'; } }
 }
 
+// Pick from what is actually on Amazon, rather than typing a SKU from memory.
+// A typed SKU with a typo in it enrols a product that does not exist: the sweep
+// finds no sources, the screen shows a row that never decides anything, and
+// nothing anywhere says the SKU was wrong.
 async function sourcingAddPrompt(){
-  const sku = prompt("Which SKU should the repricer watch?\n\nIt will only ever "
-                   + "touch SKUs you enrol here, one at a time.");
-  if(!sku) return;
+  const host = document.getElementById("srcpick");
+  if(!host) return;
+  host.style.display = "block";
+  host.innerHTML = '<div class="cc" style="padding:14px"><span class="genspin"></span> Loading this account\'s live listings…</div>';
+  await sourcingPickerLoad("");
+}
+
+async function sourcingPickerLoad(q){
+  const host = document.getElementById("srcpick");
+  if(!host) return;
+  let j;
+  try{ j = await (await fetch("/sourcing/candidates?q="+encodeURIComponent(q||""))).json(); }
+  catch(e){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc(String(e))+'</div>'; return; }
+  if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc((j&&j.error)||"Could not load")+'</div>'; return; }
+
+  let h = '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin-bottom:12px">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+    + '<b style="font-size:13px">Enrol a listing</b>'
+    + '<span class="cc" style="font-size:11px">'+j.count+' live on this account</span>'
+    + '<span style="flex:1"></span>'
+    + '<input id="srcpickq" placeholder="filter by SKU or title" value="'+_sesc(q||"")+'" '
+    + 'oninput="sourcingPickerFilter(this.value)" style="font-size:12px;padding:4px 8px;min-width:200px">'
+    + '<button class="db-chip" onclick="sourcingPickerClose()">Close</button></div>';
+
+  if(j.note){
+    h += '<div class="cc" style="font-size:12px;padding:8px">'+_sesc(j.note)+'</div></div>';
+    host.innerHTML = h; return;
+  }
+
+  h += '<div style="max-height:340px;overflow:auto">';
+  (j.items||[]).forEach(function(it){
+    h += '<div style="display:flex;gap:9px;align-items:center;font-size:11.5px;'
+      +  'padding:6px 4px;border-top:1px solid #1c2531">'
+      +  '<code style="min-width:150px">'+_sesc(it.sku)+'</code>'
+      +  '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" '
+      +  'title="'+_sesc(it.title)+'">'+_sesc(it.title||"(no title)")+'</span>'
+      +  (/AFN|AMAZON|FBA/i.test(it.fulfillment||"")
+          ? '<span class="db-chip" style="opacity:.6" title="Amazon holds this stock, so the repricer leaves it alone">FBA</span>'
+          : '')
+      +  '<span class="cc">'+_smoney(it.price)+'</span>'
+      +  (it.enrolled
+          ? '<span class="db-chip" style="background:#12303a;color:#6ac7e8">enrolled'
+            + (it.sources? ' · '+it.sources+' source'+(it.sources===1?'':'s') : ' · no sources yet')+'</span>'
+          : '<button class="db-chip" onclick="sourcingEnrolPicked('+_sarg(it.sku)+')">Enrol</button>')
+      +  '</div>';
+  });
+  h += '</div></div>';
+  host.innerHTML = h;
+}
+
+let _srcPickTimer = null;
+function sourcingPickerFilter(v){
+  clearTimeout(_srcPickTimer);
+  _srcPickTimer = setTimeout(function(){ sourcingPickerLoad(v); }, 200);
+}
+function sourcingPickerClose(){
+  const host = document.getElementById("srcpick");
+  if(host){ host.style.display = "none"; host.innerHTML = ""; }
+}
+
+async function sourcingEnrolPicked(sku){
   try{
     const j = await (await fetch("/sourcing/enrol",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku.trim()})})).json();
+      body:JSON.stringify({sku:sku})})).json();
     if(!j.ok){ toast(j.error||"Could not enrol"); return; }
-    toast("Enrolled in dry run"); sourcingLoad();
+    toast("Enrolled in dry run — add a supplier link next");
+    await sourcingPickerLoad((document.getElementById("srcpickq")||{}).value||"");
+    sourcingLoad();
   }catch(e){ toast(String(e)); }
 }
 

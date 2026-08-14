@@ -204,8 +204,15 @@ def rule_for(config_path, workspace_id, marketplace, sku):
 # ---- the audit log ---------------------------------------------------------
 
 def record_action(config_path, workspace_id, marketplace, sku, decision,
-                  current=None, applied=0):
-    """Write one decision down, whether or not anything was pushed."""
+                  current=None, applied=0, at=None):
+    """Write one decision down, whether or not anything was pushed.
+
+    `at` exists because the cooldown is measured against this timestamp. Stamping
+    it from the wall clock while the decision was made against a supplied `now`
+    means the two disagree, and the cooldown then depends on what time of day the
+    code happens to run -- which is exactly the kind of thing that works all
+    morning and fails after lunch.
+    """
     conn = _db.get_db(config_path)
     cur = current or {}
     conn.execute(
@@ -213,7 +220,7 @@ def record_action(config_path, workspace_id, marketplace, sku, decision,
         "source_id, from_price, to_price, from_quantity, to_quantity, from_lead_days, "
         "to_lead_days, reason, blocked_by, applied, inputs_age_mins) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (workspace_id, marketplace, sku, _now(), decision.get("action"),
+        (workspace_id, marketplace, sku, (at or _now()), decision.get("action"),
          decision.get("source_id"), cur.get("price"), decision.get("price"),
          cur.get("quantity"), decision.get("quantity"), cur.get("lead_days"),
          decision.get("lead_days"), (decision.get("reason") or "")[:1000],

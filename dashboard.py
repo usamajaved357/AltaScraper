@@ -799,6 +799,28 @@ def _schema_attrs(pt: str) -> list:
     return _load_schema(pt)["attrs"]
 
 
+def _variation_schema(product_type: str, marketplace: str = "") -> dict:
+    """The variation themes this product type allows, in the shape the checker wants.
+
+    listing/variations.py reads themes out of a raw JSON schema; the app caches
+    schemas already parsed into enums, so this presents the cached enum in that
+    shape rather than fetching the schema a second time. Returns None when the
+    schema could not be loaded at all -- which the caller reports as "could not
+    check" instead of quietly treating as "no themes allowed", because those two
+    lead to opposite conclusions.
+    """
+    try:
+        enums = _schema_enums(product_type) or {}
+    except Exception:
+        return None
+    if not enums:
+        return None
+    vals = enums.get("variation_theme")
+    if isinstance(vals, dict):                 # some entries are {value: label}
+        vals = list(vals.keys())
+    return {"properties": {"variation_theme": {"enum": list(vals or [])}}}
+
+
 def _valid_values() -> dict:
     """The flat-file allowed-values file ({product_type: {attr: [values]}})."""
     if _state["vv"] is None:
@@ -2189,9 +2211,16 @@ def _estimate_profit(price, cogs, referral_rate=0.15):
     referral = price * referral_rate
     net = price - float(cogs) - referral
     margin = (net / price) if price else 0
+    # MARGIN and ROI answer different questions and the card only ever showed the
+    # first. Margin is "how much of the sale price do I keep" -- it decides
+    # whether a price is healthy. ROI is "how hard is my cash working" -- it
+    # decides what to buy next, and on cheap stock it is a far bigger number:
+    # 9.50 of goods sold at 18.24 keeps 14.6% margin and returns 28% on the cash.
+    roi = (net / float(cogs)) if float(cogs) else None
     return {"price": round(price, 2), "cogs": round(float(cogs), 2),
             "referral": round(referral, 2), "net": round(net, 2),
-            "margin": round(margin * 100, 1)}
+            "margin": round(margin * 100, 1),
+            "roi": (round(roi * 100, 1) if roi is not None else None)}
 
 
 
@@ -3228,6 +3257,15 @@ def build_app(backend=None):
     import routes.sales_routes as _sales_routes
     _sales_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
+
+    # Variation families. Preview decides and explains; apply sends exactly what
+    # preview showed. _schema_for gives it the live product-type schema, which is
+    # where the allowed variation themes come from (Rule 4).
+    import routes.variations_routes as _variations_routes
+    _variations_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                _active_account=_active_account, _state=_state,
+                                _sp_creds=_sp_creds,
+                                _schema_for=_variation_schema)
 
     # Finance: contribution per product. Read-only, and built from finance rows
     # already stored per ASIN -- it pulls nothing new from Amazon.

@@ -70,6 +70,7 @@
     <div class="navitem" data-sec="sync" onclick="navTo('sync')"><i class="ti ti-arrows-exchange"></i> Sync</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
+    <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
     <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
     <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
 
@@ -250,6 +251,10 @@
       <div id="sales_today"></div>
       <div id="sales_cards" class="stat-row"></div>
       <div id="sales_note"></div>
+      <!-- Shape first, then which products made it, then the full grid. Reading
+           order matches the questions people actually ask, in that order. -->
+      <div id="sales_charts"></div>
+      <div id="sales_breakdown"></div>
       <div id="sales_grid"></div>
     </div>
 
@@ -450,6 +455,14 @@
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
+    <div id="sec_variations" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-binary-tree"></i> Variation families</h2>
+        <div class="sub">Group listings that are the same product in different sizes, colours or styles, so they show as one product with a picker instead of competing with each other. Nothing is sent until you have seen exactly what would be.</div></div>
+      </div>
+      <div id="varbody" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_finance" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-report-money"></i> Product contribution margin</h2>
@@ -469,6 +482,7 @@
         <div><h2><i class="ti ti-arrows-down-up"></i> Repricer</h2>
         <div class="sub">Follows your suppliers: when their price moves, yours moves; when they run out, the listing goes out of stock; when they slow down, the handling time stretches. Only SKUs you enrol here are ever touched, and right now it is in <b>dry run</b> &mdash; it decides and records, and changes nothing.</div></div>
       </div>
+      <div id="srcpick" style="display:none;padding:4px 0"></div>
       <div id="srcbody" style="padding:4px 0"></div>
     </div>
 
@@ -688,6 +702,7 @@
 <script src="/static/js/monitor.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sourcing.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/finance.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>
@@ -741,6 +756,7 @@
      four older "use as main" call sites now share. -->
 <script src="/static/js/listingimages.js?v={{ ASSET_V }}"></script>
 <!-- Sales dashboard: stat cards + the metrics x dates grid. -->
+<script src="/static/js/salescharts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>

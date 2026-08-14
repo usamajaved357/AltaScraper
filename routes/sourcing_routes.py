@@ -102,6 +102,48 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             CONFIG_PATH, wsid, mkt, request.args.get("sku") or None,
             int(request.args.get("limit") or 200))})
 
+    @app.route("/sourcing/candidates")
+    def sourcing_candidates():
+        """This account's live listings, with whether each is already enrolled.
+
+        Read from the catalogue snapshot the app already holds, so enrolling is a
+        matter of picking from what is actually on Amazon rather than typing a SKU
+        from memory -- which is how a typo becomes a SKU that silently never
+        matches anything and a repricer that appears to do nothing.
+        """
+        wsid, mkt = _where()
+        try:
+            from domain import live_snapshots as _ls
+            rec = _ls.get(CONFIG_PATH, wsid, mkt) or {}
+        except Exception:
+            rec = {}
+        enrolled = {r["sku"]: r for r in _repo.enrolled(CONFIG_PATH, wsid, mkt)}
+        q = (request.args.get("q") or "").strip().lower()
+        out = []
+        for it in (rec.get("items") or []):
+            sku = str(it.get("sku") or "").strip()
+            if not sku:
+                continue
+            title = str(it.get("title") or "")
+            if q and q not in sku.lower() and q not in title.lower():
+                continue
+            row = enrolled.get(sku)
+            out.append({
+                "sku": sku, "asin": str(it.get("asin") or ""), "title": title,
+                "price": it.get("price"), "qty": it.get("qty"),
+                "status": str(it.get("status") or ""),
+                "fulfillment": str(it.get("fulfillment") or ""),
+                "enrolled": bool(row),
+                "mode": (row or {}).get("mode") or "",
+                "sources": len(_repo.sources_for(CONFIG_PATH, wsid, mkt, sku)) if row else 0,
+            })
+        out.sort(key=lambda r: (not r["enrolled"], r["sku"]))
+        return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
+                        "count": len(out), "items": out,
+                        "note": ("" if out else
+                                 "No live listings are cached for this account yet "
+                                 "— press Sync on the Listings screen first.")})
+
     # ---- enrolment ------------------------------------------------------
     @app.route("/sourcing/enrol", methods=["POST"])
     def sourcing_enrol():

@@ -70,7 +70,19 @@ RULES = [
     #    even though no publish happens at the moment the button is pressed.
     ("/sourcing/list",                  None),
     ("/sourcing/log",                   None),
+    # The pick-list is the account's own live listings, which anyone who may see
+    # the Listings screen can already see, plus which of them are enrolled --
+    # which /sourcing/list shows too. Reading it changes nothing; enrolling from
+    # it is a separate call and still needs publish.
+    ("/sourcing/candidates",            None),
     ("/sourcing",                       "publish"),
+
+    # -- variation families. Looking at candidates, the themes a product type
+    #    allows, and the preview all send NOTHING to Amazon, so they are open to
+    #    anyone who may see listings. /variations/apply creates a listing and
+    #    rewrites others, which is publishing by any measure.
+    ("/variations/apply",               "publish"),
+    ("/variations",                     None),
 
     # -- publishing to Amazon
     ("/submit/target",                  None),          # read-only: names the destination
@@ -191,6 +203,7 @@ FEATURE_PATHS = [
     # with no access to listings has no business seeing what is about to happen
     # to their prices either.
     ("/sourcing",             "listings"),
+    ("/variations",           "listings"),
     ("/rows",                 "listings"),
     ("/row",                  "listings"),
     ("/live",                 "listings"),

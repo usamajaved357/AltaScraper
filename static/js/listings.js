@@ -137,11 +137,24 @@ function ownLiveAsin(r){
     return (it && it.asin) ? String(it.asin).trim() : "";
   }catch(e){ return ""; }
 }
-function _dpUrl(asin){
-  const m=(typeof WS_MARKET!=="undefined"&&WS_MARKET)||"";
-  const dom=(m==="US")?"amazon.com":(m==="CA")?"amazon.ca":(m==="DE")?"amazon.de":
-            (m==="FR")?"amazon.fr":(m==="IT")?"amazon.it":(m==="ES")?"amazon.es":"amazon.co.uk";
-  return "https://www."+dom+"/dp/"+encodeURIComponent(asin);
+// The ONE Amazon domain table. There were four places building these by hand and
+// they disagreed: two sent every non-UK marketplace to amazon.com, two hardcoded
+// amazon.co.uk outright. On a US or German account those links open the wrong
+// country's store, where the ASIN usually does not exist at all.
+const _AMZ_TLD = {
+  UK:"co.uk", GB:"co.uk", US:"com", CA:"ca", MX:"com.mx", BR:"com.br",
+  DE:"de", FR:"fr", IT:"it", ES:"es", NL:"nl", BE:"com.be", IE:"ie",
+  PL:"pl", SE:"se", TR:"com.tr", AE:"ae", SA:"sa", EG:"eg", IN:"in",
+  JP:"co.jp", AU:"com.au", SG:"sg",
+};
+function _amzTld(market){
+  const m = String(market || (typeof WS_MARKET !== "undefined" && WS_MARKET) || "").toUpperCase();
+  return _AMZ_TLD[m] || "co.uk";
+}
+// market is optional: omit it and the workspace's own marketplace is used. Pass
+// it where a row carries its own (the ASIN monitor watches several at once).
+function _dpUrl(asin, market){
+  return "https://www." + _amzTld(market) + "/dp/" + encodeURIComponent(asin || "");
 }
 async function batchSecondaryImages(){
   const skus=selectedSkus();
@@ -1069,7 +1082,7 @@ function liveTableRow(it){
               onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i></button>
       <a class="dotb" title="View on Amazon" target="_blank" rel="noopener"
          onclick="event.stopPropagation()"
-         href="https://www.amazon.${WS_MARKET==='UK'?'co.uk':'com'}/dp/${esc(it.asin||'')}"><i class="ti ti-external-link"></i></a>
+         href="${esc(_dpUrl(it.asin||''))}"><i class="ti ti-external-link"></i></a>
     </div></td></tr>`;
 }
 

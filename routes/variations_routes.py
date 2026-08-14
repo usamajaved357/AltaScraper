@@ -1,0 +1,303 @@
+"""routes/variations_routes.py -- merge SKUs into a variation family.
+
+Two endpoints, and the split between them is the whole safety story:
+
+    /variations/preview   decides and explains. Sends nothing.
+    /variations/apply     sends exactly what preview showed.
+
+Both build the payload with the SAME listing/variations.build(), so the screen
+cannot show one thing and Amazon receive another. Every rule -- what makes a
+merge refusable, which themes a product type allows -- lives in that module;
+this file supplies the data and does the sending.
+
+WHY APPLY GOES PARENT FIRST
+A child naming a parent that does not exist yet is rejected. So the parent is
+created and confirmed accepted before any child is touched, and if it fails
+nothing else is sent -- rather than half a family existing, which is the state
+Amazon accepts silently and which makes products vanish from search.
+"""
+from flask import request, jsonify
+
+from listing import variations as _var
+
+
+def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
+             _schema_for=None):
+    """Attach /variations/* to the app."""
+
+    def _scope():
+        acc = _active_account() or {}
+        wsid = str(acc.get("id") or _state.get("active_account_id") or "")
+        mkt = str(_state.get("active_marketplace") or "").upper()
+        return acc, wsid, mkt
+
+    def _body():
+        return request.get_json(force=True, silent=True) or {}
+
+    def _live_items(wsid, mkt):
+        try:
+            from domain import live_snapshots as _ls
+            return ((_ls.get(CONFIG_PATH, wsid, mkt) or {}).get("items") or [])
+        except Exception:
+            return []
+
+    def _one(attrs, key):
+        """An attribute's plain value, whatever wrapper Amazon put it in."""
+        v = (attrs or {}).get(key)
+        if isinstance(v, list) and v:
+            f = v[0]
+            if isinstance(f, dict):
+                for k in ("value", "name"):
+                    if k in f:
+                        return str(f[k])
+                return ""
+            return str(f)
+        if isinstance(v, dict):
+            for k in ("value", "name"):
+                if k in v:
+                    return str(v[k])
+        return str(v) if v not in (None, "") else ""
+
+    def _live_attributes(sku, wsid, mkt):
+        """What Amazon holds for this SKU right now, flattened for the checker.
+
+        None means it could not be read -- which is reported as such rather than
+        as an empty listing, because "no brand" and "could not read the brand"
+        lead to opposite decisions.
+        """
+        from api import amazon_listings as _al
+        from domain import accounts as _acc_mod
+        acc = _active_account() or {}
+        got = _al.get_item(_acc_mod.account_creds(acc), mkt,
+                           str(acc.get("seller_id") or ""), sku,
+                           _acc_mod.marketplace_id(mkt))
+        if got["status"] != _al.OK:
+            return None
+        a = got.get("attributes") or {}
+        flat = {}
+        for k, v in a.items():
+            val = _one(a, k)
+            if val:
+                flat[k] = val
+        return {"sku": sku,
+                "product_type": got.get("product_type") or "",
+                "brand": _one(a, "brand"),
+                "item_type_keyword": _one(a, "item_type_keyword"),
+                "parent_sku": _one(a, "child_parent_sku_relationship"),
+                "title": _one(a, "item_name"),
+                "attributes": flat}
+
+    def _schema(pt, mkt):
+        """The product type's live schema, for the themes it allows.
+
+        None means we could not fetch it -- which is reported as "could not
+        check" rather than silently skipping the check, because a theme the type
+        does not allow is accepted by Amazon and then ignored.
+        """
+        if not _schema_for:
+            return None
+        try:
+            return _schema_for(pt, mkt)
+        except Exception:
+            return None
+
+    @app.route("/variations/candidates")
+    def variations_candidates():
+        """The account's live listings, with what they vary by, for picking from."""
+        _acc, wsid, mkt = _scope()
+        q = (request.args.get("q") or "").strip().lower()
+        out = []
+        for it in _live_items(wsid, mkt):
+            sku = str(it.get("sku") or "").strip()
+            if not sku:
+                continue
+            title = str(it.get("title") or "")
+            if q and q not in sku.lower() and q not in title.lower():
+                continue
+            out.append({"sku": sku, "asin": str(it.get("asin") or ""),
+                        "title": title, "price": it.get("price"),
+                        "product_type": str(it.get("product_type") or ""),
+                        # Already in a family? Then it is not free to join another.
+                        "parent_sku": str(it.get("parent_sku") or ""),
+                        "variation_theme": str(it.get("variation_theme") or "")})
+        out.sort(key=lambda r: r["sku"])
+        return jsonify({"ok": True, "items": out, "count": len(out),
+                        "note": ("" if out else
+                                 "No live listings cached yet — press Sync on the "
+                                 "Listings screen first.")})
+
+    @app.route("/variations/themes")
+    def variations_themes():
+        """Which themes a product type allows, read from its live schema."""
+        _acc, _wsid, mkt = _scope()
+        pt = (request.args.get("product_type") or "").strip()
+        if not pt:
+            return jsonify({"ok": False, "error": "no product type"}), 400
+        sch = _schema(pt, mkt)
+        if sch is None:
+            return jsonify({"ok": True, "product_type": pt, "themes": [],
+                            "checked": False,
+                            "note": ("Could not read this product type's schema, so "
+                                     "the theme cannot be checked against it. Amazon "
+                                     "silently ignores a theme a type does not "
+                                     "allow, so confirm it before applying.")})
+        themes = _var.themes_from_schema(sch)
+        return jsonify({"ok": True, "product_type": pt, "themes": themes,
+                        "checked": True,
+                        "note": ("" if themes else
+                                 "This product type has no variation theme in its "
+                                 "schema, which means it does not support "
+                                 "variations at all.")})
+
+    @app.route("/variations/preview", methods=["POST"])
+    def variations_preview():
+        """What would be sent, and every reason it should not be. Sends nothing."""
+        b = _body()
+        _acc, wsid, mkt = _scope()
+        parent_sku = (b.get("parent_sku") or "").strip()
+        theme = (b.get("theme") or "").strip()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+
+        items = {str(i.get("sku") or "").strip(): i for i in _live_items(wsid, mkt)}
+        children, missing, unreadable = [], [], []
+        for s in skus:
+            if s not in items:
+                missing.append(s)
+                continue
+            # READ FROM AMAZON, not from the cached snapshot. The constraints a
+            # family has to satisfy -- same brand, same item type keyword, values
+            # that genuinely differ on the theme's axis -- are about what Amazon
+            # HOLDS RIGHT NOW. A snapshot is what it held whenever it was last
+            # synced, and merging on a stale brand produces a family Amazon
+            # accepts and then does not show.
+            live = _live_attributes(s, wsid, mkt)
+            if live is None:
+                unreadable.append(s)
+                continue
+            children.append(live)
+
+        pt = next((c["product_type"] for c in children if c["product_type"]), "")
+        if not parent_sku:
+            parent_sku = _var.suggest_parent_sku(children, theme)
+
+        problems = list(_var.check(parent_sku, children, theme,
+                                   _schema(pt, mkt), pt))
+        if missing:
+            problems.insert(0, "Not in the cached catalogue: %s. Press Sync on the "
+                               "Listings screen, then try again."
+                               % ", ".join(missing))
+        if unreadable:
+            problems.insert(0, "Amazon would not return %s, so nothing about them "
+                               "could be checked. Nothing is merged on data we "
+                               "could not read." % ", ".join(unreadable))
+        already = [c["sku"] for c in children if c.get("parent_sku")]
+        if already:
+            problems.append("%s already belong%s to another family. Amazon allows "
+                            "one parent per child, so it would have to be removed "
+                            "from that one first."
+                            % (", ".join(already), "s" if len(already) == 1 else ""))
+
+        payload = _var.build(parent_sku, children, theme, pt,
+                             parent_attributes=(b.get("parent_attributes") or {}))
+        return jsonify({"ok": True, "can_apply": not problems,
+                        "problems": problems, "payload": payload,
+                        "parent_sku": parent_sku, "product_type": pt,
+                        "children": children})
+
+    @app.route("/variations/apply", methods=["POST"])
+    def variations_apply():
+        """Create the parent, then point the children at it. Stops on the first failure."""
+        from api import amazon_listings as _al
+        from domain import accounts as _acc_mod
+
+        b = _body()
+        acc, wsid, mkt = _scope()
+        if not b.get("confirmed"):
+            return jsonify({"ok": False, "error": "not confirmed"}), 400
+
+        parent_sku = (b.get("parent_sku") or "").strip()
+        theme = (b.get("theme") or "").strip()
+        title = (b.get("parent_title") or "").strip()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+
+        # Re-read from AMAZON, exactly as preview did. Re-checking against a
+        # cached snapshot instead would make this weaker than the check it is
+        # meant to repeat -- which would let through precisely the merges preview
+        # refused, and only when something had changed since.
+        children, unread = [], []
+        for s in skus:
+            live = _live_attributes(s, wsid, mkt)
+            if live is None:
+                unread.append(s)
+            else:
+                children.append(live)
+        if unread:
+            return jsonify({"ok": False, "error": (
+                "Amazon would not return %s, so nothing about them could be "
+                "checked. Nothing is merged on data we could not read."
+                % ", ".join(unread))}), 400
+        pt = next((c["product_type"] for c in children if c["product_type"]), "")
+
+        problems = _var.check(parent_sku, children, theme, _schema(pt, mkt), pt)
+        already = [c["sku"] for c in children if c.get("parent_sku")]
+        if already:
+            problems.append("%s already belong%s to another family."
+                            % (", ".join(already), "s" if len(already) == 1 else ""))
+        if problems:
+            # Not trusted from the preview: the browser could be showing one from
+            # before someone changed something.
+            return jsonify({"ok": False, "error": "; ".join(problems)}), 400
+
+        creds = _acc_mod.account_creds(acc or {})
+        mkt_id = _acc_mod.marketplace_id(mkt)
+        seller = str((acc or {}).get("seller_id") or "")
+        locale = "en_US" if mkt == "US" else "en_GB"
+
+        payload = _var.build(parent_sku, children, theme, pt)
+        pattrs = dict(payload["parent"]["attributes"])
+        if title:
+            pattrs["item_name"] = [{"value": title, "marketplace_id": mkt_id}]
+        # A parent has no barcode of its own -- it is a container, not a unit --
+        # so it goes up under the GTIN exemption, exactly as CLAUDE.md Rule 1
+        # requires and never with an invented one.
+        pattrs.setdefault("supplier_declared_has_product_identifier_exemption",
+                          [{"value": True, "marketplace_id": mkt_id}])
+        for k, v in (b.get("parent_attributes") or {}).items():
+            pattrs.setdefault(k, v)
+
+        res = _al.put(creds, mkt, seller, parent_sku, mkt_id, pt, pattrs,
+                      issue_locale=locale)
+        if res["status"] != _al.OK:
+            why = res["error"] or "Amazon rejected the parent"
+            if res["issues"]:
+                why += " -- " + "; ".join(str(i.get("message") or "")[:140]
+                                          for i in res["issues"][:3])
+            # Nothing else is sent. Half a family is the state Amazon accepts in
+            # silence and which makes the products disappear from search.
+            return jsonify({"ok": False, "stage": "parent", "error": why,
+                            "children_touched": 0}), 502
+
+        done, failed = [], []
+        for c in payload["children"]:
+            patches = [{"op": "replace", "path": "/attributes/" + k, "value": v}
+                       for k, v in c["attributes"].items()]
+            r = _al.patch(creds, mkt, seller, c["sku"], mkt_id,
+                          c["product_type"] or pt, patches, issue_locale=locale)
+            if r["status"] == _al.OK:
+                done.append(c["sku"])
+            else:
+                failed.append({"sku": c["sku"],
+                               "error": (r["error"] or "rejected") + (
+                                   " -- " + "; ".join(str(i.get("message") or "")[:120]
+                                                      for i in r["issues"][:2])
+                                   if r["issues"] else "")})
+
+        return jsonify({"ok": not failed, "stage": "children",
+                        "parent_sku": parent_sku,
+                        "parent_submission": res["submission_id"],
+                        "joined": done, "failed": failed,
+                        "note": ("Amazon publishes variations asynchronously — the "
+                                 "family usually appears within a few minutes. "
+                                 + ("Some children were rejected and are NOT in the "
+                                    "family; fix them and apply again."
+                                    if failed else ""))})

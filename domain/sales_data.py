@@ -181,10 +181,66 @@ def availability(config_path, workspace_id, marketplace):
 
 _FIN_COLS = ("referral_fees", "fba_fees", "other_fees", "refunds", "refund_units",
              "refund_fees_returned", "reimbursements", "promos", "principal",
-             "units_shipped", "cogs", "cogs_units")
+             "tax", "refund_tax", "units_shipped", "cogs", "cogs_units")
 
 
-def series(config_path, workspace_id, marketplace, start, end, asin=None):
+# ---- VAT -------------------------------------------------------------------
+# Two arrangements, and telling them apart decides whether every profit figure in
+# the app is right or a fifth too high.
+#
+#   Amazon sent a Tax line ALONGSIDE principal
+#       -> principal is the EX-VAT price. Revenue is already net; the tax was
+#          collected on top and is owed onward. Nothing to subtract.
+#   No tax line, and the account is VAT-registered
+#       -> principal is what the buyer paid, VAT inside it. It must come out:
+#          vat = gross * rate / (1 + rate).  NOT gross * rate, which is the
+#          classic error and understates the VAT by a fifth of itself.
+#   No tax line, no rate configured
+#       -> we do not know. The figure is shown, and the screen says it may be
+#          overstated, because silence here reads as "no VAT applies".
+
+VAT_FROM_AMAZON = "amazon"      # Amazon itemised it; revenue already net
+VAT_DERIVED     = "derived"     # we took it out of a gross principal
+VAT_UNKNOWN     = "unknown"     # no tax line and no rate set
+VAT_NONE        = "none"        # not VAT-registered; nothing to take out
+
+
+def vat_for(row, vat_rate=None):
+    """(vat, net_revenue, basis) for one row. Never invents a number."""
+    gross = float((row or {}).get("principal") or 0.0)
+    tax = (row or {}).get("tax")
+    if tax:                                   # Amazon itemised it
+        return round(float(tax), 2), round(gross, 2), VAT_FROM_AMAZON
+    if vat_rate in (None, "", 0, 0.0):
+        # A rate of 0 is a real answer -- not registered -- but None is not.
+        return ((0.0, round(gross, 2), VAT_NONE) if vat_rate == 0
+                else (None, round(gross, 2), VAT_UNKNOWN))
+    try:
+        r = float(vat_rate)
+    except (TypeError, ValueError):
+        return None, round(gross, 2), VAT_UNKNOWN
+    if r <= 0 or r >= 1:
+        return None, round(gross, 2), VAT_UNKNOWN
+    vat = round(gross * r / (1.0 + r), 2)
+    return vat, round(gross - vat, 2), VAT_DERIVED
+
+
+def vat_rate_for(config, workspace_id):
+    """The account's VAT rate, or None if nobody has said.
+
+    Per ACCOUNT, not per marketplace: VAT registration is a fact about the
+    business, and two accounts selling on the same marketplace can differ.
+    """
+    cfg = config() if callable(config) else (config or {})
+    for a in (cfg.get("accounts") or []):
+        if str(a.get("id")) == str(workspace_id):
+            v = a.get("vat_rate", None)
+            return None if v in (None, "") else float(v)
+    return None
+
+
+def series(config_path, workspace_id, marketplace, start, end, asin=None,
+           vat_rate=None):
     """Daily rows for a range, sales joined with ads and finance.
 
     The dates come from the UNION of the three sources, not from sales alone. A
@@ -235,14 +291,23 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None):
             # UK account it read 246.53 when the money-basis answer was 281.52,
             # and nothing on screen could have shown which was meant.
             gross = float(row.get("principal") or 0.0)
+            # VAT comes out FIRST. It was never yours -- you collected it and you
+            # owe it onward -- so leaving it in overstates everything downstream.
+            _v, _net_rev, _basis = vat_for(row, vat_rate)
+            row["vat"] = _v
+            row["vat_basis"] = _basis
+            row["net_revenue"] = _net_rev
             row["net_proceeds"] = round(
-                gross - float(row.get("total_fees") or 0.0)
-                      - float(row.get("refunds") or 0.0)
-                      - float(row.get("promos") or 0.0)
-                      + float(row.get("refund_fees_returned") or 0.0)
-                      + float(row.get("reimbursements") or 0.0), 2)
+                _net_rev - float(row.get("total_fees") or 0.0)
+                         - float(row.get("refunds") or 0.0)
+                         - float(row.get("promos") or 0.0)
+                         + float(row.get("refund_fees_returned") or 0.0)
+                         + float(row.get("reimbursements") or 0.0), 2)
         else:
             row["net_proceeds"] = None
+            row["vat"] = None
+            row["net_revenue"] = None
+            row["vat_basis"] = ""
 
         # PROFIT -- only when the cost of every unit shipped that day is known.
         #
@@ -260,6 +325,48 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None):
             row["profit"] = None
             row["margin_pct"] = None
         out.append(row)
+    return out
+
+
+def breakdown(config_path, workspace_id, marketplace, start, end, group="asin"):
+    """Sales per product for a range, optionally rolled up to the PARENT.
+
+    group='asin'   -> one row per child ASIN, which is the thing that sells
+    group='parent' -> variations grouped, so a parent with five children reads as
+                      one product rather than five unrelated ones
+
+    parent_asin has been stored on every row since the sales report was first
+    parsed and has never been shown anywhere. A t-shirt in six sizes looked like
+    six weak products instead of one strong one, which is the opposite of the
+    conclusion the numbers support.
+    """
+    conn = _db.get_db(config_path)
+    # COALESCE, not parent_asin alone: a product with no variations has an empty
+    # parent, and grouping on that would collapse every standalone product in the
+    # account into a single nameless row.
+    key = ("CASE WHEN COALESCE(parent_asin,'')<>'' THEN parent_asin ELSE asin END"
+           if group == "parent" else "asin")
+    rows = conn.execute(
+        "SELECT %s k, MAX(COALESCE(parent_asin,'')) parent_asin, "
+        "  COUNT(DISTINCT asin) children, "
+        "  SUM(COALESCE(units,0)) units, SUM(COALESCE(ordered_sales,0)) revenue, "
+        "  SUM(COALESCE(sessions,0)) sessions, SUM(COALESCE(page_views,0)) page_views, "
+        "  SUM(COALESCE(order_items,0)) orders, MAX(currency) currency "
+        "FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+        "  AND date>=? AND date<=? AND asin<>'*' "
+        "GROUP BY k ORDER BY revenue DESC, units DESC, k" % key,
+        (workspace_id, marketplace, start, end)).fetchall()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        u, s = d["units"] or 0, d["sessions"] or 0
+        # Recomputed from the totals, never averaged from the daily rates: the
+        # mean of seven daily conversion rates is not the week's conversion rate,
+        # and the gap widens the more the daily traffic varies.
+        d["conversion"] = round(u / s * 100, 2) if s else None
+        d["avg_price"] = round((d["revenue"] or 0) / u, 2) if u else None
+        out.append(d)
     return out
 
 
@@ -341,6 +448,9 @@ METRICS = [
     # it is before cost of goods, and calling it profit would be a wrong number
     # dressed as a right one.
     ("principal",         "Charged to buyers",     "money", "up",   ("sum",)),
+    # VAT out first: it was collected, not earned. net_revenue is what is left.
+    ("vat",               "VAT",                   "money", "down", ("sum",)),
+    ("net_revenue",       "Revenue after VAT",     "money", "up",   ("sum",)),
     ("net_proceeds",      "Net proceeds",          "money", "up",   ("sum",)),
     # ---- cost of goods, from the cost written into each generated SKU -------
     ("units_shipped",     "Units shipped",         "count", "up",   ("sum",)),
@@ -416,9 +526,10 @@ def bucket(rows, gran):
     return buckets, order
 
 
-def totals(config_path, workspace_id, marketplace, start, end, asin=None):
+def totals(config_path, workspace_id, marketplace, start, end, asin=None,
+           vat_rate=None):
     """Every metric over a range, each by its own aggregation rule."""
-    rows = series(config_path, workspace_id, marketplace, start, end, asin)
+    rows = series(config_path, workspace_id, marketplace, start, end, asin, vat_rate)
     out = {"days": len(rows), "currency": (rows[0]["currency"] if rows else "")}
     for key in METRIC_KEYS:
         out[key] = aggregate(rows, key)
