@@ -14,6 +14,32 @@ let SRC_ROWS = [];
 let SRC_RULE = null;
 let SRC_MASTER = false;     // the master switch, as the SERVER reports it
 
+// Every /sourcing call says WHICH account and marketplace it means.
+//
+// It used to rely on the server's active_marketplace, which this screen never
+// sets -- opening the Repricer directly left it empty, so it looked up
+// jack_uk::"" , found nothing, and reported "no live listings cached" for an
+// account with 55 of them. The browser already knows both; sending them removes
+// the guess entirely.
+function _srcScope(){
+  const p = [];
+  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+    p.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET)
+    p.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  return p.join("&");
+}
+function _srcUrl(path, extra){
+  const q = [_srcScope(), extra || ""].filter(Boolean).join("&");
+  return path + (q ? (path.indexOf("?") >= 0 ? "&" : "?") + q : "");
+}
+function _srcBody(o){
+  const b = Object.assign({}, o || {});
+  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) b.id = CUR_ACCOUNT.id;
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET) b.marketplace = WS_MARKET;
+  return JSON.stringify(b);
+}
+
 function _sesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -37,7 +63,7 @@ async function sourcingLoad(){
   if(!body) return;
   body.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> Loading…</div>';
   let j;
-  try{ j = await (await fetch("/sourcing/list")).json(); }
+  try{ j = await (await fetch(_srcUrl("/sourcing/list"))).json(); }
   catch(e){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_sesc(String(e))+'</div>'; return; }
   if(!j || !j.ok){
     body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_sesc((j&&j.error)||"Could not load")+'</div>';
@@ -47,7 +73,7 @@ async function sourcingLoad(){
   SRC_RULE = j.rule || j.defaults || {};
   // Read from the server, never remembered from the last click: whether the app
   // is currently allowed to change prices is not something to guess at.
-  try{ SRC_MASTER = !!(await (await fetch("/sourcing/master")).json()).enabled; }
+  try{ SRC_MASTER = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
   catch(e){ SRC_MASTER = false; }
   sourcingRender(j);
 }
@@ -59,7 +85,7 @@ async function sourcingMaster(on){
   try{
     const j = await (await fetch("/sourcing/master",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({enabled:!!on})})).json();
+      body:_srcBody({enabled:!!on})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
     toast(j.enabled ? "Master switch ON" : "Master switch off — nothing will be pushed");
     sourcingLoad();
@@ -72,7 +98,7 @@ async function sourcingArm(sku, live){
   try{
     const j = await (await fetch("/sourcing/arm",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, live:!!live})})).json();
+      body:_srcBody({sku:sku, live:!!live})})).json();
     if(!j.ok){ toast(j.error||"Could not arm"); return; }
     toast(j.note || (j.mode==="live" ? "Armed" : "Back to dry run"));
     sourcingLoad();
@@ -87,7 +113,7 @@ async function sourcingMinPrice(sku){
   try{
     const j = await (await fetch("/sourcing/rules",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, rule:{min_price: v===""? null : parseFloat(v)}})})).json();
+      body:_srcBody({sku:sku, rule:{min_price: v===""? null : parseFloat(v)}})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
     toast("Minimum price saved"); sourcingLoad();
   }catch(e){ toast(String(e)); }
@@ -239,7 +265,7 @@ async function sourcingCheckNow(btn){
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="genspin"></span> reading…'; }
   try{
     const j = await (await fetch("/sourcing/check",{method:"POST",
-      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+      headers:{"Content-Type":"application/json"}, body:_srcBody({})})).json();
     if(!j.ok){ toast(j.error||"Could not read the suppliers"); return; }
     const f = j.fetch || {};
     let msg = "Read "+(f.checked||0)+" supplier"+((f.checked===1)?"":"s");
@@ -267,7 +293,7 @@ async function sourcingPickerLoad(q){
   const host = document.getElementById("srcpick");
   if(!host) return;
   let j;
-  try{ j = await (await fetch("/sourcing/candidates?q="+encodeURIComponent(q||""))).json(); }
+  try{ j = await (await fetch(_srcUrl("/sourcing/candidates","q="+encodeURIComponent(q||"")))).json(); }
   catch(e){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc(String(e))+'</div>'; return; }
   if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc((j&&j.error)||"Could not load")+'</div>'; return; }
 
@@ -320,7 +346,7 @@ async function sourcingEnrolPicked(sku){
   try{
     const j = await (await fetch("/sourcing/enrol",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku})})).json();
+      body:_srcBody({sku:sku})})).json();
     if(!j.ok){ toast(j.error||"Could not enrol"); return; }
     toast("Enrolled in dry run — add a supplier link next");
     await sourcingPickerLoad((document.getElementById("srcpickq")||{}).value||"");
@@ -333,7 +359,7 @@ async function sourcingUnenrol(sku){
   try{
     const j = await (await fetch("/sourcing/enrol",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, enrolled:false})})).json();
+      body:_srcBody({sku:sku, enrolled:false})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
     sourcingLoad();
   }catch(e){ toast(String(e)); }
@@ -348,7 +374,7 @@ async function sourcingAddSourcePrompt(sku){
   try{
     const j = await (await fetch("/sourcing/source/add",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, url:url.trim()})})).json();
+      body:_srcBody({sku:sku, url:url.trim()})})).json();
     if(!j.ok){ toast(j.error||"Could not add"); return; }
     toast("Supplier added — press “Re-read suppliers now” to check it");
     sourcingLoad();
@@ -360,7 +386,7 @@ async function sourcingRemoveSource(sid){
   try{
     const j = await (await fetch("/sourcing/source/remove",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({source_id:sid})})).json();
+      body:_srcBody({source_id:sid})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
     sourcingLoad();
   }catch(e){ toast(String(e)); }
