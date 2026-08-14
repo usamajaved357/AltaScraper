@@ -185,6 +185,16 @@ RULES = [
     ("/migrate/status",                 None),
     ("/migrate/import",                 "manage_accounts"),
 
+    # -- backups. Reading the status and checking whether the app has
+    #    everything the sheet has change nothing. Running a backup writes to a
+    #    spreadsheet, and the download hands over the ENTIRE dataset in one
+    #    file -- every account's listings, costs and prices at once -- so it is
+    #    held to the highest bar in the app.
+    ("/backup/status",                  None),
+    ("/backup/verify",                  None),
+    ("/backup/run",                     "manage_accounts"),
+    ("/backup/download",                "manage_accounts"),
+
     ("/input/status",                   None),
     ("/input/rows",                     None),
     ("/input/import",                   "edit"),

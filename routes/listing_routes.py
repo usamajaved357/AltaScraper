@@ -783,6 +783,21 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     header = _repo.read_headers(ws)
                 except Exception:
                     continue
+                # A BACKUP TAB IS NOT A SOURCE.
+                #
+                # The daily backup writes each workspace's listings into its own
+                # backup_ tab in the same workbook. Those tabs are listing-shaped
+                # by definition, so without this they would be read back as live
+                # rows -- a listing deleted in the app would reappear at the next
+                # backup, which is the sync problem being recreated by the very
+                # thing meant to end it. The prefix is defined in domain/backup.py
+                # and imported, so the two halves cannot drift apart.
+                try:
+                    from domain.backup import BACKUP_TAB_PREFIX as _BAK
+                except Exception:
+                    _BAK = "backup_"
+                if str(ws.title or "").startswith(_BAK):
+                    continue
                 if not (any(a in header for a in SKU_ALIASES) and "Title" in header):
                     continue                                    # not a listing tab -> skip
                 # On a SHARED workbook, include ONLY this account's own tab.

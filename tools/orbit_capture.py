@@ -58,7 +58,10 @@ TARGETS = [
     ("stat card",       ["[class*='statCard']", "[class*='metricCard']", "[class*='_card_']"]),
     ("stat number",     ["[class*='statValue']", "[class*='metricValue']", "[class*='_value_']"]),
     ("stat label",      ["[class*='statLabel']", "[class*='metricLabel']", "[class*='_label_']"]),
-    ("delta badge",     ["[class*='delta']", "[class*='change']", "[class*='badge']"]),
+    # pctBadge is what Orbit actually calls the +5.2% / down 1.6% chip. The
+    # obvious guesses -- delta, change, badge -- all miss it, which is why this
+    # is read off the page rather than assumed.
+    ("delta badge",     ["[class*='pctBadge']", "[class*='delta']", "[class*='change']"]),
     ("chart container", ["[class*='chartContainer']", "[class*='chartWrap']", "[class*='_chart_']"]),
     ("chart svg",       [".recharts-wrapper svg", "[class*='chart'] svg", "svg"]),
     ("chart line",      [".recharts-line-curve", "path[class*='line']", "svg path"]),
@@ -67,7 +70,9 @@ TARGETS = [
     ("x axis",          [".recharts-xAxis", "[class*='xAxis']"]),
     ("y axis",          [".recharts-yAxis", "[class*='yAxis']"]),
     ("axis label",      [".recharts-cartesian-axis-tick text", "svg text"]),
-    ("legend",          [".recharts-legend-wrapper", "[class*='legend']"]),
+    ("legend",          [".recharts-legend-item-text", ".recharts-legend-wrapper"]),
+    ("preset button",   ["[class*='_option_']", "[class*='_button_'][class*='_sm_']"]),
+    ("bar",             [".recharts-bar-rectangle path", ".recharts-rectangle"]),
     ("tooltip",         [".recharts-tooltip-wrapper", "[class*='tooltip']"]),
     ("progress bar",    ["[class*='progress']", "[class*='splitBar']", "[class*='ratioBar']"]),
     ("heatmap cell",    ["[class*='heatmap'] td", "[class*='heatCell']", "table td"]),
@@ -261,6 +266,55 @@ def main(argv=None):
                 if k in ("label", "selector", "box", "tag", "className", "count", "missing"):
                     continue
                 say("| %s | `%s` |" % (k, v))
+            say()
+
+        # ---- 2b. every series actually drawn ----------------------------
+        # The single most copyable thing on the page, and the one that cannot
+        # be read reliably off a screenshot: the exact stroke colour, width and
+        # dash of each line, and the stops of each area gradient.
+        say("## 2b. The lines and fills, as drawn")
+        say()
+        try:
+            series = page.evaluate("""() => ({
+              lines: [...document.querySelectorAll('.recharts-line-curve, .recharts-area-curve')]
+                .map(p => { const cs = getComputedStyle(p);
+                            return {stroke: cs.stroke, width: cs.strokeWidth,
+                                    // long dash arrays are the browser expanding a
+                                    // pattern over the path; only the head matters
+                                    dash: (cs.strokeDasharray || 'none').split(',').slice(0,4).join(',')}; }),
+              gradients: [...document.querySelectorAll('linearGradient')].map(g => ({
+                id: g.id,
+                stops: [...g.querySelectorAll('stop')].map(s => ({
+                  color: s.getAttribute('stop-color'),
+                  offset: s.getAttribute('offset'),
+                  opacity: s.getAttribute('stop-opacity') || '1'}))})),
+              bar: (() => { const b = document.querySelector('.recharts-bar-rectangle path');
+                            if (!b) return null; const cs = getComputedStyle(b);
+                            const r = b.getBoundingClientRect();
+                            return {fill: cs.fill, opacity: cs.opacity,
+                                    width: +r.width.toFixed(1)}; })(),
+            })""")
+            say("**Lines**")
+            say()
+            say("| stroke | width | dash |")
+            say("| --- | --- | --- |")
+            for ln in series["lines"]:
+                say("| `%s` | %s | `%s` |" % (ln["stroke"], ln["width"], ln["dash"]))
+            say()
+            if series.get("bar"):
+                say("**Bars:** fill `%s`, opacity `%s`, %s px wide"
+                    % (series["bar"]["fill"], series["bar"]["opacity"],
+                       series["bar"]["width"]))
+                say()
+            say("**Area gradients**")
+            say()
+            for g in series["gradients"]:
+                stops = " → ".join("%s @%s a=%s" % (s["color"], s["offset"], s["opacity"])
+                                   for s in g["stops"])
+                say("- `%s`: %s" % (g["id"], stops))
+            say()
+        except Exception as e:
+            say("Could not read the series: %s" % str(e)[:200])
             say()
 
         # ---- 3. motion, from the stylesheets ----------------------------
