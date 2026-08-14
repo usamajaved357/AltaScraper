@@ -497,6 +497,26 @@ function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
   return norm(r.status)==="LIVE" && !isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown);
 }
 
+// Is this row published on Amazon, and therefore NOT a draft?
+//
+// The Drafts view hides these, so the counters above the list have to agree
+// about which they are -- they did not, which is what made the top of the
+// screen describe a different set of listings from the list underneath it.
+// Reported as: "it shows total listings 86 ... and live 12, what do it mean by
+// live, in drafts". The list was showing 74 and the tiles were counting 86.
+//
+// Published means the store says LIVE, or a Sync has loaded Amazon's catalogue
+// and Amazon itself lists the SKU or ASIN.
+function isPublishedRow(r){
+  const n = v => String(v||"").trim().toUpperCase();
+  if(n(r.status) === "LIVE") return true;
+  const skus  = new Set((LIVE_ITEMS||[]).map(x=>n(x.sku)).filter(Boolean));
+  const asins = new Set((LIVE_ITEMS||[]).map(x=>n(x.asin)).filter(Boolean));
+  if(skus.size && skus.has(n(r.sku))) return true;
+  if(asins.size && r.asin && asins.has(n(r.asin))) return true;
+  return false;
+}
+
 // Build the SKU/ASIN sets once per render -- reused by summary()
 function _liveCatSetsForCurrentView(){
   const norm = v => String(v||"").trim().toUpperCase();
@@ -514,9 +534,23 @@ function summary(){
   // Counts reflect the ACTIVE tab filter: "All tabs" counts everything, a specific
   // tab counts only that tab's rows. Blank placeholder rows are excluded so the
   // "N listings" total agrees with the grid (which hides them) and the tab pills.
-  const _tabRows = ROWS.filter(tabPass)
+  const _allTabRows = ROWS.filter(tabPass)
                        .filter(r=> (typeof isEmptyRow!=="function") || !isEmptyRow(r))
                        .filter(r=> !DUP_ONLY || isDuplicate(r));
+  // COUNT WHAT THE LIST BELOW ACTUALLY SHOWS.
+  //
+  // On the Drafts view the list hides published rows, but these tiles counted
+  // every row -- so the screen said "86 listings" and "12 live" above a list of
+  // 74 drafts, and a "Live" tile on a screen that shows no live listings. It
+  // was reported, fairly, as making no sense.
+  //
+  // The published rows are not forgotten: they are named underneath, with a way
+  // to go and see them.
+  const _draftsView = (LIST_SOURCE !== "live" && LIST_SOURCE !== "all");
+  const _hiddenLive = _draftsView ? _allTabRows.filter(isPublishedRow) : [];
+  const _tabRows = _draftsView
+                 ? _allTabRows.filter(r=>!isPublishedRow(r))
+                 : _allTabRows;
   _tabRows.forEach(r=>{
     // FIX: reclassify HOLD/NEEDS_REVIEW/etc. as LIVE if the row's SKU/ASIN
     // matches the Amazon catalog. Without this the top-bar shows a stale
@@ -569,19 +603,41 @@ function summary(){
        <p class="n">${n}</p><p class="l">${label}</p></div>`;
   const extras = [];
   if(c.ERROR)      extras.push(`<span style="color:var(--red)">${c.ERROR} error</span>`);
-  if(c.API_READY)  extras.push(`<span style="color:var(--accent2)">${c.API_READY} preview-ready</span>`);
   if(c.HOLD)       extras.push(`<span style="color:var(--red)">${c.HOLD} on hold</span>`);
+  // The published rows the Drafts list is deliberately not showing. Said in
+  // words rather than counted into a tile above a list they are not in, and
+  // with the way to go and look at them.
+  if(_hiddenLive.length){
+    extras.push(`<span class="cc">${_hiddenLive.length} already live on Amazon, not shown here — `
+      + `<button class="linkbtn" onclick="setListSource('live')">see them</button></span>`);
+  }
   if(countDuplicateSkus()>0){
     extras.push(`<span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`);
   }
-  document.getElementById("summary").innerHTML =
+  const _sumHost = document.getElementById("summary");
+  _sumHost.innerHTML =
     `<div class="metricgrid">`
-    + tile(total,          "Total listings", "all")
+    + tile(total, _draftsView ? "Drafts" : "Total listings", "all")
     + tile(c.NEEDS_REVIEW, "Needs review",   "review")
-    + tile(c.APPROVED,     "Ready to submit","approved")
-    + tile(c.LIVE,         "Live",           "live")
+    // APPROVED **and** API_READY. The "Ready to submit" filter has always
+    // matched both, but the tile counted only APPROVED -- so a row that had
+    // passed Amazon's preview and was genuinely ready showed up as "0 ready to
+    // submit", which is the one number on this screen that decides whether
+    // there is anything to do.
+    + tile(c.APPROVED + c.API_READY, "Ready to submit", "approved")
+    // The fourth tile answers the question the CURRENT view can answer. On
+    // Drafts, "Live" was counting listings this list does not contain; what
+    // matters here is what is stuck.
+    + (_draftsView
+        ? tile(c.HOLD + c.ERROR, "Blocked or errored", "holds")
+        : tile(c.LIVE, "Live", "live"))
     + `</div>`
     + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
+  // Numbers count into place, but only the ones that actually changed --
+  // see altaCountMetrics. This runs on every render, including a filter click,
+  // and animating an unchanged figure would say "this just moved" about
+  // something that did not.
+  if(typeof altaCountMetrics === "function") altaCountMetrics(_sumHost);
 }
 
 // Pull a LIVE listing's real data (every Amazon image: main + all secondary) into the row, so

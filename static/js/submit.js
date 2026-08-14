@@ -328,7 +328,38 @@ async function switchView(key){
 // loadViews() is invoked at DOMContentLoaded (in settings.js) so every file's helpers
 // (e.g. _fetchJSON in shell.js) are already defined -- calling it here at script-load
 // time ran before shell.js loaded and threw "ReferenceError: _fetchJSON is not defined".
+// Which /rows_all request is the current one. A reply from an older request
+// must never be painted: without this, switching accounts twice quickly leaves
+// whichever fetch happens to finish last on screen, and the slow one is usually
+// the big account.
+let _ROWS_SEQ = 0;
+
 async function loadRows(){
+  // WHOSE LISTINGS THIS REQUEST IS FOR.
+  //
+  // /rows_all used to carry nothing at all: the server worked out the account
+  // from what it had been told last, and the browser trusted whatever came
+  // back. Two things went wrong with that, and both were seen live:
+  //
+  //   a reply could arrive AFTER the user had moved to another account, and be
+  //   painted over the account they were now looking at
+  //
+  //   a request could be sent BEFORE the account switch reached the server, and
+  //   be answered for the previous account
+  //
+  // So the account travels WITH the request, the reply is discarded unless it
+  // is still the one being waited for, and the server refuses outright if it
+  // disagrees about whose listings were asked for. The live-catalogue loader
+  // has done this for a while; the drafts loader is the one that could not.
+  const reqAccount = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
+                     ? String(CUR_ACCOUNT.id || "") : "";
+  const token = ++_ROWS_SEQ;
+  const stillMine = function(){
+    if(token !== _ROWS_SEQ) return false;                  // a newer request exists
+    const now = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
+                ? String(CUR_ACCOUNT.id || "") : "";
+    return now === reqAccount;                              // still the same account
+  };
   try{
     // /rows_all reads EVERY listing-shaped tab in this workspace's output sheet (not
     // just the active tab), tagging each card with its tab, so a multi-tab account
@@ -340,9 +371,25 @@ async function loadRows(){
     // screen, give it real headroom, and on failure render an in-grid error + Retry
     // (not a toast that vanishes and leaves an empty page).
     const _g0=document.getElementById("grid");
-    if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length))
-      _g0.innerHTML='<div class="empty"><span class="genspin"></span> Loading listings…<div class="cc" style="margin-top:8px">Accounts with many tabs (e.g. Miles) read every tab and can take up to a minute.</div></div>';
-    const j=await _fetchJSON("/rows_all", null, 120000);
+    if(_g0 && !(typeof ROWS!=="undefined" && ROWS.length)){
+      // A SKELETON, NOT A SPINNER. A spinner says "waiting" and nothing else;
+      // grey rows the size of the real ones say what is coming and stop the
+      // page jumping when it lands. The sentence stays -- on a slow account it
+      // is the only thing that explains why this is taking a minute.
+      _g0.innerHTML = (typeof altaSkeletonScreen === "function"
+        ? '<div class="cc" style="margin:0 0 10px">Loading listings… <span class="cc">'
+          + 'accounts with many tabs read every tab and can take up to a minute.</span></div>'
+          + altaSkeletonScreen({cards: 4, rows: 8})
+        : '<div class="empty"><span class="genspin"></span> Loading listings…</div>');
+    }
+    const j=await _fetchJSON("/rows_all?account="+encodeURIComponent(reqAccount), null, 120000);
+    // The user moved on while this was in flight. Drop it silently -- painting
+    // it now would put one account's listings under another account's name.
+    if(!stillMine()) return;
+    // The server disagrees about whose listings these are. It refuses rather
+    // than answer for the wrong account, so there is nothing to paint: the
+    // switch already under way will ask again in a moment.
+    if(j && j.account_mismatch) return;
     if(!j || j._failed){
       const _g=document.getElementById("grid");
       if(_g) _g.innerHTML='<div class="empty">Could not load listings: '+esc((j&&j.error)||"timed out")

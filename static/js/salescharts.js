@@ -13,6 +13,11 @@
 // only when they share a unit; revenue and units do not, so they get separate
 // charts rather than a twin axis whose crossings mean nothing.
 
+// Orbit's chart palette, from its own :root (orbit_full_audit.md 5.1 and 4.11):
+// the current period in brand gold, the period before it in neutral grey.
+const SC_GOLD    = "#fbbf24";
+const SC_COMPARE = "#6b7280";
+
 function _scEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -127,8 +132,26 @@ function salesChart(points, opts){
          + 'font-size:12px">' + _scEsc(o.title || "") + ' — nothing in this period yet.</div>';
   }
 
-  const lo = Math.min(0, Math.min.apply(null, vals));
-  const hi = _scNiceMax(Math.max.apply(null, vals));
+  // THE COMPARISON LINE -- what Orbit's charts have that these did not.
+  //
+  // A single line answers "what happened". It cannot answer "is that good",
+  // which is the question actually being asked of a sales chart, and answering
+  // it meant changing the dates and remembering the old shape. The same period
+  // immediately before is drawn behind it in grey dashes: current in gold,
+  // previous in grey, exactly as the Orbit audit describes (4.11).
+  //
+  // Same length as `points` and same order. Nulls are gaps here too -- a
+  // previous period that has no figure for a day must not be drawn as zero any
+  // more than the current one.
+  const cmp = (o.compare && o.compare.length === points.length) ? o.compare : null;
+  const cmpVals = cmp ? cmp.map(p => _scNum(p && p.value)).filter(v => v !== null) : [];
+
+  // BOTH SERIES SHARE ONE SCALE. They have to: two lines on separate scales
+  // that cross each other say something that is not true, and the crossing is
+  // the exact thing the eye reads first.
+  const allVals = vals.concat(cmpVals);
+  const lo = Math.min(0, Math.min.apply(null, allVals));
+  const hi = _scNiceMax(Math.max.apply(null, allVals));
   const span = (hi - lo) || 1;
   const x = i => padL + (points.length === 1 ? iw / 2 : (i * iw) / (points.length - 1));
   const y = v => padT + ih - ((v - lo) / span) * ih;
@@ -152,18 +175,44 @@ function salesChart(points, opts){
   });
   if(run.length) runs.push(run);
 
+  const LINE = o.color || SC_GOLD;
+  const cid0 = o.id || ("c" + Math.abs(_scHash(String(o.title || "") + points.length)));
+
+  // THE PREVIOUS PERIOD, FIRST, so the current one is drawn over it. Grey and
+  // dashed, thinner, and with no fill: it is context, and context that competes
+  // with the subject is just noise.
+  if(cmp){
+    let cruns = [], crun = [];
+    cmp.forEach(function(p, i){
+      const v = _scNum(p && p.value);
+      if(v === null){ if(crun.length) cruns.push(crun); crun = []; }
+      else crun.push({i: i, v: v});
+    });
+    if(crun.length) cruns.push(crun);
+    cruns.forEach(function(r){
+      if(r.length < 2) return;               // one point is not a trend
+      const d = r.map((pt, k) => (k ? "L" : "M") + x(pt.i).toFixed(1) + " " + y(pt.v).toFixed(1)).join(" ");
+      paths += `<path d="${d}" fill="none" stroke="${SC_COMPARE}" stroke-width="1.4"
+                      stroke-dasharray="4 3" stroke-linejoin="round"
+                      stroke-linecap="round" opacity="0.85"/>`;
+    });
+  }
+
   runs.forEach(function(r){
     if(r.length === 1){
-      dots += `<circle cx="${x(r[0].i)}" cy="${y(r[0].v)}" r="2.6" fill="${o.color || '#6ac7e8'}"/>`;
+      dots += `<circle cx="${x(r[0].i)}" cy="${y(r[0].v)}" r="2.6" fill="${LINE}"/>`;
       return;
     }
     const d = r.map((pt, k) => (k ? "L" : "M") + x(pt.i).toFixed(1) + " " + y(pt.v).toFixed(1)).join(" ");
-    paths += `<path d="${d}" fill="none" stroke="${o.color || '#6ac7e8'}" stroke-width="2"
-                    stroke-linejoin="round" stroke-linecap="round"/>`;
-    // A soft fill under the line, clipped to this run only.
+    // A GRADIENT under the line rather than a flat wash -- the area fades to
+    // nothing at the axis, so the line stays the thing being read and the fill
+    // only gives it weight. The class is what the stylesheet animates the sweep
+    // on, so the line appears to draw itself.
     const area = d + ` L ${x(r[r.length-1].i).toFixed(1)} ${y(lo).toFixed(1)}`
                + ` L ${x(r[0].i).toFixed(1)} ${y(lo).toFixed(1)} Z`;
-    paths += `<path d="${area}" fill="${o.color || '#6ac7e8'}" opacity="0.10"/>`;
+    paths += `<path d="${area}" fill="url(#${cid0}_grad)"/>`;
+    paths += `<path class="series" d="${d}" fill="none" stroke="${LINE}" stroke-width="2"
+                    stroke-linejoin="round" stroke-linecap="round"/>`;
   });
 
   // Shade the days with no data, so a gap reads as "not in yet" rather than as
@@ -192,12 +241,22 @@ function salesChart(points, opts){
   // string and inserted with innerHTML, so there is no element to bind to until
   // after it is in the document, and a later querySelectorAll pass would have to
   // be re-run on every redraw.
-  const cid = o.id || ("c" + Math.abs(_scHash(String(o.title || "") + points.length)));
+  const cid = cid0;
   let hits = "";
   points.forEach(function(p, i){
     const half = points.length > 1 ? iw / (points.length - 1) / 2 : iw / 2;
     const v = _scNum(p.value);
-    const shown = (v === null ? "no data yet" : _scFmt(v, o.kind));
+    let shown = (v === null ? "no data yet" : _scFmt(v, o.kind));
+    // With a comparison drawn, the hover has to answer the comparison too --
+    // otherwise the second line is decoration you cannot read a number off.
+    if(cmp){
+      const cv = _scNum(cmp[i] && cmp[i].value);
+      shown += "  ·  before: " + (cv === null ? "—" : _scFmt(cv, o.kind));
+      if(v !== null && cv !== null && cv !== 0){
+        const pct = ((v - cv) / Math.abs(cv)) * 100;
+        shown += " (" + (pct >= 0 ? "+" : "") + pct.toFixed(0) + "%)";
+      }
+    }
     hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
                    width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
@@ -210,12 +269,32 @@ function salesChart(points, opts){
   // The marker: a vertical line and a dot, moved by the handler rather than
   // redrawn, so hovering costs nothing.
   hits = `<line id="${cid}_vl" x1="0" y1="${padT}" x2="0" y2="${padT + ih}"
-                stroke="#6ac7e8" stroke-width="1" opacity="0"/>`
-       + `<circle id="${cid}_dot" cx="0" cy="0" r="3.5" fill="${o.color || '#6ac7e8'}"
+                stroke="${LINE}" stroke-width="1" opacity="0"/>`
+       + `<circle id="${cid}_dot" cx="0" cy="0" r="3.5" fill="${LINE}"
                  opacity="0"/>`
        + `<rect id="${cid}_sel" x="0" y="${padT}" width="0" height="${ih}"
-                fill="#6ac7e8" opacity="0.14" pointer-events="none"/>`
+                fill="${LINE}" opacity="0.14" pointer-events="none"/>`
        + hits;
+
+  // The gradient the area is painted with. Defined per chart because the colour
+  // is per chart, and referenced by id -- two charts on one page must not share
+  // one definition and therefore one colour.
+  const defs = `<defs><linearGradient id="${cid}_grad" x1="0" y1="0" x2="0" y2="1">`
+             + `<stop offset="0%" stop-color="${LINE}" stop-opacity="0.28"/>`
+             + `<stop offset="100%" stop-color="${LINE}" stop-opacity="0.02"/>`
+             + `</linearGradient></defs>`;
+
+  // A legend, only when there are two things to tell apart. One line needs no
+  // key, and a key for one line is furniture.
+  const legend = cmp
+    ? '<span style="font-size:10.5px;display:inline-flex;align-items:center;gap:10px">'
+      + '<span style="display:inline-flex;align-items:center;gap:4px">'
+      + '<svg width="16" height="6"><line x1="0" y1="3" x2="16" y2="3" stroke="' + LINE
+      + '" stroke-width="2"/></svg>this period</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:4px" class="cc">'
+      + '<svg width="16" height="6"><line x1="0" y1="3" x2="16" y2="3" stroke="' + SC_COMPARE
+      + '" stroke-width="1.4" stroke-dasharray="4 3"/></svg>the period before</span></span>'
+    : "";
 
   // Only a few x labels, or they collide and none of them can be read.
   let xl = "";
@@ -242,6 +321,7 @@ function salesChart(points, opts){
        // shape without its source is a shape you cannot act on.
        + (o.subtitle ? '<div class="cc" style="font-size:10.5px;margin:-1px 0 5px">'
                        + _scEsc(o.subtitle) + '</div>' : '')
+       + (legend ? '<div style="margin:-1px 0 5px">' + legend + '</div>' : '')
        + '<div class="cc" style="font-size:10px;margin:-2px 0 5px;opacity:.65">'
        + 'Hover for the day’s figure · drag across to zoom into those days</div>'
        // NOT preserveAspectRatio="none". That stretched the viewBox horizontally
@@ -250,8 +330,8 @@ function salesChart(points, opts){
        // panel happened to be -- and the line's stroke thickened in one direction
        // only. Scaling uniformly costs a taller chart on a wide screen and makes
        // the text legible at every width, including on a phone.
-       + `<svg viewBox="0 0 ${W} ${H}" width="100%"
+       + `<svg class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:auto;background:#0d1220;
                       border:1px solid #1e2733;border-radius:8px">`
-       + grid + gaps + paths + dots + xl + hits + '</svg></div>';
+       + defs + grid + gaps + paths + dots + xl + hits + '</svg></div>';
 }

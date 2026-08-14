@@ -72,6 +72,37 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
     def _read_account_rows(book_cache, acc):
         """Return (header, rows) for ONE account's output tab, or (None, None) if unreadable.
         book_cache dedupes open_by_key when accounts share a spreadsheet (5 share one here)."""
+        # SAME STORE AS EVERYTHING ELSE.
+        #
+        # This read Google Sheets unconditionally. Once the app's listings moved
+        # to the database that made the home screen's counts describe a
+        # spreadsheet nobody writes to any more -- so a generation run could add
+        # thirty listings and every number on the home screen would stay
+        # exactly as it was. The Listings screen had the identical bug and it is
+        # what hid an hour's work.
+        #
+        # get_all_values() returns header-row-first, which is the grid shape
+        # this function already returns, so nothing downstream changes. It is
+        # also a local read instead of one spreadsheet open per account, which
+        # is most of why opening the home screen was slow.
+        aid = str(acc.get("id") or "").strip()
+        try:
+            from data import choice as _choice_mod
+            _backend = _choice_mod.resolve(_cfg(), None)
+        except Exception:
+            _backend = "sheets"
+        if _backend == "db":
+            if not aid:
+                return None, None
+            try:
+                from data.store import ListingStore, SheetLikeStore
+                values = SheetLikeStore(ListingStore(aid)).get_all_values()
+            except Exception:
+                return None, None
+            if not values:
+                return [], []
+            return values[0], values[1:]
+
         sid = str(acc.get("output_spreadsheet_id") or "").strip()
         gid = str(acc.get("output_tab_gid") or "").strip()
         if not sid:

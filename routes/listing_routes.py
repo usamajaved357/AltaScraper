@@ -641,6 +641,87 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # Resolve the active workspace's sheet. Mirror _ws()'s scoping guard so an
             # ACCOUNT workspace never falls back to the shared default sheet/tab.
             _aid = _state.get("active_account_id")
+
+            # WHOSE LISTINGS WERE ASKED FOR.
+            #
+            # This route used to take the browser's word for nothing at all: it
+            # read the active account out of stored state and answered. That
+            # state is remembered between visits, so a request that arrived
+            # before the browser's account switch -- which is exactly what
+            # happened on every page load -- was answered with the account that
+            # had been open LAST time, and those listings were painted under
+            # this account's name.
+            #
+            # The browser now says which account it is asking about, and a
+            # disagreement is refused rather than answered. Refusing is the
+            # whole point: answering for the account the server happens to have
+            # selected is what produced the wrong listings on screen.
+            #
+            # An absent parameter is NOT treated as a mismatch, so anything
+            # calling this without one behaves exactly as before.
+            _raw_asked = request.args.get("account")
+            if _raw_asked is not None:
+                _asked = _raw_asked.strip()
+                if _asked != str(_aid or ""):
+                    return jsonify({
+                        "ok": False, "account_mismatch": True,
+                        "asked_for": _asked, "selected": str(_aid or ""),
+                        "error": ("These listings were asked for on behalf of a "
+                                  "different account than the one currently "
+                                  "selected, so nothing was read. This is a "
+                                  "safeguard: answering would show one "
+                                  "account's listings under another's name.")}), 200
+            # WHICH STORE THE LISTINGS ARE ACTUALLY IN.
+            #
+            # This is the bug behind "I pressed generate an hour ago, the log
+            # said it was generating, and now I cannot see the new drafts".
+            #
+            # The app moved its listings to the database. The generator writes
+            # there, /row reads there, every other screen reads there -- but
+            # this route went straight to Google Sheets and read the workbook,
+            # with no database branch at all. So a run wrote 27 new listings
+            # into the database and the Listings screen showed the spreadsheet,
+            # which knew nothing about them. Nothing was lost and nothing
+            # failed; the screen was simply looking in the other place.
+            #
+            # _ws() and _records() are the pair the whole app is given by
+            # injection, and they already point at whichever store is in use.
+            # Going through them is what makes this screen agree with the rest
+            # of the app instead of having its own opinion.
+            try:
+                from data import choice as _choice_mod
+                _backend = _choice_mod.resolve(_cfg(), None)
+            except Exception:
+                _backend = "sheets"
+            if _backend == "db":
+                store = _ws()
+                recs = _records(store)
+                cards = []
+                for r in recs:
+                    c = _card(r)
+                    # One store, so one "tab". The multi-tab manifest exists for
+                    # workbooks with several listing tabs; the database has a
+                    # workspace per account instead, which is the same idea
+                    # already enforced a level up.
+                    c["tab"] = getattr(store, "title", "listings")
+                    c["tab_gid"] = ""
+                    _attach_claim_flags(c, r)
+                    _attach_restricted(c, r)
+                    _attach_viability(c, r)
+                    cards.append(c)
+                _real = [c for c in cards
+                         if any(str(c.get(k) or "").strip()
+                                for k in ("sku", "title", "asin", "product_type", "price"))]
+                return jsonify({
+                    "ok": True,
+                    "shipping_group": _cfg().get("merchant_shipping_group", ""),
+                    "product_types": _product_types(),
+                    "source": {"store": "database",
+                               "workspace": str(_aid or "dropshipping")},
+                    "tabs": [{"tab": getattr(store, "title", "listings"),
+                              "tab_gid": "", "count": len(_real), "url": ""}],
+                    "rows": cards})
+
             _who = _state.get("active_view") or _aid or "This workspace"
             sid  = _state.get("active_sheet_id") or ""
             if _aid and not sid:

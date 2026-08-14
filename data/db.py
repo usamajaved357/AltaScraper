@@ -402,6 +402,39 @@ CREATE TABLE IF NOT EXISTS sourcing_actions (
 CREATE INDEX IF NOT EXISTS idx_srcsources_sku  ON sourcing_sources(workspace_id, marketplace, sku);
 CREATE INDEX IF NOT EXISTS idx_srcchecks_src   ON sourcing_checks(source_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_srcactions_sku  ON sourcing_actions(workspace_id, marketplace, sku, at);
+
+-- Every AI call the app makes, and what it cost.
+--
+-- One row per call, never aggregated on the way in: a total cannot be broken
+-- down afterwards, and the question is always "which account, doing what".
+--
+-- workspace_id is "" when a call genuinely belongs to no account (a settings
+-- test, a connection check). That is recorded as "" rather than guessed at,
+-- and the screen reports it separately -- spend attributed to the wrong
+-- account is worse than spend attributed to none.
+CREATE TABLE IF NOT EXISTS ai_usage (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    at            TEXT NOT NULL,            -- 'YYYY-MM-DD HH:MM:SS', local
+    day           TEXT NOT NULL,            -- 'YYYY-MM-DD', for grouping
+    workspace_id  TEXT NOT NULL DEFAULT '',
+    feature       TEXT NOT NULL,            -- what the user was doing
+    provider      TEXT NOT NULL,            -- 'anthropic' | 'openrouter'
+    model         TEXT NOT NULL DEFAULT '',
+    kind          TEXT NOT NULL DEFAULT 'text',   -- 'text' | 'image' | 'vision'
+    input_tokens  INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    images        INTEGER DEFAULT 0,
+    -- NULL, not 0, when the price of this model is not known. A cost of zero
+    -- for a call that certainly cost something is the one number that would
+    -- make this dashboard worse than no dashboard.
+    cost_usd      REAL,
+    ok            INTEGER DEFAULT 1,
+    error         TEXT DEFAULT '',
+    sku           TEXT DEFAULT '',
+    ms            INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_aiusage_day  ON ai_usage(day, workspace_id);
+CREATE INDEX IF NOT EXISTS idx_aiusage_feat ON ai_usage(workspace_id, feature, day);
 """
 
 

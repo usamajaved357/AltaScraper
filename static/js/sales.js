@@ -357,11 +357,43 @@ function salesDrawCharts(ser){
       return i !== chosenAt && p && !usable(p);
     }).map(function(k){ return k[1]; });
     drew++;
+    // The same metric over the period before, if it arrived. Matched by KEY, so
+    // a chart that fell back to the finance feed is compared against the
+    // finance feed and not against a different measurement of the same trade.
+    // MATCHED BY DATE, one entry per column of the chart being drawn.
+    //
+    // Not by position: the reply carries only the buckets that have figures, so
+    // the two periods routinely come back with different numbers of columns.
+    // Each column here looks up its own date minus the offset; a date the
+    // earlier period has no figure for becomes null, which the chart draws as a
+    // gap rather than as zero.
+    let cmp = null;
+    if(SALES.compare && SALES.compare.metrics && SALES.compareOffsetDays){
+      const key = w.keys[chosenAt][0];
+      const cm = SALES.compare.metrics.filter(function(m){ return m.key === key; })[0];
+      if(cm && cm.cells){
+        const was = {};
+        (SALES.compare.columns || []).forEach(function(d, i){ was[d] = cm.cells[i]; });
+        const off = SALES.compareOffsetDays * 86400000;
+        cmp = chosen.map(function(pt){
+          const d = new Date(String(pt.label) + "T00:00:00Z");
+          if(isNaN(d)) return {label: "", value: null};
+          const back = new Date(d.getTime() - off).toISOString().slice(0, 10);
+          return {label: back,
+                  value: (back in was) ? was[back] : null};
+        });
+        // Nothing lined up at all -- weekly or monthly buckets that the offset
+        // does not land on. Better no second line than a line made of gaps.
+        if(!cmp.some(function(p){ return p.value !== null && p.value !== undefined; })) cmp = null;
+      }
+    }
     h += salesChart(chosen, {
-      title: w.title, kind: w.kind, color: w.color,
+      title: w.title, kind: w.kind, color: w.color, compare: cmp,
       // Said on every chart, not only when it falls back: which of Amazon's two
       // feeds a number came from decides what it means, and the two disagree.
       subtitle: "from the " + source
+        + (cmp && SALES.compareRange
+             ? " · dashed line is " + SALES.compareRange : "")
         + (disagrees.length ? " — the " + _sEsc(disagrees.join(" and "))
                             + " shows zero for the same period, so it is not "
                             + "drawn" : "")});
@@ -396,6 +428,12 @@ async function salesReload(){
       (await fetch("/sales/series?"+_sQuery())).json()
     ]);
     SALES.data=sum; SALES.series=ser;
+    // The period immediately before this one, for the comparison line. Fetched
+    // separately and NOT awaited with the rest: the charts must not wait for
+    // context to draw the thing the context is about. When it arrives the
+    // charts redraw with it; if it fails they simply stay as they are.
+    SALES.compare = null;
+    salesLoadCompare(sum).catch(function(){});
     salesDrawCards(sum, av);
     salesDrawCharts(ser);
     salesDrawGrid(ser);
@@ -411,6 +449,52 @@ async function salesReload(){
     if(grid) grid.style.opacity="";
     SALES.busy=false;
   }
+}
+
+/* ---- the period before this one ----------------------------------------
+ * A line on its own says what happened. It cannot say whether that is good,
+ * which is the question actually being asked -- and answering it meant
+ * changing the dates and trying to remember the old shape. So the same span
+ * immediately before is fetched and drawn behind, in grey dashes.
+ *
+ * Deliberately a SEPARATE request, not part of the load above: it is context.
+ * If it is slow the charts are already up; if it fails there is simply no
+ * second line, and nothing on the screen is wrong.
+ */
+async function salesLoadCompare(sum){
+  if(!sum || !sum.ok || !sum.start || !sum.end) return;
+  const start = new Date(sum.start + "T00:00:00Z");
+  const end   = new Date(sum.end   + "T00:00:00Z");
+  if(isNaN(start) || isNaN(end)) return;
+  const days = Math.round((end - start) / 86400000) + 1;
+  if(days < 2 || days > 400) return;             // nothing to compare against
+  const prevEnd   = new Date(start.getTime() - 86400000);
+  const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
+  const iso = d => d.toISOString().slice(0, 10);
+
+  // The same query as the main series, with the dates replaced -- so the
+  // product filter, the marketplace and the granularity all carry over. A
+  // comparison drawn from a different filter would be a different product.
+  const q = ["preset=custom",
+             "start=" + iso(prevStart), "end=" + iso(prevEnd),
+             "granularity=" + encodeURIComponent(SALES.gran)];
+  if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+    q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+
+  const j = await (await fetch("/sales/series?" + q.join("&"))).json();
+  if(!j || !j.ok || !(j.columns || []).length) return;
+  SALES.compare = j;
+  // The offset, in days, between a column here and the column it is compared
+  // against. Kept because the two series are matched BY DATE, not by position:
+  // measured on jack_uk, a 30-day request came back with 28 columns for this
+  // period and 1 for the period before, because the reply carries only the
+  // buckets that have figures. Pairing them by position would have compared
+  // June 15th against July 15th; requiring equal lengths would have meant the
+  // comparison never drew at all.
+  SALES.compareOffsetDays = days;
+  SALES.compareRange = iso(prevStart) + " to " + iso(prevEnd);
+  salesDrawCharts(SALES.series);
 }
 
 function salesDrawRange(sum, av){
