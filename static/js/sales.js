@@ -431,6 +431,9 @@ function salesDrawCharts(ser){
 
     if(comboLines.length || anyReal(orderCells)){
       comboHtml = salesCombo({
+        // The currency, so the money axis reads "£28.0k" rather than a bare
+        // number. Orbit's reads "$28.0k".
+        currency: (ser && ser.currency),
         id: "sales_combo", columns: dates,
         bars: anyReal(orderCells) ? {label: "Orders", values: orderCells} : null,
         lines: comboLines,
@@ -741,7 +744,7 @@ async function salesLoadWeek(){
   }
 
   host.innerHTML = salesChart(pts, {
-    title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
+    title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart", currency: (now && now.currency),
     width: 597, height: 200, compare: cmp,
     subtitle: cmp ? ("dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""});
 
@@ -838,7 +841,7 @@ function salesDrawOrgPpc(ser){
   }
 
   const chart = salesCombo({
-    id: "orgppc", columns: cols, bars: null,
+    id: "orgppc", columns: cols, bars: null, currency: (ser && ser.currency),
     lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
     height: 260,
   });
@@ -940,7 +943,7 @@ async function salesLoadHourly(){
     + 'which this account is not connected to.</span></div>';
 
   el.innerHTML = salesChart(pts, {
-    title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
+    title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart", currency: (j && j.currency),
     width: 597, height: 200, compare: cmp,
     subtitle: (j.note || "") + " Orders as placed, " + _sEsc(j.timezone || "")})
     + adsFoot;
@@ -970,7 +973,46 @@ function salesDrawCards(sum, av){
     if(note) note.innerHTML='<div class="empty">'+_sEsc((sum&&sum.error)||"No sales data")+'</div>';
     return;
   }
-  host.innerHTML = (sum.cards||[]).map(function(c){
+  // ORBIT'S FIVE, IN ITS ORDER AND ITS WORDS: Total Sales, Daily Average,
+  // Total Orders, Total Units, Profit. Ours had ten in a different order with
+  // different names, so the two screens did not even begin the same way.
+  //
+  // The rest are not thrown away -- they are every one of them a row in the
+  // grid below, per day, in full. What changes is which five are given the top
+  // of the screen.
+  //
+  // Daily Average is not a figure Amazon sends; it is revenue over the number
+  // of days in the range, worked out here. It is on the same basis as the
+  // revenue it comes from, so it cannot disagree with the card beside it.
+  const _byKey = {};
+  (sum.cards || []).forEach(function(c){ _byKey[c.key] = c; });
+  const _days = (function(){
+    try{
+      const a = new Date(sum.start + "T00:00:00Z"), b = new Date(sum.end + "T00:00:00Z");
+      const n = Math.round((b - a) / 86400000) + 1;
+      return (n > 0 && n < 1000) ? n : 0;
+    }catch(e){ return 0; }
+  })();
+  const _rev = _byKey["ordered_sales"] || _byKey["net_revenue"];
+  const ORBIT_CARDS = [
+    Object.assign({}, _rev || {}, {label: "Total Sales"}),
+    (_rev && _days && _rev.value !== null && _rev.value !== undefined)
+      ? {key: "daily_avg", kind: "money", label: "Daily Average",
+         value: Number(_rev.value) / _days,
+         previous: (_rev.previous === null || _rev.previous === undefined)
+                   ? null : Number(_rev.previous) / _days,
+         delta_pct: _rev.delta_pct}
+      : {key: "daily_avg", kind: "money", label: "Daily Average",
+         value: null, previous: null, delta_pct: null},
+    Object.assign({}, _byKey["orders"] || {key: "orders", kind: "count", value: null},
+                  {label: "Total Orders"}),
+    Object.assign({}, _byKey["units"] || {key: "units", kind: "count", value: null},
+                  {label: "Total Units"}),
+    Object.assign({}, _byKey["profit"] || {key: "profit", kind: "money", value: null},
+                  {label: "Profit"}),
+  ];
+
+  host.innerHTML = ORBIT_CARDS.map(function(c){
     const missing = (c.value===null||c.value===undefined);
     const adsOff = (c.key==="spend" && !sum.ads_connected);
     // PROFIT AND MARGIN READ AT A GLANCE. They are the two numbers the business
@@ -994,8 +1036,12 @@ function salesDrawCards(sum, av){
       + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
       + (adsOff
           ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
+          // "LY :" is Orbit's own wording, with the space. `previous` is what
+          // the server calls the earlier figure -- it was read as `prev_value`,
+          // which does not exist, so every card said only a percentage with
+          // nothing to compare it against.
           : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
-                    c.prev_value, c.kind, sum.currency))
+                    c.previous, c.kind, sum.currency))
       + '</div>';
   }).join("");
 
@@ -1041,8 +1087,9 @@ function _sDelta(c, prevLabel, prevValue, kind, currency){
   // nothing in print.
   const arrow = c.delta_pct===0 ? "→" : (up?"↑":"↓");
   const sign = c.delta_pct===0 ? "" : (up?"+":"−");
+  // "LY : $551,866.01" -- Orbit's spacing, measured off its own cards.
   const was = (prevValue===null || prevValue===undefined)
-    ? "" : (prevLabel||"was") + ": " + _sShort(prevValue, kind, currency) + " ";
+    ? "" : (prevLabel||"was") + " : " + _sShort(prevValue, kind, currency) + " ";
   return '<p class="stat-delta">' + _sEsc(was)
        + '<span class="pct-badge ' + cls + '" title="' + (up?"up":"down")
        + ' versus ' + _sEsc(prevLabel === "LY" ? "the same period last year"
@@ -1066,7 +1113,21 @@ function salesDrawGrid(ser){
     return;
   }
   const cols=ser.columns||[];
-  let h='<div class="salesgridwrap"><table class="salesgrid"><thead><tr>'
+  // ORBIT'S TITLE FOR THIS TABLE, and its description. The grid had neither, so
+  // the most information-dense thing on the page arrived unannounced -- and the
+  // colour in it needs saying, because a heatmap whose scale is not explained
+  // is just decoration.
+  let h='<div class="panelhead" style="margin:0 0 12px;padding:0"><div>'
+      + '<p class="paneltitle">P&amp;L Heatmap</p>'
+      + '<p class="panelsub">Performance metrics with heatmap colouring across '
+      + 'time periods<span class="infodot" title="Each row is shaded against its '
+      + 'own range, never across rows. Profit and margin diverge at zero — red '
+      + 'below, green above — because a loss is not a small profit. Every cell '
+      + 'prints its number, so nothing depends on telling the colours apart.">i</span></p>'
+      + '</div><div class="cc" style="font-size:11px">'
+      + (ser.metrics||[]).length + ' metrics · ' + cols.length + ' '
+      + _sEsc(ser.granularity || "day") + 's</div></div>'
+      + '<div class="salesgridwrap"><table class="salesgrid"><thead><tr>'
       + '<th class="mcol">Metric</th>'
       + cols.map(function(c){ return '<th>'+_sEsc(_sColLabel(c, ser.granularity))+'</th>'; }).join("")
       + '</tr></thead><tbody>';

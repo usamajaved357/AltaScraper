@@ -239,11 +239,50 @@ function _scNum(v){
   const n = Number(v);
   return isFinite(n) ? n : null;
 }
+/* A value as it appears in the READOUT -- the hover card, where the exact
+   figure is what is wanted. */
 function _scFmt(v, kind){
   if(v===null) return "—";
   if(kind === "money") return Number(v).toFixed(2);
   if(kind === "pct")   return Number(v).toFixed(1) + "%";
   return String(Math.round(v));
+}
+
+/* A value as it appears on an AXIS, which is a different job.
+ *
+ * Orbit's y-axis reads "$28.0k", "$21.0k", "$0" -- measured. Ours read
+ * "28000.00", so five gridline labels took three times the width and the eye
+ * had to parse a decimal on every one. An axis is scanned, not read: it wants
+ * the magnitude and nothing else.
+ *
+ * The exact figure is never lost -- it is in the hover card and in the grid
+ * below, both to the penny. */
+const SC_CUR = {GBP: "£", USD: "$", EUR: "€", CAD: "$", AUD: "$", JPY: "¥"};
+
+function _scAxis(v, kind, currency){
+  if(v === null || v === undefined) return "";
+  const n = Number(v);
+  if(!isFinite(n)) return "";
+  if(kind === "pct") return n.toFixed(0) + "%";
+  const sym = (kind === "money") ? (SC_CUR[String(currency || "").toUpperCase()] || "£") : "";
+  const a = Math.abs(n);
+  if(a >= 1e6) return sym + (n / 1e6).toFixed(1) + "m";
+  if(a >= 1000) return sym + (n / 1000).toFixed(1) + "k";
+  if(n === 0) return sym + "0";
+  // Under a thousand, whole units read fine and a decimal is noise.
+  return sym + (a < 10 ? n.toFixed(1) : String(Math.round(n)));
+}
+
+/* "Jul 15", not "07-15". Orbit labels its x-axis the way a person says a date,
+   and a hyphenated pair reads as a code rather than a day. */
+const SC_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun",
+                   "Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function _scDay(label){
+  const s = String(label || "");
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if(!m) return s;                        // already a word, or an hour
+  return SC_MONTHS[Number(m[2]) - 1] + " " + Number(m[3]);
 }
 
 // A "nice" top-of-axis, so the labels are round numbers rather than 3847.219.
@@ -318,7 +357,7 @@ function salesChart(points, opts){
     const v = lo + span * f, yy = y(v);
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#1e2733" stroke-width="1"/>`
          +  `<text x="${padL - 6}" y="${yy + 3.5}" text-anchor="end" font-size="9.5"
-                fill="#7b8794">${_scEsc(_scFmt(v, o.kind))}</text>`;
+                fill="#7b8794">${_scEsc(_scAxis(v, o.kind, o.currency))}</text>`;
   });
 
   // The line, BROKEN wherever a day has no data. Each run of real values is its
@@ -488,7 +527,7 @@ function salesChart(points, opts){
   points.forEach(function(p, i){
     if(i % step && i !== points.length - 1) return;
     xl += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="9.5"
-                 fill="#7b8794">${_scEsc(String(p.label).slice(5))}</text>`;
+                 fill="#7b8794">${_scEsc(_scDay(p.label))}</text>`;
   });
 
   const missing = points.filter(p => _scNum(p.value) === null).length;
@@ -605,7 +644,7 @@ function salesCombo(o){
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
                    stroke="rgb(55,65,81)" stroke-width="1"/>`
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(_scFmt(mLo + mSpan * f, "money"))}</text>`
+                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, "money", o.currency))}</text>`
          +  `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
                   fill="rgb(156,163,175)">${_scEsc(String(Math.round(bHi * f)))}</text>`;
   });
@@ -673,7 +712,7 @@ function salesCombo(o){
   cols.forEach(function(c, i){
     if(i % step && i !== cols.length - 1) return;
     xl += `<text x="${x(i)}" y="${H - 34}" text-anchor="middle" font-size="11"
-                 fill="rgb(156,163,175)">${_scEsc(String(c).slice(5))}</text>`;
+                 fill="rgb(156,163,175)">${_scEsc(_scDay(c))}</text>`;
   });
 
   // Hover: one readout for every series at that column, which is the whole

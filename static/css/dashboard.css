@@ -1600,9 +1600,24 @@
   from{ opacity:0; transform:translateY(8px); }
   to  { opacity:1; transform:translateY(0); }
 }
-/* .wspanel is hidden/shown by the .show class, and #sec_listings by display.
-   Both get the same entrance so no screen feels different from the others. */
-.wspanel.show{ animation:fadeIn .25s ease; }
+/* NO ENTRANCE ON A SECTION SWITCH -- measured, and it corrects what was here.
+   Orbit's content area was sampled at 0, 80, 160, 320, 640 and 1200ms across
+   three tab switches and reported `animation: none, 0s` at every single frame.
+   It does not fade, slide or scale a section in; the content is simply there.
+
+   This used to fade every panel in over .25s. The earlier brief asked for that
+   explicitly ("content should not just appear -- it should fade in"), so the
+   two instructions disagree; "exactly like Orbit, bit by bit" is the later and
+   more emphatic one, and this is what Orbit actually does. Put the rule back if
+   the fade is preferred -- it is one line.
+
+   What Orbit DOES do on a switch is answered elsewhere and already matches: a
+   tab already visited comes back instantly with no skeleton (measured: charts
+   restored within 80ms), and only an unvisited one shows loading state. That is
+   static/js/screenstate.js.
+
+   The fadeIn keyframes stay -- staggered table rows and the modals use them. */
+@keyframes _fadeInKept{ from{opacity:0} to{opacity:1} }
 
 /* -- 2. SKELETON LOADING -----------------------------------------------
    .skeleton and @keyframes shimmer were added in the layout pass and never
