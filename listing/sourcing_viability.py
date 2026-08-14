@@ -38,6 +38,7 @@ import re
 from listing.restricted import (
     ACCESSORY_NOUNS,
     accessory_pattern,
+    compat_pattern,
     resolve_docs_display,
     wordish,
 )
@@ -90,6 +91,11 @@ def _compile_rule(rc):
         # Accessory adjacency applies to every trigger term, so "patio heater
         # cover", "charger stand" and "trampoline cover" all demote.
         "accessory": {t: accessory_pattern(t, ACCESSORY_NOUNS) for t in (strong + corrob)},
+        # And COMPATIBILITY demotes a context word: "works on electric hobs"
+        # says what the product is used with, not what it is. See compat_pattern
+        # in listing/restricted.py for the wok this exists for.
+        "compat": {t: compat_pattern(t)
+                   for t in (trg.get("context") or []) + corrob},
         "wattage_min": int(trg.get("wattage_min") or 0),
         "mah_min": int(trg.get("mah_min") or 0),
     }
@@ -118,6 +124,13 @@ def _all_accessory(rule, text, hits):
     return True
 
 
+def _word_hits(term, text):
+    """Every whole-word occurrence of a term. Used to compare against the
+    compatibility matches, so "electric" twice with only one of them inside
+    "works on ... electric" still counts as real evidence."""
+    return wordish(term).findall(text)
+
+
 def _evaluate(rule, text):
     """Return (fired, signals) for one rule."""
     # 1. exclude is a hard veto, checked before anything else.
@@ -128,6 +141,21 @@ def _evaluate(rule, text):
     strong_hits = [t for t, pat in rule["strong"] if pat.search(text)]
     corrob_hits = [t for t, pat in rule["corrob"] if pat.search(text)]
     context_hits = [t for t, pat in rule["context"] if pat.search(text)]
+
+    # COMPATIBILITY IS NOT IDENTITY. A word that appears ONLY inside a phrase
+    # like "works on electric hobs" describes what the product is used with.
+    # Dropped from the evidence rather than the whole rule vetoed: a listing
+    # that says both "works on electric hobs" AND "1500W mains powered" still
+    # has the second, and should still fire.
+    def _only_compat(term):
+        pat = rule["compat"].get(term)
+        if pat is None:
+            return False
+        hits = len(_word_hits(term, text))
+        return hits > 0 and hits == len(pat.findall(text))
+
+    context_hits = [t for t in context_hits if not _only_compat(t)]
+    corrob_hits = [t for t in corrob_hits if not _only_compat(t)]
 
     # 2. an accessory to the product is not the product.
     word_hits = strong_hits + corrob_hits

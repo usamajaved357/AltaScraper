@@ -122,6 +122,39 @@ def accessory_pattern(term, suffixes=None):
                       + r")(?![A-Za-z0-9])", re.I)
 
 
+# --- COMPATIBILITY, which is the opposite of being the thing ----------------
+# A cast-iron wok whose listing says "works on gas, ELECTRIC and induction hobs"
+# was flagged as a mains-powered electrical product needing a BS EN 60335 test
+# report. It is a lump of steel. The word "electric" was there, but it described
+# what the pan is USED WITH, and a phrase like "works on" or "compatible with"
+# is the ordinary English marker for that.
+#
+# This is the same shape as the accessory rule above -- "patio heater COVER" is
+# not a heater -- applied to the words in front of a trigger rather than behind
+# it. A false HIGH RISK is not a harmless extra check: it teaches people to
+# ignore the ones that are real.
+COMPAT_LEADS = [
+    "works on", "works with", "works in", "work on", "work with",
+    "compatible with", "compatible for", "suitable for", "suitable on",
+    "for use on", "for use with", "for use in", "use on", "use with",
+    "safe for", "safe on", "safe to use on", "designed for", "made for",
+    "fits", "fits on", "fits all", "ideal for", "perfect for",
+    "can be used on", "can be used with", "usable on",
+]
+
+
+def compat_pattern(term, leads=None):
+    """'<compatibility phrase> ... <term>' matcher.
+
+    The gap allows the list a real sentence uses -- "works on gas, electric and
+    induction hobs" puts two words between the lead and the trigger -- but is
+    short enough that a lead in one clause cannot reach a trigger in the next.
+    """
+    lead = "|".join(re.escape(s) for s in (leads or COMPAT_LEADS))
+    return re.compile(r"(?:" + lead + r")\b[\w\s,/&'-]{0,40}?"
+                      + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
+
+
 def classify_keyword(kw):
     """'strong' (may flag alone) vs 'corroborating' (needs a category signal)."""
     k = str(kw).strip().lower()
