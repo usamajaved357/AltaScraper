@@ -1637,11 +1637,28 @@ html{ scroll-behavior:smooth; }
   from{ clip-path:inset(0 100% 0 0); }
   to  { clip-path:inset(0 0 0 0); }
 }
-.chartcard, .chartbox{ animation:chartFadeIn .28s ease; }
-/* The drawn-line effect, on the path only -- the axes and labels must not
-   sweep in with it or the chart reads as unfinished while it plays. */
+/* MEASURED, and it corrected this: Orbit's chart FRAME does not animate at all.
+   At 2500ms into a load its axes, gridlines, tick labels and stat figures are
+   already in place at full opacity, and only the data is still arriving -- the
+   bars growing up from the baseline and the lines drawing in.
+   (orbit_shots/load_02500ms.png.)
+
+   Fading and scaling the whole chart, which is what this used to do, moves the
+   axis labels while someone is reading them and makes the panel feel like it
+   is still arriving after it has arrived. So the container is left alone and
+   the animation is on the series only. */
 .chartcard svg path.series, .chartbox svg path.series{
   animation:chartSweep .5s ease-out;
+}
+/* Bars grow from the baseline rather than appearing at full height, which is
+   what Recharts does by default and what the 2500ms frame shows. */
+@keyframes barGrow{
+  from{ transform:scaleY(0); }
+  to  { transform:scaleY(1); }
+}
+.chartbox .bar, .chartcard .bar{
+  transform-origin:bottom;
+  animation:barGrow .45s ease-out;
 }
 
 /* -- 5. TABLE ROW STAGGER ----------------------------------------------
@@ -1720,3 +1737,90 @@ html{ scroll-behavior:smooth; }
   }
   html{ scroll-behavior:auto; }
 }
+
+
+/* =====================================================================
+   STAT CARDS — Orbit's, to the pixel
+   =====================================================================
+   Every number here was read off Orbit's live Sales Dashboard with
+   tools/orbit_capture.py on 15 Aug 2026 and is recorded in
+   orbit_interactions.md. Nothing below is a judgement call, so nothing
+   below should be "tidied" without re-measuring.
+
+       card    235.8 × 104, padding 12, gap 4, radius 8
+               background rgb(45,50,66), border 1px rgb(55,65,81)
+       label   12px / 500, rgb(156,163,175), line-height 18
+       value   20px / 600, rgb(243,244,246), line-height 30
+       delta   12px / 500, green rgb(16,185,129), 18 high, 2px left margin
+
+   THE ORDER MATTERS AND WAS WRONG. Orbit puts the LABEL ABOVE the number
+   (measured: label at y=556.8, value at y=578.8). Ours had the number on
+   top and centred, which is why the two never looked alike however close
+   the colours got.
+   ===================================================================== */
+.stat-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:12px;
+  margin-bottom:16px;
+}
+.stat-card{
+  background:rgb(45,50,66);
+  border:1px solid rgb(55,65,81);
+  border-radius:8px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  text-align:left;
+  cursor:default;
+  min-height:104px;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .15s ease;
+}
+/* Orbit's own cards do not lift on hover -- measured transition-duration 0s.
+   Ours do, very slightly, because they are clickable filters on some screens
+   and a control that cannot be felt reads as decoration. */
+.stat-card:hover{ border-color:rgb(75,85,101); }
+
+/* Label first in the DOM, so it sits above the number as Orbit's does. */
+.stat-card .stat-label{
+  order:1;
+  font-size:12px;
+  font-weight:500;
+  line-height:18px;
+  color:rgb(156,163,175);
+  text-transform:none;      /* Orbit's are sentence case, not caps */
+  letter-spacing:normal;
+  margin:0;
+}
+.stat-card .stat-number{
+  order:2;
+  font-size:20px;
+  font-weight:600;
+  line-height:30px;
+  color:rgb(243,244,246);
+  letter-spacing:normal;
+  font-variant-numeric:tabular-nums;
+  margin:0;
+}
+.stat-card .stat-delta{
+  order:3;
+  font-size:12px;
+  font-weight:400;
+  line-height:18px;
+  color:rgb(156,163,175);
+  margin:0;
+}
+/* The +5.2% chip. Orbit renders it inline after the comparison figure, in
+   green or red, at 500 weight with a 2px gap. */
+.pct-badge{
+  font-size:12px;
+  font-weight:500;
+  line-height:18px;
+  margin-left:2px;
+}
+.pct-badge.up  { color:rgb(16,185,129); }
+.pct-badge.down{ color:rgb(239,68,68); }
+.pct-badge.flat{ color:rgb(156,163,175); }
+
+.stat-card.is-empty .stat-number{ color:rgb(107,114,128); }

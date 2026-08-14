@@ -1,6 +1,6 @@
 # Orbit Sales Dashboard — measured interactions
 
-Captured 2026-08-15 01:04 from a signed-in Chrome over the DevTools protocol.
+Captured 2026-08-15 01:31 from a signed-in Chrome over the DevTools protocol.
 Every number below is READ FROM THE LIVE PAGE — computed styles and
 `performance.now()` timings — not estimated from a screenshot.
 
@@ -11,22 +11,32 @@ scripting, layout and paint. That needs a person with the tab open.
 
 ```json
 {
-  "skeleton_at": 3480,
-  "content_at": 9376,
-  "first_svg_at": 3480,
+  "skeleton_at": 3199,
+  "content_at": 11750,
+  "first_svg_at": 3199,
   "nav": {
     "dom_content_loaded": 0,
     "load": 0,
-    "response_end": 469
+    "response_end": 336
   }
 }
 ```
 
-- skeleton visible at **3480 ms** after navigation
-- first chart path at **3480 ms**
-- skeletons gone, chart present at **9376 ms**
+- skeleton visible at **3199 ms** after navigation
+- first chart path at **3199 ms**
+- skeletons gone, chart present at **11750 ms**
 
 Screenshot: `orbit_shots/01_loaded.png`
+
+### What the load actually looks like
+
+- **200 ms** — 0 skeleton element(s), 0 chart path(s), figures showing: ['none yet'] → `orbit_shots/load_00200ms.png`
+- **600 ms** — 0 skeleton element(s), 0 chart path(s), figures showing: ['none yet'] → `orbit_shots/load_00600ms.png`
+- **1200 ms** — 164 skeleton element(s), 83 chart path(s), figures showing: ['none yet'] → `orbit_shots/load_01200ms.png`
+- **2500 ms** — 131 skeleton element(s), 140 chart path(s), figures showing: ['$580,521.27', '$19,350.71', '3,936'] → `orbit_shots/load_02500ms.png`
+- **4000 ms** — 62 skeleton element(s), 156 chart path(s), figures showing: ['$580,521.27', '$19,350.71', '3,936'] → `orbit_shots/load_04000ms.png`
+- **7000 ms** — 0 skeleton element(s), 158 chart path(s), figures showing: ['$580,521.27', '$19,350.71', '3,936'] → `orbit_shots/load_07000ms.png`
+- **10000 ms** — 0 skeleton element(s), 158 chart path(s), figures showing: ['$580,521.27', '$19,350.71', '3,936'] → `orbit_shots/load_10000ms.png`
 
 ## 2. Measured elements
 
@@ -563,7 +573,7 @@ Not found on this page (`[class*='keleton'] | [class*='shimmer']`).
 | `rgb(107, 114, 128)` | 2px | `5px, 5px, 5px, 5px` |
 | `rgb(99, 102, 241)` | 1.5px | `5px, 3px` |
 | `rgb(16, 185, 129)` | 2px | `none` |
-| `rgb(56, 189, 248)` | 2px | `1211.24px, 0px` |
+| `rgb(56, 189, 248)` | 2px | `1211.68px, 0px` |
 | `rgb(16, 185, 129)` | 2px | `none` |
 | `rgb(139, 92, 246)` | 2px | `none` |
 
@@ -667,6 +677,10 @@ Not found on this page (`[class*='keleton'] | [class*='shimmer']`).
 
 ## 4. Chart hover
 
+10 chart(s) on the page; each hovered at three points.
+
+**Chart 1** (597×200 at 305,184)
+
 ```json
 [
   {
@@ -675,7 +689,7 @@ Not found on this page (`[class*='keleton'] | [class*='shimmer']`).
     "box": {
       "w": 160,
       "h": 89,
-      "x": 467.6,
+      "x": 468.4,
       "y": 189.3
     },
     "style": {
@@ -725,14 +739,84 @@ Not found on this page (`[class*='keleton'] | [class*='shimmer']`).
   }
 ]
 ```
+Tooltip x across the three points: [468.4, 602.1, 578.5] — it follows the pointer.
 
-The tooltip moved to x = [467.6, 602.1, 578.5] across the three hover points, so it follows the pointer.
+**Chart 2** (597×200 at 944,184)
+
+```json
+[
+  {
+    "at": 0.25,
+    "text": "",
+    "box": {
+      "w": 0,
+      "h": 0,
+      "x": 305,
+      "y": 184.3
+    },
+    "style": {
+      "padding": "0px",
+      "font-size": "16px",
+      "color": "rgb(243, 244, 246)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border": "0px none rgb(243, 244, 246)",
+      "border-radius": "0px"
+    }
+  },
+  {
+    "at": 0.5,
+    "text": "",
+    "box": {
+      "w": 0,
+      "h": 0,
+      "x": 305,
+      "y": 184.3
+    },
+    "style": {
+      "padding": "0px",
+      "font-size": "16px",
+      "color": "rgb(243, 244, 246)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border": "0px none rgb(243, 244, 246)",
+      "border-radius": "0px"
+    }
+  },
+  {
+    "at": 0.75,
+    "text": "",
+    "box": {
+      "w": 0,
+      "h": 0,
+      "x": 305,
+      "y": 184.3
+    },
+    "style": {
+      "padding": "0px",
+      "font-size": "16px",
+      "color": "rgb(243, 244, 246)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border": "0px none rgb(243, 244, 246)",
+      "border-radius": "0px"
+    }
+  }
+]
+```
+Tooltip x across the three points: [305, 305, 305] — it is anchored, not following.
 
 ## 5. Switching date presets
 
-- `7d` — settled in **3040 ms**, skeleton shown while loading: **yes**
-- `30d` — settled in **684 ms**, skeleton shown while loading: **yes**
-- `90d` — settled in **10801 ms**, skeleton shown while loading: **yes**
+- `7d` — settled in **3718 ms**, skeleton shown while loading: **yes**
+    - at 80 ms: 1 skeleton element(s), 128 chart path(s) → `orbit_shots/preset_7d_mid080ms.png`
+    - at 250 ms: 1 skeleton element(s), 135 chart path(s) → `orbit_shots/preset_7d_mid250ms.png`
+    - at 600 ms: 1 skeleton element(s), 135 chart path(s) → `orbit_shots/preset_7d_mid600ms.png`
+- `30d` — settled in **2512 ms**, skeleton shown while loading: **no**
+    - at 80 ms: 0 skeleton element(s), 128 chart path(s) → `orbit_shots/preset_30d_mid080ms.png`
+    - at 250 ms: 0 skeleton element(s), 158 chart path(s) → `orbit_shots/preset_30d_mid250ms.png`
+    - at 600 ms: 0 skeleton element(s), 158 chart path(s) → `orbit_shots/preset_30d_mid600ms.png`
+- `90d` — settled in **16453 ms**, skeleton shown while loading: **yes**
+    - at 80 ms: 1 skeleton element(s), 218 chart path(s) → `orbit_shots/preset_90d_mid080ms.png`
+    - at 250 ms: 1 skeleton element(s), 218 chart path(s) → `orbit_shots/preset_90d_mid250ms.png`
+    - at 600 ms: 1 skeleton element(s), 218 chart path(s) → `orbit_shots/preset_90d_mid600ms.png`
 
 ## 6. Scrolling
 

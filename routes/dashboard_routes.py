@@ -109,6 +109,14 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             except Exception:
                 db_header, db_rows = [], []
 
+        # Once the app is independent of Sheets, do not contact Google at all.
+        try:
+            from data import choice as _c2
+            if not _c2.sheets_fallback(_cfg(), None):
+                return (db_header, db_rows) if db_rows else ([], [])
+        except Exception:
+            pass
+
         sid = str(acc.get("output_spreadsheet_id") or "").strip()
         gid = str(acc.get("output_tab_gid") or "").strip()
         if not sid:

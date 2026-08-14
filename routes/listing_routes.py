@@ -732,6 +732,32 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     # rows down with it.
                     db_error = str(_dbe)[:200]
 
+            # INDEPENDENT OF SHEETS, once that has been switched on.
+            #
+            # The merge above is a BRIDGE, not the destination: while the sheet
+            # is still read, a row that exists only there can still surface, and
+            # a deletion made in the app can be undone by the spreadsheet. When
+            # read_sheets_as_well is off, the database is the whole answer and
+            # Google is not contacted at all -- which is also why this returns
+            # before the client is ever used.
+            try:
+                from data import choice as _choice_mod2
+                _read_sheets = _choice_mod2.sheets_fallback(_cfg(), None)
+            except Exception:
+                _read_sheets = True
+            if not _read_sheets:
+                return jsonify({
+                    "ok": True,
+                    "shipping_group": _cfg().get("merchant_shipping_group", ""),
+                    "product_types": _product_types(),
+                    "source": {"store": "database", "from_database": len(db_cards),
+                               "from_sheet": 0,
+                               "workspace": str(_aid or "dropshipping"),
+                               "sheets_off": True},
+                    "tabs": [{"tab": getattr(db_store, "title", "listings"),
+                              "tab_gid": "", "count": len(db_cards), "url": ""}],
+                    "rows": db_cards})
+
             _who = _state.get("active_view") or _aid or "This workspace"
             sid  = _state.get("active_sheet_id") or ""
             if _aid and not sid:

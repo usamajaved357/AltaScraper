@@ -112,6 +112,45 @@ check("the database's version of the shared SKU wins", merged[0], ["A-1", "Alpha
 check("the sheet-only row keeps its own fields", merged[1],
       ["B-2", "Beta", "NEEDS_REVIEW"])
 
+print("\n=== the switch that ends the migration ===")
+# The merge is a BRIDGE. While the sheet is still read, a row that exists only
+# there can still surface and a deletion made in the app can be undone by the
+# spreadsheet. Turning the fallback off is the moment the app is actually
+# independent -- so it is a deliberate setting, not something that happens by
+# itself once a database exists.
+from data import choice as _choice
+import json as _json
+
+_cfg = _json.load(open("config.json", encoding="utf-8"))
+check("the default is to keep reading the sheet",
+      _choice.sheets_fallback(_cfg, "config.json"), True)
+check("  which is what stops a half-migrated account showing an empty screen",
+      _choice.sheets_fallback(dict(_cfg), "config.json"), True)
+check("it can be switched off in config",
+      _choice.sheets_fallback(dict(_cfg, read_sheets_as_well=False), "config.json"), False)
+check("  including as a string, since config files are edited by hand",
+      _choice.sheets_fallback(dict(_cfg, read_sheets_as_well="off"), "config.json"), False)
+os.environ["ALTA_READ_SHEETS"] = "0"
+check("and by environment variable", _choice.sheets_fallback(_cfg, "config.json"), False)
+os.environ.pop("ALTA_READ_SHEETS", None)
+# On the sheets backend the sheet IS the store, so the question is meaningless
+# and must never answer False -- that would turn off the only store there is.
+check("it is always True on the sheets backend",
+      _choice.sheets_fallback({"data_backend": "sheets", "read_sheets_as_well": False},
+                              "config.json"), True)
+
+LRS = open("routes/listing_routes.py", encoding="utf-8").read()
+truthy("the listings route honours it", "sheets_fallback" in LRS)
+# Scoped to rows_all: another route opens a workbook earlier in the file, so
+# comparing positions across the whole file compares two unrelated functions.
+_ra = LRS[LRS.index("def rows_all"):]
+_ra = _ra[:_ra.index("@app.route", 10)]
+truthy("  and returns before Google is contacted at all",
+       "sheets_fallback" in _ra
+       and _ra.index("sheets_fallback") < _ra.index("_client().open_by_key"))
+DRS = open("routes/dashboard_routes.py", encoding="utf-8").read()
+truthy("the home screen honours it too", "sheets_fallback" in DRS)
+
 print("\n=== against the real app ===")
 import dashboard as D
 from data import db as _db

@@ -94,7 +94,14 @@ check("shading is computed per METRIC row",
 
 console.log("\n=== deltas carry direction and words, not colour alone ===");
 check("an arrow is rendered", /\u2191|\u2193/.test(js), true);
-check("and the words 'vs previous'", /vs previous/.test(js), true);
+// The words moved: the delta now names the earlier FIGURE ("was: £1,234 ↑ +5.2%",
+// or "LY:" when the comparison is a year back), which is Orbit's layout and says
+// more than "vs previous" did -- you can see what it is being compared against,
+// not just that it is.
+check("and the earlier figure is named, not just the change",
+      /prevLabel\|\|"was"/.test(js), true);
+check("  and it says LY only when the comparison really is a year",
+      /compareKind === "year" \? "LY" : "was"/.test(js), true);
 check("no baseline says so instead of 0%", /no earlier period/.test(js), true);
 check("rising ad spend is NOT a win",
       /c\.key==="spend"\) \? !up : up/.test(js), true);

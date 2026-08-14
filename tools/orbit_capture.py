@@ -246,6 +246,35 @@ def main(argv=None):
         say("Screenshot: `%s/01_loaded.png`" % a.shots)
         say()
 
+        # ---- 1b. the load, frame by frame -------------------------------
+        # A single screenshot of a finished page says nothing about what the
+        # wait LOOKED like, and the wait is most of the impression. So the page
+        # is reloaded and photographed on the way up: skeleton first, then data.
+        say("### What the load actually looks like")
+        say()
+        try:
+            page.goto(a.url, wait_until="commit", timeout=60000)
+            marks = [200, 600, 1200, 2500, 4000, 7000, 10000]
+            last = 0
+            for ms in marks:
+                page.wait_for_timeout(max(0, ms - last))
+                last = ms
+                name = "load_%05dms.png" % ms
+                page.screenshot(path=os.path.join(a.shots, name))
+                state = page.evaluate("""() => ({
+                  skeletons: document.querySelectorAll("[class*='keleton'],[class*='shimmer']").length,
+                  charts: document.querySelectorAll('svg path').length,
+                  numbers: [...document.querySelectorAll("[class*='statValue']")]
+                            .map(e => (e.textContent||'').trim()).slice(0,3),
+                })""")
+                say("- **%d ms** — %d skeleton element(s), %d chart path(s), "
+                    "figures showing: %s → `%s/%s`"
+                    % (ms, state["skeletons"], state["charts"],
+                       (state["numbers"] or ["none yet"]), a.shots, name))
+        except Exception as e:
+            say("Could not photograph the load: %s" % str(e)[:200])
+        say()
+
         # ---- 2. every surface, measured ---------------------------------
         say("## 2. Measured elements")
         say()
@@ -344,41 +373,52 @@ def main(argv=None):
         # ---- 4. the tooltip, by actually hovering -----------------------
         say("## 4. Chart hover")
         say()
+        # EVERY chart, not just the first. The dashboard has several and they do
+        # not all behave the same -- a line chart, a combo with bars, and a
+        # heatmap answer a hover differently, and copying only the first one is
+        # how three of four charts end up feeling wrong.
         try:
-            svg = page.query_selector(".recharts-wrapper svg") or page.query_selector("svg")
-            if svg:
+            svgs = page.query_selector_all(".recharts-wrapper svg")
+            if not svgs:
+                svgs = page.query_selector_all("svg")
+            say("%d chart(s) on the page; each hovered at three points.\n" % len(svgs))
+            for ci, svg in enumerate(svgs[:6]):
                 box = svg.bounding_box()
-                # Three points across the chart, so "does it snap to data points
-                # or follow the mouse" is answerable rather than asserted.
+                if not box or box["width"] < 80 or box["height"] < 60:
+                    continue          # icons and sparklines, not charts
+                say("**Chart %d** (%.0f×%.0f at %.0f,%.0f)"
+                    % (ci + 1, box["width"], box["height"], box["x"], box["y"]))
+                say()
                 seen = []
                 for frac in (0.25, 0.5, 0.75):
                     page.mouse.move(box["x"] + box["width"] * frac,
                                     box["y"] + box["height"] / 2)
                     page.wait_for_timeout(350)
-                    tip = _measure(page, "tooltip", ["[class*='tooltip']"])
+                    tip = _measure(page, "tooltip", ["[class*='tooltip']",
+                                                     ".recharts-tooltip-wrapper"])
                     txt = ""
-                    el = page.query_selector("[class*='tooltip']")
+                    el = (page.query_selector("[class*='tooltip']")
+                          or page.query_selector(".recharts-tooltip-wrapper"))
                     if el:
-                        try: txt = (el.inner_text() or "").strip()[:300]
-                        except Exception: txt = ""
+                        try:
+                            txt = (el.inner_text() or "").strip()[:300]
+                        except Exception:
+                            txt = ""
                     seen.append({"at": round(frac, 2), "text": txt,
                                  "box": tip.get("box"), "style": {
                                      k: v for k, v in tip.items()
                                      if k in ("background-color", "border", "border-radius",
                                               "box-shadow", "font-size", "color", "padding")}})
-                    page.screenshot(path=os.path.join(a.shots, "hover_%02d.png" % int(frac * 100)))
+                    name = "hover_chart%d_%02d.png" % (ci + 1, int(frac * 100))
+                    page.screenshot(path=os.path.join(a.shots, name))
                 say("```json")
                 say(json.dumps(seen, indent=2))
                 say("```")
-                say()
                 xs = [s["box"]["x"] for s in seen if s.get("box")]
                 if len(xs) >= 2:
-                    say("The tooltip moved to x = %s across the three hover points, "
-                        "so it %s." % (xs, "follows the pointer" if len(set(xs)) > 1
-                                       else "is anchored, not following"))
-                say()
-            else:
-                say("No chart SVG found to hover.")
+                    say("Tooltip x across the three points: %s — it %s."
+                        % (xs, "follows the pointer" if len(set(xs)) > 1
+                           else "is anchored, not following"))
                 say()
         except Exception as e:
             say("Hover capture failed: %s" % str(e)[:200])
@@ -395,16 +435,29 @@ def main(argv=None):
                     continue
                 t0 = time.time()
                 btn.click()
-                # Settled = no DOM mutations for 300ms, which is what "the
-                # transition finished" actually means here.
-                page.wait_for_timeout(120)
-                had_skeleton = bool(page.query_selector("[class*='keleton']"))
+                # PHOTOGRAPH THE MIDDLE, not just the end. What a switch looks
+                # like WHILE it happens is the whole question -- does the old
+                # chart stay, blank out, or turn into a skeleton -- and a
+                # screenshot of the settled page cannot answer it.
+                mid = []
+                for delay in (80, 250, 600):
+                    page.wait_for_timeout(delay if not mid else delay - mid[-1][0])
+                    shot = "preset_%s_mid%03dms.png" % (label, delay)
+                    page.screenshot(path=os.path.join(a.shots, shot))
+                    st = page.evaluate("""() => ({
+                      skeletons: document.querySelectorAll("[class*='keleton'],[class*='shimmer']").length,
+                      charts: document.querySelectorAll('svg path').length})""")
+                    mid.append((delay, st["skeletons"], st["charts"], shot))
+                had_skeleton = any(m[1] for m in mid)
                 page.wait_for_function(
                     "() => !document.querySelector(\"[class*='keleton']\")",
-                    timeout=15000)
+                    timeout=25000)
                 ms = int((time.time() - t0) * 1000)
                 say("- `%s` — settled in **%d ms**, skeleton shown while loading: **%s**"
                     % (label, ms, "yes" if had_skeleton else "no"))
+                for delay, sk, ch, shot in mid:
+                    say("    - at %d ms: %d skeleton element(s), %d chart path(s) → `%s/%s`"
+                        % (delay, sk, ch, a.shots, shot))
                 page.screenshot(path=os.path.join(a.shots, "preset_%s.png" % label))
             except Exception as e:
                 say("- `%s` — %s" % (label, str(e)[:120]))

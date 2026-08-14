@@ -561,17 +561,22 @@ function salesDrawCards(sum, av){
     const col = missing ? "" :
       (neg ? ";color:var(--red)" :
        isProfit ? ";color:var(--ok,#8fd694)" : "");
+    // LABEL FIRST, then the number, then the comparison -- Orbit's order,
+    // measured: the label sits above the figure, not under it. Ours had it the
+    // other way round and centred, which is why the two never looked alike
+    // however close the colours got.
     return '<div class="stat-card'+(missing?" is-empty":"")+'"'
       + (isProfit ? ' title="Revenue after Amazon\'s fees, refunds and what the '
                     + 'stock cost. Withheld entirely when any unit shipped has no '
                     + 'recorded cost — a partial cost only ever flatters."' : '')
       + '>'
+      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
       + '<p class="stat-number" style="'+col.replace(/^;/,"")+'">'
       + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
-      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
       + (adsOff
-          ? '<p class="stat-delta cc" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
-          : _sDelta(c))
+          ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
+          : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
+                    c.prev_value, c.kind, sum.currency))
       + '</div>';
   }).join("");
 
@@ -593,17 +598,38 @@ function salesDrawCards(sum, av){
 /* Change against the previous period of the SAME LENGTH. Carries an arrow and a
    word as well as a colour — a green number alone is unreadable to a good number
    of people, and meaningless in print. */
-function _sDelta(c){
+/* The comparison line under each figure, laid out as Orbit lays it out:
+   the earlier figure in grey, then the percentage as a coloured chip.
+   Measured from its live dashboard -- "LY: $551,866.01 +5.2%".
+
+   Ours says "was" rather than "LY" because the comparison is the previous
+   PERIOD by default, and calling a 30-day-ago figure "last year" would be a
+   plain lie. When the comparison is set to a year earlier it says LY, because
+   then it is one. */
+function _sDelta(c, prevLabel, prevValue, kind, currency){
   if(c.delta_pct===null || c.delta_pct===undefined){
-    return '<p class="stat-delta cc">no earlier period</p>';
+    // Said, not left as a dash. A blank here reads as a fault, and showing
+    // "0.0%" for a period with nothing to compare against would be a fiction.
+    return '<p class="stat-delta">no earlier period</p>';
   }
   const up = c.delta_pct >= 0;
   // Ad spend rising is not a win, so direction and goodness are separate things.
   const good = (c.key==="spend") ? !up : up;
-  const cls = c.delta_pct===0 ? "flat" : (good?"good":"bad");
+  const cls = c.delta_pct===0 ? "flat" : (good?"up":"down");
+  // ARROW AND SIGN, not colour alone. Orbit uses "↑ 21.1%" on its chart headers
+  // and "+5.2%" on its cards; the arrow is kept on both because a green number
+  // with no other cue is unreadable to a good number of people and means
+  // nothing in print.
   const arrow = c.delta_pct===0 ? "→" : (up?"↑":"↓");
-  return '<p class="stat-delta '+cls+'">'+arrow+' '
-       + Math.abs(c.delta_pct).toFixed(1)+'% <span class="cc">vs previous</span></p>';
+  const sign = c.delta_pct===0 ? "" : (up?"+":"−");
+  const was = (prevValue===null || prevValue===undefined)
+    ? "" : (prevLabel||"was") + ": " + _sShort(prevValue, kind, currency) + " ";
+  return '<p class="stat-delta">' + _sEsc(was)
+       + '<span class="pct-badge ' + cls + '" title="' + (up?"up":"down")
+       + ' versus ' + _sEsc(prevLabel === "LY" ? "the same period last year"
+                                               : "the period before") + '">'
+       + arrow + ' ' + sign
+       + Math.abs(c.delta_pct).toFixed(1) + '%</span></p>';
 }
 
 /* ---- the metrics × dates grid ------------------------------------------ */
