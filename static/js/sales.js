@@ -435,6 +435,9 @@ function salesDrawCharts(ser){
         // number. Orbit's reads "$28.0k".
         currency: (ser && ser.currency),
         id: "sales_combo", columns: dates,
+        // Orbit's Sales Report keeps a 320px height at every width -- measured
+        // 1365x320 on desktop and 340x320 on a phone. See scChartWidth.
+        width: scChartWidth("sales_charts", 1365), height: 320,
         bars: anyReal(orderCells) ? {label: "Orders", values: orderCells} : null,
         lines: comboLines,
       });
@@ -499,7 +502,11 @@ function salesDrawCharts(ser){
         + 'is nothing to draw a line between — the marks sit at that one day. '
         + 'Press <b>Sync</b> to pull the rest, or widen the range.</div>';
     }
-    h += '<div class="salespanel" style="margin:0 0 16px">' + note + comboHtml + '</div>';
+    // NOT a nested .salespanel. #sales_charts already sits inside one, so this
+    // wrapper made a card inside a card and charged the chart TWO lots of
+    // padding: measured on a 390px phone, Orbit's Sales Report chart is 340
+    // wide and ours was 306, entirely because of this line.
+    h += '<div style="margin:0 0 16px">' + note + comboHtml + '</div>';
   }
   // ONE CHART, NOT SIX.
   //
@@ -752,9 +759,20 @@ async function salesLoadWeek(){
   const wkOpts = {
     title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
     currency: (now && now.currency),
-    width: 665, height: 200, compare: cmp, scale: "band", xLabel: "dow",
+    // The card's own width, so the chart is drawn at 1:1 and keeps its 200px
+    // height at every screen size -- which is what Orbit does. See
+    // scChartWidth: with height:auto a 340px phone got a 102px-tall chart.
+    width: scChartWidth("sales_week", 665),
+    height: 200, compare: cmp, scale: "band", xLabel: "dow",
     compact: true, thisLabel: "This Week", compareLabel: "Last Week",
     compareTitle: cmp ? ("the dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""};
+  // Remembered so a window resize can REDRAW at the new width without fetching
+  // the week again. A chart drawn at a fixed pixel width has to be redrawn when
+  // that width changes, or turning a phone sideways letterboxes it.
+  SALES._weekDraw = function(){
+    wkOpts.width = scChartWidth("sales_week", 665);
+    host.innerHTML = salesChart(pts, wkOpts) + SALES._weekFoot;
+  };
   host.innerHTML = salesChart(pts, wkOpts);
 
   // The key goes in the card's HEADER, which is where Orbit has it -- "This
@@ -784,11 +802,12 @@ async function salesLoadWeek(){
   // top row did not even end the same way. Neither figure is available on this
   // account, and the footer says which and why rather than leaving a gap that
   // looks like a design that forgot something.
-  host.innerHTML += '<div class="adfooter">'
+  SALES._weekFoot = '<div class="adfooter">'
     + '<span class="lbl">Ad spend this week</span> <b>not connected</b>'
     + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
     + '<span style="color:rgb(156,163,175)"> — both need the Advertising API.</span>'
     + '</div>';
+  host.innerHTML += SALES._weekFoot;
 
   // The change against the same days last week, as a chip beside the heading.
   if(badge){
@@ -796,12 +815,8 @@ async function salesLoadWeek(){
       .reduce(function(a, v){ return a + (Number(v) || 0); }, 0); };
     const a = sum(mNow), b = sum(mBefore);
     if(!b){ badge.innerHTML = ""; }
-    else {
-      const pct = ((a - b) / Math.abs(b)) * 100;
-      const up = pct >= 0;
-      badge.innerHTML = '<span class="pct-badge ' + (up ? "up" : "down") + '">'
-        + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
-    }
+    else badge.innerHTML = _sBadge(((a - b) / Math.abs(b)) * 100,
+      {title: "against the same days last week"});
   }
 }
 
@@ -887,7 +902,7 @@ function salesDrawOrgPpc(ser){
   const chart = salesCombo({
     id: "orgppc", columns: cols, bars: null, currency: (ser && ser.currency),
     lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
-    height: 380,
+    width: scChartWidth("sales_orgppc", 1365), height: 380,
   });
   host.innerHTML = note + bar
     + (sample ? '<div class="ri-sample">' + chart + '</div>' : chart);
@@ -940,7 +955,36 @@ async function salesLoadToday(){
   }catch(e){ el.innerHTML=""; }
 }
 
-/* "Pacific Time (PDT): 5:14 PM" -- the marketplace's zone in words and its own
+/* THE CHANGE BADGE -- "↑ 16.9 %" -- built in ONE place.
+ *
+ * Rule 12: this was written out three times, on the Live Sales card, on the Week
+ * to Date card and on every stat card, and the three had already drifted -- two
+ * of them put no space before the % and the third added a sign the others did
+ * not. Orbit's is one component and reads the same everywhere.
+ *
+ * MEASURED off Orbit's own badges: "↑ 16.9 %" and "↓ 0.4 %" -- a space after the
+ * arrow AND a space before the per-cent sign, at 12px weight 500.
+ *
+ * `sign` is for the stat cards, which show "↑ +5.2 %" against a named previous
+ * figure; the two top cards show the arrow alone. `zero` is the flat case, which
+ * gets an arrow that means neither up nor down rather than an up-arrow on a
+ * change of nothing.
+ */
+function _sBadge(pct, opts){
+  const o = opts || {};
+  if(pct === null || pct === undefined || !isFinite(Number(pct))) return "";
+  const n = Number(pct);
+  const flat = (n === 0);
+  const up = n > 0;
+  const cls = flat ? "flat" : (up ? "up" : "down");
+  const arrow = flat ? "→" : (up ? "↑" : "↓");
+  const sign = (!o.sign || flat) ? "" : (up ? "+" : "−");
+  return '<span class="pct-badge ' + cls + '"'
+       + (o.title ? ' title="' + _sEsc(o.title) + '"' : "")
+       + '>' + arrow + " " + sign + Math.abs(n).toFixed(1) + " %</span>";
+}
+
+/* "Pacific Time (PDT) · 7:20 PM" -- the marketplace's zone in words and its own
  * current time, which is what Orbit shows on the Live Sales header.
  *
  * Both come from Intl, so the zone name is whatever the browser calls it rather
@@ -950,26 +994,36 @@ async function salesLoadToday(){
 function _sClock(tz){
   if(!tz) return "";
   const now = new Date();
+  // en-US for the ZONE NAME, because that is the only locale that gives the
+  // abbreviation Orbit shows: en-GB renders America/Los_Angeles as "GMT-7" where
+  // en-US renders it "PDT". The TIME below stays on the app's own locale.
   const zone = function(style){
     try{
-      const p = new Intl.DateTimeFormat("en-GB", {timeZone: tz, timeZoneName: style})
+      const p = new Intl.DateTimeFormat("en-US", {timeZone: tz, timeZoneName: style})
         .formatToParts(now).filter(function(x){ return x.type === "timeZoneName"; });
       return p.length ? p[0].value : "";
     }catch(e){ return ""; }
   };
-  // The friendly name where it is short enough to sit in the header beside the
-  // key and the badge -- "Pacific Time", which is what Orbit shows. Where it is
-  // not, the offset: "United Kingdom Time" is nineteen characters and pushed the
-  // change badge onto a second line, and a header that reflows is worse than an
-  // abbreviation.
-  let name = zone("longGeneric");
-  if(!name || name.length > 16) name = zone("short") || tz;
+  // ORBIT'S EXACT FORM, read off its live header: "Pacific Time (PDT) • 7:20 PM"
+  // -- the generic name, the current abbreviation in brackets, a middle dot, the
+  // time. Ours was "Pacific Time: 5:17 PM", which is the same fact punctuated
+  // differently.
+  //
+  // The brackets are dropped when they would only repeat the name, and the whole
+  // thing falls back to the abbreviation when the generic name is long: "United
+  // Kingdom Time (GMT+1)" is 27 characters and pushes the change badge onto a
+  // second line, and a header that reflows is worse than an abbreviation.
+  const generic = zone("longGeneric");
+  const shortz = zone("short");
+  let name = generic;
+  if(name && shortz && shortz !== name && !/^GMT/.test(shortz)) name += " (" + shortz + ")";
+  if(!name || name.length > 20) name = shortz || generic || tz;
   let time = "";
   try{
     time = new Intl.DateTimeFormat("en-GB", {timeZone: tz, hour: "numeric",
       minute: "2-digit", hour12: true}).format(now).toUpperCase();
   }catch(e){ return _sEsc(name); }
-  return '<span class="cc">' + _sEsc(name) + ':</span> ' + _sEsc(time);
+  return '<span class="cc">' + _sEsc(name) + ' &middot; </span>' + _sEsc(time);
 }
 
 /* ---- the hourly curve --------------------------------------------------
@@ -1025,8 +1079,13 @@ async function salesLoadHourly(){
   const hrOpts = {
     title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
     currency: (j && j.currency),
-    width: 665, height: 200, compare: cmp, scale: "point",
+    width: scChartWidth("sales_hourly", 665),
+    height: 200, compare: cmp, scale: "point",
     compact: true, thisLabel: "Today", compareLabel: "Yesterday"};
+  SALES._hourlyDraw = function(){
+    hrOpts.width = scChartWidth("sales_hourly", 665);
+    el.innerHTML = salesChart(pts, hrOpts) + adsFoot;
+  };
   el.innerHTML = salesChart(pts, hrOpts) + adsFoot;
 
   const hkey = document.getElementById("sales_today_key");
@@ -1050,14 +1109,45 @@ async function salesLoadHourly(){
   if(badge){
     const a = Number(j.today_total || 0), b = Number(j.yesterday_so_far || 0);
     if(!b){ badge.innerHTML = ""; }
-    else {
-      const pct = ((a - b) / Math.abs(b)) * 100;
-      const up = pct >= 0;
-      badge.innerHTML = '<span class="pct-badge ' + (up ? "up" : "down")
-        + '" title="against the same time yesterday">'
-        + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
-    }
+    else badge.innerHTML = _sBadge(((a - b) / Math.abs(b)) * 100,
+      {title: "against the same time yesterday"});
   }
+}
+
+/* ---- redraw when the window changes size --------------------------------
+ *
+ * A chart drawn at the container's pixel width has to be redrawn when that width
+ * changes. Without this, turning a phone sideways or dragging a window wider
+ * letterboxes every chart -- the viewBox is honest about its aspect ratio, so it
+ * centres itself in the new box rather than filling it.
+ *
+ * Nothing is re-fetched. Each renderer left behind a closure over the data it
+ * already had, so this is a redraw and not a reload: no request, no spinner, and
+ * the figures on screen cannot change just because the window did.
+ *
+ * Debounced, because a drag fires resize continuously and redrawing four charts
+ * per frame is how a resize comes to feel like the app has locked up. 150ms is
+ * after the drag stops, not during it.
+ */
+let _sResizeTimer = null;
+let _sLastW = 0;
+function salesOnResize(){
+  clearTimeout(_sResizeTimer);
+  _sResizeTimer = setTimeout(function(){
+    const w = window.innerWidth || 0;
+    // Only when the width ACTUALLY changed. Mobile browsers fire resize when the
+    // address bar hides, which changes the height and nothing else -- redrawing
+    // there would make the page flicker as you scroll.
+    if(w === _sLastW) return;
+    _sLastW = w;
+    try{ if(SALES._hourlyDraw) SALES._hourlyDraw(); }catch(e){}
+    try{ if(SALES._weekDraw) SALES._weekDraw(); }catch(e){}
+    try{ if(SALES.series){ salesDrawCharts(SALES.series); salesDrawOrgPpc(SALES.series); } }catch(e){}
+  }, 150);
+}
+if(typeof window !== "undefined" && window.addEventListener){
+  _sLastW = window.innerWidth || 0;
+  window.addEventListener("resize", salesOnResize);
 }
 
 /* ---- stat cards -------------------------------------------------------- */
@@ -1175,24 +1265,22 @@ function _sDelta(c, prevLabel, prevValue, kind, currency){
     return '<p class="stat-delta">no earlier period</p>';
   }
   const up = c.delta_pct >= 0;
-  // Ad spend rising is not a win, so direction and goodness are separate things.
-  const good = (c.key==="spend") ? !up : up;
-  const cls = c.delta_pct===0 ? "flat" : (good?"up":"down");
-  // ARROW AND SIGN, not colour alone. Orbit uses "↑ 21.1%" on its chart headers
-  // and "+5.2%" on its cards; the arrow is kept on both because a green number
-  // with no other cue is unreadable to a good number of people and means
-  // nothing in print.
-  const arrow = c.delta_pct===0 ? "→" : (up?"↑":"↓");
-  const sign = c.delta_pct===0 ? "" : (up?"+":"−");
+  // AD SPEND RISING IS NOT A WIN, so direction and goodness are separate things:
+  // the arrow still points up, the colour goes the other way. _sBadge draws the
+  // arrow from the number, so the colour is corrected here afterwards -- the one
+  // case on the screen where the two disagree.
+  const good = (c.key === "spend") ? !up : up;
   // "LY : $551,866.01" -- Orbit's spacing, measured off its own cards.
   const was = (prevValue===null || prevValue===undefined)
     ? "" : (prevLabel||"was") + " : " + _sShort(prevValue, kind, currency) + " ";
-  return '<p class="stat-delta">' + _sEsc(was)
-       + '<span class="pct-badge ' + cls + '" title="' + (up?"up":"down")
-       + ' versus ' + _sEsc(prevLabel === "LY" ? "the same period last year"
-                                               : "the period before") + '">'
-       + arrow + ' ' + sign
-       + Math.abs(c.delta_pct).toFixed(1) + '%</span></p>';
+  let badge = _sBadge(c.delta_pct, {sign: true,
+    title: (up ? "up" : "down") + " versus "
+         + (prevLabel === "LY" ? "the same period last year" : "the period before")});
+  if(c.delta_pct !== 0 && good !== up){
+    badge = badge.replace('pct-badge ' + (up ? "up" : "down"),
+                          'pct-badge ' + (good ? "up" : "down"));
+  }
+  return '<p class="stat-delta">' + _sEsc(was) + badge + '</p>';
 }
 
 /* ---- the metrics × dates grid ------------------------------------------ */
@@ -1216,7 +1304,12 @@ function salesDrawGrid(ser){
   // is just decoration.
   let h='<div class="panelhead" style="margin:0 0 12px;padding:0"><div>'
       + '<p class="paneltitle">P&amp;L Heatmap</p>'
-      + '<p class="panelsub">Performance metrics with heatmap colouring across '
+      // Orbit's own line, word for word and at its own 10px rather than the
+      // 12px the other panel subtitles use -- measured: its P&L Heatmap
+      // subtitle is smaller than its Live Sales one. "coloring" is Orbit's
+      // spelling and this is a match to Orbit, not to the rest of the app.
+      + '<p class="panelsub" style="font-size:10px">Performance metrics with '
+      + 'heatmap coloring across '
       + 'time periods<span class="infodot" title="Each row is shaded against its '
       + 'own range, never across rows. Profit and margin diverge at zero — red '
       + 'below, green above — because a loss is not a small profit. Every cell '

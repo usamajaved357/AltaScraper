@@ -17,7 +17,11 @@ const css = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
 const tpl = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
 
 console.log("=== nothing was mangled ===");
-check("the template is still valid UTF-8", /Loading workspaces\u2026/.test(tpl), true);
+// A real ellipsis as the canary: if the file is ever written back in the wrong
+// encoding this is the character that mangles first. (It read "Loading
+// workspaces\u2026" until the home page was removed and the grid became the accounts
+// panel -- the check is about the encoding, not the word.)
+check("the template is still valid UTF-8", /Loading accounts\u2026/.test(tpl), true);
 check("  no mojibake in the template", /\u00e2\u20ac/.test(tpl), false);
 check("  nor in the stylesheet", /\u00e2\u20ac/.test(css), false);
 check("braces balance", (css.match(/\{/g) || []).length === (css.match(/\}/g) || []).length, true);
@@ -105,6 +109,88 @@ console.log("\n=== no JS logic was touched ===");
 check("every onclick in the nav is unchanged",
       (tpl.match(/navTo\('(listings|imagerefs|setup|generate|ppc|inventory|sync|monitor|miles)'\)/g) || []).length, 9);
 check("no route or endpoint appears in the CSS", /\/(live|users|input)\//.test(css), false);
+
+console.log("\n=== the stylesheet is well formed ===");
+/* A comment closed early leaves its remaining lines as loose text in the
+ * stylesheet -- the browser discards from there to the next brace and takes
+ * real rules with it, silently. It happened while writing the Sales column rule
+ * below, and nothing in this suite would have caught it.
+ */
+{
+  check("every comment is closed exactly once",
+        (css.match(/\/\*/g) || []).length, (css.match(/\*\//g) || []).length);
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  // A line of prose left outside a comment has spaces and no CSS punctuation.
+  const stray = stripped.split("\n").map(l => l.trim()).filter(l =>
+    l && !/[{}:;,]/.test(l) && /\s/.test(l) && !/^[@.#\w\-\[\]>+~*()="'\/]+$/.test(l));
+  check("no loose prose outside a comment", stray.length, 0);
+  if (stray.length) console.log("      first:", JSON.stringify(stray[0].slice(0, 70)));
+}
+
+console.log("\n=== the Sales column is Orbit's ===");
+{
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  // MEASURED on Orbit: a 260px sidebar, a <main> with 32px padding, and a
+  // container inside it at max-width 1400, centred. border-box here, so the
+  // padding comes out of the width: 1400 + 32 + 32 = 1464.
+  check("the sales screen is held to Orbit's column width",
+        /#sec_sales\{[^}]*max-width:1464px/.test(flat), true);
+  check("  and centred in whatever is left",
+        /#sec_sales\{[^}]*margin-left:auto/.test(flat), true);
+  // Two EQUAL columns. auto-fit drops to one the moment the container is a few
+  // pixels short of twice the minimum, and both cards jump to full width --
+  // which is the "uneven".
+  check("the two top cards are two equal columns",
+        /\.sales-toprow\{[^}]*grid-template-columns:1fr1fr/.test(flat), true);
+  check("  and never auto-fit, which changes column count mid-resize",
+        /\.sales-toprow\{[^}]*auto-fit/.test(flat), false);
+  check("they stack on a narrow screen, as Orbit's do on a phone",
+        /@media\(max-width:900px\)\{\.sales-toprow\{grid-template-columns:1fr;?\}/.test(flat), true);
+  // Rule 12: one definition. There were two of each, and the later silently
+  // added to or overrode the earlier, so the comments described a layout the app
+  // was not using.
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  check("only one .sales-toprow rule outside the media query",
+        (rules.match(/^\.sales-toprow\s*\{/gm) || []).length, 1);
+  check("and only one #sec_sales rule",
+        (rules.match(/^#sec_sales\s*\{/gm) || []).length, 1);
+}
+
+console.log("\n=== a phone gets a phone-sized page ===");
+/* "in the mobile view the graphs do not look as original they are too short".
+ *
+ * MEASURED in the running app at 390px: the Sales panel came out 1923px wide.
+ * A .wspanel is a flex item of .wsmain, and without an explicit width it is
+ * sized to its own MAX-CONTENT -- so the widest thing inside it (the metrics
+ * grid) set the width of the whole page, and every chart was drawn at 1873 and
+ * then scaled down to fit a 390px screen.
+ *
+ * After: the panel is 390, the cards are 366, and the charts are 340x200 --
+ * which is exactly what Orbit measures on the same phone.
+ *
+ * Two candidates were tried in the live page first and did NOT fix it:
+ * `min-width:0` alone, and `align-items:stretch` on the container. This is why
+ * the rule is what it is rather than the one that reads more natural.
+ */
+{
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  check("panels are given a width rather than sized by their content",
+        /\.wsmain>\.wspanel\{width:100%;min-width:0\}/.test(flat), true);
+  // The phone padding has to come AFTER the desktop rule: both are plain id
+  // selectors, so the later one wins whatever the media query says. A rule in
+  // the wrong place looks right in the diff and does nothing.
+  const desktopAt = css.search(/#sec_sales\s*\{[^}]*padding:\s*32px/);
+  const phoneAt = css.search(/@media[^{]*max-width:\s*860px[^{]*\{[^@]*#sec_sales\s*\{[^}]*padding:\s*12px/);
+  check("the desktop sales padding is declared", desktopAt >= 0, true);
+  check("the phone override is declared", phoneAt >= 0, true);
+  check("  and it comes after the desktop rule, or it would lose",
+        phoneAt > desktopAt, true);
+  check("the phone drops the column cap too",
+        /@media\(max-width:860px\)\{#sec_sales\{padding:12px;max-width:none;?\}/.test(flat), true);
+  // Orbit stacks the top cards on a phone; ours must not try two columns of 183.
+  check("the top cards stack before they get too narrow",
+        /@media\(max-width:900px\)\{\.sales-toprow\{grid-template-columns:1fr;?\}/.test(flat), true);
+}
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

@@ -452,9 +452,95 @@ function returnsRender(){
       + 'Each returned product appears here with its return rate, what was '
       + 'refunded, and the reason given most often.</div>';
   }
+  // ---- PRODUCT LINE PERFORMANCE ---------------------------------------
+  //
+  // The section the report has and this screen did not, and it answers the one
+  // question the per-SKU table below cannot: is it THIS COLOUR that comes back,
+  // or is the whole family bad? A 12.6% rate across every Pro Electric is a
+  // product problem; one colour at 12% among nine at 3% is a listing problem,
+  // and they need opposite fixes.
+  //
+  // Amazon sends no product line, so it is derived from the product name -- see
+  // line_of() in domain/returns_view.py -- and the card says so rather than
+  // presenting a guess as a fact.
+  // PLACEHOLDER ROWS ONLY WHEN THERE IS NO DATA AT ALL. `noData` is the same
+  // flag every other panel on this screen uses. Keying off `lines.length` alone
+  // would have drawn invented product lines beside real returns whenever the
+  // server answer predated this section -- sample figures sitting in a table of
+  // true ones, which is the one thing a placeholder must never do.
+  const lines = d.lines || [];
+  const lineRows = lines.length ? lines : (noData ? [
+    {line: "Pursuit PE (Plastic)", returns: 72, ordered: 2356, rate: 3.06,
+     sales: 38484, lost: 954, skus: 12,
+     natures: {"Product Quality": 30, "Listing Content": 18,
+               "Customer Preference": 16, "FBA / Shipping": 8}},
+    {line: "Pro Electric", returns: 52, ordered: 414, rate: 12.56,
+     sales: 14066, lost: 1767, skus: 2,
+     natures: {"Product Quality": 28, "Listing Content": 14,
+               "Customer Preference": 6, "FBA / Shipping": 4}},
+    {line: "Pursuit SWSS (Stainless)", returns: 45, ordered: 651, rate: 6.91,
+     sales: 15767, lost: 1102, skus: 13,
+     natures: {"Product Quality": 15, "Listing Content": 15,
+               "Customer Preference": 12, "FBA / Shipping": 3}}] : []);
+  const lineMix = function(nat){
+    const tot = Object.keys(nat || {}).reduce(function(a, k){ return a + nat[k]; }, 0) || 1;
+    return '<div class="ri-mini" style="min-width:96px">'
+      + Object.keys(nat || {}).map(function(k){
+          return '<div class="ri-mini-seg" style="width:' + ((nat[k] / tot) * 100)
+            + '%;background:' + (RET_NATURE_COLOUR[k] || "#8b90a0") + '"'
+            + ' title="' + _rEsc(k) + ': ' + nat[k] + '"></div>';
+        }).join("") + '</div>';
+  };
+  // The SAME table class the SKU table below uses. A second table style here
+  // would be two things that have to be kept looking alike by hand.
+  const lineTable = '<div style="overflow-x:auto"><table class="kv" style="width:100%">'
+    + '<thead><tr><th>Product Line</th><th>Returns</th><th>Ordered</th>'
+    + '<th>Return Rate</th><th>Revenue</th><th>Est. Lost Rev</th>'
+    + '<th>Issue Mix</th><th>SKUs</th></tr></thead><tbody>'
+    + lineRows.map(function(L){
+        // The rate carries the colour, because it is the number being scanned
+        // for: anything over 10% is the reason to open the row. Reuses the
+        // existing .ri-badge, which already has the three colours.
+        const rateCls = (L.rate === null || L.rate === undefined) ? ""
+          : (L.rate >= 10 ? "red" : L.rate >= 6 ? "amber" : "teal");
+        return '<tr' + (lines.length ? "" : ' class="ri-sample"') + '>'
+          + '<td style="padding:6px 8px">' + _rEsc(L.line) + '</td>'
+          + '<td style="padding:6px 8px">' + (L.returns || 0) + '</td>'
+          + '<td style="padding:6px 8px">' + (L.ordered ? Number(L.ordered).toLocaleString() : "—") + '</td>'
+          + '<td style="padding:6px 8px">'
+          + (rateCls ? '<span class="ri-badge ' + rateCls + '">' + _rPct(L.rate) + '</span>'
+                     : _rPct(L.rate)) + '</td>'
+          + '<td style="padding:6px 8px">' + (L.sales ? _rMoney(L.sales) : "—") + '</td>'
+          + '<td style="padding:6px 8px">' + (L.lost ? _rMoney(L.lost) : "—")
+          + (L.estimated ? '<span class="cc" title="estimated from this line\'s own '
+                           + 'average selling price, because the report carried no '
+                           + 'refunded column"> est</span>' : "") + '</td>'
+          + '<td style="padding:6px 8px">' + lineMix(L.natures) + '</td>'
+          + '<td style="padding:6px 8px">' + (L.skus || 0) + '</td>'
+          + '</tr>'; }).join("")
+    + '</tbody></table></div>'
+    + '<div class="cc" style="font-size:11px;margin-top:8px">'
+    + (lines.length
+        ? 'Lines are worked out from ' + _rEsc(d.lines_from || "the product names")
+          + ' — Amazon sends no product line of its own. The SKUs in each are in '
+          + 'the table below.'
+        : (noData
+            ? 'Sample shape — your own product lines appear here.'
+            : 'Your returns are loaded but this app has not grouped them into '
+              + 'product lines yet. Press Refresh; if it stays empty the returns '
+              + 'file carried no product names to group by.'))
+    + '</div>';
+
+  h += '<div style="margin-bottom:24px">'
+    + _riCard("Product Line Performance",
+              lines.length ? "Return rate and revenue impact by product family"
+                           : (noData ? "sample" : "nothing to group"), lineTable)
+    + '</div>';
+
   h += '<div style="margin-bottom:24px">'
     + _riCard("SKU-Level Returns Detail",
-              asins.length ? (asins.length + " products") : "sample", table)
+              asins.length ? "Click any row to expand reasons, comments, and disposition"
+                           : "sample", table)
     + '</div>';
 
   // ---- what customers said, and what to do about it -------------------

@@ -251,6 +251,44 @@ check("an unreadable item type keyword is not treated as a match",
 truthy("  it says it could not be CONFIRMED, not that it differs",
        any("cannot be confirmed" in x for x in nokw["problems"]))
 
+# THE CASE THAT MADE STEP 3 UNREACHABLE. Above, one child has the keyword and
+# one does not, which is a real mismatch and rightly stops. Here NEITHER has it,
+# because the product type does not use it -- measured on a live UK SQUEEGEE
+# listing, where Amazon returns 45 attributes and item_type_keyword is not among
+# them. Demanding a field Amazon does not send is a refusal with nothing on the
+# screen that could clear it, and it fired on every pair on the account.
+_LIVE["SH-NOKW2"] = {"brand": "Acme", "size": "S"}
+_LIVE["SH-NOKW3"] = {"brand": "Acme", "size": "M"}
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-NOKW2", "asin": "B08", "title": "No keyword S", "product_type": "SHIRT"},
+    {"sku": "SH-NOKW3", "asin": "B09", "title": "No keyword M", "product_type": "SHIRT"},
+], report_source="test")
+none_kw = prev(["SH-NOKW2", "SH-NOKW3"], "SIZE")
+check("a field the product type does not use at all does not block",
+      none_kw["can_apply"], True)
+check("  and it is not reported as a problem either",
+      [p for p in none_kw["problems"] if "item type keyword" in p], [])
+# Brand keeps the strict rule: Amazon DOES return it, so silence there would be
+# a family merged on something never checked.
+_LIVE["SH-NOBRAND"] = {"size": "L"}
+LS.save(CFG, WS, MKT, [
+    {"sku": "SH-NOKW2", "asin": "B08", "title": "No keyword S", "product_type": "SHIRT"},
+    {"sku": "SH-NOBRAND", "asin": "B10", "title": "No brand", "product_type": "SHIRT"},
+], report_source="test")
+nobrand = prev(["SH-NOKW2", "SH-NOBRAND"], "SIZE")
+check("an unreadable BRAND still blocks", nobrand["can_apply"], False)
+
+# THE OTHER HALF OF THE SAME BUG, checked in the source because it is about what
+# is asked of Amazon rather than what is done with the answer. get_item reads the
+# product type from summaries and falls back to productTypes -- but productTypes
+# was not in the request, so the fallback could never fire. Measured live:
+# summaries came back EMPTY and productTypes held "SQUEEGEE", so product_type was
+# "" for every real listing and every merge failed on it.
+_AL_SRC = open("api/amazon_listings.py", encoding="utf-8").read()
+truthy("get_item asks Amazon for productTypes, or its fallback cannot fire",
+       'included=("attributes", "summaries", "issues", "productTypes")' in _AL_SRC)
+truthy("  and still reads the fallback", 'data.get("productTypes")' in _AL_SRC)
+
 LS.save(CFG, WS, MKT, [
     {"sku": "SH-RED-S", "asin": "B01", "title": "S", "product_type": "SHIRT"},
     {"sku": "SH-RED-M", "asin": "B02", "title": "M", "product_type": "SHIRT"},

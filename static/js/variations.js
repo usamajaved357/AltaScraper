@@ -190,7 +190,13 @@ function variationsPick(sku, on){
 async function variationsStep2(){
   const host = document.getElementById("varbody");
   const first = (VARS.items||[]).find(x => x.sku === VARS.picked[0]) || {};
-  const pt = first.product_type || "";
+  // LET, NOT CONST. Six lines down this is reassigned from the server's answer
+  // when the listing carried no product type -- and assigning to a `const`
+  // throws TypeError. It threw inside a `try` with an empty `catch`, so the
+  // error vanished and the fallback the comment below describes simply never
+  // happened: the header read "unknown type" and the theme list stayed empty
+  // for exactly the listings that needed the server to work the type out.
+  let pt = first.product_type || "";
   host.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> Reading what this product type allows…</div>';
 
   // Ask by SKU as well as by type. The list this screen reads from does not
@@ -203,10 +209,22 @@ async function variationsStep2(){
              + "skus=" + encodeURIComponent(VARS.picked.join(","));
     th = await (await fetch("/variations/themes?" + qs)).json();
     if(th && th.product_type && !pt) pt = th.product_type;
-  }catch(e){}
+  }catch(e){
+    // NOT SWALLOWED. An empty catch here is how the bug above stayed invisible:
+    // the screen looked like it had simply found no themes, which is a normal
+    // answer, so there was nothing to investigate.
+    th = {themes: [], checked: false,
+          note: "Could not read what this product type allows (" + String(e) + ")."};
+  }
   VARS.themes = th.themes || [];
 
-  let h = _varSteps(2);
+  // The stepper gets its own element so the preview can move it to 3 when the
+  // checks pass. It used to be baked into this string, which is why step 3
+  // existed in the list of steps and nowhere else: VAR_STEPS named three, and
+  // _varSteps was only ever called with 1 and 2. The screen promised a third
+  // step it had no way of reaching, which is exactly "i am not able to go to
+  // step 3" -- the step was never built, not blocked.
+  let h = '<div id="var_steps">' + _varSteps(2) + '</div>';
   h += '<div style="margin-bottom:10px"><button class="db-chip" onclick="variationsRender(\'\')">'
         + '← back to the list</button></div>';
   h += '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin-bottom:12px">'
@@ -271,14 +289,20 @@ async function variationsStep2(){
     + '“Ceiling fan with light and remote”, not “…, white”.</div>'
     + '<input id="var_title" placeholder="parent title" style="font-size:12px;padding:5px 8px;width:100%;max-width:560px">';
 
-  h += '<div style="margin-top:14px"><button class="db-chip" onclick="variationsPreview()">'
-    + 'Check it</button></div></div>';
+  h += '<div style="margin-top:14px"><button class="db-chip" '
+    + 'style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+    + 'onclick="variationsPreview()">Check it →</button></div></div>';
   h += '<div id="varpreview"></div>';
   host.innerHTML = h;
-  variationsPreview();          // fill the suggested parent SKU straight away
+  // QUIETLY, so the suggested parent SKU is filled in without the screen
+  // opening on a red "Not ready yet". Arriving at a form and being told off
+  // before touching it is most of "it is too confusing": nothing was wrong,
+  // the theme simply had not been chosen yet, which is the whole job of the
+  // step you have just arrived at.
+  variationsPreview(true);
 }
 
-async function variationsPreview(){
+async function variationsPreview(quiet){
   const out = document.getElementById("varpreview");
   if(!out) return;
   const theme = (document.getElementById("var_theme")||{}).value || "";
@@ -296,11 +320,22 @@ async function variationsPreview(){
   const pf = document.getElementById("var_parent");
   if(pf && !pf.value && j.parent_sku) pf.value = j.parent_sku;   // the suggestion
 
+  // STEP 3 IS REACHED HERE, and this is the only place that can decide it: the
+  // third step is "check and join", and you are on it exactly when the checks
+  // have passed and there is something to join.
+  const steps = document.getElementById("var_steps");
+  if(steps) steps.innerHTML = _varSteps(j.can_apply ? 3 : 2);
+
   let h = "";
-  if(j.problems && j.problems.length){
-    h += '<div style="border:1px solid #4a2323;background:#2a1212;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
-      + '<div style="font-weight:600;font-size:12.5px;color:#e88a8a;margin-bottom:5px">'
-      + 'Not ready yet</div><ul style="margin:0;padding-left:18px;font-size:12px">'
+  if(j.problems && j.problems.length && !quiet){
+    // NOT RED, and not called an error. Every one of these is a thing still to
+    // do on the step you are standing on -- most often "you have not chosen
+    // what differs yet", which is the question the step is asking. Red says
+    // something went wrong; amber says you are not finished.
+    h += '<div style="border:1px solid #3a3320;background:#241f10;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
+      + '<div style="font-weight:600;font-size:12.5px;margin-bottom:5px">'
+      + '<i class="ti ti-info-circle"></i> Still to do before these can be joined'
+      + '</div><ul style="margin:0;padding-left:18px;font-size:12px">'
       + j.problems.map(p => '<li style="margin:3px 0">'+_vesc(p)+'</li>').join("")
       + '</ul></div>';
   }
@@ -308,7 +343,8 @@ async function variationsPreview(){
   if(j.payload && j.can_apply){
     const p = j.payload;
     h += '<div style="border:1px solid #26403a;background:#10231f;border-radius:6px;padding:10px 12px;margin-bottom:10px">'
-      + '<div style="font-weight:600;font-size:12.5px;margin-bottom:6px">This is exactly what would be sent</div>'
+      + '<div style="font-weight:600;font-size:12.5px;margin-bottom:6px">'
+      + '<i class="ti ti-check"></i> Every check passed. This is exactly what would be sent</div>'
       + '<div style="font-size:11.5px;margin-bottom:4px"><b>Parent</b> <code>'+_vesc(p.parent.sku)+'</code> '
       + '— created as the group. No price, no stock: those stay on the children.</div>'
       + '<div style="font-size:11.5px">'+p.children.length+' children join it, each grouped by <b>'

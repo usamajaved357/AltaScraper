@@ -149,5 +149,115 @@ truthy("there are variations* functions to call", (names || []).length > 0);
   check("  " + n + " raises no ReferenceError", isRef, false);
 });
 
-console.log("\nFAILURES: " + fails);
-process.exit(fails ? 1 : 0);
+console.log("\n=== step 3 can actually be REACHED ===");
+/* Reported: "it is giving error which i select 2 products of same type. i am not
+ * able to go to step 3."
+ *
+ * Two separate faults, and neither was about the products being the same type:
+ *
+ *   1. VAR_STEPS names three steps and _varSteps was only ever called with 1 and
+ *      2. The third step existed in the caption and nowhere else -- there was no
+ *      code path that could reach it, so it was not blocked, it was never built.
+ *
+ *   2. Arriving at step 2 immediately ran the check with no theme chosen and
+ *      painted a red "Not ready yet". Nothing was wrong: choosing the theme is
+ *      the job of the step you have just arrived at.
+ */
+function stepSandbox(reply){
+  const sb = makeSandbox();
+  sb.fetch = function(url, opts){
+    return Promise.resolve({json: () => Promise.resolve(reply(String(url), opts))});
+  };
+  vm.createContext(sb);
+  vm.runInContext(src, sb);
+  return sb;
+}
+
+check("the screen names three steps", run(makeSandboxWithSrc(), "VAR_STEPS.length"), 3);
+function makeSandboxWithSrc(){
+  const s = makeSandbox();
+  vm.runInContext(src, s);
+  return s;
+}
+{
+  const s = makeSandboxWithSrc();
+  const three = run(s, "_varSteps(3)");
+  truthy("and step 3 can be drawn as the current one",
+         three.indexOf("Check and join") >= 0);
+  // The first two are marked done with a tick when you are on the third.
+  check("  with the first two behind you", (three.match(/✓/g) || []).length, 2);
+}
+
+(async function(){
+  // Two products of the same type, a theme chosen, and a server that says the
+  // checks passed. This must land on step 3 with the apply button on screen.
+  const sb5 = stepSandbox(function(url){
+    if(url.indexOf("/variations/themes") >= 0){
+      return {ok: true, product_type: "SQUEEGEE", themes: ["SIZE", "COLOR"], checked: true};
+    }
+    if(url.indexOf("/variations/preview") >= 0){
+      return {ok: true, can_apply: true, problems: [], parent_sku: "FAN-PARENT",
+              product_type: "SQUEEGEE",
+              payload: {theme: "SIZE", parent: {sku: "FAN-PARENT"},
+                        children: [{sku: "FAN-WHITE"}, {sku: "FAN-BLACK"}]}};
+    }
+    return {ok: true};
+  });
+  run(sb5, `VARS.items = [
+    {sku: "FAN-WHITE", title: "white", asin: "B01", product_type: "SQUEEGEE"},
+    {sku: "FAN-BLACK", title: "black", asin: "B02", product_type: "SQUEEGEE"}];
+    VARS.picked = ["FAN-WHITE", "FAN-BLACK"];`);
+
+  let err = null;
+  try{ await run(sb5, "variationsStep2()"); }catch(e){ err = String(e); }
+  check("step 2 runs without throwing", err, null);
+  // THE const BUG. `pt` was declared const and reassigned from the server's
+  // answer six lines later, inside a try with an empty catch -- so the
+  // TypeError vanished and the fallback never happened.
+  truthy("  and reassigning the product type from the server does not throw",
+         !(err || "").indexOf || (err || "").indexOf("constant") < 0);
+  const s2 = sb5.els.varbody.innerHTML || "";
+  truthy("step 2 offers the theme picker", s2.indexOf("var_theme") >= 0);
+  truthy("  and its own step element, so step 3 can move it",
+         s2.indexOf('id="var_steps"') >= 0);
+  // Arriving must NOT open on a telling-off.
+  const first = sb5.els.varpreview.innerHTML || "";
+  check("arriving at step 2 does not open on a problem list",
+        first.indexOf("Still to do") >= 0, false);
+
+  err = null;
+  try{
+    run(sb5, "document.getElementById('var_theme').value = 'SIZE';");
+    await run(sb5, "variationsPreview()");
+  }catch(e){ err = String(e); }
+  check("the check runs without throwing", err, null);
+  const steps = sb5.els.var_steps.innerHTML || "";
+  truthy("STEP 3 IS NOW THE CURRENT STEP", steps.indexOf("Check and join") >= 0);
+  const prev = sb5.els.varpreview.innerHTML || "";
+  truthy("  and the payload that would be sent is shown",
+         prev.indexOf("FAN-PARENT") >= 0);
+  truthy("  with the button that sends it",
+         prev.indexOf("variationsApply()") >= 0);
+
+  // And when the checks do NOT pass, it stays on 2 and says what is left.
+  const sb6 = stepSandbox(function(url){
+    if(url.indexOf("/variations/themes") >= 0){
+      return {ok: true, product_type: "SQUEEGEE", themes: ["SIZE"], checked: true};
+    }
+    return {ok: true, can_apply: false, parent_sku: "P1",
+            problems: ["Pick what makes these products different from each other."]};
+  });
+  run(sb6, `VARS.items = [{sku:"A", product_type:"SQUEEGEE"},{sku:"B", product_type:"SQUEEGEE"}];
+            VARS.picked = ["A","B"];`);
+  await run(sb6, "variationsStep2()");
+  await run(sb6, "variationsPreview()");
+  truthy("an unfinished family stays on step 2",
+         (sb6.els.var_steps.innerHTML || "").indexOf("2 Say what differs") >= 0);
+  truthy("  and lists what is left to do, not an error",
+         (sb6.els.varpreview.innerHTML || "").indexOf("Still to do") >= 0);
+  check("  in amber, not red",
+        (sb6.els.varpreview.innerHTML || "").indexOf("#4a2323") >= 0, false);
+
+  console.log("\nFAILURES: " + fails);
+  process.exit(fails ? 1 : 0);
+})();

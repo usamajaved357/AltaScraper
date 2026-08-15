@@ -39,10 +39,37 @@ def _client(creds, marketplace, timeout=60):
 
 
 def get_item(creds, marketplace, seller_id, sku, marketplace_id,
-             included=("attributes", "summaries", "issues"), timeout=60):
+             included=("attributes", "summaries", "issues", "productTypes"),
+             timeout=60):
     """What Amazon currently holds for this SKU. Never raises.
 
     -> {"status", "attributes", "product_type", "error", "http_code"}
+
+    WHY productTypes IS ASKED FOR, and why leaving it out was a silent failure.
+
+    The code below reads the product type from `summaries[0].productType` and
+    falls back to `productTypes[0].productType`. The fallback existed but could
+    never fire, because productTypes was not in the request -- Amazon only sends
+    the sections you ask for.
+
+    MEASURED on a live nestwell_goods listing (11.96_2Days_B0FM82BDC5, UK), with
+    productTypes added to the request:
+
+        summaries     []                                    <- empty
+        productTypes  [{marketplaceId: A1F83G8C2ARO7P,
+                        productType: "SQUEEGEE"}]            <- the answer
+
+    So `product_type` came back as "" for every live listing on the account, and
+    every caller that needs it was quietly broken:
+
+      variations_routes  every merge reported "could not read the product type"
+                         and could never be applied -- reported as "i am not
+                         able to go to step 3"
+      variant_routes     adding a variant to an existing listing
+      source_apply       writing a price back needs the type on a full put
+
+    One default, four callers, one fix. Nothing else in this file changes: the
+    fallback that reads the value was already here and correct.
     """
     out = {"status": FAILED, "attributes": None, "product_type": "",
            "error": "", "http_code": None, "raw": None}

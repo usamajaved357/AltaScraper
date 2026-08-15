@@ -39,6 +39,45 @@ const SC_PRIORYEAR = "#6366f1";
 const SC_DASH      = "5 5";     // the period before
 const SC_DASH_YEAR = "5 3";     // the same period a year earlier
 
+/* HOW WIDE THIS CHART SHOULD BE DRAWN -- the container's own width, measured.
+ *
+ * THE BUG THIS EXISTS FOR: "in the mobile view the graphs do not look as
+ * original they are too short", and on desktop "the size of the graphs is not
+ * the same as orbit" and "the graphs looks uneven".
+ *
+ * All three are the same fault. The charts were drawn at a fixed viewBox with
+ * `width:100%; height:auto`, which scales the picture UNIFORMLY: halve the
+ * width and the height halves with it.
+ *
+ * MEASURED on Orbit at 1600px and at 390px:
+ *
+ *                        desktop        phone
+ *   Live Sales           665 x 200      340 x 200
+ *   Week to Date         665 x 200      340 x 200
+ *   Sales Report        1365 x 320      340 x 320
+ *   Organic vs PPC      1365 x 380      332 x 380
+ *
+ * Its charts KEEP THEIR HEIGHT and only lose width -- the plot re-lays-out
+ * narrower, it does not shrink. Ours at 340 wide became 340 x 102, which is the
+ * "too short" exactly. On desktop the same scaling made every chart taller than
+ * Orbit's on a wide screen, and made two side-by-side cards disagree in height
+ * whenever their widths differed by a pixel, which is the "uneven".
+ *
+ * So the width comes from the element the chart is going into, and the height is
+ * whatever the caller asked for. Falls back to Orbit's own width when the host
+ * cannot be measured (it is hidden, or this is a test with no layout).
+ */
+function scChartWidth(hostId, fallback){
+  try{
+    const el = document.getElementById(hostId);
+    const w = el && (el.clientWidth || el.getBoundingClientRect().width);
+    // Under about 240 there is no room for a y-axis and 30 dates; below that the
+    // fallback reads better than a squashed picture.
+    if(w && w >= 240) return Math.round(w);
+  }catch(e){}
+  return fallback;
+}
+
 function _scEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -716,8 +755,12 @@ function salesChart(points, opts){
        // position:relative so the floating hover card can be placed over the
        // chart in page pixels while the chart itself is drawn in viewBox units.
        + '<div style="position:relative">'
+       // THE HEIGHT IS FIXED IN PIXELS and the viewBox is drawn at the width the
+       // container actually has, so the scale is 1:1 and nothing is shrunk. With
+       // `height:auto` this scaled uniformly and a 340px phone got a 102px-tall
+       // chart -- see scChartWidth for the measurements.
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
-               style="display:block;height:auto;${compact
+               style="display:block;height:${H}px;${compact
                  ? "background:transparent;border:0"
                  : "background:#0d1220;border:1px solid #1e2733;border-radius:8px"}">`
        + defs + grid + gaps + paths + dots + xl + hits + '</svg>'
@@ -1040,8 +1083,10 @@ function salesCombo(o){
        + 'Hover for the day’s figures · drag across to zoom into those days'
        + '<span id="' + cid + '_read" style="margin-left:auto"></span></div>'
        + '<div style="position:relative">'
+       // Fixed height, width taken from the container -- the same rule as the
+       // small charts. See scChartWidth.
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
-               style="display:block;height:auto;background:transparent;border:0">`
+               style="display:block;height:${H}px;background:transparent;border:0">`
        + defs + grid + barsSvg + linesSvg + xl + hits + '</svg>'
        + `<div id="${cid}_tip" class="charttip"></div>`
        + '</div>'

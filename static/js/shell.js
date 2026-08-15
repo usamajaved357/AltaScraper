@@ -404,7 +404,10 @@ async function enterAccount(accountId){
   }catch(e){ WS_SOURCE=null; }
   renderDataSource();
   // paint shell
-  document.getElementById("home").classList.remove("show");
+  // Picking an account from the panel closes it. This used to hide a full-screen
+  // home page; that element is gone, and calling .classList on the null it left
+  // behind would have thrown here -- on the one path every account switch takes.
+  closeAccounts();
   document.getElementById("workspace").classList.add("show");
   const col=_wsColorKey(a.id||a.label);
   const icEl=document.getElementById("ws_ic");
@@ -473,7 +476,10 @@ async function enterDropshipping(){
   try{ await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:""})}); }catch(e){}
   ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
   var _g0=document.getElementById("grid"); if(_g0) _g0.innerHTML="";
-  document.getElementById("home").classList.remove("show");
+  // Picking an account from the panel closes it. This used to hide a full-screen
+  // home page; that element is gone, and calling .classList on the null it left
+  // behind would have thrown here -- on the one path every account switch takes.
+  closeAccounts();
   document.getElementById("workspace").classList.add("show");
   const icEl=document.getElementById("ws_ic");
   icEl.style.background="var(--accent-bg)"; icEl.style.color="var(--accent2)";
@@ -847,13 +853,24 @@ function peekTile(btn){
   if(ic) ic.className = now ? "ti ti-eye-off" : "ti ti-eye";
   btn.title = now ? "Hide again" : "Reveal this listing";
 }
+/* THE ACCOUNTS PANEL, which used to be the home page.
+ *
+ * It no longer LEAVES the workspace: the account you are in stays open behind
+ * it, so opening the list to check something and closing it again costs
+ * nothing. Before, this cleared ACTIVE_WS and unloaded the screen, so glancing
+ * at the list meant reloading everything on the way back.
+ *
+ * Kept under the old name because eight call sites and the switcher use it.
+ */
 function goHome(){
-  ACTIVE_WS=null;
-  document.getElementById("workspace").classList.remove("show");
-  document.getElementById("home").classList.add("show");
-  document.getElementById("crumbs").innerHTML="";
-  altaSyncUrl();
+  const m = document.getElementById("wsmodal");
+  if(m) m.classList.add("open");
   loadHome();
+}
+
+function closeAccounts(){
+  const m = document.getElementById("wsmodal");
+  if(m) m.classList.remove("open");
 }
 
 async function enterWorkspace(key){
@@ -863,7 +880,10 @@ async function enterWorkspace(key){
   try{ await fetch("/view/set",{method:"POST",headers:{"Content-Type":"application/json"},
        body:JSON.stringify({key:v.key, sheet:v.sheet||"", tab:v.tab||""})}); }catch(e){}
   // paint shell
-  document.getElementById("home").classList.remove("show");
+  // Picking an account from the panel closes it. This used to hide a full-screen
+  // home page; that element is gone, and calling .classList on the null it left
+  // behind would have thrown here -- on the one path every account switch takes.
+  closeAccounts();
   document.getElementById("workspace").classList.add("show");
   const col=_wsColor(v), isDrop=!v.brand;
   const icEl=document.getElementById("ws_ic");
@@ -958,7 +978,10 @@ function navToBrandCreate(){
 }
 function enterWorkspaceBlank(){
   ACTIVE_WS={key:"",label:"New brand",brand:"new"};
-  document.getElementById("home").classList.remove("show");
+  // Picking an account from the panel closes it. This used to hide a full-screen
+  // home page; that element is gone, and calling .classList on the null it left
+  // behind would have thrown here -- on the one path every account switch takes.
+  closeAccounts();
   document.getElementById("workspace").classList.add("show");
   document.getElementById("ws_nm").textContent="New brand";
   document.getElementById("ws_sub").textContent="";
@@ -1094,17 +1117,11 @@ function _altaBootDone(){
 // it is NOT set here -- that function is async, and setting the flag around a
 // call that returns at its first await would clear it far too early.
 window.addEventListener("popstate", function(){
-  const path = location.pathname || "/";
-  try{
-    if(path === "/" || path === ""){
-      if(ACTIVE_WS){
-        _ALTA_RESTORING = true;
-        try{ goHome(); } finally { _ALTA_RESTORING = false; }
-      }
-    } else {
-      altaRouteFromUrl();
-    }
-  }catch(e){}
+  // ONE BRANCH, because "/" is no longer a different kind of address. It used
+  // to mean "leave the workspace and show the grid of cards", so Back unloaded
+  // everything you had open; there is no home page to leave it for now, and
+  // altaRouteFromUrl already knows that "/" means the account you were last in.
+  try{ altaRouteFromUrl(); }catch(e){}
 });
 
 // Record the Drafts / Live / All switch in the address too. Wrapped here rather
