@@ -3323,6 +3323,13 @@ def build_app(backend=None):
     # The costs that are not the supplier's price: postage out, prep, a hand-
     # allocated ad figure. Its own file from day one -- a new feature never goes
     # into dashboard.py (CLAUDE.md Rule 7).
+    # Which way stock cost is worked out, and correcting one order by hand.
+    import routes.cogs_mode_routes as _cogs_mode_routes
+    import accounts as _acc_for_cogs
+    _cogs_mode_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                               _state=_state, _active_account=_active_account,
+                               _save_account=_acc_for_cogs.save_account,
+                               _cogs_overrides=lambda: _COGS_OVERRIDE)
     import routes.asin_charges_routes as _asin_charges_routes
     _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _state=_state, _active_account=_active_account)

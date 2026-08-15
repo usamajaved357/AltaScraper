@@ -1496,6 +1496,81 @@ if(typeof window !== "undefined" && window.addEventListener){
   window.addEventListener("resize", salesOnResize);
 }
 
+/* The Profit card, on the SAME basis as the sales beside it.
+ *
+ * This is the card that read "£80" next to "Total Sales £0". Both were right and
+ * they were about different trades: Amazon dates sales by when the order was
+ * PLACED and profit by when the MONEY MOVED, so a window whose orders have not
+ * settled showed this week's sales beside last month's profit.
+ *
+ * The order-dated figure is preferred, worked out from the owner's own cost
+ * prices -- revenue, less VAT where the company is registered, less Amazon's fee
+ * at the rate this account actually pays, less what the stock cost and what was
+ * spent getting it out. Amazon has no answer on this basis; the owner does.
+ *
+ * It is never shown as if it were Amazon's own figure. Where costs are missing
+ * the number is knowingly too high, and the card says so rather than hiding it.
+ */
+function _sProfitCard(sum, byKey){
+  const est = sum && sum.order_profit;
+  const settled = byKey["profit"] || {key: "profit", kind: "money", value: null};
+
+  if(!est || est.profit === null || est.profit === undefined){
+    // Nothing costed at all -- fall back to the settled figure, but say which
+    // days it is really about so it cannot be read as this week's.
+    return Object.assign({}, settled, {
+      label: "Profit",
+      note: (est && est.error) ? "" : "on settled orders — a different set of days",
+    });
+  }
+
+  // TWO DIFFERENT WAYS THIS FIGURE CAN BE INCOMPLETE, and they are not the same
+  // thing: some UNITS have no cost (the figure is too high), or some ORDERS of
+  // the period have not been fetched at all (the figure is about less than the
+  // period). Both are warnings and both are shown; neither is left to be
+  // guessed at from a number on its own.
+  const warns = [];
+  if(est.coverage_note) warns.push(est.coverage_note);
+  if(est.warning) warns.push(est.warning);
+  return {
+    key: "profit", kind: "money", label: "Profit",
+    value: est.profit,
+    previous: null, delta_pct: null,
+    note: warns.length ? warns.join(" ") : (est.note || ""),
+    warn: warns.length > 0,
+    detail: est,
+  };
+}
+
+/* The full working, on hover. Every number that went into the profit, so a
+ * figure nobody expected can be taken apart rather than argued with. */
+function _sProfitTip(c){
+  const d = c && c.detail;
+  if(!d) return "Revenue after Amazon's fees and what the stock cost.";
+  const L = [];
+  L.push("revenue " + _sNum(d.revenue, "money"));
+  if(d.goods !== undefined)
+    L.push("  = goods " + _sNum(d.goods, "money")
+           + " + postage the buyer paid " + _sNum(d.postage, "money"));
+  if(d.vat) L.push("less VAT " + _sNum(d.vat, "money") + " (HMRC's, not yours)");
+  L.push("less Amazon fees " + _sNum(d.fees, "money") + " — " + (d.rate_detail || ""));
+  L.push("less stock cost " + _sNum(d.cogs, "money")
+         + " (" + d.costed_units + " of " + d.units + " units costed)");
+  if(d.charges)
+    L.push("less your charges " + _sNum(d.charges, "money")
+           + (d.charge_parts && d.charge_parts.length
+              ? " — " + d.charge_parts.map(function(p){
+                  return p.label + " " + _sNum(p.amount, "money"); }).join(", ")
+              : ""));
+  L.push(d.ads_connected
+         ? "less ad spend " + _sNum(d.ad_spend, "money")
+         : "ad spend NOT subtracted — Advertising is not connected");
+  L.push("= " + _sNum(d.profit, "money")
+         + (d.margin_pct !== null && d.margin_pct !== undefined
+            ? "  (" + d.margin_pct + "% margin)" : ""));
+  return L.join("\n");
+}
+
 /* ---- stat cards -------------------------------------------------------- */
 function salesDrawCards(sum, av){
   const host=document.getElementById("sales_cards");
@@ -1540,7 +1615,25 @@ function salesDrawCards(sum, av){
       return (n > 0 && n < 1000) ? n : 0;
     }catch(e){ return 0; }
   })();
-  const _rev = _byKey["ordered_sales"] || _byKey["net_revenue"];
+  let _rev = _byKey["ordered_sales"] || _byKey["net_revenue"];
+
+  // TOTAL SALES INCLUDES THE POSTAGE THE BUYER PAID -- "this is the total
+  // revenue i generated ... the fees are cut afterwards from it".
+  //
+  // Amazon's report cannot give it: its ordered_sales is the goods alone. The
+  // postage is only known per order, from the order feed, so it is added here
+  // and ONLY when that feed covers the whole period. Adding a partial postage
+  // figure to a full sales figure would be a number that is neither.
+  const _op = sum.order_profit;
+  if(_op && _op.covers_all && _op.postage > 0
+     && _rev && _rev.value !== null && _rev.value !== undefined){
+    _rev = Object.assign({}, _rev, {
+      value: Math.round((Number(_rev.value) + Number(_op.postage)) * 100) / 100,
+      goods: _rev.value,
+      postage: _op.postage,
+    });
+  }
+
   const ORBIT_CARDS = [
     Object.assign({}, _rev || {}, {label: "Total Sales"}),
     (_rev && _days && _rev.value !== null && _rev.value !== undefined)
@@ -1555,8 +1648,7 @@ function salesDrawCards(sum, av){
                   {label: "Total Orders"}),
     Object.assign({}, _byKey["units"] || {key: "units", kind: "count", value: null},
                   {label: "Total Units"}),
-    Object.assign({}, _byKey["profit"] || {key: "profit", kind: "money", value: null},
-                  {label: "Profit"}),
+    _sProfitCard(sum, _byKey),
   ];
 
   host.innerHTML = ORBIT_CARDS.map(function(c){
@@ -1573,22 +1665,39 @@ function salesDrawCards(sum, av){
     // measured: the label sits above the figure, not under it. Ours had it the
     // other way round and centred, which is why the two never looked alike
     // however close the colours got.
-    return '<div class="stat-card'+(missing?" is-empty":"")+'"'
-      + (isProfit ? ' title="Revenue after Amazon\'s fees, refunds and what the '
-                    + 'stock cost. Withheld entirely when any unit shipped has no '
-                    + 'recorded cost — a partial cost only ever flatters."' : '')
-      + '>'
-      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
-      + '<p class="stat-number" style="'+col.replace(/^;/,"")+'">'
-      + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
-      + (adsOff
+    // WHAT THIS FIGURE IS, under the figure. A profit worked out from the
+    // owner's own costs is not the same claim as one Amazon has settled, and a
+    // profit with uncosted units in it is knowingly too high -- neither can be
+    // left to be inferred from a number on its own.
+    const foot = c.note
+      ? '<p class="stat-delta" style="white-space:normal;line-height:1.35'
+        + (c.warn ? ';color:var(--warn)' : '') + '">'
+        + (c.warn ? '<i class="ti ti-alert-triangle"></i> ' : '')
+        + _sEsc(c.note) + '</p>'
+      : (adsOff
           ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
           // "LY :" is Orbit's own wording, with the space. `previous` is what
           // the server calls the earlier figure -- it was read as `prev_value`,
           // which does not exist, so every card said only a percentage with
           // nothing to compare it against.
           : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
-                    c.previous, c.kind, sum.currency))
+                    c.previous, c.kind, sum.currency));
+    // Where postage has been folded into Total Sales, say so on hover -- the
+    // goods figure alone is what reconciles against Seller Central, and someone
+    // checking the two must be able to find it.
+    const salesTip = (c.postage
+      ? "goods " + _sNum(c.goods, "money", sum.currency)
+        + " + postage the buyer paid " + _sNum(c.postage, "money", sum.currency)
+        + "\nAmazon's own 'Ordered product sales' is the goods figure alone."
+      : "");
+    return '<div class="stat-card'+(missing?" is-empty":"")+'"'
+      + (isProfit ? ' title="'+_sEsc(_sProfitTip(c))+'"'
+                  : (salesTip ? ' title="'+_sEsc(salesTip)+'"' : ''))
+      + '>'
+      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
+      + '<p class="stat-number" style="'+col.replace(/^;/,"")+'">'
+      + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
+      + foot
       + '</div>';
   }).join("");
 

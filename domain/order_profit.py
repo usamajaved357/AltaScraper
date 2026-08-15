@@ -1,65 +1,73 @@
 """domain/order_profit.py -- profit on orders PLACED, from the seller's own costs.
 
 WHY THIS EXISTS
-The Sales cards showed "Total Sales £0" beside "Profit £80". Both figures were
-right and they described different trades, because Amazon dates its two feeds
-differently:
+The Sales cards showed "Total Sales GBP 0" beside "Profit GBP 80". Both figures
+were right and they described different trades, because Amazon dates its two
+feeds differently:
 
-    Sales & Traffic report / Orders API   dated by when the order was PLACED
+    Orders API / Sales & Traffic report   dated by when the order was PLACED
     finance records                       dated by when the MONEY MOVED
 
-So an order placed yesterday is a sale yesterday and a profit whenever Amazon
-settles it, which may be weeks later. Profit on the cards came from the settled
-side while sales came from the ordered side, and a row of five cards contradicted
-itself.
+An order placed yesterday is a sale yesterday and a profit whenever Amazon
+settles it, which can be weeks. Profit came from the settled side while sales
+came from the ordered side, so a row of five cards contradicted itself.
 
-Amazon cannot answer "what did I make on yesterday's orders" -- it has not
-settled them, so it reports no profit against them at all. But the seller can:
-they know what the stock cost. Asked for exactly that: "yes use my cost prices
-for profit".
+Amazon cannot answer "what did I make on yesterday's orders" -- it reports no
+profit against an unsettled order. The seller can, because they know what the
+stock cost. Asked for exactly that: "yes use my cost prices for profit".
 
-    profit = product sales - Amazon's fees - what the stock cost
+WHAT IS SUBTRACTED, AND WHERE EACH PART COMES FROM
 
-TWO OF THOSE THREE ARE FACTS.
-  product sales   the item price Amazon returned for each line (order_lines)
-  cost of goods   the seller's own cost, resolved by domain/cogs.py
+    revenue        item price + the postage the buyer paid -- everything the
+                   buyer handed over, which is the owner's definition:
+                   "this is the total revenue i generated ... the fees are cut
+                   afterwards from it"
+    - VAT          where the company is registered. Amazon reports these order
+                   values with VAT already inside them, and that portion is
+                   HMRC's, not the seller's. Per account, answered on the
+                   account form, never assumed.
+    - Amazon fees  estimated until the settlement arrives, at the rate THIS
+                   account actually pays, measured from its own settled history
+    - stock cost   frozen onto the order when it was seen (domain/order_cogs)
+    - charges      postage out, prep, a hand-allocated ad figure
+                   (domain/asin_charges)
+    - ad spend     ONLY when the Advertising API is connected. Nothing is
+                   subtracted while it is not, and the figure says so: "when the
+                   api is not there do not subtract anything".
 
-THE THIRD IS AN ESTIMATE AND IS TREATED AS ONE. Amazon's exact fee for an
-unsettled order does not exist yet. Rather than assume the textbook 15%, this
-works the rate out from THE ACCOUNT'S OWN settled history -- what Amazon has
-actually charged this seller, on their own products, per pound of sales. The
-textbook rate is only the fallback for an account with no settled history at all,
-and which of the two was used is reported, never hidden.
+MISSING COSTS ARE NOT ZERO COSTS -- BUT THEY DO NOT HIDE THE FIGURE EITHER
+Asked for: "if no cogs are added show profit as wrong i agree do not subtract
+cogs this is the standard way, the user should know he needs to add cogs
+otherwise the profit numbers wont be accurate."
 
-WHAT IT WILL NOT DO
-Silently price the SKUs it has no cost for. Those lines are counted and named.
-A profit figure covering four fifths of the orders is useful; the same figure
-presented as if it covered all of them is not.
+So an uncosted unit contributes its revenue and no cost, which OVERSTATES profit
+-- and every reply says so, loudly, with the count and the products involved.
+The overstatement is deliberate and declared, not accidental and hidden.
 """
 
 # Amazon's most common referral rate, and the same constant the Orders screen
-# already estimates a single order with. Imported from there rather than
-# redeclared so there is one number, not two that drift.
+# already estimates a single order with. Imported rather than redeclared so
+# there is one number, not two that drift.
 try:
     from domain.orders_view import DEFAULT_REFERRAL_RATE
 except Exception:                                    # importable in isolation
     DEFAULT_REFERRAL_RATE = 0.15
 
-# Below this, a derived rate is not worth trusting -- a couple of settled orders
-# can be atypical, and a wrong fee rate moves profit more than anything else here.
+# Below this, a measured rate is not worth trusting -- a couple of settled orders
+# can be atypical, and the fee rate moves profit more than anything else here.
 MIN_PRINCIPAL_FOR_RATE = 50.0
 
-# How far back to look for settled history when working the rate out.
+# How far back to look for settled history when measuring the rate.
 RATE_WINDOW_DAYS = 120
 
 
-def fee_rate(config_path, workspace_id, marketplace, end_date, days=RATE_WINDOW_DAYS):
+def fee_rate(config_path, workspace_id, marketplace, end_date,
+             days=RATE_WINDOW_DAYS):
     """(rate, basis, detail) -- what Amazon actually charges THIS account.
 
-    Worked out from the finance records: every fee Amazon has taken, over
-    everything buyers were charged, across the recent settled past. That is a
-    measurement of this seller's own products in their own categories, which a
-    flat 15% is not.
+    Measured from the finance records: every fee Amazon has taken, over
+    everything buyers were charged, across the recent settled past. That is this
+    seller's own products in their own categories, which a flat 15% is not.
     """
     import datetime as _dt
     try:
@@ -97,90 +105,158 @@ def fee_rate(config_path, workspace_id, marketplace, end_date, days=RATE_WINDOW_
         "no settled history to measure yet" % (DEFAULT_REFERRAL_RATE * 100))
 
 
-def for_lines(lines, cost_of, rate):
-    """Profit across order lines, plus exactly what could not be priced.
+def for_lines(lines, rate, vat_rate=None, charge_of=None):
+    """Profit across order lines, and exactly what it does not cover.
 
-    `lines` are order_lines rows: each has sku, units and revenue (the item
-    price Amazon returned). `cost_of` is domain/cogs.lookup -- so SKU costs,
-    manual overrides and their precedence stay decided in one place.
+    `lines` are order_lines rows: sku, units, revenue (item price), shipping
+    (what the buyer paid for postage), cogs (frozen when the order was seen).
+    `charge_of` is f(asin, sku, date) -> (per_unit, parts) from asin_charges.
     """
-    revenue = cogs = covered_revenue = 0.0
+    revenue = goods = postage = cogs = charges = 0.0
+    covered_revenue = 0.0
     units = costed_units = 0
     missing, orders = {}, set()
+    charge_parts = {}
 
     for L in lines or []:
         sku = str((L or {}).get("sku") or "")
+        asin = str((L or {}).get("asin") or "")
         try:
             qty = int((L or {}).get("units") or 0)
         except (TypeError, ValueError):
             qty = 0
         try:
-            rev = float((L or {}).get("revenue") or 0.0)
+            item = float((L or {}).get("revenue") or 0.0)
         except (TypeError, ValueError):
-            rev = 0.0
+            item = 0.0
+        try:
+            ship = float((L or {}).get("shipping") or 0.0)
+        except (TypeError, ValueError):
+            ship = 0.0
         oid = str((L or {}).get("order_id") or "")
         if oid:
             orders.add(oid)
-        revenue += rev
+
+        line_rev = item + ship
+        revenue += line_rev
+        goods += item
+        postage += ship
         units += qty
 
-        cost, _src = cost_of(sku) if cost_of else (None, "")
+        cost = (L or {}).get("cogs")
         if cost is None:
-            # NOT counted as free. A missing cost is the single easiest way to
-            # make a product look wonderful, and it is exactly the product
-            # someone would then buy more of.
-            missing[sku or "(no sku)"] = missing.get(sku or "(no sku)", 0) + 1
+            # Counted, named, and reported -- NOT treated as zero silently. The
+            # figure is knowingly overstated by this line's cost, and the reply
+            # says by how many units and which products.
+            missing[sku or asin or "(no sku)"] = \
+                missing.get(sku or asin or "(no sku)", 0) + qty
         else:
-            cogs += float(cost) * qty
+            try:
+                cogs += float(cost) * qty
+            except (TypeError, ValueError):
+                pass
             costed_units += qty
-            # The revenue of the costed lines ONLY. Profit has to be worked out
-            # against the sales it actually has costs for; measuring costed
-            # stock against ALL the revenue understates cost and overstates
-            # profit, which is the direction that does damage.
-            covered_revenue += rev
+            covered_revenue += line_rev
+
+        if charge_of:
+            try:
+                per_unit, parts = charge_of(asin, sku,
+                                            str((L or {}).get("purchase_date") or "")[:10])
+            except Exception:
+                per_unit, parts = 0.0, []
+            charges += float(per_unit or 0) * qty
+            for p in (parts or []):
+                charge_parts[p["label"]] = round(
+                    charge_parts.get(p["label"], 0.0) + float(p["amount"] or 0) * qty, 2)
 
     revenue = round(revenue, 2)
-    covered_revenue = round(covered_revenue, 2)
-    fees = round(revenue * float(rate), 2)
-    covered_fees = round(covered_revenue * float(rate), 2)
-    profit = round(covered_revenue - covered_fees - cogs, 2) if costed_units else None
-    margin = (round(profit / covered_revenue * 100, 1)
-              if profit is not None and covered_revenue else None)
+    # VAT COMES OUT FIRST. Amazon reports these values with it already inside,
+    # so it was never the seller's money and no fee or margin should be worked
+    # out against it.
+    vat = 0.0
+    if vat_rate:
+        try:
+            r = float(vat_rate)
+            if 0 < r < 1:
+                vat = round(revenue * r / (1.0 + r), 2)
+        except (TypeError, ValueError):
+            vat = 0.0
+    net_revenue = round(revenue - vat, 2)
+
+    fees = round(net_revenue * float(rate), 2)
+    cogs = round(cogs, 2)
+    charges = round(charges, 2)
+    profit = round(net_revenue - fees - cogs - charges, 2)
+    margin = round(profit / net_revenue * 100, 1) if net_revenue else None
 
     return {
         "profit": profit,
         "margin_pct": margin,
         "revenue": revenue,
-        "covered_revenue": covered_revenue,
+        "goods": round(goods, 2),
+        "postage": round(postage, 2),
+        "vat": vat,
+        "net_revenue": net_revenue,
         "fees": fees,
-        "covered_fees": covered_fees,
-        "cogs": round(cogs, 2),
+        "cogs": cogs,
+        "charges": charges,
+        "charge_parts": [{"label": k, "amount": v}
+                         for k, v in sorted(charge_parts.items())],
         "units": units,
         "costed_units": costed_units,
         "orders": len(orders),
-        "complete": (not missing) and bool(costed_units),
+        "complete": (not missing) and bool(units),
         "missing_skus": sorted(missing.keys())[:20],
         "missing_units": sum(missing.values()),
+        # Said plainly, because the number is knowingly too high without it.
+        "warning": ("" if not missing else
+                    "%d of %d units have no cost recorded, so nothing was "
+                    "subtracted for them and this profit is HIGHER than the "
+                    "truth. Set a cost on those products to fix it."
+                    % (sum(missing.values()), units)),
     }
 
 
-def for_period(config_path, workspace_id, marketplace, start, end, overrides=None):
+def for_period(config_path, workspace_id, marketplace, start, end,
+               overrides=None, vat_rate=None, ads_connected=False,
+               ad_spend=0.0):
     """Profit on orders PLACED between two dates, from the seller's own costs.
 
     Returns the figure, how the fee rate was arrived at, and what it does not
     cover -- so the screen can state all three rather than showing a number and
     hoping.
     """
-    from domain import cogs as _cogs
     lines = lines_between(config_path, workspace_id, marketplace, start, end)
     rate, basis, detail = fee_rate(config_path, workspace_id, marketplace, end)
-    out = for_lines(lines, _cogs.lookup(overrides or {}, workspace_id), rate)
-    out.update({"rate": rate, "rate_basis": basis, "rate_detail": detail,
-                "start": start, "end": end,
-                "basis": "order",
-                "note": ("Worked out from your own cost prices, because Amazon "
-                         "reports no profit against an order until it settles. "
-                         "Fees: " + detail)})
+
+    def _charge_of(asin, sku, on_date):
+        from domain import asin_charges as _ac
+        return _ac.per_unit(config_path, workspace_id, marketplace, asin,
+                            sku=sku, on_date=on_date)
+
+    out = for_lines(lines, rate, vat_rate=vat_rate, charge_of=_charge_of)
+
+    # AD SPEND ONLY WHEN IT IS KNOWN. Asked for: build it the way Orbit does --
+    # subtracted once the Advertising API is connected, and nothing subtracted
+    # at all while it is not. A guessed ad figure would move profit more than
+    # anything else on this screen.
+    out["ads_connected"] = bool(ads_connected)
+    out["ad_spend"] = round(float(ad_spend or 0), 2) if ads_connected else None
+    if ads_connected and ad_spend:
+        out["profit"] = round(out["profit"] - float(ad_spend), 2)
+        out["margin_pct"] = (round(out["profit"] / out["net_revenue"] * 100, 1)
+                             if out["net_revenue"] else None)
+
+    out.update({
+        "rate": rate, "rate_basis": basis, "rate_detail": detail,
+        "start": start, "end": end, "basis": "order",
+        "vat_rate": vat_rate,
+        "note": ("Worked out from your own cost prices, because Amazon reports "
+                 "no profit against an order until it settles. Fees: " + detail
+                 + ("" if ads_connected else
+                    " Advertising is not connected, so no ad spend is "
+                    "subtracted.")),
+    })
     return out
 
 
@@ -193,7 +269,8 @@ def lines_between(config_path, workspace_id, marketplace, start, end):
     from data import db as _db
     conn = _db.get_db(config_path)
     rows = conn.execute(
-        "SELECT order_id, sku, asin, units, revenue, currency, status, purchase_date "
+        "SELECT order_id, sku, asin, units, revenue, shipping, cogs, "
+        "       cogs_source, currency, status, purchase_date "
         "FROM order_lines "
         "WHERE workspace_id=? AND marketplace=? "
         "  AND substr(purchase_date, 1, 10) >= ? "
