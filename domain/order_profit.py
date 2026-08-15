@@ -83,13 +83,27 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
     except Exception:
         rows = {}
 
-    fees = principal = 0.0
+    # REFERRAL AND FBA ONLY. `other_fees` is where Amazon's charges that are NOT
+    # a share of a sale land -- above all the monthly Professional selling
+    # subscription. Measured on jack_uk: 25.00 of it arrived on 2026-08-14
+    # against 0.00 of sales that day, and including it turned a real 17.5% fee
+    # rate into 24.1%, which then came off every estimated profit as though the
+    # subscription scaled with revenue. The exported CSV shows 17-18% per day,
+    # which is what gave the game away.
+    #
+    # A fixed monthly cost is a real cost and belongs in the P&L -- it is simply
+    # not a RATE, and multiplying it by sales is not a way to charge it.
+    fees = principal = other = 0.0
     for r in (rows or {}).values():
-        for k in ("referral_fees", "fba_fees", "other_fees"):
+        for k in ("referral_fees", "fba_fees"):
             try:
                 fees += float(r.get(k) or 0.0)
             except (TypeError, ValueError):
                 pass
+        try:
+            other += float(r.get("other_fees") or 0.0)
+        except (TypeError, ValueError):
+            pass
         try:
             principal += float(r.get("principal") or 0.0)
         except (TypeError, ValueError):
@@ -97,9 +111,16 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
 
     if principal >= MIN_PRINCIPAL_FOR_RATE and fees > 0:
         rate = round(fees / principal, 4)
-        return rate, "measured", (
-            "%.1f%% -- what Amazon actually charged this account on %.2f of "
-            "settled sales since %s" % (rate * 100, principal, start.isoformat()))
+        detail = ("%.1f%% -- referral and FBA fees Amazon actually charged this "
+                  "account on %.2f of settled sales since %s"
+                  % (rate * 100, principal, start.isoformat()))
+        if other:
+            # Named, not hidden. It is money that left the account and the owner
+            # should see it; it simply is not part of a per-sale rate.
+            detail += (" (a further %.2f of fixed charges, such as the monthly "
+                       "selling subscription, is not a per-sale fee and is not "
+                       "in this rate)" % other)
+        return rate, "measured", detail
     return DEFAULT_REFERRAL_RATE, "assumed", (
         "%.0f%% -- Amazon's usual referral rate, used because this account has "
         "no settled history to measure yet" % (DEFAULT_REFERRAL_RATE * 100))

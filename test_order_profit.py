@@ -115,6 +115,21 @@ check("with history it measures", basis2, "measured")
 check("  50 of fees on 400 of sales is 12.5%", rate2, 0.125)
 check_true("  and says what it measured", "actually charged" in detail2)
 
+print("\n== a FIXED monthly charge is not a per-sale fee ==")
+# From the owner's own exported CSV, 2026-08-14: 25.00 of "other fees" against
+# 0.00 of sales that day -- the monthly Professional selling subscription.
+# Counted as a rate it turned a real 17.5% into 24.1%, and that came off every
+# estimated profit as though the subscription scaled with revenue.
+conn.execute("INSERT INTO finance_daily (workspace_id, marketplace, date, asin,"
+             " referral_fees, fba_fees, other_fees, principal) "
+             "VALUES (?,?,?,?,?,?,?,?)",
+             (WS, MKT, "2026-08-14", "*", 0.0, 0.0, 25.0, 0.0))
+conn.commit()
+rate3, _b3, detail3 = op.fee_rate(CFG, WS, MKT, "2026-08-15")
+check("the subscription does NOT move the rate", rate3, 0.125)
+check_true("  but it is named, not hidden", "fixed charges" in detail3)
+check_true("  with the amount", "25.00" in detail3)
+
 print("\n== the cost is frozen at the price in force WHEN THE ORDER ARRIVED ==")
 # The owner's example: 7 until 2am, then 9, then 11. An order at 00:30 costs 7.
 conn.execute("INSERT INTO sourcing_sources (id, workspace_id, marketplace, sku,"
