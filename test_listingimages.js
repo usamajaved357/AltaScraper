@@ -93,8 +93,12 @@ check("the batch size is named", /_IMG_BATCH/.test(live), true);
 check("  and configurable", /ALTA_IMG_BATCH/.test(live), true);
 check("unreached SKUs are reported", /"pending": _pending_out/.test(live), true);
 check("refused SKUs are reported", /"failed": _failed/.test(live), true);
+// \r?\n rather than a literal \n. This assertion expects FALSE, which is the
+// dangerous direction to get wrong: on a CRLF checkout the literal form cannot
+// match anything, so it would report "not swallowed" whether or not the swallow
+// was there.
 check("  instead of being swallowed",
-      /except Exception:\n {24}continue/.test(live), false);
+      /except Exception:\s*\r?\n {24}continue/.test(live), false);
 check("the browser tells you the count",
       /Amazon would not return \(usually rate limiting/.test(miles), true);
 

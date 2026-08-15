@@ -435,6 +435,40 @@ CREATE TABLE IF NOT EXISTS ai_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_aiusage_day  ON ai_usage(day, workspace_id);
 CREATE INDEX IF NOT EXISTS idx_aiusage_feat ON ai_usage(workspace_id, feature, day);
+
+-- One line of one order, with the moment it was placed.
+--
+-- WHY THIS IS STORED AT ALL. The Hourly Sales screen answers "which hour of
+-- which day does this product sell in", and Amazon has no report for it: the
+-- Sales & Traffic report is daily, and the only per-hour source is the Orders
+-- API, which needs ONE CALL PER ORDER to learn which ASIN was in it. Thirty
+-- days of orders is thirty days of calls every time the screen is opened, and
+-- SP-API is rate limited -- so each order is fetched once and kept.
+--
+-- purchase_date is stored as Amazon sends it, in UTC. The screen converts to
+-- the marketplace's own zone, because an order placed at 11pm in London is an
+-- evening sale, and storing a local time would make the rows unreadable the
+-- moment the account sells in a second country.
+CREATE TABLE IF NOT EXISTS order_lines (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    order_id      TEXT NOT NULL,
+    purchase_date TEXT NOT NULL,          -- '2026-08-14T21:04:11Z', UTC
+    asin          TEXT NOT NULL DEFAULT '',
+    sku           TEXT NOT NULL DEFAULT '',
+    title         TEXT NOT NULL DEFAULT '',
+    units         INTEGER NOT NULL DEFAULT 0,
+    revenue       REAL NOT NULL DEFAULT 0,
+    currency      TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT '',
+    fetched_at    TEXT NOT NULL DEFAULT ''
+);
+-- One row per line of an order: the same order id appears once per ASIN in it.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orderlines_uniq
+    ON order_lines(workspace_id, marketplace, order_id, asin, sku);
+CREATE INDEX IF NOT EXISTS idx_orderlines_when
+    ON order_lines(workspace_id, marketplace, purchase_date);
 """
 
 

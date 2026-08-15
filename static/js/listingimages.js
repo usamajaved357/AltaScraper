@@ -135,6 +135,13 @@ async function _ilLoad(){
         IMGLIB.files = [];
         _ilDrawFolders();
       }
+      // "No images stored for this account yet" is a claim about the WHOLE disk,
+      // made from a listing of ONE folder. When images had been generated into a
+      // different workspace, that sentence read as "your images were deleted" --
+      // and after a deployment that is what it was taken to mean. So whenever
+      // the whole library is on screen, also ask what else is on the disk, and
+      // say what is really there instead of implying there is nothing.
+      _ilElsewhere();
       return;
     }
     IMGLIB.openFolder = "";
@@ -178,8 +185,14 @@ function _ilDrawFolders(){
      + 'One folder per product. Open one to see its images, set a main image, '
      + 'send one to Amazon, or download the lot.</div>';
 
+  // Filled in by _ilElsewhere() once the disk has answered. It sits ABOVE the
+  // empty state on purpose: "there is nothing here" and "they are in the next
+  // workspace along" is a different message from "there is nothing here".
+  h += '<div id="il_elsewhere"></div>';
+
   if(!list.length){
-    h += '<div class="empty" style="padding:24px">No images stored for this account yet.</div>';
+    h += '<div class="empty" style="padding:24px">No images stored for '
+       + '<b>this workspace</b> yet.</div>';
     _ilRender(h); return;
   }
 
@@ -236,6 +249,94 @@ function ilDownloadAll(sku){
 function closeImageLibrary(){
   const h = document.getElementById("imglibwrap");
   if(h) h.classList.remove("open");
+}
+
+/* Images that exist on the disk but not in THIS workspace.
+ *
+ * The library lists one folder -- the open workspace's -- which is right, since
+ * accounts must not see each other's work. The cost is that an empty screen
+ * cannot tell you whether the images are gone or merely filed elsewhere, and
+ * those two need opposite responses. This asks the server about the whole disk
+ * and says which one it is.
+ */
+async function _ilElsewhere(){
+  const box = document.getElementById("il_elsewhere");
+  if(!box) return;
+  let j = null;
+  try{ j = await (await fetch("/media/recover/survey")).json(); }catch(e){ return; }
+  if(!j || !j.ok) return;
+  IMGLIB.survey = j;
+
+  const here = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT) ? String(CUR_ACCOUNT.id || "") : "";
+  const other = (j.locations || []).filter(function(l){ return String(l.account_id || "") !== here; });
+  const total = other.reduce(function(n, l){ return n + (l.images || 0); }, 0);
+
+  // The disk verdict matters even when nothing is misfiled: it is the
+  // difference between "safe" and "this will happen again on the next deploy".
+  const disk = j.disk || {};
+  let warn = "";
+  if(disk.verdict === "EPHEMERAL"){
+    warn = '<div style="border:1px solid var(--red);border-radius:10px;padding:10px 12px;'
+         + 'margin-bottom:10px;font-size:12.5px">'
+         + '<b style="color:var(--red)">This server does not keep files between deployments.</b><br>'
+         + 'Generated images are written to <code>' + _ilEsc(disk.data_dir || "") + '</code>, which is '
+         + 'wiped every time the app is redeployed. Mount a disk at that path in Render and '
+         + 'images will survive. Until then, download anything you want to keep.</div>';
+  }
+  if(!total){ box.innerHTML = warn; return; }
+
+  const rows = other.map(function(l){
+    const name = l.account_id ? l.account_id : "no workspace (shared folder)";
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0">'
+         + '<div style="flex:1"><b>' + _ilEsc(name) + '</b> — ' + l.images + ' image'
+         + (l.images === 1 ? '' : 's') + ' across ' + (l.skus || []).length + ' product'
+         + ((l.skus || []).length === 1 ? '' : 's')
+         + (l.orphaned ? ' <span style="color:var(--red)">· no workspace shows these</span>' : '')
+         + '</div>'
+         + (here ? '<button class="db-chip" onclick="ilBringHere(' + jsArg(String(l.account_id || "")) + ')">'
+                 + 'Move into ' + _ilEsc(here) + '</button>' : '')
+         + '</div>';
+  }).join("");
+
+  box.innerHTML = warn
+    + '<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;'
+    + 'margin-bottom:12px;font-size:12.5px;background:var(--panel)">'
+    + '<b>' + total + ' image' + (total === 1 ? ' is' : 's are') + ' on this server but filed '
+    + 'under another workspace.</b> Nothing was lost — the library only ever shows the '
+    + 'workspace you have open. Moving them here makes them visible in this account.'
+    + rows + '</div>';
+}
+
+/* Move another location's images into the open workspace. Shows exactly what
+ * will move and asks first: this is a file move on the server, and the whole
+ * point of the screen is that the owner has already been frightened once. */
+async function ilBringHere(fromId){
+  const here = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT) ? String(CUR_ACCOUNT.id || "") : "";
+  if(!here){ toast("Open an account workspace first."); return; }
+  let dry = null;
+  try{
+    dry = await (await fetch("/media/recover/move", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({from: fromId, to: here, dry_run: true})})).json();
+  }catch(e){ toast("Could not reach the server."); return; }
+  if(!dry || !dry.ok){ toast((dry && dry.error) || "Could not read that folder."); return; }
+  if(!dry.moved){ toast("Nothing to move."); return; }
+
+  const label = fromId || "the shared folder";
+  if(!confirm("Move " + dry.moved + " image" + (dry.moved === 1 ? "" : "s") + " from "
+              + label + " into " + here + "?\n\nNothing is deleted. Any file that would "
+              + "clash with one already here is kept under a new name.")) return;
+
+  let res = null;
+  try{
+    res = await (await fetch("/media/recover/move", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({from: fromId, to: here, dry_run: false})})).json();
+  }catch(e){ toast("The move failed."); return; }
+  if(!res || !res.ok){ toast((res && res.error) || "The move failed."); return; }
+  toast("Moved " + res.moved + " image" + (res.moved === 1 ? "" : "s")
+        + (res.renamed ? " (" + res.renamed + " renamed to avoid overwriting)" : "") + ".");
+  _ilLoad();
 }
 
 function _ilRender(html){

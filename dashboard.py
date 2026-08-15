@@ -3316,6 +3316,13 @@ def build_app(backend=None):
                            _drive_map_put=_drive_map_put, _account_media_root=_account_media_root,
                            _sniff_image_ext=_sniff_image_ext, _to_jpeg_bytes=_to_jpeg_bytes,
                            _drive_map_remove=_drive_map_remove, _drive_delete_file=_drive_delete_file)
+    # Same media folder, opposite question: media_routes shows the ACTIVE
+    # workspace's images, this one shows every image on the disk regardless of
+    # workspace -- which is the only way to tell "filed somewhere else" apart
+    # from "gone".
+    import routes.media_recover_routes as _media_recover_routes
+    _media_recover_routes.register(app, _media_root=_media_root, _cfg=_cfg,
+                                   CONFIG_PATH=CONFIG_PATH)
     import routes.inventory_routes as _inventory_routes
     _inventory_routes.register(app, _INV=_INV, _INV_IMPORT_ERR=_INV_IMPORT_ERR,
                                _INV2=_INV2, _INV2_IMPORT_ERR=_INV2_IMPORT_ERR,
@@ -3398,6 +3405,13 @@ def build_app(backend=None):
     import routes.traffic_routes as _traffic_routes
     _traffic_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+
+    # Which hour of which day each product sells in. Amazon publishes no hourly
+    # report, so this is built from order TIMES -- one Amazon call per order,
+    # which is why every order it learns about is kept.
+    import routes.hourly_routes as _hourly_routes
+    _hourly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
 
     # Moving a workspace's listings out of Google Sheets and into the app. The
     # import has always existed as a command line; it has to be runnable HERE,

@@ -680,9 +680,60 @@ function salesDrawCharts(ser){
   if(typeof altaChartsInView === "function") altaChartsInView(host);
 }
 
+/* THE WHOLE PAGE AT ONCE, then the numbers.
+ *
+ * "our app displays the content in the graphs in parts... in orbit when i click
+ * on the sales dashboard all of the graphs etc is displayed... data takes a sec
+ * to load, but our app displays the content in the graphs in parts".
+ *
+ * MEASURED, sampling every 250ms from the moment Sales is opened:
+ *
+ *   stat cards       250 ms
+ *   Week to Date     250 ms
+ *   Sales Report     250 ms
+ *   Organic vs PPC   250 ms
+ *   P&L Heatmap      250 ms
+ *   Live Sales      5750 ms      <- a 5.5 SECOND spread
+ *
+ * Two separate causes, and both are fixed rather than papered over.
+ *
+ * The first is ordering: salesLoadToday() reads the Orders API, which is by far
+ * the slowest call on the screen, and it was started LAST -- after five other
+ * renders had already finished. It now starts before the awaits, so it is in
+ * flight while the report requests are.
+ *
+ * The second is that an empty panel showed NOTHING. A panel with its frame and a
+ * shimmer says "this is loading"; an empty box says the page is broken or the
+ * feature is missing. Orbit draws every panel immediately and only the data
+ * arrives late, which is why its screen never looks like it is assembling
+ * itself.
+ *
+ * Only ever into an EMPTY panel -- altaSkeletonInto refuses to cover content
+ * that is already there, so a reload keeps the figures you were reading instead
+ * of replacing them with grey blocks.
+ */
+function _sFrameUp(){
+  if(typeof altaSkeletonInto !== "function") return;
+  [["sales_today", {cards: 0, rows: 2}],
+   ["sales_week", {cards: 0, rows: 3}],
+   ["sales_cards", {cards: 5, rows: 0}],
+   ["sales_charts", {cards: 0, rows: 5}],
+   ["sales_orgppc", {cards: 0, rows: 4}],
+   ["sales_grid", {cards: 0, rows: 8}]].forEach(function(p){
+    try{ altaSkeletonInto(p[0], p[1]); }catch(e){}
+  });
+}
+
 async function salesReload(){
   if(SALES.busy) return;
   SALES.busy=true;
+  // Every panel gets its frame before anything is asked for, so the screen
+  // arrives whole rather than assembling itself. See _sFrameUp.
+  _sFrameUp();
+  // THE SLOWEST CALL FIRST. Live Sales reads the Orders API and took 5.75s of
+  // the 5.75s spread measured above, purely because it was started last.
+  salesLoadToday();
+  salesLoadWeek().catch(function(){});
   // Hold the previous render at reduced opacity rather than flashing a skeleton
   // — no layout jump, and the numbers you were reading stay readable.
   const grid=document.getElementById("sales_grid");
@@ -723,10 +774,11 @@ async function salesReload(){
     // After the numbers, not before: the options depend on the range, and the
     // grid is what someone is waiting for.
     salesFillAsins();
-    salesLoadToday();
-    // The week card is independent of the chosen range -- it is always this
-    // week -- so it loads on its own and does not hold anything else up.
-    salesLoadWeek().catch(function(){});
+    // salesLoadToday() and salesLoadWeek() are NOT called here any more. They
+    // are started at the top of this function, before the awaits, because Live
+    // Sales reads the Orders API and was the slowest thing on the screen by a
+    // factor of twenty -- 5.75s against 250ms for everything else -- entirely
+    // because it went last. Calling them again here would fetch both twice.
   }catch(e){
     const g=document.getElementById("sales_grid");
     if(g) g.innerHTML='<div class="empty">Could not load sales: '+_sEsc(String(e))+'</div>';
@@ -759,7 +811,47 @@ async function salesLoadRecent(){
   if(!j || !j.ok || !j.days || !Object.keys(j.days).length) return;
   SALES._live = j.days;
   // Redraw from the series already in hand -- no second request for anything.
-  if(SALES.series){ salesDrawCharts(SALES.series); salesDrawGrid(SALES.series); }
+  // THE CARDS TOO. They are built server-side from the report alone, so without
+  // this the cards say "0 orders, £0" while the chart beside them shows
+  // yesterday's three. Reported exactly that way: the totals and the graph
+  // disagreeing on the same screen.
+  if(SALES.series){
+    salesDrawCharts(SALES.series);
+    salesDrawGrid(SALES.series);
+    if(SALES.data) salesDrawCards(SALES.data, null);
+  }
+}
+
+/* What the live feed adds to a card, for the days the report has not sent.
+ *
+ * The cards come from /sales/summary, which reads the report and nothing else.
+ * On a short window that is routinely every day but the last, so a week whose
+ * only trade was yesterday reads as a week with no trade at all -- while the
+ * chart beside it, which IS filled, shows the orders. Two numbers describing
+ * the same week, disagreeing, is worse than either being late.
+ *
+ * ONLY the days the report has not delivered, matched against the same series
+ * the chart draws, so the two cannot diverge. A day Amazon has reported -- even
+ * as a genuine zero -- is never touched.
+ */
+function _sLiveAdd(key){
+  const live = SALES._live;
+  const ser = SALES.series;
+  if(!live || !ser) return 0;
+  const dates = ser.columns || [];
+  const rep = ((ser.metrics || []).filter(function(m){ return m.key === key; })[0] || {}).cells || [];
+  const field = (key === "orders") ? "orders"
+              : (key === "units") ? "units"
+              : (key === "ordered_sales") ? "revenue" : "";
+  if(!field) return 0;
+  let add = 0;
+  dates.forEach(function(d, i){
+    const v = rep[i];
+    if(v !== null && v !== undefined) return;      // Amazon has spoken
+    const day = live[d];
+    if(day && day[field]) add += Number(day[field]) || 0;
+  });
+  return add;
 }
 
 /* ---- the period before this one ----------------------------------------
@@ -1385,6 +1477,20 @@ function salesDrawCards(sum, av){
   // revenue it comes from, so it cannot disagree with the card beside it.
   const _byKey = {};
   (sum.cards || []).forEach(function(c){ _byKey[c.key] = c; });
+  // THE DAYS THE REPORT HAS NOT SENT, added from the live order feed -- the same
+  // days, from the same source, that the chart below is already drawing. Without
+  // this a week whose only trade was yesterday reads "0 orders, £0" on the cards
+  // while the chart beside them shows three, which is worse than either being
+  // late. See _sLiveAdd: a day Amazon HAS reported is never touched, even when
+  // it reported a zero.
+  ["ordered_sales", "orders", "units"].forEach(function(k){
+    const add = _sLiveAdd(k);
+    if(!add) return;
+    const c = _byKey[k] || (_byKey[k] = {key: k, value: 0,
+                                         kind: (k === "ordered_sales" ? "money" : "count")});
+    c.value = (Number(c.value) || 0) + add;
+    c.live_added = add;
+  });
   const _days = (function(){
     try{
       const a = new Date(sum.start + "T00:00:00Z"), b = new Date(sum.end + "T00:00:00Z");
@@ -1474,7 +1580,26 @@ function _sDelta(c, prevLabel, prevValue, kind, currency){
   if(c.delta_pct===null || c.delta_pct===undefined){
     // Said, not left as a dash. A blank here reads as a fault, and showing
     // "0.0%" for a period with nothing to compare against would be a fiction.
-    return '<p class="stat-delta">no earlier period</p>';
+    //
+    // BUT THERE ARE TWO REASONS FOR NO PERCENTAGE, and they are not the same
+    // fact. Reported as "no earlier period" on every card of a week that had a
+    // perfectly ordinary week before it:
+    //
+    //   the period before had NOTHING     -- a real figure, and a rise from
+    //                                        zero has no percentage
+    //   there IS no period before         -- the account has no data that far
+    //                                        back at all
+    //
+    // A rise from zero is the more common of the two and the more interesting,
+    // and calling it "no earlier period" says the app cannot see history when
+    // it can.
+    const had = (prevValue !== null && prevValue !== undefined);
+    return '<p class="stat-delta">'
+         + (had ? (_sEsc(prevLabel || "was") + " : "
+                   + _sEsc(_sShort(prevValue, kind, currency))
+                   + " — no % from zero")
+                : "no earlier period")
+         + '</p>';
   }
   const up = c.delta_pct >= 0;
   // AD SPEND RISING IS NOT A WIN, so direction and goodness are separate things:

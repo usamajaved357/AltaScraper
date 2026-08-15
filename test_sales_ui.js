@@ -188,7 +188,32 @@ check("  it asks for a few days, not a month",
 check("  and it is not awaited, so the chart draws from the report first",
       /salesLoadRecent\(\)\.catch/.test(js), true);
 check("  it redraws from the series in hand rather than refetching",
-      /SALES\._live = j\.days;[\s\S]{0,200}salesDrawCharts\(SALES\.series\)/.test(js), true);
+      /SALES\._live = j\.days;[\s\S]{0,900}salesDrawCharts\(SALES\.series\)/.test(js), true);
+// AND THE CARDS. They come from /sales/summary, which reads the report alone, so
+// without this a week whose only trade was yesterday reads "0 orders, GBP 0" on
+// the cards while the chart beside them shows three. Reported exactly that way.
+check("  and the cards are redrawn too, so they cannot disagree with the chart",
+      /SALES\._live = j\.days;[\s\S]{0,900}salesDrawCards\(SALES\.data/.test(js), true);
+check("there is one place that decides what the live feed adds",
+      /function _sLiveAdd/.test(js), true);
+check("  and it only fills days Amazon has NOT reported",
+      /if\(v !== null && v !== undefined\) return;\s*\/\/ Amazon has spoken/.test(js), true);
+check("  so a reported zero is left alone",
+      /a day Amazon HAS reported is never touched/.test(js), true);
+
+console.log("\n=== 'no earlier period' means what it says ===");
+/* Reported: every card on a week that had a perfectly ordinary week before it
+ * read "no earlier period". Two different facts were being given one sentence:
+ * the period before had NOTHING (a real figure, and a rise from zero has no
+ * percentage), versus there IS no period before. Only the second deserves that
+ * wording; the first says the app cannot see history when it can.
+ */
+check("a zero earlier period is reported as a zero, not as an absence",
+      /no % from zero/.test(js), true);
+check("  and a genuinely absent one still says so",
+      /: "no earlier period"/.test(js), true);
+check("  the two are told apart by whether a previous figure exists",
+      /const had = \(prevValue !== null && prevValue !== undefined\);/.test(js), true);
 // THE RULE THAT KEEPS THE CHART AND THE GRID AGREEING: a delivered figure is
 // never overwritten, only a missing one is filled.
 check("only a MISSING day is filled",

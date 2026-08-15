@@ -72,7 +72,7 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
     # instead of an honest 404, which turns a one-line typo into an hour of
     # debugging.
     _SECTIONS = ("listings", "imagerefs", "setup", "generate", "sales", "traffic",
-                 "ppc", "inventory", "sync", "monitor", "miles")
+                 "hourly", "ppc", "inventory", "sync", "monitor", "miles")
 
     @app.route("/w/<ws>")
     def workspace_root(ws):

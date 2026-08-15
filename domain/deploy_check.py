@@ -57,16 +57,38 @@ def check(config_path, in_use=None):
 
     # Ephemeral filesystem is the big one. A mounted volume is normally NOT
     # inside the app's source directory.
+    #
+    # THAT SHAPE TEST IS NOT ENOUGH, and the gap cost a folder of generated
+    # images. CONFIG_PATH=/data/config.json passes it -- /data is outside the app
+    # folder -- whether or not a volume is actually mounted there, because
+    # docker-entrypoint.sh mkdir -p's the folder either way. So an unmounted
+    # /data reported "state survives a deploy" while every deploy wiped it, and
+    # the wipe was invisible because the entrypoint reseeds config.json from the
+    # Secret File on boot. The real answer comes from the mount table and from a
+    # marker this folder has been accumulating across boots; the shape test stays
+    # as the first, cheapest way to be certain it is wrong.
     app_dir = os.path.dirname(os.path.abspath(__file__))
     app_root = os.path.dirname(app_dir)
     looks_ephemeral = os.path.normcase(data_dir).startswith(os.path.normcase(app_root))
     on_paas = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER")
                    or os.environ.get("DYNO"))
-    add("State survives a deploy", not (looks_ephemeral and on_paas),
-        ("state is inside the app folder (%s) -- this is WIPED on every deploy"
-         % data_dir) if (looks_ephemeral and on_paas)
-        else ("stored at %s" % data_dir),
-        "Mount a volume and point CONFIG_PATH at it, e.g. /data/config.json.")
+    if looks_ephemeral and on_paas:
+        add("State survives a deploy", False,
+            "state is inside the app folder (%s) -- this is WIPED on every deploy"
+            % data_dir,
+            "Mount a volume and point CONFIG_PATH at it, e.g. /data/config.json.")
+    else:
+        try:
+            import domain.media_recover as _mrec
+            ev = _mrec.disk_evidence(data_dir, on_paas=on_paas)
+            add("State survives a deploy", ev["verdict"] != "EPHEMERAL", ev["detail"],
+                "Mount a volume and point CONFIG_PATH at it, e.g. /data/config.json. "
+                "This folder also holds every generated image (media/), so an "
+                "unmounted path loses those on each deploy as well.")
+        except Exception as e:
+            add("State survives a deploy", True, "stored at %s" % data_dir,
+                "Could not verify the mount (%s) -- the path is at least outside "
+                "the app folder." % e)
 
     # --- sessions ----------------------------------------------------------
     secret = os.environ.get("APP_SECRET_KEY")

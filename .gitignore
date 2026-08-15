@@ -92,3 +92,9 @@ run_status.json
 
 # run_tests.py's lock, held only while a suite is running. Per-machine.
 .run_tests.lock
+
+# The disk-persistence marker. Written beside config.json on every boot, and it
+# describes ONE machine's filesystem -- committing it would carry the dev box's
+# boot history to the server and make the "has this folder survived a deploy"
+# answer a lie.
+.disk_history.json
