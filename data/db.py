@@ -532,6 +532,18 @@ _ADDED_COLUMNS = [
     ("order_lines", "cogs", "REAL"),
     ("order_lines", "cogs_source", "TEXT"),    # 'manual' | 'tracked' | 'sku' | ''
     ("order_lines", "cogs_at", "TEXT"),        # when it was resolved
+    # WHERE A DAY'S orders/units/ordered_sales CAME FROM.
+    #
+    # Amazon publishes the same trade twice and the Orders API is the one that is
+    # right FIRST: measured on nestwell_goods, the Sales & Traffic report had
+    # delivered nothing for three days while the Orders API had 173.43 of real
+    # sales in them -- so the screen showed 149.95 where the truth was 323.38.
+    #
+    # The live figures therefore win for those three columns, and this records
+    # that they did, so the report's own later answer cannot quietly overwrite a
+    # better one. Everything the report uniquely has -- sessions, page views, buy
+    # box -- is untouched by this.
+    ("sales_daily", "orders_source", "TEXT"),
 ]
 
 

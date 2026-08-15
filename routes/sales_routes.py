@@ -386,6 +386,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                        creds, days_back=days,
                        budget=int(b.get("budget") or _sf.BACKFILL_PER_PASS))
 
+        # THE LIVE FEED HAS THE LAST WORD ON WHAT SOLD, and it runs AFTER the
+        # report so its answer is the one that survives. The report is the same
+        # measurement arriving a day or more later, not a newer one -- measured
+        # on nestwell_goods, three days where it had sent nothing while the
+        # Orders API held 173.43 of real sales. See domain/live_reconcile.py.
+        try:
+            from domain import live_reconcile as _lr
+            import domain.hourly_week as _hw
+            res["live"] = _lr.reconcile(
+                CONFIG_PATH, wsid, mkt,
+                _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
+                creds, days=int(b.get("live_days") or 14),
+                price_cache=_price_cache(wsid, mkt))
+        except Exception as e:
+            # Never fatal: the report half already succeeded, and saying which
+            # half failed beats losing both.
+            res["live"] = {"error": str(e)[:200]}
+
         # Fees and refunds come from a DIFFERENT Amazon API, so it gets its own
         # result rather than being folded into the sales one. If Finances fails
         # and Sales succeeded, that is a partial success and the screen should be

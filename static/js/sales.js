@@ -761,8 +761,18 @@ function _sFrameUp(){
 }
 
 async function salesReload(){
-  if(SALES.busy) return;
+  // ASKED WHILE ALREADY LOADING? REMEMBER IT, do not throw it away.
+  //
+  // This used to return, so changing the date range while the screen was still
+  // loading did nothing at all -- the click vanished and the old period stayed
+  // on screen looking like the answer. Worse on a slow account, which is
+  // exactly where somebody is most likely to click again.
+  //
+  // One pending re-run is enough: three impatient clicks want the LAST period
+  // asked for, not three sequential loads of the first three.
+  if(SALES.busy){ SALES._again = true; return; }
   SALES.busy=true;
+  SALES._again = false;
   // Every panel gets its frame before anything is asked for, so the screen
   // arrives whole rather than assembling itself. See _sFrameUp.
   _sFrameUp();
@@ -823,6 +833,13 @@ async function salesReload(){
   }finally{
     if(grid) grid.style.opacity="";
     SALES.busy=false;
+    // Whatever was asked for while this was running now happens, with the
+    // period that was actually chosen. Deferred a tick so the flag is clear
+    // before the next run reads it.
+    if(SALES._again){
+      SALES._again = false;
+      setTimeout(function(){ salesReload(); }, 0);
+    }
   }
 }
 
@@ -1617,21 +1634,21 @@ function salesDrawCards(sum, av){
   })();
   let _rev = _byKey["ordered_sales"] || _byKey["net_revenue"];
 
-  // TOTAL SALES INCLUDES THE POSTAGE THE BUYER PAID -- "this is the total
-  // revenue i generated ... the fees are cut afterwards from it".
+  // THE POSTAGE IS ALREADY IN THE STORED FIGURE, so it is NOT added here.
   //
-  // Amazon's report cannot give it: its ordered_sales is the goods alone. The
-  // postage is only known per order, from the order feed, so it is added here
-  // and ONLY when that feed covers the whole period. Adding a partial postage
-  // figure to a full sales figure would be a number that is neither.
+  // It used to be: the report's ordered_sales is the goods alone, and the
+  // postage was only known per order, so the browser added it on. Since
+  // domain/live_reconcile.py started writing the live orders into sales_daily
+  // -- postage included, because that is the owner's definition of revenue --
+  // adding it again counted it twice. Measured on jack_uk: the card read 114
+  // against a true 102.21, over by exactly the 12.24 of postage.
+  //
+  // One place decides what revenue means, and it is the store. The split is
+  // still shown on hover, from order_profit, because the goods figure alone is
+  // what reconciles against Seller Central.
   const _op = sum.order_profit;
-  if(_op && _op.covers_all && _op.postage > 0
-     && _rev && _rev.value !== null && _rev.value !== undefined){
-    _rev = Object.assign({}, _rev, {
-      value: Math.round((Number(_rev.value) + Number(_op.postage)) * 100) / 100,
-      goods: _rev.value,
-      postage: _op.postage,
-    });
+  if(_op && _op.postage > 0 && _rev) {
+    _rev = Object.assign({}, _rev, {goods: _op.goods, postage: _op.postage});
   }
 
   const ORBIT_CARDS = [

@@ -127,15 +127,40 @@ def store(config_path, workspace_id, marketplace, rows):
         return 0
     conn = _db.get_db(config_path)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # DAYS THE ORDERS API HAS ALREADY ANSWERED FOR are not overwritten with the
+    # report's version of orders / units / sales. The report is a day or more
+    # behind and it is the SAME measurement, so its answer is not newer, only
+    # later -- and on nestwell_goods it was three days of nothing against 173.43
+    # of real sales. Everything the report uniquely has (sessions, page views,
+    # buy box, conversion) is still written, for every day, unchanged.
+    #
+    # See domain/live_reconcile.py, and Orbit's own rule: "Orders API wins for
+    # top-line because it's realtime order-date basis."
+    _LIVE_OWNED = ("orders", "units", "ordered_sales")
+    owned = set()
+    try:
+        dates = [r["date"] for r in rows if r.get("date")]
+        if dates:
+            from domain import live_reconcile as _lr
+            owned = _lr.owned_days(config_path, workspace_id, marketplace,
+                                   min(dates), max(dates))
+    except Exception:
+        owned = set()
+
     n = 0
     for r in rows:
-        vals = [r.get(c) for c in _COLS]
+        # Only the ACCOUNT-WIDE row is ever claimed by the live feed; per-ASIN
+        # rows come from the report alone, so they are always written in full.
+        live_owns = (str(r.get("asin", "*")) == "*" and r.get("date") in owned)
+        cols = ([c for c in _COLS if c not in _LIVE_OWNED] if live_owns else _COLS)
+        vals = [r.get(c) for c in cols]
         conn.execute(
             "INSERT INTO sales_daily (workspace_id, marketplace, date, asin, %s, fetched_at) "
             "VALUES (?,?,?,?,%s,?) "
             "ON CONFLICT(workspace_id, marketplace, date, asin) DO UPDATE SET %s, fetched_at=excluded.fetched_at"
-            % (", ".join(_COLS), ",".join("?" * len(_COLS)),
-               ", ".join("%s=excluded.%s" % (c, c) for c in _COLS)),
+            % (", ".join(cols), ",".join("?" * len(cols)),
+               ", ".join("%s=excluded.%s" % (c, c) for c in cols)),
             [workspace_id, marketplace, r["date"], r.get("asin", "*")] + vals + [now])
         n += 1
     conn.commit()
@@ -421,7 +446,14 @@ def products(config_path, workspace_id, marketplace, start, end):
 METRICS = [
     ("ordered_sales",     "Ordered product sales", "money", "up",   ("sum",)),
     ("units",             "Units ordered",         "count", "up",   ("sum",)),
-    ("orders",            "Order items",           "count", "up",   ("sum",)),
+    # ORDERS, not order items. The Sales & Traffic report has no distinct-order
+    # count, so this column used to be filled with totalOrderItems and a
+    # two-item order counted as two. The Orders API does have it, counts
+    # AmazonOrderIds, and now owns this column -- see domain/live_reconcile.py.
+    # `order_items` below still carries the report's own figure, so nothing was
+    # lost by the column starting to mean what its name says.
+    ("orders",            "Orders",                "count", "up",   ("sum",)),
+    ("order_items",       "Order items",           "count", "up",   ("sum",)),
     ("avg_selling_price", "Average selling price", "money", "up",   ("ratio", "ordered_sales", "units")),
     ("sessions",          "Sessions",              "count", "up",   ("sum",)),
     ("sessions_mobile",   "Sessions — mobile",     "count", "up",   ("sum",)),
