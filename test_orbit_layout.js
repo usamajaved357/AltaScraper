@@ -106,5 +106,51 @@ check("every onclick in the nav is unchanged",
       (tpl.match(/navTo\('(listings|imagerefs|setup|generate|ppc|inventory|sync|monitor|miles)'\)/g) || []).length, 9);
 check("no route or endpoint appears in the CSS", /\/(live|users|input)\//.test(css), false);
 
+console.log("\n=== the stylesheet is well formed ===");
+/* A comment closed early leaves its remaining lines as loose text in the
+ * stylesheet -- the browser discards from there to the next brace and takes
+ * real rules with it, silently. It happened while writing the Sales column rule
+ * below, and nothing in this suite would have caught it.
+ */
+{
+  check("every comment is closed exactly once",
+        (css.match(/\/\*/g) || []).length, (css.match(/\*\//g) || []).length);
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  // A line of prose left outside a comment has spaces and no CSS punctuation.
+  const stray = stripped.split("\n").map(l => l.trim()).filter(l =>
+    l && !/[{}:;,]/.test(l) && /\s/.test(l) && !/^[@.#\w\-\[\]>+~*()="'\/]+$/.test(l));
+  check("no loose prose outside a comment", stray.length, 0);
+  if (stray.length) console.log("      first:", JSON.stringify(stray[0].slice(0, 70)));
+}
+
+console.log("\n=== the Sales column is Orbit's ===");
+{
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  // MEASURED on Orbit: a 260px sidebar, a <main> with 32px padding, and a
+  // container inside it at max-width 1400, centred. border-box here, so the
+  // padding comes out of the width: 1400 + 32 + 32 = 1464.
+  check("the sales screen is held to Orbit's column width",
+        /#sec_sales\{[^}]*max-width:1464px/.test(flat), true);
+  check("  and centred in whatever is left",
+        /#sec_sales\{[^}]*margin-left:auto/.test(flat), true);
+  // Two EQUAL columns. auto-fit drops to one the moment the container is a few
+  // pixels short of twice the minimum, and both cards jump to full width --
+  // which is the "uneven".
+  check("the two top cards are two equal columns",
+        /\.sales-toprow\{[^}]*grid-template-columns:1fr1fr/.test(flat), true);
+  check("  and never auto-fit, which changes column count mid-resize",
+        /\.sales-toprow\{[^}]*auto-fit/.test(flat), false);
+  check("they stack on a narrow screen, as Orbit's do on a phone",
+        /@media\(max-width:900px\)\{\.sales-toprow\{grid-template-columns:1fr;?\}/.test(flat), true);
+  // Rule 12: one definition. There were two of each, and the later silently
+  // added to or overrode the earlier, so the comments described a layout the app
+  // was not using.
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  check("only one .sales-toprow rule outside the media query",
+        (rules.match(/^\.sales-toprow\s*\{/gm) || []).length, 1);
+  check("and only one #sec_sales rule",
+        (rules.match(/^#sec_sales\s*\{/gm) || []).length, 1);
+}
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

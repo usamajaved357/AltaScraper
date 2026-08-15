@@ -102,8 +102,16 @@ console.log("\n=== the axis text is not stretched ===");
 // contains the string in the comment explaining why it is gone.
 truthy("no chart distorts its own coordinate system",
        !html.includes('preserveAspectRatio="none"'));
-truthy("  they scale uniformly instead", html.includes("height:auto"));
 truthy("  and every drawn chart carries a viewBox", html.includes("viewBox="));
+// AND IT NO LONGER SCALES UNIFORMLY EITHER, which was the other way to get the
+// wrong picture. `height:auto` meant halving the width halved the height:
+// measured, a 340px phone drew a 340x102 chart where Orbit draws 340x200.
+// Orbit holds the height at every width -- 665x200 on desktop, 340x200 on a
+// phone -- so the height is now fixed in pixels and the width comes from the
+// container. See scChartWidth.
+truthy("the height is fixed in pixels, not scaled with the width",
+       /height:\d+px/.test(html));
+check("  and never left to scale itself", html.includes("height:auto"), false);
 
 console.log("\n=== hover actually reports something ===");
 // The hit targets carried a <title>, which is the browser's own tooltip: about a
@@ -192,8 +200,70 @@ truthy("the combined chart is Orbit's 1365 x 320", /o\.width \|\| 1365/.test(src
        && /o\.height \|\| 320/.test(src));
 truthy("  with room reserved for the second axis, but only when it has one",
        /padR = \(o\.bars \? 90 : 20\)/.test(src));
-truthy("the two top cards ask for that size",
-       (sales.match(/width: 665, height: 200/g) || []).length >= 2);
+// The two top cards no longer hard-code a width: they measure their own card,
+// with Orbit's 665 as the fallback, and hold Orbit's 200px height.
+// Four matches, not two: each card measures once when it draws and once more in
+// the closure that redraws it after a resize.
+truthy("both top cards measure their own card rather than assuming a width",
+       (sales.match(/scChartWidth\("sales_(week|hourly)", 665\)/g) || []).length >= 2);
+truthy("  and each leaves a way to redraw itself at a new width",
+       /SALES\._weekDraw/.test(sales) && /SALES\._hourlyDraw/.test(sales));
+truthy("a resize redraws rather than refetches",
+       /addEventListener\("resize", salesOnResize\)/.test(sales)
+       && !/salesLoadWeek\(\)/.test(sales.slice(sales.indexOf("function salesOnResize"),
+                                                sales.indexOf("function salesOnResize") + 900)));
+truthy("  and only when the WIDTH changed, so a phone's address bar cannot flicker it",
+       /if\(w === _sLastW\) return;/.test(sales));
+check("  and both hold Orbit's 200px height",
+      (sales.match(/height: 200, compare: cmp/g) || []).length, 2);
+truthy("the Sales Report asks for Orbit's 320",
+       /scChartWidth\("sales_charts", 1365\), height: 320/.test(sales));
+truthy("and Organic vs PPC for Orbit's 380",
+       /scChartWidth\("sales_orgppc", 1365\), height: 380/.test(sales));
+
+console.log("\n=== a narrow screen loses width, not height ===");
+// "in the mobile view the graphs do not look as original they are too short".
+// MEASURED on Orbit at 390px: every chart keeps its height and only the width
+// changes -- Live Sales 340x200, Sales Report 340x320, Organic vs PPC 332x380.
+{
+  const mk = new Function("W", "PTS", `
+    ${src}
+    const document = { getElementById: () => null };
+    return salesChart(PTS, {kind:"money", id:"narrow", width:W, height:200,
+                            compact:true, scale:"band"});
+  `);
+  const days = ["2026-08-09","2026-08-10","2026-08-11","2026-08-12"];
+  const pts = days.map((d, i) => ({label: d, value: 10 + i}));
+  const phone = mk(340, pts), desktop = mk(665, pts);
+  truthy("the phone chart is drawn at the phone's width",
+         phone.includes('viewBox="0 0 340 200"'));
+  truthy("  and the desktop one at the desktop's",
+         desktop.includes('viewBox="0 0 665 200"'));
+  check("both are exactly 200 tall",
+        [/height:200px/.test(phone), /height:200px/.test(desktop)], [true, true]);
+  // The plot has to re-lay-out narrower, not shrink: the right-hand edge of the
+  // plot moves in, the axis padding does not.
+  const rightOf = h => {
+    const m = [...h.matchAll(/<line x1="65" y1="[\d.]+" x2="(\d+)"/g)].map(x => +x[1]);
+    return m.length ? m[0] : null;
+  };
+  check("the gridlines stop at the phone's plot edge", rightOf(phone), 320);
+  check("  and at the desktop's", rightOf(desktop), 645);
+  // Below 240 there is no room for an axis and dates, so the fallback is used
+  // rather than a squashed picture.
+  const tiny = new Function(`
+    ${src}
+    const document = { getElementById: () => ({clientWidth: 120}) };
+    return scChartWidth("x", 665);
+  `)();
+  check("a container too narrow to draw in falls back", tiny, 665);
+  const measured = new Function(`
+    ${src}
+    const document = { getElementById: () => ({clientWidth: 341}) };
+    return scChartWidth("x", 665);
+  `)();
+  check("and a real width is used as measured", measured, 341);
+}
 
 console.log("\n=== a count axis has whole numbers on it ===");
 // THE BUG: "where i have 1 order the pillar rise upto 50 on y axis". The bars

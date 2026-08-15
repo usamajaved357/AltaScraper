@@ -1903,15 +1903,10 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 }
 .panelhead .spacer{ flex:1; }
 
-/* The two cards along the top. Side by side on a wide screen, stacked on a
-   narrow one -- which is what Orbit does too: measured at 681px wide its own
-   two cards were stacked and full width. */
-.sales-toprow{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
-  gap:12px;
-  margin-bottom:12px;
-}
+/* The two cards along the top: see the single .sales-toprow rule further down.
+   This block used to declare it a second time, with a different minmax and a
+   different gap, and the later one silently won -- so the numbers here described
+   a layout the app was not using. Rule 12: one definition. */
 
 /* The segmented preset control: one tray, buttons inside it, the active one
    filled gold with dark text. */
@@ -2071,20 +2066,51 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    ones that were wrong: the panels were the right colour at the wrong size,
    with the wrong gaps, so the same data looked like a different dashboard. */
 
-/* The page itself: 32px around everything, on rgb(26,29,41). */
+/* THE PAGE, AND THE COLUMN IT IS DRAWN IN -- one rule, because it used to be
+   two and the second silently added to the first.
+
+   Measured on Orbit: a 260px sidebar, a <main> with 32px padding, and inside it
+   a container with `max-width: 1400px`, centred. Every other number on the
+   screen falls out of that one:
+
+     top cards   (1400 - 16 gap) / 2 = 692   -> chart 692 - 24 pad - 3 border = 665
+     Sales Report            1400           -> chart 1400 - 32 pad - 3 border = 1365
+
+   which is exactly what Orbit's charts measure. Ours had no limit at all, so on
+   a wide monitor the cards simply kept growing and every chart with them --
+   "the size of the graphs on the desktop view is not the same as orbit". The
+   old note here said the cards were 622.5 wide, which was a measurement of a
+   narrower scan and never true of this layout.
+
+   Scoped to the Sales screen rather than applied app-wide: the other screens are
+   tables, and a table wants the whole width.
+
+   1464 AND NOT 1400, because `*{box-sizing:border-box}` is set at the top of
+   this file: the 32px padding comes OUT of the width, so a 1400 box would leave
+   1336 of content and every chart would be 64px narrower than Orbit's. Orbit
+   carries its padding on the <main> ABOVE the 1400 container; the same result
+   here needs 1400 + 32 + 32. */
 #sec_sales{
   padding:32px;
   background:rgb(26,29,41);
+  max-width:1464px;
+  margin-left:auto;
+  margin-right:auto;
 }
 
-/* The two top cards: 622.5 wide with a 16px gap, 12px padding.
-   The Sales Report panel below them takes 16px padding instead -- measured,
-   and it is the difference between a card and a section. */
+/* Two equal columns, not auto-fit. With auto-fit a container a few pixels short
+   of twice the minimum drops to one column and the cards jump full width, which
+   is the "uneven" -- the two halves of the top row have to stay identical. They
+   stack below 900px, as Orbit's do on a phone (measured: 366 wide each in a 390
+   viewport, one under the other). */
 .sales-toprow{
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(430px,1fr));
+  grid-template-columns:1fr 1fr;
   gap:16px;
   margin-bottom:16px;
+}
+@media (max-width:900px){
+  .sales-toprow{ grid-template-columns:1fr; }
 }
 .sales-toprow > .salespanel{ padding:12px; }
 #sec_sales > .salespanel{ padding:16px; }

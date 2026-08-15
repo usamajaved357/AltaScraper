@@ -435,6 +435,9 @@ function salesDrawCharts(ser){
         // number. Orbit's reads "$28.0k".
         currency: (ser && ser.currency),
         id: "sales_combo", columns: dates,
+        // Orbit's Sales Report keeps a 320px height at every width -- measured
+        // 1365x320 on desktop and 340x320 on a phone. See scChartWidth.
+        width: scChartWidth("sales_charts", 1365), height: 320,
         bars: anyReal(orderCells) ? {label: "Orders", values: orderCells} : null,
         lines: comboLines,
       });
@@ -752,9 +755,20 @@ async function salesLoadWeek(){
   const wkOpts = {
     title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
     currency: (now && now.currency),
-    width: 665, height: 200, compare: cmp, scale: "band", xLabel: "dow",
+    // The card's own width, so the chart is drawn at 1:1 and keeps its 200px
+    // height at every screen size -- which is what Orbit does. See
+    // scChartWidth: with height:auto a 340px phone got a 102px-tall chart.
+    width: scChartWidth("sales_week", 665),
+    height: 200, compare: cmp, scale: "band", xLabel: "dow",
     compact: true, thisLabel: "This Week", compareLabel: "Last Week",
     compareTitle: cmp ? ("the dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""};
+  // Remembered so a window resize can REDRAW at the new width without fetching
+  // the week again. A chart drawn at a fixed pixel width has to be redrawn when
+  // that width changes, or turning a phone sideways letterboxes it.
+  SALES._weekDraw = function(){
+    wkOpts.width = scChartWidth("sales_week", 665);
+    host.innerHTML = salesChart(pts, wkOpts) + SALES._weekFoot;
+  };
   host.innerHTML = salesChart(pts, wkOpts);
 
   // The key goes in the card's HEADER, which is where Orbit has it -- "This
@@ -784,11 +798,12 @@ async function salesLoadWeek(){
   // top row did not even end the same way. Neither figure is available on this
   // account, and the footer says which and why rather than leaving a gap that
   // looks like a design that forgot something.
-  host.innerHTML += '<div class="adfooter">'
+  SALES._weekFoot = '<div class="adfooter">'
     + '<span class="lbl">Ad spend this week</span> <b>not connected</b>'
     + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
     + '<span style="color:rgb(156,163,175)"> — both need the Advertising API.</span>'
     + '</div>';
+  host.innerHTML += SALES._weekFoot;
 
   // The change against the same days last week, as a chip beside the heading.
   if(badge){
@@ -887,7 +902,7 @@ function salesDrawOrgPpc(ser){
   const chart = salesCombo({
     id: "orgppc", columns: cols, bars: null, currency: (ser && ser.currency),
     lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
-    height: 380,
+    width: scChartWidth("sales_orgppc", 1365), height: 380,
   });
   host.innerHTML = note + bar
     + (sample ? '<div class="ri-sample">' + chart + '</div>' : chart);
@@ -1025,8 +1040,13 @@ async function salesLoadHourly(){
   const hrOpts = {
     title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
     currency: (j && j.currency),
-    width: 665, height: 200, compare: cmp, scale: "point",
+    width: scChartWidth("sales_hourly", 665),
+    height: 200, compare: cmp, scale: "point",
     compact: true, thisLabel: "Today", compareLabel: "Yesterday"};
+  SALES._hourlyDraw = function(){
+    hrOpts.width = scChartWidth("sales_hourly", 665);
+    el.innerHTML = salesChart(pts, hrOpts) + adsFoot;
+  };
   el.innerHTML = salesChart(pts, hrOpts) + adsFoot;
 
   const hkey = document.getElementById("sales_today_key");
@@ -1058,6 +1078,42 @@ async function salesLoadHourly(){
         + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
     }
   }
+}
+
+/* ---- redraw when the window changes size --------------------------------
+ *
+ * A chart drawn at the container's pixel width has to be redrawn when that width
+ * changes. Without this, turning a phone sideways or dragging a window wider
+ * letterboxes every chart -- the viewBox is honest about its aspect ratio, so it
+ * centres itself in the new box rather than filling it.
+ *
+ * Nothing is re-fetched. Each renderer left behind a closure over the data it
+ * already had, so this is a redraw and not a reload: no request, no spinner, and
+ * the figures on screen cannot change just because the window did.
+ *
+ * Debounced, because a drag fires resize continuously and redrawing four charts
+ * per frame is how a resize comes to feel like the app has locked up. 150ms is
+ * after the drag stops, not during it.
+ */
+let _sResizeTimer = null;
+let _sLastW = 0;
+function salesOnResize(){
+  clearTimeout(_sResizeTimer);
+  _sResizeTimer = setTimeout(function(){
+    const w = window.innerWidth || 0;
+    // Only when the width ACTUALLY changed. Mobile browsers fire resize when the
+    // address bar hides, which changes the height and nothing else -- redrawing
+    // there would make the page flicker as you scroll.
+    if(w === _sLastW) return;
+    _sLastW = w;
+    try{ if(SALES._hourlyDraw) SALES._hourlyDraw(); }catch(e){}
+    try{ if(SALES._weekDraw) SALES._weekDraw(); }catch(e){}
+    try{ if(SALES.series){ salesDrawCharts(SALES.series); salesDrawOrgPpc(SALES.series); } }catch(e){}
+  }, 150);
+}
+if(typeof window !== "undefined" && window.addEventListener){
+  _sLastW = window.innerWidth || 0;
+  window.addEventListener("resize", salesOnResize);
 }
 
 /* ---- stat cards -------------------------------------------------------- */
