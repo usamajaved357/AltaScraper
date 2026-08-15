@@ -1706,6 +1706,37 @@ svg.chartbox path.series,
      Recharts' default curve. */
   animation:chartSweep 1.5s ease;
 }
+
+/* A CHART BELOW THE FOLD WAITS ITS TURN.
+ *
+ * "the orbit graph shows a motion when i go and scroll up and down... see all
+ * graphs while scrolling i want this thing in my app".
+ *
+ * MEASURED on Orbit, by watching the path data rather than the CSS (its charts
+ * animate in JavaScript, which a CSS probe cannot see):
+ *
+ *     returning to the Sales page   ANIMATES
+ *     scrolling a chart back in     static
+ *     a plain reload                ANIMATES
+ *
+ * Ours already did exactly the same -- verified the same way. So what is being
+ * asked for is not something Orbit has: it is that the charts further down the
+ * page should still have their motion left when you reach them. On both apps
+ * they animate the moment the screen opens, so by the time you have scrolled to
+ * the fourth one it finished playing to an empty room.
+ *
+ * `motion.js` therefore holds a chart that is BELOW THE FOLD at zero progress
+ * and releases it when it scrolls into view -- once, never again, because a
+ * chart that re-runs every time it crosses the edge of the screen is a
+ * distraction rather than an entrance. Charts already on screen are untouched
+ * and animate immediately, as they do now.
+ *
+ * If IntersectionObserver is missing, the class is never applied and every
+ * chart animates immediately -- the behaviour that exists today. */
+svg.chartbox.await-view path.series,
+svg.chartbox.await-view .bar{
+  animation-play-state:paused;
+}
 /* Bars grow from the baseline rather than appearing at full height, which is
    what Recharts does by default and what the 2500ms frame shows. */
 @keyframes barGrow{

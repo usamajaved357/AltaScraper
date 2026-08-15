@@ -193,5 +193,59 @@ const CSS_RULES = CSS.replace(/\/\*[\s\S]*?\*\//g, "");
   check("no " + bad, CSS_RULES.indexOf(bad) >= 0, false);
 });
 
+console.log("\n=== a chart below the fold keeps its motion until you reach it ===");
+/* "the orbit graph shows a motion when i go and scroll up and down... see all
+ * graphs while scrolling i want this thing in my app".
+ *
+ * MEASURED on Orbit by watching its path DATA, because Recharts animates in
+ * JavaScript and a CSS probe reads `animation: none` throughout:
+ *
+ *     returning to the Sales page   ANIMATES
+ *     scrolling a chart back in     static
+ *     a plain reload                ANIMATES
+ *
+ * Ours already matched that, verified the same way. What was actually missing
+ * is that every chart animates the moment the screen opens, so the ones below
+ * the fold finish playing before anyone scrolls to them.
+ */
+{
+  const motion = fs.readFileSync("D:/AltaScraper/static/js/motion.js", "utf8");
+  const rules = CSS.replace(/\/\*[\s\S]*?\*\//g, "");
+  truthy("charts below the fold are held", /function altaChartsInView/.test(motion));
+  truthy("  by pausing, not by hiding -- a hidden chart reflows on release",
+         /animation-play-state:paused/.test(rules));
+  truthy("  and the hold is a class the JS adds", /await-view/.test(rules));
+  truthy("released once, then no longer watched", /io\.unobserve\(el\)/.test(motion));
+  // THE BUG THIS TEST EXISTS FOR, found while testing it: at a threshold of
+  // 0.08 a fast scroll took a chart from entirely below the fold to entirely
+  // above it without ever being 8% visible, so it was never released and sat
+  // frozen part-drawn. A chart stuck mid-animation is worse than one that never
+  // animated at all.
+  check("the first visible pixel releases it, not a fraction of it",
+        /threshold: 0\}/.test(motion.replace(/\s+/g, "")) ||
+        /\{threshold:0\}/.test(motion.replace(/\s+/g, "")), true);
+  truthy("  and anything scrolled clean past is released too",
+         /boundingClientRect\.top < 0/.test(motion));
+  // Charts already on screen must not be held: they would visibly stall.
+  truthy("a chart already on screen is never held",
+         /if\(onScreen\) return;/.test(motion));
+  // Two ways this could silently stop every chart animating, both guarded.
+  truthy("no IntersectionObserver means animate immediately, as before",
+         /typeof IntersectionObserver !== "function"\) return;/.test(motion));
+  // Checked INSIDE this function's body rather than anywhere in the file: the
+  // rest of motion.js already mentions the media query, so a file-wide match
+  // would pass whether or not this particular guard existed.
+  {
+    const from = motion.indexOf("function altaChartsInView");
+    const body = motion.slice(from, motion.indexOf("\n}", from));
+    truthy("  and reduced motion is left alone entirely",
+           /prefers-reduced-motion/.test(body) && /\.matches\)\s*return;/.test(body));
+  }
+  // And it is actually called after the charts are drawn.
+  const sales = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
+  check("the sales screen asks for it after drawing",
+        (sales.match(/altaChartsInView\(host\)/g) || []).length >= 2, true);
+}
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

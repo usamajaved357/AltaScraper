@@ -655,6 +655,10 @@ function salesDrawCharts(ser){
       +  'backfilling.</div>';
   }
   host.innerHTML = (comboHtml || zeroed.length) ? h : "";
+  // Any chart below the fold is held at the start of its sweep until it is
+  // scrolled to, so there is still motion left when you reach it. See
+  // altaChartsInView in motion.js.
+  if(typeof altaChartsInView === "function") altaChartsInView(host);
 }
 
 async function salesReload(){
@@ -1056,6 +1060,8 @@ function salesDrawOrgPpc(ser){
   });
   host.innerHTML = note + bar
     + (sample ? '<div class="ri-sample">' + chart + '</div>' : chart);
+  // This one is always below the fold, which is exactly what the hold is for.
+  if(typeof altaChartsInView === "function") altaChartsInView(host);
 }
 
 function salesDrawRange(sum, av){
