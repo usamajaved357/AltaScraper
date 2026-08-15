@@ -99,6 +99,47 @@ def resolve(config=None, config_path=None):
     return decide(config, config_path)["backend"]
 
 
+# A SECOND, SEPARATE QUESTION: may the Google Sheet still be read as well?
+#
+# "Which store" and "is the old store still consulted" are different things,
+# and conflating them is what made the migration drag. While this is on, the
+# app reads BOTH and merges -- which is what stops a half-migrated account
+# showing an empty screen, and is deliberately the default.
+#
+# Turning it OFF is the actual moment the app becomes independent of Sheets. It
+# is a deliberate act, not a side effect of having a database, because it is the
+# point after which a row that only exists in a spreadsheet is invisible. Check
+# /backup/verify first: it reports, per account, whether the app holds every SKU
+# the sheet does.
+#
+# Backups and the one-time import are NOT affected. Those ask for a sheet
+# explicitly; this only governs whether one is consulted BEHIND the app's back.
+FALLBACK_KEY = "read_sheets_as_well"
+FALLBACK_ENV = "ALTA_READ_SHEETS"
+
+
+def sheets_fallback(config=None, config_path=None):
+    """Should the app still read Google Sheets alongside the database?
+
+    Default TRUE, so nothing changes for anyone mid-migration. Meaningless on
+    the sheets backend, where the sheet IS the store -- answered True there so
+    no caller has to special-case it.
+    """
+    if resolve(config, config_path) != DB:
+        return True
+    env = str(os.environ.get(FALLBACK_ENV) or "").strip().lower()
+    if env in ("0", "false", "no", "off"):
+        return False
+    if env in ("1", "true", "yes", "on"):
+        return True
+    val = (config or {}).get(FALLBACK_KEY)
+    if val is None:
+        return True                      # nobody has said: keep reading, safely
+    if isinstance(val, str):
+        return val.strip().lower() not in ("0", "false", "no", "off")
+    return bool(val)
+
+
 def db_path(config_path=None):
     """Where the SQLite file lives.
 

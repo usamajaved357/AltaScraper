@@ -333,6 +333,19 @@ function locateFlags(sku, btn){
 })();
 
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+/* A stored cell that reads exactly "None" is a Python None that was written
+   out as four characters, not something anyone typed. There are 361 of them in
+   this database -- 193 in compliance notes, 168 in the VOC source -- and every
+   one of them gets shown, concatenated, or searched as though it meant
+   something. It is what made the IP panel say "forbidden phrase — compatible
+   with None".
+   ONLY when it is the whole value: a note that genuinely reads "None — operates
+   at 240 V AC mains" is a real sentence and must survive. */
+function _noneless(v){
+  const s = String(v == null ? "" : v).trim();
+  return /^(none|null|nan|undefined)$/i.test(s) ? "" : String(v == null ? "" : v);
+}
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");
   clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1800);}
 
@@ -916,7 +929,12 @@ function drawerContent(r){
   // IP: HIGH with no visible reason at all -- there was no way to tell a real
   // trademark leak from a false flag without opening it.
   let reason = (r.ip_risk && r.ip_risk!=="") ? "IP / trademark review" : "Amazon feedback";
-  const _ipNote = String(r.notes||'')+' '+String(r.comp_notes||'');
+  // A cell that literally says "None" is a Python None that was written out as
+  // four characters, not a value. 193 stored rows carry one in compliance
+  // notes alone, and joining it onto the note behind it is what produced
+  // "IP: forbidden phrase — compatible with None" on screen: the phrase was
+  // "compatible with", and "None" was the next cell.
+  const _ipNote = _noneless(r.notes) + ' ' + _noneless(r.comp_notes);
   if(r.ip_risk && r.ip_risk!==""){
     let mm=_ipNote.match(/COMPETITOR BRAND in copy:\s*([^|]+)/i);
     if(mm) reason = "IP: competitor brand in copy — "+mm[1].trim();
@@ -1305,7 +1323,21 @@ function viabilityPanel(r){
       : "";
     const sig = (x.signals&&x.signals.length)
       ? `<div class="cc" style="margin-top:3px;color:var(--muted)">Detected: ${esc(x.signals.join("; "))}</div>` : "";
-    const meta = [x.reason, x.regulator, v.marketplace].filter(Boolean).map(esc).join(" · ");
+    // THE REGULATOR IS KEYED BY MARKETPLACE, not a string. It arrives as
+    // {"UK": "OPSS / UKCA (BS EN 60335 series)", "US": "CPSC / UL / ETL"}, and
+    // putting that through esc() printed the literal "[object Object]" beside
+    // every rule on the panel. Pick the one for the marketplace being looked
+    // at; fall back to naming them all rather than showing nothing, since
+    // WHICH regulator can demand the paperwork is the point of the line.
+    const _reg = (function(){
+      const g = x.regulator;
+      if(!g) return "";
+      if(typeof g === "string") return g;
+      const mkt = String(v.marketplace || "").toUpperCase();
+      if(g[mkt]) return g[mkt];
+      return Object.keys(g).map(function(k){ return k + ": " + g[k]; }).join(" · ");
+    })();
+    const meta = [x.reason, _reg, v.marketplace].filter(Boolean).map(esc).join(" · ");
     return `<div class="restrow ${x.risk==="HIGH"?'red':'amber'}">
       <div><span class="risk ${_viabRiskClass(x.risk)}">${esc(x.risk||"")} RISK</span> <b>${esc(x.label)}</b>
         <span class="cc restconf">${esc(x.id||"")}</span></div>

@@ -177,8 +177,29 @@ def header_dict_to_row(header_dict):
         if col in NUMERIC_COLS:
             out[col] = _num(v)
         else:
-            out[col] = None if v is None else str(v)
+            out[col] = None if v is None else _no_none_word(str(v))
     return out
+
+
+# The four characters N-o-n-e, standing in a text column where nothing was
+# meant. They get there honestly: the generator's own prompt asks the model for
+# "battery / electrical / chemical flags or None", so the model writes the word,
+# and it is stored as though it were a value.
+#
+# 361 stored cells carry one -- 193 in compliance notes, 168 in the VOC source
+# -- and every one is then displayed, concatenated and searched as content. It
+# is what made the IP panel read "forbidden phrase - compatible with None": the
+# phrase was "compatible with", and "None" was simply the next cell joined onto
+# it.
+#
+# ONLY when it is the entire value. A note that genuinely begins "None -
+# operates at 240 V AC mains voltage" is a real sentence about a real product
+# and must survive untouched.
+_NONE_WORDS = {"none", "null", "nan", "n/a", "na", "undefined"}
+
+
+def _no_none_word(s):
+    return "" if s.strip().lower() in _NONE_WORDS else s
 
 
 # Money as it is actually written in the sheet. Symbols AND three-letter codes:

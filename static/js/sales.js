@@ -21,7 +21,15 @@
  */
 
 let SALES = {preset:"30d", gran:"day", asin:"", start:"", end:"",
-             data:null, series:null, busy:false};
+             data:null, series:null, busy:false,
+             // What the dashed line and every "was:" figure compare against.
+             // Remembered on this browser, because it is a way of reading the
+             // business rather than a one-off question.
+             compareKind:(function(){
+               try{ return localStorage.getItem("alta_sales_compare") || "period"; }
+               catch(e){ return "period"; }
+             })(),
+             compare:null, compareOffsetDays:0, compareRange:""};
 
 const SALES_PRESETS = [["7d","7d"],["14d","14d"],["30d","30d"],
                        ["60d","60d"],["90d","90d"],["ytd","YTD"],["custom","Custom"]];
@@ -67,14 +75,47 @@ function _sShort(v, kind, cur){
 
 /* ---- the filter row (one row, above everything it scopes) -------------- */
 function salesDrawFilters(){
+  // SEGMENTED, as Orbit has them: one tray at rgb(45,50,66) with the chosen one
+  // filled gold. Measured -- tray radius 8 with 2px padding and 2px gaps, each
+  // button 28 high, radius 6, padding 4/12, 10px text.
   const p=document.getElementById("sales_presets");
-  if(p) p.innerHTML = SALES_PRESETS.map(function(x){
-    return '<button class="mktbtn'+(SALES.preset===x[0]?" on":"")+'" '
-         + 'onclick="salesSet(\'preset\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  if(p){
+    p.className = "seg";
+    p.innerHTML = SALES_PRESETS.map(function(x){
+      return '<button class="'+(SALES.preset===x[0]?"on":"")+'" '
+           + 'onclick="salesSet(\'preset\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  }
   const g=document.getElementById("sales_gran");
-  if(g) g.innerHTML = SALES_GRAN.map(function(x){
-    return '<button class="mktbtn'+(SALES.gran===x[0]?" on":"")+'" '
-         + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  if(g){
+    g.className = "seg";
+    g.innerHTML = SALES_GRAN.map(function(x){
+      return '<button class="'+(SALES.gran===x[0]?"on":"")+'" '
+           + 'onclick="salesSet(\'gran\',\''+x[0]+'\')">'+x[1]+'</button>';}).join("");
+  }
+  // THE LAST THREE WHOLE MONTHS. Orbit puts Aug / Jul / Jun beside the presets,
+  // and a month is the unit a business reports in -- picking one out of two date
+  // boxes is the step nobody takes.
+  const mo = document.getElementById("sales_months");
+  if(mo){
+    mo.className = "seg";
+    const now = new Date();
+    let html = "";
+    for(let back = 1; back <= 3; back++){
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+      const start = d.toISOString().slice(0, 10);
+      const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))
+                    .toISOString().slice(0, 10);
+      const name = ["Jan","Feb","Mar","Apr","May","Jun",
+                    "Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()];
+      const on = (SALES.preset === "custom" && SALES.start === start && SALES.end === end);
+      html += '<button class="' + (on ? "on" : "") + '" '
+           +  'onclick="salesSetMonth(\'' + start + '\',\'' + end + '\')" '
+           +  'title="' + start + ' to ' + end + '">' + name + '</button>';
+    }
+    mo.innerHTML = html;
+  }
+  const cmp = document.getElementById("sales_compare");
+  if(cmp && cmp.value !== (SALES.compareKind || "period")) cmp.value = SALES.compareKind || "period";
   const c=document.getElementById("sales_custom");
   // inline-flex, not "": the element carries gap/align-items, which need a flex
   // container, and a bare span is not one.
@@ -310,6 +351,96 @@ function salesDrawCharts(ser){
      keys: [["unit_session_pct", "Sales & Traffic report"]]},
   ];
 
+  // ---- ORBIT'S ONE CHART, BEFORE THE SEPARATE ONES --------------------
+  //
+  // Orbit's Sales Report is a single combined chart -- gold bars for orders
+  // against a right-hand count axis, money lines against the left -- with the
+  // key underneath. Five separate panels answer the same questions but cannot
+  // be read in one glance, which is the whole reason its dashboard feels
+  // different from ours.
+  //
+  // Built from the same series as the panels below and with the same rules: a
+  // day Amazon has not delivered stays null and is drawn as a gap, and a series
+  // that is entirely zero is not drawn at all.
+  let comboHtml = "";
+  if(typeof salesCombo === "function"){
+    const cells = function(key){
+      const m = byKey[key];
+      return m ? dates.map(function(d, i){ return m.cells[i]; }) : null;
+    };
+    const anyReal = function(vals){
+      return vals && vals.some(function(v){
+        return v !== null && v !== undefined && Number(v) !== 0; });
+    };
+    // ONE DATE BASIS FOR THE WHOLE CHART. This is the bug behind "it shows
+    // sales and profit but the orders are zero, it can not be possible to
+    // generate sales without orders".
+    //
+    // It IS possible, and both figures were right. Amazon dates the two feeds
+    // differently:
+    //
+    //   Sales & Traffic report   dated by ORDER date
+    //   finance records          dated by when the MONEY MOVED (shipment)
+    //
+    // So an order placed on the 5th and shipped on the 7th is an order on the
+    // 5th and a profit on the 7th. Measured on jack_uk: EIGHT days carried
+    // profit against a delivered, genuine zero for orders. Drawing the two
+    // together on one chart, unlabelled, states something impossible.
+    //
+    // Orbit does not have this problem because it commits to one basis and says
+    // so on the card -- "Based on order dates". So does this chart now: the
+    // order basis when the report has delivered, because that is the one that
+    // carries orders at all, and the money basis otherwise. Whichever it picks,
+    // every series on the chart comes from it, and the panel says which.
+    const orderBasis = anyReal(cells("orders")) || anyReal(cells("ordered_sales"));
+    SALES._chartBasis = orderBasis ? "order" : "money";
+    const salesCells  = orderBasis ? cells("ordered_sales") : cells("net_revenue");
+    const orderCells  = orderBasis ? cells("orders") : cells("units_shipped");
+    // Profit exists ONLY on the money basis -- Amazon reports no profit against
+    // an order date. Plotting it beside order-dated bars would reintroduce
+    // exactly the mismatch above, so on the order basis it is left off the
+    // chart and stays in the grid below, where its own basis is stated.
+    const profitCells = orderBasis ? null : cells("profit");
+
+    // The comparison, on the same axis as Sales, matched by date exactly as the
+    // single-metric charts match it.
+    let cmpCells = null;
+    if(SALES.compare && SALES.compare.metrics && SALES.compareOffsetDays){
+      const key = anyReal(cells("net_revenue")) ? "net_revenue" : "ordered_sales";
+      const cm = SALES.compare.metrics.filter(function(m){ return m.key === key; })[0];
+      if(cm && cm.cells){
+        const was = {};
+        (SALES.compare.columns || []).forEach(function(d, i){ was[d] = cm.cells[i]; });
+        const off = SALES.compareOffsetDays * 86400000;
+        cmpCells = dates.map(function(d){
+          const dt = new Date(String(d) + "T00:00:00Z");
+          if(isNaN(dt)) return null;
+          const back = new Date(dt.getTime() - off).toISOString().slice(0, 10);
+          return (back in was) ? was[back] : null;
+        });
+        if(!anyReal(cmpCells)) cmpCells = null;
+      }
+    }
+
+    const comboLines = [];
+    if(anyReal(salesCells))  comboLines.push({key: "sales",  values: salesCells});
+    if(profitCells && anyReal(profitCells)) comboLines.push({key: "profit", values: profitCells});
+    if(cmpCells) comboLines.push({
+      key: (SALES.compareKind === "year") ? "prior_year" : "prior",
+      values: cmpCells});
+
+    if(comboLines.length || anyReal(orderCells)){
+      comboHtml = salesCombo({
+        // The currency, so the money axis reads "£28.0k" rather than a bare
+        // number. Orbit's reads "$28.0k".
+        currency: (ser && ser.currency),
+        id: "sales_combo", columns: dates,
+        bars: anyReal(orderCells) ? {label: "Orders", values: orderCells} : null,
+        lines: comboLines,
+      });
+    }
+  }
+
   // Usable means: at least one real number, and not every one of them zero.
   // All-zero is what a feed that has not arrived looks like, and it is the one
   // shape a chart must never present as a fact.
@@ -330,85 +461,81 @@ function salesDrawCharts(ser){
       +  '<button class="db-chip" style="margin-left:auto" onclick="salesZoomOut()">'
       +  'Back to the full range</button></div>';
   }
-  // TWO ACROSS, not three or four. At a third of the width a chart was a couple
-  // of centimetres of squiggle -- too small to read a shape off, which is the
-  // only reason to draw one.
-  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:16px">';
-  let drew = 0;
-  const skipped = [];
-  want.forEach(function(w){
-    let chosen = null, source = "", chosenAt = -1;
-    for(let i = 0; i < w.keys.length; i++){
-      const p = pts(w.keys[i][0]);
-      if(usable(p)){ chosen = p; source = w.keys[i][1]; chosenAt = i; break; }
+  // The combined chart FIRST and full width, as Orbit has it: orders, sales,
+  // profit and the comparison in one picture. The per-metric panels follow for
+  // the things it cannot carry -- margin and conversion are percentages and
+  // would need a third scale.
+  if(comboHtml){
+    // A CHART WITH ONE COLUMN LOOKS BROKEN, and it is not -- it is one day of
+    // figures, drawn correctly: a single bar with three dots stacked at the
+    // same position, because there is nothing to draw a line between.
+    // Reported as "3 lines and 1 pillar displaying at a single spot", which is
+    // an exact description of it. So the chart says how many days it actually
+    // has rather than leaving that to be worked out.
+    const withData = dates.filter(function(d, i){
+      return (rows || []).some(function(m){
+        const v = (m.cells || [])[i];
+        return v !== null && v !== undefined && Number(v) !== 0;
+      });
+    }).length;
+    // WHICH BASIS, said on the panel exactly as Orbit says "Based on order
+    // dates". Without it the same product appears to have sold on two
+    // different days depending on which screen you are looking at, and there
+    // is no way to tell that both are right.
+    let note = (SALES._chartBasis === "order")
+      ? '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+        + 'Based on <b>order dates</b> — counted when the order was placed. '
+        + 'Profit is not on this chart because Amazon reports no profit against '
+        + 'an order date; it is in the grid below, on the money basis.</div>'
+      : '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+        + 'Based on <b>when the money moved</b> — units shipped, dated at '
+        + 'settlement. The Sales &amp; Traffic report has not delivered order '
+        + 'counts for this period yet.</div>';
+    if(withData <= 2){
+      note += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
+        + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
+        + '<i class="ti ti-info-circle"></i> Only <b>' + withData + ' day'
+        + (withData === 1 ? '' : 's') + '</b> in this range has figures, so there '
+        + 'is nothing to draw a line between — the marks sit at that one day. '
+        + 'Press <b>Sync</b> to pull the rest, or widen the range.</div>';
     }
-    if(!chosen){
-      // Present but empty is a different thing from absent, and only the first
-      // is worth telling someone about.
-      if(w.keys.some(function(k){ return pts(k[0]); })) skipped.push(w.title);
-      return;
-    }
-    // EVERY other feed is checked, not just the ones ahead of the winner. The
-    // disagreement is the point: if the finance records show sales for a period
-    // and the report shows zero for the same period, that is worth knowing, and
-    // stopping at the first usable series would never surface it.
-    const disagrees = w.keys.filter(function(k, i){
-      const p = pts(k[0]);
-      return i !== chosenAt && p && !usable(p);
-    }).map(function(k){ return k[1]; });
-    drew++;
-    // The same metric over the period before, if it arrived. Matched by KEY, so
-    // a chart that fell back to the finance feed is compared against the
-    // finance feed and not against a different measurement of the same trade.
-    // MATCHED BY DATE, one entry per column of the chart being drawn.
-    //
-    // Not by position: the reply carries only the buckets that have figures, so
-    // the two periods routinely come back with different numbers of columns.
-    // Each column here looks up its own date minus the offset; a date the
-    // earlier period has no figure for becomes null, which the chart draws as a
-    // gap rather than as zero.
-    let cmp = null;
-    if(SALES.compare && SALES.compare.metrics && SALES.compareOffsetDays){
-      const key = w.keys[chosenAt][0];
-      const cm = SALES.compare.metrics.filter(function(m){ return m.key === key; })[0];
-      if(cm && cm.cells){
-        const was = {};
-        (SALES.compare.columns || []).forEach(function(d, i){ was[d] = cm.cells[i]; });
-        const off = SALES.compareOffsetDays * 86400000;
-        cmp = chosen.map(function(pt){
-          const d = new Date(String(pt.label) + "T00:00:00Z");
-          if(isNaN(d)) return {label: "", value: null};
-          const back = new Date(d.getTime() - off).toISOString().slice(0, 10);
-          return {label: back,
-                  value: (back in was) ? was[back] : null};
-        });
-        // Nothing lined up at all -- weekly or monthly buckets that the offset
-        // does not land on. Better no second line than a line made of gaps.
-        if(!cmp.some(function(p){ return p.value !== null && p.value !== undefined; })) cmp = null;
-      }
-    }
-    h += salesChart(chosen, {
-      title: w.title, kind: w.kind, color: w.color, compare: cmp,
-      // Said on every chart, not only when it falls back: which of Amazon's two
-      // feeds a number came from decides what it means, and the two disagree.
-      subtitle: "from the " + source
-        + (cmp && SALES.compareRange
-             ? " · dashed line is " + SALES.compareRange : "")
-        + (disagrees.length ? " — the " + _sEsc(disagrees.join(" and "))
-                            + " shows zero for the same period, so it is not "
-                            + "drawn" : "")});
-  });
-  h += '</div>';
-
-  if(skipped.length){
-    h += '<div class="cc" style="font-size:11.5px;margin-top:2px;padding:9px 11px;'
-      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
-      +  '<i class="ti ti-info-circle"></i> Not drawn: ' + _sEsc(skipped.join(", "))
-      +  ' — every value Amazon has sent for this period is zero. That is what a '
-      +  'feed which has not arrived looks like, so it is left blank rather than '
-      +  'charted as no sales. Press <b>Sync</b> to keep backfilling.</div>';
+    h += '<div class="salespanel" style="margin:0 0 16px">' + note + comboHtml + '</div>';
   }
-  host.innerHTML = drew ? h : (skipped.length ? h : "");
+  // ONE CHART, NOT SIX.
+  //
+  // Orbit's Sales Dashboard has exactly three: Live Sales, Week to Date, and
+  // this combined one. Ours drew five separate panels -- Revenue, Units,
+  // Profit, Margin, Conversion -- and when the combined chart was added they
+  // were left in place, so the screen had six. That is not "close to Orbit
+  // with some extras"; it is a different screen.
+  //
+  // Everything the five panels showed is still reachable: revenue, orders and
+  // profit are ON the combined chart, and every metric including margin and
+  // conversion is in the grid below it, per day, in full. What is gone is five
+  // charts nobody asked for competing with the one that matters.
+  //
+  // The feed-disagreement warning the panels carried moves here, because it is
+  // about the data rather than about any one chart: if the report says zero for
+  // a period the finance records have sales for, that is worth knowing and it
+  // was the whole reason those panels named their source.
+  const zeroed = [];
+  [["Revenue", ["net_revenue", "ordered_sales"]],
+   ["Units",   ["units_shipped", "units"]],
+   ["Profit",  ["profit"]]].forEach(function(pair){
+    const anyPresent = pair[1].some(function(k){ return pts(k); });
+    const anyUsable  = pair[1].some(function(k){ return usable(pts(k)); });
+    if(anyPresent && !anyUsable) zeroed.push(pair[0]);
+  });
+  if(zeroed.length){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:10px;padding:9px 11px;'
+      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      +  '<i class="ti ti-info-circle"></i> ' + _sEsc(zeroed.join(", "))
+      +  ': every value Amazon has sent for this period is zero. That is what a '
+      +  'feed which has not arrived looks like, so it is left off the chart '
+      +  'rather than drawn as no sales. Press <b>Sync</b> to keep '
+      +  'backfilling.</div>';
+  }
+  host.innerHTML = (comboHtml || zeroed.length) ? h : "";
 }
 
 async function salesReload(){
@@ -436,12 +563,16 @@ async function salesReload(){
     salesLoadCompare(sum).catch(function(){});
     salesDrawCards(sum, av);
     salesDrawCharts(ser);
+    salesDrawOrgPpc(ser);
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
     // After the numbers, not before: the options depend on the range, and the
     // grid is what someone is waiting for.
     salesFillAsins();
     salesLoadToday();
+    // The week card is independent of the chosen range -- it is always this
+    // week -- so it loads on its own and does not hold anything else up.
+    salesLoadWeek().catch(function(){});
   }catch(e){
     const g=document.getElementById("sales_grid");
     if(g) g.innerHTML='<div class="empty">Could not load sales: '+_sEsc(String(e))+'</div>';
@@ -461,15 +592,62 @@ async function salesReload(){
  * If it is slow the charts are already up; if it fails there is simply no
  * second line, and nothing on the screen is wrong.
  */
+/* WHAT THE DASHED LINE IS COMPARED AGAINST. Two answers that mean something --
+   the period immediately before ("is this week better than last") and the same
+   period a year ago ("is this Christmas better than last Christmas") -- plus
+   the option of neither, because on a screen this dense a second line you are
+   not using is just ink. */
+/* One whole month, from its chip. Sets the same custom range the date boxes
+   would, so everything downstream -- the comparison, the export, the zoom --
+   behaves exactly as it does for any other range. */
+function salesSetMonth(start, end){
+  SALES.preset = "custom";
+  SALES.start = start;
+  SALES.end = end;
+  const a = document.getElementById("sales_start");
+  const b = document.getElementById("sales_end");
+  if(a) a.value = start;
+  if(b) b.value = end;
+  SALES._zoomBack = null;
+  salesDrawFilters();
+  salesReload();
+}
+
+function salesSetCompare(v){
+  SALES.compareKind = v || "period";
+  SALES.compare = null;
+  SALES.compareOffsetDays = 0;
+  try{ localStorage.setItem("alta_sales_compare", SALES.compareKind); }catch(e){}
+  // Redraw immediately so the old line goes at once, then fetch the new one.
+  if(SALES.series) salesDrawCharts(SALES.series);
+  if(SALES.data) salesDrawCards(SALES.data, null);
+  if(SALES.compareKind !== "none" && SALES.data) salesLoadCompare(SALES.data).catch(function(){});
+}
+
 async function salesLoadCompare(sum){
+  if(SALES.compareKind === "none") return;
   if(!sum || !sum.ok || !sum.start || !sum.end) return;
   const start = new Date(sum.start + "T00:00:00Z");
   const end   = new Date(sum.end   + "T00:00:00Z");
   if(isNaN(start) || isNaN(end)) return;
   const days = Math.round((end - start) / 86400000) + 1;
   if(days < 2 || days > 400) return;             // nothing to compare against
-  const prevEnd   = new Date(start.getTime() - 86400000);
-  const prevStart = new Date(prevEnd.getTime() - (days - 1) * 86400000);
+
+  // WHERE THE COMPARISON WINDOW SITS depends on what is being compared against.
+  //
+  //   prior period   the same number of days immediately before this range
+  //   prior year     the SAME dates, 364 days back
+  //
+  // 364 and not 365: it is exactly 52 weeks, so Monday lines up with Monday.
+  // Retail weeks are the thing that actually repeats -- comparing a Saturday
+  // against a Friday would put a weekend against a weekday and call the
+  // difference a trend.
+  const year = (SALES.compareKind === "year");
+  const offsetDays = year ? 364 : days;
+  const prevEnd   = year ? new Date(end.getTime()   - 364 * 86400000)
+                         : new Date(start.getTime() - 86400000);
+  const prevStart = year ? new Date(start.getTime() - 364 * 86400000)
+                         : new Date(prevEnd.getTime() - (days - 1) * 86400000);
   const iso = d => d.toISOString().slice(0, 10);
 
   // The same query as the main series, with the dates replaced -- so the
@@ -492,9 +670,227 @@ async function salesLoadCompare(sum){
   // buckets that have figures. Pairing them by position would have compared
   // June 15th against July 15th; requiring equal lengths would have meant the
   // comparison never drew at all.
-  SALES.compareOffsetDays = days;
+  SALES.compareOffsetDays = offsetDays;
   SALES.compareRange = iso(prevStart) + " to " + iso(prevEnd);
   salesDrawCharts(SALES.series);
+}
+
+/* ---- week to date ------------------------------------------------------
+ * The second of Orbit's two "how is it going right now" cards: Monday to
+ * today, drawn against the same days of the week before.
+ *
+ * Built from a request of its own rather than sliced out of the main range,
+ * because the main range is whatever the user last picked -- on a 90-day view
+ * there would be no "this week" in it to slice, and on a custom range there
+ * might be no Monday at all.
+ */
+async function salesLoadWeek(){
+  const host = document.getElementById("sales_week");
+  const badge = document.getElementById("sales_week_delta");
+  if(!host) return;
+  const today = new Date();
+  const dow = (today.getUTCDay() + 6) % 7;          // Monday = 0
+  const mon = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),
+                                today.getUTCDate() - dow));
+  const lastMon = new Date(mon.getTime() - 7 * 86400000);
+  const lastEnd = new Date(mon.getTime() - 86400000);
+  const iso = d => d.toISOString().slice(0, 10);
+  const base = function(a, b){
+    const q = ["preset=custom", "start=" + iso(a), "end=" + iso(b), "granularity=day"];
+    if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
+    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+      q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+    return q.join("&");
+  };
+  host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">Loading…</div>';
+  let now, before;
+  try{
+    now    = await (await fetch("/sales/series?" + base(mon, today))).json();
+    before = await (await fetch("/sales/series?" + base(lastMon, lastEnd))).json();
+  }catch(e){
+    host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
+      + 'Could not load this week.</div>';
+    return;
+  }
+  if(!now || !now.ok){ host.innerHTML = ""; return; }
+
+  const key = function(j){
+    const has = function(k){
+      const m = ((j.metrics)||[]).filter(function(x){ return x.key === k; })[0];
+      return m && (m.cells||[]).some(function(v){ return v !== null && Number(v) !== 0; })
+             ? m : null;
+    };
+    return has("net_revenue") || has("ordered_sales");
+  };
+  const mNow = key(now), mBefore = key(before);
+  if(!mNow){
+    host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
+      + 'Nothing recorded for this week yet.</div>';
+    if(badge) badge.innerHTML = "";
+    return;
+  }
+
+  // Both weeks laid out Monday-first, so day 1 sits under day 1 whatever dates
+  // they carry -- which is the whole point of a week-on-week picture.
+  const cols = now.columns || [];
+  const pts = cols.map(function(d, i){ return {label: d, value: mNow.cells[i]}; });
+  let cmp = null;
+  if(mBefore && (before.columns||[]).length){
+    const byPos = (before.columns||[]).map(function(d, i){ return mBefore.cells[i]; });
+    cmp = cols.map(function(d, i){
+      return {label: (before.columns||[])[i] || "", value: (i < byPos.length ? byPos[i] : null)};
+    });
+    if(!cmp.some(function(p){ return p.value !== null && Number(p.value) !== 0; })) cmp = null;
+  }
+
+  // A WEEK IS SEVEN BUCKETS, NOT SEVEN INSTANTS, so the points sit at the middle
+  // of each day's band and are captioned by day name -- Sun, Mon, Tue … -- which
+  // is what Orbit's Week to Date x-axis reads (measured: seven labels at 106.4
+  // through 603.6, one per band centre). Ours read "Aug 9 … Aug 15": the same
+  // information in the form you would use to file it rather than to say it, and
+  // on a chart of one week the date adds nothing the title has not said.
+  const wkOpts = {
+    title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
+    currency: (now && now.currency),
+    width: 665, height: 200, compare: cmp, scale: "band", xLabel: "dow",
+    compact: true, thisLabel: "This Week", compareLabel: "Last Week",
+    compareTitle: cmp ? ("the dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""};
+  host.innerHTML = salesChart(pts, wkOpts);
+
+  // The key goes in the card's HEADER, which is where Orbit has it -- "This
+  // Week", "Last Week", then the change badge, all on the title's own line.
+  // It used to sit between the header and the chart, pushing the chart down and
+  // giving the card a band of small print Orbit does not have.
+  const wkey = document.getElementById("sales_week_key");
+  if(wkey) wkey.innerHTML = salesChartKey(wkOpts);
+
+  // The missing days still have to be explained -- the shaded block on the right
+  // is the days Amazon has not delivered, and unexplained it reads as a fault.
+  // It goes under the subtitle rather than over the chart.
+  const wnote = document.getElementById("sales_week_note");
+  if(wnote){
+    const gaps = pts.filter(function(p){
+      return p.value === null || p.value === undefined; }).length;
+    wnote.className = "panelnote warn";
+    wnote.textContent = gaps
+      ? ("· " + gaps + " day" + (gaps === 1 ? "" : "s")
+         + " not in from Amazon yet — shaded, not zero")
+      : "";
+  }
+
+  // ORBIT'S WEEK CARD HAS AN AD FOOTER TOO -- measured: "Ad spend this week
+  // $10,633 · TACOS 9.8%", the label at 10px and the figure at 12px. Ours had
+  // one under Live Sales and nothing under this card, so the two halves of the
+  // top row did not even end the same way. Neither figure is available on this
+  // account, and the footer says which and why rather than leaving a gap that
+  // looks like a design that forgot something.
+  host.innerHTML += '<div class="adfooter">'
+    + '<span class="lbl">Ad spend this week</span> <b>not connected</b>'
+    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
+    + '<span style="color:rgb(156,163,175)"> — both need the Advertising API.</span>'
+    + '</div>';
+
+  // The change against the same days last week, as a chip beside the heading.
+  if(badge){
+    const sum = function(m){ return (m ? (m.cells||[]) : [])
+      .reduce(function(a, v){ return a + (Number(v) || 0); }, 0); };
+    const a = sum(mNow), b = sum(mBefore);
+    if(!b){ badge.innerHTML = ""; }
+    else {
+      const pct = ((a - b) / Math.abs(b)) * 100;
+      const up = pct >= 0;
+      badge.innerHTML = '<span class="pct-badge ' + (up ? "up" : "down") + '">'
+        + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
+    }
+  }
+}
+
+/* ---- organic vs PPC -----------------------------------------------------
+ * Orbit's split of what sold on its own against what advertising paid for:
+ * two stacked areas in its own measured colours (#10b981 organic, #8b5cf6
+ * PPC), a share bar above them, and the percentages named.
+ *
+ * THE ADVERTISING API IS NOT CONNECTED, and this is built anyway -- with the
+ * shape drawn from a sample series and every figure marked as such, so the
+ * panel exists and is judgeable now and fills with real numbers the moment
+ * ads_daily has rows. The one thing it must never do is show a plausible
+ * split as though it were measured: an organic/paid ratio drives what you
+ * spend, and a made-up one is worse than a blank panel.
+ */
+function salesDrawOrgPpc(ser){
+  const host = document.getElementById("sales_orgppc");
+  if(!host || typeof salesCombo !== "function") return;
+  const cols = (ser && ser.columns) || [];
+  const by = {};
+  ((ser && ser.metrics) || []).forEach(function(m){ by[m.key] = m.cells || []; });
+
+  const total = by["ordered_sales"] || by["net_revenue"] || [];
+  // ad_sales is what the Advertising API would give. Absent today.
+  const adSales = by["ad_sales"] || [];
+  const haveAds = adSales.some(function(v){
+    return v !== null && v !== undefined && Number(v) !== 0; });
+
+  let organic, ppc, sample = false, note = "";
+  if(haveAds){
+    ppc = adSales.slice();
+    organic = total.map(function(t, i){
+      const a = Number(adSales[i] || 0);
+      if(t === null || t === undefined) return null;
+      // Attributed sales cannot exceed the total; if they do, the two feeds
+      // disagree and the honest answer is zero organic, not a negative.
+      return Math.max(0, Number(t) - a);
+    });
+  } else {
+    // The SHAPE, from this account's own real sales, split on a fixed ratio so
+    // the panel is not a straight line. Marked, never presented as measured.
+    sample = true;
+    const base = total.length ? total : cols.map(function(){ return null; });
+    organic = base.map(function(v){ return v === null || v === undefined ? null : Number(v) * 0.7; });
+    ppc     = base.map(function(v){ return v === null || v === undefined ? null : Number(v) * 0.3; });
+    note = '<div class="ri-samplebar" style="margin:0 0 12px">'
+      + '<b>This split is a placeholder, not your data.</b> It divides your real '
+      + 'sales 70/30 purely to show the shape. The real split needs the '
+      + 'Advertising API, which this account is not connected to — until then '
+      + 'nothing here is measured, and the app will not guess at a ratio that '
+      + 'decides what you spend.</div>';
+  }
+
+  const sum = function(a){ return a.reduce(function(x, v){ return x + (Number(v) || 0); }, 0); };
+  const o = sum(organic), p = sum(ppc), t = o + p;
+  const oPct = t ? Math.round((o / t) * 100) : 0;
+  const pPct = t ? (100 - oPct) : 0;
+
+  // The share bar Orbit puts above the chart.
+  const bar = '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;'
+    + 'background:var(--panel2);margin:0 0 6px">'
+    + '<div style="width:' + oPct + '%;background:#10b981"></div>'
+    + '<div style="width:' + pPct + '%;background:#8b5cf6"></div></div>'
+    + '<div style="display:flex;gap:16px;font-size:12px;margin:0 0 10px"'
+    + (sample ? ' class="ri-sample"' : '') + '>'
+    + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+    + 'background:#10b981;margin-right:6px"></span>Organic <b>' + oPct + '%</b>'
+    + ' <span class="cc">' + _sShort(o, "money", ser && ser.currency) + '</span></span>'
+    + '<span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;'
+    + 'background:#8b5cf6;margin-right:6px"></span>PPC <b>' + pPct + '%</b>'
+    + ' <span class="cc">' + _sShort(p, "money", ser && ser.currency) + '</span></span>'
+    + '</div>';
+
+  if(!cols.length || !t){
+    host.innerHTML = note
+      + '<div class="cc" style="font-size:12px;padding:12px 0">'
+      + 'No sales in this period to split.</div>';
+    return;
+  }
+
+  // Measured: Orbit's Organic vs PPC panel is 1365 x 380, taller than its Sales
+  // Report because the two areas overlap and need the room to stay readable.
+  const chart = salesCombo({
+    id: "orgppc", columns: cols, bars: null, currency: (ser && ser.currency),
+    lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
+    height: 380,
+  });
+  host.innerHTML = note + bar
+    + (sample ? '<div class="ri-sample">' + chart + '</div>' : chart);
 }
 
 function salesDrawRange(sum, av){
@@ -531,14 +927,137 @@ async function salesLoadToday(){
     let extra="";
     if(t.pending) extra += ' · '+t.pending+' pending (no value yet)';
     if(j.truncated) extra += ' · partial — very busy day';
-    el.innerHTML = '<div class="todaystrip"><span class="todaylead">Today so far</span>'
+    el.innerHTML = '<div class="todaystrip">'
       + bit("revenue", t.revenue, "money", "revenue")
       + bit("orders", t.orders, "count", "orders")
       + bit("units", t.units, "count", "units")
       + '<span class="cc todaynote">live from orders'
       + (y ? ' · vs '+_sEsc(j.compared_to||"the same time yesterday") : "")
-      + _sEsc(extra) + '</span></div>';
+      + _sEsc(extra) + '</span></div>'
+      + '<div id="sales_hourly"></div>';
+    // The curve underneath, which is the shape Orbit's Live Sales card is.
+    salesLoadHourly().catch(function(){});
   }catch(e){ el.innerHTML=""; }
+}
+
+/* "Pacific Time (PDT): 5:14 PM" -- the marketplace's zone in words and its own
+ * current time, which is what Orbit shows on the Live Sales header.
+ *
+ * Both come from Intl, so the zone name is whatever the browser calls it rather
+ * than a table this app would have to keep. If the zone is one Intl does not
+ * know, the identifier itself is shown: a name that is merely unfriendly beats
+ * a card that silently drops which day it is talking about. */
+function _sClock(tz){
+  if(!tz) return "";
+  const now = new Date();
+  const zone = function(style){
+    try{
+      const p = new Intl.DateTimeFormat("en-GB", {timeZone: tz, timeZoneName: style})
+        .formatToParts(now).filter(function(x){ return x.type === "timeZoneName"; });
+      return p.length ? p[0].value : "";
+    }catch(e){ return ""; }
+  };
+  // The friendly name where it is short enough to sit in the header beside the
+  // key and the badge -- "Pacific Time", which is what Orbit shows. Where it is
+  // not, the offset: "United Kingdom Time" is nineteen characters and pushed the
+  // change badge onto a second line, and a header that reflows is worse than an
+  // abbreviation.
+  let name = zone("longGeneric");
+  if(!name || name.length > 16) name = zone("short") || tz;
+  let time = "";
+  try{
+    time = new Intl.DateTimeFormat("en-GB", {timeZone: tz, hour: "numeric",
+      minute: "2-digit", hour12: true}).format(now).toUpperCase();
+  }catch(e){ return _sEsc(name); }
+  return '<span class="cc">' + _sEsc(name) + ':</span> ' + _sEsc(time);
+}
+
+/* ---- the hourly curve --------------------------------------------------
+ * Orbit's Live Sales card: today climbing across the day in gold, yesterday
+ * running the full 24 hours behind it in grey dashes, so "am I ahead of
+ * yesterday" is answered by which line is higher at the same hour.
+ *
+ * Built from order timestamps, which the app already pulls -- see
+ * domain/hourly_sales.py for why this is a different measurement from
+ * everything on the settled report below, and why the card says so.
+ */
+async function salesLoadHourly(){
+  const el = document.getElementById("sales_hourly");
+  const badge = document.getElementById("sales_today_delta");
+  if(!el) return;
+  let j;
+  try{
+    j = await (await fetch("/sales/hourly?" + _sQuery())).json();
+  }catch(e){ return; }
+  if(!j || !j.ok || !(j.hours || []).length) return;
+
+  // Midnight, 3am, 6am … as Orbit labels them, rather than 00:00..23:00.
+  const label = function(h){
+    const n = Number(String(h).slice(0, 2));
+    const ampm = n < 12 ? "AM" : "PM";
+    const hh = (n % 12) === 0 ? 12 : (n % 12);
+    return hh + " " + ampm;
+  };
+  const pts = (j.hours || []).map(function(h, i){
+    return {label: label(h), value: (j.today || [])[i]};
+  });
+  const cmp = (j.yesterday || []).map(function(v, i){
+    return {label: label((j.hours || [])[i]), value: v};
+  });
+
+  // The strip along the bottom of Orbit's card is AD SPEND TODAY and TACOS.
+  // Both come from the Advertising API, which is not connected -- ads_daily is
+  // empty. Said out loud, in the place the figures would sit, rather than
+  // leaving a gap that looks like a design that forgot something.
+  // Measured: 10px uppercase label with 0.4px tracking, the value beside it at
+  // 12px, 4px between, 8px above with a 4px lead-in. Orbit puts figures here;
+  // we say what is missing and why, in the same shape.
+  const adsFoot = '<div class="adfooter">'
+    + '<span class="lbl">Ad spend today</span> <b>not connected</b>'
+    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
+    + '<span style="color:rgb(156,163,175)"> — both need the Advertising API, '
+    + 'which this account is not connected to.</span></div>';
+
+  // A POINT SCALE here, not a band: these are readings across a continuous day,
+  // and midnight IS the start of the axis. Measured on Orbit's Live Sales: 24
+  // hourly points from x=65 (on the y-axis) to x=645 (the right edge), labelled
+  // every third hour.
+  const hrOpts = {
+    title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
+    currency: (j && j.currency),
+    width: 665, height: 200, compare: cmp, scale: "point",
+    compact: true, thisLabel: "Today", compareLabel: "Yesterday"};
+  el.innerHTML = salesChart(pts, hrOpts) + adsFoot;
+
+  const hkey = document.getElementById("sales_today_key");
+  if(hkey) hkey.innerHTML = salesChartKey(hrOpts);
+
+  // WHICH CLOCK "today" IS ON, in the header where Orbit puts it -- measured:
+  // "Pacific Time (PDT): 5:14 PM", the zone named in words and the marketplace's
+  // own current time beside it. Ours had the IANA identifier in a subtitle under
+  // the chart, which is the same fact written for a machine.
+  //
+  // It matters more here than it does for Orbit: this app is run from Pakistan
+  // against UK and US stores, so "today so far" is three different days
+  // depending on which account is open.
+  const clock = document.getElementById("sales_today_clock");
+  if(clock) clock.innerHTML = _sClock(j.timezone);
+  const hnote = document.getElementById("sales_today_note");
+  if(hnote) hnote.textContent = "";
+
+  // Against the SAME HOUR yesterday, never yesterday's full day -- otherwise
+  // every morning shows a collapse and every evening a recovery.
+  if(badge){
+    const a = Number(j.today_total || 0), b = Number(j.yesterday_so_far || 0);
+    if(!b){ badge.innerHTML = ""; }
+    else {
+      const pct = ((a - b) / Math.abs(b)) * 100;
+      const up = pct >= 0;
+      badge.innerHTML = '<span class="pct-badge ' + (up ? "up" : "down")
+        + '" title="against the same time yesterday">'
+        + (up ? "↑" : "↓") + " " + Math.abs(pct).toFixed(1) + '%</span>';
+    }
+  }
 }
 
 /* ---- stat cards -------------------------------------------------------- */
@@ -551,7 +1070,46 @@ function salesDrawCards(sum, av){
     if(note) note.innerHTML='<div class="empty">'+_sEsc((sum&&sum.error)||"No sales data")+'</div>';
     return;
   }
-  host.innerHTML = (sum.cards||[]).map(function(c){
+  // ORBIT'S FIVE, IN ITS ORDER AND ITS WORDS: Total Sales, Daily Average,
+  // Total Orders, Total Units, Profit. Ours had ten in a different order with
+  // different names, so the two screens did not even begin the same way.
+  //
+  // The rest are not thrown away -- they are every one of them a row in the
+  // grid below, per day, in full. What changes is which five are given the top
+  // of the screen.
+  //
+  // Daily Average is not a figure Amazon sends; it is revenue over the number
+  // of days in the range, worked out here. It is on the same basis as the
+  // revenue it comes from, so it cannot disagree with the card beside it.
+  const _byKey = {};
+  (sum.cards || []).forEach(function(c){ _byKey[c.key] = c; });
+  const _days = (function(){
+    try{
+      const a = new Date(sum.start + "T00:00:00Z"), b = new Date(sum.end + "T00:00:00Z");
+      const n = Math.round((b - a) / 86400000) + 1;
+      return (n > 0 && n < 1000) ? n : 0;
+    }catch(e){ return 0; }
+  })();
+  const _rev = _byKey["ordered_sales"] || _byKey["net_revenue"];
+  const ORBIT_CARDS = [
+    Object.assign({}, _rev || {}, {label: "Total Sales"}),
+    (_rev && _days && _rev.value !== null && _rev.value !== undefined)
+      ? {key: "daily_avg", kind: "money", label: "Daily Average",
+         value: Number(_rev.value) / _days,
+         previous: (_rev.previous === null || _rev.previous === undefined)
+                   ? null : Number(_rev.previous) / _days,
+         delta_pct: _rev.delta_pct}
+      : {key: "daily_avg", kind: "money", label: "Daily Average",
+         value: null, previous: null, delta_pct: null},
+    Object.assign({}, _byKey["orders"] || {key: "orders", kind: "count", value: null},
+                  {label: "Total Orders"}),
+    Object.assign({}, _byKey["units"] || {key: "units", kind: "count", value: null},
+                  {label: "Total Units"}),
+    Object.assign({}, _byKey["profit"] || {key: "profit", kind: "money", value: null},
+                  {label: "Profit"}),
+  ];
+
+  host.innerHTML = ORBIT_CARDS.map(function(c){
     const missing = (c.value===null||c.value===undefined);
     const adsOff = (c.key==="spend" && !sum.ads_connected);
     // PROFIT AND MARGIN READ AT A GLANCE. They are the two numbers the business
@@ -561,17 +1119,26 @@ function salesDrawCards(sum, av){
     const col = missing ? "" :
       (neg ? ";color:var(--red)" :
        isProfit ? ";color:var(--ok,#8fd694)" : "");
+    // LABEL FIRST, then the number, then the comparison -- Orbit's order,
+    // measured: the label sits above the figure, not under it. Ours had it the
+    // other way round and centred, which is why the two never looked alike
+    // however close the colours got.
     return '<div class="stat-card'+(missing?" is-empty":"")+'"'
       + (isProfit ? ' title="Revenue after Amazon\'s fees, refunds and what the '
                     + 'stock cost. Withheld entirely when any unit shipped has no '
                     + 'recorded cost — a partial cost only ever flatters."' : '')
       + '>'
+      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
       + '<p class="stat-number" style="'+col.replace(/^;/,"")+'">'
       + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
-      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
       + (adsOff
-          ? '<p class="stat-delta cc" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
-          : _sDelta(c))
+          ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
+          // "LY :" is Orbit's own wording, with the space. `previous` is what
+          // the server calls the earlier figure -- it was read as `prev_value`,
+          // which does not exist, so every card said only a percentage with
+          // nothing to compare it against.
+          : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
+                    c.previous, c.kind, sum.currency))
       + '</div>';
   }).join("");
 
@@ -593,17 +1160,39 @@ function salesDrawCards(sum, av){
 /* Change against the previous period of the SAME LENGTH. Carries an arrow and a
    word as well as a colour — a green number alone is unreadable to a good number
    of people, and meaningless in print. */
-function _sDelta(c){
+/* The comparison line under each figure, laid out as Orbit lays it out:
+   the earlier figure in grey, then the percentage as a coloured chip.
+   Measured from its live dashboard -- "LY: $551,866.01 +5.2%".
+
+   Ours says "was" rather than "LY" because the comparison is the previous
+   PERIOD by default, and calling a 30-day-ago figure "last year" would be a
+   plain lie. When the comparison is set to a year earlier it says LY, because
+   then it is one. */
+function _sDelta(c, prevLabel, prevValue, kind, currency){
   if(c.delta_pct===null || c.delta_pct===undefined){
-    return '<p class="stat-delta cc">no earlier period</p>';
+    // Said, not left as a dash. A blank here reads as a fault, and showing
+    // "0.0%" for a period with nothing to compare against would be a fiction.
+    return '<p class="stat-delta">no earlier period</p>';
   }
   const up = c.delta_pct >= 0;
   // Ad spend rising is not a win, so direction and goodness are separate things.
   const good = (c.key==="spend") ? !up : up;
-  const cls = c.delta_pct===0 ? "flat" : (good?"good":"bad");
+  const cls = c.delta_pct===0 ? "flat" : (good?"up":"down");
+  // ARROW AND SIGN, not colour alone. Orbit uses "↑ 21.1%" on its chart headers
+  // and "+5.2%" on its cards; the arrow is kept on both because a green number
+  // with no other cue is unreadable to a good number of people and means
+  // nothing in print.
   const arrow = c.delta_pct===0 ? "→" : (up?"↑":"↓");
-  return '<p class="stat-delta '+cls+'">'+arrow+' '
-       + Math.abs(c.delta_pct).toFixed(1)+'% <span class="cc">vs previous</span></p>';
+  const sign = c.delta_pct===0 ? "" : (up?"+":"−");
+  // "LY : $551,866.01" -- Orbit's spacing, measured off its own cards.
+  const was = (prevValue===null || prevValue===undefined)
+    ? "" : (prevLabel||"was") + " : " + _sShort(prevValue, kind, currency) + " ";
+  return '<p class="stat-delta">' + _sEsc(was)
+       + '<span class="pct-badge ' + cls + '" title="' + (up?"up":"down")
+       + ' versus ' + _sEsc(prevLabel === "LY" ? "the same period last year"
+                                               : "the period before") + '">'
+       + arrow + ' ' + sign
+       + Math.abs(c.delta_pct).toFixed(1) + '%</span></p>';
 }
 
 /* ---- the metrics × dates grid ------------------------------------------ */
@@ -621,7 +1210,21 @@ function salesDrawGrid(ser){
     return;
   }
   const cols=ser.columns||[];
-  let h='<div class="salesgridwrap"><table class="salesgrid"><thead><tr>'
+  // ORBIT'S TITLE FOR THIS TABLE, and its description. The grid had neither, so
+  // the most information-dense thing on the page arrived unannounced -- and the
+  // colour in it needs saying, because a heatmap whose scale is not explained
+  // is just decoration.
+  let h='<div class="panelhead" style="margin:0 0 12px;padding:0"><div>'
+      + '<p class="paneltitle">P&amp;L Heatmap</p>'
+      + '<p class="panelsub">Performance metrics with heatmap colouring across '
+      + 'time periods<span class="infodot" title="Each row is shaded against its '
+      + 'own range, never across rows. Profit and margin diverge at zero — red '
+      + 'below, green above — because a loss is not a small profit. Every cell '
+      + 'prints its number, so nothing depends on telling the colours apart.">i</span></p>'
+      + '</div><div class="cc" style="font-size:11px">'
+      + (ser.metrics||[]).length + ' metrics · ' + cols.length + ' '
+      + _sEsc(ser.granularity || "day") + 's</div></div>'
+      + '<div class="salesgridwrap"><table class="salesgrid"><thead><tr>'
       + '<th class="mcol">Metric</th>'
       + cols.map(function(c){ return '<th>'+_sEsc(_sColLabel(c, ser.granularity))+'</th>'; }).join("")
       + '</tr></thead><tbody>';
@@ -634,7 +1237,7 @@ function salesDrawGrid(ser){
     const hi=Math.max.apply(null, nums.length?nums:[0]);
     h += '<tr><th class="mcol" title="'+_sEsc(m.label)+'">'+_sEsc(m.label)+'</th>'
        + m.cells.map(function(v){
-           const t=_sTint(v, lo, hi);
+           const t=_sTint(v, lo, hi, m.key);
            const txt=_sNum(v, m.kind, ser.currency);
            return '<td'+(t?' style="background:'+t+'"':'')
                 + ' title="'+_sEsc(m.label+": "+txt)+'">'+_sEsc(txt)+'</td>';
@@ -654,10 +1257,50 @@ function _sColLabel(c, gran){
 /* ONE hue, light→dark, five steps. Five rather than a continuous ramp because
    past about seven classes adjacent shades blur; and the number is printed in
    every cell regardless, so the tint is an aid, never the reading. */
-function _sTint(v, lo, hi){
+/* Metrics that can legitimately go NEGATIVE, and where the sign is the whole
+   point. A loss is not a small profit. */
+const _S_SIGNED = ["profit", "margin_pct", "net_proceeds", "roi_pct"];
+
+/* The shading behind a cell.
+ *
+ * THE FAULT THIS FIXES. Every row was shaded on ONE green scale running from
+ * the row's lowest value to its highest. On a Profit row that ranges from -50
+ * to +100 it made a fifty-pound LOSS the palest green on the row -- green
+ * meaning good, and a faint green reading as "a quiet day" rather than "money
+ * went out". The sign, which is the only thing anyone looks at on a profit row,
+ * was the one thing the colour did not carry.
+ *
+ * So a signed metric DIVERGES AT ZERO: red below, green above, and the
+ * intensity from how far it is from zero rather than from where it sits
+ * between the row's two extremes. Everything else -- sessions, units, revenue,
+ * which cannot be negative -- keeps the single-hue scale, where it is right.
+ *
+ * Colour is never the only carrier: every cell prints its number, so the grid
+ * still reads correctly in black and white and to anyone who cannot separate
+ * red from green.
+ */
+function _sTint(v, lo, hi, key){
   if(v===null||v===undefined) return "";
+  const n = Number(v);
+  if(!isFinite(n)) return "";
+
+  if(_S_SIGNED.indexOf(String(key||"")) >= 0){
+    if(n === 0) return "";
+    // Scale each side against its own worst case, so one huge loss does not
+    // flatten every profit on the row into the same shade.
+    const worst = Math.abs(Math.min(0, lo)) || 1;
+    const best  = Math.max(0, hi) || 1;
+    const f = n < 0 ? Math.min(1, Math.abs(n) / worst) : Math.min(1, n / best);
+    const step = Math.min(4, Math.max(0, Math.floor(f * 5)));
+    return n < 0
+      ? ["rgba(239,68,68,.08)","rgba(239,68,68,.15)","rgba(239,68,68,.24)",
+         "rgba(239,68,68,.34)","rgba(239,68,68,.45)"][step]
+      : ["rgba(45,212,168,.05)","rgba(45,212,168,.10)","rgba(45,212,168,.17)",
+         "rgba(45,212,168,.25)","rgba(45,212,168,.34)"][step];
+  }
+
   if(!(hi>lo)) return "";
-  const f=(Number(v)-lo)/(hi-lo);
+  const f=(n-lo)/(hi-lo);
   const step=Math.min(4, Math.max(0, Math.floor(f*5)));
   return ["rgba(45,212,168,.05)","rgba(45,212,168,.10)","rgba(45,212,168,.17)",
           "rgba(45,212,168,.25)","rgba(45,212,168,.34)"][step];

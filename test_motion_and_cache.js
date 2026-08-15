@@ -172,7 +172,15 @@ truthy("reduced motion is honoured in CSS", CSS.indexOf("prefers-reduced-motion"
 truthy("  and by the counting numbers, which CSS cannot reach",
        fs.readFileSync("D:/AltaScraper/static/js/motion.js", "utf8")
          .indexOf("prefers-reduced-motion") >= 0);
-truthy("sections fade in", CSS.indexOf("@keyframes fadeIn") >= 0);
+// MEASURED: Orbit does NOT animate a section switch. Its content area reported
+// `animation: none, 0s` at 0, 80, 160, 320, 640 and 1200ms across three tab
+// switches. So the panel entrance is deliberately absent, and this asserts the
+// absence -- otherwise someone adds it back as a "polish" and it is a
+// difference from Orbit again.
+check("a section switch does NOT animate the panel in",
+      /\.wspanel\.show\{\s*animation/.test(CSS.replace(/\/\*[\s\S]*?\*\//g, "")), false);
+truthy("the fadeIn keyframes remain for the rows and modals that use them",
+       CSS.indexOf("@keyframes fadeIn") >= 0);
 truthy("charts have an entrance", CSS.indexOf("@keyframes chartFadeIn") >= 0);
 truthy("the drawer settles rather than stopping dead",
        CSS.indexOf("cubic-bezier(.34,1.56,.64,1)") >= 0);

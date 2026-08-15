@@ -21,15 +21,35 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /orders/* to the app."""
 
     def _accounts_in_scope():
-        """Which accounts to ask, and why that is the default.
+        """Which accounts to ask. THE OPEN ONE, unless every account is asked for.
 
-        ALL of them by default: the whole reason this screen exists is not
-        having to open each account in turn. An account with no Amazon
-        credentials of its own is skipped rather than failed on -- it has no
-        orders to have.
+        This used to default to ALL accounts, because the screen was built to
+        answer "show me every account's orders without opening each in turn".
+        That is a real use, but it cannot be the default:
+
+            "why do i have every account's order in each account, each account
+             should show its own orders ... they are different entities
+             different business they dont have anything in common"
+
+        And that is right. These are separate limited companies with separate
+        sellers and separate customers. A screen opened inside Jack Reacherd
+        that lists Selvora's orders -- with the customer's name and address on
+        it -- is not a convenience, it is one business's customer data shown
+        under another's name.
+
+        So: the account you have open, always, unless you explicitly ask for
+        every one with account=__all__. An account with no Amazon credentials
+        of its own is skipped rather than failed on; it has no orders to have.
         """
         cfg = _cfg() if callable(_cfg) else (_cfg or {})
         want = (request.args.get("account") or "").strip()
+        if not want:
+            # No explicit ask -> the account currently open. Falling back to
+            # "all" here is exactly the bug above.
+            try:
+                want = str((_active_account() or {}).get("id") or "").strip()
+            except Exception:
+                want = ""
         out = []
         for a in (cfg.get("accounts") or []):
             aid = str(a.get("id") or "")

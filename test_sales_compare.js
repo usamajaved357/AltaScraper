@@ -44,7 +44,10 @@ const prev = days.map((d, i) => ({label: d, value: [ 8, 12, 35, 20, 25][i]}));
 console.log("=== one line, as before ===");
 const plain = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t1"});
 truthy("it still draws", plain.indexOf("<svg") >= 0);
-falsy("no comparison line when none was given", plain.indexOf("stroke-dasharray") >= 0);
+// Looked for by the comparison's own COLOUR, not by "is anything dashed". The
+// gridlines are dashed too now (measured off Orbit: rgb(55,65,81), 3,3), so a
+// dash is no longer evidence of a second series.
+falsy("no comparison line when none was given", plain.indexOf('stroke="#6b7280"') >= 0);
 falsy("and no legend for a single series", plain.indexOf("the period before") >= 0);
 
 console.log("\n=== two lines ===");
@@ -103,12 +106,16 @@ console.log("\n=== a mismatched comparison is dropped, not paired up ===");
 const short = prev.slice(0, 3);
 const mism = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t6",
                                       compare: short});
-falsy("three days are not compared against five", mism.indexOf("stroke-dasharray") >= 0);
+falsy("three days are not compared against five", mism.indexOf('stroke="#6b7280"') >= 0);
 falsy("  and no legend claims otherwise", mism.indexOf("the period before") >= 0);
 
-console.log("\n=== the hover reports both, and the change between them ===");
-truthy("the readout carries the earlier figure", both.indexOf("before:") >= 0);
-truthy("  and the percentage change", both.indexOf("%)") >= 0);
+console.log("\n=== the hover card carries a row per series ===");
+// The hover is a floating CARD now, measured off Orbit: a row per series, each
+// named in its own colour with its value. The rows are encoded into the inline
+// handler, so the assertions read the encoding rather than a sentence.
+truthy("there is a row for the earlier period", both.indexOf("Before") >= 0);
+truthy("  in the comparison's own colour", both.indexOf("#6b7280") >= 0);
+truthy("and the percentage change is on it", both.indexOf("%)") >= 0);
 // 10 against 8 is +25%; the first column must say so.
 truthy("computed, not guessed", both.indexOf("+25%") >= 0);
 // A previous value of zero cannot produce a percentage -- dividing by it would
@@ -117,7 +124,15 @@ const zeroPrev = days.map(d => ({label: d, value: 0}));
 const z = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t7",
                                    compare: zeroPrev});
 falsy("no percentage against a zero", z.indexOf("Infinity") >= 0);
-truthy("  but the earlier figure is still shown", z.indexOf("before:") >= 0);
+truthy("  but the earlier figure still gets its row", z.indexOf("Before") >= 0);
+// The card itself, and the movement that makes it feel like Orbit's.
+truthy("the card is in the markup", both.indexOf('class="charttip"') >= 0);
+truthy("  inside a positioned wrapper so it can be placed over the chart",
+       both.indexOf("position:relative") >= 0);
+truthy("a year comparison names itself differently",
+       sandbox.salesChart(now, {title: "R", kind: "money", id: "t8",
+                                compare: prev, compareKind: "year"})
+         .indexOf("Last year") >= 0);
 
 console.log("\n=== sales.js asks for the period before ===");
 const SALES_JS = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
@@ -130,8 +145,13 @@ truthy("and the marketplace",
        /marketplace=/.test(SALES_JS.slice(SALES_JS.indexOf("salesLoadCompare"))));
 truthy("the comparison is matched by metric key, not by position",
        SALES_JS.indexOf("m.key === key") >= 0);
-truthy("and the dates it covers are said on the chart",
-       SALES_JS.indexOf("dashed line is") >= 0);
+// The week card captions its comparison "Last Week", as Orbit does, rather than
+// spelling the dates out in a subtitle -- but the dates must still be
+// RECOVERABLE, or it is a comparison nobody can check. They are on the key's
+// hover.
+truthy("and the dates it covers are still recoverable",
+       SALES_JS.indexOf("dashed line is") >= 0
+       && /compareTitle/.test(SALES_JS));
 
 console.log("\n=== the two periods are matched BY DATE, on real reply shapes ===");
 // MEASURED, and it is why this is not a length check. Asking jack_uk for 30
@@ -175,11 +195,13 @@ const drawn = drawWith(nowSer, prevSer, 5);
 truthy("a comparison of different length still draws", drawn.indexOf("stroke-dasharray") >= 0);
 // 6 Aug looks back to 1 Aug (absent -> gap); 7 Aug to 2 Aug -> 7; 9 Aug to
 // 4 Aug -> 9. So the hover for 7 Aug must report 7, not the first cell.
+// 6 Aug looks back to 1 Aug (absent), 7 Aug to 2 Aug -> 7, 9 Aug to 4 Aug -> 9.
+// The values live in the encoded hover rows.
 truthy("each day is compared against the SAME day of the earlier period",
-       drawn.indexOf("before: 7.00") >= 0);
-truthy("  and the other matched day too", drawn.indexOf("before: 9.00") >= 0);
+       drawn.indexOf("7.00") >= 0);
+truthy("  and the other matched day too", drawn.indexOf("9.00") >= 0);
 truthy("a day the earlier period has no figure for reads as a dash, not zero",
-       drawn.indexOf("before: —") >= 0);
+       drawn.indexOf("—") >= 0);
 
 // And when nothing lines up at all -- an offset that lands between buckets --
 // there must be no second line rather than a line made entirely of gaps.

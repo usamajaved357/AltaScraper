@@ -1600,9 +1600,24 @@
   from{ opacity:0; transform:translateY(8px); }
   to  { opacity:1; transform:translateY(0); }
 }
-/* .wspanel is hidden/shown by the .show class, and #sec_listings by display.
-   Both get the same entrance so no screen feels different from the others. */
-.wspanel.show{ animation:fadeIn .25s ease; }
+/* NO ENTRANCE ON A SECTION SWITCH -- measured, and it corrects what was here.
+   Orbit's content area was sampled at 0, 80, 160, 320, 640 and 1200ms across
+   three tab switches and reported `animation: none, 0s` at every single frame.
+   It does not fade, slide or scale a section in; the content is simply there.
+
+   This used to fade every panel in over .25s. The earlier brief asked for that
+   explicitly ("content should not just appear -- it should fade in"), so the
+   two instructions disagree; "exactly like Orbit, bit by bit" is the later and
+   more emphatic one, and this is what Orbit actually does. Put the rule back if
+   the fade is preferred -- it is one line.
+
+   What Orbit DOES do on a switch is answered elsewhere and already matches: a
+   tab already visited comes back instantly with no skeleton (measured: charts
+   restored within 80ms), and only an unvisited one shows loading state. That is
+   static/js/screenstate.js.
+
+   The fadeIn keyframes stay -- staggered table rows and the modals use them. */
+@keyframes _fadeInKept{ from{opacity:0} to{opacity:1} }
 
 /* -- 2. SKELETON LOADING -----------------------------------------------
    .skeleton and @keyframes shimmer were added in the layout pass and never
@@ -1637,11 +1652,45 @@ html{ scroll-behavior:smooth; }
   from{ clip-path:inset(0 100% 0 0); }
   to  { clip-path:inset(0 0 0 0); }
 }
-.chartcard, .chartbox{ animation:chartFadeIn .28s ease; }
-/* The drawn-line effect, on the path only -- the axes and labels must not
-   sweep in with it or the chart reads as unfinished while it plays. */
-.chartcard svg path.series, .chartbox svg path.series{
-  animation:chartSweep .5s ease-out;
+/* MEASURED, and it corrected this: Orbit's chart FRAME does not animate at all.
+   At 2500ms into a load its axes, gridlines, tick labels and stat figures are
+   already in place at full opacity, and only the data is still arriving -- the
+   bars growing up from the baseline and the lines drawing in.
+   (orbit_shots/load_02500ms.png.)
+
+   Fading and scaling the whole chart, which is what this used to do, moves the
+   axis labels while someone is reading them and makes the panel feel like it
+   is still arriving after it has arrived. So the container is left alone and
+   the animation is on the series only. */
+/* BOTH SHAPES. `chartbox` is the <svg> ITSELF, so ".chartbox svg path" asks for
+   an svg inside an svg and matches nothing -- which is why the line never drew
+   itself despite the keyframes being right. Kept alongside the descendant form
+   so a chart wrapped in a card still animates. */
+svg.chartbox path.series,
+.chartcard svg path.series,
+.chartbox svg path.series{
+  /* 1.5s, which is what Recharts animates a series over and therefore what
+     Orbit's charts do -- measured, and three times slower than the .5s guess
+     that was here. At half a second the line is drawn before the eye has found
+     it, which reads as "no animation" rather than as a fast one. `ease` is
+     Recharts' default curve. */
+  animation:chartSweep 1.5s ease;
+}
+/* Bars grow from the baseline rather than appearing at full height, which is
+   what Recharts does by default and what the 2500ms frame shows. */
+@keyframes barGrow{
+  from{ transform:scaleY(0); }
+  to  { transform:scaleY(1); }
+}
+svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
+  /* An SVG rect scales about the viewBox origin unless told otherwise, so
+     without this the bars would grow from the TOP of the chart downwards.
+     transform-box:fill-box makes "bottom" mean the bottom of the bar. */
+  transform-box:fill-box;
+  transform-origin:bottom;
+  /* Same 1.5s as the lines, so the whole series arrives together rather than
+     the bars finishing while the lines are still drawing. */
+  animation:barGrow 1.5s ease;
 }
 
 /* -- 5. TABLE ROW STAGGER ----------------------------------------------
@@ -1720,3 +1769,615 @@ html{ scroll-behavior:smooth; }
   }
   html{ scroll-behavior:auto; }
 }
+
+
+/* =====================================================================
+   STAT CARDS — Orbit's, to the pixel
+   =====================================================================
+   Every number here was read off Orbit's live Sales Dashboard with
+   tools/orbit_capture.py on 15 Aug 2026 and is recorded in
+   orbit_interactions.md. Nothing below is a judgement call, so nothing
+   below should be "tidied" without re-measuring.
+
+       card    235.8 × 104, padding 12, gap 4, radius 8
+               background rgb(45,50,66), border 1px rgb(55,65,81)
+       label   12px / 500, rgb(156,163,175), line-height 18
+       value   20px / 600, rgb(243,244,246), line-height 30
+       delta   12px / 500, green rgb(16,185,129), 18 high, 2px left margin
+
+   THE ORDER MATTERS AND WAS WRONG. Orbit puts the LABEL ABOVE the number
+   (measured: label at y=556.8, value at y=578.8). Ours had the number on
+   top and centred, which is why the two never looked alike however close
+   the colours got.
+   ===================================================================== */
+.stat-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:12px;
+  margin-bottom:16px;
+}
+.stat-card{
+  background:rgb(45,50,66);
+  border:1px solid rgb(55,65,81);
+  border-radius:8px;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  text-align:left;
+  cursor:default;
+  min-height:104px;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .15s ease;
+}
+/* Orbit's own cards do not lift on hover -- measured transition-duration 0s.
+   Ours do, very slightly, because they are clickable filters on some screens
+   and a control that cannot be felt reads as decoration. */
+.stat-card:hover{ border-color:rgb(75,85,101); }
+
+/* Label first in the DOM, so it sits above the number as Orbit's does. */
+.stat-card .stat-label{
+  order:1;
+  font-size:12px;
+  font-weight:500;
+  line-height:18px;
+  color:rgb(156,163,175);
+  text-transform:none;      /* Orbit's are sentence case, not caps */
+  letter-spacing:normal;
+  margin:0;
+}
+.stat-card .stat-number{
+  order:2;
+  font-size:20px;
+  font-weight:600;
+  line-height:30px;
+  color:rgb(243,244,246);
+  letter-spacing:normal;
+  font-variant-numeric:tabular-nums;
+  margin:0;
+}
+.stat-card .stat-delta{
+  order:3;
+  font-size:12px;
+  font-weight:400;
+  line-height:18px;
+  color:rgb(156,163,175);
+  margin:0;
+}
+/* The +5.2% chip. Orbit renders it inline after the comparison figure, in
+   green or red, at 500 weight with a 2px gap. */
+.pct-badge{
+  font-size:12px;
+  font-weight:500;
+  line-height:18px;
+  margin-left:2px;
+}
+.pct-badge.up  { color:rgb(16,185,129); }
+.pct-badge.down{ color:rgb(239,68,68); }
+.pct-badge.flat{ color:rgb(156,163,175); }
+
+.stat-card.is-empty .stat-number{ color:rgb(107,114,128); }
+
+
+/* =====================================================================
+   SALES DASHBOARD — Orbit's page chrome, measured
+   =====================================================================
+   Read off the live dashboard with tools/orbit_capture.py; the raw
+   figures are in orbit_interactions.md. Nothing here is a judgement call.
+
+       page background   rgb(26,29,41), 12px padding
+       panel             rgb(37,41,55), 1px rgb(55,65,81), radius 12, pad 12
+       panel title       18px / 600, line-height 27
+       page title        28px / 600, line-height 30.8, 4px below
+       stat card         rgb(45,50,66), 1px rgb(55,65,81), radius 8, pad 12
+       preset group      rgb(45,50,66), radius 8, padding 2, gap 2
+       preset button     28 high, radius 6, padding 4/12, 10px
+       preset active     gold, with rgb(26,29,41) text
+   ===================================================================== */
+.salespanel{
+  background:rgb(37,41,55);
+  border:1px solid rgb(55,65,81);
+  border-radius:12px;
+  padding:12px;
+}
+.salespanel + .salespanel{ margin-top:12px; }
+
+.panelhead{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.paneltitle{
+  font-size:18px;
+  font-weight:600;
+  line-height:27px;
+  color:rgb(243,244,246);
+  margin:0;
+}
+.panelsub{
+  font-size:12px;
+  line-height:18px;
+  color:rgb(156,163,175);
+  margin:0;
+}
+.panelhead .spacer{ flex:1; }
+
+/* The two cards along the top. Side by side on a wide screen, stacked on a
+   narrow one -- which is what Orbit does too: measured at 681px wide its own
+   two cards were stacked and full width. */
+.sales-toprow{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(420px,1fr));
+  gap:12px;
+  margin-bottom:12px;
+}
+
+/* The segmented preset control: one tray, buttons inside it, the active one
+   filled gold with dark text. */
+.seg{
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  background:rgb(45,50,66);
+  /* Measured: the tray has a BORDER too, rgb(75,85,99) -- without it the group
+     floats on the panel instead of reading as one control. */
+  border:1px solid rgb(75,85,99);
+  border-radius:8px;
+  padding:2px;
+}
+.seg > button{
+  height:28px;
+  border-radius:6px;
+  padding:4px 12px;
+  font-size:10px;
+  font-weight:500;
+  line-height:normal;
+  border:1px solid transparent;
+  background:transparent;
+  color:rgb(243,244,246);
+  cursor:pointer;
+  transition:background .15s ease, color .15s ease;
+}
+.seg > button:hover{ background:rgba(255,255,255,.05); }
+.seg > button.on{
+  background:#fbbf24;
+  color:rgb(26,29,41);
+  font-weight:600;
+}
+.seg > button.on:hover{ background:#fbbf24; }
+
+/* The ⓘ beside a panel's subtitle, as Orbit has it: an 18px circle, not an
+   icon font, so it lines up with the text at any size. */
+.infodot{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:14px;height:14px;
+  border:1px solid rgb(107,114,128);
+  border-radius:50%;
+  font-size:9px;
+  line-height:1;
+  color:rgb(156,163,175);
+  margin-left:4px;
+  cursor:help;
+  vertical-align:middle;
+}
+
+
+/* ---- marketplace flags on the home cards ------------------------------
+   The home screen's one job is choosing an account, and nearly every account
+   here sells in more than one country. Orbit chooses the account AND the
+   marketplace in one step, with the country shown as a flag; picking the
+   account only to then hunt for the marketplace switcher is a step that need
+   not exist. Clicking a flag opens the account already on that marketplace. */
+.wscard .mktflag{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  height:24px;
+  padding:0 8px;
+  margin:0 4px 0 0;
+  border:1px solid rgb(55,65,81);
+  border-radius:6px;
+  background:rgb(45,50,66);
+  color:rgb(209,213,219);
+  font-size:11px;
+  font-weight:500;
+  line-height:1;
+  cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.wscard .mktflag span{ letter-spacing:.02em; }
+.wscard .mktflag:hover{
+  border-color:#fbbf24;
+  background:rgb(55,60,78);
+  transform:translateY(-1px);
+}
+/* The account's own default, marked so the card says which one a plain click
+   will open -- otherwise the flags look like the only way in. */
+.wscard .mktflag.on{
+  border-color:#fbbf24;
+  color:rgb(243,244,246);
+}
+.wscard .stats{ flex-wrap:wrap; row-gap:6px; }
+
+
+/* ---- the chart hover card ----------------------------------------------
+   Measured off Orbit's own tooltip (orbit_interactions.md, tooltip.json):
+
+       card     rgb(45,50,66), 1px rgb(75,85,99), radius 6, padding 8/12,
+                min-width 160, shadow rgba(251,191,36,.3) 0 4px 6px
+       time     12px / 600, rgb(243,244,246), 4px below it
+       label    12px / 500, in the series' OWN colour
+       value    12px / 600, rgb(243,244,246), pushed right
+       movement transform .4s -- it GLIDES from column to column
+
+   That last line is the one that matters. Ours put a readout in the corner of
+   the panel, which cannot move with the pointer and so never felt like
+   anything. The card following the cursor IS the interaction. */
+.charttip{
+  position:absolute;
+  top:0; left:0;
+  pointer-events:none;          /* never eat a drag-to-zoom */
+  z-index:5;
+  min-width:160px;
+  background:rgb(45,50,66);
+  border:1px solid rgb(75,85,99);
+  border-radius:6px;
+  padding:8px 12px;
+  box-shadow:rgba(251,191,36,.3) 0 4px 6px 0;
+  opacity:0;
+  transition:transform .4s ease, opacity .15s ease;
+  will-change:transform;
+}
+.charttip-time{
+  margin:0 0 4px;
+  padding:0;
+  font-size:12px;
+  font-weight:600;
+  line-height:18px;
+  color:rgb(243,244,246);
+}
+.charttip-row{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  line-height:18px;
+}
+.charttip-name{
+  font-size:12px;
+  font-weight:500;
+  white-space:nowrap;
+}
+.charttip-val{
+  margin-left:auto;
+  font-size:12px;
+  font-weight:600;
+  color:rgb(243,244,246);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+/* Someone who asked their system not to animate should not be chased around the
+   screen by a gliding card; it still appears, it just does not travel. */
+@media (prefers-reduced-motion: reduce){
+  .charttip{ transition:opacity .01ms; }
+}
+
+
+/* ---- the Sales page, to the spec ---------------------------------------
+   From orbit_sales_spec.md, a full scan of Orbit's page at 1600px. These are
+   the numbers that decide whether the screen reads the same, and they are the
+   ones that were wrong: the panels were the right colour at the wrong size,
+   with the wrong gaps, so the same data looked like a different dashboard. */
+
+/* The page itself: 32px around everything, on rgb(26,29,41). */
+#sec_sales{
+  padding:32px;
+  background:rgb(26,29,41);
+}
+
+/* The two top cards: 622.5 wide with a 16px gap, 12px padding.
+   The Sales Report panel below them takes 16px padding instead -- measured,
+   and it is the difference between a card and a section. */
+.sales-toprow{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(430px,1fr));
+  gap:16px;
+  margin-bottom:16px;
+}
+.sales-toprow > .salespanel{ padding:12px; }
+#sec_sales > .salespanel{ padding:16px; }
+
+/* The panel header: title and subtitle on the left, indicators and the change
+   badge pushed right, 12px between them, a 12px rule under it. */
+.panelhead{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin:0 0 16px;
+  padding:0 0 12px;
+}
+.sales-toprow .panelhead{ margin:0 0 8px; padding:0 0 4px; }
+.paneltitle{ font-size:18px; font-weight:600; line-height:27px;
+             color:rgb(243,244,246); margin:0; }
+.panelsub{ font-size:12px; font-weight:400; line-height:18px;
+           color:rgb(156,163,175); margin:2px 0 0; }
+
+/* "3 days not in from Amazon yet — shaded, not zero". It explains the grey
+   block on the right of the week chart, so it cannot simply be dropped for
+   matching Orbit's card exactly -- Orbit has no such block because its data is
+   complete. It goes on the subtitle line, where it costs no height, rather than
+   as a band of small print between the header and the chart.
+   :empty so a complete week leaves no stray gap after the subtitle. */
+.panelnote{ margin-left:8px; }
+.panelnote:empty{ display:none; }
+/* Gold only when it is saying something is MISSING. The same slot also carries
+   the hourly card's timezone, which is a fact rather than a warning and must
+   not be dressed as one. */
+.panelnote.warn{ color:rgb(251,191,36); }
+
+/* The key in the header row, beside the change badge, as Orbit has it. Centred
+   against the title rather than against the top of the two-line header block,
+   so it lines up with the words instead of floating above them. */
+.sales-toprow .panelhead > span[id$="_key"],
+.sales-toprow .panelhead > .panelclock{ align-self:center; }
+
+/* "Pacific Time (PDT): 5:14 PM" -- measured at 12px on Orbit's Live Sales
+   header, the zone name muted and the time in the reading colour. */
+.panelclock{ font-size:12px; color:rgb(243,244,246); white-space:nowrap; }
+.panelclock:empty{ display:none; }
+
+/* Five stat cards across, 12px apart -- measured pitch 247.8 on a 235.8 card. */
+#sales_cards.stat-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:12px;
+  margin:0 0 16px;
+}
+
+/* The ad-spend strip under each live card: 10px uppercase labels with a
+   0.4px letter-spacing, values in normal case beside them. */
+#sec_sales .adfooter{
+  display:flex;
+  align-items:baseline;
+  gap:4px;
+  flex-wrap:wrap;
+  margin:8px 0 0;
+  padding:4px 0 0;
+  font-size:12px;
+  line-height:18px;
+  color:rgb(209,213,219);
+}
+#sec_sales .adfooter b{ font-weight:600; }
+#sec_sales .adfooter .lbl{
+  font-size:10px;
+  font-weight:400;
+  line-height:15px;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:rgb(156,163,175);
+}
+
+
+/* =====================================================================
+   RETURNS INTELLIGENCE — the Promixx report's design, in the app
+   =====================================================================
+   Taken from Promixx-USA-FBA-Returns-Intelligence-May2026.html: the same
+   six KPI cards, the same nine panels, the same type scale and spacing.
+   Its own tokens are mapped onto the app's so the page belongs here
+   rather than looking like a document someone pasted in.
+   ===================================================================== */
+#sec_returns .ri-main{ max-width:1440px; margin:0 auto; }
+
+/* Six across, as the report has them. */
+.ri-kpis{
+  display:grid;
+  grid-template-columns:repeat(6, 1fr);
+  gap:14px;
+  margin-bottom:24px;
+}
+@media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
+@media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
+
+.ri-kpi{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:18px 20px;
+  position:relative;
+  transition:border-color .15s ease;
+}
+.ri-kpi:hover{ border-color:var(--accent); }
+.ri-kpi .lbl{
+  font-size:11px; font-weight:500; color:var(--ink3);
+  text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;
+}
+.ri-kpi .val{ font-size:26px; font-weight:700; line-height:1.1; }
+.ri-kpi .sub{ font-size:12px; color:var(--ink2); margin-top:6px; }
+
+.ri-badge{
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:11px; font-weight:600; padding:2px 7px; border-radius:4px;
+}
+.ri-badge.red  { background:var(--red-bg);  color:var(--red); }
+.ri-badge.amber{ background:var(--warn-bg); color:var(--warn); }
+.ri-badge.teal { background:var(--accent-bg); color:var(--accent2); }
+
+.ri-2-1{ display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:24px; }
+.ri-2  { display:grid; grid-template-columns:1fr 1fr;  gap:16px; margin-bottom:24px; }
+.ri-3  { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
+@media (max-width:1000px){
+  .ri-2-1, .ri-2, .ri-3{ grid-template-columns:1fr; }
+}
+
+.ri-card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:20px;
+  overflow:hidden;
+}
+.ri-card-head{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:16px; gap:12px; flex-wrap:wrap;
+}
+.ri-card-title{ font-size:14px; font-weight:600; }
+.ri-card-meta { font-size:11px; color:var(--ink3); }
+
+/* The daily volume chart: one bar per day, tooltip on hover. */
+.ri-daily{ display:flex; align-items:flex-end; gap:2px; height:100px; padding-top:8px; }
+.ri-daily-bar{
+  flex:1; min-width:4px;
+  background:var(--accent2);
+  border-radius:2px 2px 0 0;
+  opacity:.75;
+  position:relative;
+  cursor:pointer;
+  transition:opacity .15s ease, background .15s ease;
+}
+.ri-daily-bar:hover{ opacity:1; background:var(--accent); }
+.ri-daily-bar .tip{
+  display:none; position:absolute; bottom:calc(100% + 6px); left:50%;
+  transform:translateX(-50%);
+  background:var(--panel2); border:1px solid var(--line); border-radius:6px;
+  padding:6px 9px; font-size:11px; white-space:nowrap; z-index:4;
+  box-shadow:0 4px 12px rgba(0,0,0,.4);
+}
+.ri-daily-bar:hover .tip{ display:block; }
+
+/* Horizontal bars, for reasons and dispositions. */
+.ri-hbar{ margin-bottom:10px; }
+.ri-hbar-head{ display:flex; justify-content:space-between; margin-bottom:4px; gap:10px; }
+.ri-hbar-name{ font-size:12px; color:var(--ink2); }
+.ri-hbar-val { font-size:12px; font-weight:600; }
+.ri-hbar-track{ height:8px; background:var(--panel2); border-radius:4px; overflow:hidden; }
+.ri-hbar-fill { height:100%; border-radius:4px; transition:width .6s ease; }
+
+/* The nature mix: one strip, segments sized by share. */
+.ri-mini{ display:flex; height:6px; border-radius:3px; overflow:hidden;
+          background:var(--panel2); width:100%; }
+.ri-mini-seg{ height:100%; transition:width .4s ease; }
+
+.ri-legend{ display:flex; flex-direction:column; gap:8px; flex:1; }
+.ri-leg{ display:flex; align-items:center; gap:8px; font-size:12px; }
+.ri-dot{ width:8px; height:8px; border-radius:2px; flex-shrink:0; }
+.ri-leg-label{ color:var(--ink2); flex:1; }
+.ri-leg-val{ font-weight:600; }
+.ri-leg-pct{ color:var(--ink3); font-size:11px; min-width:36px; text-align:right; }
+
+/* Customer comments, colour-coded down the left edge by what they are about. */
+.ri-comment{
+  background:var(--panel2); border-radius:6px; padding:12px 14px;
+  margin-bottom:8px; font-size:12px; line-height:1.5;
+  border-left:3px solid var(--line);
+}
+.ri-comment.quality { border-left-color:var(--red); }
+.ri-comment.listing { border-left-color:var(--warn); }
+.ri-comment.shipping{ border-left-color:#a78bfa; }
+.ri-comment.customer{ border-left-color:var(--accent2); }
+.ri-comment-meta{ font-size:10px; color:var(--ink3); margin-top:6px; }
+
+/* The insights, with a severity dot that glows for the urgent ones. */
+.ri-insight{
+  background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+  padding:14px 16px; margin-bottom:10px;
+}
+.ri-insight-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.ri-sev{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.ri-sev.high  { background:var(--red);  box-shadow:0 0 6px var(--red); }
+.ri-sev.medium{ background:var(--warn); box-shadow:0 0 6px var(--warn); }
+.ri-sev.low   { background:var(--accent2); }
+.ri-insight-title{ font-size:13px; font-weight:600; }
+.ri-insight-body { font-size:12px; color:var(--ink2); line-height:1.55; }
+.ri-insight-action{ font-size:11px; color:var(--accent2); margin-top:6px; font-weight:500; }
+
+.ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
+.ri-tag{
+  display:inline-flex; padding:3px 8px; border-radius:4px;
+  font-size:10px; font-weight:600; letter-spacing:.02em; white-space:nowrap;
+}
+.ri-tag.quality { background:var(--red-bg);  color:var(--red); }
+.ri-tag.listing { background:var(--warn-bg); color:var(--warn); }
+.ri-tag.shipping{ background:rgba(167,139,250,.15); color:#a78bfa; }
+.ri-tag.customer{ background:var(--accent-bg); color:var(--accent2); }
+
+/* PLACEHOLDER FIGURES. The layout is shown before the data exists so the
+   format can be judged -- but a sample number that looks like a real one is
+   the single worst thing this page could do, so every one of them is dimmed
+   and struck through with a label saying what it is. */
+.ri-sample{ opacity:.45; font-style:italic; }
+.ri-samplebar{
+  margin:0 0 18px; padding:10px 13px; border-radius:8px;
+  border:1px solid var(--warn-line); background:var(--warn-bg);
+  font-size:12px; line-height:1.6;
+}
+
+
+/* ---- the account / marketplace rows in the sidebar ---------------------
+   Measured off Orbit's own: a nav item 34px tall, 8/16 padding, 14px/500,
+   and the live marketplace in gold rgb(251,191,36) with its flag beside it.
+   Orbit has no landing page -- these two rows are how you move. */
+.navitem.switchrow{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:34px;
+  padding:8px 16px;
+  font-size:14px;
+  font-weight:500;
+  cursor:pointer;
+}
+.navitem.switchrow > span:nth-of-type(1){ font-size:15px; line-height:1; }
+.navitem.switchrow #nav_acct_label,
+.navitem.switchrow #nav_mkt_label{
+  flex:1;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.navitem.switchrow .chev{ font-size:12px; opacity:.55; }
+.navitem.switchrow.gold{ color:rgb(251,191,36); }
+
+/* The list that drops out of either row. */
+.switchmenu{
+  position:fixed;
+  z-index:80;
+  background:rgb(45,50,66);
+  border:1px solid rgb(75,85,99);
+  border-radius:8px;
+  padding:4px;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+  max-height:60vh;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  min-width:220px;
+}
+.switchopt{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  width:100%;
+  padding:7px 10px;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  color:rgb(243,244,246);
+  font-size:13px;
+  text-align:left;
+  cursor:pointer;
+}
+.switchopt:hover{ background:rgba(255,255,255,.06); }
+.switchopt.on{ color:rgb(251,191,36); }
+.switchopt .ic{ width:18px; text-align:center; flex-shrink:0; }
+.switchopt .lbl{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* "draft-only", "default", "slower" -- the thing worth knowing BEFORE choosing,
+   rather than after switching and finding half the screens empty. */
+.switchopt .note{
+  font-size:10.5px;
+  color:rgb(156,163,175);
+  white-space:nowrap;
+}
+.switchempty{ padding:10px 12px; font-size:12px; color:rgb(156,163,175); }

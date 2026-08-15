@@ -300,6 +300,46 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                       cogs_overrides=_cogs_overrides())
         return jsonify(res), (200 if res.get("ok") else 502)
 
+    @app.route("/sales/hourly")
+    def sales_hourly():
+        """Today by the hour, with yesterday behind it -- Orbit's Live Sales card.
+
+        Built from the SAME order fetch /sales/today already uses, so this adds
+        a shape to data the app was pulling anyway rather than a second call to
+        Amazon. Orders as PLACED, in the account's own timezone; a different
+        measurement from the settled figures below it, and the card says so.
+        """
+        from domain import orders_live as _ol
+        from domain import hourly_sales as _hs
+        try:
+            import accounts as _acc_mod
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        if not acc or not _acc_mod.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error":
+                            "Live orders need this workspace's own Amazon "
+                            "account."}), 400
+        try:
+            # From the START OF YESTERDAY, so both lines come from one fetch.
+            start = _ol.day_start(mkt, 1)
+            orders, truncated = _ol.fetch_since(
+                mkt,
+                _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
+                _acc_mod.account_creds(acc), start)
+            out = _hs.curve(orders, tz=str(_ol.marketplace_zone(mkt)))
+            out["ok"] = True
+            out["truncated"] = truncated
+            if truncated:
+                out["note"] = ("Amazon stopped returning orders part-way "
+                               "through, so the curve is incomplete rather "
+                               "than low.")
+            return jsonify(out)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 502
+
     @app.route("/sales/today")
     def sales_today():
         """Today so far, from the Orders API -- the one thing the report cannot have.

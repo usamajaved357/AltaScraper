@@ -93,6 +93,26 @@
          already stands rather than the items being moved to suit the labels.
          No label sits directly above Supplier Import, which is hidden for most
          accounts -- a label with nothing under it looks like a broken screen. -->
+    <!-- ACCOUNT AND MARKETPLACE, IN THE SIDEBAR, as Orbit has them.
+         Orbit has no landing page: you arrive on a working screen and switch
+         from here. Measured on its own sidebar -- the marketplace row is a nav
+         item 34px tall with 8/16 padding, 14px/500 text in gold
+         (rgb(251,191,36)) when it is the live one, with the country's flag
+         beside it. Ours does the same for the account above it. -->
+    <div class="slbl">Account</div>
+    <div class="navitem switchrow" id="nav_acctswitch" onclick="openAccountSwitch(event)"
+         title="Change account">
+      <i class="ti ti-building-store"></i>
+      <span id="nav_acct_label" class="pii">No account</span>
+      <i class="ti ti-chevron-down chev"></i>
+    </div>
+    <div class="navitem switchrow gold" id="nav_mktswitch" onclick="openMarketSwitch(event)"
+         title="Change marketplace">
+      <span id="nav_mkt_flag">🌐</span>
+      <span id="nav_mkt_label">All</span>
+      <i class="ti ti-chevron-down chev"></i>
+    </div>
+
     <div class="slbl">Operations</div>
     <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> Listings</div>
     <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
@@ -106,7 +126,10 @@
     <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
     <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
     <div class="navitem" data-sec="orders" onclick="navTo('orders')" title="Every account's orders on one screen"><i class="ti ti-receipt"></i> Orders</div>
-    <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs"><i class="ti ti-arrow-back-up"></i> Returns</div>
+    <!-- Named "Returns Intelligence" because that is what it was asked for and
+         what the report it was built from is called. It was labelled plain
+         "Returns", and was looked for repeatedly without being found. -->
+    <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs — the Returns Intelligence report"><i class="ti ti-arrow-back-up"></i> Returns Intelligence</div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
@@ -279,14 +302,74 @@
          cards, then the metrics x dates grid. The grid prints every value as
          text and uses colour only to shade it, so nothing is readable by colour
          alone and the table IS the accessible view. -->
+    <!-- SALES — laid out as Orbit lays it out, measured rather than eyeballed:
+         a page title, then the two "how is it going right now" cards side by
+         side, then the Sales Report panel carrying its own toolbar, figures and
+         one combined chart. The chrome is at the end of dashboard.css and every
+         value in it came off Orbit's live page. -->
     <div id="sec_sales" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2>Sales</h2>
-        <div class="sub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div></div>
+      <div style="margin:0 0 12px">
+        <div style="font-size:28px;font-weight:600;line-height:30.8px;margin:0 0 4px"
+             id="sales_title">Sales</div>
+        <div class="panelsub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div>
+      </div>
+
+      <div class="sales-toprow">
+        <div class="salespanel">
+          <div class="panelhead">
+            <div>
+              <p class="paneltitle">Live Sales</p>
+              <p class="panelsub">Based on order dates<span class="infodot"
+                 title="Orders as Amazon records them arriving. A different measurement from the settled figures below, and it will not tie out to them.">i</span><span
+                 class="panelnote" id="sales_today_note"></span></p>
+            </div>
+            <span class="spacer"></span>
+            <!-- The marketplace's OWN clock, which is what Orbit puts here:
+                 "Pacific Time (PDT): 5:14 PM". This app is run from Pakistan
+                 against UK and US stores, where "today so far" is three
+                 different days, so whose today it is has to be on the card. -->
+            <span id="sales_today_clock" class="panelclock"></span>
+            <!-- The key sits HERE, on the title's own line, because that is where
+                 Orbit's is -- measured: "This Week", "Last Week" and the change
+                 badge share the header row. Ours drew it between the header and
+                 the chart, which pushed the chart down and gave the card a band
+                 of small print Orbit does not have. -->
+            <span id="sales_today_key"></span>
+            <span id="sales_today_delta"></span>
+          </div>
+          <div id="sales_today"></div>
+        </div>
+        <div class="salespanel">
+          <div class="panelhead">
+            <div>
+              <p class="paneltitle">Week to Date</p>
+              <p class="panelsub">Based on order dates<span class="infodot"
+                 title="Monday to today, drawn against the same days of last week.">i</span><span
+                 class="panelnote" id="sales_week_note"></span></p>
+            </div>
+            <span class="spacer"></span>
+            <span id="sales_week_key"></span>
+            <span id="sales_week_delta"></span>
+          </div>
+          <div id="sales_week"></div>
+        </div>
+      </div>
+
+      <div class="salespanel">
+      <div class="panelhead">
+        <div>
+          <p class="paneltitle">Sales Report</p>
+          <p class="panelsub">Based on order dates<span class="infodot"
+             title="Units shipped, dated when the money moved, so the fees and the units beside them describe the same sales.">i</span></p>
+        </div>
       </div>
 
       <div class="salesbar" id="sales_filters">
         <span class="mktswitch" id="sales_presets"></span>
+        <!-- The last three whole months, as Orbit has them beside the presets.
+             A month is the unit a business actually reports in, and picking one
+             from two date boxes is the step nobody takes. -->
+        <span class="mktswitch" id="sales_months"></span>
         <span class="mktswitch" id="sales_gran"></span>
         <span id="sales_custom" style="display:none;gap:6px;align-items:center">
           <input type="date" class="rc-in" id="sales_start" style="width:auto;margin:0"
@@ -299,20 +382,55 @@
                 onchange="salesSetAsin(this.value)" aria-label="Product filter">
           <option value="">All products</option>
         </select>
+        <!-- COMPARE TO, as Orbit has it. The dashed line and every "was: …"
+             figure follow this. Two choices only, because they are the two
+             that mean something: the period immediately before answers "is
+             this week better than last", and the same period a year ago
+             answers it for anything seasonal. -->
+        <span class="cc" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">compare to</span>
+        <select class="rc-in" id="sales_compare" style="width:auto;margin:0"
+                onchange="salesSetCompare(this.value)" aria-label="Compare against">
+          <option value="period">Prior period</option>
+          <option value="year">Prior year</option>
+          <option value="none">Nothing</option>
+        </select>
         <span class="spacer" style="flex:1"></span>
         <span id="sales_range" class="cc" style="font-size:11.5px"></span>
         <button class="mktbtn" onclick="salesSync(this)" title="Pull the days Amazon has not sent yet"><i class="ti ti-refresh"></i> Sync</button>
         <button class="mktbtn" onclick="salesExport()" title="Download this exact grid as CSV"><i class="ti ti-download"></i> Export</button>
       </div>
 
-      <div id="sales_today"></div>
+      <!-- sales_today moved into its own card at the top of the screen, where
+           Orbit puts "Live Sales": it answers a different question from
+           everything below it (orders as placed, not money as settled) and
+           reading it in the middle of the settled figures invited exactly the
+           comparison it does not support. -->
       <div id="sales_cards" class="stat-row"></div>
       <div id="sales_note"></div>
       <!-- Shape first, then which products made it, then the full grid. Reading
            order matches the questions people actually ask, in that order. -->
       <div id="sales_charts"></div>
-      <div id="sales_breakdown"></div>
-      <div id="sales_grid"></div>
+      </div>
+
+      <!-- ORGANIC VS PPC. Orbit's split of what sold by itself against what was
+           paid for. The advertising figures are not connected yet, so the panel
+           is built and says exactly what it is missing rather than being absent
+           until the day the API arrives. -->
+      <div class="salespanel" style="margin-top:16px">
+        <div class="panelhead">
+          <div>
+            <p class="paneltitle">Organic vs PPC Sales</p>
+            <p class="panelsub">Daily breakdown of organic and paid sales revenue<span class="infodot"
+               title="Organic is total sales minus sales attributed to advertising. Both come from Amazon: the totals from the Sales & Traffic report, the attributed half from the Advertising API.">i</span></p>
+          </div>
+        </div>
+        <div id="sales_orgppc"></div>
+      </div>
+
+      <div class="salespanel" style="margin-top:16px">
+        <div id="sales_breakdown"></div>
+        <div id="sales_grid"></div>
+      </div>
     </div>
 
     <!-- PPC section -->
@@ -569,14 +687,24 @@
          fallback: it is how the richest two sections get filled at all. -->
     <div id="sec_returns" class="wspanel">
       <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-arrow-back-up"></i> Returns</h2>
+        <div><h2><i class="ti ti-arrow-back-up"></i> Returns Intelligence</h2>
         <div class="sub">Why things come back, which of it you can fix, and what it actually cost you. Amazon's fifty reason codes grouped into the four things you can do something about.</div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <button class="db-chip" onclick="returnsSetDays(7)">7 days</button>
           <button class="db-chip" onclick="returnsSetDays(30)">30 days</button>
           <button class="db-chip" onclick="returnsSetDays(60)" title="Amazon will not build this report for a wider window than 60 days">60 days</button>
           <button class="db-chip" onclick="returnsLoad()"><i class="ti ti-refresh"></i> Pull from Amazon</button>
-          <button class="db-chip" onclick="returnsUploadOpen()" title="Upload a returns report you downloaded from Seller Central. An FBA Customer Returns file also fills in the condition returns came back in and the customers' own comments, which the API will not give a seller-fulfilled account."><i class="ti ti-file-upload"></i> Upload a report</button>
+          <!-- ONE BUTTON PER REPORT, because there are two and they fill in
+               different halves of this page. A single "upload a report" button
+               does not say which report, and picking the wrong one and being
+               told afterwards is the whole problem. Each button names its
+               report, and the panel below says where to find it in Seller
+               Central. The file is still identified by its COLUMNS, so
+               choosing the wrong button is corrected rather than punished. -->
+          <button class="db-chip" onclick="returnsUploadOpen('fba')"
+                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns"><i class="ti ti-file-upload"></i> Upload FBA returns</button>
+          <button class="db-chip" onclick="returnsUploadOpen('mfn')"
+                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns"><i class="ti ti-file-upload"></i> Upload seller-fulfilled returns</button>
           <input type="file" id="ret_file" accept=".csv,.tsv,.txt" style="display:none" onchange="returnsUploadFile(this)">
         </div>
       </div>
@@ -898,6 +1026,12 @@
 <script src="/static/js/priceedit.js?v={{ ASSET_V }}"></script>
 <!-- Adding a colour or size to a product that is already listed. -->
 <script src="/static/js/addvariant.js?v={{ ASSET_V }}"></script>
+<!-- What a marketplace code means: its flag, its name, its currency. One table,
+     loaded BEFORE shell.js, which draws the flags from it. -->
+<script src="/static/js/marketplaces.js?v={{ ASSET_V }}"></script>
+<!-- The account and marketplace rows in the sidebar, so switching does not mean
+     going back to a landing page first. -->
+<script src="/static/js/switcher.js?v={{ ASSET_V }}"></script>
 <!-- Remembers which screens have already loaded, per account and marketplace,
      so revisiting a tab is instant. Must load BEFORE shell.js, which asks it. -->
 <script src="/static/js/screenstate.js?v={{ ASSET_V }}"></script>
