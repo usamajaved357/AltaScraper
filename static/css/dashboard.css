@@ -1429,6 +1429,18 @@
                      text-transform:none;letter-spacing:0;font-size:11.5px;
                      max-width:210px;overflow:hidden;text-overflow:ellipsis}
   .salesgrid thead th.mcol{z-index:3}
+
+  /* THE SECTION BANDS. Measured on Orbit's P&L Heatmap: its grid is six
+     sections, each introduced by a header row 24px tall on rgb(45,50,66),
+     against 29px transparent for a data row. Without them thirty-eight metrics
+     are one wall of numbers and "is my advertising working" means finding four
+     rows scattered through it. */
+  .salesgrid tr.gsec th.mcol,
+  .salesgrid tr.gsec td{background:rgb(45,50,66);padding:4px 10px;height:24px}
+  .salesgrid tr.gsec th.mcol{font-size:10px;font-weight:600;color:rgb(243,244,246);
+                             text-transform:uppercase;letter-spacing:.05em}
+  /* No hover lift on a heading, and it never shades: it has no numbers in it. */
+  .salesgrid tbody tr.gsec:hover td{box-shadow:none}
   /* A hairline one shade off the surface -- never dashed, never heavy. */
   .salesgrid tbody tr:last-child td,
   .salesgrid tbody tr:last-child th{border-bottom:none}

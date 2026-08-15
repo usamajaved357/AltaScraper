@@ -235,6 +235,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "granularity": gran, "asin": asin,
                         "currency": (rows[0]["currency"] if rows else ""),
                         "columns": order, "metrics": metrics,
+                        # Which section each metric belongs in, so the grid can
+                        # band itself the way Orbit's does -- Sales & revenue,
+                        # PPC, Costs, Traffic -- instead of listing thirty-odd
+                        # rows flat. Sent as a list of (section, keys) so the
+                        # ORDER is the server's and not rebuilt in the browser.
+                        "sections": [{"name": n, "keys": k} for n, k in
+                                     _sd.sections_for([m["key"] for m in metrics])],
                         "empty": not rows})
 
     @app.route("/sales/export")

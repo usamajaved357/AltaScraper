@@ -474,6 +474,70 @@ METRICS = [
 _AGG = {m[0]: m[4] for m in METRICS}
 METRIC_KEYS = [m[0] for m in METRICS]
 
+# =============================================================================
+# WHICH SECTION OF THE GRID EACH METRIC BELONGS TO.
+#
+# "the p&l heatmap has spacing in it to separate data and make it easy to
+# understand visually". Measured on Orbit: its grid is not one long list of
+# thirty-three rows. It is six SECTIONS, each introduced by a header row --
+# 24px tall on rgb(45,50,66), against 29px transparent for a data row:
+#
+#     SALES & REVENUE   ORGANIC   PPC   COSTS & DEDUCTIONS   TRAFFIC   DERIVED
+#
+# That banding is the whole difference between a grid you can scan and a wall of
+# numbers: "is my advertising working" is answered by four adjacent rows rather
+# than by four rows scattered through thirty.
+#
+# Declared HERE, beside the metrics themselves, because a metric's section is a
+# fact about the metric. Kept as a separate table rather than a seventh element
+# of each tuple so that nothing already unpacking those five positions breaks.
+#
+# Order matters: the grid draws the sections in this order and the metrics
+# within each section in METRICS order. Anything not listed falls into "Other",
+# which is how a newly added metric appears at all rather than vanishing.
+METRIC_SECTIONS = [
+    ("Sales & revenue", [
+        "ordered_sales", "net_revenue", "principal", "profit", "margin_pct",
+        "orders", "units", "units_shipped", "avg_selling_price",
+        "ordered_sales_b2b", "units_b2b",
+    ]),
+    ("PPC", [
+        "ad_sales", "spend", "ad_orders", "acos", "tacos", "roas",
+        "impressions", "clicks",
+    ]),
+    ("Costs & deductions", [
+        "total_fees", "referral_fees", "fba_fees", "other_fees", "fee_rate",
+        "cogs", "vat", "refunds", "refund_units", "refund_rate", "promos",
+        "reimbursements", "net_proceeds",
+    ]),
+    ("Traffic", [
+        "sessions", "sessions_mobile", "sessions_browser", "page_views",
+        "unit_session_pct", "buy_box_pct",
+    ]),
+]
+
+# key -> section name, for the renderer.
+METRIC_SECTION_OF = {k: name for name, keys in METRIC_SECTIONS for k in keys}
+
+
+def sections_for(keys):
+    """[(section, [key, ...]), ...] for the keys actually present, in order.
+
+    Empty sections are dropped: a heading over nothing is worse than no heading,
+    and which metrics arrive depends on which Amazon feeds have answered.
+    """
+    have = set(keys or [])
+    out = []
+    for name, wanted in METRIC_SECTIONS:
+        got = [k for k in wanted if k in have]
+        if got:
+            out.append((name, got))
+    placed = {k for _, got in out for k in got}
+    rest = [k for k in (keys or []) if k not in placed]
+    if rest:
+        out.append(("Other", rest))
+    return out
+
 
 def aggregate(rows, key):
     """One metric over many rows, by that metric's OWN rule.

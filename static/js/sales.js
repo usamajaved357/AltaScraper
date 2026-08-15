@@ -1509,13 +1509,16 @@ function salesDrawGrid(ser){
       + cols.map(function(c){ return '<th>'+_sEsc(_sColLabel(c, ser.granularity))+'</th>'; }).join("")
       + '</tr></thead><tbody>';
 
-  (ser.metrics||[]).forEach(function(m){
+  // ONE ROW, drawn the same way wherever it appears.
+  const byKey = {};
+  (ser.metrics||[]).forEach(function(m){ byKey[m.key] = m; });
+  const drawRow = function(m){
     // Shade against THIS metric's own range. Shading across rows would compare
     // sessions with revenue, which means nothing.
     const nums=m.cells.filter(function(v){ return v!==null && v!==undefined; }).map(Number);
     const lo=Math.min.apply(null, nums.length?nums:[0]);
     const hi=Math.max.apply(null, nums.length?nums:[0]);
-    h += '<tr><th class="mcol" title="'+_sEsc(m.label)+'">'+_sEsc(m.label)+'</th>'
+    return '<tr><th class="mcol" title="'+_sEsc(m.label)+'">'+_sEsc(m.label)+'</th>'
        + m.cells.map(function(v){
            const t=_sTint(v, lo, hi, m.key);
            const txt=_sNum(v, m.kind, ser.currency);
@@ -1523,7 +1526,36 @@ function salesDrawGrid(ser){
                 + ' title="'+_sEsc(m.label+": "+txt)+'">'+_sEsc(txt)+'</td>';
          }).join("")
        + '</tr>';
+  };
+
+  // BANDED INTO SECTIONS, as Orbit's is.
+  //
+  // "the p&l heatmap has spacing in it to separate data and make it easy to
+  // understand visually". Measured on Orbit: its grid is six sections, each
+  // introduced by a header row -- SALES & REVENUE, ORGANIC, PPC, COSTS &
+  // DEDUCTIONS, TRAFFIC, DERIVED -- 24px tall on rgb(45,50,66) against 29px
+  // transparent for a data row.
+  //
+  // That banding is the difference between a grid you can scan and a wall of
+  // numbers: "is my advertising working" becomes four adjacent rows instead of
+  // four rows scattered through thirty-eight.
+  //
+  // The sections come from the SERVER, next to where the metrics themselves are
+  // defined, so the order cannot drift from the order the metrics are sent in.
+  // An older answer with no `sections` still draws -- as one flat list, exactly
+  // as before.
+  const sections = (ser.sections || []).filter(function(s){
+    return (s.keys || []).some(function(k){ return byKey[k]; });
   });
+  if(sections.length){
+    sections.forEach(function(s){
+      h += '<tr class="gsec"><th class="mcol">' + _sEsc(s.name) + '</th>'
+         + '<td colspan="' + cols.length + '"></td></tr>';
+      (s.keys || []).forEach(function(k){ if(byKey[k]) h += drawRow(byKey[k]); });
+    });
+  } else {
+    (ser.metrics||[]).forEach(function(m){ h += drawRow(m); });
+  }
   h+='</tbody></table></div>';
   host.innerHTML=h;
 }
