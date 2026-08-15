@@ -138,6 +138,57 @@ console.log("\n=== one change badge, not three ===");
         (js.match(/<span class="pct-badge /g) || []).length, 1);
 }
 
+console.log("\n=== a card that could not load says so ===");
+/* FOUND BY DRIVING THE LIVE APP: /sales/today answers 502 on sheelady_us --
+ * Amazon's own words are "Unauthorized: Access to requested resource is
+ * denied", an SP-API role that account's app registration has not been granted.
+ * The three UK accounts answer 200 to the same call, so it is that account's
+ * authorisation and not this code.
+ *
+ * The screen's response was to blank the card. An empty region reads as "no
+ * sales today", which is a different fact from "Amazon refused to say" -- and
+ * only one of them tells you what to go and fix.
+ */
+{
+  const _sEsc = x => String(x == null ? "" : x);
+  const a = js.indexOf("function _sCardError");
+  const b = js.indexOf("/* THE CHANGE BADGE");
+  check("there is one place that reports a failed card", a >= 0 && b > a, true);
+  const fn = new Function("_sEsc", js.slice(a, b) + "; return _sCardError;")(_sEsc);
+  let el = {innerHTML: ""};
+  fn(el, "[{'code': 'Unauthorized', 'message': 'Access to requested resource is denied.'}]",
+     "Live Sales");
+  check("it names the card", el.innerHTML.indexOf("Live Sales") >= 0, true);
+  check("  says Amazon refused, not that there were no sales",
+        el.innerHTML.indexOf("Amazon refused") >= 0, true);
+  check("  points at where the fix actually is",
+        el.innerHTML.indexOf("Seller Central") >= 0, true);
+  check("  and shows Amazon's own words, which name the missing role",
+        el.innerHTML.indexOf("Unauthorized") >= 0, true);
+  // A different failure must NOT be described as a permissions problem.
+  el = {innerHTML: ""};
+  fn(el, "NetworkError: failed to fetch", "Live Sales");
+  check("an ordinary failure is not mislabelled as a permission",
+        el.innerHTML.indexOf("Seller Central") >= 0, false);
+  check("  but it is still reported",
+        el.innerHTML.indexOf("could not be loaded") >= 0, true);
+  // And the call sites use it rather than blanking.
+  check("the Live Sales loader no longer blanks itself",
+        /if\(!j \|\| !j\.ok\)\{ el\.innerHTML="";/.test(js), false);
+  check("  it reports instead", /_sCardError\(el, \(j && j\.error\)/.test(js), true);
+  check("  and so does the catch",
+        /catch\(e\)\{ _sCardError\(el, String\(e\)/.test(js), true);
+}
+
+console.log("\n=== an empty period is said, not left blank ===");
+// The same fault in a second place: a period with no columns drew nothing at
+// all, so the top half of the screen was empty with no explanation. Seen on a
+// live account whose range genuinely had no figures.
+check("the charts region explains an empty period",
+      js.indexOf("Nothing to chart for this period yet") >= 0, true);
+check("  and offers Sync as the fix",
+      /Nothing to chart[\s\S]{0,240}Sync/.test(js), true);
+
 console.log("\n=== ads are declared missing, never zero ===");
 check("the card says 'not connected'", /not connected/.test(js), true);
 check("and the reason is shown", /sum\.ads_note/.test(js), true);

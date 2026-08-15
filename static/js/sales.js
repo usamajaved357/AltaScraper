@@ -306,7 +306,19 @@ function salesDrawCharts(ser){
   // depending on the granularity picked, so the charts follow it automatically.
   const dates = (ser && ser.columns) || [];
   const rows  = (ser && ser.metrics) || [];
-  if(!dates.length){ host.innerHTML = ""; return; }
+  // A PERIOD WITH NOTHING IN IT SAYS SO, rather than leaving the space where
+  // three charts belong empty. Seen on a live account: the request succeeded and
+  // returned no columns, and the top half of the screen was simply blank, which
+  // reads as a screen that failed to draw. Charting nothing is right; saying
+  // nothing about it is not.
+  if(!dates.length){
+    host.innerHTML = '<div class="cc" style="padding:18px;border:1px dashed '
+      + 'var(--line);border-radius:8px;font-size:12px">'
+      + 'Nothing to chart for this period yet — Amazon has sent no figures for '
+      + 'these dates. Press <b>Sync</b> to pull what it has, or widen the range.'
+      + '</div>';
+    return;
+  }
 
   // Remembered so a drag on any chart can turn two column positions back into
   // two dates. The charts all share one set of columns, so any of them can zoom.
@@ -929,7 +941,11 @@ async function salesLoadToday(){
   if(!el) return;
   try{
     const j=await (await fetch("/sales/today?"+_sQuery())).json();
-    if(!j || !j.ok){ el.innerHTML=""; return; }
+    // NOT BLANKED. See _sCardError: measured on sheelady_us, this call answers
+    // 502 because Amazon refuses the account's app the Orders data, and the
+    // card simply disappeared -- which reads as "no sales today" rather than
+    // "Amazon would not tell us".
+    if(!j || !j.ok){ _sCardError(el, (j && j.error) || "", "Live Sales"); return; }
     const t=j.today||{}, y=j.yesterday||null, d=j.delta_pct||{};
     const cur=t.currency||"";
     function bit(label, v, kind, key){
@@ -952,7 +968,40 @@ async function salesLoadToday(){
       + '<div id="sales_hourly"></div>';
     // The curve underneath, which is the shape Orbit's Live Sales card is.
     salesLoadHourly().catch(function(){});
-  }catch(e){ el.innerHTML=""; }
+  }catch(e){ _sCardError(el, String(e), "Live Sales"); }
+}
+
+/* A CARD THAT COULD NOT LOAD SAYS SO.
+ *
+ * Found by driving the live app: /sales/today answers 502 on sheelady_us,
+ * because Amazon refuses it -- "Unauthorized: Access to requested resource is
+ * denied", which is an SP-API role the app registration has not been granted.
+ * The three UK accounts answer 200 on the same call, so it is that account's
+ * authorisation and not this code.
+ *
+ * What the screen did with that was blank the card. An empty region reads as a
+ * design that forgot something, or as "no sales", and neither is true -- the
+ * figure was refused, which is a different fact and the only one that tells you
+ * what to go and fix.
+ *
+ * Amazon's own words are shown, because the fix is in Seller Central and the
+ * message is what identifies which permission is missing.
+ */
+function _sCardError(el, err, what){
+  if(!el) return;
+  const raw = String(err || "").trim();
+  const denied = /unauthor|forbidden|access to requested resource/i.test(raw);
+  el.innerHTML = '<div class="ri-samplebar" style="margin:0">'
+    + '<b>' + _sEsc(what) + ' could not be loaded.</b> '
+    + (denied
+        ? 'Amazon refused the request: this account\'s Amazon app is not '
+          + 'authorised for the data this card needs. Re-authorise it in Seller '
+          + 'Central with the role that covers it, then reload.'
+        : 'The request failed.')
+    + (raw ? '<div class="cc" style="margin-top:6px;font-size:11px;'
+             + 'font-family:ui-monospace,monospace">' + _sEsc(raw.slice(0, 220))
+             + '</div>' : "")
+    + '</div>';
 }
 
 /* THE CHANGE BADGE -- "↑ 16.9 %" -- built in ONE place.
