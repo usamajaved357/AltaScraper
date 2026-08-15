@@ -72,15 +72,31 @@ print("\n=== the run is scoped by the page, not by a process-wide variable ===")
 truthy("the browser sends the account it is displaying",
        '_runParams.set("account_id", CUR_ACCOUNT.id)' in INV)
 truthy("  and the marketplace with it", '_runParams.set("marketplace", WS_MARKET)' in INV)
-truthy("the server reads it", '_req_account = (request.args.get("account_id")' in RUN)
-truthy("  compares it with its own idea", '_state_account' in RUN)
+# The reading and comparing now live in domain/request_account.py, shared with
+# the Sales screen's read path -- the two need OPPOSITE answers (a read resolves
+# to the page's account, a write refuses), and settling them in one module is
+# what stops them drifting apart. The behaviour asserted below is unchanged; only
+# its address is. See test_request_account.py for the module's own tests.
+import domain.request_account as _ra
+from flask import Flask as _Flask, request as _flask_request
+_flask_app = _Flask(__name__)
+truthy("the server reads it", 'request_account' in RUN)
+truthy("  through the one module that answers this for reads and writes",
+       "mismatch_for_write" in RUN)
+truthy("  which compares it with the server's own idea",
+       'active_account_id' in open("domain/request_account.py", encoding="utf-8").read())
 # The important part: a disagreement STOPS the run. A run writes listings and a
 # submit reaches Amazon; picking either side silently is how one account's
 # products end up in another's catalogue.
-truthy("  and REFUSES when they disagree", "ACCOUNT_MISMATCH" in RUN)
-truthy("  refusing with nothing run", "nothing was run" in RUN)
+with _flask_app.test_request_context("/run?account_id=nestwell_goods"):
+    _msg = _ra.mismatch_for_write(_flask_request, {"active_account_id": "jack_uk"},
+                                  what="run")
+truthy("  and REFUSES when they disagree", "ACCOUNT_MISMATCH" in _msg)
+truthy("  refusing with nothing run", "nothing was run" in _msg)
+with _flask_app.test_request_context("/run"):
+    _msg0 = _ra.mismatch_for_write(_flask_request, {"active_account_id": ""})
 truthy("no account at all is also refused, not defaulted",
-       "No account is selected" in RUN)
+       "No account is selected" in _msg0)
 
 print("\n=== and the page puts it right instead of leaving you stuck ===")
 truthy("the mismatch triggers a reselect", 'ACCOUNT_MISMATCH' in INV)

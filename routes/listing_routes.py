@@ -1234,19 +1234,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         # writes listings and a submit reaches Amazon; if there is any doubt
         # about whose account that is, the only safe answer is to do nothing and
         # say so. Reloading the page settles it.
-        _req_account = (request.args.get("account_id") or "").strip()
-        _state_account = str(_state.get("active_account_id", "") or "")
-        _mismatch = ""
-        if _req_account and _req_account != _state_account:
-            _mismatch = (
-                "ACCOUNT_MISMATCH This page is showing %s but the server has %s "
-                "selected, so nothing was run. A run uses real credentials and "
-                "writes real listings, so it will not guess which account you "
-                "meant — reselecting %s and retrying."
-                % (_req_account, _state_account or "no account", _req_account))
-        elif not _req_account and not _state_account:
-            _mismatch = ("No account is selected, so there is nothing to run "
-                         "against. Choose an account at the top of the screen.")
+        # The same question the Sales screen asks, answered in the same place --
+        # domain/request_account.py. A read there resolves TO the page's account;
+        # a write here refuses on a mismatch. Two opposite policies, one module,
+        # so neither can quietly drift from the other.
+        import domain.request_account as _req_acct
+        _mismatch = _req_acct.mismatch_for_write(request, _state, what="run")
         if _mismatch:
             return Response("data: [error] %s\n\nevent: end\ndata: end\n\n"
                             % _mismatch.replace("\n", " "),

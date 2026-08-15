@@ -198,9 +198,44 @@ function salesSetAsin(v){
 }
 
 /* ---- loading ----------------------------------------------------------- */
+/* The account this screen is displaying, named on every request.
+ *
+ * The server holds ONE active-account variable for the whole process, so a
+ * reply could come back describing whichever account the global had drifted to
+ * by the time the request was handled -- which is what changed Nestwell Goods'
+ * figures after switching away and back. Naming it here means the answer always
+ * describes the screen that asked. See domain/request_account.py. */
+function _sAcct(){
+  try{ return (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
+              ? String(CUR_ACCOUNT.id || "") : ""; }catch(e){ return ""; }
+}
+
+/* Every request this screen makes, with the account attached and late replies
+ * dropped. ONE place, so neither guarantee can be forgotten at a call site --
+ * three of the queries on this screen are hand-built rather than going through
+ * _sQuery(), and those were the ones travelling with no account at all.
+ *
+ * Naming the account fixes WHICH data comes back. Dropping the late reply fixes
+ * WHERE it is painted: a reply for the account you have just left must not be
+ * written into the account you have just opened, however correct it is.
+ *
+ * Returns null when the workspace moved on -- callers stop rather than paint. */
+async function _sFetch(url, opts){
+  const acct = _sAcct();
+  let u = String(url);
+  if(acct && u.indexOf("account_id=") < 0){
+    u += (u.indexOf("?") < 0 ? "?" : "&") + "account_id=" + encodeURIComponent(acct);
+  }
+  const r = await fetch(u, opts);
+  const j = await r.json();
+  return (_sAcct() === acct) ? j : null;
+}
+
 function _sQuery(){
   const q=["preset="+encodeURIComponent(SALES.preset),
            "granularity="+encodeURIComponent(SALES.gran)];
+  const _a = _sAcct();
+  if(_a) q.push("account_id="+encodeURIComponent(_a));
   if(SALES.preset==="custom" && SALES.start && SALES.end){
     q.push("start="+encodeURIComponent(SALES.start));
     q.push("end="+encodeURIComponent(SALES.end));
@@ -229,8 +264,9 @@ async function salesLoadBreakdown(){
   if(!host) return;
   host.innerHTML = '<div class="cc" style="padding:14px"><span class="genspin"></span> Loading products…</div>';
   try{
-    const j = await (await fetch("/sales/breakdown?"+_sQuery()
-                                 +"&group="+encodeURIComponent(SALES_BD.group))).json();
+    const j = await _sFetch("/sales/breakdown?"+_sQuery()
+                            +"&group="+encodeURIComponent(SALES_BD.group));
+    if(j === null) return;
     if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'
       + _sEsc((j&&j.error)||"Could not load") + '</div>'; return; }
     SALES_BD.rows = j.rows || [];
@@ -742,11 +778,13 @@ async function salesReload(){
     // AVAILABILITY FIRST. Ask what dates exist before asking for numbers, so a
     // period Amazon has not delivered is reported as such instead of drawn as a
     // wall of zeros.
-    const av = await (await fetch("/sales/availability?"+_sQuery())).json();
+    const av = await _sFetch("/sales/availability?"+_sQuery());
+    if(av === null) return;
     const [sum, ser] = await Promise.all([
-      (await fetch("/sales/summary?"+_sQuery())).json(),
-      (await fetch("/sales/series?"+_sQuery())).json()
+      _sFetch("/sales/summary?"+_sQuery()),
+      _sFetch("/sales/series?"+_sQuery())
     ]);
+    if(sum === null || ser === null) return;
     SALES.data=sum; SALES.series=ser;
     // The period immediately before this one, for the comparison line. Fetched
     // separately and NOT awaited with the rest: the charts must not wait for
@@ -804,7 +842,8 @@ async function salesLoadRecent(){
   if(!SALES.series || !((SALES.series.columns) || []).length) return;
   let j;
   try{
-    j = await (await fetch("/sales/recent?days=6&" + _sQuery())).json();
+    j = await _sFetch("/sales/recent?days=6&" + _sQuery());
+    if(j === null) return;
   }catch(e){ return; }
   // A 502 here is normal and not worth reporting: an account whose Amazon app
   // is not authorised for Orders simply keeps the report-only chart it had.
@@ -932,7 +971,7 @@ async function salesLoadCompare(sum){
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
 
-  const j = await (await fetch("/sales/series?" + q.join("&"))).json();
+  const j = await _sFetch("/sales/series?" + q.join("&"));
   if(!j || !j.ok || !(j.columns || []).length) return;
   SALES.compare = j;
   // The offset, in days, between a column here and the column it is compared
@@ -977,8 +1016,9 @@ async function salesLoadWeek(){
   host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">Loading…</div>';
   let now, before;
   try{
-    now    = await (await fetch("/sales/series?" + base(mon, today))).json();
-    before = await (await fetch("/sales/series?" + base(lastMon, lastEnd))).json();
+    now    = await _sFetch("/sales/series?" + base(mon, today));
+    before = await _sFetch("/sales/series?" + base(lastMon, lastEnd));
+    if(now === null || before === null) return;
   }catch(e){
     host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
       + 'Could not load this week.</div>';
@@ -1195,7 +1235,8 @@ async function salesLoadToday(){
   const el=document.getElementById("sales_today");
   if(!el) return;
   try{
-    const j=await (await fetch("/sales/today?"+_sQuery())).json();
+    const j=await _sFetch("/sales/today?"+_sQuery());
+    if(j === null) return;   // the workspace moved on while this was in flight
     // NOT BLANKED. See _sCardError: measured on sheelady_us, this call answers
     // 502 because Amazon refuses the account's app the Orders data, and the
     // card simply disappeared -- which reads as "no sales today" rather than
@@ -1345,7 +1386,8 @@ async function salesLoadHourly(){
   if(!el) return;
   let j;
   try{
-    j = await (await fetch("/sales/hourly?" + _sQuery())).json();
+    j = await _sFetch("/sales/hourly?" + _sQuery());
+    if(j === null) return;
   }catch(e){ return; }
   if(!j || !j.ok || !(j.hours || []).length) return;
 
@@ -1872,7 +1914,7 @@ async function salesLoadGrid(){
     if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
     if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
       q.push("marketplace=" + encodeURIComponent(WS_MARKET));
-    const j = await (await fetch("/sales/series?" + q.join("&"))).json();
+    const j = await _sFetch("/sales/series?" + q.join("&"));
     if(j && j.ok){ SALES.gridSeries = j; salesDrawGrid(j); }
   }catch(e){
     // Left as it was rather than blanked: the previous grid is still true of
@@ -2017,10 +2059,16 @@ async function salesSync(btn){
   const old = btn ? btn.innerHTML : "";
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="genspin"></span> pulling…'; }
   try{
-    const j=await (await fetch("/sales/sync",{method:"POST",
+    // A sync WRITES days into this account's store, so it names the account in
+    // the body as well -- _sFetch puts it on the query string, and the server
+    // reads either. A pull that landed under the wrong account would take a
+    // re-sync of both to undo.
+    const j=await _sFetch("/sales/sync",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({marketplace:(typeof WS_MARKET!=="undefined"?WS_MARKET:"")})})).json();
-    if(!j.ok){ toast(j.error||"Could not pull sales"); return; }
+      body:JSON.stringify({marketplace:(typeof WS_MARKET!=="undefined"?WS_MARKET:""),
+                           account_id:_sAcct()})});
+    if(j === null) return;
+    if(!j || !j.ok){ toast((j&&j.error)||"Could not pull sales"); return; }
     // Say what is LEFT as well as what arrived: a backfill runs in passes, and
     // "7 days pulled" alone looks like it finished when it has not.
     let msg="Pulled "+(j.fetched||0)+" day"+((j.fetched===1)?"":"s");
@@ -2052,7 +2100,8 @@ async function salesFillAsins(){
   if(!sel) return;
   let items=[];
   try{
-    const j=await (await fetch("/sales/products?"+_sQuery())).json();
+    const j=await _sFetch("/sales/products?"+_sQuery());
+    if(j === null) return;
     if(j && j.ok) items=j.products||[];
   }catch(e){ /* the filter is an aid; losing it must not take the screen down */ }
 

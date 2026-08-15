@@ -127,6 +127,15 @@ function ordersRender(){
     +  cur.map(function(c){
          return '<span class="cc">' + _oEsc(c) + ' '
               + Number(s.revenue_by_currency[c]).toFixed(2) + '</span>'; }).join("")
+    // SAID OUT LOUD, because the Sales screen shows a different figure for these
+    // same orders and neither is wrong. This is what the buyers PAID, shipping
+    // included; Total Sales on the Sales screen is ordered product sales, which
+    // excludes it. On three orders of one item they read 102.21 and 89.97, and
+    // an unexplained gap between two of your own screens is worse than either.
+    +  (cur.length ? '<span class="cc" title="Summed from each order&#39;s total, so '
+                   + 'it includes shipping. The Sales screen shows ordered product '
+                   + 'sales, which excludes shipping — that is the figure Amazon '
+                   + 'calls Total Sales.">charged, incl. shipping</span>' : '')
     +  '<span class="cc">last ' + ORD.days + ' days</span>'
     +  '</div>';
 
