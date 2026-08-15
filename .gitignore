@@ -103,3 +103,8 @@ run_status.json
 # runtime state, written beside config.json -- committing it would carry this
 # box's failures to the server and rest marketplaces that work fine there.
 marketplace_health.json
+
+# The one-time copy of everything the Google Sheets held, taken before the app
+# was detached from them. Megabytes of real listing data for real businesses --
+# it belongs beside config.json on the persistent disk, never in the repository.
+sheets_archive_*.json

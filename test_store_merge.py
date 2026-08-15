@@ -122,10 +122,23 @@ from data import choice as _choice
 import json as _json
 
 _cfg = _json.load(open("config.json", encoding="utf-8"))
-check("the default is to keep reading the sheet",
-      _choice.sheets_fallback(_cfg, "config.json"), True)
+# ASSERTED ON A CONFIG THAT HAS NOT ANSWERED, not on this machine's live one.
+# These two read config.json directly and asserted True, so they were really
+# testing "whoever ran this has not turned Sheets off yet" -- and they failed the
+# day the owner did exactly that, deliberately, having archived every workbook
+# first. The behaviour actually worth pinning is that SILENCE means keep reading.
+_unanswered = {k: v for k, v in _cfg.items() if k != _choice.FALLBACK_KEY}
+check("with nobody having said, the sheet is still read",
+      _choice.sheets_fallback(_unanswered, "config.json"), True)
 check("  which is what stops a half-migrated account showing an empty screen",
-      _choice.sheets_fallback(dict(_cfg), "config.json"), True)
+      _choice.sheets_fallback(dict(_unanswered), "config.json"), True)
+# And that saying so is honoured -- the point of the setting.
+check("turning it off is respected",
+      _choice.sheets_fallback(dict(_unanswered, **{_choice.FALLBACK_KEY: False}),
+                              "config.json"), False)
+check("  and turning it back on",
+      _choice.sheets_fallback(dict(_unanswered, **{_choice.FALLBACK_KEY: True}),
+                              "config.json"), True)
 check("it can be switched off in config",
       _choice.sheets_fallback(dict(_cfg, read_sheets_as_well=False), "config.json"), False)
 check("  including as a string, since config files are edited by hand",

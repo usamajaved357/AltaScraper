@@ -245,8 +245,10 @@ let GEN_ACTIVE_JOB="";      // the job whose detail the panel shows
 let GEN_PANEL_OPEN=false;
 
 async function pollGenStatus(){
+  let _busy=false;
   try{
     const j=await (await fetch("/genimage/jobs_active")).json();
+    _busy = !!(j && j.ok && j.jobs && j.jobs.length);
     const bar=document.getElementById("genstatusbar");
     const txt=document.getElementById("genstatustext");
     if(bar&&txt){
@@ -279,11 +281,17 @@ async function pollGenStatus(){
     // if the detail panel is open, refresh it
     if(GEN_PANEL_OPEN && GEN_ACTIVE_JOB){ refreshGenPanel(); }
   }catch(e){}
+  // TRUE while images are actually generating, or while the detail panel is
+  // open and being watched. Otherwise this slows and stops -- it used to ask
+  // every two seconds for ever, 28 of the 84 requests during one Listings load.
+  return _busy || (GEN_PANEL_OPEN && !!GEN_ACTIVE_JOB);
 }
 function startGenStatusPoll(){
-  if(GEN_STATUS_POLL) return;
-  pollGenStatus();
-  GEN_STATUS_POLL=setInterval(pollGenStatus, 2000);
+  if(!GEN_STATUS_POLL){
+    GEN_STATUS_POLL = altaPoller({name: "genimage", every: 2000,
+                                  idleEvery: 20000, tick: pollGenStatus});
+  }
+  GEN_STATUS_POLL.wake();
 }
 function openGenPanel(){
   const p=document.getElementById("genpanel"); if(!p) return;
