@@ -485,6 +485,18 @@ _ADDED_COLUMNS = [
     ("finance_daily", "tax", "REAL"),
     ("finance_daily", "refund_tax", "REAL"),
     ("sourcing_sources", "shipping_override", "REAL"),
+    # POSTAGE THE BUYER PAID, kept beside the item price rather than folded into
+    # it. The owner counts revenue as everything the buyer handed over --
+    # "this is the total revenue i generated" -- so the two have to be separable:
+    # Amazon's own Ordered Product Sales is the item price ALONE, and a screen
+    # that cannot tell them apart cannot be reconciled against Seller Central.
+    ("order_lines", "shipping", "REAL"),
+    # WHAT THAT LINE COST, frozen at the moment the order was seen. Looked up
+    # later instead, an order from July would silently pick up August's supplier
+    # price and last month's profit would move every time a supplier did.
+    ("order_lines", "cogs", "REAL"),
+    ("order_lines", "cogs_source", "TEXT"),    # 'manual' | 'tracked' | 'sku' | ''
+    ("order_lines", "cogs_at", "TEXT"),        # when it was resolved
 ]
 
 

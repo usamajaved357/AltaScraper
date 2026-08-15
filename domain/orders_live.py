@@ -102,9 +102,14 @@ def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
     say this order contained" is how two screens come to disagree about one
     order.
 
-    Each line: {asin, sku, title, units, price, currency}. `price` is ItemPrice
-    -- the money for the goods, which is what Amazon calls ordered product sales
-    and what the seller counts. It excludes shipping.
+    Each line: {asin, sku, title, units, price, shipping, currency}.
+
+    `price` is ItemPrice -- the money for the goods, which is what Amazon calls
+    ordered product sales. `shipping` is ShippingPrice, the postage the BUYER
+    paid, kept as its own number rather than added in. Both are wanted and they
+    are not interchangeable: Seller Central reconciles against the first, and the
+    owner's revenue is the two together. Folded into one field, neither question
+    could be answered afterwards.
     """
     from sp_api.api import Orders
     from sp_api.base import Marketplaces
@@ -127,35 +132,63 @@ def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
         lines = []
         for it in items:
             ip = it.get("ItemPrice") or {}
+            sp = it.get("ShippingPrice") or {}
             try:
                 qty = int(it.get("QuantityOrdered") or 0)
             except (TypeError, ValueError):
                 qty = 0
-            try:
-                price = float(ip.get("Amount") or 0.0)
-            except (TypeError, ValueError):
-                price = 0.0
+
+            def _money(node):
+                try:
+                    return float((node or {}).get("Amount") or 0.0)
+                except (TypeError, ValueError):
+                    return 0.0
+
             lines.append({
                 "asin": str(it.get("ASIN") or ""),
                 "sku": str(it.get("SellerSKU") or ""),
                 "title": str(it.get("Title") or ""),
                 "units": qty,
-                "price": price,
-                "currency": str(ip.get("CurrencyCode") or ""),
+                "price": _money(ip),
+                "shipping": _money(sp),
+                "currency": str(ip.get("CurrencyCode")
+                                or sp.get("CurrencyCode") or ""),
             })
         out[oid] = lines
     return out, complete
 
 
+def revenue_of(priced_entry, include_shipping):
+    """(amount, currency) for one priced order, on the chosen definition.
+
+    ONE PLACE decides what "revenue" adds up, because the choice is genuinely
+    two different questions and both get asked:
+
+      item only        Amazon's Ordered Product Sales, and what Seller Central
+                       shows -- the figure to reconcile against.
+      item + postage   everything the buyer handed over, which is the money the
+                       business actually took: "this is the total revenue i
+                       generated ... the fees are cut afterwards from it".
+    """
+    if not priced_entry:
+        return 0.0, ""
+    item, ship, cur = priced_entry
+    return (round(float(item) + (float(ship) if include_shipping else 0.0), 2),
+            cur)
+
+
 def product_sales(marketplace, creds, orders, max_orders=MAX_ITEM_LOOKUPS,
                   cache=None):
-    """Ordered product sales per order: {order_id: (amount, currency)}, + how many
+    """Per order: {order_id: (item_price, buyer_postage, currency)}, and how many
     could not be read.
 
     WHY THIS EXISTS: the owner counted 89.97 for three orders and the app showed
     102.21. Both were right about different things -- 3 x 29.99 of goods, plus
-    3 x 4.08 of shipping. Amazon's own Total Sales, the Sales & Traffic report's
-    ordered_sales, and what a seller means by "my sales" are all the FIRST one.
+    3 x 4.08 of postage. Amazon's own Total Sales and the Sales & Traffic
+    report's ordered_sales are the FIRST one; the owner's revenue is the two
+    together. BOTH are kept, separately, and revenue_of() decides which a given
+    screen is asking for -- because a figure that has already added them cannot
+    be taken apart again to reconcile against Seller Central.
 
     This matters beyond the label. The Sales chart fills days the report has not
     delivered from the Orders API; with OrderTotal there, a filled day and a
@@ -193,24 +226,30 @@ def product_sales(marketplace, creds, orders, max_orders=MAX_ITEM_LOOKUPS,
         lines = items.get(oid)
         if lines is None:
             continue
-        amt = round(sum(float(l.get("price") or 0.0) for l in lines), 2)
+        item = round(sum(float(l.get("price") or 0.0) for l in lines), 2)
+        ship = round(sum(float(l.get("shipping") or 0.0) for l in lines), 2)
         cur = next((l.get("currency") for l in lines if l.get("currency")), "")
-        out[oid] = (amt, cur)
+        out[oid] = (item, ship, cur)
     return out, len(ids) - len(out), complete
 
 
-def summarise(orders, priced=None):
+def summarise(orders, priced=None, include_shipping=True):
     """Orders -> the numbers a person wants. Pending counted, but not banked.
 
-    `priced` is {order_id: (amount, currency)} from product_sales(). Given it,
-    revenue is ordered PRODUCT sales -- the item price, which is what Amazon's
-    own Total Sales shows and what the seller counts. Without it, revenue falls
-    back to OrderTotal, which also includes shipping.
+    `priced` is {order_id: (item, postage, currency)} from product_sales().
+    Given it, revenue is built by revenue_of() -- item price plus the buyer's
+    postage by default, because that is the money the business actually took.
+    `product_sales` is reported alongside regardless, so the figure that
+    reconciles against Seller Central is never lost.
+
+    Without `priced`, revenue falls back to OrderTotal.
     """
     priced = priced or {}
     out = {"orders": 0, "units": 0, "revenue": 0.0, "pending": 0,
            "cancelled": 0, "currency": "",
-           "basis": "product_sales" if priced else "order_total"}
+           "product_sales": 0.0, "shipping": 0.0,
+           "basis": ("revenue_with_postage" if (priced and include_shipping)
+                     else "product_sales" if priced else "order_total")}
     for o in orders or []:
         status = str(o.get("OrderStatus") or "").lower()
         if status in _DEAD:
@@ -223,7 +262,12 @@ def summarise(orders, priced=None):
         except (TypeError, ValueError):
             pass
         oid = str(o.get("AmazonOrderId") or "")
-        amt, cur = priced[oid] if oid in priced else _amount(o)
+        if oid in priced:
+            amt, cur = revenue_of(priced[oid], include_shipping)
+            out["product_sales"] = round(out["product_sales"] + priced[oid][0], 2)
+            out["shipping"] = round(out["shipping"] + priced[oid][1], 2)
+        else:
+            amt, cur = _amount(o)
         if amt:
             out["revenue"] = round(out["revenue"] + amt, 2)
             if cur and not out["currency"]:
@@ -262,7 +306,8 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
     return got, True
 
 
-def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None):
+def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None,
+           include_shipping=True):
     """Orders per day for the last `days` days, from the ORDERS API.
 
     WHY THIS EXISTS: "but in amazon i am able to see the sales from yesterday
@@ -317,7 +362,8 @@ def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None):
             key = dt.astimezone(tz).date().isoformat()
         except Exception:
             continue
-        d = out.setdefault(key, {"orders": 0, "units": 0, "revenue": 0.0})
+        d = out.setdefault(key, {"orders": 0, "units": 0, "revenue": 0.0,
+                                 "product_sales": 0.0, "shipping": 0.0})
         d["orders"] += 1
         try:
             d["units"] += int(o.get("NumberOfItemsShipped") or 0) \
@@ -326,11 +372,13 @@ def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None):
             pass
         oid = str(o.get("AmazonOrderId") or "")
         if oid in priced:
-            amt, cur = priced[oid]
+            amt, cur = revenue_of(priced[oid], include_shipping)
+            d["product_sales"] = round(d["product_sales"] + priced[oid][0], 2)
+            d["shipping"] = round(d["shipping"] + priced[oid][1], 2)
         else:
             # Amazon would not give up this order's items. Fall back to what the
             # buyer was charged rather than counting the order as worthless, and
-            # say so on the way out -- a figure that is 4.08 high is far less
+            # say so on the way out -- a sale that is slightly off is far less
             # wrong than a sale that vanished.
             amt, cur = _amount(o)
         if amt:
@@ -339,13 +387,15 @@ def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None):
                 currency = cur
     return {"days": dict(sorted(out.items())), "currency": currency,
             "truncated": bool(truncated),
-            "basis": "product_sales" if priced else "order_total",
+            "basis": ("revenue_with_postage" if (priced and include_shipping)
+                      else "product_sales" if priced else "order_total"),
             "unpriced_orders": int(unpriced),
             "priced_complete": bool(priced_complete),
             "since": since.date().isoformat()}
 
 
-def today(marketplace, marketplace_id, creds, compare=True, price_cache=None):
+def today(marketplace, marketplace_id, creds, compare=True, price_cache=None,
+          include_shipping=True):
     """Today so far, and the same slice of yesterday for honest comparison.
 
     The comparison stops at the SAME TIME of day, not at yesterday's total.
@@ -367,7 +417,8 @@ def today(marketplace, marketplace_id, creds, compare=True, price_cache=None):
         except Exception:
             return {}
 
-    out = {"ok": True, "today": summarise(orders, _priced(orders)),
+    out = {"ok": True,
+           "today": summarise(orders, _priced(orders), include_shipping),
            "as_at": _iso(now),
            "day_started": _iso(start), "truncated": truncated,
            "timezone": str(marketplace_zone(marketplace))}
@@ -377,7 +428,8 @@ def today(marketplace, marketplace_id, creds, compare=True, price_cache=None):
         y_until = y_start + (now - start)          # the same elapsed slice
         y_orders, y_trunc = fetch_since(marketplace, marketplace_id, creds,
                                         y_start, until=y_until)
-        out["yesterday"] = summarise(y_orders, _priced(y_orders))
+        out["yesterday"] = summarise(y_orders, _priced(y_orders),
+                                     include_shipping)
         out["yesterday_truncated"] = y_trunc
         out["compared_to"] = "the same time yesterday"
         for k in ("orders", "units", "revenue"):
