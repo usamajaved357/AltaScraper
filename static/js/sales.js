@@ -29,7 +29,26 @@ let SALES = {preset:"30d", gran:"day", asin:"", start:"", end:"",
                try{ return localStorage.getItem("alta_sales_compare") || "period"; }
                catch(e){ return "period"; }
              })(),
-             compare:null, compareOffsetDays:0, compareRange:""};
+             compare:null, compareOffsetDays:0, compareRange:"",
+             // ---- the P&L heatmap's OWN period and granularity ----------------
+             // Measured on Orbit: the heatmap carries its own Day/Week/Month and
+             // 7d/14d/30d/60d/90d controls, separate from the Sales Report's
+             // above it. That is a real feature and not a duplicate: the shape
+             // of the month is a chart question, and "which week was expensive"
+             // is a grid one, and they want different buckets.
+             //
+             // EMPTY MEANS FOLLOW THE SCREEN. Until one of these is touched the
+             // grid draws from the series the rest of the page already fetched,
+             // so the common case costs no extra request and the two cannot
+             // disagree. Touching one makes the grid fetch its own.
+             gridGran:"", gridPreset:"", gridSeries:null, gridBusy:false,
+             // Which metric rows are hidden, remembered per browser. Thirty-
+             // eight rows is a lot to scroll past when the question is about
+             // four of them.
+             gridHidden:(function(){
+               try{ return JSON.parse(localStorage.getItem("alta_grid_hidden") || "[]"); }
+               catch(e){ return []; }
+             })()};
 
 const SALES_PRESETS = [["7d","7d"],["14d","14d"],["30d","30d"],
                        ["60d","60d"],["90d","90d"],["ytd","YTD"],["custom","Custom"]];
@@ -1507,9 +1526,8 @@ function salesDrawGrid(ser){
       + 'own range, never across rows. Profit and margin diverge at zero — red '
       + 'below, green above — because a loss is not a small profit. Every cell '
       + 'prints its number, so nothing depends on telling the colours apart.">i</span></p>'
-      + '</div><div class="cc" style="font-size:11px">'
-      + (ser.metrics||[]).length + ' metrics · ' + cols.length + ' '
-      + _sEsc(ser.granularity || "day") + 's</div></div>'
+      + '</div></div>'
+      + _sGridTools(ser)
       + '<div class="salesgridwrap"><table class="salesgrid"><thead><tr>'
       + '<th class="mcol">Metric</th>'
       + cols.map(function(c){ return '<th>'+_sEsc(_sColLabel(c, ser.granularity))+'</th>'; }).join("")
@@ -1550,20 +1568,265 @@ function salesDrawGrid(ser){
   // defined, so the order cannot drift from the order the metrics are sent in.
   // An older answer with no `sections` still draws -- as one flat list, exactly
   // as before.
+  // Rows the Metrics picker has switched off. A section whose every row is
+  // hidden loses its heading too -- a band with nothing under it is furniture.
+  const hidden = SALES.gridHidden || [];
+  const visible = function(k){ return byKey[k] && hidden.indexOf(k) < 0; };
   const sections = (ser.sections || []).filter(function(s){
-    return (s.keys || []).some(function(k){ return byKey[k]; });
+    return (s.keys || []).some(visible);
   });
   if(sections.length){
     sections.forEach(function(s){
       h += '<tr class="gsec"><th class="mcol">' + _sEsc(s.name) + '</th>'
          + '<td colspan="' + cols.length + '"></td></tr>';
-      (s.keys || []).forEach(function(k){ if(byKey[k]) h += drawRow(byKey[k]); });
+      (s.keys || []).forEach(function(k){ if(visible(k)) h += drawRow(byKey[k]); });
     });
   } else {
-    (ser.metrics||[]).forEach(function(m){ h += drawRow(m); });
+    (ser.metrics||[]).forEach(function(m){ if(visible(m.key)) h += drawRow(m); });
+  }
+  // Every row switched off is not an empty grid with no explanation.
+  if(!(ser.metrics||[]).some(function(m){ return visible(m.key); })){
+    h += '<tr><th class="mcol">—</th><td colspan="' + cols.length + '" '
+      + 'style="text-align:left;color:var(--muted)">Every row is switched off. '
+      + 'Use <b>Metrics</b> above to bring some back.</td></tr>';
   }
   h+='</tbody></table></div>';
   host.innerHTML=h;
+}
+
+/* ---- the heatmap's own toolbar -----------------------------------------
+ *
+ * MEASURED on Orbit's P&L Heatmap, control by control:
+ *
+ *   "33/33 Metrics"   10px/500, transparent, radius 6, padding 4px 12px
+ *   PRODUCTS          11px/600 uppercase label, rgb(156,163,175)
+ *   All Products (166)  13px/400 on rgb(45,50,66), radius 8, padding 7px 12px
+ *   GRANULARITY       Day | Week | Month -- 10px, the active one 600 on
+ *                     #fbbf24, radius 4, padding 4px 10px
+ *   Last: 8/13
+ *   PERIOD            7d | 14d | 30d | 60d | 90d | Custom, same pill styling
+ *   Export            10px/500, radius 6
+ *
+ * and under them a COGS strip: "COGS  Actual · $22.36 avg/unit ·
+ * 99.7% of shipped units covered  Change setting →".
+ *
+ * Ours says "of SKUs costed" rather than "of shipped units covered", because
+ * that is what this app actually knows -- domain/cogs.py counts SKUs with a
+ * cost against SKUs without one. Borrowing Orbit's wording for a different
+ * measurement would be a wrong number with a right-sounding label.
+ */
+const _S_GRANS = [["day", "Day"], ["week", "Week"], ["month", "Month"]];
+const _S_GRID_PERIODS = [["7d", "7d"], ["14d", "14d"], ["30d", "30d"],
+                         ["60d", "60d"], ["90d", "90d"]];
+
+function _sPills(items, current, fn){
+  return '<span class="gpills">' + items.map(function(p){
+    const on = (p[0] === current);
+    return '<button class="gpill' + (on ? " on" : "") + '"'
+         + ' onclick="' + fn + '(' + jsArg(p[0]) + ')">' + _sEsc(p[1]) + '</button>';
+  }).join("") + '</span>';
+}
+
+function _sGridTools(ser){
+  const hidden = SALES.gridHidden || [];
+  const all = (ser.metrics || []).length;
+  const shown = (ser.metrics || []).filter(function(m){
+    return hidden.indexOf(m.key) < 0; }).length;
+  // Which period and granularity the GRID is on -- its own if it has been
+  // touched, otherwise the screen's, which is what it is actually drawing.
+  const gran = SALES.gridGran || SALES.gran || "day";
+  const period = SALES.gridPreset || SALES.preset || "30d";
+  const last = (ser.columns || []).length
+    ? _sColLabel((ser.columns || [])[ser.columns.length - 1], gran) : "";
+
+  let h = '<div class="gtools">'
+    + '<button class="gbtn" onclick="salesMetricsOpen(event)" '
+    + 'title="Choose which rows this grid shows">'
+    + shown + '/' + all + ' Metrics</button>';
+
+  // The product filter is the SAME one the rest of the screen uses -- a second
+  // one that filtered only the grid would be two answers to one question.
+  const asinLabel = SALES.asin ? SALES.asin : "All products";
+  h += '<span class="glbl">Products</span>'
+    + '<button class="gbtn wide" onclick="salesFocusProducts()" '
+    + 'title="The product filter at the top of this screen">'
+    + _sEsc(asinLabel) + '</button>';
+
+  h += '<span class="glbl">Granularity</span>'
+    + _sPills(_S_GRANS, gran, "salesGridGran");
+  if(last) h += '<span class="glast">Last: ' + _sEsc(last) + '</span>';
+
+  h += '<span class="glbl">Period</span>'
+    + _sPills(_S_GRID_PERIODS, period, "salesGridPeriod");
+  // Says when the grid has been taken off the screen's own range, and offers
+  // the way back -- otherwise the numbers here and the chart above disagree
+  // with nothing on screen explaining why.
+  if(SALES.gridGran || SALES.gridPreset){
+    h += '<button class="gbtn" onclick="salesGridFollow()" '
+      + 'title="Show the same period as the charts above">'
+      + '<i class="ti ti-arrow-back-up"></i> Match the charts</button>';
+  }
+  h += '<span class="gspacer"></span>'
+    + '<button class="gbtn" onclick="salesExport()">'
+    + '<i class="ti ti-download"></i> Export</button>'
+    + '</div>';
+
+  // ---- the COGS strip ----------------------------------------------------
+  const cov = (SALES.data && SALES.data.cogs_coverage) || null;
+  if(cov && cov.total){
+    // Average cost per unit shipped, from this grid's own figures, so it can
+    // never disagree with the Cost of goods row below it.
+    const sum = function(key){
+      const m = (ser.metrics || []).filter(function(x){ return x.key === key; })[0];
+      if(!m) return null;
+      let t = 0, any = false;
+      (m.cells || []).forEach(function(v){
+        if(v !== null && v !== undefined){ t += Number(v); any = true; } });
+      return any ? t : null;
+    };
+    const c = sum("cogs"), u = sum("units_shipped");
+    const per = (c && u) ? (c / u) : null;
+    h += '<div class="gcogs">'
+      + '<span class="glbl">COGS</span>'
+      + (per !== null
+          ? '<b>' + _sEsc(_sNum(per, "money", ser.currency)) + '</b> avg/unit'
+          : '<span class="cc">no costed units in this period</span>')
+      + '<span class="gsep">·</span>'
+      + '<b>' + (cov.pct === null || cov.pct === undefined ? "—" : cov.pct + "%")
+      + '</b> of SKUs costed'
+      + (cov.unknown
+          ? '<span class="cc"> (' + cov.unknown + ' of ' + cov.total + ' have no cost, '
+            + 'so profit is withheld for any period containing them)</span>' : "")
+      + '<button class="glink" onclick="navTo(\'listings\')">Change setting →</button>'
+      + '</div>';
+  }
+  return h;
+}
+
+/* The product filter lives in the toolbar at the top of the screen. Rather than
+   build a second one here -- two controls for one setting is how they come to
+   disagree -- this takes you to the one that exists and makes it obvious. */
+function salesFocusProducts(){
+  const el = document.getElementById("sales_asin");
+  if(!el) return;
+  try{ el.scrollIntoView({block: "center", behavior: "smooth"}); }catch(e){}
+  try{ el.focus(); }catch(e){}
+  el.classList.add("flashfocus");
+  setTimeout(function(){ el.classList.remove("flashfocus"); }, 1400);
+}
+
+function salesGridGran(g){
+  SALES.gridGran = (g === (SALES.gran || "day") && !SALES.gridPreset) ? "" : g;
+  salesLoadGrid();
+}
+function salesGridPeriod(p){
+  SALES.gridPreset = (p === (SALES.preset || "30d") && !SALES.gridGran) ? "" : p;
+  salesLoadGrid();
+}
+function salesGridFollow(){
+  SALES.gridGran = ""; SALES.gridPreset = ""; SALES.gridSeries = null;
+  if(SALES.series) salesDrawGrid(SALES.series);
+}
+
+/* Fetch the grid's OWN series, when it has been taken off the screen's range.
+   Same endpoint, same shape -- only the two parameters differ, so nothing about
+   how a figure is produced can drift between the chart and the grid. */
+async function salesLoadGrid(){
+  if(!SALES.gridGran && !SALES.gridPreset){
+    SALES.gridSeries = null;
+    if(SALES.series) salesDrawGrid(SALES.series);
+    return;
+  }
+  if(SALES.gridBusy) return;
+  SALES.gridBusy = true;
+  const host = document.getElementById("sales_grid");
+  if(host) host.style.opacity = ".45";
+  try{
+    const q = ["preset=" + encodeURIComponent(SALES.gridPreset || SALES.preset || "30d"),
+               "granularity=" + encodeURIComponent(SALES.gridGran || SALES.gran || "day")];
+    if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
+    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+      q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+    const j = await (await fetch("/sales/series?" + q.join("&"))).json();
+    if(j && j.ok){ SALES.gridSeries = j; salesDrawGrid(j); }
+  }catch(e){
+    // Left as it was rather than blanked: the previous grid is still true of
+    // the period it was drawn for, and the toolbar says which that is.
+  }finally{
+    SALES.gridBusy = false;
+    if(host) host.style.opacity = "";
+  }
+}
+
+/* Which rows to show. Thirty-eight is a lot to scroll past when the question is
+   about four of them, and Orbit puts the same control in the same place. */
+function salesMetricsOpen(ev){
+  if(ev) ev.stopPropagation();
+  const ser = SALES.gridSeries || SALES.series;
+  if(!ser || !(ser.metrics || []).length) return;
+  const hidden = SALES.gridHidden || [];
+  const secs = (ser.sections || []).length
+    ? ser.sections
+    : [{name: "Metrics", keys: (ser.metrics || []).map(function(m){ return m.key; })}];
+  const by = {};
+  (ser.metrics || []).forEach(function(m){ by[m.key] = m; });
+
+  let h = '<div class="metricpick-head">Rows to show'
+        + '<button class="glink" onclick="salesMetricsAll(1)">all</button>'
+        + '<button class="glink" onclick="salesMetricsAll(0)">none</button></div>';
+  secs.forEach(function(s){
+    const keys = (s.keys || []).filter(function(k){ return by[k]; });
+    if(!keys.length) return;
+    h += '<div class="metricpick-sec">' + _sEsc(s.name) + '</div>';
+    keys.forEach(function(k){
+      h += '<label class="metricpick-row"><input type="checkbox"'
+        + (hidden.indexOf(k) < 0 ? " checked" : "")
+        + ' onchange="salesMetricToggle(' + jsArg(k) + ', this.checked)"> '
+        + _sEsc(by[k].label) + '</label>';
+    });
+  });
+  let box = document.getElementById("metricpick");
+  if(!box){
+    box = document.createElement("div");
+    box.id = "metricpick";
+    box.className = "metricpick";
+    document.body.appendChild(box);
+    document.addEventListener("click", function(e){
+      if(box && !box.contains(e.target)) box.classList.remove("open");
+    });
+  }
+  box.innerHTML = h;
+  const btn = ev && ev.target && ev.target.closest ? ev.target.closest("button") : null;
+  const r = btn ? btn.getBoundingClientRect() : {left: 40, bottom: 90};
+  box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 280)) + "px";
+  box.style.top = (r.bottom + window.scrollY + 6) + "px";
+  box.classList.add("open");
+}
+
+function _sGridSave(){
+  try{ localStorage.setItem("alta_grid_hidden", JSON.stringify(SALES.gridHidden || [])); }
+  catch(e){}
+  const ser = SALES.gridSeries || SALES.series;
+  if(ser) salesDrawGrid(ser);
+}
+function salesMetricToggle(key, on){
+  const h = SALES.gridHidden || (SALES.gridHidden = []);
+  const i = h.indexOf(key);
+  if(on && i >= 0) h.splice(i, 1);
+  if(!on && i < 0) h.push(key);
+  _sGridSave();
+}
+function salesMetricsAll(on){
+  const ser = SALES.gridSeries || SALES.series;
+  SALES.gridHidden = on ? [] : (ser.metrics || []).map(function(m){ return m.key; });
+  _sGridSave();
+  // Redrawing the grid does not redraw the open picker, so it is rebuilt with
+  // the boxes in their new state.
+  const box = document.getElementById("metricpick");
+  if(box && box.classList.contains("open")){
+    const btn = document.querySelector(".gtools .gbtn");
+    salesMetricsOpen({target: btn, stopPropagation: function(){}});
+  }
 }
 
 function _sColLabel(c, gran){

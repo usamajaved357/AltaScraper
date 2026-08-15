@@ -182,6 +182,80 @@ check("the bar label follows the basis, rather than always saying Orders",
 check("  and the money-basis note says the bars are not orders",
       /the gold bars are <b>units/.test(js) && /<b>not orders<\/b>/.test(js), true);
 
+console.log("\n=== the P&L heatmap's own toolbar ===");
+/* MEASURED on Orbit's P&L Heatmap, control by control:
+ *
+ *   "33/33 Metrics"       10px/500, transparent, radius 6, padding 4px 12px
+ *   PRODUCTS              11px/600 uppercase, rgb(156,163,175)
+ *   All Products (166)    13px/400 on rgb(45,50,66), radius 8
+ *   GRANULARITY           Day | Week | Month, active 600 on #fbbf24, radius 4
+ *   Last: 8/13
+ *   PERIOD                7d | 14d | 30d | 60d | 90d | Custom
+ *   Export
+ *   COGS  Actual - $22.36 avg/unit - 99.7% of shipped units covered
+ */
+check("the toolbar is built in one place", /function _sGridTools/.test(js), true);
+["Products", "Granularity", "Period", "Metrics", "COGS", "Export"].forEach(function(w){
+  check("  it carries " + w, js.indexOf(w) >= 0, true);
+});
+check("the granularity choices are Orbit's",
+      /\[\["day", "Day"\], \["week", "Week"\], \["month", "Month"\]\]/.test(js), true);
+check("  and the periods are too",
+      /"7d"[\s\S]*"14d"[\s\S]*"30d"[\s\S]*"60d"[\s\S]*"90d"/
+        .test(js.slice(js.indexOf("_S_GRID_PERIODS"),
+                       js.indexOf("_S_GRID_PERIODS") + 300)), true);
+
+// THE GRID HAS ITS OWN PERIOD, which is the point of the control: the shape of
+// a month is a chart question and "which week was expensive" is a grid one.
+check("the grid can be taken off the screen's range",
+      /gridGran:"", gridPreset:""/.test(js), true);
+check("  empty means FOLLOW the screen, so the common case costs no request",
+      /if\(!SALES\.gridGran && !SALES\.gridPreset\)\{[\s\S]{0,160}salesDrawGrid\(SALES\.series\)/.test(js), true);
+check("  and there is a way back to matching the charts",
+      /function salesGridFollow/.test(js), true);
+check("  which is offered on screen once they differ",
+      js.indexOf("Match the charts") >= 0, true);
+// Same endpoint as the chart, so a figure cannot be produced two ways.
+{
+  const from = js.indexOf("async function salesLoadGrid");
+  const body = js.slice(from, js.indexOf("\n}", from));
+  check("the grid's own fetch uses the same series endpoint",
+        from >= 0 && /fetch\("\/sales\/series\?/.test(body), true);
+  check("  carrying the same product filter and marketplace",
+        /asin=/.test(body) && /marketplace=/.test(body), true);
+}
+check("  and a failed fetch leaves the grid as it was, not blank",
+      /catch\(e\)\{[\s\S]{0,220}\}finally\{[\s\S]{0,120}gridBusy = false/.test(js), true);
+
+// RULE 12: the product filter is the one that already exists.
+check("no second product filter was invented",
+      /function salesFocusProducts/.test(js), true);
+check("  it sends you to the existing one",
+      /getElementById\("sales_asin"\)/.test(js), true);
+
+console.log("\n=== the metrics picker ===");
+check("rows can be switched off", /function salesMetricToggle/.test(js), true);
+check("  remembered between visits", /alta_grid_hidden/.test(js), true);
+check("  a section with every row hidden loses its heading too",
+      /\(s\.keys \|\| \[\]\)\.some\(visible\)/.test(js), true);
+check("  and switching them ALL off explains itself rather than drawing nothing",
+      js.indexOf("Every row is switched off") >= 0, true);
+
+console.log("\n=== the COGS strip says what THIS app knows ===");
+// Orbit's reads "99.7% of shipped units covered". Ours counts SKUs with a cost
+// against SKUs without one, which is a different measurement -- borrowing the
+// wording would be a wrong number with a right-sounding label.
+// Checked against the CODE, not the comments: the comment beside it quotes
+// Orbit's wording to explain why ours differs, and a test that cannot tell
+// those apart would fail on the explanation for the thing it is asserting.
+const jsRules = js.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/[^\n]*$/gm, " ");
+check("it reports SKUs, which is what is actually counted",
+      jsRules.indexOf("of SKUs costed") >= 0, true);
+check("  never claims to have measured units",
+      jsRules.indexOf("of shipped units covered") >= 0, false);
+check("  and the average is worked out from the grid's own figures",
+      /const c = sum\("cogs"\), u = sum\("units_shipped"\)/.test(js), true);
+
 console.log("\n=== a card that could not load says so ===");
 /* FOUND BY DRIVING THE LIVE APP: /sales/today answers 502 on sheelady_us --
  * Amazon's own words are "Unauthorized: Access to requested resource is
