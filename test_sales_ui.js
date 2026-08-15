@@ -27,10 +27,43 @@ check("  under Analytics",
       tpl.indexOf('<div class="slbl">Analytics</div>') < tpl.indexOf('data-sec="sales"'), true);
 check("the panel exists", /id="sec_sales"/.test(tpl), true);
 check("the script is loaded", /\/static\/js\/sales\.js\?v=/.test(tpl), true);
-check("navTo shows/hides it", /"miles","sales","ppc"/.test(shell), true);
+// These three used to pin Sales by its NEIGHBOUR in each list -- "miles","sales"
+// ,"ppc" and so on -- so adding Traffic between Sales and PPC broke all three
+// while nothing was wrong. The invariant is that "sales" is IN each list, not
+// what happens to sit next to it.
+const _inList = function(src, marker, want){
+  const i = src.indexOf(marker);
+  if(i < 0) return false;
+  const end = src.indexOf("]", i);
+  return end > i && src.slice(i, end).indexOf('"' + want + '"') >= 0;
+};
+check("navTo shows/hides it",
+      _inList(shell, '["imagerefs"', "sales"), true);
 check("navTo calls salesOpen", /sec==="sales"[\s\S]{0,60}salesOpen/.test(shell), true);
-check("the URL allow-list (browser) has it", /"sales","ppc"/.test(shell), true);
-check("the URL allow-list (server) has it", /"generate", "sales", "ppc"/.test(ui), true);
+check("the URL allow-list (browser) has it",
+      _inList(shell, "const ALTA_SECTIONS", "sales"), true);
+check("the URL allow-list (server) has it",
+      /_SECTIONS = \([\s\S]{0,240}"sales"/.test(ui), true);
+
+// And the same four places for Traffic, which is the screen most likely to be
+// half-wired: a section that renders but cannot be reached by URL looks fine
+// until someone bookmarks it.
+console.log("\n=== Traffic is wired in all four places too ===");
+check("nav item exists", /data-sec="traffic"/.test(tpl), true);
+check("the panel exists", /id="sec_traffic"/.test(tpl), true);
+check("the script is loaded", /\/static\/js\/traffic\.js\?v=/.test(tpl), true);
+check("  after sales.js, which it borrows _sNum and salesCombo from",
+      tpl.indexOf("/static/js/sales.js") < tpl.indexOf("/static/js/traffic.js"), true);
+check("navTo shows/hides it", _inList(shell, '["imagerefs"', "traffic"), true);
+check("navTo calls trafficOnOpen",
+      /sec==="traffic"[\s\S]{0,60}trafficOnOpen/.test(shell), true);
+check("the URL allow-list (browser) has it",
+      _inList(shell, "const ALTA_SECTIONS", "traffic"), true);
+check("the URL allow-list (server) has it",
+      /_SECTIONS = \([\s\S]{0,240}"traffic"/.test(ui), true);
+check("and the route is registered on the app",
+      /_traffic_routes\.register\(app/.test(
+        require("fs").readFileSync("D:/AltaScraper/dashboard.py", "utf8")), true);
 
 console.log("\n=== the product filter actually filters ===");
 // It was wired to salesReload(), which rebuilds the query from SALES.asin --

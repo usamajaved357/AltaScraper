@@ -1435,6 +1435,44 @@
      against 29px transparent for a data row. Without them thirty-eight metrics
      are one wall of numbers and "is my advertising working" means finding four
      rows scattered through it. */
+  /* ---- Traffic & Conversions -------------------------------------------
+     Its tiles, tables and pills reuse the Sales screen's classes; only the
+     three things that screen does not have are defined here. */
+  #sec_traffic{ padding:32px; background:rgb(26,29,41);
+                max-width:1464px; margin-left:auto; margin-right:auto; }
+  /* The donut sits beside the daily split, and drops under it on a narrow
+     screen rather than squeezing both. */
+  .trafsplit{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .trafdonut{ flex:0 0 auto; text-align:center; }
+  .traflegend{ display:flex; gap:18px; flex-wrap:wrap; margin-top:10px;
+               font-size:12px; }
+  /* Horizontal bars for the top converters. A bar per row with the figure
+     printed on it says the same as Orbit's bar chart and stays readable when a
+     product title is long -- which every one of these is. */
+  .trafbars{ display:flex; flex-direction:column; gap:9px; }
+  .trafbar{ display:grid; grid-template-columns:minmax(0,1fr) 150px 58px 90px;
+            align-items:center; gap:10px; font-size:12px; }
+  .trafbar-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trafbar-track{ height:9px; border-radius:5px; background:var(--panel2);
+                  overflow:hidden; }
+  .trafbar-fill{ display:block; height:100%; border-radius:5px;
+                 background:#22c55e; }
+  .trafbar-val{ text-align:right; font-variant-numeric:tabular-nums;
+                font-weight:600; }
+  .trafbar-sub{ font-size:11px; text-align:right; }
+  /* The product cell: one line, truncated, with the ASIN never cut -- it is the
+     part you would copy. Left to wrap, these titles made rows 182px tall and
+     the table 4,587px long. */
+  .trafname{ padding:6px 8px; max-width:420px; }
+  .trafname-t{ display:block; max-width:340px; overflow:hidden;
+               text-overflow:ellipsis; white-space:nowrap; }
+  .trafname-a{ font-size:10px; margin-right:6px; }
+  @media (max-width:860px){
+    #sec_traffic{ padding:12px; max-width:none; }
+    .trafbar{ grid-template-columns:minmax(0,1fr) 70px; }
+    .trafbar-track, .trafbar-sub{ display:none; }
+  }
+
   /* ---- the heatmap's own toolbar, measured off Orbit's ----------------
      labels 11px/600 uppercase in rgb(156,163,175); pills 10px on a 4px
      radius with 4px 10px of padding, the active one 600 on #fbbf24 with dark

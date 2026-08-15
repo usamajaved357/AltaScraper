@@ -151,6 +151,10 @@
          what the report it was built from is called. It was labelled plain
          "Returns", and was looked for repeatedly without being found. -->
     <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs — the Returns Intelligence report"><i class="ti ti-arrow-back-up"></i> Returns Intelligence</div>
+    <!-- Sits next to Sales because it answers the other half of the same
+         question: Sales says what was bought, this says how many people looked
+         and how many of them bought. -->
+    <div class="navitem" data-sec="traffic" onclick="navTo('traffic')" title="Sessions, page views, conversion rate and buy box, per day and per product"><i class="ti ti-chart-arcs"></i> Traffic</div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
     <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
@@ -709,6 +713,24 @@
       <div id="ordbody" style="padding:4px 0"></div>
     </div>
 
+    <!-- TRAFFIC & CONVERSIONS. Built to Orbit's page of the same name, on
+         figures this app has been storing per ASIN and per day all along
+         without ever showing them: sessions, sessions_mobile,
+         sessions_browser, page_views, buy_box_pct, unit_session_pct.
+
+         The whole page comes from ONE request, so the tiles, the charts and
+         the table cannot disagree about a number they all describe. -->
+    <div id="sec_traffic" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-arcs"></i> Traffic &amp; Conversions</h2>
+        <div class="sub">Sessions, page views, conversion rate, and buy box analytics<span class="infodot"
+             title="All of this comes from Amazon's Sales &amp; Traffic report, which is dated by ORDER date and runs a day or two behind. It will not tie out to the Finance figures, which are dated when the money moved.">i</span></div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="mktbtn" onclick="trafficLoad()"><i class="ti ti-refresh"></i> Refresh</button>
+      </div>
+      <div id="trafbody"></div>
+    </div>
+
     <!-- RETURNS: why things come back, and what it costs. Two ways in — pull
          the report, or upload one. An FBA returns file carries two columns the
          API will not give a seller-fulfilled account, so the upload is not a
@@ -1121,6 +1143,12 @@
 <!-- Sales dashboard: stat cards + the metrics x dates grid. -->
 <script src="/static/js/salescharts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales.js?v={{ ASSET_V }}"></script>
+<!-- AFTER both. traffic.js draws with salesCombo and formats with _sNum rather
+     than carrying its own copies, which would drift from these on the first fix
+     made to either. (Order is not load-bearing -- these are function
+     declarations and every file is parsed before anything is clicked -- but the
+     dependency is real and reads better in the order it runs.) -->
+<script src="/static/js/traffic.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
 

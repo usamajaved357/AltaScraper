@@ -3367,6 +3367,13 @@ def build_app(backend=None):
     _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # Sessions, page views, conversion and buy box -- Orbit's Traffic &
+    # Conversions screen, built on figures this app has been storing per ASIN and
+    # per day all along without ever showing them.
+    import routes.traffic_routes as _traffic_routes
+    _traffic_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+
     # Moving a workspace's listings out of Google Sheets and into the app. The
     # import has always existed as a command line; it has to be runnable HERE,
     # because it must run where the database is and that is not a laptop.
