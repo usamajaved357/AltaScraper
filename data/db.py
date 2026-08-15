@@ -469,6 +469,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_orderlines_uniq
     ON order_lines(workspace_id, marketplace, order_id, asin, sku);
 CREATE INDEX IF NOT EXISTS idx_orderlines_when
     ON order_lines(workspace_id, marketplace, purchase_date);
+
+/* Costs that are not the supplier's price: postage you pay, prep, an advertising
+   figure you allocate by hand. Asked for as "additional charges per asin, which
+   can be sometimes my shipping price, my prep charges, my ads costs which i
+   write manually".
+
+   ONE ROW PER NAMED CHARGE, not one column per kind. The list of things a seller
+   pays for is not fixed and never will be -- storage, relabelling, a courier
+   surcharge, an inspection -- and a schema with a `prep_cost` column forces
+   every future charge to be squeezed into a name that does not fit, or another
+   migration. A row per charge also means the profit screen can show WHAT the
+   costs were and not merely their total, which is the thing that makes a thin
+   margin explainable.
+
+   PER UNIT, because profit is worked out per unit sold. A charge that is really
+   per shipment is entered as its per-unit share; saying so here is what stops it
+   being guessed at later.
+
+   effective_from lets a charge change without rewriting history: the row that
+   applies to an order is the newest one dated on or before that order. Absent
+   means "since always", which is what a first entry should mean. */
+CREATE TABLE IF NOT EXISTS asin_charges (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id   TEXT NOT NULL,
+    marketplace    TEXT NOT NULL,
+    asin           TEXT NOT NULL DEFAULT '',
+    sku            TEXT NOT NULL DEFAULT '',      -- '' = applies to the ASIN
+    label          TEXT NOT NULL DEFAULT '',      -- 'postage', 'prep', 'ads'...
+    amount         REAL NOT NULL DEFAULT 0,       -- per unit, in the account's currency
+    effective_from TEXT NOT NULL DEFAULT '',      -- 'YYYY-MM-DD', '' = since always
+    note           TEXT NOT NULL DEFAULT '',
+    updated_at     TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_asincharges_lookup
+    ON asin_charges(workspace_id, marketplace, asin, sku);
 """
 
 

@@ -167,7 +167,17 @@ def _targets(cfg_fn, config_path):
                     out.append((aid, mkt))
     except Exception:
         return []
-    return out
+    # PAIRS AMAZON KEEPS REFUSING ARE RESTED, not asked again every rotation.
+    # Every refused request spends the same report quota the sales figures are
+    # waiting on, so an Ireland that will never answer is not just log noise --
+    # it is why real data arrives late. See domain/marketplace_health.py; the
+    # rest is temporary and one success clears it.
+    try:
+        from domain import marketplace_health as _mh
+        keep, _skipped = _mh.filter_targets(config_path, out)
+        return keep
+    except Exception:
+        return out
 
 
 def _stalest(cfg_fn, config_path, only_account=None):
@@ -467,6 +477,17 @@ def _loop(app, cfg_fn, config_path, account_id, log=None):
             target = _stalest(cfg_fn, config_path, only_account=account_id)
             if target:
                 note = _refresh_one(app, target[0], target[1])
+                # Remember how that went. A pair Amazon refuses for a reason
+                # about the REQUEST -- wrong marketplace, no authorisation -- is
+                # rested rather than retried every rotation; a busy or timed-out
+                # Amazon is not held against it. Recorded here rather than inside
+                # _refresh_one so that function stays "do it and describe it".
+                try:
+                    from domain import marketplace_health as _mh
+                    _mh.record(config_path, target[0], target[1],
+                               ok=note.startswith("ok"), error=note)
+                except Exception:
+                    pass
                 if log:
                     log("live refresh %s::%s -> %s" % (target[0], target[1], note))
                 # Fill in the images for what was just refreshed. A catalogue
