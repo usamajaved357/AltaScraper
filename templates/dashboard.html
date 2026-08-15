@@ -35,8 +35,9 @@
 })();
 </script>
 <style>
-  /* Held back only while the address says we are going somewhere else. */
-  html.alta-routing #home{ display:none !important; }
+  /* Held back only while the address says we are going somewhere else.
+     The "#home" half of this rule went with the home page: there is no longer
+     a landing screen that could flash before the routing lands. */
   html.alta-routing #alta-booting{ display:flex !important; }
 </style>
 <body>
@@ -48,7 +49,10 @@
 </div>
 
 <div class="appbar">
-  <div class="brandmark" onclick="goHome()">
+  <!-- Not clickable any more. It went to the home page, and a logo that opens a
+       dialog is a surprise rather than a shortcut -- switching account is the
+       sidebar row, which says so in words. -->
+  <div class="brandmark" style="cursor:default">
     <span class="dot">A</span><span>AltaScraper</span>
   </div>
   <div class="crumbs" id="crumbs"></div>
@@ -63,23 +67,40 @@
   <button class="barbtn" id="usersbtn" onclick="openUsers()" style="display:none" title="Add people and choose what each of them can do"><i class="ti ti-users"></i> Users</button>
   <span class="barbtn" id="whoami" style="display:none;cursor:default" title="Signed in as"></span>
   <button class="barbtn" id="signoutbtn" onclick="location.href='/logout'" style="display:none" title="Sign out"><i class="ti ti-logout"></i></button>
-  <button class="barbtn" onclick="goHome()"><i class="ti ti-home"></i> Home</button>
+  <!-- The Home button is gone with the home page. Switching account is a
+       sidebar row now, which is where Orbit puts it and where it belongs: it is
+       navigation, not a destination. -->
 </div>
 
-<!-- ============ HOME SCREEN ============ -->
-<div id="home" class="show">
-  <div class="homebar">
-    <p class="homehd" id="homehd" style="margin:0">Workspaces</p>
-  </div>
-  <div class="wsgrid" id="wsgrid">
-    <div class="empty" style="grid-column:1/-1">Loading workspaces…</div>
+<!-- ============ ACCOUNTS ============
+     This used to be a full-screen HOME PAGE, and it was the first thing anyone
+     saw: a grid of cards whose only job was to choose an account. Orbit has no
+     landing page at all -- you arrive on a working screen and switch from the
+     sidebar -- and a session that begins on a screen with no work on it is a
+     click paid every single time.
+
+     The sidebar now carries the account and marketplace pickers, so the grid is
+     no longer the door. It is still exactly where accounts are ADDED and EDITED,
+     which is a real job, so it moves into a panel reached from "Manage
+     accounts…" in the account switcher. Nothing on it has been removed. -->
+<div class="modalwrap" id="wsmodal">
+  <div class="modal" style="max-width:900px">
+    <button class="x" onclick="closeAccounts()">×</button>
+    <h3>Accounts</h3>
+    <p class="cc" style="margin:0 0 14px">Each Amazon account is its own workspace
+      with its own listings, orders and figures. Open one to work in it, or use the
+      cog to edit its credentials and sheets.</p>
+    <div class="wsgrid" id="wsgrid">
+      <div class="empty" style="grid-column:1/-1">Loading accounts…</div>
+    </div>
   </div>
 </div>
 
 <!-- ============ WORKSPACE SCREEN ============ -->
 <div id="workspace">
   <div class="sidebar">
-    <div class="backlink" onclick="goHome()"><i class="ti ti-arrow-left"></i> All workspaces</div>
+    <!-- "All workspaces" pointed back at the home page. There is nowhere to go
+         back TO any more: the account row below switches in place. -->
     <div class="wsident">
       <div class="ic" id="ws_ic">··</div>
       <div><div class="nm pii" id="ws_nm">Workspace</div><div class="sub cc pii" id="ws_sub"></div></div>

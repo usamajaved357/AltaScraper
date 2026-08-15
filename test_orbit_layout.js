@@ -17,7 +17,11 @@ const css = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
 const tpl = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
 
 console.log("=== nothing was mangled ===");
-check("the template is still valid UTF-8", /Loading workspaces\u2026/.test(tpl), true);
+// A real ellipsis as the canary: if the file is ever written back in the wrong
+// encoding this is the character that mangles first. (It read "Loading
+// workspaces\u2026" until the home page was removed and the grid became the accounts
+// panel -- the check is about the encoding, not the word.)
+check("the template is still valid UTF-8", /Loading accounts\u2026/.test(tpl), true);
 check("  no mojibake in the template", /\u00e2\u20ac/.test(tpl), false);
 check("  nor in the stylesheet", /\u00e2\u20ac/.test(css), false);
 check("braces balance", (css.match(/\{/g) || []).length === (css.match(/\}/g) || []).length, true);

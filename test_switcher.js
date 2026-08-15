@@ -158,5 +158,52 @@ truthy("  after the marketplace table it uses",
 truthy("the account row is in the sidebar", htmlPage.indexOf('id="nav_acctswitch"') >= 0);
 truthy("and the marketplace row", htmlPage.indexOf('id="nav_mktswitch"') >= 0);
 
+console.log("\n=== there is no home page left ===");
+/* "if now we have dropdown for the accounts to select then we should finish the
+ * home page entirely".
+ *
+ * The dangerous half of removing a screen is what still POINTS at it. Four
+ * places called getElementById("home").classList.remove("show") -- on the path
+ * every single account switch takes -- and with the element gone each would have
+ * thrown on null and left the app on a blank screen. A test that only checked
+ * "the markup is gone" would have passed while the app was dead.
+ */
+{
+  const fs2 = require("fs");
+  const tpl = fs2.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
+  const shell = fs2.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8");
+  const css2 = fs2.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
+
+  check("the home screen markup is gone", /<div id="home"/.test(tpl), false);
+  check("  and the Home button with it", /ti-home/.test(tpl), false);
+  check("  and the All-workspaces backlink", /All workspaces<\/div>/.test(tpl), false);
+  check("nothing reaches for the element that no longer exists",
+        /getElementById\("home"\)/.test(shell), false);
+  check("the logo no longer navigates anywhere", /brandmark" onclick/.test(tpl), false);
+
+  // What REPLACED it, and the fact that nothing was lost with it.
+  truthy("the accounts panel exists", /id="wsmodal"/.test(tpl));
+  truthy("  holding the same grid of cards", /class="wsgrid" id="wsgrid"/.test(tpl));
+  truthy("  and it can be closed", /function closeAccounts/.test(shell));
+  truthy("adding an account is still offered", /Add account/.test(shell));
+  truthy("editing one is still offered", /openAccountEditor/.test(shell));
+  truthy("the switcher is how you reach it",
+         /Manage accounts/.test(fs2.readFileSync("D:/AltaScraper/static/js/switcher.js", "utf8")));
+  // Opening it must not unload the workspace behind it.
+  check("opening the panel does not clear the open workspace",
+        /function goHome\(\)\{[\s\S]{0,200}ACTIVE_WS\s*=\s*null/.test(shell.replace(/\s+/g, m => m[0] === "\n" ? "\n" : " ")),
+        false);
+  // Back to "/" re-routes rather than leaving the workspace for a page that is
+  // no longer there -- and "/" is no longer a special case at all.
+  const pop = shell.slice(shell.indexOf('addEventListener("popstate"'),
+                          shell.indexOf('addEventListener("popstate"') + 700);
+  check("Back always re-routes", /altaRouteFromUrl\(\)/.test(pop), true);
+  check("  with no special case for /", /path === "\/"/.test(pop), false);
+  check("  and it never calls goHome", /goHome\(\)/.test(pop), false);
+  // The grid's own styles survive; the page-level ones do not.
+  truthy("the card styles are kept", /\.wscard\{/.test(css2));
+  check("  but the home page's own styles are gone", /^\s*#home\{/m.test(css2), false);
+}
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

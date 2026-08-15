@@ -198,16 +198,15 @@
   body.privacy-on .peek .ti{font-size:15px;pointer-events:none}
 
 
-  /* ---- home screen ---- */
-  #home{padding:26px 30px;display:none}
-  #home.show{display:block}
-  .homehd{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px}
+  /* ---- the accounts grid ----
+     #home, .homehd and .homebar went with the home page. The GRID stays: the
+     same cards, in a panel opened from the sidebar's account switcher, which is
+     where accounts are added and edited. */
   .wsgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
 
   /* The .newui-toggle pill lived here; it switched between the classic UI and the
      navy #altui overlay. Both the toggle and the overlay are gone -- Orbit is the
      only style now, so there is nothing to switch between. */
-  .homebar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
   .db-warn-amber{color:var(--warn)} .db-warn-red{color:var(--red)} .db-ok{color:var(--ok)}
   .db-greet{font-size:18px;font-weight:600;margin:0 0 4px}
   .db-sub{font-size:13px;color:var(--muted);margin:0 0 16px}
