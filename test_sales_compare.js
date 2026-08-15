@@ -44,7 +44,10 @@ const prev = days.map((d, i) => ({label: d, value: [ 8, 12, 35, 20, 25][i]}));
 console.log("=== one line, as before ===");
 const plain = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t1"});
 truthy("it still draws", plain.indexOf("<svg") >= 0);
-falsy("no comparison line when none was given", plain.indexOf("stroke-dasharray") >= 0);
+// Looked for by the comparison's own COLOUR, not by "is anything dashed". The
+// gridlines are dashed too now (measured off Orbit: rgb(55,65,81), 3,3), so a
+// dash is no longer evidence of a second series.
+falsy("no comparison line when none was given", plain.indexOf('stroke="#6b7280"') >= 0);
 falsy("and no legend for a single series", plain.indexOf("the period before") >= 0);
 
 console.log("\n=== two lines ===");
@@ -103,7 +106,7 @@ console.log("\n=== a mismatched comparison is dropped, not paired up ===");
 const short = prev.slice(0, 3);
 const mism = sandbox.salesChart(now, {title: "Revenue", kind: "money", id: "t6",
                                       compare: short});
-falsy("three days are not compared against five", mism.indexOf("stroke-dasharray") >= 0);
+falsy("three days are not compared against five", mism.indexOf('stroke="#6b7280"') >= 0);
 falsy("  and no legend claims otherwise", mism.indexOf("the period before") >= 0);
 
 console.log("\n=== the hover card carries a row per series ===");
@@ -142,8 +145,13 @@ truthy("and the marketplace",
        /marketplace=/.test(SALES_JS.slice(SALES_JS.indexOf("salesLoadCompare"))));
 truthy("the comparison is matched by metric key, not by position",
        SALES_JS.indexOf("m.key === key") >= 0);
-truthy("and the dates it covers are said on the chart",
-       SALES_JS.indexOf("dashed line is") >= 0);
+// The week card captions its comparison "Last Week", as Orbit does, rather than
+// spelling the dates out in a subtitle -- but the dates must still be
+// RECOVERABLE, or it is a comparison nobody can check. They are on the key's
+// hover.
+truthy("and the dates it covers are still recoverable",
+       SALES_JS.indexOf("dashed line is") >= 0
+       && /compareTitle/.test(SALES_JS));
 
 console.log("\n=== the two periods are matched BY DATE, on real reply shapes ===");
 // MEASURED, and it is why this is not a length check. Asking jack_uk for 30

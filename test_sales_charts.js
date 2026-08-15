@@ -179,17 +179,129 @@ console.log("\n=== the lines are CURVES, as Orbit's are ===");
 }
 
 console.log("\n=== Orbit's geometry, to the pixel ===");
-// Measured off Orbit at 1600px (orbit_sales_spec.md): its two top charts are
-// 597x200 with a 512x160 plot area, and the padding around it is 65 / 5 / 20 /
-// 35. Ours were 720x260, which is a different SHAPE -- the same data reads
-// differently at a different ratio however closely the colours match.
-truthy("the small charts are 597 wide", /o\.width \|\| 597/.test(src));
+// RE-MEASURED off the live dashboard at 1600px on 15 Aug 2026, from the drawn
+// SVG rather than from the panel around it:
+//   top cards      viewBox 665 x 200, gridlines at y = 165/125/85/45/5
+//   Sales Report   viewBox 1365 x 320, plot x 70 -> 1274.9, y 10 -> 254
+// The earlier 597 and 1229 came from a narrower scan. Ratio is what decides
+// whether the same numbers read as the same shape, so these are load-bearing.
+truthy("the small charts are 665 wide", /o\.width \|\| 665/.test(src));
 truthy("  and 200 tall", /o\.height \|\| 200/.test(src));
 truthy("  with Orbit's plot padding", /padL = 65, padR = 20, padT = 5, padB = 35/.test(src));
-truthy("the combined chart fills the panel's 1229", /o\.width \|\| 1229/.test(src));
-truthy("  with room reserved for the second axis", /padR = 56/.test(src));
+truthy("the combined chart is Orbit's 1365 x 320", /o\.width \|\| 1365/.test(src)
+       && /o\.height \|\| 320/.test(src));
+truthy("  with room reserved for the second axis, but only when it has one",
+       /padR = \(o\.bars \? 90 : 20\)/.test(src));
 truthy("the two top cards ask for that size",
-       /width: 597, height: 200/.test(sales));
+       (sales.match(/width: 665, height: 200/g) || []).length >= 2);
+
+console.log("\n=== a count axis has whole numbers on it ===");
+// THE BUG: "where i have 1 order the pillar rise upto 50 on y axis". The bars
+// were scaled by _scNiceMax, which returns 1 for a peak of 1 -- so a single
+// order drew a FULL-HEIGHT pillar, every day with one order drew an identical
+// full-height pillar (which is what "the pillars are hardcoded" looks like),
+// and the five ticks rounded to 0, 0, 1, 1, 1.
+{
+  const nice = new Function(`${src}; return {count: _scNiceCount, max: _scNiceMax};`)();
+  check("one order does not fill the chart", nice.count(1), 4);
+  check("  nor do two", nice.count(2), 4);
+  check("five orders get a 0-2-4-6-8 axis", nice.count(5), 8);
+  check("and Orbit's own peak gives Orbit's own axis", nice.count(106), 160);
+  // Every tick must be a whole number of orders at every scale, because half an
+  // order does not exist. This is the property the old code broke.
+  let bad = [];
+  for(let peak = 1; peak <= 500; peak++){
+    const top = nice.count(peak);
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      if(Math.abs(top * f - Math.round(top * f)) > 1e-9) bad.push(peak);
+    });
+    if(top < peak) bad.push("too low at " + peak);
+  }
+  check("no peak from 1 to 500 produces a fractional tick", bad.slice(0, 5), []);
+  check("the old money scale is untouched -- it still may be fractional",
+        nice.max(1), 1);
+}
+
+console.log("\n=== the last pillar is not written on ===");
+// THE OTHER HALF: "i see numbers written on the last one orange pillar". The
+// columns were spread edge to edge, so the last one sat ON the right-hand plot
+// edge and half a 32-wide bar hung into the strip the orders axis is drawn in.
+// Orbit uses a band scale -- measured: bar centre, line point and date label all
+// meet at 90.08, half a 40.17 band in from a plot that starts at 70.
+{
+  const mk = new Function("COLS", "VALS", `
+    ${src}
+    const document = { getElementById: () => null };
+    return salesCombo({id:"bandtest", columns: COLS, bars:{label:"Orders", values:VALS},
+                       lines:[{key:"sales", values: VALS.map(v => v*10)}]});
+  `);
+  const cols = [];
+  for(let i = 0; i < 30; i++) cols.push("2026-07-" + String(15 + i).padStart(2, "0"));
+  const out = mk(cols, cols.map((_, i) => 100 + i));
+  const bars = [...out.matchAll(/class="bar" d="M([\d.]+),/g)].map(m => parseFloat(m[1]));
+  check("thirty days draw thirty bars", bars.length, 30);
+  const W = 1365, padL = 70, padR = 90;
+  const slot = (W - padL - padR) / 30;
+  truthy("the first bar starts inside the plot, not on its edge", bars[0] > padL);
+  // The right-hand labels are drawn at W - padR + 8. Nothing may reach them.
+  const lastRight = bars[bars.length - 1] + Math.min(32, slot * 0.8);
+  truthy("and the last bar ends clear of the count axis", lastRight <= W - padR + 0.5);
+  // Bar centre and line point must coincide, or the picture lies about which
+  // day it is describing.
+  const firstLine = parseFloat((/<path class="series" d="M([\d.]+),/.exec(out) || [])[1]);
+  const firstCentre = bars[0] + Math.min(32, slot * 0.8) / 2;
+  truthy("the line's first point sits over the first bar",
+         Math.abs(firstLine - firstCentre) < 0.6);
+  // Every day labelled, as Orbit labels all thirty of its.
+  const labels = (out.match(/text-anchor="middle" font-size="11"/g) || []).length;
+  check("all thirty days are labelled", labels, 30);
+  truthy("the bars are Orbit's gold at Orbit's opacity",
+         out.includes('fill="#fbbf24" opacity="0.3"'));
+  truthy("  with only the top corners rounded", /A4,4,0,0,1/.test(out.replace(/\s/g, "")));
+}
+
+console.log("\n=== the week chart names its days ===");
+// "week to date looks nothing like orbit". Measured: Orbit's Week to Date reads
+// Sun, Mon, Tue, Wed, Thu, Fri, Sat -- seven labels at band centres. Ours read
+// "Aug 9 … Aug 15" spread edge to edge.
+{
+  const mk = new Function("PTS", `
+    ${src}
+    const document = { getElementById: () => null };
+    return salesChart(PTS, {kind:"money", id:"wtd", width:665, height:200,
+                            scale:"band", xLabel:"dow"});
+  `);
+  // 2026-08-09 is a Sunday.
+  const days = ["2026-08-09","2026-08-10","2026-08-11","2026-08-12",
+                "2026-08-13","2026-08-14","2026-08-15"];
+  const out = mk(days.map((d, i) => ({label: d, value: 10 + i})));
+  const texts = [...out.matchAll(/fill="rgb\(156,163,175\)">([A-Za-z]{3})</g)].map(m => m[1]);
+  check("the week reads as days of the week", texts,
+        ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]);
+  // At band centres, so the first label is not half-clipped by the y-axis.
+  const xs = [...out.matchAll(/<text x="([\d.]+)" y="173"/g)].map(m => parseFloat(m[1]));
+  check("seven of them", xs.length, 7);
+  truthy("the first sits half a band in from the axis", Math.abs(xs[0] - 106.43) < 0.5);
+  truthy("and the last half a band in from the right", Math.abs(xs[6] - 603.57) < 0.5);
+  truthy("the gridlines are Orbit's dashed rule",
+         out.includes('stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"'));
+  truthy("  and the tick text its 11px grey",
+         out.includes('font-size="11"') && out.includes('fill="rgb(156,163,175)"'));
+}
+
+console.log("\n=== which lines are shaded is a fact about each line ===");
+// Measured: Sales is an AREA (gradient 0.30), Prior Year is an AREA too though
+// dashed (0.15), Profit is a LINE with no fill at all. Ours filled under
+// anything solid, which shaded Profit and left Prior Year flat -- the opposite
+// of Orbit on both counts.
+{
+  const spec = new Function(`${src}; return SC_SERIES;`)();
+  check("Sales is filled", spec.sales.fill, 0.30);
+  check("Prior Year is filled at half strength, dash and all", spec.prior_year.fill, 0.15);
+  check("  and it really is the dashed one", spec.prior_year.dash, "5 3");
+  check("Profit is not filled", spec.profit.fill, 0);
+  check("  and it is solid, not dashed", spec.profit.dash, "");
+}
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

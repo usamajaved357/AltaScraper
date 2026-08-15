@@ -259,18 +259,27 @@ function _scFmt(v, kind){
  * below, both to the penny. */
 const SC_CUR = {GBP: "£", USD: "$", EUR: "€", CAD: "$", AUD: "$", JPY: "¥"};
 
-function _scAxis(v, kind, currency){
+/* `span` is the height of the whole axis, and it is what decides the number of
+ * decimals -- NOT the individual value. Deciding per value gave one axis reading
+ * "£0, £5.0, £10, £15, £20": five ticks in three different formats, because 5
+ * fell under the "small, so show a decimal" rule and 10 did not. An axis is one
+ * scale and has to be written one way. Two ticks that round to the same string
+ * are the same failure the count axis had, so a short span keeps its decimals. */
+function _scAxis(v, kind, currency, span){
   if(v === null || v === undefined) return "";
   const n = Number(v);
   if(!isFinite(n)) return "";
   if(kind === "pct") return n.toFixed(0) + "%";
   const sym = (kind === "money") ? (SC_CUR[String(currency || "").toUpperCase()] || "£") : "";
-  const a = Math.abs(n);
-  if(a >= 1e6) return sym + (n / 1e6).toFixed(1) + "m";
-  if(a >= 1000) return sym + (n / 1000).toFixed(1) + "k";
-  if(n === 0) return sym + "0";
-  // Under a thousand, whole units read fine and a decimal is noise.
-  return sym + (a < 10 ? n.toFixed(1) : String(Math.round(n)));
+  if(n === 0) return sym + "0";               // "£0", never "£0.0k"
+  const sc = Math.abs(Number(span)) || Math.abs(n);
+  if(sc >= 1e6) return sym + (n / 1e6).toFixed(1) + "m";
+  // Thousands only once the whole axis is comfortably in them. At a span of
+  // 2,500 the shortened form reads "£0.6k" for 625 -- one significant figure,
+  // which throws away the number the axis exists to give.
+  if(sc >= 1e4) return sym + (n / 1000).toFixed(1) + "k";
+  const dp = sc >= 20 ? 0 : sc >= 2 ? 1 : 2;
+  return sym + n.toFixed(dp).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 /* "Jul 15", not "07-15". Orbit labels its x-axis the way a person says a date,
@@ -285,12 +294,84 @@ function _scDay(label){
   return SC_MONTHS[Number(m[2]) - 1] + " " + Number(m[3]);
 }
 
+/* THE WEEK CHART NAMES ITS DAYS. Measured off Orbit's Week to Date: its x-axis
+ * reads Sun, Mon, Tue, Wed, Thu, Fri, Sat -- seven labels, one per day. Ours
+ * read "Aug 9 … Aug 15", which is the same information in the form you would
+ * use to file it rather than the form you would say it. On a chart of ONE week
+ * the date adds nothing: the week is already established by the panel title,
+ * and what is being looked for is which DAY was strong. */
+const SC_DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+function _scDow(label){
+  const s = String(label || "");
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if(!m) return s;
+  // Built in UTC because the labels are UTC dates. A local-time Date would
+  // shift the day backwards for anyone east of Greenwich, so Monday's column
+  // would be captioned Sunday -- which is worse than a bare date.
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return isNaN(d) ? s : SC_DOW[d.getUTCDay()];
+}
+
+function _scXLabel(label, mode){
+  return (mode === "dow") ? _scDow(label) : _scDay(label);
+}
+
 // A "nice" top-of-axis, so the labels are round numbers rather than 3847.219.
 function _scNiceMax(v){
   if(!v || v <= 0) return 1;
   const mag = Math.pow(10, Math.floor(Math.log10(v)));
   const n = v / mag;
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+}
+
+/* A COUNT AXIS IS NOT A MONEY AXIS, and treating it as one is the bug behind
+ * "where i have 1 order the pillar rise upto 50".
+ *
+ * The bars are scaled against their own top value. _scNiceMax(1) is 1, so a day
+ * with ONE order drew a bar the full height of the chart -- and if every day had
+ * one order, every bar was full height and identical, which is exactly what a
+ * hard-coded picture looks like. The right-hand axis was worse: the five ticks
+ * came out 0, 0, 1, 1, 1, because quarters of 1 were being rounded for display.
+ *
+ * A count has no halves. So the STEP is what gets rounded, not the labels: pick
+ * a whole-number step of at least 1 and put the top of the axis four steps up.
+ * One order against a 0-1-2-3-4 axis is a quarter-height bar, and the axis says
+ * so.
+ *
+ * The ladder includes 4 because Orbit's does. Measured on its Sales Report: a
+ * peak of ~106 orders gives ticks 0, 40, 80, 120, 160 -- a step of 40, which
+ * only comes out of a ladder with 4 in it (106/4 = 26.5 -> 40). A ladder of
+ * 1/2/2.5/5/10 would have chosen 50 and a top of 200.
+ */
+function _scNiceStep(v){
+  if(!v || v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / mag;
+  const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 4 ? 4 : n <= 5 ? 5 : 10) * mag;
+  return step;
+}
+
+function _scNiceCount(v){
+  const top = Math.max(1, Math.ceil(Number(v) || 0));
+  const step = Math.max(1, Math.round(_scNiceStep(top / 4)));
+  return step * 4;
+}
+
+/* A BAR WITH ROUNDED TOP CORNERS ONLY, which is what Orbit draws: measured
+ * `radius=4,4,0,0` on every rectangle of its Sales Report. A plain rect with
+ * rx rounds all four, and the two at the bottom get clipped by the axis into a
+ * shape that reads as a rendering fault. */
+function _scBarPath(x, y, w, h, r){
+  const f = v => (Math.round(v * 100) / 100);
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  if(h <= 0) return "";
+  return "M" + f(x) + "," + f(y + rr)
+       + "A" + f(rr) + "," + f(rr) + ",0,0,1," + f(x + rr) + "," + f(y)
+       + "L" + f(x + w - rr) + "," + f(y)
+       + "A" + f(rr) + "," + f(rr) + ",0,0,1," + f(x + w) + "," + f(y + rr)
+       + "L" + f(x + w) + "," + f(y + h)
+       + "L" + f(x) + "," + f(y + h) + "Z";
 }
 
 // One chart. `points` is [{label, value}] with value === null meaning NO DATA --
@@ -301,18 +382,21 @@ function salesChart(points, opts){
   // a chart was a couple of centimetres of squiggle -- too small to read a shape
   // off, which is the only reason to draw one. Fewer, larger charts beat more,
   // smaller ones.
-  // ORBIT'S GEOMETRY, MEASURED (orbit_sales_spec.md, scanned at 1600px):
+  // ORBIT'S GEOMETRY, RE-MEASURED off the live Live Sales and Week to Date
+  // cards on 15 Aug 2026 (tools captured in the job scratch as orbit_bars4):
   //
-  //   svg        597 x 200   -- a 2.98 ratio. Ours was 720 x 260 (2.77), which
-  //                             is why the same data read as a different shape
-  //                             however closely the colours matched.
-  //   plot area  512 x 160
+  //   svg        665 x 200   -- the earlier note said 597, taken from a narrower
+  //                             scan. At 1600px both top cards report a 665-wide
+  //                             viewBox, and the ratio is what decides whether
+  //                             the same numbers read as the same shape.
+  //   plot area  580 x 160   -- gridlines at y = 165, 125, 85, 45, 5, so the
+  //                             top is 5 and the bottom 165
   //   padding    left 65, top 5, right 20, bottom 35
   //
   // The left padding is what the money labels need and the bottom is what the
   // dates need; the top is deliberately almost nothing, so the line uses the
   // full height of the panel.
-  const W = o.width || 597, H = o.height || 200;
+  const W = o.width || 665, H = o.height || 200;
   const padL = 65, padR = 20, padT = 5, padB = 35;
   const iw = W - padL - padR, ih = H - padT - padB;
   const vals = points.map(p => _scNum(p.value)).filter(v => v !== null);
@@ -348,17 +432,45 @@ function salesChart(points, opts){
   const lo = Math.min(0, Math.min.apply(null, allVals));
   const hi = _scNiceMax(Math.max.apply(null, allVals));
   const span = (hi - lo) || 1;
-  const x = i => padL + (points.length === 1 ? iw / 2 : (i * iw) / (points.length - 1));
+
+  // WHERE COLUMN i SITS. Two answers, and Orbit uses both -- measured:
+  //
+  //   point   Live Sales. 24 hourly points, the first ON the y-axis at x=65 and
+  //           the last on the right edge at x=645. Correct for a continuous run
+  //           of readings: midnight IS the start of the axis.
+  //
+  //   band    Week to Date. Seven days, each occupying a slice of the axis and
+  //           labelled at the middle of its slice (measured: Sun at 106.4, Sat
+  //           at 603.6, 82.86 apart -- which is 580/7, so the first band centre
+  //           is half a band in from the axis).
+  //
+  // A day is not an instant, it is a bucket, and a bucket wants a band. It also
+  // stops the first and last labels being half-clipped by the panel edge, which
+  // is what "Sun" at x=65 would be.
+  const band = (o.scale === "band");
+  const slot = band ? (iw / Math.max(1, points.length))
+                    : (points.length > 1 ? iw / (points.length - 1) : iw);
+  const x = band
+    ? (i => padL + (i + 0.5) * slot)
+    : (i => padL + (points.length === 1 ? iw / 2 : i * slot));
   const y = v => padT + ih - ((v - lo) / span) * ih;
 
   // Gridlines and their labels, at nice fractions of the top value.
+  // MEASURED: Orbit's gridlines are rgb(55,65,81) at 1px with a 3,3 dash, not a
+  // solid rule, and there is an axis line along the bottom in the same colour.
+  // Its tick text is 11px in rgb(156,163,175) at x = padL - 8; ours was 9.5px in
+  // a darker grey, which is why the axis read as fainter and more cramped than
+  // Orbit's at the same size.
   let grid = "";
   [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
     const v = lo + span * f, yy = y(v);
-    grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="#1e2733" stroke-width="1"/>`
-         +  `<text x="${padL - 6}" y="${yy + 3.5}" text-anchor="end" font-size="9.5"
-                fill="#7b8794">${_scEsc(_scAxis(v, o.kind, o.currency))}</text>`;
+    grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
+                   stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
+         +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
+                fill="rgb(156,163,175)">${_scEsc(_scAxis(v, o.kind, o.currency, span))}</text>`;
   });
+  grid += `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"
+                 stroke="rgb(55,65,81)" stroke-width="1"/>`;
 
   // The line, BROKEN wherever a day has no data. Each run of real values is its
   // own path, so nothing is drawn across the gap and nothing implies a zero.
@@ -429,7 +541,7 @@ function salesChart(points, opts){
   let gaps = "";
   points.forEach(function(p, i){
     if(_scNum(p.value) !== null) return;
-    const half = points.length > 1 ? iw / (points.length - 1) / 2 : iw / 2;
+    const half = slot / 2;
     gaps += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
                    width="${Math.min(half * 2, iw)}" height="${ih}"
                    fill="#7b8794" opacity="0.07"/>`;
@@ -455,7 +567,7 @@ function salesChart(points, opts){
   const cid = cid0;
   let hits = "";
   points.forEach(function(p, i){
-    const half = points.length > 1 ? iw / (points.length - 1) / 2 : iw / 2;
+    const half = slot / 2;
     const v = _scNum(p.value);
     // One row per series on the floating card, each named in its own colour --
     // Orbit's layout, measured. The comparison gets a row too: a second line
@@ -521,34 +633,68 @@ function salesChart(points, opts){
       + (_cIsYear ? "the same period last year" : "the period before") + '</span></span>'
     : "";
 
-  // Only a few x labels, or they collide and none of them can be read.
+  // X LABELS, as many as fit rather than a fixed seven.
+  //
+  // MEASURED on Orbit's two top cards: the week is labelled in full -- all seven
+  // days, Sun to Sat -- and the hourly card every third hour, 75.65px apart, so
+  // eight labels across 24 points. Both come out of one rule if the rule is a
+  // minimum SPACING rather than a count: at 70px, seven days pass (82.9 apart)
+  // and 24 hours thin to every third (75.7 apart). A fixed count either crowds a
+  // long range or throws away labels a short one had room for.
+  //
+  // Nothing forces the last point to be labelled. Orbit's hourly axis stops at
+  // 9 PM and leaves the last two hours unlabelled rather than squeezing one in
+  // beside it, and a label that breaks the spacing is the one that collides.
+  //
+  // Its tick text is 11px in rgb(156,163,175), baseline at y = 173 on a 200-high
+  // chart, which is 8px under the axis.
   let xl = "";
-  const step = Math.max(1, Math.ceil(points.length / 7));
+  const room = Math.max(1, Math.floor(iw / 70));
+  const step = Math.max(1, Math.ceil(points.length / room));
   points.forEach(function(p, i){
-    if(i % step && i !== points.length - 1) return;
-    xl += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="9.5"
-                 fill="#7b8794">${_scEsc(_scDay(p.label))}</text>`;
+    if(i % step) return;
+    xl += `<text x="${x(i)}" y="${padT + ih + 8}" text-anchor="middle" font-size="11"
+                 fill="rgb(156,163,175)">${_scEsc(_scXLabel(p.label, o.xLabel))}</text>`;
   });
 
   const missing = points.filter(p => _scNum(p.value) === null).length;
-  return '<div style="margin-bottom:14px">'
-       + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap">'
-       + '<div style="font-size:12.5px;font-weight:600">' + _scEsc(o.title || "") + '</div>'
-       + (missing ? '<span class="cc" style="font-size:10.5px">' + missing
-                    + ' day' + (missing===1?'':'s') + ' not in from Amazon yet — shaded, not zero</span>' : '')
-       // Where the hover answer lands. Beside the title, so the eye does not
-       // have to leave the chart to read it.
-       + '<span id="' + cid + '_read" style="font-size:11.5px;margin-left:auto;'
-       + 'font-variant-numeric:tabular-nums"></span>'
-       + '</div>'
-       // Every chart says where its numbers came from. Amazon has two feeds that
-       // describe the same trade and they disagree for days at a time, so a
-       // shape without its source is a shape you cannot act on.
-       + (o.subtitle ? '<div class="cc" style="font-size:10.5px;margin:-1px 0 5px">'
-                       + _scEsc(o.subtitle) + '</div>' : '')
-       + (legend ? '<div style="margin:-1px 0 5px">' + legend + '</div>' : '')
-       + '<div class="cc" style="font-size:10px;margin:-2px 0 5px;opacity:.65">'
-       + 'Hover for the day’s figure · drag across to zoom into those days</div>'
+
+  // COMPACT is what the two top cards ask for, and it is a measured shape, not
+  // a preference. Orbit's Week to Date card contains three things and nothing
+  // else: the header row, the chart, the ad-spend footer. Between the header and
+  // the chart there is NO subtitle, NO key, NO hint and NO inner panel -- the
+  // chart is drawn straight onto the card.
+  //
+  // Ours stacked a missing-days note, a key and a hover hint in that gap and
+  // then drew the chart inside its own bordered dark box, so the card was a box
+  // inside a box with three lines of small print between them. That is most of
+  // "week to date looks nothing like orbit", and none of it is about the line.
+  //
+  // Nothing is lost: the key and the note move up into the card's own header
+  // beside the title (see salesChartKey, which the caller places), and the hover
+  // gesture is announced once on the big chart below rather than on all three.
+  const compact = !!o.compact;
+  const head = compact ? "" :
+    ('<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap">'
+     + '<div style="font-size:12.5px;font-weight:600">' + _scEsc(o.title || "") + '</div>'
+     + (missing ? '<span class="cc" style="font-size:10.5px">' + missing
+                  + ' day' + (missing===1?'':'s') + ' not in from Amazon yet — shaded, not zero</span>' : '')
+     // Where the hover answer lands. Beside the title, so the eye does not
+     // have to leave the chart to read it.
+     + '<span id="' + cid + '_read" style="font-size:11.5px;margin-left:auto;'
+     + 'font-variant-numeric:tabular-nums"></span>'
+     + '</div>'
+     // Every chart says where its numbers came from. Amazon has two feeds that
+     // describe the same trade and they disagree for days at a time, so a
+     // shape without its source is a shape you cannot act on.
+     + (o.subtitle ? '<div class="cc" style="font-size:10.5px;margin:-1px 0 5px">'
+                     + _scEsc(o.subtitle) + '</div>' : '')
+     + (legend ? '<div style="margin:-1px 0 5px">' + legend + '</div>' : '')
+     + '<div class="cc" style="font-size:10px;margin:-2px 0 5px;opacity:.65">'
+     + 'Hover for the day’s figure · drag across to zoom into those days</div>');
+
+  return '<div style="margin-bottom:' + (compact ? "0" : "14px") + '">'
+       + head
        // NOT preserveAspectRatio="none". That stretched the viewBox horizontally
        // to whatever the container was and left the vertical scale at 1, so every
        // axis label, date and tooltip was squashed or smeared by however wide the
@@ -559,11 +705,46 @@ function salesChart(points, opts){
        // chart in page pixels while the chart itself is drawn in viewBox units.
        + '<div style="position:relative">'
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
-               style="display:block;height:auto;background:#0d1220;
-                      border:1px solid #1e2733;border-radius:8px">`
+               style="display:block;height:auto;${compact
+                 ? "background:transparent;border:0"
+                 : "background:#0d1220;border:1px solid #1e2733;border-radius:8px"}">`
        + defs + grid + gaps + paths + dots + xl + hits + '</svg>'
        + `<div id="${cid}_tip" class="charttip"></div>`
        + '</div></div>';
+}
+
+/* THE KEY, ON ITS OWN, so a card can put it where Orbit puts it: in the header
+ * row, right-aligned, beside the change badge. Measured on Orbit's Week to Date:
+ * "This Week" and "Last Week" at 12px, then the percentage badge, all three on
+ * the title's own line.
+ *
+ * Same arguments as salesChart, so the two cannot describe different lines. */
+function salesChartKey(o){
+  const opt = o || {};
+  const isYear = (opt.compareKind === "year");
+  const LINE = opt.color || SC_GOLD;
+  const cCol = isYear ? SC_PRIORYEAR : SC_COMPARE;
+  const mark = function(col, w, dash){
+    return '<svg width="16" height="6" style="flex:none"><line x1="0" y1="3" x2="16" y2="3"'
+         + ' stroke="' + col + '" stroke-width="' + w + '"'
+         + (dash ? ' stroke-dasharray="' + dash + '"' : "") + '/></svg>';
+  };
+  const item = function(col, w, dash, text, dim, tip){
+    return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px'
+         + (dim ? ';color:rgb(156,163,175)' : '') + '"'
+         + (tip ? ' title="' + _scEsc(tip) + '"' : "") + '>'
+         + mark(col, w, dash) + _scEsc(text) + '</span>';
+  };
+  let out = item(LINE, 2, "", opt.thisLabel || "This period", false, opt.thisTitle);
+  if(opt.compare){
+    // WHICH DAYS THE DASHED LINE ACTUALLY COVERS. "Last Week" is Orbit's caption
+    // and it is what the card shows, but a comparison whose dates cannot be
+    // recovered is a comparison you cannot check -- so they are on the hover.
+    out += item(cCol, isYear ? 1.5 : 2, isYear ? SC_DASH_YEAR : SC_DASH,
+                opt.compareLabel || (isYear ? "Last year" : "Before"), true,
+                opt.compareTitle);
+  }
+  return '<span style="display:inline-flex;align-items:center;gap:12px">' + out + '</span>';
 }
 
 
@@ -588,14 +769,34 @@ function salesChart(points, opts){
 // and the alternative is two charts that cannot be scanned in one glance. Orbit
 // makes the same call. The axes are labelled so which is which is never a
 // guess.
+//
+// WHICH LINES ARE FILLED is a per-series fact, not something to infer from the
+// dash. Ours filled under anything solid, which gave Profit a shading Orbit
+// does not draw and left Prior Year flat when Orbit does shade it. Measured on
+// the live chart, by the element recharts used for each:
+//
+//   Sales        recharts-area-curve   fill salesGradient      0.30 -> 0
+//   Prior Year   recharts-area-curve   fill priorYearGradient  0.15 -> 0
+//   Profit       recharts-line-curve   NO fill
+//
+// Prior Year is dashed AND filled, at half the opacity -- context that is
+// present without competing. `fill: 0` means draw the stroke only.
+//
+// (Profit reported a stroke-dasharray of "1329.78px 0px" when measured. That is
+// not a dash, it is recharts' line-draw animation holding the full path length;
+// the series is solid.)
 const SC_SERIES = {
-  sales:      {label: "Sales",            color: "#10b981", width: 2,   dash: ""},
-  profit:     {label: "Profit",           color: "#38bdf8", width: 2,   dash: ""},
-  prior_year: {label: "Prior Year Sales", color: "#6366f1", width: 1.5, dash: "5 3"},
-  prior:      {label: "Prior period",     color: "#6b7280", width: 2,   dash: "5 5"},
-  // Orbit's own organic/paid colours, from its gradientOrganic and gradientPpc.
-  organic:    {label: "Organic",          color: "#10b981", width: 2,   dash: ""},
-  ppc:        {label: "PPC",              color: "#8b5cf6", width: 2,   dash: ""},
+  sales:      {label: "Sales",            color: "#10b981", width: 2,   dash: "",    fill: 0.30},
+  profit:     {label: "Profit",           color: "#38bdf8", width: 2,   dash: "",    fill: 0},
+  prior_year: {label: "Prior Year Sales", color: "#6366f1", width: 1.5, dash: "5 3", fill: 0.15},
+  prior:      {label: "Prior period",     color: "#6b7280", width: 2,   dash: "5 5", fill: 0},
+  // Orbit's own organic/paid colours and gradients, from gradientOrganic and
+  // gradientPpc -- both of which fade to 0.05 rather than to nothing, so the
+  // two areas stay distinguishable where they overlap low down.
+  organic:    {label: "Organic",          color: "#10b981", width: 2,   dash: "",
+               fill: 0.30, fillEnd: 0.05},
+  ppc:        {label: "PPC",              color: "#8b5cf6", width: 2,   dash: "",
+               fill: 0.30, fillEnd: 0.05},
 };
 
 function salesCombo(o){
@@ -606,16 +807,26 @@ function salesCombo(o){
   });
   if(!cols.length) return "";
 
-  // Measured: the Sales Report panel is 1261 wide with 16px padding, so the
-  // chart has 1229 to work in, and the panel's height leaves it about 330 once
-  // the header and the row of stat cards are taken out.
+  // MEASURED off Orbit's live Sales Report, from the drawn SVG rather than from
+  // the panel it sits in:
   //
-  // The left and top padding match the small charts exactly; the right is wider
-  // because a SECOND axis lives there. Without space reserved for it the last
-  // bar sat under the labels, which was most of why the first attempt looked
-  // wrong.
-  const W = o.width || 1229, H = o.height || 330;
-  const padL = 65, padR = 56, padT = 5, padB = 46;
+  //   viewBox            1365 x 320
+  //   plot area          x 70 -> 1274.9, y 10 -> 254
+  //   left tick text     x = 62,   anchor end     (so the axis is at 70)
+  //   right tick text    x = 1283, anchor start   (8px clear of the plot)
+  //   legend             below the chart, at y 284
+  //
+  // Ours was 1229 x 330 with padR 56 -- a squatter chart with too little room
+  // reserved on the right, which is why the count labels landed ON the last
+  // pillar. Half of a 32-wide bar centred on the right-hand plot edge sticks
+  // 16px into exactly the strip the labels are drawn in.
+  //
+  // The right padding is 90 only when there IS a count axis to write there.
+  // Orbit's Organic vs PPC chart, which has no bars, runs its plot from 60 to
+  // 1355 -- ten clear on the right, not ninety. Reserving the strip on a chart
+  // with nothing to put in it just makes the plot narrower than Orbit's.
+  const W = o.width || 1365, H = o.height || 320;
+  const padL = 70, padR = (o.bars ? 90 : 20), padT = 10, padB = 66;
   const iw = W - padL - padR, ih = H - padT - padB;
 
   const moneyVals = [];
@@ -630,39 +841,62 @@ function salesCombo(o){
   const mLo = Math.min(0, moneyVals.length ? Math.min.apply(null, moneyVals) : 0);
   const mHi = _scNiceMax(moneyVals.length ? Math.max.apply(null, moneyVals) : 1);
   const mSpan = (mHi - mLo) || 1;
-  const bHi = _scNiceMax(barVals.length ? Math.max.apply(null, barVals) : 1);
+  // The bar axis counts ORDERS, so its ticks have to be whole numbers and its
+  // top has to be four whole steps up. See _scNiceCount: this is what stops one
+  // order drawing a full-height pillar against an axis reading 0, 0, 1, 1, 1.
+  const bHi = _scNiceCount(barVals.length ? Math.max.apply(null, barVals) : 1);
 
-  const x  = i => padL + (cols.length === 1 ? iw / 2 : (i * iw) / (cols.length - 1));
+  // A BAND SCALE, which is what a chart with bars must use -- measured on
+  // Orbit's Sales Report: 30 days across a plot from 70 to 1274.9, so bands of
+  // 40.17, and the first bar's centre, the first line point and the "Jul 15"
+  // label all sit together at 90.08 -- half a band in from the axis.
+  //
+  // Ours spread the points from edge to edge (i/(n-1)), which puts the LAST
+  // point exactly on the right-hand plot edge. A 32-wide bar centred there hangs
+  // half its width into the strip where the orders axis is written, which is the
+  // "numbers written on the last one orange pillar".
+  //
+  // Without bars it is a point scale, as Orbit's own Organic vs PPC chart is
+  // (measured: 31 points from x=60 to x=1355, first ON the axis and last on the
+  // right edge). Bars need bands; two areas do not.
+  const cBand = !!bars;
+  const slot = cBand ? (iw / Math.max(1, cols.length))
+                     : (cols.length > 1 ? iw / (cols.length - 1) : iw);
+  const x  = cBand ? (i => padL + (i + 0.5) * slot)
+                   : (i => padL + (cols.length === 1 ? iw / 2 : i * slot));
   const yM = v => padT + ih - ((v - mLo) / mSpan) * ih;
   const yB = v => padT + ih - (v / (bHi || 1)) * ih;
 
   // Gridlines and both sets of tick labels, at the same five heights so the
   // two scales line up visually instead of drawing two sets of rules.
+  // Measured: rgb(55,65,81) at 1px with a 3,3 dash.
   let grid = "";
   [0, 0.25, 0.5, 0.75, 1].forEach(function(f){
     const yy = padT + ih - f * ih;
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
-                   stroke="rgb(55,65,81)" stroke-width="1"/>`
+                   stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, "money", o.currency))}</text>`
-         +  `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
+                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, "money", o.currency, mSpan))}</text>`;
+    // The right-hand count axis is only drawn when something is counted on it.
+    // An axis labelled 0-1-2-3-4 beside a chart with no bars is furniture.
+    if(bars){
+      grid += `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
                   fill="rgb(156,163,175)">${_scEsc(String(Math.round(bHi * f)))}</text>`;
+    }
   });
 
-  // BARS FIRST, so the lines sit over them. 28px measured, but never wider than
-  // the space one column actually has -- a 90-day range at 28px would overlap
-  // into a solid block.
+  // BARS FIRST, so the lines sit over them. Measured: 32 wide in a 40.17 band
+  // (0.8 of it), #fbbf24 at opacity 0.3, corners rounded 4 at the TOP only.
+  // Never wider than the band, or a long range overlaps into a solid block.
   let barsSvg = "";
   if(bars){
-    const slot = cols.length > 1 ? iw / (cols.length - 1) : iw;
-    const bw = Math.max(2, Math.min(28, slot * 0.62));
+    const bw = Math.max(2, Math.min(32, slot * 0.8));
     (bars.values || []).forEach(function(v, i){
       const n = _scNum(v);
       if(n === null || n <= 0) return;
       const top = yB(n), h = (padT + ih) - top;
-      barsSvg += `<rect class="bar" x="${(x(i) - bw / 2).toFixed(1)}" y="${top.toFixed(1)}"
-                        width="${bw.toFixed(1)}" height="${Math.max(0, h).toFixed(1)}"
-                        fill="#fbbf24" fill-opacity="0.3" rx="2"/>`;
+      barsSvg += `<path class="bar" d="${_scBarPath(x(i) - bw / 2, top, bw, Math.max(0, h), 4)}"
+                        fill="#fbbf24" opacity="0.3"/>`;
     });
   }
 
@@ -691,9 +925,10 @@ function salesCombo(o){
       // flat beside Orbit's however well the line itself matched.
       //
       // Drawn BEFORE the line, so the stroke sits on top of its own shading,
-      // and only for solid series: a comparison line is context and filling
-      // under it would give the past the same visual weight as the present.
-      if(!spec.dash){
+      // and only for the series Orbit actually fills under -- which is a fact
+      // about each series, not something the dash can be asked. Profit is solid
+      // and unfilled; Prior Year is dashed and filled at half strength.
+      if(spec.fill){
         const area = d + ` L ${x(r[r.length-1].i).toFixed(1)} ${yM(mLo).toFixed(1)}`
                        + ` L ${x(r[0].i).toFixed(1)} ${yM(mLo).toFixed(1)} Z`;
         linesSvg += `<path class="series" d="${area}"
@@ -706,13 +941,19 @@ function salesCombo(o){
     });
   });
 
-  // x labels, thinned so they can be read
+  // X LABELS, as many as fit. Measured: Orbit labels every one of its 30 days --
+  // "Jul 15", "Jul 16", … -- at 40.17px apart, which is as tight as an 11px
+  // "Jul 15" goes. Ours thinned to sixteen and dropped half of them for no
+  // reason but a fixed count. Same spacing rule as the small charts, with the
+  // tighter minimum this chart's own measurement gives: a 30-day range keeps all
+  // thirty, and a 90-day range thins itself.
   let xl = "";
-  const step = Math.max(1, Math.ceil(cols.length / 16));
+  const room = Math.max(1, Math.floor(iw / 40));
+  const step = Math.max(1, Math.ceil(cols.length / room));
   cols.forEach(function(c, i){
-    if(i % step && i !== cols.length - 1) return;
-    xl += `<text x="${x(i)}" y="${H - 34}" text-anchor="middle" font-size="11"
-                 fill="rgb(156,163,175)">${_scEsc(_scDay(c))}</text>`;
+    if(i % step) return;
+    xl += `<text x="${x(i)}" y="${padT + ih + 16}" text-anchor="middle" font-size="11"
+                 fill="rgb(156,163,175)">${_scEsc(_scXLabel(c, o.xLabel))}</text>`;
   });
 
   // Hover: one readout for every series at that column, which is the whole
@@ -720,10 +961,11 @@ function salesCombo(o){
   // One gradient per series, since each fills in its own colour. Stops measured
   // off Orbit's: 0.30 at 5%, fading to 0 at 95%.
   const defs = "<defs>" + lines.map(function(l){
-    const spec = SC_SERIES[l.key] || {color: "#8fd694"};
+    const spec = SC_SERIES[l.key] || {color: "#8fd694", fill: 0.30};
     return `<linearGradient id="${cid0}_g_${l.key}" x1="0" y1="0" x2="0" y2="1">`
-         + `<stop offset="5%" stop-color="${spec.color}" stop-opacity="0.30"/>`
-         + `<stop offset="95%" stop-color="${spec.color}" stop-opacity="0"/>`
+         + `<stop offset="5%" stop-color="${spec.color}" stop-opacity="${spec.fill}"/>`
+         + `<stop offset="95%" stop-color="${spec.color}" stop-opacity="${
+              spec.fillEnd === undefined ? 0 : spec.fillEnd}"/>`
          + `</linearGradient>`;
   }).join("") + "</defs>";
 
@@ -733,7 +975,7 @@ function salesCombo(o){
                     stroke="${SC_GOLD}" stroke-width="1" opacity="0"/>`
            + `<g id="${cid}_dots"></g>`;
   cols.forEach(function(c, i){
-    const half = cols.length > 1 ? iw / (cols.length - 1) / 2 : iw / 2;
+    const half = slot / 2;
     // A ROW PER SERIES on the floating card, each in its own colour, with the
     // dot placed on that series' own line. Bars get a row too but no dot --
     // a dot on a bar has nothing to sit on.

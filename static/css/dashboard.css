@@ -2106,6 +2106,30 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .panelsub{ font-size:12px; font-weight:400; line-height:18px;
            color:rgb(156,163,175); margin:2px 0 0; }
 
+/* "3 days not in from Amazon yet — shaded, not zero". It explains the grey
+   block on the right of the week chart, so it cannot simply be dropped for
+   matching Orbit's card exactly -- Orbit has no such block because its data is
+   complete. It goes on the subtitle line, where it costs no height, rather than
+   as a band of small print between the header and the chart.
+   :empty so a complete week leaves no stray gap after the subtitle. */
+.panelnote{ margin-left:8px; }
+.panelnote:empty{ display:none; }
+/* Gold only when it is saying something is MISSING. The same slot also carries
+   the hourly card's timezone, which is a fact rather than a warning and must
+   not be dressed as one. */
+.panelnote.warn{ color:rgb(251,191,36); }
+
+/* The key in the header row, beside the change badge, as Orbit has it. Centred
+   against the title rather than against the top of the two-line header block,
+   so it lines up with the words instead of floating above them. */
+.sales-toprow .panelhead > span[id$="_key"],
+.sales-toprow .panelhead > .panelclock{ align-self:center; }
+
+/* "Pacific Time (PDT): 5:14 PM" -- measured at 12px on Orbit's Live Sales
+   header, the zone name muted and the time in the reading colour. */
+.panelclock{ font-size:12px; color:rgb(243,244,246); white-space:nowrap; }
+.panelclock:empty{ display:none; }
+
 /* Five stat cards across, 12px apart -- measured pitch 247.8 on a 235.8 card. */
 #sales_cards.stat-row{
   display:grid;

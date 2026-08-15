@@ -320,9 +320,21 @@
             <div>
               <p class="paneltitle">Live Sales</p>
               <p class="panelsub">Based on order dates<span class="infodot"
-                 title="Orders as Amazon records them arriving. A different measurement from the settled figures below, and it will not tie out to them.">i</span></p>
+                 title="Orders as Amazon records them arriving. A different measurement from the settled figures below, and it will not tie out to them.">i</span><span
+                 class="panelnote" id="sales_today_note"></span></p>
             </div>
             <span class="spacer"></span>
+            <!-- The marketplace's OWN clock, which is what Orbit puts here:
+                 "Pacific Time (PDT): 5:14 PM". This app is run from Pakistan
+                 against UK and US stores, where "today so far" is three
+                 different days, so whose today it is has to be on the card. -->
+            <span id="sales_today_clock" class="panelclock"></span>
+            <!-- The key sits HERE, on the title's own line, because that is where
+                 Orbit's is -- measured: "This Week", "Last Week" and the change
+                 badge share the header row. Ours drew it between the header and
+                 the chart, which pushed the chart down and gave the card a band
+                 of small print Orbit does not have. -->
+            <span id="sales_today_key"></span>
             <span id="sales_today_delta"></span>
           </div>
           <div id="sales_today"></div>
@@ -332,9 +344,11 @@
             <div>
               <p class="paneltitle">Week to Date</p>
               <p class="panelsub">Based on order dates<span class="infodot"
-                 title="Monday to today, drawn against the same days of last week.">i</span></p>
+                 title="Monday to today, drawn against the same days of last week.">i</span><span
+                 class="panelnote" id="sales_week_note"></span></p>
             </div>
             <span class="spacer"></span>
+            <span id="sales_week_key"></span>
             <span id="sales_week_delta"></span>
           </div>
           <div id="sales_week"></div>

@@ -743,10 +743,52 @@ async function salesLoadWeek(){
     if(!cmp.some(function(p){ return p.value !== null && Number(p.value) !== 0; })) cmp = null;
   }
 
-  host.innerHTML = salesChart(pts, {
-    title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart", currency: (now && now.currency),
-    width: 597, height: 200, compare: cmp,
-    subtitle: cmp ? ("dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""});
+  // A WEEK IS SEVEN BUCKETS, NOT SEVEN INSTANTS, so the points sit at the middle
+  // of each day's band and are captioned by day name -- Sun, Mon, Tue … -- which
+  // is what Orbit's Week to Date x-axis reads (measured: seven labels at 106.4
+  // through 603.6, one per band centre). Ours read "Aug 9 … Aug 15": the same
+  // information in the form you would use to file it rather than to say it, and
+  // on a chart of one week the date adds nothing the title has not said.
+  const wkOpts = {
+    title: "", kind: "money", color: "#3b82f6", id: "sales_week_chart",
+    currency: (now && now.currency),
+    width: 665, height: 200, compare: cmp, scale: "band", xLabel: "dow",
+    compact: true, thisLabel: "This Week", compareLabel: "Last Week",
+    compareTitle: cmp ? ("the dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""};
+  host.innerHTML = salesChart(pts, wkOpts);
+
+  // The key goes in the card's HEADER, which is where Orbit has it -- "This
+  // Week", "Last Week", then the change badge, all on the title's own line.
+  // It used to sit between the header and the chart, pushing the chart down and
+  // giving the card a band of small print Orbit does not have.
+  const wkey = document.getElementById("sales_week_key");
+  if(wkey) wkey.innerHTML = salesChartKey(wkOpts);
+
+  // The missing days still have to be explained -- the shaded block on the right
+  // is the days Amazon has not delivered, and unexplained it reads as a fault.
+  // It goes under the subtitle rather than over the chart.
+  const wnote = document.getElementById("sales_week_note");
+  if(wnote){
+    const gaps = pts.filter(function(p){
+      return p.value === null || p.value === undefined; }).length;
+    wnote.className = "panelnote warn";
+    wnote.textContent = gaps
+      ? ("· " + gaps + " day" + (gaps === 1 ? "" : "s")
+         + " not in from Amazon yet — shaded, not zero")
+      : "";
+  }
+
+  // ORBIT'S WEEK CARD HAS AN AD FOOTER TOO -- measured: "Ad spend this week
+  // $10,633 · TACOS 9.8%", the label at 10px and the figure at 12px. Ours had
+  // one under Live Sales and nothing under this card, so the two halves of the
+  // top row did not even end the same way. Neither figure is available on this
+  // account, and the footer says which and why rather than leaving a gap that
+  // looks like a design that forgot something.
+  host.innerHTML += '<div class="adfooter">'
+    + '<span class="lbl">Ad spend this week</span> <b>not connected</b>'
+    + '<span class="lbl" style="margin-left:8px">Tacos</span> <b>not connected</b>'
+    + '<span style="color:rgb(156,163,175)"> — both need the Advertising API.</span>'
+    + '</div>';
 
   // The change against the same days last week, as a chip beside the heading.
   if(badge){
@@ -840,10 +882,12 @@ function salesDrawOrgPpc(ser){
     return;
   }
 
+  // Measured: Orbit's Organic vs PPC panel is 1365 x 380, taller than its Sales
+  // Report because the two areas overlap and need the room to stay readable.
   const chart = salesCombo({
     id: "orgppc", columns: cols, bars: null, currency: (ser && ser.currency),
     lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
-    height: 260,
+    height: 380,
   });
   host.innerHTML = note + bar
     + (sample ? '<div class="ri-sample">' + chart + '</div>' : chart);
@@ -896,6 +940,38 @@ async function salesLoadToday(){
   }catch(e){ el.innerHTML=""; }
 }
 
+/* "Pacific Time (PDT): 5:14 PM" -- the marketplace's zone in words and its own
+ * current time, which is what Orbit shows on the Live Sales header.
+ *
+ * Both come from Intl, so the zone name is whatever the browser calls it rather
+ * than a table this app would have to keep. If the zone is one Intl does not
+ * know, the identifier itself is shown: a name that is merely unfriendly beats
+ * a card that silently drops which day it is talking about. */
+function _sClock(tz){
+  if(!tz) return "";
+  const now = new Date();
+  const zone = function(style){
+    try{
+      const p = new Intl.DateTimeFormat("en-GB", {timeZone: tz, timeZoneName: style})
+        .formatToParts(now).filter(function(x){ return x.type === "timeZoneName"; });
+      return p.length ? p[0].value : "";
+    }catch(e){ return ""; }
+  };
+  // The friendly name where it is short enough to sit in the header beside the
+  // key and the badge -- "Pacific Time", which is what Orbit shows. Where it is
+  // not, the offset: "United Kingdom Time" is nineteen characters and pushed the
+  // change badge onto a second line, and a header that reflows is worse than an
+  // abbreviation.
+  let name = zone("longGeneric");
+  if(!name || name.length > 16) name = zone("short") || tz;
+  let time = "";
+  try{
+    time = new Intl.DateTimeFormat("en-GB", {timeZone: tz, hour: "numeric",
+      minute: "2-digit", hour12: true}).format(now).toUpperCase();
+  }catch(e){ return _sEsc(name); }
+  return '<span class="cc">' + _sEsc(name) + ':</span> ' + _sEsc(time);
+}
+
 /* ---- the hourly curve --------------------------------------------------
  * Orbit's Live Sales card: today climbing across the day in gold, yesterday
  * running the full 24 hours behind it in grey dashes, so "am I ahead of
@@ -942,11 +1018,32 @@ async function salesLoadHourly(){
     + '<span style="color:rgb(156,163,175)"> — both need the Advertising API, '
     + 'which this account is not connected to.</span></div>';
 
-  el.innerHTML = salesChart(pts, {
-    title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart", currency: (j && j.currency),
-    width: 597, height: 200, compare: cmp,
-    subtitle: (j.note || "") + " Orders as placed, " + _sEsc(j.timezone || "")})
-    + adsFoot;
+  // A POINT SCALE here, not a band: these are readings across a continuous day,
+  // and midnight IS the start of the axis. Measured on Orbit's Live Sales: 24
+  // hourly points from x=65 (on the y-axis) to x=645 (the right edge), labelled
+  // every third hour.
+  const hrOpts = {
+    title: "", kind: "money", color: "#fbbf24", id: "sales_hourly_chart",
+    currency: (j && j.currency),
+    width: 665, height: 200, compare: cmp, scale: "point",
+    compact: true, thisLabel: "Today", compareLabel: "Yesterday"};
+  el.innerHTML = salesChart(pts, hrOpts) + adsFoot;
+
+  const hkey = document.getElementById("sales_today_key");
+  if(hkey) hkey.innerHTML = salesChartKey(hrOpts);
+
+  // WHICH CLOCK "today" IS ON, in the header where Orbit puts it -- measured:
+  // "Pacific Time (PDT): 5:14 PM", the zone named in words and the marketplace's
+  // own current time beside it. Ours had the IANA identifier in a subtitle under
+  // the chart, which is the same fact written for a machine.
+  //
+  // It matters more here than it does for Orbit: this app is run from Pakistan
+  // against UK and US stores, so "today so far" is three different days
+  // depending on which account is open.
+  const clock = document.getElementById("sales_today_clock");
+  if(clock) clock.innerHTML = _sClock(j.timezone);
+  const hnote = document.getElementById("sales_today_note");
+  if(hnote) hnote.textContent = "";
 
   // Against the SAME HOUR yesterday, never yesterday's full day -- otherwise
   // every morning shows a collapse and every evening a recovery.
