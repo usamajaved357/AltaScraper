@@ -404,10 +404,48 @@ function salesDrawCharts(ser){
     // order basis when the report has delivered, because that is the one that
     // carries orders at all, and the money basis otherwise. Whichever it picks,
     // every series on the chart comes from it, and the panel says which.
-    const orderBasis = anyReal(cells("orders")) || anyReal(cells("ordered_sales"));
+    // THE DAYS THE REPORT HAS NOT SENT YET, FILLED FROM THE ORDERS API.
+    //
+    // "but in amazn i am able to see the sales from yesterday accurately, why
+    // not here" -- because Seller Central reads the Orders API and this chart
+    // was reading the Sales & Traffic report, which runs a day or two behind.
+    //
+    // Both count an order on the day it was PLACED. They are the same
+    // measurement, and the report is simply the settled version that arrives
+    // later, which is what makes this safe -- unlike the finance feed below,
+    // which is dated by when the money moved and belongs to different days.
+    //
+    // ONLY where the report has sent NOTHING (null). A figure Amazon has
+    // actually delivered is never overwritten, so the chart cannot start
+    // disagreeing with the grid under it on a settled day.
+    const live = SALES._live || null;
+    const _fill = function(vals, key){
+      if(!live || !vals) return vals;
+      return vals.map(function(v, i){
+        if(v !== null && v !== undefined) return v;
+        const day = live[dates[i]];
+        return (day && day[key] !== undefined) ? day[key] : v;
+      });
+    };
+    const liveOrders = _fill(cells("orders"), "orders");
+    const liveSales  = _fill(cells("ordered_sales"), "revenue");
+
+    // Orbit does not have this problem because it commits to one basis and says
+    // so on the card -- "Based on order dates". So does this chart: the order
+    // basis when the report (or the live feed) has delivered, because that is
+    // the one that carries orders at all, and the money basis otherwise.
+    // Whichever it picks, every series on the chart comes from it, and the
+    // panel says which.
+    const orderBasis = anyReal(liveOrders) || anyReal(liveSales);
     SALES._chartBasis = orderBasis ? "order" : "money";
-    const salesCells  = orderBasis ? cells("ordered_sales") : cells("net_revenue");
-    const orderCells  = orderBasis ? cells("orders") : cells("units_shipped");
+    SALES._liveFilled = orderBasis && live
+      ? dates.filter(function(d, i){
+          const rep = (cells("orders") || [])[i];
+          return live[d] && (rep === null || rep === undefined);
+        })
+      : [];
+    const salesCells  = orderBasis ? liveSales : cells("net_revenue");
+    const orderCells  = orderBasis ? liveOrders : cells("units_shipped");
     // Profit exists ONLY on the money basis -- Amazon reports no profit against
     // an order date. Plotting it beside order-dated bars would reintroduce
     // exactly the mismatch above, so on the order basis it is left off the
@@ -450,7 +488,22 @@ function salesDrawCharts(ser){
         // Orbit's Sales Report keeps a 320px height at every width -- measured
         // 1365x320 on desktop and 340x320 on a phone. See scChartWidth.
         width: scChartWidth("sales_charts", 1365), height: 320,
-        bars: anyReal(orderCells) ? {label: "Orders", values: orderCells} : null,
+        // THE LABEL FOLLOWS THE DATA. This said "Orders" whatever was in the
+        // bars, and on the money basis the bars hold UNITS SHIPPED -- dated by
+        // when the money moved, not when the order was placed.
+        //
+        // Reported on jack_uk: "the graph shows i generated an order on 7 9 and
+        // 12th aug but i did not a single in these days". Reproduced exactly --
+        // on a 14-day range that account's report feed has delivered nothing, so
+        // the chart fell back to the finance feed and drew a bar on each of
+        // those three settlement days, under a key that read "Orders".
+        //
+        // The panel already carried a note saying which basis was in use, but
+        // the key sits directly under the bars and is what gets read. A label
+        // that contradicts the note is worse than no note.
+        bars: anyReal(orderCells)
+          ? {label: (orderBasis ? "Orders" : "Units shipped"), values: orderCells}
+          : null,
         lines: comboLines,
       });
     }
@@ -503,9 +556,56 @@ function salesDrawCharts(ser){
         + 'Profit is not on this chart because Amazon reports no profit against '
         + 'an order date; it is in the grid below, on the money basis.</div>'
       : '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
-        + 'Based on <b>when the money moved</b> — units shipped, dated at '
-        + 'settlement. The Sales &amp; Traffic report has not delivered order '
-        + 'counts for this period yet.</div>';
+        + 'Based on <b>when the money moved</b> — the gold bars are <b>units '
+        + 'shipped</b>, dated at settlement, <b>not orders</b>. A bar on a day '
+        + 'means money settled that day for an order placed earlier. The Sales '
+        + '&amp; Traffic report has delivered no order counts for this period, '
+        + 'which is why the chart cannot show order dates.</div>';
+
+    // THE DAYS AT THE END THAT AMAZON HAS NOT SENT YET.
+    //
+    // Reported: "i got orders 3 orders yesterday and those are not displayed in
+    // the graph". They are real, and they are not in this chart because the
+    // Sales & Traffic report runs a day or two behind -- yesterday's row simply
+    // does not exist yet. The chart draws a gap rather than a zero, which is
+    // right, but a gap at the right-hand edge is indistinguishable from a quiet
+    // day unless it is named.
+    //
+    // The Live Sales card DOES have them: it reads the Orders API directly.
+    // Those are two different measurements and merging them into one line is
+    // exactly the mix this chart refuses to make, so the answer is to say where
+    // the missing days are rather than to fill them in.
+    const _tail = (function(){
+      const undelivered = [];
+      for(let i = dates.length - 1; i >= 0; i--){
+        const any = (rows || []).some(function(m){
+          const v = (m.cells || [])[i];
+          return v !== null && v !== undefined;
+        });
+        if(any) break;
+        undelivered.push(dates[i]);
+      }
+      return undelivered.reverse();
+    })();
+    const _filled = SALES._liveFilled || [];
+    if(_filled.length){
+      note += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
+        + 'border:1px solid var(--line);border-radius:6px">'
+        + '<i class="ti ti-bolt"></i> <b>' + _sEsc(_filled.join(", ")) + '</b> '
+        + (_filled.length === 1 ? 'is' : 'are') + ' counted live from the Orders '
+        + 'API, because Amazon\'s Sales &amp; Traffic report has not delivered '
+        + (_filled.length === 1 ? 'that day' : 'those days') + ' yet — this is the '
+        + 'same feed Seller Central shows you. The figures settle into the report '
+        + 'within a day or two and the chart will switch to it automatically.</div>';
+    } else if(_tail.length){
+      note += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
+        + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
+        + '<i class="ti ti-info-circle"></i> Amazon has sent nothing yet for '
+        + '<b>' + _sEsc(_tail.join(", ")) + '</b>. The Sales &amp; Traffic report '
+        + 'runs a day or two behind, so orders placed since then are not on this '
+        + 'chart — they are counted on the <b>Live Sales</b> card above, which '
+        + 'reads orders directly as they arrive.</div>';
+    }
     if(withData <= 2){
       note += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
         + 'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
@@ -579,7 +679,19 @@ async function salesReload(){
     // context to draw the thing the context is about. When it arrives the
     // charts redraw with it; if it fails they simply stay as they are.
     SALES.compare = null;
+    // CLEARED BEFORE THE NEW ONE IS ASKED FOR. Without this, switching account
+    // or marketplace leaves the previous one's live orders in place and they
+    // are drawn onto the new account's chart -- one account's sales shown under
+    // another's name, which this app has shipped three times and must not again.
+    SALES._live = null;
+    SALES._liveFilled = [];
     salesLoadCompare(sum).catch(function(){});
+    // The last few days of orders, live. NOT awaited, for the same reason the
+    // comparison is not: the chart must draw from the report the moment it has
+    // it, and this only ever ADDS the days the report has not covered. If it is
+    // slow the chart is already up; if it fails the chart is exactly what it was
+    // before, with the note saying which days are missing.
+    salesLoadRecent().catch(function(){});
     salesDrawCards(sum, av);
     salesDrawCharts(ser);
     salesDrawOrgPpc(ser);
@@ -599,6 +711,32 @@ async function salesReload(){
     if(grid) grid.style.opacity="";
     SALES.busy=false;
   }
+}
+
+/* ---- the days the report has not sent yet, read live --------------------
+ *
+ * "but in amazn i am able to see the sales from yesterday accurately, why not
+ * here". Seller Central reads the Orders API; this screen read the Sales &
+ * Traffic report, which runs a day or two behind. Measured on jack_uk: the
+ * report had nothing at all for 14 August, and the Orders API had the three
+ * orders placed that day, £102.21 — the exact figures the account holder could
+ * see in Amazon and not here.
+ *
+ * Six days is enough: the report is rarely more than two behind, and asking for
+ * a month of orders is a slow call that pages.
+ */
+async function salesLoadRecent(){
+  if(!SALES.series || !((SALES.series.columns) || []).length) return;
+  let j;
+  try{
+    j = await (await fetch("/sales/recent?days=6&" + _sQuery())).json();
+  }catch(e){ return; }
+  // A 502 here is normal and not worth reporting: an account whose Amazon app
+  // is not authorised for Orders simply keeps the report-only chart it had.
+  if(!j || !j.ok || !j.days || !Object.keys(j.days).length) return;
+  SALES._live = j.days;
+  // Redraw from the series already in hand -- no second request for anything.
+  if(SALES.series){ salesDrawCharts(SALES.series); salesDrawGrid(SALES.series); }
 }
 
 /* ---- the period before this one ----------------------------------------

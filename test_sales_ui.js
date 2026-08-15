@@ -138,6 +138,50 @@ console.log("\n=== one change badge, not three ===");
         (js.match(/<span class="pct-badge /g) || []).length, 1);
 }
 
+console.log("\n=== yesterday's orders, from the feed Amazon itself shows ===");
+/* "but in amazn i am able to see the sales from yesterday accurately, why not
+ * here". Because Seller Central reads the Orders API and this chart read the
+ * Sales & Traffic report, which runs a day or two behind.
+ *
+ * MEASURED on jack_uk: the report had NOTHING for 14 August; the Orders API had
+ * three orders, GBP 102.21. Both count an order on the day it was PLACED, so
+ * they are the same measurement and the later one may fill the earlier one's
+ * gap -- which is not the same as mixing in the finance feed, dated by when the
+ * money moved and belonging to different days.
+ */
+check("there is a loader for the live tail", /async function salesLoadRecent/.test(js), true);
+check("  it asks for a few days, not a month",
+      /\/sales\/recent\?days=6&/.test(js), true);
+check("  and it is not awaited, so the chart draws from the report first",
+      /salesLoadRecent\(\)\.catch/.test(js), true);
+check("  it redraws from the series in hand rather than refetching",
+      /SALES\._live = j\.days;[\s\S]{0,200}salesDrawCharts\(SALES\.series\)/.test(js), true);
+// THE RULE THAT KEEPS THE CHART AND THE GRID AGREEING: a delivered figure is
+// never overwritten, only a missing one is filled.
+check("only a MISSING day is filled",
+      /if\(v !== null && v !== undefined\) return v;/.test(js), true);
+// THE RULE THAT STOPS A FOURTH CROSS-ACCOUNT LEAK.
+check("the live figures are cleared before each load",
+      /SALES\._live = null;/.test(js), true);
+check("  next to where the comparison is cleared, on every reload",
+      /SALES\.compare = null;[\s\S]{0,400}SALES\._live = null;/.test(js), true);
+// Matched on a run of text that is not split across a `+`, since these strings
+// are built by concatenation and a longer phrase spans two source lines.
+check("the days that were filled are named on the panel",
+      /counted live from the Orders/.test(js), true);
+
+console.log("\n=== the bars are labelled with what is IN them ===");
+/* Reported: "the graph shows i generated an order on 7 9 and 12th aug but i did
+ * not a single in these days". Reproduced exactly on a 14-day range: that
+ * account's report feed had delivered nothing, so the chart fell back to the
+ * finance feed and drew a bar on each of those three SETTLEMENT days -- under a
+ * key that read "Orders".
+ */
+check("the bar label follows the basis, rather than always saying Orders",
+      /label: \(orderBasis \? "Orders" : "Units shipped"\)/.test(js), true);
+check("  and the money-basis note says the bars are not orders",
+      /the gold bars are <b>units/.test(js) && /<b>not orders<\/b>/.test(js), true);
+
 console.log("\n=== a card that could not load says so ===");
 /* FOUND BY DRIVING THE LIVE APP: /sales/today answers 502 on sheelady_us --
  * Amazon's own words are "Unauthorized: Access to requested resource is

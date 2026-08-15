@@ -1,58 +1,18 @@
-// ---------- Inventory section ----------
-async function invRunBuild(){
-  const resBox = document.getElementById("inv_result");
-  const pl3 = document.getElementById("inv_pl3");
-  const sales = document.getElementById("inv_sales");
-  const yoy = document.getElementById("inv_yoy");
-  const pd = document.getElementById("inv_pd");
-  if(!pl3.files || !pl3.files[0]){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">3PL stock CSV is required.</div>'; return; }
-  if(!sales.files || !sales.files[0]){ resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">Daily sales CSV is required.</div>'; return; }
-  resBox.innerHTML='<div class="cc"><span class="genspin"></span> Pulling FBA inventory from SP-API + computing replenishment for every SKU…</div>';
-  const fd = new FormData();
-  fd.append("pl3_file", pl3.files[0]);
-  fd.append("sales_file", sales.files[0]);
-  if(yoy.files && yoy.files[0]) fd.append("yoy_file", yoy.files[0]);
-  if(pd.files && pd.files[0]) fd.append("pd_file", pd.files[0]);
-  fd.append("target_normal_days", document.getElementById("inv_normal").value || "85");
-  fd.append("reorder_cycle_days", document.getElementById("inv_reorder").value || "5");
-  fd.append("target_long_days", document.getElementById("inv_long").value || "110");
-  fd.append("marketplace", WS_MARKET || "UK");
-  fd.append("cycle_label", document.getElementById("inv_cycle").value || "");
-  try{
-    const j = await (await fetch("/inventory/build",{method:"POST", body:fd})).json();
-    if(!j.ok){
-      resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"build failed")+'</div>';
-      return;
-    }
-    const s = j.summary || {};
-    const c = j.sku_coverage || {};
-    let html = '<div style="padding:12px;border:1px solid var(--line);border-radius:8px">';
-    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">✓ Replenishment sheet built</div>';
-    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:10px">';
-    html += '<div><b>'+j.row_count+'</b> SKUs total</div>';
-    html += '<div><b style="color:#ffd76b">'+(s.replenish_yes||0)+'</b> flagged for replenishment</div>';
-    html += '<div><b style="color:var(--ok)">'+(s.units_flagged||0)+'</b> units to reorder</div>';
-    if(s.stockout_risk_skus){
-      html += '<div><b style="color:var(--red)">'+s.stockout_risk_skus+'</b> stockout-risk SKUs (DOS &lt; 14)</div>';
-    }
-    html += '</div>';
-    html += '<div style="font-size:11px;opacity:.75;margin-bottom:10px">SKU coverage — FBA (SP-API): '+(c.in_fba||0)+' · 3PL upload: '+(c.in_3pl||0)+' · Sales upload: '+(c.in_sales||0);
-    if(c.in_yoy) html += ' · YoY: '+c.in_yoy;
-    if(c.in_pd) html += ' · PD: '+c.in_pd;
-    html += ' · Union: <b>'+(c.union||0)+'</b></div>';
-    if(j.warnings && j.warnings.length){
-      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:11px">';
-      html += '<b>SP-API warnings:</b><br>' + j.warnings.map(esc).join("<br>");
-      html += '</div>';
-    }
-    html += '<div style="margin-top:12px"><a href="'+j.download_url+'" download="'+j.filename+'" class="mktbtn on" style="display:inline-block;text-decoration:none;padding:8px 14px">⬇ Download replenishment xlsx</a></div>';
-    html += '</div>';
-    resBox.innerHTML = html;
-  }catch(e){
-    resBox.innerHTML='<div style="color:var(--red);font-size:12px;padding:8px">Request failed: '+esc(String(e))+'</div>';
-  }
-}
-
+﻿// ---------- Inventory section ----------
+//
+// invRunBuild() USED TO LIVE HERE and has been removed. It was the first
+// version of this screen: it asked for four CSV uploads and read the element
+// ids inv_pl3, inv_sales, inv_yoy, inv_pd, inv_normal, inv_reorder, inv_long,
+// inv_cycle and inv_result.
+//
+// None of those ids exist. The template carries the v2 set -- inv2_normal,
+// inv2_reorder, inv2_long, inv2_window, inv2_result -- and the only button on
+// the screen calls inv2Run(). So invRunBuild was reachable from nowhere, and
+// had it ever been reached it would have thrown on the first null.
+//
+// Found by a sweep for element ids the JS asks for and no template provides.
+// Deleting it rather than leaving it means the next such sweep is quiet, and a
+// quiet sweep is one whose noise means something.
 // ---------- v2 inventory handler (SP-API auto-fetch, 4-bucket classification) ----------
 async function inv2Run(){
   const resBox = document.getElementById("inv2_result");
@@ -61,7 +21,7 @@ async function inv2Run(){
     resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">No workspace/account selected. Pick one from the sidebar first.</div>';
     return;
   }
-  resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model — fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)…</div>';
+  resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model â€” fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)â€¦</div>';
 
   const fd = new FormData();
   fd.append("account_id", acctId);
@@ -83,7 +43,7 @@ async function inv2Run(){
     }
     const s = j.summary || {};
     let html = '<div style="padding:12px;border:1px solid var(--line);border-radius:8px">';
-    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">✓ Inventory model complete</div>';
+    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">âœ“ Inventory model complete</div>';
 
     // Bucket counts
     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">';
@@ -113,7 +73,7 @@ async function inv2Run(){
       html += '<b>Sample alerts (first 10):</b>';
       html += '<ul style="margin:6px 0 0 18px">';
       j.alerts_sample.forEach(a=>{
-        html += '<li>'+esc(a.sku)+' — '+esc(a.alert)+'</li>';
+        html += '<li>'+esc(a.sku)+' â€” '+esc(a.alert)+'</li>';
       });
       html += '</ul></div>';
     }
@@ -122,7 +82,7 @@ async function inv2Run(){
       html += '<b>3PL CSV warnings:</b><br>'+j.three_pl_warnings.map(esc).join("<br>");
       html += '</div>';
     }
-    html += '<div style="margin-top:12px"><a href="'+j.download_url+'" download="'+j.filename+'" class="mktbtn on" style="display:inline-block;text-decoration:none;padding:8px 14px">⬇ Download inventory xlsx</a></div>';
+    html += '<div style="margin-top:12px"><a href="'+j.download_url+'" download="'+j.filename+'" class="mktbtn on" style="display:inline-block;text-decoration:none;padding:8px 14px">â¬‡ Download inventory xlsx</a></div>';
     html += '</div>';
     resBox.innerHTML = html;
 
@@ -214,7 +174,7 @@ function _rhRender(h){
   // The stack dump is only meaningful while a stuck process still exists.
   document.getElementById("rh_why").style.display = (h.state==="STALLED")?"block":"none";
   if(h.state==="STALLED" && _rhLastState!=="STALLED")
-    toast("Run looks stuck — no activity for a while");
+    toast("Run looks stuck â€” no activity for a while");
   _rhLastState=h.state;
 }
 
@@ -234,7 +194,7 @@ function startRunHealth(){
 async function whyStuck(){
   const log=document.getElementById("log");
   const btn=document.getElementById("rh_why");
-  if(btn){ btn.disabled=true; btn.textContent="Looking…"; }
+  if(btn){ btn.disabled=true; btn.textContent="Lookingâ€¦"; }
   try{
     const r=await fetch("/run/stack",{cache:"no-store"});
     const j=await r.json();
@@ -312,13 +272,13 @@ function runMode(mode, skus){
       runMode._retried=true;
       if(ES){ES.close();ES=null;}
       showStop(false);
-      _logPush(log,"l","[fix] Re-selecting this account and retrying…");
+      _logPush(log,"l","[fix] Re-selecting this account and retryingâ€¦");
       fetch("/accounts/select",{method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:(CUR_ACCOUNT&&CUR_ACCOUNT.id)||"",
                              marketplace:(typeof WS_MARKET!=="undefined"?WS_MARKET:"")})})
         .then(()=>{ runMode._inRetry=true; runMode(mode,skus); })
-        .catch(()=>{ toast("Could not reselect the account — reload the page."); });
+        .catch(()=>{ toast("Could not reselect the account â€” reload the page."); });
       return;
     }
     const cls = e.data.startsWith("[start]")?"start":e.data.startsWith("[done]")?"done":"l";

@@ -134,6 +134,66 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
     return got, True
 
 
+def by_day(marketplace, marketplace_id, creds, days=5):
+    """Orders per day for the last `days` days, from the ORDERS API.
+
+    WHY THIS EXISTS: "but in amazon i am able to see the sales from yesterday
+    accurately, why not here".
+
+    Because Seller Central reads this feed and the Sales screen was reading the
+    other one. Amazon publishes the same trade twice:
+
+        Orders API                live, within minutes, dated by ORDER date
+        Sales & Traffic report    a day or two behind, dated by ORDER date
+
+    Both count an order on the day it was placed, so they are the SAME
+    measurement -- the report is the settled, aggregated version that arrives
+    later. That is what makes it safe to fill the report's missing tail from
+    here, and it is not the same thing at all as mixing in the finance feed,
+    which is dated by when the money moved and belongs to different days.
+
+    Bucketed by the MARKETPLACE'S OWN date, not UTC and not the browser's: an
+    order placed at 11pm on the 14th in London is a sale on the 14th, and this
+    app is run from a timezone five hours ahead of it.
+
+    -> {"days": {"2026-08-14": {orders, units, revenue}}, "currency", "truncated"}
+    """
+    days = max(1, min(int(days or 1), 30))
+    since = day_start(marketplace, days_ago=days - 1)
+    orders, truncated = fetch_since(marketplace, marketplace_id, creds, since)
+
+    tz = marketplace_zone(marketplace)
+    out, currency = {}, ""
+    for o in orders or []:
+        status = str(o.get("OrderStatus") or "").lower()
+        if status in _DEAD:
+            continue
+        raw = str(o.get("PurchaseDate") or "")
+        if not raw:
+            continue
+        try:
+            # Amazon sends UTC with a Z; Python wants +00:00.
+            dt = _dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            key = dt.astimezone(tz).date().isoformat()
+        except Exception:
+            continue
+        d = out.setdefault(key, {"orders": 0, "units": 0, "revenue": 0.0})
+        d["orders"] += 1
+        try:
+            d["units"] += int(o.get("NumberOfItemsShipped") or 0) \
+                        + int(o.get("NumberOfItemsUnshipped") or 0)
+        except (TypeError, ValueError):
+            pass
+        amt, cur = _amount(o)
+        if amt:
+            d["revenue"] = round(d["revenue"] + amt, 2)
+            if cur and not currency:
+                currency = cur
+    return {"days": dict(sorted(out.items())), "currency": currency,
+            "truncated": bool(truncated),
+            "since": since.date().isoformat()}
+
+
 def today(marketplace, marketplace_id, creds, compare=True):
     """Today so far, and the same slice of yesterday for honest comparison.
 
