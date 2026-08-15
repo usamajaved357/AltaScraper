@@ -269,10 +269,17 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         for a in al:
             rt = str(a.get("refresh_token", ""))
             ready = bool(rt) and not rt.startswith(("PUT_", "ROTATE"))
+            # VAT as a PERCENTAGE for the form, and None when nobody has said --
+            # which is a different answer from 0 and must survive the round trip,
+            # or opening the editor and pressing Save would quietly declare every
+            # unanswered account "not registered".
+            _vr = a.get("vat_rate", None)
+            _vp = None if _vr in (None, "") else round(float(_vr) * 100, 4)
             safe.append({"id": a.get("id"), "label": a.get("label"),
                          "seller_id": a.get("seller_id", ""),
                          "marketplaces": a.get("marketplaces", []),
                          "brands": a.get("brands", []),
+                         "vat_percent": _vp,
                          "output_spreadsheet_id": a.get("output_spreadsheet_id", ""),
                          "input_sheet_url": _sheet_url(a, "input"),
                          "output_sheet_url": _sheet_url(a, "output"),
@@ -422,6 +429,57 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                   "credentials_source_account_id"):
             if k in b:
                 acct[k] = b.get(k, acct.get(k, ""))
+        # VAT, ANSWERED BY THE OWNER RATHER THAN ASSUMED.
+        #
+        # This was briefly set by hand in config.json, which is exactly the wrong
+        # place: whether a company is VAT registered is a fact about the
+        # business, it changes, and it differs per company -- three of these
+        # accounts are separate UK entities. It belongs on the account form.
+        #
+        # ONE stored field, not two. `vat_rate` already carries three distinct
+        # answers that the rest of the app relies on (see sales_data.vat_for):
+        #
+        #     absent   nobody has said -- a figure that depends on it is withheld
+        #     0        not registered  -- a real answer, and VAT is genuinely nil
+        #     0.2      registered at 20%
+        #
+        # A separate "vat_registered" checkbox would be a second copy of the same
+        # fact and the two could disagree; the form shows a tick and a percentage
+        # box, and both map onto this one number.
+        #
+        # The UI sends a PERCENTAGE. Converting here rather than guessing whether
+        # "20" meant 20% or 0.2% -- the same number can be either and only the
+        # sender knows which.
+        if "vat_percent" in b:
+            _vp = b.get("vat_percent")
+            if _vp in (None, ""):
+                acct.pop("vat_rate", None)          # back to "nobody has said"
+            else:
+                try:
+                    _vp = float(_vp)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error":
+                                    "VAT must be a number, like 20"}), 400
+                if _vp < 0 or _vp > 100:
+                    return jsonify({"ok": False, "error":
+                                    "VAT must be between 0 and 100"}), 400
+                acct["vat_rate"] = round(_vp / 100.0, 6)
+        elif "vat_rate" in b:
+            # The decimal form, for anything calling this as an API.
+            _vr = b.get("vat_rate")
+            if _vr in (None, ""):
+                acct.pop("vat_rate", None)
+            else:
+                try:
+                    _vr = float(_vr)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error":
+                                    "vat_rate must be a number"}), 400
+                if _vr < 0 or _vr >= 1:
+                    return jsonify({"ok": False, "error":
+                                    "vat_rate is a decimal -- 0.2 for 20%"}), 400
+                acct["vat_rate"] = round(_vr, 6)
+
         # A lender is only meaningful for an account with no Amazon app of its own; and
         # borrowing NEVER grants publish rights (accounts.can_publish keys off
         # has_own_creds). Refuse to point an account at itself.

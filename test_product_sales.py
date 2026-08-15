@@ -53,30 +53,42 @@ ORDERS = [
      "PurchaseDate": "2026-08-14T09:00:00Z", "NumberOfItemsUnshipped": 1,
      "OrderTotal": {"Amount": "34.07", "CurrencyCode": "GBP"}},
 ]
-PRICED = {o["AmazonOrderId"]: (29.99, "GBP") for o in ORDERS[:3]}
+PRICED = {o["AmazonOrderId"]: (29.99, 4.08, "GBP") for o in ORDERS[:3]}
 
-print("\n== the figure the owner counted is the one reported ==")
-s = ol.summarise(ORDERS, PRICED)
-check("revenue is 3 x 29.99, the goods", s["revenue"], 89.97)
-check("not 3 x 34.07, which adds shipping", s["revenue"] == 102.21, False)
+print("\n== BOTH figures are kept, because both get asked for ==")
+# The owner's decision: revenue is everything the buyer handed over, and the
+# fees come off that. Amazon's Ordered Product Sales is the goods alone, and it
+# is what Seller Central reconciles against. Added together in one field,
+# neither question could be answered afterwards.
+s = ol.summarise(ORDERS, PRICED, include_shipping=True)
+check("revenue is goods + the postage the buyer paid", s["revenue"], 102.21)
+check("the goods alone are still reported", s["product_sales"], 89.97)
+check("and the postage alone", s["shipping"], 12.24)
+check("the two parts add up to the whole", round(s["product_sales"] + s["shipping"], 2),
+      s["revenue"])
 check("the cancelled order is not a sale", s["orders"], 3)
 check("and is counted as cancelled", s["cancelled"], 1)
-check("the basis is declared, not assumed", s["basis"], "product_sales")
+check("the basis is declared, not assumed", s["basis"], "revenue_with_postage")
+
+print("\n== asked for Amazon's definition, it gives Amazon's figure ==")
+sa = ol.summarise(ORDERS, PRICED, include_shipping=False)
+check("goods only, the figure Seller Central shows", sa["revenue"], 89.97)
+check("and says which definition that was", sa["basis"], "product_sales")
 
 print("\n== without prices it still answers, and says which figure it gave ==")
 s0 = ol.summarise(ORDERS)
 check("falls back to what was charged", s0["revenue"], 102.21)
 check("and SAYS it fell back", s0["basis"], "order_total")
-check_true("so the two can never be confused for each other",
-           s["basis"] != s0["basis"])
+check_true("so the three can never be confused for each other",
+           len({s["basis"], sa["basis"], s0["basis"]}) == 3)
 
 print("\n== one order Amazon would not price does not vanish ==")
 partial = dict(PRICED)
 partial.pop("03-4273159-9993160")
-sp = ol.summarise(ORDERS, partial)
-check("two priced + one charged, nothing lost", sp["revenue"], round(29.99 * 2 + 34.07, 2))
+sp = ol.summarise(ORDERS, partial, include_shipping=True)
+check("two priced + one charged, nothing lost", sp["revenue"], round(34.07 * 3, 2))
 check_true("which is nearer the truth than dropping the order",
-           sp["revenue"] > 59.98)
+           sp["revenue"] > 68.14)
 
 print("\n== the Orders screen declares its own, different, basis ==")
 rows = [ov.to_row(o, account_id="jack_uk") for o in ORDERS]

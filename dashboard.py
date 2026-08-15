@@ -3320,6 +3320,19 @@ def build_app(backend=None):
     # workspace's images, this one shows every image on the disk regardless of
     # workspace -- which is the only way to tell "filed somewhere else" apart
     # from "gone".
+    # The costs that are not the supplier's price: postage out, prep, a hand-
+    # allocated ad figure. Its own file from day one -- a new feature never goes
+    # into dashboard.py (CLAUDE.md Rule 7).
+    # Which way stock cost is worked out, and correcting one order by hand.
+    import routes.cogs_mode_routes as _cogs_mode_routes
+    import accounts as _acc_for_cogs
+    _cogs_mode_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                               _state=_state, _active_account=_active_account,
+                               _save_account=_acc_for_cogs.save_account,
+                               _cogs_overrides=lambda: _COGS_OVERRIDE)
+    import routes.asin_charges_routes as _asin_charges_routes
+    _asin_charges_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                  _state=_state, _active_account=_active_account)
     import routes.media_recover_routes as _media_recover_routes
     _media_recover_routes.register(app, _media_root=_media_root, _cfg=_cfg,
                                    CONFIG_PATH=CONFIG_PATH)
@@ -3581,6 +3594,15 @@ def build_app(backend=None):
         import domain.selfcheck as _sc
         res = _dc.check(CONFIG_PATH, in_use=app.config.get("DATA_BACKEND"))
         res["refresher"] = _refresher.status()
+        # Marketplaces the background job has stopped asking about. A pair that
+        # is quietly not being refreshed is exactly the thing nobody notices
+        # until they ask why a country has no data, so it is reported rather
+        # than only logged.
+        try:
+            import domain.marketplace_health as _mh
+            res["marketplaces_rested"] = _mh.status(CONFIG_PATH)
+        except Exception:
+            res["marketplaces_rested"] = []
         # The configuration and the actual faults belong on ONE page. Split
         # across two, the obvious question -- "is this error caused by that
         # misconfiguration?" -- needs two tabs and a guess.

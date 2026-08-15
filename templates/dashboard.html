@@ -1057,6 +1057,10 @@
 <div class="toast" id="toast"></div>
 
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
+<!-- One way to ask "is it done yet". BEFORE every screen that polls -- miles,
+     inventory, runqueue and settings all build their pollers with altaPoller at
+     load time, so it has to exist first. -->
+<script src="/static/js/poller.js?v={{ ASSET_V }}"></script>
 <!-- What the stock cost: click a cell to set one, upload a sheet to set many.
      Before listings.js, which calls cogsCell() while drawing every row. -->
 <script src="/static/js/cogs.js?v={{ ASSET_V }}"></script>

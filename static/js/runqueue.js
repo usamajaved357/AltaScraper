@@ -236,8 +236,13 @@ async function rqGlobalPollNow(){
       if(active>0 && RQ._allDoneTimer){ clearTimeout(RQ._allDoneTimer); RQ._allDoneTimer=null; }
       if(RQ._prevActive>0 && active===0 && !RQ._allDoneTimer){ rqScheduleAllDone(); }
       RQ._prevActive=active;
+      // TRUE while anything is running or queued, or while the panel is open
+      // and being watched. Otherwise this slows and stops: it used to loop
+      // every three seconds for ever, whether or not there was a job.
+      return active > 0 || !!RQ._panelOpen;
     }
   }catch(e){}
+  return false;
 }
 // 5s after the last job finishes: collapse the Runs panel to the badge, drop the
 // streaming lock, and refresh the listings so no run state is left bleeding on top.
@@ -251,7 +256,13 @@ function rqScheduleAllDone(){
     if(typeof loadRows==="function"){ try{ loadRows(); }catch(e){} }
   }, 5000);
 }
-function rqStartGlobal(){ if(RQ.globalTimer) return; const loop=async ()=>{ await rqGlobalPollNow(); RQ.globalTimer=setTimeout(loop, 3000); }; loop(); }
+function rqStartGlobal(){
+  if(!RQ.globalTimer){
+    RQ.globalTimer = altaPoller({name: "runqueue", every: 3000,
+                                 idleEvery: 20000, tick: rqGlobalPollNow});
+  }
+  RQ.globalTimer.wake();
+}
 function rqTogglePanel(){
   RQ._panelOpen=!RQ._panelOpen;
   let p=document.getElementById("rqpanel");

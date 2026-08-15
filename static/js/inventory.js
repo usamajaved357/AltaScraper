@@ -181,14 +181,24 @@ function _rhRender(h){
 async function _rhPoll(){
   try{
     const r=await fetch("/run/health",{cache:"no-store"});
-    _rhRender(await r.json());
-  }catch(e){ /* dashboard unreachable; leave the last known state on screen */ }
+    const h=await r.json();
+    _rhRender(h);
+    // TRUE only while a run is actually going. An idle generator does not get
+    // more interesting for being asked about every three seconds, and this was
+    // asking for ever -- 19 of the 84 requests during one Listings load.
+    const st=String((h&&h.state)||"").toLowerCase();
+    return !!(h && h.running) || st==="running" || st==="busy" || st==="starting";
+  }catch(e){
+    /* dashboard unreachable; leave the last known state on screen */
+    return false;
+  }
 }
 
 function startRunHealth(){
   if(_rhTimer) return;
-  _rhPoll();
-  _rhTimer=setInterval(_rhPoll,3000);
+  _rhTimer = altaPoller({name: "run-health", every: 3000, idleEvery: 20000,
+                         tick: _rhPoll});
+  _rhTimer.wake();
 }
 
 async function whyStuck(){

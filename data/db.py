@@ -469,6 +469,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_orderlines_uniq
     ON order_lines(workspace_id, marketplace, order_id, asin, sku);
 CREATE INDEX IF NOT EXISTS idx_orderlines_when
     ON order_lines(workspace_id, marketplace, purchase_date);
+
+/* Costs that are not the supplier's price: postage you pay, prep, an advertising
+   figure you allocate by hand. Asked for as "additional charges per asin, which
+   can be sometimes my shipping price, my prep charges, my ads costs which i
+   write manually".
+
+   ONE ROW PER NAMED CHARGE, not one column per kind. The list of things a seller
+   pays for is not fixed and never will be -- storage, relabelling, a courier
+   surcharge, an inspection -- and a schema with a `prep_cost` column forces
+   every future charge to be squeezed into a name that does not fit, or another
+   migration. A row per charge also means the profit screen can show WHAT the
+   costs were and not merely their total, which is the thing that makes a thin
+   margin explainable.
+
+   PER UNIT, because profit is worked out per unit sold. A charge that is really
+   per shipment is entered as its per-unit share; saying so here is what stops it
+   being guessed at later.
+
+   effective_from lets a charge change without rewriting history: the row that
+   applies to an order is the newest one dated on or before that order. Absent
+   means "since always", which is what a first entry should mean. */
+CREATE TABLE IF NOT EXISTS asin_charges (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id   TEXT NOT NULL,
+    marketplace    TEXT NOT NULL,
+    asin           TEXT NOT NULL DEFAULT '',
+    sku            TEXT NOT NULL DEFAULT '',      -- '' = applies to the ASIN
+    label          TEXT NOT NULL DEFAULT '',      -- 'postage', 'prep', 'ads'...
+    amount         REAL NOT NULL DEFAULT 0,       -- per unit, in the account's currency
+    effective_from TEXT NOT NULL DEFAULT '',      -- 'YYYY-MM-DD', '' = since always
+    note           TEXT NOT NULL DEFAULT '',
+    updated_at     TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_asincharges_lookup
+    ON asin_charges(workspace_id, marketplace, asin, sku);
 """
 
 
@@ -485,6 +520,18 @@ _ADDED_COLUMNS = [
     ("finance_daily", "tax", "REAL"),
     ("finance_daily", "refund_tax", "REAL"),
     ("sourcing_sources", "shipping_override", "REAL"),
+    # POSTAGE THE BUYER PAID, kept beside the item price rather than folded into
+    # it. The owner counts revenue as everything the buyer handed over --
+    # "this is the total revenue i generated" -- so the two have to be separable:
+    # Amazon's own Ordered Product Sales is the item price ALONE, and a screen
+    # that cannot tell them apart cannot be reconciled against Seller Central.
+    ("order_lines", "shipping", "REAL"),
+    # WHAT THAT LINE COST, frozen at the moment the order was seen. Looked up
+    # later instead, an order from July would silently pick up August's supplier
+    # price and last month's profit would move every time a supplier did.
+    ("order_lines", "cogs", "REAL"),
+    ("order_lines", "cogs_source", "TEXT"),    # 'manual' | 'tracked' | 'sku' | ''
+    ("order_lines", "cogs_at", "TEXT"),        # when it was resolved
 ]
 
 

@@ -341,6 +341,22 @@ function enterGroup(base){
 }
 
 let CUR_ACCOUNT = null;
+/* Show the percentage box only when the company actually charges VAT. The tick
+ * and the box are two controls over ONE stored number: unticked is 0, ticked is
+ * whatever is typed. A second stored "is registered" flag could contradict the
+ * rate, so there isn't one. */
+function _toggleVat(on){
+  const w = document.getElementById("ac_vat_wrap");
+  if(w) w.style.display = on ? "" : "none";
+  if(on){
+    const f = document.getElementById("ac_vat_pct");
+    // Default to the standard UK rate rather than 0 -- ticking the box and
+    // leaving a zero in it would silently mean "registered, but charges
+    // nothing", which is not what ticking it says.
+    if(f && !(parseFloat(f.value) > 0)) f.value = 20;
+  }
+}
+
 async function enterAccount(accountId){
   const a=ACCOUNTS.find(x=>x.id===accountId) || ACCOUNTS[0];
   if(!a){ toast("Account not found"); return; }
@@ -627,6 +643,22 @@ function openAccountEditor(id){
       <tr><td class="k">RP email</td><td class="v"><input class="ed" id="ac_rp_email" value="${esc((a.uk_responsible_person||{}).email||'')}" placeholder="contact@…"></td></tr>
       <tr><td class="k">RP phone</td><td class="v"><input class="ed" id="ac_rp_phone" value="${esc((a.uk_responsible_person||{}).phone||'')}" placeholder="+44…"></td></tr>
       <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
+      <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-receipt-tax"></i> VAT</div><div class="cc" style="font-size:11.5px">Amazon reports this account's order values with VAT <b>already inside them</b>. If this company is VAT registered, that portion belongs to HMRC and is not your revenue — so profit and margin are worked out after it is taken out. Leave unticked if this company is not registered. Each company is separate, so set it per account.</div></td></tr>
+      <tr><td class="k">VAT registered</td><td class="v">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="ac_vat_on" ${(a.vat_percent||0) > 0 ? 'checked' : ''} onchange="_toggleVat(this.checked)">
+          <span>This company charges VAT</span>
+        </label>
+        <div id="ac_vat_wrap" style="margin-top:6px;${(a.vat_percent||0) > 0 ? '' : 'display:none'}">
+          <input class="ed" id="ac_vat_pct" type="number" min="0" max="100" step="0.01"
+                 style="max-width:120px"
+                 value="${a.vat_percent === null || a.vat_percent === undefined ? 20 : esc(String(a.vat_percent))}"> <span class="cc">%</span>
+          <div class="cc" style="font-size:11px;margin-top:3px">20% is the standard UK rate. Change it if this company pays a different one.</div>
+        </div>
+        ${(a.vat_percent === null || a.vat_percent === undefined)
+          ? '<div class="cc" style="font-size:11px;margin-top:4px;color:var(--warn)"><i class="ti ti-alert-triangle"></i> Not answered yet — profit is withheld for this account until you say.</div>'
+          : ''}
+      </td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-lock"></i> No Amazon account of its own?</div><div class="cc" style="font-size:11.5px">If this workspace has no SP-API credentials above, it can borrow another account's Amazon app to look up <b>catalogue data only</b> — product types, item type keywords, valid values, fees. It can <b>never</b> read that account's listings or inventory, and it can <b>never</b> publish. Leave as "none" for a normal, connected account.</div></td></tr>
       <tr><td class="k">Borrow Amazon app from</td><td class="v">
         <select class="ed" id="ac_creds_source">
@@ -763,6 +795,13 @@ async function saveAccount(){
     ebay_app_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_app")||{}).value||"").trim(),
     ebay_cert_id: ebayGlobal ? "" : ((document.getElementById("ac_ebay_cert")||{}).value||"").trim(),
     default_marketplace:(document.getElementById("ac_marketplace")||{}).value||"UK",
+    // A PERCENTAGE, because "20" and "0.2" are the same rate written two ways
+    // and only the sender knows which was meant. Unticked sends 0 -- "not
+    // registered", which is a real answer -- rather than blank, which means
+    // nobody has said and makes the app withhold the figure instead.
+    vat_percent: ((document.getElementById("ac_vat_on")||{}).checked)
+      ? (parseFloat((document.getElementById("ac_vat_pct")||{}).value) || 0)
+      : 0,
     brands:((document.getElementById("ac_brands")||{}).value||"").split(",").map(s=>s.trim()).filter(Boolean),
     features:[
       ...(((document.getElementById("ac_feat_harvest")||{}).checked)?["harvest"]:[]),

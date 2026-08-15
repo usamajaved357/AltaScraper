@@ -54,19 +54,29 @@ def main(argv):
     if not res.get("priced_complete", True):
         print("NOTE    : more orders than the item-lookup cap; figure is partial")
     print()
-    print("%-12s %8s %8s %12s" % ("date", "orders", "units", "product sales"))
+    print("%-12s %8s %8s %10s %10s %10s"
+          % ("date", "orders", "units", "goods", "postage", "REVENUE"))
     tot_o = tot_u = 0
-    tot_r = 0.0
+    tot_r = tot_g = tot_s = 0.0
     for d, v in (res.get("days") or {}).items():
-        print("%-12s %8d %8d %12.2f" % (d, v["orders"], v["units"], v["revenue"]))
+        print("%-12s %8d %8d %10.2f %10.2f %10.2f"
+              % (d, v["orders"], v["units"], v.get("product_sales", 0.0),
+                 v.get("shipping", 0.0), v["revenue"]))
         tot_o += v["orders"]
         tot_u += v["units"]
         tot_r += v["revenue"]
-    print("-" * 44)
-    print("%-12s %8d %8d %12.2f %s" % ("TOTAL", tot_o, tot_u, tot_r, cur))
+        tot_g += v.get("product_sales", 0.0)
+        tot_s += v.get("shipping", 0.0)
+    print("-" * 62)
+    print("%-12s %8d %8d %10.2f %10.2f %10.2f %s"
+          % ("TOTAL", tot_o, tot_u, tot_g, tot_s, tot_r, cur))
     print()
-    print("This is the figure the Sales cards and the chart now use.")
-    print("It should match Seller Central's 'Ordered product sales'.")
+    print("REVENUE  %.2f  <- what the Sales cards show: everything the buyer paid,"
+          % tot_r)
+    print("                 with Amazon's fees taken off afterwards.")
+    print("goods    %.2f  <- Amazon's 'Ordered product sales'. THIS is the figure"
+          % tot_g)
+    print("                 to reconcile against Seller Central; postage is not in it.")
     return 0
 
 

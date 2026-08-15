@@ -186,6 +186,14 @@ def _docs_for(rule, mkt):
     return resolve_docs_display(raw if isinstance(raw, list) else [])
 
 
+# Worked-out verdicts, kept because the answer depends only on the text and the
+# rules -- and _RULES is read once at import, so editing the rules file already
+# requires a restart, which empties this with it. There is nothing else that can
+# make an entry stale.
+_VIABILITY_CACHE = {}
+_VIABILITY_CACHE_MAX = 4000
+
+
 def check_sourcing_viability(title="", bullets=None, product_type="", category="",
                              marketplace="UK", docs_held=None):
     """Document-demand risk for a product, BEFORE sourcing it.
@@ -214,6 +222,23 @@ def check_sourcing_viability(title="", bullets=None, product_type="", category="
     else:
         bullet_text = str(bullets or "")
     hay = " ".join(str(x or "") for x in (title, bullet_text, product_type, category)).strip()
+
+    # THE SAME TEXT ALWAYS GIVES THE SAME ANSWER, so it is only worked out once.
+    #
+    # This is pure: rules in, text in, verdict out, no clock and no I/O. It is
+    # also expensive -- fifteen rules of roughly a hundred compiled patterns
+    # each. Profiled on the Listings screen: 55 rows produced 90,290 regex
+    # searches taking 3.46 of the route's 3.91 seconds, and every one of them was
+    # recomputing an answer it had already produced on the previous page load.
+    #
+    # Keyed on everything that can change the verdict. A listing whose title is
+    # edited gets a new key and is evaluated again, which is the whole point.
+    _key = (hay, str(marketplace or "").upper(),
+            None if docs_held is None
+            else tuple(sorted(str(d).strip().lower() for d in docs_held)))
+    _hit = _VIABILITY_CACHE.get(_key)
+    if _hit is not None:
+        return _hit
 
     mkt = (marketplace or "").upper()
     mkt_known = mkt in ("UK", "US")
@@ -252,7 +277,7 @@ def check_sourcing_viability(title="", bullets=None, product_type="", category="
     else:
         verdict = "NEEDS_DOCS"
 
-    return {
+    out = {
         "matched": bool(risks),
         "marketplace": mkt,
         "marketplace_known": mkt_known,
@@ -263,6 +288,14 @@ def check_sourcing_viability(title="", bullets=None, product_type="", category="
         "caveat": _RULES.get("caveat") or CAVEAT,
         "message": "" if risks else (_RULES.get("no_match_message") or NO_MATCH_MESSAGE),
     }
+    # Bounded, and oldest-out when it fills: a long session on a large catalogue
+    # should not grow this without limit, and the rows being looked at now are
+    # the ones worth remembering.
+    if len(_VIABILITY_CACHE) >= _VIABILITY_CACHE_MAX:
+        for _old in list(_VIABILITY_CACHE)[:_VIABILITY_CACHE_MAX // 4]:
+            _VIABILITY_CACHE.pop(_old, None)
+    _VIABILITY_CACHE[_key] = out
+    return out
 
 
 def sourcing_warning_lines(result):

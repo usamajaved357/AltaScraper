@@ -202,6 +202,61 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                        "days need re-pulling before profit appears."
                        % (cov["unknown"], cov["total"]))
 
+        # PROFIT ON THE ORDERS PLACED IN THIS WINDOW, from the owner's own cost
+        # prices. The `profit` card above is dated by when the MONEY MOVED, so on
+        # a window whose orders have not settled it describes different trades
+        # from the sales beside it -- which is how "Total Sales £0" came to sit
+        # next to "Profit £80". Amazon cannot answer this one: it reports no
+        # profit against an order until settlement. The owner can, because they
+        # know what the stock cost. Asked for exactly that.
+        #
+        # Sent alongside rather than replacing the settled figure: they answer
+        # different questions and both are worth having.
+        try:
+            from domain import order_profit as _op
+            from domain import order_cogs as _oc
+            # Freeze a cost onto any line that has not got one yet, at the price
+            # that applied WHEN THAT ORDER ARRIVED. Done before reading, so a
+            # newly-synced day is costed the first time it is looked at; lines
+            # that already carry a cost are never touched, which is what stops
+            # last month's profit moving when a supplier changes their price.
+            _mode = _oc.mode_for(_cfg, wsid)
+            try:
+                _oc.freeze_range(CONFIG_PATH, wsid, mkt, start, end, _mode,
+                                 _cogs_overrides())
+            except Exception:
+                pass          # costing is best-effort; the figures still come back
+            est = _op.for_period(CONFIG_PATH, wsid, mkt, start, end,
+                                 _cogs_overrides(),
+                                 vat_rate=_vat,
+                                 ads_connected=bool(avail["ads"]["connected"]),
+                                 ad_spend=cur.get("spend") or 0.0)
+            est["cogs_mode"] = _mode
+            # HOW MUCH OF THE PERIOD THIS PROFIT IS ACTUALLY ABOUT.
+            #
+            # The cards' Total Units comes from Amazon's report; this profit is
+            # built from the orders whose contents have been fetched one by one.
+            # Those two can differ -- measured on jack_uk: 12 units costed
+            # against 14 in the window -- and a profit worked out on six sevenths
+            # of the trade, shown beside sales for all of it, is the same class
+            # of mistake as the one this whole card exists to fix. So it is
+            # stated rather than left to be noticed.
+            _period_units = cur.get("units")
+            est["period_units"] = _period_units
+            try:
+                _pu = int(_period_units or 0)
+            except (TypeError, ValueError):
+                _pu = 0
+            est["covers_all"] = (not _pu) or int(est.get("units") or 0) >= _pu
+            if _pu and not est["covers_all"]:
+                est["coverage_note"] = (
+                    "Covers %d of the %d units sold in this period -- the rest "
+                    "have not been fetched from Amazon yet, so this profit is "
+                    "for part of the period only."
+                    % (int(est.get("units") or 0), _pu))
+        except Exception as e:
+            est = {"profit": None, "error": str(e)[:200]}
+
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "start": start, "end": end, "preset": preset,
                         "asin": asin, "currency": cur.get("currency"),
@@ -210,6 +265,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                         "end": p_end.strftime("%Y-%m-%d")},
                         "ads_connected": avail["ads"]["connected"],
                         "ads_note": avail["ads"]["note"],
+                        "order_profit": est,
                         "cogs_coverage": cov})
 
     @app.route("/sales/products")

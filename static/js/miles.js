@@ -103,16 +103,27 @@ function milesRun(reattach){
 // what survives reloads, view-switches, and dropped connections: the run keeps going
 // server-side and this keeps showing its position.
 let MILES_POLL=null, MILES_TAILFROM=0, MILES_TAILID=null;
-function milesStartPoll(){ if(!MILES_POLL){ MILES_POLL=setInterval(milesPollTick, 2000); } milesPollTick(); }
+/* Through altaPoller, so this stops when there is no run and stops entirely
+ * while the tab is hidden. It used to ask every two seconds for ever: measured
+ * during one Listings load, /miles/run_tail alone accounted for 28 of the 84
+ * requests, none of which had anything to report. */
+function milesStartPoll(){
+  if(!MILES_POLL){
+    MILES_POLL = altaPoller({name: "miles", every: 2000, idleEvery: 20000,
+                             tick: milesPollTick});
+  }
+  MILES_POLL.wake();
+}
 function milesPollTick(){
   const from = MILES_TAILID ? MILES_TAILFROM : 0;
   const idq = MILES_TAILID ? ("&id="+encodeURIComponent(MILES_TAILID)) : "";
-  fetch("/miles/run_tail?from="+from+idq).then(r=>r.json()).then(t=>{
+  // Resolves TRUE while a run is going, which is what keeps the fast cadence.
+  return fetch("/miles/run_tail?from="+from+idq).then(r=>r.json()).then(t=>{
     const st=document.getElementById("miles_livestatus");
     if(!(t && t.ok) || !t.state || t.state==="none"){
       if(st) st.style.display="none";
       if(MILES_TAILID){ MILES_TAILID=null; MILES_TAILFROM=0; milesLoadRuns(); try{milesLoadResults();}catch(e){} }
-      return;
+      return false;                       // nothing running -- slow down, then stop
     }
     if(MILES_TAILID!==t.id){ MILES_TAILID=t.id; MILES_TAILFROM=0; }   // new run -> reset pointer
     const c=t.counts||{}, running=(t.state==="running");
@@ -140,7 +151,8 @@ function milesPollTick(){
     }
     MILES_TAILFROM=t.next;                          // keep the pointer current either way
     if(!running){ MILES_TAILID=null; milesLoadRuns(); }
-  }).catch(()=>{});
+    return running;                       // still going -> keep asking often
+  }).catch(()=>false);
 }
 // Past runs panel: list saved runs with links to each run's full log + per-SKU CSV.
 function milesLoadRuns(){

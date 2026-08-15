@@ -73,14 +73,25 @@ def store_lines(config_path, workspace_id, marketplace, lines):
     n = 0
     for L in lines:
         try:
+            # ON CONFLICT rather than OR IGNORE: a line stored before the
+            # postage column existed must be able to GAIN its postage when it is
+            # fetched again, and a status that has moved on (pending -> shipped,
+            # or cancelled) must be able to follow. The frozen cost is left
+            # alone -- that is the one field that must never move.
             conn.execute(
-                "INSERT OR IGNORE INTO order_lines "
+                "INSERT INTO order_lines "
                 "(workspace_id, marketplace, order_id, purchase_date, asin, sku,"
-                " title, units, revenue, currency, status, fetched_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                " title, units, revenue, shipping, currency, status, fetched_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(workspace_id, marketplace, order_id, asin, sku) "
+                "DO UPDATE SET shipping=excluded.shipping, "
+                "              revenue=excluded.revenue, "
+                "              status=excluded.status, "
+                "              fetched_at=excluded.fetched_at",
                 (workspace_id, marketplace, L["order_id"], L["purchase_date"],
                  L.get("asin") or "", L.get("sku") or "", L.get("title") or "",
                  int(L.get("units") or 0), float(L.get("revenue") or 0),
+                 float(L.get("shipping") or 0),
                  L.get("currency") or "", L.get("status") or "", now))
             n += 1
         except Exception:
@@ -115,14 +126,22 @@ def price_cache(config_path, workspace_id, marketplace):
             # may carry, and a busy month can exceed it.
             for i in range(0, len(ids), 400):
                 chunk = ids[i:i + 400]
+                # shipping IS NOT NULL, deliberately. Lines stored before the
+                # postage column existed carry NULL, and treating that as zero
+                # would freeze "the buyer paid nothing to have it sent" into
+                # every old order for ever. Left out of the cache, they are
+                # simply fetched once more and filled in.
                 q = ("SELECT order_id, SUM(revenue) AS rev, "
+                     "       SUM(shipping) AS ship, "
                      "       MAX(currency) AS cur "
                      "FROM order_lines "
                      "WHERE workspace_id=? AND marketplace=? "
+                     "  AND shipping IS NOT NULL "
                      "  AND order_id IN (%s) GROUP BY order_id"
                      % ",".join("?" * len(chunk)))
                 for r in conn.execute(q, [workspace_id, marketplace] + chunk):
                     out[r["order_id"]] = (round(float(r["rev"] or 0), 2),
+                                          round(float(r["ship"] or 0), 2),
                                           r["cur"] or "")
             return out
 
@@ -139,6 +158,7 @@ def price_cache(config_path, workspace_id, marketplace):
                         "title": it.get("title", ""),
                         "units": it.get("units", 0),
                         "revenue": float(it.get("price") or 0),
+                        "shipping": float(it.get("shipping") or 0),
                         "currency": it.get("currency", ""),
                         "status": str(o.get("OrderStatus") or ""),
                     })

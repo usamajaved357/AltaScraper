@@ -805,6 +805,29 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         and not s(c.get("product_type")) and not s(c.get("price")))
             tabs, cards = [], []
             for ws in book.worksheets():
+                # THE FREE CHECKS FIRST. Reading a tab's header row is a call to
+                # Google and costs about a second; the two tests below are string
+                # comparisons on a title we already have. They used to run AFTER
+                # the header read, so a 15-tab workbook made 15 round trips and
+                # then threw 14 of the answers away.
+                #
+                # Measured on jack_uk: open the workbook 4.15s, list the tabs
+                # 0.37s, read 15 headers ~17s -- for a shared workbook where only
+                # ONE tab was ever going to be used. That was most of the twenty
+                # seconds the Listings screen spent before it could draw.
+                try:
+                    from domain.backup import BACKUP_TAB_PREFIX as _BAK0
+                except Exception:
+                    _BAK0 = "backup_"
+                if str(ws.title or "").startswith(_BAK0):
+                    continue
+                # On a SHARED workbook only this account's own tab is ever
+                # included, so there is no reason to look at any other.
+                if _shared:
+                    _gid0 = str(ws.id)
+                    _mine0 = (_gid0 == my_gid) if my_gid else (ws.title == my_tab)
+                    if not _mine0:
+                        continue
                 try:
                     header = _repo.read_headers(ws)
                 except Exception:
