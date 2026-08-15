@@ -387,11 +387,18 @@
              that mean something: the period immediately before answers "is
              this week better than last", and the same period a year ago
              answers it for anything seasonal. -->
-        <span class="cc" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">compare to</span>
+        <!-- Orbit's exact label and its exact option names, read off the live
+             page: "Compare to" at 11px weight 600 in sentence case (ours was
+             uppercased by CSS), then "Prior Year" and "Previous Period".
+             Orbit's third option is "Custom Range", which is a feature this app
+             does not have; "Nothing" is kept in that slot because turning the
+             second line off is worth having and dropping it would remove
+             something that works. -->
+        <span style="font-size:11px;font-weight:600;color:rgb(156,163,175)">Compare to</span>
         <select class="rc-in" id="sales_compare" style="width:auto;margin:0"
                 onchange="salesSetCompare(this.value)" aria-label="Compare against">
-          <option value="period">Prior period</option>
-          <option value="year">Prior year</option>
+          <option value="year">Prior Year</option>
+          <option value="period">Previous Period</option>
           <option value="none">Nothing</option>
         </select>
         <span class="spacer" style="flex:1"></span>

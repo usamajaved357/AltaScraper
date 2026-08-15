@@ -104,7 +104,39 @@ check("  and it says LY only when the comparison really is a year",
       /compareKind === "year" \? "LY" : "was"/.test(js), true);
 check("no baseline says so instead of 0%", /no earlier period/.test(js), true);
 check("rising ad spend is NOT a win",
-      /c\.key==="spend"\) \? !up : up/.test(js), true);
+      /c\.key\s*===\s*"spend"\)\s*\?\s*!up\s*:\s*up/.test(js), true);
+// The arrow still points the way the number went; only the COLOUR flips. The
+// badge is now built in one place (_sBadge), which draws the arrow from the
+// number, so this is the one case on the screen where the two deliberately
+// disagree and the class is corrected afterwards.
+check("  but the arrow still follows the number",
+      /good !== up/.test(js), true);
+
+console.log("\n=== one change badge, not three ===");
+/* Rule 12. "↑ 16.9 %" was written out three times -- Live Sales, Week to Date,
+ * and every stat card -- and the three had already drifted: two put no space
+ * before the % and the third added a sign the others did not.
+ *
+ * MEASURED off Orbit's own badges: a space after the arrow AND a space before
+ * the per-cent sign. "↑ 16.9 %", "↓ 0.4 %".
+ */
+{
+  const _sEsc = x => String(x == null ? "" : x);
+  const a = js.indexOf("function _sBadge");
+  const b = js.indexOf('/* "Pacific Time');
+  check("there is a single badge builder", a >= 0 && b > a, true);
+  const badge = new Function("_sEsc", js.slice(a, b) + "; return _sBadge;")(_sEsc);
+  const plain = h => h.replace(/<[^>]*>/g, "");
+  check("Orbit's spacing, up", plain(badge(16.9, {})), "↑ 16.9 %");
+  check("Orbit's spacing, down", plain(badge(-0.4, {})), "↓ 0.4 %");
+  check("a flat change gets neither arrow", plain(badge(0, {})), "→ 0.0 %");
+  check("the stat cards add the sign", plain(badge(5.2, {sign: true})), "↑ +5.2 %");
+  check("nothing to compare draws nothing", badge(null, {}), "");
+  check("and a non-number is not drawn as 0", badge(undefined, {}), "");
+  // Nobody builds one by hand any more.
+  check("no hand-rolled badge is left",
+        (js.match(/<span class="pct-badge /g) || []).length, 1);
+}
 
 console.log("\n=== ads are declared missing, never zero ===");
 check("the card says 'not connected'", /not connected/.test(js), true);
