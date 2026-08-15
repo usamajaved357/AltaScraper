@@ -143,7 +143,26 @@ def check(parent_sku, children, theme, schema=None, product_type=""):
         if len(vals) > 1:
             problems.append("These have different %s values (%s). %s."
                             % (label, ", ".join(sorted(vals)), why))
-        elif unknown:
+        elif unknown and not (field == "item_type_keyword" and not vals):
+            # A FIELD AMAZON DOES NOT CARRY IS NOT A FIELD WE CAN CONFIRM, and
+            # refusing until it is confirmed is a refusal nobody can clear:
+            # there is no box on the screen that sets item_type_keyword.
+            #
+            # MEASURED on a live UK listing (SQUEEGEE, 45 attributes returned):
+            # Amazon sends brand, size, colour, material and the rest, and sends
+            # NO item_type_keyword and no item_type_name. The only keyword-ish
+            # attribute is generic_keyword. So this check fired on every pair of
+            # products on the account and step 3 was unreachable for all of them.
+            #
+            # `not vals` is doing the work: NONE of the children carry the field,
+            # which means the product type does not use it. If SOME carry it and
+            # others do not, that is a genuine mismatch worth stopping for and it
+            # still stops -- which is what test_variations.py asserts with
+            # SH-NOKW.
+            #
+            # Brand and product type keep the strict rule. Amazon does return
+            # both, and a family that disagrees on either is the half-formed one
+            # that gets accepted and then quietly stops showing.
             problems.append("Could not read the %s for %s, so it cannot be "
                             "confirmed that they match — and %s."
                             % (label, ", ".join(unknown), why))
