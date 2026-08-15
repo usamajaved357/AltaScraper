@@ -98,3 +98,8 @@ run_status.json
 # boot history to the server and make the "has this folder survived a deploy"
 # answer a lie.
 .disk_history.json
+
+# Which (account, marketplace) pairs Amazon is currently refusing. Per-machine
+# runtime state, written beside config.json -- committing it would carry this
+# box's failures to the server and rest marketplaces that work fine there.
+marketplace_health.json
