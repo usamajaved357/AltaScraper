@@ -1,0 +1,133 @@
+QUESTIONS FOR ORBIT'S AGENT - HOW THE SALES DASHBOARD FIGURES ARE CALCULATED
+
+Paste everything below the line into Orbit's agent. If it truncates or answers
+vaguely, send it one lettered section at a time - A to G are independent.
+
+================================================================================
+
+I'm a seller using Orbit and I want to reconcile your Sales dashboard against my
+own Seller Central figures and my accountant's numbers. To do that I need to know
+exactly how each figure is calculated, not just what it's called.
+
+Please answer concretely - name the Amazon data source, the exact field, and the
+formula where there is one. If you don't know something, say "I don't know"
+rather than giving a plausible answer. A wrong explanation is worse than none,
+because I'll reconcile against it and the difference will look like my mistake.
+
+
+A. WHERE EACH NUMBER COMES FROM
+
+1. For each of these, which Amazon source do you use - the Orders API, the Sales
+   & Traffic report, the Finances/settlement API, or something else?
+   Total Sales, Total Orders, Total Units, Sessions, Page Views, Conversion,
+   Buy Box %, Profit, Margin, Refunds, Ad Spend, TACOS
+
+2. When two of those sources disagree about the same day, which one wins, and why?
+
+3. Do you ever combine two sources into one displayed figure? If so, which ones?
+
+
+B. WHAT "A SALE" MEANS
+
+4. Is Total Sales the item price only, or does it include shipping charged to
+   the buyer?
+
+5. Does it include or exclude VAT / sales tax?
+
+6. Are refunds subtracted from Total Sales? If yes, on the date of the original
+   order or the date of the refund?
+
+7. Are cancelled and pending orders included?
+
+8. Is a multi-item order counted as one order or several?
+
+
+C. DATES AND FRESHNESS
+
+9. Is a sale dated by when the order was placed, or when the money settled?
+
+10. Which timezone - the marketplace's, UTC, or my browser's?
+
+11. How soon after an order is placed does it appear on the dashboard?
+
+12. Do you show today's figures? If so, which of today's metrics are available
+    and which are not?
+
+13. Amazon's Sales & Traffic report runs about a day behind. What do you display
+    for a day the report hasn't delivered - the live figure, a blank, or a zero?
+
+14. Do you revise past days when Amazon revises them? How far back, and how
+    often? Does a number I saw last week ever change?
+
+
+D. PROFIT AND FEES
+
+15. Is Profit an estimate or Amazon's settled figure? If it changes from one to
+    the other, when, and do you show me that it changed?
+
+16. What exactly is subtracted to get Profit? Please give the formula
+    (e.g. sales - referral fee - FBA fee - COGS - ads - ...).
+
+17. Where does the cost of goods come from - do I enter it, is it imported, or
+    is it inferred?
+
+18. If some products in a period have no cost recorded, what do you show -
+    profit for the costed ones, a blank, or profit treating the cost as zero?
+
+19. For an order Amazon hasn't settled, how do you estimate the fees? A flat
+    percentage, a per-category rate, or measured from my own past settlements?
+
+20. Are refunds and returns allowed for in estimated profit, given a refund can
+    arrive weeks later?
+
+21. Is ad spend included in Profit, or shown separately?
+
+22. Is VAT handled in profit? Is my profit figure before or after VAT?
+
+
+E. TRAFFIC AND CONVERSION
+
+23. How is Conversion defined - units / sessions, orders / sessions, or
+    something else? Which sessions figure (browser, mobile, or both)?
+
+24. Sessions aren't available for today. What does the dashboard show for
+    today's conversion?
+
+25. How do you split Organic vs PPC sales? Which API, and is any of it estimated
+    or apportioned?
+
+
+F. PRESENTATION
+
+26. Does the dashboard tell me which figures are provisional vs final, and how?
+
+27. When a figure can't be calculated, do you show a zero, a blank, or a message?
+
+28. What exactly is the comparison period ("vs previous")? The same number of
+    days immediately before, the same dates last month, or last year?
+
+29. If I sell in more than one marketplace or currency, are figures combined or
+    kept separate? If combined, at what exchange rate and on what date?
+
+
+G. THE OTHER SCREENS
+
+30. Hourly Sales - which source, which timezone, and is it available for the
+    current day?
+
+31. P&L / heatmap - which basis is each row on, and are any rows on a different
+    basis from the others?
+
+32. Traffic & Conversions - same question as A1 for each column on that page.
+
+================================================================================
+
+TWO THINGS TO WATCH FOR IN THE ANSWERS (for you, not for Orbit):
+
+- If it says Total Sales INCLUDES shipping, that contradicts what was measured
+  on your own account: both Amazon feeds returned 89.97, the item price, not
+  102.21. Push back and ask it to confirm against a specific order.
+
+- Question 19 is the one worth chasing hardest. How fees are estimated before
+  settlement is the only genuinely uncertain part of the whole design; everything
+  else we can measure ourselves.

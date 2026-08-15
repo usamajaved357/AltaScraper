@@ -383,6 +383,71 @@ def _enrich_one(app, config_path, aid, mkt, log=None):
                (", %d still to do" % left) if left else ""))
 
 
+# --- sales and finance, on the same worker ----------------------------------
+# WHY THIS IS HERE
+# domain/sales_fetch.sync() had exactly ONE caller: the Sync button. So sales
+# figures only ever arrived when somebody pressed it, and a dashboard nobody had
+# pressed Sync on showed zero for days Amazon had been holding all along.
+#
+# Measured on jack_uk: Amazon's Sales & Traffic report had 2026-08-14 ready --
+# 87 sessions, 150 page views, 3 units, 89.97 of sales -- while the screen said
+# "Total Sales GBP 0" for that week. Nothing was broken and nothing was late at
+# Amazon's end. The app had simply never asked.
+#
+# BUDGETED SMALL, AND LAST, BECAUSE THE QUOTA IS SHARED
+# The catalogue refresh above uses the Reports API too, and the quota is per
+# selling-partner account -- so these compete. Sales therefore runs only when
+# nothing more urgent is due, takes a few days per pass rather than a backlog at
+# a time, and leaves the rest for the next pass. Measured: three report requests
+# in quick succession already draw QuotaExceeded, so patience here is not
+# politeness, it is the difference between arriving and being refused.
+SALES_PER_PASS = 3         # days per pass -- small, because reports are scarce
+SALES_DAYS_BACK = 30       # how far back a gap is worth chasing
+
+
+def _sales_gap(config_path, aid, mkt):
+    """Days of sales this account is behind on, or 0. A cheap local read."""
+    try:
+        from domain import sales_fetch as _sf
+        missing = _sf.missing_days(config_path, aid, mkt, SALES_DAYS_BACK)
+        revisable = _sf.revisable_days(config_path, aid, mkt, SALES_DAYS_BACK)
+        return len(missing) + len(revisable)
+    except Exception:
+        return 0
+
+
+def _sales_one(app, aid, mkt):
+    """Catch this account's sales up a little, through the app's own route.
+
+    Driven through /sales/sync rather than calling sales_fetch directly, for the
+    same reason the catalogue refresh calls its own view: the route already
+    resolves the account, checks it owns its Amazon credentials, and pulls the
+    finance records alongside. A second path into the same work would be a second
+    set of those rules to keep in step.
+    """
+    try:
+        with app.test_request_context(
+                "/sales/sync", method="POST",
+                json={"account_id": aid, "marketplace": mkt,
+                      "days": SALES_DAYS_BACK, "budget": SALES_PER_PASS}):
+            fn = app.view_functions.get("sales_sync_now")
+            if not fn:
+                return "no sales_sync route"
+            resp = fn()
+        body = resp[0] if isinstance(resp, tuple) else resp
+        data = getattr(body, "json", None) or {}
+        if not data.get("ok"):
+            return "failed: %s" % str(data.get("error", ""))[:70]
+        note = "%s day(s), %s row(s)" % (data.get("fetched", 0), data.get("rows", 0))
+        if data.get("still_missing"):
+            note += ", %s still behind" % data["still_missing"]
+        if (data.get("failed") or []):
+            note += ", %d refused" % len(data["failed"])
+        return note
+    except Exception as e:
+        return "error: %s" % str(e)[:70]
+
+
 def _loop(app, cfg_fn, config_path, account_id, log=None):
     """One worker, responsible for ONE account.
 
@@ -415,6 +480,25 @@ def _loop(app, cfg_fn, config_path, account_id, log=None):
                     pass
                 time.sleep(STAGGER)            # one report at a time FOR THIS ACCOUNT
                 continue
+
+            # SALES NEXT, before images. A missing day of sales is a WRONG NUMBER
+            # on the screen -- "Total Sales GBP 0" for a week that had sales --
+            # whereas a missing image is a gap you can see is a gap. Both wait
+            # for the catalogue above, which is what a person is most likely to
+            # be staring at.
+            behind = None
+            if not user_busy(account_id):
+                behind = next(((a, m) for a, m in _targets(cfg_fn, config_path)
+                               if a == account_id and _sales_gap(config_path, a, m)),
+                              None)
+            if behind:
+                snote = _sales_one(app, behind[0], behind[1])
+                if log:
+                    log("sales catch-up %s::%s -> %s" % (behind[0], behind[1], snote))
+                with _LOCK:
+                    _STATE["results"]["%s::%s sales" % (behind[0], behind[1])] = snote
+                time.sleep(STAGGER)
+                continue           # one piece of work per pass, like the branches above
 
             # Nothing needs a fresh REPORT, so spend the idle time finishing the
             # images on a catalogue that already exists. This is what makes a big
