@@ -154,6 +154,7 @@
     <!-- Sits next to Sales because it answers the other half of the same
          question: Sales says what was bought, this says how many people looked
          and how many of them bought. -->
+    <div class="navitem" data-sec="hourly" onclick="navTo('hourly')" title="Which hour of which day each product sells in, from order times"><i class="ti ti-clock-hour-4"></i> Hourly Sales</div>
     <div class="navitem" data-sec="traffic" onclick="navTo('traffic')" title="Sessions, page views, conversion rate and buy box, per day and per product"><i class="ti ti-chart-arcs"></i> Traffic</div>
     <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
     <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
@@ -713,6 +714,21 @@
       <div id="ordbody" style="padding:4px 0"></div>
     </div>
 
+    <!-- HOURLY SALES. Which hour of which day each product sells in.
+         Amazon publishes no hourly report: the Sales & Traffic report is
+         daily and the finance records are dated when money moved, so the only
+         source is the Orders API -- and an order does not say which ASIN was
+         in it, which costs one further call per order. Every order it learns
+         about is therefore kept, and the pull is a button rather than
+         something that happens while you wait. -->
+    <div id="sec_hourly" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-clock-hour-4"></i> Hourly Sales</h2>
+        <div class="sub">Total ordered sales per ASIN by local hour of week, trailing 30 days. Each row shows the ASIN's sales by hour of day, colour-scaled to its own peak hour; click a row for the full Mon&ndash;Sun grid.</div></div>
+      </div>
+      <div id="hrlybody"></div>
+    </div>
+
     <!-- TRAFFIC & CONVERSIONS. Built to Orbit's page of the same name, on
          figures this app has been storing per ASIN and per day all along
          without ever showing them: sessions, sessions_mobile,
@@ -1149,6 +1165,7 @@
      declarations and every file is parsed before anything is clicked -- but the
      dependency is real and reads better in the order it runs.) -->
 <script src="/static/js/traffic.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/hourly.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
 

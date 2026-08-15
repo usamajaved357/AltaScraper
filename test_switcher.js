@@ -147,8 +147,12 @@ truthy("a remembered account is checked against the ones that exist",
 // first choice when nothing is remembered.
 truthy("otherwise the first CONNECTED account is opened",
        /filter\(a => a\.has_creds\)\[0\]/.test(shell));
+// Matched with \r?\n, not a literal \n. This file is checked out on Windows
+// with CRLF, so the literal form passed only until git next rewrote the file --
+// and then failed with the code completely unchanged, which is the most
+// expensive kind of failure to read.
 truthy("and a fresh install with no accounts still gets the grid",
-       shell.indexOf("_altaBootDone();\n    return;") >= 0);
+       /_altaBootDone\(\);\s*\r?\n\s*return;/.test(shell));
 
 console.log("\n=== it is on the page, before the code that calls it ===");
 const htmlPage = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");

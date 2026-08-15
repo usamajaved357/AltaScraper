@@ -3399,6 +3399,13 @@ def build_app(backend=None):
     _traffic_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # Which hour of which day each product sells in. Amazon publishes no hourly
+    # report, so this is built from order TIMES -- one Amazon call per order,
+    # which is why every order it learns about is kept.
+    import routes.hourly_routes as _hourly_routes
+    _hourly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
+
     # Moving a workspace's listings out of Google Sheets and into the app. The
     # import has always existed as a command line; it has to be runnable HERE,
     # because it must run where the database is and that is not a laptop.
