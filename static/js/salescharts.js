@@ -358,6 +358,34 @@ function _scNiceCount(v){
   return step * 4;
 }
 
+/* WHERE COLUMN i SITS. Two answers, and Orbit uses both -- measured:
+ *
+ *   point   Live Sales. 24 hourly points, the first ON the y-axis at x=65 and
+ *           the last on the right edge at x=645. Correct for a continuous run of
+ *           readings: midnight IS the start of the axis.
+ *
+ *   band    Week to Date, and every chart with bars. Each column occupies a
+ *           slice of the axis and is drawn at the middle of its slice (measured
+ *           on the Sales Report: 30 days across a plot from 70 to 1274.9, so
+ *           bands of 40.17, and bar centre, line point and date label all meet
+ *           at 90.08).
+ *
+ * A day is a bucket and a bucket wants a band. It is also what stops the last
+ * bar hanging half its width into the right-hand axis labels.
+ *
+ * ONE definition, used by both charts. It was the same arithmetic written out
+ * twice, which is how the two came to disagree about where a column is in the
+ * first place. */
+function _scScale(band, padL, iw, n){
+  const count = Math.max(1, n);
+  const slot = band ? (iw / count) : (count > 1 ? iw / (count - 1) : iw);
+  return {
+    slot: slot,
+    x: band ? (i => padL + (i + 0.5) * slot)
+            : (i => padL + (count === 1 ? iw / 2 : i * slot)),
+  };
+}
+
 /* A BAR WITH ROUNDED TOP CORNERS ONLY, which is what Orbit draws: measured
  * `radius=4,4,0,0` on every rectangle of its Sales Report. A plain rect with
  * rx rounds all four, and the two at the bottom get clipped by the axis into a
@@ -433,26 +461,10 @@ function salesChart(points, opts){
   const hi = _scNiceMax(Math.max.apply(null, allVals));
   const span = (hi - lo) || 1;
 
-  // WHERE COLUMN i SITS. Two answers, and Orbit uses both -- measured:
-  //
-  //   point   Live Sales. 24 hourly points, the first ON the y-axis at x=65 and
-  //           the last on the right edge at x=645. Correct for a continuous run
-  //           of readings: midnight IS the start of the axis.
-  //
-  //   band    Week to Date. Seven days, each occupying a slice of the axis and
-  //           labelled at the middle of its slice (measured: Sun at 106.4, Sat
-  //           at 603.6, 82.86 apart -- which is 580/7, so the first band centre
-  //           is half a band in from the axis).
-  //
-  // A day is not an instant, it is a bucket, and a bucket wants a band. It also
-  // stops the first and last labels being half-clipped by the panel edge, which
-  // is what "Sun" at x=65 would be.
-  const band = (o.scale === "band");
-  const slot = band ? (iw / Math.max(1, points.length))
-                    : (points.length > 1 ? iw / (points.length - 1) : iw);
-  const x = band
-    ? (i => padL + (i + 0.5) * slot)
-    : (i => padL + (points.length === 1 ? iw / 2 : i * slot));
+  // Band for the week (Sun … Sat measured at band centres, 82.86 apart), point
+  // for the hourly card. See _scScale.
+  const _sc = _scScale(o.scale === "band", padL, iw, points.length);
+  const slot = _sc.slot, x = _sc.x;
   const y = v => padT + ih - ((v - lo) / span) * ih;
 
   // Gridlines and their labels, at nice fractions of the top value.
@@ -846,24 +858,16 @@ function salesCombo(o){
   // order drawing a full-height pillar against an axis reading 0, 0, 1, 1, 1.
   const bHi = _scNiceCount(barVals.length ? Math.max.apply(null, barVals) : 1);
 
-  // A BAND SCALE, which is what a chart with bars must use -- measured on
-  // Orbit's Sales Report: 30 days across a plot from 70 to 1274.9, so bands of
-  // 40.17, and the first bar's centre, the first line point and the "Jul 15"
-  // label all sit together at 90.08 -- half a band in from the axis.
-  //
-  // Ours spread the points from edge to edge (i/(n-1)), which puts the LAST
-  // point exactly on the right-hand plot edge. A 32-wide bar centred there hangs
-  // half its width into the strip where the orders axis is written, which is the
-  // "numbers written on the last one orange pillar".
+  // BARS NEED BANDS; two areas do not. Ours spread the points edge to edge,
+  // which puts the LAST one exactly on the right-hand plot edge -- and a 32-wide
+  // bar centred there hangs half its width into the strip the orders axis is
+  // written in. That is the "numbers written on the last one orange pillar".
   //
   // Without bars it is a point scale, as Orbit's own Organic vs PPC chart is
-  // (measured: 31 points from x=60 to x=1355, first ON the axis and last on the
-  // right edge). Bars need bands; two areas do not.
-  const cBand = !!bars;
-  const slot = cBand ? (iw / Math.max(1, cols.length))
-                     : (cols.length > 1 ? iw / (cols.length - 1) : iw);
-  const x  = cBand ? (i => padL + (i + 0.5) * slot)
-                   : (i => padL + (cols.length === 1 ? iw / 2 : i * slot));
+  // (measured: 31 points from x=60 to x=1355, first ON the axis, last on the
+  // right edge). Same helper as the small charts -- see _scScale.
+  const _sc = _scScale(!!bars, padL, iw, cols.length);
+  const slot = _sc.slot, x = _sc.x;
   const yM = v => padT + ih - ((v - mLo) / mSpan) * ih;
   const yB = v => padT + ih - (v / (bHi || 1)) * ih;
 
