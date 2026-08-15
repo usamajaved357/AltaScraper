@@ -54,7 +54,8 @@ function sandbox(){
 // text on the page should.
 const PANELS = ["Daily Returns Volume", "Issue Nature Classification",
                 "Return Reasons Breakdown", "Disposition &amp; Recovery",
-                "Return Status", "SKU-Level Returns Detail",
+                "Return Status", "Product Line Performance",
+                "SKU-Level Returns Detail",
                 "Customer Voice Analysis", "Actionable Insights"];
 // And the six figures across the top.
 const KPIS = ["Total returns", "Return rate", "Refunded", "Sellable returns",
@@ -167,6 +168,45 @@ const css = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
 });
 truthy("six KPI cards across, as the report has them",
        /\.ri-kpis\{[\s\S]{0,200}repeat\(6, 1fr\)/.test(css));
+
+console.log("\n=== Product Line Performance, the section the report has ===");
+/* It answers the one question the per-SKU table cannot: is it THIS COLOUR that
+ * comes back, or is the whole family bad? A 12.6% rate across every Pro Electric
+ * is a product problem; one colour at 12% among nine at 3% is a listing problem,
+ * and they need opposite fixes.
+ *
+ * Amazon sends no product line, so it is derived -- which makes the placeholder
+ * rule load-bearing: invented lines must never appear beside real returns.
+ */
+{
+  const rv = fs.readFileSync("D:/AltaScraper/domain/returns_view.py", "utf8");
+  truthy("the server works out a line for each product", /def line_of\(/.test(rv));
+  truthy("  and returns them summed per line", /"lines": line_rows/.test(rv));
+  truthy("  saying how they were derived", /"lines_from"/.test(rv));
+  truthy("a known variation family beats a guess from the name",
+         /if family:\s*\n\s*return str\(family\)/.test(rv));
+
+  // The report's own columns, in its order.
+  const cols = ["Product Line", "Returns", "Ordered", "Return Rate", "Revenue",
+                "Est. Lost Rev", "Issue Mix", "SKUs"];
+  const js = fs.readFileSync("D:/AltaScraper/static/js/returns.js", "utf8");
+  cols.forEach(c2 => truthy("  column: " + c2, js.indexOf(">" + c2 + "<") >= 0));
+  truthy("and the report's own subtitle",
+         js.indexOf("Return rate and revenue impact by product family") >= 0);
+  truthy("the SKU table carries the report's subtitle too",
+         js.indexOf("Click any row to expand reasons, comments, and disposition") >= 0);
+
+  // THE RULE THAT MATTERS. Sample rows are gated on noData -- the same flag
+  // every other panel uses -- not on whether this section happens to be empty.
+  truthy("placeholder lines appear ONLY when there is no data at all",
+         /lines\.length \? lines : \(noData \?/.test(js));
+  truthy("  and with real data but no lines it says so instead of inventing any",
+         js.indexOf("has not grouped them into") >= 0);
+  // Reuses the existing table and badge styles rather than inventing a second set.
+  check("no second table class was invented", /class="ri-table"/.test(js), false);
+  truthy("it uses the badge colours that already exist",
+         /ri-badge ' \+ rateCls/.test(js));
+}
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

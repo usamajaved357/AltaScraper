@@ -240,7 +240,41 @@ def parse_rows(headers, rows):
     return out, kind, skipped
 
 
-def summarise(returns, sold_by_asin=None):
+"""A PRODUCT LINE, worked out from the product name.
+
+The report this screen is built to has a "Product Line Performance" section --
+"Pursuit PE (Plastic)", "Pro Electric", "FORM Water Bottle" -- which answers the
+question a per-SKU table cannot: is it THIS COLOUR that comes back, or is the
+whole family bad? A 12.56% return rate across every Pro Electric is a product
+problem; one colour at 12% among nine at 3% is a listing problem.
+
+Amazon sends no such field, so it is derived, and the screen says so. The line is
+the product name with its variant tail removed:
+
+    "Promixx Pro Electric Shaker - SS (Silver/Gray)"  ->  "Promixx Pro Electric Shaker"
+    "Pursuit PE 24oz - Glacier Gray"                  ->  "Pursuit PE 24oz"
+
+which is where sellers put the variant: after a dash, an en dash, or a comma.
+Where the app knows a real variation family for the ASIN, that is used instead --
+a family IS the product line, and a derived one is only a guess at it.
+"""
+_LINE_SPLIT = re.compile(r"\s+[–—-]\s+|,\s+")
+
+
+def line_of(name, family=None):
+    if family:
+        return str(family)
+    s = str(name or "").strip()
+    if not s:
+        return "Unknown"
+    head = _LINE_SPLIT.split(s)[0].strip()
+    # A name with no separator at all is its own line rather than being cut at
+    # an arbitrary word count -- guessing where a title stops being the product
+    # is how two unrelated things end up in one row.
+    return head or s
+
+
+def summarise(returns, sold_by_asin=None, family_by_asin=None):
     """Everything the screen shows, from the parsed returns.
 
     `sold_by_asin` is {asin: {"units": n, "sales": x}} from the app's own sales
@@ -296,7 +330,52 @@ def summarise(returns, sold_by_asin=None):
 
     rows = sorted(by_asin.values(),
                   key=lambda x: (-(x["returns"] or 0), str(x.get("asin") or "")))
+
+    # ---- PRODUCT LINE PERFORMANCE ------------------------------------------
+    # The section the report has and this screen did not. Built from the rows
+    # above, so a line total can never disagree with the SKUs inside it.
+    fam = family_by_asin or {}
+    lines = {}
+    for a in rows:
+        key = line_of(a.get("name"), fam.get(a.get("asin") or ""))
+        L = lines.setdefault(key, {"line": key, "returns": 0, "ordered": 0,
+                                   "sales": 0.0, "lost": 0.0, "skus": 0,
+                                   "natures": {}, "estimated": False})
+        L["returns"] += int(a.get("returns") or 0)
+        L["ordered"] += int(a.get("ordered") or 0)
+        L["sales"] += float(a.get("sales") or 0)
+        L["skus"] += 1
+        for n, c in (a.get("natures") or {}).items():
+            L["natures"][n] = L["natures"].get(n, 0) + c
+        # LOST REVENUE: the refunded figure where the report carried one, and an
+        # estimate from this line's own average selling price where it did not.
+        # Never a blended guess across lines -- a cheap line and an expensive one
+        # do not lose the same money per unit, and that is the whole point of
+        # splitting them.
+        if a.get("refunded"):
+            L["lost"] += float(a["refunded"])
+        elif a.get("sales") and a.get("ordered"):
+            L["lost"] += (float(a["sales"]) / int(a["ordered"])) * int(a["returns"] or 0)
+            L["estimated"] = True
+
+    line_rows = []
+    for L in lines.values():
+        L["rate"] = (round(L["returns"] / L["ordered"] * 100, 2)
+                     if L["ordered"] else None)
+        L["lost"] = round(L["lost"], 2)
+        L["sales"] = round(L["sales"], 2)
+        if not L["ordered"]:
+            L["ordered"] = None
+        line_rows.append(L)
+    line_rows.sort(key=lambda x: (-(x["returns"] or 0), x["line"]))
+
     return {
+        "lines": line_rows,
+        # Said out loud, because a derived grouping presented as a fact is worse
+        # than no grouping: the screen shows which SKUs are in each line so the
+        # split can be checked.
+        "lines_from": ("the variation families this app knows"
+                       if fam else "the product names, cut at the variant"),
         "total_returns": len(returns or []),
         "units_returned": int(units),
         "unique_skus": len(by_asin),
