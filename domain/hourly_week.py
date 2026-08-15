@@ -116,37 +116,30 @@ def fetch(config_path, workspace_id, marketplace, marketplace_id, creds, days=30
     capped = len(todo) > max_orders
     todo = todo[:max_orders]
 
-    from sp_api.api import Orders
-    from sp_api.base import Marketplaces
-    mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
-    oc = Orders(credentials=creds, marketplace=mkt)
+    # ONE reader of "what was in this order", shared with the Sales screen --
+    # which sums these same item prices to get the day's product sales. Two
+    # copies of this loop is how two screens come to disagree about one order.
+    by_order, _complete = _ol.order_items(
+        marketplace, creds, [str(o.get("AmazonOrderId") or "") for o in todo],
+        max_orders=max_orders)
 
     lines, done = [], 0
     for o in todo:
         oid = str(o.get("AmazonOrderId") or "")
         when = str(o.get("PurchaseDate") or "")
         status = str(o.get("OrderStatus") or "")
-        try:
-            r = oc.get_order_items(oid)
-            pay = r.payload if hasattr(r, "payload") else r
-            items = (pay or {}).get("OrderItems") or []
-        except Exception:
+        items = by_order.get(oid)
+        if items is None:
             continue
         for it in items:
-            price = ((it.get("ItemPrice") or {}).get("Amount"))
-            cur = ((it.get("ItemPrice") or {}).get("CurrencyCode") or "")
-            try:
-                qty = int(it.get("QuantityOrdered") or 0)
-            except (TypeError, ValueError):
-                qty = 0
             lines.append({
                 "order_id": oid, "purchase_date": when,
-                "asin": str(it.get("ASIN") or ""),
-                "sku": str(it.get("SellerSKU") or ""),
-                "title": str(it.get("Title") or ""),
-                "units": qty,
-                "revenue": float(price or 0),
-                "currency": cur, "status": status,
+                "asin": it.get("asin", ""),
+                "sku": it.get("sku", ""),
+                "title": it.get("title", ""),
+                "units": it.get("units", 0),
+                "revenue": float(it.get("price") or 0),
+                "currency": it.get("currency", ""), "status": status,
             })
         done += 1
     store_lines(config_path, workspace_id, marketplace, lines)

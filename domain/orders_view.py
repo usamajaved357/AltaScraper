@@ -206,4 +206,13 @@ def summarise(rows):
             # Kept apart: adding pounds to dollars produces a number that is
             # wrong in both currencies.
             "revenue_by_currency": by_cur,
+            # WHICH FIGURE THIS IS. Summed from each order's OrderTotal, so it is
+            # what the BUYERS PAID -- shipping included. The Sales screen's Total
+            # Sales is ordered PRODUCT sales (the item price), which is what
+            # Amazon's own Total Sales shows and what a seller counts. On three
+            # orders of one item those two read 102.21 and 89.97: both correct,
+            # about different things. Declared here and labelled on screen so the
+            # two screens cannot look like they contradict each other. See
+            # domain/orders_live.product_sales().
+            "revenue_basis": "order_total",
             "statuses": statuses}

@@ -73,6 +73,12 @@ def _payload(resp):
 
 
 def _amount(order):
+    """OrderTotal -- what the BUYER paid, shipping included.
+
+    Not the same thing as sales, and not what Seller Central calls Total Sales.
+    Kept for the places that genuinely mean "what was charged"; anything
+    reporting sales wants product_sales() below.
+    """
     tot = order.get("OrderTotal") or {}
     try:
         return float(tot.get("Amount") or 0.0), str(tot.get("CurrencyCode") or "")
@@ -80,10 +86,108 @@ def _amount(order):
         return 0.0, ""
 
 
-def summarise(orders):
-    """Orders -> the numbers a person wants. Pending counted, but not banked."""
+# One getOrderItems call per order, so this is bounded. Far above a normal day
+# for this business; a bigger seller gets a partial figure that says it is
+# partial rather than a wrong one that does not.
+MAX_ITEM_LOOKUPS = 200
+
+
+def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
+    """The line items of each order: {order_id: [line, ...]}, and whether all fit.
+
+    THE ONE PLACE THAT ASKS AMAZON WHAT WAS IN AN ORDER. The hourly page needed
+    per-item detail (which ASIN, at what price, at what hour) and the Sales
+    screen needs the per-order total of those same item prices; both were going
+    to want their own copy of this loop, and two copies of "what did Amazon
+    say this order contained" is how two screens come to disagree about one
+    order.
+
+    Each line: {asin, sku, title, units, price, currency}. `price` is ItemPrice
+    -- the money for the goods, which is what Amazon calls ordered product sales
+    and what the seller counts. It excludes shipping.
+    """
+    from sp_api.api import Orders
+    from sp_api.base import Marketplaces
+    mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
+    oc = Orders(credentials=creds, marketplace=mkt)
+
+    ids = [str(i) for i in (order_ids or []) if i]
+    complete = len(ids) <= int(max_orders)
+    out = {}
+    for oid in ids[:int(max_orders)]:
+        try:
+            r = oc.get_order_items(oid)
+            pay = r.payload if hasattr(r, "payload") else r
+            items = (pay or {}).get("OrderItems") or []
+        except Exception:
+            # Not recorded as an empty order: an order we could not read is not
+            # an order worth nothing, and treating it as zero would quietly
+            # understate the day. It is simply absent, and callers count it.
+            continue
+        lines = []
+        for it in items:
+            ip = it.get("ItemPrice") or {}
+            try:
+                qty = int(it.get("QuantityOrdered") or 0)
+            except (TypeError, ValueError):
+                qty = 0
+            try:
+                price = float(ip.get("Amount") or 0.0)
+            except (TypeError, ValueError):
+                price = 0.0
+            lines.append({
+                "asin": str(it.get("ASIN") or ""),
+                "sku": str(it.get("SellerSKU") or ""),
+                "title": str(it.get("Title") or ""),
+                "units": qty,
+                "price": price,
+                "currency": str(ip.get("CurrencyCode") or ""),
+            })
+        out[oid] = lines
+    return out, complete
+
+
+def product_sales(marketplace, creds, orders, max_orders=MAX_ITEM_LOOKUPS):
+    """Ordered product sales per order: {order_id: (amount, currency)}, + how many
+    could not be read.
+
+    WHY THIS EXISTS: the owner counted 89.97 for three orders and the app showed
+    102.21. Both were right about different things -- 3 x 29.99 of goods, plus
+    3 x 4.08 of shipping. Amazon's own Total Sales, the Sales & Traffic report's
+    ordered_sales, and what a seller means by "my sales" are all the FIRST one.
+
+    This matters beyond the label. The Sales chart fills days the report has not
+    delivered from the Orders API; with OrderTotal there, a filled day and a
+    reported day were measuring different things and the bars were not
+    comparable to each other.
+    """
+    ids = [str(o.get("AmazonOrderId") or "") for o in (orders or [])
+           if str(o.get("OrderStatus") or "").lower() not in _DEAD]
+    ids = [i for i in ids if i]
+    items, complete = order_items(marketplace, creds, ids, max_orders=max_orders)
+    out = {}
+    for oid in ids:
+        lines = items.get(oid)
+        if lines is None:
+            continue
+        amt = round(sum(float(l.get("price") or 0.0) for l in lines), 2)
+        cur = next((l.get("currency") for l in lines if l.get("currency")), "")
+        out[oid] = (amt, cur)
+    return out, len(ids) - len(out), complete
+
+
+def summarise(orders, priced=None):
+    """Orders -> the numbers a person wants. Pending counted, but not banked.
+
+    `priced` is {order_id: (amount, currency)} from product_sales(). Given it,
+    revenue is ordered PRODUCT sales -- the item price, which is what Amazon's
+    own Total Sales shows and what the seller counts. Without it, revenue falls
+    back to OrderTotal, which also includes shipping.
+    """
+    priced = priced or {}
     out = {"orders": 0, "units": 0, "revenue": 0.0, "pending": 0,
-           "cancelled": 0, "currency": ""}
+           "cancelled": 0, "currency": "",
+           "basis": "product_sales" if priced else "order_total"}
     for o in orders or []:
         status = str(o.get("OrderStatus") or "").lower()
         if status in _DEAD:
@@ -95,7 +199,8 @@ def summarise(orders):
                           + int(o.get("NumberOfItemsUnshipped") or 0)
         except (TypeError, ValueError):
             pass
-        amt, cur = _amount(o)
+        oid = str(o.get("AmazonOrderId") or "")
+        amt, cur = priced[oid] if oid in priced else _amount(o)
         if amt:
             out["revenue"] = round(out["revenue"] + amt, 2)
             if cur and not out["currency"]:
@@ -162,6 +267,17 @@ def by_day(marketplace, marketplace_id, creds, days=5):
     since = day_start(marketplace, days_ago=days - 1)
     orders, truncated = fetch_since(marketplace, marketplace_id, creds, since)
 
+    # PRODUCT SALES, not OrderTotal. These figures are used to fill the days the
+    # Sales & Traffic report has not delivered yet, and that report's
+    # ordered_sales is the item price -- so filling with OrderTotal put shipping
+    # into some bars of a chart and not others, and the bars stopped being
+    # comparable. See product_sales().
+    priced, unpriced, priced_complete = {}, 0, True
+    try:
+        priced, unpriced, priced_complete = product_sales(marketplace, creds, orders)
+    except Exception:
+        priced, unpriced, priced_complete = {}, 0, False
+
     tz = marketplace_zone(marketplace)
     out, currency = {}, ""
     for o in orders or []:
@@ -184,13 +300,24 @@ def by_day(marketplace, marketplace_id, creds, days=5):
                         + int(o.get("NumberOfItemsUnshipped") or 0)
         except (TypeError, ValueError):
             pass
-        amt, cur = _amount(o)
+        oid = str(o.get("AmazonOrderId") or "")
+        if oid in priced:
+            amt, cur = priced[oid]
+        else:
+            # Amazon would not give up this order's items. Fall back to what the
+            # buyer was charged rather than counting the order as worthless, and
+            # say so on the way out -- a figure that is 4.08 high is far less
+            # wrong than a sale that vanished.
+            amt, cur = _amount(o)
         if amt:
             d["revenue"] = round(d["revenue"] + amt, 2)
             if cur and not currency:
                 currency = cur
     return {"days": dict(sorted(out.items())), "currency": currency,
             "truncated": bool(truncated),
+            "basis": "product_sales" if priced else "order_total",
+            "unpriced_orders": int(unpriced),
+            "priced_complete": bool(priced_complete),
             "since": since.date().isoformat()}
 
 
@@ -204,7 +331,19 @@ def today(marketplace, marketplace_id, creds, compare=True):
     start = day_start(marketplace, 0)
     now = _dt.datetime.now(marketplace_zone(marketplace))
     orders, truncated = fetch_since(marketplace, marketplace_id, creds, start)
-    out = {"ok": True, "today": summarise(orders), "as_at": _iso(now),
+
+    # Ordered product sales, not OrderTotal -- see product_sales(). Best effort:
+    # if Amazon will not answer, summarise() falls back per order and says which
+    # basis it ended up on, rather than mixing the two without saying.
+    def _priced(os_):
+        try:
+            p, _unpriced, _ok = product_sales(marketplace, creds, os_)
+            return p
+        except Exception:
+            return {}
+
+    out = {"ok": True, "today": summarise(orders, _priced(orders)),
+           "as_at": _iso(now),
            "day_started": _iso(start), "truncated": truncated,
            "timezone": str(marketplace_zone(marketplace))}
 
@@ -213,7 +352,7 @@ def today(marketplace, marketplace_id, creds, compare=True):
         y_until = y_start + (now - start)          # the same elapsed slice
         y_orders, y_trunc = fetch_since(marketplace, marketplace_id, creds,
                                         y_start, until=y_until)
-        out["yesterday"] = summarise(y_orders)
+        out["yesterday"] = summarise(y_orders, _priced(y_orders))
         out["yesterday_truncated"] = y_trunc
         out["compared_to"] = "the same time yesterday"
         for k in ("orders", "units", "revenue"):
