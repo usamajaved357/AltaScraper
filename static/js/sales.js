@@ -502,7 +502,11 @@ function salesDrawCharts(ser){
         + 'is nothing to draw a line between — the marks sit at that one day. '
         + 'Press <b>Sync</b> to pull the rest, or widen the range.</div>';
     }
-    h += '<div class="salespanel" style="margin:0 0 16px">' + note + comboHtml + '</div>';
+    // NOT a nested .salespanel. #sales_charts already sits inside one, so this
+    // wrapper made a card inside a card and charged the chart TWO lots of
+    // padding: measured on a 390px phone, Orbit's Sales Report chart is 340
+    // wide and ours was 306, entirely because of this line.
+    h += '<div style="margin:0 0 16px">' + note + comboHtml + '</div>';
   }
   // ONE CHART, NOT SIX.
   //

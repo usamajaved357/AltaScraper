@@ -354,6 +354,22 @@
      inline margin:-20px on seven toolbars) changing one silently inset every
      toolbar by 12px. */
   .wspanel{display:none;padding:var(--wspad,32px)}
+  /* WIDTH 100%, AND ALLOWED TO SHRINK. Without these a panel is a flex item of
+     .wsmain sized to its own MAX-CONTENT, and on a phone the widest thing in it
+     wins: measured on a 390px screen the Sales panel came out 1923px wide and
+     dragged the whole page sideways with it. Every chart was then drawn at that
+     width and scaled to fit, which is "the graphs do not look as original they
+     are too short" -- and the same fault applied to every screen with a wide
+     table on it, not only this one.
+
+     Measured after: the panel is 390 and the two top cards are 366, which is
+     exactly what Orbit measures on the same phone. On a desktop it changes
+     nothing -- the panel already filled its column -- and #sec_sales keeps its
+     1464 cap, because max-width beats width.
+
+     `min-width:0` alone does NOT fix it, and nor does `align-items:stretch`.
+     Both were tried in the live page and measured before this one was kept. */
+  .wsmain > .wspanel{width:100%;min-width:0}
   .wspanel.show{display:block}
   /* Toolbars that run edge-to-edge inside a padded panel. Was an inline style
      repeated on seven sections; a class means the bleed follows the padding. */
@@ -1498,6 +1514,9 @@
   .wsmain{ width:100%; }
   .wspanel{ --wspad:12px; }
   #sec_listings{ padding:12px; }
+  /* The Sales screen's own phone sizing lives with the rest of the Sales rules
+     further down -- it has to come AFTER `#sec_sales{padding:32px}` or the two
+     have equal specificity and the desktop one wins. */
 
   /* ONE sticky bar, not two. The app bar is the one worth keeping; a second
      sticky strip under it costs another 60px of a screen that has ~640. */
@@ -2110,6 +2129,24 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 }
 @media (max-width:900px){
   .sales-toprow{ grid-template-columns:1fr; }
+}
+
+/* THE SALES SCREEN ON A PHONE, at Orbit's own measurements.
+   Measured on Orbit at 390px: its cards are 366 wide, so 12px of page padding
+   each side -- not the 32px it uses on a desktop. Ours kept the desktop 32,
+   which took 64px out of a 390px screen and left every chart 40px narrower than
+   Orbit's on the same phone. The max-width goes with it: there is nothing left
+   to centre in.
+
+   DELIBERATELY AFTER the #sec_sales rule above rather than in the 860px block
+   with the rest of the mobile layout. Both are plain id selectors, so the later
+   one wins whatever the media query says -- putting it up there would have
+   looked right in the diff and done nothing. */
+@media (max-width:860px){
+  #sec_sales{ padding:12px; max-width:none; }
+  /* Three nested paddings is most of a phone screen, so the panels inside drop
+     from 16 to the 12 the top cards already use. */
+  #sec_sales > .salespanel{ padding:12px; }
 }
 .sales-toprow > .salespanel{ padding:12px; }
 #sec_sales > .salespanel{ padding:16px; }

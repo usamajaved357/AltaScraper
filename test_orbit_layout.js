@@ -156,5 +156,41 @@ console.log("\n=== the Sales column is Orbit's ===");
         (rules.match(/^#sec_sales\s*\{/gm) || []).length, 1);
 }
 
+console.log("\n=== a phone gets a phone-sized page ===");
+/* "in the mobile view the graphs do not look as original they are too short".
+ *
+ * MEASURED in the running app at 390px: the Sales panel came out 1923px wide.
+ * A .wspanel is a flex item of .wsmain, and without an explicit width it is
+ * sized to its own MAX-CONTENT -- so the widest thing inside it (the metrics
+ * grid) set the width of the whole page, and every chart was drawn at 1873 and
+ * then scaled down to fit a 390px screen.
+ *
+ * After: the panel is 390, the cards are 366, and the charts are 340x200 --
+ * which is exactly what Orbit measures on the same phone.
+ *
+ * Two candidates were tried in the live page first and did NOT fix it:
+ * `min-width:0` alone, and `align-items:stretch` on the container. This is why
+ * the rule is what it is rather than the one that reads more natural.
+ */
+{
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, "");
+  check("panels are given a width rather than sized by their content",
+        /\.wsmain>\.wspanel\{width:100%;min-width:0\}/.test(flat), true);
+  // The phone padding has to come AFTER the desktop rule: both are plain id
+  // selectors, so the later one wins whatever the media query says. A rule in
+  // the wrong place looks right in the diff and does nothing.
+  const desktopAt = css.search(/#sec_sales\s*\{[^}]*padding:\s*32px/);
+  const phoneAt = css.search(/@media[^{]*max-width:\s*860px[^{]*\{[^@]*#sec_sales\s*\{[^}]*padding:\s*12px/);
+  check("the desktop sales padding is declared", desktopAt >= 0, true);
+  check("the phone override is declared", phoneAt >= 0, true);
+  check("  and it comes after the desktop rule, or it would lose",
+        phoneAt > desktopAt, true);
+  check("the phone drops the column cap too",
+        /@media\(max-width:860px\)\{#sec_sales\{padding:12px;max-width:none;?\}/.test(flat), true);
+  // Orbit stacks the top cards on a phone; ours must not try two columns of 183.
+  check("the top cards stack before they get too narrow",
+        /@media\(max-width:900px\)\{\.sales-toprow\{grid-template-columns:1fr;?\}/.test(flat), true);
+}
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);
