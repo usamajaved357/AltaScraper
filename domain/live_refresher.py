@@ -415,8 +415,21 @@ SALES_PER_PASS = 3         # days per pass -- small, because reports are scarce
 SALES_DAYS_BACK = 30       # how far back a gap is worth chasing
 
 
+# How often the LIVE orders are written into the store, per account+marketplace.
+# Orbit polls this feed every 15-60 minutes; 15 is the busy end of that and the
+# Orders API is not the scarce quota -- reports are.
+LIVE_EVERY = 15 * 60
+_LIVE_LAST = {}          # "account::MKT" -> when it was last reconciled
+
+
 def _sales_gap(config_path, aid, mkt):
-    """Days of sales this account is behind on, or 0. A cheap local read."""
+    """Days of REPORT this account is behind on, or 0. A cheap local read.
+
+    Only the report, because the report is what costs quota. Whether the LIVE
+    figures need writing is a separate question with a separate answer -- see
+    _live_due() -- and conflating them made the worker fetch a report every
+    rotation.
+    """
     try:
         from domain import sales_fetch as _sf
         missing = _sf.missing_days(config_path, aid, mkt, SALES_DAYS_BACK)
@@ -424,6 +437,47 @@ def _sales_gap(config_path, aid, mkt):
         return len(missing) + len(revisable)
     except Exception:
         return 0
+
+
+def _live_due(aid, mkt):
+    """Is it time to write this account's live orders into the store?
+
+    A separate rhythm from the report, because they are separate problems. The
+    report being up to date does NOT mean the figures are: on selvora_limited
+    the report had delivered everything it could and the screen still read 0.00
+    against 947.72 of real trade, because nothing wrote the live orders down.
+    """
+    return (time.time() - _LIVE_LAST.get("%s::%s" % (aid, mkt), 0)) >= LIVE_EVERY
+
+
+def _live_one(app, config_path, aid, mkt):
+    """Write one account+marketplace's live orders into sales_daily."""
+    _LIVE_LAST["%s::%s" % (aid, mkt)] = time.time()
+    try:
+        import accounts as _acc_mod
+        from domain import live_reconcile as _lr
+        import domain.hourly_week as _hw
+        acc = _acc_mod.get_account(_cfg_of(app), aid, config_path)
+        if not acc or not _acc_mod.seller_scope_allowed(acc):
+            return "no Amazon account of its own"
+        res = _lr.reconcile(
+            config_path, aid, mkt,
+            _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
+            _acc_mod.account_creds(acc),
+            days=14,
+            price_cache=_hw.price_cache(config_path, aid, mkt))
+        return "%d day(s) written, %d changed" % (res["days_written"],
+                                                  res["days_changed"])
+    except Exception as e:
+        return "error: %s" % str(e)[:80]
+
+
+def _cfg_of(app):
+    try:
+        import dashboard as _d
+        return _d._cfg()
+    except Exception:
+        return {}
 
 
 def _sales_one(app, aid, mkt):
@@ -507,6 +561,22 @@ def _loop(app, cfg_fn, config_path, account_id, log=None):
             # whereas a missing image is a gap you can see is a gap. Both wait
             # for the catalogue above, which is what a person is most likely to
             # be staring at.
+            # THE LIVE ORDERS FIRST, and on their own rhythm. They are the
+            # figures a person is looking at, they move within minutes, and
+            # they do not spend the scarce report quota. Everything below waits
+            # for them.
+            if not user_busy(account_id):
+                due = next(((a, m) for a, m in _targets(cfg_fn, config_path)
+                            if a == account_id and _live_due(a, m)), None)
+                if due:
+                    lnote = _live_one(app, config_path, due[0], due[1])
+                    if log:
+                        log("live orders %s::%s -> %s" % (due[0], due[1], lnote))
+                    with _LOCK:
+                        _STATE["results"]["%s::%s live" % (due[0], due[1])] = lnote
+                    time.sleep(STAGGER)
+                    continue
+
             behind = None
             if not user_busy(account_id):
                 behind = next(((a, m) for a, m in _targets(cfg_fn, config_path)

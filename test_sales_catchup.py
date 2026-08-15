@@ -43,10 +43,16 @@ print("\n== a pass does ONE thing, and sales waits for the catalogue ==")
 src = open(r"D:\AltaScraper\domain\live_refresher.py", encoding="utf-8").read()
 loop = src[src.index("def _loop("):src.index("def _supervisor(")]
 i_cat = loop.index("_refresh_one(")
+i_live = loop.index("_live_one(")
 i_sales = loop.index("_sales_one(")
 i_img = loop.index("_needs_images(")
-check("the catalogue is attempted before sales", i_cat < i_sales, True)
-check("and sales before images", i_sales < i_img, True)
+check("the catalogue is attempted before anything else", i_cat < i_live, True)
+# The LIVE orders come before the report: they are the figures being looked at,
+# they move within minutes, and they do not spend the scarce report quota.
+check("the live orders come before the report", i_live < i_sales, True)
+check("and the report before images", i_sales < i_img, True)
+check_true("the live step has its own rhythm, not the report's",
+           "_live_due(" in src and "LIVE_EVERY" in src)
 check_true("the sales branch ends the pass rather than falling through",
            "continue           # one piece of work per pass" in loop)
 check_true("it stands aside for a person's own Sync", "user_busy(account_id)" in loop)
