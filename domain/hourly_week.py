@@ -89,6 +89,64 @@ def store_lines(config_path, workspace_id, marketplace, lines):
     return n
 
 
+def price_cache(config_path, workspace_id, marketplace):
+    """Per-order product sales, remembered in the order_lines table.
+
+    WHY THE SALES SCREEN NEEDS THIS. Pricing an order costs one getOrderItems
+    call, measured at about a second each. Live Sales prices today's orders and
+    yesterday's for the comparison, so a handful of orders turned a 5s panel
+    into a 10s one -- on the screen whose whole point is being live.
+
+    An order's item prices do not change once Amazon has given them up, so this
+    is permanent, not timed. And it is THIS table rather than a new one because
+    the hourly page is already filling it with exactly these numbers: two stores
+    of the same fact is how two screens come to disagree about one order.
+
+    Duck-typed to what orders_live.product_sales() asks for: get() and put().
+    """
+    class _Cache(object):
+        def get(self, order_ids):
+            ids = [str(i) for i in (order_ids or []) if i]
+            if not ids:
+                return {}
+            conn = _db.get_db(config_path)
+            out = {}
+            # Chunked: SQLite has a limit on how many parameters one statement
+            # may carry, and a busy month can exceed it.
+            for i in range(0, len(ids), 400):
+                chunk = ids[i:i + 400]
+                q = ("SELECT order_id, SUM(revenue) AS rev, "
+                     "       MAX(currency) AS cur "
+                     "FROM order_lines "
+                     "WHERE workspace_id=? AND marketplace=? "
+                     "  AND order_id IN (%s) GROUP BY order_id"
+                     % ",".join("?" * len(chunk)))
+                for r in conn.execute(q, [workspace_id, marketplace] + chunk):
+                    out[r["order_id"]] = (round(float(r["rev"] or 0), 2),
+                                          r["cur"] or "")
+            return out
+
+        def put(self, orders, items_by_order):
+            meta = {str(o.get("AmazonOrderId") or ""): o for o in (orders or [])}
+            lines = []
+            for oid, its in (items_by_order or {}).items():
+                o = meta.get(oid) or {}
+                for it in its:
+                    lines.append({
+                        "order_id": oid,
+                        "purchase_date": str(o.get("PurchaseDate") or ""),
+                        "asin": it.get("asin", ""), "sku": it.get("sku", ""),
+                        "title": it.get("title", ""),
+                        "units": it.get("units", 0),
+                        "revenue": float(it.get("price") or 0),
+                        "currency": it.get("currency", ""),
+                        "status": str(o.get("OrderStatus") or ""),
+                    })
+            return store_lines(config_path, workspace_id, marketplace, lines)
+
+    return _Cache()
+
+
 def fetch(config_path, workspace_id, marketplace, marketplace_id, creds, days=30,
           max_orders=MAX_ORDERS_PER_PASS):
     """Pull any orders in the window this app has not already stored.

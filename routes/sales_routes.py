@@ -23,6 +23,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /sales/* to the app."""
     import domain.request_account as _req_acct
 
+    def _price_cache(wsid, mkt):
+        """Remembered per-order product sales, or None if the store is not up.
+
+        Pricing an order costs an Amazon call each; the hourly page is already
+        storing exactly these numbers, so the Sales screen reads from the same
+        table rather than paying for them twice. Never fatal: without a cache
+        the figures are identical, only slower.
+        """
+        try:
+            import domain.hourly_week as _hw
+            return _hw.price_cache(CONFIG_PATH, wsid, mkt)
+        except Exception:
+            return None
+
     def _account_by_id(aid):
         """The account record for an id the PAGE named, or None."""
         try:
@@ -396,7 +410,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 mkt,
                 _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
                 _acc_mod.account_creds(acc),
-                compare=(request.args.get("compare", "1") != "0")))
+                compare=(request.args.get("compare", "1") != "0"),
+                price_cache=_price_cache(wsid, mkt)))
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:300]}), 502
 
@@ -441,7 +456,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 mkt,
                 _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
                 _acc_mod.account_creds(acc),
-                days=days)
+                days=days,
+                price_cache=_price_cache(wsid, mkt))
             out["ok"] = True
             return jsonify(out)
         except Exception as e:

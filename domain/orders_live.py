@@ -147,7 +147,8 @@ def order_items(marketplace, creds, order_ids, max_orders=MAX_ITEM_LOOKUPS):
     return out, complete
 
 
-def product_sales(marketplace, creds, orders, max_orders=MAX_ITEM_LOOKUPS):
+def product_sales(marketplace, creds, orders, max_orders=MAX_ITEM_LOOKUPS,
+                  cache=None):
     """Ordered product sales per order: {order_id: (amount, currency)}, + how many
     could not be read.
 
@@ -161,12 +162,34 @@ def product_sales(marketplace, creds, orders, max_orders=MAX_ITEM_LOOKUPS):
     reported day were measuring different things and the bars were not
     comparable to each other.
     """
-    ids = [str(o.get("AmazonOrderId") or "") for o in (orders or [])
-           if str(o.get("OrderStatus") or "").lower() not in _DEAD]
+    live = [o for o in (orders or [])
+            if str(o.get("OrderStatus") or "").lower() not in _DEAD]
+    ids = [str(o.get("AmazonOrderId") or "") for o in live]
     ids = [i for i in ids if i]
-    items, complete = order_items(marketplace, creds, ids, max_orders=max_orders)
-    out = {}
-    for oid in ids:
+
+    # ALREADY KNOWN ORDERS COST NOTHING. getOrderItems is one call per order and
+    # measured at about a second each, which turned Live Sales from a 5s panel
+    # into a 10s one -- unacceptable on the screen that is meant to be live. An
+    # order's item prices do not change once Amazon has given them up, so this
+    # cache is permanent rather than timed, and only orders never seen before
+    # are fetched. Optional: without one, everything is fetched as before.
+    known = {}
+    if cache is not None:
+        try:
+            known = cache.get(ids) or {}
+        except Exception:
+            known = {}
+    todo = [i for i in ids if i not in known]
+
+    items, complete = order_items(marketplace, creds, todo, max_orders=max_orders)
+    if cache is not None and items:
+        try:
+            cache.put(live, items)
+        except Exception:
+            pass      # a cache that will not write must never fail the read
+
+    out = dict(known)
+    for oid in todo:
         lines = items.get(oid)
         if lines is None:
             continue
@@ -239,7 +262,7 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
     return got, True
 
 
-def by_day(marketplace, marketplace_id, creds, days=5):
+def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None):
     """Orders per day for the last `days` days, from the ORDERS API.
 
     WHY THIS EXISTS: "but in amazon i am able to see the sales from yesterday
@@ -274,7 +297,8 @@ def by_day(marketplace, marketplace_id, creds, days=5):
     # comparable. See product_sales().
     priced, unpriced, priced_complete = {}, 0, True
     try:
-        priced, unpriced, priced_complete = product_sales(marketplace, creds, orders)
+        priced, unpriced, priced_complete = product_sales(
+            marketplace, creds, orders, cache=price_cache)
     except Exception:
         priced, unpriced, priced_complete = {}, 0, False
 
@@ -321,7 +345,7 @@ def by_day(marketplace, marketplace_id, creds, days=5):
             "since": since.date().isoformat()}
 
 
-def today(marketplace, marketplace_id, creds, compare=True):
+def today(marketplace, marketplace_id, creds, compare=True, price_cache=None):
     """Today so far, and the same slice of yesterday for honest comparison.
 
     The comparison stops at the SAME TIME of day, not at yesterday's total.
@@ -337,7 +361,8 @@ def today(marketplace, marketplace_id, creds, compare=True):
     # basis it ended up on, rather than mixing the two without saying.
     def _priced(os_):
         try:
-            p, _unpriced, _ok = product_sales(marketplace, creds, os_)
+            p, _unpriced, _ok = product_sales(marketplace, creds, os_,
+                                              cache=price_cache)
             return p
         except Exception:
             return {}
