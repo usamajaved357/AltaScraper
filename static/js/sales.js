@@ -759,7 +759,47 @@ async function salesLoadRecent(){
   if(!j || !j.ok || !j.days || !Object.keys(j.days).length) return;
   SALES._live = j.days;
   // Redraw from the series already in hand -- no second request for anything.
-  if(SALES.series){ salesDrawCharts(SALES.series); salesDrawGrid(SALES.series); }
+  // THE CARDS TOO. They are built server-side from the report alone, so without
+  // this the cards say "0 orders, £0" while the chart beside them shows
+  // yesterday's three. Reported exactly that way: the totals and the graph
+  // disagreeing on the same screen.
+  if(SALES.series){
+    salesDrawCharts(SALES.series);
+    salesDrawGrid(SALES.series);
+    if(SALES.data) salesDrawCards(SALES.data, null);
+  }
+}
+
+/* What the live feed adds to a card, for the days the report has not sent.
+ *
+ * The cards come from /sales/summary, which reads the report and nothing else.
+ * On a short window that is routinely every day but the last, so a week whose
+ * only trade was yesterday reads as a week with no trade at all -- while the
+ * chart beside it, which IS filled, shows the orders. Two numbers describing
+ * the same week, disagreeing, is worse than either being late.
+ *
+ * ONLY the days the report has not delivered, matched against the same series
+ * the chart draws, so the two cannot diverge. A day Amazon has reported -- even
+ * as a genuine zero -- is never touched.
+ */
+function _sLiveAdd(key){
+  const live = SALES._live;
+  const ser = SALES.series;
+  if(!live || !ser) return 0;
+  const dates = ser.columns || [];
+  const rep = ((ser.metrics || []).filter(function(m){ return m.key === key; })[0] || {}).cells || [];
+  const field = (key === "orders") ? "orders"
+              : (key === "units") ? "units"
+              : (key === "ordered_sales") ? "revenue" : "";
+  if(!field) return 0;
+  let add = 0;
+  dates.forEach(function(d, i){
+    const v = rep[i];
+    if(v !== null && v !== undefined) return;      // Amazon has spoken
+    const day = live[d];
+    if(day && day[field]) add += Number(day[field]) || 0;
+  });
+  return add;
 }
 
 /* ---- the period before this one ----------------------------------------
@@ -1385,6 +1425,20 @@ function salesDrawCards(sum, av){
   // revenue it comes from, so it cannot disagree with the card beside it.
   const _byKey = {};
   (sum.cards || []).forEach(function(c){ _byKey[c.key] = c; });
+  // THE DAYS THE REPORT HAS NOT SENT, added from the live order feed -- the same
+  // days, from the same source, that the chart below is already drawing. Without
+  // this a week whose only trade was yesterday reads "0 orders, £0" on the cards
+  // while the chart beside them shows three, which is worse than either being
+  // late. See _sLiveAdd: a day Amazon HAS reported is never touched, even when
+  // it reported a zero.
+  ["ordered_sales", "orders", "units"].forEach(function(k){
+    const add = _sLiveAdd(k);
+    if(!add) return;
+    const c = _byKey[k] || (_byKey[k] = {key: k, value: 0,
+                                         kind: (k === "ordered_sales" ? "money" : "count")});
+    c.value = (Number(c.value) || 0) + add;
+    c.live_added = add;
+  });
   const _days = (function(){
     try{
       const a = new Date(sum.start + "T00:00:00Z"), b = new Date(sum.end + "T00:00:00Z");
@@ -1474,7 +1528,26 @@ function _sDelta(c, prevLabel, prevValue, kind, currency){
   if(c.delta_pct===null || c.delta_pct===undefined){
     // Said, not left as a dash. A blank here reads as a fault, and showing
     // "0.0%" for a period with nothing to compare against would be a fiction.
-    return '<p class="stat-delta">no earlier period</p>';
+    //
+    // BUT THERE ARE TWO REASONS FOR NO PERCENTAGE, and they are not the same
+    // fact. Reported as "no earlier period" on every card of a week that had a
+    // perfectly ordinary week before it:
+    //
+    //   the period before had NOTHING     -- a real figure, and a rise from
+    //                                        zero has no percentage
+    //   there IS no period before         -- the account has no data that far
+    //                                        back at all
+    //
+    // A rise from zero is the more common of the two and the more interesting,
+    // and calling it "no earlier period" says the app cannot see history when
+    // it can.
+    const had = (prevValue !== null && prevValue !== undefined);
+    return '<p class="stat-delta">'
+         + (had ? (_sEsc(prevLabel || "was") + " : "
+                   + _sEsc(_sShort(prevValue, kind, currency))
+                   + " — no % from zero")
+                : "no earlier period")
+         + '</p>';
   }
   const up = c.delta_pct >= 0;
   // AD SPEND RISING IS NOT A WIN, so direction and goodness are separate things:

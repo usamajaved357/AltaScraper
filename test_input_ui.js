@@ -40,8 +40,12 @@ check("Account: between the input and output sheet rows",
       acInput < acRow && acRow < acOutput, true);
 
 console.log("\n=== both editors show what is already imported ===");
+// \r?\n, not a literal \n: this repo checks out CRLF on Windows, so the literal
+// form passes until git next rewrites the file and then fails with the code
+// completely unchanged.
 check("Dropshipping refreshes the count",
-      /refreshInputStatus\(\);\n\}\nasync function saveDropshippingSheets/.test(shell), true);
+      /refreshInputStatus\(\);\s*\r?\n\}\s*\r?\nasync function saveDropshippingSheets/
+        .test(shell), true);
 check("the account editor does too",
       /How many products are already imported[\s\S]{0,120}refreshInputStatus\(\);/.test(shell), true);
 check("the status always names the DATE",
