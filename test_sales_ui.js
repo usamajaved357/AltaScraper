@@ -277,8 +277,11 @@ check("  which is offered on screen once they differ",
 {
   const from = js.indexOf("async function salesLoadGrid");
   const body = js.slice(from, js.indexOf("\n}", from));
+  // _sFetch, not a bare fetch: every /sales/ call on this screen goes through
+  // the one wrapper that attaches the account and drops a reply that arrives
+  // after the workspace has changed. See test_request_account.py.
   check("the grid's own fetch uses the same series endpoint",
-        from >= 0 && /fetch\("\/sales\/series\?/.test(body), true);
+        from >= 0 && /_sFetch\("\/sales\/series\?/.test(body), true);
   check("  carrying the same product filter and marketplace",
         /asin=/.test(body) && /marketplace=/.test(body), true);
 }

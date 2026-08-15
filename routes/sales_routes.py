@@ -21,16 +21,38 @@ from flask import request, jsonify, Response
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /sales/* to the app."""
+    import domain.request_account as _req_acct
+
+    def _account_by_id(aid):
+        """The account record for an id the PAGE named, or None."""
+        try:
+            import accounts as _acc_mod
+            return _acc_mod.get_account(_cfg(), aid, CONFIG_PATH)
+        except Exception:
+            return None
 
     def _scope():
-        """Which workspace and marketplace this request is about."""
-        acc = None
-        try:
-            acc = _active_account()
-        except Exception:
-            acc = None
-        wsid = str((acc or {}).get("id") or _state.get("active_account_id", "") or "") \
-            or "dropshipping"
+        """Which workspace and marketplace this request is about.
+
+        THE ACCOUNT COMES FROM THE PAGE, not from the process-wide global.
+        _state["active_account_id"] is one variable for the whole server, so an
+        in-flight read could be answered after a workspace switch had moved it
+        -- and it was: opening Nestwell Goods, switching away and back showed
+        figures belonging to whichever account the global had drifted to. The
+        marketplace on the line below has always been taken from the request
+        first; the account now follows the same rule, and for the same reason.
+        See domain/request_account.py.
+        """
+        aid, acc = _req_acct.for_read(request, _state, get_account=_account_by_id)
+        if acc is None:
+            # No account named by the page (an older screen, or a background job
+            # with no page behind it) -- fall back to the global, as before.
+            try:
+                acc = _active_account()
+            except Exception:
+                acc = None
+        wsid = str(aid or (acc or {}).get("id")
+                   or _state.get("active_account_id", "") or "") or "dropshipping"
         mkt = (request.args.get("marketplace")
                or (request.get_json(silent=True) or {}).get("marketplace")
                or _state.get("active_marketplace") or "").upper()
