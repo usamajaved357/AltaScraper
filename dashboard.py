@@ -800,14 +800,31 @@ def _schema_attrs(pt: str) -> list:
 
 
 def _variation_schema(product_type: str, marketplace: str = "") -> dict:
-    """The variation themes this product type allows, in the shape the checker wants.
+    """The parts of a product type's schema the screens actually read.
 
-    listing/variations.py reads themes out of a raw JSON schema; the app caches
-    schemas already parsed into enums, so this presents the cached enum in that
-    shape rather than fetching the schema a second time. Returns None when the
-    schema could not be loaded at all -- which the caller reports as "could not
-    check" instead of quietly treating as "no themes allowed", because those two
-    lead to opposite conclusions.
+    Returns None when the schema could not be loaded at all -- which the caller
+    reports as "could not check" instead of quietly treating as "nothing
+    allowed", because those two lead to opposite conclusions.
+
+    WHAT THIS USED TO RETURN, AND THE BUG IT CAUSED.
+
+    It kept ONE property -- variation_theme -- and threw the rest away. It is
+    injected as `_schema_for` into routes/variations_routes.py, and that module
+    serves TWO screens: the variation checker, which wants variation_theme, and
+    /listing/image_slots, which asks slots_from_schema() which image attributes
+    the type defines.
+
+    So the image picker was handed a schema containing a single property and
+    correctly found no image slots in it. Every product type, every listing:
+    open a product card, press Listing images, and the slot list was empty --
+    "i still dont have an option to select the image secondary image 1 (pt1), 2
+    and so on".
+
+    The properties kept are now the ones BOTH callers need. Not the whole schema:
+    a product type's schema runs to hundreds of kilobytes and this is held in
+    memory per type for the life of the process, which is the reason it was
+    trimmed in the first place. Keeping the image attributes as well costs a few
+    hundred bytes and is what makes the picker work.
     """
     # Fetched raw rather than read from the cached enums, because the cache keeps
     # only the values and the DEPRECATION list is what matters here: measured on
@@ -838,8 +855,16 @@ def _variation_schema(product_type: str, marketplace: str = "") -> dict:
             raw = json.loads(r.read().decode("utf-8"))
     except Exception:
         return None                      # "could not check", not "none allowed"
-    out = {"properties": {"variation_theme":
-                          (raw.get("properties") or {}).get("variation_theme") or {}}}
+    props = raw.get("properties") or {}
+    kept = {"variation_theme": props.get("variation_theme") or {}}
+    # Every image attribute the type defines. slots_from_schema() looks for
+    # "image" in the key and sorts MAIN, PT1..PT8, swatch and the offer slots
+    # out of whatever it finds, so the filter here has to be as loose as its --
+    # narrowing it to a list of names would silently drop any slot Amazon adds.
+    for k, v in props.items():
+        if "image" in k.lower():
+            kept[k] = v
+    out = {"properties": kept}
     _state["variation_themes"][_ck] = out
     return out
 

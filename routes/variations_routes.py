@@ -48,19 +48,35 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         except Exception:
             return []
 
+    # WHICH KEY HOLDS THE VALUE, per wrapper Amazon uses.
+    #
+    # "media_location" is the image one, and leaving it out is why every image
+    # slot on the picker read "empty" for a listing that had five images on it.
+    # MEASURED on a live UK listing:
+    #
+    #   main_product_image_locator:
+    #     [{"media_location": "https://m.media-amazon.com/images/I/61qid...jpg",
+    #       "marketplace_id": "A1F83G8C2ARO7P"}]
+    #
+    # That is the dangerous direction to get wrong: the picker uses this to warn
+    # that a slot already has an image, and sending to an occupied slot replaces
+    # it with no copy kept by Amazon. Reading "empty" would have let someone
+    # destroy an image without being asked.
+    _VALUE_KEYS = ("value", "name", "media_location")
+
     def _one(attrs, key):
         """An attribute's plain value, whatever wrapper Amazon put it in."""
         v = (attrs or {}).get(key)
         if isinstance(v, list) and v:
             f = v[0]
             if isinstance(f, dict):
-                for k in ("value", "name"):
+                for k in _VALUE_KEYS:
                     if k in f:
                         return str(f[k])
                 return ""
             return str(f)
         if isinstance(v, dict):
-            for k in ("value", "name"):
+            for k in _VALUE_KEYS:
                 if k in v:
                     return str(v[k])
         return str(v) if v not in (None, "") else ""
