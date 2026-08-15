@@ -852,6 +852,28 @@ const SC_SERIES = {
                fill: 0.30, fillEnd: 0.05},
   ppc:        {label: "PPC",              color: "#8b5cf6", width: 2,   dash: "",
                fill: 0.30, fillEnd: 0.05},
+
+  // ---- Traffic & Conversions -------------------------------------------
+  // MEASURED off Orbit's own lines on that page:
+  //   Sessions & Page Views       gold #fbbf24 + blue #3b82f6, both filled
+  //   Conversion & Buy Box        green #22c55e + purple #8b5cf6, no fill
+  //   Browser & Mobile            blue #3b82f6 + orange #f97316, both filled
+  //   Top ASINs                   gold, blue, red, green, purple
+  //
+  // The rate lines are deliberately UNFILLED. A filled area says "this much of
+  // something", and a percentage is not a quantity you can stack or add up --
+  // shading under a conversion rate invites reading the area as volume.
+  sessions:   {label: "Sessions",         color: "#fbbf24", width: 2, dash: "", fill: 0.30},
+  page_views: {label: "Page views",       color: "#3b82f6", width: 2, dash: "", fill: 0.30},
+  conversion: {label: "Conversion rate",  color: "#22c55e", width: 2, dash: "", fill: 0},
+  buy_box:    {label: "Buy box",          color: "#8b5cf6", width: 2, dash: "", fill: 0},
+  browser:    {label: "Browser",          color: "#3b82f6", width: 2, dash: "", fill: 0.30},
+  mobile:     {label: "Mobile",           color: "#f97316", width: 2, dash: "", fill: 0.30},
+  top1:       {label: "1st",              color: "#fbbf24", width: 2, dash: "", fill: 0},
+  top2:       {label: "2nd",              color: "#3b82f6", width: 2, dash: "", fill: 0},
+  top3:       {label: "3rd",              color: "#ef4444", width: 2, dash: "", fill: 0},
+  top4:       {label: "4th",              color: "#22c55e", width: 2, dash: "", fill: 0},
+  top5:       {label: "5th",              color: "#8b5cf6", width: 2, dash: "", fill: 0},
 };
 
 function salesCombo(o){
@@ -922,8 +944,12 @@ function salesCombo(o){
     const yy = padT + ih - f * ih;
     grid += `<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}"
                    stroke="rgb(55,65,81)" stroke-width="1" stroke-dasharray="3 3"/>`
+         // The left axis is not always money. The Traffic screen puts sessions
+         // and page views on it, and conversion and buy box as percentages --
+         // labelling a session count "£522" is a plain lie, and it is the kind
+         // that goes unnoticed because the shape of the line still looks right.
          +  `<text x="${padL - 8}" y="${yy + 4}" text-anchor="end" font-size="11"
-                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, "money", o.currency, mSpan))}</text>`;
+                  fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, o.kind || "money", o.currency, mSpan))}</text>`;
     // The right-hand count axis is only drawn when something is counted on it.
     // An axis labelled 0-1-2-3-4 beside a chart with no bars is furniture.
     if(bars){
@@ -1036,7 +1062,7 @@ function salesCombo(o){
       const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694"};
       const v = _scNum((l.values || [])[i]);
       rows.push({name: (spec.label || l.key), color: spec.color,
-                 value: (v === null ? "—" : _scFmt(v, "money")),
+                 value: (v === null ? "—" : _scFmt(v, o.kind || "money")),
                  y: (v === null ? null : yM(v).toFixed(1))});
     });
     // DRAG TO ZOOM, on this chart too. The per-metric panels had it and this

@@ -1429,6 +1429,112 @@
                      text-transform:none;letter-spacing:0;font-size:11.5px;
                      max-width:210px;overflow:hidden;text-overflow:ellipsis}
   .salesgrid thead th.mcol{z-index:3}
+
+  /* THE SECTION BANDS. Measured on Orbit's P&L Heatmap: its grid is six
+     sections, each introduced by a header row 24px tall on rgb(45,50,66),
+     against 29px transparent for a data row. Without them thirty-eight metrics
+     are one wall of numbers and "is my advertising working" means finding four
+     rows scattered through it. */
+  /* ---- Traffic & Conversions -------------------------------------------
+     Its tiles, tables and pills reuse the Sales screen's classes; only the
+     three things that screen does not have are defined here. */
+  #sec_traffic{ padding:32px; background:rgb(26,29,41);
+                max-width:1464px; margin-left:auto; margin-right:auto; }
+  /* The donut sits beside the daily split, and drops under it on a narrow
+     screen rather than squeezing both. */
+  .trafsplit{ display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .trafdonut{ flex:0 0 auto; text-align:center; }
+  .traflegend{ display:flex; gap:18px; flex-wrap:wrap; margin-top:10px;
+               font-size:12px; }
+  /* Horizontal bars for the top converters. A bar per row with the figure
+     printed on it says the same as Orbit's bar chart and stays readable when a
+     product title is long -- which every one of these is. */
+  .trafbars{ display:flex; flex-direction:column; gap:9px; }
+  .trafbar{ display:grid; grid-template-columns:minmax(0,1fr) 150px 58px 90px;
+            align-items:center; gap:10px; font-size:12px; }
+  .trafbar-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trafbar-track{ height:9px; border-radius:5px; background:var(--panel2);
+                  overflow:hidden; }
+  .trafbar-fill{ display:block; height:100%; border-radius:5px;
+                 background:#22c55e; }
+  .trafbar-val{ text-align:right; font-variant-numeric:tabular-nums;
+                font-weight:600; }
+  .trafbar-sub{ font-size:11px; text-align:right; }
+  /* The product cell: one line, truncated, with the ASIN never cut -- it is the
+     part you would copy. Left to wrap, these titles made rows 182px tall and
+     the table 4,587px long. */
+  .trafname{ padding:6px 8px; max-width:420px; }
+  .trafname-t{ display:block; max-width:340px; overflow:hidden;
+               text-overflow:ellipsis; white-space:nowrap; }
+  .trafname-a{ font-size:10px; margin-right:6px; }
+  @media (max-width:860px){
+    #sec_traffic{ padding:12px; max-width:none; }
+    .trafbar{ grid-template-columns:minmax(0,1fr) 70px; }
+    .trafbar-track, .trafbar-sub{ display:none; }
+  }
+
+  /* ---- the heatmap's own toolbar, measured off Orbit's ----------------
+     labels 11px/600 uppercase in rgb(156,163,175); pills 10px on a 4px
+     radius with 4px 10px of padding, the active one 600 on #fbbf24 with dark
+     text; buttons 10px/500 on a 6px radius. */
+  .gtools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .gtools .glbl,.gcogs .glbl{font-size:11px;font-weight:600;letter-spacing:.04em;
+       text-transform:uppercase;color:rgb(156,163,175)}
+  .gtools .gspacer{flex:1}
+  .gtools .glast{font-size:11px;color:rgb(156,163,175);white-space:nowrap}
+  .gbtn{font-size:10px;font-weight:500;padding:4px 12px;border-radius:6px;
+        background:transparent;color:var(--ink2);border:1px solid var(--line);
+        cursor:pointer;white-space:nowrap}
+  .gbtn:hover{border-color:var(--accent);color:var(--ink)}
+  .gbtn.wide{font-size:13px;font-weight:400;padding:7px 12px;border-radius:8px;
+             background:rgb(45,50,66);max-width:230px;overflow:hidden;
+             text-overflow:ellipsis}
+  .gpills{display:inline-flex;gap:2px;background:rgb(45,50,66);
+          border:1px solid rgb(75,85,99);border-radius:6px;padding:2px}
+  .gpill{font-size:10px;font-weight:500;padding:4px 10px;border-radius:4px;
+         background:transparent;color:var(--ink2);border:0;cursor:pointer}
+  .gpill:hover{color:var(--ink)}
+  .gpill.on{background:#fbbf24;color:#0f172a;font-weight:600}
+
+  /* The COGS strip under the toolbar. */
+  .gcogs{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;
+         font-size:12px;margin:0 0 12px;color:var(--ink2)}
+  .gcogs .gsep{color:var(--muted)}
+  .glink{background:none;border:0;padding:0;font-size:12px;font-weight:500;
+         color:var(--accent2);cursor:pointer}
+  .glink:hover{text-decoration:underline}
+
+  /* The Metrics picker. Anchored to its button in page coordinates, so it is
+     appended to <body> rather than inside the scrolling grid wrapper. */
+  .metricpick{position:absolute;z-index:60;display:none;width:264px;
+              max-height:60vh;overflow:auto;background:var(--panel);
+              border:1px solid var(--line);border-radius:10px;padding:8px;
+              box-shadow:0 10px 28px rgba(0,0,0,.45)}
+  .metricpick.open{display:block}
+  .metricpick-head{display:flex;align-items:center;gap:8px;font-size:11px;
+                   font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+                   color:rgb(156,163,175);padding:2px 4px 8px}
+  .metricpick-head .glink{margin-left:auto;font-size:11px}
+  .metricpick-head .glink + .glink{margin-left:0}
+  .metricpick-sec{font-size:10px;font-weight:600;text-transform:uppercase;
+                  letter-spacing:.05em;color:rgb(156,163,175);
+                  padding:8px 4px 3px;border-top:1px solid var(--line);margin-top:4px}
+  .metricpick-sec:first-of-type{border-top:0;margin-top:0}
+  .metricpick-row{display:flex;align-items:center;gap:7px;font-size:12px;
+                  padding:4px 4px;border-radius:5px;cursor:pointer}
+  .metricpick-row:hover{background:rgba(255,255,255,.04)}
+
+  /* Sends the eye to the product filter at the top of the screen rather than
+     giving the grid a second one that could disagree with it. */
+  .flashfocus{outline:2px solid var(--accent);outline-offset:2px;
+              transition:outline-color .2s}
+
+  .salesgrid tr.gsec th.mcol,
+  .salesgrid tr.gsec td{background:rgb(45,50,66);padding:4px 10px;height:24px}
+  .salesgrid tr.gsec th.mcol{font-size:10px;font-weight:600;color:rgb(243,244,246);
+                             text-transform:uppercase;letter-spacing:.05em}
+  /* No hover lift on a heading, and it never shades: it has no numbers in it. */
+  .salesgrid tbody tr.gsec:hover td{box-shadow:none}
   /* A hairline one shade off the surface -- never dashed, never heavy. */
   .salesgrid tbody tr:last-child td,
   .salesgrid tbody tr:last-child th{border-bottom:none}
@@ -1693,6 +1799,37 @@ svg.chartbox path.series,
      it, which reads as "no animation" rather than as a fast one. `ease` is
      Recharts' default curve. */
   animation:chartSweep 1.5s ease;
+}
+
+/* A CHART BELOW THE FOLD WAITS ITS TURN.
+ *
+ * "the orbit graph shows a motion when i go and scroll up and down... see all
+ * graphs while scrolling i want this thing in my app".
+ *
+ * MEASURED on Orbit, by watching the path data rather than the CSS (its charts
+ * animate in JavaScript, which a CSS probe cannot see):
+ *
+ *     returning to the Sales page   ANIMATES
+ *     scrolling a chart back in     static
+ *     a plain reload                ANIMATES
+ *
+ * Ours already did exactly the same -- verified the same way. So what is being
+ * asked for is not something Orbit has: it is that the charts further down the
+ * page should still have their motion left when you reach them. On both apps
+ * they animate the moment the screen opens, so by the time you have scrolled to
+ * the fourth one it finished playing to an empty room.
+ *
+ * `motion.js` therefore holds a chart that is BELOW THE FOLD at zero progress
+ * and releases it when it scrolls into view -- once, never again, because a
+ * chart that re-runs every time it crosses the edge of the screen is a
+ * distraction rather than an entrance. Charts already on screen are untouched
+ * and animate immediately, as they do now.
+ *
+ * If IntersectionObserver is missing, the class is never applied and every
+ * chart animates immediately -- the behaviour that exists today. */
+svg.chartbox.await-view path.series,
+svg.chartbox.await-view .bar{
+  animation-play-state:paused;
 }
 /* Bars grow from the baseline rather than appearing at full height, which is
    what Recharts does by default and what the 2500ms frame shows. */

@@ -130,6 +130,59 @@ check("whitespace does not travel into the URL",
       I.build_patch(I.MAIN, "  https://x/y.jpg  ", "M")["value"][0]["media_location"],
       "https://x/y.jpg")
 
+print("\n=== the picker is actually GIVEN the image slots ===")
+"""Reported: "i still dont have an option to select the image secondary image 1
+(pt1), 2 and so on when i go on the product card and clicck the listing images
+button".
+
+The finder above was right all along. What reached it was not.
+
+dashboard._variation_schema fetches a product type's schema and then keeps ONE
+property -- variation_theme -- because it was written for the variation checker.
+It is injected as `_schema_for` into routes/variations_routes.py, and that module
+serves TWO screens: the variation checker AND /listing/image_slots. So the image
+picker was handed a schema with a single property in it and correctly found no
+image slots. Every product type, every listing, every time.
+
+A test of slots_from_schema alone could never catch that, because the fault was
+in what the caller passed. So this checks the caller.
+"""
+_DASH = open(r"D:\AltaScraper\dashboard.py", encoding="utf-8").read()
+_i = _DASH.find("def _variation_schema")
+_body = _DASH[_i:_DASH.find("\ndef ", _i + 10)]
+truthy("the cached schema keeps variation_theme", '"variation_theme"' in _body)
+truthy("  AND every image attribute, which the picker reads",
+       'if "image" in k.lower()' in _body)
+check("  by matching on the key, not a hand-written list of slot names",
+      "for k, v in props.items()" in _body, True)
+# A named list would silently drop any slot Amazon adds later; the finder
+# already sorts MAIN / PT / swatch / offer out of whatever it is given.
+check("  so a slot Amazon adds later is not silently dropped",
+      "other_product_image_locator_1" in _body, False)
+
+print("\n=== an occupied slot is reported as occupied ===")
+"""The second half, and the dangerous half. Every slot read "empty" on a listing
+with five images on it, because the attribute flattener only knew "value" and
+"name".
+
+MEASURED on a live UK listing:
+
+    main_product_image_locator:
+      [{"media_location": "https://m.media-amazon.com/images/I/61qid...jpg",
+        "marketplace_id": "A1F83G8C2ARO7P"}]
+
+Sending to an occupied slot replaces its image and Amazon keeps no copy. Saying
+"empty" about a slot that has one would have let someone destroy an image
+without ever being asked.
+"""
+_VR = open(r"D:\AltaScraper\routes\variations_routes.py", encoding="utf-8").read()
+truthy("the flattener knows the image wrapper's key",
+       '"media_location"' in _VR)
+truthy("  and the keys are declared once, not per branch",
+       "_VALUE_KEYS = " in _VR)
+check("  both branches use that one list",
+      len([1 for line in _VR.splitlines() if "for k in _VALUE_KEYS" in line]), 2)
+
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)
 sys.exit(1 if fails else 0)

@@ -89,3 +89,6 @@ run_status.json
 
 # Word lock files -- created while a .docx is open, deleted when it closes.
 ~$*.docx
+
+# run_tests.py's lock, held only while a suite is running. Per-machine.
+.run_tests.lock

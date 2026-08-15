@@ -32,8 +32,21 @@ from domain import live_snapshots as LS
 WS, MKT = "jack_uk", "UK"
 SKU = "8.00_3Days_B0G1K5B7QS"
 FBA_SKU = "9.00_3Days_B0FBA00001"
-NOW = dt.datetime(2026, 8, 14, 12, 0, 0)
-FRESH = "2026-08-14 11:00:00"
+# RELATIVE TO THE REAL CLOCK, not a date typed into the file.
+#
+# These were pinned at 2026-08-14 12:00 with a reading an hour before it. Every
+# assertion that passes `now=NOW` was fine, but the ENDPOINT test is not given a
+# clock -- /sourcing/list calls dry_run() without one, correctly, because in the
+# app there is only ever the real time. So the moment the real clock passed
+# midnight the fixture's reading was a day old, the repricer judged it stale and
+# declined to act, and "with the decision" started failing: expected 'update',
+# got 'none'.
+#
+# It passed on the 14th and failed on the 15th with nothing changed. A test that
+# does that is worse than no test -- it spends someone's morning before it is
+# recognised. The window is now anchored to whenever the suite runs.
+NOW = dt.datetime.now().replace(microsecond=0)
+FRESH = (NOW - dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def snapshot(items):

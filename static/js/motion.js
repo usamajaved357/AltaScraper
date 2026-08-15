@@ -148,6 +148,76 @@ function altaSkeletonInto(id, opts){
   return true;
 }
 
+// -- 5. A CHART BELOW THE FOLD WAITS ITS TURN --------------------------------
+//
+// "the orbit graph shows a motion when i go and scroll up and down... see all
+// graphs while scrolling i want this thing in my app".
+//
+// MEASURED on Orbit by watching its path DATA, not its CSS -- Recharts animates
+// in JavaScript and a CSS probe reads `animation: none` throughout, which is
+// how you come to conclude "it does not animate" about something that plainly
+// does:
+//
+//     returning to the Sales page   ANIMATES
+//     scrolling a chart back in     static
+//     a plain reload                ANIMATES
+//
+// Ours already matched that exactly, verified the same way. So this is not a
+// thing Orbit has. On both apps every chart animates the moment the screen
+// opens, so the ones further down finish playing before anyone scrolls to them
+// and the page is dead below the fold.
+//
+// This holds a chart that is BELOW THE FOLD at the start of its animation and
+// releases it when it scrolls into view. ONCE: a chart that replays every time
+// it crosses the edge of the screen is a distraction, not an entrance.
+//
+// Charts already on screen are never touched -- they animate immediately, as
+// they do now. And if IntersectionObserver is missing, the class is never
+// added, so the fallback is exactly today's behaviour rather than a chart that
+// never animates at all.
+function altaChartsInView(root){
+  const host = root || document;
+  let charts;
+  try{ charts = host.querySelectorAll("svg.chartbox"); }catch(e){ return; }
+  if(!charts.length) return;
+  if(typeof IntersectionObserver !== "function") return;
+  try{
+    if(window.matchMedia &&
+       window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  }catch(e){}
+
+  const release = function(el){
+    el.classList.remove("await-view");
+    io.unobserve(el);
+  };
+  const io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      // OR SCROLLED CLEAN PAST. Measured while testing this: at a threshold of
+      // 0.08 a fast scroll took the combo chart from entirely below the fold to
+      // entirely above it without ever being 8% visible, so it was never
+      // released and sat frozen part-drawn. A chart stuck mid-animation is
+      // worse than one that never animated.
+      //
+      // threshold 0 fires on the first visible pixel, and the top check catches
+      // anything that got past even that.
+      if(e.isIntersecting || (e.boundingClientRect && e.boundingClientRect.top < 0)){
+        release(e.target);
+      }
+    });
+  }, {threshold: 0});
+
+  charts.forEach(function(svg){
+    if(svg._altaInView) return;
+    svg._altaInView = true;
+    let r;
+    try{ r = svg.getBoundingClientRect(); }catch(e){ return; }
+    const onScreen = r.top < (window.innerHeight || 0) && r.bottom > 0;
+    if(onScreen) return;                 // let it play now, as it always has
+    svg.classList.add("await-view");
+    io.observe(svg);
+  });
+}
+
 // -- 4. TOOLTIP EDGE HANDLING ----------------------------------------------
 // The CSS positions a tooltip above and centred. Near the right-hand edge that
 // would put it off the screen, so it is flipped -- measured at hover time,

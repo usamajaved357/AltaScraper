@@ -235,6 +235,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "granularity": gran, "asin": asin,
                         "currency": (rows[0]["currency"] if rows else ""),
                         "columns": order, "metrics": metrics,
+                        # Which section each metric belongs in, so the grid can
+                        # band itself the way Orbit's does -- Sales & revenue,
+                        # PPC, Costs, Traffic -- instead of listing thirty-odd
+                        # rows flat. Sent as a list of (section, keys) so the
+                        # ORDER is the server's and not rebuilt in the browser.
+                        "sections": [{"name": n, "keys": k} for n, k in
+                                     _sd.sections_for([m["key"] for m in metrics])],
                         "empty": not rows})
 
     @app.route("/sales/export")
@@ -368,6 +375,53 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
                 _acc_mod.account_creds(acc),
                 compare=(request.args.get("compare", "1") != "0")))
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 502
+
+    @app.route("/sales/recent")
+    def sales_recent():
+        """The last few days of orders, from the ORDERS API.
+
+        "but in amazn i am able to see the sales from yesterday accurately, why
+        not here" -- because Seller Central reads this feed and the chart was
+        reading the Sales & Traffic report, which runs a day or two behind.
+
+        Both count an order on the day it was PLACED, so this fills the report's
+        missing tail with the same measurement rather than a different one. It
+        is a separate request on purpose: the chart draws from the report as
+        soon as it arrives, and this only ever adds the days the report has not
+        covered.
+        """
+        try:
+            from domain import orders_live as _ol
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+        try:
+            from domain import accounts as _acc_mod
+        except Exception:
+            try:
+                import accounts as _acc_mod
+            except Exception as e:
+                return jsonify({"ok": False, "error": str(e)}), 500
+        acc, wsid, mkt = _scope()
+        if not mkt:
+            return jsonify({"ok": False, "error": "no marketplace selected"}), 400
+        if not acc or not _acc_mod.seller_scope_allowed(acc):
+            return jsonify({"ok": False, "error":
+                            "Live orders need this workspace's own Amazon "
+                            "account."}), 400
+        try:
+            days = int(request.args.get("days") or 5)
+        except (TypeError, ValueError):
+            days = 5
+        try:
+            out = _ol.by_day(
+                mkt,
+                _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
+                _acc_mod.account_creds(acc),
+                days=days)
+            out["ok"] = True
+            return jsonify(out)
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)[:300]}), 502
 
