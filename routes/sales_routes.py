@@ -113,6 +113,42 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         start = end - _dt.timedelta(days=days - 1)
         return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), preset
 
+    def _basis():
+        """WHICH CALENDAR Amazon's money is reported on. Decided in ONE place.
+
+        "order"  every fee and refund sits on the day its order was PLACED --
+                 the same day its sale is on -- so a row reads across.
+        "money"  the cash view: what landed in the account this week.
+
+        Measured on jack_uk, Amazon settles 10 to 12 days after the order, so
+        these are genuinely different reports and both are worth having.
+
+        THE DEFAULT IS "order", and that is the fix for the P&L heatmap. It
+        used to be "money", with the grid overriding it to "order" for itself
+        and the cards left on the default -- so one screen ran two calendars
+        and showed 18.32 of revenue on a day with no orders, and no orders on
+        the day that took three. Orbit's own rule is the same: "Orders API
+        wins for top-line because it's realtime order-date basis."
+
+        Anything that genuinely wants the cash view asks for basis=money.
+        """
+        b = (request.args.get("basis") or "order").lower()
+        return b if b in ("money", "order") else "order"
+
+    def _basis_note(basis):
+        """Said out loud, every time, wherever the basis is reported.
+
+        A grid whose fees are on the order's day and a grid whose fees are on
+        the payment day look identical and are different reports; leaving the
+        reader to work it out is how the two-calendar problem stayed invisible.
+        """
+        return ("Amazon's fees and refunds are shown on the day the ORDER was "
+                "placed, so every row describes the same trade."
+                if basis == "order" else
+                "Amazon's fees and refunds are shown on the day the MONEY MOVED, "
+                "which is 10-12 days after the order on this account. Sales above "
+                "them are dated by the order, so the two do not line up.")
+
     @app.route("/sales/availability")
     def sales_availability():
         """What dates actually have data. Asked before anything else."""
@@ -139,13 +175,21 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         asin = (request.args.get("asin") or "").strip() or None
 
         _vat = _sd.vat_rate_for(_cfg, wsid)
-        cur = _sd.totals(CONFIG_PATH, wsid, mkt, start, end, asin, _vat)
+        # THE CARDS ARE ON THE SAME CALENDAR AS THE GRID BELOW THEM. They are
+        # sums of the very rows it draws, so the basis has to be handed in here
+        # too. It was not: the cards stayed on the money calendar while the grid
+        # moved to the order one, and the same screen showed a period's sales
+        # against a different period's fees.
+        _meta = {}
+        cur = _sd.totals(CONFIG_PATH, wsid, mkt, start, end, asin, _vat,
+                         basis=_basis(), meta=_meta)
         span = (_dt.datetime.strptime(end, "%Y-%m-%d")
                 - _dt.datetime.strptime(start, "%Y-%m-%d")).days + 1
         p_end = (_dt.datetime.strptime(start, "%Y-%m-%d") - _dt.timedelta(days=1))
         p_start = p_end - _dt.timedelta(days=span - 1)
         prev = _sd.totals(CONFIG_PATH, wsid, mkt, p_start.strftime("%Y-%m-%d"),
-                          p_end.strftime("%Y-%m-%d"), asin, _vat)
+                          p_end.strftime("%Y-%m-%d"), asin, _vat,
+                          basis=_basis())
 
         def delta(k):
             a, b = cur.get(k), prev.get(k)
@@ -250,6 +294,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "start": start, "end": end, "preset": preset,
                         "asin": asin, "currency": cur.get("currency"),
+                        "basis": _meta.get("basis") or _basis(),
+                        "basis_note": _basis_note(_meta.get("basis") or _basis()),
                         "cards": cards, "totals": cur, "previous": prev,
                         "compared_to": {"start": p_start.strftime("%Y-%m-%d"),
                                         "end": p_end.strftime("%Y-%m-%d")},
@@ -282,7 +328,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         rows = _sd.breakdown(CONFIG_PATH, wsid, mkt, start, end, group)
         return jsonify({"ok": True, "start": start, "end": end, "group": group,
                         "rows": rows, "count": len(rows),
-                        "currency": (rows[0].get("currency") if rows else ""),
+                        "currency": _sd.currency_of(rows),
                         "note": ("" if rows else
                                  "No per-product sales in this period yet — press "
                                  "Sync to pull them from Amazon.")})
@@ -303,16 +349,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         asin = (request.args.get("asin") or "").strip() or None
         gran = (request.args.get("granularity") or "day").lower()
 
-        # WHICH CALENDAR the settled money is reported on. "order" puts every
-        # fee on the day its order was PLACED -- the same day its sale is on --
-        # so a row can be read across. "money" keeps the cash view: what landed
-        # this week. Measured on jack_uk, Amazon settles 10 to 12 days after the
-        # order, so the two are genuinely different reports and both are wanted.
-        basis = (request.args.get("basis") or "money").lower()
-        if basis not in ("money", "order"):
-            basis = "money"
+        # The basis is chosen by _basis(), which is the only place that reads
+        # the parameter -- see the note there on why the default is "order".
+        _meta = {}
         rows = _sd.series(CONFIG_PATH, wsid, mkt, start, end, asin,
-                          vat_rate=_sd.vat_rate_for(_cfg, wsid), basis=basis)
+                          vat_rate=_sd.vat_rate_for(_cfg, wsid),
+                          basis=_basis(), meta=_meta)
+        # The basis USED, not the one asked for: a product filter cannot be
+        # re-dated and falls back to money. Echoing the request instead would
+        # label money-basis figures with the order-basis note.
+        basis = _meta.get("basis") or _basis()
         buckets, order = _sd.bucket(rows, gran)
 
         metrics = []
@@ -321,21 +367,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if any(c is not None for c in cells):
                 metrics.append({"key": key, "label": label, "kind": kind,
                                 "good": good, "cells": cells})
-        # Said out loud, every time. A grid whose fees are on the order's day and
-        # a grid whose fees are on the payment day look identical and are
-        # different reports; leaving the reader to work out which they have is
-        # how the two-calendar problem stayed invisible for so long.
-        _basis_note = (
-            "Amazon's fees and refunds are shown on the day the ORDER was "
-            "placed, so every row describes the same trade."
-            if basis == "order" else
-            "Amazon's fees and refunds are shown on the day the MONEY MOVED, "
-            "which is 10-12 days after the order on this account. Sales above "
-            "them are dated by the order, so the two do not line up.")
         return jsonify({"ok": True, "start": start, "end": end, "preset": preset,
                         "granularity": gran, "asin": asin,
-                        "basis": basis, "basis_note": _basis_note,
-                        "currency": (rows[0]["currency"] if rows else ""),
+                        "basis": basis, "basis_note": _basis_note(basis),
+                        "basis_gap": _meta.get("basis_note") or "",
+                        # Where Amazon's settled figures and its own order
+                        # totals disagree -- stated, not silently reconciled.
+                        "tie_out": _meta.get("tie_out") or None,
+                        "currency": _sd.currency_of(rows),
                         "columns": order, "metrics": metrics,
                         # Which section each metric belongs in, so the grid can
                         # band itself the way Orbit's does -- Sales & revenue,

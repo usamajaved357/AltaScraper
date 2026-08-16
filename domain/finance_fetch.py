@@ -112,9 +112,58 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
     Runs on a timer as well as a button, and a scheduled job that throws kills
     its thread and then never runs again with nothing on screen to say so.
     """
+    # ONE ACCOUNT'S FINANCES ARE PULLED ONCE, NOT ONCE PER MARKETPLACE.
+    #
+    # Amazon's Finances API is not segmented by marketplace: listFinancialEvents
+    # takes no marketplace and returns everything the seller has settled. The
+    # refresher walks (account, marketplace) pairs, so this ran once for each of
+    # the account's marketplaces and stored the SAME events again under each.
+    #
+    # Measured: every one of the 81 settled orders was held twice, and both
+    # finance_daily and order_fees carried identical totals under two
+    # marketplaces -- jack_uk 402.39 under UK and 402.39 again under FR,
+    # selvora_limited 1909.11 under UK and under FR, nestwell_goods 344.90
+    # under UK and under IT. The sales side is genuinely per-marketplace, so
+    # opening one of those other marketplaces showed the account's whole fee
+    # bill against no sales at all.
+    #
+    # It also spent a Finances call per marketplace -- ten or eleven per account
+    # per rotation -- on quota the sales figures were queueing behind.
+    #
+    # Stored against the account's DEFAULT marketplace, which is where its
+    # trade is. Amazon has not told us how to split these between marketplaces
+    # and this does not guess: it keeps them in one place rather than copying
+    # them into several.
+    # Read through config/settings.py, the one reader of config.json.
+    #
+    # NOT wrapped in a bare except that shrugs and carries on: a failure here
+    # would silently restore the duplicate-per-marketplace behaviour this
+    # exists to stop, and the copies look exactly like real money. If the
+    # account cannot be identified, only the default-marketplace question is
+    # left unanswered and the pull proceeds, which is the old behaviour -- but
+    # it is reported, rather than happening quietly.
+    _default, _why = "", ""
+    try:
+        from config import settings as _settings
+        for _a in (_settings.load_settings(config_path).accounts or []):
+            _a = _a if isinstance(_a, dict) else getattr(_a, "__dict__", {}) or {}
+            if str(_a.get("id")) == str(account_id or workspace_id):
+                _default = str(_a.get("default_marketplace") or "").strip().upper()
+                break
+    except Exception as ex:
+        _why = str(ex)[:150]
+    if _default and str(marketplace or "").strip().upper() != _default:
+        return {"ok": True, "skipped": True, "rows": 0, "order_fee_rows": 0,
+                "note": ("This account's finances are kept under %s, its default "
+                         "marketplace. Amazon reports them for the whole account "
+                         "rather than per marketplace, so pulling them again here "
+                         "would store a second copy of the same money."
+                         % _default)}
+
     end = _dt.date.today()
     start = end - _dt.timedelta(days=int(days_back))
     s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+    _extra = ({"default_marketplace_unknown": _why} if _why else {})
 
     try:
         events, token, pages = fetch_range(marketplace, creds, s, e,
@@ -157,6 +206,7 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
            "events_with_no_order": _skipped,
            "sku_map_size": len(smap)}
     out.update(notes)
+    out.update(_extra)
     if not smap:
         out["note"] = ("No catalogue snapshot for this account, so fees could not be "
                        "attributed to products. The account totals are still correct. "

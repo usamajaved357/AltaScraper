@@ -17,6 +17,24 @@ function check(label, got, want) {
 }
 const read = p => fs.readFileSync("D:/AltaScraper/" + p, "utf8");
 
+/* The source of one named function, brace-matched.
+ *
+ * Needed because the two list renderers now share their button builder: asking
+ * "does the file contain this button" cannot tell whether the CARD offers it,
+ * only that something does. Asking "does card() call rowActions(), and does
+ * rowActions() offer the button" can. */
+function fnBody(src, name) {
+  const m = new RegExp("\\bfunction\\s+" + name + "\\s*\\(").exec(src);
+  if (!m) return "";
+  let i = src.indexOf("{", m.index + m[0].length - 1);
+  if (i < 0) return "";
+  for (let j = i, depth = 0; j < src.length; j++) {
+    if (src[j] === "{") depth++;
+    else if (src[j] === "}" && --depth === 0) return src.slice(i, j + 1);
+  }
+  return src.slice(i);
+}
+
 const lib = read("static/js/listingimages.js");
 const autofix = read("static/js/autofix.js");
 const miles = read("static/js/miles_template.js");
@@ -52,8 +70,13 @@ check("it reads the existing media library", /\/media\/list\?sku=/.test(lib), tr
 check("  rather than a new endpoint", /\/images\/list/.test(lib), false);
 check("upload uses the existing upload route", /\/media\/upload/.test(lib), true);
 check("push uses the existing push route", /\/listing\/push_image/.test(lib), true);
+// The shared builder escapes the SKU ONCE at the top and reuses it, so the
+// button reads ${sku} rather than ${esc(r.sku)}. Still escaped -- and checked
+// here, because that is the part that matters.
 check("draft rows get a library button",
-      /openImageLibrary\('\$\{esc\(r\.sku\)\}'/.test(listings), true);
+      /openImageLibrary\('\$\{sku\}'/.test(fnBody(listings, "rowActions")), true);
+check("  with the SKU escaped before it is put in the markup",
+      /const sku = esc\(r\.sku\)/.test(fnBody(listings, "rowActions")), true);
 check("live rows get one too",
       /openImageLibrary\('\$\{esc\(it\.sku\|\|''\)\}', true\)/.test(listings), true);
 // THE CARD, not only the table. It was on the table row and missing from the
@@ -62,13 +85,20 @@ check("live rows get one too",
 // the main one. Drafts need it MORE than live listings do, because a draft is
 // exactly when you are still deciding what its pictures should be.
 //
-// Counted rather than merely matched: one occurrence is the table row, and it
-// passed this check for as long as the card had none.
-check("the library button is on the CARD as well as the table row",
-      (listings.match(/openImageLibrary\(/g) || []).length >= 3, true);
-check("  and the card's is inside the card's own action bar",
-      /tileacts[\s\S]{0,2000}?openImageLibrary\('\$\{esc\(r\.sku\)\}'/.test(listings),
-      true);
+// THIS USED TO COUNT OCCURRENCES -- three or more, one per renderer -- because
+// each renderer spelled its own buttons out and the card's had been forgotten.
+// Both now build their buttons from ONE shared rowActions(), so the correct
+// count is one, and counting would fail on the very change that fixed the
+// underlying problem. What matters was never how many times the button is
+// written down; it is that BOTH views offer it. That is what is checked now.
+const rowActions = fnBody(listings, "rowActions");
+check("there is one shared builder for a row's buttons", rowActions.length > 0, true);
+check("  and the image library is one of them",
+      /openImageLibrary\(/.test(rowActions), true);
+check("the CARD builds its buttons from it",
+      /tileacts[\s\S]{0,400}?rowActions\(/.test(fnBody(listings, "card")), true);
+check("the TABLE ROW builds its buttons from the same one",
+      /rowActions\(/.test(fnBody(listings, "tableRow")), true);
 check("the file is loaded by the page",
       /\/static\/js\/listingimages\.js\?v=/.test(tpl), true);
 

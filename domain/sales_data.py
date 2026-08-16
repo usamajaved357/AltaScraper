@@ -275,7 +275,7 @@ def vat_rate_for(config, workspace_id):
 
 
 def series(config_path, workspace_id, marketplace, start, end, asin=None,
-           vat_rate=None, basis="money"):
+           vat_rate=None, basis="money", meta=None):
     """Daily rows for a range, sales joined with ads and finance.
 
     The dates come from the UNION of the three sources, not from sales alone. A
@@ -297,6 +297,12 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
 
     Only the settled columns move. Sales, units, orders and traffic are dated by
     the order already, on either basis, and are untouched.
+
+    `meta`, if a dict is passed in, is filled with what actually happened:
+    meta["basis"] is the basis USED, which is not always the one asked for --
+    a product filter or a re-dating failure falls back to money. The caller
+    that echoes the request back to the screen has to echo this, not the
+    request, or the screen labels money-basis figures as order-basis ones.
     """
     conn = _db.get_db(config_path)
     key = asin or "*"
@@ -316,6 +322,13 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
     # Only for the account-wide series: fees are known per ORDER, and splitting
     # one order's fee across the ASINs in it is a different job from this one.
     fin_note = ""
+    if basis == "order" and key != "*":
+        # A PRODUCT FILTER CANNOT BE RE-DATED, so say so rather than pretend.
+        # Amazon charges fees per ORDER, and an order can hold several products;
+        # splitting one fee across them is a different job from this one. The
+        # figures below are therefore the money basis, and calling them anything
+        # else is how a screen comes to be labelled with a calendar it is not on.
+        basis = "money"
     if basis == "order" and key == "*":
         try:
             from domain import order_finance as _of
@@ -344,15 +357,39 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
             from domain import order_profit as _op
             _rate, _rbasis, _rdetail = _op.fee_rate(config_path, workspace_id,
                                                     marketplace, end)
-            fin = _of.complete_by_order_date(config_path, workspace_id,
-                                             marketplace, start, end,
-                                             fee_rate=_rate, vat_rate=vat_rate)
+            redated = _of.complete_by_order_date(config_path, workspace_id,
+                                                 marketplace, start, end,
+                                                 fee_rate=_rate, vat_rate=vat_rate)
+            # RE-DATING THAT LOSES THE FEES IS NOT AN ANSWER, IT IS A HOLE.
+            #
+            # Every fee is re-dated by looking its order up in order_lines. An
+            # order the app has never fetched cannot be dated, so its fee is
+            # simply not carried -- and where the history does not reach at all,
+            # NOTHING is carried. The screen then shows a period's sales with no
+            # fees against them, and profit comes out as revenue: a P&L that
+            # flatters by exactly the amount Amazon took.
+            #
+            # A hole is worse than the wrong calendar, because the wrong
+            # calendar is at least labelled. So when the money basis had fees
+            # and the re-dating produced none, this keeps the money figures and
+            # says so, instead of publishing a period with no costs in it.
+            if fin and not redated:
+                basis = "money"
+                fin_note = ("Amazon's fees for this period could not be dated "
+                            "to the orders that caused them -- those orders are "
+                            "older than this app's order history -- so the fees "
+                            "below are on the day the money moved.")
+            else:
+                fin = redated
             miss = _of.unattributed(config_path, workspace_id, marketplace)
-            if miss.get("orders"):
-                fin_note = ("%d settled order(s) worth %.2f in fees are older "
-                            "than this app's order history, so they cannot be "
-                            "dated to when they were placed and are not in these "
-                            "figures." % (miss["orders"], miss["fees"]))
+            # Added to whatever the fallback above may have said, not over it --
+            # they are two different gaps and a reader needs to know about both.
+            if miss.get("orders") and basis == "order":
+                fin_note = (fin_note + " " if fin_note else "") + (
+                    "%d settled order(s) worth %.2f in fees are older "
+                    "than this app's order history, so they cannot be "
+                    "dated to when they were placed and are not in these "
+                    "figures." % (miss["orders"], miss["fees"]))
         except Exception:
             basis = "money"          # never lose the figures over a re-dating
 
@@ -420,6 +457,45 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
             row["profit"] = None
             row["margin_pct"] = None
         out.append(row)
+    # WHERE AMAZON'S OWN TWO ANSWERS DISAGREE, SAY SO RATHER THAN PICK ONE.
+    #
+    # A row should read across: what the buyers paid, split into the part that
+    # is yours and the VAT that is not. On most days it does exactly that. On a
+    # few it cannot, because Amazon's Finances feed and its Orders feed do not
+    # agree about those particular orders -- measured, all of them are orders
+    # that were refunded in full, or where Amazon collected the VAT itself on a
+    # cross-border sale and reported a different total from the one the Orders
+    # API gave for the same order id.
+    #
+    # Neither figure is wrong and neither can be derived from the other, so
+    # nothing here quietly adjusts one to match. What was missing was any
+    # acknowledgement: the screen showed 601.08 + 15.80 under a sales row of
+    # 605.77 and left the reader to notice, which reads as a fault in the app.
+    if meta is not None:
+        gaps = []
+        for row in out:
+            sold = row.get("ordered_sales")
+            ex, vat = row.get("principal"), row.get("vat")
+            if not sold or ex is None or vat is None:
+                continue
+            d = round(float(ex) + float(vat) - float(sold), 2)
+            if abs(d) > 0.02:
+                gaps.append((row["date"], d))
+        meta["basis"] = basis            # what was USED, after any fallback
+        meta["basis_note"] = fin_note
+        if gaps:
+            total = round(sum(d for _, d in gaps), 2)
+            meta["tie_out"] = {
+                "days": len(gaps), "amount": total,
+                "worst": sorted(gaps, key=lambda g: -abs(g[1]))[:3],
+                "note": ("On %d day(s) Amazon's settled figures do not add back "
+                         "to what the buyers paid, by %s in total. Both come "
+                         "from Amazon and neither has been adjusted to fit the "
+                         "other; it happens on orders that were refunded in "
+                         "full, and on cross-border orders where Amazon "
+                         "collected the VAT itself."
+                         % (len(gaps), ("%+.2f" % total))),
+            }
     return out
 
 
@@ -706,11 +782,36 @@ def bucket(rows, gran):
     return buckets, order
 
 
+def currency_of(rows):
+    """The currency a set of daily rows is in. The FIRST ROW IS NOT IT.
+
+    A row exists for every day in the window, including days with no trade,
+    and a day with no trade carries no currency. So taking rows[0] returns ""
+    whenever the range starts before the account's first sale -- which is
+    exactly what "90 days" and "year to date" do. The screen then printed
+    "Total Sales 583" with no pound sign, on the same account where "30 days"
+    printed "GBP 384", and nothing on it said why.
+
+    The first row that actually HAS one, which is what contribution.py has
+    always done, and now the only implementation of it.
+    """
+    return next((r.get("currency") for r in (rows or []) if r.get("currency")), "")
+
+
 def totals(config_path, workspace_id, marketplace, start, end, asin=None,
-           vat_rate=None):
-    """Every metric over a range, each by its own aggregation rule."""
-    rows = series(config_path, workspace_id, marketplace, start, end, asin, vat_rate)
-    out = {"days": len(rows), "currency": (rows[0]["currency"] if rows else "")}
+           vat_rate=None, basis="money", meta=None):
+    """Every metric over a range, each by its own aggregation rule.
+
+    THE CARDS AND THE GRID ARE THE SAME NUMBERS. This sums the very rows the
+    grid draws, so `basis` has to reach here too. Without it the cards were
+    stuck on the money calendar while the grid moved to the order one, and the
+    two halves of one screen described different trades: on jack_uk, widening
+    7d to 14d left Total Sales at 102.21 and moved Profit by 2.72 -- the 7th
+    August settlement, a day with no orders in either window.
+    """
+    rows = series(config_path, workspace_id, marketplace, start, end, asin,
+                  vat_rate, basis=basis, meta=meta)
+    out = {"days": len(rows), "currency": currency_of(rows)}
     for key in METRIC_KEYS:
         out[key] = aggregate(rows, key)
     out["order_items"] = aggregate(rows, "order_items")
