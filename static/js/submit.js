@@ -436,9 +436,32 @@ async function loadRows(){
       if(typeof renderDataSource==="function") renderDataSource();
     }
     render();
+    // THE SCHEMAS COME AFTER THE SCREEN, AND DO NOT HOLD IT UP.
+    //
+    // This asks Amazon for the field definitions of every distinct product
+    // type in the account -- 42 of them on Nestwell Goods, seconds each. They
+    // are needed to EDIT a listing (the allowed values in the drawer's
+    // dropdowns), not to look at one, and the grid above has already drawn
+    // without them.
+    //
+    // Awaiting them here made every other screen wait too, because a browser
+    // opens only six connections to one host: measured, opening that account's
+    // Sales screen showed skeletons for twenty-eight seconds while a 31 ms call
+    // sat in the queue behind them. Started on a short delay and not awaited,
+    // so whatever the person actually opened goes first; loadSchemas itself
+    // now takes three lanes rather than all of them. The re-render still
+    // happens when they land, so the drawer gets its dropdowns as before.
+    // NOTHING DEPENDS ON THIS HAVING FINISHED. openDrawer() already fetches a
+    // row's schema on demand when you open it (see listings.js), so this is
+    // only a warm-up -- which is why it can afford to wait for the screen to
+    // settle first. Measured across a cold start: with it started immediately
+    // the SECOND account opened still took three to seven seconds; behind the
+    // screen it is under a second, and opening a drawer is no slower because
+    // that path was never relying on this.
     const pts=[...new Set(ROWS.map(r=>r.product_type).filter(Boolean))];
-    try{ await loadSchemas(pts); }catch(e){}
-    render();
+    setTimeout(function(){
+      loadSchemas(pts).then(function(){ render(); }).catch(function(){});
+    }, 5000);
   }catch(e){ toast("Could not load: "+e); }
 }
 // loadRows() is invoked at DOMContentLoaded (in settings.js) -- see note above.

@@ -89,4 +89,18 @@ function screenForgetAll(){
       if(el) el.innerHTML = "";
     });
   }
+  // AND THE ANSWERS A SCREEN IS HOLDING, not only what it has drawn.
+  //
+  // The Sales screen keeps replies it has already been given -- so that two
+  // parts of it wanting the same figure ask Amazon once, and so a period click
+  // does not re-fetch today's orders. Those are keyed by account and so cannot
+  // be handed to the wrong one; this drops them anyway on the way out, because
+  // "held data from the account you just left" is the one thing this function
+  // exists to make impossible, and a cache is the easiest place to forget it.
+  if(typeof _sForget === "function") _sForget();
+  // AND ANY WORK STILL RUNNING FOR THE ACCOUNT YOU HAVE LEFT. The product-type
+  // warm-up can be forty-two calls to Amazon; carried on after a switch it
+  // competes with the account you have just opened for the browser's six
+  // connections, which is the whole reason it is paced in the first place.
+  if(typeof schemasAbandon === "function") schemasAbandon();
 }

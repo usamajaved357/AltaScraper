@@ -371,6 +371,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "granularity": gran, "asin": asin,
                         "basis": basis, "basis_note": _basis_note(basis),
                         "basis_gap": _meta.get("basis_note") or "",
+                        # Where Amazon's settled figures and its own order
+                        # totals disagree -- stated, not silently reconciled.
+                        "tie_out": _meta.get("tie_out") or None,
                         "currency": _sd.currency_of(rows),
                         "columns": order, "metrics": metrics,
                         # Which section each metric belongs in, so the grid can

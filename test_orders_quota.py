@@ -151,6 +151,62 @@ finally:
     _api.Orders = _real_orders
     ol._ORDERS_CACHE.clear()
 
+print("\n== the background poll does not spend the quota on empty marketplaces ==")
+# THE LOG, on one startup:
+#     live orders jack_uk::NL  -> error: handshake timed out
+#     live orders jack_uk::PL  -> 14 day(s) written, 0 changed
+#     live orders jack_uk::DE  -> 14 day(s) written, 0 changed
+#     live orders selvora::FR  -> error: handshake timed out
+#
+# These accounts are registered across most of Europe and trade in the UK.
+# Thirty-three account+marketplace pairs on one fifteen-minute clock is about
+# two Orders calls a minute against a quota of roughly one -- so the screen's
+# own request queued behind them and Live Sales answered QuotaExceeded. The
+# catalogue refresh has had REFRESH_AFTER_EMPTY for this since it was written;
+# the live orders poll did not.
+import os, json, tempfile, shutil
+from domain import live_refresher as _lrf
+from data import db as _tdb
+
+_TMP = tempfile.mkdtemp(prefix="altaquota_")
+_CFG = os.path.join(_TMP, "config.json")
+json.dump({"accounts": [{"id": "acct", "marketplaces": ["UK", "PL"]}]}, open(_CFG, "w"))
+_c = _tdb.get_db(_CFG)
+_c.execute(
+    "INSERT INTO order_lines (workspace_id, marketplace, order_id, purchase_date,"
+    " asin, sku, units, revenue, status) VALUES "
+    "('acct','UK','O-1','2026-08-01T10:00:00Z','B0X','SKU',1,10.0,'Shipped')")
+_c.commit()
+_lrf._LIVE_TRADED.clear()
+check("a marketplace that trades is known to trade",
+      _lrf._has_traded(_CFG, "acct", "UK"), True)
+check("  and one that never has is not",
+      _lrf._has_traded(_CFG, "acct", "PL"), False)
+
+_lrf._LIVE_LAST.clear()
+_lrf._LIVE_TRADED.clear()
+# Both were polled a little over the fifteen-minute mark.
+_lrf._LIVE_LAST["acct::UK"] = time.time() - (_lrf.LIVE_EVERY + 60)
+_lrf._LIVE_LAST["acct::PL"] = time.time() - (_lrf.LIVE_EVERY + 60)
+check("the trading marketplace is due again", _lrf._live_due("acct", "UK", _CFG), True)
+check("  the empty one is not -- it backs off to six hours",
+      _lrf._live_due("acct", "PL", _CFG), False)
+_lrf._LIVE_LAST["acct::PL"] = time.time() - (_lrf.LIVE_EVERY_EMPTY + 60)
+check("  but it IS still polled eventually, so a first order there shows up",
+      _lrf._live_due("acct", "PL", _CFG), True)
+check_true("the back-off is longer than the normal rhythm",
+           _lrf.LIVE_EVERY_EMPTY > _lrf.LIVE_EVERY)
+# A COLD STORE MUST NOT LOOK LIKE AN EMPTY MARKETPLACE. On a fresh deploy no
+# marketplace has any order history -- including the one that trades -- and
+# backing them all off would stop the poll that fills the table in the first
+# place. Nothing would ever arrive.
+_lrf._LIVE_TRADED.clear()
+check("an account with no history anywhere is polled normally",
+      _lrf._has_traded(_CFG, "brand-new-account", "UK"), True)
+check("  which is not true of a marketplace on an account that HAS traded",
+      _lrf._has_traded(_CFG, "acct", "PL"), False)
+shutil.rmtree(_TMP, ignore_errors=True)
+
 print("\n== a quota refusal reads as waiting, not as a fault ==")
 js = open(r"D:\AltaScraper\static\js\sales.js", encoding="utf-8").read()
 check_true("the screen recognises a throttle", "quotaexceeded" in js.lower())

@@ -457,9 +457,45 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
             row["profit"] = None
             row["margin_pct"] = None
         out.append(row)
+    # WHERE AMAZON'S OWN TWO ANSWERS DISAGREE, SAY SO RATHER THAN PICK ONE.
+    #
+    # A row should read across: what the buyers paid, split into the part that
+    # is yours and the VAT that is not. On most days it does exactly that. On a
+    # few it cannot, because Amazon's Finances feed and its Orders feed do not
+    # agree about those particular orders -- measured, all of them are orders
+    # that were refunded in full, or where Amazon collected the VAT itself on a
+    # cross-border sale and reported a different total from the one the Orders
+    # API gave for the same order id.
+    #
+    # Neither figure is wrong and neither can be derived from the other, so
+    # nothing here quietly adjusts one to match. What was missing was any
+    # acknowledgement: the screen showed 601.08 + 15.80 under a sales row of
+    # 605.77 and left the reader to notice, which reads as a fault in the app.
     if meta is not None:
+        gaps = []
+        for row in out:
+            sold = row.get("ordered_sales")
+            ex, vat = row.get("principal"), row.get("vat")
+            if not sold or ex is None or vat is None:
+                continue
+            d = round(float(ex) + float(vat) - float(sold), 2)
+            if abs(d) > 0.02:
+                gaps.append((row["date"], d))
         meta["basis"] = basis            # what was USED, after any fallback
         meta["basis_note"] = fin_note
+        if gaps:
+            total = round(sum(d for _, d in gaps), 2)
+            meta["tie_out"] = {
+                "days": len(gaps), "amount": total,
+                "worst": sorted(gaps, key=lambda g: -abs(g[1]))[:3],
+                "note": ("On %d day(s) Amazon's settled figures do not add back "
+                         "to what the buyers paid, by %s in total. Both come "
+                         "from Amazon and neither has been adjusted to fit the "
+                         "other; it happens on orders that were refunded in "
+                         "full, and on cross-border orders where Amazon "
+                         "collected the VAT itself."
+                         % (len(gaps), ("%+.2f" % total))),
+            }
     return out
 
 

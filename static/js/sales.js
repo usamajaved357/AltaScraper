@@ -243,31 +243,73 @@ async function _sFetch(url, opts){
   if(acct && u.indexOf("account_id=") < 0){
     u += (u.indexOf("?") < 0 ? "?" : "&") + "account_id=" + encodeURIComponent(acct);
   }
+  // THE ACCOUNT IS PART OF THE KEY, AND NOTHING IS SHARED WITHOUT ONE.
+  //
+  // Sharing and reuse are keyed by the account as well as the URL. The URL
+  // normally carries account_id and would be enough -- but only normally: for
+  // the moment during a switch when CUR_ACCOUNT is not yet set, _sAcct() is ""
+  // and nothing is appended, so two accounts produce the SAME url. Keyed on
+  // the url alone, one account's Live Sales would then be handed to the other
+  // and held for a minute. That is the account-mixing fault this codebase has
+  // been bitten by before, and a cache is the easiest place in the app to
+  // reintroduce it.
+  //
+  // With no account known, neither share nor store: an unidentified request is
+  // exactly the one that must not be reused.
+  const key = acct ? (acct + "|" + u) : "";
   // ASKED ONCE, NOT ONCE PER CALLER. Two parts of the screen wanting the same
   // thing at the same moment is one question, and it was being sent twice --
   // measured on a single 90-day click, /sales/hourly went to Amazon at +2.4s
   // and again at +7.7s for the same day's orders.
-  if(!opts && _sInflight[u]) return _sInflight[u];
+  const shareable = !opts && !!key;
+  if(shareable && _sInflight[key]) return _sInflight[key];
   // AND NOT RE-ASKED FOR A MINUTE. Only for the live three: their answer
   // describes a FIXED window -- today, today and yesterday, the last six days
   // -- which the period pills cannot change, so re-fetching on every click
   // spent seconds and quota to be told the same thing.
-  if(!opts && _sIsLive(u)){
-    const hit = _sRecent[u];
+  if(shareable && _sIsLive(u)){
+    const hit = _sRecent[key];
     if(hit && (Date.now() - hit.at) < _S_LIVE_TTL) return hit.value;
   }
   const run = (async function(){
     try{
       const r = await fetch(u, opts);
       const j = await r.json();
-      if(!opts && _sIsLive(u) && j && j.ok) _sRecent[u] = {at: Date.now(), value: j};
+      if(shareable && _sIsLive(u) && j && j.ok) _sRecent[key] = {at: Date.now(), value: j};
       return (_sAcct() === acct) ? j : null;
     }finally{
-      delete _sInflight[u];
+      if(shareable) delete _sInflight[key];
     }
   })();
-  if(!opts) _sInflight[u] = run;
+  if(shareable) _sInflight[key] = run;
   return run;
+}
+
+/* Everything remembered for an account, forgotten when you leave it.
+ *
+ * Belt and braces on the keying above: switching account drops that account's
+ * held answers rather than trusting them to age out, so nothing from the
+ * screen you have just left can be painted onto the one you have just opened. */
+function _sForget(){
+  [_sInflight, _sRecent].forEach(function(store){
+    Object.keys(store).forEach(function(k){ delete store[k]; });
+  });
+  // AND THE FIGURES THEMSELVES, not just the held replies.
+  //
+  // screenForgetAll empties the panels, but these live in memory and were
+  // left behind -- so after switching account the grid still HELD the previous
+  // account's series. Anything reading SALES.series before the new load
+  // finished got the account you had just left: measured, opening Nestwell
+  // Goods straight after Jack Reacherd left Jack Reacherd's days in
+  // SALES.gridSeries while the cards above them were blank.
+  try{
+    SALES.series = null;
+    SALES.gridSeries = null;
+    SALES.data = null;
+    SALES._live = null;
+    SALES.compare = null;
+    SALES._chartBasis = "";
+  }catch(e){}
 }
 
 /* WHO IS ASKING, and nothing about WHEN.
@@ -2081,6 +2123,33 @@ function _sGridTools(ser){
           ? '<span class="cc"> (' + cov.unknown + ' of ' + cov.total + ' have no cost, '
             + 'so profit is withheld for any period containing them)</span>' : "")
       + '<button class="glink" onclick="navTo(\'listings\')">Change setting →</button>'
+      + '</div>';
+  }
+
+  // ---- where Amazon's own two answers do not agree -----------------------
+  //
+  // A row is meant to read across: what the buyers paid, split into the part
+  // that is yours and the VAT that is not. On a few days it cannot, because
+  // Amazon's Finances feed and its Orders feed disagree about those particular
+  // orders -- ones refunded in full, and cross-border ones where Amazon
+  // collected the VAT itself and reported a different total for the same order.
+  //
+  // Neither figure is wrong and neither is adjusted to fit the other. What was
+  // missing was saying so: the grid showed 601.08 + 15.80 under a sales row of
+  // 605.77 and left it to be noticed, which reads as a fault in the app rather
+  // than as a fact about the data.
+  const tie = ser.tie_out;
+  if(tie && tie.days){
+    const worst = (tie.worst || []).map(function(w){
+      return _sColLabel(w[0], gran) + " " + _sNum(w[1], "money", ser.currency);
+    }).join(", ");
+    h += '<div class="gcogs gtie">'
+      + '<span class="glbl">Tie-out</span>'
+      + '<b>' + _sEsc(_sNum(tie.amount, "money", ser.currency)) + '</b>'
+      + ' across <b>' + tie.days + '</b> day(s)'
+      + '<span class="gsep">·</span>'
+      + '<span class="cc">' + _sEsc(tie.note) + '</span>'
+      + (worst ? '<span class="cc"> Largest: ' + _sEsc(worst) + '.</span>' : "")
       + '</div>';
   }
   return h;

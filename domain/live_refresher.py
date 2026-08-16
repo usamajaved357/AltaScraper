@@ -451,7 +451,77 @@ def _sales_gap(config_path, aid, mkt):
         return 0
 
 
-def _live_due(aid, mkt):
+# ...AND THE SAME BACK-OFF THE CATALOGUE ALREADY HAS, for the same reason.
+#
+# REFRESH_AFTER_EMPTY above exists because only a handful of these accounts'
+# thirty-odd marketplaces carry any listings. The live ORDERS poll had no such
+# rule and ran on the flat 15-minute clock for every pair -- so every rotation
+# fetched orders from Poland, the Netherlands, Germany, Italy and France for
+# accounts that have never taken an order outside the UK. The log is unambiguous
+# about the result:
+#
+#     [refresher] live orders jack_uk::NL   -> error: handshake timed out
+#     [refresher] live orders jack_uk::PL   -> 14 day(s) written, 0 changed
+#     [refresher] live orders jack_uk::DE   -> 14 day(s) written, 0 changed
+#     [refresher] live orders selvora::FR   -> error: handshake timed out
+#
+# "0 changed", every time, on all of them. Thirty-three pairs on a fifteen
+# minute clock is roughly two Orders calls a minute against a quota of about
+# one -- so the screen's OWN request queued behind them and Live Sales answered
+# "QuotaExceeded". The comment above that this feed is not the scarce quota was
+# measured to be wrong.
+#
+# A marketplace that has never taken an order backs off to six hours. It is
+# still polled -- a first order in Poland must show up on its own -- just not
+# ahead of the marketplaces that actually trade.
+LIVE_EVERY_EMPTY = 6 * 3600
+_LIVE_TRADED = {}        # "account::MKT" -> (checked_at, has ever traded)
+
+
+def _has_traded(config_path, aid, mkt):
+    """Has this marketplace EVER taken an order? Cached, and a local read only.
+
+    Cached because it is asked on every tick and the answer changes at most
+    once -- from no to yes -- and re-checked periodically so that change is
+    picked up without a restart.
+    """
+    key = "%s::%s" % (aid, mkt)
+    hit = _LIVE_TRADED.get(key)
+    if hit and (time.time() - hit[0]) < 1800 and hit[1]:
+        return True                      # once it has traded it always has
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        row = conn.execute(
+            "SELECT 1 FROM order_lines WHERE workspace_id=? AND marketplace=? "
+            "LIMIT 1", (aid, mkt)).fetchone()
+        ok = bool(row)
+        if not ok:
+            # A COLD STORE IS NOT AN EMPTY MARKETPLACE.
+            #
+            # "No orders recorded" means one of two opposite things: we looked
+            # and there was nothing, or we have never looked. On a fresh
+            # database -- a new deploy, a restored disk -- it means the second,
+            # for EVERY marketplace including the one that trades. Backing them
+            # all off to six hours would then stop the very poll that fills the
+            # table, and the app would sit empty waiting for data it had
+            # decided not to fetch.
+            #
+            # So the account is asked as a whole: if it has no order history
+            # anywhere, nothing here has been established and everything is
+            # polled on the normal rhythm.
+            any_row = conn.execute(
+                "SELECT 1 FROM order_lines WHERE workspace_id=? LIMIT 1",
+                (aid,)).fetchone()
+            if not any_row:
+                ok = True
+    except Exception:
+        ok = True                        # cannot tell -> poll it, as before
+    _LIVE_TRADED[key] = (time.time(), ok)
+    return ok
+
+
+def _live_due(aid, mkt, config_path=None):
     """Is it time to write this account's live orders into the store?
 
     A separate rhythm from the report, because they are separate problems. The
@@ -459,7 +529,25 @@ def _live_due(aid, mkt):
     the report had delivered everything it could and the screen still read 0.00
     against 947.72 of real trade, because nothing wrote the live orders down.
     """
-    return (time.time() - _LIVE_LAST.get("%s::%s" % (aid, mkt), 0)) >= LIVE_EVERY
+    key = "%s::%s" % (aid, mkt)
+    every = LIVE_EVERY
+    if config_path and not _has_traded(config_path, aid, mkt):
+        every = LIVE_EVERY_EMPTY
+        # AND NOT ALL AT ONCE THE MOMENT THE APP STARTS.
+        #
+        # _LIVE_LAST is empty on boot, so every pair reads as overdue by
+        # however long the process has been up -- which is longer than any
+        # threshold. The back-off above would therefore never apply to the
+        # first rotation, and the first rotation is exactly the one competing
+        # with whoever has just opened the app after a deploy.
+        #
+        # A marketplace that has never traded starts its six-hour clock from
+        # boot instead. Nothing is lost: it has no orders to fetch, and if a
+        # first order does appear there it is picked up on that clock.
+        if key not in _LIVE_LAST:
+            _LIVE_LAST[key] = time.time()
+            return False
+    return (time.time() - _LIVE_LAST.get(key, 0)) >= every
 
 
 def _live_one(app, config_path, aid, mkt):
@@ -595,7 +683,7 @@ def _loop(app, cfg_fn, config_path, account_id, log=None):
             # for them.
             if not user_busy(account_id):
                 due = next(((a, m) for a, m in _targets(cfg_fn, config_path)
-                            if a == account_id and _live_due(a, m)), None)
+                            if a == account_id and _live_due(a, m, config_path)), None)
                 if due:
                     lnote = _live_one(app, config_path, due[0], due[1])
                     if log:

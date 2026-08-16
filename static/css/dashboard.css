@@ -1559,6 +1559,10 @@
   .gcogs{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;
          font-size:12px;margin:0 0 12px;color:var(--ink2)}
   .gcogs .gsep{color:var(--muted)}
+  /* The tie-out line is a caveat, not a warning: Amazon's two feeds disagree
+     about a few orders and both figures are real. Marked so it is noticed and
+     not coloured like an error, which it is not. */
+  .gtie{border-left:2px solid var(--muted);padding-left:8px}
   .glink{background:none;border:0;padding:0;font-size:12px;font-weight:500;
          color:var(--accent2);cursor:pointer}
   .glink:hover{text-decoration:underline}

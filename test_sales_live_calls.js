@@ -74,17 +74,36 @@ check("  nor the granularity", /granularity=/.test(scope), false);
 });
 
 console.log("\n=== and asked once, in the one place every request goes through ===");
+const fetcher = fnBody(sales, "_sFetch");
 check("two callers wanting the same thing share one request",
-      /_sInflight\[u\]/.test(sales), true);
+      /_sInflight\[key\]/.test(fetcher), true);
 check("a live answer is reused for a short while",
       /_S_LIVE_TTL/.test(sales), true);
 check("  for about a minute, which is Amazon's own refill rate",
       /_S_LIVE_TTL = 60000/.test(sales), true);
 check("  and only when the call succeeded",
-      /_sIsLive\(u\) && j && j\.ok/.test(sales), true);
-check("  never for a write", /if\(!opts && _sIsLive\(u\)\)/.test(sales), true);
+      /_sIsLive\(u\) && j && j\.ok/.test(fetcher), true);
+check("  never for a write", /const shareable = !opts/.test(fetcher), true);
 check("the in-flight entry is always cleared",
-      /finally\{\s*delete _sInflight\[u\];/.test(sales), true);
+      /finally\{[\s\S]{0,90}delete _sInflight\[key\]/.test(fetcher), true);
+
+console.log("\n=== AND NOTHING IS EVER SHARED BETWEEN TWO ACCOUNTS ===");
+// This app has shipped one account's figures under another account's name
+// before. A cache is the easiest place in it to do that again: the URL normally
+// carries account_id, but during a switch _sAcct() is briefly "" and nothing is
+// appended -- so two accounts would produce the SAME key.
+check("the key is the account AND the url", /acct \+ "\|" \+ u/.test(fetcher), true);
+check("  with no account known, nothing is shared or stored",
+      /const key = acct \? .* : "";/.test(fetcher), true);
+check("  which is what makes a request shareable at all",
+      /!!key/.test(fetcher), true);
+check("and leaving an account forgets what was held for it",
+      /function _sForget\(\)/.test(sales), true);
+check("  hooked into the ONE thing that already forgets on a switch",
+      /_sForget\(\)/.test(fs.readFileSync("D:/AltaScraper/static/js/screenstate.js", "utf8")),
+      true);
+check("  and the figures themselves go too, not just the held replies",
+      /SALES\.gridSeries = null/.test(fnBody(sales, "_sForget")), true);
 
 console.log("\n=== the server still decides those windows itself ===");
 // If the browser stopped sending the period and the server had been reading it,

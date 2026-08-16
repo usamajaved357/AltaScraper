@@ -150,6 +150,20 @@ def reconcile(config_path, workspace_id, marketplace, marketplace_id, creds,
             "truncated": bool(raw.get("truncated"))}
 
 
+# What from_lines() has already derived, so a read does not rewrite figures that
+# cannot have changed. Keyed by account, marketplace and window; the value is
+# (how many order lines there were, the newest fetched_at among them) -- both,
+# because a re-fetch that corrects a line in place moves the second without
+# moving the first, and a deletion moves the first without moving the second.
+_DERIVED = {}
+
+
+def forget_derived():
+    """Drop that memory. For tests, and for anything that edits order_lines
+    behind this module's back."""
+    _DERIVED.clear()
+
+
 def from_lines(config_path, workspace_id, marketplace, start, end):
     """Write sales_daily's order-side figures from order_lines.
 
@@ -192,12 +206,34 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
     # said about any day, so nothing is written -- rather than every day in the
     # window being asserted as a zero on the strength of an empty table.
     edge = conn.execute(
-        "SELECT MIN(substr(purchase_date,1,10)) FROM order_lines "
+        "SELECT MIN(substr(purchase_date,1,10)) AS lo, COUNT(*) AS n, "
+        "       MAX(COALESCE(fetched_at,'')) AS seen FROM order_lines "
         "WHERE workspace_id=? AND marketplace=?",
         (workspace_id, marketplace)).fetchone()
-    edge = edge[0] if edge else None
+    stamp = (edge["n"], edge["seen"]) if edge else (0, "")
+    edge = edge["lo"] if edge else None
     if not edge:
         return {"days_written": 0, "days_with_orders": 0, "no_history": True}
+
+    # NOT REWRITTEN WHEN NOTHING HAS CHANGED.
+    #
+    # This is called by sales_data.series(), which is a READ -- every load of
+    # the Sales screen, and every click on a period pill. So a screen that only
+    # looks at figures was rewriting a month of them each time, as a WRITER.
+    #
+    # The database is in WAL, so readers never block; two writers do. The
+    # background refresher writes constantly just after start-up, and the first
+    # Sales screen opened then had to queue behind it -- measured at 20 to 39
+    # seconds against a busy_timeout of 30, whichever account was opened first.
+    # Every account opened afterwards was under a second.
+    #
+    # Re-deriving from unchanged rows produces byte-identical figures, so if no
+    # order line has arrived or been re-fetched since the last pass over this
+    # same window there is nothing to write and no reason to become a writer.
+    memo = "%s::%s::%s::%s" % (workspace_id, marketplace, start, end)
+    if _DERIVED.get(memo) == stamp:
+        return {"days_written": 0, "days_with_orders": 0, "unchanged": True,
+                "history_starts": edge}
     rows = conn.execute(
         "SELECT substr(purchase_date,1,10) AS d, "
         "       COUNT(DISTINCT order_id) AS orders, "
@@ -246,6 +282,9 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
         written += 1
         d += _dt.timedelta(days=1)
     conn.commit()
+    # Recorded only AFTER the write succeeded, so a failure part-way through is
+    # retried rather than remembered as done.
+    _DERIVED[memo] = stamp
     try:
         from domain import sales_data as _sd
         _sd._refresh_availability(conn, workspace_id, marketplace, "sales")

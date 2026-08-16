@@ -188,6 +188,81 @@ check_true("the fee is still reported somewhere", _fee_days)
 check("and the screen is told which calendar that is", _m3.get("basis"), "money")
 check_true("with a reason given", _m3.get("basis_note"))
 
+print("\n== VAT is asked about PER ORDER, because Amazon answers per order ==")
+# THE REPORT: "revenue after vat and other things they are not seems to be
+# accurate".
+#
+# Amazon does not always itemise the VAT. Where it collects the tax it sends a
+# Tax line and the Principal beside it is NET; where the seller accounts for
+# the VAT themselves it sends NO tax line and the Principal is the whole price
+# the buyer paid. Both shapes arrive on the SAME DAY -- measured on
+# selvora_limited, 28 July: 15 of 17 orders with no tax line and 2 with one.
+#
+# Taking the day's total as reported called 601.08 "Charged to buyers (ex VAT)"
+# when 88.76 of it was VAT that had never been taken out.
+for oid, gross, pr, tx in (("VAT-SHOWN", 36.00, 30.00, 6.00),   # Amazon itemised
+                           ("VAT-HIDDEN", 36.00, 36.00, 0.0)):  # Amazon did not
+    conn.execute(
+        "INSERT INTO order_lines (workspace_id, marketplace, order_id,"
+        " purchase_date, asin, sku, units, revenue, shipping, cogs, status) "
+        "VALUES (?,?,?,?,?,?,1,?,0,4.0,'Shipped')",
+        (WS, MKT, oid, D(40) + "T09:00:00Z", "B0VAT", "8.00_3Days_B0VAT", gross))
+    _of.store(CFG, WS, MKT, [{
+        "order_id": oid, "posted_date": D(30),
+        "referral_fees": 5.40, "fba_fees": 0.0, "other_fees": 0.0,
+        "principal": pr, "tax": tx, "refunds": 0.0, "refund_tax": 0.0,
+        "refund_units": 0, "refund_fees_returned": 0.0, "promos": 0.0,
+        "units": 1, "currency": "GBP",
+    }])
+conn.commit()
+v = _of.complete_by_order_date(CFG, WS, MKT, D(40), D(40),
+                               fee_rate=0.15, vat_rate=0.2)[D(40)]
+# 30.00 net as reported, plus 36.00 gross split into 30.00 + 6.00 -> 60.00 net
+check("the order Amazon itemised is taken as reported, and the one it did not "
+      "is split", v["principal"], 60.0)
+check("  so the VAT covers BOTH orders, not just the itemised one", v["tax"], 12.0)
+check("  and the day says how much of that it worked out itself",
+      v["vat_derived"], 6.0)
+check("  on how many orders", v["orders_vat_derived"], 1)
+check("ex-VAT + VAT comes back to what the buyers paid",
+      round(v["principal"] + v["tax"], 2), 72.0)
+
+# An account that is NOT VAT-registered must have nothing taken out.
+n = _of.complete_by_order_date(CFG, WS, MKT, D(40), D(40),
+                               fee_rate=0.15, vat_rate=0)[D(40)]
+check("a business not registered for VAT has none deducted", n["principal"], 66.0)
+check("  and nothing is invented", n["vat_derived"], 0.0)
+
+print("\n== where Amazon's own two feeds disagree, the screen says so ==")
+# Both figures come from Amazon and neither can be derived from the other, so
+# nothing adjusts one to fit. What must not happen is silence: showing
+# 601.08 + 15.80 under a sales row of 605.77 and leaving it to be noticed reads
+# as a fault in the app rather than a fact about the data.
+conn.execute(
+    "INSERT INTO order_lines (workspace_id, marketplace, order_id, purchase_date,"
+    " asin, sku, units, revenue, shipping, cogs, status) "
+    "VALUES (?,?,?,?,?,?,1,?,0,3.0,'Shipped')",
+    (WS, MKT, "MISMATCH-1", D(45) + "T09:00:00Z", "B0GAP", "8.00_3Days_B0GAP", 30.00))
+conn.commit()
+# Amazon settles it at a different total from the one its Orders feed gave.
+_of.store(CFG, WS, MKT, [{
+    "order_id": "MISMATCH-1", "posted_date": D(35),
+    "referral_fees": 5.00, "fba_fees": 0.0, "other_fees": 0.0,
+    "principal": 30.00, "tax": 6.00, "refunds": 0.0, "refund_tax": 0.0,
+    "refund_units": 0, "refund_fees_returned": 0.0, "promos": 0.0,
+    "units": 1, "currency": "GBP",
+}])
+_m4 = {}
+_sd.series(CFG, WS, MKT, D(45), D(45), vat_rate=0.2, basis="order", meta=_m4)
+_tie = _m4.get("tie_out") or {}
+check("the day that does not add up is counted", _tie.get("days"), 1)
+check("  and by how much", _tie.get("amount"), 6.0)
+check_true("  with an explanation, not just a number", _tie.get("note"))
+# A day that DOES add up must not be flagged -- a caveat on every day is noise.
+_m5 = {}
+_sd.series(CFG, WS, MKT, D(20), D(20), vat_rate=0.2, basis="order", meta=_m5)
+check("a day that reconciles is not flagged", _m5.get("tie_out"), None)
+
 print("\n== the currency survives a range that starts before trading did ==")
 # "Total Sales 583" with no pound sign on 90d and ytd, beside "GBP 384" on 30d:
 # rows[0] is a day with no trade, and a day with no trade carries no currency.

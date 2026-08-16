@@ -382,14 +382,80 @@ function _downloadAsJpeg(src, baseName){
     const a=document.createElement("a"); a.href=src; a.download=baseName+".jpg"; a.click();
   }
 }
+/* A FEW AT A TIME, NOT ALL AT ONCE.
+ *
+ * A browser opens at most six connections to one host. This used to fire every
+ * product type together -- submit.js asks for every distinct type across the
+ * whole account the moment the rows land -- and each one goes to Amazon, so
+ * they are seconds each, not milliseconds.
+ *
+ * On Nestwell Goods that is 42 of them, and they took the whole connection
+ * pool. Measured by driving the app: opening that account's Sales screen left
+ * it showing skeletons for TWENTY-EIGHT SECONDS with SALES.busy stuck true,
+ * because /sales/availability -- a 31 ms call -- was queued behind forty-two
+ * schema fetches. Jack Reacherd, with eight listings and a handful of types,
+ * opened instantly. It was never "that account is slow"; it was that account
+ * having the most product types.
+ *
+ * Three at a time leaves half the pool for whatever is actually on screen.
+ * Nothing waits longer overall -- the same requests are made, and the screen
+ * the person is looking at is no longer behind them.
+ */
+const _SCHEMA_LANES = 2;
+const _SCHEMA_INFLIGHT = {};      // "PT|MKT" -> the request already in the air
+
+/* AND ABANDONED WHEN YOU LEAVE THE ACCOUNT.
+ *
+ * Forty-two schemas take a while even two at a time, and they were carrying on
+ * after the account they belong to had been closed -- so switching account
+ * meant the NEW account's screen competed with the OLD account's warm-up.
+ * Measured: delaying the start only moved the stall from the second account to
+ * the third. They are of no use once you have left; the work is dropped.
+ */
+let _SCHEMA_GEN = 0;
+function schemasAbandon(){ _SCHEMA_GEN++; }
+
+async function _loadOneSchema(pt, q, mp, force){
+  // Asked once even if several parts of the screen want it at the same moment.
+  const key = pt + "|" + mp + (force ? "|f" : "");
+  if(!force && _SCHEMA_INFLIGHT[key]) return _SCHEMA_INFLIGHT[key];
+  const run = (async function(){
+    try{
+      const r = await fetch("/schema/"+encodeURIComponent(pt)+q);
+      const j = await r.json();
+      SCHEMAS[pt] = j.ok ? {opts:(j.enums||{}), req:(j.required||[]), attrs:(j.attrs||[]),
+                            subs:(j.subfields||{}), titles:(j.titles||{}),
+                            _mkt:(j.marketplace||mp)}
+                         : {opts:{}, req:[], attrs:[], subs:{}, titles:{}};
+    }catch(e){
+      SCHEMAS[pt] = {opts:{}, req:[], attrs:[], subs:{}, titles:{}};
+    }finally{
+      delete _SCHEMA_INFLIGHT[key];
+    }
+  })();
+  _SCHEMA_INFLIGHT[key] = run;
+  return run;
+}
+
 async function loadSchemas(pts, force, mkt){
   const mp = (mkt||"").toString().toUpperCase();
   const q = (force?"?refresh=1":"") + (mp?((force?"&":"?")+"mkt="+encodeURIComponent(mp)):"");
-  await Promise.all(pts.map(async pt=>{
-    if(SCHEMAS[pt] && (SCHEMAS[pt].attrs||[]).length && !force)return;  // only skip if genuinely loaded
-    try{const r=await fetch("/schema/"+encodeURIComponent(pt)+q);const j=await r.json();
-        SCHEMAS[pt]=j.ok?{opts:(j.enums||{}),req:(j.required||[]),attrs:(j.attrs||[]),subs:(j.subfields||{}),titles:(j.titles||{}),_mkt:(j.marketplace||mp)}:{opts:{},req:[],attrs:[],subs:{},titles:{}};}catch(e){SCHEMAS[pt]={opts:{},req:[],attrs:[],subs:{},titles:{}};}
-  }));
+  const todo = (pts||[]).filter(function(pt){
+    // only skip if genuinely loaded
+    return pt && !(SCHEMAS[pt] && (SCHEMAS[pt].attrs||[]).length && !force);
+  });
+  let i = 0;
+  const gen = _SCHEMA_GEN;
+  const lane = async function(){
+    while(i < todo.length){
+      // Checked between each one rather than only at the start: the account can
+      // be changed half way through forty-two of them.
+      if(gen !== _SCHEMA_GEN) return;
+      const pt = todo[i++];
+      await _loadOneSchema(pt, q, mp, force);
+    }
+  };
+  await Promise.all(Array.from({length: Math.min(_SCHEMA_LANES, todo.length)}, lane));
 }
 async function refreshSchemaFor(sku){
   const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r)return;

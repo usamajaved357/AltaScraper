@@ -303,6 +303,9 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
             "units": 0, "cogs": 0.0, "cogs_units": 0,
             "orders_settled": 0, "orders_estimated": 0,
             "fees_estimated": 0.0, "reimbursements": 0.0,
+            # How much of the day's VAT we worked out rather than were told,
+            # so a figure that is partly our arithmetic can say so.
+            "vat_derived": 0.0, "orders_vat_derived": 0,
         })
         o["units"] += int(r["units"] or 0)
         o["cogs"] += float(r["cogs"] or 0)
@@ -313,8 +316,39 @@ def complete_by_order_date(config_path, workspace_id, marketplace, start, end,
             o["referral_fees"] += float(s["rf"] or 0)
             o["fba_fees"] += float(s["ff"] or 0)
             o["other_fees"] += float(s["of_"] or 0)
-            o["principal"] += float(s["pr"] or 0)
-            o["tax"] += float(s["tx"] or 0)
+            # WHETHER AMAZON HAS ALREADY TAKEN THE VAT OUT, ASKED PER ORDER.
+            #
+            # Amazon does not always itemise it. Where it acts as the collector
+            # it sends a Tax line and the Principal beside it is NET; where the
+            # seller accounts for the VAT themselves it sends NO tax line and
+            # the Principal is the whole price the buyer paid.
+            #
+            # Both shapes arrive on the same day. Measured on selvora_limited,
+            # 28 July: 15 of 17 orders came back with tax 0.00 and Principal
+            # equal to the full price, and 2 with the VAT itemised. Taking the
+            # day's total as reported therefore called 601.08 "Charged to
+            # buyers (ex VAT)" when about 88.72 of it was VAT -- so Revenue
+            # after VAT was overstated, and profit with it, by the same amount.
+            #
+            # Asked per ORDER because that is the level Amazon answers it at. A
+            # day is a mixture and has no single answer. The unsettled branch
+            # below has always derived it this way; this is the same rule
+            # applied to the settled ones.
+            _pr, _tx = float(s["pr"] or 0), float(s["tx"] or 0)
+            if _tx or not vr:
+                # Amazon itemised it, or this account is not VAT-registered and
+                # there is nothing to take out. Its figures, unaltered.
+                o["principal"] += _pr
+                o["tax"] += _tx
+            else:
+                # No tax line and the owner IS registered: the principal is what
+                # the buyer paid, VAT included. The rate is the owner's own
+                # declaration -- Amazon has not said, and this does not guess it.
+                _v = round(_pr * vr / (1.0 + vr), 2)
+                o["principal"] += round(_pr - _v, 2)
+                o["tax"] += _v
+                o["vat_derived"] = round(o.get("vat_derived", 0.0) + _v, 2)
+                o["orders_vat_derived"] = o.get("orders_vat_derived", 0) + 1
             o["refunds"] += float(s["rd"] or 0)
             o["refund_tax"] += float(s["rdt"] or 0)
             o["refund_units"] += int(s["ru"] or 0)
