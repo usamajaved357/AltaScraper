@@ -310,6 +310,56 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         wsid, mkt = _where()
         vals = {k: v for k, v in (b.get("rule") or {}).items()
                 if k in _sourcing.DEFAULT_RULE}
+
+        # A MISTYPED TARGET MUST NOT LOOK LIKE NO TARGET.
+        # These two are the only free-text/numeric pair here that silently does
+        # nothing when wrong: "Margin"/"gross"/"20%" would all store, fail the
+        # kind check inside target_floor, and leave someone believing a 20%
+        # floor was in force while the repricer priced to the flat £1.
+        if "profit_target_kind" in vals:
+            k = vals["profit_target_kind"]
+            k = "" if k is None else str(k).strip().lower()
+            if k not in ("", "margin", "roi"):
+                return jsonify({"ok": False, "error": (
+                    "profit target must be 'margin' (a share of the selling "
+                    "price) or 'roi' (a share of what you paid) -- got %r"
+                    % vals["profit_target_kind"])}), 400
+            vals["profit_target_kind"] = k or None
+        if "profit_target_pct" in vals:
+            v = vals["profit_target_pct"]
+            if v in (None, ""):
+                vals["profit_target_pct"] = None
+            else:
+                try:
+                    v = float(str(v).replace("%", "").strip())
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": (
+                        "the profit target must be a number of percent, e.g. 20"
+                        )}), 400
+                if v < 0 or v >= 100:
+                    return jsonify({"ok": False, "error": (
+                        "a profit target of %g%% is not a target anything can "
+                        "meet" % v)}), 400
+                vals["profit_target_pct"] = v
+
+        # A margin target competes with Amazon's cut for the same pound, so past
+        # a point there is no price that satisfies it. Said here, once, rather
+        # than as "cannot be priced" against every SKU afterwards.
+        merged = _sourcing.rule_with_defaults(
+            {**_repo.rule_for(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip()),
+             **vals})
+        if (merged.get("profit_target_kind") == "margin"
+                and merged.get("profit_target_pct") is not None):
+            room = (1.0 - float(merged["referral_rate"])) * 100.0
+            if float(merged["profit_target_pct"]) >= room - 1:
+                return jsonify({"ok": False, "error": (
+                    "Amazon takes %.0f%% of the sale, so a MARGIN target has to "
+                    "stay under about %.0f%% to be reachable at any price. %g%% "
+                    "as ROI -- a share of what you paid -- is a different and "
+                    "quite reachable number."
+                    % (float(merged["referral_rate"]) * 100, room - 1,
+                       float(merged["profit_target_pct"])))}), 400
+
         _repo.save_rule(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip(), vals)
         return jsonify({"ok": True, "rule": _sourcing.rule_with_defaults(
             _repo.rule_for(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip()))})

@@ -218,7 +218,8 @@ def pairs_for(config_path, workspace_id, marketplace, sku):
 _RULE_COLS = ("strategy", "require_in_stock", "max_dispatch_days",
               "handling_buffer_days", "referral_rate", "min_price", "max_price",
               "max_change_pct", "min_change", "stale_after_hours",
-              "in_stock_quantity")
+              "in_stock_quantity",
+              "profit_target_kind", "profit_target_pct")
 
 
 def save_rule(config_path, workspace_id, marketplace, sku, values):

@@ -119,6 +119,69 @@ async function sourcingMinPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+// A PERCENTAGE PROFIT FLOOR, on top of the flat one.
+//
+// "i want an option in which i can enroll an option to maintain atleast 20
+//  percent margin or roi, a user should be able to set. and if some items are
+//  less than that flag it"
+//
+// Margin and ROI are asked for in the same breath and are not the same number:
+// on an 11.95 unit a 20% target is 26.08 as margin and 22.76 as ROI. So the
+// choice is made explicitly rather than picked for you, and the difference is
+// spelled out where the choice is made.
+async function sourcingTarget(sku){
+  const scope = sku ? ('"' + sku + '"') : "every enrolled SKU";
+  const kind = prompt(
+    "Least profit you will accept on " + scope + ".\n\n"
+  + "Type  margin  — profit as a share of what the CUSTOMER pays.\n"
+  + "      Strict: Amazon's 15% comes out of the same price, so a margin\n"
+  + "      target above about 84% cannot be met at any price.\n\n"
+  + "Type  roi     — profit as a share of what YOU paid for the unit.\n"
+  + "      On a £11.95 unit, 20% ROI wants £22.76 and 20% margin wants £26.08.\n\n"
+  + "Leave blank to remove the target and go back to the flat minimum profit.",
+    "roi");
+  if(kind === null) return;
+  const k = String(kind).trim().toLowerCase();
+  let pct = null;
+  if(k){
+    const v = prompt("What percentage? e.g. 20", "20");
+    if(v === null) return;
+    pct = parseFloat(String(v).replace("%", "").trim());
+    if(!(pct > 0)){ toast("That is not a percentage."); return; }
+  }
+  try{
+    const j = await (await fetch("/sourcing/rules",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({sku:sku||"", rule:{profit_target_kind: k||null,
+                                        profit_target_pct: k?pct:null}})})).json();
+    // The server refuses an unreachable or mistyped target and says why. Shown
+    // as-is: a target that silently did nothing would leave you believing a
+    // floor was in force while the app priced to the flat £1.
+    if(!j.ok){ toast(j.error||"failed"); return; }
+    toast(k ? ("Target set: " + pct + "% " + k) : "Profit target removed");
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
+// The chip on a row that is not earning what it is supposed to. Deliberately
+// says how far short, not just that it is short -- 0.4% under is a rounding
+// argument and 12% under is a supplier you should stop buying from.
+function _targetChip(t){
+  if(!t) return '';                       // no target set on this SKU
+  if(t.meets === null) return '';          // not enough to tell; not a failure
+  if(t.meets){
+    return '<span class="db-chip" style="background:#12321f;color:#7fd18b" title="'
+      +  'Earning ' + t.actual_pct + '% against a ' + t.target_pct + '% '
+      +  t.kind + ' target.">' + t.kind + ' ' + t.actual_pct + '%</span>';
+  }
+  return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a" title="'
+    +  'This listing is earning ' + t.actual_pct + '% ' + t.kind + ' at its '
+    +  'current price, against your ' + t.target_pct + '% target — '
+    +  t.short_by + ' points short'
+    +  (t.profit != null ? ' (' + _smoney(t.profit) + ' a unit).' : '.')
+    +  '">below target &middot; ' + t.actual_pct + '%</span>';
+}
+
 function sourcingRender(j){
   const body = document.getElementById("srcbody");
   const c = j.counts || {};
@@ -157,10 +220,20 @@ function sourcingRender(j){
     +  '<button class="db-chip" onclick="sourcingMaster('+(SRC_MASTER?"false":"true")+')">'
     +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Master switch: ON'
                    : '<i class="ti ti-lock"></i> Master switch: off')+'</button>'
+    +  '<button class="db-chip" onclick="sourcingTarget(\'\')" title="'
+    +  'The least profit you will accept, as a percentage. Applies to every '
+    +  'enrolled SKU unless one has its own.">'
+    +  '<i class="ti ti-target"></i> '
+    +  (((j.rule||{}).profit_target_kind && (j.rule||{}).profit_target_pct)
+        ? ('Target: '+(j.rule).profit_target_pct+'% '+(j.rule).profit_target_kind)
+        : 'Profit target: none')
+    +  '</button>'
     +  '<span class="cc" style="font-size:11.5px;align-self:center">'
     +  (c.update||0)+' would change &middot; '+(c.out_of_stock||0)+' would go out of stock &middot; '
     +  (c.none||0)+' unchanged'
     +  ((c.blocked||0) ? ' &middot; <b>'+c.blocked+' held</b>' : '')
+    +  ((c.below_target||0) ? ' &middot; <b style="color:#e88a8a">'+c.below_target
+                              +' below target</b>' : '')
     +  '</span></div>';
 
   if(j.note){
@@ -275,6 +348,7 @@ function sourcingRow(r, i){
     +  '<code style="font-size:12px">'+_sesc(r.sku)+'</code>'
     +  _actionChip(d)
     +  _driftChip(r.drift)
+    +  _targetChip(d.target)
     +  '<span style="flex:1"></span>'
     +  '<span class="cc" style="font-size:11.5px">now '+_smoney(cur.price)
     +  (cur.lead_days!=null ? ' &middot; '+cur.lead_days+'d handling' : '')
@@ -299,6 +373,23 @@ function sourcingRow(r, i){
   h += '<div id="'+id+'" style="display:none;margin-top:9px">';
 
   h += _priceBreakdown(d.breakdown, cur);
+
+  // What the target is doing to THIS listing, under the sum it changes. The
+  // chip above is the flag; this says what it would take to clear it, which is
+  // the number you need to decide whether the supplier is still worth buying
+  // from at all.
+  const tg = d.target, bd = d.breakdown || {};
+  if(tg && tg.meets === false){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:7px;padding:6px 8px;'
+      +  'border:1px solid #4a2323;background:#2a1212;border-radius:6px">'
+      +  'At its current price this earns <b>'+tg.actual_pct+'%</b> '+tg.kind
+      +  (tg.profit!=null ? ' &mdash; '+_smoney(tg.profit)+' a unit' : '')
+      +  ', against your <b>'+tg.target_pct+'%</b> target. '
+      +  (bd.target_floor!=null
+          ? 'It would need <b>'+_smoney(bd.target_floor)+'</b> to clear it.'
+          : '')
+      +  '</div>';
+  }
 
   // The cost comparison in words, under the sum it affects. The chip in the
   // header is the flag; this is the sentence that says what it means, because
@@ -356,6 +447,15 @@ function sourcingRow(r, i){
         : '<b>'+_smoney(mp)+'</b>')
     +  ' <button class="db-chip" onclick="sourcingMinPrice('+_sarg(r.sku)+')">'
     +  (mp==null?'Set':'Change')+'</button></div>';
+  // The target, per SKU. A cheap fast-moving line and an expensive slow one do
+  // not want the same percentage, so the account-wide setting is a default
+  // rather than a rule.
+  const tk = (r.rule||{}).profit_target_kind, tp = (r.rule||{}).profit_target_pct;
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Least profit accepted: '
+    +  ((tk && tp!=null) ? '<b>'+tp+'% '+_sesc(tk)+'</b>'
+                         : '<span class="cc">the flat minimum only</span>')
+    +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
+    +  ((tk && tp!=null)?'Change':'Set')+'</button></div>';
   if(d.inputs_age_mins!=null){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';

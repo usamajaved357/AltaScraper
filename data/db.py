@@ -370,6 +370,14 @@ CREATE TABLE IF NOT EXISTS sourcing_rules (
     handling_buffer_days INTEGER,
     min_margin_pct       REAL,
     target_margin_pct    REAL,
+    -- A PERCENTAGE profit target, on top of the flat min_profit. 'margin' is a
+    -- share of what the customer pays, 'roi' a share of what you paid, and the
+    -- two give different prices from the same cost. NULL = no target.
+    -- (min_margin_pct and target_margin_pct above are from the repricer's first
+    --  draft and nothing reads them; left in place because dropping a column in
+    --  SQLite rewrites the table for no gain.)
+    profit_target_kind   TEXT,
+    profit_target_pct    REAL,
     referral_rate        REAL,
     min_price            REAL,
     max_price            REAL,
@@ -583,6 +591,10 @@ _ADDED_COLUMNS = [
     ("finance_daily", "tax", "REAL"),
     ("finance_daily", "refund_tax", "REAL"),
     ("sourcing_sources", "shipping_override", "REAL"),
+    # The percentage profit target. In SCHEMA too, for databases created after
+    # this; here so the ones that already exist gain it without being rebuilt.
+    ("sourcing_rules", "profit_target_kind", "TEXT"),
+    ("sourcing_rules", "profit_target_pct", "REAL"),
     # POSTAGE THE BUYER PAID, kept beside the item price rather than folded into
     # it. The owner counts revenue as everything the buyer handed over --
     # "this is the total revenue i generated" -- so the two have to be separable:
