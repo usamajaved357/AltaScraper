@@ -1407,6 +1407,12 @@ async function fetchLiveImages(){
           const it=(LIVE_ITEMS||[]).find(x=>x.sku===sku); if(it){ it.img=url; }
           const slot=document.getElementById("liveimg_"+sid(sku));
           if(slot){ const box=slot.parentNode; box.classList.remove("noimg"); box.innerHTML='<img src="'+url+'" loading="lazy">'; }
+          // A live listing that ALSO has a draft here is drawn as a normal card,
+          // which has no liveimg_ slot to patch -- it reads Amazon's image
+          // through _cardImages() at render time instead. Without this the card
+          // kept showing the draft's own picture until something else happened
+          // to redraw, so the image arrived and nothing on screen changed.
+          else changed = true;
         });
         // apply REAL status (from getListingsItem) which is more accurate than the report
         Object.entries(j.statuses||{}).forEach(([sku,st])=>{
