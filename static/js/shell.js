@@ -509,7 +509,11 @@ async function enterDropshipping(){
   window.WS_FEATURES=[];
   window.WS_BRAND="";
   ACTIVE_WS={key:"", label:"Dropshipping"};
-  document.getElementById("mktswitch").innerHTML="";
+  // The toolbar marketplace strip this used to clear no longer exists; the
+  // sidebar row is repainted below by renderSwitchRows(), which dims it because
+  // the dropshipping workspace has no marketplace of its own. Unguarded, this
+  // line threw the moment the element went, and took the rest of the function
+  // with it -- including navTo and loadRows.
   var sw=document.getElementById('srcswitch'); if(sw) sw.style.display='none';
   LIST_SOURCE='drafts'; LIVE_ITEMS=[];
   if(typeof renderSwitchRows === "function") renderSwitchRows();
@@ -517,17 +521,21 @@ async function enterDropshipping(){
   altaSyncUrl();
   loadRows();
 }
+// WHICH MARKETPLACE IS OPEN, AND WHAT IT SPENDS.
+//
+// This used to draw the marketplace strip in the toolbar AS WELL as settle the
+// state behind it. The strip is gone -- the sidebar row is the one control now
+// -- but the state is not: WS_MARKET has to be valid for the account being
+// opened, and CUR_SYMBOL follows from it. Deleting this along with the markup
+// would have left every price on screen in the previous account's currency.
+//
+// The three things the strip drew are all still reachable: draft-only is on the
+// account pill and in the account switcher, and detect / set-as-default moved
+// into the sidebar's marketplace menu.
 function buildAccountMktSwitch(a){
-  const host=document.getElementById("mktswitch"); if(!host) return;
-  if(!a.has_creds){
-    host.innerHTML='<span class="mktlabel" title="Add SP-API credentials to enable live features">draft-only · <a href="#" onclick="openAccountEditor(\''+esc(a.id)+'\');return false" style="color:var(--accent2)">connect account</a></span>';
-    return;
-  }
+  if(!a || !a.has_creds) return;
   const mkts=a.marketplaces&&a.marketplaces.length?a.marketplaces:[];
-  if(!mkts.length){
-    host.innerHTML='<button class="mktbtn" onclick="detectMarketplaces(\''+esc(a.id)+'\')"><i class="ti ti-radar"></i> Detect marketplaces</button>';
-    return;
-  }
+  if(!mkts.length) return;
   // keep the current selection if it's valid for this account; else default to first
   if(!WS_MARKET || (WS_MARKET!=="__all__" && mkts.indexOf(WS_MARKET)<0)){ WS_MARKET=mkts[0]; }
   if(WS_MARKET!=="__all__"){
@@ -536,20 +544,15 @@ function buildAccountMktSwitch(a){
     // the two had already drifted apart on which countries use the euro.
     CUR_SYMBOL = mktSymbol(WS_MARKET) || "\u00a3";
   }
-  host.innerHTML =
-    `<button class="mktbtn ${WS_MARKET==='__all__'?'on':''}" title="Show listings across every marketplace (fetches each — can be slow)" onclick="switchAccountMarket('__all__')">All</button>`
-    + mkts.map(m=>{
-        const isDflt = a.default_marketplace===m;
-        // The flag AND the code. A flag alone is guesswork at this size, and
-        // several of these are blue-and-white European ones.
-        return `<button class="mktbtn ${m===WS_MARKET?'on':''}" title="${esc(mktName(m))}" onclick="switchAccountMarket('${esc(m)}')">${mktFlag(m)} ${esc(mktShort(m))}${isDflt?' <span title="default" style="color:var(--warn)">\u2605</span>':''}</button>`;
-      }).join("")
-    + `<button class="mktbtn" title="Set current marketplace (${esc(WS_MARKET||'')}) as this account\u2019s default" onclick="setDefaultMarketplace()">\u2606 default</button>`
-    + '<button class="mktbtn" title="Re-detect" onclick="detectMarketplaces(\''+esc(a.id)+'\')"><i class="ti ti-refresh"></i></button>';
+  // The sidebar row shows which marketplace is live, so it is repainted
+  // whenever this settles on a different one than was showing.
+  if(typeof renderSwitchRows === "function") renderSwitchRows();
 }
 async function detectMarketplaces(accountId){
-  var host=document.getElementById("mktswitch");
-  if(host) host.innerHTML='<span class="mktlabel"><span class="genspin"></span> detecting…</span>';
+  // Detection takes a few seconds and used to show a spinner in the toolbar
+  // strip. With the strip gone this is started from a menu that closes on the
+  // click, so the only place left to say anything is a toast.
+  toast("Asking Amazon which marketplaces this account sells in…");
   try{
     var j=await (await fetch("/accounts/detect_marketplaces",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({id:accountId})})).json();

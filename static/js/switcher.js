@@ -104,8 +104,15 @@ function openMarketSwitch(ev){
     return;
   }
   const mkts = (a.marketplaces && a.marketplaces.length) ? a.marketplaces : [];
+  // Detecting them is an ACTION, not an error. This used to be a dead end that
+  // sent you to another screen to press a button that also lived in the
+  // marketplace strip in the toolbar -- and when that duplicate strip was
+  // removed, this was the only way left to reach it.
   if(!mkts.length){
-    toast("No marketplaces detected for this account yet. Open Account & sheets to detect them.");
+    _switchMenu(anchor, [{kind: "detect", label: "Detect marketplaces",
+                          icon: '<i class="ti ti-radar"></i>',
+                          note: "asks Amazon which this account sells in"}],
+                function(){ detectMarketplaces(a.id); });
     return;
   }
   const items = mkts.map(function(m){
@@ -116,7 +123,20 @@ function openMarketSwitch(ev){
   items.push({kind: "mkt", id: "__all__", label: "All marketplaces",
               on: WS_MARKET === "__all__", icon: "🌐",
               note: "slower — fetches each"});
-  _switchMenu(anchor, items, function(it){ switchAccountMarket(it.id); });
+  // The two things the old toolbar strip could do that a plain list cannot.
+  // They came with it when it was removed rather than being dropped: setting a
+  // default was reachable from nowhere else at all.
+  if(WS_MARKET && WS_MARKET !== "__all__" && a.default_marketplace !== WS_MARKET){
+    items.push({kind: "default", label: "Set " + mktName(WS_MARKET) + " as default",
+                icon: "☆", note: "opens here next time"});
+  }
+  items.push({kind: "detect", label: "Re-detect marketplaces",
+              icon: '<i class="ti ti-refresh"></i>'});
+  _switchMenu(anchor, items, function(it){
+    if(it.kind === "default") setDefaultMarketplace();
+    else if(it.kind === "detect") detectMarketplaces(a.id);
+    else switchAccountMarket(it.id);
+  });
 }
 
 /* Keep the two rows showing what is actually open. Called after every switch,

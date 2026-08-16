@@ -717,6 +717,50 @@ function _rowImages(r){
   if(!urls.length) urls=Object.keys(a).filter(k=>/image_locator/i.test(k)).map(k=>a[k]).filter(Boolean);
   return urls;
 }
+
+// WHAT AMAZON IS ACTUALLY SHOWING FOR THIS LISTING, if we know.
+//
+// LIVE_ITEMS is the catalogue Amazon returned, and fetchLiveImages() fills each
+// entry's .img from getListingsItem -- the real main image on the real listing.
+// Matched by SKU first and only then by ASIN: two of your SKUs can sit on one
+// ASIN, and in that case the SKU is the one that identifies the listing.
+function _liveImageFor(r){
+  if(typeof LIVE_ITEMS === "undefined" || !LIVE_ITEMS || !LIVE_ITEMS.length) return "";
+  const norm = v => String(v == null ? "" : v).trim().toUpperCase();
+  const s = norm(r && r.sku), a = norm(r && r.asin);
+  let byAsin = "";
+  for(const it of LIVE_ITEMS){
+    if(!it) continue;
+    const url = it.img || it.image || "";
+    if(!url) continue;
+    if(s && norm(it.sku) === s) return url;
+    if(a && !byAsin && norm(it.asin) === a) byAsin = url;
+  }
+  return byAsin;
+}
+
+// THE PICTURE A CARD OR ROW SHOWS.
+//
+// "the images on the cards should reflect the images which are on amazon,
+//  atleast the live listings section should follow this rule"
+//
+// A listing that is live on Amazon AND has a draft here was drawn from the
+// DRAFT's attributes -- which hold whatever the generator put there, often the
+// competitor or eBay photo the listing was built from. So the card showed the
+// picture the listing came from rather than the one customers are looking at,
+// and the two are frequently not the same product angle at all. Only the
+// draft-less tiles used Amazon's own image.
+//
+// Deliberately NOT done by changing _rowImages(): that feeds the AI reference
+// picker and the image studio, where the SOURCE photo is the right answer --
+// eBay is the truth of what the item is, which is not the same question as what
+// Amazon is currently displaying.
+function _cardImages(r){
+  const live = _liveImageFor(r);
+  const own = _rowImages(r) || [];
+  if(!live) return own;
+  return [live].concat(own.filter(u => u !== live));
+}
 // The tile's corner dot. Returns CSS VARIABLES, not literal hex, so the dot and
 // the status pill for the same row can never drift apart -- they now read from
 // one set of tokens. LIVE is neutral grey here for the same reason .b-LIVE is:
@@ -785,7 +829,7 @@ function card(r){
   const _blocker = (_st==="IP_HOLD" || _st==="ERROR");
   const realIssue = _restFlag || _blocker;
   const flagRed = _restProhibited || _blocker;   // gated-only -> amber
-  const urls=_rowImages(r);
+  const urls=_cardImages(r);
   const thumb = (urls&&urls.length)
     ? `<img src="${esc(urls[0])}" loading="lazy" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
     : `<i class="ti ti-photo"></i>`;
@@ -1192,7 +1236,7 @@ function _statusPill(s){
 function tableRow(r){
   // Same image source the tile uses, so the two views cannot disagree about
   // which picture belongs to a listing.
-  const urls = (typeof _rowImages === "function") ? (_rowImages(r) || []) : [];
+  const urls = (typeof _cardImages === "function") ? (_cardImages(r) || []) : [];
   const thumb = urls.length
     ? `<div class="thumb"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
     : `<div class="thumb"><i class="ti ti-photo"></i></div>`;

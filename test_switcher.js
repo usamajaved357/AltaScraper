@@ -104,11 +104,19 @@ truthy("every marketplace is offered", html.indexOf("All marketplaces") >= 0);
 // Saying it is slow is the difference between a choice and a trap.
 truthy("  and warned that it is slower", html.indexOf("fetches each") >= 0);
 
-console.log("\n=== an account with no marketplaces says so rather than opening empty ===");
+console.log("\n=== an account with no marketplaces offers to go and find them ===");
+// CHANGED DELIBERATELY. This used to open no menu and toast "open Account &
+// sheets to detect them" -- a dead end that sent you somewhere else to press a
+// button which ALSO lived in the marketplace strip in the Listings toolbar.
+// That strip has been removed as a duplicate of this row, so this is now the
+// only way to reach detection at all, and pointing at a third screen would
+// leave an account with no marketplaces with no way out.
 s = sandbox();
 vm.runInContext("CUR_ACCOUNT = ACCOUNTS[2]; openMarketSwitch(null);", s);
-check("no menu opened", s.made.length, 0);
-truthy("and it said why", String(s._toast || "").indexOf("No marketplaces") >= 0);
+check("a menu opened", s.made.length, 1);
+truthy("offering to detect them", s.made[0].innerHTML.indexOf("Detect marketplaces") >= 0);
+truthy("  and saying what that does",
+       s.made[0].innerHTML.indexOf("asks Amazon which") >= 0);
 
 console.log("\n=== the dropshipping workspace has no marketplace of its own ===");
 s = sandbox();
