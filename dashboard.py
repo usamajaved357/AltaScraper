@@ -127,21 +127,26 @@ def _img_token(relpath: str) -> str:
 def _public_media_url(media_url: str) -> str:
     """Turn a local '/media/<relpath>' path into a full, public, Amazon-fetchable URL.
     Returns '' if it isn't a local media path or no base URL can be determined."""
+    # ONE BUILDER, in domain/image_urls.py. This used to assemble the URL here
+    # and the SUBMIT path had no way to build one at all, so the same picture
+    # worked when pushed to a live listing and was silently dropped when the
+    # draft it came from was submitted (Rule 12).
+    from domain import image_urls as _iu
+    out = _iu.public_url(CONFIG_PATH, media_url)
+    if out:
+        return out
+    # Inside a request we can still answer from the host we were reached on,
+    # which is what makes this work on a deployment where nobody has set
+    # PUBLIC_BASE_URL. The generator cannot do this -- it has no request -- which
+    # is exactly why the setting exists.
     m = re.match(r"^/media/(.+)$", str(media_url or ""))
-    if not m:
+    if not m or ".." in m.group(1):
         return ""
     relpath = m.group(1)
-    if ".." in relpath:
+    try:
+        base = request.host_url.rstrip("/")
+    except Exception:
         return ""
-    base = (os.environ.get("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
-    if not base:
-        try:
-            base = request.host_url.rstrip("/")
-        except Exception:
-            base = ""
-    if not base:
-        return ""
-    # Amazon requires https for image locators; force it (Render terminates TLS).
     if base.startswith("http://"):
         base = "https://" + base[len("http://"):]
     from urllib.parse import quote as _q

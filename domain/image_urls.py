@@ -87,6 +87,56 @@ def token(config_path, relpath):
                     hashlib.sha256).hexdigest()[:24]
 
 
+def base_url(config_path=None):
+    """Where this app is reachable from the open internet, or "".
+
+    PUBLIC_BASE_URL wins; otherwise public_base_url in config.json, which is the
+    one a person can set without touching the deployment. Empty means we do not
+    know -- and an image URL built on a guess is worse than no image, because
+    Amazon accepts it, fetches nothing, and the listing goes up without pictures.
+    """
+    v = (os.environ.get("PUBLIC_BASE_URL", "") or "").strip()
+    if not v and config_path:
+        try:
+            import json
+            with open(config_path, encoding="utf-8") as fh:
+                v = str((json.load(fh) or {}).get("public_base_url") or "").strip()
+        except Exception:
+            v = ""
+    v = v.rstrip("/")
+    # Amazon requires https for an image locator, and the host in front of this
+    # app terminates TLS.
+    if v.startswith("http://"):
+        v = "https://" + v[len("http://"):]
+    return v
+
+
+def public_url(config_path, media_path):
+    """'/media/x/y.jpg' -> a full signed URL Amazon can fetch, or "".
+
+    The SAME address the image library hands out, built in one place so a picture
+    that works when pushed to a live listing cannot fail when the same draft is
+    submitted -- those were two different code paths reaching two different
+    answers, and the submit one quietly dropped the image.
+    """
+    p = str(media_path or "").strip()
+    if p.startswith("http://") or p.startswith("https://"):
+        return p                          # already public; nothing to do
+    if not p.startswith("/media/"):
+        return ""
+    rel = p[len("/media/"):]
+    if not rel or ".." in rel:
+        return ""
+    base = base_url(config_path)
+    if not base:
+        return ""
+    # The path is quoted but the TOKEN is signed over the raw path, because that
+    # is what the route re-signs when it checks: Flask hands the handler the
+    # decoded path, so signing the encoded form would never match.
+    from urllib.parse import quote as _q
+    return "%s/img/%s/%s" % (base, token(config_path, rel), _q(rel))
+
+
 def diag(config_path):
     """For /diag: is the key persistent, and since when."""
     p = _path(config_path)
