@@ -549,6 +549,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_orderfees_uniq
     ON order_fees(workspace_id, marketplace, order_id, posted_date);
 CREATE INDEX IF NOT EXISTS idx_orderfees_order
     ON order_fees(workspace_id, marketplace, order_id);
+
+-- Amazon's field definitions for one product type, kept between restarts.
+--
+-- These were held in memory only, so every restart threw them away and the app
+-- fetched all of them from Amazon again -- 42 of them on one account, seconds
+-- each, and each one spends quota. A product type's definition changes rarely
+-- (Amazon revises them occasionally, not daily), so it is worth keeping.
+--
+-- Keyed by marketplace as well as type: the UK and US definitions of the same
+-- product type are genuinely different documents, with different required
+-- fields and different allowed values.
+CREATE TABLE IF NOT EXISTS schema_cache (
+    product_type  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    payload       TEXT NOT NULL,          -- the parsed schema, as JSON
+    fetched_at    TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (product_type, marketplace)
+);
 """
 
 

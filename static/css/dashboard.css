@@ -1563,6 +1563,11 @@
      about a few orders and both figures are real. Marked so it is noticed and
      not coloured like an error, which it is not. */
   .gtie{border-left:2px solid var(--muted);padding-left:8px}
+  /* "There is nothing here" said out loud. Not an error colour: an account that
+     was not trading yet is a fact about the business, not a fault in the app. */
+  .gnodata{border-left:2px solid var(--accent2,#6ac7e8);padding-left:8px;
+           display:block;line-height:1.5}
+  .gnodata .glbl{margin-right:6px}
   .glink{background:none;border:0;padding:0;font-size:12px;font-weight:500;
          color:var(--accent2);cursor:pointer}
   .glink:hover{text-decoration:underline}

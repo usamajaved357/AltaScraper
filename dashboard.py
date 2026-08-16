@@ -656,6 +656,23 @@ def _load_schema(pt: str) -> dict:
     _ck = f"{pt}::{_mkt}"
     if _ck in _state["schemas"]:
         return _state["schemas"][_ck]
+    # KEPT BETWEEN RESTARTS, not only for the life of this process.
+    #
+    # The dict above is lost every time the app restarts -- every deploy, and
+    # every idle spin-down on Render -- so the app used to re-fetch every
+    # product type from Amazon afterwards. That is two calls each plus a CDN
+    # download, 42 of them on one account, and it spends the same quota the
+    # sales figures are waiting on. Product type definitions barely change, so
+    # a copy on disk is good for a fortnight. See domain/schema_cache.py, which
+    # holds the rules; nothing about how to talk to Amazon lives there.
+    try:
+        from domain import schema_cache as _sc
+        _hit = _sc.read(CONFIG_PATH, pt, _mkt)
+        if _hit is not None:
+            _state["schemas"][_ck] = _hit
+            return _hit
+    except Exception:
+        pass                    # a cache must never be the reason this fails
     info = {"enums": {}, "required": [], "attrs": [], "subfields": {}, "titles": {}}
     try:
         import urllib.request
@@ -780,6 +797,15 @@ def _load_schema(pt: str) -> dict:
     # DON'T cache; let the next call retry.
     if info.get("attrs"):
         _state["schemas"][_ck] = info
+        # ...and on disk, so the next restart does not pay for this again. Same
+        # condition deliberately: schema_cache refuses an empty one as well, but
+        # the rule is worth being true in both places rather than relied on in
+        # one. A failure to store is not a failure to load.
+        try:
+            from domain import schema_cache as _sc
+            _sc.write(CONFIG_PATH, pt, _mkt, info)
+        except Exception:
+            pass
     return info
 
 

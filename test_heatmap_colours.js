@@ -1,18 +1,30 @@
-/* The profit-and-loss heatmap has a logic, and it was not following it.
+/* The P&L heatmap's colour has one meaning: IMPACT ON PROFIT.
  *
- * "the colors in the profit and loss heatmap has a logic, i want you to check
- *  if that is following the logic"
+ * Stated by the owner, and it is the right model:
  *
- * IT WAS NOT. Every row was shaded on one green scale running from the row's
- * lowest value to its highest. On a Profit row that goes from -50 to +100 that
- * made a fifty-pound LOSS the palest green on the row -- green meaning good,
- * and a faint green reading as "a quiet day" rather than "money went out". The
- * sign, which is the only thing anyone looks at on a profit row, was the one
- * thing the colour did not carry.
+ *   "Hue = direction of impact on profit, not just up/down. Income lines
+ *    (Revenue, Gross Profit, Net Profit, Units, Orders): Green = up vs prior
+ *    period, Red = down. Cost lines (COGS, FBA fees, Referral fees, Ad Spend,
+ *    Refunds, Storage): Inverse - Green = down (favorable to profit), Red = up
+ *    (unfavorable). So red always means bad for profit, green always good."
  *
- * The logic a P&L heatmap has to follow: DIVERGE AT ZERO. Red below, green
- * above, intensity from distance from zero -- not from position between the
- * row's two extremes.
+ * WHAT IT USED TO DO. Every row was shaded on one green scale by the SIZE of
+ * the number, so a month of record Amazon fees was the darkest green on the
+ * sheet -- green meaning good. The colour carried "this is a big number", which
+ * nobody needs, because the number is printed in the cell.
+ *
+ *   "Intensity / saturation = magnitude of change ... It's scaled per row, not
+ *    across the whole table. A dark red in Referral Fees does NOT equal same $
+ *    as dark red in Revenue - it's dark because it's a big move for that line."
+ *
+ * Which is why the scale is a PERCENTAGE against the previous column: a
+ * percentage is per-row by construction.
+ *
+ * ONE THING IS KEPT from the rule this replaces. A profit row that goes -80
+ * then -50 has improved, and on change alone the -50 would be green -- a green
+ * cell on a day that lost fifty pounds. On the rows where the sign is the whole
+ * point, a negative value is red regardless. That is not an exception to "red
+ * means bad for profit"; it is the clearest case of it.
  */
 "use strict";
 const fs = require("fs");
@@ -21,71 +33,94 @@ let fails = 0;
 function check(label, got, want){
   const ok = JSON.stringify(got) === JSON.stringify(want);
   if(!ok) fails++;
-  console.log("  " + label.padEnd(62) + (ok ? "OK" : "FAIL got=" + JSON.stringify(got)
+  console.log("  " + label.padEnd(64) + (ok ? "OK" : "FAIL got=" + JSON.stringify(got)
                                                    + " want=" + JSON.stringify(want)));
 }
 function truthy(label, got){ check(label, !!got, true); }
 
 const src = fs.readFileSync("D:/AltaScraper/static/js/sales.js", "utf8");
-const tint = new Function("V", "LO", "HI", "KEY", `
-  ${src.slice(src.indexOf("const _S_SIGNED"), src.indexOf("/* ---- actions"))}
-  return _sTint(V, LO, HI, KEY);
-`);
+const body = src.slice(src.indexOf("const _S_SIGNED"), src.indexOf("/* ---- actions"));
+const tint = new Function("V", "P", "K", "G", body + " return _sTint(V,P,K,G);");
+const delta = new Function("V", "P", body + " return _sDeltaPct(V,P);");
 
-const isRed = c => /239, ?68, ?68/.test(c);
-const isGreen = c => /45, ?212, ?168/.test(c);
-const alpha = c => { const m = /,\s*\.?(\d+)\)/.exec(c || ""); return m ? Number("." + m[1]) : 0; };
+const isRed = c => /239,\s?68,\s?68/.test(c);
+const isGreen = c => /45,\s?212,\s?168/.test(c);
+const alpha = c => { const m = /,\s*\.(\d+)\)/.exec(c || ""); return m ? Number("." + m[1]) : 0; };
 
-console.log("=== a profit row that contains a loss ===");
-// The row this exists for: -50 to +100.
-truthy("a loss is RED", isRed(tint(-50, -50, 100, "profit")));
-truthy("  and so is a small one", isRed(tint(-5, -50, 100, "profit")));
-truthy("a profit is GREEN", isGreen(tint(100, -50, 100, "profit")));
-truthy("  and so is a small one", isGreen(tint(5, -50, 100, "profit")));
-check("break-even is left unshaded", tint(0, -50, 100, "profit"), "");
+console.log("=== an INCOME line: up is good ===");
+truthy("revenue up is green", isGreen(tint(130, 100, "ordered_sales", "up")));
+truthy("revenue down is red", isRed(tint(70, 100, "ordered_sales", "up")));
+truthy("orders up is green", isGreen(tint(12, 10, "orders", "up")));
+truthy("units down is red", isRed(tint(8, 10, "units", "up")));
+
+console.log("\n=== a COST line: the SAME movement means the opposite ===");
+// This is the whole point. Fees rising is a red day even though the number rose.
+truthy("fees UP is RED", isRed(tint(130, 100, "referral_fees", "down")));
+truthy("fees DOWN is GREEN", isGreen(tint(70, 100, "referral_fees", "down")));
+truthy("ad spend up is red", isRed(tint(130, 100, "spend", "down")));
+truthy("refunds down is green", isGreen(tint(70, 100, "refunds", "down")));
+truthy("cost of goods up is red", isRed(tint(130, 100, "cogs", "down")));
 
 console.log("\n  -- the old behaviour, stated so it cannot come back --");
-// Under the single-hue scale, -50 was f=0 and therefore the PALEST GREEN.
-truthy("a loss is not shaded green at all",
-       !isGreen(tint(-50, -50, 100, "profit")));
+// Under the size scale, the biggest fee figure on the row was the darkest GREEN.
+truthy("a rise in fees is not green",
+       !isGreen(tint(130, 100, "referral_fees", "down")));
+truthy("and a fall in revenue is not green",
+       !isGreen(tint(70, 100, "ordered_sales", "up")));
 
-console.log("\n=== intensity comes from distance from ZERO ===");
-truthy("a bigger loss is stronger than a small one",
-       alpha(tint(-50, -50, 100, "profit")) > alpha(tint(-5, -50, 100, "profit")));
-truthy("a bigger profit is stronger than a small one",
-       alpha(tint(100, -50, 100, "profit")) > alpha(tint(5, -50, 100, "profit")));
-// Each side scaled against its own worst case, so one catastrophic day does
-// not flatten every profit on the row into an identical shade.
-const withDisaster = tint(100, -5000, 100, "profit");
-const without = tint(100, -50, 100, "profit");
-check("a huge loss elsewhere does not wash out the profits",
-      alpha(withDisaster), alpha(without));
+console.log("\n=== intensity is the SIZE of the change ===");
+check("under 1% is flat and left unshaded", tint(100.4, 100, "ordered_sales", "up"), "");
+truthy("a 3% move is faint", alpha(tint(103, 100, "ordered_sales", "up")) > 0);
+truthy("  and a 30% move is stronger",
+       alpha(tint(130, 100, "ordered_sales", "up"))
+       > alpha(tint(103, 100, "ordered_sales", "up")));
+truthy("the steps climb all the way",
+       alpha(tint(103, 100, "ordered_sales", "up"))
+       < alpha(tint(107, 100, "ordered_sales", "up"))
+       && alpha(tint(107, 100, "ordered_sales", "up"))
+       < alpha(tint(115, 100, "ordered_sales", "up"))
+       && alpha(tint(115, 100, "ordered_sales", "up"))
+       < alpha(tint(130, 100, "ordered_sales", "up")));
+// Scaled per ROW by construction: the same PERCENTAGE gives the same strength
+// whatever the units, so a big move in fees is as visible as one in revenue.
+check("the same % move is the same strength on any row",
+      alpha(tint(130, 100, "ordered_sales", "up")),
+      alpha(tint(70, 100, "referral_fees", "down")));
 
-console.log("\n=== margin behaves the same way ===");
-truthy("a negative margin is red", isRed(tint(-12, -12, 30, "margin_pct")));
-truthy("a positive one is green", isGreen(tint(30, -12, 30, "margin_pct")));
+console.log("\n=== a loss is red however it got there ===");
+truthy("a loss that is improving is still red", isRed(tint(-50, -80, "profit", "up")));
+truthy("  and at full strength", alpha(tint(-50, -80, "profit", "up")) >= 0.4);
+truthy("a negative margin is red", isRed(tint(-5, -2, "margin_pct", "up")));
+truthy("a profit that grew is green", isGreen(tint(125, 100, "profit", "up")));
+truthy("a profit that shrank is red", isRed(tint(75, 100, "profit", "up")));
 
-console.log("\n=== rows that cannot go negative keep the single scale ===");
-// Sessions, units, revenue: there is no "bad" end, only more and less.
-truthy("the lowest sessions figure is still green",
-       isGreen(tint(0, 0, 500, "sessions")));
-truthy("  and the highest is stronger",
-       alpha(tint(500, 0, 500, "sessions")) > alpha(tint(0, 0, 500, "sessions")));
-check("a row where every value is identical is not shaded",
-      tint(5, 5, 5, "sessions"), "");
+console.log("\n=== the change itself ===");
+check("a straightforward rise", delta(130, 100), 30);
+check("a fall", delta(50, 100), -50);
+check("from zero to something is a big move, not infinity", delta(50, 0), 100);
+check("zero to zero is flat", delta(0, 0), 0);
+check("nothing before it cannot be a change", delta(100, null), null);
+check("and neither can a missing value", delta(null, 100), null);
 
-console.log("\n=== nothing is shaded on colour alone ===");
-// Every cell prints its number, so the grid reads in black and white and to
-// anyone who cannot separate red from green. Colour only ranks.
-truthy("the cell writes its value into the table, not just a tooltip",
-       />'\+_sEsc\(txt\)\+'<\/td>/.test(src));
-check("a missing day gets no shading at all", tint(null, 0, 10, "profit"), "");
-check("  and neither does a value that is not a number",
-      tint("n/a", 0, 10, "profit"), "");
+console.log("\n=== nothing rests on colour alone ===");
+check("the first column is not shaded", tint(100, null, "ordered_sales", "up"), "");
+check("a missing day is not shaded", tint(null, 100, "profit", "up"), "");
+check("  nor a value that is not a number", tint("n/a", 100, "profit", "up"), "");
+truthy("every cell prints its number", />'\+_sEsc\(txt\)\+'<\/td>/.test(src));
+// "Hover any cell - it shows exact $ and % delta vs prior that drove the color."
+truthy("and the hover gives the figure it is compared against",
+       /% vs "/.test(src) && /_sNum\(prev, m\.kind, ser\.currency\)/.test(src));
+truthy("  saying which way that is for profit",
+       /better for profit/.test(src) && /worse for profit/.test(src));
 
-console.log("\n=== the signed list names the metrics that can go negative ===");
+console.log("\n=== the direction comes from the metric, not from this file ===");
+// `good` is set beside each metric's own definition in domain/sales_data.py, so
+// a new cost row cannot be added and be shaded as though it were income.
+truthy("the tint is told which way is good", /_sTint\(shown, prev, m\.key, m\.good\)/.test(src));
+truthy("the server sends it", /"good": good/.test(
+       fs.readFileSync("D:/AltaScraper/routes/sales_routes.py", "utf8")));
 ["profit", "margin_pct"].forEach(function(k){
-  truthy("  " + k, src.indexOf('"' + k + '"') >= 0);
+  truthy("  " + k + " is known to be signed", src.indexOf('"' + k + '"') >= 0);
 });
 
 console.log("\nFAILURES: " + fails);
