@@ -3494,7 +3494,11 @@ def build_app(backend=None):
     # here writes to Amazon. Only SKUs enrolled on that screen are ever read.
     import routes.sourcing_routes as _sourcing_routes
     _sourcing_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
-                              _active_account=_active_account, _state=_state)
+                              _active_account=_active_account, _state=_state,
+                              # The SAME dict the listings screen edits, so the
+                              # repricer shows the cost a person typed rather
+                              # than re-deriving one from the SKU (Rule 12).
+                              _COGS_OVERRIDE=_COGS_OVERRIDE)
 
     # The generator's INPUT, imported on demand instead of read live from Google.
     import routes.input_routes as _input_routes
