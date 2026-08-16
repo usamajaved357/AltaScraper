@@ -75,10 +75,13 @@ function inputQueueRender(){
   let h = '<div style="padding:10px 12px">';
 
   // ---- add a product -------------------------------------------------
-  h += '<div style="border:1px solid var(--accent);border-radius:8px;padding:10px 12px;'
-    +  'margin-bottom:12px;background:var(--panel2,rgba(255,255,255,.02))">'
-    +  '<div style="font-size:12px;font-weight:600;margin-bottom:7px">'
-    +  '<i class="ti ti-plus"></i> Add a product</div>'
+  // The brand card, not a full accent outline. A bright border says "this is
+  // the important thing on the page", and on a screen whose important thing is
+  // Generate, an add-form outlined in the accent colour outshouts it. The
+  // emphasis belongs on the button, which already has it.
+  h += '<div class="panelcard" style="margin-bottom:12px">'
+    +  '<p class="paneltitle" style="font-size:12.5px;line-height:18px;margin-bottom:7px">'
+    +  '<i class="ti ti-plus"></i> Add a product</p>'
     +  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px">';
   IQ_COLS.forEach(function(c){
     h += '<div'+(c.wide?' style="grid-column:span 2"':'')+'>'
@@ -92,7 +95,8 @@ function inputQueueRender(){
   });
   h += '</div>'
     +  '<div style="display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap">'
-    +  '<button class="primary" onclick="inputQueueAdd()">Add to the queue</button>'
+    +  '<button class="db-chip primary" onclick="inputQueueAdd()">'
+    +  '<i class="ti ti-plus"></i> Add to the queue</button>'
     +  '<span class="cc" style="font-size:11px">Then press <b>Generate</b> above. '
     +  'Leave <b>Sell at</b> empty and the app prices it from the cost and Amazon’s fees.</span>'
     +  '</div></div>';

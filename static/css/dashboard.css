@@ -2648,3 +2648,75 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   white-space:nowrap;
 }
 .switchempty{ padding:10px 12px; font-size:12px; color:rgb(156,163,175); }
+
+/* ===================================================================
+   ONE LOOK FOR EVERY SCREEN
+   ===================================================================
+   Sales, Hourly Sales, Traffic, AI spend and Returns Intelligence were
+   built to one pattern:
+
+       .wspanel  >  .wstoolbar.bleed  >  h2 + .ti icon + .sub
+                 >  a card, a title, a sub-line, chips for the controls
+
+   The older screens -- Generate & submit, ASIN Monitor, Import seller,
+   Repricer, Image Studio, Image Library -- predate it and were each
+   dressed by hand: bare <button>s, borders and radii typed inline, a
+   heading with no icon. They work identically and look like six
+   different products.
+
+   Nothing new is invented here. These are the names those five screens
+   already use, plus the two pieces they were missing: a card name that
+   is not called "sales", and chips that can carry an intent.
+   =================================================================== */
+
+/* THE CARD. `.salespanel` is the same rule under its historical name --
+   Traffic already borrows it, which is the tell that the name is wrong
+   rather than the style. One definition, two names, so nothing has to
+   be renamed across five working screens to stop the sixth looking odd. */
+.panelcard,
+.salespanel{
+  background:rgb(37,41,55);
+  border:1px solid rgb(55,65,81);
+  border-radius:12px;
+  padding:12px;
+}
+/* A card that is a section in its own right rather than a tile in a row. */
+.panelcard.roomy{ padding:16px 16px 14px; }
+.panelcard + .panelcard{ margin-top:12px; }
+
+/* CHIPS THAT SAY WHAT THEY DO. `.db-chip` had one appearance, so a screen
+   whose main action was "publish to Amazon" had to reach for a bare
+   <button class="danger"> and stopped matching everything around it.
+   The intent is carried by the border and the text, not by a fill: a
+   toolbar of six solid buttons has no first among them. */
+.db-chip.go{ border-color:var(--accent-line); color:var(--accent); }
+.db-chip.go:hover{ border-color:var(--accent); background:var(--accent-bg); }
+.db-chip.risk{ border-color:var(--red-line); color:#fca5a5; }
+.db-chip.risk:hover{ border-color:var(--red); background:var(--red-bg); }
+.db-chip[disabled]{ opacity:.45; cursor:not-allowed; }
+.db-chip[disabled]:hover{ border-color:var(--line); background:var(--panel2); }
+
+/* The one solid chip a screen is allowed, for the action it exists for. */
+.db-chip.primary{
+  background:var(--accent); border-color:var(--accent); color:#06231b; font-weight:600;
+}
+.db-chip.primary:hover{ filter:brightness(1.07); }
+
+/* A modal that opens onto one of these screens should not change key.
+   The five reference screens introduce themselves with a title and a
+   line of plain English; so do the Image Studio and Image Library. */
+.modal .panelhead{ margin:0 0 12px; }
+.modal .paneltitle{ display:flex; align-items:center; gap:8px; }
+.modal .paneltitle .ti{ color:var(--accent); font-size:17px; }
+
+/* Off-screen but still THERE: focusable, labelable, and read by a screen
+   reader. Used where the browser's own control is the only light-coloured
+   thing on a dark screen -- a bare <input type=file> -- and a <label> drives
+   it instead. display:none would take it out of the tab order and break the
+   very thing it is standing in for. */
+.visually-hidden{
+  position:absolute; width:1px; height:1px;
+  margin:-1px; padding:0; border:0;
+  clip:rect(0 0 0 0); clip-path:inset(50%);
+  overflow:hidden; white-space:nowrap;
+}

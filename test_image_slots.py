@@ -75,8 +75,16 @@ check("  http too", I.check_url("http://x.test/a.png"), "")
 check("  and s3, which the schema also allows", I.check_url("s3://bucket/k.jpg"), "")
 truthy("an app-internal path is refused",
        "public https" in I.check_url("/media/_acct/jack/SKU/gen_1.png"))
-truthy("  and it says what to do instead",
-       "Drive" in I.check_url("/media/x.png"))
+# THE ADVICE CHANGED, and the old advice is now wrong. It said "put it in
+# Google Drive first"; the app serves its own media publicly at /img/<token>/...
+# and the push routes convert a /media/ path to that address before they get
+# here, so an app-library image arriving unconverted means the app does not know
+# its own public address. Sending someone to Drive to solve a missing setting
+# costs them an hour.
+truthy("  and it names the setting that actually fixes it",
+       "PUBLIC_BASE_URL" in I.check_url("/media/x.png"))
+truthy("  and no longer sends people to Google Drive",
+       "Drive" not in I.check_url("/media/x.png"))
 truthy("a data url is refused too", I.check_url("data:image/png;base64,AAAA"))
 truthy("nothing at all is refused", I.check_url(""))
 

@@ -23,7 +23,7 @@ from routes import scope as _scope_mod
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
-             _schema_for=None):
+             _schema_for=None, _public_media_url=lambda u: ""):
     """Attach /variations/* to the app."""
 
     def _scope():
@@ -257,6 +257,33 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             return jsonify({"ok": False, "error": "not confirmed"}), 400
         if not (sku and slot):
             return jsonify({"ok": False, "error": "need a sku and a slot"}), 400
+
+        # AN IMAGE IN THIS APP'S OWN LIBRARY IS ALREADY PUBLISHABLE.
+        #
+        # Amazon fetches the image itself, over the open internet, so a
+        # "/media/..." path is no use to it -- that much was already checked.
+        # What was missing is that this app SERVES those files publicly, at
+        # /img/<token>/<path>, login-exempt and HMAC-signed so the media tree
+        # cannot be enumerated. The older push route has converted paths that
+        # way for a long time; the slot picker did not, so it refused every
+        # image the app had generated and told people to put it in Google Drive
+        # first -- for a file the server was already able to hand Amazon.
+        #
+        # Converted here, before the check, so the check now only fails on
+        # something genuinely unreachable.
+        if url.startswith("/media/"):
+            pub = ""
+            try:
+                pub = _public_media_url(url) or ""
+            except Exception:
+                pub = ""
+            if not pub:
+                return jsonify({"ok": False, "error": (
+                    "This image is in the app's library, but the app does not "
+                    "know its own public address, so Amazon could not be told "
+                    "where to fetch it. Set PUBLIC_BASE_URL to the address this "
+                    "app is served on and try again.")}), 400
+            url = pub
 
         bad = _img.check_url(url)
         if bad:

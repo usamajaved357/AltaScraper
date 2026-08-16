@@ -268,34 +268,55 @@
 
     <!-- GENERATE & SUBMIT section -->
     <div id="sec_generate" class="wspanel">
-      <div class="wstoolbar bleed"><div><h2>Generate &amp; submit</h2><div class="sub">Run generation, export, preview the API, and submit live — scoped to this workspace</div></div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-        <button class="primary" onclick="runMode('generate')"><i class="ti ti-player-play"></i> Generate</button>
-        <button onclick="runMode('retry')">Retry holds</button>
-        <button onclick="runMode('export')">Export .xlsm</button>
-        <button onclick="runMode('api')">Preview (API)</button>
-        <button class="danger" onclick="submitLive()">Submit · go live</button>
-        <button class="danger" id="stopbtn" onclick="stopRun()" disabled title="Stops the current run">Stop</button>
+      <!-- Same shape as Sales, Traffic, Returns and AI spend: an icon, a title,
+           and one line saying what the screen is for. This heading had no icon
+           and no caveat, which is the whole difference between "a screen" and
+           "the sixth screen somebody bolted on". -->
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-rocket"></i> Generate &amp; submit</h2>
+        <div class="sub">Draft listings from the queue, check them against Amazon,
+          and publish them — scoped to this workspace<span class="infodot"
+          title="Generate and Retry write listings into this app only. Preview validates against Amazon and creates nothing. Submit is the one step that reaches your live catalogue.">i</span></div></div>
+      </div>
+      <!-- CHIPS, and the intent in the border rather than a fill. Six solid
+           buttons have no first among them; here Generate is the one thing this
+           screen exists to do, Submit is the one that reaches Amazon, and the
+           rest are the ordinary way round. -->
+      <div class="db-actions" style="margin-bottom:14px">
+        <button class="db-chip primary" onclick="runMode('generate')"><i class="ti ti-player-play"></i> Generate</button>
+        <button class="db-chip" onclick="runMode('retry')"><i class="ti ti-refresh"></i> Retry holds</button>
+        <button class="db-chip" onclick="runMode('export')"><i class="ti ti-file-spreadsheet"></i> Export .xlsm</button>
+        <button class="db-chip go" onclick="runMode('api')"><i class="ti ti-eye-check"></i> Preview (API)</button>
+        <button class="db-chip risk" onclick="submitLive()"><i class="ti ti-cloud-upload"></i> Submit · go live</button>
+        <button class="db-chip risk" id="stopbtn" onclick="stopRun()" disabled title="Stops the current run"><i class="ti ti-player-stop"></i> Stop</button>
       </div>
       <!-- Row selector: pick which input-sheet rows to generate -->
-      <div id="genselectwrap" style="margin:-4px 0 14px;padding:12px 14px;border:1px solid var(--line,#2a2f3a);border-radius:10px;background:var(--panel2,rgba(255,255,255,.02))">
-        <div style="font-size:13px;opacity:.85;margin-bottom:8px">
-          <b>Generate</b> creates every input-sheet listing that isn't in the app yet.
-          To create only specific ones, enter them below.
+      <!-- The card, the title and the sub-line the other screens use, instead of
+           a border, a radius and a background typed inline; and `.ed`, which is
+           the app's own field styling with its focus ring and placeholder
+           colour, instead of three more inline declarations per input. -->
+      <div id="genselectwrap" class="panelcard roomy" style="margin:-4px 0 14px">
+        <div class="panelhead">
+          <div>
+            <p class="paneltitle" style="font-size:14px;line-height:20px">Which listings</p>
+            <p class="panelsub"><b>Generate</b> creates every queued product that
+              isn't in the app yet. To create only specific ones, name them here.</p>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input id="gensel_value" type="text" placeholder="Paste an eBay / Amazon URL, or type a value…"
-                 oninput="genSelOnInput()"
-                 style="flex:1;min-width:240px;padding:8px 10px;border:1px solid var(--line,#2a2f3a);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
-          <select id="gensel_type" title="What you're entering (ignored when a URL is pasted)"
-                  style="padding:8px 10px;border:1px solid var(--line,#2a2f3a);border-radius:8px;background:var(--bg,#0e1116);color:inherit">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+          <input id="gensel_value" class="ed" type="text"
+                 placeholder="Paste an eBay / Amazon URL, or type a value…"
+                 oninput="genSelOnInput()" style="flex:1;min-width:240px">
+          <select id="gensel_type" class="ed" style="width:auto;min-width:150px"
+                  title="What you're entering (ignored when a URL is pasted)">
             <option value="row" selected>Row number</option>
             <option value="asin">ASIN</option>
             <option value="ebay_item">eBay item number</option>
           </select>
         </div>
-        <div id="gensel_hint" style="font-size:12px;opacity:.6;margin-top:6px">
-          Row numbers can be comma-separated (e.g. 2, 5, 7). For one product you can paste its URL — the dropdown is ignored then.
+        <div id="gensel_hint" class="cc" style="font-size:12px;margin-top:8px">
+          Row numbers can be comma-separated (e.g. 2, 5, 7). For one product you
+          can paste its URL — the dropdown is ignored then.
         </div>
       </div>
       <div id="genhow"></div>
@@ -1058,7 +1079,17 @@
 <div class="modalwrap" id="imgstudio">
   <div class="modal" style="max-width:860px">
     <button class="x" onclick="closeStudio()">×</button>
-    <h3><i class="ti ti-photo-edit"></i> Image Studio</h3>
+    <!-- Introduced the way the other screens introduce themselves: a title, and
+         one line of plain English saying what it is for and what it will not do.
+         A modal that opens off a screen should not change key. -->
+    <div class="panelhead">
+      <div>
+        <p class="paneltitle"><i class="ti ti-photo-edit"></i> Image Studio</p>
+        <p class="panelsub">Make this listing's main and secondary images from its
+          source photographs<span class="infodot"
+          title="Nothing here reaches Amazon. Images are generated, reviewed and saved to this listing's library; sending one to a slot on the live listing is a separate, deliberate step.">i</span></p>
+      </div>
+    </div>
     <div id="studiobody">Loading…</div>
   </div>
 </div>
