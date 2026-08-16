@@ -449,11 +449,21 @@ function _ilDraw(){
          // this reads the real listing, and if Amazon does not have it the reply
          // says exactly that. A wrong guess that HIDES a control is worse than a
          // request that comes back with a clear no.
+         // THE BUTTON SAYS WHAT IT WILL ASK.
+         //
+         // It read "Send to Amazon…", which does not tell you that pressing it
+         // is how you choose the slot. Reported as "i do not have option here
+         // to send an image as pt1 or pt2 or pt3 ... or swch image" — by
+         // someone looking straight at the control that does exactly that. A
+         // feature nobody can find is not a feature, so the slots are named on
+         // the face of the button rather than only in a tooltip nobody hovers.
          + '<button class="db-chip" style="margin-top:4px;font-size:10.5px;'
            + 'background:var(--accent);color:#fff;border-color:var(--accent)" '
-           + 'title="Choose which image this is on Amazon — main, PT1-PT8 or the '
-           + 'variation swatch — and send it" '
-           + 'onclick="ilPushThis(' + jsArg(f.url) + ')">Send to Amazon…</button>'
+           + 'title="Reads this listing on Amazon and offers every image slot '
+           + 'its product type actually has — main, PT1-PT8, the variation '
+           + 'swatch — saying which are already filled" '
+           + 'onclick="ilPushThis(' + jsArg(f.url) + ')">'
+           + 'Send as… <span style="opacity:.85">Main / PT1–8 / Swatch</span></button>'
          // Saving one image was "right-click, Save as, find it again". A link
          // with `download` is what the attribute exists for.
          + '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
@@ -480,8 +490,10 @@ function _ilDraw(){
        // getElementById quietly picks the first and the other never updates.
        + '<div class="cc" style="font-size:11px;margin-top:6px">'
        + 'Updates only that one image on Amazon — no full resubmit. Amazon takes a '
-       + 'few minutes to show it. Use <b>Send to Amazon…</b> on an image above to '
-       + 'choose which slot it goes in (main, PT1–PT8, swatch).</div></div>';
+       + 'few minutes to show it. Use <b>Send as…</b> on any image above to put it '
+       + 'in a particular slot — main, PT1 to PT8, or the variation swatch. Which '
+       + 'slots exist is read from that product type on Amazon, so a type with no '
+       + 'swatch will not offer one.</div></div>';
   }
   _ilRender(h);
 }
@@ -660,7 +672,7 @@ async function ilPushLive(){
   });
   if(!IMGLIB.main){
     if(st) st.innerHTML = '<span style="color:var(--warn)">Pick an image first — '
-                        + 'use “Send to Amazon” on the one you want.</span>';
+                        + 'use “Send as…” on the one you want.</span>';
     return;
   }
   if(st) st.innerHTML = '<span class="genspin"></span> sending to Amazon…';

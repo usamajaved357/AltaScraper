@@ -1099,6 +1099,16 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if request.args.get("refresh"):
                     _mkt = str(_state.get("active_marketplace", "") or "UK").upper()
                     _state["schemas"].pop(f"{pt}::{_mkt}", None)
+                    # THE STORED COPY TOO. Schemas are now kept on disk between
+                    # restarts, so clearing only the in-memory one would leave
+                    # "Reload Amazon values now" returning the very copy the
+                    # person pressed it because they did not believe -- a button
+                    # that looks like it worked and changed nothing.
+                    try:
+                        from domain import schema_cache as _sc
+                        _sc.forget(CONFIG_PATH, pt, _mkt)
+                    except Exception:
+                        pass
                 payload = {"ok": True, "enums": _options_for(pt), "required": _schema_required(pt),
                            "attrs": _schema_attrs(pt), "subfields": _schema_subfields(pt),
                            "titles": _load_schema(pt).get("titles", {}),
