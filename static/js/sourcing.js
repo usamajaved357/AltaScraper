@@ -250,19 +250,23 @@ function sourcingRender(j){
     //  the screen called itself the repricer and implied that adding a SKU
     //  handed it your prices. It does not, and that is the reason it is safe to
     //  add all of them.
+    // Short line, detail on the dot -- the pattern asked for on the notices
+    // ("i think this is the right way to write notices"). This was five lines of
+    // prose across the top of the screen, which is a paragraph nobody finishes.
     h += '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
       +  'border:1px solid #26403a;background:#10231f;border-radius:6px">'
-      +  '<b>Tracking costs. Auto-pricing is off.</b> Every SKU here is being '
-      +  'watched: the app reads its supplier every 4 hours and records what the '
-      +  'unit actually costs that day. Nothing changes a live listing. '
-      +  'It also works out what it WOULD price at, so you can read the decisions '
-      +  'before trusting them &mdash; if one looks wrong here, it would have been '
-      +  'wrong on Amazon.'
-      +  (SRC_MASTER ? ' Auto-pricing is switched on but no SKU is armed for it yet.'
+      +  '<b>Tracking costs. Auto-pricing is off.</b> '
+      +  'Suppliers are read every 4 hours and what each unit really costs is '
+      +  'written down. Nothing changes a live listing.'
+      +  '<span class="infodot" title="'
+      +  'It also works out what it WOULD price at, so the decisions can be read '
+      +  'before they are trusted - if one looks wrong here, it would have been '
+      +  'wrong on Amazon. Adding a SKU is safe: it starts the cost history and '
+      +  'nothing more, and each SKU still has to be armed separately. A supplier '
+      +  'price on a day nobody was watching cannot be recovered later, which is '
+      +  'the reason to add them before you need them.">i</span>'
+      +  (SRC_MASTER ? ' <b>Auto-pricing is on</b>, but no SKU is armed for it yet.'
                      : '')
-      +  ' <b>Adding a SKU is safe:</b> it starts the cost history and nothing '
-      +  'more. A supplier price on a day nobody was watching cannot be recovered '
-      +  'later, so there is a reason to add them before you need them.'
       +  '</div>';
   }
 
@@ -294,13 +298,10 @@ function sourcingRender(j){
         ? ('Target: '+(j.rule).profit_target_pct+'% '+(j.rule).profit_target_kind)
         : 'Profit target: none')
     +  '</button>'
-    +  '<span class="cc" style="font-size:11.5px;align-self:center">'
-    +  (c.update||0)+' would change &middot; '+(c.out_of_stock||0)+' would go out of stock &middot; '
-    +  (c.none||0)+' unchanged'
-    +  ((c.blocked||0) ? ' &middot; <b>'+c.blocked+' held</b>' : '')
-    +  ((c.below_target||0) ? ' &middot; <b style="color:#e88a8a">'+c.below_target
-                              +' below target</b>' : '')
-    +  '</span></div>';
+    +  '</div>';
+  // The numbers get cards of their own, under the controls rather than crammed
+  // into them.
+  if(SRC_ROWS.length) h += _srcCounts(c);
 
   if(j.note){
     h += '<div class="cc" style="font-size:12px;padding:10px;border:1px dashed #2a3446;border-radius:6px">'
@@ -310,6 +311,72 @@ function sourcingRender(j){
 
   SRC_ROWS.forEach(function(r, i){ h += sourcingRow(r, i); });
   body.innerHTML = h;
+}
+
+// A SUPPLIER LINK IS NOT DATA TO READ.
+//
+// The reason lines printed the whole URL, and an eBay link carries its search
+// terms with it: "...itm/235976183512?_skw=ct3123+Universal+Security+Coupling+
+// Hitch+Lock+for+Trailers+Caravan+Horse+Box+Tow+Ball+Fittings%2C+Yellow&itmmeta=
+// 01KX041JXHMKKKAPC9ZYBA58YW&hash=item36f146ced8..." -- two hundred characters
+// of machine noise per row, wrapping to three lines and burying the sentence
+// that actually mattered. The item number is the part a person can use.
+function _srcShort(url){
+  const u = String(url || "");
+  const m = u.match(/\/itm\/(\d{9,15})/);
+  if(m) return "eBay item " + m[1];
+  try{ return (u.split("/")[2] || u).replace(/^www\./, ""); }
+  catch(e){ return u.slice(0, 40); }
+}
+
+// The same shortening, applied to a sentence that has URLs embedded in it. The
+// reason strings are written server-side as the permanent audit record and are
+// deliberately not changed -- this is only how they are drawn.
+// Split on the RAW url, then escape each piece. Escaping first and matching
+// afterwards does not work: _sesc turns & into &amp;, and an eBay link is mostly
+// ampersands, so a pattern that stops at ";" stops inside the first entity and
+// leaves the rest of the query string sitting there as text. That is exactly
+// what it did, which is why half of each link was still on screen.
+function _srcTidy(text){
+  const s = String(text || "");
+  const re = /https?:\/\/\S+/g;
+  let out = "", last = 0, m;
+  while((m = re.exec(s)) !== null){
+    let url = m[0];
+    // Trailing punctuation belongs to the sentence, not to the link.
+    const tail = url.match(/[),.;:]+$/);
+    if(tail){ url = url.slice(0, -tail[0].length); }
+    out += _sesc(s.slice(last, m.index))
+        +  '<a href="' + _sesc(url) + '" target="_blank" rel="noopener" title="'
+        +  _sesc(url) + '">' + _sesc(_srcShort(url)) + '</a>'
+        +  (tail ? _sesc(tail[0]) : "");
+    last = m.index + m[0].length;
+  }
+  return out + _sesc(s.slice(last));
+}
+
+// The counts, as cards. They were a run of text in the toolbar -- "17 would
+// change · 7 would go out of stock · 31 unchanged · 19 held" -- which is the
+// same information Sales gives five cards to, on a screen where those numbers
+// are the whole point of looking.
+function _srcCounts(c){
+  const cards = [
+    ["would change", c.update || 0, "var(--accent)"],
+    ["would go out of stock", c.out_of_stock || 0, "var(--red)"],
+    ["held for review", c.blocked || 0, "var(--warn)"],
+    ["unchanged", c.none || 0, ""],
+  ];
+  if(c.below_target) cards.push(["below target", c.below_target, "var(--red)"]);
+  return '<div style="display:grid;gap:10px;margin-bottom:14px;'
+    +  'grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">'
+    +  cards.map(function(k){
+         return '<div class="panelcard" style="padding:12px 14px">'
+           +  '<div style="font-size:24px;font-weight:600;line-height:1.15'
+           +  (k[2] ? ';color:' + k[2] : '') + '">' + k[1] + '</div>'
+           +  '<div class="cc" style="font-size:11.5px;margin-top:2px">' + k[0] + '</div>'
+           +  '</div>';
+       }).join("")
+    +  '</div>';
 }
 
 function _actionChip(d){
@@ -432,9 +499,9 @@ function sourcingRow(r, i){
     +  '</div>';
 
   // The reason line is the point of the whole screen.
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px;line-height:1.5">'
     +  (d.blocked_by ? '<b style="color:#e8c66a">'+_sesc(d.blocked_by)+'</b> &mdash; ' : '')
-    +  _sesc(d.reason||"")+'</div>';
+    +  _srcTidy(d.reason||"")+'</div>';
 
   h += '<div id="'+id+'" style="display:none;margin-top:9px">';
 
@@ -484,8 +551,9 @@ function sourcingRow(r, i){
       +  'padding:4px 0;border-top:1px solid #1c2531">'
       +  (chosen ? '<span class="db-chip" style="background:#12303a;color:#6ac7e8">using</span>'
                  : '<span class="db-chip" style="opacity:.55">—</span>')
-      +  '<a href="'+_sesc(s.url)+'" target="_blank" rel="noopener" style="max-width:280px;'
-      +  'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_sesc(s.label||s.url)+'</a>'
+      +  '<a href="'+_sesc(s.url)+'" target="_blank" rel="noopener" title="'+_sesc(s.url)+'" '
+      +  'style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+      +  _sesc(_srcShort(s.url))+'</a>'
       +  '<span class="cc">'+_sesc(s.kind)+'</span>'
       +  '<span style="flex:1"></span>'
       +  '<span>'+_smoney(k.price)+' + '+(k.shipping==null?'<b style="color:#e8c66a">postage unknown</b>':_smoney(k.shipping))+'</span>'

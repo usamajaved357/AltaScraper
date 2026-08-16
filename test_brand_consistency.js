@@ -54,15 +54,33 @@ SCREENS.forEach(function(id){
 });
 
 console.log("\n=== an icon and a sentence, not a bare word ===");
-// Sales draws its own 28px title, so it is exempt from the h2 rule; every
-// other screen uses the toolbar heading.
 ["traffic", "returns", "aiusage", "hourly", "generate", "monitor",
  "sellerimport", "sourcing"].forEach(function(id){
   const s = section(id);
   truthy("  " + id.padEnd(13) + " names itself with an icon",
-         /<h2><i class="ti ti-[a-z0-9\-]+"><\/i>/.test(s));
+         /<(h2|div class="pagetitle")><i class="ti ti-[a-z0-9\-]+"><\/i>/.test(s));
   truthy("  " + id.padEnd(13) + " says what it is for",
-         /class="sub"/.test(s));
+         /class="(sub|panelsub)"/.test(s));
+});
+
+console.log("\n=== and every screen's name is the SAME SIZE ===");
+// THIS TEST USED TO EXEMPT SALES. It said "Sales draws its own 28px title, so
+// it is exempt from the h2 rule" -- writing the inconsistency down as a rule
+// instead of removing it. A screen whose name is 15px next to one whose name is
+// 28px reads as a panel inside something else, and that single difference was
+// most of why the newer tabs looked unfinished. Reported as: "i asked you to
+// adapt the new branding today, it meaned make the features look good looking".
+truthy("the page title is a class, not an inline size on one screen",
+       /\.pagehead \.pagetitle\{|\.pagehead h1,\.pagehead \.pagetitle\{/.test(CSS)
+       || /\.pagehead h1,\s*\.pagehead \.pagetitle\{/.test(CSS));
+truthy("  at the size Sales always used", /font-size:28px/.test(CSS));
+truthy("Sales uses it rather than an inline style",
+       /<div class="pagetitle" id="sales_title">/.test(HTML));
+truthy("  and no longer sets the size by hand",
+       !/font-size:28px;font-weight:600;line-height:30\.8px/.test(HTML));
+["generate", "monitor", "sellerimport", "sourcing"].forEach(function(id){
+  truthy("  " + id.padEnd(13) + " is the same size as Sales",
+         /class="pagehead"/.test(section(id)));
 });
 
 console.log("\n=== the pieces exist ONCE, under one name ===");

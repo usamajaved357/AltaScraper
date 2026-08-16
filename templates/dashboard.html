@@ -285,11 +285,11 @@
            and one line saying what the screen is for. This heading had no icon
            and no caveat, which is the whole difference between "a screen" and
            "the sixth screen somebody bolted on". -->
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-rocket"></i> Generate &amp; submit</h2>
-        <div class="sub">Draft listings from the queue, check them against Amazon,
+      <div class="pagehead">
+        <div class="pagetitle"><i class="ti ti-rocket"></i> Generate &amp; submit</div>
+        <div class="panelsub">Draft listings from the queue, check them against Amazon,
           and publish them — scoped to this workspace<span class="infodot"
-          title="Generate and Retry write listings into this app only. Preview validates against Amazon and creates nothing. Submit is the one step that reaches your live catalogue.">i</span></div></div>
+          title="Generate and Retry write listings into this app only. Preview validates against Amazon and creates nothing. Submit is the one step that reaches your live catalogue.">i</span></div>
       </div>
       <!-- CHIPS, and the intent in the border rather than a fill. Six solid
            buttons have no first among them; here Generate is the one thing this
@@ -368,9 +368,10 @@
          one combined chart. The chrome is at the end of dashboard.css and every
          value in it came off Orbit's live page. -->
     <div id="sec_sales" class="wspanel">
-      <div style="margin:0 0 12px">
-        <div style="font-size:28px;font-weight:600;line-height:30.8px;margin:0 0 4px"
-             id="sales_title">Sales</div>
+      <!-- The size and weight are unchanged; they now come from .pagehead so
+           every other screen can be the same size as this one. -->
+      <div class="pagehead">
+        <div class="pagetitle" id="sales_title">Sales</div>
         <div class="panelsub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div>
       </div>
 
@@ -707,9 +708,9 @@
 
     <!-- MILES LUBRICANTS IMPORT -->
     <div id="sec_sellerimport" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-download"></i> Import an eBay seller</h2>
-        <div class="sub">Find everything a seller lists, review it with the pictures, check what Amazon allows, and draft the ones you want. Nothing is sent to Amazon &mdash; they arrive here as drafts and you publish them the usual way.</div></div>
+      <div class="pagehead">
+        <div class="pagetitle"><i class="ti ti-download"></i> Import an eBay seller</div>
+        <div class="panelsub">Find everything a seller lists, review it with the pictures, check what Amazon allows, and draft the ones you want. Nothing is sent to Amazon &mdash; they arrive here as drafts and you publish them the usual way.</div>
       </div>
       <div id="simpbody" style="padding:4px 0"></div>
     </div>
@@ -860,18 +861,22 @@
     </div>
 
     <div id="sec_sourcing" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-arrows-down-up"></i> Repricer</h2>
-        <div class="sub">Follows your suppliers: when their price moves, yours moves; when they run out, the listing goes out of stock; when they slow down, the handling time stretches. Only SKUs you enrol here are ever touched, and right now it is in <b>dry run</b> &mdash; it decides and records, and changes nothing.</div></div>
+      <div class="pagehead">
+        <div class="pagetitle"><i class="ti ti-arrows-down-up"></i> Repricer</div>
+        <div class="panelsub">Tracks what every enrolled SKU actually costs at its
+          supplier, and works out what it would price at<span class="infodot"
+          title="When a supplier's price moves, the price it proposes moves with it. When they run out, it would take the listing out of stock. When they slow down, the handling time stretches. Only SKUs enrolled here are ever read, and auto-pricing is a separate switch.">i</span></div>
       </div>
       <div id="srcpick" style="display:none;padding:4px 0"></div>
       <div id="srcbody" style="padding:4px 0"></div>
     </div>
 
     <div id="sec_monitor" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
-        <div class="sub">Track competitor ASINs and get alerted the moment a new seller appears (also seller removed / price change / buy-box change). Read-only surveillance through Jack Reacherd (UK)'s credentials &mdash; it never writes to or affects the tracked listings.</div></div>
+      <div class="pagehead">
+        <div class="pagetitle"><i class="ti ti-radar"></i> ASIN Monitor</div>
+        <div class="panelsub">Track competitor ASINs and be told the moment a new seller
+          appears &mdash; also seller removed, price change, buy-box change<span
+          class="infodot" title="Read-only surveillance through this account's credentials. It never writes to, or affects, the listings it watches.">i</span></div>
       </div>
 
       <div class="monalertbar">
