@@ -231,6 +231,41 @@ function _scDragEnd(cid, i){
 // followed by a large one would bulge BELOW the axis on the way up and draw
 // negative sales that never happened. A monotone curve cannot leave the range
 // of the points it joins.
+/* ACROSS A GAP, A DASHED CONNECTOR -- so a sparse line reads as one line.
+ *
+ * "the lines dont join for profit on the salesreport graph", and before that
+ * "the profit lines do not appears on the graph it just show a dot".
+ *
+ * Profit is known only on days where every unit shipped has a cost recorded, so
+ * on these accounts it is eight days out of ninety. Eight separate one-point
+ * runs draw as eight unconnected dots, which reads as a broken chart rather
+ * than as a sparse measurement.
+ *
+ * Drawing a SOLID line across would say the profit passed through those days at
+ * those values, and it is not known that it did. So the gap is bridged dashed,
+ * thin and faded: the eye follows one series, and the stretch that was never
+ * measured is visibly not the same as the stretch that was. The grey "no data"
+ * shading behind it still marks those days.
+ *
+ * ONE implementation. Both charts on this screen build runs the same way and
+ * both had their own copy of the break-at-gaps rule; the join belongs in one
+ * place or only one of them will ever have it -- which is exactly what happened
+ * the first time this was fixed.
+ */
+function _scGapJoin(runs, x, y, colour){
+  let out = "";
+  for(let g = 1; g < (runs || []).length; g++){
+    const a = runs[g - 1][runs[g - 1].length - 1];
+    const b = runs[g][0];
+    if(!a || !b) continue;
+    out += `<path class="series" d="M ${x(a.i).toFixed(1)} ${y(a.v).toFixed(1)}`
+         + ` L ${x(b.i).toFixed(1)} ${y(b.v).toFixed(1)}" fill="none"`
+         + ` stroke="${colour}" stroke-width="1.2" stroke-dasharray="3,4"`
+         + ` opacity="0.55" stroke-linecap="round"/>`;
+  }
+  return out;
+}
+
 function _scCurve(pts){
   const n = pts.length;
   if(n === 0) return "";
@@ -563,6 +598,8 @@ function salesChart(points, opts){
                       stroke-linecap="round"/>`;
     });
   }
+
+  paths += _scGapJoin(runs, x, y, LINE);
 
   runs.forEach(function(r){
     if(r.length === 1){
@@ -985,6 +1022,10 @@ function salesCombo(o){
       else run.push({i: i, v: n});
     });
     if(run.length) runs.push(run);
+    // The same dashed bridge the single-metric charts use. Profit is the series
+    // this is for: it is known only on days where every unit shipped has a cost,
+    // so without it the line is a scatter of unconnected dots.
+    linesSvg += _scGapJoin(runs, x, yM, spec.color);
     runs.forEach(function(r){
       if(r.length === 1){
         linesSvg += `<circle cx="${x(r[0].i)}" cy="${yM(r[0].v)}" r="2.6" fill="${spec.color}"/>`;

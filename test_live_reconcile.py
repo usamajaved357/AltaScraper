@@ -67,7 +67,12 @@ print("\n== before: the store only knows what the report sent ==")
 s0 = _series()
 check("the report's days are there", round(sum(
     float(r.get("ordered_sales") or 0) for r in s0.values()), 2), 89.97)
-check("and the recent days are simply absent", D(1) in s0, False)
+# The day is now RETURNED, carrying nothing -- series() covers the whole window
+# asked for, so a 90-day chart draws 90 columns rather than stopping at the
+# first day of trade. "Absent" therefore means "has no figures", not "has no
+# row", and that is what is checked.
+check("and the recent days carry nothing yet",
+      (s0.get(D(1)) or {}).get("ordered_sales"), None)
 
 
 # Amazon stood in for: the live feed knows the report's days AND three more.

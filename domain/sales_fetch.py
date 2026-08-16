@@ -44,11 +44,35 @@ def yesterday():
 
 
 def _held(config_path, workspace_id, marketplace, start, end):
+    """Days the REPORT has actually delivered. A row existing is not enough.
+
+    THE FAULT THIS FIXES. live_reconcile writes a sales_daily row for every day
+    it covers, from the order feed. Those rows carry sales, orders and units --
+    and no traffic at all, because the order feed does not know about traffic.
+
+    This asked only "is there a row for that day", so every one of those days
+    counted as fetched and the report was never asked for it. The result:
+    sessions, page views, conversion and buy-box were permanently blank on
+    exactly the days the order feed had touched first. Measured on jack_uk:
+    9-13 and 15 July have sales and NO traffic, while the days either side of
+    them have both. Reported as "the views and traffic data on p&l heatmap dont
+    seems to be accurate" -- they were not inaccurate, they were absent.
+
+    The test is any column ONLY THE REPORT FILLS IN. A day Amazon reported as
+    having no visitors comes back as 0, which is a delivered figure and counts;
+    a day never asked about is NULL in all of them and does not.
+
+    Three of them rather than one, so a day is never re-fetched for ever if
+    Amazon leaves one out: sessions and page views are the traffic block, and
+    order_items is the sales block's own count of items, which the order feed
+    does not write either.
+    """
     from data import db as _db
     conn = _db.get_db(config_path)
     return {r["date"] for r in conn.execute(
         "SELECT DISTINCT date FROM sales_daily WHERE workspace_id=? AND marketplace=? "
-        "AND date>=? AND date<=? AND asin='*'",
+        "AND date>=? AND date<=? AND asin='*' AND ("
+        "  sessions IS NOT NULL OR page_views IS NOT NULL OR order_items IS NOT NULL)",
         (workspace_id, marketplace, start, end)).fetchall()}
 
 

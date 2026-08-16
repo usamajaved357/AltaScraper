@@ -244,8 +244,13 @@ WS2 = "syncprobe"
 end = dt.date.today() - dt.timedelta(days=1)
 for i in range(30):
     d = (end - dt.timedelta(days=i)).strftime("%Y-%m-%d")
+    # `sessions` because that is what a day the REPORT delivered looks like.
+    # A row with sales but no traffic is what the ORDER FEED writes, and those
+    # days must still be fetched from the report -- otherwise sessions, page
+    # views and conversion stay blank on them for ever. See sales_fetch._held.
     sd.store(CFG, WS2, MKT, [{"date": d, "asin": "*", "units": 1,
-                              "ordered_sales": 1.0, "currency": "GBP"}])
+                              "ordered_sales": 1.0, "sessions": 5,
+                              "currency": "GBP"}])
 check("holding every day, nothing is missing",
       sf.missing_days(CFG, WS2, MKT, 30), [])
 check("  but the recent ones are still due for revision",
