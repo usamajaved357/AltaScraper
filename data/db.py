@@ -504,6 +504,51 @@ CREATE TABLE IF NOT EXISTS asin_charges (
 );
 CREATE INDEX IF NOT EXISTS idx_asincharges_lookup
     ON asin_charges(workspace_id, marketplace, asin, sku);
+
+/* WHAT AMAZON TOOK, AND WHICH ORDER IT TOOK IT FROM.
+   finance_daily records the same money by DATE and ASIN, which answers "what
+   moved this week" -- a cash question. It cannot answer "what did the orders I
+   took last Tuesday earn", because the fee for Tuesday's order arrives whenever
+   Amazon settles it, often weeks later and on a day with no sales of its own.
+
+   That is why the P&L grid had two calendars in one column: sales dated by when
+   the order was placed, fees dated by when the money moved, and no day where
+   both appear. Measured on jack_uk: every money row fell on Jul 22 - Aug 12 and
+   every sales row on Aug 14. Nothing lined up, and any arithmetic across them
+   was wrong.
+
+   Amazon does name the order on each event -- measured, 13 of 13 shipment
+   events and 1 of 1 refunds -- so keeping that id lets each fee be reported on
+   the date its ORDER was placed, and the whole grid becomes one calendar.
+
+   KEYED BY POSTING DAY AS WELL AS ORDER. One order can be settled once and
+   refunded later, on different days; a row per (order, day) means re-reading a
+   window replaces exactly that window's rows and never double-counts, and never
+   loses a refund that fell outside it. */
+CREATE TABLE IF NOT EXISTS order_fees (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    order_id      TEXT NOT NULL,
+    posted_date   TEXT NOT NULL,          -- when the money moved
+    referral_fees REAL NOT NULL DEFAULT 0,
+    fba_fees      REAL NOT NULL DEFAULT 0,
+    other_fees    REAL NOT NULL DEFAULT 0,
+    principal     REAL NOT NULL DEFAULT 0,   -- what the buyer was charged, ex VAT
+    tax           REAL NOT NULL DEFAULT 0,   -- VAT, collected and owed onward
+    refunds       REAL NOT NULL DEFAULT 0,
+    refund_tax    REAL NOT NULL DEFAULT 0,
+    refund_units  INTEGER NOT NULL DEFAULT 0,
+    refund_fees_returned REAL NOT NULL DEFAULT 0,
+    promos        REAL NOT NULL DEFAULT 0,
+    units         INTEGER NOT NULL DEFAULT 0,
+    currency      TEXT NOT NULL DEFAULT '',
+    fetched_at    TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orderfees_uniq
+    ON order_fees(workspace_id, marketplace, order_id, posted_date);
+CREATE INDEX IF NOT EXISTS idx_orderfees_order
+    ON order_fees(workspace_id, marketplace, order_id);
 """
 
 

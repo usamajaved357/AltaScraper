@@ -414,6 +414,18 @@ def _enrich_one(app, config_path, aid, mkt, log=None):
 SALES_PER_PASS = 3         # days per pass -- small, because reports are scarce
 SALES_DAYS_BACK = 30       # how far back a gap is worth chasing
 
+# HOW FAR BACK THE ORDER HISTORY MUST REACH.
+#
+# Amazon settles a fee about eleven days after the order, and the finance
+# window this app reads goes sixty days back -- so a fee arriving today can
+# belong to an order placed seventy-odd days ago. If that order is not in
+# order_lines, its fee cannot be dated to the day it was earned and drops out of
+# the P&L entirely. Measured on selvora_limited: 329.44 of real fees with no
+# order to attach to, because order_lines only held the recent fortnight.
+#
+# Ninety days is the finance window plus the settlement lag plus room.
+ORDER_HISTORY_DAYS = 90
+
 
 # How often the LIVE orders are written into the store, per account+marketplace.
 # Orbit polls this feed every 15-60 minutes; 15 is the busy end of that and the
@@ -460,14 +472,30 @@ def _live_one(app, config_path, aid, mkt):
         acc = _acc_mod.get_account(_cfg_of(app), aid, config_path)
         if not acc or not _acc_mod.seller_scope_allowed(acc):
             return "no Amazon account of its own"
+        mid = (_acc_mod.marketplace_id(mkt)
+               if hasattr(_acc_mod, "marketplace_id") else "")
+        creds = _acc_mod.account_creds(acc)
         res = _lr.reconcile(
-            config_path, aid, mkt,
-            _acc_mod.marketplace_id(mkt) if hasattr(_acc_mod, "marketplace_id") else "",
-            _acc_mod.account_creds(acc),
+            config_path, aid, mkt, mid, creds,
             days=14,
             price_cache=_hw.price_cache(config_path, aid, mkt))
-        return "%d day(s) written, %d changed" % (res["days_written"],
+        note = "%d day(s) written, %d changed" % (res["days_written"],
                                                   res["days_changed"])
+
+        # AND KEEP THE ORDER HISTORY DEEP ENOUGH FOR THE FEES TO LAND.
+        #
+        # A fee settling today can belong to an order from seventy days ago. If
+        # that order is not stored, its fee has no date to be reported on and
+        # falls out of the P&L. One bounded pass per rotation, skipping orders
+        # already known, so the history fills in and then costs nothing.
+        try:
+            got = _hw.fetch(config_path, aid, mkt, mid, creds,
+                            days=ORDER_HISTORY_DAYS)
+            if got.get("fetched"):
+                note += ", %d older order(s) added" % got["fetched"]
+        except Exception:
+            pass          # the reconcile above already succeeded
+        return note
     except Exception as e:
         return "error: %s" % str(e)[:80]
 

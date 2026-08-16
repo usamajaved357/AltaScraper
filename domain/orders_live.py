@@ -280,9 +280,65 @@ def summarise(orders, priced=None, include_shipping=True):
     return out
 
 
+# ONE ORDER LIST, SHARED FOR A MINUTE.
+#
+# getOrders is limited to ONE CALL A MINUTE (0.0167/s, burst 20). Measured, a
+# single Sales screen load made FOUR of them -- /sales/today asks twice (today,
+# and the same slice of yesterday), /sales/recent once, and the background
+# reconcile once -- all for overlapping windows of the same account. A few
+# screen loads spent the burst and Live Sales came back "QuotaExceeded".
+#
+# Orders do not change in a minute in any way that matters here, and every
+# caller is reading the same thing. Keyed on the exact window so a wider request
+# is never answered from a narrower one.
+_ORDERS_CACHE = {}
+_ORDERS_TTL = 90          # seconds
+_ORDERS_MAX = 24          # windows remembered; beyond this the oldest go
+
+
+def _creds_id(creds):
+    """A short, stable id for WHOSE credentials these are. Never the secret.
+
+    THE CACHE KEY MUST NAME THE ACCOUNT. Without this it was
+    marketplace + marketplace_id + window -- and every UK account shares those,
+    so three separate companies collided on one key and whichever asked first
+    served its orders to the other two. Caught because a backfill reported the
+    identical "17 orders seen" for jack_uk, selvora_limited and nestwell_goods.
+
+    Hashed, and only the hash is ever kept or shown: a cache key is not a place
+    to hold a refresh token.
+    """
+    import hashlib
+    if isinstance(creds, dict):
+        seed = "|".join(str(creds.get(k) or "") for k in
+                        ("refresh_token", "lwa_app_id", "seller_id"))
+    else:
+        seed = str(creds or "")
+    if not seed.strip("|"):
+        return "anon"
+    return hashlib.sha256(seed.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def _orders_key(marketplace, marketplace_id, since, until, creds=None):
+    return "%s::%s::%s::%s::%s" % (_creds_id(creds), str(marketplace).upper(),
+                                   marketplace_id or "", _iso(since),
+                                   _iso(until) if until else "")
+
+
 def fetch_since(marketplace, marketplace_id, creds, since, until=None,
-                max_pages=MAX_PAGES):
-    """Orders created since a moment. Returns (orders, truncated)."""
+                max_pages=MAX_PAGES, use_cache=True):
+    """Orders created since a moment. Returns (orders, truncated).
+
+    Answered from the last 90 seconds' reply where possible -- see
+    _ORDERS_CACHE. Pass use_cache=False to insist on a fresh read.
+    """
+    import time as _t
+    key = _orders_key(marketplace, marketplace_id, since, until, creds)
+    if use_cache:
+        hit = _ORDERS_CACHE.get(key)
+        if hit and (_t.time() - hit[0]) < _ORDERS_TTL:
+            return hit[1], hit[2]
+
     from sp_api.api import Orders
     from sp_api.base import Marketplaces
     mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.US
@@ -293,6 +349,13 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
     if until:
         kw["CreatedBefore"] = _iso(until)
 
+    def _remember(orders, truncated):
+        if len(_ORDERS_CACHE) >= _ORDERS_MAX:
+            for old in sorted(_ORDERS_CACHE, key=lambda k: _ORDERS_CACHE[k][0])[:6]:
+                _ORDERS_CACHE.pop(old, None)
+        _ORDERS_CACHE[key] = (_t.time(), orders, truncated)
+        return orders, truncated
+
     got, token, pages = [], None, 0
     while pages < int(max_pages):
         resp = oc.get_orders(**kw) if not token else oc.get_orders(NextToken=token, **{
@@ -302,8 +365,8 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
         pages += 1
         token = pay.get("NextToken")
         if not token:
-            return got, False
-    return got, True
+            return _remember(got, False)
+    return _remember(got, True)
 
 
 def by_day(marketplace, marketplace_id, creds, days=5, price_cache=None,
@@ -404,7 +467,28 @@ def today(marketplace, marketplace_id, creds, compare=True, price_cache=None,
     """
     start = day_start(marketplace, 0)
     now = _dt.datetime.now(marketplace_zone(marketplace))
-    orders, truncated = fetch_since(marketplace, marketplace_id, creds, start)
+    y_start = day_start(marketplace, 1)
+
+    # ONE CALL FOR BOTH DAYS. This asked Amazon twice -- once for today, once for
+    # the same slice of yesterday -- and getOrders is limited to ONE CALL A
+    # MINUTE. Two calls per screen load, on a screen people reopen, is how Live
+    # Sales came to show "QuotaExceeded" instead of figures.
+    #
+    # Yesterday's window is a subset of "since yesterday began", so one read
+    # covers both and the split is done here, for free.
+    span_from = y_start if compare else start
+    orders_all, truncated = fetch_since(marketplace, marketplace_id, creds,
+                                        span_from)
+
+    def _placed(o):
+        raw = str(o.get("PurchaseDate") or "")
+        try:
+            return _dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    orders = [o for o in orders_all
+              if (_placed(o) or start) >= start] if compare else orders_all
 
     # Ordered product sales, not OrderTotal -- see product_sales(). Best effort:
     # if Amazon will not answer, summarise() falls back per order and says which
@@ -424,13 +508,14 @@ def today(marketplace, marketplace_id, creds, compare=True, price_cache=None,
            "timezone": str(marketplace_zone(marketplace))}
 
     if compare:
-        y_start = day_start(marketplace, 1)
         y_until = y_start + (now - start)          # the same elapsed slice
-        y_orders, y_trunc = fetch_since(marketplace, marketplace_id, creds,
-                                        y_start, until=y_until)
+        # Split from the one read above rather than asking Amazon again.
+        y_orders = [o for o in orders_all
+                    if (_placed(o) is not None
+                        and y_start <= _placed(o) < y_until)]
         out["yesterday"] = summarise(y_orders, _priced(y_orders),
                                      include_shipping)
-        out["yesterday_truncated"] = y_trunc
+        out["yesterday_truncated"] = truncated
         out["compared_to"] = "the same time yesterday"
         for k in ("orders", "units", "revenue"):
             a, b = out["today"].get(k), out["yesterday"].get(k)

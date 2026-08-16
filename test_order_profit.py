@@ -93,6 +93,32 @@ check_true("  and what to do", "Set a cost" in rm["warning"])
 check("it is not marked complete", rm["complete"], False)
 check_true("and it IS higher than the fully costed figure", rm["profit"] > r["profit"])
 
+print("\n== PROFIT CAN NEVER EXCEED THE REVENUE ON THE CARD ==")
+# Reported on a live account: "Total Sales GBP 1,248 ... Profit GBP 1,728".
+# Profit was worked out by adding up order_lines itself while the card's revenue
+# came from sales_daily. Those two stores are filled by different passes over
+# different windows, so on a real account they drifted and profit described MORE
+# trade than sales did. Revenue is now handed in, and everything recomputed
+# against it, so the two cannot disagree by construction.
+_lines_with_more = LINES + [
+    {"order_id": "EXTRA1", "sku": "7.00_3Days_B0G1K5B7QS", "asin": "B0G1K5B7QS",
+     "units": 1, "revenue": 500.00, "shipping": 0.0, "cogs": None,
+     "purchase_date": "2026-08-14T18:00:00Z"}]
+import types as _t
+_saved = op.lines_between
+op.lines_between = lambda *a, **k: _lines_with_more
+try:
+    r_cap = op.for_period(CFG, WS, MKT, "2026-08-01", "2026-08-31",
+                          vat_rate=0.2, revenue=102.21, units=3)
+finally:
+    op.lines_between = _saved
+check("revenue is the figure that was handed in", r_cap["revenue"], 102.21)
+check_true("profit cannot exceed it", r_cap["profit"] <= r_cap["revenue"])
+check_true("  nor the revenue after VAT", r_cap["profit"] <= r_cap["net_revenue"])
+check("the unit count is the card's, not the store's", r_cap["units"], 3)
+check_true("and the uncosted units are counted against THAT",
+           r_cap["missing_units"] <= 3)
+
 print("\n== ad spend is subtracted only when it is known ==")
 ra = op.for_lines(LINES, rate=0.15, vat_rate=0.2)
 check("nothing is assumed while Advertising is not connected",

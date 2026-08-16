@@ -815,6 +815,9 @@ async function salesReload(){
     // before, with the note saying which days are missing.
     salesLoadRecent().catch(function(){});
     salesDrawCards(sum, av);
+    // The stock-cost bar, right under the Profit card it explains. Fire and
+    // forget: a missing costing setting must never hold up the figures.
+    if(typeof cogsModeLoad === "function") cogsModeLoad().catch(function(){});
     salesDrawCharts(ser);
     salesDrawOrgPpc(ser);
     salesDrawGrid(ser);
@@ -1304,16 +1307,31 @@ function _sCardError(el, err, what){
   if(!el) return;
   const raw = String(err || "").trim();
   const denied = /unauthor|forbidden|access to requested resource/i.test(raw);
+  // A QUOTA REFUSAL IS NOT A FAULT, and showing Amazon's raw dict for it --
+  // "[{'code': 'QuotaExceeded', ...}]" -- reads as something broken. Amazon
+  // limits how often it will answer; the figures are fine and the next attempt
+  // will get them. Said in those words, because "the request failed" beside a
+  // machine error is the most alarming way to describe waiting.
+  const throttled = /quotaexceeded|throttl|too many requests|429/i.test(raw);
   el.innerHTML = '<div class="ri-samplebar" style="margin:0">'
-    + '<b>' + _sEsc(what) + ' could not be loaded.</b> '
-    + (denied
+    + '<b>' + _sEsc(what) + (throttled ? ' is waiting on Amazon.' : ' could not be loaded.') + '</b> '
+    + (throttled
+        ? 'Amazon limits how often it will answer this, and that limit has been '
+          + 'reached for the moment. Nothing is wrong with your figures — this '
+          + 'card fills itself in as soon as Amazon allows, usually within a '
+          + 'minute or two.'
+        : denied
         ? 'Amazon refused the request: this account\'s Amazon app is not '
           + 'authorised for the data this card needs. Re-authorise it in Seller '
           + 'Central with the role that covers it, then reload.'
         : 'The request failed.')
-    + (raw ? '<div class="cc" style="margin-top:6px;font-size:11px;'
-             + 'font-family:ui-monospace,monospace">' + _sEsc(raw.slice(0, 220))
-             + '</div>' : "")
+    // Amazon's own words are kept for the cases where they help someone act.
+    // On a quota refusal they do not: the message is machine noise and the
+    // advice above is the whole of what can be done.
+    + ((raw && !throttled)
+        ? '<div class="cc" style="margin-top:6px;font-size:11px;'
+          + 'font-family:ui-monospace,monospace">' + _sEsc(raw.slice(0, 220))
+          + '</div>' : "")
     + '</div>';
 }
 
@@ -2040,6 +2058,14 @@ async function salesLoadGrid(){
     if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
     if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
       q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+    // THE P&L GRID ASKS FOR ONE CALENDAR.
+    //
+    // Its whole purpose is to be read ACROSS a row -- sales, then what Amazon
+    // took, then what is left -- and that only means anything if every figure
+    // describes the same trade. On the money basis it does not: measured on
+    // jack_uk, Amazon settles 10 to 12 days after the order, so the sales rows
+    // and the fee rows never fell on the same day and no row could be read.
+    q.push("basis=order");
     const j = await _sFetch("/sales/series?" + q.join("&"));
     if(j && j.ok){ SALES.gridSeries = j; salesDrawGrid(j); }
   }catch(e){

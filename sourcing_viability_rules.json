@@ -13,18 +13,103 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "OPSS actively pulls non-compliant electrical products from Amazon UK. Heaters, chargers and hair tools are the most enforced subcategories, and the test report cannot be produced retrospectively for a generic import.",
-      "regulator": {"UK": "OPSS / UKCA (BS EN 60335 series)", "US": "CPSC / UL / ETL"},
+      "regulator": {
+        "UK": "OPSS / UKCA (BS EN 60335 series)",
+        "US": "CPSC / UL / ETL"
+      },
       "docs": {
-        "UK": ["BS EN 60335 product-specific test report from an ISO 17025 lab", "ukca_ce", "UK Responsible Person on packaging/labeling", "plug_cert", "EMC test report (EN 55014)"],
-        "US": ["ul_etl", "FCC authorization if wireless controls"]
+        "UK": [
+          "BS EN 60335 product-specific test report from an ISO 17025 lab",
+          "ukca_ce",
+          "UK Responsible Person on packaging/labeling",
+          "plug_cert",
+          "EMC test report (EN 55014)"
+        ],
+        "US": [
+          "ul_etl",
+          "FCC authorization if wireless controls"
+        ]
       },
       "triggers": {
-        "strong": ["uk plug", "3-pin plug", "3 pin plug", "bs 1363", "bs1363", "mains powered", "mains-powered", "mains lead", "power cord", "corded electric"],
-        "context": ["electric", "electrical", "mains", "plug-in", "plug in", "corded", "240v", "230v", "220v", "120v", "110v"],
-        "corroborating": ["heater", "fan", "dryer", "iron", "blender", "charger", "lamp", "cooker", "fryer", "steamer", "kettle", "toaster", "straightener", "curler", "shaver", "trimmer", "vacuum", "hoover", "drill", "grinder", "saw", "sander", "welder", "compressor", "air purifier", "dehumidifier", "humidifier", "dishwasher", "washing machine", "microwave", "oven", "hob", "extractor", "heat gun", "pressure washer", "radiator"],
+        "strong": [
+          "uk plug",
+          "3-pin plug",
+          "3 pin plug",
+          "bs 1363",
+          "bs1363",
+          "mains powered",
+          "mains-powered",
+          "mains lead",
+          "power cord",
+          "corded electric"
+        ],
+        "context": [
+          "electric",
+          "electrical",
+          "mains",
+          "plug-in",
+          "plug in",
+          "corded",
+          "240v",
+          "230v",
+          "220v",
+          "120v",
+          "110v"
+        ],
+        "corroborating": [
+          "heater",
+          "fan",
+          "dryer",
+          "iron",
+          "blender",
+          "charger",
+          "lamp",
+          "cooker",
+          "fryer",
+          "steamer",
+          "kettle",
+          "toaster",
+          "straightener",
+          "curler",
+          "shaver",
+          "trimmer",
+          "vacuum",
+          "hoover",
+          "drill",
+          "grinder",
+          "saw",
+          "sander",
+          "welder",
+          "compressor",
+          "air purifier",
+          "dehumidifier",
+          "humidifier",
+          "dishwasher",
+          "washing machine",
+          "microwave",
+          "oven",
+          "hob",
+          "extractor",
+          "heat gun",
+          "pressure washer",
+          "radiator"
+        ],
         "wattage_min": 500
       },
-      "exclude": ["electric blue", "electric guitar", "electric car accessories", "electric toothbrush head", "battery powered", "battery-powered", "battery operated", "solar powered", "12v", "24v", "6v", "gas powered"]
+      "exclude": [
+        "electric blue",
+        "electric guitar",
+        "electric car accessories",
+        "electric toothbrush head",
+        "battery powered",
+        "battery-powered",
+        "battery operated",
+        "solar powered",
+        "12v",
+        "24v",
+        "6v",
+        "gas powered"
+      ]
     },
     {
       "id": "LOW_VOLTAGE_ELECTRICAL",
@@ -32,18 +117,57 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "USB chargers and LED lights are OPSS enforcement priorities. Even low-voltage products need EMC and LVD testing, which a reseller cannot commission after the fact.",
-      "regulator": {"UK": "OPSS / UKCA (LVD + EMC)", "US": "FCC / UL"},
+      "regulator": {
+        "UK": "OPSS / UKCA (LVD + EMC)",
+        "US": "FCC / UL"
+      },
       "docs": {
-        "UK": ["ukca_ce", "LVD test report (EN 62368-1 or product-specific)", "EMC test report", "UK Responsible Person on packaging/labeling"],
-        "US": ["fcc_id", "ul_etl"]
+        "UK": [
+          "ukca_ce",
+          "LVD test report (EN 62368-1 or product-specific)",
+          "EMC test report",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "fcc_id",
+          "ul_etl"
+        ]
       },
       "triggers": {
-        "strong": ["usb charger", "phone charger", "laptop charger", "fast charger", "wall charger", "car charger", "charger", "power adapter", "power adaptor", "power supply", "led driver", "led strip", "fairy lights", "string lights", "led floodlight", "usb hub", "docking station", "usb-c cable", "usb cable", "mains adapter"],
+        "strong": [
+          "usb charger",
+          "phone charger",
+          "laptop charger",
+          "fast charger",
+          "wall charger",
+          "car charger",
+          "charger",
+          "power adapter",
+          "power adaptor",
+          "power supply",
+          "led driver",
+          "led strip",
+          "fairy lights",
+          "string lights",
+          "led floodlight",
+          "usb hub",
+          "docking station",
+          "usb-c cable",
+          "usb cable",
+          "mains adapter"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["charger stand", "charger holder", "charger case", "charger cover", "charger organiser", "charger organizer"]
+      "exclude": [
+        "charger stand",
+        "charger holder",
+        "charger case",
+        "charger cover",
+        "charger organiser",
+        "charger organizer"
+      ]
     },
     {
       "id": "CHILDREN_PRODUCT",
@@ -51,18 +175,72 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "Amazon now requires annual testing verification for all children's toys, and proactive enforcement is expanding. EN 71 and CPC testing must come from the manufacturer.",
-      "regulator": {"UK": "OPSS / UKCA (Toy Safety Regulations)", "US": "CPSC (CPSIA)"},
+      "regulator": {
+        "UK": "OPSS / UKCA (Toy Safety Regulations)",
+        "US": "CPSC (CPSIA)"
+      },
       "docs": {
-        "UK": ["en71", "ukca_ce", "Age grading and small-parts warning on packaging", "UK Responsible Person on packaging/labeling"],
-        "US": ["cpc", "CPSIA lead and phthalate test report", "ASTM F963 test report", "Permanent tracking label"]
+        "UK": [
+          "en71",
+          "ukca_ce",
+          "Age grading and small-parts warning on packaging",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "cpc",
+          "CPSIA lead and phthalate test report",
+          "ASTM F963 test report",
+          "Permanent tracking label"
+        ]
       },
       "triggers": {
-        "strong": ["toy", "toys", "baby product", "nursery", "kids furniture", "children's costume", "childrens costume", "play mat", "teething", "dummy", "pacifier", "baby monitor", "highchair", "high chair", "car seat", "pushchair", "pram", "baby walker", "baby gate", "cot", "crib", "moses basket", "soft toy", "plush toy"],
+        "strong": [
+          "toy",
+          "toys",
+          "baby product",
+          "nursery",
+          "kids furniture",
+          "children's costume",
+          "childrens costume",
+          "play mat",
+          "teething",
+          "dummy",
+          "pacifier",
+          "baby monitor",
+          "highchair",
+          "high chair",
+          "car seat",
+          "pushchair",
+          "pram",
+          "baby walker",
+          "baby gate",
+          "cot",
+          "crib",
+          "moses basket",
+          "soft toy",
+          "plush toy"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["adult costume", "book", "books", "novel", "dvd", "blu-ray", "audiobook", "pet toy", "dog toy", "cat toy", "toy story", "toy storage", "toy box", "toy chest", "cot bumper cover"]
+      "exclude": [
+        "adult costume",
+        "book",
+        "books",
+        "novel",
+        "dvd",
+        "blu-ray",
+        "audiobook",
+        "pet toy",
+        "dog toy",
+        "cat toy",
+        "toy story",
+        "toy storage",
+        "toy box",
+        "toy chest",
+        "cot bumper cover"
+      ]
     },
     {
       "id": "SKIN_CONTACT_COSMETIC",
@@ -70,18 +248,131 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "Cosmetics regulation requires a qualified safety assessor's report (CPSR) plus a Product Information File. Resellers cannot produce these.",
-      "regulator": {"UK": "OPSS / UK Cosmetics Regulation", "US": "FDA (MoCRA 2022)"},
+      "regulator": {
+        "UK": "OPSS / UK Cosmetics Regulation",
+        "US": "FDA (MoCRA 2022)"
+      },
       "docs": {
-        "UK": ["cpsr", "Product Information File (PIF)", "SCPN notification reference", "Full INCI ingredient list", "UK Responsible Person on packaging/labeling"],
-        "US": ["fda_cosmetic", "Ingredient listing to FDA labeling rules", "Adverse event reporting capability"]
+        "UK": [
+          "cpsr",
+          "Product Information File (PIF)",
+          "SCPN notification reference",
+          "Full INCI ingredient list",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "fda_cosmetic",
+          "Ingredient listing to FDA labeling rules",
+          "Adverse event reporting capability"
+        ]
       },
       "triggers": {
-        "strong": ["serum", "moisturiser", "moisturizer", "sunscreen", "lip balm", "deodorant", "body wash", "cleanser", "exfoliant", "hair dye", "nail polish", "perfume", "aftershave", "bath bomb", "shampoo", "conditioner", "soap", "lotion", "face mask", "toner", "essential oil"],
+        "strong": [
+          "serum",
+          "moisturiser",
+          "moisturizer",
+          "sunscreen",
+          "lip balm",
+          "deodorant",
+          "body wash",
+          "cleanser",
+          "exfoliant",
+          "hair dye",
+          "nail polish",
+          "perfume",
+          "aftershave",
+          "bath bomb",
+          "shampoo",
+          "conditioner",
+          "soap",
+          "lotion",
+          "face mask",
+          "toner",
+          "essential oil"
+        ],
         "context": [],
-        "corroborating": ["cream", "oil"],
+        "corroborating": [
+          "cream",
+          "oil"
+        ],
         "wattage_min": 0
       },
-      "exclude": ["ice cream", "cream cheese", "cream colour", "cream color", "shoe cream", "surgical mask", "respirator", "dust mask", "mask filter", "engine oil", "cooking oil", "oil filled", "oil-filled", "chain oil", "toner cartridge", "conditioner unit", "air conditioner", "soap dispenser", "soap dish"]
+      "exclude": [
+        "ice cream",
+        "cream cheese",
+        "cream colour",
+        "cream color",
+        "shoe cream",
+        "surgical mask",
+        "respirator",
+        "dust mask",
+        "mask filter",
+        "engine oil",
+        "cooking oil",
+        "oil filled",
+        "oil-filled",
+        "chain oil",
+        "toner cartridge",
+        "conditioner unit",
+        "air conditioner",
+        "soap dispenser",
+        "soap dish",
+        "sunscreen fabric",
+        "sunscreen mesh",
+        "sunscreen shade",
+        "sunscreen blind",
+        "sunscreen roller",
+        "sunscreen material",
+        "sunscreen canopy",
+        "sun screen fabric",
+        "sun screen mesh",
+        "sun screen blind",
+        "soap holder",
+        "soap pump",
+        "soap rack",
+        "oil painting",
+        "oil rubbed",
+        "oil bronze"
+      ],
+      "not_product_types": [
+        "CHAIR",
+        "SOFA",
+        "TABLE",
+        "BED",
+        "DESK",
+        "SHELF",
+        "CABINET",
+        "STOOL",
+        "BENCH",
+        "OUTDOOR_FURNITURE",
+        "HOME_FURNITURE_AND_DECOR",
+        "WINDOW_TREATMENT",
+        "AWNING",
+        "TENT",
+        "UMBRELLA",
+        "RUG",
+        "CURTAIN",
+        "LIGHT_FIXTURE",
+        "HARDWARE",
+        "HARDWARE_TUBING",
+        "AUTO_PART",
+        "TOOL",
+        "POWER_TOOL",
+        "VACUUM_CLEANER",
+        "FAN",
+        "HEATER",
+        "MATTRESS",
+        "PILLOW",
+        "LUGGAGE",
+        "SHOES",
+        "WATCH",
+        "GARDEN_TOOL_SET",
+        "PEST_CONTROL_DEVICE",
+        "PORTABLE_ELECTRONIC_DEVICE_MOUNT",
+        "UNMANNED_AERIAL_VEHICLE",
+        "FOOD_SPATULA",
+        "MASSAGER"
+      ]
     },
     {
       "id": "FOOD_GROCERY",
@@ -89,18 +380,133 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "Food requires full supply-chain traceability and allergen documentation. It cannot be sourced without manufacturer cooperation.",
-      "regulator": {"UK": "FSA / Food Safety Act", "US": "FDA (FSMA)"},
+      "regulator": {
+        "UK": "FSA / Food Safety Act",
+        "US": "FDA (FSMA)"
+      },
       "docs": {
-        "UK": ["Food Safety Act compliance evidence", "Allergen declaration", "Nutritional labeling", "Lot/batch traceability records", "FSA establishment registration"],
-        "US": ["fda_facility_reg", "FDA prior notice for imports", "Nutrition Facts label", "FSMA compliance records"]
+        "UK": [
+          "Food Safety Act compliance evidence",
+          "Allergen declaration",
+          "Nutritional labeling",
+          "Lot/batch traceability records",
+          "FSA establishment registration"
+        ],
+        "US": [
+          "fda_facility_reg",
+          "FDA prior notice for imports",
+          "Nutrition Facts label",
+          "FSMA compliance records"
+        ]
       },
       "triggers": {
-        "strong": ["best before", "use by date", "allergen", "nutritional information", "protein bar", "energy drink", "dried fruit", "seasoning", "biscuit", "biscuits", "cereal", "marmalade", "supplement powder", "edible"],
-        "context": ["edible", "organic", "gluten free", "vegan", "flavour", "flavor", "ingredients", "calories", "servings"],
-        "corroborating": ["food", "snack", "tea", "coffee", "spice", "sauce", "flour", "sugar", "juice", "honey", "jam", "chocolate", "candy", "nuts", "spread"],
+        "strong": [
+          "best before",
+          "use by date",
+          "allergen",
+          "nutritional information",
+          "protein bar",
+          "energy drink",
+          "dried fruit",
+          "seasoning",
+          "biscuit",
+          "biscuits",
+          "cereal",
+          "marmalade",
+          "supplement powder",
+          "edible"
+        ],
+        "context": [
+          "edible",
+          "organic",
+          "gluten free",
+          "vegan",
+          "flavour",
+          "flavor",
+          "ingredients",
+          "calories",
+          "servings"
+        ],
+        "corroborating": [
+          "food",
+          "snack",
+          "tea",
+          "coffee",
+          "spice",
+          "sauce",
+          "flour",
+          "sugar",
+          "juice",
+          "honey",
+          "jam",
+          "chocolate",
+          "candy",
+          "nuts",
+          "spread"
+        ],
         "wattage_min": 0
       },
-      "exclude": ["tea light", "tea lights", "tea towel", "teapot", "tea pot", "tea infuser", "coffee table", "coffee mug", "coffee grinder", "coffee machine", "coffee filter", "sugar bowl", "candle", "food container", "food storage", "food wrap", "dog food", "cat food", "pet food", "bird food", "food processor"]
+      "exclude": [
+        "tea light",
+        "tea lights",
+        "tea towel",
+        "teapot",
+        "tea pot",
+        "tea infuser",
+        "coffee table",
+        "coffee mug",
+        "coffee grinder",
+        "coffee machine",
+        "coffee filter",
+        "sugar bowl",
+        "candle",
+        "food container",
+        "food storage",
+        "food wrap",
+        "dog food",
+        "cat food",
+        "pet food",
+        "bird food",
+        "food processor"
+      ],
+      "not_product_types": [
+        "CHAIR",
+        "SOFA",
+        "TABLE",
+        "BED",
+        "DESK",
+        "SHELF",
+        "CABINET",
+        "STOOL",
+        "BENCH",
+        "OUTDOOR_FURNITURE",
+        "HOME_FURNITURE_AND_DECOR",
+        "WINDOW_TREATMENT",
+        "AWNING",
+        "TENT",
+        "UMBRELLA",
+        "RUG",
+        "CURTAIN",
+        "LIGHT_FIXTURE",
+        "HARDWARE",
+        "HARDWARE_TUBING",
+        "AUTO_PART",
+        "TOOL",
+        "POWER_TOOL",
+        "VACUUM_CLEANER",
+        "FAN",
+        "HEATER",
+        "MATTRESS",
+        "PILLOW",
+        "LUGGAGE",
+        "SHOES",
+        "WATCH",
+        "GARDEN_TOOL_SET",
+        "PEST_CONTROL_DEVICE",
+        "PORTABLE_ELECTRONIC_DEVICE_MOUNT",
+        "UNMANNED_AERIAL_VEHICLE",
+        "MASSAGER"
+      ]
     },
     {
       "id": "FOOD_CONTACT_MATERIAL",
@@ -108,18 +514,70 @@
       "risk": "MEDIUM",
       "avoid_if_no_docs": false,
       "reason": "Amazon requests REACH and food-contact migration test reports, especially for Chinese-origin silicone, melamine and plastic kitchenware.",
-      "regulator": {"UK": "FSA / UK food contact materials rules", "US": "FDA 21 CFR"},
+      "regulator": {
+        "UK": "FSA / UK food contact materials rules",
+        "US": "FDA 21 CFR"
+      },
       "docs": {
-        "UK": ["Food contact material declaration of compliance (UK equivalent of EC 1935/2004)", "Migration test report for plastic/silicone/melamine"],
-        "US": ["FDA 21 CFR food-contact compliance statement", "Migration/extractables test report"]
+        "UK": [
+          "Food contact material declaration of compliance (UK equivalent of EC 1935/2004)",
+          "Migration test report for plastic/silicone/melamine"
+        ],
+        "US": [
+          "FDA 21 CFR food-contact compliance statement",
+          "Migration/extractables test report"
+        ]
       },
       "triggers": {
-        "strong": ["chopping board", "food container", "lunch box", "lunchbox", "cooking utensil", "baking tray", "baking mat", "food wrap", "silicone mould", "silicone mold", "reusable straw", "drinking straw", "thermos", "ice cube tray", "cake tin", "food storage", "water bottle", "coffee mug", "wine glass", "cutlery set", "salad bowl", "mixing bowl", "muffin tray", "baking sheet"],
+        "strong": [
+          "chopping board",
+          "food container",
+          "lunch box",
+          "lunchbox",
+          "cooking utensil",
+          "baking tray",
+          "baking mat",
+          "food wrap",
+          "silicone mould",
+          "silicone mold",
+          "reusable straw",
+          "drinking straw",
+          "thermos",
+          "ice cube tray",
+          "cake tin",
+          "food storage",
+          "water bottle",
+          "coffee mug",
+          "wine glass",
+          "cutlery set",
+          "salad bowl",
+          "mixing bowl",
+          "muffin tray",
+          "baking sheet"
+        ],
         "context": [],
-        "corroborating": ["plate", "bowl", "mug", "flask"],
+        "corroborating": [
+          "plate",
+          "bowl",
+          "mug",
+          "flask"
+        ],
         "wattage_min": 0
       },
-      "exclude": ["decorative plate", "display only", "wall plate", "plate rack", "number plate", "licence plate", "license plate", "hot plate", "hotplate", "plate carrier", "bowl brush", "toilet bowl"]
+      "exclude": [
+        "decorative plate",
+        "display only",
+        "wall plate",
+        "plate rack",
+        "number plate",
+        "licence plate",
+        "license plate",
+        "hot plate",
+        "hotplate",
+        "plate carrier",
+        "bowl brush",
+        "toilet bowl"
+      ]
     },
     {
       "id": "BATTERY_POWERED",
@@ -127,19 +585,52 @@
       "risk": "MEDIUM",
       "avoid_if_no_docs": true,
       "reason": "Required for FBA acceptance and requested for MFN listings during compliance sweeps. UN38.3 comes from the cell manufacturer -- if the supplier will not release it, it cannot be created later.",
-      "regulator": {"UK": "Amazon Product Safety / carrier DG", "US": "Amazon Dangerous Goods / DOT"},
+      "regulator": {
+        "UK": "Amazon Product Safety / carrier DG",
+        "US": "Amazon Dangerous Goods / DOT"
+      },
       "docs": {
-        "UK": ["un38_3", "sds", "Hazmat shipping classification", "Battery composition disclosure"],
-        "US": ["un38_3", "sds", "Hazmat shipping classification", "Battery composition disclosure"]
+        "UK": [
+          "un38_3",
+          "sds",
+          "Hazmat shipping classification",
+          "Battery composition disclosure"
+        ],
+        "US": [
+          "un38_3",
+          "sds",
+          "Hazmat shipping classification",
+          "Battery composition disclosure"
+        ]
       },
       "triggers": {
-        "strong": ["lithium", "li-ion", "li ion", "lipo", "lithium polymer", "18650", "21700", "rechargeable battery", "built-in battery", "built in battery", "internal battery", "battery pack", "power bank"],
+        "strong": [
+          "lithium",
+          "li-ion",
+          "li ion",
+          "lipo",
+          "lithium polymer",
+          "18650",
+          "21700",
+          "rechargeable battery",
+          "built-in battery",
+          "built in battery",
+          "internal battery",
+          "battery pack",
+          "power bank"
+        ],
         "context": [],
         "corroborating": [],
         "mah_min": 100,
         "wattage_min": 0
       },
-      "exclude": ["battery case", "battery cover", "battery holder", "battery compartment cover", "battery tester"]
+      "exclude": [
+        "battery case",
+        "battery cover",
+        "battery holder",
+        "battery compartment cover",
+        "battery tester"
+      ]
     },
     {
       "id": "PPE_SAFETY",
@@ -147,18 +638,52 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "PPE Categories II and III require Notified/Approved Body type examination. A reseller cannot obtain this.",
-      "regulator": {"UK": "OPSS / PPE Regulation 2016/425 as retained", "US": "OSHA / ANSI"},
+      "regulator": {
+        "UK": "OPSS / PPE Regulation 2016/425 as retained",
+        "US": "OSHA / ANSI"
+      },
       "docs": {
-        "UK": ["PPE Regulation type examination certificate", "ukca_ce", "Declaration of Conformity", "Approved Body certificate number", "UK Responsible Person on packaging/labeling"],
-        "US": ["OSHA compliance statement", "ANSI standard certification"]
+        "UK": [
+          "PPE Regulation type examination certificate",
+          "ukca_ce",
+          "Declaration of Conformity",
+          "Approved Body certificate number",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "OSHA compliance statement",
+          "ANSI standard certification"
+        ]
       },
       "triggers": {
-        "strong": ["safety goggles", "hard hat", "ear defenders", "hi-vis", "hi vis", "high visibility vest", "safety boots", "dust mask", "respirator", "welding helmet", "face shield", "safety gloves", "knee pads", "back support belt", "fall harness", "safety harness"],
+        "strong": [
+          "safety goggles",
+          "hard hat",
+          "ear defenders",
+          "hi-vis",
+          "hi vis",
+          "high visibility vest",
+          "safety boots",
+          "dust mask",
+          "respirator",
+          "welding helmet",
+          "face shield",
+          "safety gloves",
+          "knee pads",
+          "back support belt",
+          "fall harness",
+          "safety harness"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["toy hard hat", "costume helmet", "goggles case", "novelty"]
+      "exclude": [
+        "toy hard hat",
+        "costume helmet",
+        "goggles case",
+        "novelty"
+      ]
     },
     {
       "id": "JEWELLERY_ACCESSORIES",
@@ -166,18 +691,83 @@
       "risk": "MEDIUM",
       "avoid_if_no_docs": false,
       "reason": "Amazon requests REACH test reports for jewellery, especially nickel release and lead/cadmium content.",
-      "regulator": {"UK": "OPSS / UK REACH, Hallmarking Act", "US": "CPSC / California Prop 65"},
+      "regulator": {
+        "UK": "OPSS / UK REACH, Hallmarking Act",
+        "US": "CPSC / California Prop 65"
+      },
       "docs": {
-        "UK": ["REACH heavy metals test report (lead, cadmium, nickel release)", "UK Hallmarking Act compliance if precious metal"],
-        "US": ["CPSIA lead limits test report for children's jewelry", "California Prop 65 lead/cadmium assessment"]
+        "UK": [
+          "REACH heavy metals test report (lead, cadmium, nickel release)",
+          "UK Hallmarking Act compliance if precious metal"
+        ],
+        "US": [
+          "CPSIA lead limits test report for children's jewelry",
+          "California Prop 65 lead/cadmium assessment"
+        ]
       },
       "triggers": {
-        "strong": ["jewellery", "jewelry", "necklace", "bracelet", "earring", "earrings", "anklet", "brooch", "pendant", "bangle", "watch band", "watch strap", "costume jewellery", "body piercing", "nose stud", "cufflinks"],
-        "context": ["sterling silver", "silver", "gold", "gold plated", "rose gold", "platinum", "engagement", "wedding", "gemstone", "diamond", "cubic zirconia"],
-        "corroborating": ["ring", "chain", "stud", "charm"],
+        "strong": [
+          "jewellery",
+          "jewelry",
+          "necklace",
+          "bracelet",
+          "earring",
+          "earrings",
+          "anklet",
+          "brooch",
+          "pendant",
+          "bangle",
+          "watch band",
+          "watch strap",
+          "costume jewellery",
+          "body piercing",
+          "nose stud",
+          "cufflinks"
+        ],
+        "context": [
+          "sterling silver",
+          "silver",
+          "gold",
+          "gold plated",
+          "rose gold",
+          "platinum",
+          "engagement",
+          "wedding",
+          "gemstone",
+          "diamond",
+          "cubic zirconia"
+        ],
+        "corroborating": [
+          "ring",
+          "chain",
+          "stud",
+          "charm"
+        ],
         "wattage_min": 0
       },
-      "exclude": ["jewellery box", "jewelry box", "jewellery stand", "jewelry stand", "jewellery cleaning", "jewelry cleaner", "jewellery organiser", "jewelry organizer", "ring binder", "key ring", "keyring", "o-ring", "towel ring", "curtain ring", "ring light", "boxing ring", "chain saw", "chainsaw", "bike chain", "chain lube", "door chain"]
+      "exclude": [
+        "jewellery box",
+        "jewelry box",
+        "jewellery stand",
+        "jewelry stand",
+        "jewellery cleaning",
+        "jewelry cleaner",
+        "jewellery organiser",
+        "jewelry organizer",
+        "ring binder",
+        "key ring",
+        "keyring",
+        "o-ring",
+        "towel ring",
+        "curtain ring",
+        "ring light",
+        "boxing ring",
+        "chain saw",
+        "chainsaw",
+        "bike chain",
+        "chain lube",
+        "door chain"
+      ]
     },
     {
       "id": "TEXTILES_CLOTHING",
@@ -185,18 +775,81 @@
       "risk": "MEDIUM",
       "avoid_if_no_docs": false,
       "reason": "Amazon can request REACH azo dye test reports and fibre composition verification. Children's clothing and nightwear face additional flammability testing.",
-      "regulator": {"UK": "Textile Labelling Regulations / UK REACH", "US": "FTC / CPSC"},
+      "regulator": {
+        "UK": "Textile Labelling Regulations / UK REACH",
+        "US": "FTC / CPSC"
+      },
       "docs": {
-        "UK": ["Fibre composition labeling to the Textile Products Regulations", "REACH azo dye test report", "Flammability test report for nightwear or children's clothing"],
-        "US": ["FTC Textile Fiber Products Identification Act labeling", "Care Labeling Rule compliance", "CPSIA testing for children's apparel", "Flammability testing to 16 CFR 1610/1615/1616"]
+        "UK": [
+          "Fibre composition labeling to the Textile Products Regulations",
+          "REACH azo dye test report",
+          "Flammability test report for nightwear or children's clothing"
+        ],
+        "US": [
+          "FTC Textile Fiber Products Identification Act labeling",
+          "Care Labeling Rule compliance",
+          "CPSIA testing for children's apparel",
+          "Flammability testing to 16 CFR 1610/1615/1616"
+        ]
       },
       "triggers": {
-        "strong": ["t-shirt", "tshirt", "polo shirt", "shirt", "dress", "trousers", "jacket", "coat", "hoodie", "underwear", "socks", "scarf", "swimwear", "activewear", "uniform", "workwear", "bedding", "duvet", "pillowcase", "curtains", "towel", "rug", "carpet", "leggings", "jumper", "sweatshirt", "pyjamas", "nightwear", "bed sheet", "bed sheets"],
+        "strong": [
+          "t-shirt",
+          "tshirt",
+          "polo shirt",
+          "shirt",
+          "dress",
+          "trousers",
+          "jacket",
+          "coat",
+          "hoodie",
+          "underwear",
+          "socks",
+          "scarf",
+          "swimwear",
+          "activewear",
+          "uniform",
+          "workwear",
+          "bedding",
+          "duvet",
+          "pillowcase",
+          "curtains",
+          "towel",
+          "rug",
+          "carpet",
+          "leggings",
+          "jumper",
+          "sweatshirt",
+          "pyjamas",
+          "nightwear",
+          "bed sheet",
+          "bed sheets"
+        ],
         "context": [],
-        "corroborating": ["fabric", "pillow"],
+        "corroborating": [
+          "fabric",
+          "pillow"
+        ],
         "wattage_min": 0
       },
-      "exclude": ["fabric paint", "fabric glue", "fabric softener", "sewing pattern", "buttons", "fabric scissors", "fabric shaver", "towel rail", "towel ring", "towel holder", "rug gripper", "carpet cleaner", "carpet tape", "curtain pole", "curtain rail", "curtain hooks"]
+      "exclude": [
+        "fabric paint",
+        "fabric glue",
+        "fabric softener",
+        "sewing pattern",
+        "buttons",
+        "fabric scissors",
+        "fabric shaver",
+        "towel rail",
+        "towel ring",
+        "towel holder",
+        "rug gripper",
+        "carpet cleaner",
+        "carpet tape",
+        "curtain pole",
+        "curtain rail",
+        "curtain hooks"
+      ]
     },
     {
       "id": "PRESSURE_EQUIPMENT",
@@ -204,18 +857,45 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "Pressure equipment requires conformity assessment by a UK Approved Body for the higher categories.",
-      "regulator": {"UK": "Pressure Equipment (Safety) Regulations 2016", "US": "ASME / OSHA"},
+      "regulator": {
+        "UK": "Pressure Equipment (Safety) Regulations 2016",
+        "US": "ASME / OSHA"
+      },
       "docs": {
-        "UK": ["Pressure Equipment (Safety) Regulations conformity assessment", "ukca_ce", "Declaration of Conformity", "UK Responsible Person on packaging/labeling"],
-        "US": ["ASME certification where applicable", "OSHA compliance statement"]
+        "UK": [
+          "Pressure Equipment (Safety) Regulations conformity assessment",
+          "ukca_ce",
+          "Declaration of Conformity",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "ASME certification where applicable",
+          "OSHA compliance statement"
+        ]
       },
       "triggers": {
-        "strong": ["pressure cooker", "pressure washer", "air compressor", "pressure vessel", "autoclave", "pneumatic tool", "gas cylinder", "co2 canister", "co2 cylinder"],
+        "strong": [
+          "pressure cooker",
+          "pressure washer",
+          "air compressor",
+          "pressure vessel",
+          "autoclave",
+          "pneumatic tool",
+          "gas cylinder",
+          "co2 canister",
+          "co2 cylinder"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["pressure cooker liner", "pressure washer hose", "pressure washer nozzle", "cylinder cover", "cylinder stand"]
+      "exclude": [
+        "pressure cooker liner",
+        "pressure washer hose",
+        "pressure washer nozzle",
+        "cylinder cover",
+        "cylinder stand"
+      ]
     },
     {
       "id": "GAS_APPLIANCE",
@@ -223,18 +903,49 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "Gas appliances require type examination. Selling non-certified gas appliances is a criminal offence in the UK.",
-      "regulator": {"UK": "Gas Appliances Regulation / UKCA", "US": "CSA / ANSI Z21"},
+      "regulator": {
+        "UK": "Gas Appliances Regulation / UKCA",
+        "US": "CSA / ANSI Z21"
+      },
       "docs": {
-        "UK": ["Gas Appliances Regulation type examination certificate", "ukca_ce", "Test report to BS EN 498 or the product-specific standard", "UK Responsible Person on packaging/labeling"],
-        "US": ["CSA / ANSI Z21 certification", "State approval where required"]
+        "UK": [
+          "Gas Appliances Regulation type examination certificate",
+          "ukca_ce",
+          "Test report to BS EN 498 or the product-specific standard",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "CSA / ANSI Z21 certification",
+          "State approval where required"
+        ]
       },
       "triggers": {
-        "strong": ["gas heater", "gas cooker", "gas hob", "gas bbq", "gas fire", "propane heater", "butane heater", "camping stove", "gas stove", "gas regulator", "lpg appliance", "lpg heater", "patio gas heater"],
+        "strong": [
+          "gas heater",
+          "gas cooker",
+          "gas hob",
+          "gas bbq",
+          "gas fire",
+          "propane heater",
+          "butane heater",
+          "camping stove",
+          "gas stove",
+          "gas regulator",
+          "lpg appliance",
+          "lpg heater",
+          "patio gas heater"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["gas stove cover", "gas hob cover", "stove fan", "stove pipe brush", "gas bottle cover"]
+      "exclude": [
+        "gas stove cover",
+        "gas hob cover",
+        "stove fan",
+        "stove pipe brush",
+        "gas bottle cover"
+      ]
     },
     {
       "id": "MACHINERY",
@@ -242,18 +953,55 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "The machinery rules require conformity assessment and a comprehensive risk-assessment file, plus instructions in English.",
-      "regulator": {"UK": "Supply of Machinery (Safety) Regulations", "US": "OSHA / ANSI"},
+      "regulator": {
+        "UK": "Supply of Machinery (Safety) Regulations",
+        "US": "OSHA / ANSI"
+      },
       "docs": {
-        "UK": ["Supply of Machinery (Safety) Regulations conformity assessment", "ukca_ce", "Declaration of Conformity", "Instructions in English", "UK Responsible Person on packaging/labeling"],
-        "US": ["OSHA compliance statement", "ANSI standard certification"]
+        "UK": [
+          "Supply of Machinery (Safety) Regulations conformity assessment",
+          "ukca_ce",
+          "Declaration of Conformity",
+          "Instructions in English",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "OSHA compliance statement",
+          "ANSI standard certification"
+        ]
       },
       "triggers": {
-        "strong": ["chainsaw", "chain saw", "lathe", "bench saw", "table saw", "circular saw", "band saw", "milling machine", "cnc machine", "petrol generator", "generator petrol", "log splitter", "cement mixer", "woodchipper", "wood chipper", "angle grinder"],
+        "strong": [
+          "chainsaw",
+          "chain saw",
+          "lathe",
+          "bench saw",
+          "table saw",
+          "circular saw",
+          "band saw",
+          "milling machine",
+          "cnc machine",
+          "petrol generator",
+          "generator petrol",
+          "log splitter",
+          "cement mixer",
+          "woodchipper",
+          "wood chipper",
+          "angle grinder"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["chainsaw chain oil", "chainsaw file", "saw blade", "saw horse", "sawdust", "generator cover", "toy chainsaw"]
+      "exclude": [
+        "chainsaw chain oil",
+        "chainsaw file",
+        "saw blade",
+        "saw horse",
+        "sawdust",
+        "generator cover",
+        "toy chainsaw"
+      ]
     },
     {
       "id": "CHEMICALS_CLEANING",
@@ -261,18 +1009,80 @@
       "risk": "HIGH",
       "avoid_if_no_docs": true,
       "reason": "Chemical products require CLP hazard classification, GHS labeling and an SDS from the manufacturer. Any pesticidal claim additionally triggers HSE or EPA registration.",
-      "regulator": {"UK": "HSE / UK CLP + UK REACH", "US": "EPA / OSHA HazCom"},
+      "regulator": {
+        "UK": "HSE / UK CLP + UK REACH",
+        "US": "EPA / OSHA HazCom"
+      },
       "docs": {
-        "UK": ["CLP classification and labeling", "sds", "UK REACH registration if over 1 tonne", "UFI code and poison centre notification"],
-        "US": ["epa_registration", "sds", "GHS-compliant label"]
+        "UK": [
+          "CLP classification and labeling",
+          "sds",
+          "UK REACH registration if over 1 tonne",
+          "UFI code and poison centre notification"
+        ],
+        "US": [
+          "epa_registration",
+          "sds",
+          "GHS-compliant label"
+        ]
       },
       "triggers": {
-        "strong": ["bleach", "disinfectant", "detergent", "drain cleaner", "oven cleaner", "varnish", "adhesive", "solvent", "stain remover", "rust remover", "descaler", "pool chemicals", "anti-freeze", "antifreeze", "white spirit", "paint stripper", "grout cleaner", "toilet cleaner", "mould remover", "mold remover"],
-        "context": ["ml", "litre", "liter", "spray", "concentrate", "refill"],
-        "corroborating": ["paint", "cleaner", "polish"],
+        "strong": [
+          "bleach",
+          "disinfectant",
+          "detergent",
+          "drain cleaner",
+          "oven cleaner",
+          "varnish",
+          "adhesive",
+          "solvent",
+          "stain remover",
+          "rust remover",
+          "descaler",
+          "pool chemicals",
+          "anti-freeze",
+          "antifreeze",
+          "white spirit",
+          "paint stripper",
+          "grout cleaner",
+          "toilet cleaner",
+          "mould remover",
+          "mold remover"
+        ],
+        "context": [
+          "ml",
+          "litre",
+          "liter",
+          "spray",
+          "concentrate",
+          "refill"
+        ],
+        "corroborating": [
+          "paint",
+          "cleaner",
+          "polish"
+        ],
         "wattage_min": 0
       },
-      "exclude": ["paint brush", "paintbrush", "paint roller", "paint by numbers", "paint tray", "paint sprayer", "vacuum cleaner", "cleaner cloth", "cleaner brush", "screen cleaner cloth", "nail polish", "polish cloth", "shoe polish brush", "adhesive hooks", "adhesive tape", "adhesive pads", "adhesive strips"]
+      "exclude": [
+        "paint brush",
+        "paintbrush",
+        "paint roller",
+        "paint by numbers",
+        "paint tray",
+        "paint sprayer",
+        "vacuum cleaner",
+        "cleaner cloth",
+        "cleaner brush",
+        "screen cleaner cloth",
+        "nail polish",
+        "polish cloth",
+        "shoe polish brush",
+        "adhesive hooks",
+        "adhesive tape",
+        "adhesive pads",
+        "adhesive strips"
+      ]
     },
     {
       "id": "SPORTING_FITNESS",
@@ -280,18 +1090,62 @@
       "risk": "MEDIUM",
       "avoid_if_no_docs": false,
       "reason": "Amazon requests documentation for gym equipment under GPSR. E-bikes and hoverboards carry battery and electrical safety requirements; helmets and life jackets are PPE and need Approved Body involvement.",
-      "regulator": {"UK": "OPSS / GPSR + PPE where applicable", "US": "CPSC / ASTM"},
+      "regulator": {
+        "UK": "OPSS / GPSR + PPE where applicable",
+        "US": "CPSC / ASTM"
+      },
       "docs": {
-        "UK": ["GPSR compliance evidence", "Product-specific EN standard test report", "ukca_ce where applicable (e-bikes, helmets, life jackets)", "UK Responsible Person on packaging/labeling"],
-        "US": ["CPSC compliance statement", "ASTM standard test report"]
+        "UK": [
+          "GPSR compliance evidence",
+          "Product-specific EN standard test report",
+          "ukca_ce where applicable (e-bikes, helmets, life jackets)",
+          "UK Responsible Person on packaging/labeling"
+        ],
+        "US": [
+          "CPSC compliance statement",
+          "ASTM standard test report"
+        ]
       },
       "triggers": {
-        "strong": ["gym equipment", "weight bench", "treadmill", "exercise bike", "rowing machine", "pull-up bar", "pull up bar", "punch bag", "punching bag", "trampoline", "climbing harness", "e-bike", "electric bike", "electric scooter", "hoverboard", "life jacket", "buoyancy aid", "cycle helmet", "bike helmet", "ski helmet", "dumbbell set", "barbell"],
+        "strong": [
+          "gym equipment",
+          "weight bench",
+          "treadmill",
+          "exercise bike",
+          "rowing machine",
+          "pull-up bar",
+          "pull up bar",
+          "punch bag",
+          "punching bag",
+          "trampoline",
+          "climbing harness",
+          "e-bike",
+          "electric bike",
+          "electric scooter",
+          "hoverboard",
+          "life jacket",
+          "buoyancy aid",
+          "cycle helmet",
+          "bike helmet",
+          "ski helmet",
+          "dumbbell set",
+          "barbell"
+        ],
         "context": [],
         "corroborating": [],
         "wattage_min": 0
       },
-      "exclude": ["sports bag", "sports water bottle", "gym bag", "gym towel", "helmet sticker", "helmet cover", "bike helmet mirror", "trampoline cover", "treadmill mat"]
+      "exclude": [
+        "sports bag",
+        "sports water bottle",
+        "gym bag",
+        "gym towel",
+        "helmet sticker",
+        "helmet cover",
+        "bike helmet mirror",
+        "trampoline cover",
+        "treadmill mat"
+      ]
     }
   ]
 }

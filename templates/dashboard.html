@@ -440,6 +440,11 @@
            comparison it does not support. -->
       <div id="sales_cards" class="stat-row"></div>
       <div id="sales_note"></div>
+      <!-- WHAT THE STOCK COST, and how it is worked out. Directly under the
+           Profit card because that is the card it explains: a profit with
+           uncosted units in it is knowingly too high, and the fix is one click
+           from the number rather than on a screen nobody thinks to open. -->
+      <div id="sales_cogsbar"></div>
       <!-- Shape first, then which products made it, then the full grid. Reading
            order matches the questions people actually ask, in that order. -->
       <div id="sales_charts"></div>
@@ -1163,6 +1168,9 @@
 <!-- Sales dashboard: stat cards + the metrics x dates grid. -->
 <script src="/static/js/salescharts.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sales.js?v={{ ASSET_V }}"></script>
+<!-- The stock-cost bar under the Profit card. AFTER sales.js: it uses _sFetch
+     and _sAcct, and is drawn from salesDrawCards. -->
+<script src="/static/js/cogsmode.js?v={{ ASSET_V }}"></script>
 <!-- AFTER both. traffic.js draws with salesCombo and formats with _sNum rather
      than carrying its own copies, which would drift from these on the first fix
      made to either. (Order is not load-bearing -- these are function

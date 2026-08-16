@@ -240,7 +240,7 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None):
 
 def for_period(config_path, workspace_id, marketplace, start, end,
                overrides=None, vat_rate=None, ads_connected=False,
-               ad_spend=0.0):
+               ad_spend=0.0, revenue=None, units=None):
     """Profit on orders PLACED between two dates, from the seller's own costs.
 
     Returns the figure, how the fee rate was arrived at, and what it does not
@@ -256,6 +256,51 @@ def for_period(config_path, workspace_id, marketplace, start, end,
                             sku=sku, on_date=on_date)
 
     out = for_lines(lines, rate, vat_rate=vat_rate, charge_of=_charge_of)
+
+    # REVENUE COMES FROM THE FIGURE ON THE CARD, not from a second derivation.
+    #
+    # This used to add up order_lines itself. order_lines and sales_daily are
+    # filled by different passes over different windows, so on a live account
+    # they drifted -- and profit was worked out over MORE trade than sales was,
+    # which produced "Total Sales 1,248, Profit 1,728". Profit exceeding revenue
+    # is not a rounding fault, it is two different questions on one row.
+    #
+    # Given the revenue the screen is showing, everything is recomputed against
+    # it, so the two cannot disagree by construction. The lines are still used
+    # for what only they know: what the stock cost, and which units have no cost.
+    if revenue is not None:
+        try:
+            rev = round(float(revenue), 2)
+        except (TypeError, ValueError):
+            rev = out["revenue"]
+        vat = 0.0
+        if vat_rate:
+            try:
+                r = float(vat_rate)
+                if 0 < r < 1:
+                    vat = round(rev * r / (1.0 + r), 2)
+            except (TypeError, ValueError):
+                vat = 0.0
+        net = round(rev - vat, 2)
+        fees = round(net * float(rate), 2)
+        profit = round(net - fees - out["cogs"] - out["charges"], 2)
+        out.update({
+            "revenue": rev, "vat": vat, "net_revenue": net, "fees": fees,
+            "profit": profit,
+            "margin_pct": round(profit / net * 100, 1) if net else None,
+            # The unit count the screen is showing, so "x of y units have no
+            # cost" counts against the same y the owner can see.
+            "units": int(units) if units is not None else out["units"],
+        })
+        _u = out["units"] or 0
+        _missing = max(0, _u - int(out["costed_units"] or 0))
+        out["missing_units"] = _missing
+        out["complete"] = (_missing == 0 and _u > 0)
+        out["warning"] = ("" if not _missing else
+                          "%d of %d units have no cost recorded, so nothing was "
+                          "subtracted for them and this profit is HIGHER than "
+                          "the truth. Set a cost on those products to fix it."
+                          % (_missing, _u))
 
     # AD SPEND ONLY WHEN IT IS KNOWN. Asked for: build it the way Orbit does --
     # subtracted once the Advertising API is connected, and nothing subtracted

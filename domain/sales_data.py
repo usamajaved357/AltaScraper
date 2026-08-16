@@ -275,13 +275,28 @@ def vat_rate_for(config, workspace_id):
 
 
 def series(config_path, workspace_id, marketplace, start, end, asin=None,
-           vat_rate=None):
+           vat_rate=None, basis="money"):
     """Daily rows for a range, sales joined with ads and finance.
 
     The dates come from the UNION of the three sources, not from sales alone. A
     refund posts on the day the money went back, which can easily be a day with
     no sales of its own -- keying off sales would drop that refund entirely and
     quietly overstate what you kept.
+
+    `basis` decides WHICH DAY Amazon's money is reported on:
+
+      "money"  the day it moved. Answers "what landed in my account this week",
+               which is a cash question and a real one.
+      "order"  the day the order that caused it was PLACED. Answers "what did
+               the orders I took this week earn", which is what a P&L is for.
+
+    The difference is not small. Measured on jack_uk, Amazon settles ten to
+    twelve days after the order -- so on the money basis a week's sales and that
+    week's fees describe entirely different trades, and no day carries both.
+    That is what made the P&L grid impossible to read across.
+
+    Only the settled columns move. Sales, units, orders and traffic are dated by
+    the order already, on either basis, and are untouched.
     """
     conn = _db.get_db(config_path)
     key = asin or "*"
@@ -295,6 +310,51 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         (workspace_id, marketplace, start, end, key)).fetchall()}
     from domain import finance_data as _fd
     fin = _fd.series(config_path, workspace_id, marketplace, start, end, key)
+
+    # ON THE ORDER BASIS the settled money is re-dated to the day each order was
+    # placed, using the order id Amazon puts on every shipment and refund event.
+    # Only for the account-wide series: fees are known per ORDER, and splitting
+    # one order's fee across the ASINs in it is a different job from this one.
+    fin_note = ""
+    if basis == "order" and key == "*":
+        try:
+            from domain import order_finance as _of
+            # BOTH SIDES FROM THE SAME ROWS. The money side below is built from
+            # order_lines, which reaches back ninety days; the sales side was
+            # written by a fourteen-day pass, so on a longer window the money
+            # covered more days than the sales did -- 2861.33 charged against
+            # 1241.13 of sales on selvora_limited. Rewriting the sales side from
+            # the same rows first makes that impossible rather than unlikely.
+            from domain import live_reconcile as _lr
+            try:
+                _lr.from_lines(config_path, workspace_id, marketplace, start, end)
+                sales = {r["date"]: dict(r) for r in conn.execute(
+                    "SELECT * FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+                    "AND date>=? AND date<=? AND asin=?",
+                    (workspace_id, marketplace, start, end, key)).fetchall()}
+            except Exception:
+                pass
+            # EVERY ORDER IN THE WINDOW, settled or not. Amazon settles about
+            # eleven days after the order, so a day's sales covered nine units
+            # while its fees covered six -- and profit came out as six orders'
+            # proceeds minus nine units of stock, a loss on a day that made
+            # money. Unsettled orders get their fee estimated at the rate this
+            # account actually pays, and each day says how much of it is
+            # estimated. See order_finance.complete_by_order_date.
+            from domain import order_profit as _op
+            _rate, _rbasis, _rdetail = _op.fee_rate(config_path, workspace_id,
+                                                    marketplace, end)
+            fin = _of.complete_by_order_date(config_path, workspace_id,
+                                             marketplace, start, end,
+                                             fee_rate=_rate, vat_rate=vat_rate)
+            miss = _of.unattributed(config_path, workspace_id, marketplace)
+            if miss.get("orders"):
+                fin_note = ("%d settled order(s) worth %.2f in fees are older "
+                            "than this app's order history, so they cannot be "
+                            "dated to when they were placed and are not in these "
+                            "figures." % (miss["orders"], miss["fees"]))
+        except Exception:
+            basis = "money"          # never lose the figures over a re-dating
 
     out = []
     for d in sorted(set(sales) | set(ads) | set(fin)):
@@ -482,6 +542,11 @@ METRICS = [
     # of what buyers were charged was 18%.
     ("fee_rate",          "Fees as % of charged",  "pct",   "down", ("rate", "total_fees", "principal")),
     ("refunds",           "Refunds",               "money", "down", ("sum",)),
+    # THE PART OF THE FEE AMAZON HANDS BACK WITH A REFUND. It was stored, used
+    # in net proceeds, and never shown -- 31.67 on selvora_limited that moved
+    # the bottom line and appeared on no row, so the arithmetic on screen could
+    # not be followed. Money in, so "up" is the good direction.
+    ("refund_fees_returned", "Fees returned on refunds", "money", "up", ("sum",)),
     ("refund_units",      "Units refunded",        "count", "down", ("sum",)),
     ("refund_rate",       "Refund rate",           "pct",   "down", ("rate", "refund_units", "units")),
     ("promos",            "Promotions funded",     "money", "down", ("sum",)),
@@ -489,7 +554,15 @@ METRICS = [
     # What is left after Amazon's cut, refunds and funded discounts. NOT profit:
     # it is before cost of goods, and calling it profit would be a wrong number
     # dressed as a right one.
-    ("principal",         "Charged to buyers",     "money", "up",   ("sum",)),
+    # "(ex VAT)" IS THE WHOLE POINT OF THE NAME. Amazon reports Principal
+    # EXCLUDING VAT and sends the tax as its own line -- measured, 80.47 of tax
+    # against 402.39 of principal, exactly 20% on top. So there is nothing for
+    # "Revenue after VAT" below to take out, and the two rows show the identical
+    # number. That is arithmetically right and it reads as a fault: a row called
+    # "Charged to buyers" sounds like what the buyer actually handed over, which
+    # is this plus the VAT. Saying "ex VAT" here is what makes the pair make
+    # sense at a glance instead of looking like the VAT was forgotten.
+    ("principal",         "Charged to buyers (ex VAT)", "money", "up", ("sum",)),
     # VAT out first: it was collected, not earned. net_revenue is what is left.
     ("vat",               "VAT",                   "money", "down", ("sum",)),
     ("net_revenue",       "Revenue after VAT",     "money", "up",   ("sum",)),
@@ -539,7 +612,8 @@ METRIC_SECTIONS = [
     ]),
     ("Costs & deductions", [
         "total_fees", "referral_fees", "fba_fees", "other_fees", "fee_rate",
-        "cogs", "vat", "refunds", "refund_units", "refund_rate", "promos",
+        "cogs", "vat", "refunds", "refund_units", "refund_rate",
+        "refund_fees_returned", "promos",
         "reimbursements", "net_proceeds",
     ]),
     ("Traffic", [
@@ -656,8 +730,27 @@ def _div(a, b):
 
 
 def _pct(a, b):
-    v = _div(a, b)
-    return round(v * 100, 2) if v is not None else None
+    """a as a percentage of b, rounded ONCE at the end.
+
+    This used to call _div, which rounds the RATIO to two decimals -- and a
+    ratio is a much smaller number than the percentage it becomes, so rounding
+    it first throws away the digits that matter:
+
+        9 units / 513 sessions = 0.017543...
+        round(0.0175, 2)       = 0.02
+        x 100                  = 2.00%      the truth is 1.75%
+
+    A 14% error on the conversion rate, and worse further down: a genuine 0.4%
+    conversion rounds to 0.00 and disappears altogether, so a product that IS
+    selling reads as one that never sells. Every rate in the app went through
+    here -- conversion, fee rate, refund rate, ACOS, TACOS and margin.
+    """
+    try:
+        if a is None or not b:
+            return None
+        return round(float(a) / float(b) * 100.0, 2)
+    except Exception:
+        return None
 
 
 def _weighted(rows, field, weight):

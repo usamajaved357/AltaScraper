@@ -208,6 +208,30 @@ def fetch(config_path, workspace_id, marketplace, marketplace_id, creds, days=30
         status = str(o.get("OrderStatus") or "")
         items = by_order.get(oid)
         if items is None:
+            # AMAZON WOULD NOT ITEMISE THIS ORDER -- usually a rate limit. It
+            # used to be skipped entirely, so the order vanished from the sales
+            # figures altogether: measured on selvora_limited, 229.93 across
+            # seven orders simply absent from a thirty-day total.
+            #
+            # A sale we cannot break down is still a sale. It is recorded from
+            # the order's own totals, with no ASIN or SKU because we genuinely
+            # do not know them, and with revenue split off the OrderTotal. The
+            # blank SKU is also what makes it eligible to be fetched again and
+            # filled in properly once Amazon will answer.
+            from domain import orders_live as _ol2
+            amt, cur = _ol2._amount(o)
+            try:
+                qty = int(o.get("NumberOfItemsShipped") or 0) + \
+                      int(o.get("NumberOfItemsUnshipped") or 0)
+            except (TypeError, ValueError):
+                qty = 0
+            if amt or qty:
+                lines.append({
+                    "order_id": oid, "purchase_date": when,
+                    "asin": "", "sku": "", "title": "(not itemised by Amazon)",
+                    "units": qty, "revenue": float(amt or 0), "shipping": 0.0,
+                    "currency": cur or "", "status": status,
+                })
             continue
         for it in items:
             lines.append({
