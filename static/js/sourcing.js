@@ -182,6 +182,48 @@ function _targetChip(t){
     +  '">below target &middot; ' + t.actual_pct + '%</span>';
 }
 
+// Start tracking everything that is not tracked yet.
+//
+// The supplier link is not asked for: the app recorded where each listing came
+// from when it built it, so it can attach them itself. What it CANNOT do is
+// invent one for a listing whose source was an Amazon page -- that is the
+// competitor the listing was modelled on, not where the stock is bought -- so
+// those are enrolled and reported rather than quietly skipped.
+async function sourcingTrackAll(btn){
+  const old = btn ? btn.innerHTML : "";
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> reading your listings…'; }
+  try{
+    const cand = await (await fetch("/sourcing/candidates")).json();
+    const items = (cand && cand.items) || [];
+    const todo = items.filter(function(x){ return !x.enrolled; }).map(function(x){ return x.sku; });
+    if(!items.length){
+      toast((cand && cand.note) || "No live listings to track — press Sync on Listings first.");
+      return;
+    }
+    if(!todo.length){ toast("Every live listing is already being tracked."); return; }
+    if(!confirm("Start tracking " + todo.length + " listing" + (todo.length===1?"":"s") + "?\n\n"
+              + "This records what each one costs at its supplier, every 4 hours.\n"
+              + "It does NOT change any price — auto-pricing stays "
+              + (SRC_MASTER ? "as it is" : "off") + ", and each SKU still has to be "
+              + "armed separately before anything can reach Amazon.")) return;
+    if(btn) btn.innerHTML = '<span class="genspin"></span> tracking ' + todo.length + '…';
+    const j = await (await fetch("/sourcing/enrol_bulk",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({skus: todo})})).json();
+    if(!j.ok){ toast(j.error||"Could not enrol"); return; }
+    // Say what did NOT work as loudly as what did. A bulk action that reports
+    // only its successes is how you end up with SKUs quietly tracking nothing.
+    let msg = "Now tracking " + j.enrolled + " listing" + (j.enrolled===1?"":"s")
+            + " — " + j.linked + " with the supplier the app already had on file";
+    if(j.no_link) msg += ", " + j.no_link + " still need a supplier link";
+    toast(msg + ".");
+    SRC_LASTBULK = j.rows || [];
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = old; } }
+}
+let SRC_LASTBULK = null;
+
 function sourcingRender(j){
   const body = document.getElementById("srcbody");
   const c = j.counts || {};
@@ -201,14 +243,26 @@ function sourcingRender(j){
       +  '<button class="db-chip" onclick="sourcingMaster(false)" '
       +  'style="margin-left:6px">Stop everything</button></div>';
   } else {
+    // TRACKING IS NOT PRICING, and the screen has to say so.
+    //
+    // "uploading or selecting the skus in the repricer means to track their true
+    //  costs from the sources" -- which is what enrolling has always done, but
+    //  the screen called itself the repricer and implied that adding a SKU
+    //  handed it your prices. It does not, and that is the reason it is safe to
+    //  add all of them.
     h += '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
       +  'border:1px solid #26403a;background:#10231f;border-radius:6px">'
-      +  '<b>Dry run.</b> Nothing here changes a live listing. The app reads your '
-      +  'suppliers every 4 hours, works out what it would do, and writes it down. '
-      +  'Read this for a while before it is armed &mdash; if a decision looks wrong '
-      +  'here, it would have been wrong on Amazon.'
-      +  (SRC_MASTER ? ' The master switch is on, but no SKU is armed yet.'
-                     : ' The master switch is off.')
+      +  '<b>Tracking costs. Auto-pricing is off.</b> Every SKU here is being '
+      +  'watched: the app reads its supplier every 4 hours and records what the '
+      +  'unit actually costs that day. Nothing changes a live listing. '
+      +  'It also works out what it WOULD price at, so you can read the decisions '
+      +  'before trusting them &mdash; if one looks wrong here, it would have been '
+      +  'wrong on Amazon.'
+      +  (SRC_MASTER ? ' Auto-pricing is switched on but no SKU is armed for it yet.'
+                     : '')
+      +  ' <b>Adding a SKU is safe:</b> it starts the cost history and nothing '
+      +  'more. A supplier price on a day nobody was watching cannot be recovered '
+      +  'later, so there is a reason to add them before you need them.'
       +  '</div>';
   }
 
@@ -216,10 +270,22 @@ function sourcingRender(j){
     +  '<button class="db-chip" onclick="sourcingCheckNow(this)">'
     +  '<i class="ti ti-refresh"></i> Re-read suppliers now</button>'
     +  '<button class="db-chip" onclick="sourcingAddPrompt()">'
-    +  '<i class="ti ti-plus"></i> Enrol a SKU</button>'
-    +  '<button class="db-chip" onclick="sourcingMaster('+(SRC_MASTER?"false":"true")+')">'
-    +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Master switch: ON'
-                   : '<i class="ti ti-lock"></i> Master switch: off')+'</button>'
+    +  '<i class="ti ti-plus"></i> Track a SKU</button>'
+    +  '<button class="db-chip go" onclick="sourcingTrackAll(this)" title="'
+    +  'Starts watching every live listing that is not already tracked, and '
+    +  'attaches the supplier link the app recorded when it built each one. '
+    +  'Changes no prices.">'
+    +  '<i class="ti ti-eye"></i> Track everything</button>'
+    // The switch that actually matters, named for what it does rather than for
+    // where it lives. "Master switch: off" did not say off from WHAT.
+    +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
+    +  'onclick="sourcingMaster('+(SRC_MASTER?"false":"true")+')" title="'
+    +  (SRC_MASTER ? 'Auto-pricing is ON. Armed SKUs can have their price, stock '
+                   + 'and handling time changed on Amazon without anyone watching.'
+                   : 'Auto-pricing is OFF. Costs are still tracked and decisions '
+                   + 'still recorded; nothing reaches Amazon.')+'">'
+    +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Auto-pricing: ON'
+                   : '<i class="ti ti-lock"></i> Auto-pricing: off')+'</button>'
     +  '<button class="db-chip" onclick="sourcingTarget(\'\')" title="'
     +  'The least profit you will accept, as a percentage. Applies to every '
     +  'enrolled SKU unless one has its own.">'

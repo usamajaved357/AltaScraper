@@ -236,6 +236,72 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
         return jsonify({"ok": True})
 
+    @app.route("/sourcing/enrol_bulk", methods=["POST"])
+    def sourcing_enrol_bulk():
+        """Track many SKUs at once, attaching each one's known supplier link.
+
+        "i want to enroll all my items to the repricer ... uploading or selecting
+         the skus in the repricer means to track their true costs from the
+         sources"
+
+        Tracking is not pricing. Everything enrolled here is in dry run and
+        cannot change a listing -- arming is separate and still needs a
+        min_price per SKU. What this does is start reading what each unit
+        actually costs, which is the thing you cannot get back later: a supplier
+        price on a day nobody was watching is simply gone.
+
+        The supplier link is not asked for, because the app already recorded it
+        when it built the listing (domain/source_link.py). A SKU whose link
+        cannot be found is still enrolled and says what it is missing, rather
+        than being dropped from a bulk action silently.
+        """
+        b = _body()
+        wsid, mkt = _where()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not skus:
+            return jsonify({"ok": False, "error": "no SKUs given"}), 400
+        if len(skus) > 2000:
+            return jsonify({"ok": False, "error": (
+                "%d SKUs at once is more than this was meant for -- enrol in "
+                "batches so a failure part-way is easy to see" % len(skus))}), 400
+
+        from domain import source_link as _link
+        out = {"enrolled": 0, "already": 0, "linked": 0, "no_link": 0, "rows": []}
+        have = {r["sku"] for r in _repo.enrolled(CONFIG_PATH, wsid, mkt)}
+        for sku in skus:
+            was = sku in have
+            _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            out["already" if was else "enrolled"] += 1
+            row = {"sku": sku, "was_enrolled": was, "source": "", "note": ""}
+            # Never a SECOND source for a SKU that already has one: this can be
+            # run repeatedly over a growing catalogue, and each pass would
+            # otherwise add another copy of the same link.
+            if _repo.sources_for(CONFIG_PATH, wsid, mkt, sku):
+                row["note"] = "already has a supplier"
+            else:
+                got = _link.for_sku(CONFIG_PATH, wsid, sku)
+                if got["url"]:
+                    try:
+                        # ensure_source, not add_source: this is automatic, and
+                        # add_source INSERTs unconditionally -- running it twice
+                        # over a growing catalogue would give every SKU a second
+                        # identical supplier, then a third, each one fetched on
+                        # every sweep.
+                        _repo.ensure_source(CONFIG_PATH, wsid, mkt, sku, got["url"],
+                                            kind=got["kind"], label=got["url"])
+                        out["linked"] += 1
+                        row["source"] = got["url"]
+                        row["note"] = "from " + got["where"]
+                    except Exception as e:
+                        out["no_link"] += 1
+                        row["note"] = "could not attach: %s" % str(e)[:120]
+                else:
+                    out["no_link"] += 1
+                    row["note"] = got["why"]
+            out["rows"].append(row)
+        out["ok"] = True
+        return jsonify(out)
+
     # ---- sources --------------------------------------------------------
     @app.route("/sourcing/source/add", methods=["POST"])
     def sourcing_source_add():
