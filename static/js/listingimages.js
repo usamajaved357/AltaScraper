@@ -174,7 +174,8 @@ async function ilCloseFolder(){
 function _ilDrawFolders(){
   const list = IMGLIB.folders || [];
   let h = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
-        + '<div style="font-weight:600;font-size:15px">Image library</div>'
+        + '<p class="paneltitle" style="font-size:15px;line-height:22px">'
+        + '<i class="ti ti-library-photo"></i> Image library</p>'
         + '<div class="cc" style="font-size:12px">' + list.length + ' product'
         + (list.length === 1 ? '' : 's') + '</div>'
         + '<span class="spacer" style="flex:1"></span>'
@@ -299,8 +300,11 @@ async function _ilElsewhere(){
   }).join("");
 
   box.innerHTML = warn
-    + '<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;'
-    + 'margin-bottom:12px;font-size:12.5px;background:var(--panel)">'
+    // .panelcard: the same border, radius and background the other screens use,
+    // named rather than retyped. Three copies of "1px solid var(--line)" is
+    // three places to change when the card changes, and they never all get
+    // changed.
+    + '<div class="panelcard" style="margin-bottom:12px;font-size:12.5px">'
     + '<b>' + total + ' image' + (total === 1 ? ' is' : 's are') + ' on this server but filed '
     + 'under another workspace.</b> Nothing was lost — the library only ever shows the '
     + 'workspace you have open. Moving them here makes them visible in this account.'
@@ -364,8 +368,11 @@ function _ilDraw(){
             ? '<button class="db-chip" onclick="ilCloseFolder()">'
               + '<i class="ti ti-arrow-left"></i> All folders</button>'
             : '')
-        + '<div style="font-weight:600;font-size:15px">'
-        + (inFolder ? '<i class="ti ti-folder-open"></i> ' : '') + 'Images</div>'
+        // .paneltitle, the same name Sales, Traffic and the rest use for the
+        // heading of a panel -- rather than a weight and a size typed inline
+        // here and typed slightly differently everywhere else.
+        + '<p class="paneltitle" style="font-size:15px;line-height:22px">'
+        + (inFolder ? '<i class="ti ti-folder-open"></i> ' : '') + 'Images</p>'
         + '<div class="cc" style="font-size:12px">' + _ilEsc(shown) + '</div>'
         + '<span class="spacer" style="flex:1"></span>'
         + (IMGLIB.files.length
@@ -397,8 +404,16 @@ function _ilDraw(){
      + '<b style="font-size:12.5px">Upload your own image</b>'
      + '<div class="cc" style="font-size:11px;margin:4px 0 8px">'
      + 'Saved to this listing\'s folder and hosted publicly so Amazon can fetch it.</div>'
-     + '<input type="file" accept="image/*" id="il_upload" '
-     + 'onchange="ilUpload(this)" style="font-size:12px">'
+     // THE ONE WHITE THING ON A DARK SCREEN. A bare file input is drawn by the
+     // browser in its own colours, so "Choose File" arrived as a light grey
+     // button in the middle of the panel and read as a rendering fault. The
+     // input still does the work -- it is simply moved off-screen and driven by
+     // a label, which is what a <label for> is for, so the keyboard and screen
+     // reader behaviour are unchanged.
+     + '<input type="file" accept="image/*" id="il_upload" class="visually-hidden" '
+     + 'onchange="ilUpload(this)">'
+     + '<label class="db-chip" for="il_upload" style="cursor:pointer">'
+     + '<i class="ti ti-upload"></i> Choose an image</label>'
      + '<span id="il_upstatus" class="cc" style="font-size:11px;margin-left:8px"></span></div>';
 
   if(!IMGLIB.files.length){
