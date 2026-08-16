@@ -8,8 +8,11 @@ WORKFLOW:
   Step 2 -- crawl4ai: real browser review scraping for VOC (demographics, pain points)
   Step 3 -- Autocomplete: keyword research from amazon.co.uk (no Brand Registry needed)
   Step 4 -- Claude: generates title, bullets, description, attributes from all data above
-  Step 5 -- Google Sheet: write for your review (Status = APPROVED / SKIP / NEEDS_REVIEW)
-  Step 6 -- Export: one command fills Amazon UK flat file template in Google Sheets
+  Step 5 -- Store: written into the app for your review, where you set the status
+            (APPROVED / SKIP / NEEDS_REVIEW) on the Listings screen. On the "db"
+            backend that store is this app's own database; a Google Sheet is only
+            used by an account still configured for the "sheets" backend.
+  Step 6 -- Export: one command fills the Amazon flat-file template
 
 COMMANDS:
   py -3.11 amazon_listing_generator.py          # generate listings

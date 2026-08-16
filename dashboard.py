@@ -5,14 +5,16 @@ Local review + run dashboard for the Amazon listing pipeline.
 WHAT IT DOES
   - "Generate" / "Retry" / "Export" buttons run amazon_listing_generator.py as a
     background process; its progress streams live into the page (no cmd window).
-  - Reads your Google Sheet ("Listings v7.0 UK") live and shows each listing as a
-    review card: status, IP risk, compliance risk, the Notes findings, title,
-    bullets, price/profit, and a link to the source listing.
-  - Approve / Hold buttons write Status back to the sheet, so your existing
-    export step still works unchanged. NOTHING is published to Amazon from here.
+  - Reads the listing store and shows each listing as a review card: status, IP
+    risk, compliance risk, the Notes findings, title, bullets, price/profit, and
+    a link to the source listing. The store is this app's own database unless an
+    account is still configured for the "sheets" backend.
+  - Approve / Hold buttons write Status back to that store.
 
 RUN
-  pip install flask          (gspread/google-auth are already installed by the main script)
+  pip install flask
+  Google (gspread / google-auth) is OPTIONAL: it is needed only to import from a
+  spreadsheet or to use the "sheets" backend. Without it the app runs normally.
   py -3.11 dashboard.py
   then open  http://127.0.0.1:5000  in your browser.
 
@@ -32,8 +34,26 @@ import base64
 # This import was never referenced again anywhere in the file.
 
 from flask import Flask, Response, request, jsonify, session, redirect, url_for, send_from_directory
-import gspread
-from google.oauth2.service_account import Credentials
+
+# GOOGLE IS OPTIONAL NOW, SO IMPORTING IT MUST BE TOO.
+#
+# These were plain top-level imports, which made gspread and google-auth a hard
+# requirement for the app to START -- on a deployment that stores everything in
+# its own database and may never touch a spreadsheet. An install without them,
+# or one where they fail to import, could not run the app at all rather than
+# running it without the import-from-sheet button.
+#
+# Kept as names so the ~20 places that reference them still read the same; they
+# are simply None when Google is not installed, and the paths that need them
+# already fail with their own message.
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    GOOGLE_AVAILABLE = True
+except Exception:                       # ImportError, or a broken install
+    gspread = None
+    Credentials = None
+    GOOGLE_AVAILABLE = False
 
 # --- must match amazon_listing_generator.py -----------------------------------
 CONFIG_PATH       = os.environ.get("CONFIG_PATH", "config.json")

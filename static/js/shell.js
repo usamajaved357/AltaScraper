@@ -65,17 +65,21 @@ function renderDataSource(){
   //
   // On the database: name the database, and keep the INPUT sheet only as what it
   // now is -- an optional place to import products from.
+  // ON THE DATABASE, THERE IS NOTHING TO SAY HERE.
+  //
+  // This still printed "Data source · This app's database · Import from:
+  // 1XcH6Ldb…HBvM · gid 0 · optional". Every part of that is either obvious or
+  // about a spreadsheet: naming the database as the data source is telling
+  // someone their app stores its data in itself, and the rest advertises a
+  // sheet id and a gid across the top of the listings screen for a feature that
+  // is one button inside the queue.
+  //
+  // Reported as: "i still see the import from and tab sections in the app in
+  // the header, if we are not using sheets make sure to delete them from there".
+  // Importing from a sheet still WORKS -- it is "Import from sheet" in the input
+  // queue, where the import is -- it just stops being a permanent caption.
   if(window.DATA_BACKEND === "db"){
-    let html = `<span style="opacity:.7"><i class="ti ti-database"></i> Data source</span>`
-             + `<span class="srcchip" title="Listings, prices, sales and finance are stored in this app. `
-             + `Nothing is written to a spreadsheet."><i class="ti ti-database"></i> This app's database</span>`;
-    // Shown only if one is configured. An absent input sheet is not a problem
-    // to warn about any more -- products can be typed straight into the queue.
-    if(s.in_id){
-      html += _srcChip("Import from", s.in_id, s.in_gid, "")
-            + `<span class="cc" style="font-size:11px;opacity:.75">optional — only read when you press Import</span>`;
-    }
-    el.innerHTML = html;
+    el.innerHTML = "";
     return;
   }
 
