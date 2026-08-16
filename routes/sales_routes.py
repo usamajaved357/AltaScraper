@@ -190,6 +190,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         prev = _sd.totals(CONFIG_PATH, wsid, mkt, p_start.strftime("%Y-%m-%d"),
                           p_end.strftime("%Y-%m-%d"), asin, _vat,
                           basis=_basis())
+        # "WAS £0" AND "THERE WAS NO BEFORE" ARE NOT THE SAME CLAIM.
+        #
+        # Summing a window with no rows in it gives zero, and the card then
+        # printed "was : £0" -- stating that the previous month took nothing.
+        # For an account that did not exist yet that is not a measurement, it is
+        # an assertion about a period nobody has looked at. Reported as "the
+        # prior period dotted lines are not accurate".
+        #
+        # The screen already knows how to say "no earlier period" -- see
+        # _sDelta -- and shows it when the previous figures are absent rather
+        # than zero. So when the whole comparison window falls before this
+        # account's first data, the figures are withheld instead of invented.
+        _avail = _sd.availability(CONFIG_PATH, wsid, mkt)
+        _from = ((_avail.get("sales") or {}).get("first_date") or "")
+        if _from and p_end.strftime("%Y-%m-%d") < _from:
+            prev = {"days": 0, "currency": cur.get("currency"),
+                    "_before_any_data": True}
 
         def delta(k):
             a, b = cur.get(k), prev.get(k)

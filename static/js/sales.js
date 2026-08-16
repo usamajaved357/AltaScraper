@@ -716,11 +716,31 @@ function salesDrawCharts(ser){
     // dates". Without it the same product appears to have sold on two
     // different days depending on which screen you are looking at, and there
     // is no way to tell that both are right.
+    // WHY THE PROFIT LINE IS A DOT.
+    //
+    // Reported as "the profit lines do not appears on the graph it just show a
+    // dot". It is drawn correctly: profit exists on ONE day out of twenty,
+    // because profit is withheld for any day where a unit shipped has no cost
+    // recorded, and 19 of Nestwell's 22 units have none. One point is a dot --
+    // there is nothing to draw a line to.
+    //
+    // The reason was already on the screen, under the cards, as the COGS
+    // coverage note. It is said HERE too because here is where the dot is, and
+    // it is the same fact from the same place rather than a second opinion.
+    const _pm = (rows || []).filter(function(m){ return m.key === "profit"; })[0];
+    const _pdays = _pm ? (_pm.cells || []).filter(function(v){
+      return v !== null && v !== undefined; }).length : 0;
+    const _sparse = (_pm && _pdays > 0 && _pdays < Math.max(2, dates.length / 3))
+      ? ' <b>Profit</b> is drawn on only ' + _pdays + ' of these ' + dates.length
+        + ' days: a day is left out when any unit shipped that day has no cost '
+        + 'recorded, so the line breaks rather than guessing. Enter costs on the '
+        + 'Listings screen and the rest fill in.'
+      : '';
     let note = (SALES._chartBasis === "order")
       ? '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
-        + 'Based on <b>order dates</b> — counted when the order was placed. '
-        + 'Profit is not on this chart because Amazon reports no profit against '
-        + 'an order date; it is in the grid below, on the money basis.</div>'
+        + 'Based on <b>order dates</b> — counted when the order was placed, '
+        + 'including Amazon’s fees, so every line describes the same trade.'
+        + _sparse + '</div>'
       : '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
         + 'Based on <b>when the money moved</b> — the gold bars are <b>units '
         + 'shipped</b>, dated at settlement, <b>not orders</b>. A bar on a day '
@@ -901,6 +921,10 @@ async function salesReload(){
     // wall of zeros.
     const av = await _sFetch("/sales/availability?"+_sQuery());
     if(av === null) return;
+    // Kept, so every part of the screen can say what it does and does not have.
+    // The grid needs it as much as the cards do -- an empty column and a column
+    // that is genuinely zero look identical, and they are not the same fact.
+    SALES.avail = av;
     const [sum, ser] = await Promise.all([
       _sFetch("/sales/summary?"+_sQuery()),
       _sFetch("/sales/series?"+_sQuery())
@@ -1354,6 +1378,19 @@ function salesDrawRange(sum, av){
   const a=(av&&av.sales)||{};
   let t = sum.start+" to "+sum.end;
   if(a.last_date) t += " · Amazon has data to "+a.last_date;
+  // AND WHERE IT STARTS, when you have asked for more than there is.
+  //
+  // Reported as "the sales report and p&l heatmap do not show data beyond 27th
+  // july no matter if i select 30 day, 60d or 90d". Nestwell Goods has nothing
+  // before 27 July -- checked against Amazon, which returns a genuine zero for
+  // 10 July -- so 30, 60 and 90 days really are the same figures. The screen
+  // said none of that: it drew the extra weeks as empty columns, which reads
+  // as the app failing to load them rather than as an account that was not
+  // trading yet.
+  // Short, for the same reason as the grid's own note: the figures say it.
+  if(a.first_date && sum.start && sum.start < a.first_date){
+    t += " · trading from " + a.first_date;
+  }
   el.textContent=t;
 }
 
@@ -1947,10 +1984,19 @@ function salesDrawGrid(ser){
       // spelling and this is a match to Orbit, not to the rest of the app.
       + '<p class="panelsub" style="font-size:10px">Performance metrics with '
       + 'heatmap coloring across '
-      + 'time periods<span class="infodot" title="Each row is shaded against its '
-      + 'own range, never across rows. Profit and margin diverge at zero — red '
-      + 'below, green above — because a loss is not a small profit. Every cell '
-      + 'prints its number, so nothing depends on telling the colours apart.">i</span></p>'
+      // The colour's meaning belongs HERE, on the hover, not as prose on the
+      // page. Orbit does the same: a short line, an i, and the explanation only
+      // if you ask for it.
+      + 'time periods<span class="infodot" title="Colour = effect on PROFIT, '
+      + 'against the previous column.&#10;&#10;'
+      + 'Green is always good, red is always bad. Sales, orders and units going '
+      + 'up is green. Fees, refunds, ad spend and cost of goods going up is RED '
+      + '— the number rose but the profit fell.&#10;&#10;'
+      + 'Depth = size of the change: under 1% is left plain, 20% or more is '
+      + 'solid. It is a percentage, so it is per row — a dark red in fees is not '
+      + 'the same pounds as a dark red in sales.&#10;&#10;'
+      + 'A loss is red whatever the change was. Hover any cell for its figure '
+      + 'and the change behind the colour.">i</span></p>'
       + '</div></div>'
       + _sGridTools(ser)
       + '<div class="salesgridwrap"><table class="salesgrid"><thead><tr>'
@@ -1961,18 +2007,63 @@ function salesDrawGrid(ser){
   // ONE ROW, drawn the same way wherever it appears.
   const byKey = {};
   (ser.metrics||[]).forEach(function(m){ byKey[m.key] = m; });
+
+  // A DAY WITH NO SALE SHOWS ZERO, NOT A DASH.
+  //
+  // "the zeros written also indicates no sales was made so it is right thing."
+  //
+  // An em-dash means "not known" everywhere in this grid, and for most rows
+  // that is exactly right -- Amazon settles fees days later, so a blank fee
+  // cell genuinely means "not told yet". But for what was ORDERED, absence is
+  // an answer: the order feed is read continuously, so a day it holds no order
+  // for is a day that took no orders. Printing a dash there asks the reader to
+  // wonder whether the app failed to load it.
+  //
+  // Only these four, and only inside the period Amazon has actually reported
+  // on. Outside it nothing has been checked, and a zero there would be the app
+  // asserting something it has not looked at -- which is the fault that put
+  // fifteen months of invented zeros in the store in the first place.
+  const ORDERED = ["ordered_sales", "orders", "units", "order_items"];
+  const _avail = (SALES.avail && SALES.avail.sales) || {};
+  const knownFrom = _avail.first_date || "";
+  const knownTo = _avail.last_date || "";
+  const zeroable = function(key, i){
+    if(ORDERED.indexOf(key) < 0) return false;
+    const d = cols[i];
+    if(!d || !knownFrom || !knownTo) return false;
+    return d >= knownFrom && d <= knownTo;
+  };
+
   const drawRow = function(m){
-    // Shade against THIS metric's own range. Shading across rows would compare
-    // sessions with revenue, which means nothing.
-    const nums=m.cells.filter(function(v){ return v!==null && v!==undefined; }).map(Number);
-    const lo=Math.min.apply(null, nums.length?nums:[0]);
-    const hi=Math.max.apply(null, nums.length?nums:[0]);
+    // The value each cell is compared against: the previous column. Worked out
+    // once for the row, so a cell whose own neighbour is blank still compares
+    // against the last figure there actually was rather than against nothing.
+    const shownAt = m.cells.map(function(v, i){
+      const blank = (v === null || v === undefined);
+      return (blank && zeroable(m.key, i)) ? 0 : v;
+    });
     return '<tr><th class="mcol" title="'+_sEsc(m.label)+'">'+_sEsc(m.label)+'</th>'
-       + m.cells.map(function(v){
-           const t=_sTint(v, lo, hi, m.key);
-           const txt=_sNum(v, m.kind, ser.currency);
+       + shownAt.map(function(shown, i){
+           const blank = (m.cells[i] === null || m.cells[i] === undefined);
+           const prev = (i > 0) ? shownAt[i - 1] : null;
+           const t = _sTint(shown, prev, m.key, m.good);
+           const txt = _sNum(shown, m.kind, ser.currency);
+           // WHAT DROVE THE COLOUR, on hover. A shade you cannot interrogate is
+           // a shade you end up ignoring.
+           const d = _sDeltaPct(shown, prev);
+           let tip = m.label + ": " + txt;
+           if(blank && shown === 0) tip += " — no orders that day";
+           if(d !== null && prev !== null && prev !== undefined){
+             const sign = d > 0 ? "+" : "";
+             tip += "\n" + sign + d.toFixed(1) + "% vs "
+                  + _sColLabel(cols[i - 1], ser.granularity)
+                  + " (" + _sNum(prev, m.kind, ser.currency) + ")";
+             if(Math.abs(d) < 1) tip += " — flat";
+             else tip += (t.indexOf("45,212,168") >= 0)
+                       ? " — better for profit" : " — worse for profit";
+           }
            return '<td'+(t?' style="background:'+t+'"':'')
-                + ' title="'+_sEsc(m.label+": "+txt)+'">'+_sEsc(txt)+'</td>';
+                + ' title="'+_sEsc(tip)+'">'+_sEsc(txt)+'</td>';
          }).join("")
        + '</tr>';
   };
@@ -2138,18 +2229,53 @@ function _sGridTools(ser){
   // missing was saying so: the grid showed 601.08 + 15.80 under a sales row of
   // 605.77 and left it to be noticed, which reads as a fault in the app rather
   // than as a fact about the data.
+  // ---- "there is nothing here, and that is not a fault" -------------------
+  //
+  // THE REPORT: "the sales report and p&l heatmap do not show data beyond 27th
+  // july no matter if i select 30 day, 60d or 90d", and then: "when no data is
+  // available its okay but the user should be able to see that there is no
+  // data available".
+  //
+  // Nestwell Goods has nothing before 27 July — checked against Amazon, which
+  // returns a genuine zero for 10 July, so the account simply was not selling.
+  // 30, 60 and 90 days really are the same figures. But the screen said none of
+  // that: it drew the extra weeks as blank columns, which reads as the app
+  // having failed to load them.
+  //
+  // An em-dash means "not known" everywhere else in this grid and still does.
+  // What was missing is anybody saying WHY a run of them is there.
+  //
+  // KEPT SHORT ON PURPOSE. This was a paragraph, and the owner's answer was
+  // "i think the note in english wont be so good" -- fair: a wall of English
+  // is not what someone scanning a grid of numbers wants, and this app is read
+  // by someone who does not use English first. The zeros above now carry the
+  // meaning; this only has to date the edge.
+  const _av = (SALES.avail && SALES.avail.sales) || {};
+  if(_av.first_date && ser.start && ser.start < _av.first_date){
+    h += '<div class="gcogs gnodata">'
+      + '<span class="glbl">Trading from</span>'
+      + '<b>' + _sEsc(_sColLabel(_av.first_date, "day")) + '</b>'
+      + '<span class="infodot" title="This account has nothing before '
+      + _sEsc(_av.first_date) + '. The columns before it are empty because '
+      + 'there was no trade to report, not because they failed to load — so a '
+      + 'longer period shows the same figures as a shorter one.">i</span>'
+      + '</div>';
+  }
+
   const tie = ser.tie_out;
   if(tie && tie.days){
     const worst = (tie.worst || []).map(function(w){
       return _sColLabel(w[0], gran) + " " + _sNum(w[1], "money", ser.currency);
     }).join(", ");
+    // Label, figure, and the explanation on the hover -- not a paragraph on the
+    // page. Same shape as everything else here.
     h += '<div class="gcogs gtie">'
       + '<span class="glbl">Tie-out</span>'
       + '<b>' + _sEsc(_sNum(tie.amount, "money", ser.currency)) + '</b>'
-      + ' across <b>' + tie.days + '</b> day(s)'
-      + '<span class="gsep">·</span>'
-      + '<span class="cc">' + _sEsc(tie.note) + '</span>'
-      + (worst ? '<span class="cc"> Largest: ' + _sEsc(worst) + '.</span>' : "")
+      + ' over ' + tie.days + ' day' + (tie.days === 1 ? "" : "s")
+      + '<span class="infodot" title="' + _sEsc(tie.note)
+      + (worst ? "\n\nLargest: " + worst + "." : "")
+      + '">i</span>'
       + '</div>';
   }
   return h;
@@ -2303,49 +2429,87 @@ function _sColLabel(c, gran){
    point. A loss is not a small profit. */
 const _S_SIGNED = ["profit", "margin_pct", "net_proceeds", "roi_pct"];
 
-/* The shading behind a cell.
+/* THE SHADING BEHIND A CELL.
  *
- * THE FAULT THIS FIXES. Every row was shaded on ONE green scale running from
- * the row's lowest value to its highest. On a Profit row that ranges from -50
- * to +100 it made a fifty-pound LOSS the palest green on the row -- green
- * meaning good, and a faint green reading as "a quiet day" rather than "money
- * went out". The sign, which is the only thing anyone looks at on a profit row,
- * was the one thing the colour did not carry.
+ * HUE IS THE DIRECTION OF IMPACT ON PROFIT, NOT WHETHER A NUMBER WENT UP.
  *
- * So a signed metric DIVERGES AT ZERO: red below, green above, and the
- * intensity from how far it is from zero rather than from where it sits
- * between the row's two extremes. Everything else -- sessions, units, revenue,
- * which cannot be negative -- keeps the single-hue scale, where it is right.
+ * Stated by the owner, and it is the right model:
  *
- * Colour is never the only carrier: every cell prints its number, so the grid
- * still reads correctly in black and white and to anyone who cannot separate
- * red from green.
+ *   income lines   revenue, profit, units, orders   up   = green
+ *   cost lines     fees, COGS, ad spend, refunds    down = green
+ *
+ * so RED ALWAYS MEANS BAD FOR PROFIT and GREEN ALWAYS MEANS GOOD, whichever
+ * row you are looking at. This is what the grid did not do: it shaded every row
+ * on one green scale by SIZE, so a month of record Amazon fees was the darkest
+ * green on the sheet. The direction each metric wants is not guessed here -- it
+ * is `good` on the metric itself, set beside the metric's own definition in
+ * domain/sales_data.py, so the two cannot drift apart.
+ *
+ * INTENSITY IS THE SIZE OF THE CHANGE AGAINST THE PRIOR COLUMN.
+ *
+ *   under 1%   flat -- left unshaded, because a rounding wobble is not news
+ *   1 to 5%    faint
+ *   5 to 10%   light
+ *   10 to 20%  strong
+ *   over 20%   solid
+ *
+ * Percentages, so it is scaled per ROW by construction: a dark red in Referral
+ * Fees is not the same number of pounds as a dark red in Revenue -- it is dark
+ * because it is a big move FOR THAT LINE.
+ *
+ * A LOSS IS STILL RED, whatever the change was.
+ *
+ * The one thing kept from the previous rule. A profit row that goes -80 then
+ * -50 has improved, and by change alone the -50 would be green -- a green cell
+ * on a day that lost fifty pounds. On the rows where the sign is the whole
+ * point (see _S_SIGNED) a negative value is red regardless, because it IS bad
+ * for profit, which is the rule this whole scheme exists to express.
+ *
+ * Colour is never the only carrier: every cell prints its number and its hover
+ * gives the exact figure and the change that drove the shade, so the grid reads
+ * correctly in black and white and to anyone who cannot separate red from green.
  */
-function _sTint(v, lo, hi, key){
-  if(v===null||v===undefined) return "";
+const _S_GREEN = ["rgba(45,212,168,.10)", "rgba(45,212,168,.20)",
+                  "rgba(45,212,168,.32)", "rgba(45,212,168,.46)"];
+const _S_RED = ["rgba(239,68,68,.10)", "rgba(239,68,68,.20)",
+                "rgba(239,68,68,.32)", "rgba(239,68,68,.46)"];
+
+/* The change from the previous column, as a percentage.
+ *
+ * null when it cannot be one: the first column has nothing before it, and a
+ * cell whose neighbour is missing is not a change of anything. Going from zero
+ * to something is a real move and is treated as a big one rather than as
+ * infinity. */
+function _sDeltaPct(v, prev){
+  if(v === null || v === undefined || prev === null || prev === undefined) return null;
+  const a = Number(v), b = Number(prev);
+  if(!isFinite(a) || !isFinite(b)) return null;
+  if(b === 0) return (a === 0) ? 0 : (a > 0 ? 100 : -100);
+  return ((a - b) / Math.abs(b)) * 100;
+}
+
+function _sTint(v, prev, key, good){
+  if(v === null || v === undefined) return "";
   const n = Number(v);
   if(!isFinite(n)) return "";
 
-  if(_S_SIGNED.indexOf(String(key||"")) >= 0){
-    if(n === 0) return "";
-    // Scale each side against its own worst case, so one huge loss does not
-    // flatten every profit on the row into the same shade.
-    const worst = Math.abs(Math.min(0, lo)) || 1;
-    const best  = Math.max(0, hi) || 1;
-    const f = n < 0 ? Math.min(1, Math.abs(n) / worst) : Math.min(1, n / best);
-    const step = Math.min(4, Math.max(0, Math.floor(f * 5)));
-    return n < 0
-      ? ["rgba(239,68,68,.08)","rgba(239,68,68,.15)","rgba(239,68,68,.24)",
-         "rgba(239,68,68,.34)","rgba(239,68,68,.45)"][step]
-      : ["rgba(45,212,168,.05)","rgba(45,212,168,.10)","rgba(45,212,168,.17)",
-         "rgba(45,212,168,.25)","rgba(45,212,168,.34)"][step];
-  }
+  const signed = _S_SIGNED.indexOf(String(key || "")) >= 0;
+  const d = _sDeltaPct(v, prev);
 
-  if(!(hi>lo)) return "";
-  const f=(n-lo)/(hi-lo);
-  const step=Math.min(4, Math.max(0, Math.floor(f*5)));
-  return ["rgba(45,212,168,.05)","rgba(45,212,168,.10)","rgba(45,212,168,.17)",
-          "rgba(45,212,168,.25)","rgba(45,212,168,.34)"][step];
+  // A loss is bad however it got there -- and shown at full strength, because
+  // "we lost money" is not a shade of grey.
+  if(signed && n < 0) return _S_RED[3];
+
+  if(d === null) return "";                 // nothing to compare against
+  const mag = Math.abs(d);
+  if(mag < 1) return "";                    // flat
+  const step = mag >= 20 ? 3 : mag >= 10 ? 2 : mag >= 5 ? 1 : 0;
+
+  // Which way is good for THIS row. Anything unlabelled is treated as an
+  // income line, which is what all but the cost rows are.
+  const wantUp = String(good || "up") !== "down";
+  const helps = wantUp ? (d > 0) : (d < 0);
+  return (helps ? _S_GREEN : _S_RED)[step];
 }
 
 /* ---- actions ----------------------------------------------------------- */

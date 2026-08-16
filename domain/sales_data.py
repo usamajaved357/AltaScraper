@@ -169,11 +169,44 @@ def store(config_path, workspace_id, marketplace, rows):
 
 
 def _refresh_availability(conn, workspace_id, marketplace, source):
+    """What dates we actually have figures for. A ROW IS NOT EVIDENCE.
+
+    This counted every row in the table, and rows get written for days nothing
+    is known about. live_reconcile.from_lines() writes one per day across the
+    whole window it is given, so a single year-to-date view created a row for
+    every day back to January -- all of them empty.
+
+    Availability then said this account had data from 19 May 2025, and the
+    screen believed it: asking for 90 days drew ninety columns of zeros instead
+    of saying "there is nothing here before 27 July". Reported as "the sales
+    report and p&l heatmap do not show data beyond 27th july no matter if i
+    select 30 day, 60d or 90d" -- the screen was drawing the empty rows as
+    though they were real quiet days.
+
+    So the first date is the first day that carries an actual figure -- a sale,
+    an order, a unit, or a visitor. A genuinely quiet day inside a trading
+    period is still counted, because the days around it carry something; what
+    is excluded is a run of empty placeholder rows before the account had
+    anything at all.
+    """
     table = "sales_daily" if source == "sales" else "ads_daily"
+    # Which columns mean "something happened", per table.
+    cols = (("ordered_sales", "orders", "units", "sessions", "page_views")
+            if source == "sales" else
+            ("impressions", "clicks", "spend", "ad_orders", "ad_sales"))
+    real = " OR ".join("COALESCE(%s,0) <> 0" % c for c in cols)
     r = conn.execute(
         "SELECT MIN(date) a, MAX(date) b, COUNT(DISTINCT date) n FROM %s "
-        "WHERE workspace_id=? AND marketplace=?" % table,
+        "WHERE workspace_id=? AND marketplace=? AND (%s)" % (table, real),
         (workspace_id, marketplace)).fetchone()
+    # Nothing at all yet is a real answer too -- but then fall back to the rows
+    # we do have, so a brand new account with one quiet day still reports the
+    # day it was looked at rather than nothing.
+    if not (r and r["a"]):
+        r = conn.execute(
+            "SELECT MIN(date) a, MAX(date) b, 0 AS n FROM %s "
+            "WHERE workspace_id=? AND marketplace=?" % table,
+            (workspace_id, marketplace)).fetchone()
     conn.execute(
         "INSERT INTO data_availability (workspace_id, marketplace, source, first_date, "
         "last_date, days, fetched_at) VALUES (?,?,?,?,?,?,?) "

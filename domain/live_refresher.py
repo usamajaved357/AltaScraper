@@ -412,7 +412,21 @@ def _enrich_one(app, config_path, aid, mkt, log=None):
 # in quick succession already draw QuotaExceeded, so patience here is not
 # politeness, it is the difference between arriving and being refused.
 SALES_PER_PASS = 3         # days per pass -- small, because reports are scarce
-SALES_DAYS_BACK = 30       # how far back a gap is worth chasing
+
+# HOW FAR BACK A GAP IS WORTH CHASING.
+#
+# This was 30, and it is why the Sales Report showed the same figures whether
+# you asked for 30, 60 or 90 days: the report had never been fetched for
+# anything older, so the extra weeks were empty however wide the window was set.
+#
+# Ninety-five is not ninety-five requests per pair. sales_fetch floors every
+# backfill at the account's FIRST ORDER for that marketplace, so a pair that has
+# never traded is not chased at all and a pair that started in July is chased
+# only from July. Without that floor this number would mean about three thousand
+# report requests across eleven European marketplaces, nearly all of them asking
+# about days that never had a customer -- and at roughly one request a minute the
+# refresher would do nothing else for hours.
+SALES_DAYS_BACK = 95
 
 # HOW FAR BACK THE ORDER HISTORY MUST REACH.
 #

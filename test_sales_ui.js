@@ -107,23 +107,35 @@ check("big figures shorten", short(12431, "money", "GBP"), "\u00a312.4k");
 check("  and millions", short(2400000, "count"), "2.4m");
 check("  but missing stays an em-dash", short(null, "money"), "\u2014");
 
-console.log("\n=== the tint: one hue, five steps, per row ===");
-const tint = (v,lo,hi) => vm.runInContext(`_sTint(${v},${lo},${hi})`, sb);
-check("the lowest value gets the faintest step", tint(0, 0, 100), "rgba(45,212,168,.05)");
-check("the highest gets the strongest", tint(100, 0, 100), "rgba(45,212,168,.34)");
-check("a flat row is not shaded at all", tint(5, 5, 5), "");
-check("no data is not shaded", tint(null, 0, 100), "");
-const steps = new Set([0,10,30,60,100].map(v => tint(v,0,100)));
-check("five classes, not a continuous ramp", steps.size <= 5, true);
-check("every step is the SAME hue",
+// THE TINT CHANGED SHAPE. It used to take (value, rowLow, rowHigh, key) and
+// shade by how big the number was on its row -- so the biggest Amazon fee was
+// the darkest green on the sheet. It now takes (value, previousValue, key,
+// goodDirection) and shades by the effect on PROFIT of the change against the
+// column before. test_heatmap_colours.js covers that logic in full; this only
+// checks the shape and the things this file has always guarded.
+console.log("\n=== the tint: four steps, by change, per row ===");
+const tint = (v,p,k,g) => vm.runInContext(
+  `_sTint(${JSON.stringify(v)},${JSON.stringify(p)},${JSON.stringify(k||"ordered_sales")},${JSON.stringify(g||"up")})`, sb);
+check("a small change is faint", tint(103, 100), "rgba(45,212,168,.10)");
+check("a big one is strongest", tint(140, 100), "rgba(45,212,168,.46)");
+check("a flat cell is not shaded at all", tint(100, 100), "");
+check("no data is not shaded", tint(null, 100), "");
+check("nothing to compare against is not shaded", tint(100, null), "");
+const steps = new Set([103, 107, 115, 140].map(v => tint(v, 100)));
+check("four classes, not a continuous ramp", steps.size <= 4, true);
+check("a rise in an income row is green",
       [...steps].every(s => s.startsWith("rgba(45,212,168,")), true);
+// ...and the same rise in a COST row is the other hue. This is the whole point.
+check("the same rise in a cost row is red",
+      tint(140, 100, "referral_fees", "down").startsWith("rgba(239,68,68,"), true);
 
 console.log("\n=== every cell prints its number (the grid is the table view) ===");
-check("the cell text is the formatted value", /_sNum\(v, m\.kind, ser\.currency\)/.test(js), true);
+check("the cell text is the formatted value",
+      /_sNum\(shown, m\.kind, ser\.currency\)/.test(js), true);
 check("  and is written into the cell, not only the tooltip",
       />'\+_sEsc\(txt\)\+'<\/td>/.test(js), true);
-check("shading is computed per METRIC row",
-      /m\.cells\.filter[\s\S]{0,200}Math\.min/.test(js), true);
+check("shading is computed against the previous COLUMN of the same row",
+      /const prev = \(i > 0\) \? shownAt\[i - 1\] : null/.test(js), true);
 
 console.log("\n=== deltas carry direction and words, not colour alone ===");
 check("an arrow is rendered", /\u2191|\u2193/.test(js), true);

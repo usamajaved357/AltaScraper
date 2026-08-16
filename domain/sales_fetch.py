@@ -1,4 +1,4 @@
-"""domain/sales_fetch.py -- ask Amazon for sales, one day at a time.
+﻿"""domain/sales_fetch.py -- ask Amazon for sales, one day at a time.
 
 WHY ONE DAY AT A TIME
 GET_SALES_AND_TRAFFIC_REPORT will happily cover a range, but its per-ASIN block
@@ -52,6 +52,56 @@ def _held(config_path, workspace_id, marketplace, start, end):
         (workspace_id, marketplace, start, end)).fetchall()}
 
 
+def first_trade(config_path, workspace_id, marketplace):
+    """The earliest order this app has for a pair, or None.
+
+    THE FLOOR FOR ANY BACKFILL. Chasing report days from before an account was
+    trading spends the scarce report quota -- roughly one request a minute -- to
+    be told a zero we could already infer. These accounts are registered across
+    eleven European marketplaces and trade in one, so a flat "go back 90 days"
+    would mean about three thousand requests, nearly all of them for days that
+    never had a customer. The refresher would then do nothing else, for hours.
+
+    Bounded by trade instead: fetch every day since the account's first order,
+    and nothing before it. That covers the whole period there is anything to
+    know about, and grows by itself as the account keeps selling.
+    """
+    from data import db as _db
+    try:
+        r = _db.get_db(config_path).execute(
+            "SELECT MIN(substr(purchase_date,1,10)) FROM order_lines "
+            "WHERE workspace_id=? AND marketplace=?",
+            (workspace_id, marketplace)).fetchone()
+        return r[0] if r and r[0] else None
+    except Exception:
+        return None
+
+
+# How far back to look at a marketplace that has never taken an order. Short on
+# purpose: it exists only so that a FIRST sale somewhere new is still noticed.
+UNTRADED_DAYS_BACK = 30
+
+
+def _floor(config_path, workspace_id, marketplace, start, end):
+    """`start`, moved forward to the first day this pair ever traded.
+
+    A pair with NO order history keeps the short window it always had. Without
+    that it would inherit the long one, and the long one exists for the opposite
+    reason -- to cover an account's full trading history. Measured with it
+    missing: eleven European marketplaces per account, each asking for 82 days
+    of report about a country that has never had a customer, which is roughly
+    three thousand requests at about one a minute.
+    """
+    edge = first_trade(config_path, workspace_id, marketplace)
+    if not edge:
+        return max(start, end - _dt.timedelta(days=UNTRADED_DAYS_BACK - 1))
+    try:
+        e = _d(edge)
+    except Exception:
+        return start
+    return max(start, e)
+
+
 def missing_days(config_path, workspace_id, marketplace, days_back=30):
     """Dates in the window we genuinely do not hold, newest first.
 
@@ -66,6 +116,10 @@ def missing_days(config_path, workspace_id, marketplace, days_back=30):
     """
     end = yesterday()
     start = end - _dt.timedelta(days=int(days_back) - 1)
+    # Never before the account's first order -- see first_trade().
+    start = _floor(config_path, workspace_id, marketplace, start, end)
+    if start > end:
+        return []
     have = _held(config_path, workspace_id, marketplace, _s(start), _s(end))
     out = []
     d = end
@@ -84,6 +138,7 @@ def revisable_days(config_path, workspace_id, marketplace, days_back=30):
     """
     end = yesterday()
     start = end - _dt.timedelta(days=int(days_back) - 1)
+    start = _floor(config_path, workspace_id, marketplace, start, end)
     have = _held(config_path, workspace_id, marketplace, _s(start), _s(end))
     out = []
     for i in range(REVISE_DAYS):
