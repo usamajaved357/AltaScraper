@@ -309,6 +309,40 @@
         color:var(--ink4);padding:14px 11px 4px}
   .navitem .ti{font-size:16px;width:18px;text-align:center}
   .wsmain{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  /* ---- THE SIDEBAR FOLDS TO AN ICON RAIL ----
+     Asked for as "make the sidebar hideable like in amazon". A rail rather than
+     a full hide, for the same reason Seller Central keeps one: a menu that
+     vanishes entirely leaves nothing to switch WITH, so getting back means
+     hunting for the control that brings it back.
+
+     The labels are bare text nodes inside .navitem -- there is no element around
+     "Listings" to hide -- so the rail works by collapsing the item's font to
+     zero and restoring it on the icon. Tooltips are filled in by sidebar.js from
+     the label text at the moment of collapsing, because an icon with no name is
+     a guess. */
+  .navtoggle{display:flex;align-items:center;gap:9px;padding:7px 11px;margin:0 0 10px;
+             font-size:11.5px;color:var(--ink3);cursor:pointer;background:none;
+             border:1px solid transparent;border-radius:var(--radius-sm);width:100%;
+             text-align:left;font-family:inherit}
+  .navtoggle:hover{background:var(--panel2);color:var(--ink);border-color:var(--line)}
+  .navtoggle .ti{font-size:16px;width:18px;text-align:center;flex-shrink:0}
+  #workspace.navmini .sidebar{width:54px;padding:16px 7px}
+  #workspace.navmini .navtoggle{justify-content:center;padding:7px 0;font-size:0}
+  #workspace.navmini .navtoggle .ti{font-size:16px}
+  #workspace.navmini .slbl{font-size:0;padding:10px 0 4px;text-align:center}
+  /* A section label with no text still has to keep the groups apart, so it
+     becomes the rule it was already implying. */
+  #workspace.navmini .slbl::after{content:"";display:block;height:1px;
+                                  background:var(--line);margin:0 6px}
+  #workspace.navmini .navitem{font-size:0;justify-content:center;padding:9px 0;
+                              border-left-width:0;border-radius:var(--radius-sm)}
+  #workspace.navmini .navitem .ti{font-size:17px;width:auto}
+  #workspace.navmini .navitem span,
+  #workspace.navmini .navitem .chev{display:none}
+  #workspace.navmini .navitem.active{border-left-width:0;background:var(--accent-bg)}
+  #workspace.navmini .wsident{justify-content:center;margin-bottom:14px}
+  #workspace.navmini .wsident>div:last-child{display:none}
   .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
              padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .wstoolbar h2{font-size:15px;margin:0;font-weight:650}

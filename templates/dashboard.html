@@ -101,6 +101,13 @@
   <div class="sidebar">
     <!-- "All workspaces" pointed back at the home page. There is nowhere to go
          back TO any more: the account row below switches in place. -->
+    <!-- Folds the sidebar to a rail of icons. Above the workspace identity so it
+         stays in the same place whether the menu is open or folded. -->
+    <button class="navtoggle" id="navtoggle" onclick="toggleSidebar()"
+            aria-controls="workspace" aria-expanded="true"
+            title="Hide the menu (Ctrl+B)">
+      <i class="ti ti-layout-sidebar-left-collapse"></i><span>Hide menu</span>
+    </button>
     <div class="wsident">
       <div class="ic" id="ws_ic">··</div>
       <div><div class="nm pii" id="ws_nm">Workspace</div><div class="sub cc pii" id="ws_sub"></div></div>
@@ -195,7 +202,13 @@
           <button class="mktbtn" title="Upload a CSV of SKU/ASIN + cost to set COGS in bulk" onclick="document.getElementById('cogscsv').click()"><i class="ti ti-upload"></i> COGS CSV</button>
           <input type="file" id="cogscsv" accept=".csv" style="display:none" onchange="uploadCogsCsv(this)">
         </div>
-        <div id="mktswitch" class="mktswitch"></div>
+        <!-- The marketplace strip used to sit here as well as in the sidebar.
+             Two controls for one setting, and the toolbar one was the wider of
+             the two on a screen already carrying six other buttons. Removed on
+             request: "i already have the marketplace section now at the left
+             side of the screen so remove it from the header". Its two
+             non-duplicate actions -- set-as-default and detect -- moved into
+             the sidebar menu rather than being dropped with it. -->
         <select id="statussel" onchange="setFilterVal(this.value)" title="Filter by status"
           style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px">
           <option value="all">All statuses</option>
@@ -1142,6 +1155,8 @@
 <!-- The account and marketplace rows in the sidebar, so switching does not mean
      going back to a landing page first. -->
 <script src="/static/js/switcher.js?v={{ ASSET_V }}"></script>
+<!-- Folds the sidebar to a rail of icons, and remembers that you folded it. -->
+<script src="/static/js/sidebar.js?v={{ ASSET_V }}"></script>
 <!-- Remembers which screens have already loaded, per account and marketplace,
      so revisiting a tab is instant. Must load BEFORE shell.js, which asks it. -->
 <script src="/static/js/screenstate.js?v={{ ASSET_V }}"></script>
