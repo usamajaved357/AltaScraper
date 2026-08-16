@@ -90,7 +90,19 @@ def run_regen(config, gc, creds, *, skus, marketplace="UK", output_tab=None,
     compliance_rules = G.load_compliance_rules()
     ip_rules  = G.load_ip_rules()
     static_vv = G.load_static_valid_values()
-    client    = G.anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    # G._claude(config), not G.anthropic.Anthropic(...).
+    #
+    # The generator stopped importing anthropic at module level -- it costs 2.1
+    # seconds on every run, including the ones that never call Claude -- and
+    # moved the import inside _claude(), the single place that builds the
+    # client. This line was left reaching for the module attribute that used to
+    # exist, so regen died on the spot with
+    #
+    #     AttributeError: module 'amazon_listing_generator' has no attribute
+    #     'anthropic'
+    #
+    # every time it was asked to rebuild a listing. Found by regenerating one.
+    client    = G._claude(config)
 
     # read the tab once (retry-wrapped)
     vals = G._read_retry(ws.get_all_values)

@@ -30,7 +30,23 @@ _MONITOR_ACCOUNT_DEFAULT = "jack_uk"
 _CALL_PACING_S = 1.5          # (legacy single-call pacing; batch path uses _BATCH_PACING_S)
 _BATCH_SIZE = 20              # getItemOffersBatch does up to 20 (asin x marketplace) per call
 _BATCH_PACING_S = 2.0         # spacing between batch calls (the batch endpoint is heavier)
-_RESCAN_DEAD_AFTER = 24 * 3600  # re-check a DEAD marketplace at most once a day (catch expansion)
+# HOW LONG A MARKETPLACE WITH NO OFFERS IS LEFT ALONE.
+#
+# This was 24 hours, and the scheduler below also runs every 24 hours -- so a
+# marketplace already known to have nothing was re-checked on EVERY cycle and
+# the resting never actually rested anything. Found while running a listing
+# through the pipeline: the log filled with
+#
+#     [asin-monitor] B0DR96KVM2 IE: Bad Request
+#     [asin-monitor] B0CJ39XVF1 UK..IE: QuotaExceeded
+#
+# ten marketplaces deep for ASIN after ASIN, and the quota it spent was the
+# quota the generate and preview steps were waiting on.
+#
+# A week. A competitor expanding into Ireland is worth catching; it is not worth
+# catching within a day at the price of everything else, and "Check now" still
+# forces an immediate scan of everything.
+_RESCAN_DEAD_AFTER = 7 * 24 * 3600
 _SCHED_INTERVAL = 24 * 3600   # set by start_scheduler; used for next-run ETA + overload warning
 
 # MINIMUM GAP BETWEEN CHECKS OF THE SAME LIVE MARKETPLACE.
