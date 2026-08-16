@@ -146,7 +146,15 @@ sd.store(CFG, WS, MKT, [{"date": "2026-08-01", "asin": "*", "units": 3,
 ser = sd.series(CFG, WS, MKT, "2026-08-01", "2026-08-05")
 dates = [r["date"] for r in ser]
 check("a refund-only day still appears", "2026-08-05" in dates, True)
-check("  which sales alone would have dropped", len(dates), 2)
+# It appears WITH ITS REFUND, which is the point -- keying off sales alone would
+# have dropped the day and the money on it. The COUNT is no longer the test:
+# series() now returns every day of the range asked for, so a 90-day chart draws
+# 90 columns instead of stopping at the first day of trade. What must not happen
+# is the refund going missing.
+_d5 = [r for r in ser if r["date"] == "2026-08-05"][0]
+check("  carrying the refund, which sales alone would have dropped",
+      float(_d5.get("refunds") or 0) != 0, True)
+check("  and the whole range asked for is covered", len(dates), 5)
 
 d1 = [r for r in ser if r["date"] == "2026-08-01"][0]
 check("total fees add up", d1["total_fees"], 36.5)                   # 7.5 + 4 + 25

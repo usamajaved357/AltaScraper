@@ -19,6 +19,7 @@ Sales for today never exist, and yesterday is often incomplete. Every reply
 carries the range that genuinely has data, so the dashboard can draw "no data
 yet" instead of a column of zeros that reads as "you sold nothing".
 """
+import datetime as _dt
 import json
 import time
 
@@ -426,8 +427,38 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         except Exception:
             basis = "money"          # never lose the figures over a re-dating
 
+    # EVERY DAY IN THE WINDOW YOU ASKED FOR, whether anything happened or not.
+    #
+    # "i still dont see the graph accurately as of 90 days. i selected 90 days
+    # and it shows me the first date of 9th july."
+    #
+    # Exactly right, and it was a side-effect of clearing the invented rows: the
+    # columns were the dates that HAD a stored row, so once the empty ones were
+    # gone the axis stopped at the first day of trade. Ask for ninety days and
+    # you got thirty-eight, with nothing saying why.
+    #
+    # The window is a question the caller asked and the answer has to cover it.
+    # The days with nothing in them come back with nulls, so the chart and the
+    # grid span the period on the button and the empty stretch is visible as an
+    # empty stretch.
+    #
+    # This is NOT the fault that was fixed: nothing is written to the store.
+    # Inventing rows in the database made the app believe it had fifteen months
+    # of data it had never fetched; spanning the requested window in the REPLY
+    # states only what was asked for.
+    span = set()
+    try:
+        _d0 = _dt.date.fromisoformat(str(start)[:10])
+        _d1 = _dt.date.fromisoformat(str(end)[:10])
+        if _d1 >= _d0 and (_d1 - _d0).days <= 800:
+            while _d0 <= _d1:
+                span.add(_d0.isoformat())
+                _d0 += _dt.timedelta(days=1)
+    except Exception:
+        span = set()          # an unparseable range falls back to what we hold
+
     out = []
-    for d in sorted(set(sales) | set(ads) | set(fin)):
+    for d in sorted(span | set(sales) | set(ads) | set(fin)):
         row = dict(sales.get(d) or {"date": d, "asin": key, "currency": ""})
         row["date"] = d
         a = ads.get(d) or {}
@@ -844,7 +875,20 @@ def totals(config_path, workspace_id, marketplace, start, end, asin=None,
     """
     rows = series(config_path, workspace_id, marketplace, start, end, asin,
                   vat_rate, basis=basis, meta=meta)
-    out = {"days": len(rows), "currency": currency_of(rows)}
+    # DAYS WITH SOMETHING IN THEM, not days in the window.
+    #
+    # This was len(rows), which meant the same thing until series() began
+    # returning a row for every day of the range asked for -- see the note there
+    # on the 90-day chart that only drew 38 columns. After that, an untraded
+    # September would have reported thirty days of data.
+    #
+    # The name says "days"; a reader takes that as "days we have figures for",
+    # and every use of it does too.
+    _real = ("ordered_sales", "orders", "units", "sessions", "page_views",
+             "principal", "total_fees", "refunds")
+    out = {"days": sum(1 for r in rows
+                       if any(r.get(k) is not None for k in _real)),
+           "currency": currency_of(rows)}
     for key in METRIC_KEYS:
         out[key] = aggregate(rows, key)
     out["order_items"] = aggregate(rows, "order_items")
