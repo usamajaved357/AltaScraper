@@ -172,9 +172,32 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
 
     Days with no orders are written as real zeros, so a day the report wrongly
     shows as busy is corrected downwards rather than left alone.
+
+    BUT ONLY WHERE THE ORDER HISTORY ACTUALLY REACHES.
+
+    A zero here means "the Orders API says nothing happened". Before the first
+    order this app ever fetched, it means "we were not looking", and those are
+    opposite claims. Writing zeros across the gap turned a year-to-date request
+    into an instruction to erase every month the order history does not cover:
+    the Sales & Traffic report's own figures for those days were overwritten
+    with zeros, and year-to-date then read exactly the same as ninety days
+    because everything before it had been flattened.
+
+    So the window is clamped to the first day order_lines has for this account
+    and marketplace. Earlier days are left exactly as the report delivered them.
     """
     conn = _db.get_db(config_path)
     dead = ("canceled", "cancelled")
+    # WHERE THE EVIDENCE BEGINS. No history at all means nothing here can be
+    # said about any day, so nothing is written -- rather than every day in the
+    # window being asserted as a zero on the strength of an empty table.
+    edge = conn.execute(
+        "SELECT MIN(substr(purchase_date,1,10)) FROM order_lines "
+        "WHERE workspace_id=? AND marketplace=?",
+        (workspace_id, marketplace)).fetchone()
+    edge = edge[0] if edge else None
+    if not edge:
+        return {"days_written": 0, "days_with_orders": 0, "no_history": True}
     rows = conn.execute(
         "SELECT substr(purchase_date,1,10) AS d, "
         "       COUNT(DISTINCT order_id) AS orders, "
@@ -193,6 +216,12 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
 
     first = _dt.date.fromisoformat(str(start)[:10])
     last = _dt.date.fromisoformat(str(end)[:10])
+    # Clamped, per the note above: never claim a zero for a day this app has no
+    # order history for.
+    first = max(first, _dt.date.fromisoformat(edge))
+    if first > last:
+        return {"days_written": 0, "days_with_orders": 0,
+                "before_history": True, "history_starts": edge}
     now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     written = 0
     d = first
@@ -222,7 +251,8 @@ def from_lines(config_path, workspace_id, marketplace, start, end):
         _sd._refresh_availability(conn, workspace_id, marketplace, "sales")
     except Exception:
         pass
-    return {"days_written": written, "days_with_orders": len(have)}
+    return {"days_written": written, "days_with_orders": len(have),
+            "history_starts": edge}
 
 
 def owned_days(config_path, workspace_id, marketplace, start, end):

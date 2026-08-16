@@ -117,6 +117,85 @@ m = _sd.series(CFG, WS, MKT, D(30), D(0), vat_rate=0.2, basis="money")
 mrow = next((r for r in m if r["date"] == D(10)), None)
 check("the settled money still appears on its payment day", mrow is not None, True)
 
+print("\n== the WHOLE SCREEN is on that calendar, not just the grid ==")
+# THE REPORT: "it says i have 0 ordered product sales on 8/09 but Revenue after
+# VAT 18.32 ... most of the numbers are incorrect here".
+#
+# Four places each decided the calendar for themselves: the route defaulted to
+# money, the chart guessed from whether any order was non-zero, the grid asked
+# for order but only when it had its own period, and the profit card took a
+# fifth route. So one screen ran two calendars at once.
+check("the route defaults to the ORDER calendar",
+      _sd.series(CFG, WS, MKT, D(30), D(0), vat_rate=0.2, basis="order") is not None,
+      True)
+_meta = {}
+_t = _sd.totals(CFG, WS, MKT, D(30), D(0), vat_rate=0.2, basis="order", meta=_meta)
+check("the CARDS take the same calendar as the grid", _meta.get("basis"), "order")
+_g = _sd.series(CFG, WS, MKT, D(30), D(0), vat_rate=0.2, basis="order")
+check("  and are the sum of the very rows it draws",
+      _t["ordered_sales"],
+      round(sum(float(r["ordered_sales"]) for r in _g if r.get("ordered_sales")), 2))
+
+# A product filter cannot be re-dated -- one fee covers every product in the
+# order -- so it must SAY it fell back rather than mislabel the money view.
+_m2 = {}
+_sd.series(CFG, WS, MKT, D(30), D(0), asin="B0TEST", vat_rate=0.2,
+           basis="order", meta=_m2)
+check("a product filter reports the calendar it actually used", _m2.get("basis"), "money")
+
+print("\n== a zero means 'no orders', never 'we were not looking' ==")
+# THE HAZARD: from_lines wrote a zero for every day in the window, including
+# days BEFORE the order history begins. Asking for year-to-date therefore
+# erased every month the history does not cover, and year-to-date then read
+# exactly the same as ninety days.
+_before = (TODAY - dt.timedelta(days=300)).isoformat()
+conn.execute(
+    "INSERT INTO sales_daily (workspace_id, marketplace, date, asin, orders,"
+    " units, ordered_sales, currency) VALUES (?,?,?,'*',4,4,222.22,'GBP')",
+    (WS, MKT, _before))
+conn.commit()
+res = _lr.from_lines(CFG, WS, MKT, _before, D(0))
+check("the rewrite starts where the order history starts",
+      res.get("history_starts"), D(20))
+kept = conn.execute(
+    "SELECT ordered_sales FROM sales_daily WHERE workspace_id=? AND date=? "
+    "AND asin='*'", (WS, _before)).fetchone()
+check("a day older than the history keeps the report's own figure",
+      float(kept[0]), 222.22)
+
+print("\n== fees that cannot be re-dated are kept, not dropped ==")
+# A hole is worse than the wrong calendar: a period with sales and no fees
+# shows profit equal to revenue, which flatters by exactly Amazon's cut.
+_m3 = {}
+_old = (TODAY - dt.timedelta(days=290)).isoformat()
+# Settled money on the MONEY calendar, from an order far older than anything in
+# order_lines -- so it can never be re-dated. This is the real shape of the
+# hazard: Amazon has told us what it took, and the order that caused it is
+# beyond the horizon this app fetches.
+from domain import finance_data as _fd_test
+_fd_test.store(CFG, WS, MKT, [{
+    "date": _old, "asin": "*", "currency": "GBP",
+    "principal": 50.00, "tax": 10.00,
+    "referral_fees": 9.99, "fba_fees": 0.0, "other_fees": 0.0,
+    "refunds": 0.0, "refund_tax": 0.0, "refund_units": 0,
+    "refund_fees_returned": 0.0, "promos": 0.0, "reimbursements": 0.0,
+    "units": 1, "cogs": 0.0, "cogs_units": 0,
+}])
+_rows = _sd.series(CFG, WS, MKT, _old, (TODAY - dt.timedelta(days=280)).isoformat(),
+                   vat_rate=0.2, basis="order", meta=_m3)
+_fee_days = [r for r in _rows if r.get("total_fees")]
+check_true("the fee is still reported somewhere", _fee_days)
+check("and the screen is told which calendar that is", _m3.get("basis"), "money")
+check_true("with a reason given", _m3.get("basis_note"))
+
+print("\n== the currency survives a range that starts before trading did ==")
+# "Total Sales 583" with no pound sign on 90d and ytd, beside "GBP 384" on 30d:
+# rows[0] is a day with no trade, and a day with no trade carries no currency.
+check("an empty leading run does not lose the currency",
+      _sd.currency_of([{"currency": ""}, {"currency": ""}, {"currency": "GBP"}]),
+      "GBP")
+check("  and no rows at all is still safe", _sd.currency_of([]), "")
+
 print("\n== percentages are not rounded into oblivion ==")
 # 2 units in 500 sessions is 0.4%, and used to round to 0.0 and vanish.
 check("a small conversion survives", _sd._pct(2, 500), 0.4)

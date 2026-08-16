@@ -23,8 +23,20 @@ function rowMkt(r){
 
 function toggleSelect(sku, on){
   if(on) SELECTED.add(String(sku)); else SELECTED.delete(String(sku));
-  const c=document.querySelector('.lcard[data-sku="'+CSS.escape(String(sku))+'"]');
-  if(c) c.classList.toggle('sel', on);
+  // EVERY ELEMENT FOR THIS SKU, in whichever view is on screen. Both the card
+  // and the table row carry data-sku, so one lookup serves both and a tick
+  // looks like a tick either way.
+  //
+  // This looked for '.lcard', a class that does not exist anywhere in the app
+  // -- cards are '.tile' -- so it had never matched and ticking a card only
+  // appeared to work because something else redrew the list afterwards.
+  document.querySelectorAll('[data-sku="' + CSS.escape(String(sku)) + '"]')
+    .forEach(function(el){
+      if(el.classList.contains("tile")) el.classList.toggle("sel", on);
+      if(el.tagName === "TR") el.classList.toggle("rowon", on);
+      const box = el.querySelector('input[type=checkbox]');
+      if(box) box.checked = on;
+    });
   updateSelBar();
 }
 function selectAllVisible(on){
@@ -787,7 +799,7 @@ function card(r){
     <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openDrawer('${esc(r.sku)}')">
       ${thumb}
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
-      <input type="checkbox" class="tilesel" ${selected?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(r.sku)}',this.checked)" title="Select">
+      ${rowSelectBox(r, "tilesel")}
       ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
       ${claimBadge(r)}
       ${viabilityBadge(r)}
@@ -808,22 +820,10 @@ function card(r){
       </div>`:''}
       ${ownAsin?`<div class="tileasin" title="Your own live ASIN on Amazon (from the live catalogue)"><i class="ti ti-brand-amazon"></i> <a href="${_dpUrl(ownAsin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(ownAsin)}</a></div>`:''}
     </div>
-    <div class="tileacts">
-      <button class="ib" title="Approve" onclick="setStatus('${esc(r.sku)}','APPROVED',this)"><i class="ti ti-check"></i></button>
-      <button class="ib gen" title="Image Studio (creative ideas, prompt &amp; image AI)" onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
-      <!-- The image library. It is on the table row and was missing from the
-           card, so on a screen showing cards there was no way to reach a
-           listing's images at all -- to upload your own from this computer, to
-           pick one from another product, or to choose which is the main one.
-           Drafts need it MORE than live listings do, because a draft is exactly
-           when you are still deciding what its pictures should be. -->
-      <button class="ib" title="This listing's images — upload your own, pick one from the library, or set the main image" onclick="event.stopPropagation();openImageLibrary('${esc(r.sku)}', ${isAmazonLive(r) ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
-      <button class="ib" title="Edit / details" onclick="openDrawer('${esc(r.sku)}')"><i class="ti ti-edit"></i></button>
-      <button class="ib" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd" onclick="event.stopPropagation();autoFixLoop('${esc(r.sku)}')"><i class="ti ti-wand"></i></button>
-      ${isAmazonLive(r) ? `<button class="ib" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)" onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i></button>` : ""}
-      ${isAmazonLive(r) ? `<button class="ib" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:var(--ok)" onclick="event.stopPropagation();pullLiveRow('${esc(r.sku)}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
-      <button class="ib more" title="More" onclick="tileMenu(event,'${esc(r.sku)}',${r.row||0})"><i class="ti ti-dots"></i></button>
-    </div>
+    <!-- Built by rowActions so the table row offers exactly the same set. The
+         two used to be written out separately and had drifted: the table had
+         no Approve, no Auto-fix and no More menu, and no checkbox at all. -->
+    <div class="tileacts">${rowActions(r, "ib")}</div>
   </div>`;
 }
 
@@ -1090,6 +1090,59 @@ window.addEventListener("DOMContentLoaded", function(){
   setInterval(pollHealth, 60000);
 });
 
+/* WHAT YOU CAN DO TO A ROW -- built once, used by BOTH views.
+ *
+ * The grid and the table each drew their own set of buttons, and they had
+ * drifted badly: the table had no checkbox at all, so nothing could be SELECTED
+ * in it -- and every batch action on the screen works off that selection. Tick
+ * three products in the grid, switch to the list, and there was nowhere for
+ * the selection to live. Approve, Auto-fix and the More menu were missing too.
+ * Reported as "the grid view listings and list view listings donot talk to each
+ * other", which is exactly what it looked like.
+ *
+ * Neither view now owns the answer. Both call these, so a button added here
+ * appears in both and the two cannot come apart again (CLAUDE.md Rule 12).
+ *
+ * `cls` is the only difference: the grid's round icon buttons and the table's
+ * smaller ones are the same actions wearing the styling of the view they sit in.
+ */
+function rowSelectBox(r, cls){
+  // `cls` is the only difference between the views, exactly as in rowActions:
+  // the card's checkbox sits on the image and the table's in its own column,
+  // so they are styled apart -- but WHAT the box does is one behaviour and is
+  // written once. It was written twice, and the two spelled the SKU into the
+  // handler separately, which is how one of them came to be looked up by a
+  // class that does not exist.
+  const on = SELECTED.has(String(r.sku)) ? "checked" : "";
+  return `<input type="checkbox" class="${cls || "rowsel"}" ${on}
+      title="Select for batch actions"
+      onclick="event.stopPropagation()"
+      onchange="toggleSelect('${esc(r.sku)}', this.checked)">`;
+}
+
+function rowActions(r, cls){
+  cls = cls || "ib";
+  const sku = esc(r.sku);
+  const live = isAmazonLive(r);
+  return `
+    <button class="${cls}" title="Approve"
+            onclick="event.stopPropagation();setStatus('${sku}','APPROVED',this)"><i class="ti ti-check"></i></button>
+    <button class="${cls} gen" title="Image Studio (creative ideas, prompt &amp; image AI)"
+            onclick="event.stopPropagation();openStudioSingle('${sku}')"><i class="ti ti-photo"></i></button>
+    <button class="${cls}" title="This listing's images — upload your own, pick one from the library, or set the main image"
+            onclick="event.stopPropagation();openImageLibrary('${sku}', ${live ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
+    <button class="${cls}" title="Edit / details"
+            onclick="event.stopPropagation();openDrawer('${sku}')"><i class="ti ti-edit"></i></button>
+    <button class="${cls}" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd"
+            onclick="event.stopPropagation();autoFixLoop('${sku}')"><i class="ti ti-wand"></i></button>
+    ${live ? `<button class="${cls}" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)"
+            onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${sku}')"><i class="ti ti-sparkles"></i></button>` : ""}
+    ${live ? `<button class="${cls}" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:var(--ok)"
+            onclick="event.stopPropagation();pullLiveRow('${sku}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
+    <button class="${cls} more" title="More"
+            onclick="event.stopPropagation();tileMenu(event,'${sku}',${r.row||0})"><i class="ti ti-dots"></i></button>`;
+}
+
 // One block of listings, drawn the way the user has chosen. Every place that
 // used to say rows.map(card).join("") calls this instead, so the two views can
 // never drift apart into "the table forgot about claimed rows".
@@ -1103,6 +1156,10 @@ function listBlock(rows, fn){
   // number every profit figure on every other screen is built from, and it was
   // only visible by opening a listing. Click the cell, type, done.
   return `<div class="card ltwrap"><table class="lt"><thead><tr>
+      <th class="selcol" title="Select every row shown">
+        <input type="checkbox" class="rowsel"
+               ${rows.length && rows.every(x => SELECTED.has(String(x.sku))) ? "checked" : ""}
+               onchange="selectAllVisible(this.checked)"></th>
       <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
       <th>Price</th><th title="What the stock cost you. Read from the SKU where the SKU carries it; click to type your own.">COGS</th>
       <th>Handling</th><th>Status</th><th>Compliance</th>
@@ -1144,7 +1201,10 @@ function tableRow(r){
   const asin  = r.asin
     ? `<span class="asin">${esc(r.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></span>`
     : `<span class="cc">no ASIN</span>`;
-  return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}">
+  return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}"
+              data-sku="${esc(r.sku)}"
+              class="${SELECTED.has(String(r.sku)) ? 'rowon' : ''}">
+    <td class="selcol">${rowSelectBox(r)}</td>
     <td class="pii-img">${thumb}</td>
     <td>${asin}<br><span class="sku pii">${esc(r.sku||'')}</span></td>
     <td><span class="ttl pii">${esc(r.title||'(no title)')}</span>
@@ -1156,10 +1216,7 @@ function tableRow(r){
     <td>${_compCell(r)}</td>
     <td><div class="acts">
       <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
-      <button class="dotb" title="Generate images for this product"
-              onclick="event.stopPropagation();openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i></button>
-      <button class="dotb" title="This listing's images — choose the main one, or upload your own"
-              onclick="event.stopPropagation();openImageLibrary('${esc(r.sku)}', ${isAmazonLive(r) ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
+      ${rowActions(r, "dotb")}
     </div></td></tr>`;
 }
 

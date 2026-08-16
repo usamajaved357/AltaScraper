@@ -535,6 +535,20 @@
   .lt tr:last-child td{border-bottom:none}
   .lt tbody tr{cursor:pointer;transition:background-color .12s}
   .lt tbody tr:hover td{background:var(--panel2)}
+  /* THE SELECTION COLUMN. The list view had no checkbox at all, so nothing
+     could be selected in it and every batch action on the screen was
+     unreachable unless you switched to the cards first. */
+  .lt .selcol{width:34px;padding-left:10px;padding-right:0}
+  .lt input.rowsel{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+  /* A selected row, marked the way a selected card is -- so a tick looks like a
+     tick whichever way you are reading the list. */
+  .lt tbody tr.rowon td{background:color-mix(in srgb, var(--accent) 12%, transparent)}
+  .lt tbody tr.rowon:hover td{background:color-mix(in srgb, var(--accent) 18%, transparent)}
+  /* The table's action buttons carry the same icons as the cards' now, so they
+     need room to sit side by side without wrapping the column. */
+  .lt .acts{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+  .lt .acts .dotb{width:26px;height:26px;padding:0;display:inline-flex;
+                  align-items:center;justify-content:center;font-size:13px}
   .lt .thumb{width:44px;height:44px;border-radius:6px;background:var(--panel2);
              display:flex;align-items:center;justify-content:center;color:var(--ink4);
              flex-shrink:0;overflow:hidden;border:none}

@@ -220,15 +220,72 @@ function _sAcct(){
  * written into the account you have just opened, however correct it is.
  *
  * Returns null when the workspace moved on -- callers stop rather than paint. */
+/* THE THREE ENDPOINTS THAT GO TO AMAZON, not to our own database.
+ *
+ * /sales/today, /sales/hourly and /sales/recent each pull orders live from the
+ * Orders API. Everything else on this screen reads the local store and answers
+ * in tens of milliseconds; these take seconds, and Amazon rations them -- one
+ * call a minute, and going over is the "QuotaExceeded" the Live Sales card
+ * showed. They are the reason a period click took nine and a half seconds.
+ */
+const _S_LIVE = ["/sales/today", "/sales/hourly", "/sales/recent"];
+const _S_LIVE_TTL = 60000;      // one minute: Amazon's own refill rate
+const _sInflight = {};          // url -> the promise already asking
+const _sRecent = {};            // url -> {at, value} for the live three only
+
+function _sIsLive(u){
+  return _S_LIVE.some(function(p){ return String(u).indexOf(p) === 0; });
+}
+
 async function _sFetch(url, opts){
   const acct = _sAcct();
   let u = String(url);
   if(acct && u.indexOf("account_id=") < 0){
     u += (u.indexOf("?") < 0 ? "?" : "&") + "account_id=" + encodeURIComponent(acct);
   }
-  const r = await fetch(u, opts);
-  const j = await r.json();
-  return (_sAcct() === acct) ? j : null;
+  // ASKED ONCE, NOT ONCE PER CALLER. Two parts of the screen wanting the same
+  // thing at the same moment is one question, and it was being sent twice --
+  // measured on a single 90-day click, /sales/hourly went to Amazon at +2.4s
+  // and again at +7.7s for the same day's orders.
+  if(!opts && _sInflight[u]) return _sInflight[u];
+  // AND NOT RE-ASKED FOR A MINUTE. Only for the live three: their answer
+  // describes a FIXED window -- today, today and yesterday, the last six days
+  // -- which the period pills cannot change, so re-fetching on every click
+  // spent seconds and quota to be told the same thing.
+  if(!opts && _sIsLive(u)){
+    const hit = _sRecent[u];
+    if(hit && (Date.now() - hit.at) < _S_LIVE_TTL) return hit.value;
+  }
+  const run = (async function(){
+    try{
+      const r = await fetch(u, opts);
+      const j = await r.json();
+      if(!opts && _sIsLive(u) && j && j.ok) _sRecent[u] = {at: Date.now(), value: j};
+      return (_sAcct() === acct) ? j : null;
+    }finally{
+      delete _sInflight[u];
+    }
+  })();
+  if(!opts) _sInflight[u] = run;
+  return run;
+}
+
+/* WHO IS ASKING, and nothing about WHEN.
+ *
+ * The three live endpoints above were being sent _sQuery(), which carries the
+ * period and the granularity. Their windows are fixed and set on the server, so
+ * those parameters changed nothing about the answer -- but they changed the
+ * URL, so every click on 7d / 30d / 90d sent all three to Amazon again for
+ * figures it had just been given. Scope only: the account and the marketplace,
+ * which are the two things that genuinely change the answer.
+ */
+function _sScope(){
+  const q = [];
+  const a = _sAcct();
+  if(a) q.push("account_id=" + encodeURIComponent(a));
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+    q.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  return q.join("&");
 }
 
 function _sQuery(){
@@ -485,13 +542,19 @@ function salesDrawCharts(ser){
     const liveOrders = _fill(cells("orders"), "orders");
     const liveSales  = _fill(cells("ordered_sales"), "revenue");
 
-    // Orbit does not have this problem because it commits to one basis and says
-    // so on the card -- "Based on order dates". So does this chart: the order
-    // basis when the report (or the live feed) has delivered, because that is
-    // the one that carries orders at all, and the money basis otherwise.
-    // Whichever it picks, every series on the chart comes from it, and the
-    // panel says which.
-    const orderBasis = anyReal(liveOrders) || anyReal(liveSales);
+    // THE SERVER SAYS WHICH CALENDAR THIS IS. The chart does not decide.
+    //
+    // It used to: "order basis if any order or sale is non-zero, money basis
+    // otherwise". That was a fourth opinion on a question the route, the grid
+    // and the profit card were each already answering their own way, and four
+    // answers to one question is why nothing on this screen agreed with
+    // anything else on it. The route now decides once, in _basis(), and says
+    // so in ser.basis -- and every part of the screen reads that one answer.
+    //
+    // The fallback is kept only for a reply that predates the field.
+    const orderBasis = (ser && ser.basis)
+      ? (ser.basis === "order")
+      : (anyReal(liveOrders) || anyReal(liveSales));
     SALES._chartBasis = orderBasis ? "order" : "money";
     SALES._liveFilled = orderBasis && live
       ? dates.filter(function(d, i){
@@ -501,11 +564,17 @@ function salesDrawCharts(ser){
       : [];
     const salesCells  = orderBasis ? liveSales : cells("net_revenue");
     const orderCells  = orderBasis ? liveOrders : cells("units_shipped");
-    // Profit exists ONLY on the money basis -- Amazon reports no profit against
-    // an order date. Plotting it beside order-dated bars would reintroduce
-    // exactly the mismatch above, so on the order basis it is left off the
-    // chart and stays in the grid below, where its own basis is stated.
-    const profitCells = orderBasis ? null : cells("profit");
+    // PROFIT IS NOW DRAWN ON EITHER CALENDAR, because on the order basis it is
+    // no longer on a different one. It used to be left off: profit came from
+    // the finance feed, dated by when the money moved, so a profit line beside
+    // order-dated bars put the two on different days -- eight days on jack_uk
+    // carried profit against a genuine zero for orders.
+    //
+    // The route re-dates the settled money to each order's own day, so the
+    // profit for a day and the orders for that day are now the same trade.
+    // Drawn when it is there, left out when it is not -- which happens when a
+    // product has no cost recorded, and the COGS strip under the grid says so.
+    const profitCells = cells("profit");
 
     // The comparison, on the same axis as Sales, matched by date exactly as the
     // single-metric charts match it.
@@ -862,7 +931,8 @@ async function salesLoadRecent(){
   if(!SALES.series || !((SALES.series.columns) || []).length) return;
   let j;
   try{
-    j = await _sFetch("/sales/recent?days=6&" + _sQuery());
+    // _sScope(), not _sQuery(): days=6 already says which window this is.
+    j = await _sFetch("/sales/recent?days=6&" + _sScope());
     if(j === null) return;
   }catch(e){ return; }
   // A 502 here is normal and not worth reporting: an account whose Amazon app
@@ -1255,7 +1325,8 @@ async function salesLoadToday(){
   const el=document.getElementById("sales_today");
   if(!el) return;
   try{
-    const j=await _sFetch("/sales/today?"+_sQuery());
+    // _sScope(), not _sQuery(): "today so far" is today whatever period is set.
+    const j=await _sFetch("/sales/today?"+_sScope());
     if(j === null) return;   // the workspace moved on while this was in flight
     // NOT BLANKED. See _sCardError: measured on sheelady_us, this call answers
     // 502 because Amazon refuses the account's app the Orders data, and the
@@ -1421,7 +1492,8 @@ async function salesLoadHourly(){
   if(!el) return;
   let j;
   try{
-    j = await _sFetch("/sales/hourly?" + _sQuery());
+    // _sScope(), not _sQuery(): the curve is always today against yesterday.
+    j = await _sFetch("/sales/hourly?" + _sScope());
     if(j === null) return;
   }catch(e){ return; }
   if(!j || !j.ok || !(j.hours || []).length) return;
@@ -2058,14 +2130,15 @@ async function salesLoadGrid(){
     if(SALES.asin) q.push("asin=" + encodeURIComponent(SALES.asin));
     if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
       q.push("marketplace=" + encodeURIComponent(WS_MARKET));
-    // THE P&L GRID ASKS FOR ONE CALENDAR.
+    // NO basis HERE. The route decides it, once, for the whole screen.
     //
-    // Its whole purpose is to be read ACROSS a row -- sales, then what Amazon
-    // took, then what is left -- and that only means anything if every figure
-    // describes the same trade. On the money basis it does not: measured on
-    // jack_uk, Amazon settles 10 to 12 days after the order, so the sales rows
-    // and the fee rows never fell on the same day and no row could be read.
-    q.push("basis=order");
+    // This line used to say basis=order -- and it only ran when the grid had
+    // been given its OWN period, which is not the normal case. So the grid the
+    // owner actually looks at borrowed SALES.series instead (see the top of
+    // this function), and that was fetched without a basis and defaulted to
+    // money. Hence a heatmap showing 18.32 of revenue on a day with no orders
+    // and no revenue on the day that took three: the grid was on the settlement
+    // calendar the whole time while claiming the order one.
     const j = await _sFetch("/sales/series?" + q.join("&"));
     if(j && j.ok){ SALES.gridSeries = j; salesDrawGrid(j); }
   }catch(e){

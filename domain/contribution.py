@@ -245,7 +245,11 @@ def totals_for(rows):
         "cogs": t["cogs"], "net_proceeds": t["net_proceeds"]}])
     t["margin_pct"] = (round(t["contribution"] / t["revenue"] * 100, 2)
                        if (t["contribution"] is not None and t["revenue"]) else None)
-    t["currency"] = next((r.get("currency") for r in rows if r.get("currency")), "")
+    # The one implementation of "which currency is this?" -- this used to be it,
+    # spelled out here while three other places took rows[0] and got "" on any
+    # range starting before the account's first sale. Now shared, so they cannot
+    # drift apart again.
+    t["currency"] = _sd.currency_of(rows)
     return t
 
 
