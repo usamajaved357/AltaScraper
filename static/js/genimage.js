@@ -803,7 +803,15 @@ async function studioStrategize(kind, autoGen){
     const _instrEl=document.getElementById("strat_instr_"+kind);
     const _customInstr=(_instrEl && _instrEl.value || "").trim();
     const j=await (await fetch("/genimage/strategize",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({product_image:ref, product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]), title:(it&&it.title)||"", kind:kind, n:_n, text_provider:(window.AI_TEXT||null), custom_instructions:_customInstr})})).json();
+      // THE STRATEGIST HAS TO KNOW WHAT THE LISTING SAYS.
+      //
+      // This sent a picture and a title. So the concepts were invented from what
+      // the product LOOKS like, and the copy -- the bullets, the attributes, what
+      // is actually in the box -- was never read. A set designed that way can
+      // contradict the listing it belongs to, and did.
+      //
+      // The sku is what _listing_for() needs to find the row on the server.
+      body:JSON.stringify({product_image:ref, product_images:(typeof _refCandidates==="function"?_refCandidates(it):[ref]), title:(it&&it.title)||"", sku:sku, listing:(it||null), kind:kind, n:_n, text_provider:(window.AI_TEXT||null), custom_instructions:_customInstr})})).json();
     if(!j.ok){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; return; }
     const concepts=j.concepts||[];
     if(!concepts.length){ if(st) st.innerHTML='<span class="cc">No concepts returned — try again.</span>'; return; }

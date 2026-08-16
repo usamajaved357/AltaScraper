@@ -2143,6 +2143,21 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                 continue
             try:
                 payload = job.get("payload", {})
+                # WHICH LISTING THIS PICTURE IS FOR.
+                #
+                # The SKU was on the job WRAPPER and the payload is what gets
+                # dispatched, so it never arrived. Every endpoint here grounds
+                # its image in the listing via _listing_for(), which needs a sku
+                # or a listing and was getting neither -- so every image was
+                # designed from a photograph and a title, with the bullets,
+                # attributes and package contents never consulted.
+                #
+                # That is how a set comes back disagreeing with its own copy: an
+                # image showing two carabiners under text that says one. Stamped
+                # here rather than in each of the five callers, so a new kind of
+                # image cannot be added without it.
+                if job.get("sku") and not payload.get("sku"):
+                    payload["sku"] = job.get("sku")
                 if _custom:
                     # add to whatever brief field the endpoint reads, without
                     # clobbering the strategist's art direction.
