@@ -1831,13 +1831,45 @@ def clean_search_terms(st: str) -> str:
     return st
 
 def cap_chars(s: str, n: int) -> str:
-    """Trim a string to n characters without an ellipsis hack when possible."""
-    s = s or ""
+    """Trim to n characters and STILL READ AS A FINISHED SENTENCE.
+
+    Cutting on a word boundary keeps words whole, which is necessary and not
+    sufficient. On a real listing this produced a bullet ending
+
+        ...suitable for users of all experience levels who wish to practise
+        aerial yoga, stretching, or simply
+
+    -- every word intact and the sentence abandoned mid-thought, published to
+    Amazon exactly like that. A customer reads that as a broken listing, which
+    is the one thing the copy is there to avoid.
+
+    So: end at the last full stop when there is one reasonably near the limit,
+    and otherwise fall back to the word boundary with any dangling conjunction
+    or comma removed. Losing a clause is better than printing half of one.
+    """
+    s = (s or "").rstrip()
     if len(s) <= n:
         return s
     cut = s[:n]
-    if " " in cut[: n]:
-        cut = cut[: cut.rfind(" ")].rstrip()
+
+    # A sentence end, if one sits in the last third of what we are allowed to
+    # keep. Nearer the start than that and we would throw away too much.
+    floor = int(n * 0.6)
+    best = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if best < 0 and cut.rstrip().endswith((".", "!", "?")):
+        best = len(cut.rstrip()) - 1
+    if best >= floor:
+        return cut[:best + 1].rstrip()
+
+    # No usable sentence end: whole words, and nothing left hanging.
+    if " " in cut:
+        cut = cut[:cut.rfind(" ")].rstrip()
+    cut = cut.rstrip(" ,;:-–—")
+    _tail = cut.rsplit(" ", 1)[-1].lower() if " " in cut else ""
+    while _tail in ("and", "or", "but", "with", "for", "to", "the", "a", "an",
+                    "of", "in", "on", "as", "that", "which", "while", "from"):
+        cut = cut[:cut.rfind(" ")].rstrip().rstrip(" ,;:-–—")
+        _tail = cut.rsplit(" ", 1)[-1].lower() if " " in cut else ""
     return cut
 
 COUNTER_PATH      = CONFIG_PATH.parent / "model_number_counter.json"
