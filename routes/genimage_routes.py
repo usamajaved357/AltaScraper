@@ -682,6 +682,38 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         brief += (" Keep the product itself identical to the reference image (same shape, colour, label, "
                   "text); only build the scene/graphic around it. Premium, clean, lots of negative space.")
 
+        # WHAT THE IMAGE IS ALLOWED TO SAY.
+        #
+        # The listing COPY is checked -- IP rules, compliance rules, a ban on
+        # medical claims and unverifiable superlatives. Text drawn ONTO an image
+        # went through none of that, and a secondary image is published copy in
+        # every way that matters to Amazon.
+        #
+        # It matters because the model writes the words itself. Asked for a calm
+        # lifestyle shot with "nothing clinical, nothing medical, no captions",
+        # it returned a headline reading "Float Into Recovery" -- a health claim,
+        # invented, on an image that would have gone straight to a live listing.
+        # The same run captioned a dimensions image with packed measurements
+        # (~28 cm, 16 cm) that appear in no source and are simply not known.
+        #
+        # Generic on purpose: this governs every product in every category, so
+        # it constrains the KIND of statement rather than any particular claim.
+        brief += (
+            "\n\nRULES FOR ANY TEXT IN THE IMAGE -- these override the brief:\n"
+            "- NO health, medical, therapeutic or clinical wording of any kind. Not "
+            "'therapy', 'therapeutic', 'treatment', 'recovery', 'healing', 'relief', "
+            "'cure', 'symptoms', 'diagnosis', 'wellness benefit', and never the name "
+            "of any condition or disorder. Describe what the product IS and what it "
+            "physically does.\n"
+            "- NO unverifiable superlatives or guarantees: 'best', '#1', 'premium "
+            "quality', 'perfect', 'guaranteed', 'lifetime', '100%'.\n"
+            "- NO number, measurement, weight, capacity, material or certification "
+            "that is not given in the product spec above. If a figure is not stated "
+            "there, leave it out entirely rather than estimating a plausible one.\n"
+            "- NO invented awards, badges, seals, certifications, ratings or logos.\n"
+            "- Every word must be spelled correctly and rendered completely; no "
+            "clipped, overlapping or half-drawn characters.\n")
+
         # 2) competitor style handling
         style_desc = ""
         direct_refs = []
