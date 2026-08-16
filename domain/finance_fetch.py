@@ -131,8 +131,30 @@ def sync(config_path, workspace_id, marketplace, creds, account_id=None,
         cost_lookup=_cogs.lookup(cogs_overrides, account_id or workspace_id))
     written = _fd.store(config_path, workspace_id, marketplace, rows)
 
+    # THE SAME EVENTS, KEPT AGAINST THEIR ORDERS.
+    #
+    # finance_daily answers "what money moved this week". It cannot answer "what
+    # did the orders I took on Tuesday earn", because Tuesday's fee arrives
+    # whenever Amazon settles it. Amazon names the order on every shipment and
+    # refund event, so keeping that id lets each fee be reported on the day its
+    # order was PLACED -- which is the day its sale is already reported on, and
+    # the whole reason the P&L grid had two calendars in one column.
+    #
+    # Best effort and never fatal: the money-basis rows above are already stored,
+    # and losing the order-basis copy must not lose them too.
+    try:
+        from domain import order_finance as _of
+        by_order, _skipped = _of.parse_by_order(events)
+        out_of = _of.store(config_path, workspace_id, marketplace, by_order)
+    except Exception as ex:
+        by_order, _skipped, out_of = [], 0, 0
+        notes = dict(notes or {})
+        notes["order_fees_error"] = str(ex)[:200]
+
     out = {"ok": True, "pages": pages, "rows": written, "days": len({r["date"] for r in rows}),
            "start": s, "end": e, "more": bool(token), "next_token": token,
+           "order_fee_rows": out_of,
+           "events_with_no_order": _skipped,
            "sku_map_size": len(smap)}
     out.update(notes)
     if not smap:

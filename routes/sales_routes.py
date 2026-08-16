@@ -226,34 +226,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                  _cogs_overrides())
             except Exception:
                 pass          # costing is best-effort; the figures still come back
+            # THE SAME REVENUE THE CARDS SHOW is handed in, so profit cannot be
+            # worked out over a different set of trade. Deriving it twice, from
+            # two stores filled by two passes over two windows, produced
+            # "Total Sales 1,248, Profit 1,728" on a live account.
             est = _op.for_period(CONFIG_PATH, wsid, mkt, start, end,
                                  _cogs_overrides(),
                                  vat_rate=_vat,
                                  ads_connected=bool(avail["ads"]["connected"]),
-                                 ad_spend=cur.get("spend") or 0.0)
+                                 ad_spend=cur.get("spend") or 0.0,
+                                 revenue=cur.get("ordered_sales"),
+                                 units=cur.get("units"))
             est["cogs_mode"] = _mode
-            # HOW MUCH OF THE PERIOD THIS PROFIT IS ACTUALLY ABOUT.
-            #
-            # The cards' Total Units comes from Amazon's report; this profit is
-            # built from the orders whose contents have been fetched one by one.
-            # Those two can differ -- measured on jack_uk: 12 units costed
-            # against 14 in the window -- and a profit worked out on six sevenths
-            # of the trade, shown beside sales for all of it, is the same class
-            # of mistake as the one this whole card exists to fix. So it is
-            # stated rather than left to be noticed.
-            _period_units = cur.get("units")
-            est["period_units"] = _period_units
-            try:
-                _pu = int(_period_units or 0)
-            except (TypeError, ValueError):
-                _pu = 0
-            est["covers_all"] = (not _pu) or int(est.get("units") or 0) >= _pu
-            if _pu and not est["covers_all"]:
-                est["coverage_note"] = (
-                    "Covers %d of the %d units sold in this period -- the rest "
-                    "have not been fetched from Amazon yet, so this profit is "
-                    "for part of the period only."
-                    % (int(est.get("units") or 0), _pu))
+            # Profit is now built from the SAME revenue and unit count as the
+            # cards, so there is no longer a period-coverage question to answer:
+            # the two describe the same trade by construction. What can still be
+            # incomplete is the COST side, and est["warning"] says so in units.
+            est["period_units"] = cur.get("units")
+            est["covers_all"] = True
         except Exception as e:
             est = {"profit": None, "error": str(e)[:200]}
 
@@ -313,8 +303,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         asin = (request.args.get("asin") or "").strip() or None
         gran = (request.args.get("granularity") or "day").lower()
 
+        # WHICH CALENDAR the settled money is reported on. "order" puts every
+        # fee on the day its order was PLACED -- the same day its sale is on --
+        # so a row can be read across. "money" keeps the cash view: what landed
+        # this week. Measured on jack_uk, Amazon settles 10 to 12 days after the
+        # order, so the two are genuinely different reports and both are wanted.
+        basis = (request.args.get("basis") or "money").lower()
+        if basis not in ("money", "order"):
+            basis = "money"
         rows = _sd.series(CONFIG_PATH, wsid, mkt, start, end, asin,
-                          vat_rate=_sd.vat_rate_for(_cfg, wsid))
+                          vat_rate=_sd.vat_rate_for(_cfg, wsid), basis=basis)
         buckets, order = _sd.bucket(rows, gran)
 
         metrics = []
@@ -323,8 +321,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if any(c is not None for c in cells):
                 metrics.append({"key": key, "label": label, "kind": kind,
                                 "good": good, "cells": cells})
+        # Said out loud, every time. A grid whose fees are on the order's day and
+        # a grid whose fees are on the payment day look identical and are
+        # different reports; leaving the reader to work out which they have is
+        # how the two-calendar problem stayed invisible for so long.
+        _basis_note = (
+            "Amazon's fees and refunds are shown on the day the ORDER was "
+            "placed, so every row describes the same trade."
+            if basis == "order" else
+            "Amazon's fees and refunds are shown on the day the MONEY MOVED, "
+            "which is 10-12 days after the order on this account. Sales above "
+            "them are dated by the order, so the two do not line up.")
         return jsonify({"ok": True, "start": start, "end": end, "preset": preset,
                         "granularity": gran, "asin": asin,
+                        "basis": basis, "basis_note": _basis_note,
                         "currency": (rows[0]["currency"] if rows else ""),
                         "columns": order, "metrics": metrics,
                         # Which section each metric belongs in, so the grid can

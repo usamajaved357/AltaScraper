@@ -296,9 +296,33 @@ _ORDERS_TTL = 90          # seconds
 _ORDERS_MAX = 24          # windows remembered; beyond this the oldest go
 
 
-def _orders_key(marketplace, marketplace_id, since, until):
-    return "%s::%s::%s::%s" % (str(marketplace).upper(), marketplace_id or "",
-                               _iso(since), _iso(until) if until else "")
+def _creds_id(creds):
+    """A short, stable id for WHOSE credentials these are. Never the secret.
+
+    THE CACHE KEY MUST NAME THE ACCOUNT. Without this it was
+    marketplace + marketplace_id + window -- and every UK account shares those,
+    so three separate companies collided on one key and whichever asked first
+    served its orders to the other two. Caught because a backfill reported the
+    identical "17 orders seen" for jack_uk, selvora_limited and nestwell_goods.
+
+    Hashed, and only the hash is ever kept or shown: a cache key is not a place
+    to hold a refresh token.
+    """
+    import hashlib
+    if isinstance(creds, dict):
+        seed = "|".join(str(creds.get(k) or "") for k in
+                        ("refresh_token", "lwa_app_id", "seller_id"))
+    else:
+        seed = str(creds or "")
+    if not seed.strip("|"):
+        return "anon"
+    return hashlib.sha256(seed.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def _orders_key(marketplace, marketplace_id, since, until, creds=None):
+    return "%s::%s::%s::%s::%s" % (_creds_id(creds), str(marketplace).upper(),
+                                   marketplace_id or "", _iso(since),
+                                   _iso(until) if until else "")
 
 
 def fetch_since(marketplace, marketplace_id, creds, since, until=None,
@@ -309,7 +333,7 @@ def fetch_since(marketplace, marketplace_id, creds, since, until=None,
     _ORDERS_CACHE. Pass use_cache=False to insist on a fresh read.
     """
     import time as _t
-    key = _orders_key(marketplace, marketplace_id, since, until)
+    key = _orders_key(marketplace, marketplace_id, since, until, creds)
     if use_cache:
         hit = _ORDERS_CACHE.get(key)
         if hit and (_t.time() - hit[0]) < _ORDERS_TTL:

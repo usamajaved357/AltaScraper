@@ -150,6 +150,81 @@ def reconcile(config_path, workspace_id, marketplace, marketplace_id, creds,
             "truncated": bool(raw.get("truncated"))}
 
 
+def from_lines(config_path, workspace_id, marketplace, start, end):
+    """Write sales_daily's order-side figures from order_lines.
+
+    WHY THIS EXISTS, when reconcile() above already writes them.
+
+    reconcile() reads the Orders API for a recent window -- fourteen days -- and
+    writes what it finds. order_lines holds far more: ninety days, because a fee
+    settling today can belong to an order from seventy days ago and would
+    otherwise have nowhere to be reported.
+
+    So on any window longer than a fortnight the two disagreed, and the P&L had
+    a money side covering more days than its sales side. Measured on
+    selvora_limited over thirty days: 2861.33 charged against 1241.13 of sales,
+    with fifteen days of settled money against eight days of sales. More than
+    double, and it looks exactly like a data fault because it is one.
+
+    Both now come from the SAME rows. order_lines is filled from the Orders API
+    one order at a time, so it is the same measurement -- there is simply more
+    of it, and this makes the sales side reach as far as the money side does.
+
+    Days with no orders are written as real zeros, so a day the report wrongly
+    shows as busy is corrected downwards rather than left alone.
+    """
+    conn = _db.get_db(config_path)
+    dead = ("canceled", "cancelled")
+    rows = conn.execute(
+        "SELECT substr(purchase_date,1,10) AS d, "
+        "       COUNT(DISTINCT order_id) AS orders, "
+        "       SUM(units) AS units, "
+        "       SUM(revenue + COALESCE(shipping,0)) AS sales, "
+        "       MAX(currency) AS cur "
+        "FROM order_lines "
+        "WHERE workspace_id=? AND marketplace=? "
+        "  AND lower(COALESCE(status,'')) NOT IN (?,?) "
+        "  AND substr(purchase_date,1,10) >= ? "
+        "  AND substr(purchase_date,1,10) <= ? "
+        "GROUP BY d",
+        (workspace_id, marketplace, dead[0], dead[1], str(start), str(end))
+    ).fetchall()
+    have = {r["d"]: r for r in rows}
+
+    first = _dt.date.fromisoformat(str(start)[:10])
+    last = _dt.date.fromisoformat(str(end)[:10])
+    now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    written = 0
+    d = first
+    while d <= last:
+        ds = d.isoformat()
+        r = have.get(ds)
+        conn.execute(
+            "INSERT INTO sales_daily (workspace_id, marketplace, date, asin,"
+            " orders, units, ordered_sales, currency, orders_source, fetched_at) "
+            "VALUES (?,?,?,'*',?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id, marketplace, date, asin) DO UPDATE SET "
+            "  orders=excluded.orders, units=excluded.units,"
+            "  ordered_sales=excluded.ordered_sales,"
+            "  currency=COALESCE(NULLIF(excluded.currency,''), sales_daily.currency),"
+            "  orders_source=excluded.orders_source,"
+            "  fetched_at=excluded.fetched_at",
+            (workspace_id, marketplace, ds,
+             int(r["orders"]) if r else 0,
+             int(r["units"] or 0) if r else 0,
+             round(float(r["sales"] or 0), 2) if r else 0.0,
+             (r["cur"] if r else "") or "", SOURCE, now))
+        written += 1
+        d += _dt.timedelta(days=1)
+    conn.commit()
+    try:
+        from domain import sales_data as _sd
+        _sd._refresh_availability(conn, workspace_id, marketplace, "sales")
+    except Exception:
+        pass
+    return {"days_written": written, "days_with_orders": len(have)}
+
+
 def owned_days(config_path, workspace_id, marketplace, start, end):
     """The dates in a range whose figures came from the Orders API.
 

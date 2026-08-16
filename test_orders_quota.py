@@ -84,20 +84,51 @@ try:
     ol.fetch_since("UK", "A1F83G8C2ARO7P", {}, since)
     check("the next two are answered from the last reply", calls["n"], 1)
 
+    print("\n== TWO ACCOUNTS MUST NEVER SHARE A CACHED ORDER LIST ==")
+    # The key was marketplace + marketplace_id + window, and every UK account
+    # shares all three -- so three separate companies collided on one key and
+    # whichever asked first served its orders to the other two. Caught when a
+    # backfill reported the identical "17 orders seen" for jack_uk,
+    # selvora_limited and nestwell_goods, which are different businesses.
+    ol._ORDERS_CACHE.clear()
+    calls["n"] = 0
+    A = {"refresh_token": "tok-A", "lwa_app_id": "app-A", "seller_id": "AAA"}
+    B = {"refresh_token": "tok-B", "lwa_app_id": "app-B", "seller_id": "BBB"}
+    ol.fetch_since("UK", "A1F83G8C2ARO7P", A, since)
+    check("the first account asks Amazon", calls["n"], 1)
+    ol.fetch_since("UK", "A1F83G8C2ARO7P", B, since)
+    check("a DIFFERENT account asks for itself", calls["n"], 2)
+    ol.fetch_since("UK", "A1F83G8C2ARO7P", A, since)
+    check("  and the first is still cached", calls["n"], 2)
+    check("the two keys differ",
+          ol._orders_key("UK", "M", since, None, A)
+          == ol._orders_key("UK", "M", since, None, B), False)
+    check_true("and neither key contains the secret",
+               "tok-A" not in ol._orders_key("UK", "M", since, None, A))
+
+    # Counted as DELTAS from here on. Absolute totals meant that inserting a
+    # section above silently broke every assertion below it, which is a test
+    # that fails for the wrong reason.
+    def since_last():
+        n = calls["n"] - since_last.mark
+        since_last.mark = calls["n"]
+        return n
+    since_last.mark = calls["n"]
+
     print("\n== a DIFFERENT window is still a real question ==")
     ol.fetch_since("UK", "A1F83G8C2ARO7P", {}, ol.day_start("UK", 6))
-    check("a wider window is never answered from a narrower one", calls["n"], 2)
+    check("a wider window is never answered from a narrower one", since_last(), 1)
 
     print("\n== insisting on fresh data is still possible ==")
     ol.fetch_since("UK", "A1F83G8C2ARO7P", {}, since, use_cache=False)
-    check("use_cache=False goes to Amazon", calls["n"], 3)
+    check("use_cache=False goes to Amazon", since_last(), 1)
 
     print("\n== an expired entry is not reused ==")
     for k in list(ol._ORDERS_CACHE):
         t, o, tr = ol._ORDERS_CACHE[k]
         ol._ORDERS_CACHE[k] = (t - ol._ORDERS_TTL - 5, o, tr)
     ol.fetch_since("UK", "A1F83G8C2ARO7P", {}, since)
-    check("a stale entry is asked again", calls["n"], 4)
+    check("a stale entry is asked again", since_last(), 1)
 
     print("\n== today AND yesterday come from ONE read ==")
     ol._ORDERS_CACHE.clear()
