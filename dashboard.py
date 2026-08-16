@@ -107,8 +107,22 @@ import hmac as _hmac
 import hashlib as _hashlib
 
 def _img_token(relpath: str) -> str:
-    key = app.secret_key if isinstance(app.secret_key, bytes) else str(app.secret_key).encode()
-    return _hmac.new(key, ("pubimg:" + str(relpath)).encode("utf-8"), _hashlib.sha256).hexdigest()[:24]
+    # SIGNED WITH A KEY THAT OUTLIVES A RESTART -- see domain/image_urls.py.
+    #
+    # This used app.secret_key, and APP_SECRET_KEY is not set on this
+    # deployment, so Flask makes a random one every boot. Amazon does not keep
+    # the image; it keeps the ADDRESS and re-fetches it later. Every link
+    # already handed over therefore stopped working at the next deploy, and the
+    # pictures would fall off the listings some time afterwards with nothing to
+    # connect it to the deploy that caused it.
+    try:
+        from domain import image_urls as _iu
+        return _iu.token(CONFIG_PATH, relpath)
+    except Exception:
+        key = (app.secret_key if isinstance(app.secret_key, bytes)
+               else str(app.secret_key).encode())
+        return _hmac.new(key, ("pubimg:" + str(relpath)).encode("utf-8"),
+                         _hashlib.sha256).hexdigest()[:24]
 
 def _public_media_url(media_url: str) -> str:
     """Turn a local '/media/<relpath>' path into a full, public, Amazon-fetchable URL.
@@ -3403,7 +3417,12 @@ def build_app(backend=None):
     _variations_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                 _active_account=_active_account, _state=_state,
                                 _sp_creds=_sp_creds,
-                                _schema_for=_variation_schema)
+                                _schema_for=_variation_schema,
+                                # So the image slot picker can hand Amazon a
+                                # public URL for an image in this app's own
+                                # media library, instead of refusing it and
+                                # sending people to Google Drive.
+                                _public_media_url=_public_media_url)
 
     # Finance: contribution per product. Read-only, and built from finance rows
     # already stored per ASIN -- it pulls nothing new from Amazon.

@@ -117,9 +117,19 @@ def check_url(url):
     if not u:
         return "There is no image to send."
     if not URL_OK.match(u):
+        # THE ADVICE USED TO SAY "put it in Google Drive first". It no longer
+        # needs to: the app serves its own media publicly at /img/<token>/...,
+        # login-exempt and signed, and the push routes convert a /media/ path to
+        # that address before they get here. So an app-library image arriving
+        # unconverted means the app does not know its own public address, and
+        # THAT is the thing to say -- sending someone to Drive to solve a
+        # missing setting is advice that costs them an hour.
         return ("Amazon fetches the image itself, so it needs a public https:// "
-                "address. This one is %s, which only this app can open. Upload it "
-                "to the account's Drive folder first and send the Drive copy."
+                "address. This one is %s, which only this app can open. If it "
+                "came from the app's own library, set PUBLIC_BASE_URL to the "
+                "address this app is served on -- the app can then hand Amazon "
+                "the image directly. Otherwise use an image that is already "
+                "on a public https:// address."
                 % (u.split("?")[0][:60] or "a local path"))
     return ""
 

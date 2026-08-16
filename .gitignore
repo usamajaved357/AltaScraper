@@ -108,3 +108,7 @@ marketplace_health.json
 # was detached from them. Megabytes of real listing data for real businesses --
 # it belongs beside config.json on the persistent disk, never in the repository.
 sheets_archive_*.json
+
+# The HMAC key that signs public image URLs handed to Amazon. Secret, and
+# must persist on the server -- see domain/image_urls.py.
+image_url_key
