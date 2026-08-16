@@ -402,6 +402,33 @@ _ENHANCE_RULES = (
     "detail in sharp focus (target 2500x2500 pixels, never below 1600x1600).\n"
     "- NO text added by you, NO logos added, NO watermarks, NO badges, NO props, NO people, single "
     "product only, shown OUTSIDE its packaging.\n"
+    # NOTHING AROUND THE EDGE, AND NOTHING BORROWED FROM THE REFERENCE'S STYLING.
+    #
+    # The reference image is usually a supplier's marketing collage, and those
+    # are built out of framed panels, dashed borders, corner flashes and little
+    # decorative motifs. The model reads that styling as part of the subject and
+    # reproduces it: a generated main image came back with a green dashed border
+    # around all four sides, copied from the source collage's panel frames.
+    # Amazon rejects a main image with a border or frame, and it is the kind of
+    # fault nobody looks for because the product itself is correct.
+    #
+    # Deliberately generic. This governs every product in every category, so it
+    # names what must not be in the FRAME rather than anything about a
+    # particular kind of goods.
+    "- NO border, frame, outline, dashed or dotted edge, coloured margin, corner "
+    "flash, banner, ribbon, sticker, seal, starburst or decorative motif "
+    "anywhere in the image. The white background must run clean to all four "
+    "edges with nothing drawn on it.\n"
+    "- The reference image is evidence of WHAT THE PRODUCT LOOKS LIKE, never a "
+    "guide to layout or styling. Supplier photographs are usually marketing "
+    "collages with panels, frames, captions and graphics; take the product from "
+    "them and leave every one of those behind.\n"
+    "- The WHOLE product must be inside the frame with clear margin on all four "
+    "sides. Nothing cropped, nothing bleeding off an edge.\n"
+    "- Show the parts that are genuinely supplied and NO OTHERS. Do not invent "
+    "extra components, fittings, accessories, decorative hardware or duplicates "
+    "to fill space. If the spec says how many of something there are, show "
+    "exactly that many.\n"
 )
 
 _ENHANCE_FIDELITY = (
@@ -526,7 +553,11 @@ def strategize_images(config: dict, image="", product_title: str = "",
     if kind == "main":
         rules = (
             "These are Amazon MAIN images: each concept MUST be on a 100% pure white background "
-            "(RGB 255,255,255), product filling 85%+, NO added text or graphics. Creativity comes ONLY "
+            "(RGB 255,255,255), product filling 85%+, NO added text or graphics, and NO border, "
+            "frame, dashed edge, coloured margin or decorative motif of any kind -- the white must "
+            "run clean to all four edges. The reference photograph is evidence of what the product "
+            "LOOKS LIKE, never a guide to layout: supplier images are usually collages with framed "
+            "panels and captions, and none of that belongs here. Creativity comes ONLY "
             "from camera angle, product positioning/arrangement, lighting mood, and tasteful physical "
             "touches that suit the product (e.g. water droplets, condensation, a soft splash, powder, "
             "steam, a dramatic highlight, an interesting grouping). Make each of the N concepts visually "
