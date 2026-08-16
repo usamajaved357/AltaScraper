@@ -2332,6 +2332,40 @@ def _data_backend(config: dict) -> str:
     return _choice.resolve(config, config.get("_config_path"))
 
 
+def output_ws(config: dict, gc=None, spreadsheet_id: str = None,
+              output_tab: str = None):
+    """THE listings store for this run, whichever backend is in force.
+
+    WHY THIS EXISTS. init_sheets() already picks the right one for GENERATE --
+    a SheetLikeStore over SQLite on the "db" backend, a real worksheet on
+    "sheets". run_api() did not use that seam: it opened the spreadsheet itself,
+
+        sh = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
+        ws = sh.worksheet(output_tab or OUTPUT_TAB)
+
+    so on the db backend the publish path read a Google Sheet while everything
+    that wrote listings wrote to the database. A listing generated and edited in
+    the app was invisible to Preview and Submit, which reported
+
+        1 were not processed -- not found in this tab: 12.99_3Days_B0F2HDJ8RP
+        Check the row is in THIS account's tab
+
+    about a row plainly in the store. The whole publish path was unreachable on
+    the backend the app actually runs on.
+
+    One function, so a new caller cannot pick the wrong one.
+    """
+    if _data_backend(config) == "db":
+        from data.store import ListingStore, SheetLikeStore
+        wsid = str(config.get("_account_id") or "").strip() or "dropshipping"
+        return SheetLikeStore(ListingStore(
+            wsid, config_path=str(config.get("_config_path") or "") or None))
+    if gc is None:
+        raise RuntimeError("the sheets backend needs a Google client")
+    sh = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
+    return sh.worksheet(output_tab or OUTPUT_TAB)
+
+
 def init_sheets(config: dict):
     # Google's client is loaded here, where it is first needed, instead of at
     # the top of the file: 1.2s that a run has to pay before anything happens.
@@ -6280,8 +6314,10 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     from listing import repo as _repo
     from listing.repo import a1 as rowcol_to_a1   # one cell-reference impl (Rule 12)
 
-    sh      = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
-    ws      = sh.worksheet(output_tab or OUTPUT_TAB)
+    # The store this run's listings are actually IN -- see output_ws(). This
+    # used to open the spreadsheet unconditionally, so on the database backend
+    # Preview and Submit read a sheet nothing had written to.
+    ws      = output_ws(config, gc, spreadsheet_id, output_tab)
     records = _safe_records(ws)
     headers = _repo.read_headers(ws)
     col     = lambda h: (headers.index(h) + 1) if h in headers else None
