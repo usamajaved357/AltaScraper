@@ -61,8 +61,17 @@ check("there is more than one assignment only if startup has its own",
 
 # Both fallbacks still exist -- they are correct for a genuinely unscoped run --
 # but they must no longer be what an account-scoped run lands on.
-check("both places still default to dropshipping when truly unscoped",
-      len(re.findall(r'or "dropshipping"', GEN)), 2)
+# COUNTED AS "at least the two", not "exactly two". A third arrived with
+# output_ws(), which resolves the same workspace for Preview and Submit and
+# needs the same fallback for the same reason. Pinning the exact number makes
+# the test fail on a correct addition, which teaches people to edit the number
+# rather than think about it. What matters is that the fallback still exists and
+# that every one of them is spelled the same way.
+_fallbacks = re.findall(r'\S+\s+or "dropshipping"', GEN)
+check("the unscoped fallback still exists everywhere it is needed",
+      len(_fallbacks) >= 2, True)
+check("  and every one of them resolves the same way",
+      len(set(f.strip() for f in _fallbacks)) == 1, True)
 
 print("\n=== the output store writes to the app's OWN database ===")
 truthy("the listing store is given the config path, not left to the environment",

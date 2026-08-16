@@ -992,7 +992,23 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict,
     # Treat each body block as ending in implicit period so cross-block words
     # don't get falsely scanned as mid-sentence.
     caps_scan_text = ". ".join(b for b in body_blocks if b)
-    sentences = re.split(r"(?<=[.!?:;])\s+", caps_scan_text)   # colon/semicolon break "LABEL: Sentence" bullets
+    # A DASH ENDS A LABEL JUST AS A COLON DOES.
+    #
+    # Bullets are written in this app's own house style -- an ALL-CAPS label,
+    # then an em-dash, then the sentence:
+    #
+    #     200 KG LOAD CAPACITY — Heavy-duty aluminium carabiner and ...
+    #
+    # Splitting only on . ! ? : ; left "Heavy-duty" looking like a capitalised
+    # word in the MIDDLE of a sentence, which is what this scan treats as a
+    # possible brand. Every bullet the app writes therefore contributed one
+    # false positive, and five bullets is above the tolerance of four -- so a
+    # perfectly ordinary listing went to IP_HOLD on the strength of its own
+    # formatting. Measured on a real one: "Heavy-duty, Aerial, Yoga, Sensory,
+    # Swing" reported as possible brands, none of which is a brand.
+    #
+    # Em-dash, en-dash, and a spaced hyphen used the same way.
+    sentences = re.split(r"(?<=[.!?:;])\s+|\s+[—–]\s+|\s+-\s+", caps_scan_text)
     for sent in sentences:
         sent = sent.strip()
         if not sent:

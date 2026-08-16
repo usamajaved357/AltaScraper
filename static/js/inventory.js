@@ -295,5 +295,30 @@ function runMode(mode, skus){
     _logPush(log, cls, e.data);
   };
   ES.addEventListener("end",()=>{_logFlush(log);ES.close();ES=null;showStop(false);loadRows();toast("Run finished");});
-  ES.onerror=()=>{if(ES){_logFlush(log);ES.close();ES=null;showStop(false);loadRows();}};
+  // A STREAM THAT NEVER OPENED MUST SAY SO.
+  //
+  // This closed everything down and told nobody. EventSource fires onerror both
+  // when a live stream drops AND when the connection never opened at all -- and
+  // it deliberately gives no status code, so a 500 from the server looked
+  // exactly like a finished run: the log stayed empty, the Stop button went
+  // away, and the screen offered no reason.
+  //
+  // Which is what a NameError in /run/generate looked like for as long as it
+  // was there: press Generate, watch nothing happen, with no way to tell
+  // whether it had run and found nothing or had never started. If the stream
+  // closes without having delivered a single line, that is not a run, and the
+  // log says so rather than staying blank.
+  ES.onerror=()=>{
+    if(!ES) return;
+    const emptyRun = !log.textContent.trim();
+    _logFlush(log); ES.close(); ES=null; showStop(false); loadRows();
+    if(emptyRun){
+      _logPush(log, "l", "[error] The run did not start — the server closed the "
+             + "connection before sending anything. This is usually a fault on "
+             + "the server rather than something you did; check /diag, and the "
+             + "app log for the failing request.");
+      _logFlush(log);
+      toast("The run did not start");
+    }
+  };
 }

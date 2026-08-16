@@ -1328,16 +1328,21 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         _scope_mkt = str(_state.get("active_marketplace") or "")
         _scope_view = _state.get("active_view") or ""
 
-        # The browser named an account and it is not the one this request
-        # resolves to. Refuse -- a run writes listings and a submit reaches
-        # Amazon, and there is no safe way to guess whose account that is.
-        if _req_account and _scope_acct_id and _req_account != _scope_acct_id:
-            return Response(
-                "data: [error] ACCOUNT_MISMATCH This page is showing %s but the "
-                "server resolved %s, so nothing was run. Reselecting %s and "
-                "retrying.\n\nevent: end\ndata: end\n\n"
-                % (_req_account, _scope_acct_id, _req_account),
-                mimetype="text/event-stream")
+        # THE MISMATCH CHECK THAT USED TO BE HERE HAS GONE, because it is done
+        # above by _req_acct.mismatch_for_write() -- the one place that decides
+        # whether a write may proceed for the account the page is showing.
+        #
+        # What was left behind was the OLD copy of that check, still reading a
+        # variable the refactor had removed. It was not dead code that merely
+        # looked untidy: it raised
+        #
+        #     NameError: name '_req_account' is not defined
+        #
+        # on every single run, so /run/generate answered 500 before it did
+        # anything. In the browser that is an EventSource that fails to open,
+        # and EventSource reports nothing to the page -- so Generate showed an
+        # empty log and no error at all, for every account and every item.
+        # Found by pressing Generate on a real listing.
 
         def stream():
             # Keyed on THIS account and THESE SKUs, not on one flag for the whole

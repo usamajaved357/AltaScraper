@@ -1531,12 +1531,25 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         "  'top-quality', 'quality you can trust', 'impressive', 'pristine', 'exclusive',\n"
         "  'exclusively' -- unless objectively certifiable.\n"
         "- NO false/medical/efficacy claims; describe features and honest benefits.\n"
+        "- NEVER NAME A MEDICAL OR DEVELOPMENTAL CONDITION, in any field, even as\n"
+        "  an audience rather than a claim. Not 'autism', 'ADHD', 'SPD', 'sensory\n"
+        "  processing disorder/differences', 'Asperger', 'anxiety', 'therapy',\n"
+        "  'therapeutic', 'treatment', 'symptoms', 'diagnosis', 'special needs'.\n"
+        "  'Suitable for children with sensory processing differences' is a health\n"
+        "  claim to Amazon however it is phrased, and the source listing having\n"
+        "  said it is not permission. Describe what the product IS and what it\n"
+        "  physically does -- 'gently enveloping stretchy fabric', 'calming rocking\n"
+        "  motion' -- and let the customer decide what it suits.\n"
+        f"- THE BRAND NAME \"{brand_name}\" MUST NOT APPEAR ANYWHERE in the title,\n"
+        "  the bullets, the description or the search terms. It goes in the brand\n"
+        "  FIELD and nowhere else. The copy reads as an unbranded product; a brand\n"
+        "  name in the description is the single most common way that slips.\n"
         "- It is BETTER to omit a doubtful detail than to risk a policy rejection.\n"
         "\n"
         f"TITLE (target 70-75 chars, fill close to the 75 cap): Do NOT start with the brand name \"{brand_name}\" or any brand; lead with the product's key descriptive terms (type, key feature, material/size). Front-load the most important keywords in the first ~70 chars (mobile truncates there). No ALL CAPS, no !, no &, no ~\n"
         f"ITEM HIGHLIGHTS (target 110-125 chars, fill close to the 125 cap): one short standout-feature line summarising the product's key selling point.\n"
         f"BULLETS (5, target 400-500 chars EACH, fill them fully): Sentence case (capitalise only the FIRST word and proper feature names). NEVER use Title Case mid-sentence. Benefit + verified spec, no health claims. Amazon indexes only the first ~1000 bytes across ALL 5 bullets combined, so put the most important keywords in the first 1-2 bullets, then keep adding genuine detail to fill each bullet.\n"
-        f"DESCRIPTION (HTML, target 1700-2000 chars incl tags, fill it richly): <p> <ul> <li> <b> <br> only, max 2000 characters including the HTML tags\n"
+        f"DESCRIPTION (HTML, target 1700-2000 chars incl tags, fill it richly): <p> <ul> <li> <b> <br> only, max 2000 characters including the HTML tags. Do NOT name the brand \"{brand_name}\" anywhere in it -- not in the opening line, not in the closing one. Open with what the product IS, not with a brand.\n"
         f"SEARCH TERMS (fill close to 249 BYTES without exceeding): single spaces between words, NO punctuation (no commas/semicolons), lowercase, no title repeats, no brand names. Exceeding 249 bytes voids the whole field.\n"
         f"UNIT COUNT: plain integer only (e.g. 7 for a 7-piece set)\n"
         "\n===================================\n"
@@ -1818,13 +1831,45 @@ def clean_search_terms(st: str) -> str:
     return st
 
 def cap_chars(s: str, n: int) -> str:
-    """Trim a string to n characters without an ellipsis hack when possible."""
-    s = s or ""
+    """Trim to n characters and STILL READ AS A FINISHED SENTENCE.
+
+    Cutting on a word boundary keeps words whole, which is necessary and not
+    sufficient. On a real listing this produced a bullet ending
+
+        ...suitable for users of all experience levels who wish to practise
+        aerial yoga, stretching, or simply
+
+    -- every word intact and the sentence abandoned mid-thought, published to
+    Amazon exactly like that. A customer reads that as a broken listing, which
+    is the one thing the copy is there to avoid.
+
+    So: end at the last full stop when there is one reasonably near the limit,
+    and otherwise fall back to the word boundary with any dangling conjunction
+    or comma removed. Losing a clause is better than printing half of one.
+    """
+    s = (s or "").rstrip()
     if len(s) <= n:
         return s
     cut = s[:n]
-    if " " in cut[: n]:
-        cut = cut[: cut.rfind(" ")].rstrip()
+
+    # A sentence end, if one sits in the last third of what we are allowed to
+    # keep. Nearer the start than that and we would throw away too much.
+    floor = int(n * 0.6)
+    best = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if best < 0 and cut.rstrip().endswith((".", "!", "?")):
+        best = len(cut.rstrip()) - 1
+    if best >= floor:
+        return cut[:best + 1].rstrip()
+
+    # No usable sentence end: whole words, and nothing left hanging.
+    if " " in cut:
+        cut = cut[:cut.rfind(" ")].rstrip()
+    cut = cut.rstrip(" ,;:-–—")
+    _tail = cut.rsplit(" ", 1)[-1].lower() if " " in cut else ""
+    while _tail in ("and", "or", "but", "with", "for", "to", "the", "a", "an",
+                    "of", "in", "on", "as", "that", "which", "while", "from"):
+        cut = cut[:cut.rfind(" ")].rstrip().rstrip(" ,;:-–—")
+        _tail = cut.rsplit(" ", 1)[-1].lower() if " " in cut else ""
     return cut
 
 COUNTER_PATH      = CONFIG_PATH.parent / "model_number_counter.json"
@@ -2285,6 +2330,40 @@ def _data_backend(config: dict) -> str:
     """
     from data import choice as _choice
     return _choice.resolve(config, config.get("_config_path"))
+
+
+def output_ws(config: dict, gc=None, spreadsheet_id: str = None,
+              output_tab: str = None):
+    """THE listings store for this run, whichever backend is in force.
+
+    WHY THIS EXISTS. init_sheets() already picks the right one for GENERATE --
+    a SheetLikeStore over SQLite on the "db" backend, a real worksheet on
+    "sheets". run_api() did not use that seam: it opened the spreadsheet itself,
+
+        sh = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
+        ws = sh.worksheet(output_tab or OUTPUT_TAB)
+
+    so on the db backend the publish path read a Google Sheet while everything
+    that wrote listings wrote to the database. A listing generated and edited in
+    the app was invisible to Preview and Submit, which reported
+
+        1 were not processed -- not found in this tab: 12.99_3Days_B0F2HDJ8RP
+        Check the row is in THIS account's tab
+
+    about a row plainly in the store. The whole publish path was unreachable on
+    the backend the app actually runs on.
+
+    One function, so a new caller cannot pick the wrong one.
+    """
+    if _data_backend(config) == "db":
+        from data.store import ListingStore, SheetLikeStore
+        wsid = str(config.get("_account_id") or "").strip() or "dropshipping"
+        return SheetLikeStore(ListingStore(
+            wsid, config_path=str(config.get("_config_path") or "") or None))
+    if gc is None:
+        raise RuntimeError("the sheets backend needs a Google client")
+    sh = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
+    return sh.worksheet(output_tab or OUTPUT_TAB)
 
 
 def init_sheets(config: dict):
@@ -6235,8 +6314,10 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
     from listing import repo as _repo
     from listing.repo import a1 as rowcol_to_a1   # one cell-reference impl (Rule 12)
 
-    sh      = gc.open_by_key(spreadsheet_id or config["google_spreadsheet_id"])
-    ws      = sh.worksheet(output_tab or OUTPUT_TAB)
+    # The store this run's listings are actually IN -- see output_ws(). This
+    # used to open the spreadsheet unconditionally, so on the database backend
+    # Preview and Submit read a sheet nothing had written to.
+    ws      = output_ws(config, gc, spreadsheet_id, output_tab)
     records = _safe_records(ws)
     headers = _repo.read_headers(ws)
     col     = lambda h: (headers.index(h) + 1) if h in headers else None

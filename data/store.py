@@ -304,11 +304,26 @@ class SheetLikeStore:
         return self.cell(*cell) if cell else self.cell(1, 1)
 
     # -- writes
-    def batch_update(self, payload):
+    def batch_update(self, payload, value_input_option=None, **_gspread_only):
         """Accepts gspread's [{'range': 'C5', 'values': [[v]]}, ...].
 
         A1 ranges are resolved back to (row, column) -> (sku, header), which is
         why ORDERED_HEADERS has to match the sheet's column order exactly.
+
+        `value_input_option` IS ACCEPTED AND IGNORED, deliberately. It tells
+        Google whether to parse "1/2" as a date or keep it as text; a database
+        column has no such ambiguity, so there is nothing here for it to do.
+
+        But it has to be ACCEPTED. This stands in for a gspread worksheet, and
+        listing/repo.batch_write passes it -- so on the database backend Preview
+        validated the listing against Amazon, got API_READY, and then died on
+
+            TypeError: SheetLikeStore.batch_update() got an unexpected keyword
+            argument 'value_input_option'
+
+        while writing the result back. The work was done and thrown away. An
+        adapter that accepts most of the interface it is impersonating is not an
+        adapter. **_gspread_only catches the rest of them for the same reason.
         """
         updates = {}
         for item in (payload or []):
