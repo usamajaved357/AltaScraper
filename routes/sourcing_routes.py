@@ -17,14 +17,21 @@ import json
 from flask import request, jsonify
 
 from domain import source_apply as _apply
+from domain import source_drift as _drift
 from domain import source_fetch as _fetch
 from domain import source_repo as _repo
 from domain import source_run as _run
 from domain import sourcing as _sourcing
 
 
-def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
-    """Attach the /sourcing/* routes to the existing Flask app."""
+def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
+             _COGS_OVERRIDE=None):
+    """Attach the /sourcing/* routes to the existing Flask app.
+
+    _COGS_OVERRIDE is the same dict the listings screen edits. Optional, because
+    the tests register this blueprint on their own; without it a SKU's cost falls
+    back to the number in its name, which is what cogs.resolve() does anyway.
+    """
 
     def _read_config():
         try:
@@ -120,7 +127,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             # The SKU's own rule travels with the row because min_price's ABSENCE
             # is what stops it being armed, and that belongs next to the Arm
             # button rather than in the error you get after pressing it.
-            rows.append({**d, "sources": [{**s, "check": c} for s, c in pairs],
+            # What we think the unit cost vs what the supplier charges now. The
+            # repricer never consults COGS to price -- this is here so the gap
+            # between the two is visible instead of silent. Per source, the
+            # readings behind it, so "has it moved" is answerable on the screen.
+            srcs = []
+            for s, c in pairs:
+                srcs.append({**s, "check": c,
+                             "history": _drift.price_history(CONFIG_PATH, s["id"])})
+            rows.append({**d, "sources": srcs,
+                         "drift": _drift.for_sku(
+                             _COGS_OVERRIDE, d["workspace_id"], d["sku"], pairs,
+                             (d.get("decision") or {}).get("source_id")),
                          "rule": _sourcing.rule_with_defaults(
                              _repo.rule_for(CONFIG_PATH, d["workspace_id"],
                                             d["marketplace"], d["sku"]))})

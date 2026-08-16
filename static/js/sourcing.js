@@ -181,6 +181,91 @@ function _actionChip(d){
   return '<span class="db-chip">no change</span>';
 }
 
+// What we thought a unit cost, against what the supplier charges now. Shown on
+// the collapsed row, because a cost that has drifted is not something you would
+// know to go looking for -- it has to be in front of you.
+function _driftChip(dr){
+  if(!dr || dr.delta==null) return '';
+  const worse = dr.delta > 0, flat = dr.delta === 0;
+  const col = flat ? '' : (worse ? 'background:#3a2f12;color:#e8c66a'
+                                 : 'background:#12321f;color:#7fd18b');
+  const sign = dr.delta > 0 ? '+' : '';
+  return '<span class="db-chip" style="'+col+'" title="'
+    +  'This SKU was created when the source cost '+_smoney(dr.cogs)+'. '
+    +  'The supplier now charges '+_smoney(dr.landed)+' delivered to you. '
+    +  (worse ? 'Every profit figure for this SKU still subtracts the old, lower cost, '
+             +  'so profit is overstated by '+_smoney(dr.delta)+' a unit.'
+             : (flat ? 'Unchanged since the listing was created.'
+                     : 'It is cheaper than when the listing was created.'))
+    +  '">cost '+(flat ? 'unchanged' : (worse?'up':'down'))
+    +  (flat ? '' : ' '+sign+dr.pct+'%')+'</span>';
+}
+
+// The sum, laid out. It exists because the one-sentence version of this was
+// accurate and unreadable: "price 20.33 = 11.28 cost + 3.05 fee + 3.00 postage
+// + 2.00 ads + 1.00 profit" is five numbers and a total run together, and the
+// question it has to answer -- "where did my price come from" -- is answered
+// much better by a list than by a sentence. The sentence is still what gets
+// stored in the log, unchanged; this is only how it is drawn.
+function _priceBreakdown(b, cur){
+  if(!b || b.price==null) return '';
+  const line = function(label, v, note){
+    return '<div style="display:flex;gap:8px;font-size:11.5px;padding:1.5px 0">'
+      +  '<span style="min-width:186px" class="cc">'+label+'</span>'
+      +  '<span style="min-width:62px;text-align:right">'+_smoney(v)+'</span>'
+      +  '<span class="cc">'+(note||'')+'</span></div>';
+  };
+  let h = '<div class="cc" style="font-size:11px;margin:9px 0 3px">'
+        + 'How this price was worked out</div>';
+  h += line('What the supplier charges', b.supplier_price, '');
+  if(b.supplier_postage!=null && b.supplier_postage>0)
+    h += line('Their postage to you', b.supplier_postage, '');
+  h += line('So one unit costs you', b.cost, 'delivered to your door');
+  h += line("Amazon's cut", b.fee,
+            Math.round((b.fee_rate||0)*100)+'% of the selling price, not of the cost');
+  h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
+  h += line('Set aside for ads', b.ads, '');
+  h += line('Profit left over', b.profit, 'what you keep per unit');
+  h += '<div style="display:flex;gap:8px;font-size:12px;font-weight:600;'
+    +  'padding:5px 0 0;margin-top:3px;border-top:1px solid #26303f">'
+    +  '<span style="min-width:186px">Price it should sell at</span>'
+    +  '<span style="min-width:62px;text-align:right">'+_smoney(b.price)+'</span>'
+    +  '<span class="cc" style="font-weight:400">'
+    +  (cur && cur.price!=null ? 'it is '+_smoney(cur.price)+' now' : '')+'</span></div>';
+  if(b.lead_days!=null){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
+      +  'Handling time '+b.lead_days+' days &mdash; the supplier says '
+      +  b.supplier_dispatch_days+' to dispatch, plus '+b.buffer_days
+      +  ' spare so a slow day does not make you late.</div>';
+  }
+  if(b.sources_total>1){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:3px">'
+      +  'Cheapest of '+b.sources_usable+' usable supplier'
+      +  (b.sources_usable===1?'':'s')+' out of '+b.sources_total+'.</div>';
+  }
+  return h;
+}
+
+// Every reading we hold for one supplier, newest first. Two readings that never
+// move are how you tell a stable price from a stale one, so failures are listed
+// rather than hidden.
+function _sourceHistory(hist){
+  if(!hist || hist.length<2) return '';
+  let h = '<div class="cc" style="font-size:11px;margin:5px 0 2px">'
+        + 'What this supplier has charged</div>';
+  hist.forEach(function(c){
+    h += '<div style="display:flex;gap:8px;font-size:11px;padding:1px 0">'
+      +  '<span class="cc" style="min-width:132px">'+_sesc(c.at||'')+'</span>'
+      +  '<span style="min-width:70px">'
+      +  (c.landed!=null ? _smoney(c.landed) : '<span class="cc">could not read</span>')
+      +  '</span>'
+      +  '<span class="cc">'+(c.status!=='fetched' ? _sesc(c.status||'')
+                              : (c.in_stock===false ? 'out of stock' : ''))+'</span>'
+      +  '</div>';
+  });
+  return h;
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
@@ -189,6 +274,7 @@ function sourcingRow(r, i){
   h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
     +  '<code style="font-size:12px">'+_sesc(r.sku)+'</code>'
     +  _actionChip(d)
+    +  _driftChip(r.drift)
     +  '<span style="flex:1"></span>'
     +  '<span class="cc" style="font-size:11.5px">now '+_smoney(cur.price)
     +  (cur.lead_days!=null ? ' &middot; '+cur.lead_days+'d handling' : '')
@@ -211,7 +297,28 @@ function sourcingRow(r, i){
     +  _sesc(d.reason||"")+'</div>';
 
   h += '<div id="'+id+'" style="display:none;margin-top:9px">';
-  h += '<div class="cc" style="font-size:11px;margin-bottom:4px">Suppliers</div>';
+
+  h += _priceBreakdown(d.breakdown, cur);
+
+  // The cost comparison in words, under the sum it affects. The chip in the
+  // header is the flag; this is the sentence that says what it means, because
+  // "cost up 9%" does not on its own tell you that a profit figure is wrong.
+  const dr = r.drift || {};
+  if(dr.delta!=null && dr.delta!==0){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:7px;padding:6px 8px;'
+      +  'border:1px solid #2a3446;border-radius:6px">'
+      +  'This SKU was created when a unit cost <b>'+_smoney(dr.cogs)+'</b>'
+      +  (dr.cogs_source==='manual' ? ' (you set that by hand)' : ' (from the SKU name)')
+      +  '. The supplier now charges <b>'+_smoney(dr.landed)+'</b> delivered. '
+      +  (dr.delta>0
+          ? 'Profit figures for this SKU still subtract the old '+_smoney(dr.cogs)
+            + ', so they are overstated by about '+_smoney(dr.delta)+' on every unit sold.'
+          : 'It is cheaper than it was, so profit figures are understating it by about '
+            + _smoney(Math.abs(dr.delta))+' a unit.')
+      +  '</div>';
+  }
+
+  h += '<div class="cc" style="font-size:11px;margin:9px 0 4px">Suppliers</div>';
   (r.sources||[]).forEach(function(s){
     const k = s.check || {};
     const rej = (d.rejections||[]).find(function(x){ return x.source_id===s.id; });
@@ -230,6 +337,7 @@ function sourcingRow(r, i){
       +  (rej ? '<span class="cc" style="color:#e8c66a">'+_sesc(rej.reason)+'</span>' : '')
       +  '<button class="db-chip" onclick="sourcingRemoveSource('+s.id+')">×</button>'
       +  '</div>';
+    h += _sourceHistory(s.history);
   });
   if(!(r.sources||[]).length){
     h += '<div class="cc" style="font-size:11.5px;padding:4px 0">'

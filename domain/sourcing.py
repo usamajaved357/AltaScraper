@@ -17,7 +17,10 @@ THREE THINGS A CHECK CAN TELL US, NOT TWO
     gone    -- the supplier's listing has ENDED. eBay's Browse API answers 400/404
                for an ended item (see fetch_ebay_supplement in the generator, which
                already documents this). That is a fact: you cannot buy from that
-               URL any more.
+               URL any more -- ONCE IT IS CONFIRMED. A 404 is also what a blip,
+               a rate-limit and a marketplace mismatch look like, so one on its
+               own is treated as a failed read and a second is waited for. See
+               gone_confirmed().
     failed  -- a timeout, a 5xx, an expired token, no network. We learned NOTHING.
 
     Collapsing 'failed' into 'out of stock' is the single most expensive mistake
@@ -25,6 +28,11 @@ THREE THINGS A CHECK CAN TELL US, NOT TWO
     of stock, and the listings would lose their rank while the supplier was fine
     the entire time. So: when every source is blind, the answer is to do nothing.
     Only evidence moves a listing.
+
+    Note where the asymmetry sits. A price change has three guards in front of
+    it (max_change_pct, min_change, min_price). Going out of stock had none and
+    needed only one reading, which made the CHEAPEST reading to obtain the one
+    with the least standing behind it.
 
     This is the same rule as 0.00 not meaning free in domain/cogs.py. Unknown is
     not a value.
@@ -78,7 +86,7 @@ from listing import pricing as _pricing   # the ONE definition of the pricing ru
 
 # ---- what a check can be ---------------------------------------------------
 FETCHED = "fetched"      # we have numbers
-GONE    = "gone"         # the supplier's listing has ended -- definitive
+GONE    = "gone"         # the listing has ended -- once confirmed twice running
 FAILED  = "failed"       # we learned nothing at all
 
 DEFAULT_REFERRAL_RATE = 0.15
@@ -120,6 +128,10 @@ DEFAULT_RULE = {
     "min_change":           0.20,         # smaller than this is not worth a push
     "stale_after_hours":    24.0,
     "in_stock_quantity":    5,
+    # How many readings in a row must say ENDED before we believe it. Price
+    # changes have three guards; going out of stock had none, and it only ever
+    # took one answer. 1 restores that. See gone_confirmed().
+    "confirm_gone_checks":  2,
 }
 
 
@@ -190,6 +202,35 @@ def landed_cost(check, fx=1.0):
     return round((p + s) * f, 4)
 
 
+def gone_confirmed(check, rule=None):
+    """Has this source said ENDED often enough that we believe it?
+
+    'gone' is the one reading that can zero a live listing's quantity, and until
+    now a single one did it. That is the wrong amount of evidence: eBay's API
+    answers 404 for an item that has genuinely ended AND, now and then, for one
+    that is perfectly alive -- a blip, a rate-limit wearing a 404, a site that
+    does not match the marketplace (source_fetch.py already documents that last
+    one). Acting on the first sighting takes a live listing out of stock, where
+    it stays until the next sweep puts it back.
+
+    So it has to say so twice running. The count travels ON the reading as
+    `gone_streak`, because a check dict is all decide() is ever given;
+    source_repo.latest_checks() is what puts it there. A reading that arrives
+    WITHOUT one has no history behind it and cannot be confirmed -- which fails
+    towards leaving the listing alone, the only safe direction here.
+
+    This is the single definition of "confirmed gone": both usable() and
+    _blind() ask it, so the two cannot drift apart.
+    """
+    need = int(rule_with_defaults(rule).get("confirm_gone_checks") or 1)
+    if need <= 1:
+        return True
+    try:
+        return int((check or {}).get("gone_streak")) >= need
+    except (TypeError, ValueError):
+        return False
+
+
 def usable(source, check, rule, now):
     """(True, "") if this source could be bought from, else (False, why not).
 
@@ -207,7 +248,12 @@ def usable(source, check, rule, now):
     if st == FAILED:
         return False, "last check failed (%s)" % (str(check.get("error") or "no detail")[:80])
     if st == GONE:
-        return False, "the supplier's listing has ended"
+        if gone_confirmed(check, rule):
+            return False, "the supplier's listing has ended"
+        # Not buyable either way -- but the log has to say WHICH of the two this
+        # is, because one takes the listing out of stock and the other waits.
+        return False, ("the supplier's listing looks ended, but only on this one "
+                       "reading -- waiting for a second before believing it")
     if st != FETCHED:
         return False, "no usable reading"
 
@@ -311,15 +357,18 @@ def floor_price(cost, rule=None):
 def _blind(check, rule, now):
     """True when this check told us nothing we can act on.
 
-    'gone' is NOT blind -- an ended listing is a fact about the world. A stale
-    reading IS blind: it describes a supplier as they were yesterday, and acting
-    on it is acting on a guess.
+    A CONFIRMED 'gone' is NOT blind -- an ended listing is a fact about the
+    world. A single unconfirmed 'gone' is treated exactly like a read that
+    failed, because that is precisely what it might be, and the branch below
+    that handles unreadable sources already does the right thing with it:
+    holds the listing and says why. A stale reading IS blind: it describes a
+    supplier as they were yesterday, and acting on it is acting on a guess.
     """
     if not check:
         return True
     st = check.get("status")
     if st == GONE:
-        return False
+        return not gone_confirmed(check, rule)
     if st != FETCHED:
         return True
     age = age_minutes(check, now)
@@ -418,6 +467,29 @@ def decide(current, pairs, rule=None, now=None):
     qty = int(rule["in_stock_quantity"])
 
     out.update({"price": price, "quantity": qty, "lead_days": lead})
+
+    # The SAME numbers as the reason sentence below, structured. The sentence is
+    # the permanent record; this is so a screen can lay the sum out in labelled
+    # parts without reading them back out of prose, which would be deriving
+    # meaning from human-readable text (CLAUDE.md Rule 4) and would break the
+    # moment the wording was improved.
+    out["breakdown"] = {
+        "supplier_price": _num(chk.get("price")),
+        "supplier_postage": _num(chk.get("shipping")),
+        "cost": round(cost, 2),
+        "fee": round(price * rule["referral_rate"], 2),
+        "fee_rate": rule["referral_rate"],
+        "postage_label": round(float(rule["shipping_label"]), 2),
+        "ads": round(float(rule["ads_margin"]), 2),
+        "profit": round(float(rule["min_profit"]), 2),
+        "price": price,
+        "sources_usable": len(live) - len(rejections),
+        "sources_total": len(live),
+        "supplier_dispatch_days": (None if disp is None else int(disp)),
+        "buffer_days": int(rule["handling_buffer_days"]),
+        "lead_days": lead,
+    }
+
     # The breakdown goes in the reason because this line IS the audit trail --
     # "why is it 18.24" has to be answerable from the log alone, months later.
     out["reason"] = ("%s of %d usable source(s): %s at %.2f landed; price %.2f "

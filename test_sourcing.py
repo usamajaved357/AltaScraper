@@ -32,10 +32,15 @@ def src(i, priority=100, enabled=1, label=None):
             "label": label or "source %d" % i, "url": "https://ebay.co.uk/itm/%d" % i}
 
 def chk(status=S.FETCHED, price=10.0, shipping=0.0, in_stock=True,
-        dispatch=3, at=FRESH, error=None):
+        dispatch=3, at=FRESH, error=None, gone_streak=None):
+    # gone_streak is how many readings in a row have said ENDED. source_repo
+    # puts it on every check it hands out; a check built here without one stands
+    # for a first sighting, which is deliberately not enough to act on.
     return {"status": status, "price": price, "shipping": shipping,
             "in_stock": in_stock, "dispatch_days": dispatch,
-            "checked_at": at, "error": error}
+            "checked_at": at, "error": error,
+            "gone_streak": (gone_streak if gone_streak is not None
+                            else (1 if status == S.GONE else 0))}
 
 
 print("=== landed cost: postage is part of the cost, and unknown is not free ===")
@@ -100,8 +105,13 @@ check("a good source is usable", S.usable(src(1), chk(), {}, NOW)[0], True)
 check("turned off", why(src(1, enabled=0), chk()), "source turned off")
 check("never checked", why(src(1), None), "never checked")
 truthy("a failed check says so", "last check failed" in why(src(1), chk(status=S.FAILED)))
-check("an ended listing", why(src(1), chk(status=S.GONE)),
+# Changed deliberately: a single 'gone' used to read as settled fact. It now
+# has to be seen twice running, so the reason text has to say which of the two
+# this is -- one holds the listing, the other zeroes it.
+check("an ended listing, seen twice", why(src(1), chk(status=S.GONE, gone_streak=2)),
       "the supplier's listing has ended")
+truthy("an ended listing seen ONCE says it is still waiting",
+       "waiting for a second" in why(src(1), chk(status=S.GONE, gone_streak=1)))
 truthy("a stale reading is named as stale", "hours old" in why(src(1), chk(at=STALE)))
 check("undated readings are not fresh", why(src(1), chk(at=None)),
       "reading has no timestamp")
@@ -195,8 +205,33 @@ check("ALL definitely out of stock -> out of stock", d["action"], "out_of_stock"
 check("  quantity zero", d["quantity"], 0)
 truthy("  naming the sources", "out of stock at the supplier" in d["reason"])
 
-d = S.decide(CUR, [(src(1), chk(status=S.GONE))], {}, NOW)
-check("an ended listing IS evidence -> out of stock", d["action"], "out_of_stock")
+print("  -- an ended listing is evidence, but not on one reading --")
+# A 404 is what an ended item looks like AND what a blip, a rate-limit and a
+# marketplace mismatch look like. Acting on the first one zeroes a live listing.
+d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=1))], {}, NOW)
+check("seen ended ONCE -> change nothing", d["action"], "none")
+check("  quantity untouched", d["quantity"], None)
+truthy("  and it says it could not read the source",
+       "could not be read" in d["reason"] or "no usable data" in d["blocked_by"])
+
+d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=2))], {}, NOW)
+check("seen ended TWICE -> out of stock", d["action"], "out_of_stock")
+check("  quantity zero", d["quantity"], 0)
+
+d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=1))],
+             {"confirm_gone_checks": 1}, NOW)
+check("one reading is enough if the rule says so", d["action"], "out_of_stock")
+
+# The count has to come from somewhere real. A check that arrives without one
+# has no history behind it, so it cannot be confirmed.
+d = S.decide(CUR, [(src(1), {"status": S.GONE, "checked_at": FRESH})], {}, NOW)
+check("a reading with no history behind it is not confirmation",
+      d["action"], "none")
+
+print("  -- one confirmed-gone source does not blind the others --")
+d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=2)),
+                   (src(2), chk(price=9.00, shipping=0.0))], {}, NOW)
+check("the readable source still prices it", d["action"], "update")
 
 d = S.decide(CUR, [(src(1), chk(dispatch=9))], {"max_dispatch_days": 5}, NOW)
 check("too slow is a decision, not a blind spot", d["action"], "out_of_stock")
@@ -332,6 +367,39 @@ check("a dry-run action is stored as not applied",
 check("nothing is enrolled by default",
       conn.execute("SELECT COUNT(*) c FROM sourcing_enrolment WHERE workspace_id='other'"
                    ).fetchone()["c"], 0)
+
+print("\n=== the gone streak is CONSECUTIVE, and it resets ===")
+# The whole guard rests on this count. If it counted 'gone' readings in total
+# rather than in a row, a source that 404'd once a month would eventually zero
+# a listing that had been fine the entire time.
+from domain import source_repo as _repo
+
+conn.execute("INSERT INTO sourcing_sources (id, workspace_id, marketplace, sku, "
+             "kind, url, label, priority, enabled, added_at) "
+             "VALUES (?,?,?,?,?,?,?,?,?,?)",
+             (91, "jack_uk", "UK", "8.00_3Days_B0G1K5B7QS", "ebay",
+              "https://www.ebay.co.uk/itm/1", "src", 100, 1, "2026-08-14"))
+conn.commit()
+
+def _streak_after(statuses):
+    conn.execute("DELETE FROM sourcing_checks WHERE source_id=91")
+    for st in statuses:
+        _repo.record_check(CFG, 91, {"status": st, "price": 10.0, "shipping": 0.0,
+                                     "in_stock": True, "dispatch_days": 2,
+                                     "checked_at": "2026-08-14 11:00:00"})
+    conn.commit()
+    return _repo.latest_checks(CFG, [91])[91].get("gone_streak")
+
+check("one ended reading", _streak_after([S.GONE]), 1)
+check("two in a row", _streak_after([S.GONE, S.GONE]), 2)
+check("three in a row", _streak_after([S.GONE, S.GONE, S.GONE]), 3)
+check("a good reading in between RESETS it",
+      _streak_after([S.GONE, S.FETCHED, S.GONE]), 1)
+check("a failed reading in between also resets it",
+      _streak_after([S.GONE, S.GONE, S.FAILED, S.GONE]), 1)
+check("a source reading fine has no streak", _streak_after([S.FETCHED]), 0)
+check("counted from the LATEST end, not the oldest",
+      _streak_after([S.GONE, S.GONE, S.FETCHED]), 0)
 
 os.environ.pop("ALTASCRAPER_DB", None)
 try:

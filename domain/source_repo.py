@@ -15,6 +15,9 @@ listings out of stock on missing data.
 import time
 
 from data import db as _db
+# The ONE check vocabulary, same import source_fetch.py uses. Spelling "gone"
+# as a literal here would be a second definition of it in a second file.
+from domain.sourcing import GONE as _GONE
 
 
 def _now():
@@ -147,8 +150,32 @@ def record_check(config_path, source_id, check):
     conn.commit()
 
 
+def _gone_streak(conn, source_id, cap=10):
+    """How many of the most recent readings IN A ROW said the listing had ended.
+
+    Capped because the answer is only ever compared against a small number
+    (confirm_gone_checks, normally 2) while the check history for a source grows
+    by one every sweep, forever.
+    """
+    n = 0
+    for r in conn.execute("SELECT status FROM sourcing_checks WHERE source_id=? "
+                          "ORDER BY id DESC LIMIT ?", (source_id, cap)):
+        if r["status"] != _GONE:
+            break
+        n += 1
+    return n
+
+
 def latest_checks(config_path, source_ids):
-    """{source_id: check} for the most recent reading of each source given."""
+    """{source_id: check} for the most recent reading of each source given.
+
+    Each check also carries `gone_streak`. domain/sourcing.py refuses to zero a
+    listing's quantity on a single 'gone' reading, and a check dict is the only
+    thing it is given to decide from -- so the count has to travel WITH the
+    reading rather than being looked up there. Only computed when the latest
+    reading is 'gone'; for anything else the streak is 0 by definition and the
+    query would be wasted.
+    """
     if not source_ids:
         return {}
     conn = _db.get_db(config_path)
@@ -161,6 +188,8 @@ def latest_checks(config_path, source_ids):
     for r in rows:
         d = dict(r)
         d["in_stock"] = _tri(d.get("in_stock"))
+        d["gone_streak"] = (_gone_streak(conn, d["source_id"])
+                            if d.get("status") == _GONE else 0)
         out[d["source_id"]] = d
     return out
 

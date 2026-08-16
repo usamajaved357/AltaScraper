@@ -76,7 +76,12 @@ function _ilCurrentMain(sku){
 
 async function openImageLibrary(sku, isLive){
   IMGLIB = {sku:sku, files:[], main:_ilCurrentMain(sku), live:!!isLive,
-            showAll:false, otherCount:0};
+            showAll:false, otherCount:0,
+            // The slots are loaded ONCE per opening and kept here. Every tile
+            // shows a dropdown of them, so they have to exist before the grid is
+            // useful -- but not before it is VISIBLE, which is why this loads
+            // alongside the images rather than in front of them.
+            slots:null, slotsState:"", slotsErr:"", isChild:false};
   let host = document.getElementById("imglibwrap");
   if(!host){
     host = document.createElement("div");
@@ -90,6 +95,10 @@ async function openImageLibrary(sku, isLive){
   host.classList.add("open");
   _ilRender('<div class="cc" style="padding:20px"><span class="genspin"></span> Loading this listing\'s images…</div>');
   await _ilLoad();
+  // Not awaited: the grid is usable while the slots are still coming. Reading
+  // them costs one call to Amazon per opening, so it happens once here rather
+  // than once per image the way the old "Send as…" button did it.
+  _ilEnsureSlots();
 }
 
 // THIS listing's images by default, every listing's on request.
@@ -424,6 +433,11 @@ function _ilDraw(){
     return;
   }
 
+  // Counted across ALL groups, in the order the tiles are drawn, because the
+  // defaults are about what the user SEES first, not about which folder the app
+  // happened to file an image in. The main image does not consume a PT number.
+  let tileNo = 0, ptNo = 0;
+
   Object.keys(groups).sort().forEach(function(g){
     h += '<div style="font-size:11.5px;font-weight:600;margin:12px 0 6px;opacity:.85">'
        + _ilEsc(g === "main" ? "Main / concepts" : g) + '</div>'
@@ -431,6 +445,8 @@ function _ilDraw(){
     groups[g].forEach(function(f){
       const isMain = IMGLIB.main && (IMGLIB.main === f.url
                      || String(IMGLIB.main).indexOf(f.name) >= 0);
+      const idx = tileNo++;
+      const ptIndex = isMain ? 0 : (++ptNo);
       h += '<div style="border:1px solid ' + (isMain ? "var(--ok)" : "var(--line)")
          + ';border-radius:8px;overflow:hidden;background:var(--panel)">'
          + '<img src="' + _ilEsc(f.url) + '" loading="lazy" '
@@ -464,21 +480,15 @@ function _ilDraw(){
          // this reads the real listing, and if Amazon does not have it the reply
          // says exactly that. A wrong guess that HIDES a control is worse than a
          // request that comes back with a clear no.
-         // THE BUTTON SAYS WHAT IT WILL ASK.
+         // THE SLOT IS ON THE TILE, ALREADY CHOSEN.
          //
-         // It read "Send to Amazon…", which does not tell you that pressing it
-         // is how you choose the slot. Reported as "i do not have option here
-         // to send an image as pt1 or pt2 or pt3 ... or swch image" — by
-         // someone looking straight at the control that does exactly that. A
-         // feature nobody can find is not a feature, so the slots are named on
-         // the face of the button rather than only in a tooltip nobody hovers.
-         + '<button class="db-chip" style="margin-top:4px;font-size:10.5px;'
-           + 'background:var(--accent);color:#fff;border-color:var(--accent)" '
-           + 'title="Reads this listing on Amazon and offers every image slot '
-           + 'its product type actually has — main, PT1-PT8, the variation '
-           + 'swatch — saying which are already filled" '
-           + 'onclick="ilPushThis(' + jsArg(f.url) + ')">'
-           + 'Send as… <span style="opacity:.85">Main / PT1–8 / Swatch</span></button>'
+         // It was a "Send as…" button that read the listing and then asked. Two
+         // reports came out of that: "i do not have option here to send an image
+         // as pt1 or pt2 or pt3 ... or swch image", and then "i should have a
+         // button under the image like a dropdown menu which asks me to select
+         // the image type". A choice you cannot see until after you commit to
+         // making it is not a choice anybody finds.
+         + _ilTileSlotPicker(idx, f, isMain, ptIndex)
          // Saving one image was "right-click, Save as, find it again". A link
          // with `download` is what the attribute exists for.
          + '<button class="db-chip" style="margin-top:4px;font-size:10.5px" '
@@ -505,12 +515,14 @@ function _ilDraw(){
        // getElementById quietly picks the first and the other never updates.
        + '<div class="cc" style="font-size:11px;margin-top:6px">'
        + 'Updates only that one image on Amazon — no full resubmit. Amazon takes a '
-       + 'few minutes to show it. Use <b>Send as…</b> on any image above to put it '
-       + 'in a particular slot — main, PT1 to PT8, or the variation swatch. Which '
-       + 'slots exist is read from that product type on Amazon, so a type with no '
-       + 'swatch will not offer one.</div></div>';
+       + 'few minutes to show it. To place an image in a particular slot, use the '
+       + 'dropdown under it and press <b>Send to Amazon</b>. Which slots exist is '
+       + 'read from that product type on Amazon, so a type with no swatch will not '
+       + 'offer one.</div></div>';
   }
   _ilRender(h);
+  // After the markup exists, not during: the notes read the selects.
+  _ilSlotNotesAll();
 }
 
 async function ilSetMain(url){
@@ -564,79 +576,151 @@ function ilUpload(inp){
 // and the rules differ per slot: a lifestyle shot is fine as PT3 and gets the
 // listing suppressed as MAIN. The slots come from the product type's own schema,
 // with what is already in each, so replacing one is never a surprise.
-async function ilPushThis(url){
-  if(!url) return;
-  const st = document.getElementById("il_pushstatus");
-  if(st) st.innerHTML = '<span class="genspin"></span> reading this listing\'s image slots…';
-  let j;
-  try{ j = await (await fetch("/listing/image_slots?sku="+encodeURIComponent(IMGLIB.sku))).json(); }
-  catch(e){ if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(String(e))+'</span>'; return; }
-  if(!j || !j.ok){
-    if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc((j&&j.error)||"Could not read the slots")+'</span>';
-    return;
+// THE SLOT IS A CHOICE YOU MAKE, NOT A QUESTION YOU ARE ASKED AFTERWARDS.
+//
+// This used to be: press "Send as…", wait while the listing is read, then pick
+// from a list that appears at the bottom of the panel. Every image needed the
+// same three steps, the slots were re-read each time, and nothing on a tile said
+// where that image was going to end up. Asked for as "i should have a button
+// under the image like a dropdown menu which asks me to select the image type".
+//
+// So the slots load ONCE when the library opens, and every tile carries its own
+// dropdown, already set to the slot that image is most likely meant for.
+async function _ilEnsureSlots(force){
+  if(IMGLIB.slotsState === "loading") return;
+  if(IMGLIB.slots && !force) return;
+  IMGLIB.slotsState = "loading";
+  IMGLIB.slotsErr = "";
+  _ilRedrawGrid();
+  let j = null, err = "";
+  try{ j = await (await fetch("/listing/image_slots?sku="
+                              + encodeURIComponent(IMGLIB.sku))).json(); }
+  catch(e){ err = String(e); }
+  if(j && j.ok && j.checked && (j.slots||[]).length){
+    IMGLIB.slots = j.slots;
+    IMGLIB.isChild = !!j.is_variation_child;
+    IMGLIB.slotsState = "ready";
+  }else{
+    // Whether this listing is ON Amazon is Amazon's answer, not ours -- a draft
+    // that was never submitted has no slots to read, and saying so plainly beats
+    // an empty dropdown that looks broken.
+    IMGLIB.slots = null;
+    IMGLIB.slotsState = "failed";
+    IMGLIB.slotsErr = (j && (j.error || j.note)) || err
+                      || "Could not read this listing's image slots";
   }
-  if(!j.checked || !(j.slots||[]).length){
-    if(st) st.innerHTML = '<span style="color:var(--warn)">'+_ilEsc(j.note||"No slots to send to")+'</span>';
-    return;
-  }
-  IMGLIB.slots = j.slots;
-  IMGLIB.isChild = !!j.is_variation_child;
-  IMGLIB.pending = url;
-  // What the app made this image for, from the folder it filed it in.
-  IMGLIB.pendingMadeAs = ((IMGLIB.files||[]).find(function(f){ return f.url===url; })||{}).group || "";
-  if(st) st.innerHTML = "";
-  _ilSlotPicker(url);
+  _ilRedrawGrid();
 }
 
-function _ilSlotPicker(url){
-  const host = document.getElementById("il_slotpick");
-  if(!host) return;
-  let h = '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin:10px 0">'
-    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-    + '<b style="font-size:12.5px">Which image is this?</b>'
-    + '<span style="flex:1"></span>'
-    + '<button class="db-chip" onclick="ilSlotCancel()">Cancel</button></div>'
-    + '<img src="'+_ilEsc(url)+'" style="max-height:90px;border-radius:6px;'
-    + 'background:#0d1220;display:block;margin-bottom:8px">';
+// Only redraw when the grid is what is on screen. Opening a folder swaps the
+// panel for a different view, and repainting the grid underneath it would throw
+// the user back out of wherever they were.
+function _ilRedrawGrid(){
+  if(document.getElementById("il_pushstatus")) _ilDraw();
+}
 
-  // An image the app generated as a SECONDARY or an A+ module cannot become the
-  // main image: those are made under rules that allow text, graphics and
-  // lifestyle scenes, which are the things Amazon suppresses a listing for on
-  // the main image. Shown but disabled, with the reason — hiding it entirely
-  // would just look like the main slot was missing.
-  const madeAs = String(IMGLIB.pendingMadeAs || "");
-  const blocked = (madeAs.indexOf("secondary") === 0)
-                    ? "the app generated this as a secondary image"
-                    : (madeAs.indexOf("aplus") === 0)
-                        ? "this is an A+ module image" : "";
+// The one rule about what may become the MAIN image, asked in both places that
+// offer the choice. An image the app generated as a secondary or an A+ module is
+// made under rules that ALLOW text, graphics and lifestyle scenes -- the exact
+// things Amazon suppresses a listing for when they appear on the main image.
+function _ilBlockedMain(group){
+  const madeAs = String(group || "");
+  if(madeAs.indexOf("secondary") === 0) return "the app generated this as a secondary image";
+  if(madeAs.indexOf("aplus") === 0) return "this is an A+ module image";
+  return "";
+}
 
-  (IMGLIB.slots||[]).forEach(function(s){
-    const no = (s.key === "main_product_image_locator" && blocked) ? blocked : "";
-    h += '<div style="display:flex;gap:9px;align-items:flex-start;font-size:11.5px;'
-      +  'padding:7px 0;border-top:1px solid #1c2531'+(no?';opacity:.55':'')+'">'
-      +  '<div style="min-width:120px"><b>'+_ilEsc(s.label)+'</b>'
-      +  (s.occupied ? '<div style="font-size:10px;color:var(--warn)">has an image</div>'
-                     : '<div class="cc" style="font-size:10px">empty</div>')
-      +  '</div>'
-      +  '<div style="flex:1" class="cc">'
-      +  (no ? '<b style="color:var(--warn)">Not allowed — '+_ilEsc(no)
-             + ', and Amazon suppresses listings whose main image carries text or '
-             + 'a scene. Use a PT slot.</b>'
-           : _ilEsc(s.help||""))
-      +  '</div>'
-      +  (no ? '<button class="db-chip" disabled title="'+_ilEsc(no)+'">Send</button>'
-            : '<button class="db-chip" onclick="ilSlotSend('+jsArg(s.key)+')">Send</button>')
-      +  '</div>';
+// Which slot a tile starts on. The main image defaults to the main slot; every
+// other image takes the next free PT in the order they are shown, so a library
+// of five secondaries comes up as PT1 to PT5 without anybody choosing anything.
+// Asked for as "the default selected option should be pt1 for first image ...
+// and next image should have the selected option as pt2 and so on".
+function _ilDefaultSlot(isMain, ptIndex){
+  const slots = IMGLIB.slots || [];
+  if(!slots.length) return "";
+  const has = function(k){ return slots.some(function(s){ return s.key === k; }); };
+  if(isMain && has("main_product_image_locator")) return "main_product_image_locator";
+  const want = "other_product_image_locator_" + ptIndex;
+  if(has(want)) return want;
+  // More images than the type has PT slots. Fall back to the last PT rather than
+  // to the main slot, which is the one that gets a listing suppressed.
+  const pts = slots.filter(function(s){
+    return /^other_product_image_locator_\d+$/.test(s.key); });
+  return pts.length ? pts[pts.length - 1].key : slots[0].key;
+}
+
+function _ilTileSlotPicker(idx, f, isMain, ptIndex){
+  if(IMGLIB.slotsState === "loading"){
+    return '<div class="cc" style="font-size:10px;margin-top:5px">'
+         + '<span class="genspin"></span> reading slots…</div>';
+  }
+  if(!IMGLIB.slots || !IMGLIB.slots.length){
+    return '<button class="db-chip" style="margin-top:4px;font-size:10.5px;width:100%" '
+         + 'title="' + _ilEsc(IMGLIB.slotsErr || "") + '" '
+         + 'onclick="_ilEnsureSlots(true)">'
+         + (IMGLIB.slotsState === "failed" ? "Slots unavailable — retry"
+                                           : "Read image slots") + '</button>';
+  }
+  const def = _ilDefaultSlot(isMain, ptIndex);
+  const blocked = _ilBlockedMain(f.group);
+  let h = '<select class="ed" id="il_slot_' + idx + '" '
+        + 'style="width:100%;margin-top:5px;font-size:10.5px;padding:3px 4px" '
+        + 'onchange="ilSlotNote(' + idx + ')">';
+  (IMGLIB.slots || []).forEach(function(s){
+    const no = (s.key === "main_product_image_locator" && blocked);
+    h += '<option value="' + _ilEsc(s.key) + '"'
+      +  (s.key === def && !no ? " selected" : "")
+      +  (no ? " disabled" : "") + '>'
+      +  _ilEsc(s.label)
+      +  (s.occupied ? " — has one" : "")
+      +  (no ? " — not allowed" : "")
+      +  '</option>';
   });
-  h += '</div>';
-  host.innerHTML = h;
-  host.scrollIntoView({behavior:"smooth", block:"nearest"});
+  h += '</select>'
+    +  '<div id="il_slotnote_' + idx + '" class="cc" style="font-size:9.5px;'
+    +  'margin-top:3px;line-height:1.35"></div>'
+    +  '<button class="db-chip" style="margin-top:4px;font-size:10.5px;width:100%;'
+    +  'background:var(--accent);color:#fff;border-color:var(--accent)" '
+    +  'onclick="ilSendTile(' + idx + ',' + jsArg(f.url) + ',' + jsArg(f.group || "") + ')">'
+    +  '<i class="ti ti-cloud-upload"></i> Send to Amazon</button>';
+  return h;
 }
 
-function ilSlotCancel(){
-  const host = document.getElementById("il_slotpick");
-  if(host) host.innerHTML = "";
-  IMGLIB.pending = "";
+// What the chosen slot means, under the chosen slot. The old flow put this in a
+// list you only saw after clicking; here it is beside the control while you are
+// still deciding, which is the moment it is worth anything.
+function ilSlotNote(idx){
+  const sel = document.getElementById("il_slot_" + idx);
+  const host = document.getElementById("il_slotnote_" + idx);
+  if(!sel || !host) return;
+  const s = (IMGLIB.slots || []).find(function(x){ return x.key === sel.value; }) || {};
+  // Terse on purpose. On a live listing every gallery slot is occupied, so the
+  // full "sending replaces it and Amazon keeps no copy" sentence appeared on all
+  // ten tiles at once and became wallpaper. The full warning is still in the
+  // confirmation you get on the way out, which is where it can be read once and
+  // actually stop you.
+  host.innerHTML = (s.occupied
+      ? '<span style="color:var(--warn)">replaces what is in it now</span> · '
+      : '<span style="color:var(--ok)">empty</span> · ')
+    + _ilEsc(s.help || "");
+}
+
+// Every tile's note, after a draw. Set here rather than inline in the markup so
+// there is one place that decides what the note says.
+function _ilSlotNotesAll(){
+  (IMGLIB.slots || []).length && document.querySelectorAll('[id^="il_slot_"]')
+    .forEach(function(el){
+      const idx = String(el.id).replace("il_slot_", "");
+      if(/^\d+$/.test(idx)) ilSlotNote(Number(idx));
+    });
+}
+
+async function ilSendTile(idx, url, group){
+  const sel = document.getElementById("il_slot_" + idx);
+  if(!sel || !sel.value || !url) return;
+  IMGLIB.pending = url;
+  IMGLIB.pendingMadeAs = group || "";
+  await ilSlotSend(sel.value);
 }
 
 async function ilSlotSend(slotKey){
@@ -666,7 +750,7 @@ async function ilSlotSend(slotKey){
       if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(j.error||"failed")+'</span>';
       return;
     }
-    ilSlotCancel();
+    IMGLIB.pending = "";
     if(st) st.innerHTML = '<span style="color:var(--ok)">✓ sent as '
                         + _ilEsc(slot.label||slotKey)+' — '+_ilEsc(j.note||"")+'</span>';
     // The app's own main-image copy only tracks MAIN, so only update it for that.
