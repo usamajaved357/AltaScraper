@@ -534,7 +534,7 @@ _APLUS_SYSTEM = (
 def strategize_images(config: dict, image="", product_title: str = "",
                       product_spec: str = "", n: int = 3, kind: str = "main",
                       provider: str = None, custom_instructions: str = "",
-                      media_root: str = "") -> dict:
+                      media_root: str = "", listing=None) -> dict:
     """STRATEGIST AI — thinks like a world-class Amazon conversion strategist AND
     like the target customer, then INVENTS concrete image concepts for this exact
     product (rather than executing the seller's literal idea). Returns a list of
@@ -642,9 +642,35 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "If an instruction says to show something in only SOME images, reflect that across the "
             "set (don't put it in every concept). If it says NOT to show something, never include it."
         )
+    # THE LISTING'S OWN WORDS, HANDED OVER DIRECTLY.
+    #
+    # product_spec is a VISION summary: a model looking at the photograph. The
+    # listing facts were already being fed to that step, but what comes back is
+    # the model's own paraphrase, and the parts that are hard to see -- what is
+    # in the box, how many of each -- do not survive it. Measured: on five real
+    # products the spec mentioned the contents in NONE of them, and the concepts
+    # then counted the objects visible in the supplier photo instead. On the
+    # hammock that produced "all five components" for a listing that ships four.
+    #
+    # So the facts go in as their own block, marked as outranking both.
+    _facts = ""
+    try:
+        _facts = listing_facts(listing) if listing else ""
+    except Exception:
+        _facts = ""
+    _facts_block = ""
+    if _facts:
+        _facts_block = (
+            "\n\nTHE LISTING ITSELF SAYS THIS, AND IT OUTRANKS BOTH THE PHOTOGRAPH "
+            "AND THE DESCRIPTION ABOVE. Where they disagree about what is included, "
+            "how many of anything there are, the size, the colour or the material, "
+            "THIS is right and they are wrong -- a supplier photograph is routinely "
+            "a bundle, a different variant, or a collage with props:\n" + _facts + "\n")
+
     content = [{"type": "text",
                 "text": (f"Product: {product_title}\n"
                          + (f"\nProduct details:\n{product_spec}\n" if product_spec else "")
+                         + _facts_block
                          + f"\nInvent {n} distinct, conversion-focused image concepts for this product. "
                            "Ground every concept in the SPECIFIC product details above (its real "
                            "features, materials, size, who uses it and where) so these ideas could NOT be "

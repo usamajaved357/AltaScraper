@@ -309,9 +309,14 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 spec = d.get("description", "")
         except Exception:
             spec = ""
+        # The listing goes to the STRATEGIST as well as to the vision step. The
+        # vision step returns a paraphrase of the photograph, and the facts that
+        # matter most for a set of images -- what is in the box, and how many --
+        # do not survive it.
         res = ai_providers.strategize_images(_cfg(), image=product_images, product_title=title,
                                              product_spec=spec, n=n, kind=kind, provider=tprov,
-                                             custom_instructions=custom_instr)
+                                             custom_instructions=custom_instr,
+                                             listing=_listing_for(b))
         if not res.get("ok"):
             return jsonify({"ok": False, "error": res.get("error", "strategist failed")}), 400
         return jsonify({"ok": True, "concepts": res.get("concepts", []), "product_spec": spec})
@@ -375,6 +380,44 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 "scene/graphic around it. Premium, clean, one clear message."
             )
             image_kind = "secondary"
+        # WHAT THE PICTURE IS ALLOWED TO CONTAIN.
+        #
+        # The brief above tells the model to reproduce the reference photo
+        # EXACTLY -- which is right for the product's shape and colour, and wrong
+        # for how many objects are in shot. Supplier photos are routinely a
+        # bundle or a collage, so "reproduce it exactly" reproduces items that
+        # are not being sold.
+        #
+        # Measured: a listing shipping four pieces produced a labelled flat-lay
+        # of FIVE, because the reference showed five and the brief never said
+        # otherwise -- and the callout lines then pointed at the wrong objects,
+        # naming a strap as the carabiner. The concept text had it right; the
+        # image step was the only one still working blind.
+        #
+        # Applies to every kind, and names no product: the same rule has to hold
+        # for a grease gun, a table and a torch.
+        try:
+            _facts = ai_providers.listing_facts(_listing_for(b) or {}) or ""
+        except Exception:
+            _facts = ""
+        if _facts:
+            brief += (
+                "\n\nWHAT THIS PRODUCT ACTUALLY IS -- from the listing itself. This "
+                "OUTRANKS the reference photograph on contents and quantities:\n"
+                + _facts
+                + "\n\nSHOW ONLY WHAT IS SOLD. If the facts above list what is in the "
+                  "box, show exactly those items and exactly those quantities -- no "
+                  "extra piece, no spare, no duplicate, and nothing that appears in "
+                  "the reference photo but is not on that list. Reference photos are "
+                  "often a bundle, a multi-pack or a collage; copy the product's "
+                  "appearance from it, never its object count. Where a quantity is "
+                  "not stated, show one.\n"
+                  "IF THE IMAGE HAS CALLOUTS OR LABELS: every label must name the "
+                  "object its line actually touches, and only items on the list may "
+                  "be labelled. A label pointing at the wrong part is worse than no "
+                  "label."
+            )
+
         # standing user instructions remembered for every image
         _ci2 = (b.get("custom_instructions", "") or "").strip() or _load_img_instructions()
         if _ci2:
