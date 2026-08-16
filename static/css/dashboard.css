@@ -346,6 +346,31 @@
   .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
              padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .wstoolbar h2{font-size:15px;margin:0;font-weight:650}
+
+  /* ---- THE PAGE HEADER, ONE SIZE FOR EVERY SCREEN ----
+     Sales opened with a 28px title and a sentence under it. Every other screen
+     opened with a 15px .wstoolbar h2 -- and a page whose name is the size of a
+     button label reads as a panel inside something else rather than as a screen
+     in its own right. That one difference is most of why the newer tabs looked
+     unfinished beside the older ones.
+
+     It was worse than an oversight: Sales' title was written inline, so there
+     was nothing for another screen to reuse even if it wanted to, and the
+     consistency test wrote the gap down as an exemption instead of closing it.
+     One class now, used by all of them. */
+  .pagehead{margin:0 0 14px}
+  .pagehead h1,.pagehead .pagetitle{font-size:28px;font-weight:600;line-height:30.8px;
+                                    margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  .pagehead .pagetitle .ti{font-size:24px;color:var(--accent);width:24px;text-align:center}
+  .pagehead .panelsub,.pagehead .sub{color:var(--muted);font-size:12.5px;
+                                     line-height:1.5;max-width:104ch}
+
+  /* A supplier link inside a reason line. The browser's own link colour is a
+     dark blue that all but disappears on a dark panel, and these sit in muted
+     grey text where they need to be findable. */
+  #srcbody a{color:var(--accent2,var(--accent));text-decoration:none;
+             border-bottom:1px dotted currentColor}
+  #srcbody a:hover{color:var(--ink);border-bottom-style:solid}
   .wstoolbar .sub{color:var(--muted);font-size:12px}
   .wstoolbar .spacer{flex:1}
   .pill{padding:4px 10px;border-radius:999px;border:1px solid var(--line);

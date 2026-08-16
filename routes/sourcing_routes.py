@@ -236,6 +236,72 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
         return jsonify({"ok": True})
 
+    @app.route("/sourcing/enrol_bulk", methods=["POST"])
+    def sourcing_enrol_bulk():
+        """Track many SKUs at once, attaching each one's known supplier link.
+
+        "i want to enroll all my items to the repricer ... uploading or selecting
+         the skus in the repricer means to track their true costs from the
+         sources"
+
+        Tracking is not pricing. Everything enrolled here is in dry run and
+        cannot change a listing -- arming is separate and still needs a
+        min_price per SKU. What this does is start reading what each unit
+        actually costs, which is the thing you cannot get back later: a supplier
+        price on a day nobody was watching is simply gone.
+
+        The supplier link is not asked for, because the app already recorded it
+        when it built the listing (domain/source_link.py). A SKU whose link
+        cannot be found is still enrolled and says what it is missing, rather
+        than being dropped from a bulk action silently.
+        """
+        b = _body()
+        wsid, mkt = _where()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not skus:
+            return jsonify({"ok": False, "error": "no SKUs given"}), 400
+        if len(skus) > 2000:
+            return jsonify({"ok": False, "error": (
+                "%d SKUs at once is more than this was meant for -- enrol in "
+                "batches so a failure part-way is easy to see" % len(skus))}), 400
+
+        from domain import source_link as _link
+        out = {"enrolled": 0, "already": 0, "linked": 0, "no_link": 0, "rows": []}
+        have = {r["sku"] for r in _repo.enrolled(CONFIG_PATH, wsid, mkt)}
+        for sku in skus:
+            was = sku in have
+            _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            out["already" if was else "enrolled"] += 1
+            row = {"sku": sku, "was_enrolled": was, "source": "", "note": ""}
+            # Never a SECOND source for a SKU that already has one: this can be
+            # run repeatedly over a growing catalogue, and each pass would
+            # otherwise add another copy of the same link.
+            if _repo.sources_for(CONFIG_PATH, wsid, mkt, sku):
+                row["note"] = "already has a supplier"
+            else:
+                got = _link.for_sku(CONFIG_PATH, wsid, sku)
+                if got["url"]:
+                    try:
+                        # ensure_source, not add_source: this is automatic, and
+                        # add_source INSERTs unconditionally -- running it twice
+                        # over a growing catalogue would give every SKU a second
+                        # identical supplier, then a third, each one fetched on
+                        # every sweep.
+                        _repo.ensure_source(CONFIG_PATH, wsid, mkt, sku, got["url"],
+                                            kind=got["kind"], label=got["url"])
+                        out["linked"] += 1
+                        row["source"] = got["url"]
+                        row["note"] = "from " + got["where"]
+                    except Exception as e:
+                        out["no_link"] += 1
+                        row["note"] = "could not attach: %s" % str(e)[:120]
+                else:
+                    out["no_link"] += 1
+                    row["note"] = got["why"]
+            out["rows"].append(row)
+        out["ok"] = True
+        return jsonify(out)
+
     # ---- sources --------------------------------------------------------
     @app.route("/sourcing/source/add", methods=["POST"])
     def sourcing_source_add():
@@ -310,6 +376,56 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         wsid, mkt = _where()
         vals = {k: v for k, v in (b.get("rule") or {}).items()
                 if k in _sourcing.DEFAULT_RULE}
+
+        # A MISTYPED TARGET MUST NOT LOOK LIKE NO TARGET.
+        # These two are the only free-text/numeric pair here that silently does
+        # nothing when wrong: "Margin"/"gross"/"20%" would all store, fail the
+        # kind check inside target_floor, and leave someone believing a 20%
+        # floor was in force while the repricer priced to the flat £1.
+        if "profit_target_kind" in vals:
+            k = vals["profit_target_kind"]
+            k = "" if k is None else str(k).strip().lower()
+            if k not in ("", "margin", "roi"):
+                return jsonify({"ok": False, "error": (
+                    "profit target must be 'margin' (a share of the selling "
+                    "price) or 'roi' (a share of what you paid) -- got %r"
+                    % vals["profit_target_kind"])}), 400
+            vals["profit_target_kind"] = k or None
+        if "profit_target_pct" in vals:
+            v = vals["profit_target_pct"]
+            if v in (None, ""):
+                vals["profit_target_pct"] = None
+            else:
+                try:
+                    v = float(str(v).replace("%", "").strip())
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": (
+                        "the profit target must be a number of percent, e.g. 20"
+                        )}), 400
+                if v < 0 or v >= 100:
+                    return jsonify({"ok": False, "error": (
+                        "a profit target of %g%% is not a target anything can "
+                        "meet" % v)}), 400
+                vals["profit_target_pct"] = v
+
+        # A margin target competes with Amazon's cut for the same pound, so past
+        # a point there is no price that satisfies it. Said here, once, rather
+        # than as "cannot be priced" against every SKU afterwards.
+        merged = _sourcing.rule_with_defaults(
+            {**_repo.rule_for(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip()),
+             **vals})
+        if (merged.get("profit_target_kind") == "margin"
+                and merged.get("profit_target_pct") is not None):
+            room = (1.0 - float(merged["referral_rate"])) * 100.0
+            if float(merged["profit_target_pct"]) >= room - 1:
+                return jsonify({"ok": False, "error": (
+                    "Amazon takes %.0f%% of the sale, so a MARGIN target has to "
+                    "stay under about %.0f%% to be reachable at any price. %g%% "
+                    "as ROI -- a share of what you paid -- is a different and "
+                    "quite reachable number."
+                    % (float(merged["referral_rate"]) * 100, room - 1,
+                       float(merged["profit_target_pct"])))}), 400
+
         _repo.save_rule(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip(), vals)
         return jsonify({"ok": True, "rule": _sourcing.rule_with_defaults(
             _repo.rule_for(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip()))})

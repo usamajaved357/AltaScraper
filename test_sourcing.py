@@ -338,6 +338,75 @@ check("nothing at all is still a complete rule",
       len(S.rule_with_defaults(None)), len(S.DEFAULT_RULE))
 
 
+print("\n=== a PERCENTAGE profit target, on top of the flat one ===")
+# "i want an option in which i can enroll an option to maintain atleast 20
+#  percent margin or roi, a user should be able to set. and if some items are
+#  less than that flag it"
+#
+# The flat min_profit is a fixed number of pounds: right on a cheap unit, nearly
+# meaningless on an expensive one. £1 on £11.95 of stock is 8% back.
+from listing import pricing as _P
+
+COST = 11.95
+def _price(kind, pct):
+    return S.floor_price(COST, {"profit_target_kind": kind, "profit_target_pct": pct})
+
+# Checked by running the price back through the INVERSE, not by re-deriving it
+# with the same formula that produced it -- that would only prove it is
+# self-consistent.
+for kind, pct in (("margin", 20.0), ("margin", 35.0), ("roi", 20.0), ("roi", 35.0)):
+    got = _P.achieved(_price(kind, pct), COST, 0.15)
+    hit = got["margin_pct"] if kind == "margin" else got["roi_pct"]
+    check("%s of %.0f%% actually returns %s%%" % (kind, pct, pct), abs(hit - pct) < 0.15, True)
+
+# Margin and ROI are not the same question and must not give the same answer.
+check("margin asks more than ROI for the same number",
+      _price("margin", 20.0) > _price("roi", 20.0), True)
+
+# A target ADDS a floor; it never removes the one already there.
+flat = S.floor_price(COST, {})
+check("a tiny target cannot drag the price below the flat rule",
+      _price("roi", 1.0), flat)
+truthy("  even though the target alone would ask less",
+       _P.floor_from_target(COST, 0.15, "roi", 1.0) < flat)
+
+print("  -- a margin target competes with Amazon for the same pound --")
+# p(1-r) - extras = p*t  =>  p = extras/(1-r-t). At r=0.15 there is no solution
+# at t>=0.85, and just under it the price runs away.
+check("85% margin has no price", _P.floor_from_target(COST, 0.15, "margin", 85.0), None)
+check("  nor 90%", _P.floor_from_target(COST, 0.15, "margin", 90.0), None)
+truthy("500% ROI does, because ROI is measured against the cost",
+       _P.floor_from_target(COST, 0.15, "roi", 500.0) is not None)
+check("an unknown kind is not a target", _P.floor_from_target(COST, 0.15, "gross", 20.0), None)
+check("no target set -> no target floor", S.target_floor(COST, {}), None)
+
+print("  -- the flag reads the CURRENT price, not the proposed one --")
+st = S.target_status(21.99, COST, {"profit_target_kind": "roi", "profit_target_pct": 20.0})
+check("a listing under the target says so", st["meets"], False)
+check("  and how far under", st["short_by"], 5.4)
+check("  in the units that were asked for", st["kind"], "roi")
+st = S.target_status(30.00, COST, {"profit_target_kind": "roi", "profit_target_pct": 20.0})
+check("a listing over it is not flagged", st["meets"], True)
+check("no target set -> nothing to say", S.target_status(21.99, COST, {}), None)
+# "cannot tell" and "fails" are different, and only one is worth a red chip.
+check("an unknown price cannot be judged",
+      S.target_status(None, COST, {"profit_target_kind": "roi",
+                                   "profit_target_pct": 20.0})["meets"], None)
+
+print("  -- and the decision carries it --")
+d = S.decide({"price": 21.99, "quantity": 5, "lead_days": 4},
+             [(src(1), chk(price=COST, shipping=0.0))],
+             {"profit_target_kind": "roi", "profit_target_pct": 20.0}, NOW)
+check("the target travels with the decision", (d["target"] or {})["meets"], False)
+truthy("  the price it would set clears the target",
+       _P.achieved(d["price"], COST, 0.15)["roi_pct"] >= 20.0)
+truthy("  and the breakdown says which floor decided it",
+       d["breakdown"]["target_kind"] == "roi" and d["breakdown"]["target_floor"] is not None)
+d2 = S.decide({"price": 21.99, "quantity": 5, "lead_days": 4},
+              [(src(1), chk(price=COST, shipping=0.0))], {}, NOW)
+check("with no target the decision says so, rather than passing", d2["target"], None)
+
+
 print("\n=== the tables exist and take a decision ===")
 import os, json, tempfile, shutil
 TMP = tempfile.mkdtemp(prefix="altasrc_")

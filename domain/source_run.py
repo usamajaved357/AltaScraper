@@ -119,7 +119,12 @@ def dry_run(config_path, workspace_id=None, marketplace=None, now=None,
     now = now or _dt.datetime.now()
     rows = _repo.enrolled(config_path, workspace_id, marketplace)
     out = []
-    counts = {"update": 0, "out_of_stock": 0, "none": 0, "blocked": 0}
+    # below_target counts SKUs earning less than the percentage target at their
+    # CURRENT price. It is deliberately not one of the actions: a listing can be
+    # underwater and have nothing to change about it -- those are the ones worth
+    # seeing, and counting it as an action would hide them among the no-ops.
+    counts = {"update": 0, "out_of_stock": 0, "none": 0, "blocked": 0,
+              "below_target": 0}
 
     for row in rows:
         ws, mkt, sku = row["workspace_id"], row["marketplace"], row["sku"]
@@ -134,6 +139,10 @@ def dry_run(config_path, workspace_id=None, marketplace=None, now=None,
         counts[decision["action"]] = counts.get(decision["action"], 0) + 1
         if decision.get("blocked_by"):
             counts["blocked"] += 1
+        # meets is None when there is no target, or not enough to tell. Only an
+        # explicit False is a listing that is genuinely short.
+        if (decision.get("target") or {}).get("meets") is False:
+            counts["below_target"] += 1
         if record:
             _repo.record_action(config_path, ws, mkt, sku, decision,
                                 current=current, applied=0)

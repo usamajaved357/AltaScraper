@@ -56,6 +56,78 @@ def _round_up(v):
     return math.ceil(round(v * 100, 6)) / 100.0
 
 
+def floor_from_target(source_cost, referral_rate, target_kind, target_pct,
+                      shipping_label=PRICING_RULE_SHIPPING_LABEL,
+                      ads_margin=PRICING_RULE_ADS_MARGIN):
+    """The price at which profit reaches a PERCENTAGE target. None if impossible.
+
+    The flat min_profit above is a fixed number of pounds, which is the right
+    guard on a cheap unit and nearly meaningless on an expensive one: £1 on a
+    £12 cost is 8% back, £1 on a £60 cost is under 2%. Asked for as "maintain at
+    least 20 percent margin or roi".
+
+    MARGIN AND ROI ARE DIFFERENT QUESTIONS AND GIVE DIFFERENT PRICES
+      margin  profit as a share of what the CUSTOMER pays. Solving
+                  p(1-r) - (c+s+a) = p*t
+              gives  p = (c+s+a) / (1 - r - t)
+              Note what that denominator does: the target competes with Amazon's
+              cut for the same pound. At a 15% fee a margin target of 85% or more
+              has no solution at any price, and one just under it prices into the
+              thousands -- so it is refused rather than returned.
+      roi     profit as a share of what YOU paid. Solving
+                  p(1-r) - (c+s+a) = c*t
+              gives  p = (c+s+a+c*t) / (1-r)
+              Always solvable, and on cheap stock a far lower price than the same
+              number expressed as margin: at £11.95 landed, 20% ROI is £23.93 and
+              20% margin is £25.72.
+
+    Returns None when the target cannot be met, rather than a number that only
+    looks like a price.
+    """
+    try:
+        c = float(source_cost)
+        r = float(referral_rate)
+        t = float(target_pct) / 100.0
+    except (TypeError, ValueError):
+        return None
+    kind = str(target_kind or "").strip().lower()
+    if c < 0 or r < 0 or t < 0 or kind not in ("margin", "roi"):
+        return None
+    extras = float(shipping_label) + float(ads_margin)
+    if kind == "roi":
+        denom = 1.0 - r
+        if denom <= 0.01:
+            return None
+        return _round_up((c + extras + c * t) / denom)
+    denom = 1.0 - r - t
+    # Same guard as floor_from_rate: a denominator at or below zero flips the
+    # sign and hands back a NEGATIVE price that still passes a "> 0" check.
+    if denom <= 0.01:
+        return None
+    return _round_up((c + extras) / denom)
+
+
+def achieved(price, source_cost, referral_rate,
+             shipping_label=PRICING_RULE_SHIPPING_LABEL,
+             ads_margin=PRICING_RULE_ADS_MARGIN):
+    """What a given price actually returns: {profit, margin_pct, roi_pct}.
+
+    The inverse of the two functions above, and the only place that answers "is
+    this listing hitting the target" -- so a flag on a screen and the price the
+    repricer computes can never be working from different arithmetic.
+    """
+    try:
+        p = float(price)
+        c = float(source_cost)
+        r = float(referral_rate)
+    except (TypeError, ValueError):
+        return {"profit": None, "margin_pct": None, "roi_pct": None}
+    profit = p - (p * r) - c - float(shipping_label) - float(ads_margin)
+    return {"profit": round(profit, 2),
+            "margin_pct": (round(profit / p * 100.0, 1) if p > 0 else None),
+            "roi_pct": (round(profit / c * 100.0, 1) if c > 0 else None)}
+
+
 def floor_from_fees(source_cost, amazon_fees,
                     shipping_label=PRICING_RULE_SHIPPING_LABEL,
                     ads_margin=PRICING_RULE_ADS_MARGIN,

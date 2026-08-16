@@ -1318,14 +1318,37 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         ebay_specs = ebay_supp.get("item_specifics") or {}
         ebay_spec_lines = [f"  {k}: {v}" for k, v in list(ebay_specs.items())[:200]]
         ebay_section = (
-            "\nEBAY CROSS-REFERENCE (same product listed on eBay UK -- use to validate "
-            "and fill attribute gaps from Amazon competitor data, but Amazon data takes "
-            "precedence where they conflict):"
-            f"\nEBAY TITLE: {ebay_supp.get('title','')[:200]}"
-            f"\nEBAY PRICE: {ebay_supp.get('price','')}"
-            f"\nEBAY CONDITION: {ebay_supp.get('condition','')}"
-            f"\nEBAY CATEGORY: {ebay_supp.get('category_path','')}"
-            f"\nEBAY ITEM SPECIFICS:\n" + ("\n".join(ebay_spec_lines) if ebay_spec_lines else "  (none)")
+            # THE PRECEDENCE WAS THE WRONG WAY ROUND, AND IT WAS WRITING FICTION.
+            #
+            # This block used to say "use to validate and fill attribute gaps from
+            # Amazon competitor data, but Amazon data takes precedence where they
+            # conflict" -- the exact opposite of the rule the rest of the file is
+            # built on ("eBay is the SOURCE OF TRUTH for content"). So where the
+            # two disagreed, the model was told to believe the COMPETITOR.
+            #
+            # Caught on a real listing: eBay said "Package Included: 1x Hammock,
+            # 1x Buckle, 1x Connecting strap, 1x Extension strap" and the draft
+            # claimed "2 x locking carabiners" -- hardware the buyer would never
+            # receive. That is an item-not-as-described return, written by us.
+            #
+            # This is what we are ACTUALLY BUYING. The competitor ASIN is a
+            # different seller's listing of a similar product (CLAUDE.md Rule 1);
+            # it is useful for price, fees, product type and schema, and for
+            # filling a gap eBay is SILENT on -- never for overruling it.
+            "\nWHAT WE ARE ACTUALLY BUYING AND SHIPPING -- THE SOURCE LISTING ON EBAY."
+            "\nThis is the real item. Every physical claim -- what is in the box, how"
+            "\nmany of each part, size, material, colour, capacity -- comes from HERE."
+            "\nWhere this and the competitor data disagree, THIS WINS, every time, with"
+            "\nno exceptions. Competitor data may only fill a gap this is silent on."
+            "\nIf this lists package contents, that list is complete: do not add an item"
+            "\nto it, and do not increase a quantity, because the competitor's listing"
+            "\nhappens to include more."
+            f"\nSOURCE TITLE: {ebay_supp.get('title','')[:200]}"
+            f"\nSOURCE PRICE: {ebay_supp.get('price','')}"
+            f"\nSOURCE CONDITION: {ebay_supp.get('condition','')}"
+            f"\nSOURCE CATEGORY: {ebay_supp.get('category_path','')}"
+            f"\nSOURCE ITEM SPECIFICS (authoritative):\n"
+            + ("\n".join(ebay_spec_lines) if ebay_spec_lines else "  (none)")
         )
         if ebay_supp.get("condition_description"):
             ebay_section += f"\nEBAY CONDITION NOTES: {ebay_supp['condition_description']}"
@@ -1463,11 +1486,13 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         f"BRAND: {brand_name}\n"
         f"MANUFACTURER: {manufacturer}\n"
         f"PRODUCT TYPE: {product_type}\n"
-        f"COMPETITOR TITLE: {comp_data.get('title', '')}\n"
+        f"COMPETITOR TITLE (a DIFFERENT seller's similar product -- reference only, "
+        f"never overrides the source listing): {comp_data.get('title', '')}\n"
         f"LABEL FROM INPUT: {item_name}\n"
         f"HANDLING TIME: {handling_time}\n"
         f"FINANCIALS: {fin_line}{bsr_line}\n"
-        f"\nCOMPETITOR SPECS:\n{specs_section}"
+        f"\nCOMPETITOR SPECS (reference only -- outranked by the source listing "
+        f"wherever the two disagree):\n{specs_section}"
         f"{dims_section}"
         f"{ebay_section}"
         f"{kw_section}"
@@ -1480,7 +1505,14 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
         "\n===================================\n"
         "ACCURACY RULES -- MANDATORY\n"
         "===================================\n"
-        f"- Only state specs confirmed in competitor data -- never invent\n"
+        # "confirmed in competitor data" pointed the model at the wrong listing:
+        # the competitor is a DIFFERENT seller's version of a similar product, and
+        # a spec confirmed only there is not a fact about what we ship.
+        f"- Only state specs confirmed in the SOURCE listing (what we are actually\n"
+        f"  buying). A spec that appears ONLY in competitor data is not a fact about\n"
+        f"  our item -- leave it out. Never invent.\n"
+        f"- Package contents, part quantities and what is 'included' come from the\n"
+        f"  SOURCE listing alone. If it says one of something, say one.\n"
         f"- If a spec is uncertain -- write N/A\n"
         f"- Brand is always \"{brand_name}\" -- ignore competitor brand \"{comp_brand}\"\n"
         f"- No health/medical claims without certification\n"

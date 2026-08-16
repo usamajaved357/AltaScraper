@@ -122,6 +122,14 @@ DEFAULT_RULE = {
     # at 1:1. None disables the check, which is only right where every source is
     # known to quote in the listing's own currency.
     "currency":             None,
+    # A PERCENTAGE profit target, on top of the flat min_profit above. Off until
+    # set, because switching it on re-prices things. 'margin' is profit as a
+    # share of what the customer pays; 'roi' as a share of what you paid, and the
+    # two give very different prices from the same cost -- see
+    # listing/pricing.py:floor_from_target. The price takes whichever floor is
+    # HIGHEST, so setting a target can never quietly lower a price.
+    "profit_target_kind":   None,         # 'margin' | 'roi' | None
+    "profit_target_pct":    None,         # e.g. 20.0
     "min_price":            None,         # absolute floor, whatever the maths says
     "max_price":            None,         # absolute ceiling
     "max_change_pct":       25.0,         # a bigger jump than this waits for a human
@@ -346,10 +354,69 @@ def floor_price(cost, rule=None):
     c = _num(cost)
     if c is None or c < 0:
         return None
-    return _pricing.floor_from_rate(c, rule["referral_rate"],
+    flat = _pricing.floor_from_rate(c, rule["referral_rate"],
                                     shipping_label=rule["shipping_label"],
                                     ads_margin=rule["ads_margin"],
                                     min_profit=rule["min_profit"])
+    tgt = target_floor(c, rule)
+    if flat is None:
+        return tgt
+    if tgt is None:
+        return flat
+    # The HIGHER of the two, always. A percentage target is a floor being added
+    # to the rule, not one replacing it -- so switching it on can raise a price
+    # and must never lower one.
+    return max(flat, tgt)
+
+
+def target_floor(cost, rule=None):
+    """The price the percentage profit target needs, or None when none is set.
+
+    Separate from floor_price so the screen can say what the target ALONE asks
+    for, which is the number a person needs when deciding whether a supplier is
+    still worth buying from.
+    """
+    rule = rule_with_defaults(rule)
+    kind = rule.get("profit_target_kind")
+    pct = _num(rule.get("profit_target_pct"))
+    if not kind or pct is None or pct <= 0:
+        return None
+    c = _num(cost)
+    if c is None or c < 0:
+        return None
+    return _pricing.floor_from_target(c, rule["referral_rate"], kind, pct,
+                                      shipping_label=rule["shipping_label"],
+                                      ads_margin=rule["ads_margin"])
+
+
+def target_status(price, cost, rule=None):
+    """Does `price` meet the target? {kind, target_pct, actual_pct, meets, short_by}
+
+    Returns None when no target is set. `meets` is None -- not False -- when the
+    figures needed to answer are missing, because "we cannot tell" and "it fails"
+    are different things and only one of them is worth flagging.
+    """
+    rule = rule_with_defaults(rule)
+    kind = rule.get("profit_target_kind")
+    pct = _num(rule.get("profit_target_pct"))
+    if not kind or pct is None or pct <= 0:
+        return None
+    out = {"kind": kind, "target_pct": pct, "actual_pct": None,
+           "meets": None, "short_by": None, "profit": None}
+    p, c = _num(price), _num(cost)
+    if p is None or c is None or p <= 0 or c < 0:
+        return out
+    got = _pricing.achieved(p, c, rule["referral_rate"],
+                            shipping_label=rule["shipping_label"],
+                            ads_margin=rule["ads_margin"])
+    actual = got.get("margin_pct") if kind == "margin" else got.get("roi_pct")
+    out["profit"] = got.get("profit")
+    if actual is None:
+        return out
+    out["actual_pct"] = actual
+    out["meets"] = actual + 0.05 >= pct        # 0.05 absorbs 1dp rounding
+    out["short_by"] = (None if out["meets"] else round(pct - actual, 1))
+    return out
 
 
 # ---- the decision ----------------------------------------------------------
@@ -393,7 +460,10 @@ def decide(current, pairs, rule=None, now=None):
 
     out = {"action": "none", "price": None, "quantity": None, "lead_days": None,
            "source_id": None, "reason": "", "blocked_by": "",
-           "rejections": [], "inputs_age_mins": None}
+           "rejections": [], "inputs_age_mins": None,
+           # None means "no target set", not "meets it" -- the screen has to be
+           # able to tell those apart before it draws a flag.
+           "target": None}
 
     live = [(s, c) for s, c in (pairs or []) if s.get("enabled", 1)]
     if not live:
@@ -439,10 +509,26 @@ def decide(current, pairs, rule=None, now=None):
     # up -- see compute_selling_price in listing/pricing.py, which does that and
     # is deliberately not called here.
     floor = floor_price(cost, rule)
+
+    # WHAT THIS LISTING IS EARNING RIGHT NOW, against the target if one is set.
+    # Computed from the CURRENT Amazon price, not the proposed one, because the
+    # question a flag answers is "is this SKU underwater today" -- and it is
+    # attached whatever the decision turns out to be, including the ones that
+    # change nothing, since those are exactly the SKUs a flag has to survive.
+    out["target"] = target_status(cur_price, cost, rule)
+
     if floor is None:
         out["blocked_by"] = "the pricing rule cannot be met at any price"
-        out["reason"] = ("a referral rate of %.0f%% leaves nothing to price into"
-                         % (rule["referral_rate"] * 100))
+        tf = rule.get("profit_target_kind")
+        out["reason"] = (
+            ("a %s target of %s%% cannot be met at any price once Amazon takes "
+             "%.0f%% -- the two are competing for the same pound"
+             % (tf, rule.get("profit_target_pct"), rule["referral_rate"] * 100))
+            if tf == "margin" and _num(rule.get("profit_target_pct")) is not None
+               and (_num(rule.get("profit_target_pct")) / 100.0
+                    + rule["referral_rate"]) >= 0.99
+            else ("a referral rate of %.0f%% leaves nothing to price into"
+                  % (rule["referral_rate"] * 100)))
         return out
 
     price = floor
@@ -488,6 +574,15 @@ def decide(current, pairs, rule=None, now=None):
         "supplier_dispatch_days": (None if disp is None else int(disp)),
         "buffer_days": int(rule["handling_buffer_days"]),
         "lead_days": lead,
+        # Which floor actually decided the price. Without this the breakdown
+        # says "1.00 profit" while the price is really being set by a 20% target,
+        # and the sum on screen would not add up to the number beside it.
+        "target_kind": rule.get("profit_target_kind"),
+        "target_pct": rule.get("profit_target_pct"),
+        "target_floor": target_floor(cost, rule),
+        "at_price": _pricing.achieved(price, cost, rule["referral_rate"],
+                                      shipping_label=rule["shipping_label"],
+                                      ads_margin=rule["ads_margin"]),
     }
 
     # The breakdown goes in the reason because this line IS the audit trail --

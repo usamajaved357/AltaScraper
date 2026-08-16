@@ -119,6 +119,111 @@ async function sourcingMinPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+// A PERCENTAGE PROFIT FLOOR, on top of the flat one.
+//
+// "i want an option in which i can enroll an option to maintain atleast 20
+//  percent margin or roi, a user should be able to set. and if some items are
+//  less than that flag it"
+//
+// Margin and ROI are asked for in the same breath and are not the same number:
+// on an 11.95 unit a 20% target is 26.08 as margin and 22.76 as ROI. So the
+// choice is made explicitly rather than picked for you, and the difference is
+// spelled out where the choice is made.
+async function sourcingTarget(sku){
+  const scope = sku ? ('"' + sku + '"') : "every enrolled SKU";
+  const kind = prompt(
+    "Least profit you will accept on " + scope + ".\n\n"
+  + "Type  margin  — profit as a share of what the CUSTOMER pays.\n"
+  + "      Strict: Amazon's 15% comes out of the same price, so a margin\n"
+  + "      target above about 84% cannot be met at any price.\n\n"
+  + "Type  roi     — profit as a share of what YOU paid for the unit.\n"
+  + "      On a £11.95 unit, 20% ROI wants £22.76 and 20% margin wants £26.08.\n\n"
+  + "Leave blank to remove the target and go back to the flat minimum profit.",
+    "roi");
+  if(kind === null) return;
+  const k = String(kind).trim().toLowerCase();
+  let pct = null;
+  if(k){
+    const v = prompt("What percentage? e.g. 20", "20");
+    if(v === null) return;
+    pct = parseFloat(String(v).replace("%", "").trim());
+    if(!(pct > 0)){ toast("That is not a percentage."); return; }
+  }
+  try{
+    const j = await (await fetch("/sourcing/rules",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({sku:sku||"", rule:{profit_target_kind: k||null,
+                                        profit_target_pct: k?pct:null}})})).json();
+    // The server refuses an unreachable or mistyped target and says why. Shown
+    // as-is: a target that silently did nothing would leave you believing a
+    // floor was in force while the app priced to the flat £1.
+    if(!j.ok){ toast(j.error||"failed"); return; }
+    toast(k ? ("Target set: " + pct + "% " + k) : "Profit target removed");
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
+// The chip on a row that is not earning what it is supposed to. Deliberately
+// says how far short, not just that it is short -- 0.4% under is a rounding
+// argument and 12% under is a supplier you should stop buying from.
+function _targetChip(t){
+  if(!t) return '';                       // no target set on this SKU
+  if(t.meets === null) return '';          // not enough to tell; not a failure
+  if(t.meets){
+    return '<span class="db-chip" style="background:#12321f;color:#7fd18b" title="'
+      +  'Earning ' + t.actual_pct + '% against a ' + t.target_pct + '% '
+      +  t.kind + ' target.">' + t.kind + ' ' + t.actual_pct + '%</span>';
+  }
+  return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a" title="'
+    +  'This listing is earning ' + t.actual_pct + '% ' + t.kind + ' at its '
+    +  'current price, against your ' + t.target_pct + '% target — '
+    +  t.short_by + ' points short'
+    +  (t.profit != null ? ' (' + _smoney(t.profit) + ' a unit).' : '.')
+    +  '">below target &middot; ' + t.actual_pct + '%</span>';
+}
+
+// Start tracking everything that is not tracked yet.
+//
+// The supplier link is not asked for: the app recorded where each listing came
+// from when it built it, so it can attach them itself. What it CANNOT do is
+// invent one for a listing whose source was an Amazon page -- that is the
+// competitor the listing was modelled on, not where the stock is bought -- so
+// those are enrolled and reported rather than quietly skipped.
+async function sourcingTrackAll(btn){
+  const old = btn ? btn.innerHTML : "";
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> reading your listings…'; }
+  try{
+    const cand = await (await fetch("/sourcing/candidates")).json();
+    const items = (cand && cand.items) || [];
+    const todo = items.filter(function(x){ return !x.enrolled; }).map(function(x){ return x.sku; });
+    if(!items.length){
+      toast((cand && cand.note) || "No live listings to track — press Sync on Listings first.");
+      return;
+    }
+    if(!todo.length){ toast("Every live listing is already being tracked."); return; }
+    if(!confirm("Start tracking " + todo.length + " listing" + (todo.length===1?"":"s") + "?\n\n"
+              + "This records what each one costs at its supplier, every 4 hours.\n"
+              + "It does NOT change any price — auto-pricing stays "
+              + (SRC_MASTER ? "as it is" : "off") + ", and each SKU still has to be "
+              + "armed separately before anything can reach Amazon.")) return;
+    if(btn) btn.innerHTML = '<span class="genspin"></span> tracking ' + todo.length + '…';
+    const j = await (await fetch("/sourcing/enrol_bulk",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({skus: todo})})).json();
+    if(!j.ok){ toast(j.error||"Could not enrol"); return; }
+    // Say what did NOT work as loudly as what did. A bulk action that reports
+    // only its successes is how you end up with SKUs quietly tracking nothing.
+    let msg = "Now tracking " + j.enrolled + " listing" + (j.enrolled===1?"":"s")
+            + " — " + j.linked + " with the supplier the app already had on file";
+    if(j.no_link) msg += ", " + j.no_link + " still need a supplier link";
+    toast(msg + ".");
+    SRC_LASTBULK = j.rows || [];
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = old; } }
+}
+let SRC_LASTBULK = null;
+
 function sourcingRender(j){
   const body = document.getElementById("srcbody");
   const c = j.counts || {};
@@ -138,14 +243,30 @@ function sourcingRender(j){
       +  '<button class="db-chip" onclick="sourcingMaster(false)" '
       +  'style="margin-left:6px">Stop everything</button></div>';
   } else {
+    // TRACKING IS NOT PRICING, and the screen has to say so.
+    //
+    // "uploading or selecting the skus in the repricer means to track their true
+    //  costs from the sources" -- which is what enrolling has always done, but
+    //  the screen called itself the repricer and implied that adding a SKU
+    //  handed it your prices. It does not, and that is the reason it is safe to
+    //  add all of them.
+    // Short line, detail on the dot -- the pattern asked for on the notices
+    // ("i think this is the right way to write notices"). This was five lines of
+    // prose across the top of the screen, which is a paragraph nobody finishes.
     h += '<div class="cc" style="font-size:12px;margin:2px 0 12px;padding:9px 11px;'
       +  'border:1px solid #26403a;background:#10231f;border-radius:6px">'
-      +  '<b>Dry run.</b> Nothing here changes a live listing. The app reads your '
-      +  'suppliers every 4 hours, works out what it would do, and writes it down. '
-      +  'Read this for a while before it is armed &mdash; if a decision looks wrong '
-      +  'here, it would have been wrong on Amazon.'
-      +  (SRC_MASTER ? ' The master switch is on, but no SKU is armed yet.'
-                     : ' The master switch is off.')
+      +  '<b>Tracking costs. Auto-pricing is off.</b> '
+      +  'Suppliers are read every 4 hours and what each unit really costs is '
+      +  'written down. Nothing changes a live listing.'
+      +  '<span class="infodot" title="'
+      +  'It also works out what it WOULD price at, so the decisions can be read '
+      +  'before they are trusted - if one looks wrong here, it would have been '
+      +  'wrong on Amazon. Adding a SKU is safe: it starts the cost history and '
+      +  'nothing more, and each SKU still has to be armed separately. A supplier '
+      +  'price on a day nobody was watching cannot be recovered later, which is '
+      +  'the reason to add them before you need them.">i</span>'
+      +  (SRC_MASTER ? ' <b>Auto-pricing is on</b>, but no SKU is armed for it yet.'
+                     : '')
       +  '</div>';
   }
 
@@ -153,15 +274,34 @@ function sourcingRender(j){
     +  '<button class="db-chip" onclick="sourcingCheckNow(this)">'
     +  '<i class="ti ti-refresh"></i> Re-read suppliers now</button>'
     +  '<button class="db-chip" onclick="sourcingAddPrompt()">'
-    +  '<i class="ti ti-plus"></i> Enrol a SKU</button>'
-    +  '<button class="db-chip" onclick="sourcingMaster('+(SRC_MASTER?"false":"true")+')">'
-    +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Master switch: ON'
-                   : '<i class="ti ti-lock"></i> Master switch: off')+'</button>'
-    +  '<span class="cc" style="font-size:11.5px;align-self:center">'
-    +  (c.update||0)+' would change &middot; '+(c.out_of_stock||0)+' would go out of stock &middot; '
-    +  (c.none||0)+' unchanged'
-    +  ((c.blocked||0) ? ' &middot; <b>'+c.blocked+' held</b>' : '')
-    +  '</span></div>';
+    +  '<i class="ti ti-plus"></i> Track a SKU</button>'
+    +  '<button class="db-chip go" onclick="sourcingTrackAll(this)" title="'
+    +  'Starts watching every live listing that is not already tracked, and '
+    +  'attaches the supplier link the app recorded when it built each one. '
+    +  'Changes no prices.">'
+    +  '<i class="ti ti-eye"></i> Track everything</button>'
+    // The switch that actually matters, named for what it does rather than for
+    // where it lives. "Master switch: off" did not say off from WHAT.
+    +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
+    +  'onclick="sourcingMaster('+(SRC_MASTER?"false":"true")+')" title="'
+    +  (SRC_MASTER ? 'Auto-pricing is ON. Armed SKUs can have their price, stock '
+                   + 'and handling time changed on Amazon without anyone watching.'
+                   : 'Auto-pricing is OFF. Costs are still tracked and decisions '
+                   + 'still recorded; nothing reaches Amazon.')+'">'
+    +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Auto-pricing: ON'
+                   : '<i class="ti ti-lock"></i> Auto-pricing: off')+'</button>'
+    +  '<button class="db-chip" onclick="sourcingTarget(\'\')" title="'
+    +  'The least profit you will accept, as a percentage. Applies to every '
+    +  'enrolled SKU unless one has its own.">'
+    +  '<i class="ti ti-target"></i> '
+    +  (((j.rule||{}).profit_target_kind && (j.rule||{}).profit_target_pct)
+        ? ('Target: '+(j.rule).profit_target_pct+'% '+(j.rule).profit_target_kind)
+        : 'Profit target: none')
+    +  '</button>'
+    +  '</div>';
+  // The numbers get cards of their own, under the controls rather than crammed
+  // into them.
+  if(SRC_ROWS.length) h += _srcCounts(c);
 
   if(j.note){
     h += '<div class="cc" style="font-size:12px;padding:10px;border:1px dashed #2a3446;border-radius:6px">'
@@ -171,6 +311,72 @@ function sourcingRender(j){
 
   SRC_ROWS.forEach(function(r, i){ h += sourcingRow(r, i); });
   body.innerHTML = h;
+}
+
+// A SUPPLIER LINK IS NOT DATA TO READ.
+//
+// The reason lines printed the whole URL, and an eBay link carries its search
+// terms with it: "...itm/235976183512?_skw=ct3123+Universal+Security+Coupling+
+// Hitch+Lock+for+Trailers+Caravan+Horse+Box+Tow+Ball+Fittings%2C+Yellow&itmmeta=
+// 01KX041JXHMKKKAPC9ZYBA58YW&hash=item36f146ced8..." -- two hundred characters
+// of machine noise per row, wrapping to three lines and burying the sentence
+// that actually mattered. The item number is the part a person can use.
+function _srcShort(url){
+  const u = String(url || "");
+  const m = u.match(/\/itm\/(\d{9,15})/);
+  if(m) return "eBay item " + m[1];
+  try{ return (u.split("/")[2] || u).replace(/^www\./, ""); }
+  catch(e){ return u.slice(0, 40); }
+}
+
+// The same shortening, applied to a sentence that has URLs embedded in it. The
+// reason strings are written server-side as the permanent audit record and are
+// deliberately not changed -- this is only how they are drawn.
+// Split on the RAW url, then escape each piece. Escaping first and matching
+// afterwards does not work: _sesc turns & into &amp;, and an eBay link is mostly
+// ampersands, so a pattern that stops at ";" stops inside the first entity and
+// leaves the rest of the query string sitting there as text. That is exactly
+// what it did, which is why half of each link was still on screen.
+function _srcTidy(text){
+  const s = String(text || "");
+  const re = /https?:\/\/\S+/g;
+  let out = "", last = 0, m;
+  while((m = re.exec(s)) !== null){
+    let url = m[0];
+    // Trailing punctuation belongs to the sentence, not to the link.
+    const tail = url.match(/[),.;:]+$/);
+    if(tail){ url = url.slice(0, -tail[0].length); }
+    out += _sesc(s.slice(last, m.index))
+        +  '<a href="' + _sesc(url) + '" target="_blank" rel="noopener" title="'
+        +  _sesc(url) + '">' + _sesc(_srcShort(url)) + '</a>'
+        +  (tail ? _sesc(tail[0]) : "");
+    last = m.index + m[0].length;
+  }
+  return out + _sesc(s.slice(last));
+}
+
+// The counts, as cards. They were a run of text in the toolbar -- "17 would
+// change · 7 would go out of stock · 31 unchanged · 19 held" -- which is the
+// same information Sales gives five cards to, on a screen where those numbers
+// are the whole point of looking.
+function _srcCounts(c){
+  const cards = [
+    ["would change", c.update || 0, "var(--accent)"],
+    ["would go out of stock", c.out_of_stock || 0, "var(--red)"],
+    ["held for review", c.blocked || 0, "var(--warn)"],
+    ["unchanged", c.none || 0, ""],
+  ];
+  if(c.below_target) cards.push(["below target", c.below_target, "var(--red)"]);
+  return '<div style="display:grid;gap:10px;margin-bottom:14px;'
+    +  'grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">'
+    +  cards.map(function(k){
+         return '<div class="panelcard" style="padding:12px 14px">'
+           +  '<div style="font-size:24px;font-weight:600;line-height:1.15'
+           +  (k[2] ? ';color:' + k[2] : '') + '">' + k[1] + '</div>'
+           +  '<div class="cc" style="font-size:11.5px;margin-top:2px">' + k[0] + '</div>'
+           +  '</div>';
+       }).join("")
+    +  '</div>';
 }
 
 function _actionChip(d){
@@ -275,6 +481,7 @@ function sourcingRow(r, i){
     +  '<code style="font-size:12px">'+_sesc(r.sku)+'</code>'
     +  _actionChip(d)
     +  _driftChip(r.drift)
+    +  _targetChip(d.target)
     +  '<span style="flex:1"></span>'
     +  '<span class="cc" style="font-size:11.5px">now '+_smoney(cur.price)
     +  (cur.lead_days!=null ? ' &middot; '+cur.lead_days+'d handling' : '')
@@ -292,13 +499,30 @@ function sourcingRow(r, i){
     +  '</div>';
 
   // The reason line is the point of the whole screen.
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px;line-height:1.5">'
     +  (d.blocked_by ? '<b style="color:#e8c66a">'+_sesc(d.blocked_by)+'</b> &mdash; ' : '')
-    +  _sesc(d.reason||"")+'</div>';
+    +  _srcTidy(d.reason||"")+'</div>';
 
   h += '<div id="'+id+'" style="display:none;margin-top:9px">';
 
   h += _priceBreakdown(d.breakdown, cur);
+
+  // What the target is doing to THIS listing, under the sum it changes. The
+  // chip above is the flag; this says what it would take to clear it, which is
+  // the number you need to decide whether the supplier is still worth buying
+  // from at all.
+  const tg = d.target, bd = d.breakdown || {};
+  if(tg && tg.meets === false){
+    h += '<div class="cc" style="font-size:11.5px;margin-top:7px;padding:6px 8px;'
+      +  'border:1px solid #4a2323;background:#2a1212;border-radius:6px">'
+      +  'At its current price this earns <b>'+tg.actual_pct+'%</b> '+tg.kind
+      +  (tg.profit!=null ? ' &mdash; '+_smoney(tg.profit)+' a unit' : '')
+      +  ', against your <b>'+tg.target_pct+'%</b> target. '
+      +  (bd.target_floor!=null
+          ? 'It would need <b>'+_smoney(bd.target_floor)+'</b> to clear it.'
+          : '')
+      +  '</div>';
+  }
 
   // The cost comparison in words, under the sum it affects. The chip in the
   // header is the flag; this is the sentence that says what it means, because
@@ -327,8 +551,9 @@ function sourcingRow(r, i){
       +  'padding:4px 0;border-top:1px solid #1c2531">'
       +  (chosen ? '<span class="db-chip" style="background:#12303a;color:#6ac7e8">using</span>'
                  : '<span class="db-chip" style="opacity:.55">—</span>')
-      +  '<a href="'+_sesc(s.url)+'" target="_blank" rel="noopener" style="max-width:280px;'
-      +  'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_sesc(s.label||s.url)+'</a>'
+      +  '<a href="'+_sesc(s.url)+'" target="_blank" rel="noopener" title="'+_sesc(s.url)+'" '
+      +  'style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+      +  _sesc(_srcShort(s.url))+'</a>'
       +  '<span class="cc">'+_sesc(s.kind)+'</span>'
       +  '<span style="flex:1"></span>'
       +  '<span>'+_smoney(k.price)+' + '+(k.shipping==null?'<b style="color:#e8c66a">postage unknown</b>':_smoney(k.shipping))+'</span>'
@@ -356,6 +581,15 @@ function sourcingRow(r, i){
         : '<b>'+_smoney(mp)+'</b>')
     +  ' <button class="db-chip" onclick="sourcingMinPrice('+_sarg(r.sku)+')">'
     +  (mp==null?'Set':'Change')+'</button></div>';
+  // The target, per SKU. A cheap fast-moving line and an expensive slow one do
+  // not want the same percentage, so the account-wide setting is a default
+  // rather than a rule.
+  const tk = (r.rule||{}).profit_target_kind, tp = (r.rule||{}).profit_target_pct;
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Least profit accepted: '
+    +  ((tk && tp!=null) ? '<b>'+tp+'% '+_sesc(tk)+'</b>'
+                         : '<span class="cc">the flat minimum only</span>')
+    +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
+    +  ((tk && tp!=null)?'Change':'Set')+'</button></div>';
   if(d.inputs_age_mins!=null){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';
