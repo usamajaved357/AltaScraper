@@ -28,11 +28,26 @@ from routes import scope as _scope_mod
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /listing/price/* to the app."""
 
+    def _load_account(aid):
+        """The account record for an id the PAGE named -- credentials included.
+
+        Without this the price screen read the id from the request and the
+        CREDENTIALS from the server's global, which is how a price could be
+        aimed at the wrong seller account.
+        """
+        try:
+            import accounts as _acc_mod
+            return _acc_mod.get_account(_cfg(), aid, CONFIG_PATH)
+        except Exception:
+            return None
+
     def _scope():
+        b = request.get_json(silent=True) or {}
         return _scope_mod.resolve(
             state=_state, account=_active_account() or {},
-            asked_id=(request.get_json(silent=True) or {}).get("id"),
-            asked_marketplace=(request.get_json(silent=True) or {}).get("marketplace"))
+            asked_id=b.get("id") or b.get("account_id"),
+            asked_marketplace=b.get("marketplace"),
+            load_account=_load_account)
 
     def _body():
         return request.get_json(silent=True) or {}
@@ -50,12 +65,43 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             res = _al.get_item(_acc_mod.account_creds(acc or {}), mkt,
                                str((acc or {}).get("seller_id") or ""), sku,
                                _acc_mod.marketplace_id(mkt))
-        except Exception:
+        except Exception as e:
+            # WHY it would not answer is the whole of what the person needs.
+            # This caught everything and returned None, so a temporary rate
+            # limit, an unauthorised app and a SKU that does not exist all
+            # produced the same sentence -- "Amazon would not return X" -- and
+            # none of them told anyone what to do next. Reported as
+            # "i am also not able to change selling price from the app".
+            _live.last_error = str(e)[:300]
             return None
         if not res or res.get("status") != _al.OK:
+            _live.last_error = str((res or {}).get("error")
+                                   or (res or {}).get("status") or "")[:300]
             return None
+        _live.last_error = ""
         return {"attributes": res.get("attributes") or {},
                 "productType": res.get("product_type") or ""}
+
+    _live.last_error = ""
+
+    def _why_no_live(sku):
+        """The refusal, said so somebody can act on it."""
+        raw = str(getattr(_live, "last_error", "") or "")
+        low = raw.lower()
+        if "quotaexceeded" in low or "throttl" in low or "429" in low:
+            return ("Amazon is rate-limiting us at the moment, so %s's current "
+                    "price could not be read. Nothing is wrong with the listing "
+                    "— try again in a minute." % sku)
+        if "unauthor" in low or "forbidden" in low or "accessdenied" in low:
+            return ("This account's Amazon app is not authorised to read %s. "
+                    "Re-authorise it in Seller Central with the Product Listing "
+                    "role, then try again." % sku)
+        if "notfound" in low or "not found" in low or "404" in low:
+            return ("Amazon has no listing with the SKU %s on this marketplace, "
+                    "so there is no price to change." % sku)
+        return ("Amazon would not return %s, so its current price could not be "
+                "read — and a price is never changed without reading what it is "
+                "now.%s" % (sku, (" Amazon said: %s" % raw[:160]) if raw else ""))
 
     def _current_price(attrs):
         """The price in the offer as it stands, or None."""
@@ -115,10 +161,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         live = _live(sku, acc, mkt)
         if live is None:
-            return jsonify({"ok": False, "error": (
-                "Amazon would not return %s, so its current price could not be "
-                "read — and a price is never changed without reading what it is "
-                "now." % sku)}), 502
+            # The REASON, not a shrug -- a rate limit, a missing
+            # authorisation and a SKU that does not exist all produced the
+            # same sentence, and none of them said what to do. See
+            # _why_no_live.
+            return jsonify({"ok": False, "error": _why_no_live(sku)}), 502
 
         attrs = live.get("attributes") or {}
         now = _current_price(attrs)

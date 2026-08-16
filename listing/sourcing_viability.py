@@ -88,6 +88,20 @@ def _compile_rule(rc):
         "context": [(t, wordish(t)) for t in (trg.get("context") or [])],
         "corrob": [(t, wordish(t)) for t in corrob],
         "exclude": [(t, wordish(t)) for t in (rc.get("exclude") or [])],
+        # PRODUCT TYPES THIS RULE CANNOT APPLY TO.
+        #
+        # A chair is not a cosmetic, whatever words are in its description, and
+        # Amazon has already told us it is a chair. Without this, "sunscreen
+        # fabric" -- a real outdoor-furniture textile -- made a garden recliner
+        # demand a Cosmetic Product Safety Report, a Product Information File
+        # and a full INCI ingredient list. Reported as "wrong compliance docs
+        # and warnings are displayed", and rightly.
+        #
+        # A warning that cries wolf is worse than no warning: it teaches people
+        # to click past the one that matters. So the product type, which is a
+        # fact rather than an inference from prose, gets a veto.
+        "not_types": {str(t).strip().upper()
+                      for t in (rc.get("not_product_types") or []) if t},
         # Accessory adjacency applies to every trigger term, so "patio heater
         # cover", "charger stand" and "trampoline cover" all demote.
         "accessory": {t: accessory_pattern(t, ACCESSORY_NOUNS) for t in (strong + corrob)},
@@ -246,8 +260,17 @@ def check_sourcing_viability(title="", bullets=None, product_type="", category="
     asserted = docs_held is not None
     template = _RULES.get("warning_template") or WARNING_TEMPLATE
 
+    # The product type Amazon has assigned, which is a fact rather than an
+    # inference from the words in a description. Upper-cased once.
+    _pt = str(product_type or "").strip().upper()
+
     risks = []
     for rule in _RULE_LIST:
+        # A rule that cannot apply to this KIND of thing never fires, whatever
+        # its description happens to say. "Sunscreen fabric" is a garden-chair
+        # textile and was demanding a Cosmetic Product Safety Report.
+        if _pt and _pt in rule.get("not_types", ()):
+            continue
         fired, signals = _evaluate(rule, hay)
         if not fired:
             continue

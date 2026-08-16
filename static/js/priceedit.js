@@ -21,6 +21,37 @@ function _peMoney(v){
   return (v===null||v===undefined||v==="") ? "—" : Number(v).toFixed(2);
 }
 
+/* WHICH ACCOUNT AND MARKETPLACE THIS PRICE BELONGS TO, said on every request.
+ *
+ * These two calls used to send only {sku, price}, so the server fell back to
+ * its process-wide "which account is open" variable -- the same variable that
+ * was showing one company's sales under another's name. Two consequences, and
+ * the second is worse than the first:
+ *
+ *   with the global unset, the request failed outright with "Credentials are
+ *   missing: lwa_app_id, lwa_client_secret", surfacing as "Amazon would not
+ *   return that SKU" -- which is why the price could not be changed at all;
+ *
+ *   with the global pointing somewhere else, a price could have been sent to
+ *   the WRONG SELLER ACCOUNT, which is a real listing on a real shopfront.
+ *
+ * The page knows which listing it is showing. It says so. */
+function _peScope(body){
+  const b = body || {};
+  try{
+    if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id){
+      b.id = CUR_ACCOUNT.id;
+      b.account_id = CUR_ACCOUNT.id;
+    }
+  }catch(e){}
+  try{
+    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__"){
+      b.marketplace = WS_MARKET;
+    }
+  }catch(e){}
+  return b;
+}
+
 async function priceEdit(sku, current){
   if(!sku){ toast("No SKU for that row."); return; }
   const asked = prompt(
@@ -37,7 +68,7 @@ async function priceEdit(sku, current){
   try{
     j = await (await fetch("/listing/price/preview",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, price:price})})).json();
+      body:JSON.stringify(_peScope({sku:sku, price:price}))})).json();
   }catch(e){ toast(String(e)); return; }
   if(!j || !j.ok){ toast((j&&j.error)||"Could not check that price"); return; }
 
@@ -67,8 +98,8 @@ async function priceEdit(sku, current){
   try{
     const r = await (await fetch("/listing/price/apply",{method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, price:price, confirmed:true,
-                           below_floor_ok:belowFloor})})).json();
+      body:JSON.stringify(_peScope({sku:sku, price:price, confirmed:true,
+                                    below_floor_ok:belowFloor}))})).json();
     if(!r || !r.ok){ toast((r&&r.error)||"Amazon refused it"); return; }
     toast("Price sent for " + sku + " — " + _peMoney(r.was) + " → "
           + _peMoney(r.now) + ". " + (r.note||""));

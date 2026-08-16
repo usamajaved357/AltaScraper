@@ -74,10 +74,32 @@ def marketplace(*, state=None, account=None, asked=None, with_data=None):
 
 
 def resolve(*, state=None, account=None, asked_id=None, asked_marketplace=None,
-            with_data=None):
-    """Both answers at once: (account, workspace_id, marketplace)."""
+            with_data=None, load_account=None):
+    """Both answers at once: (account, workspace_id, marketplace).
+
+    IF THE REQUEST NAMES AN ACCOUNT, THE ACCOUNT RECORD MUST FOLLOW IT.
+
+    This returned the workspace id the request asked for while handing back the
+    account record from the process-wide global -- so the id said one company
+    and the CREDENTIALS belonged to another. On the price screen that meant a
+    change could be read from, and sent to, the wrong seller account; and with
+    the global unset it failed outright with "Credentials are missing:
+    lwa_app_id, lwa_client_secret", which is why a price could not be changed
+    at all.
+
+    `load_account` is passed in rather than imported so this module stays free
+    of storage concerns. Without it, behaviour is exactly as before.
+    """
     acc = account or {}
     wsid = workspace_id(state=state, account=acc, asked=asked_id)
+    asked = str(asked_id or "").strip()
+    if asked and load_account and str(acc.get("id") or "") != asked:
+        try:
+            found = load_account(asked)
+        except Exception:
+            found = None
+        if found:
+            acc = found
     mkt = marketplace(state=state, account=acc, asked=asked_marketplace,
                       with_data=with_data)
     return acc, wsid, mkt
