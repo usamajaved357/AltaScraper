@@ -1,4 +1,4 @@
-// ===================== ORDERS, ACROSS EVERY ACCOUNT =====================
+﻿// ===================== ORDERS, ACROSS EVERY ACCOUNT =====================
 // One list, newest first, with the account each order belongs to — so seeing
 // what sold does not mean opening each Amazon account in turn. Click an order
 // number to open its lines.
@@ -24,7 +24,19 @@
 // It is not free — one Amazon call per order, because an order row carries no
 // SKU — which is why it loads in TWO passes: see ordersLoad(). The toggle now
 // turns it OFF, for when speed matters more than knowing what sold.
-let ORD = {rows: [], summary: {}, days: 30, account: "__all__", q: "",
+// account:"" MEANS THE WORKSPACE YOU HAVE OPEN, and the server resolves it that
+// way. It used to default to "__all__", so opening Orders inside Jack Reacherd
+// listed Selvora's and Nestwell's orders too -- with the customer's name and
+// address on them.
+//
+// "i see i can see all the other account orders into jacks workspace"
+//
+// These are separate limited companies with separate sellers and separate
+// customers. routes/orders_routes.py already refuses to default to every
+// account, and says why at length; the browser was overriding it by asking for
+// __all__ outright. Every account at once is still available, but only by
+// choosing it in the picker.
+let ORD = {rows: [], summary: {}, days: 30, account: "", q: "",
            open: "", details: {}, busy: false, profit: true};
 
 function _oEsc(s){
@@ -347,53 +359,72 @@ function ordersRender(){
   // and were taking a ninth of the screen apiece, which is why the product name
   // -- the thing the column exists for -- was cut to nothing.
   const _narrow = {'Total':1, 'Profit':1, 'Margin':1, 'ROI':1, 'Status':1};
-  h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:760px">'
+  // IN A PANEL, LIKE EVERY OTHER SCREEN. This table sat bare on the page
+  // background, at 6px row padding, with two lines of text in most cells and no
+  // line between rows -- so one order's small print ran straight into the next
+  // order's title. "i see text written into one another, no proper spacing and
+  // good visuals like other pages".
+  //
+  // .panelcard and .ordtable are the shared vocabulary; the numbers live in
+  // dashboard.css beside every other table's, not in this string.
+  h += '<div class="panelcard" style="padding:0;overflow:hidden">'
+    +  '<div style="overflow-x:auto"><table class="kv ordtable" '
+    +  'style="width:100%;min-width:760px">'
     +  '<thead><tr>'
     +  cols.map(function(t){
-         return '<th style="text-align:left;font-size:10.5px;padding:6px 8px;'
-              + 'white-space:nowrap'
-              + (t === 'Item' ? ';width:34%' : (_narrow[t] ? ';width:9%' : ''))
-              + '">' + t + '</th>'; }).join("")
+         return '<th'
+              + (t === 'Item' ? ' style="width:34%"' : (_narrow[t] ? ' style="width:9%"' : ''))
+              + '>' + t + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
   ORD.rows.forEach(function(r){
     const st = _ORD_STATUS[r.status] || {c:"var(--ink2)"};
     const isOpen = (ORD.open === r.order_id);
-    h += '<tr style="cursor:pointer" onclick="ordersToggle(' + jsArg(r.order_id)
-      +  ',' + jsArg(r.account_id) + ')">'
+    h += '<tr class="ordrow' + (isOpen ? ' isopen' : '') + '" onclick="ordersToggle('
+      +  jsArg(r.order_id) + ',' + jsArg(r.account_id) + ')">'
       // WHAT WAS SOLD, which is the first thing anyone wants from a list of
       // orders and was not on it at all. The picture comes from the live
       // catalogue this app already holds -- no extra call -- and falls back to
       // an icon rather than a broken image.
-      +  '<td style="padding:6px 8px;min-width:230px">' + _ordItemCell(r) + '</td>'
-      +  '<td style="padding:6px 8px;white-space:nowrap">'
+      +  '<td style="min-width:230px">' + _ordItemCell(r) + '</td>'
+      +  '<td style="white-space:nowrap">'
       +  '<code style="font-size:11px;color:var(--accent2)">' + _oEsc(r.order_id)
       +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down"></i>'
                              : ' <i class="ti ti-chevron-right" style="opacity:.4"></i>')
       +  '<div class="cc" style="font-size:10px">' + (r.units||0) + ' unit'
       +  ((r.units||0) === 1 ? '' : 's') + '</div>'
       +  '</td>'
-      +  (_multi ? ('<td style="padding:6px 8px;font-size:11.5px">'
+      +  (_multi ? ('<td style="font-size:11.5px">'
                     + _oEsc(r.account) + '</td>') : '')
-      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
-      +  _oEsc(_oWhen(r.purchased))
+      // NOT nowrap on the whole cell. It was, and the small print underneath --
+      // "MFN · SMETHWICK, West Midlands, B67 7LW, GB" -- could not wrap, so it
+      // ran straight out of its column and printed over the Status beside it.
+      // That is the "text written into one another" on this screen. The DATE
+      // keeps its nowrap, because a date broken across two lines is worse than
+      // a wide column; the address wraps.
+      +  '<td style="font-size:11.5px;max-width:210px">'
+      +  '<span style="white-space:nowrap">' + _oEsc(_oWhen(r.purchased)) + '</span>'
       // The two columns that used to sit on the right, as small print here.
-      +  '<div class="cc" style="font-size:10px">'
+      +  '<div class="cc" style="font-size:10px;white-space:normal;'
+      +  'overflow-wrap:anywhere">'
       +  _oEsc(r.fulfilment || '') + (r.prime ? ' · Prime' : '')
       +  (r.business ? ' · Business' : '')
       +  (r.region ? ' · ' + _oEsc(r.region) : '') + '</div>'
       +  '</td>'
-      +  '<td style="padding:6px 8px;font-size:11.5px;color:' + st.c + '">'
-      +  _oEsc(r.status)
-      +  (r.unshipped ? ' <span class="cc">(' + r.unshipped + ' to ship)</span>' : '')
+      +  '<td style="font-size:11.5px;color:' + st.c + '">'
+      +  '<span style="white-space:nowrap">' + _oEsc(r.status) + '</span>'
+      // On its own line rather than trailing the status: "Unshipped (1 to ship)"
+      // is too wide for a 9% column and wrapped into the cell above it.
+      +  (r.unshipped ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
+                        + r.unshipped + ' to ship</div>' : '')
       +  '</td>'
-      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
+      +  '<td style="font-size:11.5px;white-space:nowrap">'
       +  _oEsc(_oMoney(r.total, r.currency)) + '</td>'
       // WHAT IT EARNED. Blank rather than zero when a cost is unknown -- a
       // partial cost only ever makes an order look better than it was, and the
       // order whose cost is missing is exactly the one someone would use to
       // justify buying more.
-      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap"'
+      +  '<td style="font-size:11.5px;white-space:nowrap"'
       +  (r.profit_note ? ' title="' + _oEsc(r.profit_note) + '"' : '') + '>'
       +  (r.profit === undefined
           ? '<span class="cc" style="opacity:.5">—</span>'
@@ -408,17 +439,17 @@ function ordersRender(){
       // was worth BUYING -- so they are coloured against different thresholds
       // rather than one shared rule of thumb, and neither is invented when the
       // cost behind it is unknown.
-      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
+      +  '<td style="font-size:11.5px;white-space:nowrap">'
       +  _ordPct(r.margin_pct, 20, 8,
                 'Profit as a share of what the buyer paid') + '</td>'
-      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap"'
+      +  '<td style="font-size:11.5px;white-space:nowrap"'
       +  (r.cogs != null ? ' title="on ' + _oEsc(_oMoney(r.cogs, r.currency))
                            + ' of stock"' : '') + '>'
       +  _ordPct(r.roi_pct, 30, 12,
                 'Profit as a share of what the stock cost') + '</td>'
       +  '</tr>';
     if(isOpen){
-      h += '<tr><td colspan="' + cols.length + '" style="padding:0 8px 10px">'
+      h += '<tr class="orddetail"><td colspan="' + cols.length + '">'
         +  '<div id="orddet_' + _oEsc(r.order_id) + '">'
         +  (ORD.details[r.order_id] ? _ordDetailHtml(r) :
             '<div class="cc" style="padding:10px"><span class="genspin"></span> '
@@ -426,7 +457,7 @@ function ordersRender(){
         +  '</div></td></tr>';
     }
   });
-  h += '</tbody></table></div>';
+  h += '</tbody></table></div></div>';
 
   // WHAT AMAZON WITHHOLDS, said once at the bottom rather than as an empty
   // column with no explanation.

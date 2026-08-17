@@ -78,6 +78,29 @@ truthy("daily() still excludes the account rollup", "AND asin<>'*' " in T)
 check("  in both places that aggregate products — daily() and per_asin()",
       T.count("asin<>'*'"), 2)
 
+print("\n=== a 30-day heading over a 28-day window ===")
+# MEASURED on jack_uk, 17 Aug 2026: the newest day with any traffic was the
+# 14th -- Amazon answered the fetch for the 15th and 16th with QuotaExceeded.
+# The tiles said 30 days and every rate divided by 28, with nothing saying so.
+truthy("freshness is worked out", "def freshness(" in T)
+truthy("  and reported on the answer", '"freshness": freshness(' in T)
+truthy("it names the last day that has data", '"last": last' in T)
+truthy("  and how many are missing", '"missing_days"' in T)
+truthy("  and says which window the figures ACTUALLY cover",
+       "not to %s" in T)
+truthy("  and why, so it does not read as a fault",
+       "rate-" in T and "fill in on the next sync" in T)
+
+print("\n--- one day behind is normal and is not nagged about ---")
+# Amazon never publishes today and revises yesterday for a day or two after.
+truthy("a gap of one is silent", "if gap < 2:" in T)
+truthy("  and a full window says nothing at all", "if not last or last >= end:" in T)
+
+J = open(r"D:\AltaScraper\static\js\traffic.js", encoding="utf-8").read()
+truthy("the screen shows it above the tiles", "d.freshness" in J)
+truthy("  because every tile divides by it", "_fr.note" in J)
+truthy("and the revenue tile carries its own explanation", "k.note" in J)
+
 print("\n--- _money formats without inventing ---")
 check("a figure", TV._money(102.21), "102.21")
 check("  nothing", TV._money(None), "0.00")

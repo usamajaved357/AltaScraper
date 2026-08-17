@@ -428,12 +428,32 @@ function salesDrawBreakdown(){
       const v = r[c.k];
       let cell;
       if(c.kind==="text"){
-        cell = '<a href="'+_sEsc(_dpUrl(r.k))+'" target="_blank" rel="noopener" '
-             + 'title="Open on Amazon">'+_sEsc(r.k)+'</a>';
-        if(SALES_BD.group==="parent" && (r.children||0) > 1){
-          cell += '<span class="cc" style="font-size:10px;margin-left:6px">'
-                + r.children+' variations</span>';
-        }
+        // THE PRODUCT, not just its code. This column was a bare ASIN, and
+        // B0F9NQ6WZK tells nobody which product had the good month. The picture
+        // and the name come with the row, from the same catalogue the Listings
+        // cards and the Orders screen use.
+        const pic = r.img
+          ? '<img src="'+_sEsc(r.img)+'" loading="lazy" alt="" style="width:30px;'
+            + 'height:30px;object-fit:contain;background:#0d1220;border-radius:5px;'
+            + 'flex:0 0 30px">'
+          : '<span style="width:30px;height:30px;border-radius:5px;background:#0d1220;'
+            + 'display:inline-flex;align-items:center;justify-content:center;'
+            + 'flex:0 0 30px"><i class="ti ti-photo" style="opacity:.4"></i></span>';
+        cell = '<div style="display:flex;gap:8px;align-items:center">' + pic
+             + '<span style="min-width:0">'
+             + (r.title
+                 ? '<span style="display:block;font-size:11.5px;overflow:hidden;'
+                   + 'text-overflow:ellipsis;white-space:nowrap;max-width:280px" '
+                   + 'title="'+_sEsc(r.title)+'">'+_sEsc(r.title)+'</span>'
+                 : '')
+             + '<a href="'+_sEsc(_dpUrl(r.k))+'" target="_blank" rel="noopener" '
+             + 'onclick="event.stopPropagation()" '
+             + 'style="font-size:'+(r.title?'10px':'11.5px')+'" '
+             + 'title="Open on Amazon">'+_sEsc(r.k)+'</a>'
+             + (SALES_BD.group==="parent" && (r.children||0) > 1
+                 ? '<span class="cc" style="font-size:10px;margin-left:6px">'
+                   + r.children+' variations</span>' : '')
+             + '</span></div>';
       } else if(v===null||v===undefined){ cell = '<span class="cc">—</span>'; }
       else if(c.kind==="money") cell = Number(v).toFixed(2);
       else if(c.kind==="pct")   cell = Number(v).toFixed(2)+"%";

@@ -343,6 +343,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         start, end, _preset = _range()
         group = "parent" if (request.args.get("group") or "").lower() == "parent" else "asin"
         rows = _sd.breakdown(CONFIG_PATH, wsid, mkt, start, end, group)
+        # WHAT THE PRODUCT IS, not only its code. The table listed a bare ASIN
+        # per row -- "i dont see the images reflecting correctly on the sales
+        # page" -- and B0F9NQ6WZK names nothing to anybody. From the same shared
+        # catalogue lookup Orders and Traffic use, so a product cannot be shown
+        # with one picture here and another there (CLAUDE.md Rule 12). Nothing
+        # is asked of Amazon; a product the snapshot has not caught up with
+        # simply keeps its code.
+        from domain import catalogue as _cat
+        idx = _cat.index(CONFIG_PATH, wsid, mkt)
+        for r in rows:
+            got = _cat.look(idx, r.get("k"), r.get("parent_asin"))
+            r["img"] = got.get("img") or ""
+            r["title"] = got.get("title") or ""
         return jsonify({"ok": True, "start": start, "end": end, "group": group,
                         "rows": rows, "count": len(rows),
                         "currency": _sd.currency_of(rows),
