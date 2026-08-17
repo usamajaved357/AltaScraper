@@ -102,12 +102,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             val = _one(a, k)
             if val:
                 flat[k] = val
+        # WHAT AMAZON SERVES, from its own summary of the listing, and the
+        # things it is unhappy about. Both come back on the call that was
+        # already being made, and both are what makes "did my image land"
+        # answerable inside the app instead of in Seller Central.
+        summaries = got.get("summaries") or []
+        s0 = summaries[0] if (summaries and isinstance(summaries[0], dict)) else {}
+        mi = s0.get("mainImage") or {}
+        issues = [{"message": str(i.get("message") or ""),
+                   "severity": str(i.get("severity") or "")}
+                  for i in (got.get("issues") or []) if isinstance(i, dict)]
         return {"sku": sku,
                 "product_type": got.get("product_type") or "",
                 "brand": _one(a, "brand"),
                 "item_type_keyword": _one(a, "item_type_keyword"),
                 "parent_sku": _one(a, "child_parent_sku_relationship"),
                 "title": _one(a, "item_name"),
+                "shopper_image": (mi.get("link") or "") if isinstance(mi, dict) else "",
+                "issues": issues,
                 "attributes": flat,
                 # AMAZON'S OWN SHAPE, KEPT. `flat` is for the checker, which
                 # compares values as text; the parent has to be WRITTEN, and a
@@ -243,6 +255,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             slots.append({**s, "current": cur, "occupied": bool(cur)})
         return jsonify({"ok": True, "sku": sku, "product_type": pt,
                         "slots": slots, "checked": True,
+                        # WHAT A SHOPPER ACTUALLY SEES, which is a different
+                        # question from what is in a slot. Amazon re-hosts and
+                        # re-renders the main image, so this URL never matches
+                        # the one that was submitted even when it is the same
+                        # photograph -- and the app has no business claiming a
+                        # slot value IS the product page picture.
+                        "shopper_image": live.get("shopper_image") or "",
+                        # An image Amazon accepted and then rejected shows up
+                        # here and nowhere else.
+                        "issues": live.get("issues") or [],
                         "is_variation_child": bool(live.get("parent_sku")),
                         "note": ("" if slots else
                                  "This product type defines no image slots at "

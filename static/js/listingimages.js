@@ -408,6 +408,22 @@ function _ilDraw(){
          : 'Showing only ' + _ilEsc(sku))
      + '</span></div>';
 
+  // WHAT IS ALREADY ON AMAZON, above the library rather than below it.
+  //
+  // "how can i verify if the images are sent inside the app, is there any option
+  //  to see the uploaded images to amazon in the app"
+  //
+  // There was not. You could send to a slot and afterwards the dropdown would
+  // say "— has one", which tells you a slot is occupied without showing you by
+  // what. This panel reads the listing back from Amazon and shows every slot
+  // with the picture Amazon actually holds in it. It is drawn first because
+  // "what is there now" is the question you have before "what shall I send".
+  //
+  // Its own file, static/js/amazonimages.js -- it is a new thing, not more of
+  // this one (CLAUDE.md Rule 7).
+  h += _ilLastSendBanner();
+  h += '<div id="aimg_panel"></div>';
+
   // upload your own
   h += '<div style="border:1px dashed #2f3a4d;border-radius:8px;padding:10px;margin-bottom:14px">'
      + '<b style="font-size:12.5px">Upload your own image</b>'
@@ -526,7 +542,40 @@ function _ilDraw(){
   _ilRender(h);
   // After the markup exists, not during: the notes read the selects.
   _ilSlotNotesAll();
+  // Fills itself in behind the library, so opening the library is not made to
+  // wait on a call to Amazon.
+  if(typeof amazonImagesLoad === "function") amazonImagesLoad(sku);
+  else if(typeof amazonImagesRender === "function") amazonImagesRender();
 }
+
+// WHAT WAS JUST SENT, AND THE RECEIPT FOR IT.
+//
+// Drawn as part of the panel, so rebuilding the panel cannot destroy it -- which
+// is precisely what used to happen. Carries Amazon's submission id, because that
+// is the only thing that identifies the request afterwards, and it is dismissible
+// rather than permanent.
+function _ilLastSendBanner(){
+  const s = IMGLIB.lastSend;
+  if(!s) return "";
+  return '<div style="border:1px solid #26403a;background:#10231f;border-radius:6px;'
+    + 'padding:9px 11px;margin-bottom:12px;display:flex;gap:10px;align-items:center">'
+    + '<img src="' + _ilEsc(s.url) + '" alt="" style="width:38px;height:38px;'
+    + 'object-fit:contain;background:#0d1220;border-radius:5px;flex:0 0 38px">'
+    + '<div style="min-width:0;flex:1">'
+    + '<div style="font-size:12px;font-weight:600">'
+    + '<i class="ti ti-check"></i> Sent to Amazon as ' + _ilEsc(s.slot) + '</div>'
+    + '<div class="cc" style="font-size:11px;line-height:1.45">'
+    + _ilEsc(s.note || 'Amazon usually shows a new image within a few minutes.')
+    + (s.submission_id
+        ? ' Amazon’s reference: <code style="font-size:10px">'
+          + _ilEsc(s.submission_id) + '</code>.'
+        : '')
+    + ' It appears in <b>On Amazon now</b> below once Amazon has taken it.'
+    + '</div></div>'
+    + '<button class="db-chip" onclick="ilDismissSend()" title="Hide this">'
+    + 'Dismiss</button></div>';
+}
+function ilDismissSend(){ IMGLIB.lastSend = null; _ilDraw(); }
 
 async function ilSetMain(url){
   const ok = await setMainImage(IMGLIB.sku, url, {message:"Main image set ✓", reload:true});
@@ -821,6 +870,18 @@ async function ilSlotSend(slotKey){
       return;
     }
     IMGLIB.pending = "";
+    // THE CONFIRMATION HAS TO SURVIVE THE REDRAW.
+    //
+    // "i have send 2 images to amazon as pt1 and pt2, but i did not received a
+    //  confirmation that it was sent"
+    //
+    // It was written into #il_pushstatus and then openImageLibrary() below
+    // rebuilt the whole panel, destroying the element about a tenth of a second
+    // later. The message existed for less time than it takes to read. So it is
+    // remembered here and drawn as part of the panel instead of into it.
+    IMGLIB.lastSend = {slot: (slot.label || slotKey), url: url,
+                       submission_id: (j.submission_id || ""),
+                       note: (j.note || "")};
     if(st) st.innerHTML = '<span style="color:var(--ok)">✓ sent as '
                         + _ilEsc(slot.label||slotKey)+' — '+_ilEsc(j.note||"")+'</span>';
     // The app's own main-image copy only tracks MAIN, so only update it for that.
@@ -829,6 +890,11 @@ async function ilSlotSend(slotKey){
       IMGLIB.main = url;
     }
     await openImageLibrary(IMGLIB.sku, IMGLIB.live);
+    // And read the listing back, so the slot filling in is something you WATCH
+    // rather than something you are told. Forced, because the panel caches.
+    if(typeof amazonImagesLoad === "function"){
+      amazonImagesLoad(IMGLIB.sku, true);
+    }
   }catch(e){
     if(st) st.innerHTML = '<span style="color:var(--red)">'+_ilEsc(String(e))+'</span>';
   }
