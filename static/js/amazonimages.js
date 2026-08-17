@@ -29,11 +29,37 @@
 // Both are labelled for what they are. Calling either one "the image on the
 // PDP" on its own would be the app claiming more than it can see.
 
-let AIMG = {sku: "", state: "", data: null, err: ""};
+// `justSent` is the slot the last send went to, so the panel can tell APART the
+// image you have this minute put there from the eight that were already on the
+// listing.
+//
+// Without it the panel is a wall of nine filled slots that appears the moment
+// you send one, and it reads as "it sent all of them" -- which is exactly how it
+// was read: "when i clicked on send to amazon on 1 button it sent all the images
+// to amazon instead of sending only 1 image".
+//
+// It did not. Checked on ALTA-SLASHER-800-PARENT: 1 of 16 slots filled before,
+// one image sent to other_product_image_locator_1, 2 of 16 after, exactly one
+// slot changed. Both send paths build a single patch -- listing/images.build_patch
+// for the slot picker and _build_patches({"main_image": ...}) for the older
+// button. Neither can send more than one. The panel was telling the truth and
+// saying it badly.
+let AIMG = {sku: "", state: "", data: null, err: "", justSent: ""};
 
 function _aiEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// The slot's name as it is spoken about -- MAIN, PT1, SWATCH -- rather than as
+// Amazon spells it. One place, because the grid and the sentence above it both
+// name slots and naming the same slot two ways in one panel is worse than either.
+function _aiTag(key){
+  return String(key || "")
+    .replace("main_product_image_locator", "MAIN")
+    .replace("other_product_image_locator_", "PT")
+    .replace("swatch_product_image_locator", "SWATCH")
+    .replace(/_/g, " ");
 }
 
 // Load, or reload, what Amazon holds for one SKU.
@@ -41,6 +67,8 @@ async function amazonImagesLoad(sku, force){
   if(!sku) return;
   if(AIMG.sku === sku && AIMG.state === "ready" && !force) return;
   if(AIMG.state === "loading") return;
+  // A different listing wipes it: "you just sent this" belongs to one SKU.
+  if(AIMG.sku !== sku) AIMG.justSent = "";
   AIMG.sku = sku; AIMG.state = "loading"; AIMG.err = "";
   amazonImagesRender();
   try{
@@ -104,6 +132,12 @@ function amazonImagesHtml(){
     + '<span style="font-size:13px;font-weight:600">On Amazon now</span>'
     + '<span class="cc" style="font-size:11.5px">'
     + filled.length + ' of ' + slots.length + ' slots filled'
+    // SAID IN WORDS, not left to be inferred from a grid. "9 filled" right after
+    // you sent one is the sentence that needs completing.
+    + (AIMG.justSent
+        ? ' — you have just sent <b>one</b>, to '
+          + _aiEsc(_aiTag(AIMG.justSent)) + '. The rest were already here.'
+        : '')
     + '</span><span style="flex:1"></span>'
     + '<button class="db-chip" onclick="amazonImagesRefresh()" title="'
     + 'Read the listing from Amazon again. A slot you have just sent to can take '
@@ -143,26 +177,27 @@ function amazonImagesHtml(){
 
   h += '<div style="display:flex;gap:9px;flex-wrap:wrap">';
   slots.forEach(function(s){
-    const tag = String(s.key || "")
-      .replace("main_product_image_locator", "MAIN")
-      .replace("other_product_image_locator_", "PT")
-      .replace("swatch_product_image_locator", "SWATCH")
-      .replace(/_/g, " ");
+    const tag = _aiTag(s.key);
+    const mine = (AIMG.justSent && s.key === AIMG.justSent);
     h += '<div style="width:96px">'
       + (s.current
           ? '<a href="' + _aiEsc(s.current) + '" target="_blank" rel="noopener" '
             + 'title="Open the full-size image Amazon holds for ' + _aiEsc(tag) + '">'
             + '<img src="' + _aiEsc(s.current) + '" alt="" loading="lazy" '
             + 'style="width:96px;height:96px;object-fit:contain;background:#0d1220;'
-            + 'border-radius:6px;border:1px solid #26303f"></a>'
+            + 'border-radius:6px;border:1px solid '
+            + (mine ? 'var(--ok,#8fd694);box-shadow:0 0 0 1px var(--ok,#8fd694)'
+                    : '#26303f') + '"></a>'
           : '<div style="width:96px;height:96px;border-radius:6px;'
             + 'background:#0d1220;border:1px dashed #2a3446;display:flex;'
             + 'align-items:center;justify-content:center">'
             + '<span class="cc" style="font-size:10px">empty</span></div>')
       + '<div style="font-size:10px;margin-top:4px;font-weight:600">'
       + _aiEsc(tag) + '</div>'
-      + '<div class="cc" style="font-size:9.5px;line-height:1.3">'
-      + (s.current ? 'Amazon has this' : 'nothing sent')
+      + '<div class="cc" style="font-size:9.5px;line-height:1.3'
+      + (mine ? ';color:var(--ok,#8fd694)' : '') + '">'
+      + (mine ? 'you just sent this'
+              : (s.current ? 'was already here' : 'nothing sent'))
       + '</div></div>';
   });
   h += '</div>';
