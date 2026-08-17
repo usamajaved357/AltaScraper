@@ -32,7 +32,17 @@ IDX = {
 ENROLLED = ["10.39_3Days_B0F6LQ1S93", "cleaning brush_11GBP", "9.99_2Days_B0GXYZ1234"]
 CURRENT = {"10.39_3Days_B0F6LQ1S93": "https://www.ebay.co.uk/itm/336530856611"}
 
-rows = B.template_rows("/cfg", "ws", "UK", ENROLLED, catalogue=IDX, current=CURRENT)
+# TWO suppliers on the first SKU, to prove several are possible. Asked as "i
+# dont have an option to add multiple sellers in the template should i just add
+# the columns in the end" -- no: extra columns would be IGNORED, because
+# apply_rows reads one link column and _pick takes the first match. Extra ROWS
+# have always worked, because ensure_source adds a supplier rather than replacing
+# one. Nothing said so, which was the gap.
+SOURCES = {"10.39_3Days_B0F6LQ1S93": [
+    "https://www.ebay.co.uk/itm/336530856611",
+    "https://www.ebay.co.uk/itm/999999999999"]}
+rows = B.template_rows("/cfg", "ws", "UK", ENROLLED, catalogue=IDX,
+                       sources=SOURCES)
 
 print("=== the columns the upload will read back ===")
 check("four of them", B.TEMPLATE_HEADERS,
@@ -55,11 +65,36 @@ check("  the asin column", B._pick(B.TEMPLATE_HEADERS, B._ASIN_COLS), 1)
 check("  and the link column", B._pick(B.TEMPLATE_HEADERS, B._URL_COLS), 3)
 # 3, not 2: "product" must not be mistaken for anything.
 
-print("\n=== a row per enrolled SKU, filled in ===")
-check("one for each", len(rows), 3)
-by = {r[0]: r for r in rows}
+print("\n=== a row per SUPPLIER, plus a blank one per SKU to add another ===")
+# 3 SKUs. One has two suppliers, so it gets two filled rows and a blank = 3;
+# the other two get a blank each = 2. Five in all.
+check("every supplier gets its own row, and every SKU a spare", len(rows), 5)
+by = {}
+for r in rows:
+    by.setdefault(r[0], []).append(r)
 check("the SKU is written for you", sorted(by.keys()),
       ["10.39_3Days_B0F6LQ1S93", "9.99_2Days_B0GXYZ1234", "cleaning brush_11GBP"])
+check("the SKU with two suppliers gets three rows",
+      len(by["10.39_3Days_B0F6LQ1S93"]), 3)
+check("  both links are in it",
+      sorted(r[3] for r in by["10.39_3Days_B0F6LQ1S93"] if r[3]),
+      ["https://www.ebay.co.uk/itm/336530856611",
+       "https://www.ebay.co.uk/itm/999999999999"])
+check("  and exactly one blank, to add a third",
+      len([r for r in by["10.39_3Days_B0F6LQ1S93"] if not r[3]]), 1)
+truthy("its blank row sits directly under its own links, not elsewhere",
+       [r[3] for r in by["10.39_3Days_B0F6LQ1S93"]][-1] == "")
+# EXTRA COLUMNS WOULD NOT WORK, which is why rows are the answer: apply_rows
+# reads ONE link column and _pick takes the first that matches, so a "link 2"
+# column would be ignored in silence.
+truthy("and the sheet says rows, not columns",
+       "several rows" in open(r"D:\AltaScraper\domain\source_bulk.py",
+                              encoding="utf-8").read().lower()
+       or "SEVERAL SUPPLIERS FOR ONE SKU ARE SEVERAL ROWS" in
+          open(r"D:\AltaScraper\domain\source_bulk.py", encoding="utf-8").read())
+by = {k: v[0] for k, v in by.items()}     # first row per SKU, for the checks below
+by["10.39_3Days_B0F6LQ1S93"] = [r for r in rows
+                                if r[0] == "10.39_3Days_B0F6LQ1S93" and r[3]][0]
 check("our ASIN when the catalogue knows it",
       by["10.39_3Days_B0F6LQ1S93"][1], "B0H56PTHG6")
 check("  and the product name", by["10.39_3Days_B0F6LQ1S93"][2],
@@ -79,8 +114,17 @@ check("  and the link is blank, which is the job", r[3], "")
 print("\n=== the rows that need doing come FIRST ===")
 # Forty already-filled rows above the three that need a link is how those three
 # get missed.
-check("the blank one is at the top", rows[0][0], "9.99_2Days_B0GXYZ1234")
-truthy("  and the filled ones below it", bool(rows[-1][3]))
+check("a SKU with no supplier at all is at the top", rows[0][0],
+      "9.99_2Days_B0GXYZ1234")
+truthy("  and a SKU that already has one is below", bool(rows[-1][3]) or
+       rows[-1][0] == "10.39_3Days_B0F6LQ1S93")
+# Each SKU's rows stay together, so a blank is never orphaned away from the
+# supplier list it belongs to.
+_seen = []
+for r in rows:
+    if not _seen or _seen[-1] != r[0]:
+        _seen.append(r[0])
+check("each SKU's rows are contiguous", len(_seen), len(set(_seen)))
 
 print("\n=== the file itself ===")
 csv = B.to_csv(B.TEMPLATE_HEADERS, rows)
@@ -97,7 +141,7 @@ heads, back, err = B.read_table(csv.encode("utf-8"), "supplier-links.csv")
 check("it reads without complaint", err, "")
 check("the headers survive", [h.strip().lstrip("\ufeff") for h in heads],
       B.TEMPLATE_HEADERS)
-check("  and every row", len(back), 3)
+check("  and every row", len(back), 5)
 check("the link column is still found in what came back",
       B._pick(heads, B._URL_COLS), 3)
 check("  and the sku column", B._pick(heads, B._SKU_COLS), 0)

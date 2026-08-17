@@ -803,11 +803,56 @@ function _cardImages(r){
 // one set of tokens. LIVE is neutral grey here for the same reason .b-LIVE is:
 // live is the resting state, not an achievement, and a grid of green dots made
 // every finished listing look like it wanted attention.
+// THE DOT IS ABOUT A PROBLEM, NOT ABOUT A STORED WORD.
+//
+// "i see that my every live listing shows a red or orange dots on them, donot
+//  set the status to review when there is no problem in it ... if there is no
+//  flag no need to highlight, if there is a api error than it should show that
+//  dot"
+//
+// It coloured straight off r.status, which is what the app STORED at some point
+// -- so a listing that went live on Amazon months ago, but whose row still says
+// API_ERROR from a failed attempt before that, showed a red dot for ever. The
+// counts along the top already reclassify those as LIVE (see summary()); the dot
+// did not, so the tiles and the counts disagreed and every live listing looked
+// like it needed attention.
+//
+// Now: a listing Amazon confirms is live has no problem to report unless
+// something actually flags it -- a compliance document demand, an IP risk, a
+// claim risk. Those checks already run; the dot follows them instead of
+// second-guessing with a stale status.
 function _statusDot(r){
-  var s=r.status||"";
-  var col = s==="LIVE"?"var(--ink2)" : (isHold(s)||s==="API_ERROR"||s==="ERROR")?"var(--red)"
-          : s==="NEEDS_REVIEW"?"var(--warn)" : s==="APPROVED"?"var(--ok)" : "var(--ink3)";
-  return col;
+  var s = r.status || "";
+  // Amazon's own answer beats the stored word, exactly as the counts do.
+  var live = false;
+  try{
+    var sets = _liveCatSetsForCurrentView();
+    live = isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown);
+  }catch(e){ live = (s === "LIVE"); }
+  if(live || s === "LIVE"){
+    // A REAL flag still shows. Nothing else does.
+    if(_rowHasFlag(r)) return "var(--warn)";
+    return "var(--ink3)";              // quiet: live and nothing against it
+  }
+  if(isHold(s) || s === "API_ERROR" || s === "ERROR") return "var(--red)";
+  if(s === "NEEDS_REVIEW") return "var(--warn)";
+  if(s === "APPROVED") return "var(--ok)";
+  return "var(--ink3)";
+}
+
+// Is there anything actually WRONG with this row? The checks that already run --
+// restricted product types, compliance document demands, IP and claim risks --
+// rather than the status word.
+function _rowHasFlag(r){
+  if(!r) return false;
+  if(String(r.ip_risk || "").toUpperCase() === "HIGH") return true;
+  if((r.claim_flags || []).length) return true;
+  var v = r.viability;
+  if(v && v.matched && (v.risks || []).length) return true;
+  var rs = r.restricted;
+  if(rs && rs.matched && String(rs.overall_action || "").toUpperCase() !== "NONE")
+    return true;
+  return false;
 }
 // ---- GALLERY TILE ----
 // Is this row confirmed live by AMAZON right now? Used to gate the live-only
@@ -1239,7 +1284,7 @@ function listBlock(rows, fn){
   // COGS gets its own column, and it is EDITABLE. What a thing cost is the one
   // number every profit figure on every other screen is built from, and it was
   // only visible by opening a listing. Click the cell, type, done.
-  return `<div class="card ltwrap"><table class="lt"><thead><tr>
+  const head = `<div class="card ltwrap"><table class="lt"><thead><tr>
       <th class="selcol" title="Select every row shown">
         <input type="checkbox" class="rowsel"
                ${rows.length && rows.every(x => SELECTED.has(String(x.sku))) ? "checked" : ""}
@@ -1247,8 +1292,28 @@ function listBlock(rows, fn){
       <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
       <th>Price</th><th title="What the stock cost you. Read from the SKU where the SKU carries it; click to type your own.">COGS</th>
       <th>Handling</th><th>Status</th><th>Compliance</th>
-      <th style="width:150px">Actions</th></tr></thead><tbody>`
-    + rows.map(rowFn).join("") + `</tbody></table></div>`;
+      <th style="width:150px">Actions</th></tr></thead><tbody>`;
+  const body = rows.map(rowFn).join("");
+  // THE HEADER AND THE ROWS MUST HAVE THE SAME NUMBER OF COLUMNS.
+  //
+  // liveTableRow shipped with nine cells against this ten-column header, and the
+  // whole live view was shifted one place left -- pictures under the checkbox,
+  // actions under "Compliance". Nothing caught it, because HTML does not
+  // complain: a short row just draws short.
+  //
+  // So it is checked, once per draw, and said out loud in the console rather than
+  // left to be noticed by eye. Cheap: one count of one string.
+  if(body){
+    const want = (head.match(/<th\b/g) || []).length;
+    const first = body.slice(0, body.indexOf("</tr>") + 5);
+    const got = (first.match(/<td\b/g) || []).length;
+    if(got && got !== want){
+      console.error("listings table: header has " + want + " columns and a row "
+        + "has " + got + " — the columns will not line up. Fix the row builder ("
+        + (rowFn === liveTableRow ? "liveTableRow" : "tableRow") + ").");
+    }
+  }
+  return head + body + `</tbody></table></div>`;
 }
 
 // The compliance cell: one icon and two words, from the SAME data the drawer's
@@ -1271,6 +1336,20 @@ function _compCell(r){
 
 function _statusPill(s){
   return `<span class="badge ${badgeClass(s)}">${esc(s||"—")}</span>`;
+}
+
+// THE STATUS AS IT IS TODAY, not as it was stored.
+//
+// Same reason as _statusDot: a listing Amazon confirms is live is LIVE, whatever
+// word the row was left with by an attempt that failed before it went up. The
+// counts along the top already do this; the pill did not, so a live listing sat
+// under a red API_ERROR badge and its own account said 47 were live.
+function _shownStatus(r){
+  try{
+    const sets = _liveCatSetsForCurrentView();
+    if(isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown)) return "LIVE";
+  }catch(e){}
+  return r.status || "";
 }
 
 function tableRow(r){
@@ -1296,7 +1375,7 @@ function tableRow(r){
     <td class="price">${price}</td>
     ${cogsCell(r)}
     <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
-    <td>${_statusPill(r.status)}${needsCopy(r)
+    <td>${_statusPill(_shownStatus(r))}${needsCopy(r)
         ? `<div class="cc" style="font-size:9.5px;margin-top:3px;color:var(--warn)" `
           + `title="No bullets, no description, no product type yet. Select it and `
           + `press Regenerate copy, or open it and press Write it now.">no copy yet</div>`
@@ -1320,7 +1399,20 @@ function liveTableRow(it){
   const comp = (c && (c.risks||[]).length)
     ? `<span class="comp" style="color:${(c.risks||[]).some(x=>x.risk==="HIGH")?"var(--red)":"var(--warn)"}"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`
     : `<span class="comp cc">—</span>`;
+  // TEN CELLS, BECAUSE THE HEADER HAS TEN COLUMNS.
+  //
+  // This row had nine. It was missing the select cell that every header row
+  // starts with, so in the LIVE view every column was shifted one place to the
+  // left: the picture sat under the checkbox, the ASIN under "Image", the title
+  // under "ASIN", and the actions under "Compliance". Reported as "in the
+  // listings section i see that the header and the details under it do not
+  // match".
+  //
+  // Empty rather than a checkbox: the bulk bar's actions -- approve, hold, set
+  // handling -- are about DRAFTS, and offering them on a listing that is already
+  // live would be offering to un-approve something Amazon has published.
   return `<tr style="cursor:default" title="${esc(it.title||'')}">
+    <td class="selcol"></td>
     <td class="pii-img">${thumb}</td>
     <td><span class="asin">${esc(it.asin||'')}</span><br><span class="sku pii">${esc(it.sku||'')}</span></td>
     <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span></td>

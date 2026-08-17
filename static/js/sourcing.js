@@ -440,10 +440,19 @@ function sourcingRender(j){
     +  '<a class="db-chip" href="/sourcing/template.csv" '
     +  'style="text-decoration:none" title="'
     +  'Downloads a sheet already listing every SKU you are tracking, with its '
-    +  'ASIN, product name and the supplier link it has now. Fill in the last '
-    +  'column and upload it back with the button on the left. Rows you leave '
-    +  'blank are not changed.">'
+    +  'ASIN, product name and every supplier link it has now — one row per '
+    +  'link, with a blank row under each SKU to add another. FOR SEVERAL '
+    +  'SUPPLIERS ON ONE SKU, add more rows with the same SKU rather than more '
+    +  'columns; the repricer then compares them and buys from the cheapest. '
+    +  'Fill in the link column and upload it back with the button on the left. '
+    +  'Rows you leave blank are not changed.">'
     +  '<i class="ti ti-file-download"></i> Get the template</a>'
+    +  '<button class="db-chip" onclick="sourcingCheckListings()" title="'
+    +  'Asks Amazon whether it still has each tracked SKU. Any it no longer has '
+    +  'is marked "deleted on Amazon" and its auto-pricing switched off — its '
+    +  'suppliers and history are kept in case you relist it. One Amazon call per '
+    +  'SKU, so it takes a moment.">'
+    +  '<i class="ti ti-plug-connected-x"></i> Check they still exist</button>'
     // The switch that actually matters, named for what it does rather than for
     // where it lives. "Master switch: off" did not say off from WHAT.
     +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
@@ -724,6 +733,43 @@ function _srcItemCell(item, sku){
     + '</span></span>';
 }
 
+// THIS OFFER IS GONE FROM AMAZON. Loud, because nothing else on the row can
+// matter: there is no listing to price.
+//
+// "the template and the repricer is saving the skus which i have deleted
+//  already, turn off the auto repricing for that sku and give warning to tell
+//  that this offer is deleted"
+//
+// Auto-pricing is already off by the time this draws -- set_listing_state
+// disarms in the same statement that marks it -- so this says what happened
+// rather than warning about what might.
+function _goneChip(d){
+  if(!d || String(d.listing_state || "") !== "gone") return "";
+  return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a;'
+    + 'border-color:#5a2a2a" title="Amazon no longer has this SKU, so there is '
+    + 'no offer to price. Auto-pricing has been switched off for it. Its '
+    + 'suppliers and history are kept in case you relist it.">'
+    + '<i class="ti ti-trash-x"></i> deleted on Amazon</span>';
+}
+
+// Ask Amazon which enrolled SKUs it still has. One call per SKU, so it is a
+// button rather than something that runs on every draw.
+async function sourcingCheckListings(){
+  if(!confirm("Check every tracked SKU against Amazon?\n\nThis asks Amazon once "
+            + "per SKU, so it takes a moment on a long list. Any SKU Amazon no "
+            + "longer has is marked and its auto-pricing switched off — nothing "
+            + "is deleted.")) return;
+  toast("Asking Amazon about each tracked SKU…");
+  try{
+    const j = await (await fetch("/sourcing/check_listings", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({})})).json();
+    if(!j.ok){ toast(j.error || "failed"); return; }
+    toast(j.note || ("checked " + j.checked));
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
@@ -735,6 +781,7 @@ function sourcingRow(r, i){
   // you decide whether to keep selling something.
   h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
     +  _srcItemCell(r.item, r.sku)
+    +  _goneChip(d)
     +  _actionChip(d)
     +  _driftChip(r.drift)
     +  _targetChip(d.target)

@@ -91,6 +91,22 @@ function cogsModeDraw(){
     + '<div class="cc" style="font-size:11px;margin-top:5px">'
     + _sEsc(COGSMODE.explain[COGSMODE.mode] || "")
     + '</div>'
+    // WHERE COSTS ACTUALLY LIVE, said once, here.
+    //
+    // "i am confused to where put the cogs there are alof of sections asking
+    //  for cogs now" -- and there are three screens that mention cost. Only ONE
+    // of them stores anything: the COGS column on Listings. This bar's two
+    // buttons both go there, the cost sheet is the same column in bulk, and the
+    // Repricer only ever reads. None of that was written down anywhere, so three
+    // mentions looked like three places to keep in step.
+    + '<div class="cc" style="font-size:11px;margin-top:6px;padding-top:6px;'
+    + 'border-top:1px solid var(--line);line-height:1.5">'
+    + '<i class="ti ti-info-circle"></i> <b>There is one place costs are kept</b>'
+    + ' — the COGS column on the Listings screen. Both buttons above go there;'
+    + ' the cost sheet is the same column, filled in a spreadsheet. The Repricer,'
+    + ' the Orders profit column and this page all read from it and never store'
+    + ' a cost of their own.'
+    + '</div>'
     + '</div>';
 }
 

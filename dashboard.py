@@ -1032,7 +1032,33 @@ def _card(r: dict) -> dict:
         "api_payload":  g("API Payload JSON"),   # exact body sent to Amazon (debug viewer)
         "_marketplace": _state.get("active_marketplace", "") or attrs.get("marketplace", ""),
         "row":          g("_row"),
+        # WHAT THE STOCK COST, and where that came from, ON THE ROW.
+        #
+        # The row carried no cost at all, so after a reload the COGS cell fell
+        # back to reading the SKU prefix -- and a cost typed by hand simply
+        # disappeared from the screen it was typed on. Worse than absent: for a
+        # SKU whose name carries a number, the cell then showed THAT number, so
+        # the override looked as though it had been discarded.
+        #
+        # Reported as "i am concirned that after putting the cogs in the listngs
+        # section for an item will reflect right data about profits".
+        #
+        # From domain/cogs.resolve -- the one resolver every other screen uses,
+        # not a second reading of the SKU here (Rule 12).
+        **_card_cogs(gm("SKU", "Sku")),
     }
+
+
+def _card_cogs(sku):
+    """{cogs, cogs_source} for one SKU, from the one resolver. Never raises."""
+    try:
+        from domain import cogs as _c
+        cost, src = _c.resolve(_COGS_OVERRIDE,
+                               str(_state.get("active_account_id", "") or ""),
+                               str(sku or ""))
+        return {"cogs": cost, "cogs_source": src}
+    except Exception:
+        return {"cogs": None, "cogs_source": ""}
 
 
 
@@ -1331,8 +1357,18 @@ _APLUS_CACHE = {}  # key "accountid::MKT" -> {"ts":epoch, "by_asin":{asin:[docs]
 _APLUS_TTL = 1800  # 30 min. A+ content changes rarely and each refresh is 1+N API calls.
 _LIVE_CACHE = {}   # key "accountid::MKT" -> {"ts":epoch, "items":[...]}
 _LIVE_TTL = 1800   # 30 min (SP-API is free; matches auto-sync cadence)
-_COGS_OVERRIDE = {}  # {"accountid::SKU": cost} manual overrides (also persisted to file)
-_COGS_FILE = os.path.join(os.path.dirname(os.path.abspath(CONFIG_PATH)), "cogs_overrides.json")
+# {"accountid::SKU": cost} manual overrides. THE STORE'S OWN DICT, not a copy:
+# domain/cogs_store.py owns it, loads into it in place and never replaces it, so
+# every module that has ever been handed a reference is looking at the same one.
+#
+# This used to be a plain {} here, and other modules reached it with
+# `import dashboard as _d`. dashboard.py is the file that is RUN, so its name is
+# "__main__" -- `import dashboard` loaded the file a SECOND time and gave them a
+# different, permanently empty dict. Sales and Orders both did that, so both
+# ignored every manual cost ever typed. See domain/cogs_store.py.
+from domain import cogs_store as _cogs_store_mod
+_COGS_OVERRIDE = _cogs_store_mod.all_overrides()
+_COGS_FILE = _cogs_store_mod.path_for(CONFIG_PATH)
 _IMG_CACHE = {}  # {"accountid::MKT::SKU": {"url":..., "ts":epoch}} live listing main images
 
 # ---- background image-generation jobs (so the UI never blocks) ----
@@ -2352,21 +2388,22 @@ _IMG_TTL = 86400  # 24h — product images rarely change
 
 
 def _load_cogs_overrides():
-    global _COGS_OVERRIDE
-    try:
-        import json as _j, os as _o
-        if _o.path.exists(_COGS_FILE):
-            _COGS_OVERRIDE = _j.load(open(_COGS_FILE, encoding="utf-8"))
-    except Exception:
-        _COGS_OVERRIDE = {}
+    """Load the manual costs. The STORE owns them now -- see domain/cogs_store.py.
+
+    This used to `global _COGS_OVERRIDE` and REBIND it to a freshly loaded dict,
+    which left anything holding the old one pointing at a dict that would never
+    change again. The store loads in place for exactly that reason, and
+    _COGS_OVERRIDE below is a reference to the store's own dict rather than a
+    copy of it -- so there is one set of manual costs in the process, not one per
+    module that went looking.
+    """
+    from domain import cogs_store as _cs
+    _cs.load(CONFIG_PATH)
 
 
 def _save_cogs_overrides():
-    try:
-        import json as _j
-        _j.dump(_COGS_OVERRIDE, open(_COGS_FILE, "w", encoding="utf-8"), indent=2)
-    except Exception:
-        pass
+    from domain import cogs_store as _cs
+    _cs.save(CONFIG_PATH)
 
 
 # MOVED to domain/cogs.py so the Sales dashboard resolves cost the same way this
@@ -3819,17 +3856,36 @@ def build_app(backend=None):
 
         @app.before_request
         def _stamp_ai_account():
-            # Which account is spending. Set per request from the same resolver
-            # every screen uses, so attribution cannot drift from what the header
-            # says. The feature name is added by each AI step itself.
+            # Which account is spending, AND WHICH PRODUCT. Set per request from
+            # the same resolver every screen uses, so attribution cannot drift
+            # from what the header says. The feature name is added by each AI
+            # step itself.
+            #
+            # THE SKU WAS ALWAYS BLANK. It was set to "" here and nothing ever
+            # filled it, so all 46 rows in the ledger named an account and a
+            # feature and no product -- and "which item did that spend go on"
+            # could not be answered at all. Read here, once, rather than in each
+            # of the fourteen routes that generate something: a per-route line is
+            # a per-route chance to forget one, which is the same reasoning the
+            # recorder itself is installed by interception for.
+            sku = ""
+            try:
+                from flask import request as _rq
+                sku = str((_rq.args.get("sku") or "")).strip()
+                if not sku and _rq.method == "POST":
+                    b = _rq.get_json(silent=True) or {}
+                    if isinstance(b, dict):
+                        sku = str(b.get("sku") or "").strip()
+            except Exception:
+                sku = ""
             try:
                 from routes import scope as _scope
                 _aiu.set_context(
                     workspace_id=_scope.workspace_id(
                         state=_state, account=_active_account() or {}),
-                    config_path=CONFIG_PATH, feature="", sku="")
+                    config_path=CONFIG_PATH, feature="", sku=sku)
             except Exception:
-                _aiu.set_context(config_path=CONFIG_PATH)
+                _aiu.set_context(config_path=CONFIG_PATH, sku=sku)
     except Exception as _e1:
         print(f"  (AI usage recording could not start: {_e1})", flush=True)
 

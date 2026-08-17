@@ -551,14 +551,23 @@ def _blind(check, rule, now):
     return age is None or age > rule["stale_after_hours"] * 60.0
 
 
-def decide(current, pairs, rule=None, now=None):
+def decide(current, pairs, rule=None, now=None, listing_state=None):
     """What should happen to this listing. Never raises, never pushes anything.
 
     `current` is what Amazon has now: {price, quantity, lead_days}.
     `pairs` is [(source, latest_check), ...] for one SKU.
+    `listing_state` is 'gone' when Amazon no longer has the SKU, 'ok' when it
+    does, and None when nobody has looked.
 
     Returns a decision dict carrying its own justification, which is what gets
     written to sourcing_actions and read back weeks later.
+
+    EVERY RULE HERE IS PER SKU, NEVER PER ASIN, and that is deliberate: one ASIN
+    can carry several of our SKUs -- bought from different suppliers, at
+    different costs, with different handling times -- so a decision made for the
+    ASIN would price all of them from one of their costs. The enrolment, the
+    sources and the rule are all keyed on sku alone; nothing in this module ever
+    reads an ASIN.
     """
     rule = rule_with_defaults(rule)
     now = now or _dt.datetime.now()
@@ -572,7 +581,24 @@ def decide(current, pairs, rule=None, now=None):
            "rejections": [], "inputs_age_mins": None,
            # None means "no target set", not "meets it" -- the screen has to be
            # able to tell those apart before it draws a flag.
-           "target": None}
+           "target": None,
+           "listing_state": listing_state or ""}
+
+    # THE LISTING IS NOT THERE ANY MORE. Checked before anything else, because
+    # nothing below it can matter: there is no offer to price.
+    #
+    # "the template and the repricer is saving the skus which i have deleted
+    #  already, turn off the auto repricing for that sku and give warning to tell
+    #  that this offer is deleted"
+    #
+    # Measured on jack_uk: six of 67 enrolled SKUs answer 404 GONE from Amazon,
+    # and the repricer was still working out prices for all six.
+    if str(listing_state or "") == "gone":
+        out["blocked_by"] = "this listing is gone from Amazon"
+        out["reason"] = ("Amazon no longer has this SKU, so there is no offer to "
+                         "price. Auto-pricing has been switched off for it. "
+                         "Remove it from the repricer, or relist it on Amazon.")
+        return out
 
     live = [(s, c) for s, c in (pairs or []) if s.get("enabled", 1)]
     if not live:

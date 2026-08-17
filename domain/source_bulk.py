@@ -228,7 +228,7 @@ TEMPLATE_HEADERS = ["sku", "asin", "product", "supplier link"]
 
 
 def template_rows(config_path, workspace_id, marketplace, enrolled,
-                  catalogue=None, current=None):
+                  catalogue=None, sources=None, current=None):
     """The sheet to hand someone, already filled in with what we know.
 
     "when a user wants to update the supplier links through the sheet, give the
@@ -242,22 +242,48 @@ def template_rows(config_path, workspace_id, marketplace, enrolled,
 
     `enrolled` is [sku, ...]. `catalogue` is the shared lookup from
     domain/catalogue.py, so the product name shown here is the same one the rest
-    of the app shows. `current` is {sku: url} for links already attached; those
-    arrive filled in, so someone changing one supplier can see the other rows
-    are done and leave them alone.
+    of the app shows. `sources` is {sku: [url, ...]} for links already attached.
+
+    SEVERAL SUPPLIERS FOR ONE SKU ARE SEVERAL ROWS, not extra columns.
+
+    Asked as: "i dont have an option to add multiple sellers in the template
+    should i just add the columns in the end to put the url of the sources from
+    ebay?" -- no, and columns would not have worked: apply_rows reads ONE link
+    column and _pick takes the first that matches, so a second "link 2" column
+    would have been ignored in silence.
+
+    Rows always worked. ensure_source ADDS a supplier rather than replacing one,
+    so two rows carrying the same SKU and different links give that SKU two
+    sources -- which is what the repricer then compares to find the cheapest.
+    Nothing said so, which is the actual gap.
+
+    So the sheet now shows EVERY source a SKU already has, one per row, and
+    leaves a blank row under each SKU to add another. Copy that blank row as
+    many times as there are suppliers.
 
     A row whose link comes back unchanged is recognised as already attached and
     nothing happens to it, so uploading an untouched template is a no-op.
     """
     from domain import catalogue as _cat
     idx = catalogue if catalogue is not None else {}
-    cur = current or {}
+    # `current` is the older one-url-per-sku shape, still accepted so an existing
+    # caller does not break.
+    srcs = dict(sources or {})
+    for k, v in (current or {}).items():
+        srcs.setdefault(k, [v] if v else [])
     out = []
     for sku in enrolled:
         s = str(sku or "").strip()
         if not s:
             continue
         got = _cat.look(idx, s)
+        have = [u for u in (srcs.get(s) or []) if str(u or "").strip()]
+        # One row per supplier it already has, then one blank to add another.
+        for u in have:
+            out.append([s,
+                        got.get("asin") or _link._asin_from_sku(s),
+                        got.get("title") or "",
+                        str(u)])
         out.append([s,
                     # OUR ASIN if the catalogue knows it. Falling back to the
                     # one inside the SKU is falling back to the COMPETITOR's
@@ -268,11 +294,18 @@ def template_rows(config_path, workspace_id, marketplace, enrolled,
                     # copy of the pattern (Rule 12).
                     got.get("asin") or _link._asin_from_sku(s),
                     got.get("title") or "",
-                    str(cur.get(s) or "")])
-    # ROWS THAT STILL NEED A LINK FIRST. The sheet is opened to do a job, and
-    # the blank ones are that job -- putting them at the bottom of forty
-    # already-filled rows is how they get missed.
-    out.sort(key=lambda r: (bool(r[3]), (r[2] or "").lower(), r[0]))
+                    ""])
+    # SKUs WITH NO SUPPLIER AT ALL FIRST, and each SKU's rows kept together.
+    #
+    # The sheet is opened to do a job, and the SKUs with nothing attached are
+    # that job -- putting them under forty already-filled rows is how they get
+    # missed. Within a SKU the filled rows come before its blank one, so the
+    # blank always sits directly under the suppliers it would be joining.
+    have_any = {}
+    for r in out:
+        have_any[r[0]] = have_any.get(r[0], False) or bool(r[3])
+    out.sort(key=lambda r: (have_any.get(r[0], False), (r[2] or "").lower(),
+                            r[0], not bool(r[3])))
     return out
 
 

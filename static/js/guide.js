@@ -73,6 +73,71 @@ const GUIDES = {
       + "progress into the page, so you can leave it and come back.",
     ],
   },
+
+  // "you said the variations tab is working correctly but i am not able to
+  //  understand how to create variations using it. give me a how this page
+  //  works button on the variations page"
+  //
+  // Written from what the tool actually does, having merged a real family with
+  // it: listing/variations.py decides, routes/variations_routes.py sends, and
+  // the parent is created before any child is touched.
+  variations: {
+    title: "Variations — how to join products into one listing",
+    lead: "A variation family is several products shown on ONE Amazon page with "
+        + "a picker — Black or Green, Small or Large. This screen builds one out "
+        + "of listings you already have live. Nothing is sent until the last "
+        + "step, and every check happens before it.",
+    steps: [
+      {n: "1", h: "Pick the products that belong together",
+       b: "The list is this account's LIVE listings — a family is built out of "
+        + "products Amazon already has, so a draft cannot be in one until it has "
+        + "been published.<br><br>"
+        + "Tick two or more. They must be the same product type, the same brand, "
+        + "and genuinely differ in one respect: two listings both in “Large” "
+        + "under a SIZE grouping are not a family, they are two listings that "
+        + "compete with each other.<br><br>"
+        + "Deciding which products are the same thing in different colours is a "
+        + "judgement you make by looking, which is why the pictures are there."},
+      {n: "2", h: "Choose what makes them different",
+       b: "The dropdown lists only the groupings <b>this product type actually "
+        + "allows</b>, read from Amazon's own schema. Deprecated ones are left "
+        + "out, and so are the ones that name an attribute the type does not "
+        + "have — those are shown greyed with the reason, because a grouping "
+        + "vanishing from a list looks like the app lost it.<br><br>"
+        + "COLOR groups by colour, SIZE by size, and a grouping written with a "
+        + "slash like SIZE/PATTERN needs BOTH set on every product."},
+      {n: "3", h: "Name the parent",
+       b: "The parent is a listing with its own SKU that <b>nobody can buy</b>. "
+        + "It carries the title and the pictures the family shows in search; the "
+        + "children keep the prices and the stock.<br><br>"
+        + "A SKU is permanent on Amazon, so the suggested one is only a "
+        + "suggestion — give it a name you will recognise in a year."},
+      {n: "4", h: "Read the preview, then create it",
+       b: "The preview <b>is</b> the payload: the same code builds what you see "
+        + "and what gets sent, so they cannot drift apart. It lists every reason "
+        + "the merge would be refused, in plain words, and the button stays "
+        + "disabled until there are none.<br><br>"
+        + "It also says which details the parent <b>inherits</b> — everything the "
+        + "children agree on, like brand and country of origin — and which it "
+        + "<b>borrows</b> from one child, because two products written separately "
+        + "never share a description. That is a real choice about what shoppers "
+        + "read, so it names the product it took them from.<br><br>"
+        + "<b>Create the family on Amazon</b> makes the parent first and only "
+        + "joins the children once Amazon has accepted it. If the parent is "
+        + "refused, nothing else is sent."},
+    ],
+    notes: [
+      "Amazon accepts a half-formed family WITHOUT COMPLAINING and the products "
+      + "then quietly stop appearing in search. That is why everything is "
+      + "checked before anything is sent, and why the parent goes up first.",
+      "A product can belong to one family only. One that already has a parent is "
+      + "refused, and says which family it is in.",
+      "Amazon publishes variations in its own time — a few minutes is normal "
+      + "before the picker appears on the product page.",
+      "Splitting a family up again afterwards is fiddly, so it is worth being "
+      + "sure before you press the last button.",
+    ],
+  },
 };
 
 function openGuide(key){

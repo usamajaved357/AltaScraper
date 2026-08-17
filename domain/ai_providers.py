@@ -91,6 +91,29 @@ def _feature(name):
     _AI_CONTEXT["feature"] = name
 
 
+def _count_images(payload):
+    """How many pictures came back, WHICHEVER endpoint answered.
+
+    OpenRouter returns them two different ways and only one was being counted:
+
+        /chat/completions   choices[].message.images[]
+        /images             data[].b64_json  or  data[].url
+
+    The second is what generate_image uses, so every real image generation was
+    recorded as zero pictures -- and priced at zero, since an image reply carries
+    no token usage either. Both shapes are counted here, in one place, so a third
+    endpoint is one line rather than another silent zero.
+    """
+    n = 0
+    p = payload or {}
+    for ch in (p.get("choices") or []):
+        n += len(((ch or {}).get("message") or {}).get("images") or [])
+    for d in (p.get("data") or []):
+        if isinstance(d, dict) and (d.get("b64_json") or d.get("url")):
+            n += 1
+    return n
+
+
 def _record_openrouter(body, payload, ok=True, error="", ms=0):
     """Log one OpenRouter call against whatever context was set. Never raises."""
     try:
@@ -100,22 +123,41 @@ def _record_openrouter(body, payload, ok=True, error="", ms=0):
         from domain import ai_usage as _usage
         model = (body or {}).get("model") or ""
         i, o = _usage.tokens_from_openrouter(payload or {})
-        # An image reply carries no token usage; count the pictures instead.
-        n_img = 0
-        for ch in ((payload or {}).get("choices") or []):
-            msg = (ch or {}).get("message") or {}
-            n_img += len(msg.get("images") or [])
-        _usage.record(cp, feature=_AI_CONTEXT.get("feature") or "unknown",
+        n_img = _count_images(payload)
+        _usage.record(cp, feature=(_AI_CONTEXT.get("feature")
+                                   or _usage.unnamed_feature()),
                       provider="openrouter", model=model,
                       workspace_id=_AI_CONTEXT.get("workspace_id") or "",
                       input_tokens=i, output_tokens=o, images=n_img,
                       kind=("image" if n_img else "text"),
+                      # OpenRouter's own figure where it gave one -- the only
+                      # number that can be right for a model our price table has
+                      # never heard of, which is how an image came to be recorded
+                      # at no cost at all.
+                      cost_usd=_usage.cost_from_openrouter(payload),
                       ok=ok, error=error, sku=_AI_CONTEXT.get("sku") or "", ms=ms)
     except Exception:
         pass
 
 
 def _post(url, config, body, timeout=120):
+    """POST to OpenRouter and RECORD IT, whichever endpoint it was.
+
+    THE IMAGES WERE NEVER COUNTED. This recorded only when the url contained
+    "chat/completions", and image generation posts to /images -- so every
+    picture the app has ever made was missing from the ledger entirely. The
+    reading, the thinking and the prompt-writing around each image were all
+    logged; the expensive part, the generation itself, was not.
+
+    Measured on the live ledger before this change: 46 rows, of which
+    images = 0 on every single one, and no row anywhere with the feature
+    "image: generate" -- which _feature() sets at the top of generate_image.
+
+    Reported as: "ai spend is also not reflecting correct data ... if images are
+    created or any other feature is used which caused ai to use credits it
+    should be recorded accurately where spent went, to which feature which
+    account".
+    """
     _t0 = time.time()
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                  headers=_headers(config), method="POST")
@@ -125,12 +167,10 @@ def _post(url, config, body, timeout=120):
     except Exception as e:
         # A failed call still spent its input tokens, and a month of retries
         # must not look free.
-        if "chat/completions" in str(url):
-            _record_openrouter(body, None, ok=False, error=str(e)[:200],
-                               ms=int((time.time() - _t0) * 1000))
+        _record_openrouter(body, None, ok=False, error=str(e)[:200],
+                           ms=int((time.time() - _t0) * 1000))
         raise
-    if "chat/completions" in str(url):
-        _record_openrouter(body, payload, ms=int((time.time() - _t0) * 1000))
+    _record_openrouter(body, payload, ms=int((time.time() - _t0) * 1000))
     return payload
 
 

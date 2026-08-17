@@ -73,15 +73,27 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return acc, wsid, mkt
 
     def _cogs_overrides():
-        """The manual COGS overrides dashboard.py holds, if it is loaded.
+        """The manual COGS overrides, from the store that owns them.
 
         Read through rather than copied: the overrides are one dict, owned in one
         place, and a second copy here would go stale the moment someone typed a
         cost on the listings screen.
+
+        IT USED TO SAY `import dashboard as _d` AND GET AN EMPTY DICT. dashboard.py
+        is the file that is RUN, so its module name is "__main__" -- importing
+        "dashboard" loads the file a second time and hands back a separate module
+        whose _COGS_OVERRIDE nothing ever fills.
+
+        MEASURED on jack_uk: a cost typed on the listings screen reached the
+        Repricer and the cost sheet and did NOT reach this page's coverage figure
+        -- 46 SKUs known before and 46 after, where the same call made in-process
+        answers 47. So every manual cost was invisible here, silently, and the
+        profit figures on this screen were computed as though it had never been
+        typed.
         """
         try:
-            import dashboard as _d
-            return getattr(_d, "_COGS_OVERRIDE", None)
+            from domain import cogs_store as _cs
+            return _cs.all_overrides(CONFIG_PATH)
         except Exception:
             return None
 

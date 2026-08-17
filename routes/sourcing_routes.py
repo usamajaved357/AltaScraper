@@ -91,6 +91,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             mkt = _only_marketplace_with_data(wsid)
         return wsid, mkt
 
+    def _where_acc():
+        """_where(), plus the account record itself, for the routes that call Amazon."""
+        wsid, mkt = _where()
+        cfg = _cfg() if callable(_cfg) else (_cfg or {})
+        acc = next((a for a in (cfg.get("accounts") or [])
+                    if str(a.get("id") or "") == str(wsid)), None) \
+              or (_active_account() or {})
+        return acc, wsid, mkt
+
     def _only_marketplace_with_data(wsid):
         """The marketplace this account has cached listings for, if just one.
 
@@ -171,6 +180,64 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                             _repo.rule_for(CONFIG_PATH, wsid, mkt, "")),
                         "defaults": _sourcing.DEFAULT_RULE})
 
+    @app.route("/sourcing/check_listings", methods=["POST"])
+    def sourcing_check_listings():
+        """Ask Amazon which enrolled SKUs it still has, and disarm the ones it does not.
+
+        "the template and the repricer is saving the skus which i have deleted
+         already, turn off the auto repricing for that sku and give warning to
+         tell that this offer is deleted"
+
+        One getListingsItem per enrolled SKU, so this is a deliberate act rather
+        than something that runs on every page draw. Measured on jack_uk: six of
+        67 answer 404 GONE -- 1U-OMQC-HX2V, DigitalPressurGauge_B0H227VG3N,
+        EO-GXWE-XOXU, TyrePump_B0H1XFJRFD, WeightMachine_B0H1SFBDNT and
+        showerhead_B0H2JWJXN4 -- and the repricer was working out prices for all
+        six.
+
+        A SKU found gone is switched to dry run in the same statement that marks
+        it, so it cannot be pushed to between the two. Its enrolment row, its
+        sources and its history are KEPT: they are worth more than the row costs,
+        and it may be relisted tomorrow.
+        """
+        from api import amazon_listings as _al
+        from domain import accounts as _acc_mod
+        acc, wsid, mkt = _where_acc()
+        rows = _repo.enrolled(CONFIG_PATH, wsid, mkt)
+        creds = _acc_mod.account_creds(acc or {})
+        mid = _acc_mod.marketplace_id(mkt)
+        seller = str((acc or {}).get("seller_id") or "")
+        if not (seller and mid):
+            return jsonify({"ok": False, "error": (
+                "this account has no seller id or marketplace, so Amazon cannot "
+                "be asked about its listings")}), 400
+        gone, ok, unreadable = [], [], []
+        for r in rows:
+            sku = str(r.get("sku") or "")
+            if not sku:
+                continue
+            got = _al.get_item(creds, mkt, seller, sku, mid)
+            if got["status"] == _al.GONE:
+                _repo.set_listing_state(CONFIG_PATH, wsid, mkt, sku, _repo.GONE)
+                gone.append(sku)
+            elif got["status"] == _al.OK:
+                _repo.set_listing_state(CONFIG_PATH, wsid, mkt, sku, _repo.LIVE_OK)
+                ok.append(sku)
+            else:
+                # "Amazon would not answer" is NOT "the listing is gone". Marking
+                # it gone on a timeout would disarm a perfectly good SKU.
+                unreadable.append(sku)
+        note = ("%d still on Amazon, %d gone" % (len(ok), len(gone)))
+        if gone:
+            note += (" — auto-pricing is now off for %s" % ", ".join(gone[:6])
+                     + (" and others" if len(gone) > 6 else ""))
+        if unreadable:
+            note += (". %d could not be read and were left exactly as they were"
+                     % len(unreadable))
+        return jsonify({"ok": True, "checked": len(rows), "gone": gone,
+                        "still_there": len(ok), "unreadable": unreadable,
+                        "note": note})
+
     @app.route("/sourcing/template.csv")
     def sourcing_template():
         """The supplier-link sheet, already filled in with what we know.
@@ -188,28 +255,49 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         """
         from domain import catalogue as _cat
         wsid, mkt = _where()
-        enrolled = [r["sku"] for r in _repo.enrolled(CONFIG_PATH, wsid, mkt)]
+        rows_e = _repo.enrolled(CONFIG_PATH, wsid, mkt)
+        # A SKU AMAZON NO LONGER HAS IS NOT WORTH A SUPPLIER LINK.
+        #
+        # "the template and the repricer is saving the skus which i have deleted
+        #  already". Left out of the sheet entirely rather than listed with a
+        #  note: this sheet exists to be filled in, and a row you must not fill
+        #  in is a row that wastes the reader's attention. They are still on the
+        #  Repricer screen, marked, which is where the decision to remove them
+        #  belongs.
+        enrolled = [r["sku"] for r in rows_e
+                    if str(r.get("listing_state") or "") != _repo.GONE]
+        dropped = [r["sku"] for r in rows_e
+                   if str(r.get("listing_state") or "") == _repo.GONE]
 
         # WHAT IS ALREADY ATTACHED, so a row that is done looks done. Someone
         # changing one supplier should be able to see the other forty are
         # already filled in and leave them alone, rather than wondering whether
         # a blank column means "none" or "we did not look".
-        current = {}
+        # EVERY supplier a SKU has, not just the first. A SKU can have several --
+        # that is the whole point of the repricer, which compares them and takes
+        # the cheapest usable one -- and the sheet showing only one made it look
+        # as though only one were possible. Asked as "i dont have an option to add
+        # multiple sellers in the template".
+        sources = {}
         for sku in enrolled:
             urls = [str(s.get("url") or "")
                     for s, _c in _repo.pairs_for(CONFIG_PATH, wsid, mkt, sku)
                     if s.get("url")]
             if urls:
-                current[sku] = urls[0]
+                sources[sku] = urls
 
         rows = _bulk.template_rows(CONFIG_PATH, wsid, mkt, enrolled,
                                    catalogue=_cat.index(CONFIG_PATH, wsid, mkt),
-                                   current=current)
+                                   sources=sources)
         body = _bulk.to_csv(_bulk.TEMPLATE_HEADERS, rows)
         name = "supplier-links-%s-%s.csv" % (wsid or "account", mkt or "")
-        return Response(body, mimetype="text/csv; charset=utf-8",
-                        headers={"Content-Disposition":
-                                 'attachment; filename="%s"' % name})
+        hdrs = {"Content-Disposition": 'attachment; filename="%s"' % name}
+        if dropped:
+            # Said in the reply as well as on the screen, so a caller that is not
+            # the browser is told too. A header rather than a row in the sheet:
+            # a note inside a CSV becomes a row somebody uploads back.
+            hdrs["X-Alta-Skipped-Deleted"] = str(len(dropped))
+        return Response(body, mimetype="text/csv; charset=utf-8", headers=hdrs)
 
     @app.route("/sourcing/log")
     def sourcing_log():
