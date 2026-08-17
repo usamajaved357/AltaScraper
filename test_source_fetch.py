@@ -113,7 +113,11 @@ check("no estimate at all",
 
 print("\n=== ended, failed, and the difference between them ===")
 calls = {}
-def fake_get_item(url, app, cert, marketplace=None):
+def fake_get_item(url, app, cert, marketplace=None, postcode="", timeout=15):
+    # postcode and timeout accepted because the real one takes them. A stub with
+    # a narrower signature than the thing it stands in for turns a working call
+    # into a TypeError -- which is a test failure that says nothing about the app.
+    calls["postcode"] = postcode
     return calls["next"]
 E_real = E.get_item
 SF._ebay.get_item = fake_get_item
@@ -224,11 +228,21 @@ check("a SKU with no override just gets the default",
 
 print("\n=== the sweep only touches SKUs someone enrolled ===")
 seen = []
-def fake_check(source, app_id="", cert_id="", now=None, marketplace=None):
+def fake_check(source, app_id="", cert_id="", now=None, marketplace=None,
+               postcode=""):
     seen.append(source["label"])
+    # THE SWEEP MUST PASS A DESTINATION. eBay returns no shipping options at all
+    # without one, so a sweep that forgot it would read every source as having
+    # unknown postage -- and unknown postage means the source is skipped.
+    seen_postcode.append(postcode)
     return {"status": S.FETCHED, "price": 8.0, "shipping": 1.5, "currency": "GBP",
             "in_stock": True, "dispatch_days": 3, "error": "",
+            "carrier": "Royal Mail Tracked 48",
+            "postage_text": "1.50 GBP Royal Mail Tracked 48",
+            "delivery_min": "2026-08-17", "delivery_max": "2026-08-20",
+            "delivery_postcode": "B11AA",
             "checked_at": "2026-08-14 12:00:00"}
+seen_postcode = []
 _real_check = SF.check_source
 SF.check_source = fake_check
 
@@ -240,6 +254,15 @@ check("  one SKU", res["skus"], 1)
 check("  the un-enrolled SKU was never contacted",
       "should never be read" in seen, False)
 check("  all readable", res["readable"], 2)
+# A DESTINATION ON EVERY CHECK. eBay returns no shippingOptions at all without
+# one -- measured on six live sources, five came back with no postage figure and
+# the sixth was quoted 20.04 USD of international postage. An unknown postage
+# means the source is skipped, so a sweep that forgot the postcode would silently
+# stop repricing most of the catalogue.
+truthy("every check was given a destination postcode",
+       seen_postcode and all(seen_postcode))
+check("  and it is the one for this marketplace", sorted(set(seen_postcode)),
+      ["B1 1AA"])
 
 print("  -- a disabled source is left alone --")
 seen.clear()

@@ -180,12 +180,21 @@ def record_check(config_path, source_id, check):
         qty = None
     conn.execute(
         "INSERT INTO sourcing_checks (source_id, checked_at, status, price, shipping, "
-        "currency, in_stock, dispatch_days, error, available_qty) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "currency, in_stock, dispatch_days, error, available_qty, "
+        # HOW IT GETS HERE AND WHEN. Stored with the reading and not looked up
+        # later: a delivery estimate is only true for the day it was made, so it
+        # belongs to this check the same way the price does.
+        "carrier, postage_text, delivery_min, delivery_max, delivery_postcode) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (source_id, check.get("checked_at") or _now(), check.get("status"),
          check.get("price"), check.get("shipping"), check.get("currency"),
          (None if ins is None else (1 if ins else 0)),
-         check.get("dispatch_days"), (check.get("error") or "")[:400], qty))
+         check.get("dispatch_days"), (check.get("error") or "")[:400], qty,
+         (check.get("carrier") or "")[:80],
+         (check.get("postage_text") or "")[:120],
+         (check.get("delivery_min") or "")[:10],
+         (check.get("delivery_max") or "")[:10],
+         (check.get("delivery_postcode") or "")[:12]))
     conn.commit()
 
 

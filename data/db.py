@@ -653,6 +653,28 @@ _ADDED_COLUMNS = [
     # better one. Everything the report uniquely has -- sessions, page views, buy
     # box -- is untouched by this.
     ("sales_daily", "orders_source", "TEXT"),
+    # HOW IT GETS HERE AND WHEN, which is what the owner reads off the eBay page
+    # before deciding which link to buy from:
+    #
+    #   "postage free Royal Mail Tracked 48" and "estimated between Wed 19 Aug
+    #    and Mon 24 Aug to postal code BH166FH"
+    #
+    # All of it comes back on the same getItem call the price already came from
+    # (probe_ebay_delivery.py, 17 Aug 2026, item 186107152290) and all of it was
+    # being thrown away. carrier is eBay's shippingServiceCode -- the NAMED
+    # service, "Evri Tracked", which is the line a person actually reads; the
+    # bare shippingCarrierCode is "Hermes" and means less. postage_text is the
+    # sentence, kept whole rather than rebuilt in three screens from the parts.
+    ("sourcing_checks", "carrier", "TEXT"),
+    ("sourcing_checks", "postage_text", "TEXT"),
+    ("sourcing_checks", "delivery_min", "TEXT"),      # YYYY-MM-DD
+    ("sourcing_checks", "delivery_max", "TEXT"),      # YYYY-MM-DD
+    # THE POSTCODE THE ESTIMATE WAS COMPUTED TO. Not decoration: with no postcode
+    # eBay answered "by 21 Aug" for the free service and "by 24 Aug" once
+    # BH166FH was sent -- three days apart on the same option, measured. A
+    # delivery date whose destination is unknown cannot be promised to a buyer,
+    # so the destination is stored beside it.
+    ("sourcing_checks", "delivery_postcode", "TEXT"),
 ]
 
 
