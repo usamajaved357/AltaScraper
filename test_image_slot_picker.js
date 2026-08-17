@@ -105,5 +105,22 @@ truthy("  and keeping Amazon's own words", /IMGLIB\.slotsErr = \(j && \(j\.error
 truthy("redrawing does not throw you out of an open folder",
        /if\(document\.getElementById\("il_pushstatus"\)\) _ilDraw\(\);/.test(LIB));
 
+console.log("\n=== an image can be looked at properly ===");
+// "in the image library there is no previewer of the images which opens the
+//  images over the screen like in drive when clicked over the image"
+// A 4096px image was being judged in a 120px tile.
+truthy("clicking a tile opens it", /onclick="ilPreview\(/.test(LIB));
+truthy("  full size, over everything", /max-width:94vw;max-height:82vh/.test(LIB));
+truthy("  with the cursor saying so", /cursor:zoom-in/.test(LIB));
+// The one thing a viewer must not do is vanish where you click to look closer.
+truthy("clicking the picture itself does not close it",
+       /if\(ev\.target === el\) ilPreviewClose\(\);/.test(LIB));
+truthy("Escape closes the preview and stops there",
+       /ev\.stopPropagation\(\);\s*\n\s*ilPreviewClose\(\);/.test(LIB));
+truthy("  so the library behind it stays open",
+       /reach the library behind it and shut both/.test(LIB));
+truthy("the key handler is removed when it closes",
+       /document\.removeEventListener\("keydown", _ilPreviewKey\)/.test(LIB));
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

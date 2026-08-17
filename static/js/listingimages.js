@@ -450,7 +450,10 @@ function _ilDraw(){
       h += '<div style="border:1px solid ' + (isMain ? "var(--ok)" : "var(--line)")
          + ';border-radius:8px;overflow:hidden;background:var(--panel)">'
          + '<img src="' + _ilEsc(f.url) + '" loading="lazy" '
-         + 'style="width:100%;height:120px;object-fit:contain;background:#0d1220;display:block">'
+         + 'onclick="ilPreview(' + jsArg(f.url) + ',' + jsArg(f.name) + ')" '
+         + 'title="Click to view full size" '
+         + 'style="width:100%;height:120px;object-fit:contain;background:#0d1220;'
+         + 'display:block;cursor:zoom-in">'
          + '<div style="padding:6px 7px">'
          + '<div class="cc" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" '
          + 'title="' + _ilEsc(f.name) + '">' + _ilEsc(f.name) + '</div>'
@@ -576,6 +579,73 @@ function ilUpload(inp){
 // and the rules differ per slot: a lifestyle shot is fine as PT3 and gets the
 // listing suppressed as MAIN. The slots come from the product type's own schema,
 // with what is already in each, so replacing one is never a surprise.
+// SEEING THE IMAGE, FULL SIZE.
+//
+// "in the image library there is no previewer of the images which opens the
+//  images over the screen like in drive when clicked over the image"
+//
+// The tiles are 120px tall and object-fit:contain, so a 4096px image was being
+// judged at three per cent of its size -- which is no way to decide whether a
+// picture is good enough to put on a listing. Clicking one now opens it over
+// everything at its real proportions.
+//
+// Its own layer above the library modal rather than a third modal: this has to
+// open FROM a modal that is already open, and stacking modals means the Escape
+// key, the backdrop click and the scroll lock all have to agree about which one
+// is on top.
+let _IL_PREVIEW = null;
+
+function ilPreview(url, name){
+  if(!url) return;
+  ilPreviewClose();
+  const el = document.createElement("div");
+  el.id = "ilpreview";
+  el.style.cssText = "position:fixed;inset:0;z-index:400;background:rgba(6,9,15,.92);"
+    + "display:flex;align-items:center;justify-content:center;flex-direction:column;"
+    + "gap:10px;padding:26px;cursor:zoom-out";
+  el.innerHTML =
+      '<img src="' + _ilEsc(url) + '" alt="' + _ilEsc(name || "") + '" '
+    + 'style="max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px;'
+    + 'background:#0d1220;box-shadow:0 18px 60px rgba(0,0,0,.6);cursor:default">'
+    + '<div style="display:flex;gap:8px;align-items:center;max-width:94vw">'
+    + '<span class="cc" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;'
+    + 'white-space:nowrap">' + _ilEsc(name || "") + '</span>'
+    + '<button class="db-chip" onclick="event.stopPropagation();ilDownloadOne('
+    + jsArg(url) + ',' + jsArg(name || "image") + ')">'
+    + '<i class="ti ti-download"></i> Download</button>'
+    + '<button class="db-chip" onclick="event.stopPropagation();window.open('
+    + jsArg(url) + ',\'_blank\')"><i class="ti ti-external-link"></i> Open</button>'
+    + '<button class="db-chip" onclick="ilPreviewClose()">Close</button>'
+    + '</div>';
+  // Clicking the picture itself must not close it -- that is where a person
+  // clicks to look closer, and having it vanish under the cursor is the one
+  // thing a viewer must not do.
+  el.addEventListener("click", function(ev){
+    if(ev.target === el) ilPreviewClose();
+  });
+  document.body.appendChild(el);
+  _IL_PREVIEW = el;
+  document.addEventListener("keydown", _ilPreviewKey);
+}
+
+function _ilPreviewKey(ev){
+  // Escape closes the PREVIEW and stops there. Without this the same key would
+  // reach the library behind it and shut both, so a glance at one picture would
+  // cost you the panel you were working in.
+  if(ev.key === "Escape"){
+    ev.stopPropagation();
+    ilPreviewClose();
+  }
+}
+
+function ilPreviewClose(){
+  document.removeEventListener("keydown", _ilPreviewKey);
+  if(_IL_PREVIEW && _IL_PREVIEW.parentNode){
+    _IL_PREVIEW.parentNode.removeChild(_IL_PREVIEW);
+  }
+  _IL_PREVIEW = null;
+}
+
 // THE SLOT IS A CHOICE YOU MAKE, NOT A QUESTION YOU ARE ASKED AFTERWARDS.
 //
 // This used to be: press "Send as…", wait while the listing is read, then pick

@@ -46,6 +46,28 @@ check("the predicate is not run twice to build the same two sets",
 console.log("\n=== and the LIVE tile cannot exceed the total beside it ===");
 truthy("in the live view they count the same set", /c\.LIVE = total;/.test(L));
 
+console.log("\n=== the tiles answer what the view can answer ===");
+// "45 total listings and 45 live listings and 0 ready to send listings, do it
+//  makess sense?" It did not: on the live view Total and Live are the same
+// number by definition, and a listing already on Amazon can never be "ready to
+// submit".
+truthy("the live view has its own tiles", /if\(_draftsView\)\{/.test(L));
+truthy("  Total and Live are no longer both shown",
+       !/tile\(c\.LIVE, "Live", "live"\)/.test(L));
+truthy("  nor Ready to submit on a list of published listings",
+       !/tile\(c\.APPROVED \+ c\.API_READY, "Ready to submit", "approved"\)[\s\S]{0,200}tile\(c\.LIVE/.test(L));
+truthy("it counts what Amazon is not showing", /"Not showing"/.test(L));
+truthy("  testing inactive before active, since one contains the other",
+       /indexOf\("inactive"\) >= 0/.test(L));
+truthy("it counts listings with no cost, which is what breaks profit",
+       /"No cost set"/.test(L));
+truthy("and listings that have run out", /"Out of stock"/.test(L));
+// A blank quantity is not a zero quantity.
+truthy("  an unknown quantity is not counted as zero",
+       /q !== undefined && q !== null && q !== "" && Number\(q\) === 0/.test(L));
+truthy("the drafts view keeps the tiles that suit it",
+       /tile\(c\.HOLD \+ c\.ERROR, "Blocked or errored", "holds"\)/.test(L));
+
 console.log("\n=== one group, not two ===");
 truthy("the two sub-captions are gone", !/const _amzSub/.test(M));
 truthy("  including the one that was a paragraph",
