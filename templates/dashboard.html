@@ -145,7 +145,12 @@
     <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> Listings</div>
     <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
     <div class="navitem" data-sec="setup" id="nav_setup" onclick="navTo('setup')"><i class="ti ti-settings"></i> Brand setup</div>
-    <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-table"></i> Account &amp; sheets</div>
+    <!-- Called "Account & sheets" while a spreadsheet WAS the store. It is not:
+         listings, prices, sales and finance are in this app's own database, and
+         a sheet is now only an optional place to import products FROM. A menu
+         item named after it says the opposite. Reported as "why do i still see
+         tabs in the listings page when i am not using any sheets". -->
+    <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-settings-cog"></i> Account settings</div>
     <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
     <div class="slbl">Analytics</div>
     <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
@@ -221,8 +226,8 @@
           <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
           <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
         </span>
-        <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no sheet row needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
-        <button class="ghost" onclick="refreshView()" title="Reload this workspace's sheet rows, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
+        <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
+        <button class="ghost" onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
       </div>
       <div id="gridhow"></div>
       <div id="ws_datasrc" class="datasrc"></div>
@@ -232,7 +237,7 @@
         <span class="spacer"></span>
         <button onclick="bulkStatus('APPROVED')" title="Approve all selected listings"><i class="ti ti-check"></i> Approve</button>
         <button onclick="bulkStatus('HOLD')" title="Put all selected listings on hold"><i class="ti ti-player-pause"></i> Hold</button>
-        <span class="handlingwrap" title="Set the handling time (lead time to ship, in days) on the selected listings — updates the sheet and pushes live to Amazon">
+        <span class="handlingwrap" title="Set the handling time (lead time to ship, in days) on the selected listings — saves it here and pushes the change live to Amazon">
           <i class="ti ti-clock-hour-4"></i>
           <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
           <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>

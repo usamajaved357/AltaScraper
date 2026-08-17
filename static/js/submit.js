@@ -410,7 +410,7 @@ async function loadRows(){
         if(g) g.innerHTML=`<div class="empty" style="border:1px solid var(--red-line);border-radius:10px;background:rgba(255,80,80,.05)">
           <div style="color:var(--red);font-weight:600;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> This workspace has no sheet configured</div>
           <div class="cc" style="max-width:620px;margin:0 auto 12px;line-height:1.5">${esc(j.error||"")}</div>
-          <button class="mktbtn on" onclick="openCurrentAccountSettings()">Open Account &amp; sheets</button></div>`;
+          <button class="mktbtn on" onclick="openCurrentAccountSettings()">Open Account settings</button></div>`;
         const s=document.getElementById("summary"); if(s) s.innerHTML="";
         return;
       }

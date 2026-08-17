@@ -30,7 +30,7 @@ async function bulkHandling(){
 
   const usingAll = !((typeof selectedSkus==="function") && selectedSkus().length);
   if(!confirm(`Set handling time to ${days} day(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
-             +`This updates the sheet AND pushes the change live to Amazon. I'll test on ONE listing first, then do the rest.`)) return;
+             +`This saves it here AND pushes the change live to Amazon. I'll test on ONE listing first, then do the rest.`)) return;
 
   const btn = document.getElementById("handlingbtn");
   if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Testing…"; }
