@@ -180,12 +180,21 @@ def record_check(config_path, source_id, check):
         qty = None
     conn.execute(
         "INSERT INTO sourcing_checks (source_id, checked_at, status, price, shipping, "
-        "currency, in_stock, dispatch_days, error, available_qty) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "currency, in_stock, dispatch_days, error, available_qty, "
+        # HOW IT GETS HERE AND WHEN. Stored with the reading and not looked up
+        # later: a delivery estimate is only true for the day it was made, so it
+        # belongs to this check the same way the price does.
+        "carrier, postage_text, delivery_min, delivery_max, delivery_postcode) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (source_id, check.get("checked_at") or _now(), check.get("status"),
          check.get("price"), check.get("shipping"), check.get("currency"),
          (None if ins is None else (1 if ins else 0)),
-         check.get("dispatch_days"), (check.get("error") or "")[:400], qty))
+         check.get("dispatch_days"), (check.get("error") or "")[:400], qty,
+         (check.get("carrier") or "")[:80],
+         (check.get("postage_text") or "")[:120],
+         (check.get("delivery_min") or "")[:10],
+         (check.get("delivery_max") or "")[:10],
+         (check.get("delivery_postcode") or "")[:12]))
     conn.commit()
 
 
@@ -262,13 +271,59 @@ _RULE_COLS = ("strategy", "require_in_stock", "max_dispatch_days",
               # boxes keeps it. Nothing writes these any more.
               "profit_target_kind", "profit_target_pct",
               # The two boxes. Independent, both applied.
-              "target_margin_pct", "target_roi_pct")
+              "target_margin_pct", "target_roi_pct",
+              # The market price, held against a target that would lower it.
+              "hold_price")
+
+# SETTINGS THAT DELIBERATELY HAVE NO COLUMN, and why. Listed rather than left
+# implicit so the check below can tell "not stored on purpose" apart from
+# "somebody added a setting and forgot the column" -- which is exactly what
+# happened with hold_price: it was accepted by the route, filtered out here, and
+# saved as nothing, while the app answered "saved".
+_RULE_NOT_STORED = frozenset({
+    # The three per-unit costs of the pricing rule. They come from
+    # listing/pricing.py so there is one definition of what a unit costs to sell.
+    "shipping_label", "ads_margin", "min_profit",
+    # Set from the marketplace on every run, never by hand.
+    "currency",
+    # A safety constant, not a per-SKU preference.
+    "confirm_gone_checks",
+})
+
+
+def storable_rule_keys():
+    """(storable, unaccounted) -- every DEFAULT_RULE key, sorted into two piles.
+
+    A setting that is neither a column nor explicitly not-stored is a bug waiting
+    to be found by a user rather than by a test, so it is reported by name.
+    """
+    from domain.sourcing import DEFAULT_RULE
+    unaccounted = sorted(k for k in DEFAULT_RULE
+                         if k not in _RULE_COLS and k not in _RULE_NOT_STORED)
+    return sorted(_RULE_COLS), unaccounted
 
 
 def save_rule(config_path, workspace_id, marketplace, sku, values):
-    """Upsert the account default (sku='') or one SKU's override."""
+    """Upsert the account default (sku='') or one SKU's override.
+
+    A setting that cannot be stored is REFUSED rather than dropped. It used to be
+    filtered out silently: hold_price was accepted by the route, discarded here,
+    and the screen said "saved" while the price went on being cut to the target.
+    """
     conn = _db.get_db(config_path)
     cols = [c for c in _RULE_COLS if c in values]
+    # Only complain about real settings. A stray field from an old client is not
+    # worth failing a save over; a known setting with nowhere to go is.
+    from domain.sourcing import DEFAULT_RULE
+    lost = [k for k in values
+            if k in DEFAULT_RULE and k not in _RULE_COLS
+            and k not in _RULE_NOT_STORED]
+    if lost:
+        raise ValueError(
+            "these settings have no column in sourcing_rules, so saving them "
+            "would silently do nothing: %s. Add them to _RULE_COLS in "
+            "domain/source_repo.py and to _ADDED_COLUMNS in data/db.py."
+            % ", ".join(sorted(lost)))
     if not cols:
         return
     conn.execute(

@@ -79,6 +79,70 @@ async function sourcingLoad(){
   try{ SRC_MASTER = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
   catch(e){ SRC_MASTER = false; }
   sourcingRender(j);
+  // WHICH SKUS HAVE NOWHERE LEFT TO BUY FROM. Fetched after the table is drawn
+  // rather than before it: the alert is important but the table is what the
+  // screen is FOR, and one should not wait on the other.
+  sourcingAlerts();
+}
+
+/* THE OUT-OF-STOCK ALERT.
+ *
+ * "add an alert in the app that whenever all the links go out of stock i should
+ *  receive a notification"
+ *
+ * The wording comes from the server (domain/stock_alerts.sentence) so this banner
+ * and anything else that reports it later cannot say different things.
+ *
+ * Two groups, deliberately not merged. "Every supplier has ended" is a fact and
+ * needs action; "we could not read any of them" is not knowing, and calling that
+ * an emergency is how an alert stops being believed.
+ */
+async function sourcingAlerts(){
+  const host = document.getElementById("srcalerts");
+  if(!host) return;
+  let j;
+  try{ j = await (await fetch(_srcUrl("/sourcing/alerts"))).json(); }
+  catch(e){ host.innerHTML = ''; return; }
+  if(!j || !j.ok){ host.innerHTML = ''; return; }
+  const bad = j.alerts || [], dunno = j.unreadable || [];
+  if(!bad.length && !dunno.length){
+    // Say the good news too, quietly. A blank space cannot be told apart from a
+    // check that never ran.
+    host.innerHTML = '<div class="cc" style="font-size:11px;padding:6px 2px">'
+      + '<i class="ti ti-check"></i> Every enrolled SKU has at least one supplier '
+      + 'that can be bought from.</div>';
+    return;
+  }
+  let h = '';
+  if(bad.length){
+    h += '<div style="border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;'
+      +  'border-radius:6px;padding:9px 11px;margin:4px 0;font-size:11.5px">'
+      +  '<div style="font-weight:600;margin-bottom:4px">'
+      +  '<i class="ti ti-alert-triangle"></i> '
+      +  bad.length + ' SKU' + (bad.length===1?' has':'s have')
+      +  ' nowhere left to buy from</div>';
+    bad.slice(0, 12).forEach(function(a){
+      h += '<div style="padding:2px 0">' + _sesc(a.sentence || a.sku) + '</div>';
+    });
+    if(bad.length > 12){
+      h += '<div class="cc" style="padding:2px 0">…and ' + (bad.length - 12)
+        +  ' more.</div>';
+    }
+    h += '</div>';
+  }
+  if(dunno.length){
+    h += '<div style="border:1px solid #3a3320;background:#241f10;'
+      +  'border-radius:6px;padding:9px 11px;margin:4px 0;font-size:11.5px">'
+      +  '<div style="font-weight:600;margin-bottom:4px">'
+      +  '<i class="ti ti-info-circle"></i> '
+      +  dunno.length + ' SKU' + (dunno.length===1?'':'s')
+      +  ' could not be read — not known whether they can still be bought</div>';
+    dunno.slice(0, 8).forEach(function(a){
+      h += '<div style="padding:2px 0">' + _sesc(a.sentence || a.sku) + '</div>';
+    });
+    h += '</div>';
+  }
+  host.innerHTML = h;
 }
 
 async function sourcingMaster(on){
@@ -119,6 +183,43 @@ async function sourcingMinPrice(sku){
       body:_srcBody({sku:sku, rule:{min_price: v===""? null : parseFloat(v)}})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
     toast("Minimum price saved"); sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
+/* HOLD THE PRICE AT WHAT THE MARKET PAYS.
+ *
+ * "i want the repricer to not to change my price if the margin or roi target set is
+ *  less than my selling price ... but if source price suddenly goes upto 35 pounds
+ *  and i am selling at 40 pounds, so then it should increase my selling price but
+ *  when the source again came back to 12 or 20 pounds my selling price should be
+ *  set to 40 again"
+ *
+ * The prompt spells the whole behaviour out, because the difference between this
+ * and "never sell below" is exactly the thing that would get them confused, and
+ * confusing the two is expensive in both directions.
+ */
+async function sourcingHoldPrice(sku){
+  const cur = (SRC_ROW_RULES[sku]||{}).hold_price;
+  const v = prompt(
+    "Hold " + sku + " at this price.\n\n"
+    + "The repricer will never price BELOW it, even when your ROI or margin target "
+    + "would be happy with less. Use it for products where you know what the market "
+    + "pays.\n\n"
+    + "If the supplier gets dearer and this price stops covering your target, the "
+    + "price still goes UP — it is a floor, not a fixed price, so it can never make "
+    + "you sell at a loss. When the supplier gets cheaper again the price comes "
+    + "straight back to this number.\n\n"
+    + "This is NOT the same as 'never sell below', which is there to stop a misread "
+    + "supplier page pricing you into a loss. Leave empty to stop holding the price.",
+    (cur==null ? "" : String(cur)));
+  if(v===null) return;
+  try{
+    const j = await (await fetch("/sourcing/rules",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({sku:sku, rule:{hold_price: v.trim()==="" ? null : v.trim()}})})).json();
+    if(!j.ok){ toast(j.error||"failed"); return; }
+    toast(v.trim()==="" ? "No longer holding the price" : "Price held at "+v.trim());
+    sourcingLoad();
   }catch(e){ toast(String(e)); }
 }
 
@@ -626,6 +727,52 @@ function _priceBreakdown(b, cur){
 // Every reading we hold for one supplier, newest first. Two readings that never
 // move are how you tell a stable price from a stale one, so failures are listed
 // rather than hidden.
+/* THE DELIVERY LINE, shared with the order details screen.
+ *
+ * "i want to see this information of the source in the repricer as well" -- the
+ * carrier if eBay named one ("Royal Mail Tracked 48"), otherwise the postage as
+ * written, then the estimated delivery window and the postcode it was worked out
+ * for. All of it is stored on the check by domain/source_fetch.py.
+ *
+ * The dates are formatted BY THE SERVER for the order screen (delivery_text from
+ * domain/order_sources.py) but this screen is handed the raw check row, so it
+ * formats them here. Kept to the same shape -- "Tue 18 Aug to Wed 19 Aug" -- so
+ * the two screens read alike.
+ */
+function _srcDeliveryLine(k){
+  if(!k) return '';
+  const bits = [];
+  if(k.postage_text) bits.push(_sesc(k.postage_text));
+  else if(k.carrier) bits.push(_sesc(k.carrier));
+  const win = _srcWindow(k.delivery_min, k.delivery_max);
+  if(win){
+    bits.push('arrives ' + win
+      + (k.delivery_postcode ? ' to ' + _sesc(k.delivery_postcode) : ''));
+  }
+  if(!bits.length) return '';
+  return '<div class="cc" style="font-size:10.5px;padding:0 0 4px 34px">'
+       + bits.join(' · ') + '</div>';
+}
+
+function _srcWindow(lo, hi){
+  const a = _srcDay(lo), b = _srcDay(hi);
+  if(a && b && a !== b) return a + ' to ' + b;
+  return b || a || '';
+}
+
+function _srcDay(iso){
+  // Written out rather than using toLocaleDateString: that follows the browser's
+  // locale, so the same date would read differently on two machines looking at
+  // the same order.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if(!m) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if(isNaN(d)) return '';
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return days[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + mon[d.getUTCMonth()];
+}
+
 function _sourceHistory(hist){
   if(!hist || hist.length<2) return '';
   let h = '<div class="cc" style="font-size:11px;margin:5px 0 2px">'
@@ -770,6 +917,43 @@ async function sourcingCheckListings(){
   }catch(e){ toast(String(e)); }
 }
 
+/* HOW MANY SUPPLIER LINKS THIS SKU HAS, and how many can be bought from.
+ *
+ * Clicking it opens the same panel the "Why?" button does, so the count is both
+ * the answer and the way to see the detail behind it.
+ *
+ * "no supplier" is drawn in amber rather than as a plain zero: a tracked SKU with
+ * nothing attached can never be priced, and that is a job to do rather than a
+ * neutral fact.
+ */
+function _srcCountChip(r, id){
+  const list = r.sources || [];
+  const n = list.length;
+  const live = list.filter(function(s){
+    const k = s.check || {};
+    return k.status === "fetched" && k.in_stock !== false;
+  }).length;
+  if(!n){
+    return '<button class="db-chip" style="background:#3a3320;color:#e8c66a" '
+         + 'onclick="sourcingToggleDetail(' + _sarg(id) + ')" '
+         + 'title="Nothing to buy this from, so no price can be worked out. '
+         + 'Add a supplier link.">no supplier</button>';
+  }
+  // "2 of 3 usable" only when they differ -- saying "1 of 1" on every row is
+  // noise that makes the rows that DO differ harder to spot.
+  const label = (live === n)
+    ? (n + ' supplier' + (n === 1 ? '' : 's'))
+    : (live + ' of ' + n + ' usable');
+  return '<button class="db-chip"'
+       + (live < n ? ' style="background:#3a3320;color:#e8c66a"' : '')
+       + ' onclick="sourcingToggleDetail(' + _sarg(id) + ')"'
+       + ' title="' + (live < n
+            ? (n - live) + ' of this SKU\'s links cannot be bought from right now. '
+            : '')
+       + 'Click to see the links, their prices and their delivery.">'
+       + label + '</button>';
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
@@ -793,7 +977,17 @@ function sourcingRow(r, i){
     h += '<span style="font-size:12px;font-weight:600">&rarr; '+_smoney(d.price)
       +  (d.lead_days!=null ? ' &middot; '+d.lead_days+'d' : '')+'</span>';
   }
-  h += '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
+  // HOW MANY SUPPLIERS THIS SKU HAS, on the row itself.
+  //
+  // "i am not able to see all the source links in the repricer" -- they were all
+  // there, but only inside a panel opened by a button labelled "Why?", which
+  // sounds like it explains the price rather than lists the suppliers. So the
+  // count was invisible: with one link on every SKU there was no way to tell
+  // whether that was all of them or all the screen was showing.
+  //
+  // The chip is the same button, so clicking the count opens the list.
+  h += _srcCountChip(r, id)
+    +  '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
     +  (r.mode==="live"
         ? '<button class="db-chip" style="background:#3a1b1b;color:#e88a8a" '
           + 'onclick="sourcingArm('+_sarg(r.sku)+',false)">Armed &mdash; disarm</button>'
@@ -892,6 +1086,10 @@ function sourcingRow(r, i){
       +  (rej ? '<span class="cc" style="color:#e8c66a">'+_sesc(rej.reason)+'</span>' : '')
       +  '<button class="db-chip" onclick="sourcingRemoveSource('+s.id+')">×</button>'
       +  '</div>';
+    // HOW IT GETS HERE AND WHEN. "i want to see this information of the source in
+    // the repricer as well" -- the same facts, and the same wording, as the order
+    // details screen. The line is only drawn when eBay actually said something.
+    h += _srcDeliveryLine(k);
     h += _sourceHistory(s.history);
   });
   if(!(r.sources||[]).length){
@@ -925,6 +1123,54 @@ function sourcingRow(r, i){
              : '<span class="cc">the flat minimum only</span>')
     +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
     +  (anyT?'Change':'Set')+'</button></div>';
+
+  /* THE MARKET PRICE, HELD.
+   *
+   * "i want the repricer to not to change my price if the margin or roi target set
+   *  is less than my selling price ... this rule is for the items where i am sure
+   *  that this is the market price and this product sells on this price point no
+   *  matter the roi or margin"
+   *
+   * Deliberately its OWN box and not the "never sell below" one above. That one is
+   * loss protection; this one is a commercial decision. Sharing a field would mean
+   * dropping the floor for a clearance also let the repricer undercut the market
+   * price -- see hold_price in domain/sourcing.DEFAULT_RULE.
+   */
+  const hp = rr.hold_price;
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Hold the price at: '
+    +  (hp==null
+        ? '<span class="cc">not held — the price follows the supplier and the target</span>'
+        : '<b>'+_smoney(hp)+'</b>')
+    +  ' <button class="db-chip" onclick="sourcingHoldPrice('+_sarg(r.sku)+')">'
+    +  (hp==null?'Set':'Change')+'</button>'
+    +  '<span class="infodot" title="Use this when you know what a product sells '
+    +  'for. The repricer will never price BELOW this, even if your ROI or margin '
+    +  'target would be satisfied by less — so a 40.00 line stays at 40.00 on a '
+    +  '12.00 cost. If the supplier gets dearer and 40.00 no longer covers your '
+    +  'target, the price still goes UP; when they get cheaper again it comes back '
+    +  'to 40.00. It can never hold a price below what the unit costs to sell.">i</span>'
+    +  '</div>';
+  // WHAT IT IS DOING RIGHT NOW, said on the row rather than left in the log. A
+  // held price with no explanation beside it looks like a repricer that has
+  // stopped working.
+  if(d.held){
+    h += '<div style="font-size:11.5px;margin-top:4px;padding:6px 8px;'
+      +  'border:1px solid #1d3a2a;background:#0f2318;border-radius:6px">'
+      +  '<b>Held at '+_smoney(d.held_at)+'.</b> Your rules and targets would have '
+      +  'priced this at '+_smoney(d.held_over)+' — lower, so it was not used.</div>';
+  }else if(d.hold_exceeded!=null){
+    h += '<div style="font-size:11.5px;margin-top:4px;padding:6px 8px;'
+      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      +  'The supplier has risen, so '+_smoney(d.price)+' is now ABOVE the '
+      +  _smoney(d.hold_exceeded)+' you hold this at. The held price is a floor, '
+      +  'not a fixed price, so it goes up rather than selling at a loss.</div>';
+  }else if(d.hold_capped){
+    h += '<div style="font-size:11.5px;margin-top:4px;padding:6px 8px;'
+      +  'border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;border-radius:6px">'
+      +  'You hold this at '+_smoney(d.hold_capped.hold)+' but the maximum price is '
+      +  _smoney(d.hold_capped.ceiling)+', so the ceiling won. One of the two needs '
+      +  'changing.</div>';
+  }
   if(d.inputs_age_mins!=null){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';

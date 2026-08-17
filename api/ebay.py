@@ -64,6 +64,22 @@ def site_for(marketplace):
     """The eBay site matching an Amazon marketplace, defaulting to the UK."""
     return SITE_FOR.get(str(marketplace or "").upper(), DEFAULT_MARKETPLACE)
 
+
+def country_of(marketplace):
+    """The ISO country for a marketplace: 'UK' or 'EBAY_GB' -> 'GB'.
+
+    An eBay site id is EBAY_GB and an ISO country is GB, and the delivery-estimate
+    header wants the country. Sending it the site id asks eBay about a country
+    called EBAY_GB, which it will answer -- for the wrong place, or not at all.
+    Derived from the site id rather than kept as a third table, so a marketplace
+    added to SITE_FOR is covered without anything else being edited.
+    """
+    site = site_for(marketplace)
+    tail = str(site or "").rsplit("_", 1)[-1].upper()
+    # EBAY_GB -> GB. EBAY_MOTORS and anything else without a two-letter tail is
+    # not a country, so fall back to the UK, which is where this app sources.
+    return tail if len(tail) == 2 and tail.isalpha() else "GB"
+
 # One cache for the whole process. Shared with the generator on purpose: a token
 # is valid for ~2 hours and there is no reason for two callers to fetch two.
 _TOKEN_CACHE = {"token": None, "expires_at": 0.0}
@@ -348,7 +364,8 @@ def item_group(group_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
     return out
 
 
-def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE, timeout=15):
+def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE,
+             timeout=15, postcode=""):
     """Fetch one item. Always returns a dict, never raises.
 
         {"status": OK|GONE|FAILED, "data": {...}|None,
@@ -358,6 +375,18 @@ def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE, timeou
     what eBay uses for an item that has ended -- the Browse API does not serve
     ended listings even though the web page often stays up for another 90 days.
     Every other failure is FAILED, which callers must treat as "no information".
+
+    `postcode` is WHERE IT IS BEING DELIVERED TO, and it changes the answer.
+    eBay computes an estimated delivery date to a destination; with none it
+    answers for some notional buyer. Measured on item 186107152290 (17 Aug 2026,
+    probe_ebay_delivery.py): the free service came back as arriving by 21 August
+    with no postcode and by 24 August once BH166FH was sent. Three days, on the
+    option the app would have costed.
+
+    So it is passed for an order, where the buyer's real postcode is known, and
+    left empty elsewhere -- and when it is empty the caller must not present the
+    delivery date as a promise. It is echoed back by eBay in
+    shipToLocationUsedForEstimate, which is what tells the two apart.
     """
     out = {"status": FAILED, "data": None, "http_code": None, "error": "",
            "item_id": "", "variation_id": ""}
@@ -386,11 +415,22 @@ def get_item(url_or_id, app_id, cert_id, marketplace=DEFAULT_MARKETPLACE, timeou
         return out
 
     def _get(url):
-        req = urllib.request.Request(url, headers={
+        headers = {
             "Authorization":           "Bearer %s" % tok,
             "X-EBAY-C-MARKETPLACE-ID": marketplace,
             "Accept":                  "application/json",
-        })
+        }
+        pc = re.sub(r"\s+", "", str(postcode or "")).upper()
+        if pc:
+            # The country comes from the marketplace, not from a guess: asking
+            # EBAY_GB about a German postcode would be answered, and answered
+            # wrongly. The value is URL-encoded INSIDE the header -- eBay wants
+            # contextualLocation=country%3DGB%2Czip%3DBH166FH, with the = and the
+            # comma escaped, because the header itself uses them as syntax.
+            headers["X-EBAY-C-ENDUSERCTX"] = (
+                "contextualLocation=country%%3D%s%%2Czip%%3D%s"
+                % (country_of(marketplace), urllib.parse.quote(pc)))
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
 

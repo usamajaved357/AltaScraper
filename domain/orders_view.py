@@ -248,6 +248,114 @@ def profit_detail(items, order_total, cost_of, referral_rate=None):
     return out
 
 
+def line_breakdown(items, order_total, cost_of, referral_rate=None):
+    """What each LINE of an order brought in and what came off it.
+
+        "i am not able to see the earnings of each order and not the breakdown of
+         the item that how many are cogs how much fee deducted"
+
+    Returns {lines: [...], totals: {...}}. Every line carries:
+
+        revenue     what the buyer paid for that line
+        cogs        what those units cost, and where that cost came from
+        fee         Amazon's cut, APPORTIONED -- see below
+        profit      revenue - fee - cogs
+        note        why a figure is missing, when one is
+
+    A LINE WITH NO COST STILL GETS A ROW. profit_for withholds the ORDER's profit
+    when any line is uncosted, and rightly -- a total that quietly ignores one
+    product is worse than no total. But that rule made the whole panel go blank,
+    so the one product missing a cost took the other two down with it and the
+    screen could not even say WHICH one was the problem. Here each line answers
+    for itself and names its own gap.
+
+    THE FEE IS APPORTIONED AND SAYS SO. Amazon charges a referral fee per item,
+    but until the finance records arrive we only have a rate against the order
+    total, so each line is given the share of that fee its revenue represents.
+    That is an estimate; `fee_estimated` is True and the screen says so. Once the
+    finance records land, domain/order_finance.py has the real per-order figures.
+    """
+    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
+    its = [i for i in (items or []) if i]
+    total = None
+    try:
+        total = float(order_total) if order_total is not None else None
+    except (TypeError, ValueError):
+        total = None
+
+    # What the lines add up to, used to apportion the fee. NOT the order total:
+    # they can differ (postage, gift wrap, a coupon), and dividing by the wrong
+    # one would hand a line more or less fee than it earned.
+    line_rev = []
+    for it in its:
+        try:
+            rev = float(it.get("price") or 0.0)
+        except (TypeError, ValueError):
+            rev = 0.0
+        line_rev.append(rev)
+    rev_sum = sum(line_rev)
+
+    out, t_rev, t_cogs, t_fee = [], 0.0, 0.0, 0.0
+    any_unknown = False
+    for it, rev in zip(its, line_rev):
+        sku = str(it.get("sku") or "")
+        qty = int(it.get("qty") or 0) or 1
+        cost, src = cost_of(sku) if cost_of else (None, "")
+        cogs = (float(cost) * qty) if cost is not None else None
+        # The share of the order's fee this line accounts for. When the lines add
+        # up to nothing there is nothing to share out, so it stays unknown rather
+        # than being spread evenly over a guess.
+        if total is not None and rev_sum > 0:
+            fee = round(total * rate * (rev / rev_sum), 2)
+        else:
+            fee = None
+        profit = (round(rev - fee - cogs, 2)
+                  if (fee is not None and cogs is not None) else None)
+        if cogs is None:
+            any_unknown = True
+        out.append({
+            "sku": sku, "asin": str(it.get("asin") or ""),
+            "title": str(it.get("title") or ""), "qty": qty,
+            "revenue": round(rev, 2),
+            "unit_cost": (None if cost is None else round(float(cost), 2)),
+            "cogs": (None if cogs is None else round(cogs, 2)),
+            "cogs_source": src or "",
+            "fee": fee, "fee_estimated": True,
+            "profit": profit,
+            "margin_pct": (round(profit / rev * 100, 1)
+                           if (profit is not None and rev) else None),
+            "roi_pct": (round(profit / cogs * 100, 1)
+                        if (profit is not None and cogs) else None),
+            "note": ("" if cost is not None else
+                     "no cost recorded for this SKU — set one on the Costs sheet "
+                     "and this line's profit appears"),
+        })
+        t_rev += rev
+        if cogs is not None:
+            t_cogs += cogs
+        if fee is not None:
+            t_fee += fee
+
+    totals = {
+        "revenue": round(t_rev, 2),
+        "order_total": total,
+        "fees": round(t_fee, 2) if total is not None else None,
+        "fee_rate": rate,
+        # THE COST SO FAR, and whether it is all of it. A partial cost total
+        # presented as the whole is how an order comes to look profitable.
+        "cogs": round(t_cogs, 2),
+        "cogs_complete": not any_unknown,
+        "uncosted_lines": sum(1 for r in out if r["cogs"] is None),
+    }
+    # The order's own profit follows the same all-or-nothing rule as everywhere
+    # else -- profit_for owns it, and is called rather than repeated (Rule 12).
+    p, m, note = profit_for(items, order_total, cost_of, referral_rate)
+    totals["profit"] = p
+    totals["margin_pct"] = m
+    totals["note"] = note
+    return {"lines": out, "totals": totals}
+
+
 def item_summary(items):
     """The one line a row shows about WHAT was bought.
 

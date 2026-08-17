@@ -307,6 +307,30 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             CONFIG_PATH, wsid, mkt, request.args.get("sku") or None,
             int(request.args.get("limit") or 200))})
 
+    @app.route("/sourcing/alerts")
+    def sourcing_alerts():
+        """SKUs with nowhere left to buy from.
+
+        "add an alert in the app that whenever all the links go out of stock i
+         should receive a notification"
+
+        Worked out from the readings every time rather than kept in a table --
+        domain/stock_alerts.py explains why. Cheap: local database only, no
+        supplier is contacted, so a screen may poll it.
+        """
+        from domain import stock_alerts as _alerts
+        wsid, mkt = _where()
+        if not wsid:
+            return jsonify({"ok": False, "error": "no account selected"}), 400
+        out = _alerts.for_account(CONFIG_PATH, wsid, mkt)
+        # The sentence comes from the same place as the alert, so the banner, the
+        # repricer and anything added later say the same thing.
+        for group in ("alerts", "unreadable"):
+            for a in out.get(group, []):
+                a["sentence"] = _alerts.sentence(a)
+        out["ok"] = True
+        return jsonify(out)
+
     @app.route("/sourcing/candidates")
     def sourcing_candidates():
         """This account's live listings, with whether each is already enrolled.
@@ -581,6 +605,35 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                     "a margin target of %g%% would need the customer to pay more "
                     "than the whole price as profit" % v)}), 400
             vals[key] = v
+
+        # A MISTYPED MONEY BOX MUST NOT LOOK LIKE AN EMPTY ONE, for the same
+        # reason as the targets above. "40" and "£40" and "40.00" all mean forty;
+        # "forty" means the box is not set, and storing it as text would leave
+        # someone believing their market price was being held while the repricer
+        # priced to the target and cut it in half.
+        for key, label in (("hold_price", "held price"),
+                           ("min_price", "minimum price"),
+                           ("max_price", "maximum price")):
+            if key not in vals:
+                continue
+            v = vals[key]
+            if v in (None, ""):
+                vals[key] = None
+                continue
+            try:
+                v = float(str(v).replace("£", "").replace("$", "")
+                          .replace(",", "").strip())
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": (
+                    "the %s must be an amount, e.g. 40 or 40.00 -- got %r"
+                    % (label, vals[key]))}), 400
+            if v < 0:
+                return jsonify({"ok": False, "error": (
+                    "the %s cannot be negative" % label)}), 400
+            # Zero clears it rather than meaning "hold at nothing", which would be
+            # a floor of zero -- indistinguishable from off in effect, and
+            # confusing to read back.
+            vals[key] = (v if v > 0 else None)
 
         # SETTING EITHER BOX RETIRES THE OLD SINGLE TARGET.
         #

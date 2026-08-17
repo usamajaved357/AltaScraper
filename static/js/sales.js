@@ -2025,11 +2025,36 @@ function salesDrawCards(sum, av){
     // owner's own costs is not the same claim as one Amazon has settled, and a
     // profit with uncosted units in it is knowingly too high -- neither can be
     // left to be inferred from a number on its own.
+    // THE SENTENCE GOES BEHIND A MARK, NOT INSIDE THE CARD.
+    //
+    // "the cards on the screen are too big, check orbit cards, the profit has a
+    //  i button which explains and you have english written statements very long
+    //  and it disturb the cards size. please hide them somewhere in a i button"
+    //
+    // Measured, ours against Orbit's on the same screen size:
+    //     Orbit   216 x 104   padding 12   radius 8
+    //     ours    229 x 163
+    // and the extra 59px was this note, set to white-space:normal and allowed to
+    // wrap to three or four lines inside the card. The Profit card carried 169
+    // characters of it: "22 of 28 units have no cost recorded, so nothing was
+    // subtracted for them and this profit is HIGHER than the truth…".
+    //
+    // Orbit does exactly this: its Profit card has a "More information" mark and
+    // no prose. So the note becomes the mark's tooltip -- still one hover away,
+    // never lost -- and the card keeps its height. A warning also keeps a small
+    // coloured flag, because "this figure is too high" must be visible without
+    // hovering anything.
+    const noteMark = c.note
+      ? '<span class="statinfo" title="' + _sEsc(c.note) + '">'
+        + (c.warn ? '<i class="ti ti-alert-triangle" style="color:var(--warn)"></i>'
+                  : '<i class="ti ti-info-circle"></i>')
+        + '</span>'
+      : '';
     const foot = c.note
-      ? '<p class="stat-delta" style="white-space:normal;line-height:1.35'
-        + (c.warn ? ';color:var(--warn)' : '') + '">'
-        + (c.warn ? '<i class="ti ti-alert-triangle"></i> ' : '')
-        + _sEsc(c.note) + '</p>'
+      ? (adsOff
+          ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
+          : _sDelta(c, (SALES.compareKind === "year" ? "LY" : "was"),
+                    c.previous, c.kind, sum.currency))
       : (adsOff
           ? '<p class="stat-delta" title="'+_sEsc(sum.ads_note||"")+'">not connected</p>'
           // "LY :" is Orbit's own wording, with the space. `previous` is what
@@ -2050,7 +2075,7 @@ function salesDrawCards(sum, av){
       + (isProfit ? ' title="'+_sEsc(_sProfitTip(c))+'"'
                   : (salesTip ? ' title="'+_sEsc(salesTip)+'"' : ''))
       + '>'
-      + '<p class="stat-label">'+_sEsc(c.label)+'</p>'
+      + '<p class="stat-label">'+_sEsc(c.label)+' '+noteMark+'</p>'
       + '<p class="stat-number" style="'+col.replace(/^;/,"")+'">'
       + _sEsc(_sShort(c.value, c.kind, sum.currency))+'</p>'
       + foot

@@ -41,7 +41,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         b = _body()
         return _scope_mod.resolve(state=_state, account=_active_account() or {},
                                   asked_id=b.get("id"),
-                                  asked_marketplace=b.get("marketplace"))
+                                  asked_marketplace=b.get("marketplace"),
+                                  # THE RECORD MUST FOLLOW THE ID. Without this,
+                                  # resolve() returns the id the page asked for and
+                                  # the account record from the server's global --
+                                  # and this screen WRITES to Amazon with that
+                                  # record's credentials. A variation family built
+                                  # into the wrong seller account is not something
+                                  # that can be quietly undone. See routes/scope.py.
+                                  load_account=_load_account)
+
+    def _load_account(aid):
+        """The account record for an id the PAGE named -- credentials included."""
+        try:
+            from domain import accounts as _acc_mod
+            return _acc_mod.get_account(
+                _cfg() if callable(_cfg) else (_cfg or {}), aid, CONFIG_PATH)
+        except Exception:
+            return None
 
     def _ebay_creds():
         cfg = _cfg() if callable(_cfg) else (_cfg or {})

@@ -63,8 +63,13 @@ def _num(v):
 
 
 def _blank(status=FAILED, error=""):
+    # The delivery fields are "" and not None: they are text on a screen, and a
+    # missing one means "eBay did not say", which reads the same as blank. The
+    # numbers stay None because None and 0.00 are different facts about money.
     return {"status": status, "price": None, "shipping": None, "currency": "",
             "in_stock": None, "dispatch_days": None, "error": error,
+            "carrier": "", "postage_text": "",
+            "delivery_min": "", "delivery_max": "", "delivery_postcode": "",
             "checked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
 
 
@@ -74,25 +79,137 @@ _EBAY_IN_STOCK = {"IN_STOCK", "LIMITED_STOCK"}
 _EBAY_NO_STOCK = {"OUT_OF_STOCK"}
 
 
-def _ebay_shipping(data):
-    """Postage in the item's currency, or None when eBay will not commit to one.
+def _ebay_option(data):
+    """THE ONE postage option everything else is read from, or None.
 
-    CALCULATED postage depends on a destination postcode we did not send, so the
-    figure (if any) is not the figure we would pay. None is the honest answer --
-    the source is then skipped for want of a postage cost, which is visible and
-    fixable, rather than costed at zero, which is invisible and wrong.
+    WHY ONE OPTION AND NOT THE BEST OF EACH FIELD
+    This is a bug fix, not a tidy-up. A real item (186107152290, measured 17 Aug
+    2026 -- probe_ebay_delivery.py) offers three:
+
+        Evri Tracked           free    arrives by 24 Aug
+        Other 48h courier      3.99    arrives by 24 Aug
+        Other 24 Hour Courier  8.99    arrives by 21 Aug
+
+    The postage cost was taken from the first usable option (free) while the
+    dispatch estimate scanned ALL of them for the SOONEST date (21 Aug, the 8.99
+    one). So the app costed the free service and promised the express service's
+    delivery date -- three days it had not paid for. The module note at the top
+    warns that promising too short costs a late shipment and account health; this
+    is that, arriving by a route the note did not foresee.
+
+    So: choose the option once, and let the price, the carrier, the delivery
+    window and the dispatch estimate all come from that same option. They then
+    describe one real way of buying the thing.
+
+    CHEAPEST, because that is what would actually be bought -- the repricer's
+    whole job is the landed cost. Ties broken by the earlier delivery, so a free
+    service that arrives sooner wins over an equally free one that does not.
+    eBay tends to return them cheapest-first already, but "tends to" is not a
+    rule to rest a price on.
+
+    CALCULATED postage is skipped: it depends on a destination postcode, so the
+    figure (if any) is not the figure we would pay. Skipping the option is the
+    honest answer -- the source is then left without a postage cost, which is
+    visible and fixable, rather than costed at zero, which is invisible and wrong.
     """
+    best, best_key = None, None
     for opt in (data.get("shippingOptions") or []):
         if not isinstance(opt, dict):
             continue
         if str(opt.get("shippingCostType") or "").upper() == "CALCULATED":
             continue
         cost = opt.get("shippingCost")
-        if isinstance(cost, dict):
-            v = _num(cost.get("value"))
-            if v is not None:
-                return v
-    return None
+        v = _num(cost.get("value")) if isinstance(cost, dict) else None
+        if v is None:
+            continue
+        # The max date, not the min: it is the one that can be promised. Missing
+        # dates sort last so an option that gives one beats an option that does
+        # not, at the same price.
+        when = str(opt.get("maxEstimatedDeliveryDate") or "9999")
+        key = (v, when)
+        if best_key is None or key < best_key:
+            best, best_key = opt, key
+    return best
+
+
+def _ebay_shipping(opt):
+    """Postage in the item's currency, or None when eBay will not commit to one."""
+    if not isinstance(opt, dict):
+        return None
+    cost = opt.get("shippingCost")
+    return _num(cost.get("value")) if isinstance(cost, dict) else None
+
+
+def _ebay_carrier(opt):
+    """What it says on the eBay page: "Evri Tracked", "Royal Mail Tracked 48".
+
+    shippingServiceCode FIRST. That is the NAMED service and it is the line a
+    person reads under the buy button; shippingCarrierCode is the bare company
+    ("Hermes") and says less about what is being promised. Measured on a live
+    item: serviceCode "Evri Tracked", carrierCode "Hermes". Two of the three
+    options on that item had no carrierCode at all and a serviceCode on every one.
+    """
+    if not isinstance(opt, dict):
+        return ""
+    for key in ("shippingServiceCode", "shippingCarrierCode"):
+        v = str(opt.get(key) or "").strip()
+        if v:
+            return v
+    # "Economy Delivery" -- eBay's own class of service, when it names nothing
+    # better. Still more use than an empty cell.
+    return str(opt.get("type") or "").strip()
+
+
+def _ebay_delivery(opt):
+    """(min, max) delivery as YYYY-MM-DD, either or both possibly ''."""
+    out = []
+    for key in ("minEstimatedDeliveryDate", "maxEstimatedDeliveryDate"):
+        raw = str((opt or {}).get(key) or "")[:10]
+        out.append(raw if len(raw) == 10 else "")
+    return out[0], out[1]
+
+
+def _ebay_postcode_used(data):
+    """The postcode eBay says it computed the estimate to, or "".
+
+    Read back from eBay's own echo rather than from what was sent, because the two
+    are different claims: the header is what was asked and
+    shipToLocationUsedForEstimate is what was answered. A date with no postcode
+    behind it must not be shown to a buyer as a promise.
+    """
+    for opt in (data.get("shippingOptions") or []):
+        if not isinstance(opt, dict):
+            continue
+        loc = opt.get("shipToLocationUsedForEstimate")
+        if isinstance(loc, dict) and loc.get("postalCode"):
+            return str(loc["postalCode"]).strip().upper()
+    return ""
+
+
+def _postage_text(opt, currency):
+    """The sentence, built once here rather than in each screen that shows it.
+
+    Mirrors what eBay prints under the buy button:
+
+        "Free Evri Tracked"
+        "3.99 GBP Other 48h courier"
+        "Free Economy Delivery"
+
+    Three screens want this line -- order details, the repricer and the sourcing
+    table -- and rebuilding it in each is how they come to disagree about the same
+    supplier (Rule 12).
+    """
+    if not isinstance(opt, dict):
+        return ""
+    cost = _ebay_shipping(opt)
+    name = _ebay_carrier(opt)
+    if cost is None:
+        money = ""
+    elif cost <= 0:
+        money = "Free"
+    else:
+        money = "%.2f %s" % (cost, currency or "")
+    return " ".join(x for x in (money.strip(), name) if x).strip()
 
 
 def _ebay_stock(data):
@@ -131,27 +248,40 @@ def _ebay_qty(data):
     return None
 
 
-def _ebay_dispatch_days(data, now=None):
-    """Days until the SOONEST estimated delivery -- see the module note."""
+def _ebay_dispatch_days(opt, now=None):
+    """Days until the estimated delivery of THE OPTION WE COSTED.
+
+    It used to take the soonest date across every option, which is how the free
+    postage came to be promised with the express delivery date -- see
+    _ebay_option. One option, one promise.
+
+    The MAX date, not the min: eBay gives a window and the far end is the one
+    that can be promised. See the module note -- this is used as dispatch_days,
+    which overstates, and overstating is the safe direction.
+    """
+    if not isinstance(opt, dict):
+        return None
     now = now or _dt.datetime.now()
-    best = None
-    for opt in (data.get("shippingOptions") or []):
-        if not isinstance(opt, dict):
+    for key in ("maxEstimatedDeliveryDate", "minEstimatedDeliveryDate"):
+        raw = opt.get(key)
+        if not raw:
             continue
-        for key in ("maxEstimatedDeliveryDate", "minEstimatedDeliveryDate"):
-            raw = opt.get(key)
-            if not raw:
-                continue
-            try:
-                t = _dt.datetime.strptime(str(raw)[:19], "%Y-%m-%dT%H:%M:%S")
-            except (TypeError, ValueError):
-                continue
-            days = (t - now).days
-            if days < 0:
-                continue                   # an estimate already in the past
-            best = days if best is None else min(best, days)
-            break
-    return best
+        try:
+            t = _dt.datetime.strptime(str(raw)[:19], "%Y-%m-%dT%H:%M:%S")
+        except (TypeError, ValueError):
+            continue
+        # CALENDAR DAYS, from date to date. Subtracting the timestamps and taking
+        # .days TRUNCATES: eBay stamps its estimates at 10:00, so checking at noon
+        # on the 17th for delivery on the 24th gave 6 days and 22 hours, reported
+        # as 6. That is a day SHORT, which is the direction this file exists to
+        # avoid -- a handling time we cannot keep. eBay commits to a DATE; the
+        # answer is how many days away that date is, and the hour on either side
+        # has nothing to do with it.
+        days = (t.date() - now.date()).days
+        if days < 0:
+            continue                       # an estimate already in the past
+        return days
+    return None
 
 
 def from_ebay_item(data, now=None):
@@ -162,10 +292,18 @@ def from_ebay_item(data, now=None):
     price = data.get("price") or {}
     out["price"] = _num(price.get("value")) if isinstance(price, dict) else None
     out["currency"] = str((price or {}).get("currency") or "").upper()
-    out["shipping"] = _ebay_shipping(data)
+    # ONE OPTION, chosen once, and every postage fact read off it -- so the cost,
+    # the carrier, the delivery window and the handling estimate all describe the
+    # same real way of buying it. See _ebay_option.
+    opt = _ebay_option(data)
+    out["shipping"] = _ebay_shipping(opt)
     out["in_stock"] = _ebay_stock(data)
     out["available_qty"] = _ebay_qty(data)
-    out["dispatch_days"] = _ebay_dispatch_days(data, now)
+    out["dispatch_days"] = _ebay_dispatch_days(opt, now)
+    out["carrier"] = _ebay_carrier(opt)
+    out["postage_text"] = _postage_text(opt, out["currency"])
+    out["delivery_min"], out["delivery_max"] = _ebay_delivery(opt)
+    out["delivery_postcode"] = _ebay_postcode_used(data)
     if out["price"] is None:
         # An item with no price is not a usable reading, whatever else came back.
         out["status"] = FAILED
@@ -175,18 +313,27 @@ def from_ebay_item(data, now=None):
 
 # ---- one source ------------------------------------------------------------
 
-def check_source(source, app_id="", cert_id="", now=None, marketplace=None):
+def check_source(source, app_id="", cert_id="", now=None, marketplace=None,
+                 postcode=""):
     """Read one source. Never raises.
 
     A shipping_override on the source fills in a postage cost the supplier does
     not publish -- a number the user typed once, which beats one we inferred.
+
+    `postcode` is the DESTINATION, and it changes the delivery estimate eBay
+    returns -- measured three days apart on one option. Passed when the
+    destination is known (an order has the buyer's postcode); left empty for the
+    routine sweep, where there is no one buyer to compute for. When it is empty
+    eBay still answers, but for a notional buyer, and delivery_postcode comes back
+    blank so a screen can tell the two apart.
     """
     kind = str((source or {}).get("kind") or "ebay").lower()
     url = (source or {}).get("url") or ""
 
     if kind == "ebay":
         res = _ebay.get_item(url, app_id, cert_id,
-                             marketplace=marketplace or _ebay.DEFAULT_MARKETPLACE)
+                             marketplace=marketplace or _ebay.DEFAULT_MARKETPLACE,
+                             postcode=postcode)
         status = _FROM_TRANSPORT.get(res["status"], FAILED)
         if status == GONE:
             out = _blank(GONE, res["error"] or "the eBay listing has ended")
@@ -208,6 +355,59 @@ def check_source(source, app_id="", cert_id="", now=None, marketplace=None):
 
 # ---- the sweep -------------------------------------------------------------
 
+# WHERE THE SWEEP PRETENDS TO BE DELIVERING TO, and why it must pretend something.
+#
+# This started as a display detail and turned out to be a pricing bug. Measured on
+# six live sources, 17 Aug 2026:
+#
+#   with no postcode      eBay returned NO shippingOptions AT ALL for five of the
+#                         six, so postage came back unknown -- and source_fetch
+#                         correctly refuses to cost an unknown postage, so those
+#                         sources were being SKIPPED for want of a figure eBay
+#                         would have given if asked.
+#   with no postcode      the sixth answered "International Priority, 20.04 USD"
+#                         -- eBay costing delivery to some notional buyer abroad.
+#                         20.04 of phantom postage on a 16.18 item.
+#   with BH166FH          all six answered "Free Royal Mail Tracked 48" or
+#                         similar, delivery by 20 August.
+#
+# So a destination is not optional. It is set per account in config.json as
+# `sourcing_postcode`; when nobody has set one these are used, and they are
+# deliberately central, ordinary, mainland postcodes -- nowhere with an island or
+# highland surcharge, so the postage read is the one most buyers would be quoted
+# rather than the best or worst case.
+#
+# THIS IS AN APPROXIMATION AND IT IS MEANT TO BE. The real destination is the
+# buyer's address, which is not known until an order exists -- and for an order it
+# IS known and IS passed (see check_source). The sweep is pricing before any buyer
+# exists, so a representative postcode is the honest answer; the one used is
+# stored on every reading (delivery_postcode) so a figure can always be traced to
+# the destination it was worked out for.
+_FALLBACK_POSTCODE = {
+    "GB": "B1 1AA",          # central Birmingham -- mainland, no surcharge
+    "US": "10001",           # Manhattan
+    "DE": "10115",           # central Berlin
+    "FR": "75001",           # central Paris
+    "IT": "00184",           # central Rome
+    "ES": "28013",           # central Madrid
+    "NL": "1012",            # central Amsterdam
+    "PL": "00-001",          # central Warsaw
+}
+
+
+def destination_postcode(cfg, marketplace=None):
+    """The postcode the sweep costs delivery to. Never empty.
+
+    An account's own setting wins; otherwise a representative postcode for the
+    marketplace's country. Returning "" would put us back to eBay answering for a
+    notional overseas buyer -- see _FALLBACK_POSTCODE.
+    """
+    own = str((cfg or {}).get("sourcing_postcode") or "").strip()
+    if own:
+        return own
+    return _FALLBACK_POSTCODE.get(_ebay.country_of(marketplace), "B1 1AA")
+
+
 def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
           pause=0.2, log=None, now=None):
     """Check every source of every ENROLLED SKU, and store the readings.
@@ -219,6 +419,7 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
     cfg = cfg() if callable(cfg) else (cfg or {})
     app_id = str(cfg.get("ebay_app_id", "") or "")
     cert_id = str(cfg.get("ebay_cert_id", "") or "")
+    postcode = destination_postcode(cfg, marketplace)
 
     rows = _repo.enrolled(config_path, workspace_id, marketplace)
     counts = {"skus": 0, "sources": 0, FETCHED: 0, GONE: 0, FAILED: 0}
@@ -236,7 +437,8 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
             # The eBay SITE has to match the Amazon marketplace: a US account's
             # supplier asked of eBay UK answers 404, which reads as "ended".
             chk = check_source(s, app_id, cert_id, now=now,
-                               marketplace=_ebay.site_for(row["marketplace"]))
+                               marketplace=_ebay.site_for(row["marketplace"]),
+                               postcode=postcode)
             _repo.record_check(config_path, s["id"], chk)
             counts["sources"] += 1
             counts[chk["status"]] = counts.get(chk["status"], 0) + 1

@@ -1993,6 +1993,43 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   animation:barGrow 1.5s ease;
 }
 
+/* -- 4b. THE CHART KEY IS A SET OF SWITCHES ----------------------------
+   "user is able to click them to enable those options, they are enabled by
+   default and user can hide the lines by again clicking on them".
+
+   Built as real <button>s in salesCombo (static/js/salescharts.js) so they are
+   reachable by keyboard; this is only what they look like. Styled to stay a KEY
+   first and a control second -- Orbit's key items are plain text with a coloured
+   mark and no button furniture, and the mark is what the eye uses to read the
+   chart. So: no border, no background, no padding that would break the row of
+   marks apart. The pointer and the hover are what say it can be clicked. */
+.sc-keys{
+  display:flex; gap:18px; justify-content:center; flex-wrap:wrap;
+  margin-top:6px; font-size:12px;
+}
+.sc-key{
+  display:inline-flex; align-items:center; gap:6px;
+  background:none; border:0; padding:0; margin:0;
+  font:inherit; color:inherit; cursor:pointer;
+  /* Only the colour and opacity move on toggle, so the key never reflows and
+     the items do not jump sideways as they are switched. */
+  transition:opacity .15s ease;
+}
+.sc-key:hover{ opacity:.75; }
+.sc-key:focus-visible{
+  outline:2px solid var(--accent, #6ac7e8); outline-offset:2px; border-radius:3px;
+}
+/* SWITCHED OFF. Dimmed, and the name struck through: dimming alone is how a
+   DISABLED control looks, and these are never disabled -- clicking one brings
+   its line back. The line through the name says "this is off", not "this cannot
+   be used". The coloured mark keeps its colour so the item is still findable. */
+.sc-key.off{ opacity:.45; }
+.sc-key.off span{ text-decoration:line-through; }
+.sc-key-sq{
+  width:11px; height:11px; border-radius:2px; opacity:.55;
+  display:inline-block; flex:none;
+}
+
 /* -- 5. TABLE ROW STAGGER ----------------------------------------------
    Rows arrive in a cascade rather than as one block. The delays are
    generated in JS (see altaStagger in static/js/motion.js) rather than
@@ -2156,6 +2193,24 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .pct-badge.flat{ color:rgb(156,163,175); }
 
 .stat-card.is-empty .stat-number{ color:rgb(107,114,128); }
+
+/* THE EXPLANATION, BEHIND A MARK. Orbit's Profit card carries a "More
+   information" icon and no prose; ours carried up to 169 characters of it inside
+   the card, wrapping to four lines and taking the card from Orbit's 104px to
+   163px. Reported as "the cards on the screen are too big ... you have english
+   written statements very long and it disturb the cards size. please hide them
+   somewhere in a i button".
+
+   Sits on the label line, so it costs no height at all. */
+.stat-card .statinfo{
+  display:inline-flex;
+  align-items:center;
+  cursor:help;
+  opacity:.65;
+  vertical-align:-1px;
+}
+.stat-card .statinfo:hover{ opacity:1; }
+.stat-card .statinfo i{ font-size:12px; }
 
 
 /* =====================================================================

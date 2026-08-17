@@ -63,6 +63,11 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         "  SUM(COALESCE(other_fees,0))       other_fees, "
         "  SUM(COALESCE(refunds,0))          refunds, "
         "  SUM(COALESCE(refund_units,0))     refund_units, "
+        # THE FEE AMAZON GIVES BACK when an order is refunded. It was not
+        # selected at all, so the screen charged you the referral fee on a sale
+        # that was returned -- understating the contribution of exactly the
+        # products with returns. net_proceeds_for adds it back.
+        "  SUM(COALESCE(refund_fees_returned,0)) refund_fees_returned, "
         "  SUM(COALESCE(reimbursements,0))   reimbursements, "
         "  SUM(COALESCE(promos,0))           promos, "
         "  SUM(COALESCE(units,0))            units, "
@@ -154,10 +159,6 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         s = sales.get(asin) or {}
         a = ads.get(asin)
 
-        fees = round(_f(d["referral_fees"]) + _f(d["fba_fees"]) + _f(d["other_fees"]), 2)
-        # VAT out before anything else -- it was collected, never earned. Same
-        # function the dashboard uses, so the two screens cannot disagree about
-        # what a product's revenue actually was (Rule 12).
         # PARTIAL TAX COVERAGE IS NOT TAX. Where only some days in the window
         # carried Amazon's tax lines, summing them gives a figure that is right
         # for part of the period and presented as the whole -- which is worse
@@ -165,8 +166,23 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         # to unknown, and the rate (if one is set) decides instead.
         if d.get("tax") is not None and d.get("tax_rows") != d.get("all_rows"):
             d["tax"] = None
-        vat, net_rev, basis = _sd.vat_for(d, vat_rate)
-        net = round(net_rev - fees - _f(d["refunds"]) + _f(d["reimbursements"]), 2)
+
+        # THE WHOLE SUM IN ONE CALL, the same one the Sales screen makes.
+        #
+        # This was worked out here instead, and it had drifted: it left out the
+        # promotions you funded and the fee Amazon returns on a refund. So a
+        # coupon showed on this screen as money you kept, and the Finance and
+        # Sales screens reported different profit for the same days -- with this
+        # one higher. See domain/sales_data.net_proceeds_for.
+        m = _sd.net_proceeds_for(d, vat_rate)
+        fees = round(_f(m["total_fees"]), 2)
+        vat, net_rev, basis = m["vat"], m["net_revenue"], m["vat_basis"]
+        net = m["net_proceeds"]
+        # A product with rows in finance_daily has had money move, so there is
+        # always something to work from -- but never publish None as a number.
+        if net is None:
+            net = round(_f(d["principal"]) - fees, 2)
+            net_rev = round(_f(d["principal"]), 2)
 
         units = int(d["units"] or 0)
         costed = int(d["cogs_units"] or 0)
@@ -193,6 +209,7 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
             "fees": fees,
             "refunds": round(_f(d["refunds"]), 2),
             "refund_units": int(d["refund_units"] or 0),
+            "refund_fees_returned": round(_f(d["refund_fees_returned"]), 2),
             "reimbursements": round(_f(d["reimbursements"]), 2),
             "promos": round(_f(d["promos"]), 2),
             "cogs": round(_f(d["cogs"]), 2),
@@ -210,7 +227,97 @@ def by_product(config_path, workspace_id, marketplace, start, end, vat_rate=None
         rows.append(row)
 
     rows.sort(key=lambda x: (-(x["revenue"] or 0), x["asin"]))
-    return rows, totals_for(rows)
+    totals = totals_for(rows)
+    totals.update(unattributed(conn, workspace_id, marketplace, start, end, rows))
+    # WHAT THE ACCOUNT KEPT, as opposed to what the products contributed between
+    # them. Only when the contribution is known at all: subtracting a real cost
+    # from an unknown gives an unknown, not a negative.
+    if totals.get("contribution") is not None and totals.get("unattributed_fees"):
+        totals["account_contribution"] = round(
+            totals["contribution"] - totals["unattributed_fees"], 2)
+    return rows, totals
+
+
+def unattributed(conn, workspace_id, marketplace, start, end, rows):
+    """What the account was charged and paid that no product row carries.
+
+    Returns {unattributed_fees, unattributed_revenue, unattributed_units,
+             unattributed_pct, account_contribution}.
+
+    WHY THIS SCREEN IS INCOMPLETE WITHOUT IT -- TWO SEPARATE THINGS
+    Both end up in the same place: on the account-total row (asin='*') and on no
+    product. Both are correct storage. Neither was visible on the screen.
+
+    1. CHARGES WITH NO SKU. The GBP 25-a-month Professional selling subscription
+       above all. There is no honest way to split it across products, so it sits
+       on the account and nowhere else. Measured on jack_uk, 22 Jul to 16 Aug
+       2026: products contributed 80.11 between them while the account was
+       charged 50.00 of subscription, on the 14th and the 16th. The page said
+       80.11 and the account kept 30.11.
+
+    2. SALES WHOSE SKU COULD NOT BE MATCHED TO A PRODUCT. Financial events are
+       keyed by seller SKU and this app is keyed by ASIN; the mapping comes from
+       the live catalogue snapshot. A SKU that is not in the snapshot -- a
+       listing deleted since, or an account whose catalogue has never been fully
+       synced -- keeps its money on the account total. That is right, because a
+       sale you cannot attribute is still a sale, but it means the LIST of
+       products can be missing most of the trade.
+
+       Measured on selvora_limited, 5 to 16 Aug 2026: 1909.11 of revenue and 60
+       units on the account, 330.57 and 9 units across the one product with a
+       row. The Finance screen showed one product and 17% of the money, with
+       nothing to say the other 83% existed. Its snapshot holds 7 items.
+
+    THE COMPARISON IS AGAINST THE SUM OF THE PRODUCT ROWS, never against a
+    second hard-coded query, so a charge type Amazon invents next year turns up
+    here without this function being taught its name.
+    """
+    out = {"unattributed_fees": 0.0, "unattributed_revenue": 0.0,
+           "unattributed_units": 0, "unattributed_pct": None,
+           "account_contribution": None}
+    try:
+        star = conn.execute(
+            "SELECT SUM(COALESCE(referral_fees,0)) referral_fees, "
+            "       SUM(COALESCE(fba_fees,0))      fba_fees, "
+            "       SUM(COALESCE(other_fees,0))    other_fees, "
+            "       SUM(COALESCE(principal,0))     principal, "
+            "       SUM(COALESCE(units,0))         units "
+            "FROM finance_daily WHERE workspace_id=? AND marketplace=? "
+            "  AND date>=? AND date<=? AND asin='*'",
+            (workspace_id, marketplace, start, end)).fetchone()
+    except Exception:
+        return out
+    if not star:
+        return out
+
+    # Rounded before each comparison, not after: a float difference of 1e-13
+    # across twenty days would otherwise be reported as unattributed money.
+    #
+    # ONLY A POSITIVE GAP IS EVER REPORTED. A negative one would mean the
+    # products carry more than the account total does, which account-level
+    # charges cannot produce -- it would be a storage fault. Inventing a negative
+    # "unattributed cost" would quietly INCREASE the reported contribution, and
+    # that is the one direction this must never move.
+    def _gap(account_value, product_value):
+        g = round(_f(account_value) - _f(product_value), 2)
+        return g if g >= 0.01 else 0.0
+
+    out["unattributed_fees"] = _gap(
+        sum(_f(star[k]) for k in ("referral_fees", "fba_fees", "other_fees")),
+        sum(_f(r.get("fees")) for r in rows))
+    out["unattributed_revenue"] = _gap(
+        star["principal"], sum(_f(r.get("revenue")) for r in rows))
+    units_gap = int(round(_f(star["units"]) - sum(int(r.get("units") or 0)
+                                                 for r in rows)))
+    out["unattributed_units"] = max(0, units_gap)
+
+    # AS A SHARE OF THE ACCOUNT'S OWN REVENUE, because 1578 means nothing on its
+    # own and "83% of the money is not on this screen" cannot be misread.
+    acct_rev = _f(star["principal"])
+    if acct_rev and out["unattributed_revenue"]:
+        out["unattributed_pct"] = round(
+            out["unattributed_revenue"] / acct_rev * 100, 1)
+    return out
 
 
 def totals_for(rows):
@@ -223,13 +330,15 @@ def totals_for(rows):
     t = {k: 0 for k in ("units", "units_ordered", "refund_units", "cogs_units",
                         "uncosted_units")}
     for k in ("revenue", "ordered_sales", "fees", "refunds", "reimbursements",
-              "promos", "cogs", "net_proceeds", "net_revenue"):
+              "refund_fees_returned", "promos", "cogs", "net_proceeds",
+              "net_revenue"):
         t[k] = 0.0
     for r in rows:
         for k in list(t):
             t[k] += (r.get(k) or 0)
     for k in ("revenue", "ordered_sales", "fees", "refunds", "reimbursements",
-              "promos", "cogs", "net_proceeds", "net_revenue"):
+              "refund_fees_returned", "promos", "cogs", "net_proceeds",
+              "net_revenue"):
         t[k] = round(t[k], 2)
     # VAT stays None if it is unknown ANYWHERE -- a total that quietly counts the
     # unknown rows as zero would understate what is owed.
@@ -253,30 +362,118 @@ def totals_for(rows):
     return t
 
 
+# HOW LOUD EACH NOTE IS.
+#
+# They were all one colour, which put "83% of your revenue is not on this screen"
+# in the same amber box as "ad spend is not connected yet". The first means the
+# page is not answering the question; the second is a caveat on an answer that is
+# otherwise right. A reader who has learned to skim the amber boxes will skim
+# both.
+#
+#   BAD   the figures on screen do not add up to the account. Read this or be
+#         misled.
+#   WARN  the figures are right as far as they go, and here is the limit.
+#   INFO  how a figure was worked out.
+NOTE_BAD = "bad"
+NOTE_WARN = "warn"
+NOTE_INFO = "info"
+
+
 def notes(rows, totals):
-    """What the screen has to say out loud, so no figure is read as more than it is."""
+    """What the screen has to say out loud, so no figure is read as more than it is.
+
+    Returns a list of {text, level}. It used to return plain strings; callers that
+    only want the words can join `n["text"]`.
+    """
     out = []
+
+    def say(level, text):
+        out.append({"text": text, "level": level})
+
+    cur = totals.get("currency") or ""
+
+    # ORDER MATTERS: loudest first. These are read top to bottom and the last one
+    # in a stack of five gets read least, so the note about money that is not on
+    # the screen goes above the notes about how the money on it was worked out.
+
+    # SALES MISSING FROM THE LIST ENTIRELY. A page showing 17% of the money with
+    # no warning is not a page with a caveat, it is the wrong answer -- so this is
+    # the one note marked BAD.
+    missing = totals.get("unattributed_revenue") or 0
+    if missing:
+        pct = totals.get("unattributed_pct")
+        say(NOTE_BAD,
+            "%.2f %s of revenue%s%s is NOT in the list below. Amazon reports "
+            "money against the seller SKU, and these sales are on SKUs that are "
+            "not in this account's catalogue snapshot — usually listings deleted "
+            "since, or an account whose catalogue has never been fully pulled. "
+            "The money is counted on the account, but it cannot be shown against "
+            "a product. Press Sync on the Listings screen to refresh the "
+            "catalogue, then Sync here."
+            % (float(missing), cur,
+               ("" if not pct else " (%.1f%% of the total)" % pct),
+               ("" if not totals.get("unattributed_units")
+                else " and %d units" % totals["unattributed_units"])))
+
+    # CHARGES THAT BELONG TO NO PRODUCT. Second, because it changes the headline
+    # rather than the list: a page totalling every product reads as what the
+    # account made, and account-level fees are not in any product's row.
+    gap = totals.get("unattributed_fees") or 0
+    if gap:
+        acct = totals.get("account_contribution")
+        # BAD when it can be shown what the account actually kept, because then
+        # the footer figure is demonstrably not the answer. WARN when the
+        # contribution is unknown anyway and this is one more reason why.
+        say(NOTE_BAD if acct is not None else NOTE_WARN,
+            "%.2f %s of Amazon's charges in this period belong to no single "
+            "product — the monthly selling subscription is the usual one — so "
+            "they are in none of the rows below.%s"
+            % (float(gap), cur,
+               ("" if acct is None else
+                " The products contributed %.2f between them; after these "
+                "charges the account kept %.2f."
+                % (float(totals.get("contribution") or 0), float(acct)))))
+
     basis = totals.get("vat_basis") or ""
     if basis == _sd.VAT_UNKNOWN:
-        out.append("VAT is not set for this account, so nothing has been taken out "
-                   "for it. If you are VAT-registered and Amazon's figures include "
-                   "VAT, every contribution here is overstated by roughly a sixth. "
-                   "Set the account's VAT rate and press Sync.")
+        # Not INFO: an unset VAT rate on a registered business overstates every
+        # figure on the screen by a sixth, which is a wrong answer, not a caveat.
+        say(NOTE_BAD,
+            "VAT is not set for this account, so nothing has been taken out "
+            "for it. If you are VAT-registered and Amazon's figures include "
+            "VAT, every contribution here is overstated by roughly a sixth. "
+            "Set the account's VAT rate and press Sync.")
     elif basis == _sd.VAT_DERIVED:
-        out.append("Amazon did not itemise VAT, so it has been taken out of the "
-                   "charged amount at the account's rate. Revenue below is what "
-                   "buyers paid; contribution is worked out on the figure after VAT.")
+        say(NOTE_INFO,
+            "Amazon did not itemise VAT, so it has been taken out of the "
+            "charged amount at the account's rate. Revenue below is what "
+            "buyers paid; contribution is worked out on the figure after VAT.")
     elif basis == _sd.VAT_FROM_AMAZON:
-        out.append("Amazon reported VAT separately, so the revenue below is already "
-                   "net of it — nothing further has been deducted.")
+        say(NOTE_INFO,
+            "Amazon reported VAT separately, so the revenue below is already "
+            "net of it — nothing further has been deducted.")
+
+    promos = totals.get("promos") or 0
+    if promos:
+        # Amount with the currency CODE rather than a symbol: there is no shared
+        # symbol table in domain/ and adding a fourth money formatter to get a "£"
+        # is not worth it (Rule 12). "12.34 GBP" is unambiguous.
+        say(NOTE_INFO,
+            "%.2f %s of coupons and deals you funded has been taken off. "
+            "Amazon sends the full price and the discount separately, so "
+            "the Revenue column below is what buyers were charged BEFORE "
+            "your discount — the money you actually received is lower by "
+            "this amount." % (float(promos), cur))
     if totals.get("ad_spend") is None:
-        out.append("Ad spend is not connected, so this is contribution BEFORE "
-                   "advertising. On any product you advertise, the real "
-                   "contribution is lower by whatever you spent on it.")
+        say(NOTE_WARN,
+            "Ad spend is not connected, so this is contribution BEFORE "
+            "advertising. On any product you advertise, the real "
+            "contribution is lower by whatever you spent on it.")
     blank = [r["asin"] for r in rows if r["contribution"] is None]
     if blank:
-        out.append("%d product%s have units with no known cost, so no contribution "
-                   "is shown for them — a partial cost would only ever make them "
-                   "look better than they are. Set a cost, then press Sync."
-                   % (len(blank), "" if len(blank) == 1 else "s"))
+        say(NOTE_WARN,
+            "%d product%s have units with no known cost, so no contribution "
+            "is shown for them — a partial cost would only ever make them "
+            "look better than they are. Set a cost, then press Sync."
+            % (len(blank), "" if len(blank) == 1 else "s"))
     return out

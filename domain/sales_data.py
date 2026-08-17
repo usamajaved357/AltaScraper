@@ -294,6 +294,78 @@ def vat_for(row, vat_rate=None):
     return vat, round(gross - vat, 2), VAT_DERIVED
 
 
+def net_proceeds_for(row, vat_rate=None):
+    """What was actually kept out of one bucket of money movements.
+
+        net proceeds = principal
+                     - VAT                (collected, never earned)
+                     - Amazon's fees
+                     - refunds paid back to buyers
+                     - promotions you funded
+                     + the fee Amazon returns on a refund
+                     + reimbursements for Amazon's own mistakes
+
+    Returns {vat, vat_basis, net_revenue, total_fees, net_proceeds}. net_proceeds
+    is None when there is nothing to work from -- no fees AND no refunds means
+    this bucket has no money movements in it, which is not the same as zero.
+
+    WHY THIS IS A FUNCTION AND NOT SEVEN LINES WRITTEN WHEREVER NEEDED
+    It was written twice: here, inside the daily loop, and again in
+    domain/contribution.py for the Finance screen. The two copies did not agree,
+    and could not be seen side by side to notice:
+
+        this one          - fees - refunds - PROMOS + REFUND FEES BACK + reimb
+        contribution.py   - fees - refunds                            + reimb
+
+    So the Finance screen counted a funded discount as if you had kept it, and
+    ignored the fee Amazon gives back on a refund. On any product with a coupon
+    the two screens reported different money for the same days, and the Finance
+    one was the flattering one. Measured on nestwell_goods, which runs coupons.
+
+    CLAUDE.md Rule 12: one concept, one implementation. Everything that wants
+    "what did we keep" calls this. Do not inline it again -- if a screen needs a
+    variation, add a named argument here so the difference is visible.
+    """
+    row = row or {}
+
+    def _n(key):
+        try:
+            return float(row.get(key) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    fees = [row.get(k) for k in ("referral_fees", "fba_fees", "other_fees")]
+    fees = [float(x) for x in fees if x is not None]
+    total_fees = round(sum(fees), 2) if fees else None
+
+    vat, net_revenue, basis = vat_for(row, vat_rate)
+    out = {"vat": vat, "vat_basis": basis, "net_revenue": net_revenue,
+           "total_fees": total_fees, "net_proceeds": None}
+
+    # NOTHING TO WORK FROM is not the same as zero. A day Amazon has sent no
+    # events for has no fees and no refunds, and reporting 0.00 kept on it would
+    # draw a real figure for a day that has not landed.
+    if total_fees is None and row.get("refunds") is None:
+        out["vat"] = None
+        out["vat_basis"] = ""
+        out["net_revenue"] = None
+        return out
+
+    # SIGNS. Every one of these columns is stored POSITIVE -- see the note at the
+    # top of domain/finance_data.py. Amazon sends fees and refunds negative and
+    # they are abs()'d on the way in, so the arithmetic here is all explicit
+    # subtraction. A column that is sometimes signed is how a profit figure comes
+    # out backwards.
+    out["net_proceeds"] = round(
+        net_revenue
+        - float(total_fees or 0.0)
+        - _n("refunds")
+        - _n("promos")
+        + _n("refund_fees_returned")
+        + _n("reimbursements"), 2)
+    return out
+
+
 def vat_rate_for(config, workspace_id):
     """The account's VAT rate, or None if nobody has said.
 
@@ -476,34 +548,17 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         # Derived per DAY as well as per bucket, because a bucket that sums
         # already-derived days would be summing ratios. These two are additive,
         # so summing them is safe; the rates below are recomputed instead.
-        fees = [row.get(k) for k in ("referral_fees", "fba_fees", "other_fees")]
-        fees = [float(x) for x in fees if x is not None]
-        row["total_fees"] = round(sum(fees), 2) if fees else None
-        if row["total_fees"] is not None or row.get("refunds") is not None:
-            # PRINCIPAL, not ordered_sales. Both are revenue, but they are dated
-            # differently -- ordered_sales by order date, principal by the date
-            # the money moved, which is the same basis as the fees and refunds
-            # below. Mixing the two produces a figure that is neither: on a live
-            # UK account it read 246.53 when the money-basis answer was 281.52,
-            # and nothing on screen could have shown which was meant.
-            gross = float(row.get("principal") or 0.0)
-            # VAT comes out FIRST. It was never yours -- you collected it and you
-            # owe it onward -- so leaving it in overstates everything downstream.
-            _v, _net_rev, _basis = vat_for(row, vat_rate)
-            row["vat"] = _v
-            row["vat_basis"] = _basis
-            row["net_revenue"] = _net_rev
-            row["net_proceeds"] = round(
-                _net_rev - float(row.get("total_fees") or 0.0)
-                         - float(row.get("refunds") or 0.0)
-                         - float(row.get("promos") or 0.0)
-                         + float(row.get("refund_fees_returned") or 0.0)
-                         + float(row.get("reimbursements") or 0.0), 2)
-        else:
-            row["net_proceeds"] = None
-            row["vat"] = None
-            row["net_revenue"] = None
-            row["vat_basis"] = ""
+        # PRINCIPAL, not ordered_sales -- and VAT out first, before anything else.
+        # Both are revenue but they are dated differently: ordered_sales by order
+        # date, principal by the date the money moved, which is the same basis as
+        # the fees and refunds. Mixing the two gives a figure that is neither -- on
+        # a live UK account it read 246.53 when the money-basis answer was 281.52,
+        # and nothing on screen could have shown which was meant.
+        #
+        # The arithmetic itself is in net_proceeds_for(), which the Finance screen
+        # calls too. It used to be written out here, and a second, quietly
+        # different copy lived in domain/contribution.py -- see that function.
+        row.update(net_proceeds_for(row, vat_rate))
 
         # PROFIT -- only when the cost of every unit shipped that day is known.
         #

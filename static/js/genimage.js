@@ -1,5 +1,18 @@
-// ============ IMAGE STUDIO (main image generation: recipes + creative + batch) ============
-let STUDIO = { skus: [], items: [], brand: "", recipes: [], results: {} };
+// ============ IMAGE STUDIO (main image generation: creative + batch) ============
+//
+// RECIPES WERE REMOVED at the owner's request -- "delete the 'use a saved
+// recipe (templated)' thing from my app, i dont want this feature at all".
+// The tab, the manage pane, the loader and the studioRun('recipe') branch all
+// went with it.
+//
+// DO NOT DELETE THE SERVER SIDE TO MATCH. The saved-recipe FEATURE is gone, but
+// the genimage_recipe VIEW is not dead code -- it is the engine the Creative
+// button runs on. dashboard.py's batch dispatcher reads
+//   if kind in ("recipe", "creative"): app.view_functions["genimage_recipe"]()
+// so "Generate 3 variations" goes through it. Deleting /recipes/* because the
+// recipe UI is gone would silently break Creative, which the owner kept.
+// If it is ever cleaned up, rename the view first and repoint the dispatcher.
+let STUDIO = { skus: [], items: [], brand: "", results: {} };
 function _itemForSku(sku){ return (LIVE_ITEMS||[]).find(x=>String(x.sku)===String(sku)) || (ROWS||[]).find(x=>String(x.sku)===String(sku)); }
 function _refImgForItem(it){
   if(!it){ return (typeof STUDIO!=='undefined' && STUDIO.manualRef) || ""; }
@@ -102,9 +115,8 @@ async function confirmIfExisting(skus, kind){
 
 async function openStudioSingle(sku){
   const it=_itemForSku(sku);
-  STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), recipes:[], results:{} };
+  STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), results:{} };
   document.getElementById("imgstudio").classList.add("open");
-  await loadRecipes();
   renderStudio();
   studioLoadModels();
   loadStudioInstructions();
@@ -113,21 +125,13 @@ async function openStudioBatch(){
   const skus=selectedSkus();
   if(!skus.length){ toast("Select some products first (tick the cards)."); return; }
   const items=skus.map(_itemForSku).filter(Boolean);
-  STUDIO={ skus:skus.map(String), items:items, brand:(CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), recipes:[], results:{} };
+  STUDIO={ skus:skus.map(String), items:items, brand:(CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), results:{} };
   document.getElementById("imgstudio").classList.add("open");
-  await loadRecipes();
   renderStudio();
   studioLoadModels();
   loadStudioInstructions();
 }
 function closeStudio(){ document.getElementById("imgstudio").classList.remove("open"); }
-async function loadRecipes(){
-  try{
-    const j=await (await fetch("/recipes/list",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({brand:STUDIO.brand})})).json();
-    if(j.ok){ STUDIO.recipes=j.recipes||[]; STUDIO.all_recipes=j.all_recipes||[]; }
-  }catch(e){}
-}
 // known strengths of popular image models (shown as guidance next to the picker)
 const IMG_MODEL_NOTES=[
   {match:/seedream/i, note:"★ Best for product shots & packaging, native up to 4K, strong text — top pick for main images"},
@@ -175,9 +179,6 @@ function renderStudio(){
   const body=document.getElementById("studiobody");
   const n=STUDIO.skus.length;
   const batch = n>1;
-  const recipeOpts=(STUDIO.recipes||[]).map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join("");
-  const otherRecipes=(STUDIO.all_recipes||[]).filter(r=>!(STUDIO.recipes||[]).some(x=>x.id===r.id));
-  const otherOpts=otherRecipes.map(r=>`<option value="${esc(r.id)}">${esc(r.name)} — ${esc(r.brand)}</option>`).join("");
   body.innerHTML=`
     <div class="cc" style="margin-bottom:10px">${batch?('<b>Batch:</b> '+n+' products selected — the chosen treatment applies to each, using each product\u2019s own image.'):'Generating a main image for <b>'+esc(STUDIO.skus[0])+'</b>.'} Brand: <b>${esc(STUDIO.brand||'(none)')}</b></div>
     <div class="studiomodels">
@@ -211,23 +212,18 @@ function renderStudio(){
       </div>
     </div>
     <div class="studiotabs">
-      <button class="stab on" data-tab="recipe" onclick="studioTab('recipe')">Use a saved recipe (templated)</button>
-      <button class="stab" data-tab="creative" onclick="studioTab('creative')">Creative (3 variations)</button>
+    <!-- RECIPES ARE GONE. "delete the 'use a saved recipe (templated)'
+         thing from my app, i dont want this feature at all."
+
+         Both tabs went: the one that applied a recipe and the one that
+         managed them. The studio now opens on Creative, and studioTab()
+         no longer knows the two names. -->
+      <button class="stab on" data-tab="creative" onclick="studioTab('creative')">Creative (3 variations)</button>
       <button class="stab" data-tab="source" onclick="studioTab('source')">Main image (clean white bg)</button>
       <button class="stab" data-tab="secondary" onclick="studioTab('secondary')">Secondary images</button>
       <button class="stab" data-tab="aplus" onclick="studioTab('aplus')">A+ Content</button>
-      <button class="stab" data-tab="recipes_manage" onclick="studioTab('recipes_manage')">Manage recipes</button>
     </div>
-    <div id="studio_recipe" class="studiopane">
-      ${recipeOpts||otherOpts ? `
-        <label class="cc">Recipe</label>
-        <select id="studio_recipe_sel" class="ed">${recipeOpts}${otherOpts?('<optgroup label="Other brands">'+otherOpts+'</optgroup>'):''}</select>
-        <div class="cc" style="margin:8px 0">The recipe\u2019s saved instructions are applied to ${batch?'each selected product':'this product'}; the product itself stays identical.</div>
-        <button class="primary" onclick="studioRun('recipe')"><i class="ti ti-sparkles"></i> ${batch?('Generate for all '+n+' products'):'Generate main image'}</button>
-      ` : `<div class="cc">No recipes yet for <b>${esc(STUDIO.brand||'this brand')}</b>. Create one under <b>Manage recipes</b> — a recipe is a saved treatment (template image + the changes you want) that you can reuse on any product.</div>`}
-      ${typeof howWorks==="function"?(howWorks('recipes')+howWorks('media')):""}
-    </div>
-    <div id="studio_creative" class="studiopane" style="display:none">
+    <div id="studio_creative" class="studiopane">
       <div class="ideabox">
         <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-bulb"></i> Option A — Let the AI strategist invent the ideas</div>
         <div class="cc" style="margin-bottom:8px">Instead of you supplying the idea, the AI thinks like a top Amazon conversion strategist <i>and</i> like your customer — what stops them scrolling, what makes them feel "this is the one" — then proposes concrete photo concepts for <b>this</b> product. You pick which to generate. (Main images stay pure white; creativity is in angle, lighting &amp; touches like droplets.)</div>
@@ -249,7 +245,6 @@ function renderStudio(){
         ${howWorks('ready3')}
       </div>
     </div>
-    <div id="studio_recipes_manage" class="studiopane" style="display:none">${recipesManageHTML()}</div>
     <div id="studio_secondary" class="studiopane" style="display:none">${secondaryPaneHTML(batch,n)}</div>
     <div id="studio_source" class="studiopane" style="display:none">${sourcePaneHTML(batch,n)}</div>
     <div id="studio_aplus" class="studiopane" style="display:none">${aplusPaneHTML(batch,n)}</div>
@@ -623,61 +618,10 @@ function _aplusAddResult(job, j, grid){
 }
 function studioTab(t){
   document.querySelectorAll('#studiobody .stab').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
-  ['recipe','creative','source','secondary','aplus','recipes_manage'].forEach(p=>{
+  ['creative','source','secondary','aplus'].forEach(p=>{
     const el=document.getElementById('studio_'+p); if(el) el.style.display = (p===t)?'block':'none';
   });
   if(t==='aplus') aplusLoadModules();
-}
-function recipesManageHTML(){
-  const list=(STUDIO.recipes||[]).map(r=>`
-    <div class="recipecard">
-      ${r.template_image?`<img src="${esc(r.template_image)}">`:'<div class="noimgmsg" style="height:60px"><span>no template image</span></div>'}
-      <div style="flex:1">
-        <div style="font-weight:600">${esc(r.name)}</div>
-        <div class="cc" style="font-size:11px;max-height:38px;overflow:hidden">${esc(r.instructions)}</div>
-      </div>
-      <button class="ib" title="Delete recipe" onclick="deleteRecipe('${esc(r.id)}')"><i class="ti ti-trash"></i></button>
-    </div>`).join("");
-  return `
-    <div class="cc" style="margin-bottom:8px">A recipe = a <b>template image</b> (a main image from one of your products) + the <b>changes you want</b>. Save it once and reuse it on any product. The AI improves your wording before generating, and always keeps each product faithful via its own reference image.</div>
-    <label class="cc">Recipe name</label>
-    <input id="rec_name" class="ed" placeholder="e.g. Shee'lady white hero">
-    <label class="cc" style="margin-top:6px;display:block">Template image (optional — upload a main image to mimic)</label>
-    <input type="file" id="rec_tpl" accept="image/*" onchange="recTplPick(this)">
-    <div id="rec_tpl_prev"></div>
-    <label class="cc" style="margin-top:6px;display:block">Changes / treatment you want</label>
-    <textarea id="rec_instr" class="ed" rows="3" placeholder="e.g. pure white background, soft top-light, product centered at 85% with a subtle shadow, premium clean look"></textarea>
-    <div style="margin-top:8px"><button class="primary" onclick="saveRecipe()"><i class="ti ti-device-floppy"></i> Save recipe</button> <span id="rec_status" class="cc"></span></div>
-    <div style="margin-top:14px">${list||'<div class="cc">No recipes saved yet.</div>'}</div>`;
-}
-let REC_TPL_DATA="";
-function recTplPick(input){
-  const f=input.files&&input.files[0]; if(!f) return;
-  const r=new FileReader(); r.onload=()=>{ REC_TPL_DATA=r.result; document.getElementById("rec_tpl_prev").innerHTML='<img src="'+REC_TPL_DATA+'" style="max-width:120px;border-radius:8px;margin-top:6px">'; };
-  r.readAsDataURL(f);
-}
-async function saveRecipe(){
-  const name=(document.getElementById("rec_name")||{}).value||"";
-  const instr=(document.getElementById("rec_instr")||{}).value||"";
-  const st=document.getElementById("rec_status");
-  if(!name.trim()||!instr.trim()){ if(st) st.textContent="Name and changes are required."; return; }
-  if(st) st.innerHTML='<span class="genspin"></span> saving…';
-  try{
-    const j=await (await fetch("/recipes/save",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({brand:STUDIO.brand, name:name.trim(), instructions:instr.trim(), template_image:REC_TPL_DATA})})).json();
-    if(!j.ok){ if(st) st.textContent=j.error||"failed"; return; }
-    REC_TPL_DATA=""; await loadRecipes();
-    document.getElementById("studio_recipes_manage").innerHTML=recipesManageHTML();
-    if(st) st.textContent="Saved ✓";
-  }catch(e){ if(st) st.textContent="Error: "+e; }
-}
-async function deleteRecipe(id){
-  if(!confirm("Delete this recipe?")) return;
-  await fetch("/recipes/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({brand:STUDIO.brand, id:id})});
-  await loadRecipes();
-  document.getElementById("studio_recipes_manage").innerHTML=recipesManageHTML();
-  renderStudio();
 }
 // ---- shared background-job runner: submit jobs, poll, render as they complete ----
 let STUDIO_POLL=null;
@@ -869,24 +813,23 @@ function studioRunBackgroundConcept(jobs, total){
   studioRunBackground("concept", jobs, total);
 }
 
+// The three ready-made variations. The `recipe` branch went with the feature --
+// see the note at the top of this file.
 async function studioRun(mode){
   let jobs=[];
-  const strategies = mode==="creative" ? ["hero_straight","hero_angle","hero_personality"] : [null];
-  const recipeId = mode==="recipe" ? ((document.getElementById("studio_recipe_sel")||{}).value||"") : "";
-  const inspo = mode==="creative" ? ((document.getElementById("studio_inspo")||{}).value||"") : "";
-  if(mode==="recipe" && !recipeId){ toast("Pick a recipe first."); return; }
+  const strategies = ["hero_straight","hero_angle","hero_personality"];
+  const inspo = ((document.getElementById("studio_inspo")||{}).value||"");
   STUDIO.skus.forEach(sku=>{
     const it=_itemForSku(sku);
     const ref=_refImgForItem(it);
     strategies.forEach(strat=>{
       const body={ product_image:ref, title:(it&&it.title)||"", text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null), fidelity:((document.getElementById("studio_fidelity")||{}).value||"high") };
-      if(mode==="recipe"){ body.mode="recipe"; body.recipe_id=recipeId; body.brand=STUDIO.brand; }
-      else { body.mode="creative"; body.strategy=strat; body.inspiration=inspo; }
+      body.mode="creative"; body.strategy=strat; body.inspiration=inspo;
       jobs.push({sku:sku, ref:ref, label:(strat?strat.replace(/_/g,' '):'main'), payload:body});
     });
   });
   const total=jobs.length;
-  if(total>4 && !confirm("This will generate "+total+" image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s)"+(mode==="creative"?" × 3 variations":"")+").\nEach is a paid OpenRouter call. Continue?")) return;
+  if(total>4 && !confirm("This will generate "+total+" image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × 3 variations).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "images")) return;
-  studioRunBackground(mode==="creative"?"creative":"recipe", jobs, total);
+  studioRunBackground("creative", jobs, total);
 }

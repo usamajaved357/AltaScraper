@@ -203,8 +203,19 @@ function _studioAddResult(job, j, grid){
           : (j.save_error
               ? `<div class="cc" style="color:var(--red);font-size:10.5px;padding:0 8px 4px">Save: ${esc(j.save_error)}</div>`
               : ""));
+    // THE BRIEF WAS REWORDED TO GET PAST THE PROVIDER'S SAFETY FILTER.
+    // Some ordinary product words (a weed "slasher", a "blade") are refused as
+    // sensitive. Rather than fail, the server rewords once and retries -- but the
+    // picture is then made from words the owner did not write, so say so and show
+    // the wording used. Silently substituting the brief would be the worse bug.
+    const _softLine = (j.softened_prompt)
+      ? `<div class="cc" style="color:var(--warn);font-size:10.5px;padding:0 8px 4px"
+             title="${esc(j.detailed_prompt||'')}">Brief reworded to pass the image
+             filter — hover to read the wording used</div>`
+      : "";
     inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
       <div class="srescap">${label}</div>
+      ${_softLine}
       ${_driveLine}
       <div class="sresacts">
         <button class="ib" onclick="studioSave('${cardId}','${esc(job.sku)}')"><i class="ti ti-device-floppy"></i> Save to media</button>

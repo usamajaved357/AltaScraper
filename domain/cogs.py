@@ -126,21 +126,111 @@ def template_rows(config_path, account_id, marketplace, overrides=None,
     except Exception:
         rec = {}
     idx = catalogue if catalogue is not None else {}
-    out = []
+
+    # EVERY SKU THAT NEEDS A COST, not just the ones in the catalogue snapshot.
+    #
+    # This listed the snapshot and nothing else, and the snapshot is not the same
+    # thing as "what this account sells". Measured on selvora_limited, 17 Aug 2026:
+    # the snapshot holds 7 SKUs while the account has taken orders on 4, two of
+    # which are NOT in it -- OO-96JX-Z7ND with 52 orders and 1,757.97 of revenue,
+    # and one other. So the two products earning nearly all of that account's money
+    # could not be given a cost AT ALL: they were not on the sheet, so there was no
+    # row to type one into, so no profit could ever be shown for them. The person
+    # fills in the sheet, uploads it, and the orders still say profit unknown --
+    # which is exactly the report that led here.
+    #
+    # So three sources, unioned:
+    #   the catalogue snapshot   what Amazon says is listed
+    #   order_lines              what has actually SOLD -- the ones that matter
+    #   the repricer enrolment   what is being tracked, so a cost can be set
+    #                            before the first sale rather than after it
+    #
+    # `where from` says which, so a SKU appearing that the person does not
+    # recognise explains itself instead of looking like a bug.
+    seen, entries = {}, []
+    # HOW MUCH MONEY EACH SKU HAS TAKEN, used only for ordering the sheet. The
+    # biggest revenue with no cost is the biggest hole in the profit figures, so
+    # it belongs on the first line rather than wherever the alphabet puts it.
+    revenue = {}
+
+    def add(sku, asin, title, origin, strong=False):
+        """Add a SKU once. `strong` overwrites a weaker reason for it being here.
+
+        A SKU is usually in the snapshot AND in the orders. The snapshot is added
+        first, so without this the row for AltaboltaVoo Ceiling Fan -- 20 orders
+        on nestwell_goods and no cost -- read "listed on Amazon" and sorted below
+        products nobody has ever bought. Having SOLD is the fact that decides how
+        urgent a missing cost is, so it wins.
+        """
+        s = str(sku or "").strip()
+        if not s:
+            return
+        k = s.upper()
+        if k in seen:
+            if strong:
+                i = seen[k]
+                old = entries[i]
+                entries[i] = (old[0], old[1] or str(asin or ""),
+                              old[2] or str(title or ""), origin)
+            return
+        seen[k] = len(entries)
+        entries.append((s, str(asin or ""), str(title or ""), origin))
+
     for it in (rec.get("items") or []):
-        sku = str(it.get("sku") or "").strip()
-        if not sku:
-            continue
+        add(it.get("sku"), it.get("asin"), it.get("title"), "listed on Amazon")
+
+    # SOLD. Ordered by how much money the SKU has taken, so the biggest hole in
+    # the profit figures is the first row anyone sees.
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        for r in conn.execute(
+                "SELECT sku, MAX(asin) asin, MAX(title) title, "
+                "       COUNT(*) n, SUM(IFNULL(revenue,0)) rev "
+                "FROM order_lines WHERE workspace_id=? AND IFNULL(sku,'')<>'' "
+                "GROUP BY sku ORDER BY rev DESC", (account_id,)):
+            add(r["sku"], r["asin"], r["title"],
+                "SOLD %d time%s" % (r["n"], "" if r["n"] == 1 else "s"),
+                strong=True)
+            try:
+                revenue[str(r["sku"]).strip().upper()] = float(r["rev"] or 0)
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
+
+    # TRACKED by the repricer but never sold and not in the snapshot.
+    try:
+        from domain import source_repo as _repo
+        for row in _repo.enrolled(config_path, account_id, marketplace):
+            add(row.get("sku"), "", "", "tracked by the repricer")
+    except Exception:
+        pass
+
+    out = []
+    for sku, asin, title, origin in entries:
         cost, src = resolve(overrides, account_id, sku)
         got = _cat.look(idx, sku)
         out.append([sku,
-                    got.get("asin") or str(it.get("asin") or ""),
-                    got.get("title") or str(it.get("title") or ""),
+                    got.get("asin") or asin,
+                    got.get("title") or title,
                     "",                                  # the column to fill in
                     ("" if cost is None else "%.2f" % float(cost)),
-                    {"manual": "you set it", "sku": "read from the SKU name"}
-                        .get(src, "not known")])
-    out.sort(key=lambda r: (bool(r[4]), (r[2] or "").lower(), r[0]))
+                    # WHERE THE COST COMES FROM, and where the ROW comes from.
+                    # Both matter: "not known -- SOLD 52 times" is the line that
+                    # tells someone which gap is costing them.
+                    "%s%s" % ({"manual": "you set it",
+                               "sku": "read from the SKU name"}
+                              .get(src, "not known"),
+                              " -- %s" % origin if origin else "")])
+    # ROWS WITH NO COST FIRST -- they are the job. Within those, the ones that
+    # have SOLD, biggest earner first, because an unknown cost on a product
+    # nobody has bought costs nothing today and an unknown cost on the SKU that
+    # took 1,757.97 is the reason the profit figures are wrong.
+    out.sort(key=lambda r: (bool(r[4]),
+                            "SOLD" not in (r[5] or ""),
+                            -revenue.get(str(r[0]).strip().upper(), 0.0),
+                            (r[2] or "").lower(), r[0]))
     return out
 
 

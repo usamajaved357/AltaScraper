@@ -913,12 +913,87 @@ const SC_SERIES = {
   top5:       {label: "5th",              color: "#8b5cf6", width: 2, dash: "", fill: 0},
 };
 
+/* ---- CLICKING THE KEY TO HIDE A LINE ----------------------------------------
+ * Asked for directly: "the graph shows orders prior year sales profit and sales
+ * under the graph and user is able to click them to enable those options, they
+ * are enabled by default and user can hide the lines by again clicking on them".
+ *
+ * WHY THIS IS WORTH HAVING and not just decoration: the money lines share one
+ * axis, so a big series flattens a small one. Sales in the thousands against
+ * profit in the tens draws profit as a line along the floor. Hiding Sales
+ * rescales the axis and profit becomes readable -- the axis is recomputed from
+ * the VISIBLE series for exactly that reason.
+ *
+ * HELD IN MEMORY ONLY, deliberately. It survives a filter change or a date
+ * change (those redraw, they do not reload) but a page load starts with
+ * everything shown. Remembering it across reloads would mean opening the app to
+ * a chart with a line silently missing and no memory of having hidden it --
+ * which reads as lost data. Orbit resets on reload too.
+ */
+const SC_OFF = {};          // {"sales_combo": {"profit": true}}
+const SC_LAST = {};         // {"sales_combo": <the options it was drawn with>}
+
+function scSeriesHidden(cid, key){
+  return !!(SC_OFF[cid] && SC_OFF[cid][key]);
+}
+
+function scToggleSeries(cid, key){
+  SC_OFF[cid] = SC_OFF[cid] || {};
+  if(SC_OFF[cid][key]) delete SC_OFF[cid][key];
+  else SC_OFF[cid][key] = true;
+  // Redraw from the options the chart was built with, so the toggle never has to
+  // know where the figures came from or which screen it is on -- the Sales combo
+  // and the four Traffic combos all get this for free.
+  const opts = SC_LAST[cid];
+  const wrap = document.getElementById(cid + "_wrap");
+  if(!opts || !wrap) return;
+  // NOT innerHTML on the wrapper: the wrapper IS what salesCombo returns, so
+  // replacing its contents would nest a second copy inside the first.
+  wrap.outerHTML = salesCombo(opts);
+  scRearm(cid);
+}
+
+/* ---- THE SCROLL ANIMATION IS NOT REBUILT HERE -------------------------------
+ * A chart redrawn by a legend click is a NEW <svg>, so whatever armed the
+ * original one has nothing left to hold. The animation itself already exists and
+ * is not duplicated here: altaChartsInView() in static/js/motion.js holds any
+ * chart below the fold at the start of its animation and releases it when it is
+ * scrolled to, and the keyframes live beside .chartbox in dashboard.css.
+ *
+ * I started writing a second one and deleted it. Two systems animating the same
+ * element is how you get a chart that plays twice, or one that pauses itself
+ * after the other has released it.
+ */
+function scRearm(cid){
+  if(typeof altaChartsInView !== "function") return;
+  const wrap = document.getElementById(cid + "_wrap");
+  if(!wrap) return;
+  altaChartsInView(wrap);
+}
+
 function salesCombo(o){
   const cols  = o.columns || [];
   const bars  = o.bars || null;              // {key,label,values[]}
-  const lines = (o.lines || []).filter(function(l){
+  const cidKey = o.id || "combo";
+  // Remembered so clicking the key can redraw this exact chart. Stored before
+  // the early return, so a chart that had nothing to draw still redraws once
+  // there is something.
+  SC_LAST[cidKey] = o;
+
+  // TWO LISTS, and the difference matters.
+  //
+  //   drawable  the series Amazon has actually sent a figure for
+  //   lines     of those, the ones not switched off in the key
+  //
+  // The key is built from `drawable` so a hidden series stays listed (dimmed)
+  // and can be clicked back on -- removing it from the key would hide the only
+  // control that brings it back. Everything else works off `lines`, including
+  // the axis, so hiding a series really does rescale the chart.
+  const drawable = (o.lines || []).filter(function(l){
     return (l.values || []).some(function(v){ return _scNum(v) !== null; });
   });
+  const lines = drawable.filter(function(l){ return !scSeriesHidden(cidKey, l.key); });
+  const barsOn = bars && !scSeriesHidden(cidKey, "__bars");
   if(!cols.length) return "";
 
   // MEASURED off Orbit's live Sales Report, from the drawn SVG rather than from
@@ -940,7 +1015,7 @@ function salesCombo(o){
   // 1355 -- ten clear on the right, not ninety. Reserving the strip on a chart
   // with nothing to put in it just makes the plot narrower than Orbit's.
   const W = o.width || 1365, H = o.height || 320;
-  const padL = 70, padR = (o.bars ? 90 : 20), padT = 10, padB = 66;
+  const padL = 70, padR = (barsOn ? 90 : 20), padT = 10, padB = 66;
   const iw = W - padL - padR, ih = H - padT - padB;
 
   const moneyVals = [];
@@ -949,7 +1024,7 @@ function salesCombo(o){
       const n = _scNum(v); if(n !== null) moneyVals.push(n);
     });
   });
-  const barVals = (bars && bars.values || []).map(_scNum).filter(function(v){ return v !== null; });
+  const barVals = (barsOn && bars.values || []).map(_scNum).filter(function(v){ return v !== null; });
 
   const cid0 = o.id || "combo";
   const mLo = Math.min(0, moneyVals.length ? Math.min.apply(null, moneyVals) : 0);
@@ -968,7 +1043,7 @@ function salesCombo(o){
   // Without bars it is a point scale, as Orbit's own Organic vs PPC chart is
   // (measured: 31 points from x=60 to x=1355, first ON the axis, last on the
   // right edge). Same helper as the small charts -- see _scScale.
-  const _sc = _scScale(!!bars, padL, iw, cols.length);
+  const _sc = _scScale(!!barsOn, padL, iw, cols.length);
   const slot = _sc.slot, x = _sc.x;
   const yM = v => padT + ih - ((v - mLo) / mSpan) * ih;
   const yB = v => padT + ih - (v / (bHi || 1)) * ih;
@@ -989,7 +1064,7 @@ function salesCombo(o){
                   fill="rgb(156,163,175)">${_scEsc(_scAxis(mLo + mSpan * f, o.kind || "money", o.currency, mSpan))}</text>`;
     // The right-hand count axis is only drawn when something is counted on it.
     // An axis labelled 0-1-2-3-4 beside a chart with no bars is furniture.
-    if(bars){
+    if(barsOn){
       grid += `<text x="${W - padR + 8}" y="${yy + 4}" text-anchor="start" font-size="11"
                   fill="rgb(156,163,175)">${_scEsc(String(Math.round(bHi * f)))}</text>`;
     }
@@ -999,7 +1074,7 @@ function salesCombo(o){
   // (0.8 of it), #fbbf24 at opacity 0.3, corners rounded 4 at the TOP only.
   // Never wider than the band, or a long range overlaps into a solid block.
   let barsSvg = "";
-  if(bars){
+  if(barsOn){
     const bw = Math.max(2, Math.min(32, slot * 0.8));
     (bars.values || []).forEach(function(v, i){
       const n = _scNum(v);
@@ -1094,7 +1169,10 @@ function salesCombo(o){
     // dot placed on that series' own line. Bars get a row too but no dot --
     // a dot on a bar has nothing to sit on.
     const rows = [];
-    if(bars){
+    // A hidden series is left off the hover card too. A readout for a line that
+    // is not on the chart is the sort of thing that makes someone doubt the
+    // chart rather than doubt the readout.
+    if(barsOn){
       const bv = _scNum((bars.values || [])[i]);
       rows.push({name: (bars.label || "Orders"), color: SC_GOLD,
                  value: (bv === null ? "—" : String(Math.round(bv))), y: null});
@@ -1126,28 +1204,49 @@ function salesCombo(o){
 
   // The key, underneath and centred, with the coloured marks Orbit uses: a
   // filled square for the bars, a line for each line.
-  let key = '<div style="display:flex;gap:18px;justify-content:center;'
-          + 'flex-wrap:wrap;margin-top:6px;font-size:12px">';
+  //
+  // EVERY ITEM IS A BUTTON. Built from `drawable`, not `lines`, so a series that
+  // has been switched off is still listed and can be switched back on -- see the
+  // two-list note at the top of this function.
+  //
+  // A real <button>, not a span with a click handler: it is reachable by keyboard
+  // and announces itself as a control. aria-pressed carries the on/off state,
+  // because "this one is dimmed" is not information a screen reader has.
+  const item = function(mark, label, k, on){
+    return '<button type="button" class="sc-key' + (on ? '' : ' off') + '"'
+         + ' onclick="scToggleSeries(\'' + cid + '\',\'' + k + '\')"'
+         + ' aria-pressed="' + (on ? 'true' : 'false') + '"'
+         + ' title="' + (on ? 'Hide ' : 'Show ') + _scAttr(label) + ' on the chart">'
+         + mark + '<span>' + _scEsc(label) + '</span></button>';
+  };
+  let key = '<div class="sc-keys">';
   if(bars){
-    key += '<span style="display:inline-flex;align-items:center;gap:6px">'
-        +  '<span style="width:11px;height:11px;border-radius:2px;background:#fbbf24;'
-        +  'opacity:.55;display:inline-block"></span>' + _scEsc(bars.label || "Orders")
-        +  '</span>';
+    key += item('<span class="sc-key-sq" style="background:#fbbf24"></span>',
+                bars.label || "Orders", "__bars", !!barsOn);
   }
-  lines.forEach(function(l){
-    const spec = SC_SERIES[l.key] || {color: "#8fd694", width: 2, dash: ""};
-    key += '<span style="display:inline-flex;align-items:center;gap:6px">'
-        +  '<svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="'
-        +  spec.color + '" stroke-width="' + spec.width + '"'
-        +  (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : "") + '/></svg>'
-        +  _scEsc(spec.label) + '</span>';
+  drawable.forEach(function(l){
+    const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694", width: 2, dash: ""};
+    const mark = '<svg width="16" height="8" aria-hidden="true">'
+               + '<line x1="0" y1="4" x2="16" y2="4" stroke="' + spec.color
+               + '" stroke-width="' + spec.width + '"'
+               + (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : "") + '/></svg>';
+    key += item(mark, spec.label || l.key, l.key, !scSeriesHidden(cid, l.key));
   });
   key += '</div>';
 
-  return '<div style="margin:4px 0 0">'
+  // EVERY SERIES SWITCHED OFF is not the same as a chart with no data, and the
+  // empty plot that results looks exactly like one. Say which it is.
+  const allOff = !barsOn && !lines.length && (drawable.length || bars);
+  const note = allOff
+    ? '<div class="cc" style="font-size:11px;padding:6px 0;text-align:center;opacity:.8">'
+      + 'Everything is hidden — click a name below to bring it back.</div>'
+    : '';
+
+  return '<div id="' + cid + '_wrap" style="margin:4px 0 0">'
        // Says the gesture exists. Nobody discovers drag-to-zoom by accident.
        + '<div class="cc" style="font-size:10px;margin:0 0 4px;opacity:.65">'
-       + 'Hover for the day’s figures · drag across to zoom into those days'
+       + 'Hover for the day’s figures · drag across to zoom · click a name below '
+       + 'to hide that line'
        + '<span id="' + cid + '_read" style="margin-left:auto"></span></div>'
        + '<div style="position:relative">'
        // Fixed height, width taken from the container -- the same rule as the
@@ -1157,5 +1256,5 @@ function salesCombo(o){
        + defs + grid + barsSvg + linesSvg + xl + hits + '</svg>'
        + `<div id="${cid}_tip" class="charttip"></div>`
        + '</div>'
-       + key + '</div>';
+       + note + key + '</div>';
 }

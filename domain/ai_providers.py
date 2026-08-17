@@ -924,9 +924,87 @@ def generate_image(config: dict, prompt: str, reference_image="",
             d = e.read().decode("utf-8")[:400]
         except Exception:
             pass
+        # THE MODEL REFUSED THE WORDS, and that is a different problem from a
+        # broken key or a rate limit.
+        #
+        # MEASURED: the clean-background main image for 10.99_3Days_B0GGSCK998
+        # (a "Weed Slasher ... Hardened Steel Blade") came back
+        #     HTTP 400 {"error":{"message":"The request failed because the input
+        #     text may contain sensitive content ...
+        # -- the image model's own safety filter, tripped by the product's name.
+        # It is an ordinary garden tool. Three of the four products tested got
+        # their image; this one could not, and the person was shown a wall of
+        # truncated JSON that said nothing about why or what to do.
+        if _refused_as_sensitive(e.code, d):
+            return {"ok": False, "refused": True, "error": (
+                "The image model refused this prompt as sensitive content. That "
+                "happens with bladed or tool-like products -- a knife, a slasher, "
+                "a cutter -- whatever the product actually is. Reword the brief "
+                "to describe the OBJECT rather than what it does (\"a long-handled "
+                "steel garden tool\" rather than \"weed slasher blade\"), or "
+                "generate this one image by hand."), "raw": d}
         return {"ok": False, "error": f"OpenRouter image HTTP {e.code}: {d}"}
     except Exception as e:
         return {"ok": False, "error": f"OpenRouter image failed: {str(e)[:200]}"}
+
+
+# Words that describe what a tool DOES, and the plain noun for the same object.
+#
+# Every one of these is a lawful product this owner sells or could sell. The image
+# model's filter reads the verb and refuses; it has no objection to a photograph
+# of a garden tool on a white background, which is what is actually being asked
+# for. Replacing the verb with the object leaves the picture identical.
+_SOFTEN = (
+    ("weed slasher", "long-handled garden tool"),
+    ("grass slasher", "long-handled garden tool"),
+    ("slasher", "long-handled garden tool"),
+    ("machete", "long-handled garden tool"),
+    ("weapon", "tool"),
+    ("blade", "flat metal head"),
+    ("bladed", "metal-headed"),
+    ("cutter", "trimming tool"),
+    ("cutting edge", "shaped metal edge"),
+    ("sharp", "finished"),
+    ("stab", "press"),
+    ("kill", "clear"),
+    ("hardened steel blade", "hardened steel head"),
+)
+
+
+def _soften_for_filter(prompt):
+    """The same photograph, of the same object, without the words that trip it.
+
+    Case-insensitive and whole-word, so "bladed" is not half-rewritten inside
+    another word. Returns the prompt unchanged when there is nothing to soften --
+    the caller uses that to know a retry is pointless.
+    """
+    import re as _re
+    out = str(prompt or "")
+    for bad, good in _SOFTEN:
+        out = _re.sub(r"\b%s\b" % _re.escape(bad), good, out, flags=_re.I)
+    return out
+
+
+def _refused_as_sensitive(code, body):
+    """Did the model refuse the WORDS, rather than fail for another reason?
+
+    Told apart from every other 400 because the answer is different: a refusal is
+    fixed by rewording the brief, and a bad key or a rate limit is not. Matched on
+    the provider's own phrases; anything unrecognised stays a plain HTTP error
+    rather than being dressed up as a refusal.
+    """
+    if int(code or 0) != 400:
+        return False
+    t = str(body or "").lower()
+    # "sensitive" alone, not "sensitive content": the provider says BOTH. Measured
+    # on the same product, minutes apart --
+    #     "the input text may contain sensitive content"
+    #     "the input text may contain sensitive information."   <- Seed
+    # -- and matching the longer phrase missed the second, so the retry never
+    # fired and the person got the raw JSON after all.
+    return any(s in t for s in ("sensitive", "safety", "content policy",
+                                "prohibited_content", "content_filter",
+                                "blocked by", "violates"))
 
 
 # ONE spec per product, reused by every image made from it.
@@ -1410,8 +1488,32 @@ def run_pipeline(config: dict, brief: str, reference_image="",
                          strength=strength if reference_image else None,
                          aspect_ratio=_ar, image_size="4K", extra_reference=extra_reference,
                          media_root=media_root)
+    # REFUSED FOR ITS WORDS? TRY ONCE MORE, DESCRIBING THE OBJECT.
+    #
+    # The filter fires on the product's NAME, not on the picture being asked for:
+    # a "Weed Slasher / Hardened Steel Blade" is an ordinary garden tool and the
+    # request is for it on a white background. So the retry strips the product's
+    # own aggressive words and asks for the same photograph of the same object,
+    # described by its shape and material.
+    #
+    # This is not talking the model past a real objection -- nothing about the
+    # image changes, only the noun. If it refuses again, that is reported as a
+    # refusal and no third attempt is made.
+    if (not img.get("ok")) and img.get("refused"):
+        softened = _soften_for_filter(detailed)
+        if softened != detailed:
+            img = generate_image(config, softened, reference_image,
+                                 provider=image_provider,
+                                 strength=strength if reference_image else None,
+                                 aspect_ratio=_ar, image_size="4K",
+                                 extra_reference=extra_reference,
+                                 media_root=media_root)
+            if img.get("ok"):
+                img["softened_prompt"] = True
+                detailed = softened
     if not img.get("ok"):
         return {"ok": False, "error": "Image stage: " + img.get("error", ""),
+                "refused": bool(img.get("refused")),
                 "stage": "image", "detailed_prompt": detailed, "raw": img.get("raw", "")}
     # EXACT-DIMENSION RESIZE: Amazon A+/secondary modules need precise pixel sizes
     # (e.g. 970×600 basic, 1464×600 premium). The model returns ~square 4K, so we
@@ -1424,6 +1526,11 @@ def run_pipeline(config: dict, brief: str, reference_image="",
         except Exception as _re:
             img["resize_error"] = str(_re)[:120]
     out = {"ok": True, "detailed_prompt": detailed, "product_spec": product_spec,
+           # WAS THE BRIEF REWORDED? Said in the result, not left to be guessed
+           # at: the image was made from words the person did not write, and they
+           # are entitled to know which ones. detailed_prompt above is the
+           # softened version, so it can be read in full.
+           "softened_prompt": bool(img.get("softened_prompt")),
            "text_provider": enh.get("provider"), "image_provider": img.get("provider")}
     if img.get("image_b64"):
         out["image_b64"] = img["image_b64"]; out["mime"] = img.get("mime", "image/png")

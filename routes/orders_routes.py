@@ -403,8 +403,77 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                          account_label=acc.get("label") or aid)
         # Free here: the lines are already in hand, so what the order earned
         # costs nothing more to work out.
-        p, m, why = _ov.profit_for(items, row.get("total"), _cost_fn())
-        row["profit"], row["margin_pct"], row["profit_note"] = p, m, why
+        # WHAT EACH LINE EARNED, not just the order's bottom line.
+        #
+        # "i am not able to see the earnings of each order and not the breakdown
+        #  of the item that how many are cogs how much fee deducted"
+        #
+        # This called profit_for, which answers with a single number and a note.
+        # So the panel could say "Earned 4.20" and had nothing to show for the
+        # revenue, the fee or the cost behind it -- and when one line had no cost
+        # it said only that the profit could not be worked out, without naming
+        # which line was missing one.
+        cost_of = _cost_fn()
+        bd = _ov.line_breakdown(items, row.get("total"), cost_of)
+        row["profit"] = bd["totals"]["profit"]
+        row["margin_pct"] = bd["totals"]["margin_pct"]
+        row["profit_note"] = bd["totals"]["note"]
         return jsonify({"ok": True, "order_id": oid, "order": row,
                         "items": items,
+                        "breakdown": bd,
+                        # WHERE TO BUY EACH LINE FROM. Read from what the last
+                        # sweep already stored, so opening an order contacts no
+                        # supplier and costs nothing.
+                        "sources": _sources_for_items(aid, mkt, items),
                         "pii_note": _ov.PII_NOTE})
+
+    def _sources_for_items(account_id, marketplace, items):
+        """{sku: {options, summary}} for the lines of one order.
+
+        Reads the readings the repricer's sweep already took -- it does NOT go to
+        eBay. Opening an order must not fire off a dozen supplier calls, and the
+        prices from the last sweep are the prices the repricer itself is working
+        from, so the two screens agree by construction.
+
+        Never raises. A supplier lookup that failed must not stop an order being
+        looked at.
+        """
+        out = {}
+        try:
+            import datetime as _dt
+            from domain import order_sources as _osrc
+            from domain import source_repo as _repo
+            now = _dt.datetime.now()
+        except Exception:
+            return out
+        for it in (items or []):
+            sku = str((it or {}).get("sku") or "")
+            if not sku or sku in out:
+                continue
+            try:
+                # THE PRICE THIS BUYER ACTUALLY PAID, per unit -- not the current
+                # listing price. The profit shown has to be the profit on the
+                # order in front of you; a line sold at a coupon price does not
+                # earn what the listing earns today.
+                qty = int((it or {}).get("qty") or (it or {}).get("quantity") or 1) or 1
+                paid = it.get("price")
+                unit = (float(paid) / qty) if paid not in (None, "") else None
+            except (TypeError, ValueError):
+                unit = None
+            try:
+                # THE RULE FOR THIS SKU, which is the account default with any
+                # per-SKU override laid over it -- source_repo owns that merge.
+                # Per SKU and never per ASIN: one ASIN can carry several SKUs at
+                # different costs with different targets.
+                rule = _repo.rule_for(CONFIG_PATH, account_id, marketplace, sku)
+            except Exception:
+                rule = None
+            try:
+                opts = _osrc.options_for(CONFIG_PATH, account_id, marketplace, sku,
+                                         sell_price=unit, rule=rule, now=now)
+                out[sku] = {"options": opts, "summary": _osrc.summary(opts),
+                            "unit_price": unit}
+            except Exception as exc:
+                out[sku] = {"options": [], "summary": {},
+                            "error": "%s: %s" % (type(exc).__name__, str(exc)[:120])}
+        return out

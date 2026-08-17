@@ -2228,6 +2228,10 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                 # no longer bare names in this module. Call them via the Flask view registry
                 # (endpoint == function name) -- fixes "name 'genimage_from_concept' is not
                 # defined" and the same latent break for recipe/source/secondary/aplus.
+                # "recipe" here is the ENGINE, not the deleted saved-recipe feature.
+                # The Creative button ("Generate 3 variations") runs through this
+                # view, so genimage_recipe must stay even though no recipe UI is
+                # left. See the header of static/js/genimage.js.
                 if kind in ("recipe", "creative"):
                     with app.test_request_context(json=payload):
                         resp = app.view_functions["genimage_recipe"]()
@@ -3170,6 +3174,15 @@ def _imgresult(res, extra=None):
         return jsonify({"ok": False, "error": "no image returned"}), 400
     out = {"ok": True, "data_url": data_url,
            "detailed_prompt": res.get("detailed_prompt", ""),
+           # WAS THE BRIEF REWORDED TO GET PAST THE SAFETY FILTER?
+           #
+           # Some product words (slasher, blade, weapon-ish nouns) trip the image
+           # provider's filter -- a real weed slasher came back as "the input text
+           # may contain sensitive information". run_pipeline now rewords once and
+           # retries instead of failing, which is right, but the picture is then
+           # made from words the user did not write. Carry the flag through so the
+           # screen can say so; detailed_prompt above is the wording actually used.
+           "softened_prompt": bool(res.get("softened_prompt")),
            "text_provider": res.get("text_provider"),
            "image_provider": res.get("image_provider")}
     if extra:
