@@ -14,9 +14,10 @@ eventually causes.
 """
 import json
 
-from flask import request, jsonify
+from flask import request, jsonify, Response
 
 from domain import source_apply as _apply
+from domain import source_bulk as _bulk
 from domain import source_drift as _drift
 from domain import source_fetch as _fetch
 from domain import source_repo as _repo
@@ -118,8 +119,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
     @app.route("/sourcing/list")
     def sourcing_list():
         """Everything the screen draws: enrolment, sources, readings, decisions."""
+        from domain import catalogue as _cat
         wsid, mkt = _where()
         run = _run.dry_run(CONFIG_PATH, wsid, mkt, record=False)
+        # WHICH PRODUCT EACH ROW IS. "i want to see the images of the items in
+        # the repricer so it is easy to understand for which product are we
+        # talking about" -- and a SKU like 10.39_3Days_B0F6LQ1S93 tells nobody.
+        # From the shared lookup, so the picture here is the one the Listings
+        # cards and the Orders rows show; built once for the whole list rather
+        # than per row.
+        idx = _cat.index(CONFIG_PATH, wsid, mkt)
         rows = []
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],
@@ -147,6 +156,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                          "glance": _drift.at_a_glance(
                              pairs, d.get("current"), _rule,
                              (d.get("decision") or {}).get("source_id")),
+                         "item": _cat.look(idx, d["sku"]),
                          "rule": _rule})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],
@@ -155,6 +165,46 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                         "rule": _sourcing.rule_with_defaults(
                             _repo.rule_for(CONFIG_PATH, wsid, mkt, "")),
                         "defaults": _sourcing.DEFAULT_RULE})
+
+    @app.route("/sourcing/template.csv")
+    def sourcing_template():
+        """The supplier-link sheet, already filled in with what we know.
+
+        "give the user the template first filled by the asins enrolled for
+         tracking in the repricer, the user will fill that template and upload
+         it back to update the source links"
+
+        So the only empty column is the one they are there to fill. A blank
+        sheet means typing forty SKUs by hand, and a hand-typed SKU is the
+        NO-SUCH-SKU-123 that domain/source_bulk already has a check for -- the
+        real fix for which is not making anyone type them.
+
+        Downloaded rather than posted anywhere: this reads and sends nothing.
+        """
+        from domain import catalogue as _cat
+        wsid, mkt = _where()
+        enrolled = [r["sku"] for r in _repo.enrolled(CONFIG_PATH, wsid, mkt)]
+
+        # WHAT IS ALREADY ATTACHED, so a row that is done looks done. Someone
+        # changing one supplier should be able to see the other forty are
+        # already filled in and leave them alone, rather than wondering whether
+        # a blank column means "none" or "we did not look".
+        current = {}
+        for sku in enrolled:
+            urls = [str(s.get("url") or "")
+                    for s, _c in _repo.pairs_for(CONFIG_PATH, wsid, mkt, sku)
+                    if s.get("url")]
+            if urls:
+                current[sku] = urls[0]
+
+        rows = _bulk.template_rows(CONFIG_PATH, wsid, mkt, enrolled,
+                                   catalogue=_cat.index(CONFIG_PATH, wsid, mkt),
+                                   current=current)
+        body = _bulk.to_csv(_bulk.TEMPLATE_HEADERS, rows)
+        name = "supplier-links-%s-%s.csv" % (wsid or "account", mkt or "")
+        return Response(body, mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition":
+                                 'attachment; filename="%s"' % name})
 
     @app.route("/sourcing/log")
     def sourcing_log():
@@ -409,53 +459,70 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 if k in _sourcing.DEFAULT_RULE}
 
         # A MISTYPED TARGET MUST NOT LOOK LIKE NO TARGET.
-        # These two are the only free-text/numeric pair here that silently does
-        # nothing when wrong: "Margin"/"gross"/"20%" would all store, fail the
-        # kind check inside target_floor, and leave someone believing a 20%
-        # floor was in force while the repricer priced to the flat £1.
-        if "profit_target_kind" in vals:
-            k = vals["profit_target_kind"]
-            k = "" if k is None else str(k).strip().lower()
-            if k not in ("", "margin", "roi"):
-                return jsonify({"ok": False, "error": (
-                    "profit target must be 'margin' (a share of the selling "
-                    "price) or 'roi' (a share of what you paid) -- got %r"
-                    % vals["profit_target_kind"])}), 400
-            vals["profit_target_kind"] = k or None
-        if "profit_target_pct" in vals:
-            v = vals["profit_target_pct"]
+        # A percentage that does not parse would store, fail every check inside
+        # target_floor, and leave someone believing a 20% floor was in force
+        # while the repricer priced to the flat £1. Two boxes now, each checked
+        # the same way and each clearable on its own -- turning the margin target
+        # off must not disturb the ROI one.
+        for key, label in (("target_margin_pct", "margin"),
+                           ("target_roi_pct", "ROI")):
+            if key not in vals:
+                continue
+            v = vals[key]
             if v in (None, ""):
-                vals["profit_target_pct"] = None
-            else:
-                try:
-                    v = float(str(v).replace("%", "").strip())
-                except (TypeError, ValueError):
-                    return jsonify({"ok": False, "error": (
-                        "the profit target must be a number of percent, e.g. 20"
-                        )}), 400
-                if v < 0 or v >= 100:
-                    return jsonify({"ok": False, "error": (
-                        "a profit target of %g%% is not a target anything can "
-                        "meet" % v)}), 400
-                vals["profit_target_pct"] = v
+                vals[key] = None
+                continue
+            try:
+                v = float(str(v).replace("%", "").strip())
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": (
+                    "the %s target must be a number of percent, e.g. 20 -- got %r"
+                    % (label, vals[key]))}), 400
+            if v < 0:
+                return jsonify({"ok": False, "error": (
+                    "a %s target cannot be negative" % label)}), 400
+            # ROI has no upper bound worth refusing: 200% back on a cheap unit is
+            # ambitious, not impossible. Margin does -- see below.
+            if label == "margin" and v >= 100:
+                return jsonify({"ok": False, "error": (
+                    "a margin target of %g%% would need the customer to pay more "
+                    "than the whole price as profit" % v)}), 400
+            vals[key] = v
+
+        # SETTING EITHER BOX RETIRES THE OLD SINGLE TARGET.
+        #
+        # rule_with_defaults folds a stored profit_target_kind/pct into whichever
+        # box it names, so an account that set "20% roi" before there were two
+        # boxes keeps its floor. But that fold happens on every read -- so
+        # clearing both boxes left the old row behind and the 20% came straight
+        # back. Measured: saving {margin: null, roi: null} on jack_uk answered
+        # roi=20.0. "Off" has to mean off.
+        #
+        # Cleared alongside, in the same write, so there is no moment where one
+        # is set and the other is not.
+        if "target_margin_pct" in vals or "target_roi_pct" in vals:
+            vals["profit_target_kind"] = None
+            vals["profit_target_pct"] = None
 
         # A margin target competes with Amazon's cut for the same pound, so past
         # a point there is no price that satisfies it. Said here, once, rather
-        # than as "cannot be priced" against every SKU afterwards.
+        # than as "cannot be priced" against every SKU afterwards. ROI is never
+        # refused for this: it is measured against the cost, not the price, so
+        # Amazon's cut does not eat into it the same way.
         merged = _sourcing.rule_with_defaults(
             {**_repo.rule_for(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip()),
              **vals})
-        if (merged.get("profit_target_kind") == "margin"
-                and merged.get("profit_target_pct") is not None):
+        m_pct = merged.get("target_margin_pct")
+        if m_pct is not None:
             room = (1.0 - float(merged["referral_rate"])) * 100.0
-            if float(merged["profit_target_pct"]) >= room - 1:
+            if float(m_pct) >= room - 1:
                 return jsonify({"ok": False, "error": (
                     "Amazon takes %.0f%% of the sale, so a MARGIN target has to "
                     "stay under about %.0f%% to be reachable at any price. %g%% "
-                    "as ROI -- a share of what you paid -- is a different and "
-                    "quite reachable number."
+                    "in the ROI box -- a share of what you paid -- is a different "
+                    "and quite reachable number."
                     % (float(merged["referral_rate"]) * 100, room - 1,
-                       float(merged["profit_target_pct"])))}), 400
+                       float(m_pct)))}), 400
 
         _repo.save_rule(CONFIG_PATH, wsid, mkt, (b.get("sku") or "").strip(), vals)
         return jsonify({"ok": True, "rule": _sourcing.rule_with_defaults(
