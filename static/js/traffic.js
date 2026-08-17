@@ -117,11 +117,24 @@ function trafficRender(){
     return;
   }
 
+  // HOW MUCH OF THE WINDOW HAS DATA IN IT. Above the tiles, because every one
+  // of them divides by it. Amazon never publishes today and revises yesterday,
+  // so this only appears when the gap is two days or more — the sort caused by
+  // a rate-limited report rather than by the normal lag.
+  const _fr = d.freshness || {};
+  if(_fr.note){
+    h += '<div class="wsnote" style="margin:0 0 10px;font-size:11.5px">'
+      +  '<i class="ti ti-clock-exclamation"></i> ' + _tEsc(_fr.note) + '</div>';
+  }
+
   // ---- the eight tiles -------------------------------------------------
   h += '<div class="stat-row" id="traf_kpis">' + (d.kpis || []).map(function(k){
     const missing = (k.value === null || k.value === undefined);
-    return '<div class="stat-card' + (missing ? " is-empty" : "") + '">'
-      + '<p class="stat-label">' + _tEsc(k.label) + '</p>'
+    return '<div class="stat-card' + (missing ? " is-empty" : "") + '"'
+      + (k.note ? ' title="' + _tEsc(k.note) + '"' : '') + '>'
+      + '<p class="stat-label">' + _tEsc(k.label)
+      + (k.note ? ' <i class="ti ti-info-circle" style="opacity:.6"></i>' : '')
+      + '</p>'
       + '<p class="stat-number">' + _tEsc(_tNum(k.value, k.kind, cur)) + '</p>'
       + (k.delta_pct === null || k.delta_pct === undefined
           ? '<p class="stat-delta">no earlier period</p>'
