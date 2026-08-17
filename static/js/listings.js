@@ -884,6 +884,7 @@ function card(r){
       ${realIssue?`<span class="tileflag ${flagRed?'red':'amber'}" title="${flagRed?'Restricted / blocked — open to see why':'Restricted — docs required'}"><i class="ti ti-alert-triangle"></i></span>`:''}
       ${claimBadge(r)}
       ${viabilityBadge(r)}
+      ${needsCopyBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
@@ -1102,6 +1103,7 @@ function drawerContent(r){
       </div>
     </div>
     ${hero}
+    ${needsCopyPanel(r)}
     ${complianceBanner(r)}
     ${liveMirrorPanel(r)}
     ${restrictedPanel(r)}
@@ -1294,7 +1296,11 @@ function tableRow(r){
     <td class="price">${price}</td>
     ${cogsCell(r)}
     <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
-    <td>${_statusPill(r.status)}</td>
+    <td>${_statusPill(r.status)}${needsCopy(r)
+        ? `<div class="cc" style="font-size:9.5px;margin-top:3px;color:var(--warn)" `
+          + `title="No bullets, no description, no product type yet. Select it and `
+          + `press Regenerate copy, or open it and press Write it now.">no copy yet</div>`
+        : ''}</td>
     <td>${_compCell(r)}</td>
     <td><div class="acts">
       <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
@@ -1519,6 +1525,55 @@ function claimMarkField(r, field, rawText){
   });
   return out;
 }
+// A DRAFT WHOSE COPY HAS NOT BEEN WRITTEN YET, said out loud.
+//
+// "import from supplier button is drafting the listings as empty in the drafts
+//  section, and no content is written in them"
+//
+// That is what Import Seller is meant to produce -- a skeleton carrying the
+// source title, the link and the handling time, so you can decide what is worth
+// spending generation credits on before spending them. domain/seller_import.py
+// says so at length.
+//
+// But it arrives as NEEDS_REVIEW, which is the SAME status a fully written draft
+// gets, so nothing on the screen told the two apart. A row with a title and
+// nothing else, filed under the same label as a finished one, does not look like
+// a deliberate stage of a pipeline. It looks broken.
+//
+// Derived from the row rather than stored as a new status: a status would have to
+// be kept in step with the filters, the counts, the badge classes and the CSS,
+// and "has no bullets and no description" is a fact about the row that needs no
+// bookkeeping.
+function needsCopy(r){
+  if(!r) return false;
+  if(r.status === "LIVE" || r.status === "PARENT") return false;
+  const hasBullets = !!(r.bullet_1 || r.bullet_2 || r.bullet_3);
+  const hasBody = !!(r.description_html || r.description);
+  return !hasBullets && !hasBody;
+}
+function needsCopyBadge(r){
+  if(!needsCopy(r)) return "";
+  return `<span class="tilecopy" title="This draft has its source title and link but no copy yet — no bullets, no description, no product type. That is how Import Seller leaves things, so you can pick what is worth generating. Select it and press Regenerate copy, or open it and use Suggest." onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')"><i class="ti ti-pencil-off"></i></span>`;
+}
+// The same fact, as a sentence with the action attached, inside the drawer.
+function needsCopyPanel(r){
+  if(!needsCopy(r)) return "";
+  return `<div class="restclear" style="border-color:#4a3a23;background:#2a2112">`
+    + `<i class="ti ti-pencil-off"></i> <b>The copy has not been written yet.</b> `
+    + `This draft carries the title and the link it was imported with, and nothing `
+    + `else — no bullets, no description, no product type. That is deliberate: `
+    + `Import Seller leaves the writing until you have decided the item is worth `
+    + `it. <button class="db-chip" style="margin-left:6px" `
+    + `onclick="event.stopPropagation();batchGenerateOne('${esc(r.sku)}')">`
+    + `<i class="ti ti-wand"></i> Write it now</button></div>`;
+}
+// One SKU through the same path the bulk button uses, so there is one way copy
+// gets written and not two.
+function batchGenerateOne(sku){
+  SELECTED.clear(); SELECTED.add(sku);
+  batchGenerate("copy");
+}
+
 function claimBadge(r){
   const f=r.claim_flags||[]; if(!f.length) return "";
   const red=f.some(x=>x.severity==="RED"); const lvl=red?"red":"amber";

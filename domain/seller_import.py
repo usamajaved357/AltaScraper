@@ -491,6 +491,18 @@ def to_draft(row, *, account_id, marketplace, source_cost=None, days=3,
     if row.get("is_group"):
         notes.append("eBay lists this as a variation family — its children come "
                      "across as one Amazon family rather than separate products.")
+    # WHAT THIS DRAFT IS NOT YET, said on the draft itself.
+    #
+    # Reported as "import from supplier button is drafting the listings as empty
+    # in the drafts section, and no content is written in them". That IS what
+    # this function produces, and on purpose -- the screening above exists so you
+    # can decide what is worth spending generation credits on before spending
+    # them. But nothing said so, and a row carrying a title and nothing else,
+    # filed under the same NEEDS_REVIEW as a finished draft, reads as broken
+    # rather than as unfinished.
+    notes.append("COPY NOT WRITTEN YET — this is the imported skeleton: source "
+                 "title, link and handling time. Run Regenerate copy on it, or "
+                 "open it and press Write it now.")
     out = {
         "sku": "%s_%dDays_%s" % (cost_s, int(days), row.get("item_id") or ""),
         "title": row.get("title") or "",
