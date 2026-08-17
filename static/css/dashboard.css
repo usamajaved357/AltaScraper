@@ -1903,12 +1903,36 @@
          gap:10px; margin-bottom:14px; }
 
 /* -- 3. SMOOTH SCROLLING ------------------------------------------------
-   And containment, so flicking a table to its end does not then start
-   scrolling the page behind it -- which is most of what "janky" describes. */
+   And containment, so flicking a panel to its end does not then start
+   scrolling the page behind it -- which is most of what "janky" describes.
+
+   ONLY EVER LIST BOXES THAT THE USER CAN ACTUALLY SCROLL HERE.
+   `overscroll-behavior:contain` means "when this box cannot scroll any
+   further, do NOT pass the scroll on to the page". On a box that scrolls,
+   that is what you want. On a box that can never scroll, it means the wheel
+   is swallowed and NOTHING moves.
+
+   .ltwrap was in this list and is exactly that case: it is `overflow:hidden`
+   purely to clip the listings table to the card's rounded corners. Hidden
+   still counts as a scroll container to the browser, so the pair of rules
+   read as "this frame owns the wheel, and this frame never moves" -- put the
+   cursor anywhere over the listings table and the page froze; move it off the
+   table and scrolling worked again. Reported as "when i place my cursor in
+   this area and scroll up or down the screen does not move".
+
+   .wsmain, .tablewrap, .modalbody and .foldgroup went with it, and nothing
+   changes by their leaving: .tablewrap and .modalbody are not classes this app
+   has ever had, and .wsmain and .foldgroup have no overflow at all, so the
+   property was inert on all four. They were a loaded gun -- the day somebody
+   gives .wsmain an overflow, the whole workspace stops scrolling.
+
+   The test for adding a selector here is one question: can the user scroll
+   inside it? That means a height limit (max-height / fixed height) AND
+   overflow auto or scroll. .drawer has both. .ltwrap had neither.
+   test_scroll_trap.py enforces exactly that, for every selector, not just
+   these. */
 html{ scroll-behavior:smooth; }
-.wsmain, .ltwrap, .tablewrap, .drawer, .modalbody, .foldgroup{
-  overscroll-behavior:contain;
-}
+.drawer{ overscroll-behavior:contain; }
 
 /* -- 4. CHART ENTRANCES -------------------------------------------------
    A chart appearing fully-formed is the moment the app looks most like a
