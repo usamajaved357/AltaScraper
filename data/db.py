@@ -322,6 +322,13 @@ CREATE TABLE IF NOT EXISTS sourcing_enrolment (
     enrolled     INTEGER DEFAULT 1,
     mode         TEXT DEFAULT 'dry_run',   -- 'dry_run' decides and logs; 'live' pushes
     added_at     TEXT,
+    -- IS THE LISTING STILL ON AMAZON? 'ok', 'gone', or NULL for never checked.
+    -- A SKU deleted in Seller Central stays enrolled here for ever otherwise, and
+    -- the repricer goes on pricing something that cannot be bought. Six of
+    -- jack_uk's 67 answered 404 GONE. NULL and 'gone' are deliberately different:
+    -- one means nobody has looked.
+    listing_state   TEXT,
+    listing_checked TEXT,
     PRIMARY KEY (workspace_id, marketplace, sku)
 );
 
@@ -613,6 +620,10 @@ _ADDED_COLUMNS = [
     # it: NULL in every row. So it gets the meaning its name always implied
     # rather than the table gaining a second column called the same thing.
     ("sourcing_rules", "target_roi_pct", "REAL"),
+    # Whether the listing is still on Amazon. In SCHEMA too, for databases made
+    # after this; here so the ones that exist gain it without being rebuilt.
+    ("sourcing_enrolment", "listing_state", "TEXT"),
+    ("sourcing_enrolment", "listing_checked", "TEXT"),
     # HOW MANY THE SUPPLIER SAYS THEY HAVE. eBay reports it on the same call the
     # price comes from, and it was being thrown away -- so "in stock" was a yes
     # or no when the number behind it was already on the wire. One left and two

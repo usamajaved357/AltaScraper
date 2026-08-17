@@ -95,7 +95,19 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
                                     "handling time and availability are not ours "
                                     "to set. Leaving it alone.")}
 
-    decision = _sourcing.decide(current, pairs, rule, now)
+    # HAS AMAZON STILL GOT THIS SKU? Read from the enrolment row, which the
+    # listing check writes -- not asked here, because that would be one Amazon
+    # call per SKU on every draw of the screen.
+    state = ""
+    try:
+        for e in _repo.enrolled(config_path, workspace_id, marketplace):
+            if str(e.get("sku")) == str(sku):
+                state = str(e.get("listing_state") or "")
+                break
+    except Exception:
+        state = ""
+
+    decision = _sourcing.decide(current, pairs, rule, now, listing_state=state)
 
     # A decision to change the price with nothing to compare against has lost
     # its most important guard. Say so rather than quietly pushing.

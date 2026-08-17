@@ -1284,7 +1284,7 @@ function listBlock(rows, fn){
   // COGS gets its own column, and it is EDITABLE. What a thing cost is the one
   // number every profit figure on every other screen is built from, and it was
   // only visible by opening a listing. Click the cell, type, done.
-  return `<div class="card ltwrap"><table class="lt"><thead><tr>
+  const head = `<div class="card ltwrap"><table class="lt"><thead><tr>
       <th class="selcol" title="Select every row shown">
         <input type="checkbox" class="rowsel"
                ${rows.length && rows.every(x => SELECTED.has(String(x.sku))) ? "checked" : ""}
@@ -1292,8 +1292,28 @@ function listBlock(rows, fn){
       <th style="width:52px">Image</th><th>ASIN</th><th>Title</th>
       <th>Price</th><th title="What the stock cost you. Read from the SKU where the SKU carries it; click to type your own.">COGS</th>
       <th>Handling</th><th>Status</th><th>Compliance</th>
-      <th style="width:150px">Actions</th></tr></thead><tbody>`
-    + rows.map(rowFn).join("") + `</tbody></table></div>`;
+      <th style="width:150px">Actions</th></tr></thead><tbody>`;
+  const body = rows.map(rowFn).join("");
+  // THE HEADER AND THE ROWS MUST HAVE THE SAME NUMBER OF COLUMNS.
+  //
+  // liveTableRow shipped with nine cells against this ten-column header, and the
+  // whole live view was shifted one place left -- pictures under the checkbox,
+  // actions under "Compliance". Nothing caught it, because HTML does not
+  // complain: a short row just draws short.
+  //
+  // So it is checked, once per draw, and said out loud in the console rather than
+  // left to be noticed by eye. Cheap: one count of one string.
+  if(body){
+    const want = (head.match(/<th\b/g) || []).length;
+    const first = body.slice(0, body.indexOf("</tr>") + 5);
+    const got = (first.match(/<td\b/g) || []).length;
+    if(got && got !== want){
+      console.error("listings table: header has " + want + " columns and a row "
+        + "has " + got + " — the columns will not line up. Fix the row builder ("
+        + (rowFn === liveTableRow ? "liveTableRow" : "tableRow") + ").");
+    }
+  }
+  return head + body + `</tbody></table></div>`;
 }
 
 // The compliance cell: one icon and two words, from the SAME data the drawer's
@@ -1379,7 +1399,20 @@ function liveTableRow(it){
   const comp = (c && (c.risks||[]).length)
     ? `<span class="comp" style="color:${(c.risks||[]).some(x=>x.risk==="HIGH")?"var(--red)":"var(--warn)"}"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`
     : `<span class="comp cc">—</span>`;
+  // TEN CELLS, BECAUSE THE HEADER HAS TEN COLUMNS.
+  //
+  // This row had nine. It was missing the select cell that every header row
+  // starts with, so in the LIVE view every column was shifted one place to the
+  // left: the picture sat under the checkbox, the ASIN under "Image", the title
+  // under "ASIN", and the actions under "Compliance". Reported as "in the
+  // listings section i see that the header and the details under it do not
+  // match".
+  //
+  // Empty rather than a checkbox: the bulk bar's actions -- approve, hold, set
+  // handling -- are about DRAFTS, and offering them on a listing that is already
+  // live would be offering to un-approve something Amazon has published.
   return `<tr style="cursor:default" title="${esc(it.title||'')}">
+    <td class="selcol"></td>
     <td class="pii-img">${thumb}</td>
     <td><span class="asin">${esc(it.asin||'')}</span><br><span class="sku pii">${esc(it.sku||'')}</span></td>
     <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span></td>

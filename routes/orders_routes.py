@@ -3,9 +3,20 @@
     GET  /orders/list     recent orders, this account or all of them
     GET  /orders/detail   one order's lines
 
-Reads only. Nothing here changes an order, and Amazon is asked directly rather
-than through a cache, because an order's status is the thing most likely to have
-moved since anything was stored.
+Reads only. Nothing here changes an order.
+
+WHAT IS ASKED OF AMAZON, AND WHAT IS NOT.
+
+The LIST is always fetched live: an order's status is the thing most likely to
+have moved since anything was stored, and a shipped order shown as unshipped is
+worth a call.
+
+Its CONTENTS are not. What was in an order never changes once it is placed, so
+they are read from order_lines and only fetched when nobody has read that order
+yet -- and then kept. That is the difference between the Item column filling in
+about a minute and filling at once: "the orders page takes too much long to
+reflect the item name and image etc", measured at ~65s for 24 orders, one
+sequential call each.
 
 The rules and the shaping live in domain/orders_view.py, including the measured
 explanation of which customer details Amazon withholds from this application.
@@ -151,7 +162,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             for r in rows:
                 if done >= cap:
                     break
-                items = _items_for(r["order_id"], r["account_id"])
+                items = _items_for(r["order_id"], r["account_id"], r.get("purchased") or "")
                 if items is None:
                     unread += 1
                     continue
@@ -226,8 +237,60 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return _cogs.lookup(_cs.all_overrides(CONFIG_PATH),
                             str(_state.get("active_account_id", "") or ""))
 
-    def _items_for(order_id, account_id):
-        """One order's lines, or None if Amazon would not say."""
+    def _items_from_store(account_id, marketplace, order_id):
+        """One order's lines from order_lines, or None if it is not there.
+
+        WHY THIS IS FIRST. An order's contents never change once it is placed, so
+        reading them from Amazon a second time buys nothing and costs a call --
+        and the calls are the reason the screen was slow: "the orders page takes
+        too much long to reflect the item name and image etc", measured at about
+        65 seconds for 24 orders, one sequential call each.
+
+        The table is already there and already filled by the hourly-sales fetch
+        (domain/hourly_week.py), which stores every order it reads for the same
+        reason. This just uses it.
+        """
+        try:
+            from data import db as _db
+            rows = _db.get_db(CONFIG_PATH).execute(
+                "SELECT asin, sku, title, units FROM order_lines "
+                "WHERE workspace_id=? AND marketplace=? AND order_id=?",
+                (str(account_id or ""), str(marketplace or ""),
+                 str(order_id or ""))).fetchall()
+        except Exception:
+            return None
+        if not rows:
+            return None
+        return [{"asin": str(r["asin"] or ""), "sku": str(r["sku"] or ""),
+                 "title": str(r["title"] or ""),
+                 "qty": int(r["units"] or 0) or 1} for r in rows]
+
+    def _store_items(account_id, marketplace, order_id, items, purchased=""):
+        """Keep what Amazon just told us, so the next visit is free."""
+        try:
+            from domain import hourly_week as _hw
+            _hw.store_lines(CONFIG_PATH, str(account_id or ""),
+                            str(marketplace or ""),
+                            [{"order_id": str(order_id or ""),
+                              "purchase_date": str(purchased or ""),
+                              "asin": it.get("asin") or "",
+                              "sku": it.get("sku") or "",
+                              "title": it.get("title") or "",
+                              "units": it.get("qty") or 1,
+                              "revenue": it.get("price") or 0,
+                              "shipping": it.get("shipping") or 0,
+                              "currency": it.get("currency") or "",
+                              "status": it.get("status") or ""}
+                             for it in (items or [])])
+        except Exception:
+            pass                     # a cache must never be the reason this fails
+
+    def _items_for(order_id, account_id, purchased=""):
+        """One order's lines, or None if Amazon would not say.
+
+        Reads the store first -- see _items_from_store. Only an order nobody has
+        read yet costs a call, and what that call returns is kept.
+        """
         from domain import accounts as _acc_mod
         cfg = _cfg() if callable(_cfg) else (_cfg or {})
         acc = next((a for a in (cfg.get("accounts") or [])
@@ -235,6 +298,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if not acc:
             return None
         mkt = _marketplace(acc)
+        cached = _items_from_store(account_id, mkt, order_id)
+        if cached:
+            return cached
         try:
             from sp_api.api import Orders
             from sp_api.base import Marketplaces
@@ -242,9 +308,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             oc = Orders(credentials=_acc_mod.account_creds(acc), marketplace=enum)
             r = oc.get_order_items(order_id)
             pay = r.payload if hasattr(r, "payload") else r
-            return [_ov.to_item(x) for x in ((pay or {}).get("OrderItems") or [])]
+            got = [_ov.to_item(x) for x in ((pay or {}).get("OrderItems") or [])]
         except Exception:
             return None
+        # Kept, so the next visit to this screen does not pay for it again.
+        if got:
+            _store_items(account_id, mkt, order_id, got, purchased)
+        return got
 
 
     @app.route("/orders/items", methods=["POST"])
@@ -281,7 +351,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             aid = str(w.get("account_id") or "").strip()
             if not oid:
                 continue
-            items = _items_for(oid, aid)
+            items = _items_for(oid, aid, str(w.get("purchased") or ""))
             if items is None:
                 unread += 1
                 continue

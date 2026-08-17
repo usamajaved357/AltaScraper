@@ -1,4 +1,4 @@
-// ===== Miles template main-image builder (overlay text on blank template) =====
+﻿// ===== Miles template main-image builder (overlay text on blank template) =====
 let MILES_TPLS = null;
 async function _loadMilesTpls(){
   if(MILES_TPLS) return MILES_TPLS;
@@ -476,6 +476,8 @@ function render(){
     ? `<div class="emptynote" style="border-color:var(--red-line);color:var(--red)">
          ${goneRows.length} listing${goneRows.length>1?'s were':' was'} deleted on Amazon and ${goneRows.length>1?'are':'is'} hidden here
          (${goneRows.slice(0,3).map(r=>esc(r.sku)).join(', ')}${goneRows.length>3?', …':''}) —
+         <button class="linkbtn" onclick="backupDeletedRows()" title="Download every field of these listings as a CSV before you remove them">save a backup</button>
+         &middot;
          <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} ${storeFrom()}</button>
        </div>`
     : "");
@@ -760,10 +762,71 @@ async function reconcileAmazonState(){
 
 // Remove rows for listings that Amazon no longer has. Destructive and irreversible, so
 // it is a deliberate click, never part of Sync.
+// SAVE THEM FIRST. "i think we should have a button that saves the data of the
+// deleted listings as a backup."
+//
+// Right, and it should not be optional: removal cannot be undone, and what is
+// being thrown away is every field of a listing that once sold -- its copy, its
+// bullets, its attributes, its cost. Downloaded from the rows already on screen,
+// so it needs nothing from the server and cannot fail halfway.
+function backupDeletedRows(){
+  const gone = (ROWS||[]).filter(isDeletedOnAmazon);
+  if(!gone.length){ toast("Nothing to back up"); return null; }
+  // EVERY field each row carries, not a chosen few: the point of a backup is
+  // that you did not have to know in advance what you would want.
+  const keys = [];
+  gone.forEach(function(r){
+    Object.keys(r || {}).forEach(function(k){
+      if(typeof r[k] === "object") return;          // nested things go as JSON below
+      if(keys.indexOf(k) < 0) keys.push(k);
+    });
+  });
+  keys.sort();
+  const q = function(v){
+    const s = (v === null || v === undefined) ? "" : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [keys.concat(["_nested_json"]).map(q).join(",")];
+  gone.forEach(function(r){
+    const nested = {};
+    Object.keys(r || {}).forEach(function(k){
+      if(r[k] && typeof r[k] === "object") nested[k] = r[k];
+    });
+    lines.push(keys.map(function(k){ return q(r[k]); })
+      .concat([q(JSON.stringify(nested))]).join(","));
+  });
+  // A BOM, so a pound sign in a title survives a double-click into Excel.
+  const blob = new Blob(["\ufeff" + lines.join("\n")],
+                        {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const acct = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
+                 ? (CUR_ACCOUNT.id || "account") : "account";
+  a.download = "deleted-listings-" + acct + "-"
+             + new Date().toISOString().slice(0, 10) + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  toast("Saved " + gone.length + " deleted listing(s) to a CSV");
+  return gone.length;
+}
+
 async function removeDeletedRows(){
   const gone = (ROWS||[]).filter(isDeletedOnAmazon);
   if(!gone.length){ toast("Nothing to remove"); return; }
-  if(!confirm("Delete "+gone.length+" row(s) from your Google Sheet?\n\n"+
+  // THE BACKUP IS OFFERED BEFORE THE DELETE, not beside it.
+  //
+  // This is irreversible and it throws away every field of a listing that once
+  // sold. Asking afterwards would be asking too late, and putting the two
+  // buttons side by side leaves the order to chance.
+  if(confirm("Save these " + gone.length + " listing(s) to a CSV first?\n\n"
+           + "Removal cannot be undone, and this keeps every field — the copy, "
+           + "the bullets, the attributes, the cost.\n\nOK to download the "
+           + "backup, Cancel to skip it.")){
+    backupDeletedRows();
+  }
+  if(!confirm("Delete "+gone.length+" row(s) from this app?\n\n"+
               gone.map(r=>"  • "+r.sku).join("\n")+
               "\n\nThese listings no longer exist on Amazon. This cannot be undone.")) return;
   let done=0, failed=0;

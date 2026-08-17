@@ -51,6 +51,39 @@ def unenrol(config_path, workspace_id, marketplace, sku):
     conn.commit()
 
 
+GONE = "gone"
+LIVE_OK = "ok"
+
+
+def set_listing_state(config_path, workspace_id, marketplace, sku, state):
+    """Record whether Amazon still has this SKU, and DISARM it if it does not.
+
+    "the template and the repricer is saving the skus which i have deleted
+     already, turn off the auto repricing for that sku and give warning to tell
+     that this offer is deleted"
+
+    Disarming happens HERE, in the same statement, rather than being left to the
+    caller: a SKU marked gone while still armed is a SKU the pricer will go on
+    trying to push, and the whole point of the mark is that it cannot be sold.
+
+    The enrolment row is KEPT. Its sources, its history and its rule are worth
+    more than the row costs, and deleting them would lose the audit trail for a
+    listing that might be relisted tomorrow.
+    """
+    conn = _db.get_db(config_path)
+    if str(state) == GONE:
+        conn.execute(
+            "UPDATE sourcing_enrolment SET listing_state=?, listing_checked=?, "
+            "mode='dry_run' WHERE workspace_id=? AND marketplace=? AND sku=?",
+            (GONE, _now(), workspace_id, marketplace, sku))
+    else:
+        conn.execute(
+            "UPDATE sourcing_enrolment SET listing_state=?, listing_checked=? "
+            "WHERE workspace_id=? AND marketplace=? AND sku=?",
+            (LIVE_OK, _now(), workspace_id, marketplace, sku))
+    conn.commit()
+
+
 def enrolled(config_path, workspace_id=None, marketplace=None):
     """Every enrolled SKU, optionally narrowed to one account/marketplace."""
     conn = _db.get_db(config_path)
