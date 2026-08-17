@@ -209,13 +209,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                             for a in _accounts_in_scope()])
 
     def _cost_fn():
-        """sku -> (cost, source), from the ONE resolver (domain/cogs.py)."""
+        """sku -> (cost, source), from the ONE resolver (domain/cogs.py).
+
+        The overrides come from domain/cogs_store.py, which owns them.
+
+        THIS SAID `from dashboard import _COGS_OVERRIDE` AND GOT AN EMPTY DICT.
+        dashboard.py is the file that is RUN, so its module name is "__main__";
+        importing "dashboard" loads the file a second time and binds a separate
+        module whose _COGS_OVERRIDE nothing ever fills. So every cost typed on
+        the listings screen was invisible to this column, and an order whose SKU
+        had been costed by hand still reported "not known" for its profit,
+        margin and ROI -- with nothing to suggest the figure existed.
+        """
         from domain import cogs as _cogs
-        try:
-            from dashboard import _COGS_OVERRIDE as _ov_map
-        except Exception:
-            _ov_map = {}
-        return _cogs.lookup(_ov_map, str(_state.get("active_account_id", "") or ""))
+        from domain import cogs_store as _cs
+        return _cogs.lookup(_cs.all_overrides(CONFIG_PATH),
+                            str(_state.get("active_account_id", "") or ""))
 
     def _items_for(order_id, account_id):
         """One order's lines, or None if Amazon would not say."""

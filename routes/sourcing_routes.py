@@ -194,17 +194,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         # changing one supplier should be able to see the other forty are
         # already filled in and leave them alone, rather than wondering whether
         # a blank column means "none" or "we did not look".
-        current = {}
+        # EVERY supplier a SKU has, not just the first. A SKU can have several --
+        # that is the whole point of the repricer, which compares them and takes
+        # the cheapest usable one -- and the sheet showing only one made it look
+        # as though only one were possible. Asked as "i dont have an option to add
+        # multiple sellers in the template".
+        sources = {}
         for sku in enrolled:
             urls = [str(s.get("url") or "")
                     for s, _c in _repo.pairs_for(CONFIG_PATH, wsid, mkt, sku)
                     if s.get("url")]
             if urls:
-                current[sku] = urls[0]
+                sources[sku] = urls
 
         rows = _bulk.template_rows(CONFIG_PATH, wsid, mkt, enrolled,
                                    catalogue=_cat.index(CONFIG_PATH, wsid, mkt),
-                                   current=current)
+                                   sources=sources)
         body = _bulk.to_csv(_bulk.TEMPLATE_HEADERS, rows)
         name = "supplier-links-%s-%s.csv" % (wsid or "account", mkt or "")
         return Response(body, mimetype="text/csv; charset=utf-8",

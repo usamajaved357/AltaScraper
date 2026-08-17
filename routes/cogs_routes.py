@@ -76,9 +76,11 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
             return jsonify(rep), 400
         # Written only after the whole file has been read without complaint, so
         # a sheet that fails halfway does not leave half the catalogue changed.
+        # Through the store, same as /cogs/set -- one way in, so a cost set by
+        # sheet and a cost typed on a row cannot end up in different dicts.
+        from domain import cogs_store as _cs
         for sku, cost in (rep.pop("updates", None) or {}).items():
-            _COGS_OVERRIDE["%s::%s" % (aid, sku)] = float(cost)
-        _save_cogs_overrides()
+            _cs.set_cost(CONFIG_PATH, aid, sku, cost)
         rep["note"] = ("%d cost%s set. %d row%s had no cost filled in and were "
                        "left alone." % (rep["set"], "" if rep["set"] == 1 else "s",
                                         rep["skipped"],
@@ -94,20 +96,20 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         cost = b.get("cost", None)
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
-        key = f"{aid}::{sku}"
-        if cost in (None, "", "null"):
-            _COGS_OVERRIDE.pop(key, None)   # clear override
-        else:
-            try:
-                _COGS_OVERRIDE[key] = float(cost)
-            except Exception:
-                return jsonify({"ok": False, "error": "cost must be a number"}), 400
-        _save_cogs_overrides()
+        # THROUGH THE STORE, which owns the dict and the file together. Writing
+        # the dict here and saving separately is how the two came apart before:
+        # see domain/cogs_store.py for the module-identity bug that made a typed
+        # cost invisible to the Sales and Orders screens.
+        from domain import cogs_store as _cs
+        stored, ok = _cs.set_cost(CONFIG_PATH, aid, sku, cost)
+        if not ok and cost not in (None, "", "null"):
+            return jsonify({"ok": False, "error": (
+                "cost must be a number, and not a negative one")}), 400
         # return the recomputed profit for immediate UI update
-        prof = None
-        if key in _COGS_OVERRIDE:
-            prof = _estimate_profit(b.get("price", ""), _COGS_OVERRIDE[key])
-        return jsonify({"ok": True, "profit": prof})
+        prof = (_estimate_profit(b.get("price", ""), stored)
+                if stored is not None else None)
+        return jsonify({"ok": True, "profit": prof, "cost": stored,
+                        "cogs_source": ("manual" if stored is not None else "")})
 
     @app.route("/cogs/upload", methods=["POST"])
     def cogs_upload():

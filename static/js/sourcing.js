@@ -440,9 +440,12 @@ function sourcingRender(j){
     +  '<a class="db-chip" href="/sourcing/template.csv" '
     +  'style="text-decoration:none" title="'
     +  'Downloads a sheet already listing every SKU you are tracking, with its '
-    +  'ASIN, product name and the supplier link it has now. Fill in the last '
-    +  'column and upload it back with the button on the left. Rows you leave '
-    +  'blank are not changed.">'
+    +  'ASIN, product name and every supplier link it has now — one row per '
+    +  'link, with a blank row under each SKU to add another. FOR SEVERAL '
+    +  'SUPPLIERS ON ONE SKU, add more rows with the same SKU rather than more '
+    +  'columns; the repricer then compares them and buys from the cheapest. '
+    +  'Fill in the link column and upload it back with the button on the left. '
+    +  'Rows you leave blank are not changed.">'
     +  '<i class="ti ti-file-download"></i> Get the template</a>'
     // The switch that actually matters, named for what it does rather than for
     // where it lives. "Master switch: off" did not say off from WHAT.
