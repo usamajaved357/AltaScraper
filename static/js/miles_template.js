@@ -1455,26 +1455,21 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
       ${shipHtml}
       <div style="margin-top:5px">${profHtml}${liveComplianceChip(it)}</div>
     </div>
-    <div class="tileacts">
-      <button class="ib" title="Optimize this live listing" onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i> Optimize</button>
-      <button class="ib" title="Generate new images for this product" onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i> Images</button>
-      <!-- The LIBRARY, which the "Images" button above does not open: that one
-           generates, this one shows what already exists, takes an upload from
-           your computer, and pushes the chosen image to the live listing. These
-           tiles had no way to reach any of that -- the drafts grid did, and this
-           renderer simply never got the button. -->
-      <button class="ib" title="See this listing's images, upload your own, and push one to Amazon" onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i> Library</button>
-      <!-- CHANGING THE PRICE WORKS ON THESE TOO.
-           The price editor needs a SKU and nothing else -- it reads the live
-           offer from Amazon and edits that, rather than any row this app holds.
-           So it always worked on a listing the app has no draft for; the button
-           was simply never drawn here, which is part of why the caption above
-           still claimed these could not be edited. -->
-      <button class="ib" title="Change this listing's selling price on Amazon" onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}','${esc(String(it.price||'').replace(/^[A-Z]{3}\s?/,''))}','${esc(it.title||'')}')"><i class="ti ti-tag"></i> Price</button>
-      <!-- _dpUrl (listings.js) knows every marketplace domain. This link was
-           hand-rolled and sent DE/FR/IT/ES to amazon.com. -->
-      <a class="ib" title="View on Amazon" href="${esc(_dpUrl(it.asin||''))}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a>
-    </div>
+    <!-- ONE ACTION ROW FOR BOTH KINDS OF CARD.
+         "i see two types of cards style dont make them different make them
+          same and also remove the unnecessary buttons from the cards".
+         These buttons were written out here by hand with text labels while the
+         drafts cards used rowActions() with icons, so the same grid showed two
+         designs side by side (his screenshot 84). rowActions is the one
+         definition now (Rule 12); adding a button to the app adds it to both
+         kinds of card or to neither, and the "pull live images" button it used
+         to carry is gone because Sync already does that for the whole account.
+         live:true is passed because a tile FROM Amazon's catalogue is live by
+         definition -- there is no app row for isAmazonLive() to read. -->
+    <div class="tileacts">${rowActions(
+        {sku: it.sku, asin: it.asin, title: it.title,
+         price: String(it.price || "").replace(/^[A-Z]{3}\s?/, ""), row: 0},
+        "ib", {live: true})}</div>
   </div>`;
 }
 // THE FILE GOES TO THE SERVER, WHICH KNOWS HOW TO READ IT.

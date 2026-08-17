@@ -1249,10 +1249,28 @@ function rowSelectBox(r, cls){
       onchange="toggleSelect('${esc(r.sku)}', this.checked)">`;
 }
 
-function rowActions(r, cls){
+/* THE ONE ACTION ROW, for every card in the app.
+ *
+ *     "i see two types of cards style dont make them different make them same
+ *      and also remove the unnecessary buttons from the cards"
+ *
+ * There were two: this icon row on the drafts cards, and a separate set of
+ * text-labelled buttons written out by hand inside liveTile() in
+ * miles_template.js. Same screen, same grid, two designs -- visible side by side
+ * in his screenshot 84, and inevitable once the same list is drawn by two
+ * renderers that each build their own buttons.
+ *
+ * liveTile calls this now, so there is one definition (Rule 12) and adding a
+ * button to the app adds it to both kinds of card or to neither.
+ *
+ * `opts.live` forces the live branch on: a tile from Amazon's catalogue IS live
+ * by definition, but it has no app row for isAmazonLive() to read.
+ */
+function rowActions(r, cls, opts){
   cls = cls || "ib";
+  opts = opts || {};
   const sku = esc(r.sku);
-  const live = isAmazonLive(r);
+  const live = opts.live === undefined ? isAmazonLive(r) : !!opts.live;
   return `
     <button class="${cls}" title="Approve"
             onclick="event.stopPropagation();setStatus('${sku}','APPROVED',this)"><i class="ti ti-check"></i></button>
@@ -1266,11 +1284,43 @@ function rowActions(r, cls){
             onclick="event.stopPropagation();autoFixLoop('${sku}')"><i class="ti ti-wand"></i></button>
     ${live ? `<button class="${cls}" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)"
             onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${sku}')"><i class="ti ti-sparkles"></i></button>` : ""}
-    ${live ? `<button class="${cls}" title="Pull this listing's REAL images from Amazon (main + every secondary image) into this row, replacing the generation-time ones" style="color:var(--ok)"
-            onclick="event.stopPropagation();pullLiveRow('${sku}',this)"><i class="ti ti-cloud-download"></i></button>` : ""}
+    ${live ? `<button class="${cls}" title="Change this listing's selling price on Amazon"
+            onclick="event.stopPropagation();priceEdit('${sku}',${Number(String(r.price||'').replace(/[^0-9.]/g,''))||0},'${esc(r.title||'')}')"><i class="ti ti-tag"></i></button>` : ""}
+    ${live && r.asin ? `<a class="${cls}" href="${esc(_dpUrl(r.asin))}" target="_blank" rel="noopener"
+            title="Open this listing on Amazon" onclick="event.stopPropagation()"
+            style="text-decoration:none"><i class="ti ti-external-link"></i></a>` : ""}
     <button class="${cls} more" title="More"
             onclick="event.stopPropagation();tileMenu(event,'${sku}',${r.row||0})"><i class="ti ti-dots"></i></button>`;
 }
+/* PULL LIVE IMAGES: REMOVED.
+ *
+ *     "live pulling live images from amazon, i believe the app automatically
+ *      fetches fresh data now. so we dont need that button also check other
+ *      buttons from this logic and delete the un necessary ones"
+ *
+ * He is right. The button called pullLiveRow(), which fetches a listing's real
+ * Amazon images into that one row. Sync already does exactly that for the whole
+ * account, and the live tiles show Amazon's own images regardless of whether the
+ * app holds a copy -- so it was a per-row repeat of a job that is already done
+ * in bulk, sitting on the busiest row of buttons on the screen.
+ *
+ * pullLiveRow() itself is deliberately KEPT. It is still called from the drawer
+ * and from the batch actions, where pulling images for one chosen listing is the
+ * point rather than a duplicate of Sync.
+ *
+ * EVERY OTHER BUTTON WAS PUT TO THE SAME TEST -- "does something else already do
+ * this?" -- and every one survived it:
+ *
+ *   Approve       sets the status. Nothing else does.
+ *   Image Studio  GENERATES images. Different job from the library below.
+ *   Library       shows what exists, uploads, and pushes one live.
+ *   Edit          opens the full editor.
+ *   Auto-fix      the suggest/apply/preview loop.
+ *   Optimize      rewrites the live copy. Live only.
+ *   Price         changes the live price. Live only.
+ *   Open on Amazon a link, not an action.
+ *   More          holds the rest.
+ */
 
 // One block of listings, drawn the way the user has chosen. Every place that
 // used to say rows.map(card).join("") calls this instead, so the two views can
