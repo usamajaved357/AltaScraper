@@ -100,13 +100,26 @@ def _delivery_text(check):
 
 
 def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
-                rule=None, now=None, fx=1.0):
+                rule=None, now=None, fx=1.0, fee_amount=None):
     """Every tracked source for one SKU, cheapest to buy from first.
 
     Each option carries what it costs, what it would earn at `sell_price`, how it
     gets here and when. `sell_price` is what the buyer actually paid for THIS
     order -- not the current listing price -- so the profit shown is the profit on
     the order in front of you.
+
+    `fee_amount` is what Amazon ACTUALLY took, in pounds, when that is known --
+    domain/amazon_fees.py gets it from Amazon's own settlement. Given it, the
+    profit here is worked out against the same fee the order's own profit used,
+    so the two figures on one screen cannot disagree. Without it, the rule's rate
+    is applied, which is the estimate this always used.
+
+    NOTHING IS ADDED THAT AMAZON DOES NOT CHARGE. This used to subtract a 3.00
+    postage allowance and a 2.00 advertising allowance from every option, so the
+    order the list reported as +2.58 opened showing -2.32 -- the same order, £5
+    apart, because one of the two was charging it for money that never moved.
+    Those allowances are now 0.00 unless the owner sets them; see
+    listing/pricing.py.
     """
     pairs = _repo.pairs_for(config_path, workspace_id, marketplace, sku)
     if not pairs:
@@ -150,11 +163,27 @@ def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
         # WHAT IT WOULD EARN. Only when both numbers are real: a profit worked out
         # from a missing cost is a number that looks like an answer.
         if price is not None and landed is not None:
-            got = _pricing.achieved(price, landed, rule["referral_rate"],
-                                    rule["shipping_label"], rule["ads_margin"])
+            if fee_amount is not None:
+                # Amazon's real figure. Passed as a fee in pounds with the rate
+                # at zero, so the ONE implementation of "what does this price
+                # return" still does the arithmetic (Rule 12) rather than a
+                # second copy of it appearing here.
+                got = _pricing.achieved(price, landed, 0.0,
+                                        rule["shipping_label"],
+                                        rule["ads_margin"],
+                                        other_fees=fee_amount)
+                row["fee_basis"] = "actual"
+            else:
+                got = _pricing.achieved(price, landed, rule["referral_rate"],
+                                        rule["shipping_label"], rule["ads_margin"])
+                row["fee_basis"] = "estimated"
             row["profit"] = got.get("profit")
             row["margin_pct"] = got.get("margin_pct")
             row["roi_pct"] = got.get("roi_pct")
+            # The sum, so the panel can lay it out instead of only showing the
+            # answer and leaving the owner to work out where it came from.
+            row["fee"] = got.get("fees")
+            row["deductions"] = got.get("deductions")
 
         # HOW OLD THE READING IS. A price from four days ago is not a price you
         # can buy at, and the screen has to be able to say so.

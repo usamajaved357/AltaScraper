@@ -117,9 +117,25 @@ pairs = [({"id": 1, "enabled": 1},
 g = D.at_a_glance(pairs, {"price": 16.99}, {})
 check("what a unit costs delivered", g["landed"], 11.28)
 check("what Amazon charges today", g["sell_price"], 16.99)
-truthy("the profit on that sale is negative, and says so", g["profit"] < 0)
-truthy("  margin too", g["margin_pct"] < 0)
-truthy("  and ROI", g["roi_pct"] < 0)
+# THIS TEST USED TO ASSERT THE PROFIT WAS NEGATIVE, AND IT WAS WRONG.
+#
+# 16.99 sold, 11.28 to buy, 2.55 to Amazon: the sale makes 3.16. It reported
+# -1.84 because a 3.00 postage allowance and a 2.00 ads allowance were being
+# subtracted from every figure whether or not that money had ever moved -- the
+# same fault the owner found on a real order:
+#
+#     "the profit in the orders page is shown as 2.58 ... but when i click on
+#      the order to see the breakdown it shows source price is 8.79 profit is
+#      -2.32 and roi is -26%"
+#
+# Both allowances default to 0.00 now, so this is the arithmetic he asked for:
+# what the buyer paid, less what the stock cost, less what Amazon actually took.
+check("the profit on that sale is what is left after Amazon and the stock",
+      g["profit"], 3.16)
+truthy("  and it is a profit, not the loss the padding used to report",
+       g["profit"] > 0)
+check("  margin is that over what the buyer paid", g["margin_pct"], 18.6)
+check("  and ROI is it over what you paid", g["roi_pct"], 28.0)
 check("how many the supplier has", g["units_available"], 93)
 check("the supplier's dispatch time", g["dispatch_days"], 2)
 check("  plus the buffer, which is what the buyer is promised", g["handling_days"], 4)

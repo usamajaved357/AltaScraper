@@ -43,12 +43,46 @@ other and against the price the generator has always produced.
 import math
 
 
-# £ per unit. Deliberately constants rather than settings: they are the user's
-# actual costs, and a change to them re-prices everything, so it should be a
-# visible edit rather than a field someone nudges.
-PRICING_RULE_SHIPPING_LABEL = 3.00   # £ per unit -- Royal Mail Tracked 48 baseline
-PRICING_RULE_ADS_MARGIN     = 2.00   # £ per unit -- estimated CPA / PPC budget
-PRICING_RULE_MIN_PROFIT     = 1.00   # £ per unit -- absolute minimum to accept an order
+# £ per unit. ALL THREE ARE NOW ZERO, AND THAT IS DELIBERATE.
+#
+#     "do not add 3 pounds postage and 2 pounds ad cost and 1 pound profit space
+#      on your own, if i added this rule earlier, remove it. i want to be shown
+#      the profit as the truth"
+#
+# They were 3.00, 2.00 and 1.00, and they were being subtracted from REPORTED
+# PROFIT as well as built into the price -- which is a different thing entirely
+# and is what made the app contradict itself. Measured on the latest
+# nestwell_goods order, 18 Aug 2026:
+#
+#     the orders list said   13.49 - 2.02 fee - 8.89 cost      = +2.58, ROI 29%
+#     opening the order said 13.49 - 2.02 fee - 8.79 source
+#                                  - 3.00 postage - 2.00 ads   = -2.32, ROI -26%
+#
+# Both were "right" and neither was true: the second was charging the order £5 of
+# allowances that no money ever left the account for. A profit figure is a
+# statement about money that actually moved, and an allowance is a forecast.
+#
+# They remain as parameters because the seller really may post a parcel and
+# really may spend on ads -- when those numbers are known they belong in
+# domain/asin_charges.py, which holds the seller's OWN per-unit charges and is
+# already subtracted by domain/order_profit.py. What they must never be again is
+# a number this file invents on everyone's behalf.
+PRICING_RULE_SHIPPING_LABEL = 0.00   # £ per unit -- set it if you buy a label
+PRICING_RULE_ADS_MARGIN     = 0.00   # £ per unit -- set it if you fund ads
+PRICING_RULE_MIN_PROFIT     = 0.00   # £ per unit -- see MIN_ROI_PCT below
+
+# WHAT REPLACES THE FLAT £1, AND WHY A PERCENTAGE.
+#
+# With the three above at zero, a floor of "cost + Amazon's fee" is break-even,
+# and a repricer that prices to break-even loses money on every sale it makes.
+# So the profit requirement is expressed the way the owner has always expressed
+# it -- "maintain at least 20 percent margin or roi" -- as a percentage of the
+# cash he puts in, not as a flat pound figure that means 8% on a £12 item and 2%
+# on a £60 one.
+#
+# It is a FLOOR among floors, so it can only ever raise a price. It is visible in
+# the repricer as target_roi_pct and can be changed or switched off there.
+PRICING_RULE_MIN_ROI_PCT    = 20.0   # % of landed cost, the least a sale may return
 
 
 def _round_up(v):
@@ -109,23 +143,60 @@ def floor_from_target(source_cost, referral_rate, target_kind, target_pct,
 
 def achieved(price, source_cost, referral_rate,
              shipping_label=PRICING_RULE_SHIPPING_LABEL,
-             ads_margin=PRICING_RULE_ADS_MARGIN):
-    """What a given price actually returns: {profit, margin_pct, roi_pct}.
+             ads_margin=PRICING_RULE_ADS_MARGIN,
+             other_fees=0.0, promos=0.0):
+    """What a given price actually returns: {profit, margin_pct, roi_pct, ...}.
 
-    The inverse of the two functions above, and the only place that answers "is
-    this listing hitting the target" -- so a flag on a screen and the price the
-    repricer computes can never be working from different arithmetic.
+    THE OWNER'S FORMULA, IN ONE LINE:
+
+        profit = what the buyer paid
+               - what the stock cost
+               - Amazon's referral fee
+               - Amazon's FBA fee, if it was fulfilled by Amazon
+               - Amazon's fixed closing fee, on media items
+               - any coupon or discount the seller funded
+
+    `price` is the whole of what the buyer paid, postage included, because that
+    is what Amazon charges its referral fee on. `other_fees` carries the FBA and
+    closing fees -- ZERO unless something actually knows them, never guessed;
+    domain/amazon_fees.py is what fills them in from Amazon's own settlement.
+
+    `promos` is a coupon the seller funded. It defaults to 0 and MUST be left at
+    0 when `price` came from the Orders API, whose OrderTotal already has the
+    coupon deducted -- subtracting it again charges the discount twice. See the
+    note in domain/orders_view.profit_for, which proved that on seven real
+    orders across two accounts.
+
+    shipping_label and ads_margin are the seller's own per-unit costs and are
+    0.00 by default. They exist so a caller that KNOWS them can pass them; this
+    function no longer invents them. See the constants above for the order that
+    was reported as a £2.32 loss when it had in fact made £2.58.
+
+    The returned dict also carries `fees`, `cost` and `deductions` so a screen
+    can show the sum rather than only its answer.
     """
     try:
         p = float(price)
         c = float(source_cost)
         r = float(referral_rate)
     except (TypeError, ValueError):
-        return {"profit": None, "margin_pct": None, "roi_pct": None}
-    profit = p - (p * r) - c - float(shipping_label) - float(ads_margin)
+        return {"profit": None, "margin_pct": None, "roi_pct": None,
+                "fees": None, "cost": None, "deductions": None}
+    referral = p * r
+    extras = float(shipping_label or 0) + float(ads_margin or 0)
+    fees = referral + float(other_fees or 0)
+    profit = p - fees - c - extras - float(promos or 0)
     return {"profit": round(profit, 2),
             "margin_pct": (round(profit / p * 100.0, 1) if p > 0 else None),
-            "roi_pct": (round(profit / c * 100.0, 1) if c > 0 else None)}
+            "roi_pct": (round(profit / c * 100.0, 1) if c > 0 else None),
+            # The parts, so a breakdown never has to re-derive them and get a
+            # different answer to the total sitting beside it.
+            "referral": round(referral, 2),
+            "fees": round(fees, 2),
+            "cost": round(c, 2),
+            "seller_costs": round(extras, 2),
+            "promos": round(float(promos or 0), 2),
+            "deductions": round(fees + c + extras + float(promos or 0), 2)}
 
 
 def floor_from_fees(source_cost, amazon_fees,
@@ -167,7 +238,8 @@ def compute_selling_price(source_cost: float,
                           competitor_price: float,
                           shipping_label: float = PRICING_RULE_SHIPPING_LABEL,
                           ads_margin:     float = PRICING_RULE_ADS_MARGIN,
-                          min_profit:     float = PRICING_RULE_MIN_PROFIT) -> dict:
+                          min_profit:     float = PRICING_RULE_MIN_PROFIT,
+                          min_roi_pct:    float = PRICING_RULE_MIN_ROI_PCT) -> dict:
     """Apply the user's pricing rule.
 
     Returns dict with:
@@ -187,7 +259,27 @@ def compute_selling_price(source_cost: float,
     The repricer deliberately does NOT use this -- the user asked for price to
     follow the supplier only -- so it calls floor_from_rate directly.
     """
-    floor = floor_from_fees(source_cost, amazon_fees, shipping_label, ads_margin, min_profit)
+    flat = floor_from_fees(source_cost, amazon_fees, shipping_label, ads_margin, min_profit)
+
+    # THE PERCENTAGE FLOOR, so removing the flat £1 cannot list anything at
+    # break-even. With the three per-unit constants at 0.00, `flat` above is
+    # exactly cost + Amazon's fee -- a price at which the listing makes nothing
+    # at all. That is not a floor, it is the line a floor sits above.
+    #
+    # Taken as the HIGHER of the two, never as a replacement, so this can only
+    # raise a price. Where a competitor sits above both -- which is the ordinary
+    # case for these listings -- the competitor still wins and the price is
+    # completely unchanged by any of this.
+    roi = None
+    if min_roi_pct:
+        roi = floor_from_target(source_cost, 0.0, "roi", min_roi_pct,
+                                shipping_label, ads_margin)
+        # floor_from_target works from a RATE, and here the fee is already known
+        # in pounds, so the rate is passed as 0 and the fee added on afterwards.
+        if roi is not None:
+            roi = round(roi + float(amazon_fees), 2)
+    floor = max(x for x in (flat, roi) if x is not None)
+
     competitor_price = float(competitor_price or 0)
     if competitor_price > floor:
         chosen = competitor_price
@@ -195,11 +287,18 @@ def compute_selling_price(source_cost: float,
     else:
         chosen = floor
         source = "floor (competitor missing or below floor)"
+    parts = (f"cost {source_cost:.2f} + fees {amazon_fees:.2f}")
+    if shipping_label:
+        parts += f" + ship {shipping_label:.2f}"
+    if ads_margin:
+        parts += f" + ads {ads_margin:.2f}"
+    if min_profit:
+        parts += f" + profit {min_profit:.2f}"
+    if roi is not None and roi >= (flat or 0):
+        parts += f" (raised to {min_roi_pct:g}% return on the {source_cost:.2f} cost)"
     return {
         "selling_price": chosen,
         "floor":         floor,
         "rule_source":   source,
-        "breakdown":     (f"cost {source_cost:.2f} + fees {amazon_fees:.2f} "
-                          f"+ ship {shipping_label:.2f} + ads {ads_margin:.2f} "
-                          f"+ profit {min_profit:.2f} = floor {floor:.2f}"),
+        "breakdown":     f"{parts} = floor {floor:.2f}",
     }

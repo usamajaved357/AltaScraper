@@ -118,7 +118,12 @@ truthy("armed but with NO minimum price is still refused", "minimum price" in wh
 truthy("  and the refusal explains why that matters",
        "misread supplier cost" in why())
 
-R.save_rule(CFG, WS, MKT, SKU, {"min_price": 12.00})
+# The per-unit allowances are stated, not assumed. 3.00 postage / 2.00 ads /
+# 1.00 profit were the defaults when 18.24 was written into DEC above; they are
+# 0.00 now, and min_roi_pct is the separate never-sell-at-break-even floor.
+R.save_rule(CFG, WS, MKT, SKU, {"min_price": 12.00, "shipping_label": 3.00,
+                                "ads_margin": 2.00, "min_profit": 1.00,
+                                "min_roi_pct": 0})
 check("armed, with a minimum, master on -> allowed", why(), "")
 
 print("  -- a held decision is never pushed --")
@@ -234,7 +239,13 @@ lsid = R.add_source(CFG, WS, MKT, LIVE_SKU, "https://ebay.co.uk/itm/222", label=
 R.record_check(CFG, lsid, {"status": S.FETCHED, "price": 8.0, "shipping": 1.5,
                            "currency": "GBP", "in_stock": True, "dispatch_days": 3,
                            "checked_at": FRESH})
-R.save_rule(CFG, WS, MKT, LIVE_SKU, {"min_price": 12.0})
+# Same as above: the three per-unit allowances are stated rather than assumed,
+# because they no longer default to 3.00/2.00/1.00. 9.50 landed then prices at
+# 18.24, which is inside the 25% change cap from 22.00 -- with them at zero it
+# would ask 13.42, a 39% cut, and the cap would rightly refuse to push it.
+R.save_rule(CFG, WS, MKT, LIVE_SKU, {"min_price": 12.0, "shipping_label": 3.00,
+                                     "ads_margin": 2.00, "min_profit": 1.00,
+                                     "min_roi_pct": 0})
 
 sent.clear()
 out = AP.run_live(CFG, {}, creds_for, now=NOW)

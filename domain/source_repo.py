@@ -272,6 +272,21 @@ _RULE_COLS = ("strategy", "require_in_stock", "max_dispatch_days",
               "profit_target_kind", "profit_target_pct",
               # The two boxes. Independent, both applied.
               "target_margin_pct", "target_roi_pct",
+              # The never-sell-at-break-even floor. Not a target -- see
+              # min_roi_pct in domain/sourcing.DEFAULT_RULE.
+              "min_roi_pct",
+              # THE SELLER'S OWN PER-UNIT COSTS, storable at last.
+              #
+              # These were listed as deliberately-not-stored, on the reasoning
+              # that they came from listing/pricing.py so there was one
+              # definition. That held while they were 3.00 / 2.00 / 1.00 for
+              # everybody. They are 0.00 now -- "do not add 3 pounds postage and
+              # 2 pounds ad cost and 1 pound profit space on your own" -- which
+              # leaves the owner with real postage to declare and nowhere to
+              # declare it. A default in code and a per-SKU value in the
+              # database are not two definitions; the code default is what the
+              # database means by NULL.
+              "shipping_label", "ads_margin", "min_profit",
               # The market price, held against a target that would lower it.
               "hold_price")
 
@@ -281,9 +296,6 @@ _RULE_COLS = ("strategy", "require_in_stock", "max_dispatch_days",
 # happened with hold_price: it was accepted by the route, filtered out here, and
 # saved as nothing, while the app answered "saved".
 _RULE_NOT_STORED = frozenset({
-    # The three per-unit costs of the pricing rule. They come from
-    # listing/pricing.py so there is one definition of what a unit costs to sell.
-    "shipping_label", "ads_margin", "min_profit",
     # Set from the marketplace on every run, never by hand.
     "currency",
     # A safety constant, not a per-SKU preference.

@@ -66,11 +66,23 @@ from listing import pricing as P
 from domain import cogs as C
 cost = C.cost_from_sku("10.00_2Days_B0F7X6NPLH")
 check("the cost comes out of the SKU", cost, 10.0)
-floor = P.floor_from_rate(cost, 0.15)
+# THE ACCOUNT'S RULE, NOT A HARDCODED ONE. This screen used to call
+# floor_from_rate(cost, 0.15) directly, which ignores every setting the owner
+# made. It goes through sourcing.floor_price now -- the same function the
+# repricer prices with -- so the number this screen warns about and the number
+# the repricer works to cannot drift apart (Rule 12).
+from domain import sourcing as SRC
+floor = SRC.floor_price(cost, None)
 truthy("a floor is produced", floor and floor > cost)
-# Selling at cost is a loss once Amazon's cut, postage and ads are paid; the
-# floor has to be meaningfully above it or it is not protecting anything.
-truthy("  and it is well above the cost, not equal to it", floor > cost * 1.5)
+# Selling at cost is a loss once Amazon's cut is paid, and selling at cost plus
+# the fee earns nothing at all. The floor has to clear BOTH or it protects
+# nothing -- which is what the never-sell-at-break-even minimum is for.
+truthy("  and it is above break-even, not merely above the cost",
+       floor > cost / (1 - 0.15))
+truthy("  by at least the safety return on the cash",
+       P.achieved(floor, cost, 0.15)["roi_pct"] >= P.PRICING_RULE_MIN_ROI_PCT)
+check("  and the old hardcoded rule would NOT have cleared it",
+      P.floor_from_rate(cost, 0.15) < floor, True)
 check("an unknown cost gives no floor rather than a wrong one",
       C.cost_from_sku("0.00_3Days_B0F7X6NPLH"), None)
 
