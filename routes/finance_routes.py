@@ -29,7 +29,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             state=_state, account=_active_account() or {},
             asked_id=request.args.get("id"),
             asked_marketplace=request.args.get("marketplace"),
-            with_data=_marketplace_with_data)
+            with_data=_marketplace_with_data,
+            # The record must follow the id. This screen reads its figures by
+            # WORKSPACE ID, which was already right, but it takes the account's
+            # LABEL and its VAT registration from the record -- so a mismatch put
+            # one company's name, and possibly another's VAT rate, on a page of
+            # money. See routes/scope.py.
+            load_account=_load_account)
+
+    def _load_account(aid):
+        """The account record for an id the PAGE named -- credentials included."""
+        try:
+            from domain import accounts as _acc_mod
+            return _acc_mod.get_account(
+                _cfg() if callable(_cfg) else (_cfg or {}), aid, CONFIG_PATH)
+        except Exception:
+            return None
 
     def _marketplace_with_data(wsid):
         """The one marketplace this account actually has finance rows for.

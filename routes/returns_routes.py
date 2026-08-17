@@ -35,7 +35,27 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return _scope_mod.resolve(
             state=_state, account=_active_account() or {},
             asked_id=request.args.get("id"),
-            asked_marketplace=request.args.get("marketplace"))
+            asked_marketplace=request.args.get("marketplace"),
+            # WITHOUT THIS, THE ID AND THE CREDENTIALS DISAGREE.
+            #
+            # resolve() only replaces the account RECORD when it is given a way to
+            # load one; otherwise it hands back the id the page asked for and the
+            # record from the server's process-wide global. This screen then builds
+            # its Amazon client from that record -- so asking for jack_uk's returns
+            # would fetch them with whichever account the global happened to hold.
+            # Measured: /returns/report?id=jack_uk answered about Miles Lubricants.
+            # routes/scope.py's own docstring warns about exactly this; the price
+            # screen passes it and three other callers did not.
+            load_account=_load_account)
+
+    def _load_account(aid):
+        """The account record for an id the PAGE named -- credentials included."""
+        try:
+            from domain import accounts as _acc_mod
+            return _acc_mod.get_account(
+                _cfg() if callable(_cfg) else (_cfg or {}), aid, CONFIG_PATH)
+        except Exception:
+            return None
 
     def _sold(wsid, mkt, start, end):
         """Units and sales per ASIN, so a return count can become a RATE.
@@ -68,7 +88,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         except Exception as e:
             return [], [], "SP-API Reports is unavailable: %s" % str(e)[:120]
         enum = getattr(Marketplaces, str(mkt).upper(), Marketplaces.UK)
-        rc = Reports(credentials=_acc_mod.account_creds(acc), marketplace=enum)
+        # BUILDING THE CLIENT CAN FAIL, and it was the one call here not guarded.
+        # sp_api validates credentials in the constructor and raises
+        # MissingCredentials, which escaped as an HTTP 500 with a raw exception
+        # string -- on a screen whose whole design is to answer with no data and a
+        # reason rather than an error page. Measured on miles_lubricants: "server
+        # error: Credentials are missing: lwa_app_id, lwa_client_secret".
+        try:
+            rc = Reports(credentials=_acc_mod.account_creds(acc), marketplace=enum)
+        except Exception as e:
+            return [], [], ("This account's Amazon credentials are incomplete, so "
+                            "the returns report cannot be requested: %s"
+                            % str(e)[:160])
         now = _dt.datetime.now(_dt.timezone.utc)
         start = now - _dt.timedelta(days=days)
         iso = lambda d: d.isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -159,10 +190,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         acc, wsid, mkt = _scope()
         if not mkt:
             return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
-        if not (acc or {}).get("seller_id"):
+        # A RETURNS REPORT IS SELLER-SCOPED, so it must not be asked for with
+        # borrowed credentials -- a borrowed token answers for the LENDER, and this
+        # screen would then show one business's returns under another's name. The
+        # same rule the live-orders endpoints already apply.
+        #
+        # It used to check `seller_id` alone. miles_lubricants HAS a seller id and
+        # BORROWS its credentials from sheelady_us, so it passed the check and then
+        # failed inside sp_api with an HTTP 500. Having an account of your own and
+        # being able to authenticate as it are two different things.
+        from domain import accounts as _acc_check
+        if not _acc_check.seller_scope_allowed(acc or {}):
             return jsonify({"ok": False, "error": (
-                "%s has no Amazon account of its own, so it has no returns."
-                % ((acc or {}).get("label") or wsid))}), 400
+                "%s cannot be asked for its returns: it has no Amazon developer "
+                "app of its own. Returns are specific to one seller account, and "
+                "borrowed credentials would answer for the account they were "
+                "borrowed from. Connect this account's own SP-API credentials "
+                "under Account & sheets."
+                % ((acc or {}).get("label") or wsid or "This workspace"))}), 400
         try:
             days = max(1, min(MAX_DAYS, int(request.args.get("days") or 30)))
         except (TypeError, ValueError):
