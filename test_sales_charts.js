@@ -198,8 +198,12 @@ truthy("  and 200 tall", /o\.height \|\| 200/.test(src));
 truthy("  with Orbit's plot padding", /padL = 65, padR = 20, padT = 5, padB = 35/.test(src));
 truthy("the combined chart is Orbit's 1365 x 320", /o\.width \|\| 1365/.test(src)
        && /o\.height \|\| 320/.test(src));
+// `barsOn`, not `o.bars`: the key can now switch the Orders bars off, and the
+// 70px strip reserved for their count axis has to go back to the plot when they
+// do -- otherwise hiding the bars leaves a blank margin and a narrower chart.
+// Same value as before whenever nothing is hidden, which is the default.
 truthy("  with room reserved for the second axis, but only when it has one",
-       /padR = \(o\.bars \? 90 : 20\)/.test(src));
+       /padR = \(barsOn \? 90 : 20\)/.test(src));
 // The two top cards no longer hard-code a width: they measure their own card,
 // with Orbit's 665 as the fallback, and hold Orbit's 200px height.
 // Four matches, not two: each card measures once when it draws and once more in
