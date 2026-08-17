@@ -8,8 +8,11 @@ WORKFLOW:
   Step 2 -- crawl4ai: real browser review scraping for VOC (demographics, pain points)
   Step 3 -- Autocomplete: keyword research from amazon.co.uk (no Brand Registry needed)
   Step 4 -- Claude: generates title, bullets, description, attributes from all data above
-  Step 5 -- Google Sheet: write for your review (Status = APPROVED / SKIP / NEEDS_REVIEW)
-  Step 6 -- Export: one command fills Amazon UK flat file template in Google Sheets
+  Step 5 -- Store: written into the app for your review, where you set the status
+            (APPROVED / SKIP / NEEDS_REVIEW) on the Listings screen. On the "db"
+            backend that store is this app's own database; a Google Sheet is only
+            used by an account still configured for the "sheets" backend.
+  Step 6 -- Export: one command fills the Amazon flat-file template
 
 COMMANDS:
   py -3.11 amazon_listing_generator.py          # generate listings
@@ -4968,18 +4971,46 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         u = str(u or "").strip()
         return u.lower().startswith("http://") or u.lower().startswith("https://")
 
-    _main_img = pa.pop("main_product_image_locator", "")
-    if _main_img and has("main_product_image_locator") and _is_public_url(_main_img):
-        A["main_product_image_locator"] = [{"media_location": str(_main_img).strip(),
+    def _fetchable(u):
+        """A URL Amazon can actually reach, or "".
+
+        AN IMAGE THIS APP HOSTS IS PUBLISHABLE, and used not to be. Amazon fetches
+        the picture itself, so a "/media/..." path is no use to it -- but the app
+        serves the same file at a signed public address, and the image library has
+        always known how to build one. The submit path did not, so an image
+        generated here and set on a draft was silently dropped on the way out and
+        the listing went up without it.
+
+        Nothing is guessed: with no public base URL configured this still refuses,
+        because a link built on a guess is worse than a missing image. Amazon
+        accepts it, fetches nothing, and the listing publishes with no picture.
+        """
+        u = str(u or "").strip()
+        if _is_public_url(u):
+            return u
+        if u.startswith("/media/"):
+            try:
+                from domain import image_urls as _iu
+                return _iu.public_url(CONFIG_PATH, u) or ""
+            except Exception:
+                return ""
+        return ""
+
+    _main_img = _fetchable(pa.pop("main_product_image_locator", ""))
+    if _main_img and has("main_product_image_locator"):
+        A["main_product_image_locator"] = [{"media_location": _main_img,
                                             "marketplace_id": mid}]
-    elif _main_img and not _is_public_url(_main_img):
-        console.print(f"  [yellow]Skipping main image (not a public URL): "
-                      f"{str(_main_img)[:60]}[/yellow]")
+    elif _main_img == "":
+        _raw = str(pa.get("main_product_image_locator") or "")
+        if _raw:
+            console.print(f"  [yellow]Skipping main image -- Amazon cannot fetch "
+                          f"{_raw[:52]}. If it is one of this app's own images, set "
+                          f"public_base_url in config.json to this app's address.[/yellow]")
     for _n in range(1, 9):
         _ik = f"other_product_image_locator_{_n}"
-        _iv = pa.pop(_ik, "")
-        if _iv and has(_ik) and _is_public_url(_iv):
-            A[_ik] = [{"media_location": str(_iv).strip(), "marketplace_id": mid}]
+        _iv = _fetchable(pa.pop(_ik, ""))
+        if _iv and has(_ik):
+            A[_ik] = [{"media_location": _iv, "marketplace_id": mid}]
 
     # list_price is structurally required for an offer -- build it whenever we have
     # a price, even if the schema's `properties` omits it (some product types list

@@ -599,10 +599,12 @@ function summary(){
   // Deduplicate: a catalog tile whose SKU/ASIN already matched an app row above
   // has already been counted as LIVE -- don't count it twice.
   const norm = v => String(v||"").trim().toUpperCase();
-  const alreadyCountedSkus  = new Set(_tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
-                                          .map(r=>norm(r.sku)).filter(Boolean));
-  const alreadyCountedAsins = new Set(_tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown))
-                                          .map(r=>norm(r.asin)).filter(Boolean));
+  // Worked out ONCE. It was filtered twice with the same predicate to build the
+  // two sets, and the count of it was then not taken at all -- which is how the
+  // total below came to leave these rows out.
+  const _liveAppRows = _tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown));
+  const alreadyCountedSkus  = new Set(_liveAppRows.map(r=>norm(r.sku)).filter(Boolean));
+  const alreadyCountedAsins = new Set(_liveAppRows.map(r=>norm(r.asin)).filter(Boolean));
   const liveCount = ((LIST_SOURCE==='live'||LIST_SOURCE==='all')
                      ? (LIVE_ITEMS||[]).filter(it=>{
                          const s=norm(it.sku), a=norm(it.asin);
@@ -612,9 +614,24 @@ function summary(){
                        }).length
                      : 0);
   c.LIVE += liveCount;
-  // total reflects what's actually shown in the current view (respecting the tab filter)
+  // TOTAL IS WHAT THE LIST BELOW IT ACTUALLY CONTAINS.
+  //
+  // In the Live view this was liveCount -- the catalogue items left AFTER the
+  // ones matching an app row were removed. But the list shows both: the app's
+  // own rows that Amazon confirmed live, and then the catalogue-only ones. So
+  // the total counted the second group and not the first, and on nestwell_goods
+  // read "TOTAL LISTINGS 43" directly above "LIVE 55" -- a total smaller than
+  // one of its own parts, which is how it was noticed.
   let total = _tabRows.length;
-  if(LIST_SOURCE==='live') total = liveCount;
+  if(LIST_SOURCE==='live'){
+    total = _liveAppRows.length + liveCount;
+    // In the Live view every row IS live, so the LIVE tile counts the same set
+    // the total does. It was counting app rows whose STATUS says LIVE across the
+    // whole tab -- including ones this view is not showing -- so it could exceed
+    // the total sitting next to it, which is the pair of numbers that got
+    // reported ("43 total listings and 55 live listings").
+    c.LIVE = total;
+  }
   else if(LIST_SOURCE==='all') total = _tabRows.length + liveCount;
   // Orbit's four metric tiles replace the old one-line text summary. Each is
   // clickable and filters the list to that status -- the count was always the

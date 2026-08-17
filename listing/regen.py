@@ -65,18 +65,17 @@ def run_regen(config, gc, creds, *, skus, marketplace="UK", output_tab=None,
         console.print("[regen] no SKUs given; nothing to do.")
         return {"regenerated": [], "refused_no_source": [], "refused_held": [], "not_found": []}
 
-    # open the exact sheet + tab
-    sid = spreadsheet_id or config.get("google_spreadsheet_id")
-    sh  = G._open_sheet_retry(gc, sid, "regen sheet")
-    ws  = None
-    if output_tab:
-        try:
-            ws = sh.worksheet(output_tab)
-        except Exception:
-            ws = None
-    if ws is None:
-        ws = sh.sheet1
-    console.print(f"[regen] sheet {sid} / tab '{ws.title}' | {len(skus)} SKU(s) | "
+    # THE STORE THIS APP ACTUALLY USES.
+    #
+    # This opened a Google Sheet directly -- gc.open_by_key, then .worksheet() --
+    # so on the database backend regeneration read and wrote a spreadsheet while
+    # everything else read and wrote SQLite. Exactly the fault output_ws() was
+    # written to end for Preview and Submit, in the one path that had not been
+    # moved over: a regenerated listing would land somewhere the app never looks.
+    #
+    # output_ws picks by backend, so this cannot pick the wrong one (Rule 12).
+    ws = G.output_ws(config, gc, spreadsheet_id, output_tab)
+    console.print(f"[regen] store '{getattr(ws, 'title', '?')}' | {len(skus)} SKU(s) | "
                   f"marketplace {marketplace} | reason: {reason or '(none)'}")
 
     store = _load_store(base_dir)

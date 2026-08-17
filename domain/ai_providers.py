@@ -534,7 +534,7 @@ _APLUS_SYSTEM = (
 def strategize_images(config: dict, image="", product_title: str = "",
                       product_spec: str = "", n: int = 3, kind: str = "main",
                       provider: str = None, custom_instructions: str = "",
-                      media_root: str = "") -> dict:
+                      media_root: str = "", listing=None) -> dict:
     """STRATEGIST AI — thinks like a world-class Amazon conversion strategist AND
     like the target customer, then INVENTS concrete image concepts for this exact
     product (rather than executing the seller's literal idea). Returns a list of
@@ -588,6 +588,34 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "genuinely different angles of the buying decision for this exact product."
         )
 
+    # ONE PRODUCT, DESCRIBED THE SAME WAY IN EVERY IMAGE.
+    #
+    # The rules above push each concept to be DIFFERENT from the others, and
+    # nothing balanced that: the set is free to disagree with itself about the
+    # thing it is selling. On a real listing that produced one image showing a
+    # single carabiner and another showing the hammock hung from two -- under
+    # copy that said one. A buyer counts what arrives.
+    #
+    # Deliberately about ANY product and any category: it names no part, no
+    # material and no item type, because the same strategist writes the images
+    # for grease guns, tables and torches.
+    same_item = (
+        "\nEVERY CONCEPT SHOWS THE SAME PHYSICAL PRODUCT, AND ONLY WHAT IS SUPPLIED.\n"
+        "The images vary in idea, angle, scene and message. They must NOT vary in what "
+        "the product IS. Across the whole set, keep identical: the number of each part or "
+        "piece supplied, colours and finishes, materials, shape and proportions, and how "
+        "the parts fit together. If one concept shows a quantity of something, every other "
+        "concept that shows it shows the same quantity.\n"
+        "Never show an accessory, fitting, attachment, container or extra unit that is not "
+        "listed in the product details as included -- not as a prop, not for scale, not to "
+        "make the scene look complete. If the details state what is in the box, that list is "
+        "exhaustive: do not add to it and do not multiply it. Where the details are silent "
+        "about a quantity, show one.\n"
+        "The product details below outrank the reference photograph on all of this. A "
+        "supplier photo often shows a bundle, a different variant, or props that are not "
+        "part of the sale.\n"
+    )
+
     sys = (
         "You are a world-class Amazon conversion strategist and product photographer who has launched "
         "hundreds of best-selling listings. You also think like the actual TARGET CUSTOMER scrolling on a "
@@ -597,7 +625,8 @@ def strategize_images(config: dict, image="", product_title: str = "",
         "objection stops them from buying, and what emotional trigger or proof would win them over. THEN "
         "translate that into concrete, shootable image concepts for THIS exact product.\n"
         + rules + "\n"
-        f"Return ONLY JSON: a list of exactly {n} objects, each "
+        + same_item
+        + f"Return ONLY JSON: a list of exactly {n} objects, each "
         '{"title": "<short name>", "customer_insight": "<the buyer psychology this image targets, 1 sentence>", '
         '"concept": "<what the image shows, plain language, 1-2 sentences>", '
         '"art_direction": "<specific art direction for the image model: angle, lighting, composition, any '
@@ -613,9 +642,35 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "If an instruction says to show something in only SOME images, reflect that across the "
             "set (don't put it in every concept). If it says NOT to show something, never include it."
         )
+    # THE LISTING'S OWN WORDS, HANDED OVER DIRECTLY.
+    #
+    # product_spec is a VISION summary: a model looking at the photograph. The
+    # listing facts were already being fed to that step, but what comes back is
+    # the model's own paraphrase, and the parts that are hard to see -- what is
+    # in the box, how many of each -- do not survive it. Measured: on five real
+    # products the spec mentioned the contents in NONE of them, and the concepts
+    # then counted the objects visible in the supplier photo instead. On the
+    # hammock that produced "all five components" for a listing that ships four.
+    #
+    # So the facts go in as their own block, marked as outranking both.
+    _facts = ""
+    try:
+        _facts = listing_facts(listing) if listing else ""
+    except Exception:
+        _facts = ""
+    _facts_block = ""
+    if _facts:
+        _facts_block = (
+            "\n\nTHE LISTING ITSELF SAYS THIS, AND IT OUTRANKS BOTH THE PHOTOGRAPH "
+            "AND THE DESCRIPTION ABOVE. Where they disagree about what is included, "
+            "how many of anything there are, the size, the colour or the material, "
+            "THIS is right and they are wrong -- a supplier photograph is routinely "
+            "a bundle, a different variant, or a collage with props:\n" + _facts + "\n")
+
     content = [{"type": "text",
                 "text": (f"Product: {product_title}\n"
                          + (f"\nProduct details:\n{product_spec}\n" if product_spec else "")
+                         + _facts_block
                          + f"\nInvent {n} distinct, conversion-focused image concepts for this product. "
                            "Ground every concept in the SPECIFIC product details above (its real "
                            "features, materials, size, who uses it and where) so these ideas could NOT be "
@@ -920,6 +975,28 @@ def listing_facts(row) -> str:
         plain = " ".join(plain.split())
         if plain:
             parts.append("DESCRIPTION: " + plain[:700])
+
+    # WHAT IS IN THE BOX. A photograph of a bundle cannot say which of those
+    # pieces are actually being sold, and this is the field that decides how many
+    # of each thing an image is allowed to show. It was the one part of the
+    # listing not being passed, and it is the part a buyer counts on arrival.
+    included = ""
+    try:
+        import json as _json
+        _a = r.get("attributes_json") or r.get("Attributes JSON") or "{}"
+        _o = _json.loads(_a) if isinstance(_a, str) else (_a or {})
+        if isinstance(_o, dict):
+            included = _flat_attr(_o.get("included_components")).strip()
+    except Exception:
+        included = ""
+    included = included or g("included_components", "Included Components")
+    if included:
+        parts.append("WHAT IS IN THE BOX (the complete list -- show nothing beyond "
+                     "it, and no more of anything than it states): " + included[:400])
+
+    hl = g("item_highlights", "Item Highlights")
+    if hl:
+        parts.append("HIGHLIGHTS: " + hl[:300])
 
     # THE SIZE, which is the one a photograph cannot supply.
     dims = []

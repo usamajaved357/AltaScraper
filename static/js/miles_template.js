@@ -518,7 +518,9 @@ function render(){
   // The OTHER caption stays, because it marks a real and easily-missed
   // difference: Amazon has this listing and we do not, so there is nothing here
   // to edit and the usual buttons will not work on it.
-  const _bothSub = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon</div>';
+  // (The two sub-captions that used to head these groups are gone -- the group
+  //  is drawn once now, and the "no draft" difference is a badge on the row that
+  //  has it. See where liveHtml is built.)
   // WHAT IS ACTUALLY TRUE OF THESE NOW.
   //
   // This said "not in the app, so it cannot be edited here yet". That stopped
@@ -531,7 +533,6 @@ function render(){
   // The real difference is still worth marking, so it says what it is: Amazon
   // has this listing and this app holds no draft of it, which is what Sync
   // changes.
-  const _amzSub  = '<div class="srcsub"><i class="ti ti-brand-amazon"></i> Live on Amazon — <b>no draft in '+_store+'</b>. Price, images and optimisation still work; Sync brings the full listing in.</div>';
   // Rows the app records as LIVE but Amazon never returned. Usually: submitted
   // and not yet published, taken down by Amazon, or written into the wrong
   // account. They are NOT live, so they must never be counted as such -- but
@@ -542,8 +543,20 @@ function render(){
   // So: kept in full, shown folded. One line you can open when you want it, and
   // nothing is deleted -- the row keeps every detail it had, which is the point
   // of holding onto them at all.
-  let liveHtml  = (liveRows.length ? _bothSub + listBlock(liveRows) : "")
-                + (liveCatalog.length ? _amzSub + listBlock(liveCatalog, liveTile) : "");
+  // ONE GROUP, NOT TWO.
+  //
+  // These were two captioned sections -- "Live on Amazon" and "Live on Amazon —
+  // no draft in this app. Price, images and optimisation still work; Sync brings
+  // the full listing in." Both headings say the same thing to someone looking
+  // for their live listings, and the second is a paragraph where a heading
+  // should be. Reported as: "i dont like that separation".
+  //
+  // The difference is still real, so it is still marked -- on the ROW that has
+  // it, as a small badge, rather than by cutting the list in half. A listing
+  // this app holds no draft of is a fact about that listing, not a category of
+  // listing.
+  let liveHtml  = (liveRows.length ? listBlock(liveRows) : "")
+                + (liveCatalog.length ? listBlock(liveCatalog, liveTile) : "");
   const claimedHtml = claimedRows.length
     ? ('<details class="foldgroup"><summary>'
        + '<i class="ti ti-alert-triangle"></i> ' + claimedRows.length
@@ -1317,7 +1330,10 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
     <div class="tilebody">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
       <div class="tilemeta"><span class="tileprice">${price}</span><span class="tilesku">${esc(it.sku||'')}</span></div>
-      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> ${
+      <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> <span
+        class="livestatus" style="opacity:.75"
+        title="Amazon has this listing and this app holds no draft of it. Price, images and optimisation all still work from here; Sync brings the full listing in so it can be edited like the rest."
+        >no draft</span> ${
         it.asin
           ? `<a href="${esc(_dpUrl(it.asin))}" target="_blank" rel="noopener"
                 title="Open this listing on Amazon" onclick="event.stopPropagation()"
