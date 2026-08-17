@@ -122,7 +122,16 @@ check("reading needs no special permission",
       required_permission("/returns/report", "GET"), None)
 check("uploading only parses, so nor does it",
       required_permission("/returns/upload", "POST"), None)
-check("but it belongs to sales", feature_for("/returns/report"), "sales")
+# CHANGED DELIBERATELY: Returns is its own page now, so it can be withheld from
+# someone who may still see the sales dashboard. It INHERITS sales until set, so
+# the access anyone actually has is unchanged -- revenue going back out is still
+# revenue, and a lister still cannot see it.
+check("it is its own page", feature_for("/returns/report"), "returns")
+from auth import users as _U
+check("  falling back to sales until set", _U.FEATURE_PARENT.get("returns"), "sales")
+check("  so a lister still cannot see it",
+      _U.feature_level({"active": True, "role": "lister", "features": {}}, "returns"),
+      "none")
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)

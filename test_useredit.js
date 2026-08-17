@@ -80,8 +80,17 @@ const perm = vm.runInContext('permissionCheckboxes("ueX", U.permissions||[])', s
 const ws = vm.runInContext('workspaceCheckboxes("ueX", U.workspaces||[])', s);
 check('"What may they SEE?" renders', feat.length > 0, true);
 check("  one dropdown per area", (feat.match(/<select/g) || []).length, NFEAT);
-check("  each offers all three levels",
-      (feat.match(/<option/g) || []).length, NFEAT * 3);
+// CHANGED DELIBERATELY. Permissions are now settable per PAGE as well as per
+// area, and a page offers a FOURTH choice: Inherit, which is what it does until
+// somebody pins it. So the option count is three per area plus four per page,
+// not three per feature. Counting the selects above already proves every
+// feature is drawn; this proves each one offers the choices it should.
+const _children = Object.keys(LIST.feature_parent || {})
+                        .filter(function(k){ return (LIST.all_features||{})[k]; }).length;
+check("  every area offers three levels, every page four",
+      (feat.match(/<option/g) || []).length, (NFEAT * 3) + _children);
+check("  and Inherit is offered only on a page",
+      (feat.match(/value=""/g) || []).length, _children);
 check('"What may they do?" renders', (perm.match(/type="checkbox"/g) || []).length, NPERM);
 check('"Which workspaces?" renders', ws.length > 0, true);
 

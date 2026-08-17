@@ -200,7 +200,16 @@ check("no marketplace -> a clear refusal",
 
 print("\n=== it is gated like the sales dashboard, not like listings ===")
 from auth import guard
-check("the Finance screen belongs to sales", guard.feature_for("/finance/contribution"), "sales")
+# CHANGED DELIBERATELY: finance is its own page feature now, so it can be
+# withheld on its own. It INHERITS sales until somebody sets it, so
+# the access anyone actually has is unchanged.
+check("it is its own page", guard.feature_for("/finance/contribution"), "finance")
+from auth import users as _U
+check("  falling back to sales until set",
+      _U.FEATURE_PARENT.get("finance"), "sales")
+check("  so a lister still cannot see it",
+      _U.feature_level({"active": True, "role": "lister",
+                        "features": {}}, "finance"), "none")
 check("  reading needs no action permission",
       guard.required_permission("/finance/contribution", "GET"), None)
 lister = {"role": "lister", "permissions": ["edit"], "active": True,

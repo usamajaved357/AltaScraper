@@ -270,9 +270,19 @@ check("enrolling a SKU", needs("/sourcing/enrol"), "publish")
 check("adding a supplier", needs("/sourcing/source/add"), "publish")
 check("editing the rules", needs("/sourcing/rules"), "publish")
 check("running it", needs("/sourcing/check"), "publish")
-check("the screen rides on the listings area",
-      guard.feature_for("/sourcing/list"), "listings")
-check("  and so does the run", guard.feature_for("/sourcing/check"), "listings")
+# CHANGED DELIBERATELY: the repricer is its own page feature now, so it can be
+# turned off for one person without taking the whole Listings area away. It
+# still INHERITS listings until set, which is the access it had -- someone with
+# no listings access has no business seeing what is about to happen to their
+# prices either.
+check("the screen is its own page", guard.feature_for("/sourcing/list"), "repricer")
+check("  and so is the run", guard.feature_for("/sourcing/check"), "repricer")
+from auth import users as _U
+check("  falling back to listings until set",
+      _U.FEATURE_PARENT.get("repricer"), "listings")
+check("  so a lister sees it exactly as they saw it before",
+      _U.feature_level({"active": True, "role": "lister", "features": {}}, "repricer"),
+      _U.feature_level({"active": True, "role": "lister", "features": {}}, "listings"))
 
 print("  -- a lister could not arm this even if the button were drawn --")
 lister = {"role": "lister", "permissions": ["edit"], "active": True,

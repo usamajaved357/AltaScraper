@@ -326,7 +326,17 @@ check("  and so is the candidate list",
       G.required_permission("/variations/candidates", "GET"), None)
 check("but applying is publishing",
       G.required_permission("/variations/apply", "POST"), "publish")
-check("the screen belongs to listings", G.feature_for("/variations/preview"), "listings")
+# CHANGED DELIBERATELY. Variations is its own page feature now, so it can be
+# turned off for one person without taking the whole Listings area with it.
+# It still INHERITS listings until somebody sets it, so what anyone can see
+# today is unchanged -- which is the property test_page_permissions.py asserts.
+check("the screen is its own page", G.feature_for("/variations/preview"), "variations")
+from auth import users as U
+check("  which falls back to listings until it is set",
+      U.FEATURE_PARENT.get("variations"), "listings")
+_lister = {"active": True, "role": "lister", "features": {}}
+check("  so a lister still sees it exactly as before",
+      U.feature_level(_lister, "variations"), U.feature_level(_lister, "listings"))
 
 os.environ.pop("ALTASCRAPER_DB", None)
 shutil.rmtree(TMP, ignore_errors=True)

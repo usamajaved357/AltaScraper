@@ -214,8 +214,17 @@ truthy("it says in words when the total is a minimum", "MINIMUM" in RSRC)
 
 G = open("auth/guard.py", encoding="utf-8").read()
 truthy("reading it needs no write permission", '("/aiusage/summary",                None)' in G)
-truthy("but it sits behind the same gate as other money screens",
-       '("/aiusage",              "sales")' in G)
+# CHANGED DELIBERATELY: AI spend is its own page feature now, so it can be
+# withheld from someone who may still see the sales dashboard. It INHERITS
+# sales, so it remains behind the same gate as the other money screens until
+# somebody deliberately moves it -- which is what the two checks below assert.
+truthy("it is its own page", '("/aiusage",              "aiusage")' in G)
+from auth import users as _U
+truthy("but it still sits behind the same gate as the other money screens",
+       _U.FEATURE_PARENT.get("aiusage") == "sales")
+truthy("  so a lister still cannot see what the operation spends",
+       _U.feature_level({"active": True, "role": "lister", "features": {}},
+                        "aiusage") == "none")
 
 JS = open("static/js/aiusage.js", encoding="utf-8").read()
 truthy("the screen has an open hook", "function aiUsageOnOpen" in JS)
