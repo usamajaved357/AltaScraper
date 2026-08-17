@@ -474,13 +474,19 @@ function render(){
     : "")
     + (goneRows.length
     ? `<div class="emptynote" style="border-color:var(--red-line);color:var(--red)">
-         ${goneRows.length} listing${goneRows.length>1?'s were':' was'} deleted on Amazon and ${goneRows.length>1?'are':'is'} hidden here
-         (${goneRows.slice(0,3).map(r=>esc(r.sku)).join(', ')}${goneRows.length>3?', …':''}) —
-         <button class="linkbtn" onclick="backupDeletedRows()" title="Download every field of these listings as a CSV before you remove them">save a backup</button>
-         &middot;
-         <button class="linkbtn" onclick="removeDeletedRows()">remove ${goneRows.length>1?'them':'it'} ${storeFrom()}</button>
+         ${goneRows.length} listing${goneRows.length>1?'s are':' is'} no longer on Amazon —
+         <button class="linkbtn" onclick="setListSource('removed')">see ${goneRows.length>1?'them':'it'} in Removed</button>
        </div>`
     : "");
+  // THE TAB ONLY EXISTS WHEN THERE IS SOMETHING IN IT. An empty "Removed" beside
+  // Drafts and Live invites the question of what is missing from it.
+  try{
+    const _rmBtn = document.getElementById("srcbtn_removed");
+    if(_rmBtn){
+      _rmBtn.style.display = goneRows.length ? "" : "none";
+      _rmBtn.textContent = "Removed (" + goneRows.length + ")";
+    }
+  }catch(e){}
   // SOURCE: drafts (app rows) / live (Amazon catalog) / all (both)
   // listBlock() draws either the tile grid or the Orbit table, depending on the
   // saved view preference. Every group goes through it, so a new view can never
@@ -569,8 +575,33 @@ function render(){
        + '. Kept here in full.</span></summary>'
        + listBlock(claimedRows) + '</details>')
     : "";
-  if(LIST_SOURCE==="live"){
-    grid.innerHTML = (liveHtml || `<div class="empty">No live listings synced yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync ${esc(WS_MARKET)} from Amazon now</button><div class="cc" style="margin-top:8px">Sync pulls your live listings and their real data (images, A+, bullets, description, item-type-keyword, variations) from Amazon. The first sync can take 1–4 minutes.</div>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
+  if(LIST_SOURCE==="removed"){
+    // LISTINGS AMAZON NO LONGER HAS, kept in full. Nothing here is ever deleted
+    // automatically -- a listing taken down by Amazon, or one that never
+    // published, still holds every field it had, and that is the point of
+    // keeping them. The two actions that were buried in a red one-liner live
+    // here now, where the listings they act on can actually be seen first.
+    grid.innerHTML = goneRows.length
+      ? ('<div class="srcgroup">No longer on Amazon — kept here in full</div>'
+         + '<div class="cc" style="margin:-4px 0 12px;font-size:12px;line-height:1.6">'
+         + 'Amazon did not return ' + (goneRows.length > 1 ? 'these' : 'this')
+         + ' when the catalogue was last read. That usually means the listing was '
+         + 'taken down, closed, or submitted and never published. Nothing is '
+         + 'removed from this app on its own — take a backup first if you want '
+         + 'one, and clearing them here does not touch Amazon.'
+         + '<div style="margin-top:8px">'
+         + '<button class="mktbtn" onclick="backupDeletedRows()" '
+         + 'title="Download every field of these listings as a CSV before you remove them">'
+         + '<i class="ti ti-download"></i> Save a backup</button> '
+         + '<button class="mktbtn" onclick="removeDeletedRows()" '
+         + 'style="border-color:var(--red-line);color:#fca5a5">'
+         + '<i class="ti ti-trash"></i> Clear ' + (goneRows.length > 1 ? 'them' : 'it')
+         + ' ' + storeFrom() + '</button></div></div>'
+         + listBlock(goneRows))
+      : '<div class="empty">Nothing has been removed. Every listing this app '
+        + 'holds is still on Amazon.</div>';
+  } else if(LIST_SOURCE==="live"){
+    grid.innerHTML = (liveHtml || `<div class="empty">No live listings synced yet.${CUR_ACCOUNT?(WS_MARKET?` <button class="mktbtn on" style="margin-left:8px" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync ${esc(WS_MARKET)} from Amazon now</button><div class="cc" style="margin-top:8px">Sync pulls your live listings and their real data — images, A+, bullets, description, item-type-keyword and variations — from Amazon. You can keep working while it runs.</div>`:' Select a marketplace first.'):' Open an Amazon account workspace.'}</div>`)
       + claimedHtml;   // already its own folded block -- no heading needed
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
@@ -903,7 +934,7 @@ function setListSource(src){
         // has gone stale. Either way the screen is already painted and stays
         // usable while Amazon is asked.
         if(nothingYet || old){
-          if(nothingYet) toast("Fetching this marketplace from Amazon in the background — the first one takes a few minutes.");
+          if(nothingYet) toast("Loading this marketplace in the background — carry on.");
           backgroundSync();
         }
       }).catch(()=>{});
@@ -954,15 +985,31 @@ async function loadLiveCatalog(force){
   // happening on the server; only the screen was blocked.
   //
   // The grid is blanked only when there is genuinely nothing to show.
-  _liveWorking(force
-    ? "rebuilding the report on Amazon — this can take 1-4 minutes"
-    : "checking Amazon for newer listings");
+  // QUIETLY.
+  //
+  //     "i do not like this notification of rebuilding the report on Amazon --
+  //      this can take 1-4 minutes, i dont think the big platforms like amazon
+  //      and also other tools platforms like scale insights etc show this type
+  //      of message. i hope they follow some better approach to keep the data
+  //      updated."
+  //
+  // He is right, and the message was describing OUR implementation rather than
+  // his data: a forced sync asks Amazon to build a report, and how long Amazon's
+  // report builder takes is not something a seller should have to know or wait
+  // on. The work already happened in the background and the listings already
+  // stayed on screen throughout -- the banner was the only part that made it
+  // feel like an outage.
+  //
+  // So it is one word in the corner now, beside the freshness label that was
+  // already there, and the grid is never taken over by an explanation. The
+  // timeout below is unchanged, so a sync that stalls still ends and still says
+  // so; it simply does not announce itself for the whole of a normal one.
+  _liveWorking("updating");
   if(_liveShowCached(key)){
     // already painted from cache; leave it alone
   } else if(grid){
-    grid.innerHTML = force
-      ? '<div class="empty"><span class="genspin"></span> Rebuilding the listings report on Amazon...<div class="cc" style="margin-top:8px">A forced Sync builds a fresh report and can take 1-4 minutes for larger accounts. You can keep working - it stops on its own if Amazon is slow.</div></div>'
-      : '<div class="empty"><span class="genspin"></span> Loading your live listings from Amazon...</div>';
+    grid.innerHTML = '<div class="empty"><span class="genspin"></span> '
+      + 'Loading your listings…</div>';
   }
   // GUARD: if the user switched account/marketplace while this was loading, cache the
   // result but never render it into the current (different) view.
@@ -1240,7 +1287,9 @@ async function loadAllMarketplaces(force){
       _liveWorkingDone(); return;
     }
     _liveWorking("fetching marketplace "+(done+1)+" of "+mkts.length+" ("+mm+")");
-    if(!_anyCached && grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Fetching all marketplaces… '+(done)+'/'+mkts.length+' ('+esc(mm)+')<div class="cc" style="margin-top:8px">Each marketplace is a separate Amazon report; this can take a few minutes the first time.</div></div>';
+    // Progress, not a warning about how long Amazon takes. Same reasoning as the
+  // banner above: the count already says how far along it is.
+  if(!_anyCached && grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Loading your listings… '+(done)+'/'+mkts.length+' ('+esc(mm)+')</div>';
     try{
       const j=await (await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:reqAccount,marketplace:mm,force:!!force})})).json();

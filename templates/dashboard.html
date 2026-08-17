@@ -201,6 +201,16 @@
           <button class="mktbtn on" data-src="drafts" onclick="setListSource('drafts')">Drafts</button>
           <button class="mktbtn" data-src="live" onclick="setListSource('live')">Live on Amazon</button>
           <button class="mktbtn" data-src="all" onclick="setListSource('all')">All</button>
+          <!-- WHERE DELETED LISTINGS GO.
+               They were already kept -- never auto-deleted -- but they were
+               hidden from every view, and the only trace was a red line naming
+               the first three SKUs. So there was nothing to click and nowhere
+               they lived. Asked for as: "i also asked you to give me a button
+               where the deleted listings go when they are deleted from amazon
+               but they are stored in the app". -->
+          <button class="mktbtn" data-src="removed" id="srcbtn_removed"
+                  title="Listings this app still holds that Amazon no longer has. Nothing is ever deleted automatically."
+                  onclick="setListSource('removed')" style="display:none">Removed</button>
           <button class="mktbtn" title="Sync live listings from Amazon now" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
           <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
@@ -338,16 +348,25 @@
           <input id="gensel_value" class="ed" type="text"
                  placeholder="Paste an eBay / Amazon URL, or type a value…"
                  oninput="genSelOnInput()" style="flex:1;min-width:240px">
+          <!-- "Row number" WAS THE DEFAULT AND IT IS GONE.
+               It is a Google Sheets idea: pick the product on line 5 of the
+               spreadsheet. The queue below is a database table and shows no row
+               number anywhere, so it asked for a number that is on no screen in
+               this app -- and the ordinal it counts is not the id the queue
+               uses internally either, so a guess would have selected the wrong
+               product rather than failing.
+               ASIN, eBay item and a pasted URL all still work, and all three
+               are things you can actually read off the queue. -->
           <select id="gensel_type" class="ed" style="width:auto;min-width:150px"
                   title="What you're entering (ignored when a URL is pasted)">
-            <option value="row" selected>Row number</option>
-            <option value="asin">ASIN</option>
+            <option value="asin" selected>ASIN</option>
             <option value="ebay_item">eBay item number</option>
           </select>
         </div>
         <div id="gensel_hint" class="cc" style="font-size:12px;margin-top:8px">
-          Row numbers can be comma-separated (e.g. 2, 5, 7). For one product you
-          can paste its URL — the dropdown is ignored then.
+          Leave this empty to generate everything queued below. To pick one,
+          paste its Amazon or eBay link — the dropdown is ignored then — or type
+          its ASIN or eBay item number.
         </div>
       </div>
       <div id="genhow"></div>

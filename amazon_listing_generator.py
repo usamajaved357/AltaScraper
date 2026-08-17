@@ -2576,7 +2576,14 @@ def select_rows(products: list, raw: str, sel_type: str = "auto"):
     sel_type: 'row' | 'asin' | 'ebay_item' | 'auto'
       - A pasted URL always auto-detects (ignores sel_type): amazon.* -> ASIN,
         ebay.* -> item number.
-      - 'row'       -> comma-separated 1-based row numbers (input-sheet data rows).
+      - 'row'       -> comma-separated 1-based positions in the queue. STILL
+                       WORKS, but no longer offered in the app: it is a Google
+                       Sheets idea (the product on line 5 of the spreadsheet)
+                       and the queue is a database table that displays no row
+                       number anywhere, so the box was asking for a figure that
+                       appears on no screen. Reachable from the command line via
+                       --select-type row, where the position is at least
+                       countable.
       - 'asin'      -> match ASIN parsed from each row's amazon_url.
       - 'ebay_item' -> match item number parsed from each row's ebay_url.
     """

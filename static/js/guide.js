@@ -39,7 +39,7 @@ const GUIDES = {
        b: "<b>Generate</b> creates a listing for every queued product that is not "
         + "in the app yet — title, five bullets, description, search terms and "
         + "the attributes the product type requires. To do only some of them, "
-        + "name them in the <b>Which listings</b> box by row number, or paste a "
+        + "name them in the <b>Which listings</b> box by ASIN, or paste a "
         + "single product's URL.<br><br>"
         + "The words come from the SOURCE listing, not the competitor: the "
         + "competitor is a different seller's version of a similar product and is "

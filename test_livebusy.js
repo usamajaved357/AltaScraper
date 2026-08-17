@@ -30,11 +30,31 @@ const one = body("loadLiveCatalog");
 check("it paints what is already cached first",
       /_liveShowCached\(key\)/.test(one), true);
 check("the grid is only blanked when there is nothing to show",
-      /else if\(grid\)\{[\s\S]*Rebuilding the listings report/.test(one), true);
+      /else if\(grid\)\{[\s\S]*Loading your listings/.test(one), true);
 check("the blocking message is no longer unconditional",
       /if\(grid\) grid\.innerHTML = force/.test(one), false);
 check("the in-flight note is raised",
-      /_liveWorking\(force/.test(one), true);
+      /_liveWorking\("updating"\)/.test(one), true);
+
+/* AND IT NO LONGER ANNOUNCES HOW LONG AMAZON TAKES.
+ *
+ *     "i do not like this notification of rebuilding the report on Amazon --
+ *      this can take 1-4 minutes, i dont think the big platforms like amazon
+ *      and also other tools platforms like scale insights etc show this type of
+ *      message."
+ *
+ * The message described our implementation rather than his data. Checked on the
+ * CODE with comments stripped, because the explanation of why it went naturally
+ * contains the words it went for.
+ */
+const CODE = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+check("no screen quotes Amazon's report time at the user",
+      /1[-–]4 minutes/.test(CODE), false);
+check("  nor 'can take a few minutes'", /can take a few minutes/.test(CODE), false);
+check("  and nothing says 'Rebuilding the listings report'",
+      /Rebuilding the listings report/.test(CODE), false);
+check("  the reason is still written down, so it is not re-added",
+      /1-4 minutes/.test(src), true);
 check("and cleared in a finally, so no path can strand it",
       /finally\{[\s\S]*_liveWorkingDone\(\)/.test(one), true);
 
