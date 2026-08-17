@@ -129,6 +129,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except (TypeError, ValueError):
                 cap = 60
             cost_of = _cost_fn()
+            # THE PICTURE, RESOLVED HERE RATHER THAN IN THE BROWSER.
+            #
+            # It was matched in the page against LIVE_ITEMS -- the catalogue the
+            # LISTINGS screen loads. Open Orders without going via Listings
+            # first, which is the normal way to open Orders, and that array is
+            # empty: every row showed the product's name and no picture, on the
+            # one screen that was reworked to show pictures.
+            #
+            # The snapshot is already cached per workspace, so this costs a dict
+            # build per request and nothing from Amazon.
+            pics = _pictures()
             done = 0
             # HOW MANY COULD NOT BE READ. This loop `continue`d on a failed
             # read without counting it, so an outcome where EVERY order failed
@@ -156,7 +167,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 r["roi_pct"] = d["roi_pct"]
                 r["cogs"] = d["cogs"]
                 r["profit_note"] = d["note"]
-                r["item"] = _ov.item_summary(items)
+                it = _ov.item_summary(items)
+                it["img"] = (pics.get(_key(it.get("sku")))
+                             or pics.get(_key(it.get("asin"))) or "")
+                r["item"] = it
                 r["lines"] = len(items)
                 done += 1
             if len(rows) > cap:
@@ -176,6 +190,39 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "summary": _ov.summarise(rows),
                         "profit_note": profit_note,
                         "pii_note": _ov.PII_NOTE})
+
+    def _key(s):
+        """SKUs and ASINs match case-insensitively, spaces and all."""
+        return str(s or "").strip().upper()
+
+    def _pictures():
+        """{sku or asin -> image url} for every account in scope.
+
+        From the cached live snapshot, the same place the Listings cards get
+        theirs, so one product does not have two different pictures in one app.
+        An account with no snapshot simply contributes nothing.
+        """
+        out = {}
+        try:
+            from domain import live_snapshots as _ls
+        except Exception:
+            return out
+        for a in _accounts_in_scope():
+            try:
+                rec = _ls.get(CONFIG_PATH, str(a.get("id") or ""),
+                              _marketplace(a)) or {}
+            except Exception:
+                continue
+            for it in (rec.get("items") or []):
+                url = str(it.get("img") or "")
+                if not url:
+                    continue
+                # SKU first: an ASIN can carry several of our SKUs, and the
+                # picture of the wrong one is still the wrong picture.
+                for k in (_key(it.get("sku")), _key(it.get("asin"))):
+                    if k and k not in out:
+                        out[k] = url
+        return out
 
     def _cost_fn():
         """sku -> (cost, source), from the ONE resolver (domain/cogs.py)."""
@@ -206,6 +253,60 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         except Exception:
             return None
 
+
+    @app.route("/orders/items", methods=["POST"])
+    def orders_items():
+        """What was in these orders, and what each earned. Nothing else.
+
+        WHY THIS EXISTS RATHER THAN with_profit=1.
+
+        The screen draws the list first and fills the products in behind it,
+        because reading an order's lines costs one Amazon call each and nobody
+        should watch an empty table for a minute. The second pass used to call
+        /orders/list again with with_profit=1 -- which re-fetched the whole
+        order feed to get a list it already had on screen.
+
+        Twice the order-feed calls for one screen, and Amazon throttles: the
+        second fetch came back empty and the screen reported "Profit worked out
+        for all 0", which reads exactly like an account with nothing in it.
+        Measured on selvora_limited, 3 days, 24 orders on screen and 0 costed.
+
+        So this takes the orders the screen already has and answers only the
+        question it cannot answer itself. Same _items_for and same
+        profit_detail as the list route -- one definition of what an order
+        earned, not two.
+        """
+        b = request.get_json(force=True, silent=True) or {}
+        want = [x for x in (b.get("orders") or []) if isinstance(x, dict)][:200]
+        if not want:
+            return jsonify({"ok": True, "items": {}, "note": ""})
+        cost_of = _cost_fn()
+        pics = _pictures()
+        out, unread = {}, 0
+        for w in want:
+            oid = str(w.get("order_id") or "").strip()
+            aid = str(w.get("account_id") or "").strip()
+            if not oid:
+                continue
+            items = _items_for(oid, aid)
+            if items is None:
+                unread += 1
+                continue
+            d = _ov.profit_detail(items, w.get("total"), cost_of)
+            it = _ov.item_summary(items)
+            it["img"] = (pics.get(_key(it.get("sku")))
+                         or pics.get(_key(it.get("asin"))) or "")
+            out[oid] = {"item": it, "lines": len(items),
+                        "profit": d["profit"], "margin_pct": d["margin_pct"],
+                        "roi_pct": d["roi_pct"], "cogs": d["cogs"],
+                        "profit_note": d["note"]}
+        note = ""
+        if unread:
+            note = ("%d of %d could not be read from Amazon — usually rate "
+                    "limiting; press Refresh to try those again."
+                    % (unread, len(want)))
+        return jsonify({"ok": True, "items": out, "asked": len(want),
+                        "read": len(out), "unread": unread, "note": note})
 
     @app.route("/orders/detail")
     def orders_detail():

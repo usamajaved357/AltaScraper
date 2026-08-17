@@ -13,8 +13,19 @@
 // headed "Address" holding only a postcode invites someone to try to post
 // something with it.
 
+// profit:true BY DEFAULT — it is what fills the Item column.
+//
+// It used to be absent, so falsy, so the item, the picture, the margin and the
+// ROI were blank on every row until someone found a toggle and pressed it. That
+// is not what was asked for: "i want to see the item picture and name of the
+// item and profit and roi and margin or each order without opening the order
+// details". Without means without.
+//
+// It is not free — one Amazon call per order, because an order row carries no
+// SKU — which is why it loads in TWO passes: see ordersLoad(). The toggle now
+// turns it OFF, for when speed matters more than knowing what sold.
 let ORD = {rows: [], summary: {}, days: 30, account: "__all__", q: "",
-           open: "", details: {}, busy: false};
+           open: "", details: {}, busy: false, profit: true};
 
 function _oEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -61,18 +72,29 @@ function ordersOnOpen(){
 
 async function ordersLoad(){
   const body = document.getElementById("ordbody");
-  if(!body || ORD.busy) return;
+  if(!body) return;
+  // A RELOAD IS NEVER DROPPED. This returned early while another load was in
+  // flight, so changing the days or the account during one -- which takes the
+  // best part of a minute -- was silently ignored: the screen kept the old
+  // window, said nothing, and the toolbar showed the setting you thought you
+  // had applied. Measured as a screen showing 35 orders while its own note
+  // described 145.
+  //
+  // Instead every load takes a ticket, and a result is thrown away if a newer
+  // load has started since. The most recent request always wins, which is the
+  // one the person is actually looking at.
+  const mine = ORD.loadId = (ORD.loadId || 0) + 1;
   ORD.busy = true;
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Asking every account for its orders…</div>';
-  try{
-    const qs = "days=" + encodeURIComponent(ORD.days)
+  // Built once, OUTSIDE the try, because the second pass below is handed this
+  // exact string and must ask the identical question.
+  const base = "days=" + encodeURIComponent(ORD.days)
              + "&account=" + encodeURIComponent(ORD.account)
-             + (ORD.q ? "&q=" + encodeURIComponent(ORD.q) : "")
-             // Opt-in: it costs one Amazon call per order, because an order row
-             // carries no SKU and without a SKU there is no cost.
-             + (ORD.profit ? "&with_profit=1" : "");
-    const j = await (await fetch("/orders/list?" + qs)).json();
+             + (ORD.q ? "&q=" + encodeURIComponent(ORD.q) : "");
+  try{
+    const j = await (await fetch("/orders/list?" + base)).json();
+    if(mine !== ORD.loadId) return;             // a newer load has taken over
     if(!j || !j.ok){
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _oEsc((j&&j.error)||"Could not load orders") + '</div>';
@@ -81,9 +103,74 @@ async function ordersLoad(){
     ORD.rows = j.rows || []; ORD.summary = j.summary || {}; ORD.meta = j;
     ordersRender();
   }catch(e){
-    body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
-      + _oEsc(String(e)) + '</div>';
-  }finally{ ORD.busy = false; }
+    if(mine === ORD.loadId){
+      body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
+        + _oEsc(String(e)) + '</div>';
+    }
+    return;
+  }finally{ if(mine === ORD.loadId) ORD.busy = false; }
+  if(mine !== ORD.loadId) return;
+  // SECOND PASS, and the reason there are two.
+  //
+  // What was sold, and what it earned, cost one Amazon call per order — the
+  // order row carries no SKU, and without a SKU there is no product and no
+  // cost. Sixty of those in a row is most of a minute, so asking for them
+  // before drawing anything would leave the screen empty for that long, and
+  // that is exactly why this was made opt-in in the first place.
+  //
+  // So: the list appears at once, and the items fill in behind it. Nobody waits
+  // for the whole thing to know whether their orders loaded.
+  if(ORD.profit) ordersFillItems(mine);
+}
+
+// How many orders to read per screenful. Each is one Amazon call, so this is a
+// real ceiling and the screen says when it bites rather than trimming quietly.
+const ORD_ITEM_CAP = 60;
+
+// The products and the earnings, for the orders ALREADY on screen.
+//
+// It asks /orders/items with those orders' ids -- it does NOT fetch the order
+// list a second time. Doing that was two full order-feed calls for one screen,
+// and Amazon throttled the second: it came back empty and the screen said
+// "Profit worked out for all 0", which is indistinguishable from an account
+// with no orders.
+//
+// `mine` is the load ticket from ordersLoad. If a newer load has started -- the
+// days changed, the account changed -- this answer is for a question nobody is
+// asking any more and is dropped rather than merged onto whatever is now on
+// screen.
+async function ordersFillItems(mine){
+  const st = document.getElementById("ord_fillnote");
+  const rows = (ORD.rows || []).slice(0, ORD_ITEM_CAP);
+  if(!rows.length) return;
+  ORD.filling = true;
+  if(st) st.innerHTML = '<span class="genspin"></span> reading what sold — '
+                      + rows.length + ' order' + (rows.length===1?'':'s') + '…';
+  try{
+    const j = await (await fetch("/orders/items", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({orders: rows.map(function(r){
+        return {order_id:r.order_id, account_id:r.account_id, total:r.total};
+      })})})).json();
+    if(mine !== ORD.loadId) return;
+    ORD.filling = false;
+    if(!j || !j.ok){ if(st) st.textContent = ""; return; }
+    const by = j.items || {};
+    ORD.rows = (ORD.rows||[]).map(function(r){
+      const m = by[r.order_id];
+      return m ? Object.assign({}, r, m) : r;
+    });
+    const over = (ORD.rows||[]).length - rows.length;
+    ORD.meta = Object.assign({}, ORD.meta||{}, {profit_note:
+      [j.note || "",
+       over > 0 ? ("The newest " + rows.length + " were read; " + over
+                   + " older ones were not — narrow the days to see those.") : ""
+      ].filter(Boolean).join(" ")});
+    ordersRender();
+  }catch(e){
+    ORD.filling = false;
+    if(st) st.textContent = "";
+  }
 }
 
 function ordersSetDays(d){ ORD.days = d; ordersLoad(); }
@@ -103,13 +190,20 @@ function ordersFilter(v){
 
 // The picture and the name of what was bought.
 //
-// The image comes from the live catalogue the app already holds, matched on the
-// order line's SKU then its ASIN -- the same order of preference the listings
-// screen uses, and no extra call to Amazon. An order with several products names
-// the first and says how many more, because a row that grows with the order is
-// what made this screen cluttered.
+// THE SERVER RESOLVES THE PICTURE. This used to match against LIVE_ITEMS, the
+// catalogue the LISTINGS screen loads -- so opening Orders directly, which is
+// how anyone actually opens Orders, left that array empty and every row showed
+// a name and a grey placeholder. Now item.img arrives with the row, from the
+// same cached snapshot the listing cards use, so one product cannot end up with
+// two different pictures in one app.
+//
+// LIVE_ITEMS is still consulted, but only as a fallback for a product the
+// snapshot has not caught up with. An order with several products names the
+// first and says how many more, because a row that grows with the order is what
+// made this screen cluttered.
 function _ordItemImage(item){
   if(!item) return "";
+  if(item.img) return item.img;
   const items = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
   const norm = v => String(v == null ? "" : v).trim().toUpperCase();
   const sku = norm(item.sku), asin = norm(item.asin);
@@ -135,8 +229,9 @@ function _ordItemCell(r){
     // with nothing in it, and telling someone to tick a box they have already
     // ticked is worse than saying nothing.
     const why = !ORD.profit
-      ? 'turn on “work out profit” to see the item'
-      : 'past the profit limit for this load';
+      ? 'turn “work out profit” back on to see the item'
+      : (ORD.filling ? 'still reading this one from Amazon…'
+                     : 'past the profit limit for this load');
     return '<span class="cc" style="font-size:11px;opacity:.55" title="'
          + _oEsc(why) + '">' + _oEsc(why) + '</span>';
   }
@@ -149,8 +244,12 @@ function _ordItemCell(r){
           + 'display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px">'
           + '<i class="ti ti-photo" style="opacity:.4"></i></span>')
     + '<span style="min-width:0">'
-    + '<span style="font-size:11.5px;display:block;overflow:hidden;'
-    + 'text-overflow:ellipsis;white-space:nowrap;max-width:230px" title="'
+    // Two lines, not one. A product name cut to "BASED Pomade f..." identifies
+    // nothing, and this column had 230px while Profit, Margin and ROI each had
+    // a whole column for four characters.
+    + '<span style="font-size:11.5px;display:-webkit-box;-webkit-line-clamp:2;'
+    + '-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;'
+    + 'max-width:330px" title="'
     + _oEsc(it.title || it.sku) + '">' + _oEsc(it.title || it.sku) + '</span>'
     + '<span class="cc" style="font-size:10px">' + _oEsc(it.sku)
     + (it.extra ? (' · +' + it.extra + ' more') : '') + '</span>'
@@ -214,10 +313,15 @@ function ordersRender(){
     body.innerHTML = h; return;
   }
 
-  if(m.profit_note){
-    h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
-      +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.profit_note) + '</div>';
-  }
+  // The second pass reports itself here — how far it got, and whether it is
+  // still going. An Item column that is filling in looks identical to one that
+  // gave up, unless it says which.
+  h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px" id="ord_fillnote">'
+    +  (m.profit_note
+        ? '<i class="ti ti-info-circle"></i> ' + _oEsc(m.profit_note)
+        : (ORD.filling
+            ? '<span class="genspin"></span> working out what sold…' : ''))
+    +  '</div>';
 
   // FEWER COLUMNS, MORE IN EACH.
   //
@@ -239,11 +343,17 @@ function ordersRender(){
   })();
   const cols = ['Item', 'Order'].concat(_multi ? ['Account'] : [])
                .concat(['Placed', 'Status', 'Total', 'Profit', 'Margin', 'ROI']);
+  // The Item column gets the room. The money columns need four characters each
+  // and were taking a ninth of the screen apiece, which is why the product name
+  // -- the thing the column exists for -- was cut to nothing.
+  const _narrow = {'Total':1, 'Profit':1, 'Margin':1, 'ROI':1, 'Status':1};
   h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:760px">'
     +  '<thead><tr>'
     +  cols.map(function(t){
          return '<th style="text-align:left;font-size:10.5px;padding:6px 8px;'
-              + 'white-space:nowrap">' + t + '</th>'; }).join("")
+              + 'white-space:nowrap'
+              + (t === 'Item' ? ';width:34%' : (_narrow[t] ? ';width:9%' : ''))
+              + '">' + t + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
   ORD.rows.forEach(function(r){
