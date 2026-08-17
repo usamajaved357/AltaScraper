@@ -58,14 +58,80 @@ function _oWhen(iso){
   }catch(e){ return iso; }
 }
 
+/* WHAT AMAZON'S ORDER STATUSES ACTUALLY MEAN.
+ *
+ *     "And i see there is written cancel requested i can not understand what it
+ *      means."
+ *
+ * These are Amazon's own words, shown raw. "PartiallyShipped" and "Unshipped"
+ * are guessable; "Pending" and "cancel requested" are not, and both are ones
+ * where doing the wrong thing costs money -- Pending orders can still vanish,
+ * and posting a parcel after a cancellation request means eating the return.
+ *
+ * ONE TABLE, used by the row, the panel and the tooltip, so a status cannot be
+ * described one way in the list and another way when it is opened (Rule 12).
+ *
+ *   c     the colour
+ *   t     a short human label
+ *   m     what it means, in plain words
+ *   d     what to do about it, when there is something to do
+ */
 const _ORD_STATUS = {
-  Shipped:            {c:"#8fd694"},
-  Unshipped:          {c:"#e8c66a"},
-  PartiallyShipped:   {c:"#e8c66a"},
-  Pending:            {c:"#8b949e"},
-  Canceled:           {c:"#e88a8a"},
-  Cancelled:          {c:"#e88a8a"},
+  Shipped: {c:"#8fd694", t:"Shipped", tone:"ok",
+    m:"You have dispatched it and told Amazon. Nothing further is needed."},
+  Unshipped: {c:"#e8c66a", t:"Not shipped yet", tone:"warn",
+    m:"The buyer has paid and it is waiting for you to send it.",
+    d:"Post it before the ship-by date below, or Amazon counts it late."},
+  PartiallyShipped: {c:"#e8c66a", t:"Partly shipped", tone:"warn",
+    m:"Some of the items have gone and some have not.",
+    d:"Send the rest before the ship-by date below."},
+  Pending: {c:"#8b949e", t:"Payment not cleared", tone:"",
+    m:"Amazon is still taking the buyer's payment. The address and the items "
+     + "are not final yet, and the order can still disappear.",
+    d:"Do not buy stock for it or post it until it turns to Unshipped."},
+  Canceled: {c:"#e88a8a", t:"Cancelled", tone:"bad",
+    m:"The order is off. No money will arrive for it.",
+    d:"If you have already posted it, claim it back through Amazon."},
+  Cancelled: {c:"#e88a8a", t:"Cancelled", tone:"bad",
+    m:"The order is off. No money will arrive for it.",
+    d:"If you have already posted it, claim it back through Amazon."},
+  InvoiceUnconfirmed: {c:"#8b949e", t:"Awaiting invoice", tone:"",
+    m:"Shipped, but Amazon is waiting for the invoice for a business buyer."},
+  Unfulfillable: {c:"#e88a8a", t:"Cannot be fulfilled", tone:"bad",
+    m:"Amazon cannot fulfil it from your stock — usually there is none in the "
+     + "warehouse, or the item is not sellable."},
 };
+
+/* The buyer has ASKED to cancel. This is not a status of its own -- it rides on
+ * top of one -- so it gets its own entry. It is the single most expensive thing
+ * on this screen to misread: the order still reads as a live sale, and posting
+ * it means paying to send something that is going to come straight back. */
+const _ORD_CANCEL_REQUESTED = {
+  t: "Buyer asked to cancel",
+  m: "The buyer pressed cancel after ordering. Amazon has not cancelled it "
+   + "automatically because it is already too far along, so it is still sitting "
+   + "here as a live order.",
+  d: "Do not post it. Cancel it in Seller Central, or you pay to send something "
+   + "that comes straight back and the buyer can still claim a refund.",
+};
+
+/* One status, drawn as a chip with its explanation on hover. `extra` lets the
+ * panel add the cancellation request to whatever the status already said. */
+function _ordStateChip(status, cancelRequested){
+  const s = _ORD_STATUS[status] || {t:String(status||"unknown"), m:"", tone:""};
+  const bits = [];
+  if(s.m) bits.push(s.m);
+  if(s.d) bits.push(s.d);
+  let h = '<span class="odp-state ' + (s.tone || '') + '" title="'
+        + _oEsc(bits.join(" ")) + '">' + _oEsc(s.t || status) + '</span>';
+  if(cancelRequested){
+    h += ' <span class="odp-state bad" title="'
+      +  _oEsc(_ORD_CANCEL_REQUESTED.m + " " + _ORD_CANCEL_REQUESTED.d) + '">'
+      +  '<i class="ti ti-alert-triangle"></i> '
+      +  _oEsc(_ORD_CANCEL_REQUESTED.t) + '</span>';
+  }
+  return h;
+}
 
 function ordersOnOpen(){
   // The account picker is filled from the accounts the app already knows, so it
@@ -411,8 +477,13 @@ function ordersRender(){
       +  (r.business ? ' · Business' : '')
       +  (r.region ? ' · ' + _oEsc(r.region) : '') + '</div>'
       +  '</td>'
-      +  '<td style="font-size:11.5px;color:' + st.c + '">'
-      +  '<span style="white-space:nowrap">' + _oEsc(r.status) + '</span>'
+      // AMAZON'S WORD, WITH WHAT IT MEANS ON HOVER. "Pending" and "Unshipped"
+      // are the two that cost money to misread, and the raw word said nothing.
+      // Same table the panel uses, so the list and the panel cannot describe
+      // one status two ways (Rule 12).
+      +  '<td style="font-size:11.5px;color:' + st.c + '" title="'
+      +  _oEsc([st.m, st.d].filter(Boolean).join(" ")) + '">'
+      +  '<span style="white-space:nowrap">' + _oEsc(st.t || r.status) + '</span>'
       // On its own line rather than trailing the status: "Unshipped (1 to ship)"
       // is too wide for a 9% column and wrapped into the cell above it.
       +  (r.unshipped ? '<div class="cc" style="font-size:10px;white-space:nowrap">'
@@ -484,67 +555,112 @@ function ordersRender(){
  * ended is a different situation from one source, and hiding the ended ones makes
  * them look the same.
  */
-function _ordSourcesHtml(block){
+/* WHAT THE DELIVERY LINE MEANS, said once.
+ *
+ *     "also show statements like this Free Other Courier 3 days · arrives Wed
+ *      19 Aug to Thu 20 Aug to B11AA · 3 days handling · 1 left. like it is and
+ *      also explain in a i button somewhere what this line means."
+ *
+ * Every part of that sentence comes from a different place and two of them are
+ * easy to read as each other -- the supplier's dispatch time and the delivery
+ * window are both "days", and only one of them is a promise to the buyer.
+ */
+const _ORD_SHIP_HELP =
+  "Each supplier line reads: what their postage costs and who carries it · when "
++ "it would reach the address Amazon gave for this order · how long the supplier "
++ "takes to dispatch it · how many they have left.\n\n"
++ "\"Free Other Courier 3 days\" is the postage option itself — free, an "
++ "unnamed courier, quoted as 3 days in transit.\n\n"
++ "\"arrives Wed 19 Aug to Thu 20 Aug to B11AA\" is eBay's own delivery "
++ "estimate, worked out for that postcode. Without a postcode eBay returns no "
++ "delivery information at all, so one is always sent.\n\n"
++ "\"3 days handling\" is the SUPPLIER's dispatch time, not yours. The handling "
++ "time the app promises Amazon is this plus a safety buffer.\n\n"
++ "\"1 left\" is the stock the supplier says remains. One left is a reason to "
++ "buy now or to line up a second source.";
+
+/* WHERE TO BUY THIS LINE FROM.
+ *
+ *     "should reflect all the available source links which are provided by the
+ *      user ... arranged in order of which the source link is cheapest ... and
+ *      also reflect how much will the order cost if the user purchase from each
+ *      source and what will be the amount of profit in pounds and in roi"
+ *
+ * Ranking, cost and profit all come from domain/order_sources.py -- the same
+ * function the repricer uses, so the two screens cannot disagree about which
+ * link is cheapest or what it would earn. Nothing is worked out here; this only
+ * draws it. The rank is re-derived on every read, so a supplier who puts their
+ * price up moves down the list by itself.
+ *
+ * A DEAD LINK IS STILL SHOWN, greyed and labelled. Three sources where two have
+ * ended is a different situation from one source, and hiding the ended ones
+ * makes them look the same.
+ */
+function _ordSourcesHtml(block, forTitle){
   if(!block) return '';
+  const head = '<div class="odp-sec">'
+    + '<h4 class="odp-h"><i class="ti ti-shopping-cart"></i>Where to buy it'
+    + (forTitle ? '<span class="odp-count">· ' + _oEsc(forTitle) + '</span>' : '')
+    + '</h4>';
+
   if(block.error){
-    return '<div class="cc" style="font-size:10.5px;padding:3px 0 6px;color:var(--warn)">'
-         + 'Could not read the supplier links: ' + _oEsc(block.error) + '</div>';
+    return head + '<div class="odp-note warn">Could not read the supplier links: '
+         + _oEsc(block.error) + '</div></div>';
   }
   const opts = block.options || [], s = block.summary || {};
   if(!opts.length){
-    return '<div class="cc" style="font-size:10.5px;padding:3px 0 6px">'
-         + 'No supplier links are tracked for this SKU — add one in the Repricer '
-         + 'to see where to buy it and what it would earn.</div>';
+    return head + '<div class="odp-note">No supplier links are tracked for this '
+         + 'SKU. Add one in the Repricer to see where to buy it and what it '
+         + 'would earn.</div></div>';
   }
-  // EVERY LINK GONE. The loudest thing this panel can say, so it goes first and
-  // in red: the order has to be fulfilled and there is nowhere to buy it.
-  let h = '';
+
+  let h = head;
+  // EVERY LINK GONE. The loudest thing this panel can say, so it goes first: the
+  // order has to be fulfilled and there is nowhere to buy it.
   if(s.all_dead){
-    h += '<div style="font-size:10.5px;padding:5px 8px;margin:3px 0 5px;'
-      +  'border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;border-radius:5px">'
+    h += '<div class="odp-note warn" style="margin:0 0 8px">'
       +  '<i class="ti ti-alert-triangle"></i> <b>Every supplier for this SKU is '
-      +  'out of stock or ended.</b> There is nowhere to buy this order from right '
-      +  'now.</div>';
+      +  'out of stock or ended.</b> There is nowhere to buy this order from '
+      +  'right now.</div>';
   }
-  h += '<div style="font-size:10.5px;padding:2px 0 7px">'
-    +  '<div class="cc" style="margin-bottom:3px">Buy from — cheapest first'
-    +  (s.buyable ? '' : ' · none available')
-    +  (block.unit_price !== null && block.unit_price !== undefined
-        ? ' · profit is against the ' + _oEsc(_oMoney(block.unit_price)) + ' this buyer paid'
-        : '')
-    +  '</div>';
+
+  h += '<div class="odp-src">'
+    +  '<div class="odp-src-h">#</div>'
+    +  '<div class="odp-src-h">Supplier</div>'
+    +  '<div class="odp-src-h r">You pay</div>'
+    +  '<div class="odp-src-h r">You keep</div>';
+
   opts.forEach(function(o){
     const dead = o.state === 'dead', unknown = o.state === 'unknown';
-    h += '<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0'
-      +  (dead ? ';opacity:.5' : '') + '">'
-      // The cheapest buyable one is marked, so the choice is obvious at a glance
-      // rather than being inferred from the order of the rows.
-      +  '<span style="width:52px;flex:none' + (o.cheapest ? ';color:var(--ok)' : '') + '">'
-      +  (o.cheapest ? 'cheapest' : (dead ? 'gone' : (unknown ? '?' : '#' + o.rank)))
-      +  '</span>'
-      +  '<a href="' + _oEsc(o.url) + '" target="_blank" rel="noopener"'
-      +  ' style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;'
-      +  'white-space:nowrap">' + _oEsc(o.label || o.url) + '</a>'
+    const cls = dead ? ' odp-row-dead' : '';
+    // The cheapest buyable one is marked, so the choice is obvious at a glance
+    // rather than being inferred from the order of the rows.
+    h += '<div class="odp-rank' + (o.cheapest ? ' best' : '') + cls + '">'
+      +  (o.cheapest ? 'best' : (dead ? '—' : (unknown ? '?' : o.rank)))
+      +  '</div>'
+      +  '<div class="' + cls.trim() + '"><a class="odp-link" target="_blank" '
+      +  'rel="noopener" href="' + _oEsc(o.url) + '">'
+      +  _oEsc(o.label || o.url) + '</a></div>'
       // LANDED COST -- the item plus its postage, which is what leaves the bank.
-      +  '<span style="width:74px;flex:none;text-align:right">'
+      +  '<div class="odp-num r' + cls + '">'
       +  (o.landed === null || o.landed === undefined
           ? '<span class="cc">—</span>'
           : _oEsc(_oMoney(o.landed, o.currency)))
-      +  '</span>'
-      // PROFIT IN POUNDS, which is what was asked for, with the ROI beside it.
-      +  '<span style="width:86px;flex:none;text-align:right'
+      +  '</div>'
+      // PROFIT IN POUNDS, with ROI beside it -- both were asked for by name.
+      +  '<div class="odp-num r' + cls
       +  (o.profit !== null && o.profit !== undefined && o.profit < 0
-          ? ';color:var(--red)' : '') + '">'
+          ? ' neg' : '') + '">'
       +  (o.profit === null || o.profit === undefined
           ? '<span class="cc">—</span>'
-          : _oEsc(_oMoney(o.profit, o.currency))
+          : '<b>' + _oEsc(_oMoney(o.profit, o.currency)) + '</b>'
             + (o.roi_pct === null || o.roi_pct === undefined ? ''
-               : ' <span class="cc">' + Number(o.roi_pct).toFixed(0) + '%</span>'))
-      +  '</span>'
+               : '<span class="sub"> · ' + Number(o.roi_pct).toFixed(0)
+                 + '% ROI</span>'))
       +  '</div>';
-    // HOW IT GETS THERE AND WHEN, on its own line -- the carrier if eBay named
-    // one, otherwise the postage as written, then the delivery window and the
-    // postcode it was worked out for.
+
+    // HOW IT GETS THERE AND WHEN, spanning the grid on its own line so it can be
+    // a full sentence without squeezing the numbers.
     const bits = [];
     if(o.postage_text) bits.push(_oEsc(o.postage_text));
     if(o.delivery_text){
@@ -565,12 +681,23 @@ function _ordSourcesHtml(block){
     // A PRICE FROM YESTERDAY IS NOT A PRICE. Said plainly rather than left for
     // someone to work out from a timestamp.
     if(o.stale) bits.push('this reading is out of date — press Check in the Repricer');
-    if(bits.length){
-      h += '<div class="cc" style="padding:0 0 4px 60px;font-size:10px'
-        +  (dead ? ';opacity:.6' : '') + '">' + bits.join(' · ') + '</div>';
-    }
+    h += '<div class="odp-ship' + cls + '">' + (bits.length ? bits.join(' · ') : '')
+      +  '</div>';
   });
   h += '</div>';
+
+  // WHAT THE PROFIT IS MEASURED AGAINST, and what that delivery line means.
+  h += '<div class="odp-note">'
+    +  '<button class="odp-i" type="button" title="' + _oEsc(_ORD_SHIP_HELP)
+    +  '" aria-label="What the delivery line means">i</button> '
+    +  'Cheapest first — it re-sorts itself when a supplier changes their price. '
+    +  '“You pay” is their price plus their postage. '
+    +  (block.unit_price !== null && block.unit_price !== undefined
+        ? '“You keep” is what is left of the '
+          + _oEsc(_oMoney(block.unit_price, (opts[0] || {}).currency))
+          + ' this buyer actually paid, after Amazon’s fee and that supplier.'
+        : '“You keep” is what is left after Amazon’s fee and that supplier.')
+    +  '</div></div>';
   return h;
 }
 
@@ -595,9 +722,12 @@ function _ordBreakdownHtml(bd, currency){
     return (v === null || v === undefined)
       ? '<span class="cc">—</span>' : _oEsc(_oMoney(v, currency));
   };
-  let h = '<div style="margin-top:9px;padding-top:8px;border-top:1px solid #1c2531">'
-        + '<div style="font-size:11.5px;font-weight:600;margin-bottom:5px">'
-        + 'What this order earned</div>'
+  const actual = (t.fees_basis === "actual");
+  let h = '<div class="odp-sec">'
+        + '<h4 class="odp-h"><i class="ti ti-receipt-pound"></i>What it earned'
+        + '<span class="odp-count">· ' + (actual
+            ? 'Amazon’s own settled figures'
+            : 'fee estimated until Amazon settles it') + '</span></h4>'
         + '<table style="width:100%;font-size:11px;border-collapse:collapse">'
         + '<thead><tr style="color:#8b98a9;text-align:right">'
         + '<th style="text-align:left;font-weight:500;padding:2px 4px">Item</th>'
@@ -667,55 +797,142 @@ function _ordBreakdownHtml(bd, currency){
       + ' in total — the difference from the lines above is postage, gift wrap '
       + 'or a coupon.');
   }
-  notes.push('Amazon’s fee is estimated at '
-    + Math.round((t.fee_rate || 0.15) * 100) + '% and split across the lines by '
-    + 'what each one sold for. The exact fee arrives with the finance records.');
+  // WHERE THE FEE CAME FROM. Amazon's own settled figure once it has one, and
+  // said as such -- the panel used to call every fee an estimate, including the
+  // ones Amazon had already itemised.
+  if(actual){
+    notes.push('Amazon has settled this order, so the fee above is what it '
+      + 'actually took — referral, and FBA where it applied — split across the '
+      + 'lines by what each one sold for.');
+  }else{
+    notes.push('Amazon has not settled this order yet, so its fee is '
+      + 'estimated at ' + Math.round((t.fee_rate || 0.15) * 100) + '% — this account’s '
+      + 'own measured rate where there is enough history to measure one — and '
+      + 'split across the lines by what each one sold for.');
+  }
   notes.forEach(function(n){
-    h += '<div class="cc" style="font-size:10px;margin-top:4px">' + _oEsc(n) + '</div>';
+    h += '<div class="odp-note">' + _oEsc(n) + '</div>';
   });
   return h + '</div>';
 }
 
+/* THE ORDER PANEL, IN SECTIONS.
+ *
+ *     "RIGHT NOW THE TEXT APPEARS IN A FREE FORM WHEN I CLICK ON THE ORDER
+ *      NUMBER INSIDE THE ORDERS TAB ... the order page is not arranged the,
+ *      text mixes freely into each other."
+ *
+ * It was one stack of divs, each carrying its own inline padding and font size,
+ * with nothing sharing a baseline and no grid for anything to line up against.
+ * Text positioned only relative to the text before it runs together the moment
+ * one piece grows -- which a long Amazon product title does immediately.
+ *
+ * Four sections now, each with a heading, in the order the questions are asked:
+ *
+ *      What was ordered      the product, its ASIN as a link, quantity, price
+ *      Where to buy it       every supplier link, cheapest first
+ *      What it earned        the sum, line by line
+ *      Delivery              the dates Amazon holds you to
+ *
+ * The shapes live in dashboard.css under .odp -- see the block there. Almost no
+ * inline styling is left here, which is the actual fix: a panel whose layout is
+ * described in one place can be made to line up, and one where every element
+ * describes itself cannot.
+ */
 function _ordDetailHtml(r){
   const d = ORD.details[r.order_id] || {};
   const items = d.items || [];
   if(d.error){
-    return '<div class="cc" style="padding:10px;color:var(--red)">'
-         + _oEsc(d.error) + '</div>';
+    return '<div class="odp"><div class="odp-sec" style="color:var(--red)">'
+         + _oEsc(d.error) + '</div></div>';
   }
-  let h = '<div style="border:1px solid #26303f;border-radius:8px;padding:10px 12px">'
-        + '<div style="font-size:11.5px;font-weight:600;margin-bottom:6px">'
-        + items.length + ' line' + (items.length===1?'':'s') + ' in this order</div>';
-  items.forEach(function(it){
-    h += '<div style="display:flex;gap:10px;align-items:baseline;padding:5px 0;'
-      +  'border-top:1px solid #1c2531;font-size:11.5px">'
-      +  '<span style="flex:1;min-width:0">'
-      +  '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
-      +  'white-space:nowrap" title="' + _oEsc(it.title) + '">'
-      +  _oEsc(it.title || "(no title)") + '</span>'
-      +  '<code class="cc" style="font-size:10px">' + _oEsc(it.sku)
-      +  (it.asin ? ' · ' + _oEsc(it.asin) : '') + '</code></span>'
-      +  '<span class="cc" style="white-space:nowrap">' + it.qty + ' ×</span>'
-      +  '<span style="white-space:nowrap">' + _oEsc(_oMoney(it.price, it.currency))
-      +  '</span>'
-      +  (it.cancel_requested
-          ? '<span style="color:var(--warn);white-space:nowrap">cancel requested</span>'
-          : '')
-      +  '</div>';
-    // WHERE TO BUY THIS LINE FROM, right under the line it belongs to.
-    h += _ordSourcesHtml((d.sources || {})[it.sku]);
-  });
   const o = d.order || {};
-  // THE SUM, LINE BY LINE. "i am not able to see the earnings of each order and
-  // not the breakdown of the item that how many are cogs how much fee deducted".
+  let h = '<div class="odp">';
+
+  // ---- what was ordered ------------------------------------------------
+  h += '<div class="odp-sec">'
+    +  '<h4 class="odp-h"><i class="ti ti-package"></i>What was ordered'
+    +  '<span class="odp-count">· ' + items.length + ' item'
+    +  (items.length === 1 ? '' : 's') + '</span></h4>';
+  items.forEach(function(it){
+    h += '<div class="odp-item">'
+      +  '<div class="odp-title">' + _oEsc(it.title || "(no title)") + '</div>'
+      +  '<div class="odp-qty">' + it.qty + ' ×</div>'
+      +  '<div class="odp-price">' + _oEsc(_oMoney(it.price, it.currency)) + '</div>'
+      +  '<div class="odp-ids">'
+      // THE ASIN, AS A LINK THAT OPENS THE PRODUCT. Asked for directly: "it
+      // should show the name of the item, the clickable asin which opens the
+      // item". It was plain text before, so the one thing you would want to
+      // click on this panel was the one thing you could not.
+      +  (it.asin
+          ? '<a class="odp-id link" target="_blank" rel="noopener" href="'
+            + _oEsc(_ordDp(it.asin, r.marketplace)) + '" '
+            + 'title="Open this product on Amazon">' + _oEsc(it.asin)
+            + ' <i class="ti ti-external-link"></i></a>'
+          : '')
+      +  (it.sku ? '<span class="odp-id" title="Your own SKU for this product">'
+                   + _oEsc(it.sku) + '</span>' : '')
+      +  _ordStateChip(o.status || r.status, it.cancel_requested)
+      +  '</div>';
+    // The explanation, spelled out rather than left to a tooltip, for the two
+    // states where acting on the wrong reading costs real money.
+    const why = _ordWhyText(o.status || r.status, it.cancel_requested);
+    if(why) h += '<div class="odp-why">' + why + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // ---- where to buy it -------------------------------------------------
+  items.forEach(function(it){
+    const block = (d.sources || {})[it.sku];
+    const body = _ordSourcesHtml(block, items.length > 1 ? it.title : "");
+    if(body) h += body;
+  });
+
+  // ---- what it earned --------------------------------------------------
   h += _ordBreakdownHtml(d.breakdown, o.currency);
-  h += '<div class="cc" style="font-size:11px;margin-top:8px;padding-top:7px;'
-    +  'border-top:1px solid #1c2531">'
-    +  'Ship by ' + _oEsc(_oWhen(o.ship_by)) + ' · deliver by '
-    +  _oEsc(_oWhen(o.deliver_by))
-    +  (o.region ? ' · to ' + _oEsc(o.region) : '')
-    +  '</div></div>';
-  return h;
+
+  // ---- delivery --------------------------------------------------------
+  h += '<div class="odp-sec">'
+    +  '<h4 class="odp-h"><i class="ti ti-truck-delivery"></i>Delivery</h4>'
+    +  '<dl class="odp-kv">'
+    +  '<dt>Post it by</dt><dd>' + _oEsc(_oWhen(o.ship_by))
+    +  ' <span class="cc">— Amazon counts it late after this</span></dd>'
+    +  '<dt>Must arrive by</dt><dd>' + _oEsc(_oWhen(o.deliver_by))
+    +  ' <span class="cc">— what the buyer was promised</span></dd>'
+    +  (o.region ? '<dt>Going to</dt><dd>' + _oEsc(o.region) + '</dd>' : '')
+    +  '</dl></div>';
+
+  return h + '</div>';
+}
+
+/* The product's page on the right Amazon. listings.js owns the marketplace ->
+ * domain table, so it is borrowed rather than copied (Rule 12); if that file
+ * has not loaded the link is simply omitted rather than pointing somewhere
+ * plausible and wrong. */
+function _ordDp(asin, market){
+  try{
+    if(typeof _dpUrl === "function") return _dpUrl(asin, market);
+  }catch(e){}
+  return "";
+}
+
+/* The sentence under a line, for the states where the obvious action is the
+ * wrong one. Everything else is left to the chip's tooltip -- a paragraph on
+ * every Shipped order is noise, and noise is what makes a real warning
+ * invisible. */
+function _ordWhyText(status, cancelRequested){
+  const bits = [];
+  if(cancelRequested){
+    bits.push('<b style="color:#fca5a5">' + _oEsc(_ORD_CANCEL_REQUESTED.t)
+              + '.</b> ' + _oEsc(_ORD_CANCEL_REQUESTED.m) + ' '
+              + _oEsc(_ORD_CANCEL_REQUESTED.d));
+  }
+  const s = _ORD_STATUS[status];
+  if(s && s.d && (status === "Pending" || status === "Unfulfillable")){
+    bits.push(_oEsc(s.m) + ' ' + _oEsc(s.d));
+  }
+  return bits.join("<br>");
 }
 
 async function ordersToggle(orderId, accountId){

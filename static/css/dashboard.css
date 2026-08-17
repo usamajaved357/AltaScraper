@@ -2925,3 +2925,142 @@ table.ordtable tbody tr.orddetail > td{
   clip:rect(0 0 0 0); clip-path:inset(50%);
   overflow:hidden; white-space:nowrap;
 }
+
+/* =====================================================================
+   THE ORDER PANEL -- what opens when you click an order number
+   =====================================================================
+       "RIGHT NOW THE TEXT APPEARS IN A FREE FORM WHEN I CLICK ON THE ORDER
+        NUMBER INSIDE THE ORDERS TAB ... also the order page is not arranged
+        the, text mixes freely into each other."
+
+   He was right, and the cause was that the whole panel was built from inline
+   styles: every element carried its own padding and font-size, nothing shared
+   a baseline, and there was no grid for anything to line up against. Text that
+   is only ever positioned relative to the text before it runs together as soon
+   as one piece grows.
+
+   So the panel has sections now, and the sections have a shape:
+
+       .odp          the panel
+       .odp-sec      one section, with a rule above it and a heading
+       .odp-h        that heading
+       .odp-item     one ordered line: title, identifiers, quantity, price
+       .odp-ids      the SKU / ASIN chips under a title
+       .odp-src      the supplier table -- a GRID, so the columns align down
+                     the page instead of each row setting its own widths
+       .odp-kv       label/value pairs for the delivery dates
+
+   Everything here is new. No existing class is touched.
+   ===================================================================== */
+.odp{
+  border:1px solid var(--line); border-radius:10px;
+  background:var(--panel); padding:0; margin:2px 0 6px;
+  font-size:12px; line-height:1.55;
+}
+.odp-sec{ padding:11px 14px; border-top:1px solid var(--line); }
+.odp-sec:first-child{ border-top:0; }
+.odp-h{
+  display:flex; align-items:center; gap:7px; margin:0 0 9px;
+  font-size:11px; font-weight:600; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--ink3);
+}
+.odp-h .ti{ font-size:14px; color:var(--ink4); }
+.odp-h .odp-count{ color:var(--ink4); font-weight:500; letter-spacing:0;
+                   text-transform:none; }
+
+/* ---- one ordered line -------------------------------------------------- */
+.odp-item{
+  display:grid; grid-template-columns:1fr auto auto; gap:2px 12px;
+  align-items:baseline; padding:8px 0; border-top:1px solid var(--line);
+}
+.odp-item:first-of-type{ border-top:0; padding-top:0; }
+.odp-title{
+  grid-column:1; font-size:12.5px; color:var(--ink); font-weight:500;
+  /* Two lines then ellipsis: one line hid too much of a long Amazon title,
+     and unbounded made the row height jump between products. */
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.odp-qty{ grid-column:2; color:var(--ink3); white-space:nowrap;
+          font-variant-numeric:tabular-nums; }
+.odp-price{ grid-column:3; white-space:nowrap; font-weight:600;
+            font-variant-numeric:tabular-nums; }
+.odp-ids{ grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px;
+          margin-top:3px; align-items:center; }
+.odp-id{
+  font-family:ui-monospace,Consolas,monospace; font-size:10px;
+  color:var(--ink4); background:var(--panel2); border:1px solid var(--line);
+  border-radius:5px; padding:1px 6px; white-space:nowrap;
+}
+.odp-id.link{ color:var(--accent); text-decoration:none; }
+.odp-id.link:hover{ border-color:var(--accent); background:var(--accent-bg); }
+.odp-id .ti{ font-size:11px; vertical-align:-1px; }
+
+/* ---- a status, with what it means ------------------------------------- */
+.odp-state{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:10.5px; border-radius:5px; padding:1px 7px;
+  border:1px solid var(--line); white-space:nowrap;
+}
+.odp-state.warn{ color:var(--warn); border-color:var(--warn-line); }
+.odp-state.bad { color:#fca5a5;     border-color:var(--red-line); }
+.odp-state.ok  { color:var(--ok);   border-color:var(--ok-line, var(--line)); }
+.odp-why{
+  grid-column:1 / -1; margin-top:4px; font-size:11px; color:var(--ink3);
+  line-height:1.5;
+}
+
+/* ---- the supplier list: a grid, so columns line up -------------------- */
+.odp-src{ display:grid; grid-template-columns:auto 1fr auto auto; gap:0 10px; }
+.odp-src-h{
+  font-size:10px; color:var(--ink4); text-transform:uppercase;
+  letter-spacing:.04em; padding-bottom:4px; border-bottom:1px solid var(--line);
+}
+.odp-src-h.r, .odp-src .r{ text-align:right; }
+.odp-src > *{ padding:5px 0; align-self:center; }
+.odp-rank{
+  font-size:10px; color:var(--ink4); white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.odp-rank.best{ color:var(--ok); font-weight:600; }
+.odp-link{
+  color:var(--accent); text-decoration:none; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;
+}
+.odp-link:hover{ text-decoration:underline; }
+.odp-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+.odp-num.neg{ color:var(--red); }
+.odp-num .sub{ color:var(--ink4); font-size:10.5px; font-weight:400; }
+/* The delivery sentence sits under its own row and spans the whole grid, so
+   it can be a full sentence without squeezing the numbers beside it. */
+.odp-ship{
+  grid-column:1 / -1; margin:-2px 0 4px; padding:0 0 6px 0;
+  font-size:10.5px; color:var(--ink3); border-bottom:1px solid var(--line);
+}
+.odp-row-dead{ opacity:.5; }
+
+/* ---- delivery dates --------------------------------------------------- */
+.odp-kv{ display:grid; grid-template-columns:auto 1fr; gap:5px 14px;
+         font-size:11.5px; }
+.odp-kv dt{ color:var(--ink3); white-space:nowrap; }
+.odp-kv dd{ margin:0; color:var(--ink); }
+
+/* ---- the little (i) that explains a line ------------------------------ */
+.odp-i{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:15px; height:15px; border-radius:50%; cursor:help; flex:none;
+  border:1px solid var(--line2); color:var(--ink3); font-size:10px;
+  background:none; padding:0; line-height:1; vertical-align:-2px;
+}
+.odp-i:hover{ border-color:var(--accent); color:var(--accent); }
+
+/* ---- notes under a table --------------------------------------------- */
+.odp-note{ font-size:10.5px; color:var(--ink3); margin-top:5px; line-height:1.5; }
+.odp-note.warn{ color:var(--warn); }
+
+@media (max-width: 720px){
+  /* Four columns of supplier do not fit a phone; the price and the profit
+     keep their own line under the link rather than being squeezed to nothing. */
+  .odp-src{ grid-template-columns:auto 1fr; }
+  .odp-src .odp-num{ grid-column:2; text-align:right; }
+}
