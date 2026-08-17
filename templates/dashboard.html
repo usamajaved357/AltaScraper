@@ -204,7 +204,13 @@
           <button class="mktbtn" title="Sync live listings from Amazon now" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
           <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
-          <button class="mktbtn" title="Upload a CSV of SKU/ASIN + cost to set COGS in bulk" onclick="document.getElementById('cogscsv').click()"><i class="ti ti-upload"></i> COGS CSV</button>
+          <!-- THE SHEET TO FILL IN, before the button that uploads it. There
+               was an upload and no template, so the columns had to be guessed
+               and every SKU typed by hand -- and a hand-typed SKU is one that
+               silently matches nothing. -->
+          <a class="mktbtn" href="/cogs/template.csv" style="text-decoration:none"
+             title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</a>
+          <button class="mktbtn" title="Upload the cost sheet back — or any CSV with a sku (or asin) column and a cost column. Only rows with a cost filled in are applied." onclick="document.getElementById('cogscsv').click()"><i class="ti ti-upload"></i> COGS CSV</button>
           <input type="file" id="cogscsv" accept=".csv" style="display:none" onchange="uploadCogsCsv(this)">
         </div>
         <!-- The marketplace strip used to sit here as well as in the sidebar.

@@ -687,13 +687,31 @@ function _glanceRow(g){
 // wherever it appears. An icon rather than a broken image when there is none.
 function _srcItemCell(item, sku){
   const it = item || {};
+  // WHOSE PICTURE THIS IS. An Amazon one is what is live on the listing; a
+  // supplier one is the source listing's photograph, used because the SKU is a
+  // draft Amazon has never seen. Showing the second as though it were the first
+  // would be the app telling you what is on your listing when it is nothing of
+  // the kind, so it carries a corner mark and says so on hover.
+  const fromSupplier = (it.img_source === "supplier");
+  const why = fromSupplier
+    ? "This is the SUPPLIER’s photograph, from the source listing. Amazon has no "
+      + "image for this SKU — either it is still a draft, or Amazon returned none."
+    : "The image on the live Amazon listing.";
   const pic = it.img
-    ? '<img src="' + _sesc(it.img) + '" loading="lazy" alt="" style="width:38px;'
-      + 'height:38px;object-fit:contain;background:#0d1220;border-radius:6px;'
-      + 'flex:0 0 38px">'
+    ? '<span style="position:relative;flex:0 0 38px;line-height:0" title="'
+      + _sesc(why) + '">'
+      + '<img src="' + _sesc(it.img) + '" loading="lazy" alt="" style="width:38px;'
+      + 'height:38px;object-fit:contain;background:#0d1220;border-radius:6px">'
+      + (fromSupplier
+          ? '<span style="position:absolute;right:-2px;bottom:-2px;'
+            + 'background:#3a2f14;color:#e8c66a;border-radius:3px;font-size:8px;'
+            + 'padding:0 2px;line-height:11px;font-weight:600">SRC</span>'
+          : '')
+      + '</span>'
     : '<span style="width:38px;height:38px;border-radius:6px;background:#0d1220;'
       + 'display:inline-flex;align-items:center;justify-content:center;'
-      + 'flex:0 0 38px"><i class="ti ti-photo" style="opacity:.4"></i></span>';
+      + 'flex:0 0 38px" title="No picture — Amazon has none for this SKU and the '
+      + 'draft carries none either."><i class="ti ti-photo" style="opacity:.4"></i></span>';
   return '<span style="display:flex;gap:9px;align-items:center;min-width:0;'
     + 'max-width:420px">' + pic + '<span style="min-width:0">'
     + (it.title

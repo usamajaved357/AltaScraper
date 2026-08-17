@@ -92,11 +92,33 @@ def read_table(data, filename=""):
             txt = data.decode("utf-8-sig", "replace")
         except Exception:
             txt = str(data)
-        try:
-            dialect = csv.Sniffer().sniff(txt[:4000], delimiters=",;\t")
-        except Exception:
-            dialect = csv.excel
-        rows = [r for r in csv.reader(io.StringIO(txt), dialect)]
+        # PLAIN COMMA FIRST, AND ONLY SNIFF IF THAT CLEARLY FAILS.
+        #
+        # This sniffed first, and the sniffer gets a real file wrong. MEASURED
+        # on the cost sheet this app generates: one product is called
+        #
+        #     46-Piece 1/4" Drive Socket Ratchet Wrench Set with Storage Case,
+        #     Metric Socket & Bit Set, ...
+        #
+        # -- a quoted field containing both a comma AND a double quote, which
+        # csv.writer correctly escapes by doubling. The sniffer sees the doubled
+        # quotes, picks a different quoting rule, and the field splits on its
+        # internal commas. Every column after it shifts, and "Metric Socket &
+        # Bit Set" arrives where the cost should be. It was caught only because
+        # a cost that is not a number is refused; had the fragment been numeric
+        # it would have been stored as somebody's cost price.
+        #
+        # A comma-separated file always yields more than one column under the
+        # plain excel dialect. Sniffing is for the genuinely foreign file --
+        # semicolons from a European Excel, or tabs -- so it is now the FALLBACK
+        # rather than the first guess.
+        rows = [r for r in csv.reader(io.StringIO(txt), csv.excel)]
+        if not rows or max((len(r) for r in rows[:5]), default=0) < 2:
+            try:
+                dialect = csv.Sniffer().sniff(txt[:4000], delimiters=",;\t")
+                rows = [r for r in csv.reader(io.StringIO(txt), dialect)]
+            except Exception:
+                pass
     rows = [r for r in rows if any(str(c).strip() for c in r)]
     if not rows:
         return [], [], "that file has no rows in it"
@@ -255,23 +277,15 @@ def template_rows(config_path, workspace_id, marketplace, enrolled,
 
 
 def to_csv(headers, rows):
-    """A CSV string, with a leading BOM so Excel reads it as UTF-8.
+    """A CSV string ready for Excel. See domain/sheets.to_csv for the rules.
 
-    Without it, double-clicking the file in Excel on Windows decodes it as the
-    system codepage and a product name with a pound sign or an accent in it comes
-    out as mojibake -- then gets uploaded back that way.
-
-    Written as the escape \\ufeff and NOT as the character itself: a literal BOM
-    sitting in the middle of a source file is invisible in an editor and breaks
-    the next tool that reads the file. test_encoding.js checks for exactly that
-    and caught this line when it was written the other way.
+    Kept as a name here because this module's callers already use it, but the
+    writing itself moved out the moment a SECOND template needed it -- costs, as
+    well as supplier links. Two writers would have been two opinions about
+    quoting and the byte-order mark (Rule 12).
     """
-    buf = io.StringIO()
-    w = csv.writer(buf, lineterminator="\n")
-    w.writerow(headers)
-    for r in rows:
-        w.writerow(r)
-    return "\ufeff" + buf.getvalue()
+    from domain import sheets as _sheets
+    return _sheets.to_csv(headers, rows)
 
 
 def apply_rows(config_path, workspace_id, marketplace, headers, rows):

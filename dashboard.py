@@ -3404,7 +3404,11 @@ def build_app(backend=None):
     import routes.cogs_routes as _cogs_routes
     _cogs_routes.register(app, _state=_state, _COGS_OVERRIDE=_COGS_OVERRIDE,
                           _save_cogs_overrides=_save_cogs_overrides,
-                          _estimate_profit=_estimate_profit)
+                          _estimate_profit=_estimate_profit,
+                          # For the cost template: which account's SKUs to list,
+                          # and where the catalogue snapshot lives.
+                          CONFIG_PATH=CONFIG_PATH,
+                          _active_account=_active_account)
     import routes.view_routes as _view_routes
     _view_routes.register(app, _state=_state, _cfg=_cfg,
                           CONFIG_PATH=CONFIG_PATH, OUTPUT_TAB=OUTPUT_TAB)

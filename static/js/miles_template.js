@@ -1365,36 +1365,42 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
     </div>
   </div>`;
 }
+// THE FILE GOES TO THE SERVER, WHICH KNOWS HOW TO READ IT.
+//
+// This used to split every line on commas, which is not what a CSV is. A product
+// name like "Grill, Large" is quoted and contains one, so every column after it
+// shifted by one and the cost was read out of the wrong place -- silently, as a
+// number, into the field that decides every profit figure in the app. The cost
+// sheet this app now hands out is full of names with commas in them, so that
+// would have been the normal case rather than an edge one.
+//
+// It also could not read a spreadsheet, and "save it as CSV first" is a step
+// nobody should need. domain/source_bulk.read_table handles both, and it is
+// already the reader the supplier-link upload uses (Rule 12).
 async function uploadCogsCsv(input){
-  const file=input.files&&input.files[0]; if(!file) return;
-  const text=await file.text();
-  const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  if(!lines.length){ toast("Empty CSV."); return; }
-  // detect columns from header
-  const hdr=lines[0].split(",").map(h=>h.trim().toLowerCase());
-  const skuI=hdr.findIndex(h=>h==="sku"||h==="seller-sku"||h==="seller_sku");
-  const asinI=hdr.findIndex(h=>h==="asin"||h==="asin1");
-  const costI=hdr.findIndex(h=>h==="cost"||h==="cogs"||h==="source price"||h==="source_price"||h==="price");
-  if(costI<0||(skuI<0&&asinI<0)){ toast("CSV needs a cost column and a sku or asin column."); input.value=""; return; }
-  // build sku->cost; for ASIN-only rows, map against loaded live items
-  const asinToSku={}; (LIVE_ITEMS||[]).forEach(it=>{ if(it.asin) asinToSku[it.asin]=it.sku; });
-  const rows=[];
-  for(let i=1;i<lines.length;i++){
-    const c=lines[i].split(",");
-    const cost=(c[costI]||"").trim(); if(!cost) continue;
-    let sku=skuI>=0?(c[skuI]||"").trim():"";
-    if(!sku && asinI>=0){ const asin=(c[asinI]||"").trim(); sku=asinToSku[asin]||""; }
-    if(sku) rows.push({sku:sku, cost:cost});
-  }
-  if(!rows.length){ toast("No matchable rows (check sku/asin values match your listings)."); input.value=""; return; }
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("id", (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
+                    ? (CUR_ACCOUNT.id || "") : "");
+  toast("Reading " + file.name + "…");
   try{
-    const j=await (await fetch("/cogs/upload",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({id:CUR_ACCOUNT.id,rows:rows})})).json();
-    if(!j.ok){ toast("Upload failed: "+(j.error||"")); input.value=""; return; }
-    toast("COGS set for "+j.count+" SKUs. Re-syncing to show margins…");
-    input.value="";
+    const j = await (await fetch("/cogs/upload_sheet",
+                                 {method:"POST", body:fd})).json();
+    input.value = "";
+    if(!j.ok){ toast("Upload failed: " + (j.error || "")); return; }
+    // WHAT HAPPENED TO EVERY ROW, not just a total. A bulk import that reports
+    // only a count is how twelve silently-skipped rows become "the costs did
+    // not save".
+    const bad = (j.rows || []).filter(function(r){ return r.status !== "set"; });
+    toast(j.note + (bad.length ? " " + bad.length + " row(s) could not be used."
+                               : ""));
+    if(bad.length){
+      console.warn("cost sheet rows not applied:", bad);
+    }
     await loadLiveCatalog(true);   // refresh so margins recompute
-  }catch(e){ toast("Error: "+e); input.value=""; }
+  }catch(e){ toast("Error: " + e); input.value = ""; }
 }
 let _imgFetchBusy=false;
 async function fetchLiveImages(){
