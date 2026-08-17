@@ -186,6 +186,43 @@ async function sourcingMinPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+/* HOLD THE PRICE AT WHAT THE MARKET PAYS.
+ *
+ * "i want the repricer to not to change my price if the margin or roi target set is
+ *  less than my selling price ... but if source price suddenly goes upto 35 pounds
+ *  and i am selling at 40 pounds, so then it should increase my selling price but
+ *  when the source again came back to 12 or 20 pounds my selling price should be
+ *  set to 40 again"
+ *
+ * The prompt spells the whole behaviour out, because the difference between this
+ * and "never sell below" is exactly the thing that would get them confused, and
+ * confusing the two is expensive in both directions.
+ */
+async function sourcingHoldPrice(sku){
+  const cur = (SRC_ROW_RULES[sku]||{}).hold_price;
+  const v = prompt(
+    "Hold " + sku + " at this price.\n\n"
+    + "The repricer will never price BELOW it, even when your ROI or margin target "
+    + "would be happy with less. Use it for products where you know what the market "
+    + "pays.\n\n"
+    + "If the supplier gets dearer and this price stops covering your target, the "
+    + "price still goes UP — it is a floor, not a fixed price, so it can never make "
+    + "you sell at a loss. When the supplier gets cheaper again the price comes "
+    + "straight back to this number.\n\n"
+    + "This is NOT the same as 'never sell below', which is there to stop a misread "
+    + "supplier page pricing you into a loss. Leave empty to stop holding the price.",
+    (cur==null ? "" : String(cur)));
+  if(v===null) return;
+  try{
+    const j = await (await fetch("/sourcing/rules",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({sku:sku, rule:{hold_price: v.trim()==="" ? null : v.trim()}})})).json();
+    if(!j.ok){ toast(j.error||"failed"); return; }
+    toast(v.trim()==="" ? "No longer holding the price" : "Price held at "+v.trim());
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
 // A PERCENTAGE PROFIT FLOOR, on top of the flat one.
 //
 // "i want an option in which i can enroll an option to maintain atleast 20
@@ -1039,6 +1076,54 @@ function sourcingRow(r, i){
              : '<span class="cc">the flat minimum only</span>')
     +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
     +  (anyT?'Change':'Set')+'</button></div>';
+
+  /* THE MARKET PRICE, HELD.
+   *
+   * "i want the repricer to not to change my price if the margin or roi target set
+   *  is less than my selling price ... this rule is for the items where i am sure
+   *  that this is the market price and this product sells on this price point no
+   *  matter the roi or margin"
+   *
+   * Deliberately its OWN box and not the "never sell below" one above. That one is
+   * loss protection; this one is a commercial decision. Sharing a field would mean
+   * dropping the floor for a clearance also let the repricer undercut the market
+   * price -- see hold_price in domain/sourcing.DEFAULT_RULE.
+   */
+  const hp = rr.hold_price;
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Hold the price at: '
+    +  (hp==null
+        ? '<span class="cc">not held — the price follows the supplier and the target</span>'
+        : '<b>'+_smoney(hp)+'</b>')
+    +  ' <button class="db-chip" onclick="sourcingHoldPrice('+_sarg(r.sku)+')">'
+    +  (hp==null?'Set':'Change')+'</button>'
+    +  '<span class="infodot" title="Use this when you know what a product sells '
+    +  'for. The repricer will never price BELOW this, even if your ROI or margin '
+    +  'target would be satisfied by less — so a 40.00 line stays at 40.00 on a '
+    +  '12.00 cost. If the supplier gets dearer and 40.00 no longer covers your '
+    +  'target, the price still goes UP; when they get cheaper again it comes back '
+    +  'to 40.00. It can never hold a price below what the unit costs to sell.">i</span>'
+    +  '</div>';
+  // WHAT IT IS DOING RIGHT NOW, said on the row rather than left in the log. A
+  // held price with no explanation beside it looks like a repricer that has
+  // stopped working.
+  if(d.held){
+    h += '<div style="font-size:11.5px;margin-top:4px;padding:6px 8px;'
+      +  'border:1px solid #1d3a2a;background:#0f2318;border-radius:6px">'
+      +  '<b>Held at '+_smoney(d.held_at)+'.</b> Your rules and targets would have '
+      +  'priced this at '+_smoney(d.held_over)+' — lower, so it was not used.</div>';
+  }else if(d.hold_exceeded!=null){
+    h += '<div style="font-size:11.5px;margin-top:4px;padding:6px 8px;'
+      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      +  'The supplier has risen, so '+_smoney(d.price)+' is now ABOVE the '
+      +  _smoney(d.hold_exceeded)+' you hold this at. The held price is a floor, '
+      +  'not a fixed price, so it goes up rather than selling at a loss.</div>';
+  }else if(d.hold_capped){
+    h += '<div style="font-size:11.5px;margin-top:4px;padding:6px 8px;'
+      +  'border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;border-radius:6px">'
+      +  'You hold this at '+_smoney(d.hold_capped.hold)+' but the maximum price is '
+      +  _smoney(d.hold_capped.ceiling)+', so the ceiling won. One of the two needs '
+      +  'changing.</div>';
+  }
   if(d.inputs_age_mins!=null){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';

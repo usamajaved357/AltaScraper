@@ -675,6 +675,12 @@ _ADDED_COLUMNS = [
     # delivery date whose destination is unknown cannot be promised to a buyer,
     # so the destination is stored beside it.
     ("sourcing_checks", "delivery_postcode", "TEXT"),
+    # THE PRICE A PRODUCT SELLS AT, held against a target that would lower it.
+    # "this rule is for the items where i am sure that this is the market price and
+    # this product sells on this price point no matter the roi or margin".
+    # Separate from min_price, which is loss protection -- see hold_price in
+    # domain/sourcing.DEFAULT_RULE for why one column could not be both.
+    ("sourcing_rules", "hold_price", "REAL"),
 ]
 
 

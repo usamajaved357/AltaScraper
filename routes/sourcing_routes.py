@@ -606,6 +606,35 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                     "than the whole price as profit" % v)}), 400
             vals[key] = v
 
+        # A MISTYPED MONEY BOX MUST NOT LOOK LIKE AN EMPTY ONE, for the same
+        # reason as the targets above. "40" and "£40" and "40.00" all mean forty;
+        # "forty" means the box is not set, and storing it as text would leave
+        # someone believing their market price was being held while the repricer
+        # priced to the target and cut it in half.
+        for key, label in (("hold_price", "held price"),
+                           ("min_price", "minimum price"),
+                           ("max_price", "maximum price")):
+            if key not in vals:
+                continue
+            v = vals[key]
+            if v in (None, ""):
+                vals[key] = None
+                continue
+            try:
+                v = float(str(v).replace("£", "").replace("$", "")
+                          .replace(",", "").strip())
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": (
+                    "the %s must be an amount, e.g. 40 or 40.00 -- got %r"
+                    % (label, vals[key]))}), 400
+            if v < 0:
+                return jsonify({"ok": False, "error": (
+                    "the %s cannot be negative" % label)}), 400
+            # Zero clears it rather than meaning "hold at nothing", which would be
+            # a floor of zero -- indistinguishable from off in effect, and
+            # confusing to read back.
+            vals[key] = (v if v > 0 else None)
+
         # SETTING EITHER BOX RETIRES THE OLD SINGLE TARGET.
         #
         # rule_with_defaults folds a stored profit_target_kind/pct into whichever

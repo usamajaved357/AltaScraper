@@ -148,6 +148,46 @@ DEFAULT_RULE = {
     "profit_target_pct":    None,         # e.g. 20.0
     "min_price":            None,         # absolute floor, whatever the maths says
     "max_price":            None,         # absolute ceiling
+    # THE PRICE THIS PRODUCT SELLS AT, held even when the target does not need it.
+    #
+    #   "i want the repricer to not to change my price if the margin or roi target
+    #    set is less than my selling price ... if i am selling at 40 and the source
+    #    is 12, and the roi is set to 20 percent, it should not decrease my price
+    #    to maintain 20 percent roi. but if source price suddenly goes upto 35
+    #    pounds and i am selling at 40 pounds, so then it should increase my
+    #    selling price but when the source again came back to 12 or 20 pounds my
+    #    selling price should be set to 40 again ... this rule is for the items
+    #    where i am sure that this is the market price and this product sells on
+    #    this price point no matter the roi or margin"
+    #
+    # Everything else in this file computes a FLOOR -- the least the price may be
+    # -- and then sets the price to it. That is right when the target is what
+    # decides the price, and wrong when the market decides it: a 12.00 cost with a
+    # 20% ROI target asks 18.24, so a product selling perfectly well at 40.00 was
+    # being cut by more than half to hit a target it had already beaten.
+    #
+    # hold_price is just one more floor, and that is the whole trick. price =
+    # max(target floor, min_price, hold_price):
+    #
+    #   source at 12.00  ->  floor 18.24, hold 40.00  ->  40.00   (held)
+    #   source at 35.00  ->  floor 46.24, hold 40.00  ->  46.24   (rises)
+    #   source back to 12 -> floor 18.24, hold 40.00  ->  40.00   (returns)
+    #
+    # so "come back to 40" needs no memory of having been at 40. A ratchet that
+    # remembered the last price could not answer what to return to after the price
+    # had risen; a written-down number always can.
+    #
+    # SEPARATE FROM min_price ON PURPOSE. min_price means "below this I lose
+    # money" -- a safety floor. hold_price means "this is what the market pays" --
+    # a commercial decision. One number for both would mean that dropping the
+    # floor for a clearance also gave the repricer permission to undercut the
+    # market price, and that raising the market price also raised the
+    # loss-protection floor.
+    #
+    # IT NEVER FORCES A LOSS. It is a floor among floors, so when the cost rises
+    # past it the higher floor wins and the price goes UP -- which is the
+    # behaviour asked for. It cannot hold a price below what the unit costs.
+    "hold_price":           None,         # the market price, held against targets
     "max_change_pct":       25.0,         # a bigger jump than this waits for a human
     "min_change":           0.20,         # smaller than this is not worth a push
     "stale_after_hours":    24.0,
@@ -674,6 +714,29 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
     if rule["min_price"] is not None:
         price = max(price, float(rule["min_price"]))
 
+    # THE MARKET PRICE, HELD. See hold_price in DEFAULT_RULE for the reasoning.
+    #
+    # Applied as one more floor rather than as a special case, so the source
+    # rising past it automatically wins and the price goes UP -- it can never
+    # hold a price below what the unit costs to sell.
+    #
+    # `held` is recorded because the screen has to be able to say WHY the price is
+    # 40.00 when the target only asked 18.24. A price with no explanation is a
+    # price someone will override by hand.
+    hold = _num(rule.get("hold_price"))
+    out["held"] = False
+    if hold is not None and hold > 0:
+        if hold > price:
+            out["held"] = True
+            out["held_at"] = round(hold, 2)
+            out["held_over"] = round(price, 2)     # what the rules alone asked
+            price = hold
+        else:
+            # The cost has risen past the held price, so the held price is no
+            # longer the binding constraint and the floor is. Recorded so the log
+            # shows the hold was considered and beaten, not ignored.
+            out["hold_exceeded"] = round(hold, 2)
+
     # A ceiling below the floor means there is no price that is both acceptable
     # to the user and profitable. Going out of stock is the honest outcome --
     # the alternative is selling at a loss because a number was configured.
@@ -686,6 +749,17 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
                              % (cost, floor, float(rule["max_price"])))
             return out
         price = min(price, float(rule["max_price"]))
+        # A CEILING BELOW THE HELD PRICE. Contradictory settings -- hold at 40 with
+        # a 30 ceiling -- and the ceiling wins, because it is the one that says
+        # "never above this". But the hold must then stop CLAIMING to have set the
+        # price: the reason sentence would have read "HELD at 30.00" when 30.00 is
+        # the ceiling, and a log that misnames what decided a price is worse than
+        # one that says nothing.
+        if out.get("held") and price < float(out.get("held_at") or 0):
+            out["held"] = False
+            out["hold_capped"] = {"hold": out.pop("held_at", None),
+                                  "ceiling": round(float(rule["max_price"]), 2)}
+            out.pop("held_over", None)
 
     disp = chk.get("dispatch_days")
     lead = (int(disp) + int(rule["handling_buffer_days"])) if disp is not None else None
@@ -720,6 +794,14 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         # price rather than naming a single "kind" that no longer exists.
         "targets": [{"kind": k, "pct": p} for k, p in targets_set(rule)],
         "target_floor": target_floor(cost, rule),
+        # THE HELD PRICE, and whether it is what set the price. Without both, a
+        # screen showing "1.00 profit + 20% ROI" beside a price of 40.00 has no
+        # way to say that neither of them decided it.
+        "hold_price": (None if hold is None else round(hold, 2)),
+        "held": bool(out.get("held")),
+        # What the rules on their own would have asked for. This is the number the
+        # owner wants to see NOT being used.
+        "rules_price": (out.get("held_over") if out.get("held") else price),
         "at_price": _pricing.achieved(price, cost, rule["referral_rate"],
                                       shipping_label=rule["shipping_label"],
                                       ads_margin=rule["ads_margin"]),
@@ -727,14 +809,41 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
 
     # The breakdown goes in the reason because this line IS the audit trail --
     # "why is it 18.24" has to be answerable from the log alone, months later.
-    out["reason"] = ("%s of %d usable source(s): %s at %.2f landed; price %.2f "
-                     "= %.2f cost + %.2f fee + %.2f postage + %.2f ads + %.2f profit%s"
-                     % (rule["strategy"], len(live) - len(rejections),
-                        src.get("label") or src.get("url"), cost, price,
-                        cost, price * rule["referral_rate"], rule["shipping_label"],
-                        rule["ads_margin"], rule["min_profit"],
-                        "" if lead is None else "; handling %d days (%d + %d buffer)"
-                        % (lead, int(disp), int(rule["handling_buffer_days"]))))
+    #
+    # A HELD PRICE GETS ITS OWN SENTENCE. The sum below explains a price built up
+    # from cost + fee + postage + ads + profit, and a held price is not built that
+    # way -- printing that sum beside 40.00 would be a breakdown that does not add
+    # up to the number it is next to. So say what actually decided it, and what the
+    # rules would have asked for, which is the comparison the owner wants.
+    if out.get("held"):
+        out["reason"] = ("%s of %d usable source(s): %s at %.2f landed; HELD at "
+                         "%.2f (the market price) -- the rules alone would have "
+                         "priced it at %.2f, which is lower, so it was not used%s"
+                         % (rule["strategy"], len(live) - len(rejections),
+                            src.get("label") or src.get("url"), cost,
+                            price, out["held_over"],
+                            "" if lead is None else
+                            "; handling %d days (%d + %d buffer)"
+                            % (lead, int(disp), int(rule["handling_buffer_days"]))))
+    else:
+        out["reason"] = ("%s of %d usable source(s): %s at %.2f landed; price %.2f "
+                         "= %.2f cost + %.2f fee + %.2f postage + %.2f ads + %.2f profit%s%s"
+                         % (rule["strategy"], len(live) - len(rejections),
+                            src.get("label") or src.get("url"), cost, price,
+                            cost, price * rule["referral_rate"], rule["shipping_label"],
+                            rule["ads_margin"], rule["min_profit"],
+                            # Named when a hold exists but the cost has outgrown it,
+                            # so the log shows the hold was considered rather than
+                            # leaving it to look as though it had been forgotten.
+                            ("; above the %.2f held price, because the source has "
+                             "risen" % out["hold_exceeded"]
+                             if out.get("hold_exceeded") is not None else
+                             "; the %.2f held price was capped by the %.2f ceiling"
+                             % (out["hold_capped"]["hold"],
+                                out["hold_capped"]["ceiling"])
+                             if out.get("hold_capped") else ""),
+                            "" if lead is None else "; handling %d days (%d + %d buffer)"
+                            % (lead, int(disp), int(rule["handling_buffer_days"]))))
 
     # ---- guards against acting on a number that only LOOKS right ----------
     if cur_price is not None and cur_price > 0:
