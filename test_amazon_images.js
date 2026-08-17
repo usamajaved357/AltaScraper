@@ -91,6 +91,29 @@ truthy("  and can be dismissed", L.includes("ilDismissSend"));
 truthy("the slots are re-read straight after a send, forced past the cache",
        L.includes("amazonImagesLoad(IMGLIB.sku, true)"));
 
+console.log("\n=== the one you just sent, apart from the ones already there ===");
+// "when i clicked on send to amazon on 1 button it sent all the images to amazon
+//  instead of sending only 1 image"
+//
+// It did not. Checked on ALTA-SLASHER-800-PARENT: 1 of 16 slots filled before,
+// one image sent to other_product_image_locator_1, 2 of 16 after -- exactly one
+// slot changed. Both send paths build a SINGLE patch. What went wrong is that
+// this panel appears the moment you send, showing every slot Amazon holds, and
+// nine filled slots read as nine sends.
+truthy("the panel remembers which slot the send went to", A.includes("justSent"));
+truthy("  told by the sender", L.includes("AIMG.justSent = slotKey"));
+truthy("  and cleared when a different listing is opened",
+       A.includes('if(AIMG.sku !== sku) AIMG.justSent = ""'));
+truthy("the just-sent tile says so", A.includes("you just sent this"));
+truthy("  and the others say they were already there",
+       A.includes("was already here"));
+truthy("it is also said in words above the grid, not left to be inferred",
+       A.includes("The rest were already here"));
+truthy("  naming the slot", A.includes("_aiTag(AIMG.justSent)"));
+truthy("and a slot is named ONE way in this panel, not two",
+       A.includes("function _aiTag") &&
+       (A.match(/main_product_image_locator", "MAIN"/g) || []).length === 1);
+
 console.log("\n=== one listing's images cannot appear under another's name ===");
 truthy("a late answer for a different SKU is dropped",
        A.includes("if(AIMG.sku !== sku) return"));

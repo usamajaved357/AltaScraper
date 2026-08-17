@@ -424,7 +424,16 @@ for _v, _expect in ((SI.BLOCKED, "AMAZON BLOCKS THIS"),
     truthy("  and still carries the reason", "test certificate" in _d["notes"])
 _clear = SI.to_draft(dict(r, screen={"verdict": SI.CLEAR, "notes": []}),
                      account_id="a", marketplace="UK")
-check("a clear draft gets no scary heading", _clear["notes"], "")
+# No WARNING heading -- the point of the check. It does carry one note, which is
+# what the draft IS rather than what is wrong with it: reported as "import from
+# supplier button is drafting the listings as empty ... and no content is written
+# in them", which is true and deliberate and was nowhere stated.
+for _bad in ("AMAZON BLOCKS", "WILL ASK FOR DOCUMENTS", "WORTH CHECKING",
+             "COULD NOT BE CHECKED"):
+    check("a clear draft is not headed %r" % _bad, _bad in _clear["notes"], False)
+truthy("but it does say its copy has not been written yet",
+       _clear["notes"].startswith("COPY NOT WRITTEN YET"))
+truthy("  and how to write it", "Regenerate copy" in _clear["notes"])
 
 _js = open(r"D:\AltaScraper\static\js\sellerimport.js", encoding="utf-8").read()
 truthy("the screen keeps the summary instead of toasting it",

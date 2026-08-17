@@ -1017,6 +1017,17 @@
   .tiledocs i{font-size:12px}
   .tiledocs.red{color:var(--red);border-color:var(--red-line)}
   .tiledocs.amber{color:var(--warn);border-color:var(--warn-line)}
+  /* A DRAFT WHOSE COPY HAS NOT BEEN WRITTEN. Top-left, which is the only corner
+     the other three badges do not use: .tileflag is bottom-right, .tiledocs sits
+     beside it, .tileclaim is bottom-left. Quiet -- this is a stage of the
+     pipeline, not a fault -- but present, because a row with a title and nothing
+     else under the same status as a finished one looks broken rather than
+     unfinished. */
+  .tilecopy{position:absolute;top:8px;left:8px;display:flex;align-items:center;
+            height:22px;width:22px;justify-content:center;border-radius:11px;
+            cursor:pointer;z-index:6;line-height:1;background:rgba(0,0,0,.55);
+            border:1px solid var(--warn-line);color:var(--warn)}
+  .tilecopy i{font-size:12px}
   /* Category-aware claim-risk badge (task #18). RED = loud; AMBER deliberately quieter
      so a soft superlative never screams as loud as a pesticide claim. Absent on clean
      listings, so those tiles look exactly as before. */

@@ -893,6 +893,9 @@ async function ilSlotSend(slotKey){
     // And read the listing back, so the slot filling in is something you WATCH
     // rather than something you are told. Forced, because the panel caches.
     if(typeof amazonImagesLoad === "function"){
+      // Told WHICH slot, so the panel can mark the one image you just sent apart
+      // from the ones that were already on the listing.
+      if(typeof AIMG !== "undefined" && AIMG) AIMG.justSent = slotKey;
       amazonImagesLoad(IMGLIB.sku, true);
     }
   }catch(e){

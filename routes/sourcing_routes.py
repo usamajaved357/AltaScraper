@@ -128,7 +128,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         # From the shared lookup, so the picture here is the one the Listings
         # cards and the Orders rows show; built once for the whole list rather
         # than per row.
-        idx = _cat.index(CONFIG_PATH, wsid, mkt)
+        # include_drafts, because the Repricer tracks drafts as well as live
+        # SKUs -- 22 of jack_uk's 67 had no picture without it, being either
+        # never-sent drafts or listings whose Amazon summary carried no image.
+        # A picture taken from a draft is marked as the SUPPLIER's, never shown
+        # as though it were what is live on Amazon.
+        idx = _cat.index(CONFIG_PATH, wsid, mkt, include_drafts=True)
         rows = []
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],

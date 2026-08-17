@@ -131,6 +131,37 @@ truthy("an empty box means that target is off", "placeholder=\"off\"" in J)
 truthy("the header shows BOTH when both are on", "_srcTargetLabel" in J)
 truthy("  joined, not one picked", "on.join(' \u00b7 ')" in J)
 
+print("\n--- a draft's picture is the SUPPLIER's, and is never passed off ---")
+# "the images are still not shown in the repricer for all skus" -- 22 of
+# jack_uk's 67 had none, because the live snapshot can only picture what is live
+# on Amazon and the Repricer tracks drafts too. Filling from the app's own
+# records closed 16 of those. The pictures it finds are the eBay listing's, so
+# they are marked: showing one as though it were live on Amazon would be the app
+# claiming something about your listing that is not true.
+from domain import catalogue as CAT
+check("an unknown code gives an empty record with the marker present",
+      CAT.look({}, "nope"),
+      {"img": "", "img_source": "", "title": "", "asin": "", "sku": ""})
+truthy("the index can be asked to include drafts",
+       "include_drafts" in open(r"D:\AltaScraper\domain\catalogue.py",
+                                encoding="utf-8").read())
+CATSRC = open(r"D:\AltaScraper\domain\catalogue.py", encoding="utf-8").read()
+truthy("  off by default, so live-listing screens are unaffected",
+       "include_drafts=False" in CATSRC)
+truthy("  and an Amazon picture is never overwritten by a supplier one",
+       "Amazon can picture it; leave it alone" in CATSRC)
+truthy("  each is labelled for what it is",
+       '"amazon"' in CATSRC and '"supplier"' in CATSRC)
+truthy("  and the two are said never to be conflated",
+       "THEY ARE NEVER CONFLATED" in CATSRC)
+_R2 = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
+truthy("the repricer asks for drafts", "include_drafts=True" in _R2)
+truthy("the row marks a supplier picture",
+       "SRC" in J and 'it.img_source === "supplier"' in J)
+truthy("  and says so on hover", "SUPPLIER’s photograph" in J)
+truthy("a row with no picture at all says why, rather than showing a blank",
+       "Amazon has none for this SKU" in J)
+
 print("\n--- and a picture on every row ---")
 truthy("the row draws the product", "_srcItemCell(" in J)
 truthy("  from the shared catalogue, via the row itself", "r.item" in J)
@@ -140,7 +171,7 @@ truthy("  with the SKU as small print under the name", "it.title ? '10px'" in J)
 R2 = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
 truthy("the server attaches it", '"item": _cat.look(idx, d["sku"])' in R2)
 truthy("  building the index once for the whole list, not per row",
-       "idx = _cat.index(CONFIG_PATH, wsid, mkt)" in R2)
+       "idx = _cat.index(CONFIG_PATH, wsid, mkt, include_drafts=True)" in R2)
 
 print("\n--- turning a target off turns it off ---")
 # The old single setting is folded in on every read, so clearing both boxes used
