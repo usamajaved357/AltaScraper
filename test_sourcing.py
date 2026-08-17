@@ -401,10 +401,95 @@ check("the target travels with the decision", (d["target"] or {})["meets"], Fals
 truthy("  the price it would set clears the target",
        _P.achieved(d["price"], COST, 0.15)["roi_pct"] >= 20.0)
 truthy("  and the breakdown says which floor decided it",
-       d["breakdown"]["target_kind"] == "roi" and d["breakdown"]["target_floor"] is not None)
+       d["breakdown"]["targets"] == [{"kind": "roi", "pct": 20.0}]
+       and d["breakdown"]["target_floor"] is not None)
 d2 = S.decide({"price": 21.99, "quantity": 5, "lead_days": 4},
               [(src(1), chk(price=COST, shipping=0.0))], {}, NOW)
 check("with no target the decision says so, rather than passing", d2["target"], None)
+
+
+print("\n=== TWO targets, set independently, and both apply ===")
+# "give me 2 different boxes for setting the roi or margin target on repricer"
+#
+# They are not alternatives. Choosing margin used to throw away whatever ROI you
+# wanted, and on this £11.95 unit the two ask for very different prices -- so
+# neither implies the other and both have to be honoured.
+BOTH = {"target_margin_pct": 20.0, "target_roi_pct": 30.0}
+check("both are recognised", S.targets_set(BOTH),
+      [("margin", 20.0), ("roi", 30.0)])
+check("  margin alone", S.targets_set({"target_margin_pct": 20.0}),
+      [("margin", 20.0)])
+check("  roi alone", S.targets_set({"target_roi_pct": 30.0}), [("roi", 30.0)])
+check("  neither", S.targets_set({}), [])
+check("  and zero is off, not a target of nothing",
+      S.targets_set({"target_margin_pct": 0}), [])
+
+m_floor = S.target_floor(COST, {"target_margin_pct": 20.0})
+r_floor = S.target_floor(COST, {"target_roi_pct": 30.0})
+truthy("the two floors are genuinely different numbers", m_floor != r_floor)
+check("the price has to clear BOTH, so it is the higher of them",
+      S.target_floor(COST, BOTH), max(m_floor, r_floor))
+
+print("\n--- the flag follows whichever one FAILS ---")
+# Meeting one target while missing the other is not "on target". Priced at the
+# LOWER of the two floors, so exactly one of them is satisfied -- which is the
+# whole case a single-target repricer could not represent.
+lower, higher = min(m_floor, r_floor), max(m_floor, r_floor)
+kind_low = "margin" if lower == m_floor else "roi"
+kind_high = "margin" if higher == m_floor else "roi"
+st = S.target_status(lower, COST, BOTH)
+check("a price that clears one but not the other is still flagged",
+      st["meets"], False)
+check("  and the chip names the one that failed", st["kind"], kind_high)
+check("  while both are reported underneath", len(st["parts"]), 2)
+check("  the other having passed",
+      [p["meets"] for p in st["parts"] if p["kind"] == kind_low], [True])
+
+st2 = S.target_status(S.target_floor(COST, BOTH), COST, BOTH)
+check("a price that clears both is not flagged", st2["meets"], True)
+check("  and both parts say so",
+      sorted(p["meets"] for p in st2["parts"]), [True, True])
+
+print("\n--- an unreadable price is still 'cannot tell', not 'fails' ---")
+st3 = S.target_status(None, COST, BOTH)
+check("nothing is claimed", st3["meets"], None)
+check("  for either of them", [p["meets"] for p in st3["parts"]], [None, None])
+
+print("\n--- the old single setting still works, untouched ---")
+# An account that set '20% roi' before there were two boxes must not silently
+# lose its floor. rule_with_defaults folds it into the ROI box.
+old = S.rule_with_defaults({"profit_target_kind": "roi", "profit_target_pct": 20.0})
+check("it becomes the ROI target", old["target_roi_pct"], 20.0)
+check("  and does not invent a margin one", old["target_margin_pct"], None)
+check("the margin form too",
+      S.rule_with_defaults({"profit_target_kind": "margin",
+                            "profit_target_pct": 25.0})["target_margin_pct"], 25.0)
+# And a new box set on top wins, so changing it in the app actually changes it.
+check("a new value overrides the old field",
+      S.rule_with_defaults({"profit_target_kind": "roi", "profit_target_pct": 20.0,
+                            "target_roi_pct": 35.0})["target_roi_pct"], 35.0)
+
+print("\n--- only MARGIN can be impossible, and only margin is blamed ---")
+# Amazon's cut comes out of the same price as a margin target, so the two compete
+# for the same pound. ROI is measured against the cost and has no such ceiling.
+imp = S.decide({"price": 21.99, "quantity": 5, "lead_days": 4},
+               [(src(1), chk(price=COST, shipping=0.0))],
+               {"target_margin_pct": 95.0}, NOW)
+truthy("an unreachable margin target blocks the SKU", imp.get("blocked_by"))
+truthy("  and the reason names margin", "margin target" in (imp.get("reason") or ""))
+check("a huge ROI target is ambitious, not impossible",
+      S.unreachable_targets(COST, {"target_roi_pct": 500.0}), [])
+truthy("  and it does have a floor, however high",
+       S.target_floor(COST, {"target_roi_pct": 500.0}) is not None)
+check("an unreachable one is named, not silently dropped",
+      S.unreachable_targets(COST, {"target_margin_pct": 95.0}),
+      [("margin", 95.0)])
+check("  and no floor is offered for it, so nothing prices to the flat minimum",
+      S.floor_price(COST, {"target_margin_pct": 95.0}), None)
+# Before this, an impossible target produced no floor of its own and the unit
+# was priced to the flat £1 while the screen said a 95% floor was in force.
+check("a reachable one is unaffected",
+      S.unreachable_targets(COST, {"target_margin_pct": 20.0}), [])
 
 
 print("\n=== the tables exist and take a decision ===")

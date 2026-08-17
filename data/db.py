@@ -369,13 +369,20 @@ CREATE TABLE IF NOT EXISTS sourcing_rules (
     max_dispatch_days    INTEGER,
     handling_buffer_days INTEGER,
     min_margin_pct       REAL,
+    -- TWO PERCENTAGE PROFIT TARGETS, on top of the flat min_profit, set
+    -- independently and BOTH applied -- the price takes the highest floor.
+    -- Margin is profit as a share of what the customer pays; ROI as a share of
+    -- what you paid, and the two give very different prices from the same cost.
+    -- NULL = that target is off.
     target_margin_pct    REAL,
-    -- A PERCENTAGE profit target, on top of the flat min_profit. 'margin' is a
-    -- share of what the customer pays, 'roi' a share of what you paid, and the
-    -- two give different prices from the same cost. NULL = no target.
-    -- (min_margin_pct and target_margin_pct above are from the repricer's first
-    --  draft and nothing reads them; left in place because dropping a column in
-    --  SQLite rewrites the table for no gain.)
+    target_roi_pct       REAL,
+    -- The single-target form these replaced. Still READ so an account that set
+    -- one before there were two boxes keeps it; never written any more. See
+    -- domain/sourcing.rule_with_defaults, which folds it into whichever of the
+    -- two above it names.
+    -- (min_margin_pct above is from the repricer's first draft and nothing
+    --  reads it; left in place because dropping a column in SQLite rewrites the
+    --  table for no gain.)
     profit_target_kind   TEXT,
     profit_target_pct    REAL,
     referral_rate        REAL,
@@ -595,6 +602,17 @@ _ADDED_COLUMNS = [
     # this; here so the ones that already exist gain it without being rebuilt.
     ("sourcing_rules", "profit_target_kind", "TEXT"),
     ("sourcing_rules", "profit_target_pct", "REAL"),
+    # TWO TARGETS, SET INDEPENDENTLY, replacing the kind+pct pair above. Asked
+    # for as "give me 2 different boxes for setting the roi or margin target".
+    # The old pair is still READ, so an account that set one before this keeps
+    # it (domain/sourcing.rule_with_defaults folds it in); nothing writes it any
+    # more.
+    #
+    # target_margin_pct is the column declared in SCHEMA above and described
+    # there as unread since the repricer's first draft. Checked before reusing
+    # it: NULL in every row. So it gets the meaning its name always implied
+    # rather than the table gaining a second column called the same thing.
+    ("sourcing_rules", "target_roi_pct", "REAL"),
     # HOW MANY THE SUPPLIER SAYS THEY HAVE. eBay reports it on the same call the
     # price comes from, and it was being thrown away -- so "in stock" was a yes
     # or no when the number behind it was already on the wire. One left and two

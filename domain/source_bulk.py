@@ -1,4 +1,4 @@
-"""domain/source_bulk.py -- attach suppliers to many SKUs from one uploaded sheet.
+﻿"""domain/source_bulk.py -- attach suppliers to many SKUs from one uploaded sheet.
 
 "the repricer tool give me an option to upload a sheet containing the sku's or
  original asins of the item, to add their suppliers through a sheet upload, i
@@ -69,7 +69,12 @@ def _pick(headers, wanted):
 
 
 def read_table(data, filename=""):
-    """(headers, rows) from an uploaded CSV or spreadsheet. Never raises."""
+    """(headers, rows, error) from an uploaded CSV or spreadsheet. Never raises.
+
+    `error` is "" when the file was read. It is the third value because a file
+    that cannot be read and a file with nothing in it are different answers, and
+    returning ([], []) for both leaves the caller with nothing to tell anyone.
+    """
     name = str(filename or "").lower()
     if name.endswith((".xlsx", ".xlsm", ".xls")):
         try:
@@ -185,6 +190,88 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
     except Exception:
         pass
     return found
+
+
+# The template's own column names, each an EXACT match for one of the lists
+# above so the file that comes back is read without guesswork.
+#
+# ONE link column, not a "current" and a "new" pair. That pair was the obvious
+# design and it is a trap: _pick falls back to a substring match, "current
+# supplier link" contains "supplier link", and it appears first -- so the
+# upload would have re-applied the old links and silently ignored every new one
+# the person had just typed. One column, arriving pre-filled with whatever is
+# attached now, is both unambiguous to the parser and the thing a person
+# actually wants: you can see what is there and change it.
+TEMPLATE_HEADERS = ["sku", "asin", "product", "supplier link"]
+
+
+def template_rows(config_path, workspace_id, marketplace, enrolled,
+                  catalogue=None, current=None):
+    """The sheet to hand someone, already filled in with what we know.
+
+    "when a user wants to update the supplier links through the sheet, give the
+     user the template first filled by the asins enrolled for tracking in the
+     repricer, the user will fill that template and upload it back"
+
+    So the only empty column is the one they are there to fill. Handing over a
+    blank sheet means typing forty SKUs by hand, and a SKU typed by hand is the
+    NO-SUCH-SKU-123 that this module already has a check for -- the fix for
+    which is not to make people type them at all.
+
+    `enrolled` is [sku, ...]. `catalogue` is the shared lookup from
+    domain/catalogue.py, so the product name shown here is the same one the rest
+    of the app shows. `current` is {sku: url} for links already attached; those
+    arrive filled in, so someone changing one supplier can see the other rows
+    are done and leave them alone.
+
+    A row whose link comes back unchanged is recognised as already attached and
+    nothing happens to it, so uploading an untouched template is a no-op.
+    """
+    from domain import catalogue as _cat
+    idx = catalogue if catalogue is not None else {}
+    cur = current or {}
+    out = []
+    for sku in enrolled:
+        s = str(sku or "").strip()
+        if not s:
+            continue
+        got = _cat.look(idx, s)
+        out.append([s,
+                    # OUR ASIN if the catalogue knows it. Falling back to the
+                    # one inside the SKU is falling back to the COMPETITOR's
+                    # (Rule 1) -- which is still the right thing in a column
+                    # headed "asin" here, because that is what the upload
+                    # matches on and how the app already finds a listing from a
+                    # pasted ASIN. Same reader source_link uses, not a second
+                    # copy of the pattern (Rule 12).
+                    got.get("asin") or _link._asin_from_sku(s),
+                    got.get("title") or "",
+                    str(cur.get(s) or "")])
+    # ROWS THAT STILL NEED A LINK FIRST. The sheet is opened to do a job, and
+    # the blank ones are that job -- putting them at the bottom of forty
+    # already-filled rows is how they get missed.
+    out.sort(key=lambda r: (bool(r[3]), (r[2] or "").lower(), r[0]))
+    return out
+
+
+def to_csv(headers, rows):
+    """A CSV string, with a leading BOM so Excel reads it as UTF-8.
+
+    Without it, double-clicking the file in Excel on Windows decodes it as the
+    system codepage and a product name with a pound sign or an accent in it comes
+    out as mojibake -- then gets uploaded back that way.
+
+    Written as the escape \\ufeff and NOT as the character itself: a literal BOM
+    sitting in the middle of a source file is invisible in an editor and breaks
+    the next tool that reads the file. test_encoding.js checks for exactly that
+    and caught this line when it was written the other way.
+    """
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(headers)
+    for r in rows:
+        w.writerow(r)
+    return "\ufeff" + buf.getvalue()
 
 
 def apply_rows(config_path, workspace_id, marketplace, headers, rows):

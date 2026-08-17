@@ -128,6 +128,22 @@ DEFAULT_RULE = {
     # two give very different prices from the same cost -- see
     # listing/pricing.py:floor_from_target. The price takes whichever floor is
     # HIGHEST, so setting a target can never quietly lower a price.
+    #
+    # TWO TARGETS, SET INDEPENDENTLY, and both apply. Asked for as "give me 2
+    # different boxes for setting the roi or margin target on repricer".
+    #
+    # It used to be one box and a kind, so choosing margin threw away whatever
+    # ROI you wanted. They are not alternatives -- "at least 20% margin AND at
+    # least 30% back on the cash" is a perfectly ordinary thing to want, and on
+    # an 11.95 unit those ask for 26.08 and 20.73, so neither implies the other.
+    #
+    # The price takes the HIGHEST floor of all of them, so adding a target can
+    # raise a price and can never quietly lower one.
+    "target_margin_pct":    None,         # profit / what the customer pays
+    "target_roi_pct":       None,         # profit / what you paid
+    # The single-target form this replaced. Still READ, so an account that set a
+    # target before this change keeps it -- rule_with_defaults folds it into
+    # whichever of the two above it names. Never written any more.
     "profit_target_kind":   None,         # 'margin' | 'roi' | None
     "profit_target_pct":    None,         # e.g. 20.0
     "min_price":            None,         # absolute floor, whatever the maths says
@@ -155,6 +171,18 @@ def rule_with_defaults(rule=None):
     for k, v in (rule or {}).items():
         if k in out and v is not None:
             out[k] = v
+    # THE OLD SINGLE TARGET, FOLDED IN. An account that set "20% roi" before
+    # there were two boxes has profit_target_kind='roi' and profit_target_pct=20
+    # in its stored rule and nothing else. Read here rather than migrated in the
+    # database, so the change cannot half-apply: the old fields are still the
+    # truth for those accounts until someone sets a new one, and the new box
+    # wins the moment they do.
+    kind = str(out.get("profit_target_kind") or "").strip().lower()
+    pct = out.get("profit_target_pct")
+    if kind in ("margin", "roi") and pct is not None:
+        key = "target_margin_pct" if kind == "margin" else "target_roi_pct"
+        if out.get(key) is None:
+            out[key] = pct
     return out
 
 
@@ -354,6 +382,12 @@ def floor_price(cost, rule=None):
     c = _num(cost)
     if c is None or c < 0:
         return None
+    # A TARGET THAT CANNOT BE MET IS NOT A TARGET THAT IS ABSENT. Without this,
+    # an impossible margin target produced no floor of its own and the unit was
+    # priced to the flat minimum instead -- quietly, while the screen said a 95%
+    # floor was in force.
+    if unreachable_targets(c, rule):
+        return None
     flat = _pricing.floor_from_rate(c, rule["referral_rate"],
                                     shipping_label=rule["shipping_label"],
                                     ads_margin=rule["ads_margin"],
@@ -369,53 +403,128 @@ def floor_price(cost, rule=None):
     return max(flat, tgt)
 
 
-def target_floor(cost, rule=None):
-    """The price the percentage profit target needs, or None when none is set.
+def targets_set(rule=None):
+    """[(kind, pct), ...] for every target actually set. Empty when none are.
 
-    Separate from floor_price so the screen can say what the target ALONE asks
-    for, which is the number a person needs when deciding whether a supplier is
-    still worth buying from.
+    Both can be on at once, which is the whole point of the two boxes.
     """
     rule = rule_with_defaults(rule)
-    kind = rule.get("profit_target_kind")
-    pct = _num(rule.get("profit_target_pct"))
-    if not kind or pct is None or pct <= 0:
-        return None
+    out = []
+    for kind, key in (("margin", "target_margin_pct"), ("roi", "target_roi_pct")):
+        pct = _num(rule.get(key))
+        if pct is not None and pct > 0:
+            out.append((kind, pct))
+    return out
+
+
+def unreachable_targets(cost, rule=None):
+    """Targets that are set but that NO price can satisfy. [(kind, pct), ...]
+
+    Only a margin target can be one: Amazon's cut comes out of the same price,
+    so margin + referral >= 100% is asking for more than the whole pound. ROI is
+    measured against the cost and has no such ceiling -- 500% is ambitious, not
+    impossible.
+
+    Told apart from "no target set" ON PURPOSE. Both used to come back as a
+    plain None from target_floor, so an impossible target was silently dropped
+    and the SKU priced to the flat minimum -- the exact thing this module warns
+    about everywhere else: a floor you believe is in force while the app prices
+    to £1. The route refuses to SAVE an unreachable margin target, but a rule
+    saved earlier can be made unreachable later by raising the referral rate,
+    and nothing would have said so.
+    """
+    rule = rule_with_defaults(rule)
+    c = _num(cost)
+    if c is None or c < 0:
+        return []
+    out = []
+    for kind, pct in targets_set(rule):
+        if _pricing.floor_from_target(c, rule["referral_rate"], kind, pct,
+                                      shipping_label=rule["shipping_label"],
+                                      ads_margin=rule["ads_margin"]) is None:
+            out.append((kind, pct))
+    return out
+
+
+def target_floor(cost, rule=None):
+    """The price EVERY percentage target needs met, or None when none is set.
+
+    Separate from floor_price so the screen can say what the targets ALONE ask
+    for, which is the number a person needs when deciding whether a supplier is
+    still worth buying from.
+
+    With both targets on this is the higher of the two floors, for the same
+    reason floor_price takes the higher of flat-and-target: a target is a floor
+    being ADDED, so having two can raise the price and must never lower it.
+
+    None means either no target is set or one cannot be met at any price. Those
+    are different, and floor_price asks unreachable_targets() to tell them apart
+    rather than pricing as though the target were absent.
+    """
+    rule = rule_with_defaults(rule)
     c = _num(cost)
     if c is None or c < 0:
         return None
-    return _pricing.floor_from_target(c, rule["referral_rate"], kind, pct,
-                                      shipping_label=rule["shipping_label"],
-                                      ads_margin=rule["ads_margin"])
+    floors = []
+    for kind, pct in targets_set(rule):
+        f = _pricing.floor_from_target(c, rule["referral_rate"], kind, pct,
+                                       shipping_label=rule["shipping_label"],
+                                       ads_margin=rule["ads_margin"])
+        if f is not None:
+            floors.append(f)
+    return max(floors) if floors else None
 
 
 def target_status(price, cost, rule=None):
-    """Does `price` meet the target? {kind, target_pct, actual_pct, meets, short_by}
+    """Does `price` meet the targets? None when none are set.
 
-    Returns None when no target is set. `meets` is None -- not False -- when the
-    figures needed to answer are missing, because "we cannot tell" and "it fails"
-    are different things and only one of them is worth flagging.
+    {kind, target_pct, actual_pct, meets, short_by, profit, parts}
+
+    THE TOP LEVEL IS THE WORST-PERFORMING TARGET -- the one that decides whether
+    this SKU is flagged -- and `parts` holds every target separately so the
+    screen can show both. Meeting your margin target while missing your ROI
+    target is not "on target", so the flag follows the one that fails.
+
+    `meets` is None -- not False -- when the figures needed to answer are
+    missing, because "we cannot tell" and "it fails" are different things and
+    only one of them is worth flagging.
     """
     rule = rule_with_defaults(rule)
-    kind = rule.get("profit_target_kind")
-    pct = _num(rule.get("profit_target_pct"))
-    if not kind or pct is None or pct <= 0:
+    want = targets_set(rule)
+    if not want:
         return None
-    out = {"kind": kind, "target_pct": pct, "actual_pct": None,
-           "meets": None, "short_by": None, "profit": None}
+
     p, c = _num(price), _num(cost)
-    if p is None or c is None or p <= 0 or c < 0:
-        return out
-    got = _pricing.achieved(p, c, rule["referral_rate"],
-                            shipping_label=rule["shipping_label"],
-                            ads_margin=rule["ads_margin"])
-    actual = got.get("margin_pct") if kind == "margin" else got.get("roi_pct")
-    out["profit"] = got.get("profit")
-    if actual is None:
-        return out
-    out["actual_pct"] = actual
-    out["meets"] = actual + 0.05 >= pct        # 0.05 absorbs 1dp rounding
-    out["short_by"] = (None if out["meets"] else round(pct - actual, 1))
+    got = None
+    if p is not None and c is not None and p > 0 and c >= 0:
+        got = _pricing.achieved(p, c, rule["referral_rate"],
+                                shipping_label=rule["shipping_label"],
+                                ads_margin=rule["ads_margin"])
+
+    parts = []
+    for kind, pct in want:
+        one = {"kind": kind, "target_pct": pct, "actual_pct": None,
+               "meets": None, "short_by": None,
+               "profit": (got or {}).get("profit")}
+        actual = None if got is None else (
+            got.get("margin_pct") if kind == "margin" else got.get("roi_pct"))
+        if actual is not None:
+            one["actual_pct"] = actual
+            one["meets"] = actual + 0.05 >= pct    # 0.05 absorbs 1dp rounding
+            one["short_by"] = (None if one["meets"] else round(pct - actual, 1))
+        parts.append(one)
+
+    # The one that decides the flag: a failure if any fails, otherwise the
+    # tightest of them. Unknown only when NOTHING could be worked out.
+    failed = [x for x in parts if x["meets"] is False]
+    if failed:
+        lead = max(failed, key=lambda x: x["short_by"] or 0)
+    else:
+        known = [x for x in parts if x["meets"] is True]
+        lead = (min(known, key=lambda x: (x["actual_pct"] or 0) - x["target_pct"])
+                if known else parts[0])
+    out = dict(lead)
+    out["parts"] = parts
     return out
 
 
@@ -519,16 +628,20 @@ def decide(current, pairs, rule=None, now=None):
 
     if floor is None:
         out["blocked_by"] = "the pricing rule cannot be met at any price"
-        tf = rule.get("profit_target_kind")
+        # WHICH target is impossible, by name. Only a MARGIN target can be:
+        # Amazon's cut comes out of the same price, so margin + referral >= 100%
+        # is asking for more than the whole pound. An ROI target has no such
+        # ceiling -- it is measured against the cost, not the price -- so it is
+        # never the culprit and is not blamed.
+        rate = rule["referral_rate"]
+        bad = unreachable_targets(cost, rule)
         out["reason"] = (
-            ("a %s target of %s%% cannot be met at any price once Amazon takes "
+            ("a %s target of %g%% cannot be met at any price once Amazon takes "
              "%.0f%% -- the two are competing for the same pound"
-             % (tf, rule.get("profit_target_pct"), rule["referral_rate"] * 100))
-            if tf == "margin" and _num(rule.get("profit_target_pct")) is not None
-               and (_num(rule.get("profit_target_pct")) / 100.0
-                    + rule["referral_rate"]) >= 0.99
-            else ("a referral rate of %.0f%% leaves nothing to price into"
-                  % (rule["referral_rate"] * 100)))
+             % (bad[0][0], bad[0][1], rate * 100))
+            if bad else
+            ("a referral rate of %.0f%% leaves nothing to price into"
+             % (rate * 100)))
         return out
 
     price = floor
@@ -577,8 +690,9 @@ def decide(current, pairs, rule=None, now=None):
         # Which floor actually decided the price. Without this the breakdown
         # says "1.00 profit" while the price is really being set by a 20% target,
         # and the sum on screen would not add up to the number beside it.
-        "target_kind": rule.get("profit_target_kind"),
-        "target_pct": rule.get("profit_target_pct"),
+        # Every target that is on, so the breakdown can say which one set the
+        # price rather than naming a single "kind" that no longer exists.
+        "targets": [{"kind": k, "pct": p} for k, p in targets_set(rule)],
         "target_floor": target_floor(cost, rule),
         "at_price": _pricing.achieved(price, cost, rule["referral_rate"],
                                       shipping_label=rule["shipping_label"],

@@ -12,6 +12,9 @@
 
 let SRC_ROWS = [];
 let SRC_RULE = null;
+// Each SKU's own rule, kept as the rows draw, so the target dialog opens on
+// THIS SKU's numbers rather than the account's.
+let SRC_ROW_RULES = {};
 let SRC_MASTER = false;     // the master switch, as the SERVER reports it
 
 // Every /sourcing call says WHICH account and marketplace it means.
@@ -129,38 +132,119 @@ async function sourcingMinPrice(sku){
 // on an 11.95 unit a 20% target is 26.08 as margin and 22.76 as ROI. So the
 // choice is made explicitly rather than picked for you, and the difference is
 // spelled out where the choice is made.
-async function sourcingTarget(sku){
-  const scope = sku ? ('"' + sku + '"') : "every enrolled SKU";
-  const kind = prompt(
-    "Least profit you will accept on " + scope + ".\n\n"
-  + "Type  margin  — profit as a share of what the CUSTOMER pays.\n"
-  + "      Strict: Amazon's 15% comes out of the same price, so a margin\n"
-  + "      target above about 84% cannot be met at any price.\n\n"
-  + "Type  roi     — profit as a share of what YOU paid for the unit.\n"
-  + "      On a £11.95 unit, 20% ROI wants £22.76 and 20% margin wants £26.08.\n\n"
-  + "Leave blank to remove the target and go back to the flat minimum profit.",
-    "roi");
-  if(kind === null) return;
-  const k = String(kind).trim().toLowerCase();
-  let pct = null;
-  if(k){
-    const v = prompt("What percentage? e.g. 20", "20");
-    if(v === null) return;
-    pct = parseFloat(String(v).replace("%", "").trim());
-    if(!(pct > 0)){ toast("That is not a percentage."); return; }
-  }
-  try{
-    const j = await (await fetch("/sourcing/rules",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:_srcBody({sku:sku||"", rule:{profit_target_kind: k||null,
-                                        profit_target_pct: k?pct:null}})})).json();
-    // The server refuses an unreachable or mistyped target and says why. Shown
-    // as-is: a target that silently did nothing would leave you believing a
-    // floor was in force while the app priced to the flat £1.
-    if(!j.ok){ toast(j.error||"failed"); return; }
-    toast(k ? ("Target set: " + pct + "% " + k) : "Profit target removed");
-    sourcingLoad();
-  }catch(e){ toast(String(e)); }
+// TWO BOXES, because they are two settings and not a choice between them.
+//
+// "give me 2 different boxes for setting the roi or margin target on repricer"
+//
+// It was one prompt asking which KIND you wanted and then the number, so
+// choosing margin threw away whatever ROI you had. "At least 20% margin AND at
+// least 30% back on the cash" is an ordinary thing to want, and on an £11.95
+// unit those ask for £26.08 and £20.73 -- neither implies the other. Both apply
+// now, and the price takes the higher of the two floors.
+function sourcingTarget(sku){
+  // The boxes open showing what is ALREADY set -- for this SKU if it has its
+  // own, otherwise the account default. Opening them blank would make "Save"
+  // read as "clear both", and opening a SKU's dialog pre-filled with the
+  // account's numbers would overwrite its override with someone else's.
+  const acct = SRC_RULE || {};
+  const cur = (sku && SRC_ROW_RULES[sku]) ? SRC_ROW_RULES[sku] : acct;
+  const m = cur.target_margin_pct, o = cur.target_roi_pct;
+  const scope = sku ? ('<code>' + _sesc(sku) + '</code>')
+                    : 'every enrolled SKU';
+  _srcModal(
+    'Least profit you will accept',
+    '<p class="cc" style="font-size:12px;margin:0 0 12px">Applies to ' + scope
+    + '. Fill in either box, or both — the price is set to whichever asks for '
+    + 'more. Leave a box empty to switch that target off.</p>'
+    + '<div style="display:flex;gap:14px;flex-wrap:wrap">'
+    + _srcTargetBox('tgt_margin', 'Margin target', m,
+        'Profit as a share of what the CUSTOMER pays. Amazon’s cut comes '
+      + 'out of the same price, so this cannot go much above 84%.',
+        'On an £11.95 unit, 20% margin wants £26.08')
+    + _srcTargetBox('tgt_roi', 'ROI target', o,
+        'Profit as a share of what YOU paid for the unit. Measured against the '
+      + 'cost, so Amazon’s cut does not cap it.',
+        'On an £11.95 unit, 20% ROI wants £20.73')
+    + '</div>',
+    async function(){
+      const gv = function(id){
+        const el = document.getElementById(id);
+        const v = el ? String(el.value).replace("%", "").trim() : "";
+        return v === "" ? null : v;
+      };
+      const rule = {target_margin_pct: gv('tgt_margin'),
+                    target_roi_pct: gv('tgt_roi')};
+      try{
+        const j = await (await fetch("/sourcing/rules",{method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:_srcBody({sku:sku||"", rule:rule})})).json();
+        // The server refuses an unreachable or mistyped target and says why.
+        // Shown as-is: a target that silently did nothing would leave you
+        // believing a floor was in force while the app priced to the flat £1.
+        if(!j.ok){ toast(j.error||"failed"); return false; }
+        const on = [];
+        if(rule.target_margin_pct) on.push(rule.target_margin_pct + "% margin");
+        if(rule.target_roi_pct) on.push(rule.target_roi_pct + "% ROI");
+        toast(on.length ? ("Target: " + on.join(" and ")) : "Profit targets off");
+        sourcingLoad();
+        return true;
+      }catch(e){ toast(String(e)); return false; }
+    });
+}
+
+// "Target: 20% margin · 30% ROI", or one, or none. Both are shown because both
+// apply; showing only one would misdescribe the floor the app is pricing to.
+function _srcTargetLabel(rule){
+  const on = [];
+  if(rule.target_margin_pct) on.push(rule.target_margin_pct + '% margin');
+  if(rule.target_roi_pct) on.push(rule.target_roi_pct + '% ROI');
+  return on.length ? ('Target: ' + on.join(' · ')) : 'Profit target: none';
+}
+
+function _srcTargetBox(id, label, value, why, example){
+  return '<label style="flex:1 1 220px;min-width:200px">'
+    + '<span style="display:block;font-size:12px;font-weight:600;margin-bottom:3px">'
+    + _sesc(label) + '</span>'
+    + '<span style="display:flex;align-items:center;gap:6px">'
+    + '<input id="' + id + '" type="number" min="0" step="0.5" '
+    + 'placeholder="off" value="' + (value == null ? '' : _sesc(String(value)))
+    + '" style="width:90px;font-size:13px;padding:6px 8px">'
+    + '<span class="cc" style="font-size:13px">%</span></span>'
+    + '<span class="cc" style="display:block;font-size:11px;margin-top:5px;'
+    + 'line-height:1.45">' + why + '</span>'
+    + '<span class="cc" style="display:block;font-size:10.5px;margin-top:3px;'
+    + 'opacity:.75">' + example + '</span>'
+    + '</label>';
+}
+
+// A small modal with an OK that can refuse to close. prompt() cannot show two
+// boxes at once, which is the whole reason this exists.
+function _srcModal(title, bodyHtml, onOk){
+  const old = document.getElementById("srcmodal");
+  if(old) old.remove();
+  const wrap = document.createElement("div");
+  wrap.id = "srcmodal";
+  wrap.className = "modalwrap";
+  wrap.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);"
+    + "display:flex;align-items:center;justify-content:center;z-index:9000";
+  wrap.innerHTML = '<div class="panelcard roomy" style="max-width:560px;width:92%">'
+    + '<div style="font-size:14px;font-weight:600;margin-bottom:10px">'
+    + _sesc(title) + '</div>'
+    + bodyHtml
+    + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
+    + '<button class="db-chip" id="srcmodal_cancel">Cancel</button>'
+    + '<button class="db-chip" id="srcmodal_ok" style="background:var(--accent);'
+    + 'color:#fff;border-color:var(--accent)">Save</button></div></div>';
+  document.body.appendChild(wrap);
+  const close = function(){ wrap.remove(); };
+  wrap.querySelector("#srcmodal_cancel").onclick = close;
+  wrap.onclick = function(e){ if(e.target === wrap) close(); };
+  wrap.querySelector("#srcmodal_ok").onclick = async function(){
+    const ok = await onOk();
+    if(ok !== false) close();     // a refusal keeps the boxes and their values
+  };
+  const first = wrap.querySelector("input");
+  if(first) first.focus();
 }
 
 // The chip on a row that is not earning what it is supposed to. Deliberately
@@ -169,17 +253,23 @@ async function sourcingTarget(sku){
 function _targetChip(t){
   if(!t) return '';                       // no target set on this SKU
   if(t.meets === null) return '';          // not enough to tell; not a failure
+  // WITH BOTH TARGETS ON, the tooltip names them both -- "22% ROI against 30%"
+  // alone does not say whether the margin one passed, and someone reading a red
+  // chip needs to know which of their two floors this SKU is under.
+  const all = (t.parts && t.parts.length ? t.parts : [t])
+    .filter(function(x){ return x.meets !== null; })
+    .map(function(x){
+      return x.kind + ' ' + x.actual_pct + '% against ' + x.target_pct + '%'
+           + (x.meets ? '' : ' — ' + x.short_by + ' short'); })
+    .join('; ');
   if(t.meets){
     return '<span class="db-chip" style="background:#12321f;color:#7fd18b" title="'
-      +  'Earning ' + t.actual_pct + '% against a ' + t.target_pct + '% '
-      +  t.kind + ' target.">' + t.kind + ' ' + t.actual_pct + '%</span>';
+      +  _sesc(all) + '">' + t.kind + ' ' + t.actual_pct + '%</span>';
   }
   return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a" title="'
-    +  'This listing is earning ' + t.actual_pct + '% ' + t.kind + ' at its '
-    +  'current price, against your ' + t.target_pct + '% target — '
-    +  t.short_by + ' points short'
+    +  _sesc(all)
     +  (t.profit != null ? ' (' + _smoney(t.profit) + ' a unit).' : '.')
-    +  '">below target &middot; ' + t.actual_pct + '%</span>';
+    +  '">below ' + t.kind + ' &middot; ' + t.actual_pct + '%</span>';
 }
 
 // Start tracking everything that is not tracked yet.
@@ -342,6 +432,18 @@ function sourcingRender(j){
     +  'links — the app matches each link to the right listing and starts '
     +  'tracking it. Nothing is priced.">'
     +  '<i class="ti ti-table-import"></i> Suppliers from a sheet</label>'
+    // THE SHEET TO FILL IN, HANDED OVER READY. "give the user the template
+    // first filled by the asins enrolled for tracking in the repricer, the user
+    // will fill that template and upload it back". A blank sheet means typing
+    // forty SKUs by hand, and a hand-typed SKU is the one that silently matches
+    // nothing. Only the "new supplier link" column comes out empty.
+    +  '<a class="db-chip" href="/sourcing/template.csv" '
+    +  'style="text-decoration:none" title="'
+    +  'Downloads a sheet already listing every SKU you are tracking, with its '
+    +  'ASIN, product name and the supplier link it has now. Fill in the last '
+    +  'column and upload it back with the button on the left. Rows you leave '
+    +  'blank are not changed.">'
+    +  '<i class="ti ti-file-download"></i> Get the template</a>'
     // The switch that actually matters, named for what it does rather than for
     // where it lives. "Master switch: off" did not say off from WHAT.
     +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
@@ -355,10 +457,7 @@ function sourcingRender(j){
     +  '<button class="db-chip" onclick="sourcingTarget(\'\')" title="'
     +  'The least profit you will accept, as a percentage. Applies to every '
     +  'enrolled SKU unless one has its own.">'
-    +  '<i class="ti ti-target"></i> '
-    +  (((j.rule||{}).profit_target_kind && (j.rule||{}).profit_target_pct)
-        ? ('Target: '+(j.rule).profit_target_pct+'% '+(j.rule).profit_target_kind)
-        : 'Profit target: none')
+    +  '<i class="ti ti-target"></i> ' + _srcTargetLabel(j.rule || {})
     +  '</button>'
     +  '</div>';
   // The numbers get cards of their own, under the controls rather than crammed
@@ -582,13 +681,42 @@ function _glanceRow(g){
        + bits.join("") + '</div>';
 }
 
+// The picture and the name, with the SKU underneath it as the small print it
+// always should have been. The picture comes from the same catalogue the
+// Listings cards and the Orders rows use, so one product looks the same
+// wherever it appears. An icon rather than a broken image when there is none.
+function _srcItemCell(item, sku){
+  const it = item || {};
+  const pic = it.img
+    ? '<img src="' + _sesc(it.img) + '" loading="lazy" alt="" style="width:38px;'
+      + 'height:38px;object-fit:contain;background:#0d1220;border-radius:6px;'
+      + 'flex:0 0 38px">'
+    : '<span style="width:38px;height:38px;border-radius:6px;background:#0d1220;'
+      + 'display:inline-flex;align-items:center;justify-content:center;'
+      + 'flex:0 0 38px"><i class="ti ti-photo" style="opacity:.4"></i></span>';
+  return '<span style="display:flex;gap:9px;align-items:center;min-width:0;'
+    + 'max-width:420px">' + pic + '<span style="min-width:0">'
+    + (it.title
+        ? '<span style="display:block;font-size:12px;line-height:1.3;'
+          + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'
+          + _sesc(it.title) + '">' + _sesc(it.title) + '</span>'
+        : '')
+    + '<code style="font-size:' + (it.title ? '10px' : '12px') + ';opacity:'
+    + (it.title ? '.7' : '1') + '">' + _sesc(sku) + '</code>'
+    + '</span></span>';
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
   let h = '<div style="border:1px solid #26303f;border-radius:7px;padding:10px 12px;margin-bottom:9px">';
 
+  // THE PRODUCT, not just its code. "i want to see the images of the items in
+  // the repricer so it is easy to understand for which product are we talking
+  // about" -- 10.39_3Days_B0F6LQ1S93 is unreadable, and this screen is where
+  // you decide whether to keep selling something.
   h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
-    +  '<code style="font-size:12px">'+_sesc(r.sku)+'</code>'
+    +  _srcItemCell(r.item, r.sku)
     +  _actionChip(d)
     +  _driftChip(r.drift)
     +  _targetChip(d.target)
@@ -640,13 +768,23 @@ function sourcingRow(r, i){
   // from at all.
   const tg = d.target, bd = d.breakdown || {};
   if(tg && tg.meets === false){
+    // EVERY target it misses, not just the worst. With two on, "it earns 22%
+    // ROI against 30%" leaves the margin one unaccounted for, and the price
+    // needed clears BOTH -- so naming one and quoting a floor set by the other
+    // is a sum that does not add up on screen.
+    const miss = (tg.parts && tg.parts.length ? tg.parts : [tg])
+      .filter(function(x){ return x.meets === false; });
     h += '<div class="cc" style="font-size:11.5px;margin-top:7px;padding:6px 8px;'
       +  'border:1px solid #4a2323;background:#2a1212;border-radius:6px">'
-      +  'At its current price this earns <b>'+tg.actual_pct+'%</b> '+tg.kind
+      +  'At its current price this earns '
+      +  miss.map(function(x){
+           return '<b>'+x.actual_pct+'%</b> '+x.kind+' against your <b>'
+                + x.target_pct+'%</b>'; }).join(', and ')
       +  (tg.profit!=null ? ' &mdash; '+_smoney(tg.profit)+' a unit' : '')
-      +  ', against your <b>'+tg.target_pct+'%</b> target. '
+      +  '. '
       +  (bd.target_floor!=null
-          ? 'It would need <b>'+_smoney(bd.target_floor)+'</b> to clear it.'
+          ? 'It would need <b>'+_smoney(bd.target_floor)+'</b> to clear '
+            + (miss.length > 1 ? 'both' : 'it') + '.'
           : '')
       +  '</div>';
   }
@@ -711,12 +849,17 @@ function sourcingRow(r, i){
   // The target, per SKU. A cheap fast-moving line and an expensive slow one do
   // not want the same percentage, so the account-wide setting is a default
   // rather than a rule.
-  const tk = (r.rule||{}).profit_target_kind, tp = (r.rule||{}).profit_target_pct;
+  const rr = r.rule || {};
+  // Remembered so the two boxes open showing what THIS SKU has, rather than the
+  // account default -- opening them pre-filled with someone else's numbers and
+  // pressing Save would silently overwrite the override.
+  SRC_ROW_RULES[r.sku] = rr;
+  const anyT = (rr.target_margin_pct != null || rr.target_roi_pct != null);
   h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Least profit accepted: '
-    +  ((tk && tp!=null) ? '<b>'+tp+'% '+_sesc(tk)+'</b>'
-                         : '<span class="cc">the flat minimum only</span>')
+    +  (anyT ? '<b>' + _sesc(_srcTargetLabel(rr).replace(/^Target: /, '')) + '</b>'
+             : '<span class="cc">the flat minimum only</span>')
     +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
-    +  ((tk && tp!=null)?'Change':'Set')+'</button></div>';
+    +  (anyT?'Change':'Set')+'</button></div>';
   if(d.inputs_age_mins!=null){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';

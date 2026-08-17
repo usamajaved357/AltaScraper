@@ -72,6 +72,7 @@ def get_item(creds, marketplace, seller_id, sku, marketplace_id,
     fallback that reads the value was already here and correct.
     """
     out = {"status": FAILED, "attributes": None, "product_type": "",
+           "summaries": [], "issues": [],
            "error": "", "http_code": None, "raw": None}
     if not (seller_id and sku):
         out["error"] = "need a seller id and a sku"
@@ -100,6 +101,16 @@ def get_item(creds, marketplace, seller_id, sku, marketplace_id,
         pts = data.get("productTypes") or []
         if pts and isinstance(pts, list):
             out["product_type"] = str(pts[0].get("productType") or "")
+    # SURFACED, not left buried in `raw`. Both are already asked for and both
+    # answer questions the attributes cannot:
+    #   summaries  what Amazon SERVES -- the rendition on the product page,
+    #              which is re-hosted and never matches the URL submitted
+    #   issues     what Amazon accepted and then took exception to, which is the
+    #              only place a rejected image is ever mentioned
+    # A caller reaching into out["raw"] for these is a caller writing the same
+    # three lines again, differently (Rule 12).
+    out["summaries"] = summaries if isinstance(summaries, list) else []
+    out["issues"] = data.get("issues") or []
     out["status"] = OK
     return out
 
