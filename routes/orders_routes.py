@@ -403,10 +403,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                          account_label=acc.get("label") or aid)
         # Free here: the lines are already in hand, so what the order earned
         # costs nothing more to work out.
-        p, m, why = _ov.profit_for(items, row.get("total"), _cost_fn())
-        row["profit"], row["margin_pct"], row["profit_note"] = p, m, why
+        # WHAT EACH LINE EARNED, not just the order's bottom line.
+        #
+        # "i am not able to see the earnings of each order and not the breakdown
+        #  of the item that how many are cogs how much fee deducted"
+        #
+        # This called profit_for, which answers with a single number and a note.
+        # So the panel could say "Earned 4.20" and had nothing to show for the
+        # revenue, the fee or the cost behind it -- and when one line had no cost
+        # it said only that the profit could not be worked out, without naming
+        # which line was missing one.
+        cost_of = _cost_fn()
+        bd = _ov.line_breakdown(items, row.get("total"), cost_of)
+        row["profit"] = bd["totals"]["profit"]
+        row["margin_pct"] = bd["totals"]["margin_pct"]
+        row["profit_note"] = bd["totals"]["note"]
         return jsonify({"ok": True, "order_id": oid, "order": row,
                         "items": items,
+                        "breakdown": bd,
                         # WHERE TO BUY EACH LINE FROM. Read from what the last
                         # sweep already stored, so opening an order contacts no
                         # supplier and costs nothing.

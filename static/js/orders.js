@@ -574,6 +574,108 @@ function _ordSourcesHtml(block){
   return h;
 }
 
+/* WHAT THE ORDER EARNED, AND WHERE IT WENT.
+ *
+ * "i am not able to see the earnings of each order and not the breakdown of the
+ *  item that how many are cogs how much fee deducted, i dont find the
+ *  calculations accurate"
+ *
+ * A single "Earned 4.20" cannot be checked. This lays the sum out so every number
+ * can be argued with: what the buyer paid, Amazon's cut, what the stock cost,
+ * what is left -- per line and then for the order.
+ *
+ * A LINE WITH NO COST STILL APPEARS, naming its own gap. The order's total profit
+ * is still withheld when any line is uncosted (a total that ignores one product
+ * is worse than no total), but the panel now says WHICH product and what to do.
+ */
+function _ordBreakdownHtml(bd, currency){
+  if(!bd || !bd.lines || !bd.lines.length) return '';
+  const t = bd.totals || {};
+  const money = function(v){
+    return (v === null || v === undefined)
+      ? '<span class="cc">—</span>' : _oEsc(_oMoney(v, currency));
+  };
+  let h = '<div style="margin-top:9px;padding-top:8px;border-top:1px solid #1c2531">'
+        + '<div style="font-size:11.5px;font-weight:600;margin-bottom:5px">'
+        + 'What this order earned</div>'
+        + '<table style="width:100%;font-size:11px;border-collapse:collapse">'
+        + '<thead><tr style="color:#8b98a9;text-align:right">'
+        + '<th style="text-align:left;font-weight:500;padding:2px 4px">Item</th>'
+        + '<th style="font-weight:500;padding:2px 4px">Buyer paid</th>'
+        + '<th style="font-weight:500;padding:2px 4px">Amazon fee</th>'
+        + '<th style="font-weight:500;padding:2px 4px">Cost</th>'
+        + '<th style="font-weight:500;padding:2px 4px">Profit</th>'
+        + '</tr></thead><tbody>';
+  bd.lines.forEach(function(l){
+    h += '<tr style="text-align:right;border-top:1px solid #161d27">'
+      +  '<td style="text-align:left;padding:3px 4px;max-width:190px">'
+      +  '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
+      +  'white-space:nowrap" title="' + _oEsc(l.title) + '">'
+      +  _oEsc(l.title || l.sku || '(no title)') + '</span>'
+      +  '<code class="cc" style="font-size:9.5px">' + _oEsc(l.sku)
+      +  (l.qty > 1 ? ' · ' + l.qty + ' units' : '') + '</code></td>'
+      +  '<td style="padding:3px 4px">' + money(l.revenue) + '</td>'
+      // Shown as a deduction, with a minus, so the row reads as a sum rather
+      // than as four unrelated numbers.
+      +  '<td style="padding:3px 4px;color:#e8a06a">'
+      +  (l.fee === null || l.fee === undefined ? money(null)
+          : '−' + _oEsc(_oMoney(l.fee, currency))) + '</td>'
+      +  '<td style="padding:3px 4px;color:#e8a06a">'
+      +  (l.cogs === null || l.cogs === undefined ? money(null)
+          : '−' + _oEsc(_oMoney(l.cogs, currency))
+            + (l.qty > 1 && l.unit_cost !== null
+                ? ' <span class="cc">(' + _oEsc(_oMoney(l.unit_cost, currency))
+                  + ' ea)</span>' : ''))
+      +  '</td>'
+      +  '<td style="padding:3px 4px;font-weight:600'
+      +  (l.profit !== null && l.profit !== undefined && l.profit < 0
+          ? ';color:var(--red)' : '') + '">'
+      +  money(l.profit)
+      +  (l.roi_pct !== null && l.roi_pct !== undefined
+          ? ' <span class="cc" style="font-weight:400">'
+            + Number(l.roi_pct).toFixed(0) + '%</span>' : '')
+      +  '</td></tr>';
+    // The gap, named on the line it belongs to rather than as one message for
+    // the whole order.
+    if(l.note){
+      h += '<tr><td colspan="5" class="cc" style="padding:0 4px 4px;'
+        +  'font-size:10px;color:#e8c66a">' + _oEsc(l.note) + '</td></tr>';
+    }
+  });
+  h += '</tbody><tfoot><tr style="text-align:right;border-top:1px solid #26303f">'
+    +  '<td style="text-align:left;padding:4px;font-weight:600">Order</td>'
+    +  '<td style="padding:4px">' + money(t.revenue) + '</td>'
+    +  '<td style="padding:4px;color:#e8a06a">'
+    +  (t.fees === null || t.fees === undefined ? money(null)
+        : '−' + _oEsc(_oMoney(t.fees, currency))) + '</td>'
+    +  '<td style="padding:4px;color:#e8a06a">'
+    +  (t.cogs_complete ? '−' + _oEsc(_oMoney(t.cogs, currency))
+        : '<span class="cc">part only</span>') + '</td>'
+    +  '<td style="padding:4px;font-weight:700">' + money(t.profit) + '</td>'
+    +  '</tr></tfoot></table>';
+
+  // WHY A TOTAL IS MISSING, and what the fee figure really is.
+  const notes = [];
+  if(t.profit === null && t.uncosted_lines){
+    notes.push(t.uncosted_lines + ' item' + (t.uncosted_lines === 1 ? '' : 's')
+      + ' above have no cost recorded, so the order total is left blank rather '
+      + 'than counting them as free. Set their cost on the Costs sheet.');
+  }
+  if(t.order_total !== null && t.order_total !== undefined
+     && Math.abs((t.revenue || 0) - t.order_total) > 0.02){
+    notes.push('The buyer was charged ' + _oMoney(t.order_total, currency)
+      + ' in total — the difference from the lines above is postage, gift wrap '
+      + 'or a coupon.');
+  }
+  notes.push('Amazon’s fee is estimated at '
+    + Math.round((t.fee_rate || 0.15) * 100) + '% and split across the lines by '
+    + 'what each one sold for. The exact fee arrives with the finance records.');
+  notes.forEach(function(n){
+    h += '<div class="cc" style="font-size:10px;margin-top:4px">' + _oEsc(n) + '</div>';
+  });
+  return h + '</div>';
+}
+
 function _ordDetailHtml(r){
   const d = ORD.details[r.order_id] || {};
   const items = d.items || [];
@@ -604,20 +706,9 @@ function _ordDetailHtml(r){
     h += _ordSourcesHtml((d.sources || {})[it.sku]);
   });
   const o = d.order || {};
-  // What it earned, worked out from the lines that are already here.
-  if(o.profit !== undefined){
-    h += '<div style="margin-top:8px;padding-top:7px;border-top:1px solid #1c2531;'
-      +  'font-size:11.5px">'
-      +  (o.profit === null
-          ? '<span class="cc">Profit not known — ' + _oEsc(o.profit_note || "") + '</span>'
-          : '<b>Earned ' + _oEsc(_oMoney(o.profit, o.currency)) + '</b>'
-            + (o.margin_pct !== null && o.margin_pct !== undefined
-                ? ' <span class="cc">(' + Number(o.margin_pct).toFixed(1) + '% margin)</span>'
-                : '')
-            + '<div class="cc" style="font-size:10.5px;margin-top:2px">'
-            + _oEsc(o.profit_note || "") + '</div>')
-      +  '</div>';
-  }
+  // THE SUM, LINE BY LINE. "i am not able to see the earnings of each order and
+  // not the breakdown of the item that how many are cogs how much fee deducted".
+  h += _ordBreakdownHtml(d.breakdown, o.currency);
   h += '<div class="cc" style="font-size:11px;margin-top:8px;padding-top:7px;'
     +  'border-top:1px solid #1c2531">'
     +  'Ship by ' + _oEsc(_oWhen(o.ship_by)) + ' · deliver by '

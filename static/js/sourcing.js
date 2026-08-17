@@ -917,6 +917,43 @@ async function sourcingCheckListings(){
   }catch(e){ toast(String(e)); }
 }
 
+/* HOW MANY SUPPLIER LINKS THIS SKU HAS, and how many can be bought from.
+ *
+ * Clicking it opens the same panel the "Why?" button does, so the count is both
+ * the answer and the way to see the detail behind it.
+ *
+ * "no supplier" is drawn in amber rather than as a plain zero: a tracked SKU with
+ * nothing attached can never be priced, and that is a job to do rather than a
+ * neutral fact.
+ */
+function _srcCountChip(r, id){
+  const list = r.sources || [];
+  const n = list.length;
+  const live = list.filter(function(s){
+    const k = s.check || {};
+    return k.status === "fetched" && k.in_stock !== false;
+  }).length;
+  if(!n){
+    return '<button class="db-chip" style="background:#3a3320;color:#e8c66a" '
+         + 'onclick="sourcingToggleDetail(' + _sarg(id) + ')" '
+         + 'title="Nothing to buy this from, so no price can be worked out. '
+         + 'Add a supplier link.">no supplier</button>';
+  }
+  // "2 of 3 usable" only when they differ -- saying "1 of 1" on every row is
+  // noise that makes the rows that DO differ harder to spot.
+  const label = (live === n)
+    ? (n + ' supplier' + (n === 1 ? '' : 's'))
+    : (live + ' of ' + n + ' usable');
+  return '<button class="db-chip"'
+       + (live < n ? ' style="background:#3a3320;color:#e8c66a"' : '')
+       + ' onclick="sourcingToggleDetail(' + _sarg(id) + ')"'
+       + ' title="' + (live < n
+            ? (n - live) + ' of this SKU\'s links cannot be bought from right now. '
+            : '')
+       + 'Click to see the links, their prices and their delivery.">'
+       + label + '</button>';
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
@@ -940,7 +977,17 @@ function sourcingRow(r, i){
     h += '<span style="font-size:12px;font-weight:600">&rarr; '+_smoney(d.price)
       +  (d.lead_days!=null ? ' &middot; '+d.lead_days+'d' : '')+'</span>';
   }
-  h += '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
+  // HOW MANY SUPPLIERS THIS SKU HAS, on the row itself.
+  //
+  // "i am not able to see all the source links in the repricer" -- they were all
+  // there, but only inside a panel opened by a button labelled "Why?", which
+  // sounds like it explains the price rather than lists the suppliers. So the
+  // count was invisible: with one link on every SKU there was no way to tell
+  // whether that was all of them or all the screen was showing.
+  //
+  // The chip is the same button, so clicking the count opens the list.
+  h += _srcCountChip(r, id)
+    +  '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
     +  (r.mode==="live"
         ? '<button class="db-chip" style="background:#3a1b1b;color:#e88a8a" '
           + 'onclick="sourcingArm('+_sarg(r.sku)+',false)">Armed &mdash; disarm</button>'
