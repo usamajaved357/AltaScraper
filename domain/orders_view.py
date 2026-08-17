@@ -155,7 +155,38 @@ def profit_for(items, order_total, cost_of, referral_rate=None):
     domain/cogs.lookup -- so the SKU costs, the manual overrides and their
     precedence are decided in exactly one place (Rule 12).
 
-    See profit_detail() for the same answer with ROI and the cost behind it.
+    THE COUPON IS ALREADY OUT, AND MUST NOT BE TAKEN OUT AGAIN.
+
+    Asked as: "the profit should be calculated after cutting the promotional
+    charges, the coupon or some discount applied on that order if that is not
+    already done ... please check the authenticity of this claim first and then
+    apply if i am correct dont guess or assume".
+
+    Checked on SEVEN real discounted orders across two accounts, not one:
+
+        jack_uk        026-1374880-3466755   21.80 - 0.91 = 20.89 = OrderTotal
+        nestwell_goods 206-9874023-3627501   29.99 - 1.50 = 28.49 = OrderTotal
+                       202-2446893-7679542   29.99 - 1.50 = 28.49 = OrderTotal
+                       202-3734845-7261964   29.99 - 1.50 = 28.49 = OrderTotal
+                       203-9865692-8949959   29.99 - 1.50 = 28.49 = OrderTotal
+                       202-4024015-1547522   34.99 - 1.75 = 33.24 = OrderTotal
+                       203-9384660-6187507   34.99 - 1.75 = 33.24 = OrderTotal
+
+    Nestwell runs a 5% coupon on the AltaboltaVoo Ceiling Fan -- which is how
+    this was confirmed at a second price point after the fan went 29.99 -> 34.99.
+    Every one agrees to the penny.
+
+    So Amazon's OrderTotal is what the buyer was CHARGED, with the coupon
+    already deducted. This function starts from OrderTotal, so the discount is
+    accounted for; subtracting it a second time would charge the coupon twice
+    and understate every discounted order.
+
+    WHICH IS THE OPPOSITE OF THE FINANCE PATH, and both are right. The Finances
+    API reports ItemChargeList Principal and PromotionList as SEPARATE entries,
+    so there the revenue IS gross and the promotion has to come off -- which is
+    what domain/order_profit.py does. Two feeds, two shapes. The rule is not
+    "always subtract the coupon", it is "know what your revenue figure already
+    includes". test_orders_promo.py pins both halves.
     """
     if order_total is None:
         return None, None, "Amazon has not released this order's total yet"

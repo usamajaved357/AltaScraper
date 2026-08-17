@@ -1,4 +1,4 @@
-"""routes/orders_routes.py -- orders from every account, on one screen.
+﻿"""routes/orders_routes.py -- orders from every account, on one screen.
 
     GET  /orders/list     recent orders, this account or all of them
     GET  /orders/detail   one order's lines
@@ -168,8 +168,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 r["cogs"] = d["cogs"]
                 r["profit_note"] = d["note"]
                 it = _ov.item_summary(items)
-                it["img"] = (pics.get(_key(it.get("sku")))
-                             or pics.get(_key(it.get("asin"))) or "")
+                it["img"] = _cat_look(pics, it).get("img") or ""
                 r["item"] = it
                 r["lines"] = len(items)
                 done += 1
@@ -191,38 +190,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "profit_note": profit_note,
                         "pii_note": _ov.PII_NOTE})
 
-    def _key(s):
-        """SKUs and ASINs match case-insensitively, spaces and all."""
-        return str(s or "").strip().upper()
+    def _cat_look(idx, it):
+        """This order line's catalogue record. SKU first, then ASIN."""
+        from domain import catalogue as _cat
+        return _cat.look(idx, (it or {}).get("sku"), (it or {}).get("asin"))
 
     def _pictures():
-        """{sku or asin -> image url} for every account in scope.
+        """{sku or asin -> {img, title, ...}} for every account in scope.
 
         From the cached live snapshot, the same place the Listings cards get
         theirs, so one product does not have two different pictures in one app.
-        An account with no snapshot simply contributes nothing.
+        The reading itself is domain/catalogue.py, shared with Sales and Traffic
+        (CLAUDE.md Rule 12). An account with no snapshot contributes nothing.
         """
-        out = {}
-        try:
-            from domain import live_snapshots as _ls
-        except Exception:
-            return out
-        for a in _accounts_in_scope():
-            try:
-                rec = _ls.get(CONFIG_PATH, str(a.get("id") or ""),
-                              _marketplace(a)) or {}
-            except Exception:
-                continue
-            for it in (rec.get("items") or []):
-                url = str(it.get("img") or "")
-                if not url:
-                    continue
-                # SKU first: an ASIN can carry several of our SKUs, and the
-                # picture of the wrong one is still the wrong picture.
-                for k in (_key(it.get("sku")), _key(it.get("asin"))):
-                    if k and k not in out:
-                        out[k] = url
-        return out
+        from domain import catalogue as _cat
+        return _cat.merged(CONFIG_PATH,
+                           [(str(a.get("id") or ""), _marketplace(a))
+                            for a in _accounts_in_scope()])
 
     def _cost_fn():
         """sku -> (cost, source), from the ONE resolver (domain/cogs.py)."""
@@ -294,8 +278,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 continue
             d = _ov.profit_detail(items, w.get("total"), cost_of)
             it = _ov.item_summary(items)
-            it["img"] = (pics.get(_key(it.get("sku")))
-                         or pics.get(_key(it.get("asin"))) or "")
+            it["img"] = _cat_look(pics, it).get("img") or ""
             out[oid] = {"item": it, "lines": len(items),
                         "profit": d["profit"], "margin_pct": d["margin_pct"],
                         "roi_pct": d["roi_pct"], "cogs": d["cogs"],

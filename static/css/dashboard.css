@@ -2743,6 +2743,55 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .panelcard.roomy{ padding:16px 16px 14px; }
 .panelcard + .panelcard{ margin-top:12px; }
 
+/* ---- THE ORDERS TABLE ----------------------------------------------------
+   Reported as "i see text written into one another, no proper spacing and good
+   visuals like other pages", and that is what it was: table.kv is 3px of
+   vertical padding, which suits a two-column key/value list of single lines.
+   The orders table puts TWO lines in most of its cells -- a product name over
+   its SKU, a date over the channel and town, an order number over its unit
+   count -- so 3px between one order's small print and the next order's title
+   left them touching, with no line between rows to tell them apart.
+
+   Here rather than in the JS string: every other table's spacing is in this
+   file, and a second set of numbers inside a template literal is a second
+   place to keep in step. */
+table.ordtable{ border-collapse:separate; border-spacing:0; }
+table.ordtable th{
+  padding:10px 12px;
+  text-align:left;
+  font-size:10.5px;
+  font-weight:600;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:var(--muted);
+  white-space:nowrap;
+  background:rgba(0,0,0,.16);
+  border-bottom:1px solid rgb(55,65,81);
+  position:sticky;                /* the headings stay while a long list scrolls */
+  top:0;
+  z-index:1;
+}
+table.ordtable td{
+  padding:11px 12px;
+  vertical-align:middle;          /* .kv aligns top, which floats a 34px image */
+  border-bottom:1px solid rgba(55,65,81,.55);
+}
+table.ordtable tbody tr:last-child > td{ border-bottom:0; }
+/* The row a click would open. Colour is reserved for status, so this is only
+   a lift in the background. */
+table.ordtable tbody tr.ordrow{ cursor:pointer; transition:background .12s; }
+table.ordtable tbody tr.ordrow:hover{ background:rgba(255,255,255,.035); }
+table.ordtable tbody tr.ordrow.isopen{ background:rgba(255,255,255,.05); }
+/* Small print under a main line, in every cell that has any. Without this the
+   two lines sit on top of each other at these font sizes. */
+table.ordtable td .cc{ margin-top:3px; line-height:1.35; }
+/* The opened detail row is part of the order above it, not a row of its own. */
+table.ordtable tbody tr.orddetail > td{
+  padding:0 12px 12px;
+  border-bottom:1px solid rgba(55,65,81,.55);
+  background:rgba(255,255,255,.05);
+}
+
 /* CHIPS THAT SAY WHAT THEY DO. `.db-chip` had one appearance, so a screen
    whose main action was "publish to Amazon" had to reach for a bare
    <button class="danger"> and stopped matching everything around it.

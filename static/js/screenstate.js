@@ -103,4 +103,20 @@ function screenForgetAll(){
   // competes with the account you have just opened for the browser's six
   // connections, which is the whole reason it is paced in the first place.
   if(typeof schemasAbandon === "function") schemasAbandon();
+  // AND THE ORDERS. This one holds real customers' names, towns and postcodes,
+  // and it keeps them in ORD.rows rather than only in the panel -- which
+  // ordersOnOpen then reuses instead of loading ("if(!ORD.rows.length)"). So
+  // emptying the panel was not enough: opening Orders in the account you just
+  // switched to redrew the account you just left, PII and all.
+  //
+  // Also resets whose orders are asked for, back to "the workspace you have
+  // open". Choosing "Every account" is a decision about one screen, not one
+  // that should follow you into a different company's workspace.
+  if(typeof ORD !== "undefined" && ORD){
+    ORD.rows = []; ORD.summary = {}; ORD.meta = null;
+    ORD.details = {}; ORD.open = ""; ORD.account = "";
+    ORD.loadId = (ORD.loadId || 0) + 1;      // abandon any load in flight
+    const _oa = document.getElementById("ord_account");
+    if(_oa) _oa.value = "";
+  }
 }

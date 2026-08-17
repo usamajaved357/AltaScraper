@@ -104,13 +104,60 @@ print("\n=== the picture is resolved by the SERVER ===")
 # screen loads. Open Orders directly, as anyone does, and that array is empty:
 # every row had a name and a grey placeholder. Measured: 0 pictures on 35 rows.
 R = open(r"D:\AltaScraper\routes\orders_routes.py", encoding="utf-8").read()
-truthy("the row carries its own image", 'it["img"] = (pics.get(' in R)
-truthy("  from the same snapshot the listing cards use", "live_snapshots" in R)
-truthy("  matched on SKU before ASIN",
-       '_key(it.get("sku"))\n                             or pics.get(_key(it.get("asin")))' in R
-       or 'pics.get(_key(it.get("sku")))' in R)
+truthy("the row carries its own image", 'it["img"] = _cat_look(' in R)
 truthy("the page still falls back to its own catalogue",
        "if(item.img) return item.img;" in JS and "LIVE_ITEMS" in JS)
+
+print("\n--- and ONE lookup does it, for every screen that needs it ---")
+# Orders needed the picture, Traffic already had a title lookup, and Sales
+# needed both. Three readings of one snapshot drift: one matches SKU before
+# ASIN, another only ASIN, a third folds case and the fourth does not, and the
+# same product ends up with two pictures in one app. CLAUDE.md Rule 12.
+truthy("orders asks the shared catalogue", "from domain import catalogue" in R)
+C = open(r"D:\AltaScraper\domain\catalogue.py", encoding="utf-8").read()
+truthy("  which is where the snapshot is actually read", "live_snapshots" in C)
+truthy("  and SKU beats ASIN, in one place", "WHY SKU BEATS ASIN" in C)
+T = open(r"D:\AltaScraper\domain\traffic_view.py", encoding="utf-8").read()
+truthy("traffic asks it too", "_cat.titles(" in T)
+truthy("  and no longer reads the snapshot itself",
+       "live_snapshots" not in T)
+S = open(r"D:\AltaScraper\routes\sales_routes.py", encoding="utf-8").read()
+truthy("and so does the Sales breakdown", "_cat.index(" in S)
+truthy("  giving each product row its picture and name",
+       'r["img"] =' in S and 'r["title"] =' in S)
+SJ = open(r"D:\AltaScraper\static\js\sales.js", encoding="utf-8").read()
+truthy("  which the table then draws", "r.img" in SJ and "r.title" in SJ)
+
+print("\n=== each account's orders stay in its own account ===")
+# "i see i can see all the other account orders into jacks workspace" -- the
+# route already refused to default to every account; the browser asked for
+# __all__ outright, overriding it.
+truthy("the default is the workspace you have open",
+       'account: ""' in JS)
+truthy("  and __all__ is no longer the default", 'account: "__all__"' not in JS)
+H = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
+truthy("the picker says so, and starts there",
+       '<option value="" selected>This account only</option>' in H)
+truthy("every account is still available, as a choice",
+       '<option value="__all__">Every account</option>' in H)
+SS = open(r"D:\AltaScraper\static\js\screenstate.js", encoding="utf-8").read()
+truthy("switching workspace forgets the orders held in memory",
+       "ORD.rows = []" in SS)
+truthy("  including whose they were", 'ORD.account = ""' in SS)
+truthy("  and abandons any load still running", "ORD.loadId" in SS)
+
+print("\n=== the visuals ===")
+truthy("the table is in a panel like every other screen", 'class="panelcard"' in JS)
+truthy("  with its spacing in the stylesheet, not in a template literal",
+       "padding:6px 8px" not in JS)
+CSS = open(r"D:\AltaScraper\static\css\dashboard.css", encoding="utf-8").read()
+truthy("there is a rule for this table", "table.ordtable" in CSS)
+truthy("  rows are separated by a line", "table.ordtable td{" in CSS)
+truthy("  small print does not sit on the line above it",
+       "table.ordtable td .cc{ margin-top:3px" in CSS)
+truthy("  cells are centred, so a 34px picture does not float",
+       "vertical-align:middle" in CSS)
+truthy("  the headings stay put down a long list", "position:sticky" in CSS)
 
 print("\n=== a failed read is counted, not swallowed ===")
 truthy("unread orders are counted", "unread += 1" in R)

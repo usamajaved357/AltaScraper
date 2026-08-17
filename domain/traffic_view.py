@@ -62,19 +62,13 @@ def _titles(config_path, workspace_id, marketplace):
     on its own is unreadable -- nobody knows which shoe B0F9NQ6WZK is -- but a
     missing snapshot must not empty the table, so the ASIN stands alone when
     there is no title for it.
+
+    The reading of the snapshot itself is in domain/catalogue.py, shared with
+    Orders and Sales, so one product cannot end up named or pictured differently
+    on two screens of one app (CLAUDE.md Rule 12).
     """
-    try:
-        from domain import live_snapshots as _ls
-        rec = _ls.get(config_path, workspace_id, marketplace) or {}
-    except Exception:
-        return {}
-    out = {}
-    for it in (rec.get("items") or []):
-        a = str(it.get("asin") or "").strip()
-        t = str(it.get("title") or "").strip()
-        if a and t and a not in out:
-            out[a] = t
-    return out
+    from domain import catalogue as _cat
+    return _cat.titles(config_path, workspace_id, marketplace)
 
 
 def daily(config_path, workspace_id, marketplace, start, end):
@@ -221,6 +215,48 @@ def account_revenue(config_path, workspace_id, marketplace, start, end):
         return None
 
 
+def freshness(config_path, workspace_id, marketplace, start, end):
+    """How much of the window asked for actually has traffic in it.
+
+    "i want accurate data and most updated one" -- and a total over a window
+    that is missing its most recent days is not wrong so much as quietly
+    smaller than the label promises. Every rate on the page divides by it.
+
+    MEASURED on jack_uk, 17 Aug 2026: the newest day with any traffic was the
+    14th. Amazon answered the fetch for the 15th and 16th with QuotaExceeded, so
+    the 30-day tiles were a 28-day window under a 30-day heading, with nothing
+    on screen saying which days were missing or why.
+
+    Amazon never publishes today, and revises yesterday for a day or two after,
+    so ONE day behind is normal and is not reported. Two or more is worth
+    saying.
+
+    Returns {last, missing_days, note} -- note is "" when there is nothing to
+    say, which is the usual case.
+    """
+    conn = _db.get_db(config_path)
+    row = conn.execute(
+        "SELECT MAX(date) d FROM sales_daily WHERE workspace_id=? AND "
+        "marketplace=? AND date<=? AND COALESCE(sessions,0)>0",
+        (workspace_id, marketplace, end)).fetchone()
+    last = (row["d"] if row else None) or ""
+    if not last or last >= end:
+        return {"last": last, "missing_days": 0, "note": ""}
+    import datetime as _dt
+    try:
+        gap = (_dt.date.fromisoformat(end) - _dt.date.fromisoformat(last)).days
+    except (TypeError, ValueError):
+        return {"last": last, "missing_days": 0, "note": ""}
+    if gap < 2:
+        return {"last": last, "missing_days": gap, "note": ""}
+    return {"last": last, "missing_days": gap, "note": (
+        "Amazon's traffic report has not arrived past %s, so the %d day%s after "
+        "it are missing from these figures — every total and rate here covers "
+        "%s to %s, not to %s. Amazon rebuilds these reports slowly and rate-"
+        "limits them; they fill in on the next sync."
+        % (last, gap, "" if gap == 1 else "s", start, last, end))}
+
+
 def _totals(days, rows):
     t = {k: 0 for k in ("sessions", "page_views", "units", "revenue")}
     bb_num = bb_den = 0.0
@@ -326,6 +362,9 @@ def summary(config_path, workspace_id, marketplace, start, end,
         # screens quietly disagree.
         "revenue_note": revenue_note,
         "revenue_attributed": attributed,
+        # How much of the window actually has data behind it. Silent when the
+        # answer is "all of it", which is the usual case.
+        "freshness": freshness(config_path, workspace_id, marketplace, start, end),
         "kpis": [{"key": k, "label": l, "kind": kind,
                   "value": tot.get(k), "delta_pct": deltas.get(k),
                   "note": (revenue_note if k == "revenue" else "")}
