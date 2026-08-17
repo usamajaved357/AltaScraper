@@ -307,6 +307,30 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             CONFIG_PATH, wsid, mkt, request.args.get("sku") or None,
             int(request.args.get("limit") or 200))})
 
+    @app.route("/sourcing/alerts")
+    def sourcing_alerts():
+        """SKUs with nowhere left to buy from.
+
+        "add an alert in the app that whenever all the links go out of stock i
+         should receive a notification"
+
+        Worked out from the readings every time rather than kept in a table --
+        domain/stock_alerts.py explains why. Cheap: local database only, no
+        supplier is contacted, so a screen may poll it.
+        """
+        from domain import stock_alerts as _alerts
+        wsid, mkt = _where()
+        if not wsid:
+            return jsonify({"ok": False, "error": "no account selected"}), 400
+        out = _alerts.for_account(CONFIG_PATH, wsid, mkt)
+        # The sentence comes from the same place as the alert, so the banner, the
+        # repricer and anything added later say the same thing.
+        for group in ("alerts", "unreadable"):
+            for a in out.get(group, []):
+                a["sentence"] = _alerts.sentence(a)
+        out["ok"] = True
+        return jsonify(out)
+
     @app.route("/sourcing/candidates")
     def sourcing_candidates():
         """This account's live listings, with whether each is already enrolled.

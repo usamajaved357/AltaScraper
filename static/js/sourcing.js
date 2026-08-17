@@ -79,6 +79,70 @@ async function sourcingLoad(){
   try{ SRC_MASTER = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
   catch(e){ SRC_MASTER = false; }
   sourcingRender(j);
+  // WHICH SKUS HAVE NOWHERE LEFT TO BUY FROM. Fetched after the table is drawn
+  // rather than before it: the alert is important but the table is what the
+  // screen is FOR, and one should not wait on the other.
+  sourcingAlerts();
+}
+
+/* THE OUT-OF-STOCK ALERT.
+ *
+ * "add an alert in the app that whenever all the links go out of stock i should
+ *  receive a notification"
+ *
+ * The wording comes from the server (domain/stock_alerts.sentence) so this banner
+ * and anything else that reports it later cannot say different things.
+ *
+ * Two groups, deliberately not merged. "Every supplier has ended" is a fact and
+ * needs action; "we could not read any of them" is not knowing, and calling that
+ * an emergency is how an alert stops being believed.
+ */
+async function sourcingAlerts(){
+  const host = document.getElementById("srcalerts");
+  if(!host) return;
+  let j;
+  try{ j = await (await fetch(_srcUrl("/sourcing/alerts"))).json(); }
+  catch(e){ host.innerHTML = ''; return; }
+  if(!j || !j.ok){ host.innerHTML = ''; return; }
+  const bad = j.alerts || [], dunno = j.unreadable || [];
+  if(!bad.length && !dunno.length){
+    // Say the good news too, quietly. A blank space cannot be told apart from a
+    // check that never ran.
+    host.innerHTML = '<div class="cc" style="font-size:11px;padding:6px 2px">'
+      + '<i class="ti ti-check"></i> Every enrolled SKU has at least one supplier '
+      + 'that can be bought from.</div>';
+    return;
+  }
+  let h = '';
+  if(bad.length){
+    h += '<div style="border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;'
+      +  'border-radius:6px;padding:9px 11px;margin:4px 0;font-size:11.5px">'
+      +  '<div style="font-weight:600;margin-bottom:4px">'
+      +  '<i class="ti ti-alert-triangle"></i> '
+      +  bad.length + ' SKU' + (bad.length===1?' has':'s have')
+      +  ' nowhere left to buy from</div>';
+    bad.slice(0, 12).forEach(function(a){
+      h += '<div style="padding:2px 0">' + _sesc(a.sentence || a.sku) + '</div>';
+    });
+    if(bad.length > 12){
+      h += '<div class="cc" style="padding:2px 0">…and ' + (bad.length - 12)
+        +  ' more.</div>';
+    }
+    h += '</div>';
+  }
+  if(dunno.length){
+    h += '<div style="border:1px solid #3a3320;background:#241f10;'
+      +  'border-radius:6px;padding:9px 11px;margin:4px 0;font-size:11.5px">'
+      +  '<div style="font-weight:600;margin-bottom:4px">'
+      +  '<i class="ti ti-info-circle"></i> '
+      +  dunno.length + ' SKU' + (dunno.length===1?'':'s')
+      +  ' could not be read — not known whether they can still be bought</div>';
+    dunno.slice(0, 8).forEach(function(a){
+      h += '<div style="padding:2px 0">' + _sesc(a.sentence || a.sku) + '</div>';
+    });
+    h += '</div>';
+  }
+  host.innerHTML = h;
 }
 
 async function sourcingMaster(on){
@@ -626,6 +690,52 @@ function _priceBreakdown(b, cur){
 // Every reading we hold for one supplier, newest first. Two readings that never
 // move are how you tell a stable price from a stale one, so failures are listed
 // rather than hidden.
+/* THE DELIVERY LINE, shared with the order details screen.
+ *
+ * "i want to see this information of the source in the repricer as well" -- the
+ * carrier if eBay named one ("Royal Mail Tracked 48"), otherwise the postage as
+ * written, then the estimated delivery window and the postcode it was worked out
+ * for. All of it is stored on the check by domain/source_fetch.py.
+ *
+ * The dates are formatted BY THE SERVER for the order screen (delivery_text from
+ * domain/order_sources.py) but this screen is handed the raw check row, so it
+ * formats them here. Kept to the same shape -- "Tue 18 Aug to Wed 19 Aug" -- so
+ * the two screens read alike.
+ */
+function _srcDeliveryLine(k){
+  if(!k) return '';
+  const bits = [];
+  if(k.postage_text) bits.push(_sesc(k.postage_text));
+  else if(k.carrier) bits.push(_sesc(k.carrier));
+  const win = _srcWindow(k.delivery_min, k.delivery_max);
+  if(win){
+    bits.push('arrives ' + win
+      + (k.delivery_postcode ? ' to ' + _sesc(k.delivery_postcode) : ''));
+  }
+  if(!bits.length) return '';
+  return '<div class="cc" style="font-size:10.5px;padding:0 0 4px 34px">'
+       + bits.join(' · ') + '</div>';
+}
+
+function _srcWindow(lo, hi){
+  const a = _srcDay(lo), b = _srcDay(hi);
+  if(a && b && a !== b) return a + ' to ' + b;
+  return b || a || '';
+}
+
+function _srcDay(iso){
+  // Written out rather than using toLocaleDateString: that follows the browser's
+  // locale, so the same date would read differently on two machines looking at
+  // the same order.
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if(!m) return '';
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if(isNaN(d)) return '';
+  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return days[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + mon[d.getUTCMonth()];
+}
+
 function _sourceHistory(hist){
   if(!hist || hist.length<2) return '';
   let h = '<div class="cc" style="font-size:11px;margin:5px 0 2px">'
@@ -892,6 +1002,10 @@ function sourcingRow(r, i){
       +  (rej ? '<span class="cc" style="color:#e8c66a">'+_sesc(rej.reason)+'</span>' : '')
       +  '<button class="db-chip" onclick="sourcingRemoveSource('+s.id+')">×</button>'
       +  '</div>';
+    // HOW IT GETS HERE AND WHEN. "i want to see this information of the source in
+    // the repricer as well" -- the same facts, and the same wording, as the order
+    // details screen. The line is only drawn when eBay actually said something.
+    h += _srcDeliveryLine(k);
     h += _sourceHistory(s.history);
   });
   if(!(r.sources||[]).length){

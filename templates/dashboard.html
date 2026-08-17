@@ -899,6 +899,11 @@
           title="When a supplier's price moves, the price it proposes moves with it. When they run out, it would take the listing out of stock. When they slow down, the handling time stretches. Only SKUs enrolled here are ever read, and auto-pricing is a separate switch.">i</span></div>
       </div>
       <div id="srcpick" style="display:none;padding:4px 0"></div>
+      <!-- SKUs with nowhere left to buy from. Above the table on purpose: it is
+           the one thing on this screen that needs acting on today, and a warning
+           below a long table is a warning nobody reads. Filled by
+           sourcingAlerts() in static/js/sourcing.js. -->
+      <div id="srcalerts"></div>
       <div id="srcbody" style="padding:4px 0"></div>
     </div>
 

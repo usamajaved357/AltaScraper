@@ -467,6 +467,113 @@ function ordersRender(){
   body.innerHTML = h;
 }
 
+/* WHERE TO BUY THIS ONE FROM.
+ *
+ * "display the source links in the order details arranged by low to high price,
+ *  which tells the user you have received an order and you can place the order
+ *  from one of these. also show handling time and profit pounds if the user place
+ *  order from each link what will be the profit and when will my order will be
+ *  delivered to the buyer"
+ *
+ * The ranking, the profit and the delivery wording all come from the server
+ * (domain/order_sources.py), which the repricer screen also asks -- so the two
+ * cannot disagree about which link is cheapest or what it would earn. Nothing is
+ * worked out here; this only draws it.
+ *
+ * A DEAD LINK IS STILL SHOWN, greyed and labelled. Three sources where two have
+ * ended is a different situation from one source, and hiding the ended ones makes
+ * them look the same.
+ */
+function _ordSourcesHtml(block){
+  if(!block) return '';
+  if(block.error){
+    return '<div class="cc" style="font-size:10.5px;padding:3px 0 6px;color:var(--warn)">'
+         + 'Could not read the supplier links: ' + _oEsc(block.error) + '</div>';
+  }
+  const opts = block.options || [], s = block.summary || {};
+  if(!opts.length){
+    return '<div class="cc" style="font-size:10.5px;padding:3px 0 6px">'
+         + 'No supplier links are tracked for this SKU — add one in the Repricer '
+         + 'to see where to buy it and what it would earn.</div>';
+  }
+  // EVERY LINK GONE. The loudest thing this panel can say, so it goes first and
+  // in red: the order has to be fulfilled and there is nowhere to buy it.
+  let h = '';
+  if(s.all_dead){
+    h += '<div style="font-size:10.5px;padding:5px 8px;margin:3px 0 5px;'
+      +  'border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;border-radius:5px">'
+      +  '<i class="ti ti-alert-triangle"></i> <b>Every supplier for this SKU is '
+      +  'out of stock or ended.</b> There is nowhere to buy this order from right '
+      +  'now.</div>';
+  }
+  h += '<div style="font-size:10.5px;padding:2px 0 7px">'
+    +  '<div class="cc" style="margin-bottom:3px">Buy from — cheapest first'
+    +  (s.buyable ? '' : ' · none available')
+    +  (block.unit_price !== null && block.unit_price !== undefined
+        ? ' · profit is against the ' + _oEsc(_oMoney(block.unit_price)) + ' this buyer paid'
+        : '')
+    +  '</div>';
+  opts.forEach(function(o){
+    const dead = o.state === 'dead', unknown = o.state === 'unknown';
+    h += '<div style="display:flex;gap:8px;align-items:baseline;padding:3px 0'
+      +  (dead ? ';opacity:.5' : '') + '">'
+      // The cheapest buyable one is marked, so the choice is obvious at a glance
+      // rather than being inferred from the order of the rows.
+      +  '<span style="width:52px;flex:none' + (o.cheapest ? ';color:var(--ok)' : '') + '">'
+      +  (o.cheapest ? 'cheapest' : (dead ? 'gone' : (unknown ? '?' : '#' + o.rank)))
+      +  '</span>'
+      +  '<a href="' + _oEsc(o.url) + '" target="_blank" rel="noopener"'
+      +  ' style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;'
+      +  'white-space:nowrap">' + _oEsc(o.label || o.url) + '</a>'
+      // LANDED COST -- the item plus its postage, which is what leaves the bank.
+      +  '<span style="width:74px;flex:none;text-align:right">'
+      +  (o.landed === null || o.landed === undefined
+          ? '<span class="cc">—</span>'
+          : _oEsc(_oMoney(o.landed, o.currency)))
+      +  '</span>'
+      // PROFIT IN POUNDS, which is what was asked for, with the ROI beside it.
+      +  '<span style="width:86px;flex:none;text-align:right'
+      +  (o.profit !== null && o.profit !== undefined && o.profit < 0
+          ? ';color:var(--red)' : '') + '">'
+      +  (o.profit === null || o.profit === undefined
+          ? '<span class="cc">—</span>'
+          : _oEsc(_oMoney(o.profit, o.currency))
+            + (o.roi_pct === null || o.roi_pct === undefined ? ''
+               : ' <span class="cc">' + Number(o.roi_pct).toFixed(0) + '%</span>'))
+      +  '</span>'
+      +  '</div>';
+    // HOW IT GETS THERE AND WHEN, on its own line -- the carrier if eBay named
+    // one, otherwise the postage as written, then the delivery window and the
+    // postcode it was worked out for.
+    const bits = [];
+    if(o.postage_text) bits.push(_oEsc(o.postage_text));
+    if(o.delivery_text){
+      bits.push('arrives ' + _oEsc(o.delivery_text)
+        + (o.delivery_postcode ? ' to ' + _oEsc(o.delivery_postcode) : ''));
+    }
+    if(o.dispatch_days !== null && o.dispatch_days !== undefined){
+      bits.push(o.dispatch_days + ' day' + (o.dispatch_days === 1 ? '' : 's')
+                + ' handling');
+    }
+    if(o.available_qty !== null && o.available_qty !== undefined){
+      bits.push(o.available_qty + ' left');
+    }
+    if(dead){
+      bits.push(o.status === 'gone' ? 'the listing has ended' : 'out of stock');
+    }
+    if(unknown && o.error) bits.push('could not read it: ' + _oEsc(o.error));
+    // A PRICE FROM YESTERDAY IS NOT A PRICE. Said plainly rather than left for
+    // someone to work out from a timestamp.
+    if(o.stale) bits.push('this reading is out of date — press Check in the Repricer');
+    if(bits.length){
+      h += '<div class="cc" style="padding:0 0 4px 60px;font-size:10px'
+        +  (dead ? ';opacity:.6' : '') + '">' + bits.join(' · ') + '</div>';
+    }
+  });
+  h += '</div>';
+  return h;
+}
+
 function _ordDetailHtml(r){
   const d = ORD.details[r.order_id] || {};
   const items = d.items || [];
@@ -493,6 +600,8 @@ function _ordDetailHtml(r){
           ? '<span style="color:var(--warn);white-space:nowrap">cancel requested</span>'
           : '')
       +  '</div>';
+    // WHERE TO BUY THIS LINE FROM, right under the line it belongs to.
+    h += _ordSourcesHtml((d.sources || {})[it.sku]);
   });
   const o = d.order || {};
   // What it earned, worked out from the lines that are already here.
