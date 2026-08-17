@@ -1421,7 +1421,7 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
            So it always worked on a listing the app has no draft for; the button
            was simply never drawn here, which is part of why the caption above
            still claimed these could not be edited. -->
-      <button class="ib" title="Change this listing's selling price on Amazon" onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}','${esc(String(it.price||'').replace(/^[A-Z]{3}\s?/,''))}')"><i class="ti ti-tag"></i> Price</button>
+      <button class="ib" title="Change this listing's selling price on Amazon" onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}','${esc(String(it.price||'').replace(/^[A-Z]{3}\s?/,''))}','${esc(it.title||'')}')"><i class="ti ti-tag"></i> Price</button>
       <!-- _dpUrl (listings.js) knows every marketplace domain. This link was
            hand-rolled and sent DE/FR/IT/ES to amazon.com. -->
       <a class="ib" title="View on Amazon" href="${esc(_dpUrl(it.asin||''))}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a>

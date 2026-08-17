@@ -1423,7 +1423,7 @@ function liveTableRow(it){
     <td>${comp}</td>
     <td><div class="acts">
       <button class="dotb" title="Change what this sells for on Amazon"
-              onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}',${Number(String(it.price||'').replace(/[^0-9.]/g,''))||0})"><i class="ti ti-currency-pound"></i></button>
+              onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}',${Number(String(it.price||'').replace(/[^0-9.]/g,''))||0},'${esc(it.title||'')}')"><i class="ti ti-currency-pound"></i></button>
       <button class="dotb" title="Compare this listing with Amazon's live copy, field by field"
               onclick="event.stopPropagation();syncForSku('${esc(it.sku||'')}')"><i class="ti ti-arrows-exchange"></i></button>
       <button class="dotb" title="Add another colour or size of this product, from an eBay link"
