@@ -61,9 +61,36 @@ async function loadMediaLibrary(){
           var _sz=(im.bytes)?_fmtBytes(im.bytes):'';
           var _grp=im.group?('<span class="medagroup">'+esc(im.group)+'</span>'):'';
           var _meta=(_dim||_sz)?('<div class="mediameta">'+esc([_dim,_sz].filter(Boolean).join(' · '))+'</div>'):'';
-          return '<div class="mediacell"><img src="'+esc(im.url)+'" loading="lazy" onclick="window.open(\''+esc(im.url)+'\')">'+_grp+
+          // FULL SCREEN, OVER THE APP -- not a new browser tab.
+          //
+          // "you said i will be able to preview images by clicking on them like
+          //  in drive when i go to the images section on the app, which is not
+          //  truth also i do not have a download button in the image refs tab"
+          //
+          // Both true. This called window.open(), which hands the picture to the
+          // browser and takes you out of the app to look at it; and the cell had
+          // Delete and Edit and no way to save the file.
+          //
+          // The viewer already existed -- ilPreview in listingimages.js, built
+          // for the Image Library, with Download and Open already on it. This
+          // grid simply never used it. Calling it rather than writing a second
+          // one, so the two galleries behave the same and there is one thing to
+          // fix if either is wrong (Rule 12). window.open stays as the fallback
+          // for the case where that file has not loaded.
+          var _nm = (im.name || im.url.split('/').pop() || 'image');
+          var _open = (typeof ilPreview === 'function')
+            ? 'ilPreview(' + jsArg(im.url) + ',' + jsArg(_nm) + ')'
+            : 'window.open(\'' + esc(im.url) + '\')';
+          return '<div class="mediacell"><img src="'+esc(im.url)+'" loading="lazy" '+
+            'title="Click to view it full size" style="cursor:zoom-in" '+
+            'onclick="'+esc(_open)+'">'+_grp+
             '<button class="mediadel" title="Delete" onclick="delMedia(\''+esc(im.url)+'\')"><i class="ti ti-x"></i></button>'+
             '<button class="mediaedit" title="Edit this image (AI changes only what you ask, keeps the rest)" onclick="editMediaImage(\''+esc(im.url)+'\',\''+esc(f.sku)+'\')"><i class="ti ti-wand"></i> Edit</button>'+
+            '<button class="mediadl" title="Download this image" onclick="event.stopPropagation();'+
+              (typeof ilDownloadOne === 'function'
+                ? esc('ilDownloadOne(' + jsArg(im.url) + ',' + jsArg(_nm) + ')')
+                : 'window.open(\''+esc(im.url)+'\')')+
+              '"><i class="ti ti-download"></i></button>'+
             _meta+'</div>';
         }).join('')+'</div></details>';
     }).join('');

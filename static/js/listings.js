@@ -803,11 +803,56 @@ function _cardImages(r){
 // one set of tokens. LIVE is neutral grey here for the same reason .b-LIVE is:
 // live is the resting state, not an achievement, and a grid of green dots made
 // every finished listing look like it wanted attention.
+// THE DOT IS ABOUT A PROBLEM, NOT ABOUT A STORED WORD.
+//
+// "i see that my every live listing shows a red or orange dots on them, donot
+//  set the status to review when there is no problem in it ... if there is no
+//  flag no need to highlight, if there is a api error than it should show that
+//  dot"
+//
+// It coloured straight off r.status, which is what the app STORED at some point
+// -- so a listing that went live on Amazon months ago, but whose row still says
+// API_ERROR from a failed attempt before that, showed a red dot for ever. The
+// counts along the top already reclassify those as LIVE (see summary()); the dot
+// did not, so the tiles and the counts disagreed and every live listing looked
+// like it needed attention.
+//
+// Now: a listing Amazon confirms is live has no problem to report unless
+// something actually flags it -- a compliance document demand, an IP risk, a
+// claim risk. Those checks already run; the dot follows them instead of
+// second-guessing with a stale status.
 function _statusDot(r){
-  var s=r.status||"";
-  var col = s==="LIVE"?"var(--ink2)" : (isHold(s)||s==="API_ERROR"||s==="ERROR")?"var(--red)"
-          : s==="NEEDS_REVIEW"?"var(--warn)" : s==="APPROVED"?"var(--ok)" : "var(--ink3)";
-  return col;
+  var s = r.status || "";
+  // Amazon's own answer beats the stored word, exactly as the counts do.
+  var live = false;
+  try{
+    var sets = _liveCatSetsForCurrentView();
+    live = isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown);
+  }catch(e){ live = (s === "LIVE"); }
+  if(live || s === "LIVE"){
+    // A REAL flag still shows. Nothing else does.
+    if(_rowHasFlag(r)) return "var(--warn)";
+    return "var(--ink3)";              // quiet: live and nothing against it
+  }
+  if(isHold(s) || s === "API_ERROR" || s === "ERROR") return "var(--red)";
+  if(s === "NEEDS_REVIEW") return "var(--warn)";
+  if(s === "APPROVED") return "var(--ok)";
+  return "var(--ink3)";
+}
+
+// Is there anything actually WRONG with this row? The checks that already run --
+// restricted product types, compliance document demands, IP and claim risks --
+// rather than the status word.
+function _rowHasFlag(r){
+  if(!r) return false;
+  if(String(r.ip_risk || "").toUpperCase() === "HIGH") return true;
+  if((r.claim_flags || []).length) return true;
+  var v = r.viability;
+  if(v && v.matched && (v.risks || []).length) return true;
+  var rs = r.restricted;
+  if(rs && rs.matched && String(rs.overall_action || "").toUpperCase() !== "NONE")
+    return true;
+  return false;
 }
 // ---- GALLERY TILE ----
 // Is this row confirmed live by AMAZON right now? Used to gate the live-only
@@ -1273,6 +1318,20 @@ function _statusPill(s){
   return `<span class="badge ${badgeClass(s)}">${esc(s||"—")}</span>`;
 }
 
+// THE STATUS AS IT IS TODAY, not as it was stored.
+//
+// Same reason as _statusDot: a listing Amazon confirms is live is LIVE, whatever
+// word the row was left with by an attempt that failed before it went up. The
+// counts along the top already do this; the pill did not, so a live listing sat
+// under a red API_ERROR badge and its own account said 47 were live.
+function _shownStatus(r){
+  try{
+    const sets = _liveCatSetsForCurrentView();
+    if(isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown)) return "LIVE";
+  }catch(e){}
+  return r.status || "";
+}
+
 function tableRow(r){
   // Same image source the tile uses, so the two views cannot disagree about
   // which picture belongs to a listing.
@@ -1296,7 +1355,7 @@ function tableRow(r){
     <td class="price">${price}</td>
     ${cogsCell(r)}
     <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
-    <td>${_statusPill(r.status)}${needsCopy(r)
+    <td>${_statusPill(_shownStatus(r))}${needsCopy(r)
         ? `<div class="cc" style="font-size:9.5px;margin-top:3px;color:var(--warn)" `
           + `title="No bullets, no description, no product type yet. Select it and `
           + `press Regenerate copy, or open it and press Write it now.">no copy yet</div>`
