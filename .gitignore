@@ -112,3 +112,25 @@ sheets_archive_*.json
 # The HMAC key that signs public image URLs handed to Amazon. Secret, and
 # must persist on the server -- see domain/image_urls.py.
 image_url_key
+
+# Manually-entered cost prices, per account and SKU (domain/cogs_store.py writes
+# it beside config.json). This is what every product actually COST -- the single
+# most commercially sensitive number in the business, and it is per-machine
+# runtime state besides. Never commit it.
+cogs_overrides.json
+
+# CSV exports the app writes when the owner clicks Download on a report --
+# real sales figures, generated on demand, dated in the filename.
+sales_day_*.csv
+sales_report_*.csv
+orders_*.csv
+listings_backup_*.csv
+
+# Timestamped .bak copies the app makes before rewriting a rules file
+# (e.g. sourcing_viability_rules.json.bak-20260816050743).
+*.bak-*
+
+# Screenshots taken while comparing the app against Orbit. Debugging aids from
+# one session on one screen -- large, binary, and stale the moment the UI moves.
+orbit_shots/
+Screenshot*.png
