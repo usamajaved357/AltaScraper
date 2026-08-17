@@ -364,14 +364,17 @@ function toast(m){const t=document.getElementById("toast");t.textContent=m;t.cla
 function badgeClass(s){return ["APPROVED","NEEDS_REVIEW","IP_HOLD","COMPLIANCE_HOLD","ERROR","API_READY","API_ERROR","LIVE","PARENT"].includes(s)?("b-"+s):"b-none";}
 function isHold(s){return s==="IP_HOLD"||s==="COMPLIANCE_HOLD"||s==="ERROR"||s==="API_ERROR";}
 
-// True if a row belongs to the tab currently selected in the tab filter.
-// "__all__" = every tab. Rows with no tab tag (single-tab sheets) always pass.
-function tabPass(r){
-  if(TAB_FILTER==="__all__") return true;
-  return String(r.tab_gid||"")===String(TAB_FILTER);
-}
+// GONE: the sheet-tab filter. A spreadsheet had tabs and this let you look at
+// one of them; the app's own database does not, and there is nothing left for
+// this to filter. Reported twice -- "why do i still see tabs in the listings
+// page when i am not using any sheets", then "i still see tabs displayed at the
+// header of the screen in listings".
+//
+// It was already hidden whenever fewer than two tabs came back, which is why it
+// did not show on a clean account -- but any row still carrying a tab_gid from
+// the spreadsheet era brought the whole strip back. Hidden-unless is not gone.
+function tabPass(r){ return true; }             // kept: still called from a card path
 function passFilter(r){
-  if(!tabPass(r)) return false;                 // tab filter composes with status filter
   if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
@@ -381,26 +384,17 @@ function passFilter(r){
   return true;
 }
 
-// Draw the tab filter row (All tabs + one pill per tab, with counts). Hidden unless
-// the sheet has more than one listing tab. Same visual family as the status pills but
-// NEUTRAL — colour stays reserved for status. Called from summary() each render.
+// The strip under the toolbar. It used to be the sheet's tabs plus a duplicates
+// toggle; the tabs are gone with the spreadsheet, and the duplicates toggle --
+// which has nothing to do with sheets and is how you find the extra copies of a
+// SKU to delete -- stays. Called from summary() each render.
 function renderTabFilter(){
   const host=document.getElementById("tabfilter");
   if(!host) return;
-  if(!TABS || TABS.length<2){ host.style.display="none"; host.innerHTML=""; return; }
-  host.style.display="";
-  const total=TABS.reduce((a,t)=>a+(t.count||0),0);
-  const all=`<button class="tabpill ${TAB_FILTER==='__all__'?'active':''}" onclick="setTabFilter('__all__')">All tabs <span class="tabcount">${total}</span></button>`;
-  const pills=TABS.map(t=>{
-    const on=String(TAB_FILTER)===String(t.tab_gid);
-    return `<button class="tabpill ${on?'active':''}" onclick="setTabFilter('${esc(String(t.tab_gid))}')" title="${esc(t.tab)}">${esc(t.tab)} <span class="tabcount">${t.count||0}</span></button>`;
-  }).join("");
-  // "Duplicates only" toggle — shown only when the sheet actually has duplicate SKUs.
   const _dupN=(typeof countDuplicateSkus==="function")?countDuplicateSkus():0;
-  const dupBtn=_dupN>0
-    ? `<button class="tabpill dup ${DUP_ONLY?'active':''}" onclick="toggleDupOnly()" title="Show only duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> Duplicates <span class="tabcount">${_dupN}</span></button>`
-    : "";
-  host.innerHTML=`<span class="tablabel"><i class="ti ti-layout-grid"></i> Tabs</span>${all}${pills}${dupBtn}`;
+  if(!_dupN){ host.style.display="none"; host.innerHTML=""; return; }
+  host.style.display="";
+  host.innerHTML=`<button class="tabpill dup ${DUP_ONLY?'active':''}" onclick="toggleDupOnly()" title="Show only duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> Duplicates <span class="tabcount">${_dupN}</span></button>`;
 }
 // Switch the tab filter. When a SPECIFIC tab is chosen we also point the workspace's
 // active tab at it (server-side), so edits / approvals / image pushes land on the tab
@@ -900,7 +894,8 @@ function card(r){
         ${priceStr?`<span class="tileprice pii">${priceStr}</span>`:'<span></span>'}
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
-      ${(TABS&&TABS.length>1&&r.tab)?`<div class="tiletab" title="This listing lives on the '${esc(r.tab)}' tab"><i class="ti ti-layout-grid"></i> ${esc(r.tab)}</div>`:''}
+      <!-- the "lives on the X tab" badge went with the spreadsheet -->
+
       ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
         <span class="tiledup-lbl"><i class="ti ti-copy"></i> Duplicate SKU${_dupOther.length?` — also on ${esc(_dupOther.join(', '))}`:` — appears ${dupCopies(r).length}×`}</span>
         <button class="tiledup-del" title="Delete this copy from ${esc(r.tab||'this tab')} (other copies stay)" onclick="event.stopPropagation();delDuplicate('${esc(String(r.sku))}',${r.row||0},'${esc(String(r.tab||''))}',this)"><i class="ti ti-trash"></i> Delete this copy</button>

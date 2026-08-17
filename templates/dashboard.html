@@ -759,11 +759,12 @@
                 style="font-size:12px;padding:5px 8px">
           <option value="__all__">Every account</option>
         </select>
-        <!-- Opt-in: an order row carries no SKU, so working out what it earned
-             costs one Amazon call per order. The list loads instantly without
-             it, and the count fetched is always reported. -->
-        <button class="db-chip" id="ord_profit" onclick="ordersToggleProfit()"
-                title="Work out what each order earned — order total minus Amazon's fee minus what the stock cost. One Amazon call per order, so it is slower.">
+        <!-- ON by default, and starts that way: this is what fills the Item
+             column with the product, its picture, the margin and the ROI. It
+             costs one Amazon call per order, so it runs as a second pass after
+             the list is already drawn. Pressing this turns it OFF. -->
+        <button class="db-chip on" id="ord_profit" onclick="ordersToggleProfit()"
+                title="Read what was in each order and what it earned — the product and its picture, profit, margin and ROI. One Amazon call per order, so it fills in just after the list appears. Press to turn it off.">
           <i class="ti ti-coins"></i> Work out profit
         </button>
       </div>

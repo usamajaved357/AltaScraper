@@ -40,6 +40,13 @@ def _pct(a, b):
     return round(a / b * 100, 2) if b else None
 
 
+def _money(v):
+    try:
+        return "%.2f" % float(v or 0)
+    except (TypeError, ValueError):
+        return "0.00"
+
+
 def _ratio(a, b):
     try:
         a, b = float(a or 0), float(b or 0)
@@ -174,6 +181,46 @@ KPIS = [
 ]
 
 
+def account_revenue(config_path, workspace_id, marketplace, start, end):
+    """What the ACCOUNT made over the period -- the Sales screen's own figure.
+
+    THE PER-ASIN ROWS DO NOT ADD UP TO THE ACCOUNT. Amazon's Sales & Traffic
+    report has two independent blocks: salesAndTrafficByDate, the account total
+    for each day, and salesAndTrafficByAsin, the per-product breakdown. They do
+    not agree, because the ASIN block only carries what Amazon could attribute
+    to a child ASIN at that granularity.
+
+    MEASURED on jack_uk, 14 Aug 2026 -- one day, one account:
+
+        Sales screen     102.21     the account-total row
+        Traffic screen    89.97     the per-ASIN rows, summed
+
+    Twelve percent apart, on two screens read side by side, both labelled
+    Revenue. Sessions and units matched exactly on the same day, so this is not
+    a double-count and not a stale sync -- it is two different questions being
+    given the same name.
+
+    A tile labelled Revenue on a page about the account is read as the account's
+    revenue, so it is the account's revenue that goes there, taken from
+    sales_data.totals() -- the one place that defines it, which is what the
+    Sales screen already asks. The per-ASIN table keeps its own figures, because
+    per-product revenue is exactly what that table is for.
+
+    Returns None when it cannot be read, which the caller reports rather than
+    quietly falling back to the smaller number.
+    """
+    try:
+        from domain import sales_data as _sd
+        got = _sd.totals(config_path, workspace_id, marketplace, start, end)
+    except Exception:
+        return None
+    v = (got or {}).get("ordered_sales")
+    try:
+        return round(float(v), 2) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _totals(days, rows):
     t = {k: 0 for k in ("sessions", "page_views", "units", "revenue")}
     bb_num = bb_den = 0.0
@@ -207,11 +254,31 @@ def summary(config_path, workspace_id, marketplace, start, end,
     rows = per_asin(config_path, workspace_id, marketplace, start, end, group)
     tot = _totals(days, rows)
 
+    # The account's revenue, not the sum of what could be attributed to
+    # individual products. See account_revenue() for the measured gap.
+    attributed = tot["revenue"]
+    acct = account_revenue(config_path, workspace_id, marketplace, start, end)
+    revenue_note = ""
+    if acct is not None:
+        tot["revenue"] = acct
+        if abs(acct - (attributed or 0)) >= 0.01:
+            revenue_note = (
+                "Revenue is the account's total for these dates, %s. Amazon "
+                "could attribute %s of it to individual products, which is what "
+                "the table below adds up to — the rest it reports at account "
+                "level only." % (_money(acct), _money(attributed)))
+
     deltas = {}
     if prev:
         p_days = daily(config_path, workspace_id, marketplace, prev[0], prev[1])
         p_rows = per_asin(config_path, workspace_id, marketplace, prev[0], prev[1], group)
         p_tot = _totals(p_days, p_rows)
+        # Compared like with like: an account total against a per-ASIN sum would
+        # report a change that is only the difference between two definitions.
+        p_acct = account_revenue(config_path, workspace_id, marketplace,
+                                 prev[0], prev[1])
+        if acct is not None and p_acct is not None:
+            p_tot["revenue"] = p_acct
         for key, _label, _kind in KPIS:
             a, b = tot.get(key), p_tot.get(key)
             if a is None or b in (None, 0):
@@ -253,8 +320,15 @@ def summary(config_path, workspace_id, marketplace, start, end,
         },
         "totals": tot,
         "deltas": deltas,
+        # Said, not hidden. The gap between the account's revenue and what
+        # Amazon attributes to individual products is Amazon's, and a page that
+        # shows one number while its own table adds to another is how two
+        # screens quietly disagree.
+        "revenue_note": revenue_note,
+        "revenue_attributed": attributed,
         "kpis": [{"key": k, "label": l, "kind": kind,
-                  "value": tot.get(k), "delta_pct": deltas.get(k)}
+                  "value": tot.get(k), "delta_pct": deltas.get(k),
+                  "note": (revenue_note if k == "revenue" else "")}
                  for k, l, kind in KPIS],
         "channel": {"browser": browser, "mobile": mobile,
                     "browser_pct": _pct(browser, browser + mobile),
