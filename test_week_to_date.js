@@ -41,14 +41,30 @@ function fnBody(src, name){
 }
 const W = fnBody(S, "salesLoadWeek");
 
-console.log("=== the window is a calendar week starting Monday ===");
-truthy("Monday is day zero", /const dow = \(today\.getUTCDay\(\) \+ 6\) % 7;/.test(W));
+console.log("=== the window is a calendar week, starting on the set day ===");
+// CHANGED FROM MONDAY TO SUNDAY, deliberately, and this is the record of it.
+//
+// The instruction was "Week start Monday". Then, measured against the thing this
+// card is read beside: "on orbit there is sales data displayed, and it starts
+// from sunday and ends at saturday". Amazon's own reports run Sunday to Saturday
+// as well, and a week-on-week card offset by a day from the one you are
+// comparing it against is not a comparison.
+//
+// So the day is now a named constant instead of an arithmetic trick, and this
+// test pins THAT rather than pinning one particular day -- changing the
+// constant should not break the test that the window is built from it.
+truthy("which day the week starts on is a named constant",
+       /const SALES_WEEK_START = [0-6];/.test(S));
+truthy("  and it is Sunday, to agree with Orbit and with Amazon",
+       /const SALES_WEEK_START = 0;/.test(S));
+truthy("the offset is worked out FROM the constant",
+       /const dow = \(today\.getUTCDay\(\) - SALES_WEEK_START \+ 7\) % 7;/.test(W));
 truthy("  and the week starts there", /today\.getUTCDate\(\) - dow/.test(W));
-truthy("it runs to today, not seven days back", /base\(mon, today\)/.test(W));
+truthy("it runs to today, not seven days back", /base\(wkStart, today\)/.test(W));
 truthy("  which is a calendar cut, not a rolling window",
        !/86400000 \* 7\s*\)?\s*,\s*today/.test(W));
 truthy("the prior week is the calendar week before",
-       /lastMon = new Date\(mon\.getTime\(\) - 7 \* 86400000\)/.test(W));
+       /prevStart = new Date\(wkStart\.getTime\(\) - 7 \* 86400000\)/.test(W));
 truthy("it is asked for on its own, not sliced from the chosen range",
        /Built from a request of its own/.test(S));
 
@@ -68,9 +84,20 @@ truthy("the caption names the days on the chart",
 truthy("  not last week's Sunday", !/iso\(lastMon\) \+ " to " \+ iso\(lastEnd\)\)/.test(W));
 
 console.log("\n=== the two lines still sit day-under-day ===");
-// Whatever dates they carry, Monday belongs under Monday -- that is the whole
+// Whatever dates they carry, Sunday belongs under Sunday -- that is the whole
 // point of a week-on-week picture.
-truthy("the comparison is aligned by position", /const byPos = \(before\.columns\|\|\[\]\)/.test(W));
+//
+// CHANGED FROM POSITION TO DATE, and this is why. Position pairing is right only
+// while both replies carry every day of their week, and a reply carries only the
+// buckets it has figures for. The main chart had already been fixed for exactly
+// this -- "a 30-day request came back with 28 columns for this period and 1 for
+// the period before". Position-paired, last Friday's takings are drawn under
+// this Sunday and labelled Last Week, which is the report "the dotted lines are
+// not acccurately representing last week data in all graphs all over the app".
+truthy("the comparison is paired by DATE, seven days back",
+       /dt\.getTime\(\) - 7 \* 86400000/.test(W));
+truthy("  looked up by that date", /\(back in was\) \? was\[back\] : null/.test(W));
+truthy("  and not by array position", !/const byPos = \(before\.columns\|\|\[\]\)/.test(W));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

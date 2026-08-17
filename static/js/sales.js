@@ -1,4 +1,4 @@
-/* sales.js — the Sales dashboard.
+﻿/* sales.js — the Sales dashboard.
  *
  * FOUR STAT CARDS, then a metrics × dates grid.
  *
@@ -53,6 +53,18 @@ let SALES = {preset:"30d", gran:"day", asin:"", start:"", end:"",
 const SALES_PRESETS = [["7d","7d"],["14d","14d"],["30d","30d"],
                        ["60d","60d"],["90d","90d"],["ytd","YTD"],["custom","Custom"]];
 const SALES_GRAN = [["day","Day"],["week","Week"],["month","Month"]];
+
+// WHICH DAY A WEEK STARTS ON. 0 = Sunday, 1 = Monday.
+//
+// Sunday, because that is what this card is read beside: "on orbit there is
+// sales data displayed, and it starts from sunday and ends at saturday". Amazon's
+// own reports run Sunday to Saturday as well. An earlier instruction said Monday,
+// and this is the number to change back if that is wanted -- everything that
+// needs to know reads it from here rather than working it out again, so there is
+// no second place for the two to disagree.
+const SALES_WEEK_START = 0;
+const SALES_DAY_NAMES = ["Sunday","Monday","Tuesday","Wednesday","Thursday",
+                         "Friday","Saturday"];
 
 function _sEsc(s){
   return String(s==null?"":s).replace(/[&<>"]/g,function(c){
@@ -558,6 +570,23 @@ function salesDrawCharts(ser){
       return vals && vals.some(function(v){
         return v !== null && v !== undefined && Number(v) !== 0; });
     };
+    // ANY VALUE AT ALL, zero included. A DIFFERENT QUESTION from anyReal, and
+    // the difference is the bug behind "the dotted lines are not accurately
+    // representing last week data in all graphs all over the app".
+    //
+    // The comparison line was dropped whenever anyReal said no -- which it says
+    // for a period that traded NOTHING as readily as for a period nobody has
+    // any figures for. So a quiet week produced no dashed line, and a dashed
+    // line missing from a chart reads as the comparison being broken rather
+    // than as last week having been quiet.
+    //
+    // Those are two different facts and they need two different pictures:
+    //   nothing known   -> no line, because there is nothing to draw
+    //   known, and zero -> a line along the bottom, which is the answer
+    const anyKnown = function(vals){
+      return vals && vals.some(function(v){
+        return v !== null && v !== undefined; });
+    };
     // ONE DATE BASIS FOR THE WHOLE CHART. This is the bug behind "it shows
     // sales and profit but the orders are zero, it can not be possible to
     // generate sales without orders".
@@ -654,7 +683,10 @@ function salesDrawCharts(ser){
           const back = new Date(dt.getTime() - off).toISOString().slice(0, 10);
           return (back in was) ? was[back] : null;
         });
-        if(!anyReal(cmpCells)) cmpCells = null;
+        // anyKnown, not anyReal: a prior period of genuine zeros is drawn along
+        // the bottom rather than left off the chart. Only a period with no
+        // figures at all is dropped.
+        if(!anyKnown(cmpCells)) cmpCells = null;
       }
     }
 
@@ -1163,24 +1195,76 @@ async function salesLoadCompare(sum){
 }
 
 /* ---- week to date ------------------------------------------------------
- * The second of Orbit's two "how is it going right now" cards: Monday to
- * today, drawn against the same days of the week before.
+ * The second of Orbit's two "how is it going right now" cards: the start of
+ * this week to today, drawn against the same days of the week before.
+ *
+ * WHICH DAY THE WEEK STARTS ON is SALES_WEEK_START and nothing here decides it
+ * again -- Sunday, to agree with Orbit and with Amazon's own reports.
  *
  * Built from a request of its own rather than sliced out of the main range,
  * because the main range is whatever the user last picked -- on a 90-day view
  * there would be no "this week" in it to slice, and on a custom range there
- * might be no Monday at all.
+ * might be no week boundary in it at all.
  */
+// WHICH REVENUE METRIC BOTH WEEKS WILL BE DRAWN FROM.
+//
+// net_revenue is the better number -- it is after Amazon's fees -- but it is
+// often unknown for recent days, and a line of nulls draws nothing. ordered_sales
+// is coarser and more complete. So: count how many cells each one actually KNOWS
+// across the two weeks, and take the better-known. Ties go to net_revenue,
+// because when both are equally known it is the truer figure.
+//
+// Chosen ONCE and used for both series, so the solid line and the dashed line
+// are always the same quantity.
+function _sWeekMetric(now, before){
+  const known = function(j, k){
+    const m = ((j && j.metrics) || []).filter(function(x){ return x.key === k; })[0];
+    if(!m || !m.cells) return -1;                 // absent, not merely unknown
+    return m.cells.filter(function(v){
+      return v !== null && v !== undefined; }).length;
+  };
+  const nNet = known(now, "net_revenue") + known(before, "net_revenue");
+  const nOrd = known(now, "ordered_sales") + known(before, "ordered_sales");
+  return (nOrd > nNet) ? "ordered_sales" : "net_revenue";
+}
+
+// One week's cells for that metric, padded to the week's own column count.
+//
+// A week that traded nothing is a FACT and gets a flat line along the bottom;
+// only a week with no columns at all has nothing to draw. Nulls stay null: a day
+// Amazon has not delivered is shaded by the chart, and turning it into a zero
+// would draw a sale of nothing on a day nobody has reported on.
+function _sWeekSeries(j, wantKey){
+  const n = ((j && j.columns) || []).length;
+  if(!n) return null;
+  const m = ((j.metrics) || []).filter(function(x){ return x.key === wantKey; })[0];
+  if(!m) return null;
+  return {key: m.key, label: m.label,
+          cells: (m.cells && m.cells.length === n) ? m.cells
+                                                  : new Array(n).fill(0)};
+}
+
 async function salesLoadWeek(){
   const host = document.getElementById("sales_week");
   const badge = document.getElementById("sales_week_delta");
   if(!host) return;
   const today = new Date();
-  const dow = (today.getUTCDay() + 6) % 7;          // Monday = 0
-  const mon = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),
+  // WHICH DAY THE WEEK STARTS ON, in one place.
+  //
+  // Asked for as Monday: "Week start Monday". Then measured against the thing
+  // being matched: "on orbit there is sales data displayed, and it starts from
+  // sunday and ends at saturday". Amazon's own reports run Sunday to Saturday
+  // too, so a card meant to be read beside Orbit has to agree with it -- a
+  // week-on-week comparison against a week offset by a day is not a comparison.
+  //
+  // SALES_WEEK_START is the only place this is decided: 0 = Sunday, 1 = Monday.
+  // Change this one number and the window, the comparison week, the axis labels
+  // and the card's subtitle all follow, because they all read it from here.
+  const dow = (today.getUTCDay() - SALES_WEEK_START + 7) % 7;
+  const wkStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),
                                 today.getUTCDate() - dow));
-  const lastMon = new Date(mon.getTime() - 7 * 86400000);
-  const lastEnd = new Date(mon.getTime() - 86400000);
+  const prevStart = new Date(wkStart.getTime() - 7 * 86400000);
+  const prevEnd2 = new Date(wkStart.getTime() - 86400000);
   const iso = d => d.toISOString().slice(0, 10);
   const base = function(a, b){
     const q = ["preset=custom", "start=" + iso(a), "end=" + iso(b), "granularity=day"];
@@ -1192,8 +1276,8 @@ async function salesLoadWeek(){
   host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">Loading…</div>';
   let now, before;
   try{
-    now    = await _sFetch("/sales/series?" + base(mon, today));
-    before = await _sFetch("/sales/series?" + base(lastMon, lastEnd));
+    now    = await _sFetch("/sales/series?" + base(wkStart, today));
+    before = await _sFetch("/sales/series?" + base(prevStart, prevEnd2));
     if(now === null || before === null) return;
   }catch(e){
     host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
@@ -1202,33 +1286,78 @@ async function salesLoadWeek(){
   }
   if(!now || !now.ok){ host.innerHTML = ""; return; }
 
-  const key = function(j){
-    const has = function(k){
-      const m = ((j.metrics)||[]).filter(function(x){ return x.key === k; })[0];
-      return m && (m.cells||[]).some(function(v){ return v !== null && Number(v) !== 0; })
-             ? m : null;
-    };
-    return has("net_revenue") || has("ordered_sales");
-  };
-  const mNow = key(now), mBefore = key(before);
-  if(!mNow){
-    host.innerHTML = '<div class="cc" style="padding:14px;font-size:12px">'
-      + 'Nothing recorded for this week yet.</div>';
-    if(badge) badge.innerHTML = "";
-    return;
-  }
+  // THE CHART IS ALWAYS DRAWN, INCLUDING A WEEK WITH NO SALES IN IT.
+  //
+  // "week to date graph is shown as empty to me on jack reacherd" and then
+  // "even i dont have any sales the graph should be displayed".
+  //
+  // It was replaced by the sentence "Nothing recorded for this week yet" the
+  // moment no metric had a non-zero cell -- so a quiet week produced no chart at
+  // all, which reads as a broken card rather than as a quiet week. A flat line
+  // along zero says "nothing sold" and looks like a working app; a paragraph
+  // where a chart should be does not.
+  //
+  // On jack_uk the window was Sunday 16 August to Monday 17 August with nothing
+  // sold on either -- correct, and it should have drawn two points at zero.
+  //
+  // `mNow` is now only used to decide what to SAY under the chart, never whether
+  // to draw one.
+  // ONE METRIC FOR BOTH WEEKS, chosen once from both replies together.
+  //
+  // This is the rest of "the dotted lines are not accurately representing last
+  // week data", and it is worse than a missing line. Each week picked its own
+  // metric independently: `key()` returns net_revenue when it has any non-zero
+  // cell, else ordered_sales. MEASURED on jack_uk, week of 16 August:
+  //
+  //   this week  net_revenue   [0.0, null]                      <- all unknown
+  //              ordered_sales [0.0, 0.0]                       <- known zeros
+  //   last week  net_revenue   [null,null,null,null,null,85.17,null]
+  //              ordered_sales [0,0,0,0,0,102.21,0]
+  //
+  // So this week could end up drawn as ordered_sales and last week as
+  // net_revenue -- a solid line of one quantity against a dashed line of a
+  // different one, on the same axis, labelled This Week and Last Week. The two
+  // are not comparable: net_revenue is after Amazon's fees and ordered_sales is
+  // before them, so the dashed line would sit below the solid one for no reason
+  // but the arithmetic.
+  //
+  // Now: whichever metric is best known ACROSS BOTH weeks wins, and both series
+  // are read from it. A comparison has to be of like with like or it is not a
+  // comparison.
+  const wkKey = _sWeekMetric(now, before);
+  const mNow = _sWeekSeries(now, wkKey);
+  const mBefore = _sWeekSeries(before, wkKey);
 
-  // Both weeks laid out Monday-first, so day 1 sits under day 1 whatever dates
-  // they carry -- which is the whole point of a week-on-week picture.
   const cols = now.columns || [];
-  const pts = cols.map(function(d, i){ return {label: d, value: mNow.cells[i]}; });
+  const pts = cols.map(function(d, i){ return {label: d, value: mNow ? mNow.cells[i] : null}; });
   let cmp = null;
   if(mBefore && (before.columns||[]).length){
-    const byPos = (before.columns||[]).map(function(d, i){ return mBefore.cells[i]; });
-    cmp = cols.map(function(d, i){
-      return {label: (before.columns||[])[i] || "", value: (i < byPos.length ? byPos[i] : null)};
+    // PAIRED BY DATE, SEVEN DAYS BACK -- not by position in the array.
+    //
+    // Both weeks start on the same weekday, so position pairing is right
+    // whenever both replies carry every day. They do not always: a reply
+    // carries only the buckets it has figures for, and the main chart already
+    // had to be fixed for exactly this (see compareOffsetDays, "a 30-day
+    // request came back with 28 columns for this period and 1 for the period
+    // before"). Position-paired, last Friday's takings would be drawn under
+    // this Sunday and labelled Last Week.
+    //
+    // Same rule as the main chart now: subtract seven days from the date and
+    // look it up. A day the week before has no figure for is a gap, which the
+    // chart shades, rather than somebody else's number.
+    const was = {};
+    (before.columns || []).forEach(function(d, i){ was[d] = mBefore.cells[i]; });
+    cmp = cols.map(function(d){
+      const dt = new Date(String(d) + "T00:00:00Z");
+      if(isNaN(dt)) return {label: "", value: null};
+      const back = new Date(dt.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+      return {label: back, value: (back in was) ? was[back] : null};
     });
-    if(!cmp.some(function(p){ return p.value !== null && Number(p.value) !== 0; })) cmp = null;
+    // KNOWN, not non-zero. Dropping the line when last week was quiet is what
+    // made the comparison look broken -- see anyKnown in salesDrawCharts. A week
+    // that took nothing is drawn along the bottom; only a week with no figures
+    // at all has no line.
+    if(!cmp.some(function(p){ return p.value !== null && p.value !== undefined; })) cmp = null;
   }
 
   // A WEEK IS SEVEN BUCKETS, NOT SEVEN INSTANTS, so the points sit at the middle
@@ -1251,8 +1380,8 @@ async function salesLoadWeek(){
     // on a partial week it stops where this week stops -- and saying it runs to
     // Sunday describes a line that is not on the chart.
     compareTitle: cmp
-      ? ("the dashed line is " + (cmp[0] ? cmp[0].label : iso(lastMon)) + " to "
-         + (cmp[cmp.length - 1] ? cmp[cmp.length - 1].label : iso(lastEnd)))
+      ? ("the dashed line is " + (cmp[0] ? cmp[0].label : iso(prevStart)) + " to "
+         + (cmp[cmp.length - 1] ? cmp[cmp.length - 1].label : iso(prevEnd2)))
       : ""};
   // Remembered so a window resize can REDRAW at the new width without fetching
   // the week again. A chart drawn at a fixed pixel width has to be redrawn when
