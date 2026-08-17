@@ -148,22 +148,37 @@ function _finMatching(f){
 // parent containing ONE product whose contribution is unknown reports no
 // contribution for the whole family, exactly as a single product does: a
 // partial total only ever flatters.
+// EVERY FIELD THIS SCREEN ADDS UP, named once.
+//
+// It was written out four times -- the rollup's starting object, the rollup's
+// add loop, the totals' starting object and the totals' rounding loop -- and
+// adding a column meant remembering all four. `promos` was the column that
+// proved it: the server sends it, and a family rollup would have quietly
+// dropped the discounts of every child while the single-product rows showed
+// them.
+//
+// MONEY, not counts, is a separate list because only money gets rounded to
+// pence at the end; rounding a unit count is meaningless and rounding it twice
+// is how a count of 3 becomes 2.999999.
+const FIN_MONEY = ["revenue", "vat", "fees", "cogs", "refunds", "promos"];
+const FIN_COUNTS = ["units", "uncosted_units"];
+const FIN_SUM = FIN_MONEY.concat(FIN_COUNTS);
+
 function _finRollup(rows){
   const out = {}, order = [];
   rows.forEach(function(r){
     const key = r.parent_asin || r.asin;
     if(!out[key]){
       out[key] = {asin: key, title: r.title || "", parent_asin: "", _n: 0,
-                  units: 0, revenue: 0, vat: 0, fees: 0, cogs: 0, refunds: 0,
-                  ad_spend: null, uncosted_units: 0, contribution: 0,
+                  ad_spend: null, contribution: 0,
                   _blank: false, _isGroup: false};
+      FIN_SUM.forEach(function(k){ out[key][k] = 0; });
       order.push(key);
     }
     const g = out[key];
     g._n++;
     if(r.parent_asin) g._isGroup = true;
-    ["units", "revenue", "vat", "fees", "cogs", "refunds", "uncosted_units"]
-      .forEach(function(k){ g[k] += Number(r[k] || 0); });
+    FIN_SUM.forEach(function(k){ g[k] += Number(r[k] || 0); });
     if(r.ad_spend !== null && r.ad_spend !== undefined){
       g.ad_spend = Number(g.ad_spend || 0) + Number(r.ad_spend);
     }
@@ -209,8 +224,14 @@ const FIN_COLS = [
   {k:"ad_spend",     t:"Ad spend",      kind:"money", tip:"Not connected yet"},
   {k:"fees",         t:"Amazon fees",   kind:"money", tip:"Referral + FBA + other"},
   {k:"cogs",         t:"COGS",          kind:"money", tip:"What the units cost, from the cost written into each SKU"},
-  {k:"refunds",      t:"Refunds",       kind:"money"},
-  {k:"contribution", t:"Contribution",  kind:"money", tip:"Revenue − fees − refunds + reimbursements − COGS. Before advertising."},
+  {k:"refunds",      t:"Refunds",       kind:"money", tip:"Paid back to buyers. The referral fee Amazon returns with a refund is added back in the contribution, so a return is not charged a fee twice"},
+  // COUPONS AND DEALS YOU FUNDED. Amazon reports these separately from the item
+  // price -- the price it sends is the FULL one -- so a discount was invisible
+  // on this screen and counted as money kept. Given a column of its own rather
+  // than netted off Revenue, so "Revenue" still means what Amazon charged and
+  // the discount can be seen for what it is.
+  {k:"promos",       t:"Promotions",    kind:"money", tip:"Coupons and deals you funded. Amazon sends the full price separately from the discount, so this is money that never reached you"},
+  {k:"contribution", t:"Contribution",  kind:"money", tip:"Revenue − VAT − fees − refunds − promotions + returned fees + reimbursements − COGS. Before advertising."},
   {k:"margin_pct",   t:"Margin",        kind:"pct"},
 ];
 
@@ -220,13 +241,11 @@ const FIN_COLS = [
 // most misleading arrangement this screen could produce. Contribution is
 // withheld if ANY visible row withholds it -- the same rule one product follows.
 function _finTotals(rows){
-  const t = {products: rows.length, units: 0, revenue: 0, vat: 0, fees: 0,
-             cogs: 0, refunds: 0, ad_spend: null, contribution: 0};
+  const t = {products: rows.length, ad_spend: null, contribution: 0};
+  FIN_SUM.forEach(function(k){ t[k] = 0; });
   let blank = false, anyAds = false;
   rows.forEach(function(r){
-    ["units", "revenue", "vat", "fees", "cogs", "refunds"].forEach(function(k){
-      t[k] += Number(r[k] || 0);
-    });
+    FIN_SUM.forEach(function(k){ t[k] += Number(r[k] || 0); });
     if(r.ad_spend !== null && r.ad_spend !== undefined){
       anyAds = true; t.ad_spend = Number(t.ad_spend || 0) + Number(r.ad_spend);
     }
@@ -237,9 +256,7 @@ function _finTotals(rows){
   if(blank) t.contribution = null;
   t.margin_pct = (t.contribution !== null && t.revenue)
                ? Number((t.contribution / t.revenue * 100).toFixed(2)) : null;
-  ["revenue", "vat", "fees", "cogs", "refunds"].forEach(function(k){
-    t[k] = Number(t[k].toFixed(2));
-  });
+  FIN_MONEY.forEach(function(k){ t[k] = Number(t[k].toFixed(2)); });
   if(t.contribution !== null) t.contribution = Number(t.contribution.toFixed(2));
   return t;
 }
@@ -273,10 +290,34 @@ function financeRender(){
       +  '</div>';
   }
 
+  // HOW LOUD EACH NOTE IS.
+  //
+  // They were all the same amber box, which put "1,578.54 GBP of revenue is NOT
+  // in the list below" in the same styling as "ad spend is not connected yet".
+  // The first means the screen is not answering the question; the second is a
+  // limit on an answer that is otherwise right. Someone who has learned to skim
+  // the amber boxes skims both.
+  //
+  //   bad   red     the figures on screen do not add up to the account
+  //   warn  amber   right as far as they go, and here is the limit
+  //   info  grey    how a figure was worked out
+  //
+  // The level comes from the server (domain/contribution.NOTE_*). A plain string
+  // is still accepted and treated as a warning, so an older response renders.
+  const FIN_NOTE_STYLE = {
+    bad:  {border: '#5c2b2b', bg: '#2a1414', icon: 'ti-alert-triangle', fg: '#ffb4b4'},
+    warn: {border: '#3a3320', bg: '#241f10', icon: 'ti-info-circle',    fg: ''},
+    info: {border: '#2a3446', bg: '#161c26', icon: 'ti-info-circle',    fg: ''},
+  };
   ((FIN.meta && FIN.meta.notes) || []).forEach(function(n){
+    const text = (typeof n === 'string') ? n : (n && n.text) || '';
+    if(!text) return;
+    const lvl = (typeof n === 'string') ? 'warn' : ((n && n.level) || 'warn');
+    const s = FIN_NOTE_STYLE[lvl] || FIN_NOTE_STYLE.warn;
     h += '<div class="cc" style="font-size:12px;margin:2px 0 10px;padding:9px 11px;'
-      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
-      +  '<i class="ti ti-info-circle"></i> '+_fesc(n)+'</div>';
+      +  'border:1px solid '+s.border+';background:'+s.bg+';border-radius:6px'
+      +  (s.fg ? ';color:'+s.fg : '')+'">'
+      +  '<i class="ti '+s.icon+'"></i> '+_fesc(text)+'</div>';
   });
 
   if(!FIN.rows.length){

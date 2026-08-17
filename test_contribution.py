@@ -18,6 +18,12 @@ def check(l, g, w):
 def truthy(l, g):
     check(l, bool(g), True)
 
+
+def _texts(notes):
+    """Just the wording. notes() returns {text, level} so the screen can colour
+    the serious ones differently -- these assertions only care what it says."""
+    return [n["text"] if isinstance(n, dict) else n for n in notes]
+
 TMP = tempfile.mkdtemp(prefix="altacontrib_")
 CFG = os.path.join(TMP, "config.json")
 json.dump({"accounts": []}, open(CFG, "w"))
@@ -97,9 +103,9 @@ print("\n=== ad spend is UNKNOWN, never zero ===")
 check("no ad row -> None", by[A1]["ad_spend"], None)
 check("  and the total says the same", totals["ad_spend"], None)
 truthy("  the screen is told to say so",
-       any("BEFORE" in n for n in C.notes(rows, totals)))
+       any("BEFORE" in n for n in _texts(C.notes(rows, totals))))
 truthy("  and warns which way it is wrong",
-       any("lower by whatever you spent" in n for n in C.notes(rows, totals)))
+       any("lower by whatever you spent" in n for n in _texts(C.notes(rows, totals))))
 
 print("  -- when ad data does arrive, it is used --")
 conn = _db.get_db(CFG)
@@ -131,7 +137,7 @@ b3 = {r["asin"]: r for r in rows3}
 check("the product reports now", b3[A2]["contribution"], 18.5)
 check("  and so does the period", totals3["contribution"], 71.0)
 truthy("  with no 'uncosted' warning left",
-       not any("no known cost" in n for n in C.notes(rows3, totals3)))
+       not any("no known cost" in n for n in _texts(C.notes(rows3, totals3))))
 
 print("\n=== the endpoint ===")
 from flask import Flask
@@ -150,7 +156,12 @@ check("  reporting whether ads are connected", j["ads_connected"], True)
 # VAT -- and it says so rather than staying quiet, which is the point.
 check("  one warning left: VAT is not configured", len(j["notes"]), 1)
 truthy("  and it says which way the number is wrong",
-       "overstated" in j["notes"][0])
+       "overstated" in j["notes"][0]["text"])
+# AND HOW LOUDLY. An unset VAT rate on a registered business overstates every
+# figure on the screen by a sixth, so it is not the same kind of remark as "ad
+# spend is not connected" -- the screen colours it differently and this is what
+# tells it to.
+check("  marked as serious, not as a footnote", j["notes"][0]["level"], "bad")
 check("  and a contribution the screen can show", j["totals"]["contribution"], 71.0)
 
 
@@ -193,7 +204,7 @@ check("  revenue after VAT", b4[A1]["net_revenue"], 83.33)
 check("  contribution drops by the VAT", b4[A1]["contribution"], 28.33)
 check("  which is lower than before", b4[A1]["contribution"] < 45.0, True)
 truthy("  and the screen explains which basis was used",
-       any("did not itemise" in n for n in C.notes(rows4, tot4)))
+       any("did not itemise" in n for n in _texts(C.notes(rows4, tot4))))
 check("the total moves too", tot4["contribution"], 41.0)
 check("no marketplace -> a clear refusal",
       Flask(__name__) and c.get("/finance/contribution").status_code, 200)
