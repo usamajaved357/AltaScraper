@@ -1226,7 +1226,14 @@ async function salesLoadWeek(){
     width: scChartWidth("sales_week", 665),
     height: 200, compare: cmp, scale: "band", xLabel: "dow",
     compact: true, thisLabel: "This Week", compareLabel: "Last Week",
-    compareTitle: cmp ? ("the dashed line is " + iso(lastMon) + " to " + iso(lastEnd)) : ""};
+    // Named for the days actually DRAWN. Last week is fetched Monday to Sunday,
+    // but the dashed line is aligned by position against this week's columns, so
+    // on a partial week it stops where this week stops -- and saying it runs to
+    // Sunday describes a line that is not on the chart.
+    compareTitle: cmp
+      ? ("the dashed line is " + (cmp[0] ? cmp[0].label : iso(lastMon)) + " to "
+         + (cmp[cmp.length - 1] ? cmp[cmp.length - 1].label : iso(lastEnd)))
+      : ""};
   // Remembered so a window resize can REDRAW at the new width without fetching
   // the week again. A chart drawn at a fixed pixel width has to be redrawn when
   // that width changes, or turning a phone sideways letterboxes it.
@@ -1270,14 +1277,28 @@ async function salesLoadWeek(){
     + '</div>';
   host.innerHTML += SALES._weekFoot;
 
-  // The change against the same days last week, as a chip beside the heading.
+  // THE SAME DAYS, WHICH IS WHAT THE CHIP SAYS IT IS COMPARING.
+  //
+  // This week runs Monday to TODAY; last week is fetched Monday to Sunday so the
+  // dashed line has somewhere to come from. The chip summed both in full -- a
+  // partial week against a whole one -- so on a Wednesday it reported roughly
+  // -57% on trade that had not moved at all, and its own tooltip said "against
+  // the same days last week" while doing it.
+  //
+  // Week to Date is a CALENDAR week, Monday to today. Its comparison has to be
+  // the same slice of the week before, not the whole of it.
   if(badge){
-    const sum = function(m){ return (m ? (m.cells||[]) : [])
-      .reduce(function(a, v){ return a + (Number(v) || 0); }, 0); };
-    const a = sum(mNow), b = sum(mBefore);
+    const cellsOf = function(m){ return (m ? (m.cells || []) : []); };
+    const daysSoFar = cellsOf(mNow).length;
+    const sum = function(cells){
+      return cells.reduce(function(a, v){ return a + (Number(v) || 0); }, 0);
+    };
+    const a = sum(cellsOf(mNow));
+    const b = sum(cellsOf(mBefore).slice(0, daysSoFar));
     if(!b){ badge.innerHTML = ""; }
     else badge.innerHTML = _sBadge(((a - b) / Math.abs(b)) * 100,
-      {title: "against the same days last week"});
+      {title: "against the same " + daysSoFar + " day"
+              + (daysSoFar === 1 ? "" : "s") + " of last week"});
   }
 }
 

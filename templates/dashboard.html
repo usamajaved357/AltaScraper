@@ -291,7 +291,14 @@
            and no caveat, which is the whole difference between "a screen" and
            "the sixth screen somebody bolted on". -->
       <div class="pagehead">
-        <div class="pagetitle"><i class="ti ti-rocket"></i> Generate &amp; submit</div>
+        <div class="pagetitle"><i class="ti ti-rocket"></i> Generate &amp; submit
+          <!-- A guide, not the admin "how this works" panel: what the screen is
+               for and in what order to press things. Asked for as "i am also not
+               able to understand how the generate and submit works, there is no
+               user guide there". -->
+          <button class="db-chip" style="margin-left:10px;font-size:11.5px;vertical-align:middle"
+                  onclick="openGuide('generate')"><i class="ti ti-book"></i> How this page works</button>
+        </div>
         <div class="panelsub">Draft listings from the queue, check them against Amazon,
           and publish them — scoped to this workspace<span class="infodot"
           title="Generate and Retry write listings into this app only. Preview validates against Amazon and creates nothing. Submit is the one step that reaches your live catalogue.">i</span></div>
@@ -1167,6 +1174,9 @@
 <script src="/static/js/switcher.js?v={{ ASSET_V }}"></script>
 <!-- Folds the sidebar to a rail of icons, and remembers that you folded it. -->
 <script src="/static/js/sidebar.js?v={{ ASSET_V }}"></script>
+<!-- Per-page user guides. Not the admin howWorks() layer: this one is for
+     everybody and explains the order to do things in. -->
+<script src="/static/js/guide.js?v={{ ASSET_V }}"></script>
 <!-- Remembers which screens have already loaded, per account and marketplace,
      so revisiting a tab is instant. Must load BEFORE shell.js, which asks it. -->
 <script src="/static/js/screenstate.js?v={{ ASSET_V }}"></script>
