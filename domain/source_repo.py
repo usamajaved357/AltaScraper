@@ -140,13 +140,19 @@ def record_check(config_path, source_id, check):
     """Store one reading. `check` is the shape domain/sourcing.py consumes."""
     conn = _db.get_db(config_path)
     ins = check.get("in_stock")
+    qty = check.get("available_qty")
+    try:
+        qty = None if qty is None else int(qty)
+    except (TypeError, ValueError):
+        qty = None
     conn.execute(
         "INSERT INTO sourcing_checks (source_id, checked_at, status, price, shipping, "
-        "currency, in_stock, dispatch_days, error) VALUES (?,?,?,?,?,?,?,?,?)",
+        "currency, in_stock, dispatch_days, error, available_qty) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
         (source_id, check.get("checked_at") or _now(), check.get("status"),
          check.get("price"), check.get("shipping"), check.get("currency"),
          (None if ins is None else (1 if ins else 0)),
-         check.get("dispatch_days"), (check.get("error") or "")[:400]))
+         check.get("dispatch_days"), (check.get("error") or "")[:400], qty))
     conn.commit()
 
 

@@ -87,6 +87,68 @@ def for_sku(overrides, workspace_id, sku, pairs, source_id=None):
     return out
 
 
+def at_a_glance(pairs, current, rule, source_id=None):
+    """The row's headline facts, in one place.
+
+    "i want to add some additional info which give me a glance view to be
+     displayed on each sku, current source price, current my selling price on
+     which the item will be sold if i receive an order and the profit margin and
+     the roi i will generate on the sale. source units available, the shipping
+     days of the supplier"
+
+    Every figure is about the sale that would happen NOW -- the price Amazon is
+    charging today against what the supplier charges today -- not the price the
+    repricer would like it to be. Those are two different questions and the
+    proposed price is already on the row; this is the one that says what an
+    order arriving this minute would actually earn.
+
+    Anything unobtainable is None rather than 0, and the screen leaves it blank.
+    An unknown margin shown as 0% is a number someone would act on.
+    """
+    from listing import pricing as _pricing
+    from domain import sourcing as _sourcing
+
+    out = {"source_price": None, "source_postage": None, "landed": None,
+           "sell_price": None, "profit": None, "margin_pct": None,
+           "roi_pct": None, "units_available": None, "dispatch_days": None,
+           "handling_days": None, "in_stock": None}
+
+    chk = None
+    for s, c in (pairs or []):
+        if not c:
+            continue
+        if source_id is not None and s.get("id") == source_id:
+            chk = c
+            break
+        if chk is None and _sourcing.landed_cost(c) is not None:
+            chk = c
+    if chk:
+        out["source_price"] = _num(chk.get("price"))
+        out["source_postage"] = _num(chk.get("shipping"))
+        out["landed"] = _sourcing.landed_cost(chk)
+        out["units_available"] = chk.get("available_qty")
+        out["dispatch_days"] = chk.get("dispatch_days")
+        out["in_stock"] = chk.get("in_stock")
+        if out["dispatch_days"] is not None:
+            try:
+                rule = _sourcing.rule_with_defaults(rule)
+                out["handling_days"] = (int(out["dispatch_days"])
+                                        + int(rule["handling_buffer_days"]))
+            except Exception:
+                out["handling_days"] = None
+
+    out["sell_price"] = _num((current or {}).get("price"))
+    if out["sell_price"] is not None and out["landed"] is not None:
+        r = _sourcing.rule_with_defaults(rule)
+        got = _pricing.achieved(out["sell_price"], out["landed"], r["referral_rate"],
+                                shipping_label=r["shipping_label"],
+                                ads_margin=r["ads_margin"])
+        out["profit"] = got.get("profit")
+        out["margin_pct"] = got.get("margin_pct")
+        out["roi_pct"] = got.get("roi_pct")
+    return out
+
+
 def price_history(config_path, source_id, limit=12):
     """What this source has charged, oldest last, for a sparkline or a list.
 
