@@ -72,6 +72,13 @@ def register(app, *, CONFIG_PATH):
                 "all_features": users.FEATURES,
                 "levels": list(users.LEVELS),
                 "role_features": users.ROLE_FEATURES,
+                # Which page belongs under which area, and the order to show
+                # them in. Sent rather than repeated in the browser so the form
+                # cannot list a feature that no longer exists, or miss one that
+                # was just added.
+                "feature_parent": users.FEATURE_PARENT,
+                "feature_groups": [{"title": t, "features": fs}
+                                   for t, fs in users.FEATURE_GROUPS],
                 "roles": users.ROLES}
 
     # ---- who am I -------------------------------------------------------

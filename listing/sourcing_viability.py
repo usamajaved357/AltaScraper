@@ -40,6 +40,7 @@ from listing.restricted import (
     accessory_pattern,
     compat_pattern,
     resolve_docs_display,
+    target_pattern,
     wordish,
 )
 
@@ -71,8 +72,39 @@ _WATTAGE_RE = re.compile(r"(?<![A-Za-z0-9])(\d{2,5})\s*(?:w|watt|watts)(?![A-Za-
 _MAH_RE = re.compile(r"(?<![A-Za-z0-9])(\d{2,7})\s*mah(?![A-Za-z0-9])", re.I)
 
 
+class _Lazy:
+    """A {term: compiled pattern} map that compiles on first lookup.
+
+    Behaves as the dict it replaces for the only thing callers do with it --
+    .get(term) -- and returns None for a term the rule does not have, exactly as
+    a dict would, so the demotion checks are unchanged.
+    """
+    __slots__ = ("_make", "_terms", "_cache")
+
+    def __init__(self, make, terms):
+        self._make = make
+        self._terms = frozenset(terms or ())
+        self._cache = {}
+
+    def get(self, term, default=None):
+        if term not in self._terms:
+            return default
+        pat = self._cache.get(term)
+        if pat is None:
+            pat = self._make(term)
+            self._cache[term] = pat
+        return pat
+
+    def __len__(self):
+        return len(self._terms)
+
+    def __contains__(self, term):
+        return term in self._terms
+
+
 def _compile_rule(rc):
-    """Pre-compile every pattern for one rule, once at import."""
+    """Compile one rule. The trigger patterns are built now, because every one of
+    them is searched on every call; the demotion patterns are built on demand."""
     trg = rc.get("triggers") or {}
     strong = list(trg.get("strong") or [])
     corrob = list(trg.get("corroborating") or [])
@@ -102,14 +134,29 @@ def _compile_rule(rc):
         # fact rather than an inference from prose, gets a veto.
         "not_types": {str(t).strip().upper()
                       for t in (rc.get("not_product_types") or []) if t},
-        # Accessory adjacency applies to every trigger term, so "patio heater
-        # cover", "charger stand" and "trampoline cover" all demote.
-        "accessory": {t: accessory_pattern(t, ACCESSORY_NOUNS) for t in (strong + corrob)},
+        # COMPILED ON FIRST USE, NOT AT IMPORT.
+        #
+        # These three helper patterns exist for every trigger term of every rule
+        # -- 771 regexes across 15 rules -- and building them all at import cost
+        # 3.3 seconds of a startup the app is measured on. Almost none are ever
+        # needed: a demotion pattern is only consulted when its term actually
+        # appeared in the text, which for most terms is never.
+        #
+        # So the term LIST is kept and the pattern is built the first time it is
+        # asked for, then remembered. Same patterns, same answers, built only for
+        # the handful of words a listing really contains.
+        "accessory": _Lazy(lambda t: accessory_pattern(t, ACCESSORY_NOUNS),
+                           strong + corrob),
         # And COMPATIBILITY demotes a context word: "works on electric hobs"
         # says what the product is used with, not what it is. See compat_pattern
         # in listing/restricted.py for the wok this exists for.
-        "compat": {t: compat_pattern(t)
-                   for t in (trg.get("context") or []) + corrob},
+        "compat": _Lazy(compat_pattern, (trg.get("context") or []) + corrob),
+        # AND WHAT THE PRODUCT IS USED AGAINST. Built for STRONG terms too,
+        # unlike compat: a strong term fires the rule on its own, so it is
+        # exactly the one that must not fire on "removes adhesive" or "adhesive
+        # marks". See target_pattern in listing/restricted.py -- the brush this
+        # exists for.
+        "target": _Lazy(target_pattern, strong + corrob),
         "wattage_min": int(trg.get("wattage_min") or 0),
         "mah_min": int(trg.get("mah_min") or 0),
     }
@@ -168,8 +215,23 @@ def _evaluate(rule, text):
         hits = len(_word_hits(term, text))
         return hits > 0 and hits == len(pat.findall(text))
 
+    # THE PRODUCT IS NOT THE THING IT CLEANS OFF. Same test as compatibility --
+    # every occurrence of the word has to be inside the phrase before the word
+    # is dropped, so a listing that says both "removes adhesive" AND "contains
+    # adhesive" still has the second and still fires.
+    def _only_target(term):
+        pat = rule["target"].get(term)
+        if pat is None:
+            return False
+        hits = len(_word_hits(term, text))
+        return hits > 0 and hits == len(pat.findall(text))
+
     context_hits = [t for t in context_hits if not _only_compat(t)]
     corrob_hits = [t for t in corrob_hits if not _only_compat(t)]
+    # Applied to STRONG as well, which compatibility is not: a strong term fires
+    # the rule by itself, so it is the one that most needs demoting.
+    strong_hits = [t for t in strong_hits if not _only_target(t)]
+    corrob_hits = [t for t in corrob_hits if not _only_target(t)]
 
     # 2. an accessory to the product is not the product.
     word_hits = strong_hits + corrob_hits

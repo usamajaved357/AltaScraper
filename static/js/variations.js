@@ -8,7 +8,8 @@
 // passed, the problems are listed in plain words rather than counted, and the
 // preview shown IS the payload sent — the same builder produces both.
 
-let VARS = {picked: [], theme: "", parentSku: "", themes: [], preview: null};
+let VARS = {picked: [], theme: "", parentSku: "", themes: [], unusable: [],
+            preview: null};
 
 function _vesc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -174,10 +175,32 @@ function variationsThemeFilter(q){
   const cur = sel.value;
   sel.innerHTML = '<option value="">— choose —</option>'
     + keep.map(t => '<option value="'+_vesc(t)+'"'+(t===cur?' selected':'')+'>'
-                    + _vesc(t)+'</option>').join("");
-  if(want && !keep.length){
+                    + _vesc(t)+'</option>').join("")
+    + _varBlockedGroup(want);
+  if(want && !keep.length && !_varBlocked(want).length){
     sel.innerHTML = '<option value="">nothing matches “'+_vesc(q)+'”</option>';
   }
+}
+
+// Themes Amazon lists for this product type that CANNOT work on it: they group
+// by an attribute the type does not have. Shown, greyed and unpickable, with the
+// reason — because a theme that is simply absent from the list looks like the
+// app missed it, and someone who came looking for MATERIAL_TYPE is owed the
+// reason rather than a gap. Measured: OUTDOOR_LIVING offers ten, five of which
+// name color_name / material_type / item_display_height, none of which exists
+// on the type.
+function _varBlocked(want){
+  const all = VARS.unusable || [];
+  return want ? all.filter(u => String(u.theme).indexOf(want) >= 0) : all;
+}
+function _varBlockedGroup(want){
+  const bad = _varBlocked(want);
+  if(!bad.length) return "";
+  return '<optgroup label="Listed by Amazon, but not usable on this product type ('
+    + bad.length + ')">'
+    + bad.map(u => '<option value="" disabled>' + _vesc(u.theme)
+                 + ' — ' + _vesc(u.why) + '</option>').join("")
+    + '</optgroup>';
 }
 
 function variationsPick(sku, on){
@@ -217,6 +240,7 @@ async function variationsStep2(){
           note: "Could not read what this product type allows (" + String(e) + ")."};
   }
   VARS.themes = th.themes || [];
+  VARS.unusable = th.unusable || [];
 
   // The stepper gets its own element so the preview can move it to 3 when the
   // checks pass. It used to be baked into this string, which is why step 3
@@ -268,7 +292,9 @@ async function variationsStep2(){
       +  '<optgroup label="Everything this product type allows ('
       +  VARS.themes.length + ')">'
       +  VARS.themes.map(t => '<option value="'+_vesc(t)+'">'+_vesc(t)+'</option>').join("")
-      +  '</optgroup></select>';
+      +  '</optgroup>'
+      +  _varBlockedGroup("")
+      +  '</select>';
   } else {
     h += '<input id="var_theme" placeholder="e.g. SIZE" onchange="variationsPreview()" '
       + 'style="font-size:12px;padding:5px 8px;min-width:220px">';
@@ -351,12 +377,46 @@ async function variationsPreview(quiet){
       + _vesc(p.theme)+'</b>:</div>'
       + '<div style="font-size:11.5px;margin-top:4px">'
       + p.children.map(c => '<code style="margin-right:8px">'+_vesc(c.sku)+'</code>').join("")
-      + '</div></div>';
+      + '</div>'
+      + _varParentAttrs(j)
+      + '</div>';
     h += '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
       + 'onclick="variationsApply()">Create the family on Amazon</button>'
       + '<span id="var_applystatus" class="cc" style="margin-left:8px;font-size:11.5px"></span>';
   }
   out.innerHTML = h;
+}
+
+// WHERE THE PARENT'S OWN DETAILS CAME FROM.
+//
+// A parent is a real listing and Amazon holds it to the product type's rules, so
+// it needs a brand, a country of origin, a description — the lot. Most of that
+// is simply what both products already agree on. What they DON'T agree on is
+// the interesting part: their descriptions and bullet points were written
+// separately, and the type requires them, so one product's text is borrowed for
+// the family. That is a real choice about what shoppers will read, so it is
+// named here with the product it came from, before anything is sent, rather
+// than made quietly inside the request.
+function _varParentAttrs(j){
+  const bor = j.parent_borrowed || {};
+  const names = Object.keys(bor);
+  const inh = (j.parent_inherited || []).length;
+  if(!inh && !names.length) return "";
+  let s = '<div style="font-size:11px;margin-top:7px;padding-top:7px;'
+        + 'border-top:1px solid #26403a" class="cc">';
+  if(inh){
+    s += 'The parent takes <b>' + inh + '</b> details both products already agree '
+       + 'on — brand, country of origin, safety declarations.';
+  }
+  if(names.length){
+    s += (inh ? ' ' : '')
+      + 'It borrows ' + names.map(k =>
+          '<b>' + _vesc(k.replace(/_/g," ")) + '</b> from <code>'
+          + _vesc(bor[k]) + '</code>').join(", ")
+      + ' — the two products differ there, so one had to be chosen. Edit the '
+      + 'parent title above if this is not the wording you want shoppers to see.';
+  }
+  return s + '</div>';
 }
 
 async function variationsApply(){

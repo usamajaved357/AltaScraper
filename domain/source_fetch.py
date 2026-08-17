@@ -112,6 +112,25 @@ def _ebay_stock(data):
     return None
 
 
+def _ebay_qty(data):
+    """How many the supplier says are left, or None.
+
+    eBay answers this two ways and the difference matters. estimatedAvailable-
+    Quantity is a real count. estimatedRemainingQuantity comes with a THRESHOLD
+    ("MORE_THAN 10"), which is a floor and not a count -- a listing showing 94
+    there may have far more. Both are better than a bare yes/no, so both are
+    used, the exact one first.
+    """
+    for a in (data.get("estimatedAvailabilities") or []):
+        if not isinstance(a, dict):
+            continue
+        for k in ("estimatedAvailableQuantity", "estimatedRemainingQuantity"):
+            q = a.get(k)
+            if isinstance(q, (int, float)):
+                return int(q)
+    return None
+
+
 def _ebay_dispatch_days(data, now=None):
     """Days until the SOONEST estimated delivery -- see the module note."""
     now = now or _dt.datetime.now()
@@ -145,6 +164,7 @@ def from_ebay_item(data, now=None):
     out["currency"] = str((price or {}).get("currency") or "").upper()
     out["shipping"] = _ebay_shipping(data)
     out["in_stock"] = _ebay_stock(data)
+    out["available_qty"] = _ebay_qty(data)
     out["dispatch_days"] = _ebay_dispatch_days(data, now)
     if out["price"] is None:
         # An item with no price is not a usable reading, whatever else came back.

@@ -46,7 +46,7 @@ function LOGIC_REGISTRY(){
       `<b>Generates clean</b> with your chosen reference attached at your fidelity strength, target <b>2500px, pure white</b> (image AI: <code>${esc(C)}</code>).`,
       `<b>Auto-saves</b> the result, and shows its real <b>pixel size and file size</b> under the image.` ]},
     drive: { title:"How Drive image storage works", steps:[
-      `<b>Set a master folder per account.</b> In Account &amp; sheets, paste a Google Drive folder URL. That folder becomes the home for this account's generated images.`,
+      `<b>Set a master folder per account.</b> In Account settings, paste a Google Drive folder URL. That folder becomes the home for this account's generated images.`,
       `<b>Share it with the service account.</b> Just like a Google Sheet, the folder must be shared (Editor) with the service-account email shown in the Drive panel — otherwise uploads are denied.`,
       `<b>Per-product subfolders.</b> Each image is uploaded into a subfolder named <code>{SKU}_{ProductName}</code>, created automatically if it doesn't exist.`,
       `<b>Your own Drive.</b> Images live in your Drive, organised by product, safe and separate from the app.` ]},
@@ -309,7 +309,7 @@ async function studioToDrive(cardId, sku){
   // confirm a Drive folder is configured for this account
   let ds=null; try{ ds=await (await fetch("/drive/status")).json(); }catch(e){}
   if(!ds||!ds.ok||!ds.configured){
-    toast("No Drive folder set for this account — add one in Account & sheets");
+    toast("No Drive folder set for this account — add one in Account settings");
     return;
   }
   // ensure it's saved locally first (Drive upload reads the local file)

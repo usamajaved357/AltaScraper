@@ -130,14 +130,33 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 cap = 60
             cost_of = _cost_fn()
             done = 0
+            # HOW MANY COULD NOT BE READ. This loop `continue`d on a failed
+            # read without counting it, so an outcome where EVERY order failed
+            # -- a throttled account, an expired token -- was reported exactly
+            # like success, and the screen showed a column of dashes with a note
+            # saying the profit had been worked out. Silence about a total
+            # failure is the one thing this file is otherwise careful about.
+            unread = 0
             for r in rows:
                 if done >= cap:
                     break
                 items = _items_for(r["order_id"], r["account_id"])
                 if items is None:
+                    unread += 1
                     continue
-                p, m, why = _ov.profit_for(items, r.get("total"), cost_of)
-                r["profit"], r["margin_pct"], r["profit_note"] = p, m, why
+                # ROI as well as margin, and WHAT was bought. Both come out of
+                # the same call that was already being made -- the items are in
+                # hand here, and the row previously threw them away after
+                # counting them. Asked for as: "i want to see the item picture
+                # and name of the item and profit and roi and margin or each
+                # order without opening the order details".
+                d = _ov.profit_detail(items, r.get("total"), cost_of)
+                r["profit"] = d["profit"]
+                r["margin_pct"] = d["margin_pct"]
+                r["roi_pct"] = d["roi_pct"]
+                r["cogs"] = d["cogs"]
+                r["profit_note"] = d["note"]
+                r["item"] = _ov.item_summary(items)
                 r["lines"] = len(items)
                 done += 1
             if len(rows) > cap:
@@ -147,6 +166,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                % (cap, len(rows)))
             else:
                 profit_note = "Profit worked out for all %d." % done
+            if unread:
+                profit_note += (" %d order%s could not be read from Amazon — "
+                                "usually rate limiting; try again shortly."
+                                % (unread, "" if unread == 1 else "s"))
 
         return jsonify({"ok": True, "rows": rows, "days": days,
                         "accounts_asked": asked, "errors": errors,

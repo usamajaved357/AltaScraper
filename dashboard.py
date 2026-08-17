@@ -929,7 +929,30 @@ def _variation_schema(product_type: str, marketplace: str = "") -> dict:
     for k, v in props.items():
         if "image" in k.lower():
             kept[k] = v
-    out = {"properties": kept}
+    # THE NAMES OF EVERY ATTRIBUTE THIS TYPE HAS -- names only, not the schemas.
+    #
+    # A variation theme is written as its attribute names joined by "/", so
+    # MATERIAL_TYPE means "group these by the material_type attribute". MEASURED
+    # on OUTDOOR_LIVING (UK, 17 Aug 2026): Amazon offers 10 themes, and 7 of the
+    # axes those themes name are NOT attributes of the type. It has `material`,
+    # not `material_type`; `color`, not `color_name`; and no item_display_height
+    # at all.
+    #
+    # Without this list the checker could only say "these products have no
+    # material_type set" -- a refusal nobody can clear, because there is no
+    # material_type field on this product type to set. Same shape as the
+    # item_type_keyword bug in listing/variations.py: a field Amazon does not
+    # carry is not a field anyone can fill in.
+    #
+    # 114 short strings for OUTDOOR_LIVING. The full schemas are what made this
+    # worth trimming; the names are a few kilobytes.
+    out = {"properties": kept, "attribute_names": sorted(props.keys()),
+           # WHICH ATTRIBUTES THE TYPE CANNOT DO WITHOUT, from the schema and
+           # never from Amazon's prose (Rule 4). A parent is held to these like
+           # any other listing, and the ones the children disagree on -- their
+           # bullet points, their descriptions -- are the ones the parent has to
+           # be given for itself.
+           "required": [str(r) for r in (raw.get("required") or []) if r]}
     _state["variation_themes"][_ck] = out
     return out
 

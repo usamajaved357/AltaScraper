@@ -108,7 +108,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                 "item_type_keyword": _one(a, "item_type_keyword"),
                 "parent_sku": _one(a, "child_parent_sku_relationship"),
                 "title": _one(a, "item_name"),
-                "attributes": flat}
+                "attributes": flat,
+                # AMAZON'S OWN SHAPE, KEPT. `flat` is for the checker, which
+                # compares values as text; the parent has to be WRITTEN, and a
+                # flattened "AltaboltaVoo" is not what goes back up --
+                # [{"value": "AltaboltaVoo", "language_tag": "en_GB",
+                #   "marketplace_id": "A1F83G8C2ARO7P"}] is. Copying what came
+                # down is how the parent is built without guessing at wrappers
+                # (CLAUDE.md Rule 4).
+                "raw": a}
 
     def _schema(pt, mkt):
         """The product type's live schema, for the themes it allows.
@@ -372,13 +380,42 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                                      "the theme cannot be checked against it. Amazon "
                                      "silently ignores a theme a type does not "
                                      "allow, so confirm it before applying.")})
-        themes = _var.themes_from_schema(sch)
+        offered = _var.themes_from_schema(sch)
+        # WHAT AMAZON OFFERS IS NOT THE SAME AS WHAT WORKS HERE.
+        #
+        # A theme names the attributes it groups by, and a type does not always
+        # have them. MEASURED on OUTDOOR_LIVING: 10 themes offered, 5 of them
+        # naming color_name / material_type / item_display_height, none of which
+        # is an attribute of the type. Choosing one of those got the user a
+        # refusal that read like their products were incomplete.
+        #
+        # They are still returned -- as `unusable`, with the reason -- rather
+        # than dropped, because a theme vanishing from a list is not an
+        # explanation, and someone looking for MATERIAL_TYPE needs to be told why
+        # it is not on offer. Same treatment the deprecated themes get, one step
+        # further on.
+        attrs = _var.attribute_names(sch)
+        themes, blocked = _var.split_themes(offered, attrs)
+        note = ""
+        if not offered:
+            note = ("This product type has no variation theme in its schema, "
+                    "which means it does not support variations at all.")
+        elif not themes:
+            note = ("Amazon offers %d groupings for %s, but every one of them "
+                    "groups by an attribute this product type does not have, so "
+                    "none can be used." % (len(offered), pt))
+        elif blocked:
+            note = ("%d of the %d groupings Amazon lists for %s are left out: "
+                    "they group by an attribute this type does not have."
+                    % (len(blocked), len(offered), pt))
         return jsonify({"ok": True, "product_type": pt, "themes": themes,
                         "checked": True,
-                        "note": ("" if themes else
-                                 "This product type has no variation theme in its "
-                                 "schema, which means it does not support "
-                                 "variations at all.")})
+                        "unusable": [{"theme": t,
+                                      "missing": m,
+                                      "why": ("%s has no %s attribute"
+                                              % (pt, " or ".join(m)))}
+                                     for t, m in blocked],
+                        "note": note})
 
     @app.route("/variations/preview", methods=["POST"])
     def variations_preview():
@@ -428,12 +465,35 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                             "from that one first."
                             % (", ".join(already), "s" if len(already) == 1 else ""))
 
+        # THE PARENT'S OWN ATTRIBUTES, WORKED OUT HERE AND SHOWN. Preview used to
+        # build the parent with four attributes while apply built it with five,
+        # so the screen could not have revealed that Amazon would reject it --
+        # and it rejected every one. Both paths now call the same
+        # parent_attributes(), so the preview IS what gets sent.
+        from domain import accounts as _acc_mod
+        mkt_id = _acc_mod.marketplace_id(mkt)
+        pa = _var.parent_attributes(children, theme,
+                                    title=(b.get("parent_title") or ""),
+                                    marketplace_id=mkt_id,
+                                    extra=(b.get("parent_attributes") or {}),
+                                    required=_var.required_from_schema(_schema(pt, mkt)))
         payload = _var.build(parent_sku, children, theme, pt,
-                             parent_attributes=(b.get("parent_attributes") or {}))
+                             parent_attributes=pa["attributes"])
+        if pa["unresolved"]:
+            problems.append(
+                "The parent listing still needs %s, and neither product has a "
+                "value to take it from. Amazon rejects a parent that is missing "
+                "what the product type requires."
+                % ", ".join(pa["unresolved"]))
         return jsonify({"ok": True, "can_apply": not problems,
                         "problems": problems, "payload": payload,
                         "parent_sku": parent_sku, "product_type": pt,
-                        "children": children})
+                        "parent_inherited": pa["inherited"],
+                        "parent_differ": pa["differ"],
+                        "parent_borrowed": pa["borrowed"],
+                        "parent_image_from": pa["images_from"],
+                        "children": [{k: v for k, v in c.items() if k != "raw"}
+                                     for c in children]})
 
     @app.route("/variations/apply", methods=["POST"])
     def variations_apply():
@@ -484,17 +544,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         seller = str((acc or {}).get("seller_id") or "")
         locale = "en_US" if mkt == "US" else "en_GB"
 
-        payload = _var.build(parent_sku, children, theme, pt)
-        pattrs = dict(payload["parent"]["attributes"])
-        if title:
-            pattrs["item_name"] = [{"value": title, "marketplace_id": mkt_id}]
-        # A parent has no barcode of its own -- it is a container, not a unit --
-        # so it goes up under the GTIN exemption, exactly as CLAUDE.md Rule 1
-        # requires and never with an invented one.
-        pattrs.setdefault("supplier_declared_has_product_identifier_exemption",
-                          [{"value": True, "marketplace_id": mkt_id}])
-        for k, v in (b.get("parent_attributes") or {}).items():
-            pattrs.setdefault(k, v)
+        # The SAME builder the preview used, so what was shown is what is sent.
+        # The GTIN exemption and the title are inside it, along with everything
+        # the children agree on -- brand, country of origin, dangerous goods,
+        # batteries -- without which Amazon rejected every parent ever built.
+        pa = _var.parent_attributes(children, theme, title=title,
+                                    marketplace_id=mkt_id,
+                                    extra=(b.get("parent_attributes") or {}),
+                                    required=_var.required_from_schema(_schema(pt, mkt)))
+        if pa["unresolved"]:
+            return jsonify({"ok": False, "stage": "parent", "error": (
+                "The parent listing still needs %s and neither product has a "
+                "value to take it from. Nothing was sent."
+                % ", ".join(pa["unresolved"])), "children_touched": 0}), 400
+        pattrs = pa["attributes"]
+        payload = _var.build(parent_sku, children, theme, pt,
+                             parent_attributes=pattrs)
 
         res = _al.put(creds, mkt, seller, parent_sku, mkt_id, pt, pattrs,
                       issue_locale=locale)

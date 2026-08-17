@@ -89,8 +89,61 @@ FEATURES = {
     "monitor":   "ASIN monitor and hijacker alerts",
     "sales":     "Sales dashboard: revenue, orders, traffic",
     "accounts":  "Amazon credentials, accounts and settings",
+
+    # ---- PER PAGE, because the app is organised by page ----
+    #
+    # "i want to add some additional info ... give me an option to appoint the
+    #  permissions to each user by page because we have features of the apps
+    #  available per page also"
+    #
+    # These are not a second permission system. They are finer-grained members
+    # of the same one: each names a single screen that used to ride on one of
+    # the seven areas above, so "may see sales but not individual orders" or
+    # "may run the repricer but not edit listings" becomes expressible.
+    #
+    # UNSET MEANS INHERIT, which is what makes this safe to add to a live app.
+    # A user who today holds sales=view and has never heard of `orders` still
+    # sees orders at view, exactly as before -- see FEATURE_PARENT and
+    # feature_level(). Nobody's access changes until somebody sets one.
+    "generate":     "Generate & submit: create drafts and publish them",
+    "repricer":     "Repricer: supplier costs and price decisions",
+    "variations":   "Variations: merging listings under a parent",
+    "sellerimport": "Import seller: pulling another seller's catalogue",
+    "orders":       "Orders: individual orders and what each made",
+    "returns":      "Returns Intelligence",
+    "traffic":      "Traffic: sessions, page views and conversion",
+    "hourly":       "Hourly Sales",
+    "finance":      "Finance: contribution per product",
+    "aiusage":      "AI spend",
 }
 LEVELS = ("none", "view", "edit")
+
+# A page falls back to its AREA when it has not been set individually. This is
+# the whole reason the finer features can be added without changing what any
+# existing user can currently do.
+FEATURE_PARENT = {
+    "generate":     "listings",
+    "repricer":     "listings",
+    "variations":   "listings",
+    "sellerimport": "listings",
+    "orders":       "sales",
+    "returns":      "sales",
+    "traffic":      "sales",
+    "hourly":       "sales",
+    "finance":      "sales",
+    "aiusage":      "sales",
+}
+
+# The order the settings screen shows them in, and under which heading. Kept
+# here rather than in the browser so the list cannot drift from the features
+# that actually exist.
+FEATURE_GROUPS = [
+    ("Listings", ["listings", "generate", "repricer", "variations",
+                  "sellerimport", "images"]),
+    ("Money",    ["sales", "orders", "finance", "returns", "traffic",
+                  "hourly", "aiusage", "ppc"]),
+    ("Operations", ["inventory", "monitor", "accounts"]),
+]
 
 # What a role sees by default. Individually editable afterwards.
 ROLE_FEATURES = {
@@ -268,7 +321,23 @@ def feature_level(user, feature):
     if lvl in LEVELS:
         return lvl
     preset = ROLE_FEATURES.get(user.get("role") or "lister", {})
-    return preset.get(feature, "view")
+    if feature in preset:
+        return preset[feature]
+
+    # A PAGE FALLS BACK TO ITS AREA.
+    #
+    # The per-page features were added to a live app with real users on it. If
+    # an unset page defaulted to "view" like anything else, then adding
+    # `orders` would have handed the Orders screen to every lister -- who is
+    # deliberately given sales="none" because revenue is commercially
+    # sensitive. Inheriting instead means nobody's access moves until somebody
+    # sets it: a user with sales="none" cannot see orders, finance or traffic,
+    # exactly as before, and the page can still be raised or lowered on its own
+    # afterwards.
+    parent = FEATURE_PARENT.get(feature)
+    if parent:
+        return feature_level(user, parent)
+    return "view"
 
 
 def can_view(user, feature):

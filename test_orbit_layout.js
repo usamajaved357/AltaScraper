@@ -63,7 +63,10 @@ console.log("\n=== NOTHING WAS REORDERED OR REMOVED ===");
 // rather than a job, and it opened on a diagnostic matrix. The guard here is
 // about ORDER and PRESENCE -- that nothing was silently dropped or shuffled --
 // so it follows the rename rather than pinning a label we chose to improve.
-const NAV = ["Listings", "Image refs", "Brand setup", "Account &amp; sheets",
+// Renamed from "Account & sheets": a spreadsheet is no longer the store, only
+// an optional place to import products from, and a menu item named after it
+// said otherwise.
+const NAV = ["Listings", "Image refs", "Brand setup", "Account settings",
              "Generate &amp; submit", "PPC", "Inventory", "Compare with Amazon",
              "ASIN Monitor", "Supplier Import", "Research ASIN",
              "AI &amp; settings"];

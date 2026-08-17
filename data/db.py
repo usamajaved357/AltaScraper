@@ -595,6 +595,11 @@ _ADDED_COLUMNS = [
     # this; here so the ones that already exist gain it without being rebuilt.
     ("sourcing_rules", "profit_target_kind", "TEXT"),
     ("sourcing_rules", "profit_target_pct", "REAL"),
+    # HOW MANY THE SUPPLIER SAYS THEY HAVE. eBay reports it on the same call the
+    # price comes from, and it was being thrown away -- so "in stock" was a yes
+    # or no when the number behind it was already on the wire. One left and two
+    # hundred left are different facts about a listing you are about to promise.
+    ("sourcing_checks", "available_qty", "INTEGER"),
     # POSTAGE THE BUYER PAID, kept beside the item price rather than folded into
     # it. The owner counts revenue as everything the buyer handed over --
     # "this is the total revenue i generated" -- so the two have to be separable:

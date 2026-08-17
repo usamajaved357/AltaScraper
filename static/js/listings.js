@@ -660,23 +660,49 @@ function summary(){
     extras.push(`<span class="dupsum" onclick="toggleDupOnly()" title="Show only the duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> ${countDuplicateSkus()} duplicate SKU${countDuplicateSkus()>1?'s':''} across tabs</span>`);
   }
   const _sumHost = document.getElementById("summary");
+
+  // THE TILES ANSWER WHAT THE VIEW CAN ANSWER.
+  //
+  // On the LIVE view three of the four said nothing. "Total listings 45" and
+  // "Live 45" are the same number by definition -- everything in this list is
+  // live -- and "Ready to submit 0" cannot ever be anything else, because a
+  // listing that is already on Amazon has been submitted. Reported as: "45
+  // total listings and 45 live listings and 0 ready to send listings, do it
+  // makess sense?"
+  //
+  // It does not, so the live view gets tiles about LIVE listings: how many
+  // Amazon is not currently showing, how many have no cost (which is what makes
+  // every profit figure wrong), and how many have run out.
+  let tiles;
+  if(_draftsView){
+    tiles = tile(total, "Drafts", "all")
+          + tile(c.NEEDS_REVIEW, "Needs review", "review")
+          // APPROVED **and** API_READY. The filter has always matched both, but
+          // the tile counted only APPROVED -- so a row that had passed Amazon's
+          // preview showed as "0 ready to submit", which is the one number that
+          // decides whether there is anything to do.
+          + tile(c.APPROVED + c.API_READY, "Ready to submit", "approved")
+          + tile(c.HOLD + c.ERROR, "Blocked or errored", "holds");
+  }else{
+    const live = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
+    const _st = it => String((it && it.status) || "").toLowerCase();
+    // "inactive" contains "active", so the negative is tested first.
+    const notShowing = live.filter(it => _st(it).indexOf("inactive") >= 0
+                                      || _st(it).indexOf("suppress") >= 0
+                                      || _st(it).indexOf("incomplete") >= 0).length;
+    const noCost = live.filter(it => !(it && (it.cogs || (it.profit && it.profit.cogs)))).length;
+    const outOfStock = live.filter(it => {
+      const q = it && it.qty;
+      return q !== undefined && q !== null && q !== "" && Number(q) === 0;
+    }).length;
+    tiles = tile(total, "Live listings", "all")
+          + tile(notShowing, "Not showing", "holds")
+          + tile(noCost, "No cost set", "all")
+          + tile(outOfStock, "Out of stock", "all");
+  }
+
   _sumHost.innerHTML =
-    `<div class="metricgrid">`
-    + tile(total, _draftsView ? "Drafts" : "Total listings", "all")
-    + tile(c.NEEDS_REVIEW, "Needs review",   "review")
-    // APPROVED **and** API_READY. The "Ready to submit" filter has always
-    // matched both, but the tile counted only APPROVED -- so a row that had
-    // passed Amazon's preview and was genuinely ready showed up as "0 ready to
-    // submit", which is the one number on this screen that decides whether
-    // there is anything to do.
-    + tile(c.APPROVED + c.API_READY, "Ready to submit", "approved")
-    // The fourth tile answers the question the CURRENT view can answer. On
-    // Drafts, "Live" was counting listings this list does not contain; what
-    // matters here is what is stuck.
-    + (_draftsView
-        ? tile(c.HOLD + c.ERROR, "Blocked or errored", "holds")
-        : tile(c.LIVE, "Live", "live"))
-    + `</div>`
+    `<div class="metricgrid">` + tiles + `</div>`
     + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
   // STILL ON THE SPREADSHEET. Said here, where the listings are, rather than on
   // a settings page nobody visits -- and it disappears by itself once the

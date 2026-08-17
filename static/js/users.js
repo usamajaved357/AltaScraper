@@ -22,7 +22,8 @@ let USERS_META = null;      // the vocabulary the screens are drawn from
 // kept. That is what makes the bug unrepeatable -- a future endpoint that omits
 // a field can no longer erase what another endpoint already provided.
 function _setMeta(j){
-  const keep = ["all_permissions", "roles", "all_features", "role_features", "levels"];
+  const keep = ["all_permissions", "roles", "all_features", "role_features", "levels",
+                "feature_parent", "feature_groups"];
   const next = USERS_META || {};
   keep.forEach(function(k){ if(j && j[k] != null) next[k] = j[k]; });
   USERS_META = next;
@@ -263,26 +264,64 @@ async function renderUsers(){
 // Per-feature access, the way Amazon's child accounts work: each area is None,
 // View only, or View & edit. This is the "may they SEE it" axis -- the
 // permissions below are the "may they DO it" axis, and both apply.
+// PER PAGE, GROUPED, WITH INHERIT AS A REAL CHOICE.
+//
+// "give me an option to appoint the permissions to each user by page because we
+//  have features of the apps available per page also"
+//
+// There are seventeen of these now rather than seven, so a flat list is a wall.
+// They are grouped the way the sidebar groups them, and a page that sits under
+// an area offers "Inherit" -- which is not the same as picking a level. Inherit
+// means the page follows its area, so changing someone from manager to lister
+// moves the whole group with it; picking a level pins that one page.
+//
+// Inherit is stored as ABSENT, not as a word, which is what makes it inherit on
+// the server too (auth/users.py feature_level).
 function featureRows(prefix, current){
   const F = (USERS_META && USERS_META.all_features) || {};
+  const parent = (USERS_META && USERS_META.feature_parent) || {};
+  const groups = (USERS_META && USERS_META.feature_groups) || null;
   const cur = current || {};
-  return Object.keys(F).map(function(k){
-    const v = cur[k] || "view";
+
+  const row = function(k){
+    if(!F[k]) return "";
+    const isChild = !!parent[k];
+    const has = Object.prototype.hasOwnProperty.call(cur, k) && cur[k];
+    // An area with nothing set still shows "view", which is what it resolves
+    // to. A PAGE with nothing set shows Inherit, because that is what it is.
+    const v = has ? cur[k] : (isChild ? "" : "view");
     const opt = (val, lbl) =>
       '<option value="'+val+'"'+(v===val?' selected':'')+'>'+lbl+'</option>';
-    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
+    return '<div style="display:flex;align-items:center;gap:8px;font-size:12px'
+      + (isChild ? ';padding-left:14px' : ';font-weight:600') + '">'
       + '<select class="'+prefix+'_feat" data-feat="'+_uesc(k)+'" '
-      +   'style="width:120px;padding:3px 6px;font-size:12px">'
+      +   'style="width:132px;padding:3px 6px;font-size:12px">'
+      +   (isChild ? opt("", "Inherit (" + _uesc(parent[k]) + ")") : "")
       +   opt("none","No access") + opt("view","View only") + opt("edit","View &amp; edit")
       + '</select>'
-      + '<span class="cc">'+_uesc(F[k])+'</span></div>';
-  }).join("");
+      + '<span class="cc" style="font-weight:400">'+_uesc(F[k])+'</span></div>';
+  };
+
+  if(groups && groups.length){
+    return groups.map(function(g){
+      const rows = (g.features||[]).map(row).join("");
+      if(!rows) return "";
+      return '<div class="cc" style="font-size:10.5px;text-transform:uppercase;'
+        + 'letter-spacing:.06em;margin:8px 0 2px;opacity:.75">'+_uesc(g.title)+'</div>'
+        + rows;
+    }).join("");
+  }
+  return Object.keys(F).map(row).join("");
 }
 
 function _collectFeatures(prefix){
   const out = {};
   document.querySelectorAll("."+prefix+"_feat").forEach(function(s){
-    out[s.getAttribute("data-feat")] = s.value;
+    const v = s.value;
+    // An empty value is Inherit. It must be OMITTED rather than saved as a
+    // level -- saving it would pin the page to whatever it happens to resolve
+    // to today, and it would stop following its area from then on.
+    if(v) out[s.getAttribute("data-feat")] = v;
   });
   return out;
 }

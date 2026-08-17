@@ -101,6 +101,72 @@ function ordersFilter(v){
   _ordTimer = setTimeout(ordersLoad, 250);
 }
 
+// The picture and the name of what was bought.
+//
+// The image comes from the live catalogue the app already holds, matched on the
+// order line's SKU then its ASIN -- the same order of preference the listings
+// screen uses, and no extra call to Amazon. An order with several products names
+// the first and says how many more, because a row that grows with the order is
+// what made this screen cluttered.
+function _ordItemImage(item){
+  if(!item) return "";
+  const items = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
+  const norm = v => String(v == null ? "" : v).trim().toUpperCase();
+  const sku = norm(item.sku), asin = norm(item.asin);
+  let byAsin = "";
+  for(const it of items){
+    if(!it) continue;
+    const url = it.img || it.image || "";
+    if(!url) continue;
+    if(sku && norm(it.sku) === sku) return url;
+    if(asin && !byAsin && norm(it.asin) === asin) byAsin = url;
+  }
+  return byAsin;
+}
+
+function _ordItemCell(r){
+  const it = r.item;
+  if(!it || (!it.title && !it.sku)){
+    // WHY THIS CELL IS EMPTY, and there are two different reasons.
+    //
+    // Reading what was in an order costs one Amazon call per order, so it only
+    // happens when profit is asked for, and then only for the newest N. A row
+    // past that ceiling has not been read -- which is not the same as an order
+    // with nothing in it, and telling someone to tick a box they have already
+    // ticked is worse than saying nothing.
+    const why = !ORD.profit
+      ? 'turn on “work out profit” to see the item'
+      : 'past the profit limit for this load';
+    return '<span class="cc" style="font-size:11px;opacity:.55" title="'
+         + _oEsc(why) + '">' + _oEsc(why) + '</span>';
+  }
+  const img = _ordItemImage(it);
+  return '<div style="display:flex;gap:8px;align-items:center">'
+    + (img
+        ? '<img src="' + _oEsc(img) + '" loading="lazy" style="width:34px;height:34px;'
+          + 'object-fit:contain;background:#0d1220;border-radius:5px;flex:0 0 34px">'
+        : '<span style="width:34px;height:34px;border-radius:5px;background:#0d1220;'
+          + 'display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px">'
+          + '<i class="ti ti-photo" style="opacity:.4"></i></span>')
+    + '<span style="min-width:0">'
+    + '<span style="font-size:11.5px;display:block;overflow:hidden;'
+    + 'text-overflow:ellipsis;white-space:nowrap;max-width:230px" title="'
+    + _oEsc(it.title || it.sku) + '">' + _oEsc(it.title || it.sku) + '</span>'
+    + '<span class="cc" style="font-size:10px">' + _oEsc(it.sku)
+    + (it.extra ? (' · +' + it.extra + ' more') : '') + '</span>'
+    + '</span></div>';
+}
+
+// A percentage, coloured against its OWN thresholds, blank when unknown.
+function _ordPct(v, good, ok, title){
+  if(v === null || v === undefined)
+    return '<span class="cc" style="opacity:.5">—</span>';
+  const n = Number(v);
+  const col = n >= good ? "var(--ok,#8fd694)" : (n >= ok ? "var(--warn)" : "var(--red)");
+  return '<span style="color:' + col + '" title="' + _oEsc(title || '') + '">'
+       + n.toFixed(1) + '%</span>';
+}
+
 function ordersRender(){
   const body = document.getElementById("ordbody");
   if(!body) return;
@@ -153,10 +219,29 @@ function ordersRender(){
       +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.profit_note) + '</div>';
   }
 
-  h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:900px">'
+  // FEWER COLUMNS, MORE IN EACH.
+  //
+  // "the orders tab on the screen is too cluttered maybe it needs resizing and
+  //  also i want to see the item picture and name of the item and profit and roi
+  //  and margin or each order without opening the order details"
+  //
+  // Nine columns at a 900px minimum, and the two things you actually want --
+  // what was sold and what it made -- were the two that were not there.
+  //
+  // Account only appears when more than one is on screen; on a single account
+  // it repeated the same word down the page. Ships-to and Channel move into the
+  // Placed cell as small print, because they are things you glance at, not
+  // things you compare down a column.
+  const _multi = (function(){
+    const seen = {};
+    (ORD.rows || []).forEach(function(r){ seen[r.account_id || ""] = 1; });
+    return Object.keys(seen).length > 1;
+  })();
+  const cols = ['Item', 'Order'].concat(_multi ? ['Account'] : [])
+               .concat(['Placed', 'Status', 'Total', 'Profit', 'Margin', 'ROI']);
+  h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:760px">'
     +  '<thead><tr>'
-    +  ['Order', 'Account', 'Placed', 'Status', 'Units', 'Total',
-        'Profit', 'Ships to', 'Channel'].map(function(t){
+    +  cols.map(function(t){
          return '<th style="text-align:left;font-size:10.5px;padding:6px 8px;'
               + 'white-space:nowrap">' + t + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
@@ -166,19 +251,32 @@ function ordersRender(){
     const isOpen = (ORD.open === r.order_id);
     h += '<tr style="cursor:pointer" onclick="ordersToggle(' + jsArg(r.order_id)
       +  ',' + jsArg(r.account_id) + ')">'
+      // WHAT WAS SOLD, which is the first thing anyone wants from a list of
+      // orders and was not on it at all. The picture comes from the live
+      // catalogue this app already holds -- no extra call -- and falls back to
+      // an icon rather than a broken image.
+      +  '<td style="padding:6px 8px;min-width:230px">' + _ordItemCell(r) + '</td>'
       +  '<td style="padding:6px 8px;white-space:nowrap">'
-      +  '<code style="font-size:11.5px;color:var(--accent2)">' + _oEsc(r.order_id)
+      +  '<code style="font-size:11px;color:var(--accent2)">' + _oEsc(r.order_id)
       +  '</code>' + (isOpen ? ' <i class="ti ti-chevron-down"></i>'
                              : ' <i class="ti ti-chevron-right" style="opacity:.4"></i>')
+      +  '<div class="cc" style="font-size:10px">' + (r.units||0) + ' unit'
+      +  ((r.units||0) === 1 ? '' : 's') + '</div>'
       +  '</td>'
-      +  '<td style="padding:6px 8px;font-size:11.5px">' + _oEsc(r.account) + '</td>'
+      +  (_multi ? ('<td style="padding:6px 8px;font-size:11.5px">'
+                    + _oEsc(r.account) + '</td>') : '')
       +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
-      +  _oEsc(_oWhen(r.purchased)) + '</td>'
+      +  _oEsc(_oWhen(r.purchased))
+      // The two columns that used to sit on the right, as small print here.
+      +  '<div class="cc" style="font-size:10px">'
+      +  _oEsc(r.fulfilment || '') + (r.prime ? ' · Prime' : '')
+      +  (r.business ? ' · Business' : '')
+      +  (r.region ? ' · ' + _oEsc(r.region) : '') + '</div>'
+      +  '</td>'
       +  '<td style="padding:6px 8px;font-size:11.5px;color:' + st.c + '">'
       +  _oEsc(r.status)
       +  (r.unshipped ? ' <span class="cc">(' + r.unshipped + ' to ship)</span>' : '')
       +  '</td>'
-      +  '<td style="padding:6px 8px;font-size:11.5px">' + (r.units||0) + '</td>'
       +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
       +  _oEsc(_oMoney(r.total, r.currency)) + '</td>'
       // WHAT IT EARNED. Blank rather than zero when a cost is unknown -- a
@@ -193,19 +291,24 @@ function ordersRender(){
             ? '<span class="cc" title="' + _oEsc(r.profit_note || "")
               + '">not known</span>'
             : '<span style="color:' + (r.profit > 0 ? "var(--ok,#8fd694)" : "var(--red)")
-              + '">' + _oEsc(_oMoney(r.profit, r.currency))
-              + (r.margin_pct !== null && r.margin_pct !== undefined
-                  ? ' <span class="cc">' + Number(r.margin_pct).toFixed(1) + '%</span>'
-                  : '') + '</span>')
+              + '">' + _oEsc(_oMoney(r.profit, r.currency)) + '</span>')
       +  '</td>'
-      +  '<td style="padding:6px 8px;font-size:11.5px">'
-      +  (r.region ? _oEsc(r.region) : '<span class="cc">—</span>') + '</td>'
-      +  '<td style="padding:6px 8px;font-size:11px" class="cc">'
-      +  _oEsc(r.fulfilment) + (r.prime ? ' · Prime' : '')
-      +  (r.business ? ' · Business' : '') + '</td>'
+      // MARGIN AND ROI, in their own columns. They answer different questions --
+      // margin says whether the PRICE is any good, ROI says whether the stock
+      // was worth BUYING -- so they are coloured against different thresholds
+      // rather than one shared rule of thumb, and neither is invented when the
+      // cost behind it is unknown.
+      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap">'
+      +  _ordPct(r.margin_pct, 20, 8,
+                'Profit as a share of what the buyer paid') + '</td>'
+      +  '<td style="padding:6px 8px;font-size:11.5px;white-space:nowrap"'
+      +  (r.cogs != null ? ' title="on ' + _oEsc(_oMoney(r.cogs, r.currency))
+                           + ' of stock"' : '') + '>'
+      +  _ordPct(r.roi_pct, 30, 12,
+                'Profit as a share of what the stock cost') + '</td>'
       +  '</tr>';
     if(isOpen){
-      h += '<tr><td colspan="9" style="padding:0 8px 10px">'
+      h += '<tr><td colspan="' + cols.length + '" style="padding:0 8px 10px">'
         +  '<div id="orddet_' + _oEsc(r.order_id) + '">'
         +  (ORD.details[r.order_id] ? _ordDetailHtml(r) :
             '<div class="cc" style="padding:10px"><span class="genspin"></span> '

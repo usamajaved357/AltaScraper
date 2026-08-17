@@ -224,6 +224,58 @@ async function sourcingTrackAll(btn){
 }
 let SRC_LASTBULK = null;
 
+// SUPPLIERS FROM A SHEET.
+//
+// "the repricer tool give me an option to upload a sheet containing the sku's or
+//  original asins of the item, to add their suppliers through a sheet upload"
+//
+// The report is shown ROW BY ROW, not as a total. A bulk import that says "38
+// attached" and nothing else is how twelve silently-skipped rows become "the
+// repricer is not working" a fortnight later.
+async function sourcingUpload(inp){
+  const f = inp && inp.files && inp.files[0];
+  if(!f) return;
+  const host = document.getElementById("srcbody");
+  const fd = new FormData();
+  fd.append("file", f);
+  toast("Reading " + f.name + "…");
+  let j;
+  try{
+    j = await (await fetch("/sourcing/sources/upload", {method: "POST", body: fd})).json();
+  }catch(e){ toast(String(e)); return; }
+  finally{ inp.value = ""; }
+
+  if(!j.ok){ toast(j.error || "Could not read that sheet"); return; }
+  SRC_LASTBULK = j;
+  toast(j.attached + " supplier" + (j.attached === 1 ? "" : "s") + " attached"
+        + (j.already ? (", " + j.already + " already had one") : "")
+        + (j.skipped ? (", " + j.skipped + " skipped") : "") + ".");
+  sourcingLoad();
+}
+
+// What the last upload did to each row, offered rather than forced: it is long,
+// and it is only interesting until you have read it.
+function sourcingUploadReport(){
+  const j = SRC_LASTBULK;
+  if(!j) return '';
+  const bad = (j.rows || []).filter(function(r){ return r.status !== "attached"; });
+  return '<details class="foldgroup" style="margin-bottom:12px"><summary>'
+    + '<i class="ti ti-table-import"></i> Last sheet upload &mdash; '
+    + j.attached + ' attached'
+    + (j.already ? (', ' + j.already + ' already had one') : '')
+    + (j.skipped ? ('<b style="color:#e8c66a">, ' + j.skipped + ' skipped</b>') : '')
+    + '<span class="cc"> — matched on "' + _sesc((j.columns||{}).sku || (j.columns||{}).asin || '?')
+    + '" and "' + _sesc((j.columns||{}).url || '?') + '"</span></summary>'
+    + (bad.length
+        ? bad.map(function(r){
+            return '<div class="cc" style="font-size:11.5px;padding:3px 0;'
+              + 'border-top:1px solid #1c2531">line ' + r.line + ' &middot; '
+              + _sesc(r.sku || r.asin || '(no key)') + ' &mdash; ' + _sesc(r.note) + '</div>';
+          }).join("")
+        : '<div class="cc" style="font-size:11.5px;padding:4px 0">Every row went in.</div>')
+    + '</details>';
+}
+
 function sourcingRender(j){
   const body = document.getElementById("srcbody");
   const c = j.counts || {};
@@ -280,6 +332,16 @@ function sourcingRender(j){
     +  'attaches the supplier link the app recorded when it built each one. '
     +  'Changes no prices.">'
     +  '<i class="ti ti-eye"></i> Track everything</button>'
+    // Suppliers from a sheet. A file input the browser draws itself arrives as
+    // the one light-grey control on a dark panel, so it is off-screen behind a
+    // label -- the same fix the image library needed.
+    +  '<input type="file" id="src_upload" accept=".csv,.tsv,.xlsx,.xlsm,.xls" '
+    +  'class="visually-hidden" onchange="sourcingUpload(this)">'
+    +  '<label class="db-chip" for="src_upload" style="cursor:pointer" title="'
+    +  'A sheet of supplier links. One column of SKUs or ASINs, one column of '
+    +  'links — the app matches each link to the right listing and starts '
+    +  'tracking it. Nothing is priced.">'
+    +  '<i class="ti ti-table-import"></i> Suppliers from a sheet</label>'
     // The switch that actually matters, named for what it does rather than for
     // where it lives. "Master switch: off" did not say off from WHAT.
     +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
@@ -302,6 +364,7 @@ function sourcingRender(j){
   // The numbers get cards of their own, under the controls rather than crammed
   // into them.
   if(SRC_ROWS.length) h += _srcCounts(c);
+  h += sourcingUploadReport();
 
   if(j.note){
     h += '<div class="cc" style="font-size:12px;padding:10px;border:1px dashed #2a3446;border-radius:6px">'
@@ -472,6 +535,53 @@ function _sourceHistory(hist){
   return h;
 }
 
+// One line of facts under each SKU. Six small labelled figures rather than a
+// sentence, because these are numbers you scan down a column, not read.
+function _glanceRow(g){
+  if(!g) return '';
+  const cell = function(label, value, tone, title){
+    if(value === null || value === undefined || value === "") return '';
+    return '<span title="' + _sesc(title || '') + '" style="display:inline-flex;'
+      + 'flex-direction:column;line-height:1.25;min-width:74px">'
+      + '<span style="font-size:12.5px;font-weight:600'
+      + (tone ? (';color:' + tone) : '') + '">' + value + '</span>'
+      + '<span class="cc" style="font-size:10px">' + label + '</span></span>';
+  };
+  const pct = function(v){ return (v === null || v === undefined) ? null
+                                  : (v.toFixed ? v.toFixed(1) : v) + '%'; };
+  // Margin and ROI answer different questions, so they are coloured against
+  // different thresholds rather than one shared rule of thumb.
+  const mTone = (g.margin_pct === null || g.margin_pct === undefined) ? ''
+              : (g.margin_pct >= 20 ? 'var(--ok)'
+                 : g.margin_pct >= 8 ? 'var(--warn)' : 'var(--red)');
+  const rTone = (g.roi_pct === null || g.roi_pct === undefined) ? ''
+              : (g.roi_pct >= 30 ? 'var(--ok)'
+                 : g.roi_pct >= 12 ? 'var(--warn)' : 'var(--red)');
+  const stockTone = (g.units_available === null || g.units_available === undefined) ? ''
+                  : (g.units_available <= 0 ? 'var(--red)'
+                     : g.units_available <= 3 ? 'var(--warn)' : '');
+  const bits = [
+    cell('source price', _smoney(g.landed),
+         '', 'What one unit costs you delivered: '
+         + _smoney(g.source_price) + ' + ' + _smoney(g.source_postage) + ' postage'),
+    cell('sells at', _smoney(g.sell_price), '',
+         'What Amazon is charging for it right now'),
+    cell('profit / unit', _smoney(g.profit), mTone,
+         'At the current price, after Amazon’s cut, your postage label and the ads allowance'),
+    cell('margin', pct(g.margin_pct), mTone, 'Profit as a share of the selling price'),
+    cell('ROI', pct(g.roi_pct), rTone, 'Profit as a share of what you paid for the unit'),
+    cell('units at source', g.units_available, stockTone,
+         'How many the supplier says are left. eBay sometimes reports a floor rather than a count.'),
+    cell('handling', (g.handling_days == null ? null : g.handling_days + 'd'), '',
+         'Supplier dispatch ' + (g.dispatch_days == null ? '?' : g.dispatch_days)
+         + 'd plus the safety buffer — what would be promised to the buyer'),
+  ].filter(Boolean);
+  if(!bits.length) return '';
+  return '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;'
+       + 'padding:8px 10px;background:var(--panel2);border-radius:6px">'
+       + bits.join("") + '</div>';
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
@@ -497,6 +607,23 @@ function sourcingRow(r, i){
         : '<button class="db-chip" onclick="sourcingArm('+_sarg(r.sku)+',true)">Arm</button>')
     +  '<button class="db-chip" onclick="sourcingUnenrol('+_sarg(r.sku)+')">Remove</button>'
     +  '</div>';
+
+  // THE ROW AT A GLANCE.
+  //
+  // "i want to add some additional info which give me a glance view to be
+  //  displayed on each sku, current source price, current my selling price on
+  //  which the item will be sold if i receive an order and the profit margin and
+  //  the roi i will generate on the sale. source units available, the shipping
+  //  days of the supplier"
+  //
+  // Every figure is about the sale that would happen NOW -- what Amazon is
+  // charging today against what the supplier charges today -- which is a
+  // different question from the price the repricer would LIKE it to be. That one
+  // is already on the line above.
+  //
+  // Blank where unknown. A margin shown as 0% because nothing could be read is a
+  // number somebody would act on.
+  h += _glanceRow(r.glance);
 
   // The reason line is the point of the whole screen.
   h += '<div class="cc" style="font-size:11.5px;margin-top:5px;line-height:1.5">'

@@ -247,21 +247,33 @@ FEATURE_PATHS = [
     # Revenue is commercially sensitive, so it is its own feature rather than
     # riding on "listings" -- a lister needs listings and has no business
     # reading turnover.
+    # ---- PER-PAGE ENTRIES COME FIRST, because first match wins and each of
+    #      these sits under a broader prefix below. Every one of them inherits
+    #      its area's level until it is set individually (see FEATURE_PARENT in
+    #      auth/users.py), so adding them changed nobody's access.
+    ("/orders",               "orders"),
+    ("/returns",              "returns"),
+    ("/traffic",              "traffic"),
+    ("/hourly",               "hourly"),
+    ("/finance",              "finance"),
+    ("/aiusage",              "aiusage"),
+    ("/sourcing",             "repricer"),
+    ("/variations",           "variations"),
+    ("/variant",              "variations"),
+    ("/seller",               "sellerimport"),
+    # Generating and publishing is its own page and its own risk: it is the one
+    # that creates listings on Amazon.
+    ("/run",                  "generate"),
+    ("/preview",              "generate"),
+    ("/input",                "generate"),
+
     ("/sales",                "sales"),
-    # Contribution per product is revenue and cost, so it belongs to the same
-    # commercially-sensitive area as the sales dashboard rather than to listings.
-    ("/finance",              "sales"),
-    # Orders are turnover, order by order, with where they went. Same
-    # commercially-sensitive area as the sales dashboard: someone who may not
-    # see revenue must not see it one order at a time either.
-    ("/orders",               "sales"),
-    # Returns are revenue going back out, with what it cost. Same
-    # commercially-sensitive area as sales.
-    ("/returns",              "sales"),
-    # What the AI cost is a running bill, and it names which account ran it up.
-    # That is the same commercially-sensitive area as the sales dashboard: it
-    # reveals how much work each account is doing and what the operation spends.
-    ("/aiusage",              "sales"),
+    # (Contribution per product, orders, returns and AI spend all used to map
+    #  straight to "sales" here. They are still the same commercially-sensitive
+    #  area -- someone who may not see revenue must not see it one order at a
+    #  time either -- but each now has its own entry ABOVE and inherits "sales"
+    #  until it is set, so the default is unchanged and the page can be turned
+    #  off on its own.)
     ("/ppc",                  "ppc"),
     ("/inventory",            "inventory"),
     ("/monitor",              "monitor"),
@@ -274,12 +286,10 @@ FEATURE_PATHS = [
     ("/accounts/select",      None),     # and to open one
     ("/accounts",             "accounts"),
     ("/sp_diagnose",          "accounts"),
-    # The repricer acts on listings, so it rides on the listings area: someone
-    # with no access to listings has no business seeing what is about to happen
-    # to their prices either.
-    ("/sourcing",             "listings"),
-    ("/variations",           "listings"),
-    ("/seller",               "listings"),
+    # (The repricer, variations and seller import are mapped ABOVE, each to its
+    #  own page feature. They still inherit "listings" until set, which is the
+    #  behaviour they had: someone with no access to listings has no business
+    #  seeing what is about to happen to their prices either.)
     ("/rows",                 "listings"),
     ("/row",                  "listings"),
     ("/live",                 "listings"),

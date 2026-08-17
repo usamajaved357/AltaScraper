@@ -155,6 +155,61 @@ def compat_pattern(term, leads=None):
                       + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
 
 
+# WHAT A PRODUCT ACTS ON IS NOT WHAT IT IS.
+#
+# Third member of the same family as the accessory rule ("patio heater COVER")
+# and the compatibility rule ("works on electric hobs"). Those cover the words
+# BEHIND a trigger and the words IN FRONT of it. This covers the case where the
+# trigger is the thing being removed, cleaned off, or protected against.
+#
+# The one that got reported: a floor scrub brush described as tackling "dried
+# residue and ADHESIVE MARKS" was declared a HIGH RISK chemical product needing
+# CLP classification, an SDS, REACH registration and a poison-centre
+# notification. It is a brush. The word "adhesive" was in it because the brush
+# scrapes adhesive off floors.
+#
+# Two shapes, because English puts it either way round:
+#   verb first   "removes adhesive", "cleans grease", "protects against rust"
+#   noun after   "adhesive marks", "grease residue", "rust stains"
+#
+# Deliberately generic. A rust REMOVER is still a chemical and must still fire --
+# which it does, because "rust remover" is its own trigger term and the product
+# is named by it; this only demotes the bare word when every occurrence of it is
+# something the product is used AGAINST.
+TARGET_LEADS = [
+    "removes", "remove", "removing", "removal of", "removes any", "removes all",
+    "lifts", "lift", "lifting", "cleans", "clean", "cleaning", "cleans off",
+    "wipes", "wipe", "wipes away", "scrubs", "scrub", "scrapes", "scrape",
+    "tackles", "tackle", "dissolves", "dissolve", "strips", "strip",
+    "eliminates", "eliminate", "clears", "clear", "gets rid of",
+    "protects against", "protect against", "prevents", "prevent",
+    "resistant to", "resists", "guards against", "shields against",
+    "against", "free from", "without any",
+]
+
+# Nouns that mark the trigger as a deposit or blemish rather than the product.
+TARGET_TAILS = [
+    "mark", "marks", "residue", "residues", "stain", "stains", "spill",
+    "spills", "deposit", "deposits", "buildup", "build-up", "build up",
+    "grime", "film", "smear", "smears", "streak", "streaks", "dirt",
+    "damage", "corrosion", "odour", "odor", "smell", "smells",
+]
+
+
+def target_pattern(term, leads=None, tails=None):
+    """'<removal verb> ... <term>' or '<term> <deposit noun>' matcher.
+
+    Same short gap as compat_pattern, for the same reason: a verb in one clause
+    must not reach a trigger in the next.
+    """
+    lead = "|".join(re.escape(s) for s in (leads or TARGET_LEADS))
+    tail = "|".join(re.escape(s) for s in (tails or TARGET_TAILS))
+    t = re.escape(term)
+    return re.compile(
+        r"(?:(?:" + lead + r")\b[\w\s,/&'-]{0,40}?" + t + r"(?![A-Za-z0-9])"
+        r"|" + t + r"\s+(?:" + tail + r")(?![A-Za-z0-9]))", re.I)
+
+
 def classify_keyword(kw):
     """'strong' (may flag alone) vs 'corroborating' (needs a category signal)."""
     k = str(kw).strip().lower()

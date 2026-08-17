@@ -29,6 +29,22 @@ WHAT IS SUBTRACTED, AND WHERE EACH PART COMES FROM
     - Amazon fees  estimated until the settlement arrives, at the rate THIS
                    account actually pays, measured from its own settled history
     - stock cost   frozen onto the order when it was seen (domain/order_cogs)
+    - promotions   coupons, deals and percent-off funded by the seller. Amazon
+                   reports these SEPARATELY from the price, not inside it: the
+                   Finances API puts Principal in ItemChargeList and the
+                   discount in PromotionList, on the same shipment item. So the
+                   revenue above is what the buyer was CHARGED BEFORE the
+                   coupon, and the coupon is money that never arrives. Measured
+                   on jack_uk: 11.60 funded across five orders, e.g. 29 Jul
+                   principal 116.64 with 3.50 of promotion beside it.
+
+                   Taken per ORDER, from order_fees, for two reasons: it keeps
+                   the figure on the order's own calendar (see the two calendars
+                   above), and finance_daily stores every day TWICE -- an
+                   asin='*' rollup row plus one row per real ASIN -- so summing
+                   that table without filtering gives exactly double. The series
+                   readers filter on asin='*'; a hand-written SUM over the whole
+                   table does not, which is how 11.60 first looked like 23.20.
     - charges      postage out, prep, a hand-allocated ad figure
                    (domain/asin_charges)
     - ad spend     ONLY when the Advertising API is connected. Nothing is
@@ -126,8 +142,11 @@ def fee_rate(config_path, workspace_id, marketplace, end_date,
         "no settled history to measure yet" % (DEFAULT_REFERRAL_RATE * 100))
 
 
-def for_lines(lines, rate, vat_rate=None, charge_of=None):
+def for_lines(lines, rate, vat_rate=None, charge_of=None, promos_by_order=None):
     """Profit across order lines, and exactly what it does not cover.
+
+    `promos_by_order` is {order_id: amount funded}. Optional, so a caller that
+    has not looked them up behaves exactly as before rather than failing.
 
     `lines` are order_lines rows: sku, units, revenue (item price), shipping
     (what the buyer paid for postage), cogs (frozen when the order was seen).
@@ -191,6 +210,19 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None):
                     charge_parts.get(p["label"], 0.0) + float(p["amount"] or 0) * qty, 2)
 
     revenue = round(revenue, 2)
+
+    # WHAT THE COUPON TOOK. Counted once per ORDER, never per line: a promotion
+    # is recorded against the order, and adding it up per line would subtract it
+    # as many times as the order had items.
+    promos = 0.0
+    if promos_by_order:
+        for _oid in orders:
+            try:
+                promos += float(promos_by_order.get(_oid) or 0.0)
+            except (TypeError, ValueError):
+                pass
+    promos = round(promos, 2)
+
     # VAT COMES OUT FIRST. Amazon reports these values with it already inside,
     # so it was never the seller's money and no fee or margin should be worked
     # out against it.
@@ -207,7 +239,11 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None):
     fees = round(net_revenue * float(rate), 2)
     cogs = round(cogs, 2)
     charges = round(charges, 2)
-    profit = round(net_revenue - fees - cogs - charges, 2)
+    # The fee is still worked out on net_revenue, NOT on revenue after the
+    # coupon: Amazon charges its referral fee on the price the buyer paid, and a
+    # seller-funded discount does not reduce it. Subtracting the promotion from
+    # the base before applying the rate would quietly understate the fee.
+    profit = round(net_revenue - fees - cogs - charges - promos, 2)
     margin = round(profit / net_revenue * 100, 1) if net_revenue else None
 
     return {
@@ -221,6 +257,7 @@ def for_lines(lines, rate, vat_rate=None, charge_of=None):
         "fees": fees,
         "cogs": cogs,
         "charges": charges,
+        "promos": promos,
         "charge_parts": [{"label": k, "amount": v}
                          for k, v in sorted(charge_parts.items())],
         "units": units,
@@ -255,7 +292,25 @@ def for_period(config_path, workspace_id, marketplace, start, end,
         return _ac.per_unit(config_path, workspace_id, marketplace, asin,
                             sku=sku, on_date=on_date)
 
-    out = for_lines(lines, rate, vat_rate=vat_rate, charge_of=_charge_of)
+    # WHAT EACH ORDER'S COUPON COST, keyed by order id so it lands on the
+    # ORDER's calendar rather than the settlement's. order_fees already holds it
+    # per order; only settled orders have one, which is correct -- an unsettled
+    # order has not had its promotion reported yet, and inventing one would be a
+    # guess. Never fatal: a missing table means no promotions, not no profit.
+    promos_by_order = {}
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        for r in conn.execute(
+                "SELECT order_id, SUM(promos) p FROM order_fees "
+                "WHERE workspace_id=? AND marketplace=? AND IFNULL(promos,0) <> 0 "
+                "GROUP BY order_id", (workspace_id, marketplace)):
+            promos_by_order[str(r["order_id"])] = float(r["p"] or 0.0)
+    except Exception:
+        promos_by_order = {}
+
+    out = for_lines(lines, rate, vat_rate=vat_rate, charge_of=_charge_of,
+                    promos_by_order=promos_by_order)
 
     # REVENUE COMES FROM THE FIGURE ON THE CARD, not from a second derivation.
     #
@@ -283,7 +338,12 @@ def for_period(config_path, workspace_id, marketplace, start, end,
                 vat = 0.0
         net = round(rev - vat, 2)
         fees = round(net * float(rate), 2)
-        profit = round(net - fees - out["cogs"] - out["charges"], 2)
+        # The promotion is subtracted here too. This branch recomputes profit
+        # against the revenue the CARD is showing, and it used to drop every
+        # deduction the first pass had worked out except cogs and charges -- so
+        # on any window the screen supplied a revenue for, the coupon came back.
+        profit = round(net - fees - out["cogs"] - out["charges"]
+                       - float(out.get("promos") or 0.0), 2)
         out.update({
             "revenue": rev, "vat": vat, "net_revenue": net, "fees": fees,
             "profit": profit,

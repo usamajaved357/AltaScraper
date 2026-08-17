@@ -309,6 +309,62 @@ def landed_cost(row):
     return round(float(p) + float(s), 2)
 
 
+# WHAT THE SOURCE IS ACTUALLY SELLING, AND WHAT WE WOULD BE SELLING IT AS.
+#
+# Every generated listing goes up as Amazon condition new_new -- hardcoded, in
+# amazon_listing_generator.py, for every product there has ever been. And eBay's
+# "New" is not one condition, it is nine, three of which explicitly mean the item
+# is NOT what an Amazon buyer is promised when they see New.
+#
+# MEASURED on housewaresstore-23 (17 Aug 2026): of eight items screened, FIVE
+# were "New other (see details)" -- eBay's own words for opened, repackaged, or
+# missing its box. Three of those were among the five drafted. Nothing anywhere
+# in the app mentioned it: the condition comes back from eBay, to_review_row
+# keeps it, and then it was never read again.
+#
+# That is the "item not as described" claim, arriving weeks later, per unit, and
+# at volume it is an account health warning rather than a refund.
+#
+# A CAUTION, not a block. Plenty of "New other" stock is genuinely fine -- a
+# shop clearing shelf-worn boxes -- and that is a judgement about a supplier, not
+# a rule a program should make. The point is that it is made KNOWINGLY, before
+# the generation spend, which is the same reason the paperwork check sits here.
+_CONDITION_RISK = (
+    ("for parts", "eBay says FOR PARTS OR NOT WORKING"),
+    ("not working", "eBay says FOR PARTS OR NOT WORKING"),
+    ("refurbish", "eBay says REFURBISHED"),
+    ("renewed", "eBay says RENEWED"),
+    ("open box", "eBay says OPEN BOX"),
+    ("new other", "eBay says NEW OTHER — opened, repackaged, or without its box"),
+    ("with defects", "eBay says NEW WITH DEFECTS"),
+    ("pre-owned", "eBay says PRE-OWNED"),
+    ("preowned", "eBay says PRE-OWNED"),
+    ("used", "eBay says USED"),
+)
+
+
+def condition_risk(row):
+    """Would selling this as Amazon New be a fair description? -> note or None.
+
+    None means either "plainly new" or "eBay did not say", and those are told
+    apart: an item with no condition at all is UNKNOWN, because assuming new is
+    the assumption that costs money.
+    """
+    cond = str((row or {}).get("condition") or "").strip()
+    if not cond:
+        return {"unknown": True,
+                "message": ("eBay did not say what condition this is in, and "
+                            "every listing this app creates goes up as New.")}
+    low = cond.lower()
+    for needle, why in _CONDITION_RISK:
+        if needle in low:
+            return {"message": (
+                "%s, but this would be listed on Amazon as New. Check the "
+                "listing before you spend on it — a buyer expecting sealed and "
+                "boxed opens an “item not as described” claim." % why)}
+    return None
+
+
 def screen_one(row, *, restriction_lookup=None, restricted_type=None,
                compliance=None):
     """Whether this item may be listed, and what it will cost you to try.
@@ -361,7 +417,16 @@ def screen_one(row, *, restriction_lookup=None, restricted_type=None,
             notes.append(c.get("message")
                          or "Amazon is likely to demand documents for this.")
 
+    # 4. What the source is selling, against what we would be selling it as.
+    #    Needs nothing from the network -- eBay already said, on the row -- so
+    #    unlike the three above it is not injected.
+    cr = condition_risk(row)
+    if cr:
+        verdict = worse(UNKNOWN if cr.get("unknown") else CAUTION)
+        notes.append(cr["message"])
+
     return {"verdict": verdict, "notes": notes,
+            "condition": str(row.get("condition") or ""),
             "item_id": row.get("item_id"), "title": row.get("title")}
 
 

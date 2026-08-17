@@ -130,7 +130,16 @@ check("listing orders needs no special permission",
       required_permission("/orders/list", "GET"), None)
 # Orders are turnover one order at a time; someone who may not see revenue must
 # not see it this way either.
-check("but it belongs to the sales feature", feature_for("/orders/list"), "sales")
+# CHANGED DELIBERATELY: orders is its own page feature now, so it can be
+# withheld on its own. It INHERITS sales until somebody sets it, so
+# the access anyone actually has is unchanged.
+check("it is its own page", feature_for("/orders/list"), "orders")
+from auth import users as _U
+check("  falling back to sales until set",
+      _U.FEATURE_PARENT.get("orders"), "sales")
+check("  so a lister still cannot see it",
+      _U.feature_level({"active": True, "role": "lister",
+                        "features": {}}, "orders"), "none")
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails: print("   -", f)

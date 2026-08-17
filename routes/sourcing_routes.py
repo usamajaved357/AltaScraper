@@ -135,13 +135,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             for s, c in pairs:
                 srcs.append({**s, "check": c,
                              "history": _drift.price_history(CONFIG_PATH, s["id"])})
+            _rule = _sourcing.rule_with_defaults(
+                _repo.rule_for(CONFIG_PATH, d["workspace_id"],
+                               d["marketplace"], d["sku"]))
             rows.append({**d, "sources": srcs,
                          "drift": _drift.for_sku(
                              _COGS_OVERRIDE, d["workspace_id"], d["sku"], pairs,
                              (d.get("decision") or {}).get("source_id")),
-                         "rule": _sourcing.rule_with_defaults(
-                             _repo.rule_for(CONFIG_PATH, d["workspace_id"],
-                                            d["marketplace"], d["sku"]))})
+                         # What an order arriving right now would actually earn:
+                         # today's supplier price against today's Amazon price.
+                         "glance": _drift.at_a_glance(
+                             pairs, d.get("current"), _rule,
+                             (d.get("decision") or {}).get("source_id")),
+                         "rule": _rule})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "rows": rows, "counts": run["counts"],
                         "note": run["note"],
@@ -301,6 +307,31 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             out["rows"].append(row)
         out["ok"] = True
         return jsonify(out)
+
+    @app.route("/sourcing/sources/upload", methods=["POST"])
+    def sourcing_sources_upload():
+        """Attach suppliers to many listings from one uploaded sheet.
+
+        Rows identify their listing by SKU or by ASIN, and carry the supplier
+        link. Parsing and matching are in domain/source_bulk.py; this route only
+        takes the file and hands back the per-row report, because a bulk import
+        that reports a total and nothing else is how silently-skipped rows
+        become "the repricer is not working".
+        """
+        from domain import source_bulk as _bulk
+        wsid, mkt = _where()
+        f = request.files.get("file")
+        if f is None:
+            return jsonify({"ok": False, "error": "no file was uploaded"}), 400
+        try:
+            data = f.read()
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:160]}), 400
+        headers, rows, err = _bulk.read_table(data, getattr(f, "filename", ""))
+        if err:
+            return jsonify({"ok": False, "error": err}), 400
+        out = _bulk.apply_rows(CONFIG_PATH, wsid, mkt, headers, rows)
+        return jsonify(out), (200 if out.get("ok") else 400)
 
     # ---- sources --------------------------------------------------------
     @app.route("/sourcing/source/add", methods=["POST"])
