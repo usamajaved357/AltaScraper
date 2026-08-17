@@ -16,6 +16,81 @@
 // only step that reaches the live catalogue.
 
 const GUIDES = {
+  // "give a button on the top of the page which explains how do this page works
+  //  and what the information means etc etc."
+  //
+  // Written around the one thing that actually confuses people here: TRACKING IS
+  // NOT PRICING. Adding a SKU starts a cost history and nothing else, and every
+  // SKU still has to be armed separately on top of a master switch. Somebody who
+  // does not know that either refuses to add anything, or adds everything
+  // expecting prices to move and concludes the app is broken when they do not.
+  repricer: {
+    title: "The repricer — how this page works",
+    lead: "It watches what your suppliers charge and works out what each unit "
+        + "would really earn. Nothing here changes a live Amazon listing unless "
+        + "you turn two separate things on.",
+    steps: [
+      {n: "1", h: "Track a SKU",
+       b: "Tracking means the app reads that SKU's supplier links every few "
+        + "hours and writes down what the unit costs, delivered. <b>It changes "
+        + "nothing on Amazon.</b> That is why it is safe to track everything: a "
+        + "supplier price on a day nobody was watching cannot be recovered "
+        + "later, so the history is worth starting before you need it.<br><br>"
+        + "<b>Track everything</b> adds every live listing at once and attaches "
+        + "the supplier link the app recorded when it built each one. "
+        + "<b>Suppliers from a sheet</b> takes a spreadsheet — get the template "
+        + "first, it arrives already filled in with your SKUs."},
+      {n: "2", h: "Give each SKU its suppliers",
+       b: "A SKU can have as many as you like. The app reads them all and prices "
+        + "from the <b>cheapest one that can actually be bought</b> — in stock, "
+        + "readable, and with a known postage cost. A supplier whose postage "
+        + "cannot be read is skipped rather than counted as free.<br><br>"
+        + "The template has ten columns, <i>supplier 1</i> to <i>supplier 10</i>. "
+        + "Need more? Add a column headed <i>supplier 11</i>, then 12, and so on "
+        + "— there is no limit."},
+      {n: "3", h: "Set what you will accept",
+       b: "<b>Margin</b> is profit as a share of what the customer pays. "
+        + "<b>ROI</b> is profit as a share of what YOU paid. They are different "
+        + "questions and give very different prices from the same cost, so there "
+        + "are two boxes and both apply — the price takes whichever asks more, "
+        + "so adding a target can raise a price and never lowers one.<br><br>"
+        + "<b>Minimum price</b> is the backstop. It is the only guard that still "
+        + "works if a supplier's page is misread, which is why no SKU can be "
+        + "armed without one. <b>Hold price</b> is different: it means “this is "
+        + "what the market pays”, and keeps a price there even when a target "
+        + "would allow lower — but it can never hold a price below cost."},
+      {n: "4", h: "Arm it, and only then turn auto-pricing on",
+       b: "Two switches, deliberately. <b>Arm</b> is per SKU. <b>Auto-pricing</b> "
+        + "is the master switch for the whole account. A price only moves when "
+        + "both are on.<br><br>"
+        + "Until then every decision is still worked out and written down, so "
+        + "you can read what the app WOULD have done before trusting it. If one "
+        + "looks wrong on this page, it would have been wrong on Amazon."},
+    ],
+    notes: [
+      "<b>What the figures on each row mean.</b> <i>Cheapest source</i> is what "
+      + "one unit costs you delivered — the supplier's price plus their postage. "
+      + "<i>Selling price</i> is what Amazon is charging today. <i>Profit / unit</i> "
+      + "is what is left after the stock and Amazon's fee. <i>Margin</i> is that "
+      + "over the selling price; <i>ROI</i> is that over what you paid.",
+      "<b>The “after coupon” figures</b> appear only on SKUs that have actually "
+      + "been selling at a discount. Amazon does not tell this app which coupons "
+      + "are running, so it is measured from what buyers were really charged on "
+      + "settled orders — not read from a setting in Seller Central.",
+      "<b>Nothing is added that you did not enter.</b> Postage out and an "
+      + "advertising allowance are 0.00 unless you set them. The profit figures "
+      + "are what the buyer paid, less the stock, less what Amazon actually took.",
+      "<b>Handling time</b> is the supplier's own dispatch estimate plus a safety "
+      + "buffer. That total is what would be promised to the buyer, never the "
+      + "supplier's promise on its own.",
+      "A price is never moved more than once every four hours, never by more than "
+      + "the change cap in one step, and never below your minimum price.",
+      "A SKU Amazon no longer has is marked and disarmed automatically. Its "
+      + "suppliers and history are kept in case you relist it.",
+      "Removing a SKU from tracking keeps its links and its price history — "
+      + "enrol it again later and everything is still attached.",
+    ],
+  },
   generate: {
     title: "Generate &amp; submit — how it works",
     lead: "This screen turns a product you found somewhere else into a live "

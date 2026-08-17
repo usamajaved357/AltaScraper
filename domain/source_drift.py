@@ -87,7 +87,7 @@ def for_sku(overrides, workspace_id, sku, pairs, source_id=None):
     return out
 
 
-def at_a_glance(pairs, current, rule, source_id=None):
+def at_a_glance(pairs, current, rule, source_id=None, promo=None):
     """The row's headline facts, in one place.
 
     "i want to add some additional info which give me a glance view to be
@@ -107,11 +107,15 @@ def at_a_glance(pairs, current, rule, source_id=None):
     """
     from listing import pricing as _pricing
     from domain import sourcing as _sourcing
+    from domain import promotions as _promos
 
     out = {"source_price": None, "source_postage": None, "landed": None,
            "sell_price": None, "profit": None, "margin_pct": None,
            "roi_pct": None, "units_available": None, "dispatch_days": None,
-           "handling_days": None, "in_stock": None}
+           "handling_days": None, "in_stock": None, "fee": None,
+           # Filled in only when a discount was actually measured on this SKU.
+           "promo": None, "sell_price_promo": None, "profit_promo": None,
+           "margin_pct_promo": None, "roi_pct_promo": None}
 
     chk = None
     for s, c in (pairs or []):
@@ -146,6 +150,35 @@ def at_a_glance(pairs, current, rule, source_id=None):
         out["profit"] = got.get("profit")
         out["margin_pct"] = got.get("margin_pct")
         out["roi_pct"] = got.get("roi_pct")
+        out["fee"] = got.get("fees")
+
+        # AND THE SAME SUM AGAIN WITH THE COUPON ON.
+        #
+        #     "show profit per unit when no promotion like coupon or discounts
+        #      etc are applied and also show the profit when some coupons or
+        #      promotions etc are applied ... also show roi and margin in both
+        #      cases"
+        #
+        # Two figures, not one, because they answer different questions: the
+        # first is what the listing is worth, the second is what it is actually
+        # earning while a coupon runs. A single number hides whichever of those
+        # you were not looking at.
+        #
+        # `promo` is measured from settled orders (domain/promotions.py) -- it is
+        # never a setting read from Amazon, because Amazon does not expose one to
+        # this app. Absent means no discount was measured, and the two figures
+        # are then the same, which is the truth rather than a gap on the screen.
+        if promo:
+            after = _promos.apply_to(out["sell_price"], promo)
+            got2 = _pricing.achieved(after, out["landed"], r["referral_rate"],
+                                     shipping_label=r["shipping_label"],
+                                     ads_margin=r["ads_margin"])
+            out["promo"] = dict(promo)
+            out["promo_note"] = _promos.describe(promo)
+            out["sell_price_promo"] = after
+            out["profit_promo"] = got2.get("profit")
+            out["margin_pct_promo"] = got2.get("margin_pct")
+            out["roi_pct_promo"] = got2.get("roi_pct")
     return out
 
 
