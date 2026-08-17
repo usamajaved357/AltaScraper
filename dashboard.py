@@ -3856,17 +3856,36 @@ def build_app(backend=None):
 
         @app.before_request
         def _stamp_ai_account():
-            # Which account is spending. Set per request from the same resolver
-            # every screen uses, so attribution cannot drift from what the header
-            # says. The feature name is added by each AI step itself.
+            # Which account is spending, AND WHICH PRODUCT. Set per request from
+            # the same resolver every screen uses, so attribution cannot drift
+            # from what the header says. The feature name is added by each AI
+            # step itself.
+            #
+            # THE SKU WAS ALWAYS BLANK. It was set to "" here and nothing ever
+            # filled it, so all 46 rows in the ledger named an account and a
+            # feature and no product -- and "which item did that spend go on"
+            # could not be answered at all. Read here, once, rather than in each
+            # of the fourteen routes that generate something: a per-route line is
+            # a per-route chance to forget one, which is the same reasoning the
+            # recorder itself is installed by interception for.
+            sku = ""
+            try:
+                from flask import request as _rq
+                sku = str((_rq.args.get("sku") or "")).strip()
+                if not sku and _rq.method == "POST":
+                    b = _rq.get_json(silent=True) or {}
+                    if isinstance(b, dict):
+                        sku = str(b.get("sku") or "").strip()
+            except Exception:
+                sku = ""
             try:
                 from routes import scope as _scope
                 _aiu.set_context(
                     workspace_id=_scope.workspace_id(
                         state=_state, account=_active_account() or {}),
-                    config_path=CONFIG_PATH, feature="", sku="")
+                    config_path=CONFIG_PATH, feature="", sku=sku)
             except Exception:
-                _aiu.set_context(config_path=CONFIG_PATH)
+                _aiu.set_context(config_path=CONFIG_PATH, sku=sku)
     except Exception as _e1:
         print(f"  (AI usage recording could not start: {_e1})", flush=True)
 

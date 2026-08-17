@@ -109,11 +109,16 @@ def cost_of(model, input_tokens=0, output_tokens=0, images=0):
 
 def record(config_path, *, feature, provider, model="", workspace_id="",
            input_tokens=0, output_tokens=0, images=0, kind="text",
-           ok=True, error="", sku="", ms=0):
+           ok=True, error="", sku="", ms=0, cost_usd=None):
     """Write one usage row. Never raises.
 
     A failure to record must never fail the work being recorded -- the usage
     table is a ledger, not a dependency.
+
+    `cost_usd` is the PROVIDER's own figure where it gave one. It wins over the
+    PRICES table, which cannot know a model it has never seen -- and an image
+    model the table is missing is exactly how a picture came to be recorded at
+    zero cost.
     """
     try:
         now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -122,10 +127,15 @@ def record(config_path, *, feature, provider, model="", workspace_id="",
             "INSERT INTO ai_usage (at, day, workspace_id, feature, provider, "
             " model, kind, input_tokens, output_tokens, images, cost_usd, ok, "
             " error, sku, ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (now, now[:10], str(workspace_id or ""), str(feature or "unknown"),
+            # A caller that named nothing gets the request it came from rather
+            # than the word "unknown", which tells nobody which of the fourteen
+            # call sites to look at. See unnamed_feature().
+            (now, now[:10], str(workspace_id or ""),
+             str(feature or "") or unnamed_feature(),
              str(provider or ""), str(model or ""), str(kind or "text"),
              int(input_tokens or 0), int(output_tokens or 0), int(images or 0),
-             cost_of(model, input_tokens, output_tokens, images),
+             (cost_usd if cost_usd is not None
+              else cost_of(model, input_tokens, output_tokens, images)),
              1 if ok else 0, str(error or "")[:300], str(sku or ""),
              int(ms or 0)))
         conn.commit()
@@ -156,6 +166,32 @@ def tokens_from_openrouter(payload):
         return 0, 0
 
 
+def cost_from_openrouter(payload):
+    """What OPENROUTER says the call cost, or None.
+
+    THE PROVIDER'S OWN NUMBER BEATS OUR TABLE, and it is the only figure that can
+    be right for a model the table has never heard of. Measured: an image
+    generated through bytedance-seed/seedream-4.5 was recorded with cost NULL --
+    correct, because guessing is worse than admitting -- but it means the spend
+    report is silently lower than the bill.
+
+    PRICES is still there for calls that arrive without a cost, and a model in
+    neither place is still priced as unknown rather than as free.
+    """
+    try:
+        u = (payload or {}).get("usage") or {}
+        for k in ("cost", "total_cost", "cost_usd"):
+            v = u.get(k)
+            if v is None:
+                continue
+            f = float(v)
+            if f >= 0:
+                return round(f, 6)
+    except Exception:
+        pass
+    return None
+
+
 # WHAT THE CURRENT WORK IS, and whose. Set by whichever route or run is in
 # progress; read by the recorder when a call happens.
 #
@@ -164,6 +200,31 @@ def tokens_from_openrouter(payload):
 # would be invisible to them -- every one of those calls would land in the
 # ledger as "unknown", which is precisely the spend worth knowing about.
 CONTEXT = {"feature": "", "workspace_id": "", "sku": "", "config_path": ""}
+
+
+def unnamed_feature():
+    """A name for a call that did not name itself.
+
+    "unknown" tells nobody anything. 8 of the ledger's 46 rows said it, and there
+    was no way to find out which of the fourteen call sites they came from --
+    which is the one thing a bill needs to be able to answer.
+
+    So an unnamed call is filed under the request that made it: "call from /ask"
+    can be looked up; "unknown" cannot. Outside a request -- a background sweep,
+    the generator run as a script -- it says that instead.
+
+    This is a safety net, not a substitute for _feature(): a named step is still
+    what the report is built to show.
+    """
+    try:
+        from flask import request, has_request_context
+        if has_request_context():
+            p = str(getattr(request, "path", "") or "").strip()
+            if p:
+                return "call from %s" % p[:60]
+    except Exception:
+        pass
+    return "call outside a request"
 
 
 def set_context(feature=None, workspace_id=None, sku=None, config_path=None):
