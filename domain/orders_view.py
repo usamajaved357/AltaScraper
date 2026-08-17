@@ -154,6 +154,8 @@ def profit_for(items, order_total, cost_of, referral_rate=None):
     `cost_of` is a function sku -> (cost_or_None, source), which is
     domain/cogs.lookup -- so the SKU costs, the manual overrides and their
     precedence are decided in exactly one place (Rule 12).
+
+    See profit_detail() for the same answer with ROI and the cost behind it.
     """
     if order_total is None:
         return None, None, "Amazon has not released this order's total yet"
@@ -178,6 +180,60 @@ def profit_for(items, order_total, cost_of, referral_rate=None):
               if float(order_total) else None)
     return profit, margin, ("estimated: Amazon's exact fee for this order "
                             "arrives with the finance records")
+
+
+def profit_detail(items, order_total, cost_of, referral_rate=None):
+    """Everything an order row needs about what it made, in one call.
+
+    {profit, margin_pct, roi_pct, cogs, fees, note}
+
+    MARGIN AND ROI ARE DIFFERENT QUESTIONS and the screen shows both, so both
+    are worked out here rather than one of them being derived in the browser
+    from rounded figures. Margin is profit over what the buyer paid -- is this
+    price any good. ROI is profit over what the stock cost -- was this worth
+    buying. A 3.00 profit on a 30.00 order is a thin 10% margin and a healthy
+    43% return on 7.00 of stock, and those two facts lead to different actions.
+
+    Wraps profit_for so the honesty rule stays in ONE place: if any line's cost
+    is unknown, nothing is shown at all.
+    """
+    profit, margin, note = profit_for(items, order_total, cost_of, referral_rate)
+    out = {"profit": profit, "margin_pct": margin, "roi_pct": None,
+           "cogs": None, "fees": None, "note": note}
+    if profit is None:
+        return out
+    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
+    cogs = 0.0
+    for it in items or []:
+        cost, _src = cost_of(str((it or {}).get("sku") or "")) if cost_of else (None, "")
+        if cost is None:
+            return out                      # cannot happen: profit_for refused
+        cogs += float(cost) * (int((it or {}).get("qty") or 0) or 1)
+    out["cogs"] = round(cogs, 2)
+    out["fees"] = round(float(order_total) * rate, 2)
+    # Return on the cash. Undefined when the stock cost nothing recorded --
+    # dividing by zero would report an infinite return on a free product.
+    out["roi_pct"] = round(profit / cogs * 100, 1) if cogs else None
+    return out
+
+
+def item_summary(items):
+    """The one line a row shows about WHAT was bought.
+
+    An order can hold several products. The row names the first and says how
+    many others there are, rather than listing them all -- the detail panel is
+    where the full list belongs, and a row that grows with the order is what
+    made this screen cluttered in the first place.
+    """
+    its = [i for i in (items or []) if i]
+    if not its:
+        return {"title": "", "sku": "", "asin": "", "extra": 0, "lines": 0}
+    first = its[0]
+    return {"title": str(first.get("title") or ""),
+            "sku": str(first.get("sku") or ""),
+            "asin": str(first.get("asin") or ""),
+            "extra": max(0, len(its) - 1),
+            "lines": len(its)}
 
 
 def sort_rows(rows):
