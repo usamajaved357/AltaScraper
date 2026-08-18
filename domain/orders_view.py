@@ -31,6 +31,7 @@ rather than leaving a column mysteriously blank.
 Order ITEMS are not restricted and come through in full: ASIN, SKU, title,
 quantity and price.
 """
+from domain import amazon_flags as _flags
 
 # What a redacted address still tells you. Enough to distinguish orders and to
 # see where they are going; not enough to address a parcel.
@@ -88,8 +89,11 @@ def to_row(order, account_id="", account_label=""):
         "unshipped": int(o.get("NumberOfItemsUnshipped") or 0),
         "fulfilment": str(o.get("FulfillmentChannel") or ""),
         "channel": str(o.get("SalesChannel") or ""),
-        "prime": bool(o.get("IsPrime")),
-        "business": bool(o.get("IsBusinessOrder")),
+        # Same reader as the item flags below. These two arrive as real booleans
+        # today, but that is Amazon's choice per field and it varies -- IsGift
+        # is a string in the object right beside them.
+        "prime": _flags.truth(o.get("IsPrime")),
+        "business": _flags.truth(o.get("IsBusinessOrder")),
         "ship_by": str(o.get("LatestShipDate") or ""),
         "deliver_by": str(o.get("LatestDeliveryDate") or ""),
         # WHAT AMAZON RELEASES OF THE DESTINATION. Named honestly: it is a
@@ -120,8 +124,17 @@ def to_item(item):
         "currency": str(price.get("CurrencyCode") or ""),
         "tax": _money(it.get("ItemTax")),
         "promo": _money(it.get("PromotionDiscount")),
-        "gift": bool(it.get("IsGift")),
-        "cancel_requested": bool(it.get("BuyerRequestedCancel")),
+        # Amazon sends IsGift as the STRING "false" and BuyerRequestedCancel as
+        # an OBJECT wrapping the flag. bool() said True to both, on every order
+        # ever placed. Read through domain/amazon_flags, which copes with every
+        # shape Amazon uses -- see that module for the raw payload this was
+        # measured from.
+        "gift": _flags.truth(it.get("IsGift")),
+        "cancel_requested": _flags.truth(it.get("BuyerRequestedCancel"),
+                                         "IsBuyerRequestedCancel"),
+        # WHY they want to cancel, when they said. Usually empty.
+        "cancel_reason": _flags.text(it.get("BuyerRequestedCancel"),
+                                     "BuyerCancelReason"),
     }
 
 

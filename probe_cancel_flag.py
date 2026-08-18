@@ -27,19 +27,19 @@ FIELDS = ("BuyerRequestedCancel", "BuyerCancelReason", "IsGift",
 
 
 def main(account_id=None, marketplace="UK", days=14):
-    from data import settings as _settings
     from domain import accounts as _acc
     import domain.orders_live as _ol
     from sp_api.api import Orders
     from sp_api.base import Marketplaces
 
-    cfg = _settings.load(CONFIG)
-    wss = cfg.get("workspaces") or []
+    cfg = json.load(open(CONFIG, encoding="utf-8"))
+    all_accounts = cfg.get("accounts") or []
+    wss = all_accounts
     if account_id:
-        wss = [w for w in wss if str(w.get("id")) == str(account_id)]
+        wss = [w for w in all_accounts if str(w.get("id")) == str(account_id)]
     if not wss:
         print("no account matched %r; known: %s"
-              % (account_id, [w.get("id") for w in (cfg.get("workspaces") or [])]))
+              % (account_id, [w.get("id") for w in all_accounts]))
         return 1
 
     seen, n_items, shown = {}, 0, 0

@@ -880,7 +880,8 @@ function _ordDetailHtml(r){
       +  '</div>';
     // The explanation, spelled out rather than left to a tooltip, for the two
     // states where acting on the wrong reading costs real money.
-    const why = _ordWhyText(o.status || r.status, it.cancel_requested);
+    const why = _ordWhyText(o.status || r.status, it.cancel_requested,
+                            it.cancel_reason);
     if(why) h += '<div class="odp-why">' + why + '</div>';
     h += '</div>';
   });
@@ -925,10 +926,14 @@ function _ordDp(asin, market){
  * wrong one. Everything else is left to the chip's tooltip -- a paragraph on
  * every Shipped order is noise, and noise is what makes a real warning
  * invisible. */
-function _ordWhyText(status, cancelRequested){
+function _ordWhyText(status, cancelRequested, cancelReason){
   const bits = [];
   if(cancelRequested){
+    // Amazon carries the buyer's stated reason in the same object as the flag.
+    // It is usually empty; when it is not, it is the most useful sentence on
+    // the screen, so it goes first.
     bits.push('<b style="color:#fca5a5">' + _oEsc(_ORD_CANCEL_REQUESTED.t)
+              + (cancelReason ? ': ' + _oEsc(cancelReason) : '')
               + '.</b> ' + _oEsc(_ORD_CANCEL_REQUESTED.m) + ' '
               + _oEsc(_ORD_CANCEL_REQUESTED.d));
   }

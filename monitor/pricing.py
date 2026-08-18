@@ -6,6 +6,8 @@ verified 2026-07-31 (seller NAME is not returned — SellerId only; landed price
 """
 import time
 
+from domain import amazon_flags as _flags
+
 
 def _mk_enum(mkt):
     from sp_api.base import Marketplaces
@@ -30,11 +32,19 @@ def _normalize(pay, asin, marketplace, condition):
             "seller_id": o.get("SellerId", ""),
             "price": price, "currency": lp.get("CurrencyCode", ""), "shipping": ship,
             "landed": (round((price or 0) + (ship or 0), 2) if price is not None else None),
-            "fba": bool(o.get("IsFulfilledByAmazon")), "condition": o.get("SubCondition", ""),
-            "buybox": bool(o.get("IsBuyBoxWinner")),
+            # Through domain/amazon_flags rather than bool(). Amazon sends these
+            # as real booleans on this API TODAY, but it sends IsGift on the
+            # Orders API as the string "false" and BuyerRequestedCancel as an
+            # object -- and bool() of either is True, which is what made every
+            # order claim the buyer wanted to cancel it. One reader, so a shape
+            # change here cannot quietly turn every competitor into a Buy Box
+            # winner (CLAUDE.md Rule 12).
+            "fba": _flags.truth(o.get("IsFulfilledByAmazon")),
+            "condition": o.get("SubCondition", ""),
+            "buybox": _flags.truth(o.get("IsBuyBoxWinner")),
             "feedback_pct": fb.get("SellerPositiveFeedbackRating"),
             "feedback_count": fb.get("FeedbackCount"),
-            "prime": bool((o.get("PrimeInformation") or {}).get("IsPrime")),
+            "prime": _flags.truth((o.get("PrimeInformation") or {}).get("IsPrime")),
             "ships_from": (o.get("ShipsFrom") or {}).get("Country", ""),
         })
     summ = pay.get("Summary", {}) or {}
