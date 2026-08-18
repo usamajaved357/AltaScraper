@@ -236,6 +236,23 @@ truthy("  a stated count must match what is shown",
 truthy("  and no list at all beats an invented one",
        "do not draw" in RT and "one clear statement instead" in RT)
 
+print("\n== a claim about performance needs a source ==")
+# MEASURED on a real charcoal listing, one set of four images:
+#   "12kg -- that's a full season of weekend grills"
+#   "No fillers. No binders."
+#   "Lights fast. Holds heat. Burns clean."
+# Not one of those is in the listing, and NOT ONE was caught: the old rules
+# banned invented NUMBERS and invented SUPERLATIVES, and a performance claim is
+# neither. This is the class the brief actually named -- "we can not tell in
+# secondary images for a table stand that this is third party lab tested".
+truthy("performance claims need a source", "how the product PERFORMS" in RT)
+truthy("  including how long it lasts", "how LONG it lasts" in RT)
+truthy("  and negative composition claims",
+       "what it does NOT contain" in RT and "no fillers" in RT)
+# The generator drew what it was told; the claim was invented one step earlier.
+truthy("the strategist is held to it too, not just the generator",
+       "THE SAME RULE GOVERNS THE HEADLINE" in AI)
+
 print("\n== punctuation in the brief is not text to typeset ==")
 # MEASURED on the sixth generation: the brief wrote its bullets as "+ Formulated
 # for athletes", and the model drew a green '+' marker above the line AND kept
@@ -244,6 +261,14 @@ print("\n== punctuation in the brief is not text to typeset ==")
 truthy("a leading bullet is marked as punctuation",
        "is NOT part of the words" in RT)
 truthy("  drawn once, never twice", "never both" in RT)
+# MEASURED: "#B5813A" typeset under the chef-hat mark on the charcoal panel,
+# straight out of the art direction. Same class as the bullet -- notation
+# describing the design, rendered as though it were copy.
+truthy("a hex colour code is an instruction, not copy",
+       "never words to print" in RT and "#B5813A" in RT)
+# MEASURED: "12 kg -- that's / that's a full / season of weekend grills"
+truthy("no word repeats across a line break",
+       "Do not repeat a word across a line break" in RT)
 
 print("\n== a product-free image is a graphic, not a package mockup ==")
 # Attempt 2 obeyed "no product" by wrapping the design onto a 3D box -- which

@@ -106,6 +106,27 @@ _IMAGE_TEXT_RULES = (
     "physically does.\n"
     "- NO unverifiable superlatives or guarantees: 'best', '#1', 'premium "
     "quality', 'perfect', 'guaranteed', 'lifetime', '100%'.\n"
+    # MEASURED on the charcoal set. Three images, three claims, none of them in
+    # the listing: "12kg -- that's a full season of weekend grills", "No fillers.
+    # No binders.", "Lights fast. Holds heat. Burns clean." Every one reads like
+    # a fact and none can be evidenced. The old rules caught invented NUMBERS and
+    # invented SUPERLATIVES and let all three of these straight through, because
+    # a performance claim is neither.
+    "- NO claim about how the product PERFORMS, how LONG it lasts, how much it "
+    "does, or what it does NOT contain, unless the product details above state "
+    "it. Not 'lights fast', 'holds heat', 'burns clean', 'lasts all season', "
+    "'no fillers', 'no additives', 'won't warp'. These read as facts and cannot "
+    "be evidenced. Say what the product IS and what the listing actually "
+    "states; a plain true line beats an impressive unprovable one.\n"
+    # MEASURED: "12 kg -- that's / that's a full / season of weekend grills".
+    "- Do not repeat a word across a line break. Read the finished lines as one "
+    "sentence and check no word is printed twice where the text wraps.\n"
+    # MEASURED: "#B5813A" typeset under the chef-hat mark, straight out of the
+    # art direction. Same class as the bullet character: notation describing the
+    # design, rendered as though it were copy.
+    "- Colour codes, pixel sizes, font names and any other notation from the "
+    "art direction are INSTRUCTIONS, never words to print. A hex code like "
+    "#B5813A tells you what colour to use; it must never appear in the image.\n"
     "- NO number, measurement, weight, capacity, material or certification "
     "that is not given in the product spec above. If a figure is not stated "
     "there, leave it out entirely rather than estimating a plausible one.\n"

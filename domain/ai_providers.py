@@ -612,6 +612,18 @@ _FACTS_BRIEF = (
     "one short list, propose the one short list. An empty column or a padded one "
     "is worse than a simpler image, because it is the part a buyer reads "
     "closely.\n"
+    # MEASURED on a charcoal listing. Three concepts, three headlines, none of
+    # them traceable: "12kg -- that's a full season of weekend grills", "No
+    # fillers. No binders.", "Lights fast. Holds heat. Burns clean." The
+    # generator drew exactly what it was asked for; the claim was invented HERE,
+    # one step earlier, which is the only place it can be stopped.
+    "THE SAME RULE GOVERNS THE HEADLINE, not just the data. A claim about how "
+    "the product PERFORMS, how long it LASTS, how much it DOES, or what it does "
+    "NOT contain is a fact and needs a source in the details -- 'lasts a full "
+    "season', 'lights fast', 'burns clean', 'no fillers' are inventions unless "
+    "the listing says so. Write the headline from what is actually stated. A "
+    "plain true line outsells an impressive unprovable one and cannot get the "
+    "listing suppressed.\n"
 )
 
 _PRESENCE_BRIEF = (
