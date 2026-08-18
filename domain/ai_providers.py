@@ -576,6 +576,56 @@ _SECONDARY_SYSTEM = (
 # product. A garden bench needs scale against a person; a supplement needs its
 # facts panel; a tool needs the mechanism close up. A fixed rota would be the
 # same generic list this file already warns against.
+# A CONCEPT MAY ONLY NEED FACTS THAT EXIST.
+#
+# The presence work made product-free panels possible, and the very first one
+# was an ingredient board for a multivitamin whose listing carries NO ingredient
+# list -- the app gets title, attributes and images from the catalogue, and
+# nothing else. So the model was asked to draw twenty-eight things it had never
+# been told. It produced "Magnanese", "Setassium", "Molybdenese", and on the
+# next attempt outright noise: "SPORTPRFIBS", "MUTERIBL", "SACBEITIES".
+#
+# That is not a prompt-obedience problem and no amount of "do not invent" fixes
+# it. A designed panel has a shape to fill, and a model given a shape and no
+# facts will fill it with something. The fault is upstream: proposing the panel
+# at all.
+#
+# So the STRATEGIST is made responsible for it. A concept that needs specific
+# facts must name them, taken from the details it was given, and if it cannot
+# name them it must propose something else. Naming them is what makes the check
+# possible -- a concept saying "list the ingredients" passes any review; one
+# saying "list these six: ..." either has them or obviously does not.
+_FACTS_BRIEF = (
+    "\nONLY PROPOSE WHAT THE FACTS CAN FILL.\n"
+    "Some images are data: a specification table, an ingredient panel, a "
+    "comparison, a set of numbered callouts, a what-is-in-the-box layout. Those "
+    "need real values, and the ONLY values available are in the product details "
+    "given below. There is nothing else -- no ingredient list, no test result "
+    "and no certificate exists unless it is written there.\n"
+    "If a concept needs specific facts, put them in \"facts_used\": the actual "
+    "values it will print, copied from the details. If you cannot fill that "
+    "list, the concept is not available for this product -- propose a different "
+    "one. A lifestyle moment, a close-up of the material or a single clear "
+    "statement need no data and are always available.\n"
+    "NEVER propose a layout whose shape implies more facts than exist. A "
+    "four-column grid promises four columns of content; if there is enough for "
+    "one short list, propose the one short list. An empty column or a padded one "
+    "is worse than a simpler image, because it is the part a buyer reads "
+    "closely.\n"
+    # MEASURED on a charcoal listing. Three concepts, three headlines, none of
+    # them traceable: "12kg -- that's a full season of weekend grills", "No
+    # fillers. No binders.", "Lights fast. Holds heat. Burns clean." The
+    # generator drew exactly what it was asked for; the claim was invented HERE,
+    # one step earlier, which is the only place it can be stopped.
+    "THE SAME RULE GOVERNS THE HEADLINE, not just the data. A claim about how "
+    "the product PERFORMS, how long it LASTS, how much it DOES, or what it does "
+    "NOT contain is a fact and needs a source in the details -- 'lasts a full "
+    "season', 'lights fast', 'burns clean', 'no fillers' are inventions unless "
+    "the listing says so. Write the headline from what is actually stated. A "
+    "plain true line outsells an impressive unprovable one and cannot get the "
+    "listing suppressed.\n"
+)
+
 _PRESENCE_BRIEF = (
     "\nHOW MUCH OF THE PRODUCT EACH IMAGE SHOWS -- decide this per concept and "
     "return it as \"product_presence\", one of:\n"
@@ -689,7 +739,7 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "module must come from THIS product's real features, materials, use-context and buyer. Two "
             "different products should produce visibly different module sets. Keep each premium and "
             "uncluttered (~70% visual, 30% text), and never make prohibited medical/efficacy claims.\n"
-            + _APLUS_STORY + _PRESENCE_BRIEF
+            + _APLUS_STORY + _PRESENCE_BRIEF + _FACTS_BRIEF
         )
     else:
         rules = (
@@ -701,7 +751,7 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "different products must produce visibly different image sets. Keep them premium and "
             "uncluttered — one strong message per image, not walls of text. Make the N concepts cover "
             "genuinely different angles of the buying decision for this exact product.\n"
-            + _PRESENCE_BRIEF
+            + _PRESENCE_BRIEF + _FACTS_BRIEF
         )
 
     # ONE PRODUCT, DESCRIBED THE SAME WAY IN EVERY IMAGE.
@@ -750,6 +800,8 @@ def strategize_images(config: dict, image="", product_title: str = "",
         '{"title": "<short name>", "customer_insight": "<the buyer psychology this image targets, 1 sentence>", '
         '"concept": "<what the image shows, plain language, 1-2 sentences>", '
         '"product_presence": "<hero|detail|in_use|none — how much of the product this image shows>", '
+        '"facts_used": ["<the actual values this image will print, copied from the product '
+        'details — empty list if it needs none>"], '
         + ('"role": "<its job in the top-to-bottom sequence: open|problem|answer|proof|detail|use|'
            'compare|close>", "headline": "<the one short line this module carries>", '
            if kind == "aplus" else "")
@@ -947,6 +999,23 @@ def generate_image(config: dict, prompt: str, reference_image="",
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No image model selected/available"}
+    # HEX CODES OUT, COLOUR NAMES IN -- here, because this is the one line every
+    # image path passes through, so no path can miss it (CLAUDE.md Rule 12).
+    #
+    # "#B5813A" was typeset under a chef-hat mark; "@0D0D00" in the corner of an
+    # A+ module. Both came from the art direction, which writes a palette in hex
+    # because that is how a palette is written. The rule telling the model not
+    # to draw them reduced it and did not stop it -- the second one happened
+    # with the rule already in the prompt, which is what you would expect: the
+    # token is in the text and it looks like a label.
+    #
+    # Removing the token removes the possibility. "the colour dark olive green"
+    # cannot be mistaken for a caption.
+    try:
+        from domain.image_rules import words_for_colours
+        prompt = words_for_colours(prompt)
+    except Exception:
+        pass
     body = {"model": model, "prompt": prompt, "output_format": "png"}
     ref = None
     if reference_image:

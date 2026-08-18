@@ -10,14 +10,49 @@ import re
 
 from flask import request, jsonify
 
+# THE SAME RULES AS EVERY OTHER GENERATED IMAGE (CLAUDE.md Rule 12).
+#
+#     "every module contains item images, i am not able to understand which
+#      module is which"
+#
+# This route built its own brief and shared nothing with the secondary-image
+# path, so two things were true here that were fixed months of iteration ago
+# over there:
+#
+#   * NOTHING CHECKED THE WORDS. The ban on medical wording, on figures that are
+#     not in the spec, on invented ingredients and on unprovable performance
+#     claims lived on the other path only. An A+ module could print a claim that
+#     a secondary image would have been stopped from printing.
+#   * EVERY MODULE GOT THE PRODUCT. The reference photograph was attached
+#     unconditionally, twice (reference_image AND extra_reference), so a
+#     comparison table or a spec panel came back with the product in it -- which
+#     is exactly the complaint, and it is the same fault that was fixed for
+#     secondary images by not attaching the photo when the module does not want
+#     one.
+from domain.image_rules import _IMAGE_TEXT_RULES, _PRESENCE_RULES
+
 
 def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
     """Attach the /aplus/* routes to the existing Flask app."""
 
     @app.route("/aplus/modules", methods=["GET"])
     def aplus_modules():
-        """Return the A+ module catalog (basic + premium) with exact dimensions."""
-        return jsonify({"ok": True, "modules": _APLUS_MODULES})
+        """The A+ module catalog (basic + premium) with exact dimensions.
+
+        A module carrying a `mobile` size can be generated twice -- once for
+        each screen -- and the mobile one is COMPOSED for a phone rather than
+        being the desktop asset scaled down.
+        """
+        try:
+            import dashboard as _dash
+            note = getattr(_dash, "APLUS_MOBILE_IS_ASSUMED", "")
+        except Exception:
+            note = ""
+        return jsonify({"ok": True, "modules": _APLUS_MODULES,
+                        # Said out loud rather than left to be discovered: the
+                        # desktop figures are Amazon's published ones, the
+                        # mobile default is this app's (CLAUDE.md Rule 4).
+                        "mobile_size_note": note})
 
 
     @app.route("/aplus/generate", methods=["POST"])
@@ -44,6 +79,19 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         _strength = {"high": 0.2, "medium": 0.35, "creative": 0.55}.get(_fid, 0.2)
         iprov = b.get("image_provider") or None
 
+        # HOW MUCH PRODUCT THIS MODULE WANTS. Same four answers as a secondary
+        # image, and the same consequence: "none" means the reference photograph
+        # is NOT attached. Instructing a model not to draw a product while
+        # handing it a picture of that product does not work -- the picture is
+        # the stronger signal, and it is right to be. Default stays "hero", so a
+        # caller that sends nothing gets exactly what it got before.
+        presence = (b.get("product_presence", "") or "hero").lower()
+        if presence not in _PRESENCE_RULES:
+            presence = "hero"
+        want_ref = presence != "none"
+
+        # A product-free module still needs a reference to have EXISTED, because
+        # the brand's colours and the product's own facts come from the listing.
         if not product_image:
             return jsonify({"ok": False, "error": "This product has no reference image."}), 400
         mod = None
@@ -53,12 +101,36 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         if not mod:
             return jsonify({"ok": False, "error": "Unknown A+ module."}), 404
 
+        # WHICH SCREEN THIS ONE IS FOR. A module that declares a mobile size can
+        # be generated twice, and the mobile one is COMPOSED for a phone rather
+        # than being the desktop asset squeezed into a narrow column -- a
+        # headline sized to read across 1464px is a few pixels tall on a phone.
+        viewport = (b.get("viewport", "desktop") or "desktop").lower()
+        _mob = mod.get("mobile") or {}
+        if viewport == "mobile" and _mob:
+            _w, _h = int(_mob["w"]), int(_mob["h"])
+        else:
+            viewport = "desktop"
+            _w, _h = int(mod["w"]), int(mod["h"])
+
         brief = (
             f"Design an Amazon A+ Content module: '{mod['name']}'. {mod['desc']} "
-            f"EXACT output size: {mod['w']}x{mod['h']} pixels (aspect ratio {mod['w']}:{mod['h']}). "
-            "Follow the 70% visual / 30% text rule, keep text short and readable on mobile, premium and clean. "
+            f"EXACT output size: {_w}x{_h} pixels (aspect ratio {_w}:{_h}). "
+            "Follow the 70% visual / 30% text rule, premium and clean. "
+            + ("THIS IS THE MOBILE RENDITION, read on a phone in a narrow "
+               "column. It carries the SAME message as the desktop version and "
+               "is composed differently for it: far larger type, fewer words, "
+               "elements STACKED vertically rather than side by side, and the "
+               "subject bigger in frame. Do not lay it out wide and expect it "
+               "to be legible small. "
+               if viewport == "mobile" else
+               "Text must still be readable when this is scaled down on a "
+               "phone. ")
             + (f"Seller's instruction: {instruction}. " if instruction else "")
             + (f"Benefit(s) to feature: {benefit_text}. " if benefit_text else "")
+            # The presence rule, so a comparison or a spec panel is allowed to
+            # be one instead of yet another photograph of the product.
+            + "\n\n" + _PRESENCE_RULES[presence]
         )
         # read the actual product first so A+ keeps it faithful
         # Multi-image modules (three/four small images) are the ones that drift: asking
@@ -81,11 +153,22 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         # browser already has the row on screen, so it sends it.
         _listing = b.get("listing") or None
         try:
-            _pdesc = ai_providers.describe_product(_cfg(), product_image, title,
-                                                   provider=tprov, listing=_listing)
-            if _pdesc.get("ok") and _pdesc.get("description"):
-                brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely — same shape, colours, "
-                          "layout, logo, and ALL label text exactly as written):\n" + _pdesc["description"])
+            if want_ref:
+                _pdesc = ai_providers.describe_product(_cfg(), product_image, title,
+                                                       provider=tprov, listing=_listing)
+                if _pdesc.get("ok") and _pdesc.get("description"):
+                    brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely — same shape, colours, "
+                              "layout, logo, and ALL label text exactly as written):\n" + _pdesc["description"])
+            else:
+                # A product-free module must NOT be handed a description telling
+                # it to reproduce the product precisely -- that is an instruction
+                # to draw the thing it is not supposed to draw. It still needs
+                # the listing's own words, because a panel with no facts is where
+                # invented ones come from.
+                _facts = ai_providers.listing_facts(_listing) if _listing else ""
+                if _facts:
+                    brief += ("\n\nPRODUCT DETAILS (the ONLY facts available -- use these, "
+                              "and nothing that is not written here):\n" + _facts)
         except Exception:
             pass
         _ci3 = (b.get("custom_instructions", "") or "").strip() or _load_img_instructions()
@@ -94,21 +177,38 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         enh = ai_providers.enhance_prompt(_cfg(), brief, title, provider=tprov, image_kind="aplus")
         if not enh.get("ok"):
             return jsonify({"ok": False, "error": "Prompt stage: " + enh.get("error", "")}), 400
-        detailed = enh["prompt"] + f"\n\nIMPORTANT: output the image at exactly {mod['w']}x{mod['h']} pixels."
-        _ar = ai_providers._closest_aspect_ratio(mod["w"], mod["h"])
-        gen = ai_providers.generate_image(_cfg(), detailed, reference_image=product_image,
+        # _w/_h, not mod["w"]/mod["h"] -- these three lines decide the shape that
+        # is asked for and the shape it is cut to, so a mobile rendition built
+        # from the desktop numbers would be the desktop image again.
+        detailed = enh["prompt"] + (
+            f"\n\nIMPORTANT: output the image at exactly {_w}x{_h} pixels."
+            "\nKeep every word and every important edge inside the middle 88% "
+            "of the frame. Text against the edge is how one of these gets "
+            "ruined.") + _IMAGE_TEXT_RULES
+        _ar = ai_providers._closest_aspect_ratio(_w, _h)
+        # THE PHOTOGRAPH IS WITHHELD when the module is not meant to contain the
+        # product. Every "do not draw the product" instruction was already
+        # written on the secondary path and the product appeared anyway, until
+        # the reference stopped being attached. The instruction was never the
+        # problem: a model handed a picture of a bottle and told not to draw a
+        # bottle draws the bottle.
+        _ref = product_image if want_ref else ""
+        gen = ai_providers.generate_image(_cfg(), detailed, reference_image=_ref,
                                           provider=iprov, strength=_strength,
                                           aspect_ratio=_ar, image_size="4K",
-                                          extra_reference=product_image)
+                                          extra_reference=_ref)
         if not gen.get("ok"):
             return jsonify({"ok": False, "error": "Image stage: " + gen.get("error", "")}), 400
-        # EXACT-DIMENSION RESIZE: the model returns ~square 4K regardless of the prompt;
-        # cover-crop + resize to the module's exact Amazon pixels so it's not rejected.
+        # EXACT DIMENSIONS. The model returns a roughly square image whatever it
+        # is asked for, so this is what makes it uploadable. It no longer
+        # cover-crops a large mismatch -- doing that discarded 59% of the height
+        # on a premium banner and cut every headline in half.
         if gen.get("image_b64"):
             try:
-                gen["image_b64"] = ai_providers._resize_to_exact(gen["image_b64"], int(mod["w"]), int(mod["h"]))
+                gen["image_b64"] = ai_providers._resize_to_exact(gen["image_b64"], _w, _h)
                 gen["mime"] = "image/png"
-                gen["resized_to"] = f"{mod['w']}x{mod['h']}"
+                gen["resized_to"] = f"{_w}x{_h}"
+                gen["viewport"] = viewport
             except Exception as _re:
                 gen["resize_error"] = str(_re)[:120]
 
@@ -123,7 +223,17 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
                     model="claude-sonnet-4-5", max_tokens=400,
                     system=("Write concise Amazon A+ module copy: one short headline (<=8 words) and "
                             "2-3 short benefit-led sentences. No claims like 'best seller', '#1', pricing, "
-                            "or external links. Return JSON {\"headline\":\"\",\"body\":\"\"} only."),
+                            "or external links. "
+                            # Same rule as the image text, for the same reason: a
+                            # sentence about how the product performs reads as a
+                            # fact and cannot be evidenced. Measured on real
+                            # generations -- "lights fast", "holds heat", "burns
+                            # clean", "survives the pack and the trail", none of
+                            # them in the listing.
+                            "Do NOT claim how the product performs, how long it lasts, or what it does "
+                            "not contain unless the product details say so -- no 'lights fast', 'lasts "
+                            "all season', 'no fillers'. Describe what it IS. "
+                            "Return JSON {\"headline\":\"\",\"body\":\"\"} only."),
                     messages=[{"role": "user", "content": f"Product: {title}\nModule: {mod['name']}\n"
                                f"Benefit(s): {benefit_text or '(infer sensible benefits)'}"}])
                 raw = "".join(getattr(x, "text", "") for x in msg.content).strip()
@@ -132,9 +242,15 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         except Exception:
             copy_text = ""
 
+        # WHICH SCREEN AND WHAT SIZE THIS ACTUALLY IS. The module carries the
+        # DESKTOP dimensions, so a screen reading module.w x module.h would label
+        # a 600x450 phone asset as 1464x600 -- the wrong number against a real
+        # file, which is how the wrong one gets uploaded.
         res = {"ok": True, "detailed_prompt": detailed,
                "text_provider": enh.get("provider"), "image_provider": gen.get("provider"),
-               "module": mod, "copy": copy_text}
+               "module": mod, "copy": copy_text,
+               "viewport": viewport, "width": _w, "height": _h,
+               "product_presence": presence}
         if gen.get("image_b64"):
             res["image_b64"] = gen["image_b64"]; res["mime"] = gen.get("mime", "image/png")
         elif gen.get("image_url"):

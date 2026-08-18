@@ -36,8 +36,10 @@
 // account, and says why at length; the browser was overriding it by asking for
 // __all__ outright. Every account at once is still available, but only by
 // choosing it in the picker.
+// rowsFor: which workspace the rows on screen belong to. Without it, switching
+// account re-rendered the previous company's orders -- see ordersOnOpen.
 let ORD = {rows: [], summary: {}, days: 30, account: "", q: "",
-           open: "", details: {}, busy: false, profit: true};
+           open: "", details: {}, busy: false, profit: true, rowsFor: null};
 
 function _oEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -134,16 +136,52 @@ function _ordStateChip(status, cancelRequested){
 }
 
 function ordersOnOpen(){
-  // The account picker is filled from the accounts the app already knows, so it
-  // cannot drift from what /orders/list will actually ask.
-  const sel = document.getElementById("ord_account");
-  if(sel && sel.options.length <= 1 && typeof ACCOUNTS !== "undefined" && ACCOUNTS){
-    ACCOUNTS.forEach(function(a){
-      if(!a || !a.id) return;
-      const o = document.createElement("option");
-      o.value = a.id; o.textContent = a.label || a.id;
-      sel.appendChild(o);
-    });
+  // THERE IS NO ACCOUNT PICKER ANY MORE.
+  //
+  //     "i do not want that option which enables the user to see all the orders
+  //      on every account by being in 1 account. i am in nestwell goods why am
+  //      i able to see the orders of jack reacherd this should not be
+  //      happening"
+  //
+  // This used to fill a dropdown with EVERY account, so standing in Nestwell
+  // you could pick Jack Reacherd and read another company's customers. The
+  // "Every account" option was only half of it -- the per-account entries were
+  // the other half, and they were added here.
+  //
+  // Orders belong to the workspace that is open. ORD.account stays "" and the
+  // server resolves it, and the server now refuses any other answer, so this
+  // cannot be reintroduced from the browser alone.
+  ORD.account = "";
+  const scope = document.getElementById("ord_scope");
+  if(scope){
+    const nm = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && ACTIVE_WS.label)
+             ? ACTIVE_WS.label : "";
+    scope.textContent = nm ? (nm + " only") : "this account only";
+  }
+  // WHOSE ORDERS ARE ON SCREEN RIGHT NOW?
+  //
+  // This asked only "are there any rows", so switching from Jack Reacherd to
+  // Nestwell re-rendered JACK'S rows and never reloaded. Both of the reported
+  // faults are that one line:
+  //
+  //   "i am in nestwell goods why am i able to see the orders of jack reacherd"
+  //   "I have received an order on nestwell goods but the app is showing me a
+  //    sale in graph but not in the orders tab even after i hit the refresh"
+  //
+  // The Nestwell order was there the whole time -- MEASURED: order
+  // 026-1108972-7232300 for GBP 34.99 is returned by /orders/list and is in
+  // sales_daily, which is why the graph had it. The screen was simply showing
+  // somebody else's list.
+  //
+  // So the rows are stamped with the workspace they belong to, and a different
+  // workspace forces a reload rather than redrawing the wrong company.
+  const _ws = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && ACTIVE_WS.key)
+            ? String(ACTIVE_WS.key) : "";
+  if(ORD.rowsFor !== _ws){
+    ORD.rows = [];
+    ORD.details = {};        // per-order panels belong to those rows too
+    ORD.open = "";
+    ORD.rowsFor = _ws;
   }
   if(!ORD.rows.length) ordersLoad(); else ordersRender();
 }
@@ -258,7 +296,10 @@ function ordersToggleProfit(){
   if(b) b.classList.toggle("on", ORD.profit);
   ordersLoad();
 }
-function ordersSetAccount(a){ ORD.account = a; ordersLoad(); }
+/* Kept as a no-op rather than deleted: an old cached page can still call it,
+   and the honest answer is that orders belong to the open workspace. Silently
+   switching account is the behaviour being removed, so it does nothing. */
+function ordersSetAccount(){ ORD.account = ""; ordersLoad(); }
 let _ordTimer = null;
 function ordersFilter(v){
   ORD.q = v || "";

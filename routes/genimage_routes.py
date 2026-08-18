@@ -36,101 +36,13 @@ import threading
 # the owner's own names, built from a competitor's product data. A generic photo
 # becoming their own branded product is the whole point.
 
-# WHAT AN IMAGE IS ALLOWED TO SAY.
-#
-# The listing COPY is checked -- IP rules, compliance rules, a ban on medical
-# claims and unverifiable superlatives. Text drawn ONTO an image went through
-# none of that, and a secondary image is published copy in every way that
-# matters to Amazon.
-#
-# It matters because the MODEL writes the words itself. Asked for a calm
-# lifestyle shot with "nothing clinical, nothing medical, no captions", it
-# returned a headline reading "Float Into Recovery" -- a health claim, invented,
-# on an image that would have gone straight to a live listing. On the Legion
-# test it labelled an ingredient panel "AMINO ACIDS / L ranteine", which is not
-# an ingredient and is not a word.
-#
-# THIS LIVED ON ONE PATH ONLY. The hand-built role path had it; the strategist's
-# concept path -- the one people actually use, and the one that produced the
-# invented ingredient -- did not. One copy, both paths (CLAUDE.md Rule 12).
-#
-# Generic on purpose: it governs every product in every category, so it
-# constrains the KIND of statement rather than any particular claim.
-_IMAGE_TEXT_RULES = (
-    "\n\nRULES FOR ANY TEXT IN THE IMAGE -- these override the brief:\n"
-    "- NO health, medical, therapeutic or clinical wording of any kind. Not "
-    "'therapy', 'therapeutic', 'treatment', 'recovery', 'healing', 'relief', "
-    "'cure', 'symptoms', 'diagnosis', 'wellness benefit', and never the name "
-    "of any condition or disorder. Describe what the product IS and what it "
-    "physically does.\n"
-    "- NO unverifiable superlatives or guarantees: 'best', '#1', 'premium "
-    "quality', 'perfect', 'guaranteed', 'lifetime', '100%'.\n"
-    "- NO number, measurement, weight, capacity, material or certification "
-    "that is not given in the product spec above. If a figure is not stated "
-    "there, leave it out entirely rather than estimating a plausible one.\n"
-    "- NO ingredient, component or part name that is not given above. An "
-    "ingredient panel must list ONLY what the listing states, spelled as the "
-    "listing spells it. Inventing a plausible-looking name is worse than "
-    "leaving the panel shorter.\n"
-    "- NO invented awards, badges, seals, certifications, ratings or logos.\n"
-    "- Every word must be spelled correctly and rendered completely; no "
-    "clipped, overlapping or half-drawn characters.\n")
-
-
-# ---------------------------------------------------------------------------
-# HOW MUCH OF THE PRODUCT AN IMAGE NEEDS
-# ---------------------------------------------------------------------------
-#
-#     "i see the item image in all the seconary images ... There is no need to
-#      show the item in all the pictures."
-#
-# Every secondary image was built the same way: the whole product, on a
-# background, with a headline beside it. Eight of those is eight photographs of
-# the same bottle, and the slots that could have answered a real doubt were
-# spent repeating the main image.
-#
-# The strongest secondary images on Amazon frequently contain no product at
-# all. A wall of journal pages under "3,319 peer-reviewed studies". A
-# specification panel with the numbers called out around it. The product is
-# already in the main image; these slots are for the things it cannot say.
-#
-# Four honest answers, and the last one is the one that could not be expressed:
-_PRESENCE_RULES = {
-    "hero": (
-        "THE PRODUCT IS THE SUBJECT. Reproduce it EXACTLY as the reference "
-        "photograph shows it -- same shape, proportions, colour, materials and "
-        "every line of label text. Do not redesign it to suit the composition; "
-        "place the real product in and build around it. Premium, clean, "
-        "generous negative space."
-    ),
-    "detail": (
-        "SHOW A PART OF THE PRODUCT, CLOSE UP -- not the whole thing. Fill the "
-        "frame with the surface, mechanism, texture or fitting the idea is "
-        "about, cropped tight. What IS shown must match the reference exactly "
-        "in colour, material and finish. A wide shot of the whole product here "
-        "wastes the slot: the main image already does that."
-    ),
-    "in_use": (
-        "THE PRODUCT IS IN A REAL SCENE, not on a backdrop. It may be partly "
-        "out of frame, held, or in use -- what matters is that the moment is "
-        "believable and belongs to the person who buys this. Where the product "
-        "IS visible it must match the reference exactly. Do not fall back to a "
-        "studio shot with a lifestyle background pasted behind it."
-    ),
-    "none": (
-        "DO NOT SHOW THE PRODUCT IN THIS IMAGE AT ALL. This slot is a designed "
-        "graphic -- a panel, a chart, a comparison, a set of icons, a piece of "
-        "evidence -- and putting the product in it would waste the one slot "
-        "that can say something the photographs cannot. Build it from "
-        "typography, layout and simple iconography in the brand's colours. It "
-        "must still look like it belongs beside the other images in the set."
-    ),
-}
-
-
-def _presence_rule(presence):
-    """The instruction for how much product this image should contain."""
-    return _PRESENCE_RULES.get(presence or "hero", _PRESENCE_RULES["hero"])
+# The rules for what an image may SAY and how much product it may SHOW
+# live in ONE module now, because /aplus/generate needs the same ones
+# and a second copy is how the two paths drifted apart (Rule 12).
+from domain.image_rules import (            # noqa: F401  (re-exported)
+    _LIST_RULES, _IMAGE_TEXT_RULES, _PRESENCE_RULES, _SQUARE_CANVAS,
+    _presence_rule,
+)
 
 
 BRAND_UNBRANDED = "unbranded"
@@ -661,9 +573,24 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                                         product_title=title, text_provider=tprov, image_provider=iprov,
                                         image_kind=image_kind, strength=strength,
                                         target_w=_tw, target_h=_th, extra_reference=_extra_ref,
-                                        # With no photograph to read, the spec has to come
-                                        # from the listing rather than from vision.
-                                        spec_image=(product_image if not _want_ref else ""))
+                                        # NO VISION READ FOR A PRODUCT-FREE IMAGE.
+                                        #
+                                        # The reading is injected as "EXACT PRODUCT SPEC
+                                        # (reproduce the product PRECISELY from this)",
+                                        # which is an instruction to DRAW THE PRODUCT --
+                                        # and it beat the rule telling it not to.
+                                        #
+                                        # MEASURED: a concept tagged "none", whose own text
+                                        # said "no product photo", came back as a large
+                                        # bottle on a kitchen counter. Withholding the
+                                        # reference image was not enough while the spec
+                                        # block was still saying reproduce it.
+                                        #
+                                        # The facts a graphic needs -- the numbers, the
+                                        # claims, the palette -- already travel in the
+                                        # brief from the listing, which is the better
+                                        # source for them anyway.
+                                        read_product=_want_ref)
         if not res.get("ok"):
             return jsonify(res), 400
         return _imgresult(res, extra={"concept": concept})

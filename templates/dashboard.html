@@ -156,57 +156,172 @@
       <i class="ti ti-chevron-down chev"></i>
     </div>
 
+    <!-- GROUPED LIKE SELLER CENTRAL, asked for as:
+         "i want the tools to be arranged under the relevant master tool, like
+          we have in amazon, manage inventory expands into manage all inventory,
+          sell globally, fulfillment by amazon etc etc"
+
+         A master row opens to reveal the screens that belong to it. This is not
+         decoration: the flat list had reached twenty-two items and every new
+         one made the rest harder to find, which is the reason Seller Central is
+         built this way too.
+
+         THREE THINGS THE GROUPING MUST NOT BREAK, all handled in navgroups.js:
+           * the group holding the screen you are ON is opened for you, or the
+             highlight is hidden inside a closed group and the app looks lost
+           * a badge on a child (stock alerts, monitor alerts) is repeated on
+             its master while the group is shut, or a collapsed group silently
+             hides the one thing that needed attention
+           * what you opened stays open across a reload
+
+         Every navitem keeps its data-sec and its onclick exactly as it was, so
+         navTo, the URL routing and the active-item highlight are untouched. -->
     <div class="slbl">Operations</div>
-    <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> Listings</div>
-    <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
-    <div class="navitem" data-sec="setup" id="nav_setup" onclick="navTo('setup')"><i class="ti ti-settings"></i> Brand setup</div>
-    <!-- Called "Account & sheets" while a spreadsheet WAS the store. It is not:
-         listings, prices, sales and finance are in this app's own database, and
-         a sheet is now only an optional place to import products FROM. A menu
-         item named after it says the opposite. Reported as "why do i still see
-         tabs in the listings page when i am not using any sheets". -->
-    <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-settings-cog"></i> Account settings</div>
-    <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
+
+    <div class="navgroup" data-grp="catalogue">
+      <div class="navitem navmaster" onclick="navGroupToggle('catalogue')">
+        <i class="ti ti-list"></i> <span class="nmlbl">Manage catalogue</span>
+        <span class="navmbadge" id="grpbadge_catalogue"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> All listings</div>
+        <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
+        <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
+        <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
+        <div class="navitem" data-sec="sellerimport" onclick="navTo('sellerimport')"><i class="ti ti-download"></i> Import seller</div>
+        <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
+      </div>
+    </div>
+
+    <div class="navgroup" data-grp="images">
+      <div class="navitem navmaster" onclick="navGroupToggle('images')">
+        <i class="ti ti-photo"></i> <span class="nmlbl">Images</span>
+        <span class="navmbadge" id="grpbadge_images"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <!-- Its own screen rather than a dialog over Listings: generating a set
+             of images is a job you come back to and compare within, and a modal
+             is a thing you are expected to finish and dismiss. -->
+        <div class="navitem" data-sec="imagestudio" onclick="navTo('imagestudio')" title="Make a listing's main and secondary images from its source photographs"><i class="ti ti-photo-edit"></i> Image Studio</div>
+        <div class="navitem" data-sec="imagerefs" onclick="navTo('imagerefs')"><i class="ti ti-photo"></i> Image refs</div>
+      </div>
+    </div>
+
+    <div class="navgroup" data-grp="inventory">
+      <div class="navitem navmaster" onclick="navGroupToggle('inventory')">
+        <i class="ti ti-package"></i> <span class="nmlbl">Inventory</span>
+        <span class="navmbadge" id="grpbadge_inventory"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <!-- "All inventory" under "Inventory", which is the pattern the request
+             named: manage inventory -> manage all inventory. -->
+        <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> All inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+        <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
+      </div>
+    </div>
+
+    <div class="navgroup" data-grp="orders">
+      <div class="navitem navmaster" onclick="navGroupToggle('orders')">
+        <i class="ti ti-receipt"></i> <span class="nmlbl">Orders</span>
+        <span class="navmbadge" id="grpbadge_orders"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <div class="navitem" data-sec="orders" onclick="navTo('orders')" title="Every account's orders on one screen"><i class="ti ti-receipt"></i> All orders</div>
+        <!-- Named "Returns Intelligence" because that is what it was asked for
+             and what the report it was built from is called. It was labelled
+             plain "Returns", and was looked for repeatedly without being found. -->
+        <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs — the Returns Intelligence report"><i class="ti ti-arrow-back-up"></i> Returns Intelligence</div>
+      </div>
+    </div>
+
     <div class="slbl">Analytics</div>
-    <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
-    <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
-    <div class="navitem" data-sec="inventory" onclick="navTo('inventory')"><i class="ti ti-package"></i> Inventory <span id="inv_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
-    <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
-    <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
-    <div class="navitem" data-sec="orders" onclick="navTo('orders')" title="Every account's orders on one screen"><i class="ti ti-receipt"></i> Orders</div>
-    <!-- Named "Returns Intelligence" because that is what it was asked for and
-         what the report it was built from is called. It was labelled plain
-         "Returns", and was looked for repeatedly without being found. -->
-    <div class="navitem" data-sec="returns" onclick="navTo('returns')" title="Why things come back, and what it costs — the Returns Intelligence report"><i class="ti ti-arrow-back-up"></i> Returns Intelligence</div>
-    <!-- The client KPI pack. Next to Returns because both are built from a
-         report rather than from live listing data, and both are things you send
-         somebody rather than things you act on inside the app. -->
-    <!-- First of the reporting group: it is the screen you open every morning,
-         and it is the only one whose job is to tell you to go elsewhere. -->
-    <div class="navitem" data-sec="daily" onclick="navTo('daily')" title="The morning check, run by the app — what needs attention today"><i class="ti ti-checklist"></i> Daily round</div>
-    <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
-    <!-- Its own screen rather than a dialog over Listings: generating a set of
-         images is a job you come back to and compare within, and a modal is a
-         thing you are expected to finish and dismiss. -->
-    <div class="navitem" data-sec="imagestudio" onclick="navTo('imagestudio')" title="Make a listing's main and secondary images from its source photographs"><i class="ti ti-photo-edit"></i> Image Studio</div>
-    <!-- Sits next to Sales because it answers the other half of the same
-         question: Sales says what was bought, this says how many people looked
-         and how many of them bought. -->
-    <div class="navitem" data-sec="hourly" onclick="navTo('hourly')" title="Which hour of which day each product sells in, from order times"><i class="ti ti-clock-hour-4"></i> Hourly Sales</div>
-    <div class="navitem" data-sec="traffic" onclick="navTo('traffic')" title="Sessions, page views, conversion rate and buy box, per day and per product"><i class="ti ti-chart-arcs"></i> Traffic</div>
-    <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
-    <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
-    <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
-    <div class="navitem" data-sec="sellerimport" onclick="navTo('sellerimport')"><i class="ti ti-download"></i> Import seller</div>
-    <div class="navitem" data-sec="sourcing" onclick="navTo('sourcing')"><i class="ti ti-arrows-down-up"></i> Repricer</div>
-    <div class="navitem" data-sec="miles" id="nav_harvest" onclick="navTo('miles')" style="display:none"><i class="ti ti-droplet"></i> Supplier Import</div>
+
+    <div class="navgroup" data-grp="reports">
+      <div class="navitem navmaster" onclick="navGroupToggle('reports')">
+        <i class="ti ti-chart-line"></i> <span class="nmlbl">Reports</span>
+        <span class="navmbadge" id="grpbadge_reports"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
+        <!-- Sits next to Sales because it answers the other half of the same
+             question: Sales says what was bought, this says how many people
+             looked and how many of them bought. -->
+        <div class="navitem" data-sec="hourly" onclick="navTo('hourly')" title="Which hour of which day each product sells in, from order times"><i class="ti ti-clock-hour-4"></i> Hourly Sales</div>
+        <div class="navitem" data-sec="traffic" onclick="navTo('traffic')" title="Sessions, page views, conversion rate and buy box, per day and per product"><i class="ti ti-chart-arcs"></i> Traffic</div>
+        <div class="navitem" data-sec="finance" onclick="navTo('finance')"><i class="ti ti-report-money"></i> Finance</div>
+        <!-- First of the reporting group: it is the screen you open every
+             morning, and it is the only one whose job is to send you elsewhere. -->
+        <div class="navitem" data-sec="daily" onclick="navTo('daily')" title="The morning check, run by the app — what needs attention today"><i class="ti ti-checklist"></i> Daily round</div>
+        <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
+        <!-- Reads the same daily figures as Sales, and answers the question
+             Sales cannot: is this a NORMAL amount of movement for this account. -->
+        <div class="navitem" data-sec="leading" onclick="navTo('leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</div>
+        <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
+      </div>
+    </div>
+
+    <div class="navgroup" data-grp="advertising">
+      <div class="navitem navmaster" onclick="navGroupToggle('advertising')">
+        <i class="ti ti-target"></i> <span class="nmlbl">Advertising</span>
+        <span class="navmbadge" id="grpbadge_advertising"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <!-- Kept as "PPC": it is the word used everywhere else in this app and
+             in the briefs, and renaming it to "Campaigns" would be a change
+             nobody asked for hidden inside one that was asked for. -->
+        <div class="navitem" data-sec="ppc" onclick="navTo('ppc')"><i class="ti ti-target"></i> PPC</div>
+      </div>
+    </div>
+
+    <div class="navgroup" data-grp="watch">
+      <div class="navitem navmaster" onclick="navGroupToggle('watch')">
+        <i class="ti ti-radar"></i> <span class="nmlbl">Monitoring</span>
+        <span class="navmbadge" id="grpbadge_watch"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+        <!-- Orbit's five tracker menu items are one screen with a tab each: the
+             four are the same table pointed at a different number. -->
+        <div class="navitem" data-sec="trackers" onclick="navTo('trackers')" title="Watch a listing's sales rank, Buy Box price, your price or Amazon's cut, and be told when it drifts"><i class="ti ti-chart-dots"></i> Trackers</div>
+        <div class="navitem" data-sec="alerts" onclick="navTo('alerts')" title="Everything currently off the target you set"><i class="ti ti-bell"></i> Alerts <span id="alr_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+        <!-- Sits with the alerts it delivers rather than under Settings: what a
+             channel is FOR is the thing above it, and a notification setup
+             filed away from its alerts is one nobody connects to them. -->
+        <div class="navitem" data-sec="notify" onclick="navTo('notify')" title="Send alerts to Slack or a webhook — nothing sends until you switch a channel on"><i class="ti ti-send"></i> Notifications</div>
+      </div>
+    </div>
 
     <!-- Tools moved down from the top bar, per the Orbit layout: they are
          occasional actions, not navigation, so they sit below the nav and above
          the footer under their own label. -->
     <div class="slbl">Tools</div>
     <div class="navitem" onclick="asinOpen()" title="Look up any Amazon ASIN's data + images (read-only, no publish) and build a listing from it"><i class="ti ti-search"></i> Research ASIN</div>
-    <div class="navitem" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</div>
+
+    <div class="navgroup" data-grp="settings">
+      <div class="navitem navmaster" onclick="navGroupToggle('settings')">
+        <i class="ti ti-settings"></i> <span class="nmlbl">Settings</span>
+        <span class="navmbadge" id="grpbadge_settings"></span>
+        <i class="ti ti-chevron-right chev navchev"></i>
+      </div>
+      <div class="navkids">
+        <div class="navitem" data-sec="setup" id="nav_setup" onclick="navTo('setup')"><i class="ti ti-settings"></i> Brand setup</div>
+        <!-- Called "Account & sheets" while a spreadsheet WAS the store. It is
+             not: listings, prices, sales and finance are in this app's own
+             database, and a sheet is now only an optional place to import
+             products FROM. A menu item named after it says the opposite.
+             Reported as "why do i still see tabs in the listings page when i am
+             not using any sheets". -->
+        <div class="navitem" id="nav_acctsettings" onclick="openCurrentAccountSettings()"><i class="ti ti-settings-cog"></i> Account settings</div>
+        <div class="navitem" id="aibtn" onclick="openAISettings()"><i class="ti ti-settings"></i> AI &amp; settings</div>
+      </div>
+    </div>
   </div>
 
   <div class="wsmain">
@@ -861,17 +976,17 @@
           <button class="db-chip" onclick="ordersSetDays(30)">30 days</button>
           <button class="db-chip" onclick="ordersSetDays(90)">90 days</button>
         </div>
-        <!-- THIS WORKSPACE FIRST, and selected. "Every account" is a deliberate
-             choice, not the default: these are separate limited companies with
-             separate customers, and one of them's orders showing under
-             another's name is that customer's name and address in the wrong
-             company's screen. -->
-        <select id="ord_account" onchange="ordersSetAccount(this.value)"
-                style="font-size:12px;padding:5px 8px"
-                title="Whose orders to show. Defaults to the workspace you have open — each account is a separate business.">
-          <option value="" selected>This account only</option>
-          <option value="__all__">Every account</option>
-        </select>
+        <!-- THE PICKER IS GONE, AND SO IS "EVERY ACCOUNT".
+             "i do not want that option which enables the user to see all the
+              orders on every account by being in 1 account. i am in nestwell
+              goods why am i able to see the orders of jack reacherd"
+             These are separate limited companies with separate customers, and
+             one's orders under another's name is that customer's name and
+             address in the wrong company's screen. There is no longer a way to
+             ask for it — the endpoint refuses it too, because a rule that only
+             exists in the browser is not a rule. -->
+        <span class="cc" id="ord_scope" style="font-size:11.5px"
+              title="Orders belong to the account you have open. Each account is a separate business with its own customers.">this account only</span>
         <!-- ON by default, and starts that way: this is what fills the Item
              column with the product, its picture, the margin and the ROI. It
              costs one Amazon call per order, so it runs as a second pass after
@@ -992,6 +1107,67 @@
         </div>
       </div>
       <div id="dy_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- THE FOUR TRACKERS, on one screen with a tab each.
+         Orbit lists them as five separate menu items (All Trackers, BSR, Buy
+         Box, Price, Fee). They are the same table with a different number in
+         it, so five menu items would be five ways to reach one screen -- the
+         tabs do that in one place, and "All" is simply no filter. -->
+    <div id="sec_trackers" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-dots"></i> Trackers</h2>
+        <div class="sub">Watch a number on a listing — its sales rank, its Buy Box price, your price, or Amazon's cut — and be told when it drifts from what you wanted. Nothing is read until you press Check now.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" id="trk_refresh" onclick="trkRefresh()"><i class="ti ti-refresh"></i> Check now</button>
+          <button class="db-chip" onclick="trkLoad()"><i class="ti ti-reload"></i> Reload</button>
+        </div>
+      </div>
+      <div id="trk_tabs" class="stk-tabbar"></div>
+      <div id="trk_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- ALERTS -- the off-track rows from all four trackers in one list.
+         One count, not four badges: four is four chances to miss the one that
+         mattered. -->
+    <div id="sec_alerts" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-bell"></i> Alerts</h2>
+        <div class="sub">Everything currently off the target you set, worst first. A number that could not be read is listed as unknown rather than counted as fine.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="alertsLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="alr_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- NOTIFICATIONS -- where alerts go when nobody has the app open.
+         Nothing sends until a channel is added AND switched on, and nothing is
+         on a timer: posting into somebody's Slack is outward-facing and cannot
+         be taken back, so it happens when a person asks for it. -->
+    <div id="sec_notify" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-send"></i> Notifications</h2>
+        <div class="sub">Alerts are only visible inside this app until you add somewhere for them to go. A new channel arrives switched off — send a test first, then turn it on.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="ntfLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ntf_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- LEADING INDICATORS -- yesterday against its own history, in standard
+         deviations. Nothing is fetched from Amazon here: it is a new reading of
+         the daily figures the app has been storing all along. -->
+    <div id="sec_leading" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-activity-heartbeat"></i> Leading Indicators</h2>
+        <div class="sub">Yesterday's figures against what this account normally does. "Down 22%" means nothing on its own — if a figure swings that much every week it is Tuesday, and if it has never moved 4% it is an emergency. This says which.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="leadLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ld_body" style="padding:4px 0"></div>
     </div>
 
     <!-- IMAGE STUDIO, its own screen rather than a dialog over Listings. -->
@@ -1379,6 +1555,21 @@
      menu to a rail on a WIDE screen, this one slides it in and out on a narrow
      one. Same element, opposite questions. -->
 <script src="/static/js/mobilenav.js?v={{ ASSET_V }}"></script>
+<!-- The expanding master items, as Seller Central groups its menu. Loaded after
+     sidebar.js and mobilenav.js because all three act on the same element and
+     this is the one that decides what is revealed inside it; loaded BEFORE
+     shell.js so navTo can call navGroupSyncActive the first time it runs. -->
+<script src="/static/js/navgroups.js?v={{ ASSET_V }}"></script>
+<!-- Which account and marketplace a request is about. Loaded EARLY, before any
+     screen that calls it: four screens had grown their own copy and two of them
+     had drifted into reading a variable nothing defines. One builder now. -->
+<script src="/static/js/scopeq.js?v={{ ASSET_V }}"></script>
+<!-- The four trackers (BSR, Buy Box, price, fee) and the alerts they feed. -->
+<script src="/static/js/trackers.js?v={{ ASSET_V }}"></script>
+<!-- Yesterday against its own history, in standard deviations. -->
+<script src="/static/js/leading.js?v={{ ASSET_V }}"></script>
+<!-- Where alerts go when nobody has the app open. -->
+<script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

@@ -3332,13 +3332,43 @@ _APLUS_MODULES = {
     ],
     "premium": [
         {"id": "premium_full", "name": "Premium full-width module", "w": 1464, "h": 600,
-         "desc": "Full-width immersive banner (Apple-style). Premium A+ only."},
+         "desc": "Full-width immersive banner (Apple-style). Premium A+ only.",
+         "mobile": {"w": 600, "h": 450}},
         {"id": "premium_header", "name": "Premium image header", "w": 1464, "h": 600,
-         "desc": "Premium wide header with short headline; lots of visual impact."},
+         "desc": "Premium wide header with short headline; lots of visual impact.",
+         "mobile": {"w": 600, "h": 450}},
         {"id": "premium_three", "name": "Premium three-image & text", "w": 488, "h": 600,
          "desc": "Three wide images with captions across the full premium canvas."},
     ],
 }
+
+# A PHONE IS NOT A NARROW DESKTOP.
+#
+#     "in premium aplus content there is mobile version and desktop version but
+#      app is not making separate diensions content"
+#
+# One image was produced per module and used everywhere. A headline sized to
+# read across a 1464px banner is a few pixels tall on a phone, and a layout that
+# works wide has nowhere to go when the column is 400px -- which is where most
+# of this is actually read.
+#
+# So a module that declares `mobile` can be generated twice: the desktop asset
+# at its documented size, and a SEPARATELY COMPOSED mobile one -- same message,
+# far larger type, fewer words, stacked rather than side by side.
+#
+# ABOUT THE MOBILE PIXEL SIZE. 1464x600 for the premium desktop banner is
+# Amazon's published figure. The mobile one here is the size commonly used for
+# it and is NOT quoted from an Amazon schema this app can read -- A+ is
+# read-only over SP-API here, so there is nothing to check it against
+# (CLAUDE.md Rule 4). It is a starting point, it is labelled as one on screen,
+# and it is one number in one place if Seller Central says otherwise. What is
+# NOT a guess is the part that matters: the mobile asset is composed for a
+# phone rather than being the desktop one squeezed.
+APLUS_MOBILE_IS_ASSUMED = (
+    "The mobile pixel size is this app's default, not a figure read from "
+    "Amazon. Confirm it against your own module in Seller Central; the "
+    "composition is built for a phone either way."
+)
 
 
 
@@ -3685,6 +3715,25 @@ def build_app(backend=None):
     import routes.daily_routes as _daily_routes
     _daily_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
+    # The four trackers -- BSR, Buy Box, price and fee -- and the single alert
+    # count they feed. Orbit lists them as five menu items plus Alerts; they are
+    # one engine pointed at different numbers, so they are one set of routes.
+    # See domain/trackers.py for why the metrics are data rather than code.
+    import routes.tracker_routes as _tracker_routes
+    _tracker_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+    # Leading Indicators -- yesterday against its own history, in standard
+    # deviations. Nothing is fetched from Amazon: it is a new READING of the
+    # daily figures the app has been storing all along.
+    import routes.leading_routes as _leading_routes
+    _leading_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
+    # Where alerts go when nobody has the app open. Nothing sends until a
+    # channel is added AND switched on, and nothing is on a timer -- posting
+    # into somebody's Slack is outward-facing and cannot be taken back.
+    import routes.notify_routes as _notify_routes
+    _notify_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

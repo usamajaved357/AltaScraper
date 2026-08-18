@@ -729,12 +729,29 @@ function aplusRenderModules(){
   const box=document.getElementById("ap_modules"); if(!box) return;
   const mods=APLUS_MODULES[tier]||[];
   if(!mods.length){ box.innerHTML='<span class="cc">No modules.</span>'; return; }
+  // HOW MUCH PRODUCT EACH MODULE SHOWS -- chosen per module, because the whole
+  // complaint was that every one of them came back with another photograph of
+  // the item and there was no way to say "this one is a comparison table".
+  // The default stays "the whole product", so ticking a module and generating
+  // it without touching anything behaves exactly as it did before.
   box.innerHTML=mods.map(m=>`
     <label class="apmod">
       <input type="checkbox" class="apmodchk" value="${esc(m.id)}" ${m.id==='image_header_text'||m.id==='premium_full'?'checked':''}>
-      <div>
+      <div style="flex:1">
         <div style="font-weight:600;font-size:13px">${esc(m.name)} <span class="apdim">${m.w}×${m.h}px</span></div>
         <div class="cc" style="font-size:11px">${esc(m.desc)}</div>
+        <div class="apopts">
+          <select class="appres" data-mid="${esc(m.id)}" onclick="event.preventDefault();event.stopPropagation()">
+            <option value="hero">Show the whole product</option>
+            <option value="detail">Close-up of one part</option>
+            <option value="in_use">In a real scene</option>
+            <option value="none">No product — a designed panel</option>
+          </select>
+          ${m.mobile?`<label class="apmob" onclick="event.stopPropagation()">
+            <input type="checkbox" class="apmobchk" data-mid="${esc(m.id)}">
+            also make the phone version (${m.mobile.w}×${m.mobile.h})
+          </label>`:''}
+        </div>
       </div>
     </label>`).join("");
 }
@@ -749,10 +766,25 @@ async function studioRunAplus(){
     const it=_itemForSku(sku); const ref=_refImgForItem(it);
     mods.forEach(mid=>{
       const modName=((APLUS_MODULES[tier]||[]).find(m=>m.id===mid)||{}).name||mid;
+      // The presence chosen on this module's row. Read from the DOM at submit
+      // time rather than tracked in state, so what was on screen is what runs.
+      const _sel=document.querySelector('.appres[data-mid="'+mid+'"]');
+      const pres=(_sel&&_sel.value)||"hero";
+      // THE LISTING'S OWN WORDS. A product-free module is built from facts and
+      // nothing else, so this is the difference between a real spec panel and
+      // an invented one. It was never sent on this path.
       const body={ product_image:ref, title:(it&&it.title)||"", tier:tier, module_id:mid,
+        product_presence:pres, listing:(it||null),
         benefit_text:benefit, instruction:instr, text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null),
         fidelity:((document.getElementById("studio_fidelity")||{}).value||"high") };
       jobs.push({sku:sku, ref:ref, label:modName, payload:body});
+      // A SECOND, SEPARATELY COMPOSED IMAGE FOR THE PHONE -- not the desktop one
+      // scaled down. Only offered for modules that declare a mobile size.
+      const _mob=document.querySelector('.apmobchk[data-mid="'+mid+'"]');
+      if(_mob&&_mob.checked){
+        jobs.push({sku:sku, ref:ref, label:modName+" (phone)",
+                   payload:Object.assign({}, body, {viewport:"mobile"})});
+      }
     });
   });
   const total=jobs.length;
@@ -763,7 +795,14 @@ async function studioRunAplus(){
 function _aplusAddResult(job, j, grid){
   grid=grid||document.getElementById("studio_results");
   const cardId="ares_"+Math.random().toString(36).slice(2);
-  const dim=j&&j.module?(j.module.w+'×'+j.module.h+'px'):'';
+  // THE SIZE THIS FILE ACTUALLY IS, not the module's desktop size. A phone
+  // rendition of a premium module is 600×450 while the module says 1464×600,
+  // and labelling the file with the wrong number is how the wrong one gets
+  // uploaded. The route reports what it actually made; fall back to the module
+  // only when it does not.
+  const dim=(j&&j.width&&j.height)?(j.width+'×'+j.height+'px')
+            :(j&&j.module?(j.module.w+'×'+j.module.h+'px'):'');
+  const scr=(j&&j.viewport==='mobile')?'<span class="apscr">phone</span>':'';
   let copyHtml="";
   if(j&&j.copy){
     try{ const c=JSON.parse(j.copy); copyHtml=`<div class="apcopy"><b>${esc(c.headline||'')}</b><br>${esc(c.body||'')}</div>`; }
@@ -772,7 +811,7 @@ function _aplusAddResult(job, j, grid){
   let inner;
   if(j&&j.ok&&j.data_url){
     inner=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
-      <div class="srescap">${esc(job.sku)} · ${esc(job.modName)} <span class="apdim">${dim}</span></div>
+      <div class="srescap">${esc(job.sku)} · ${esc(job.modName)} <span class="apdim">${dim}</span>${scr}</div>
       ${copyHtml}
       <div class="sresacts">
         <button class="ib" onclick="studioSave('${cardId}','${esc(job.sku)}')"><i class="ti ti-device-floppy"></i> Save</button>

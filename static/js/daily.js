@@ -18,11 +18,13 @@ const DAILY = {data: null, loading: false, showOk: false, note: ""};
 
 function dailyOnOpen(){ if(!DAILY.data) dailyLoad(); else dailyRender(); }
 
-function _dyQs(){
-  const a = (typeof WS_ID !== "undefined" && WS_ID) ? WS_ID : "";
-  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-  return "?id=" + encodeURIComponent(a) + "&marketplace=" + encodeURIComponent(m);
-}
+// Was four lines building this by hand, reading a variable called WS_ID that
+// nothing in this app has ever defined -- so this screen has always sent an
+// empty account id and leaned entirely on the server's idea of which account is
+// active. It also forwarded marketplace=__all__, which is the UI's word for
+// "every marketplace" and not a country. Both are fixed by using the one shared
+// builder (CLAUDE.md Rule 12); see static/js/scopeq.js.
+function _dyQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
 async function dailyLoad(){
   DAILY.loading = true; DAILY.note = ""; dailyRender();

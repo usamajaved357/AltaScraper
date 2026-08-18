@@ -106,7 +106,14 @@ print("\n== the instruction and the attachment agree ==")
 # Telling the model "do not show the product" while handing it the product
 # photograph is a contradiction, and the photograph wins -- which is how every
 # slot ended up with another picture of the bottle.
-RT = open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8-sig").read()
+# The route's own code (how the reference is attached) PLUS the shared rules it
+# now imports. The rules moved to domain/image_rules.py when /aplus/generate
+# needed the same ones -- a second copy is how the two paths drifted apart in
+# the first place (CLAUDE.md Rule 12). What is asserted below did not change;
+# only where it lives did, so both files are read as one body of text.
+RT = (open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8-sig").read()
+      + "\n"
+      + open(r"D:\AltaScraper\domain\image_rules.py", encoding="utf-8-sig").read())
 truthy("there is a rule per presence", "_PRESENCE_RULES" in RT)
 truthy("  and 'none' forbids the product outright",
        "DO NOT SHOW THE PRODUCT IN THIS IMAGE AT ALL" in RT)
@@ -205,6 +212,122 @@ print("\n== the model is told to compose for the shape ==")
 truthy("the target shape is stated in words", "CANVAS AND LAYOUT" in AI)
 truthy("  named as a wide banner when it is one", "WIDE BANNER" in AI)
 truthy("  with a safe area so text never sits on the edge", "SAFE AREA" in AI)
+
+print("\n== a concept may only need facts that exist ==")
+# FOUND BY GENERATING REAL IMAGES, not by reading code. The presence work made
+# product-free panels possible, and the first one was an ingredient board for a
+# product whose listing carries NO ingredient list -- the catalogue gives title,
+# attributes and images and nothing else. Three attempts, three failures:
+#   1. invented and duplicated names: "Magnanese", "Setassium", Copper twice
+#   2. outright noise: "SPORTPRFIBS", "MUTERIBL", plus empty white bars
+#   3. only once the STRATEGIST was stopped from proposing it did it come right
+# No amount of "do not invent" fixes this: a layout has a shape to fill, and a
+# model given a shape and no facts fills it with something.
+truthy("the strategist is told what the facts can fill", "_FACTS_BRIEF" in AI)
+truthy("  and must NAME the values a data image will print", '"facts_used"' in AI)
+truthy("  and propose something else when it cannot",
+       "the concept is not available for this product" in AI)
+truthy("  never a layout implying more facts than exist",
+       "promises four columns of content" in AI)
+# The downstream half: if a list IS drawn, it may not be padded or duplicated.
+truthy("a list may not be padded to look full", "_LIST_RULES" in RT)
+truthy("  no entry twice", "NO entry may appear twice" in RT)
+# MEASURED on the fifth generation: four real categories, but the model chose a
+# SIX-slot grid and filled the two spare slots by printing "HERBS" twice more.
+# The instruction not to pad was already there; what was missing was the order
+# of operations -- count, then choose the layout, never the reverse.
+truthy("  the item count decides the layout, not the reverse",
+       "COUNT THE ITEMS FIRST" in RT)
+truthy("  a stated count must match what is shown",
+       "the number of entries shown must equal it" in RT)
+truthy("  and no list at all beats an invented one",
+       "do not draw" in RT and "one clear statement instead" in RT)
+
+print("\n== a claim about performance needs a source ==")
+# MEASURED on a real charcoal listing, one set of four images:
+#   "12kg -- that's a full season of weekend grills"
+#   "No fillers. No binders."
+#   "Lights fast. Holds heat. Burns clean."
+# Not one of those is in the listing, and NOT ONE was caught: the old rules
+# banned invented NUMBERS and invented SUPERLATIVES, and a performance claim is
+# neither. This is the class the brief actually named -- "we can not tell in
+# secondary images for a table stand that this is third party lab tested".
+truthy("performance claims need a source", "how the product PERFORMS" in RT)
+truthy("  including how long it lasts", "how LONG it lasts" in RT)
+truthy("  and negative composition claims",
+       "what it does NOT contain" in RT and "no fillers" in RT)
+# The generator drew what it was told; the claim was invented one step earlier.
+truthy("the strategist is held to it too, not just the generator",
+       "THE SAME RULE GOVERNS THE HEADLINE" in AI)
+
+print("\n== punctuation in the brief is not text to typeset ==")
+# MEASURED on the sixth generation: the brief wrote its bullets as "+ Formulated
+# for athletes", and the model drew a green '+' marker above the line AND kept
+# the '+' at the front of the words. The bullet describes the list; it is not
+# part of the sentence.
+truthy("a leading bullet is marked as punctuation",
+       "is NOT part of the words" in RT)
+truthy("  drawn once, never twice", "never both" in RT)
+# MEASURED: "#B5813A" typeset under the chef-hat mark on the charcoal panel,
+# straight out of the art direction. Same class as the bullet -- notation
+# describing the design, rendered as though it were copy.
+truthy("a hex colour code is an instruction, not copy",
+       "never words to print" in RT and "#B5813A" in RT)
+# MEASURED: "12 kg -- that's / that's a full / season of weekend grills"
+truthy("no word repeats across a line break",
+       "Do not repeat a word across a line break" in RT)
+
+print("\n== a product-free image is a graphic, not a package mockup ==")
+# Attempt 2 obeyed "no product" by wrapping the design onto a 3D box -- which
+# is a picture of the product after all, by another route.
+truthy("it must be flat, drawn on the canvas", "IT IS A FLAT GRAPHIC" in RT)
+truthy("  and explicitly not a packaging mockup",
+       "NOT the design wrapped onto a box" in RT)
+truthy("  nor a photograph of a printed panel",
+       # Split across concatenated literals, so matched in the half that
+       # survives the join.
+       "Not a photograph " in RT and "of a printed panel" in RT)
+
+print("\n== a secondary image fills its square ==")
+# Attempt 1 was a tall poster centred in a square frame with white margins --
+# a good design occupying half the pixels anyone would see.
+truthy("the square canvas is stated", "_SQUARE_CANVAS" in RT)
+truthy("  and must reach all four edges", "FILL IT edge to edge" in RT)
+# Having told it to shorten content rather than invent, the layout has to
+# re-balance or the honesty shows up as half an empty image.
+truthy("  using the full height too", "BALANCE THE WHOLE SQUARE" in RT)
+truthy("  by setting the type larger rather than leaving a void",
+       "make the type larger" in RT)
+truthy("every presence rule carries the canvas",
+       "+ _SQUARE_CANVAS" in RT)
+
+print("\n== a phone gets its own composition, not the desktop squeezed ==")
+#     "in premium aplus content there is mobile version and desktop version but
+#      app is not making separate diensions content"
+AP = open(r"D:\AltaScraper\routes\aplus_routes.py", encoding="utf-8-sig").read()
+_prem = {m["id"]: m for m in (_dash._APLUS_MODULES.get("premium") or [])}
+truthy("the full-width premium banner declares a mobile size",
+       (_prem.get("premium_full") or {}).get("mobile"))
+truthy("  and so does the premium header",
+       (_prem.get("premium_header") or {}).get("mobile"))
+truthy("the route can be asked for either screen", 'b.get("viewport"' in AP)
+truthy("  and the mobile one is COMPOSED for a phone",
+       "THIS IS THE MOBILE RENDITION" in AP)
+truthy("  stacked rather than laid out wide", "STACKED vertically" in AP)
+# THE TRAP: asking for mobile but still cutting to the desktop numbers would
+# quietly produce the desktop image again.
+check("the desktop size is not used to cut the mobile image",
+      'mod["w"]' in AP.split("def aplus_generate")[-1].split("_resize_to_exact")[-1][:200],
+      False)
+truthy("  the chosen size is what is asked for and cut to",
+       "_resize_to_exact(gen[\"image_b64\"], _w, _h)" in AP)
+truthy("  and the result says which screen it is for", 'gen["viewport"]' in AP)
+# RULE 4: the desktop figures are Amazon's; the mobile default is ours, and
+# saying so is the difference between a default and a claim.
+truthy("the mobile size is declared an assumption, not an Amazon figure",
+       "APLUS_MOBILE_IS_ASSUMED" in open(r"D:\AltaScraper\dashboard.py",
+                                         encoding="utf-8-sig").read())
+truthy("  and that is sent to the screen", "mobile_size_note" in AP)
 
 print("\n== what the image may SAY is checked on both paths ==")
 # This lived on the hand-built role path only -- and the strategist path, the

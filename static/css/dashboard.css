@@ -308,6 +308,44 @@
   .slbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
         color:var(--ink4);padding:14px 11px 4px}
   .navitem .ti{font-size:16px;width:18px;text-align:center}
+
+  /* ---- EXPANDING MASTER ITEMS, as Seller Central groups its menu ----
+     "manage inventory expands into manage all inventory, sell globally,
+      fulfillment by amazon etc etc"
+
+     The master row looks like a nav item because it IS one to click; what marks
+     it out is the chevron and the fact that the children indent under it. The
+     children are hidden with max-height rather than display:none so the reveal
+     can be animated, and are given overflow:hidden so a shut group cannot be
+     tabbed into. */
+  .navgroup .navkids{max-height:0;overflow:hidden;
+                     transition:max-height .18s ease}
+  /* Large enough for the longest group (Reports, seven children) with room to
+     spare. A fixed value is used rather than `none` because max-height cannot
+     animate to or from auto. */
+  .navgroup.open .navkids{max-height:520px}
+  .navmaster{font-weight:600;color:var(--ink)}
+  .navmaster .navchev{margin-left:auto;font-size:13px;opacity:.55;
+                      transition:transform .18s ease}
+  .navgroup.open .navmaster .navchev{transform:rotate(90deg)}
+  /* The indent is what says "these belong to the row above". The left rule
+     gives the eye a single line to follow down the group, which matters most
+     when several groups are open at once. */
+  .navgroup .navkids .navitem{padding-left:30px;font-size:11.5px;
+                              margin-left:11px;border-left:2px solid var(--line);
+                              border-radius:0}
+  .navgroup .navkids .navitem.active{border-left-color:var(--accent)}
+  /* A group holding the current screen stays marked even when the user shuts
+     it, so "where am I" survives collapsing the drawer you are standing in. */
+  .navgroup.hasactive .navmaster{color:var(--ink)}
+  .navgroup.hasactive:not(.open) .navmaster{background:var(--panel2)}
+  /* The badge a master wears on behalf of its shut children. Same red as the
+     child badges: a different colour would read as a different kind of problem.
+     .dotonly is the case where a child is flagged but has no number to show. */
+  .navmbadge{display:none;background:var(--red);color:#fff;padding:1px 6px;
+             border-radius:8px;font-size:10px;font-weight:600;margin-left:6px}
+  .navmbadge.dotonly{padding:0;width:7px;height:7px;border-radius:50%}
+
   .wsmain{flex:1;min-width:0;display:flex;flex-direction:column}
 
   /* ---- THE SIDEBAR FOLDS TO AN ICON RAIL ----
@@ -341,6 +379,16 @@
   #workspace.navmini .navitem span,
   #workspace.navmini .navitem .chev{display:none}
   #workspace.navmini .navitem.active{border-left-width:0;background:var(--accent-bg)}
+  /* IN THE RAIL, EVERY GROUP IS OPEN.
+     The rail is icons only, so a master row would be an icon that reveals more
+     icons -- two taps to reach a screen that was one tap away, and no label to
+     say what either does. Collapsing is a full-width idea. The masters are
+     hidden and their children shown flat, which is the same set of destinations
+     the rail had before the grouping existed. */
+  #workspace.navmini .navmaster{display:none}
+  #workspace.navmini .navgroup .navkids{max-height:none;overflow:visible}
+  #workspace.navmini .navgroup .navkids .navitem{padding-left:0;margin-left:0;
+                                                 border-left-width:0;font-size:0}
   #workspace.navmini .wsident{justify-content:center;margin-bottom:14px}
   #workspace.navmini .wsident>div:last-child{display:none}
   .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
@@ -950,6 +998,54 @@
   .apmod{display:flex;gap:8px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);padding:8px 10px;border-radius:8px;cursor:pointer}
   .apmod input{margin-top:3px}
   .apdim{display:inline-block;font-size:10px;color:var(--ok);background:#16291d;border:1px solid #2c5840;padding:1px 6px;border-radius:999px;margin-left:4px}
+  /* Per-module choices: how much product this one shows, and whether to make a
+     separately composed phone version. Sits under the module's own description
+     so the choice reads as belonging to that module and not to the panel. */
+  /* ---- LEADING INDICATORS ----
+     Four states, and the fourth is the important one: a figure with too little
+     history, or a day Amazon has not reported, is genuinely UNJUDGED. It gets
+     its own neutral pill rather than borrowing the on-track green, because a
+     screen whose whole job is to filter attention must not claim a verdict it
+     did not reach. */
+  .ld-head{display:flex;justify-content:space-between;align-items:flex-start;
+           gap:12px;flex-wrap:wrap;padding:4px 0 12px}
+  .ld-day{font-size:15px;font-weight:650}
+  .ld-counts{display:flex;gap:6px;flex-wrap:wrap}
+  .ld-pill{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;
+           border-radius:999px;white-space:nowrap}
+  .ld-pill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .ld-pill.warn{background:#2a2415;border:1px solid #55492a;color:#e3c98a}
+  .ld-pill.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .ld-pill.unk{background:var(--panel2);border:1px solid var(--line);color:var(--ink3)}
+  /* Sigma is signed so POSITIVE ALWAYS MEANS BETTER, whichever way round the
+     indicator runs -- so one colour rule covers all eight. */
+  .ld-good{color:#7fd6a2;font-weight:600}
+  .ld-mid{color:var(--ink2);font-weight:600}
+  .ld-warn{color:#e3c98a;font-weight:600}
+  .ld-bad{color:#f0928f;font-weight:600}
+  .ld-sparkcell{color:var(--ink3);min-width:100px}
+  .ld-spark{display:block;opacity:.85}
+
+  /* ---- TRACKERS ----
+     Three states, and the third is the one that matters: "not known" must not
+     look like either a pass or a failure. A reading Amazon would not give, and
+     a number with no target set, are both genuinely unjudged -- and a
+     monitoring screen that renders those as a tick is a screen that lies. */
+  .trkpill{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;
+           border-radius:999px;white-space:nowrap}
+  .trkpill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .trkpill.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .trkpill.unk{background:var(--panel2);border:1px solid var(--line);color:var(--ink3)}
+  /* Drift is signed so positive always means WORSE, whichever way round the
+     metric runs -- so one colour rule covers all four trackers. */
+  .trkbad{color:#f0928f;font-weight:600}
+  .trkgood{color:#7fd6a2;font-weight:600}
+
+  .apopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+  .appres{font-size:11px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px;cursor:pointer}
+  .apmob{display:inline-flex;gap:5px;align-items:center;font-size:11px;color:var(--muted);cursor:pointer}
+  .apmob input{margin:0}
+  .apscr{display:inline-block;font-size:10px;color:#cbb7e8;background:#241a33;border:1px solid #453258;padding:1px 6px;border-radius:999px;margin-left:4px}
   .apcopy{font-size:11px;color:#c7d0dc;padding:6px 8px;border-top:1px dashed var(--line);line-height:1.45}
   .issuesbox{border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:12.5px;line-height:1.5}
   .issuesbox.ok{background:#16241a;border:1px solid #2c5036;color:#bfe3c9}
