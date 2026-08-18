@@ -1007,6 +1007,15 @@
         <span class="spacer" style="flex:1"></span>
         <button class="linkbtn" onclick="monMarkAllRead()">Mark all read</button>
       </div>
+
+      <!-- WHEN THIS RUNS, AND WHETHER IT RUNS AT ALL.
+           "i dont want the asin monitor to be working always, give 2 options.
+            option 1 is to recheck the status of the buybox by clicking a
+            button. option two is to setup a time of your choice."
+           Option 1 is Check now, above. This is option 2, off by default.
+           Drawn by monSchedRender() in static/js/monitor.js. -->
+      <div class="monsched" id="mon_sched"></div>
+
       <div id="mon_alerts" style="margin:10px 0 6px"></div>
 
       <div class="monadd">

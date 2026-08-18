@@ -2607,6 +2607,39 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- when the ASIN monitor runs ----------------------------------------
+   "i dont want the asin monitor to be working always, give 2 options."
+   Off / Every..., then the hours. Quiet by design: it is a setting you touch
+   once, sitting above alerts that are the reason you opened the screen. */
+.monsched{
+  border:1px solid var(--line); border-radius:8px;
+  background:var(--panel); padding:9px 11px; margin:10px 0 4px;
+}
+.monsched-row{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.monsched-lbl{
+  font-size:11px; font-weight:600; color:var(--ink3);
+  text-transform:uppercase; letter-spacing:.05em; margin-right:3px;
+}
+.monsched-t, .monsched-h{
+  background:transparent; border:1px solid var(--line); color:var(--ink2);
+  border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer;
+  min-height:30px; transition:border-color .15s ease, color .15s ease;
+}
+.monsched-t:hover, .monsched-h:hover{ border-color:var(--accent); color:var(--ink); }
+.monsched-t.on, .monsched-h.on{
+  border-color:var(--accent); color:var(--accent); background:rgba(45,212,168,.09);
+}
+.monsched-h{ padding:5px 8px; font-variant-numeric:tabular-nums; }
+.monsched-chips{ display:flex; gap:5px; flex-wrap:wrap; }
+.monsched-any{ display:flex; align-items:center; gap:6px; font-size:12px;
+               color:var(--ink3); }
+.monsched-in{
+  width:62px; background:var(--bg); border:1px solid var(--line);
+  color:var(--ink); border-radius:6px; padding:4px 7px; font-size:12px;
+  font-variant-numeric:tabular-nums;
+}
+.monsched-why{ font-size:11px; margin-top:6px; line-height:1.5; }
+
 /* ---- the "nowhere left to buy from" alert -------------------------------
    It was twelve rows of the same twenty-word sentence, drawn from inline
    styles inside a JavaScript string. Now: the explanation once, then the SKUs

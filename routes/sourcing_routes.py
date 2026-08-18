@@ -17,6 +17,7 @@ import json
 
 from flask import request, jsonify, Response
 
+from config import settings as _settings
 from domain import order_sources as _osrc
 from domain import source_apply as _apply
 from domain import source_bulk as _bulk
@@ -37,15 +38,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
     back to the number in its name, which is what cogs.resolve() does anyway.
     """
 
+    # Reading and writing config.json belongs to config/settings.py, which owns
+    # the file. These two used to do it here by hand, and the moment a second
+    # screen needed to save a setting that private copy would have been copied
+    # again (CLAUDE.md Rule 12). The shared writer is also ATOMIC, where this one
+    # truncated config.json before writing a byte -- a crash mid-write took every
+    # credential in the app with it, and the file is git-ignored.
     def _read_config():
-        try:
-            return json.load(open(CONFIG_PATH, encoding="utf-8"))
-        except Exception:
-            return {}
+        return _settings.read_raw(CONFIG_PATH)
 
     def _write_config(raw):
-        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"),
-                  indent=2, ensure_ascii=False)
+        _settings.write_raw(raw, CONFIG_PATH)
         _state["cfg"] = None            # drop the cache so the switch takes effect
 
     def _creds_for(workspace_id, marketplace):
