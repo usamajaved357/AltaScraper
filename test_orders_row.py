@@ -82,7 +82,7 @@ print("\n=== it shows all of that WITHOUT being asked ===")
 # "i dont think my all requests are addressed, no images and details of the item
 #  etc are displayed in the order tab" -- because it was opt-in and the option
 # defaulted to off, so the Item column was blank until you found a button.
-truthy("reading the items is ON by default", "busy: false, profit: true}" in JS)
+truthy("reading the items is ON by default", "profit: true" in JS)
 truthy("  and the button starts in the on state",
        'class="db-chip on" id="ord_profit"' in
        open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read())
@@ -136,10 +136,32 @@ truthy("the default is the workspace you have open",
        'account: ""' in JS)
 truthy("  and __all__ is no longer the default", 'account: "__all__"' not in JS)
 H = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
-truthy("the picker says so, and starts there",
-       '<option value="" selected>This account only</option>' in H)
-truthy("every account is still available, as a choice",
-       '<option value="__all__">Every account</option>' in H)
+# THE PICKER IS GONE, and with it the ability to read another company's orders
+# from inside this one. It used to offer "Every account" AND an entry per
+# account, and the per-account entries were the half that actually did the
+# damage: pick Jack Reacherd while standing in Nestwell and the choice stuck.
+#
+#     "i do not want that option which enables the user to see all the orders on
+#      every account by being in 1 account. i am in nestwell goods why am i able
+#      to see the orders of jack reacherd this should not be happening"
+truthy("there is no account picker on the orders screen",
+       'id="ord_account"' not in H)
+truthy("  the screen says whose orders these are instead",
+       'id="ord_scope"' in H)
+truthy("  and nothing fills a picker with every account",
+       "sel.appendChild(o)" not in JS)
+# A rule that only exists in the browser is not a rule -- the endpoint is
+# reachable directly.
+R0 = open(r"D:\AltaScraper\routes\orders_routes.py", encoding="utf-8").read()
+truthy("the server refuses every-account outright",
+       'if want == "__all__"' in R0)
+truthy("  and an unresolvable account returns NOTHING, not everything",
+       "return []" in R0 and "NO ACCOUNT RESOLVED MEANS NONE" in R0)
+# The other half of the same fault: the rows on screen outliving the account
+# they belong to.
+truthy("the rows are stamped with whose they are", "ORD.rowsFor" in JS)
+truthy("  and a different workspace forces a reload",
+       "ORD.rowsFor !== _ws" in JS)
 SS = open(r"D:\AltaScraper\static\js\screenstate.js", encoding="utf-8").read()
 truthy("switching workspace forgets the orders held in memory",
        "ORD.rows = []" in SS)

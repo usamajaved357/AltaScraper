@@ -48,12 +48,33 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         it -- is not a convenience, it is one business's customer data shown
         under another's name.
 
-        So: the account you have open, always, unless you explicitly ask for
-        every one with account=__all__. An account with no Amazon credentials
-        of its own is skipped rather than failed on; it has no orders to have.
+        So: the account you have open. ALWAYS.
+
+        THE ESCAPE HATCH IS GONE. This used to honour account=__all__ as an
+        explicit opt-in, and the screen offered it in a picker:
+
+            "i do not want that option which enables the user to see all the
+             orders on every account by being in 1 account. i am in nestwell
+             goods why am i able to see the orders of jack reacherd this should
+             not be happening"
+
+        Removing the option from the screen would not have been enough. The
+        endpoint is reachable directly, and a rule that only exists in the
+        browser is not a rule -- so __all__ is refused HERE, and the picker was
+        removed as well. Nothing in this app can now show one company's orders
+        inside another's workspace.
+
+        An account with no Amazon credentials of its own is skipped rather than
+        failed on; it has no orders to have.
         """
         cfg = _cfg() if callable(_cfg) else (_cfg or {})
         want = (request.args.get("account") or "").strip()
+        # Asked for every account? That is the open one, same as asking for
+        # nothing. Not an error: an old bookmark or a cached page may still send
+        # it, and failing outright would show a broken screen for something the
+        # person did not choose.
+        if want == "__all__":
+            want = ""
         if not want:
             # No explicit ask -> the account currently open. Falling back to
             # "all" here is exactly the bug above.
@@ -61,10 +82,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 want = str((_active_account() or {}).get("id") or "").strip()
             except Exception:
                 want = ""
+        # NO ACCOUNT RESOLVED MEANS NONE, NOT ALL. The filter below is skipped
+        # when `want` is empty, so an unresolvable account used to fall through
+        # to every account -- the same leak by a quieter route. An empty result
+        # is a screen that says it has nothing; the alternative is one company's
+        # customers listed under another's name.
+        if not want:
+            return []
         out = []
         for a in (cfg.get("accounts") or []):
             aid = str(a.get("id") or "")
-            if want and want != "__all__" and aid != want:
+            if aid != want:
                 continue
             if not (a.get("seller_id") and (a.get("default_marketplace")
                                             or a.get("marketplaces"))):

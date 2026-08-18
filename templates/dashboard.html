@@ -861,17 +861,17 @@
           <button class="db-chip" onclick="ordersSetDays(30)">30 days</button>
           <button class="db-chip" onclick="ordersSetDays(90)">90 days</button>
         </div>
-        <!-- THIS WORKSPACE FIRST, and selected. "Every account" is a deliberate
-             choice, not the default: these are separate limited companies with
-             separate customers, and one of them's orders showing under
-             another's name is that customer's name and address in the wrong
-             company's screen. -->
-        <select id="ord_account" onchange="ordersSetAccount(this.value)"
-                style="font-size:12px;padding:5px 8px"
-                title="Whose orders to show. Defaults to the workspace you have open — each account is a separate business.">
-          <option value="" selected>This account only</option>
-          <option value="__all__">Every account</option>
-        </select>
+        <!-- THE PICKER IS GONE, AND SO IS "EVERY ACCOUNT".
+             "i do not want that option which enables the user to see all the
+              orders on every account by being in 1 account. i am in nestwell
+              goods why am i able to see the orders of jack reacherd"
+             These are separate limited companies with separate customers, and
+             one's orders under another's name is that customer's name and
+             address in the wrong company's screen. There is no longer a way to
+             ask for it — the endpoint refuses it too, because a rule that only
+             exists in the browser is not a rule. -->
+        <span class="cc" id="ord_scope" style="font-size:11.5px"
+              title="Orders belong to the account you have open. Each account is a separate business with its own customers.">this account only</span>
         <!-- ON by default, and starts that way: this is what fills the Item
              column with the product, its picture, the margin and the ROI. It
              costs one Amazon call per order, so it runs as a second pass after
