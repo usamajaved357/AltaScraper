@@ -242,9 +242,15 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         except Exception:
             copy_text = ""
 
+        # WHICH SCREEN AND WHAT SIZE THIS ACTUALLY IS. The module carries the
+        # DESKTOP dimensions, so a screen reading module.w x module.h would label
+        # a 600x450 phone asset as 1464x600 -- the wrong number against a real
+        # file, which is how the wrong one gets uploaded.
         res = {"ok": True, "detailed_prompt": detailed,
                "text_provider": enh.get("provider"), "image_provider": gen.get("provider"),
-               "module": mod, "copy": copy_text}
+               "module": mod, "copy": copy_text,
+               "viewport": viewport, "width": _w, "height": _h,
+               "product_presence": presence}
         if gen.get("image_b64"):
             res["image_b64"] = gen["image_b64"]; res["mime"] = gen.get("mime", "image/png")
         elif gen.get("image_url"):
