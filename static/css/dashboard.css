@@ -2607,6 +2607,73 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- parent and child, the way Seller Central draws it ------------------
+   "ALSO I WANT MY APP TO SHOW the parents and child relation like we have in
+    amazon."
+   The parent is a header you can open; the children sit under it, indented and
+   joined by a rule, so the relationship is visible rather than described. */
+.varfam-wrap{ margin:0 0 16px; }
+.varfam-head{ font-size:12.5px; margin:2px 0 8px; display:flex; gap:8px;
+              align-items:baseline; flex-wrap:wrap; }
+.varfam{
+  border:1px solid var(--line); border-radius:8px;
+  background:var(--panel); margin-bottom:7px; overflow:hidden;
+}
+.varfam.orphan{ border-color:var(--warn-line, #5c4528); }
+.varfam-p{
+  display:flex; align-items:center; gap:10px; padding:9px 11px;
+  cursor:pointer; min-height:46px;
+}
+.varfam-p:hover{ background:var(--panel2); }
+.varfam-p > .ti{ color:var(--ink3); font-size:15px; flex:0 0 auto; }
+.varfam-th{
+  width:34px; height:34px; flex:0 0 34px; border-radius:5px;
+  object-fit:cover; background:var(--panel2); border:1px solid var(--line);
+}
+.varfam-nm{ min-width:0; flex:1; }
+.varfam-t{
+  font-size:12.5px; font-weight:600; line-height:1.35;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.varfam-s{ font-size:11px; margin-top:1px;
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.varfam-q{ font-size:11px; color:var(--ink3); white-space:nowrap;
+           font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.varfam-q.out{ color:var(--red); }
+/* The children, indented under their parent and tied to it by a rule -- the
+   line is what makes it read as a family rather than as another list. */
+.varfam-kids{ border-top:1px solid var(--line); padding:3px 0 3px 26px;
+              background:rgba(0,0,0,.14); }
+.varfam-k{
+  display:flex; align-items:center; gap:9px; padding:6px 11px 6px 12px;
+  border-left:2px solid var(--line); margin-left:6px; min-height:40px;
+}
+.varfam-k .varfam-th{ width:30px; height:30px; flex:0 0 30px; }
+
+/* ---- the inventory pages ------------------------------------------------
+   "i want each and every feature and page about the inventory and ppc, of
+    orbit into my app"
+   Orbit splits inventory across tabs and this screen had them all stacked in
+   one scroll -- four screens deep on a phone before the product table. The
+   banner and cockpit cards stay above these, because "what is about to run
+   out" is context for every page rather than a page of its own. */
+.stk-tabbar{
+  display:flex; gap:4px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line);
+  margin:4px 0 14px; padding-bottom:0;
+}
+.stk-tab{
+  background:transparent; border:0; border-bottom:2px solid transparent;
+  color:var(--ink3); cursor:pointer;
+  padding:9px 13px; margin-bottom:-1px;
+  font-size:12.5px; font-weight:500; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:7px; min-height:38px;
+  transition:color .15s ease, border-color .15s ease;
+}
+.stk-tab .ti{ font-size:15px; }
+.stk-tab:hover{ color:var(--ink); }
+.stk-tab.on{ color:var(--accent); border-bottom-color:var(--accent); font-weight:600; }
+
 /* ---- when the ASIN monitor runs ----------------------------------------
    "i dont want the asin monitor to be working always, give 2 options."
    Off / Every..., then the hours. Quiet by design: it is a setting you touch
@@ -3041,6 +3108,10 @@ table.ordtable tbody tr.orddetail > td{
 }
 .stk-headline.ok{ color:var(--ok); }
 .stk-headline.bad{ color:#fca5a5; }
+/* is-warn, not warn. `.warn` has no bare rule today, but `.ok` did -- a filled
+   green button -- and this exact headline was rendering as a solid green bar
+   because of it. Prefixed modifiers cannot collide with a global word. */
+.stk-headline.is-warn{ color:#fbbf24; }
 .stk-sub{ font-size:12.5px; color:var(--ink2); line-height:1.55; margin:0; }
 .stk-bannercards{ display:flex; gap:10px; flex-wrap:wrap; }
 

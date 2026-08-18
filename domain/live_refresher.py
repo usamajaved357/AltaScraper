@@ -360,6 +360,20 @@ def _enrich_one(app, config_path, aid, mkt, log=None):
                     fields["handling"] = m["handling"]
                 if m.get("title"):
                     fields["title"] = m["title"]
+                # THE FAMILY. Amazon returns it on the same call as everything
+                # above, and it used to be dropped -- so the app could create a
+                # parent/child family but never show you one.
+                #
+                # Only written when the SKU is actually IN a family. A SKU that
+                # stands alone writes nothing, so a stand-alone listing never
+                # gets an empty parent recorded against it, which would then have
+                # to be told apart from "not looked at yet".
+                if m.get("parent_skus"):
+                    fields["parent_skus"] = m["parent_skus"]
+                if m.get("child_skus"):
+                    fields["child_skus"] = m["child_skus"]
+                if m.get("variation_theme"):
+                    fields["variation_theme"] = m["variation_theme"]
                 if fields:
                     got[sku] = fields
         except Exception as e:

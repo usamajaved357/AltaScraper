@@ -74,7 +74,14 @@ def key(account_id, marketplace):
 # So a fresh report legitimately arrives with these blank, and treating blank as
 # "Amazon says there is no image" erased hours of that work on every Sync. See
 # _carry_forward below.
-_ENRICHED_FIELDS = ("img", "images", "img_source")
+#
+# The variation fields are here for exactly the same reason as the images. The
+# listings report has no relationships block in it, so a fresh sync legitimately
+# arrives with them blank -- and a straight replace would wipe every family the
+# refresher had learned, on every Sync, exactly as it used to wipe the
+# thumbnails.
+_ENRICHED_FIELDS = ("img", "images", "img_source",
+                    "parent_skus", "child_skus", "variation_theme")
 
 
 def _carry_forward(new_items, prev_items):
