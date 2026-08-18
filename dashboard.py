@@ -3722,6 +3722,12 @@ def build_app(backend=None):
     import routes.tracker_routes as _tracker_routes
     _tracker_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # Leading Indicators -- yesterday against its own history, in standard
+    # deviations. Nothing is fetched from Amazon: it is a new READING of the
+    # daily figures the app has been storing all along.
+    import routes.leading_routes as _leading_routes
+    _leading_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

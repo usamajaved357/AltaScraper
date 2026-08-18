@@ -258,6 +258,9 @@
              morning, and it is the only one whose job is to send you elsewhere. -->
         <div class="navitem" data-sec="daily" onclick="navTo('daily')" title="The morning check, run by the app — what needs attention today"><i class="ti ti-checklist"></i> Daily round</div>
         <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
+        <!-- Reads the same daily figures as Sales, and answers the question
+             Sales cannot: is this a NORMAL amount of movement for this account. -->
+        <div class="navitem" data-sec="leading" onclick="navTo('leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</div>
         <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
       </div>
     </div>
@@ -1134,6 +1137,20 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- LEADING INDICATORS -- yesterday against its own history, in standard
+         deviations. Nothing is fetched from Amazon here: it is a new reading of
+         the daily figures the app has been storing all along. -->
+    <div id="sec_leading" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-activity-heartbeat"></i> Leading Indicators</h2>
+        <div class="sub">Yesterday's figures against what this account normally does. "Down 22%" means nothing on its own — if a figure swings that much every week it is Tuesday, and if it has never moved 4% it is an emergency. This says which.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="leadLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ld_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- IMAGE STUDIO, its own screen rather than a dialog over Listings. -->
     <div id="sec_imagestudio" class="wspanel">
       <div class="wstoolbar bleed">
@@ -1530,6 +1547,8 @@
 <script src="/static/js/scopeq.js?v={{ ASSET_V }}"></script>
 <!-- The four trackers (BSR, Buy Box, price, fee) and the alerts they feed. -->
 <script src="/static/js/trackers.js?v={{ ASSET_V }}"></script>
+<!-- Yesterday against its own history, in standard deviations. -->
+<script src="/static/js/leading.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>
