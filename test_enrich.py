@@ -74,7 +74,26 @@ print("\n=== a pass calls the REAL views and writes what they return ===")
 # catalogue smaller than the budget the pass finishes everything and the "chips
 # away over several passes" behaviour is never exercised at all.
 CATALOGUE = ref.ENRICH_PER_PASS * 2 + 20
-snap.save(CFG, AID, MKT, items(CATALOGUE), report_source="test")   # reset: no images
+# A MARKETPLACE OF ITS OWN, because save() no longer forgets images.
+#
+# This line used to be `snap.save(..., MKT, ...)` with the comment "reset: no
+# images", and it worked because a save REPLACED the stored items outright. That
+# is precisely the bug the owner reported:
+#
+#     "i am not able to see the images of the items in the inventory section, i
+#      was able to see it once but now even after clicking on refresh or
+#      reloading the page i am not able to see the images"
+#
+# Amazon's catalogue report carries no images -- they are fetched afterwards, one
+# SKU at a time, by the very refresher this file tests. So every Sync wiped every
+# thumbnail the refresher had collected and they trickled back over the next
+# hour, and pressing Refresh made it worse. save() now carries a known value
+# forward when the incoming one is blank.
+#
+# So this block gets a clean marketplace rather than relying on a wipe. The
+# carry-forward itself is asserted below.
+MKT2 = "FR"
+snap.save(CFG, AID, MKT2, items(CATALOGUE), report_source="test")
 calls = {"images": 0, "aplus": 0, "skus": []}
 
 app = Flask(__name__)
@@ -98,8 +117,8 @@ def live_aplus():
     return jsonify({"ok": True, "by_asin": {"B00000001": {"modules": 2}}})
 
 ref.ENRICH_PAUSE = 0            # no need to actually wait in a test
-note = ref._enrich_one(app, CFG, AID, MKT)
-rec = snap.get(CFG, AID, MKT)
+note = ref._enrich_one(app, CFG, AID, MKT2)
+rec = snap.get(CFG, AID, MKT2)
 withimg = [i for i in rec["items"] if i.get("img")]
 check("it stopped at the per-pass budget", len(calls["skus"]), ref.ENRICH_PER_PASS)
 check("  in batches", calls["images"], ref.ENRICH_PER_PASS // ref.ENRICH_BATCH)
@@ -114,31 +133,98 @@ check("the note says what happened and what is left",
 
 print("\n=== the next passes continue where the last stopped ===")
 calls["skus"] = []
-ref._enrich_one(app, CFG, AID, MKT)
+ref._enrich_one(app, CFG, AID, MKT2)
 check("no SKU was fetched twice",
       len(set(calls["skus"]) & {i["sku"] for i in withimg}), 0)
 check("two passes have done twice the budget",
-      sum(1 for i in snap.get(CFG, AID, MKT)["items"] if i.get("img")),
+      sum(1 for i in snap.get(CFG, AID, MKT2)["items"] if i.get("img")),
       ref.ENRICH_PER_PASS * 2)
-ref._enrich_one(app, CFG, AID, MKT)          # the remainder
+ref._enrich_one(app, CFG, AID, MKT2)          # the remainder
 check("the whole catalogue is covered",
-      sum(1 for i in snap.get(CFG, AID, MKT)["items"] if i.get("img")), CATALOGUE)
+      sum(1 for i in snap.get(CFG, AID, MKT2)["items"] if i.get("img")), CATALOGUE)
 check("a complete marketplace reports so and calls nothing",
-      ref._enrich_one(app, CFG, AID, MKT), "images complete")
+      ref._enrich_one(app, CFG, AID, MKT2), "images complete")
 
 print("\n=== a person syncing always comes first ===")
 snap.save(CFG, AID, MKT, items(50), report_source="test")
 calls["images"] = 0; calls["aplus"] = 0
-ref.user_sync_started("%s::%s" % (AID, MKT))
-ref._enrich_one(app, CFG, AID, MKT)
+ref.user_sync_started("%s::%s" % (AID, MKT2))
+ref._enrich_one(app, CFG, AID, MKT2)
 check("no image calls while they sync", calls["images"], 0)
 check("no A+ call either", calls["aplus"], 0)
 check("and nothing is queued behind them",
       ref._needs_images(lambda: {}, CFG, AID), None)
-ref.user_sync_finished("%s::%s" % (AID, MKT))
+ref.user_sync_finished("%s::%s" % (AID, MKT2))
 
 print("\n=== a marketplace with no snapshot is skipped, not crashed on ===")
 check("says so plainly", ref._enrich_one(app, CFG, "nosuch", "US"), "no snapshot")
+
+print("\n=== A SYNC NO LONGER THROWS AWAY WHAT THIS FILE JUST COLLECTED ===")
+# The bug, in the owner's words:
+#
+#     "i am not able to see the images of the items in the inventory section, i
+#      was able to see it once but now even after clicking on refresh or
+#      reloading the page i am not able to see the images"
+#
+# Amazon's catalogue report carries NO images. This refresher fetches them
+# afterwards, sixty SKUs a pass. save() then replaced the stored items outright,
+# so every Sync wiped the lot and they trickled back over the following hour --
+# and pressing Refresh, the obvious response to a missing picture, destroyed
+# exactly the work that would have fixed it.
+#
+# Measured on nestwell_goods before the fix: 39 of 45 items had an image, and 0
+# immediately after a sync.
+MKT3 = "IT"
+snap.save(CFG, AID, MKT3, items(4), report_source="test")
+snap.enrich(CFG, AID, MKT3, {"S0": {"img": "http://kept/0.jpg"},
+                             "S1": {"img": "http://kept/1.jpg"}})
+check("two images collected", sum(
+    1 for i in snap.get(CFG, AID, MKT3)["items"] if i.get("img")), 2)
+
+# A fresh report: same SKUs, updated titles, and NO images -- exactly what
+# Amazon sends.
+fresh = [{"sku": "S%d" % i, "asin": "B%08d" % i, "title": "NEW%d" % i}
+         for i in range(4)]
+rec = snap.save(CFG, AID, MKT3, fresh, report_source="test")
+after = {i["sku"]: i for i in snap.get(CFG, AID, MKT3)["items"]}
+check("the images SURVIVE the sync", sum(
+    1 for i in after.values() if i.get("img")), 2)
+check("  S0 keeps its picture", after["S0"]["img"], "http://kept/0.jpg")
+check("  while its title is updated by the report", after["S0"]["title"], "NEW0")
+check("  and one that never had a picture still has none",
+      after["S2"].get("img", ""), "")
+check("  the record says how many it carried", rec.get("carried_forward"), 2)
+
+# A REPORT THAT DOES CARRY AN IMAGE STILL WINS. This only fills gaps -- it is not
+# a freeze, and a listing whose picture genuinely changed must update.
+snap.save(CFG, AID, MKT3,
+          [{"sku": "S0", "asin": "B00000000", "title": "N", "img": "http://new/0.jpg"}],
+          report_source="test")
+check("a real value from the report overrules the stored one",
+      snap.get(CFG, AID, MKT3)["items"][0]["img"], "http://new/0.jpg")
+
+print("\n=== thumbnails ask the CDN for the size they will be drawn at ===")
+# "please check all places in the app where thumbnail images are displayed and
+#  check if we can lower the load time"
+#
+# Every product picture is a full-size Amazon CDN file scaled down by CSS to
+# 34-88px. Amazon takes a size directive in the filename, so the app asks for
+# one -- kilobytes instead of most of a megabyte, per picture, per row.
+import io as _io
+import re as _re
+T = _io.open(r"D:\AltaScraper\static\js\thumbs.js", encoding="utf-8").read()
+check("there is ONE helper, not one rule per file",
+      len(_re.findall(r"function thumbUrl\(", T)), 1)
+for f in ("stock.js", "orders.js", "sourcing.js", "sales.js", "listings.js",
+          "miles_template.js"):
+    src = _io.open(r"D:\AltaScraper\static\js\%s" % f, encoding="utf-8").read()
+    check("  %s routes its thumbnails through it" % f,
+          ("thumbUrl(" in src or "thumbImg(" in src), True)
+check("it is loaded before anything that draws a picture",
+      _io.open(r"D:\AltaScraper\templates\dashboard.html",
+               encoding="utf-8").read().index("js/thumbs.js")
+      < _io.open(r"D:\AltaScraper\templates\dashboard.html",
+                 encoding="utf-8").read().index("js/listings.js"), True)
 
 print("\n=== the views are reused, not reimplemented (Rule 12) ===")
 src = open(r"D:\AltaScraper\domain\live_refresher.py", encoding="utf-8").read()

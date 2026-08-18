@@ -913,7 +913,7 @@ function card(r){
   const flagRed = _restProhibited || _blocker;   // gated-only -> amber
   const urls=_cardImages(r);
   const thumb = (urls&&urls.length)
-    ? `<img src="${esc(urls[0])}" loading="lazy" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
+    ? `<img src="${esc(thumbUrl(urls[0],120))}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
     : `<i class="ti ti-photo"></i>`;
   const selected = SELECTED.has(String(r.sku));
   const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
@@ -1407,7 +1407,7 @@ function tableRow(r){
   // which picture belongs to a listing.
   const urls = (typeof _cardImages === "function") ? (_cardImages(r) || []) : [];
   const thumb = urls.length
-    ? `<div class="thumb"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
+    ? `<div class="thumb"><img src="${esc(thumbUrl(urls[0],44))}" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
     : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
   const price = r.price ? `${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}` : "—";
   const hand  = r.handling_days || r.handling_time || "";
@@ -1442,7 +1442,7 @@ function tableRow(r){
 function liveTableRow(it){
   const img = it.image || it.img || "";
   const thumb = img
-    ? `<div class="thumb"><img src="${esc(img)}" loading="lazy" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
+    ? `<div class="thumb"><img src="${esc(thumbUrl(img,44))}" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
     : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
   const price = it.price ? `${CUR_SYMBOL}${esc(String(it.price).replace(/^[A-Z]{3}\s?/,''))}` : "—";
   const c = it.compliance;

@@ -65,6 +65,71 @@ def key(account_id, marketplace):
     return f"{account_id}::{str(marketplace or '').upper()}"
 
 
+# FIELDS THE CATALOGUE REPORT DOES NOT CARRY.
+#
+# Amazon's listings report has no images in it. They arrive afterwards, one SKU
+# at a time, from a different API -- enrich() writes them and domain/
+# live_refresher.py grinds through the backlog a batch per pass.
+#
+# So a fresh report legitimately arrives with these blank, and treating blank as
+# "Amazon says there is no image" erased hours of that work on every Sync. See
+# _carry_forward below.
+_ENRICHED_FIELDS = ("img", "images", "img_source")
+
+
+def _carry_forward(new_items, prev_items):
+    """Keep what a fresh report does not know, per SKU. Returns (items, kept).
+
+    THE BUG THIS FIXES, in the owner's words:
+
+        "i am not able to see the images of the items in the inventory section,
+         i was able to see it once but now even after clicking on refresh or
+         reloading the page i am not able to see the images"
+
+    Every Sync called save(), save() replaced `items` wholesale, and the
+    catalogue report has no images in it -- so each Sync wiped every thumbnail
+    the background refresher had collected, and they trickled back over the next
+    hour. Pressing Refresh made it WORSE, which is the opposite of what a
+    refresh button should do.
+
+    Measured on nestwell_goods: 39 of 45 items had an image before a sync and 0
+    after, with the refresher then re-fetching them a batch at a time.
+
+    A BLANK NEVER OVERWRITES A KNOWN VALUE, and that is the whole rule. If the
+    new report genuinely carries an image, it wins -- this only fills gaps. It
+    is the same principle already in save(): a partial result must not erase a
+    complete one.
+    """
+    prev_by_sku = {}
+    for it in (prev_items or []):
+        if isinstance(it, dict):
+            s = str(it.get("sku") or "").strip().upper()
+            if s:
+                prev_by_sku[s] = it
+    if not prev_by_sku:
+        return list(new_items or []), 0
+
+    out, kept = [], 0
+    for it in (new_items or []):
+        if not isinstance(it, dict):
+            out.append(it)
+            continue
+        old = prev_by_sku.get(str(it.get("sku") or "").strip().upper())
+        if old:
+            merged = dict(it)
+            filled = False
+            for f in _ENRICHED_FIELDS:
+                if not merged.get(f) and old.get(f):
+                    merged[f] = old[f]
+                    filled = True
+            if filled:
+                kept += 1
+            out.append(merged)
+        else:
+            out.append(it)
+    return out, kept
+
+
 def save(config_path, account_id, marketplace, items, report_source="",
          partial=False, warnings=None):
     """Store one account+marketplace catalogue. Returns the stored record.
@@ -73,9 +138,21 @@ def save(config_path, account_id, marketplace, items, report_source="",
     is the specific guard against the 64 -> 16 collapse: when the inactive-report
     half fails, the short list is not allowed to erase the full list already on
     disk -- it is kept as a fallback and reported as partial instead.
+
+    AND A BLANK FIELD NEVER OVERWRITES A KNOWN ONE. The report carries no
+    images; they are filled in afterwards, and a straight replace threw them all
+    away on every Sync. See _carry_forward.
     """
+    with _LOCK:
+        _prev = (_read_all(config_path).get(key(account_id, marketplace))
+                 or {}).get("items") or []
+    items, _kept = _carry_forward(items, _prev)
     rec = {
         "items": list(items or []),
+        # How many listings kept a picture the fresh report did not carry.
+        # Reported rather than silent: if this is ever 0 on an account that had
+        # images, something has changed about the report and it is worth seeing.
+        "carried_forward": _kept,
         "count": len(items or []),
         "ts": time.time(),
         "report_source": report_source or "",

@@ -1219,6 +1219,9 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- FIRST, because everything that draws a product picture calls it. One rule
+     about Amazon's image CDN, in one place (CLAUDE.md Rule 12). -->
+<script src="/static/js/thumbs.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
 <!-- One way to ask "is it done yet". BEFORE every screen that polls -- miles,
      inventory, runqueue and settings all build their pollers with altaPoller at

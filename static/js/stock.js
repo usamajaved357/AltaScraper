@@ -362,7 +362,7 @@ function _skLedger(){
                  : ratio >= 1.5 ? "#fbbf24" : "#f87171";
     h += '<tr>'
       + '<td><div class="stk-prod">'
-      +   (r.img ? '<img class="stk-thumb" src="' + _skEsc(r.img) + '" alt="">'
+      +   (r.img ? thumbImg(r.img, 34, {cls: "stk-thumb", alt: ""})
                  : '<div class="stk-thumb"></div>')
       +   '<div class="stk-pname"><b title="' + _skEsc(r.title) + '">'
       +   _skEsc(r.title || "(no title)") + '</b>'
