@@ -151,3 +151,6 @@ listings_backup_*.csv
 # one session on one screen -- large, binary, and stale the moment the UI moves.
 orbit_shots/
 Screenshot*.png
+
+# Sample images generated while testing the image pipeline -- large PNGs, not source.
+image_samples/
