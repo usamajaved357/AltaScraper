@@ -36,6 +36,103 @@ import threading
 # the owner's own names, built from a competitor's product data. A generic photo
 # becoming their own branded product is the whole point.
 
+# WHAT AN IMAGE IS ALLOWED TO SAY.
+#
+# The listing COPY is checked -- IP rules, compliance rules, a ban on medical
+# claims and unverifiable superlatives. Text drawn ONTO an image went through
+# none of that, and a secondary image is published copy in every way that
+# matters to Amazon.
+#
+# It matters because the MODEL writes the words itself. Asked for a calm
+# lifestyle shot with "nothing clinical, nothing medical, no captions", it
+# returned a headline reading "Float Into Recovery" -- a health claim, invented,
+# on an image that would have gone straight to a live listing. On the Legion
+# test it labelled an ingredient panel "AMINO ACIDS / L ranteine", which is not
+# an ingredient and is not a word.
+#
+# THIS LIVED ON ONE PATH ONLY. The hand-built role path had it; the strategist's
+# concept path -- the one people actually use, and the one that produced the
+# invented ingredient -- did not. One copy, both paths (CLAUDE.md Rule 12).
+#
+# Generic on purpose: it governs every product in every category, so it
+# constrains the KIND of statement rather than any particular claim.
+_IMAGE_TEXT_RULES = (
+    "\n\nRULES FOR ANY TEXT IN THE IMAGE -- these override the brief:\n"
+    "- NO health, medical, therapeutic or clinical wording of any kind. Not "
+    "'therapy', 'therapeutic', 'treatment', 'recovery', 'healing', 'relief', "
+    "'cure', 'symptoms', 'diagnosis', 'wellness benefit', and never the name "
+    "of any condition or disorder. Describe what the product IS and what it "
+    "physically does.\n"
+    "- NO unverifiable superlatives or guarantees: 'best', '#1', 'premium "
+    "quality', 'perfect', 'guaranteed', 'lifetime', '100%'.\n"
+    "- NO number, measurement, weight, capacity, material or certification "
+    "that is not given in the product spec above. If a figure is not stated "
+    "there, leave it out entirely rather than estimating a plausible one.\n"
+    "- NO ingredient, component or part name that is not given above. An "
+    "ingredient panel must list ONLY what the listing states, spelled as the "
+    "listing spells it. Inventing a plausible-looking name is worse than "
+    "leaving the panel shorter.\n"
+    "- NO invented awards, badges, seals, certifications, ratings or logos.\n"
+    "- Every word must be spelled correctly and rendered completely; no "
+    "clipped, overlapping or half-drawn characters.\n")
+
+
+# ---------------------------------------------------------------------------
+# HOW MUCH OF THE PRODUCT AN IMAGE NEEDS
+# ---------------------------------------------------------------------------
+#
+#     "i see the item image in all the seconary images ... There is no need to
+#      show the item in all the pictures."
+#
+# Every secondary image was built the same way: the whole product, on a
+# background, with a headline beside it. Eight of those is eight photographs of
+# the same bottle, and the slots that could have answered a real doubt were
+# spent repeating the main image.
+#
+# The strongest secondary images on Amazon frequently contain no product at
+# all. A wall of journal pages under "3,319 peer-reviewed studies". A
+# specification panel with the numbers called out around it. The product is
+# already in the main image; these slots are for the things it cannot say.
+#
+# Four honest answers, and the last one is the one that could not be expressed:
+_PRESENCE_RULES = {
+    "hero": (
+        "THE PRODUCT IS THE SUBJECT. Reproduce it EXACTLY as the reference "
+        "photograph shows it -- same shape, proportions, colour, materials and "
+        "every line of label text. Do not redesign it to suit the composition; "
+        "place the real product in and build around it. Premium, clean, "
+        "generous negative space."
+    ),
+    "detail": (
+        "SHOW A PART OF THE PRODUCT, CLOSE UP -- not the whole thing. Fill the "
+        "frame with the surface, mechanism, texture or fitting the idea is "
+        "about, cropped tight. What IS shown must match the reference exactly "
+        "in colour, material and finish. A wide shot of the whole product here "
+        "wastes the slot: the main image already does that."
+    ),
+    "in_use": (
+        "THE PRODUCT IS IN A REAL SCENE, not on a backdrop. It may be partly "
+        "out of frame, held, or in use -- what matters is that the moment is "
+        "believable and belongs to the person who buys this. Where the product "
+        "IS visible it must match the reference exactly. Do not fall back to a "
+        "studio shot with a lifestyle background pasted behind it."
+    ),
+    "none": (
+        "DO NOT SHOW THE PRODUCT IN THIS IMAGE AT ALL. This slot is a designed "
+        "graphic -- a panel, a chart, a comparison, a set of icons, a piece of "
+        "evidence -- and putting the product in it would waste the one slot "
+        "that can say something the photographs cannot. Build it from "
+        "typography, layout and simple iconography in the brand's colours. It "
+        "must still look like it belongs beside the other images in the set."
+    ),
+}
+
+
+def _presence_rule(presence):
+    """The instruction for how much product this image should contain."""
+    return _PRESENCE_RULES.get(presence or "hero", _PRESENCE_RULES["hero"])
+
+
 BRAND_UNBRANDED = "unbranded"
 BRAND_BRANDED = "branded"
 BRAND_KEEP = "keep"
@@ -95,8 +192,9 @@ def _brand_rule(brand_mode, brand_name, remove_logo):
     return ((_RULE_REMOVE if remove_logo else _RULE_KEEP), "")
 
 
-def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOCK, _SECONDARY_ROLES, _active_brand, _cfg, _imgresult, _load_img_instructions, _load_recipes, _new_img_job, _records, _run_img_jobs_bg, _safe_sku, _save_img_instructions, _sku_dir, _state, _write_attrs_for_sku, _ws):
+def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOCK, _SECONDARY_ROLES, _active_brand, _cfg, _imgresult, _load_img_instructions, _load_recipes, _new_img_job, _records, _run_img_jobs_bg, _safe_sku, _save_img_instructions, _sku_dir, _state, _write_attrs_for_sku, _ws, _APLUS_MODULES=None):
     """Attach the /genimage routes to the existing Flask app."""
+    _APLUS_MODULES = _APLUS_MODULES or {}
 
     def _listing_for(b):
         """The listing's own content, for grounding the image in what the thing
@@ -429,7 +527,18 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         # reference photo (only the scene around it changes).
         if kind in ("aplus", "secondary") and fid == "high":
             strength = 0.14
-        if not product_image:
+
+        # HOW MUCH OF THE PRODUCT THIS CONCEPT NEEDS. The strategist decides it
+        # per concept, because the right answer depends on the product -- a
+        # bench needs scale against a person, a supplement needs its facts
+        # panel. Defaults to hero, which is what every image used to be.
+        presence = (b.get("product_presence", "") or "hero").strip().lower()
+        if presence not in _PRESENCE_RULES:
+            presence = "hero"
+
+        # A product-free graphic needs no product photograph, and demanding one
+        # would refuse exactly the concepts that break up a repetitive set.
+        if not product_image and presence != "none":
             return jsonify({"ok": False, "error": "This product has no reference image."}), 400
         if not art and not concept:
             return jsonify({"ok": False, "error": "No concept provided."}), 400
@@ -457,11 +566,8 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         else:
             brief = (
                 "Create an Amazon SECONDARY image (text and graphics allowed). Realise this concept: "
-                f"{concept}. Art direction: {art}. CRITICAL PRODUCT FIDELITY: the product shown MUST be an "
-                "EXACT reproduction of the attached reference photo — identical shape, proportions, colour, "
-                "materials, buttons, and every line of label/branding text. Do NOT redesign or re-imagine the "
-                "product to fit the scene; place the REAL product into the scene unchanged. Build the "
-                "scene/graphic around it. Premium, clean, one clear message."
+                f"{concept}. Art direction: {art}. Premium, clean, one clear message.\n"
+                + _presence_rule(presence)
             )
             image_kind = "secondary"
         # WHAT THE PICTURE IS ALLOWED TO CONTAIN.
@@ -502,6 +608,13 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                   "label."
             )
 
+        # WHAT THE IMAGE IS ALLOWED TO SAY. This path had no such rule, and it
+        # is the path the strategist uses -- so the only images with no guard on
+        # their wording were the ones nobody wrote the wording for. It is what
+        # produced "AMINO ACIDS / L ranteine" on a real ingredient panel.
+        if kind in ("secondary", "aplus"):
+            brief += _IMAGE_TEXT_RULES
+
         # standing user instructions remembered for every image
         _ci2 = (b.get("custom_instructions", "") or "").strip() or _load_img_instructions()
         if _ci2:
@@ -511,18 +624,46 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         _tw = _th = 0
         if kind == "aplus":
             _tier = (b.get("tier", "basic") or "basic").lower()
-            if _tier == "premium":
+            # THE MODULE'S OWN SIZE, when the caller names one. Every
+            # strategist-made A+ image used to come out at one flat size per
+            # tier, so a three-across module and a full-width banner were
+            # generated as the same shape and then squeezed into different
+            # slots -- which is a large part of why the modules did not look
+            # like they belonged on one page.
+            _mod_id = (b.get("module") or "").strip()
+            _mod = None
+            if _mod_id:
+                for _m in (_APLUS_MODULES.get(_tier) or []):
+                    if _m.get("id") == _mod_id:
+                        _mod = _m
+                        break
+            if _mod:
+                _tw, _th = int(_mod["w"]), int(_mod["h"])
+            elif _tier == "premium":
                 _tw, _th = 1464, 600
             else:
                 _tw, _th = 970, 600
         # For A+/secondary, anchor the REAL product as a SECOND reference too (same
         # technique the refine path uses) so the model is doubly pinned to the actual
         # product and is far less likely to invent a generic look-alike.
-        _extra_ref = product_image if kind in ("aplus", "secondary") else ""
-        res = ai_providers.run_pipeline(_cfg(), brief=brief, reference_image=product_image,
+        #
+        # EXCEPT when the concept is a product-free graphic. Handing the model a
+        # photograph of the product while telling it not to draw the product is
+        # a contradiction, and the picture wins over the sentence every time --
+        # which is precisely how every slot ended up with another photograph of
+        # the same bottle. The written spec still travels in the brief, so the
+        # graphic can still quote the product's real numbers.
+        _want_ref = presence != "none"
+        _ref_img = product_image if _want_ref else ""
+        _extra_ref = (product_image
+                      if (_want_ref and kind in ("aplus", "secondary")) else "")
+        res = ai_providers.run_pipeline(_cfg(), brief=brief, reference_image=_ref_img,
                                         product_title=title, text_provider=tprov, image_provider=iprov,
                                         image_kind=image_kind, strength=strength,
-                                        target_w=_tw, target_h=_th, extra_reference=_extra_ref)
+                                        target_w=_tw, target_h=_th, extra_reference=_extra_ref,
+                                        # With no photograph to read, the spec has to come
+                                        # from the listing rather than from vision.
+                                        spec_image=(product_image if not _want_ref else ""))
         if not res.get("ok"):
             return jsonify(res), 400
         return _imgresult(res, extra={"concept": concept})
@@ -791,12 +932,22 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             return jsonify({"ok": False, "error": "This product has no reference image."}), 400
 
         # 1) build the role/free-form brief
-        if role and role in _SECONDARY_ROLES:
-            brief = _SECONDARY_ROLES[role]
+        #
+        # Each role now carries HOW MUCH PRODUCT it needs as well as its brief.
+        # `detail` and `usecase` were offered on screen and did not exist here,
+        # so choosing either silently produced a benefit infographic -- the two
+        # roles most likely to break up a repetitive set were the two that
+        # quietly did not work.
+        _spec = _SECONDARY_ROLES.get(role) if role else None
+        if _spec:
+            brief = _spec["brief"]
+            presence = _spec["present"]
         elif free_instruction:
             brief = free_instruction
+            presence = "hero"        # free text: assume the product is wanted
         else:
-            brief = _SECONDARY_ROLES["benefit"]
+            brief = _SECONDARY_ROLES["benefit"]["brief"]
+            presence = _SECONDARY_ROLES["benefit"]["present"]
 
         # benefit restraint (the user wants clean, premium — 1-2 benefits max)
         if benefit_count <= 1:
@@ -805,8 +956,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             brief += " Highlight at most TWO benefits, each with a very short label. Do not overcrowd."
         if benefit_text:
             brief += f" The benefit(s) to highlight: {benefit_text}."
-        brief += (" Keep the product itself identical to the reference image (same shape, colour, label, "
-                  "text); only build the scene/graphic around it. Premium, clean, lots of negative space.")
+        brief += " " + _presence_rule(presence)
 
         # WHAT THE IMAGE IS ALLOWED TO SAY.
         #
@@ -824,21 +974,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         #
         # Generic on purpose: this governs every product in every category, so
         # it constrains the KIND of statement rather than any particular claim.
-        brief += (
-            "\n\nRULES FOR ANY TEXT IN THE IMAGE -- these override the brief:\n"
-            "- NO health, medical, therapeutic or clinical wording of any kind. Not "
-            "'therapy', 'therapeutic', 'treatment', 'recovery', 'healing', 'relief', "
-            "'cure', 'symptoms', 'diagnosis', 'wellness benefit', and never the name "
-            "of any condition or disorder. Describe what the product IS and what it "
-            "physically does.\n"
-            "- NO unverifiable superlatives or guarantees: 'best', '#1', 'premium "
-            "quality', 'perfect', 'guaranteed', 'lifetime', '100%'.\n"
-            "- NO number, measurement, weight, capacity, material or certification "
-            "that is not given in the product spec above. If a figure is not stated "
-            "there, leave it out entirely rather than estimating a plausible one.\n"
-            "- NO invented awards, badges, seals, certifications, ratings or logos.\n"
-            "- Every word must be spelled correctly and rendered completely; no "
-            "clipped, overlapping or half-drawn characters.\n")
+        brief += _IMAGE_TEXT_RULES
 
         # 2) competitor style handling
         style_desc = ""
@@ -884,7 +1020,15 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         detailed = enh["prompt"]
         # image model takes the product image as the anchor reference; if direct competitor
         # refs were supplied, mention them in the prompt (most models accept one primary ref)
-        gen = ai_providers.generate_image(_cfg(), detailed, reference_image=product_image, provider=iprov, strength=_strength, image_size="4K")
+        # THE INSTRUCTION AND THE ATTACHMENT MUST AGREE. Telling the model "do
+        # not show the product" while handing it the product photograph as a
+        # reference is a contradiction, and the reference wins -- which is
+        # exactly how every slot ended up with another picture of the bottle.
+        # For a product-free graphic the reference is withheld and the model
+        # works from the written spec instead.
+        _ref = "" if presence == "none" else product_image
+        gen = ai_providers.generate_image(_cfg(), detailed, reference_image=_ref, provider=iprov,
+                                          strength=(_strength if _ref else None), image_size="4K")
         if not gen.get("ok"):
             return jsonify({"ok": False, "error": "Image stage: " + gen.get("error", "")}), 400
         res = {"ok": True, "detailed_prompt": detailed,

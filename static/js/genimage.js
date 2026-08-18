@@ -530,7 +530,24 @@ async function studioRunSource(){
 }
 
 function secondaryPaneHTML(batch,n){
-  const roles=[["benefit","Benefit infographic"],["feature","Feature / what's-in-box"],["lifestyle","Lifestyle in-use"],["dimensions","Size / dimensions"],["trust","Trust / quality"],["comparison","Why choose us"],["detail","Close-up detail / materials"],["usecase","Use-case / scenario"]];
+  // Each role says how much of the product it shows, because that is the thing
+  // that was wrong: every slot used to be another photograph of the whole
+  // product. "no product" is a real answer -- a specification panel or a
+  // comparison earns its slot precisely by NOT repeating the main image.
+  const roles=[
+    ["benefit","Benefit infographic","whole product"],
+    ["feature","Feature close-up","part of it"],
+    ["detail","Materials & making","part of it"],
+    ["lifestyle","Lifestyle in-use","in a real scene"],
+    ["usecase","A situation it solves","in a real scene"],
+    ["howto","How to use it, in steps","in a real scene"],
+    ["dimensions","Size & scale","whole product"],
+    ["contents","What's in the box","whole product"],
+    ["spec","Specification panel","no product"],
+    ["trust","Trust & quality","no product"],
+    ["comparison","Why choose this","no product"],
+    ["evidence","The proof behind it","no product"],
+  ];
   return `
     <div class="ideabox">
       <div style="font-weight:600;margin-bottom:4px"><i class="ti ti-bulb"></i> Option A — Let the AI strategist design the set</div>
@@ -560,7 +577,7 @@ function secondaryPaneHTML(batch,n){
       <div id="sec_planned">
         <label class="cc" style="margin-top:8px;display:block">Choose the images to generate</label>
         <div class="secroles">
-          ${roles.map(r=>`<label class="seccheck"><input type="checkbox" class="secrole" value="${r[0]}" ${r[0]==='benefit'?'checked':''}> ${r[1]}</label>`).join("")}
+          ${roles.map(r=>`<label class="seccheck"><input type="checkbox" class="secrole" value="${r[0]}" ${r[0]==='benefit'?'checked':''}> ${r[1]}<span class="cc secrole-p">${r[2]}</span></label>`).join("")}
         </div>
       </div>
       <div id="sec_free" style="display:none">

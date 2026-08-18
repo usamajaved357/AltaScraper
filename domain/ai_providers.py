@@ -558,6 +558,82 @@ _SECONDARY_SYSTEM = (
     "(same shape, colour, label, text) — build the scene/graphic around it, never "
     "redesign it. Output ONLY the prompt text, no preamble, 250-500 words."
 )
+# HOW MUCH OF THE PRODUCT EACH CONCEPT NEEDS.
+#
+#     "i see the item image in all the seconary images ... There is no need to
+#      show the item in all the pictures."
+#
+# Nothing asked this question before, so the answer was always "all of it", and
+# a set of eight came out as eight photographs of the same bottle. The slots
+# that should have answered a doubt were spent repeating the main image.
+#
+# The strongest secondary images on real listings often contain NO product: a
+# wall of journal pages under "3,319 peer-reviewed studies"; a specification
+# panel with the numbers called out around it. The product is already in the
+# main image and in several of the others.
+#
+# The MODEL decides, per concept, because the right answer depends on the
+# product. A garden bench needs scale against a person; a supplement needs its
+# facts panel; a tool needs the mechanism close up. A fixed rota would be the
+# same generic list this file already warns against.
+_PRESENCE_BRIEF = (
+    "\nHOW MUCH OF THE PRODUCT EACH IMAGE SHOWS -- decide this per concept and "
+    "return it as \"product_presence\", one of:\n"
+    "  \"hero\"    the whole product is the subject\n"
+    "  \"detail\"  a tight crop of one part, mechanism, surface or texture\n"
+    "  \"in_use\"  in a real scene, held or in use, possibly partly out of frame\n"
+    "  \"none\"    NO product at all -- a designed panel, chart, comparison, set "
+    "of icons or piece of evidence\n"
+    "DO NOT make every concept \"hero\". The main image already shows the whole "
+    "product on white; a set that repeats it wastes the slots that could answer "
+    "a real doubt. Across the set aim for a genuine spread, and use \"none\" for "
+    "at least one or two where this product's buyer would rather read a fact "
+    "than look at another photograph.\n"
+    "Choose by what THIS product's buyer actually needs. A large item needs its "
+    "size against something familiar. A tool needs its working part close up. "
+    "Something bought on trust needs the evidence laid out. Something fiddly "
+    "needs the steps. Do not apply one product's answer to another: a "
+    "supplement's lab-testing panel is meaningless on a table stand, and a "
+    "table stand's assembly steps are meaningless on a supplement.\n"
+)
+
+# A+ MODULES ARE A PAGE, NOT A PILE.
+#
+#     "every module do not talk with each other ... i am not able to understand
+#      which module is which"
+#
+# Each module was written on its own and drawn on its own, so seven of them came
+# out as seven separate posters about the same bottle. Nothing carried a reader
+# from one to the next, and nothing said what any of them was FOR.
+#
+# A+ is read top to bottom, once, by somebody who has already scrolled past the
+# images and is still not sure. That is a sequence with a job at each step, and
+# the steps are not interchangeable.
+_APLUS_STORY = (
+    "\nTHESE MODULES ARE ONE PAGE, READ TOP TO BOTTOM -- not a pile of posters.\n"
+    "Give every concept a \"role\" naming its job in that sequence, and a "
+    "\"headline\" it carries. The reader arrives unconvinced and leaves ready to "
+    "buy, so the sequence must actually move:\n"
+    "  open      what this is and who it is for, in one confident line\n"
+    "  problem    the situation the buyer is in that makes them look\n"
+    "  answer     how this product solves it, concretely\n"
+    "  proof      the evidence, materials, standard or record behind that claim\n"
+    "  detail     the one thing a careful buyer wants to inspect before paying\n"
+    "  use        how it fits into their day, or how it is used\n"
+    "  compare    why this rather than the obvious alternative\n"
+    "  close      the reassurance that removes the last hesitation\n"
+    "Pick the roles that suit THIS product and put them in an order that reads. "
+    "Not every product needs every role, and the right set for a supplement is "
+    "not the right set for a garden bench.\n"
+    "EACH MODULE MUST HAND OVER TO THE NEXT. The headline of one should make the "
+    "next one feel like the answer to it. Do not repeat the same claim in two "
+    "modules, and do not open three of them with the product name.\n"
+    "SET THE LOOK ONCE AND HOLD IT. Decide one palette, one type treatment and "
+    "one background family for the whole page, state it in every art_direction, "
+    "and keep it identical across all of them -- a page whose modules each look "
+    "like a different brand is the most common way A+ fails.\n"
+)
+
 _APLUS_SYSTEM = (
     "You are an Amazon A+ Content designer. Expand the brief into a single detailed "
     "image-generation prompt for ONE Amazon A+ Content module image at the EXACT "
@@ -611,10 +687,9 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "key-benefit, how-it-works, ingredient/material spotlight, lifestyle, comparison, trust) but "
             "DO NOT just walk down that generic list — the SPECIFIC angle, scene, and headline of each "
             "module must come from THIS product's real features, materials, use-context and buyer. Two "
-            "different products should produce visibly different module sets. Sequence them so the N "
-            "concepts read as a coherent story top to bottom. Keep each premium and uncluttered (~70% "
-            "visual, 30% text), and never make prohibited medical/efficacy claims. In art_direction, note "
-            "the module type and the single product-specific headline it should carry."
+            "different products should produce visibly different module sets. Keep each premium and "
+            "uncluttered (~70% visual, 30% text), and never make prohibited medical/efficacy claims.\n"
+            + _APLUS_STORY + _PRESENCE_BRIEF
         )
     else:
         rules = (
@@ -625,10 +700,15 @@ def strategize_images(config: dict, image="", product_title: str = "",
             "features, materials, who uses it and where, and the actual objections its buyer has. Two "
             "different products must produce visibly different image sets. Keep them premium and "
             "uncluttered — one strong message per image, not walls of text. Make the N concepts cover "
-            "genuinely different angles of the buying decision for this exact product."
+            "genuinely different angles of the buying decision for this exact product.\n"
+            + _PRESENCE_BRIEF
         )
 
     # ONE PRODUCT, DESCRIBED THE SAME WAY IN EVERY IMAGE.
+    # (see _PRESENCE_BRIEF above for the separate question of how much of the
+    # product each concept should contain -- the two rules pull against each
+    # other on purpose: same product everywhere it appears, but it does not
+    # have to appear everywhere.)
     #
     # The rules above push each concept to be DIFFERENT from the others, and
     # nothing balanced that: the set is free to disagree with itself about the
@@ -669,7 +749,11 @@ def strategize_images(config: dict, image="", product_title: str = "",
         + f"Return ONLY JSON: a list of exactly {n} objects, each "
         '{"title": "<short name>", "customer_insight": "<the buyer psychology this image targets, 1 sentence>", '
         '"concept": "<what the image shows, plain language, 1-2 sentences>", '
-        '"art_direction": "<specific art direction for the image model: angle, lighting, composition, any '
+        '"product_presence": "<hero|detail|in_use|none — how much of the product this image shows>", '
+        + ('"role": "<its job in the top-to-bottom sequence: open|problem|answer|proof|detail|use|'
+           'compare|close>", "headline": "<the one short line this module carries>", '
+           if kind == "aplus" else "")
+        + '"art_direction": "<specific art direction for the image model: angle, lighting, composition, any '
         'physical touch like droplets, mood — be concrete and vivid>"}. No preamble, no markdown.'
     )
     _ci = (custom_instructions or "").strip()
@@ -1305,11 +1389,39 @@ def _closest_aspect_ratio(w: int, h: int) -> str:
     return best
 
 
+# How far the generated shape may differ from the target before cropping starts
+# destroying things. Below this, a cover-crop takes a sliver off two edges and
+# nobody can tell. Above it, the crop is eating whole lines of type.
+_SAFE_CROP = 0.12
+
+
 def _resize_to_exact(image_b64: str, target_w: int, target_h: int) -> str:
-    """Cover-crop + resize a base64 PNG to EXACTLY target_w × target_h pixels.
-    'Cover' = scale so the image fills the box, then center-crop the overflow, so
-    the product isn't squished (preserves aspect, fills the frame). Returns new
-    base64 PNG. Amazon requires exact module dimensions or it rejects/stretches."""
+    """Resize a base64 PNG to EXACTLY target_w × target_h. Never cuts content.
+
+    THE BUG THIS FIXES
+
+    This used to cover-crop unconditionally: scale until the image fills the
+    box, then centre-crop whatever hangs over. On a small mismatch that is
+    invisible and right. On a large one it is a guillotine -- and the models
+    return a roughly square image whatever aspect ratio they are asked for, so
+    the mismatch was large every time.
+
+    Measured on the real A+ output: a 4096x4096 image cropped to 1464x600
+    keeps the middle 41% of its height. Every generated A+ module came back
+    with its headline sliced through the middle:
+
+        "MULTIVITAMIN."  -- only the bottom half of the letters
+        "WEEKS COVERED." -- top gone
+        "2 CAPSULES"     -- bottom gone
+
+    Reported as: "the cutout text is there but it is half, where is the other
+    half". The other half was cropped off here.
+
+    SO: crop only while the crop is small. Past that, CONTAIN the whole image
+    and pad to the target with the colour of its own edge, which keeps every
+    pixel of the composition and reads as a deliberate margin rather than a
+    letterbox. Amazon still gets its exact dimensions, and no text is ever cut.
+    """
     import base64 as _b64
     from io import BytesIO
     from PIL import Image as _PImg
@@ -1318,17 +1430,62 @@ def _resize_to_exact(image_b64: str, target_w: int, target_h: int) -> str:
     sw, sh = im.size
     if sw == target_w and sh == target_h:
         return image_b64
-    # scale to cover the target box
-    scale = max(target_w / sw, target_h / sh)
-    nw, nh = max(1, round(sw * scale)), max(1, round(sh * scale))
-    im = im.resize((nw, nh), _PImg.LANCZOS)
-    # center-crop to exact target
-    left = max(0, (nw - target_w) // 2)
-    top = max(0, (nh - target_h) // 2)
-    im = im.crop((left, top, left + target_w, top + target_h))
+
+    # HOW MUCH WOULD A COVER-CROP THROW AWAY? Cover scales until the box is
+    # full, so the overflow on one axis is what gets cut.
+    cover = max(target_w / sw, target_h / sh)
+    lost = 1.0 - min((target_w / (sw * cover)), (target_h / (sh * cover)))
+
+    if lost <= _SAFE_CROP:
+        # A sliver off two edges. Fills the frame, nothing readable is lost.
+        nw, nh = max(1, round(sw * cover)), max(1, round(sh * cover))
+        im = im.resize((nw, nh), _PImg.LANCZOS)
+        left = max(0, (nw - target_w) // 2)
+        top = max(0, (nh - target_h) // 2)
+        im = im.crop((left, top, left + target_w, top + target_h))
+    else:
+        # CONTAIN AND PAD. Cropping this much cuts headlines in half, so the
+        # whole composition is kept and the difference is padded.
+        fit = min(target_w / sw, target_h / sh)
+        nw, nh = max(1, round(sw * fit)), max(1, round(sh * fit))
+        small = im.resize((nw, nh), _PImg.LANCZOS)
+        # Padded with the image's OWN edge colour, sampled from the border it
+        # will sit against, so a dark composition gets a dark margin rather
+        # than white bars. Read as a median so one bright highlight in the
+        # corner does not decide the colour of the whole band.
+        pad = _edge_colour(small, "h" if nw >= nh else "v")
+        canvas = _PImg.new("RGB", (target_w, target_h), pad)
+        canvas.paste(small, ((target_w - nw) // 2, (target_h - nh) // 2))
+        im = canvas
     buf = BytesIO()
     im.save(buf, format="PNG")
     return _b64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def _edge_colour(im, axis="h"):
+    """The dominant colour along the edges the padding will touch.
+
+    Median rather than mean: a single bright highlight in one corner should not
+    lighten the whole band, and a median ignores it.
+    """
+    try:
+        w, h = im.size
+        px = im.load()
+        pts = []
+        if axis == "h":                       # padding above and below
+            for x in range(0, w, max(1, w // 64)):
+                pts.append(px[x, 0])
+                pts.append(px[x, h - 1])
+        else:                                 # padding left and right
+            for y in range(0, h, max(1, h // 64)):
+                pts.append(px[0, y])
+                pts.append(px[w - 1, y])
+        if not pts:
+            return (255, 255, 255)
+        mid = len(pts) // 2
+        return tuple(sorted(p[i] for p in pts)[mid] for i in range(3))
+    except Exception:
+        return (255, 255, 255)
 
 
 import re as _re_mod
@@ -1474,6 +1631,35 @@ def run_pipeline(config: dict, brief: str, reference_image="",
     # That is why a better spec alone did not fix the pictures. The hard facts are
     # therefore appended AFTER the rewrite, verbatim, where nothing can edit them.
     detailed = detailed + hard_constraints(product_spec)
+
+    # COMPOSE FOR THE SHAPE THAT IS BEING ASKED FOR.
+    #
+    # The models return a roughly square picture whatever aspect ratio they are
+    # given, so a wide A+ banner arrived as a square composition and the resize
+    # had to deal with it. Even now that the resize can no longer cut anything
+    # away, a square composition inside a 1464x600 banner is a small picture
+    # with wide margins -- correct, and not what anybody wanted.
+    #
+    # So the shape is stated in words as well, in the prompt itself, along with
+    # a safe area. Models respect a described LAYOUT far more reliably than an
+    # aspect_ratio parameter, and the safe area is what stops a headline
+    # sitting against the very edge where any later trim would clip it.
+    if target_w and target_h:
+        _shape = ("WIDE BANNER, much wider than it is tall"
+                  if target_w > target_h * 1.4 else
+                  "TALL, much taller than it is wide"
+                  if target_h > target_w * 1.4 else "roughly square")
+        detailed += (
+            f"\n\nCANVAS AND LAYOUT -- these govern the composition.\n"
+            f"The finished image is {target_w} x {target_h} pixels: a {_shape}. "
+            f"COMPOSE FOR THAT SHAPE. Lay the elements out ACROSS the long "
+            f"dimension -- do not build a square composition and leave the rest "
+            f"empty, and do not stack everything down the middle.\n"
+            f"SAFE AREA: keep every word, logo and important edge of the "
+            f"subject inside the middle 88% of the frame, with nothing that "
+            f"matters within about 6% of any edge. Text touching the edge is "
+            f"the single most common way one of these is ruined."
+        )
     # strength LOW so the model preserves the actual product from the reference
     # (only the scene/angle/background change, not the product itself).
     # size '4K' = Seedream's max (4096px); SAME $0.04 cost as 2K, and gives
