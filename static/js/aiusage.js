@@ -192,7 +192,12 @@ function _aiBars(title, rows, labelKey, note){
       + '<div class="cc" style="width:74px;text-align:right;font-size:11px">'
       + _aiEsc(_aiNum(r.calls)) + ' calls</div></div>';
   }).join("");
-  return '<div style="flex:1;min-width:420px;border:1px solid #2a3446;'
+  // min-width:min(420px,100%), not a flat 420px. The floor is there to stop the
+  // two panels squeezing into unreadable columns on a wide screen, but on a
+  // 390px phone a flat 420 is 30px wider than the screen itself, so the panel
+  // sat outside its own container. min() keeps the floor where there is room
+  // for it and drops it where there is not.
+  return '<div style="flex:1;min-width:min(420px,100%);border:1px solid #2a3446;'
     + 'border-radius:10px;padding:12px 14px">'
     + '<div style="font-size:13px;font-weight:600;margin-bottom:2px">'
     + _aiEsc(title) + '</div>'

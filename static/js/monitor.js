@@ -6,7 +6,92 @@
 let MON_EU = ["UK","DE","FR","IT","ES","NL","PL","SE","BE","IE"];
 let MON_LIST = [];
 
-function monitorOnOpen(){ loadMonitorOverview(); loadMonitorAlerts(); }
+function monitorOnOpen(){ loadMonitorOverview(); loadMonitorAlerts(); monSchedLoad(); }
+
+/* ============ WHEN THE MONITOR RUNS ============
+ *
+ *   "i dont want the asin monitor to be working always, give 2 options. option
+ *    1 is to recheck the status of the buybox by clicking a button. option two
+ *    is to setup a time of your choice. e.g. every 4 hours. 10 hours etc etc. a
+ *    user should be able to choose time on his choice"
+ *
+ * Option 1 is the Check now button, which has always been there and works
+ * whatever this says. Option 2 is here, and it is OFF by default: this is the
+ * app's largest consumer of the Amazon quota and it used to run whether or not
+ * anybody was looking at it.
+ *
+ * The hour buttons are SHORTCUTS, not the choice. Any whole number of hours can
+ * be typed, because "a user should be able to choose time on his choice" -- the
+ * server puts a silly number in range rather than refusing to save.
+ */
+const MON_SCHED = {mode: "off", hours: 4, suggested: [], min: 1, max: 168,
+                   explains: "", loaded: false};
+
+async function monSchedLoad(){
+  try{
+    const j = await (await fetch("/monitor/schedule")).json();
+    if(!j || !j.ok) return;
+    MON_SCHED.mode = j.mode; MON_SCHED.hours = j.hours;
+    MON_SCHED.suggested = j.suggested_hours || [];
+    MON_SCHED.min = j.min_hours; MON_SCHED.max = j.max_hours;
+    MON_SCHED.explains = j.explains || "";
+    MON_SCHED.loaded = true;
+    monSchedRender();
+  }catch(e){ /* the screen works without it; Check now is unaffected */ }
+}
+
+function monSchedRender(){
+  const host = document.getElementById("mon_sched");
+  if(!host || !MON_SCHED.loaded) return;
+  const on = MON_SCHED.mode === "every";
+  const chips = (MON_SCHED.suggested || []).map(function(h){
+    return '<button class="monsched-h' + (on && h === MON_SCHED.hours ? " on" : "")
+         + '" onclick="monSchedSet(\'every\',' + h + ')">'
+         + (h === 24 ? "24h" : (h + "h")) + '</button>';
+  }).join("");
+  host.innerHTML =
+      '<div class="monsched-row">'
+    +   '<span class="monsched-lbl">Automatic checking</span>'
+    +   '<button class="monsched-t' + (on ? "" : " on")
+    +     '" onclick="monSchedSet(\'off\')">Off</button>'
+    +   '<button class="monsched-t' + (on ? " on" : "")
+    +     '" onclick="monSchedSet(\'every\',' + (MON_SCHED.hours || 4) + ')">'
+    +     'Every&hellip;</button>'
+    +   (on ? '<span class="monsched-chips">' + chips + '</span>'
+              // Typed, not chosen from a list. The label says so, because a box
+              // beside a row of buttons reads as "other" unless it is named.
+            + '<span class="monsched-any">or every '
+            + '<input id="mon_sched_h" class="monsched-in" type="number" '
+            +   'min="' + MON_SCHED.min + '" max="' + MON_SCHED.max + '" '
+            +   'value="' + MON_SCHED.hours + '" '
+            +   'onchange="monSchedSet(\'every\', this.value)"> hours</span>'
+          : '')
+    + '</div>'
+    + '<div class="monsched-why cc">' + _monEsc(MON_SCHED.explains) + '</div>';
+}
+
+async function monSchedSet(mode, hours){
+  try{
+    const j = await (await fetch("/monitor/schedule", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mode: mode, hours: hours})
+    })).json();
+    if(!j || !j.ok){ toast("Could not save that: " + ((j && j.error) || "unknown")); return; }
+    // Redrawn from what the SERVER stored, not from what was clicked -- it puts
+    // an out-of-range number in range, and the screen must show what is really
+    // set rather than what was asked for.
+    MON_SCHED.mode = j.mode; MON_SCHED.hours = j.hours;
+    MON_SCHED.explains = j.explains || "";
+    monSchedRender();
+    toast(j.mode === "off" ? "Automatic checking is off."
+                           : "Checking every " + j.hours + " hours.");
+  }catch(e){ toast("Could not save that: " + e); }
+}
+
+function _monEsc(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                                   .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 
 // ---- overview: per-ASIN seller detail + top summary (Feature 1) ----------------
 async function loadMonitorOverview(){

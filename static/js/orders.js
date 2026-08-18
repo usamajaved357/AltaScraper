@@ -642,7 +642,11 @@ function _ordSourcesHtml(block, forTitle){
       +  'rel="noopener" href="' + _oEsc(o.url) + '">'
       +  _oEsc(o.label || o.url) + '</a></div>'
       // LANDED COST -- the item plus its postage, which is what leaves the bank.
-      +  '<div class="odp-num r' + cls + '">'
+      // data-lbl carries the column heading down onto the cell. On a phone the
+      // four columns stack into two and the header row is dropped, so without
+      // this the numbers would be two unlabelled amounts sitting side by side.
+      // The attribute is inert on a desktop, where the header row is still there.
+      +  '<div class="odp-num r' + cls + '" data-lbl="You pay">'
       +  (o.landed === null || o.landed === undefined
           ? '<span class="cc">—</span>'
           : _oEsc(_oMoney(o.landed, o.currency)))
@@ -650,7 +654,7 @@ function _ordSourcesHtml(block, forTitle){
       // PROFIT IN POUNDS, with ROI beside it -- both were asked for by name.
       +  '<div class="odp-num r' + cls
       +  (o.profit !== null && o.profit !== undefined && o.profit < 0
-          ? ' neg' : '') + '">'
+          ? ' neg' : '') + '" data-lbl="You keep">'
       +  (o.profit === null || o.profit === undefined
           ? '<span class="cc">—</span>'
           : '<b>' + _oEsc(_oMoney(o.profit, o.currency)) + '</b>'
@@ -876,7 +880,8 @@ function _ordDetailHtml(r){
       +  '</div>';
     // The explanation, spelled out rather than left to a tooltip, for the two
     // states where acting on the wrong reading costs real money.
-    const why = _ordWhyText(o.status || r.status, it.cancel_requested);
+    const why = _ordWhyText(o.status || r.status, it.cancel_requested,
+                            it.cancel_reason);
     if(why) h += '<div class="odp-why">' + why + '</div>';
     h += '</div>';
   });
@@ -921,10 +926,14 @@ function _ordDp(asin, market){
  * wrong one. Everything else is left to the chip's tooltip -- a paragraph on
  * every Shipped order is noise, and noise is what makes a real warning
  * invisible. */
-function _ordWhyText(status, cancelRequested){
+function _ordWhyText(status, cancelRequested, cancelReason){
   const bits = [];
   if(cancelRequested){
+    // Amazon carries the buyer's stated reason in the same object as the flag.
+    // It is usually empty; when it is not, it is the most useful sentence on
+    // the screen, so it goes first.
     bits.push('<b style="color:#fca5a5">' + _oEsc(_ORD_CANCEL_REQUESTED.t)
+              + (cancelReason ? ': ' + _oEsc(cancelReason) : '')
               + '.</b> ' + _oEsc(_ORD_CANCEL_REQUESTED.m) + ' '
               + _oEsc(_ORD_CANCEL_REQUESTED.d));
   }

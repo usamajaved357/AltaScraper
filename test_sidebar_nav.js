@@ -104,13 +104,28 @@ truthy("  but not while you are typing",
 // Charts measure their container, which just changed width by 156px.
 truthy("charts are told the width changed", /new Event\("resize"\)/.test(SIDE));
 
-console.log("\n=== the phone layout is untouched ===");
-// On a phone the sidebar is already a horizontal strip; a 54px rail there would
-// be a column of icons above the page.
-const mobile = CSS.slice(CSS.indexOf("#workspace.show{ flex-direction:column;"));
-truthy("the mobile rules still turn it into a strip", /flex-direction:row/.test(mobile));
-truthy("  and come after the rail rules so they win",
-       CSS.indexOf("#workspace.navmini .sidebar{") < CSS.indexOf("#workspace.show{ flex-direction:column;"));
+console.log("\n=== the rail does not leak onto a phone ===");
+// This section used to assert the phone turned the sidebar into a horizontal
+// STRIP. That decision was reversed on purpose: Orbit, measured at 390px, parks
+// its sidebar off-screen at x:-300 and opens it with one button, and the strip
+// was fighting every screen built since. The strip rules are gone from
+// dashboard.css and the drawer lives in static/css/mobile.css.
+//
+// What this section was really protecting still matters, so it is restated
+// rather than dropped: `navmini` is a DESKTOP control -- give me back 156px of
+// a wide screen -- and it must not follow a person onto a phone, where it would
+// turn the drawer into a 54px sliver of unlabelled icons.
+const MOBILE = read("static/css/mobile.css");
+truthy("the phone sidebar is a drawer, not a strip",
+       /#workspace \.sidebar\{[\s\S]*?translateX\(-100%\)/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
+truthy("  and dashboard.css no longer has an opinion about it",
+       !/\.sidebar\{[^}]*flex-direction:row/.test(CSS.replace(/\s*\{\s*/g, "{")));
+truthy("the rail is neutralised at phone width",
+       /#workspace\.navmini \.sidebar\{[^}]*width:284px/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
+truthy("  including the labels it collapses to font-size:0",
+       /#workspace\.navmini \.navitem\{[^}]*font-size:13\.5px/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
+truthy("  and the fold control itself, which a drawer has no use for",
+       /\.navtoggle\{[^}]*display:none/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

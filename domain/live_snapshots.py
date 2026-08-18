@@ -130,14 +130,81 @@ def _carry_forward(new_items, prev_items):
     return out, kept
 
 
+def _merge_missing(new_items, prev_items):
+    """Fresh items, plus any previous listing the fresh set does not mention.
+
+    Returns (items, carried). Used only when a sync is known to be INCOMPLETE.
+
+    THE RULE: within a SKU the fresh reading always wins -- that is the whole
+    point of syncing. A SKU the incomplete sync never mentioned is kept from the
+    previous record, because "the inactive report did not load" is not the same
+    statement as "that listing is gone".
+    """
+    fresh_skus = set()
+    for it in (new_items or []):
+        if isinstance(it, dict):
+            s = str(it.get("sku") or "").strip().upper()
+            if s:
+                fresh_skus.add(s)
+    out = list(new_items or [])
+    carried = 0
+    for it in (prev_items or []):
+        if not isinstance(it, dict):
+            continue
+        s = str(it.get("sku") or "").strip().upper()
+        if s and s not in fresh_skus:
+            kept = dict(it)
+            # Marked, so nothing downstream mistakes a carried row for something
+            # Amazon confirmed in this sync.
+            kept["carried_from_previous_sync"] = True
+            out.append(kept)
+            carried += 1
+    return out, carried
+
+
 def save(config_path, account_id, marketplace, items, report_source="",
          partial=False, warnings=None):
     """Store one account+marketplace catalogue. Returns the stored record.
 
-    A PARTIAL result never overwrites a COMPLETE one that has more listings. That
-    is the specific guard against the 64 -> 16 collapse: when the inactive-report
-    half fails, the short list is not allowed to erase the full list already on
-    disk -- it is kept as a fallback and reported as partial instead.
+    A COMPLETE sync REPLACES what is stored. It is the authority: if a listing
+    is not in it, that listing is gone, and a delete has to be able to reach the
+    store or the catalogue only ever grows.
+
+    AN INCOMPLETE sync MERGES. Fresh readings win per SKU; listings the
+    incomplete sync never mentioned are carried over from the previous record.
+
+    WHY THIS CHANGED, AND WHAT IT COST
+
+        "the app was showing some items out of stock i went to seller central
+         and added stock to some of them in nestwell goods but the app is still
+         showing it out of stock even i have refreshed and wait for many hours"
+
+    This used to DISCARD an incomplete result wholesale and return the previous
+    record untouched. That guarded the real 64 -> 16 collapse, but it also meant
+    a single flag froze the entire catalogue -- every price, every status, every
+    QUANTITY -- at whatever it was when the last complete sync landed.
+
+    Measured in live_snapshots.json on 18 Aug 2026:
+
+        nestwell_goods::UK   count 45, ts 04:49:33
+                             superseded_by_partial_at 08:36:04
+                             last_partial_count 42
+        jack_uk::UK          the same signature, ~08:26
+
+    Seven nestwell SKUs sat at qty 0 that had been restocked in Seller Central
+    hours earlier. The background refresher re-queued the pair every ten
+    minutes, and every attempt was refused by this guard, silently, for ever.
+
+    The caller made it self-perpetuating: it raised a warning BECAUSE the new
+    list was shorter, and the warning is what set partial -- so any account
+    whose listing count went down could never write again. The warning even
+    said "Showing the new result", which was true of the screen and false of
+    the disk. That is fixed at the caller; this function no longer has to be
+    the last line of defence.
+
+    Merging keeps both properties: nothing that Amazon failed to report is
+    erased, and everything Amazon DID report is written. There is no state in
+    which the store cannot move.
 
     AND A BLANK FIELD NEVER OVERWRITES A KNOWN ONE. The report carries no
     images; they are filled in afterwards, and a straight replace threw them all
@@ -147,12 +214,22 @@ def save(config_path, account_id, marketplace, items, report_source="",
         _prev = (_read_all(config_path).get(key(account_id, marketplace))
                  or {}).get("items") or []
     items, _kept = _carry_forward(items, _prev)
+    # An incomplete sync is missing whole categories of listing, not individual
+    # fields, so the gaps are filled a row at a time rather than a field at a
+    # time. A complete one is the authority and keeps nothing back.
+    _carried = 0
+    if partial and _prev:
+        items, _carried = _merge_missing(items, _prev)
     rec = {
         "items": list(items or []),
         # How many listings kept a picture the fresh report did not carry.
         # Reported rather than silent: if this is ever 0 on an account that had
         # images, something has changed about the report and it is worth seeing.
         "carried_forward": _kept,
+        # How many whole listings this record kept from the previous sync
+        # because an incomplete one never mentioned them. 0 on a complete sync,
+        # always, because a complete sync carries nothing over.
+        "carried_listings": _carried,
         "count": len(items or []),
         "ts": time.time(),
         "report_source": report_source or "",
@@ -162,16 +239,10 @@ def save(config_path, account_id, marketplace, items, report_source="",
     with _LOCK:
         data = dict(_read_all(config_path))
         k = key(account_id, marketplace)
-        prev = data.get(k) or {}
-        if (rec["partial"] and not prev.get("partial")
-                and int(prev.get("count") or 0) > rec["count"]):
-            prev = dict(prev)
-            prev["superseded_by_partial_at"] = rec["ts"]
-            prev["last_partial_count"] = rec["count"]
-            data[k] = prev
-            _MEM["data"] = data
-            _write_all(config_path, data)
-            return prev
+        # Always written. The record above already carries anything an incomplete
+        # sync could not see, so there is no case left where refusing the write
+        # protects something -- and refusing it is what froze two accounts'
+        # quantities for half a day.
         data[k] = rec
         _MEM["data"] = data
         _write_all(config_path, data)

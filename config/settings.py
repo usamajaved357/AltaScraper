@@ -50,6 +50,41 @@ class Settings:
         return self.raw.get(key, default)
 
 
+def read_raw(path: str = CONFIG_PATH) -> dict:
+    """config.json as a plain dict, or {} if it cannot be read.
+
+    Deliberately NOT load_settings: that one validates and raises, which is
+    right at startup and wrong when a settings screen wants to change one key.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def write_raw(data: dict, path: str = CONFIG_PATH) -> bool:
+    """Write config.json back. ATOMICALLY, via a temporary file and a rename.
+
+    WHY THIS IS HERE RATHER THAN IN THE ROUTE THAT NEEDED IT
+
+    Two screens now change a setting -- the repricer's master switch and the
+    ASIN monitor's schedule -- and the first one had grown its own private pair
+    of read/write helpers inside routes/sourcing_routes.py. Copying them into
+    the second route is exactly what CLAUDE.md Rule 12 forbids, so they moved
+    here, to the module that already owns this file.
+
+    ATOMIC MATTERS MORE FOR THIS FILE THAN FOR ANY OTHER. The old helper did
+    `json.dump(raw, open(path, "w"))`, which TRUNCATES config.json before it
+    writes a byte. A crash, a full disk or a power cut between those two moments
+    leaves an empty or half-written file -- and config.json holds every SP-API
+    credential, the Google service account and the Anthropic key. It is
+    git-ignored, so there is no copy to restore from.
+    """
+    from domain import jsonstore
+    return jsonstore.write_json_atomic(path, data, indent=2)
+
+
 def load_settings(path: str = CONFIG_PATH) -> Settings:
     """Load config.json, validate the required keys, and return a Settings object.
 

@@ -3655,14 +3655,22 @@ def build_app(backend=None):
                              _reload_cfg=lambda: _state.update(cfg=None))   # drop config cache so edits take effect
     try:
         from monitor import checker as _mon_checker
-        # DAILY, not hourly. Every tracked ASIN x marketplace was hitting Amazon
-        # 24 times a day, which was the app's largest quota consumer and competed
-        # with the live-catalogue refresh and with anything the user was waiting
-        # on. Hijacker and buy-box detection does not need hourly resolution;
-        # "Check now" still forces an immediate scan.
+        # WHEN THIS RUNS IS NOW A SETTING, not a constant.
+        #
+        #     "i dont want the asin monitor to be working always, give 2 options.
+        #      option 1 is to recheck the status of the buybox by clicking a
+        #      button. option two is to setup a time of your choice."
+        #
+        # monitor/schedule.py holds the choice and the loop re-reads it every
+        # minute, so no interval is passed here. Off by default: this was the
+        # app's largest consumer of the Amazon quota and it ran whether or not
+        # anybody was looking at it. "Check now" works regardless.
+        #
+        # MONITOR_INTERVAL_S still forces one, for a machine that needs the old
+        # behaviour without anyone opening the screen.
         _mon_checker.start_scheduler(
             _cfg, CONFIG_PATH,
-            interval=int(os.environ.get("MONITOR_INTERVAL_S") or 24 * 3600))
+            interval=int(os.environ.get("MONITOR_INTERVAL_S") or 0))
     except Exception as _mon_e:
         print("[asin-monitor] scheduler not started:", str(_mon_e)[:200])
     # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.

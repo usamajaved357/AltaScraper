@@ -17,11 +17,13 @@ import json
 
 from flask import request, jsonify, Response
 
+from config import settings as _settings
 from domain import order_sources as _osrc
 from domain import source_apply as _apply
 from domain import source_bulk as _bulk
 from domain import source_drift as _drift
 from domain import source_fetch as _fetch
+from domain import source_link as _slink
 from domain import source_repo as _repo
 from domain import source_run as _run
 from domain import sourcing as _sourcing
@@ -36,15 +38,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
     back to the number in its name, which is what cogs.resolve() does anyway.
     """
 
+    # Reading and writing config.json belongs to config/settings.py, which owns
+    # the file. These two used to do it here by hand, and the moment a second
+    # screen needed to save a setting that private copy would have been copied
+    # again (CLAUDE.md Rule 12). The shared writer is also ATOMIC, where this one
+    # truncated config.json before writing a byte -- a crash mid-write took every
+    # credential in the app with it, and the file is git-ignored.
     def _read_config():
-        try:
-            return json.load(open(CONFIG_PATH, encoding="utf-8"))
-        except Exception:
-            return {}
+        return _settings.read_raw(CONFIG_PATH)
 
     def _write_config(raw):
-        json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"),
-                  indent=2, ensure_ascii=False)
+        _settings.write_raw(raw, CONFIG_PATH)
         _state["cfg"] = None            # drop the cache so the switch takes effect
 
     def _creds_for(workspace_id, marketplace):
@@ -174,6 +178,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             srcs = []
             for s, c in pairs:
                 srcs.append({**s, "check": c,
+                             # What to CALL this link. From the same function the
+                             # order panel uses, so the repricer's detail panel
+                             # and the order screen cannot name one supplier two
+                             # different ways (Rule 12).
+                             "name": _slink.display_name(
+                                 s.get("url"), (c or {}).get("seller"),
+                                 s.get("label")),
                              "history": _drift.price_history(CONFIG_PATH, s["id"])})
             _rule = _sourcing.rule_with_defaults(
                 _repo.rule_for(CONFIG_PATH, d["workspace_id"],
@@ -364,6 +375,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         for group in ("alerts", "unreadable"):
             for a in out.get(group, []):
                 a["sentence"] = _alerts.sentence(a)
+                # The short form, for a list where the shared explanation is
+                # already printed above it.
+                a["row"] = _alerts.row_label(a)
+        # The half that is identical across the whole list, said once. Empty when
+        # the alerts do not actually share one, and the screen then falls back to
+        # the self-contained sentences.
+        out["alerts_shared"] = _alerts.group_sentence(out.get("alerts"))
+        out["unreadable_shared"] = _alerts.group_sentence(out.get("unreadable"))
         out["ok"] = True
         return jsonify(out)
 

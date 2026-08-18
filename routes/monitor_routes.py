@@ -9,8 +9,20 @@ from flask import request, jsonify
 
 
 def register(app, *, CONFIG_PATH, _cfg=None, _reload_cfg=None):
+    from config import settings as _settings
     from monitor import asin_monitor as _mon
     from monitor import checker as _chk
+
+    # config.json is read and written in ONE place. Not a private pair of
+    # helpers here -- routes/sourcing_routes.py grew those for the repricer's
+    # master switch, and copying them for a second setting is what Rule 12 is
+    # about. The shared writer is atomic, which matters for the file holding
+    # every credential in the app.
+    def _read_config():
+        return _settings.read_raw(CONFIG_PATH)
+
+    def _write_config(raw):
+        _settings.write_raw(raw, CONFIG_PATH)
 
     @app.route("/monitor/list")
     def monitor_list():
@@ -108,6 +120,45 @@ def register(app, *, CONFIG_PATH, _cfg=None, _reload_cfg=None):
         top summary. Read-only; uses stored snapshots + the name cache, no live Amazon calls."""
         cfg = _cfg() if _cfg else {}
         return jsonify({"ok": True, **_chk.overview(CONFIG_PATH, cfg)})
+
+    @app.route("/monitor/schedule", methods=["GET", "POST"])
+    def monitor_schedule():
+        """How often the monitor checks Amazon on its own -- or whether it does.
+
+            "i dont want the asin monitor to be working always, give 2 options.
+             option 1 is to recheck the status of the buybox by clicking a
+             button. option two is to setup a time of your choice. e.g. every 4
+             hours. 10 hours etc etc. a user should be able to choose time on
+             his choice"
+
+        Option 1 is /monitor/check_now and always works, whatever is set here.
+        This is option 2, and off is the default.
+
+        Any whole number of hours is accepted, not a fixed menu -- "a user
+        should be able to choose time on his choice". monitor/schedule.py puts
+        it in range rather than refusing it: a settings screen that will not
+        save is worse than one that rounds a silly number and says what it did.
+        """
+        from monitor import schedule as _sch
+        cfg = _cfg() if _cfg else {}
+        if request.method == "GET":
+            return jsonify({"ok": True, **_sch.read(cfg),
+                            "suggested_hours": list(_sch.SUGGESTED_HOURS),
+                            "min_hours": _sch.MIN_HOURS,
+                            "max_hours": _sch.MAX_HOURS,
+                            "explains": _sch.describe(cfg)})
+        b = request.get_json(silent=True) or {}
+        raw = _read_config()
+        plan = _sch.store(raw, b.get("mode"), b.get("hours"))
+        _write_config(raw)
+        if _reload_cfg:
+            _reload_cfg()
+        # The loop re-reads this within a minute; telling it now means the
+        # screen's next-run estimate is right immediately rather than after a
+        # tick nobody can see.
+        _chk.set_interval(plan["hours"] * 3600 if plan["mode"] == _sch.EVERY else 0)
+        fresh = _cfg() if _cfg else raw
+        return jsonify({"ok": True, **plan, "explains": _sch.describe(fresh)})
 
     @app.route("/monitor/check_now", methods=["POST"])
     def monitor_check_now():

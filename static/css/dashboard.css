@@ -468,7 +468,24 @@
   ul.bul li{margin:2px 0}
   .acts{display:flex;gap:8px;margin-top:2px}
   .acts a{margin-left:auto;color:var(--accent);text-decoration:none;font-size:12.5px;align-self:center}
-  .ok{background:var(--green);border-color:var(--green);color:#fff}
+  /* A FILLED GREEN BUTTON. It used to be called `.ok`, and that one bare word
+     caused every green patch in the app.
+
+     "i see these green pAtches everywhere it is also in .../inventory resolve
+      it everywhere"
+
+     `ok` is the obvious name for a STATE, so component after component wrote
+     `.stk-headline.ok`, `.odp-state.ok`, `.linkbtn.ok` and set only a text
+     colour -- reasonably, because a state modifier is not supposed to repaint
+     the box. But this rule also matched, painted the box solid green, and left
+     green text on a green ground. MEASURED on the Inventory screen: an <h3>
+     with background rgb(74,222,128) and color rgb(74,222,128), reading
+     "Nothing needs ordering" and showing nothing at all.
+
+     Renamed rather than patched at each site: three components were broken,
+     and the next one to use the word would have been broken too. The word is
+     now free to mean what everyone already assumed it meant. */
+  .okfill{background:var(--green);border-color:var(--green);color:#fff}
   .hold{background:transparent}
   .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
@@ -1739,27 +1756,12 @@
   /* ---- workspace: stack, do not sit side by side ---- */
   #workspace.show{ flex-direction:column; min-height:auto; }
 
-  /* ---- the sidebar becomes a scrolling nav strip ---- */
-  .sidebar{
-    width:auto; height:auto; flex-shrink:1;
-    position:sticky; top:49px; z-index:15;          /* stays reachable while scrolling */
-    padding:0; border-right:0; border-bottom:1px solid var(--line);
-    flex-direction:row; align-items:stretch;
-    overflow-x:auto; overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
-  }
-  .sidebar::-webkit-scrollbar{ display:none; }
-  /* Section labels and the workspace identity do not belong in a strip: they
-     are headings for a vertical list. The identity is already in the toolbar. */
-  .sidebar .slbl, .sidebar .wsident{ display:none; }
-  .backlink{ margin:0; padding:10px 12px; white-space:nowrap; align-self:center; }
-  .navitem{
-    white-space:nowrap; padding:11px 13px; font-size:12.5px;
-    border-left:0; border-bottom:3px solid transparent;   /* active moves to the underside */
-    min-height:42px;                                      /* a real touch target */
-  }
-  .navitem.active{ border-left:0; border-bottom-color:var(--accent); }
+  /* ---- the sidebar ----
+     It used to become a horizontal scrolling strip here. That is gone: the menu
+     is a slide-in drawer on a phone now, which is what Orbit does and what the
+     rest of this file no longer has any opinion about. Everything to do with the
+     phone sidebar lives in ONE place -- static/css/mobile.css. Two files each
+     holding half the answer is how the strip ended up fighting the drawer. */
 
   /* ---- content ---- */
   .wsmain{ width:100%; }
@@ -2605,6 +2607,68 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- when the ASIN monitor runs ----------------------------------------
+   "i dont want the asin monitor to be working always, give 2 options."
+   Off / Every..., then the hours. Quiet by design: it is a setting you touch
+   once, sitting above alerts that are the reason you opened the screen. */
+.monsched{
+  border:1px solid var(--line); border-radius:8px;
+  background:var(--panel); padding:9px 11px; margin:10px 0 4px;
+}
+.monsched-row{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.monsched-lbl{
+  font-size:11px; font-weight:600; color:var(--ink3);
+  text-transform:uppercase; letter-spacing:.05em; margin-right:3px;
+}
+.monsched-t, .monsched-h{
+  background:transparent; border:1px solid var(--line); color:var(--ink2);
+  border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer;
+  min-height:30px; transition:border-color .15s ease, color .15s ease;
+}
+.monsched-t:hover, .monsched-h:hover{ border-color:var(--accent); color:var(--ink); }
+.monsched-t.on, .monsched-h.on{
+  border-color:var(--accent); color:var(--accent); background:rgba(45,212,168,.09);
+}
+.monsched-h{ padding:5px 8px; font-variant-numeric:tabular-nums; }
+.monsched-chips{ display:flex; gap:5px; flex-wrap:wrap; }
+.monsched-any{ display:flex; align-items:center; gap:6px; font-size:12px;
+               color:var(--ink3); }
+.monsched-in{
+  width:62px; background:var(--bg); border:1px solid var(--line);
+  color:var(--ink); border-radius:6px; padding:4px 7px; font-size:12px;
+  font-variant-numeric:tabular-nums;
+}
+.monsched-why{ font-size:11px; margin-top:6px; line-height:1.5; }
+
+/* ---- the "nowhere left to buy from" alert -------------------------------
+   It was twelve rows of the same twenty-word sentence, drawn from inline
+   styles inside a JavaScript string. Now: the explanation once, then the SKUs
+   in a column that lines up.
+
+   "all the text all over the app should be arranged and should not be
+    floating freely" */
+.srcalert{
+  border-radius:8px; padding:11px 13px; margin:6px 0; font-size:11.5px;
+  line-height:1.5;
+}
+.srcalert.bad{ border:1px solid #5c2b2b; background:#2a1414; color:#ffb4b4; }
+.srcalert.dunno{ border:1px solid #3a3320; background:#241f10; color:#e8d3a0; }
+.srcalert-h{ font-weight:600; margin-bottom:5px; display:flex; gap:6px;
+             align-items:baseline; }
+/* The shared explanation. Set apart from the list so the eye can skip it once
+   it has been read, rather than re-reading it on every row. */
+.srcalert-why{
+  opacity:.85; margin-bottom:8px; padding-bottom:8px;
+  border-bottom:1px solid currentColor; border-bottom-color:rgba(255,255,255,.09);
+}
+/* A column of SKUs, not a paragraph. Tabular figures so the prices inside the
+   SKU names line up down the page. */
+.srcalert-skus{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  gap:1px 18px; font-variant-numeric:tabular-nums;
+}
+.srcalert-skus > div{ padding:1px 0; }
+
 .ri-kpi{
   background:var(--panel);
   border:1px solid var(--line);
@@ -3207,13 +3271,23 @@ table.ordtable tbody tr.orddetail > td{
 }
 
 /* ---- the supplier list: a grid, so columns line up -------------------- */
-.odp-src{ display:grid; grid-template-columns:auto 1fr auto auto; gap:0 10px; }
+/* minmax(0,1fr), not 1fr. `1fr` is shorthand for `minmax(auto,1fr)`, and `auto`
+   there means "at least as wide as my widest unbreakable content". The supplier
+   cell holds a raw eBay URL, so that column refused to go under about 5,500px
+   and dragged the whole grid out with it -- measured at 5523px on a 390px
+   screen, and wrong on a desktop drawer too, just less visible. `0` lets the
+   column shrink and hands the overflow to .odp-link, which already ellipsises. */
+.odp-src{ display:grid; grid-template-columns:auto minmax(0,1fr) auto auto;
+          gap:0 10px; }
 .odp-src-h{
   font-size:10px; color:var(--ink4); text-transform:uppercase;
   letter-spacing:.04em; padding-bottom:4px; border-bottom:1px solid var(--line);
 }
 .odp-src-h.r, .odp-src .r{ text-align:right; }
-.odp-src > *{ padding:5px 0; align-self:center; }
+/* Same reason as the track above: a grid child is min-width:auto by default and
+   will not shrink below its longest word. The supplier link sits inside a plain
+   wrapper div, and that wrapper was the one holding the column open. */
+.odp-src > *{ padding:5px 0; align-self:center; min-width:0; }
 .odp-rank{
   font-size:10px; color:var(--ink4); white-space:nowrap;
   font-variant-numeric:tabular-nums;

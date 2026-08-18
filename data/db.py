@@ -735,6 +735,17 @@ _ADDED_COLUMNS = [
     # delivery date whose destination is unknown cannot be promised to a buyer,
     # so the destination is stored beside it.
     ("sourcing_checks", "delivery_postcode", "TEXT"),
+    # WHO IS SELLING IT. eBay's Browse API returns seller.username on the same
+    # getItem call everything above came from, and it was being dropped, so the
+    # only thing a screen had to show for a source was the raw URL:
+    #
+    #   https://www.ebay.co.uk/itm/235976183512?_skw=cable&epid=27050...
+    #
+    # Asked for as: "i do not want the full ebay link just display the name of
+    # the seller and the link attached to it so i can click on the seller name
+    # to open the product link". Stored rather than derived, because it is a
+    # fact about the supplier that only the supplier can tell us.
+    ("sourcing_checks", "seller", "TEXT"),
     # THE PRICE A PRODUCT SELLS AT, held against a target that would lower it.
     # "this rule is for the items where i am sure that this is the market price and
     # this product sells on this price point no matter the roi or margin".

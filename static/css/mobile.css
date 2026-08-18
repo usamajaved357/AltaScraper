@@ -1,0 +1,389 @@
+/* =====================================================================
+   THE PHONE LAYOUT
+   =====================================================================
+   "the app in the mobile version is moving freely the texts are going out
+    of the boxes no lines no arrangements, everything is distorted and moving
+    freely where is descipline ... i want you to match the mobile version of
+    the orbit view as mine, see how the side bar appear and everything else."
+
+   This file is loaded AFTER dashboard.css and is the ONLY place the phone
+   layout is decided. dashboard.css used to hold half of it -- a horizontal
+   scrolling nav strip -- and two files each holding half an answer is how the
+   strip ended up fighting everything built since. That block is gone; this
+   file replaced it.
+
+   Every number below was MEASURED off Orbit at 390x844 (iPhone 14), not
+   guessed. What Orbit actually does on a phone:
+
+     sidebar     position it at x:-300, width 284 -- pushed off the screen.
+                 It is a drawer, not a strip and not a squeeze.
+     open it     one 40x40 button at (16, 8), aria-label "Open menu".
+     cards       grid-template-columns: "289px" -- ONE column. Not two.
+     tables      a 1539px table inside a parent with overflow-x:auto. The
+                 table keeps its real width and scrolls inside its own box.
+     the page    document.scrollWidth == 390 == the viewport. NOTHING makes
+                 the page itself scroll sideways.
+
+   That last line is the whole complaint, stated as a measurement. When one
+   element is wider than the screen the PAGE scrolls, every fixed thing slides
+   out of place, and the result reads as "everything is moving freely" -- which
+   is exactly right, and is a layout bug rather than a styling taste.
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   Two elements exist only for the phone. On a desktop they are not drawn
+   at all, so nothing here changes a single pixel above 860px.
+   --------------------------------------------------------------------- */
+#navburger{ display:none; }
+.navscrim{ display:none; }
+
+
+@media (max-width: 860px){
+
+  /* =================================================================
+     1. THE PAGE MAY NOT SCROLL SIDEWAYS
+     =================================================================
+     Belt and braces, because one overflowing table anywhere undoes the
+     whole layout and the cause is very hard to attribute after the fact. */
+  html, body{ max-width:100%; overflow-x:hidden; }
+  #workspace, .wsmain, .wspanel{ max-width:100%; min-width:0; }
+
+
+  /* =================================================================
+     2. THE SIDEBAR IS A DRAWER
+     =================================================================
+     Orbit's is 284px parked at x:-300. Ours matches, capped at 86vw so a
+     small phone still shows a strip of the page behind it -- that strip is
+     what tells you the menu is ON TOP of your work rather than a new page. */
+  #workspace .sidebar{
+    position:fixed; left:0; top:0;
+    width:284px; max-width:86vw;
+    height:100vh;                     /* for anything without dvh */
+    height:100dvh;                    /* the real height once the URL bar moves */
+    z-index:70;                       /* over the app bar, which sits at 20 */
+    padding:14px 12px;
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+    border-right:1px solid var(--line);
+    border-bottom:0;
+    display:flex; flex-direction:column; align-items:stretch;
+    overflow-y:auto; overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;      /* scrolling the menu must not scroll the page */
+    transform:translateX(-100%);
+    box-shadow:none;
+    /* Hidden rather than merely off-screen: an off-screen menu still takes
+       keyboard focus, and tabbing into something you cannot see is the kind
+       of fault nobody reports because nobody can describe it. */
+    visibility:hidden;
+    transition:transform .24s cubic-bezier(.4, 0, .2, 1),
+               visibility 0s linear .24s,
+               box-shadow .24s ease;
+  }
+  body.navopen #workspace .sidebar{
+    transform:translateX(0);
+    visibility:visible;
+    box-shadow:0 0 44px rgba(0, 0, 0, .55);
+    transition:transform .24s cubic-bezier(.4, 0, .2, 1),
+               visibility 0s linear 0s,
+               box-shadow .24s ease;
+  }
+
+  /* The dimmed sheet behind it. It is also the biggest close button on the
+     screen: tapping anywhere off the menu shuts it, which is what every
+     phone app does and what a thumb reaches for first. */
+  .navscrim{
+    display:block;
+    position:fixed; inset:0; z-index:65;
+    background:rgba(3, 7, 14, .62);
+    -webkit-backdrop-filter:blur(2px);
+    backdrop-filter:blur(2px);
+    opacity:0; pointer-events:none;
+    transition:opacity .24s ease;
+  }
+  body.navopen .navscrim{ opacity:1; pointer-events:auto; }
+
+  /* The page behind must not scroll while the menu is open, or a flick meant
+     for the menu drags the page and the menu appears to slide. */
+  body.navopen{ overflow:hidden; }
+
+  /* ---- the button that opens it ----
+     Orbit: 40x40 at (16, 8). Ours is first in the bar, same size. 40px is
+     also the smallest square a thumb hits reliably. */
+  #navburger{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:40px; height:40px; flex:0 0 40px;
+    margin-left:-2px;
+    padding:0; border:1px solid var(--line); border-radius:9px;
+    background:transparent; color:var(--ink); cursor:pointer;
+    font-size:17px; line-height:1;
+    transition:background .15s ease, border-color .15s ease;
+  }
+  #navburger:active{ background:var(--panel2); border-color:var(--accent); }
+
+  /* ---- things that only make sense on a desktop menu ----
+     The fold-to-a-rail control is meaningless in a drawer: a drawer that is
+     open is already showing everything, and closing it is the scrim or the
+     button. And if the rail state was left on from a desktop session it must
+     not follow you onto the phone as a 54px sliver of icons. */
+  .navtoggle{ display:none; }
+  #workspace.navmini .sidebar{ width:284px; max-width:86vw; padding:14px 12px; }
+  #workspace.navmini .slbl{
+    font-size:11px; padding:14px 8px 5px; text-align:left;
+  }
+  #workspace.navmini .slbl::after{ display:none; }
+  #workspace.navmini .navitem{ font-size:13.5px; }
+  #workspace.navmini .wsident{ display:flex; }
+
+  /* ---- the menu itself: a vertical list with real touch targets ---- */
+  .sidebar .navitem{
+    display:flex; align-items:center; gap:9px;
+    min-height:44px;                        /* the accepted floor for a thumb */
+    padding:10px 11px; font-size:13.5px;
+    border-left:3px solid transparent; border-bottom:0;
+    border-radius:8px;
+    white-space:normal;                     /* a long name wraps, never clips */
+  }
+  .sidebar .navitem.active{
+    border-left-color:var(--accent); border-bottom-color:transparent;
+  }
+  .sidebar .slbl{ display:block; }
+  .sidebar .wsident{ display:flex; }
+  .backlink{ margin:0 0 12px; padding:8px 4px; }
+
+
+  /* =================================================================
+     3. THE WORKSPACE STACKS
+     =================================================================
+     The sidebar is out of the flow now, so the main column simply takes the
+     whole width. No side-by-side, no gutter reserved for a menu that is not
+     there. */
+  #workspace.show{ display:block; min-height:auto; }
+  .wsmain{ width:100%; min-width:0; display:block; }
+  #sec_listings{ padding:12px; }
+
+  /* ---- the gutter ----
+     Screens size their side padding from --wspad, which falls back to 32px.
+     `main#grid` sits outside .wspanel, so it never inherited the phone value
+     and kept the desktop one: MEASURED at 390px wide, the listings card was
+     302px. Sixty-four pixels of a phone -- two table columns -- spent on empty
+     margin either side.
+
+     Set once on the workspace so every screen that reads the variable follows,
+     rather than adding a padding override per screen and finding the next one
+     next month. */
+  #workspace{ --wspad:12px; }
+  .wspanel{ --wspad:12px; }
+
+  /* In table view the card holds a table that already scrolls sideways, so
+     every pixel of gutter is one less column you can see. Its own border is
+     enough of an edge. */
+  main#grid.tableview{ padding-left:0; padding-right:0; }
+
+
+  /* =================================================================
+     4. THE TOP BAR: ONE LINE
+     ================================================================= */
+  .appbar{ padding:0 10px; gap:6px; min-height:52px; }
+  .appbar .brandmark span:not(.dot){ display:none; }  /* keep the mark, drop the word */
+  .crumbs{ display:none; }                             /* the menu says where you are */
+  .appbar .hb #healthtxt{ display:none; }              /* the dot alone is the signal */
+  .appbar .hb{ padding:4px 6px; }
+  .appbar .barbtn{ font-size:12px; padding:6px 8px; min-height:34px; }
+  .appbar .barbtn span{ display:none; }
+  #whoami{ display:none !important; }
+
+
+  /* =================================================================
+     5. DISCIPLINE -- WHY TEXT LEAVES ITS BOX
+     =================================================================
+     This is the actual mechanism behind "the texts are going out of the
+     boxes", and it is one CSS default rather than a hundred small mistakes.
+
+     A grid or flex child is min-width:auto by default, which means it refuses
+     to shrink below its longest unbreakable word. Our longest words are SKUs
+     (8.89_2Days_B0G1K5B7QS), ASINs, supplier URLs and email addresses. On a
+     1500px screen nothing notices. On a 390px screen that one word is wider
+     than its column, so the column grows, the row grows, and the text sits
+     outside the card that was supposed to contain it.
+
+     Two rules fix the class of bug: let the child shrink, and let a long word
+     break. Applied to the containers that actually hold text -- not with a
+     blanket `* { min-width:0 }`, which would also flatten the wide tables
+     that are SUPPOSED to keep their width and scroll. */
+  .stk-prod, .stk-pname, .stk-bannermain, .stk-card,
+  .odp-item, .odp-src, .odp-kv, .odp-title,
+  .wstoolbar > *, .wspanel > *{
+    min-width:0;
+  }
+  .stk-pname, .stk-sub, .stk-headline, .odp-title, .odp-link, .odp-why,
+  .odp-note, .odp-id, .empty, .navitem, .cc, .sub,
+  .modal p, .modal li{
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  /* NOT table cells. That was tried and it was worse than the bug: an ASIN in a
+     narrow column came out as
+         B01
+         2B7
+         726
+         O
+     one fragment per line, which is precisely the "no arrangement" being
+     complained about. A cell in a table that already scrolls sideways has
+     somewhere to put its width -- it should take it and stay on one line,
+     rather than fold an identifier into a stack of syllables. */
+  #workspace .lt td, #workspace .lt th,
+  #workspace .stk-table td, #workspace .stk-table th{
+    overflow-wrap:normal;
+    word-break:normal;
+  }
+  /* An image with no width given is 100% of its natural size, which for an
+     Amazon original is 1500px. */
+  #workspace img, .modal img{ max-width:100%; height:auto; }
+  /* Pre/code blocks are the other classic escapee -- a JSON payload is one
+     very long line. */
+  #workspace pre, .modal pre{ white-space:pre-wrap; overflow-wrap:anywhere; }
+
+
+  /* =================================================================
+     6. GRIDS: ONE COLUMN, LIKE ORBIT
+     =================================================================
+     Orbit reports a single 289px column at this width. A two-up card at 185px
+     cannot hold a label, a 26px figure and a note without one of them
+     wrapping into the next -- which is the "no arrangement" look. */
+  .wsgrid, main#grid, .grid{ grid-template-columns:1fr !important; gap:10px; }
+  .stk-grid{ grid-template-columns:1fr; gap:9px; }
+  .stat-row{ grid-template-columns:repeat(auto-fit, minmax(128px, 1fr)); gap:8px; }
+  .db-metrics, .metricgrid{ grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); }
+  .mediagrid{ grid-template-columns:repeat(auto-fill, minmax(88px, 1fr)); }
+  .studiogrid{ grid-template-columns:1fr; }
+  .srcalert-skus{ grid-template-columns:1fr; }   /* one SKU per line */
+  .ri-kpis{ grid-template-columns:repeat(2, 1fr); }
+  .db-grid2{ grid-template-columns:1fr; }
+
+  /* ---- the supplier rows on the order panel and the repricer ----
+     Four columns -- rank, supplier, you pay, you keep -- plus a delivery
+     sentence spanning the row. At 390px that is four columns of about 90px,
+     which is not enough for "GBP 6.91 · 69% ROI".
+
+     So each source becomes two lines: who, then how much. The placement is
+     written against the CLASSES rather than :nth-child, because the cells come
+     in groups of five behind four header cells and any nth-child arithmetic for
+     that would silently mis-place everything the day a column is added.
+
+       best   ebay.co.uk/itm/2359...
+       You pay GBP 10.06     You keep GBP 6.91 · 69% ROI
+       Free postage · arrives Wed 19 Aug · 3 days handling · 1 left
+
+     The header row goes, because two columns cannot label four cells. The
+     headings come back on the cells themselves, from data-lbl. */
+  .odp-src{ grid-template-columns:auto minmax(0, 1fr); gap:1px 9px; }
+  .odp-src-h{ display:none; }
+  .odp-rank{ grid-column:1; }
+  .odp-src > div:not([class*="odp-"]){ grid-column:2; }   /* the supplier link */
+  .odp-src .odp-num{ text-align:left; padding-top:1px; }
+  .odp-src .odp-num[data-lbl]::before{
+    content:attr(data-lbl) " ";
+    color:var(--ink4); font-size:10px; font-weight:400;
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .odp-ship{ grid-column:1 / -1; padding-top:2px; }
+
+  .odp-item{ grid-template-columns:1fr auto; }
+  .odp-qty{ grid-column:auto; }
+  .odp-price{ grid-column:auto; }
+  .odp-kv{ grid-template-columns:1fr; gap:2px 0; }
+  .odp-kv > *:nth-child(odd){ color:var(--ink3); font-size:11px; }
+
+  /* The banner's cards sit under the words instead of beside them. */
+  .stk-banner{ flex-direction:column; align-items:stretch; }
+  .stk-bannercards{ width:100%; }
+  .stk-bannercards .stk-card{ flex:1 1 44%; }
+  .stk-headline{ font-size:17px; }
+
+
+  /* =================================================================
+     7. WIDE TABLES SCROLL INSIDE THEIR OWN BOX
+     =================================================================
+     Orbit keeps a 1539px table at full width inside an overflow-x:auto
+     parent. It is the honest trade: a financial table squeezed into 390px is
+     seven slivers of wrapped text, and squeezing it is what makes the app look
+     broken rather than small.
+
+     Our ledger cards are `overflow:hidden` so their corners stay round. On a
+     phone that clips instead of scrolling, so whole columns simply vanish with
+     nothing on screen to say they exist. `!important` is needed because the
+     overflow is written inline on the element. */
+  #workspace .card:has(> table),
+  #stk_ledger, #ppc_terms{
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;         /* stops the sideways flick reaching the page */
+  }
+  /* Without a floor the table obeys width:100% and squashes rather than
+     scrolls, and the scrolling parent above would have nothing to do. */
+  .stk-table{ min-width:720px; font-size:11.5px; }
+  .stk-table th, .stk-table td{ padding:7px 8px; }
+  table.kv{ font-size:11.5px; }
+  table.kv td, table.kv th{ padding:6px 7px; }
+  [style*="overflow-x"]{ -webkit-overflow-scrolling:touch; }
+
+
+  /* =================================================================
+     8. TOOLBARS AND BUTTON ROWS WRAP, THEY DO NOT OVERFLOW
+     ================================================================= */
+  .wstoolbar{
+    position:static; padding:12px; gap:8px;
+    flex-wrap:wrap; align-items:flex-start;
+  }
+  .wstoolbar h2{ font-size:14px; }
+  .wstoolbar .sub{ font-size:11.5px; }
+  .wstoolbar .spacer{ display:none; }      /* it only forces a wide row */
+  .mktswitch, .stk-filters, .stk-chips{ flex-wrap:wrap; }
+  .mktbtn, .db-chip, .stk-fbtn, .stk-chip{ min-height:34px; }
+
+
+  /* =================================================================
+     9. MODALS USE THE SCREEN
+     ================================================================= */
+  .modalwrap{ padding:0; align-items:stretch; }
+  .modal{
+    width:100% !important; max-width:100% !important;
+    border-radius:0; border-left:0; border-right:0;
+    max-height:100vh; max-height:100dvh;
+    overflow-y:auto; padding:14px;
+    padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling:touch;
+  }
+  /* 16px is the threshold under which iOS zooms the whole page on focus, and
+     a page zoomed by a text box never zooms back. */
+  input, select, textarea{ font-size:16px !important; max-width:100%; }
+  input[type="date"]{ min-height:36px; }
+}
+
+
+/* =====================================================================
+   PHONES PROPER
+   =====================================================================
+   Below 520px a two-up tile is too narrow for a title and a price on one
+   line, and the cockpit cards go single file exactly as Orbit's do. */
+@media (max-width: 520px){
+  .stat-row, .ri-kpis{ grid-template-columns:1fr 1fr; }
+  .stk-bannercards .stk-card{ flex:1 1 100%; }
+  .wstoolbar{ padding:10px; }
+  .wspanel{ --wspad:10px; }
+  .sidebar .navitem{ padding:10px 10px; }
+  .stk-card .val{ font-size:23px; }
+  .stk-table{ min-width:660px; }
+}
+
+
+/* =====================================================================
+   PEOPLE WHO ASK FOR LESS MOVEMENT
+   =====================================================================
+   The drawer is the largest moving thing in the app. Honouring the setting
+   here matters more than anywhere else. */
+@media (prefers-reduced-motion: reduce){
+  #workspace .sidebar, .navscrim{ transition-duration:.01ms !important; }
+}

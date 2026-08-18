@@ -21,6 +21,7 @@ from monitor import asin_monitor as _store
 from monitor import pricing as _pricing
 from monitor import storefront_name as _sf
 from monitor import known_sellers as _ks
+from monitor import schedule as _sched
 
 # An existing seller's landed-price move counts as a change only if it clears BOTH a
 # percentage and an absolute floor (avoids alerting on 1p rounding).
@@ -61,6 +62,9 @@ _SCHED_INTERVAL = 24 * 3600   # set by start_scheduler; used for next-run ETA + 
 # Hijackers and buy-box changes do not need hourly detection to be useful; daily
 # is what this is for. Pressing "Check now" still forces an immediate scan, so
 # nothing is lost when you genuinely want an answer.
+#
+# Now DERIVED from the user's chosen sweep interval -- see set_interval below.
+# This value is the default until a schedule is read.
 _MIN_RECHECK_LIVE = 24 * 3600
 
 _LOCK = threading.Lock()
@@ -527,9 +531,14 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
         with _LOCK:
             _save_hist(config_path, d)
         overload = bool(_SCHED_INTERVAL and dur > _SCHED_INTERVAL * 0.9)
+        # None, not "now". With automatic checking off there IS no next run, and
+        # time.time() + 0 would draw a countdown that had already expired --
+        # a screen saying "next run: any moment" about something that will never
+        # run on its own.
+        _next = (time.time() + _SCHED_INTERVAL) if _SCHED_INTERVAL else None
         _STATUS.update(last_run=_now(), last_run_ok=(fails == 0), checks=len(tocheck),
                        api_calls=api_calls, duration=dur, skipped=skipped, interval=_SCHED_INTERVAL,
-                       next_run_ts=(time.time() + _SCHED_INTERVAL), overload=overload)
+                       next_run_ts=_next, overload=overload)
         return {"ok": True, "checks": len(tocheck), "api_calls": api_calls, "duration": dur,
                 "alerts": new_alerts, "skipped": skipped, "fails": fails, "overload": overload}
     finally:
@@ -547,22 +556,87 @@ def check_now_async(cfg, config_path, force_rescan=False):
 
 
 # ---------------- scheduler ----------------
-def start_scheduler(cfg_getter, config_path, interval=3600, initial_delay=25):
-    """Start the hourly daemon loop once. cfg_getter is a callable returning current config."""
-    global _SCHED_STARTED, _SCHED_INTERVAL
+# How often the loop wakes to see whether anything has changed. Not how often it
+# checks Amazon -- that is the user's setting, read on every tick. A minute is
+# short enough that changing the setting takes effect while you are still
+# looking at the screen, and it costs nothing: a tick with nothing to do reads
+# one dict and goes back to sleep.
+_TICK_S = 60
+
+
+def set_interval(seconds):
+    """Tell the checker how often a sweep happens, or 0 for never.
+
+    Two things are derived from it, and they must agree:
+
+      _SCHED_INTERVAL     the next-run estimate and the "this sweep took longer
+                          than its own cycle" warning
+      _MIN_RECHECK_LIVE   the per-ASIN rest period. THIS is the one that makes a
+                          setting real: the sweep can run every four hours, but
+                          if a live marketplace still refuses to be re-read
+                          within 24, choosing four hours changes nothing at all
+                          and the setting is a lie.
+
+    Never below an hour. That floor is quota protection, not taste -- this is
+    the app's largest consumer of the SP-API budget and it competes with
+    whatever someone is actually waiting on.
+    """
+    global _SCHED_INTERVAL, _MIN_RECHECK_LIVE
+    seconds = int(seconds or 0)
+    _SCHED_INTERVAL = seconds
+    if seconds > 0:
+        _MIN_RECHECK_LIVE = max(3600, seconds)
+
+
+def start_scheduler(cfg_getter, config_path, interval=None, initial_delay=25):
+    """Start the daemon loop once. cfg_getter is a callable returning the config.
+
+    WHEN IT RUNS IS THE USER'S CHOICE, RE-READ EVERY TICK.
+
+        "i dont want the asin monitor to be working always, give 2 options.
+         option 1 is to recheck the status of the buybox by clicking a button.
+         option two is to setup a time of your choice."
+
+    monitor/schedule.py holds that choice and is the only thing that decides it.
+    The loop asks it on every tick rather than at boot, so switching the clock on
+    or changing the interval takes effect within a minute instead of at the next
+    restart -- a setting that needs a restart to apply is one nobody trusts.
+
+    OFF is the default, and off means this loop does nothing at all. Check now
+    still works: it goes straight to check_now_async and ignores every rest
+    period, which is the point of pressing it.
+
+    `interval` is accepted for callers that want to force one (tests, and the
+    MONITOR_INTERVAL_S environment override). When given it wins over the stored
+    setting, so the loop still has an escape hatch.
+    """
+    global _SCHED_STARTED
     if _SCHED_STARTED:
         return
     _SCHED_STARTED = True
-    _SCHED_INTERVAL = interval
+    forced = int(interval) if interval else 0
+    if forced:
+        set_interval(forced)
 
     def _loop():
         time.sleep(initial_delay)                 # let the app finish booting
+        # 0 means "as soon as it is switched on". Turning the clock on should
+        # give an answer now, not in four hours.
+        next_due = 0.0
         while True:
             try:
                 cfg = cfg_getter() if callable(cfg_getter) else cfg_getter
-                check_all(cfg, config_path)
+                gap = forced or _sched.interval_seconds(cfg)
+                set_interval(gap)
+                if gap <= 0:
+                    # Off. Nothing accrues while it is off, so switching it back
+                    # on is not followed by a burst of catch-up sweeps.
+                    next_due = 0.0
+                elif time.time() >= next_due:
+                    check_all(cfg, config_path)
+                    next_due = time.time() + gap
             except Exception as e:
                 print("[asin-monitor] scheduler error:", str(e)[:200])
-            time.sleep(interval)
+            time.sleep(_TICK_S)
 
     threading.Thread(target=_loop, daemon=True, name="asin-monitor").start()

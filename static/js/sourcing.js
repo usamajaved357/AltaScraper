@@ -115,34 +115,55 @@ async function sourcingAlerts(){
   }
   let h = '';
   if(bad.length){
-    h += '<div style="border:1px solid #5c2b2b;background:#2a1414;color:#ffb4b4;'
-      +  'border-radius:6px;padding:9px 11px;margin:4px 0;font-size:11.5px">'
-      +  '<div style="font-weight:600;margin-bottom:4px">'
+    h += '<div class="srcalert bad">'
+      +  '<div class="srcalert-h">'
       +  '<i class="ti ti-alert-triangle"></i> '
       +  bad.length + ' SKU' + (bad.length===1?' has':'s have')
-      +  ' nowhere left to buy from</div>';
-    bad.slice(0, 12).forEach(function(a){
-      h += '<div style="padding:2px 0">' + _sesc(a.sentence || a.sku) + '</div>';
-    });
-    if(bad.length > 12){
-      h += '<div class="cc" style="padding:2px 0">…and ' + (bad.length - 12)
-        +  ' more.</div>';
-    }
-    h += '</div>';
+      +  ' nowhere left to buy from</div>'
+      +  _srcAlertBody(bad, j.alerts_shared, 12);
   }
   if(dunno.length){
-    h += '<div style="border:1px solid #3a3320;background:#241f10;'
-      +  'border-radius:6px;padding:9px 11px;margin:4px 0;font-size:11.5px">'
-      +  '<div style="font-weight:600;margin-bottom:4px">'
+    h += '<div class="srcalert dunno">'
+      +  '<div class="srcalert-h">'
       +  '<i class="ti ti-info-circle"></i> '
       +  dunno.length + ' SKU' + (dunno.length===1?'':'s')
-      +  ' could not be read — not known whether they can still be bought</div>';
-    dunno.slice(0, 8).forEach(function(a){
-      h += '<div style="padding:2px 0">' + _sesc(a.sentence || a.sku) + '</div>';
-    });
-    h += '</div>';
+      +  ' could not be read — not known whether they can still be bought</div>'
+      +  _srcAlertBody(dunno, j.unreadable_shared, 8);
   }
   host.innerHTML = h;
+}
+
+/* The explanation once, then the SKUs.
+ *
+ * Every alert used to print its own self-contained sentence, which is right for
+ * a webhook posting ONE of them into a channel and wrong for a list: twelve
+ * alerts came out as twelve copies of the same twenty words. Measured on a
+ * phone, that was a full screen of duplicated prose above the page itself.
+ *
+ *     "all the text all over the app should be arranged and should not be
+ *      floating freely"
+ *
+ * The shared half comes from the server (domain/stock_alerts.group_sentence)
+ * beside the sentence it was split out of, so the two cannot drift. When the
+ * alerts genuinely have nothing in common the server sends "" and every row
+ * falls back to its own full sentence -- correct and repetitive beats tidy and
+ * wrong about half the list.
+ */
+function _srcAlertBody(list, shared, cap){
+  let h = shared
+    ? '<div class="srcalert-why">' + _sesc(shared) + '</div>'
+    : '';
+  h += '<div class="srcalert-skus">';
+  list.slice(0, cap).forEach(function(a){
+    h += '<div>' + _sesc(shared ? (a.row || a.sku) : (a.sentence || a.sku))
+      +  '</div>';
+  });
+  h += '</div>';
+  if(list.length > cap){
+    h += '<div class="cc" style="padding:3px 0 0">…and ' + (list.length - cap)
+      +  ' more.</div>';
+  }
+  return h + '</div>';
 }
 
 async function sourcingMaster(on){
@@ -1333,9 +1354,12 @@ function sourcingRow(r, i){
       +  'padding:4px 0;border-top:1px solid #1c2531">'
       +  (chosen ? '<span class="db-chip" style="background:#12303a;color:#6ac7e8">using</span>'
                  : '<span class="db-chip" style="opacity:.55">—</span>')
+      // The name comes from the server (domain/source_link.display_name), which
+      // knows the seller eBay published and any label typed in the template.
+      // _srcShort is the fallback for an older payload that has no name on it.
       +  '<a href="'+_sesc(s.url)+'" target="_blank" rel="noopener" title="'+_sesc(s.url)+'" '
       +  'style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
-      +  _sesc(_srcShort(s.url))+'</a>'
+      +  _sesc(s.name || _srcShort(s.url))+'</a>'
       +  '<span class="cc">'+_sesc(s.kind)+'</span>'
       +  '<span style="flex:1"></span>'
       +  '<span>'+_smoney(k.price)+' + '+(k.shipping==null?'<b style="color:#e8c66a">postage unknown</b>':_smoney(k.shipping))+'</span>'
