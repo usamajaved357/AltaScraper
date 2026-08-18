@@ -109,8 +109,17 @@ check("its existing slide is untouched",
       /transform:translateX\(100%\);transition:transform \.2s ease/.test(css), true);
 
 console.log("\n=== no JS logic was touched ===");
+// Scoped to the NAV, which is what this line says and what it was protecting.
+// It used to count navTo() across the whole template, so any button ANYWHERE
+// that navigates -- the Image Studio's "back to Listings", for one -- broke a
+// check about the sidebar. A test that fires on unrelated work stops being read.
+// class="navitem active" on the one that starts selected, so the class is
+// matched loosely -- pinning it exactly missed Listings and reported 8 of 9,
+// which reads as "a nav item was deleted".
+const _navOnly = (tpl.match(/class="navitem[^"]*"[^>]*onclick="navTo\('[a-z]+'\)/g) || []);
 check("every onclick in the nav is unchanged",
-      (tpl.match(/navTo\('(listings|imagerefs|setup|generate|ppc|inventory|sync|monitor|miles)'\)/g) || []).length, 9);
+      _navOnly.filter(s => /'(listings|imagerefs|setup|generate|ppc|inventory|sync|monitor|miles)'/.test(s)).length,
+      9);
 check("no route or endpoint appears in the CSS", /\/(live|users|input)\//.test(css), false);
 
 console.log("\n=== the stylesheet is well formed ===");

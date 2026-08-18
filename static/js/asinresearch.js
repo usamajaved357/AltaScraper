@@ -67,7 +67,7 @@
       STUDIO={ skus:[LAST.asin], items:[{sku:LAST.asin,title:LAST.title,source_image:main,images:LAST.images||[]}],
                brand:(typeof CUR_ACCOUNT!=="undefined"&&CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(typeof CUR_ACCOUNT!=="undefined"&&CUR_ACCOUNT?CUR_ACCOUNT.label:"")),
                manualRef:main, recipes:[], results:{} };
-      var el=document.getElementById("imgstudio"); if(el) el.classList.add("open");
+      _studioShow();   // its own screen now, not a modal over Listings
       asinClose();
       if(typeof loadRecipes==="function"){ loadRecipes().then(function(){ try{ renderStudio(); }catch(e){} }); }
       else { try{ renderStudio(); }catch(e){} }

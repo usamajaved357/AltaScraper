@@ -3193,21 +3193,114 @@ def _imgresult(res, extra=None):
 
 
 # ---- secondary image roles: each role has ONE job (clean, premium) ----
+#
+# HOW MUCH OF THE PRODUCT EACH ROLE NEEDS. Every role used to be generated the
+# same way -- the whole product, on a background, with a headline beside it --
+# so a set of eight came out as eight photographs of the same bottle:
+#
+#     "i see the item image in all the seconary images"
+#
+# Look at what actually sells on Amazon and several of the strongest secondary
+# images contain NO product at all: a wall of journal pages under "3,319
+# peer-reviewed studies", a specification panel with the numbers called out
+# around it. The product is already in the main image and in half the others;
+# repeating it is a wasted slot.
+#
+# So each role declares what it needs, and `present` is the honest answer:
+#
+#   "hero"    the whole product, as the subject
+#   "detail"  a tight crop -- the stitching, the thread, the capsule surface
+#   "in_use"  in a hand, on a bench, being used; the product is context
+#   "none"    no product at all; the evidence, the chart, the box contents
+#
+# `none` is the one that could not be expressed before, and it is why the sets
+# looked repetitive.
 _SECONDARY_ROLES = {
-    "benefit": ("A single-benefit infographic image: show ONE clear product benefit with a short bold "
-                "headline (a few words only) and a clean visual that proves it. Lots of negative space, "
-                "premium minimal look — NOT cluttered with text."),
-    "feature": ("A feature/spec callout: highlight one key feature or what's-in-the-box with a clean "
-                "labelled visual and minimal text."),
-    "lifestyle": ("A lifestyle in-use image: the product being used in a real, aspirational setting that "
-                  "fits its purpose, warm natural light, emotional and premium, minimal or no text."),
-    "dimensions": ("A size/dimensions image: show the product scale or measurements clearly with subtle "
-                   "clean callout lines, on a simple background, minimal text."),
-    "trust": ("A trust/quality image: convey durability, materials or guarantee with a clean confident "
-              "visual and at most a short phrase."),
-    "comparison": ("A subtle 'why choose us' image contrasting a desirable outcome vs a poor one, clean "
-                   "and tasteful, minimal text — no competitor brands."),
+    "benefit": {
+        "present": "hero",
+        "brief": ("A single-benefit image: ONE clear benefit, a short bold headline of a few "
+                  "words, and a visual that PROVES it rather than decorating it. Generous "
+                  "negative space, premium and minimal -- never a wall of text."),
+    },
+    "feature": {
+        "present": "detail",
+        "brief": ("A feature callout: ONE part or function, shown CLOSE UP -- the mechanism, "
+                  "the texture, the fitting, the seal. Thin clean leader lines to at most "
+                  "three labels. The whole product does not need to be in frame; the point is "
+                  "the part."),
+    },
+    "lifestyle": {
+        "present": "in_use",
+        "brief": ("A real moment of use, in the place and by the kind of person this product "
+                  "is actually for. Natural light, believable setting, nothing staged-looking. "
+                  "Minimal text or none -- the scene carries it."),
+    },
+    "dimensions": {
+        "present": "hero",
+        "brief": ("Size, made obvious. Clean dimension lines with real measurements, and where "
+                  "it helps, the product beside an everyday object of known size so the scale "
+                  "is felt rather than read. Plain background, few words."),
+    },
+    "trust": {
+        "present": "none",
+        "brief": ("The reason to believe, as icons and short lines on a clean panel -- the "
+                  "material, the standard it is made to, the guarantee, what it is tested "
+                  "for. The product need not appear at all; this slot is about credibility. "
+                  "Only ever claims the listing actually supports."),
+    },
+    "comparison": {
+        "present": "none",
+        "brief": ("A clean comparison that contrasts the outcome this product gives against "
+                  "the ordinary alternative -- a tidy two-column table or a before/after. "
+                  "Never a named competitor, never a disparaging claim."),
+    },
+    # These two were offered on screen and did not exist here, so choosing
+    # either silently produced a benefit infographic instead.
+    "detail": {
+        "present": "detail",
+        "brief": ("A macro study of the material and the making: the weave, the grain, the "
+                  "weld, the finish, the powder, the capsule. Frame-filling, beautifully lit, "
+                  "no more than a few words. This is the image that answers 'is it cheap "
+                  "tat'."),
+    },
+    "usecase": {
+        "present": "in_use",
+        "brief": ("One specific situation this product is bought FOR, shown as a scene a buyer "
+                  "recognises as their own problem. Not a generic lifestyle shot -- a "
+                  "particular moment, with the product doing its job in it."),
+    },
+    # New. Each of these is a slot the old set could not fill, and each is a
+    # kind of image that routinely outperforms another photograph of the box.
+    "contents": {
+        "present": "hero",
+        "brief": ("Everything that comes in the box, laid out flat and evenly lit, each item "
+                  "labelled with what it is and how many. Exactly what is supplied -- no "
+                  "extra piece, no spare, nothing borrowed from the reference photo."),
+    },
+    "howto": {
+        "present": "in_use",
+        "brief": ("How it is used, in three or four numbered steps across one image. Each step "
+                  "a small clear picture with a few words under it. This is the image that "
+                  "answers 'will I be able to work it'."),
+    },
+    "spec": {
+        "present": "none",
+        "brief": ("The specification, as a designed panel rather than a photograph: the table, "
+                  "chart or facts panel this product's buyer wants to read, with the handful "
+                  "of numbers that matter called out around it. Every figure taken from the "
+                  "listing, none invented."),
+    },
+    "evidence": {
+        "present": "none",
+        "brief": ("The proof behind the claim, shown as a designed image -- the testing, the "
+                  "standard, the certification, the record of use. No product needed. ONLY "
+                  "ever what the listing genuinely supports; if there is no real evidence to "
+                  "show, this concept must not be used at all."),
+    },
 }
+
+# How much product each role needs, on its own, for the generator to read.
+SECONDARY_PRESENCE = {k: v["present"] for k, v in _SECONDARY_ROLES.items()}
 
 
 
@@ -3582,6 +3675,16 @@ def build_app(backend=None):
     import routes.returns_routes as _returns_routes
     _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # The weekly KPI pack. Two reports in -- uploaded, or read from what the app
+    # already syncs -- and one frozen week out. See routes/weekly_routes.py.
+    import routes.weekly_routes as _weekly_routes
+    _weekly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
+    # The daily round -- the checklist somebody works through every morning,
+    # run by the app. See routes/daily_routes.py.
+    import routes.daily_routes as _daily_routes
+    _daily_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and
@@ -3711,7 +3814,11 @@ def build_app(backend=None):
                               _records=_records, _run_img_jobs_bg=_run_img_jobs_bg,
                               _safe_sku=_safe_sku, _save_img_instructions=_save_img_instructions,
                               _sku_dir=_sku_dir, _state=_state,
-                              _write_attrs_for_sku=_write_attrs_for_sku, _ws=_ws)
+                              _write_attrs_for_sku=_write_attrs_for_sku, _ws=_ws,
+                              # So a strategist-made A+ image can be generated at
+                              # its OWN module's size rather than one flat size
+                              # per tier.
+                              _APLUS_MODULES=_APLUS_MODULES)
     import routes.listing_routes as _listing_routes
     _listing_routes.register(app, CHAT_MODEL=CHAT_MODEL, CONFIG_PATH=CONFIG_PATH, SCRIPT=SCRIPT,
                              SKU_HEADER=SKU_HEADER, STATUS_HEADER=STATUS_HEADER, _ANSI=_ANSI,

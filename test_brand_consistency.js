@@ -106,9 +106,18 @@ truthy("  and its fields use the app's own field class",
        /id="gensel_value" class="ed"/.test(gen) && /id="gensel_type" class="ed"/.test(gen));
 
 console.log("\n=== the modals do not change key ===");
+// The Image Studio is no longer a modal -- it is its own screen, asked for as
+// "make the image studio as its own seperate page". What this pinned still
+// holds and still matters: it introduces itself, and it says what it will NOT
+// do. Only where that lives has changed, from a modal panelhead to the screen's
+// own toolbar.
 truthy("Image Studio introduces itself",
-       /<p class="paneltitle"><i class="ti ti-photo-edit"><\/i> Image Studio<\/p>/.test(HTML));
+       /<h2><i class="ti ti-photo-edit"><\/i> Image Studio<\/h2>/.test(HTML));
 truthy("  and says what it will not do", /Nothing here reaches Amazon/.test(HTML));
+truthy("  on its own screen, not in a dialog",
+       /id="sec_imagestudio" class="wspanel"/.test(HTML));
+truthy("  and the body it renders into is unchanged, so nothing had to move",
+       /id="studiobody"/.test(HTML));
 const lib = read("static/js/listingimages.js");
 truthy("the Image Library uses the shared title class",
        /class="paneltitle"/.test(lib));

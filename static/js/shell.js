@@ -962,7 +962,7 @@ function navTo(sec){
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","aiusage","finance","variations","sellerimport"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -992,6 +992,9 @@ function navTo(sec){
     if(sec==="sourcing"){ if(typeof sourcingOnOpen==="function") sourcingOnOpen(); }
     if(sec==="orders"){   if(typeof ordersOnOpen==="function")   ordersOnOpen(); }
     if(sec==="returns"){  if(typeof returnsOnOpen==="function")  returnsOnOpen(); }
+  if(sec==="daily"){    if(typeof dailyOnOpen==="function")    dailyOnOpen(); }
+  if(sec==="weekly"){   if(typeof weeklyOnOpen==="function")   weeklyOnOpen(); }
+  if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
     if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
@@ -1051,8 +1054,12 @@ function enterWorkspaceBlank(){
 // throws, the app behaves exactly as it did before -- the sections still switch.
 // Routing can fail to update an address; it can never stop you navigating.
 
+// Sections that get their own address, so /w/<account>/<section> opens them.
+// "weekly" is here because a client KPI pack is a thing you send somebody a
+// link to, which is the whole reason this list exists.
 const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
-                       "sales","traffic","hourly","ppc","inventory","sync","monitor","miles"];
+                       "sales","traffic","hourly","ppc","inventory","sync","monitor","miles",
+                       "weekly"];
 
 let _ALTA_ROUTED    = false;  // has the one-time restore-from-address already run?
 let _ALTA_RESTORING = false;  // true while replaying an address: replace, never push
