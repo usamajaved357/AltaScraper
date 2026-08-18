@@ -10,6 +10,27 @@ import re
 
 from flask import request, jsonify
 
+# THE SAME RULES AS EVERY OTHER GENERATED IMAGE (CLAUDE.md Rule 12).
+#
+#     "every module contains item images, i am not able to understand which
+#      module is which"
+#
+# This route built its own brief and shared nothing with the secondary-image
+# path, so two things were true here that were fixed months of iteration ago
+# over there:
+#
+#   * NOTHING CHECKED THE WORDS. The ban on medical wording, on figures that are
+#     not in the spec, on invented ingredients and on unprovable performance
+#     claims lived on the other path only. An A+ module could print a claim that
+#     a secondary image would have been stopped from printing.
+#   * EVERY MODULE GOT THE PRODUCT. The reference photograph was attached
+#     unconditionally, twice (reference_image AND extra_reference), so a
+#     comparison table or a spec panel came back with the product in it -- which
+#     is exactly the complaint, and it is the same fault that was fixed for
+#     secondary images by not attaching the photo when the module does not want
+#     one.
+from domain.image_rules import _IMAGE_TEXT_RULES, _PRESENCE_RULES
+
 
 def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
     """Attach the /aplus/* routes to the existing Flask app."""
@@ -58,6 +79,19 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         _strength = {"high": 0.2, "medium": 0.35, "creative": 0.55}.get(_fid, 0.2)
         iprov = b.get("image_provider") or None
 
+        # HOW MUCH PRODUCT THIS MODULE WANTS. Same four answers as a secondary
+        # image, and the same consequence: "none" means the reference photograph
+        # is NOT attached. Instructing a model not to draw a product while
+        # handing it a picture of that product does not work -- the picture is
+        # the stronger signal, and it is right to be. Default stays "hero", so a
+        # caller that sends nothing gets exactly what it got before.
+        presence = (b.get("product_presence", "") or "hero").lower()
+        if presence not in _PRESENCE_RULES:
+            presence = "hero"
+        want_ref = presence != "none"
+
+        # A product-free module still needs a reference to have EXISTED, because
+        # the brand's colours and the product's own facts come from the listing.
         if not product_image:
             return jsonify({"ok": False, "error": "This product has no reference image."}), 400
         mod = None
@@ -94,6 +128,9 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
                "phone. ")
             + (f"Seller's instruction: {instruction}. " if instruction else "")
             + (f"Benefit(s) to feature: {benefit_text}. " if benefit_text else "")
+            # The presence rule, so a comparison or a spec panel is allowed to
+            # be one instead of yet another photograph of the product.
+            + "\n\n" + _PRESENCE_RULES[presence]
         )
         # read the actual product first so A+ keeps it faithful
         # Multi-image modules (three/four small images) are the ones that drift: asking
@@ -116,11 +153,22 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         # browser already has the row on screen, so it sends it.
         _listing = b.get("listing") or None
         try:
-            _pdesc = ai_providers.describe_product(_cfg(), product_image, title,
-                                                   provider=tprov, listing=_listing)
-            if _pdesc.get("ok") and _pdesc.get("description"):
-                brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely — same shape, colours, "
-                          "layout, logo, and ALL label text exactly as written):\n" + _pdesc["description"])
+            if want_ref:
+                _pdesc = ai_providers.describe_product(_cfg(), product_image, title,
+                                                       provider=tprov, listing=_listing)
+                if _pdesc.get("ok") and _pdesc.get("description"):
+                    brief += ("\n\nEXACT PRODUCT SPEC (reproduce the product precisely — same shape, colours, "
+                              "layout, logo, and ALL label text exactly as written):\n" + _pdesc["description"])
+            else:
+                # A product-free module must NOT be handed a description telling
+                # it to reproduce the product precisely -- that is an instruction
+                # to draw the thing it is not supposed to draw. It still needs
+                # the listing's own words, because a panel with no facts is where
+                # invented ones come from.
+                _facts = ai_providers.listing_facts(_listing) if _listing else ""
+                if _facts:
+                    brief += ("\n\nPRODUCT DETAILS (the ONLY facts available -- use these, "
+                              "and nothing that is not written here):\n" + _facts)
         except Exception:
             pass
         _ci3 = (b.get("custom_instructions", "") or "").strip() or _load_img_instructions()
@@ -136,12 +184,19 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
             f"\n\nIMPORTANT: output the image at exactly {_w}x{_h} pixels."
             "\nKeep every word and every important edge inside the middle 88% "
             "of the frame. Text against the edge is how one of these gets "
-            "ruined.")
+            "ruined.") + _IMAGE_TEXT_RULES
         _ar = ai_providers._closest_aspect_ratio(_w, _h)
-        gen = ai_providers.generate_image(_cfg(), detailed, reference_image=product_image,
+        # THE PHOTOGRAPH IS WITHHELD when the module is not meant to contain the
+        # product. Every "do not draw the product" instruction was already
+        # written on the secondary path and the product appeared anyway, until
+        # the reference stopped being attached. The instruction was never the
+        # problem: a model handed a picture of a bottle and told not to draw a
+        # bottle draws the bottle.
+        _ref = product_image if want_ref else ""
+        gen = ai_providers.generate_image(_cfg(), detailed, reference_image=_ref,
                                           provider=iprov, strength=_strength,
                                           aspect_ratio=_ar, image_size="4K",
-                                          extra_reference=product_image)
+                                          extra_reference=_ref)
         if not gen.get("ok"):
             return jsonify({"ok": False, "error": "Image stage: " + gen.get("error", "")}), 400
         # EXACT DIMENSIONS. The model returns a roughly square image whatever it
@@ -168,7 +223,17 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
                     model="claude-sonnet-4-5", max_tokens=400,
                     system=("Write concise Amazon A+ module copy: one short headline (<=8 words) and "
                             "2-3 short benefit-led sentences. No claims like 'best seller', '#1', pricing, "
-                            "or external links. Return JSON {\"headline\":\"\",\"body\":\"\"} only."),
+                            "or external links. "
+                            # Same rule as the image text, for the same reason: a
+                            # sentence about how the product performs reads as a
+                            # fact and cannot be evidenced. Measured on real
+                            # generations -- "lights fast", "holds heat", "burns
+                            # clean", "survives the pack and the trail", none of
+                            # them in the listing.
+                            "Do NOT claim how the product performs, how long it lasts, or what it does "
+                            "not contain unless the product details say so -- no 'lights fast', 'lasts "
+                            "all season', 'no fillers'. Describe what it IS. "
+                            "Return JSON {\"headline\":\"\",\"body\":\"\"} only."),
                     messages=[{"role": "user", "content": f"Product: {title}\nModule: {mod['name']}\n"
                                f"Benefit(s): {benefit_text or '(infer sensible benefits)'}"}])
                 raw = "".join(getattr(x, "text", "") for x in msg.content).strip()

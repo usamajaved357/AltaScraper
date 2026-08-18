@@ -999,6 +999,23 @@ def generate_image(config: dict, prompt: str, reference_image="",
         return {"ok": False, "error": "No openrouter_api_key in config.json"}
     if not model:
         return {"ok": False, "error": "No image model selected/available"}
+    # HEX CODES OUT, COLOUR NAMES IN -- here, because this is the one line every
+    # image path passes through, so no path can miss it (CLAUDE.md Rule 12).
+    #
+    # "#B5813A" was typeset under a chef-hat mark; "@0D0D00" in the corner of an
+    # A+ module. Both came from the art direction, which writes a palette in hex
+    # because that is how a palette is written. The rule telling the model not
+    # to draw them reduced it and did not stop it -- the second one happened
+    # with the rule already in the prompt, which is what you would expect: the
+    # token is in the text and it looks like a label.
+    #
+    # Removing the token removes the possibility. "the colour dark olive green"
+    # cannot be mistaken for a caption.
+    try:
+        from domain.image_rules import words_for_colours
+        prompt = words_for_colours(prompt)
+    except Exception:
+        pass
     body = {"model": model, "prompt": prompt, "output_format": "png"}
     ref = None
     if reference_image:

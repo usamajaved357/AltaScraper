@@ -106,7 +106,14 @@ print("\n== the instruction and the attachment agree ==")
 # Telling the model "do not show the product" while handing it the product
 # photograph is a contradiction, and the photograph wins -- which is how every
 # slot ended up with another picture of the bottle.
-RT = open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8-sig").read()
+# The route's own code (how the reference is attached) PLUS the shared rules it
+# now imports. The rules moved to domain/image_rules.py when /aplus/generate
+# needed the same ones -- a second copy is how the two paths drifted apart in
+# the first place (CLAUDE.md Rule 12). What is asserted below did not change;
+# only where it lives did, so both files are read as one body of text.
+RT = (open(r"D:\AltaScraper\routes\genimage_routes.py", encoding="utf-8-sig").read()
+      + "\n"
+      + open(r"D:\AltaScraper\domain\image_rules.py", encoding="utf-8-sig").read())
 truthy("there is a rule per presence", "_PRESENCE_RULES" in RT)
 truthy("  and 'none' forbids the product outright",
        "DO NOT SHOW THE PRODUCT IN THIS IMAGE AT ALL" in RT)
