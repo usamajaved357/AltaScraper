@@ -2607,6 +2607,37 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- the weekly KPI pack ------------------------------------------------
+   Replaces a spreadsheet. Cards for the headline figures, each carrying its
+   movement against the week before -- BETTER and WORSE rather than up and
+   down, because for ACOS, CPC, CPA and TACOS down is the good direction. */
+.wk-head{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
+          margin:2px 0 12px; }
+.wk-eyebrow{ font-size:11px; font-weight:800; letter-spacing:.88px;
+             text-transform:uppercase; color:var(--ink3); }
+.wk-week{ font-size:22px; font-weight:700; line-height:1.2; }
+.wk-built{ margin-left:auto; font-size:11px; }
+.wk-grid{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(178px, 1fr));
+  gap:10px; margin-bottom:10px;
+}
+.wk-card{
+  background:rgba(12,18,31,.56); border:1px solid var(--line);
+  border-radius:8px; padding:14px 15px; min-width:0;
+}
+.wk-card .lbl{
+  font-size:11px; font-weight:800; letter-spacing:.88px; color:var(--ink3);
+  text-transform:uppercase; margin-bottom:6px;
+}
+.wk-card .val{ font-size:23px; font-weight:700; line-height:1.15;
+               font-variant-numeric:tabular-nums; }
+.wk-card .sub{ font-size:10.5px; margin-top:5px; line-height:1.45; }
+/* The movement chip. Green means BETTER, not larger. */
+.wk-d{ font-size:11px; font-weight:600; margin-left:5px;
+       font-variant-numeric:tabular-nums; }
+.wk-d.wk-up{ color:var(--ok); }
+.wk-d.wk-down{ color:#fca5a5; }
+
 /* ---- parent and child, the way Seller Central draws it ------------------
    "ALSO I WANT MY APP TO SHOW the parents and child relation like we have in
     amazon."

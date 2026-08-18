@@ -3582,6 +3582,11 @@ def build_app(backend=None):
     import routes.returns_routes as _returns_routes
     _returns_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # The weekly KPI pack. Two reports in -- uploaded, or read from what the app
+    # already syncs -- and one frozen week out. See routes/weekly_routes.py.
+    import routes.weekly_routes as _weekly_routes
+    _weekly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

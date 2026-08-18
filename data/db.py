@@ -161,6 +161,41 @@ CREATE TABLE IF NOT EXISTS ppc_brand_terms (
     PRIMARY KEY (workspace_id, term)
 );
 
+/* THE WEEKLY KPI PACK, one row per week, FROZEN.
+
+   Replaces a Google Sheet where the current week held live formulas over two
+   source tabs and every earlier week held numbers pasted by hand. That design
+   is why the sheet was wrong in two ways at once when it was read on
+   18 Aug 2026:
+
+     * the "current" week showed the previous week's figures to the cent,
+       because the freeze happened and the source tabs were never refreshed;
+     * CPA read $7.70 in the frozen columns and $27.26 in the live one -- the
+       formula had been corrected at some point, so the history was computed a
+       different way from the present and the row was not comparable at all.
+
+   A week is written ONCE, from the reports that describe that week, and never
+   recomputed. That is the whole point: last week cannot change because this
+   week's formula changed. `payload` holds the finished pack as JSON so a later
+   change to the arithmetic cannot silently rewrite history either -- if the
+   maths improves, it applies to new weeks and the old ones still say what was
+   reported at the time.
+
+   PRIMARY KEY on (workspace, marketplace, week_start) so re-uploading the same
+   week corrects it rather than duplicating it. */
+CREATE TABLE IF NOT EXISTS weekly_kpi (
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    week_start   TEXT NOT NULL,          -- YYYY-MM-DD, the Sunday
+    week_end     TEXT NOT NULL,
+    payload      TEXT NOT NULL,          -- the finished pack, as JSON
+    source       TEXT,                   -- 'upload' or 'api'
+    built_at     TEXT,
+    PRIMARY KEY (workspace_id, marketplace, week_start)
+);
+CREATE INDEX IF NOT EXISTS idx_wkpi_scope
+    ON weekly_kpi(workspace_id, marketplace, week_start DESC);
+
 -- WHAT AMAZON TOOK, AND WHAT WENT BACK TO BUYERS.
 --
 -- From the Finances API (listFinancialEvents), which is a different thing from
