@@ -29,6 +29,7 @@ PER SKU, NEVER PER ASIN. A single ASIN can carry several SKUs with different
 costs and different rules, so everything here is keyed by SKU -- see the note at
 the top of domain/sourcing.py.
 """
+from domain import source_link as _slink
 from domain import source_repo as _repo
 from domain import sourcing as _sourcing
 from listing import pricing as _pricing
@@ -134,7 +135,14 @@ def options_for(config_path, workspace_id, marketplace, sku, sell_price=None,
         row = {
             "source_id": source.get("id"),
             "url": source.get("url") or "",
-            "label": source.get("label") or source.get("url") or "",
+            # A NAME, never the raw URL. domain/source_link.display_name is the
+            # one place that decides what a supplier link is called, so the
+            # order panel and the repricer cannot end up naming the same link
+            # two different ways (CLAUDE.md Rule 12).
+            "label": _slink.display_name(source.get("url"),
+                                         (check or {}).get("seller"),
+                                         source.get("label")),
+            "seller": (check or {}).get("seller") or "",
             "kind": source.get("kind") or "ebay",
             "enabled": bool(source.get("enabled", 1)),
             "state": state,

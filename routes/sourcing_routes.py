@@ -22,6 +22,7 @@ from domain import source_apply as _apply
 from domain import source_bulk as _bulk
 from domain import source_drift as _drift
 from domain import source_fetch as _fetch
+from domain import source_link as _slink
 from domain import source_repo as _repo
 from domain import source_run as _run
 from domain import sourcing as _sourcing
@@ -174,6 +175,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             srcs = []
             for s, c in pairs:
                 srcs.append({**s, "check": c,
+                             # What to CALL this link. From the same function the
+                             # order panel uses, so the repricer's detail panel
+                             # and the order screen cannot name one supplier two
+                             # different ways (Rule 12).
+                             "name": _slink.display_name(
+                                 s.get("url"), (c or {}).get("seller"),
+                                 s.get("label")),
                              "history": _drift.price_history(CONFIG_PATH, s["id"])})
             _rule = _sourcing.rule_with_defaults(
                 _repo.rule_for(CONFIG_PATH, d["workspace_id"],
@@ -364,6 +372,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         for group in ("alerts", "unreadable"):
             for a in out.get(group, []):
                 a["sentence"] = _alerts.sentence(a)
+                # The short form, for a list where the shared explanation is
+                # already printed above it.
+                a["row"] = _alerts.row_label(a)
+        # The half that is identical across the whole list, said once. Empty when
+        # the alerts do not actually share one, and the screen then falls back to
+        # the self-contained sentences.
+        out["alerts_shared"] = _alerts.group_sentence(out.get("alerts"))
+        out["unreadable_shared"] = _alerts.group_sentence(out.get("unreadable"))
         out["ok"] = True
         return jsonify(out)
 

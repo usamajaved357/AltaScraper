@@ -37,6 +37,12 @@ import re
 import sys
 
 CSS_PATH = r"D:\AltaScraper\static\css\dashboard.css"
+# The phone drawer contains its scroll too, and for the right reason -- a flick
+# that reaches the end of the menu must not then drag the page behind it. It is
+# checked here rather than in test_mobile.py because the rule being enforced is
+# THIS one, and a rule that only holds in the file it was written in is not a
+# rule. Both stylesheets are read as one.
+MOBILE_CSS_PATH = r"D:\AltaScraper\static\css\mobile.css"
 JS_PATH = r"D:\AltaScraper\static\js\listings.js"
 
 fails = []
@@ -53,7 +59,8 @@ def truthy(label, got):
     check(label, bool(got), True)
 
 
-CSS = open(CSS_PATH, encoding="utf-8").read()
+CSS = (open(CSS_PATH, encoding="utf-8").read()
+       + "\n" + open(MOBILE_CSS_PATH, encoding="utf-8").read())
 
 # Comments carry the explanation of this very bug, including the words
 # "overscroll-behavior" and ".ltwrap". Reading them as declarations would make

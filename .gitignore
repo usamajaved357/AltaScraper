@@ -25,6 +25,12 @@ config.json*
 # (This repo already has live API keys in its old history awaiting rotation.)
 orbit_inventory/
 orbit_inventory_complete.md
+# The same applies to every other capture taken off Orbit: the PPC harvest and
+# the phone-width measurements are somebody else's live account -- ASINs, spend,
+# search terms, stock levels -- read to work out how their screens behave. The
+# CONCLUSIONS belong in this repo; their data does not.
+orbit_ppc/
+orbit_mobile/
 
 # --- Local data caches / runtime state (machine-specific, per CLAUDE.md §2 — never commit) ---
 # These are written at runtime (they live on the persistent disk on the server), so they

@@ -8,6 +8,10 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
+<!-- The phone layout, and the only place it is decided. Must load AFTER
+     dashboard.css: several of its rules match the same elements with the same
+     specificity, and the later file is the one that wins. -->
+<link rel="stylesheet" href="/static/css/mobile.css?v={{ ASSET_V }}">
 </head>
 <script>
 /* WHY THIS RUNS BEFORE ANYTHING IS DRAWN.
@@ -48,7 +52,18 @@
   <span class="genspin"></span> Opening…
 </div>
 
+<!-- Dims the page behind the phone menu, and is also the biggest close button
+     on the screen. display:none until the phone breakpoint. -->
+<div class="navscrim" aria-hidden="true"></div>
+
 <div class="appbar">
+  <!-- Opens the menu on a phone; not drawn at all above 860px. Orbit puts the
+       same 40x40 control in the same corner. The label and the icon are written
+       by mobilenav.js so the markup cannot fall out of step with the state. -->
+  <button id="navburger" onclick="mnavToggle()" aria-expanded="false"
+          aria-controls="workspace" aria-label="Open menu" title="Open the menu">
+    <i class="ti ti-menu-2"></i>
+  </button>
   <!-- Not clickable any more. It went to the home page, and a logo that opens a
        dialog is a surprise rather than a shortcut -- switching account is the
        sidebar row, which says so in words. -->
@@ -1276,6 +1291,10 @@
 <script src="/static/js/switcher.js?v={{ ASSET_V }}"></script>
 <!-- Folds the sidebar to a rail of icons, and remembers that you folded it. -->
 <script src="/static/js/sidebar.js?v={{ ASSET_V }}"></script>
+<!-- The phone drawer. Separate from sidebar.js on purpose: that one folds the
+     menu to a rail on a WIDE screen, this one slides it in and out on a narrow
+     one. Same element, opposite questions. -->
+<script src="/static/js/mobilenav.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

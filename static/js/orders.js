@@ -642,7 +642,11 @@ function _ordSourcesHtml(block, forTitle){
       +  'rel="noopener" href="' + _oEsc(o.url) + '">'
       +  _oEsc(o.label || o.url) + '</a></div>'
       // LANDED COST -- the item plus its postage, which is what leaves the bank.
-      +  '<div class="odp-num r' + cls + '">'
+      // data-lbl carries the column heading down onto the cell. On a phone the
+      // four columns stack into two and the header row is dropped, so without
+      // this the numbers would be two unlabelled amounts sitting side by side.
+      // The attribute is inert on a desktop, where the header row is still there.
+      +  '<div class="odp-num r' + cls + '" data-lbl="You pay">'
       +  (o.landed === null || o.landed === undefined
           ? '<span class="cc">—</span>'
           : _oEsc(_oMoney(o.landed, o.currency)))
@@ -650,7 +654,7 @@ function _ordSourcesHtml(block, forTitle){
       // PROFIT IN POUNDS, with ROI beside it -- both were asked for by name.
       +  '<div class="odp-num r' + cls
       +  (o.profit !== null && o.profit !== undefined && o.profit < 0
-          ? ' neg' : '') + '">'
+          ? ' neg' : '') + '" data-lbl="You keep">'
       +  (o.profit === null || o.profit === undefined
           ? '<span class="cc">—</span>'
           : '<b>' + _oEsc(_oMoney(o.profit, o.currency)) + '</b>'

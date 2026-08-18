@@ -126,3 +126,69 @@ def sentence(alert):
     return ("%s — none of its %d supplier%s could be read, so it is not known "
             "whether this can still be bought. Press Check in the Repricer."
             % (alert.get("sku") or "?", n, "" if n == 1 else "s"))
+
+
+def group_sentence(alerts):
+    """The half of `sentence()` that is the SAME for every alert in a list.
+
+    WHY THIS EXISTS
+
+    `sentence()` is written to stand alone, because a webhook posts one alert
+    into a channel with no other context. The Repricer screen prints a LIST of
+    them, and standing alone twelve times over is twelve copies of the same
+    twenty words -- measured on a phone, a full screen of duplicated prose
+    before the page itself begins. Asked for as:
+
+        "all the text all over the app should be arranged and should not be
+         floating freely"
+
+    So the shared explanation is said once above the list and each row keeps
+    only what differs. Returns "" when there is nothing shared to say, and the
+    caller falls back to the per-alert sentences.
+
+    The wording lives HERE, next to the sentence it was split out of, rather
+    than being retyped in JavaScript -- two copies of the same prose in two
+    languages drift, and the drift is invisible until someone reads both
+    (CLAUDE.md Rule 12).
+    """
+    alerts = [a for a in (alerts or []) if a]
+    if not alerts:
+        return ""
+
+    kinds = {a.get("kind") for a in alerts}
+    if len(kinds) != 1:
+        # Mixed kinds have no shared half. Saying one of them over both would be
+        # wrong about half the list, which is worse than repeating.
+        return ""
+    kind = kinds.pop()
+
+    if kind == UNREADABLE:
+        return ("None of their suppliers could be read, so it is not known "
+                "whether these can still be bought. Press Check in the "
+                "Repricer.")
+
+    # ALL_GONE. What happens next depends on whether the repricer is allowed to
+    # act, and that can differ per SKU, so it is only stated when it is true of
+    # all of them.
+    head = ("Every supplier for these is out of stock or ended, so nothing can "
+            "be bought to fulfil them.")
+    modes = {str(a.get("mode")) for a in alerts}
+    if len(modes) != 1:
+        return head
+    tail = ("They are still live on Amazon: set the quantity to 0 or find "
+            "another supplier." if modes.pop() == "dry_run"
+            else "The repricer will take them out of stock on the next run.")
+    return head + " " + tail
+
+
+def row_label(alert):
+    """What is left of an alert once `group_sentence` has said the shared part.
+
+    The SKU, and the one number that varies between rows. Deliberately short:
+    it sits in a list where the explanation is already above it.
+    """
+    if not alert:
+        return ""
+    n = alert.get("sources") or 0
+    return "%s — %d supplier%s" % (alert.get("sku") or "?", n,
+                                   "" if n == 1 else "s")

@@ -112,7 +112,7 @@ def read(url, timeout=20):
         "error"}  with shipping and dispatch_days almost always None.
     """
     out = {"status": FAILED, "price": None, "shipping": None, "currency": "",
-           "in_stock": None, "dispatch_days": None, "error": ""}
+           "in_stock": None, "dispatch_days": None, "error": "", "seller": ""}
     if not url:
         out["error"] = "no url"
         return out
@@ -167,5 +167,17 @@ def read(url, timeout=20):
         if cand is not None:
             out["shipping"] = cand
             break
+    # WHO IS SELLING IT. schema.org puts the seller on the Offer as an
+    # Organization or Person; some sites use "offeredBy" for the same thing.
+    # Taken only when it is a real name -- a screen shows the site's own domain
+    # instead of a made-up one when this is blank.
+    for key in ("seller", "offeredBy"):
+        node = offer.get(key)
+        name = (node.get("name") if isinstance(node, dict)
+                else node if isinstance(node, str) else None)
+        if name and str(name).strip():
+            out["seller"] = str(name).strip()[:80]
+            break
+
     out["status"] = FETCHED
     return out

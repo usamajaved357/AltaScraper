@@ -184,8 +184,13 @@ def record_check(config_path, source_id, check):
         # HOW IT GETS HERE AND WHEN. Stored with the reading and not looked up
         # later: a delivery estimate is only true for the day it was made, so it
         # belongs to this check the same way the price does.
-        "carrier, postage_text, delivery_min, delivery_max, delivery_postcode) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "carrier, postage_text, delivery_min, delivery_max, delivery_postcode, "
+        # WHO IS SELLING IT, so a screen can show a name instead of a 120
+        # character URL. Stored with the reading like everything else here: a
+        # listing can change hands, and the name we show should be the one that
+        # was true when the price was read.
+        "seller) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (source_id, check.get("checked_at") or _now(), check.get("status"),
          check.get("price"), check.get("shipping"), check.get("currency"),
          (None if ins is None else (1 if ins else 0)),
@@ -194,7 +199,8 @@ def record_check(config_path, source_id, check):
          (check.get("postage_text") or "")[:120],
          (check.get("delivery_min") or "")[:10],
          (check.get("delivery_max") or "")[:10],
-         (check.get("delivery_postcode") or "")[:12]))
+         (check.get("delivery_postcode") or "")[:12],
+         (check.get("seller") or "")[:80]))
     conn.commit()
 
 

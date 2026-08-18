@@ -150,3 +150,57 @@ def for_sku(config_path, workspace_id, sku):
     return {"url": "", "kind": "", "where": "",
             "why": ("; ".join(uniq) if uniq
                     else "no source link was recorded for this listing")}
+
+
+# ---- what to CALL a supplier link -------------------------------------------
+
+_ITEM_RE = re.compile(r"/itm/(?:[^/?#]*?/)?(\d{9,15})")
+
+
+def display_name(url, seller="", label=""):
+    """The name to put on screen for a supplier link. Never the raw URL.
+
+        "i do not want the full ebay link just display the name of the seller
+         and the link attached to it so i can click on the seller name to open
+         the product link"
+
+    A raw eBay URL is about 120 characters of tracking parameters. It told the
+    reader nothing, and it was the widest thing in the app: MEASURED, the
+    supplier column of the order panel was 5,523px wide on a 390px screen
+    because a grid column will not shrink below its longest unbreakable word.
+
+    In order of what is actually known about the link:
+
+      1. a label somebody typed against it in the supplier template -- their own
+         name for a supplier beats anything derived from a URL;
+      2. the seller name the supplier published (eBay's seller.username), which
+         is the name printed on the listing itself and can be checked;
+      3. the site, and the item number when the URL carries one. Honest about
+         being a fallback: it says where, not who.
+
+    Nothing is invented. An unrecognisable URL returns "supplier link", which is
+    true, rather than a guess dressed as a seller name.
+    """
+    label = str(label or "").strip()
+    # A "label" that is just the URL again is not a label. That is what the old
+    # `label or url` fallback wrote into the field, so it is still in the data.
+    if label and not label.lower().startswith(("http://", "https://")):
+        return label
+
+    seller = str(seller or "").strip()
+    if seller:
+        return seller
+
+    url = str(url or "").strip()
+    if not url:
+        return "supplier link"
+
+    host = url.split("//", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+    host = host.split("@")[-1].split(":")[0].lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return "supplier link"
+
+    m = _ITEM_RE.search(url)
+    return "%s · item %s" % (host, m.group(1)) if m else host

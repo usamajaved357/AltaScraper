@@ -68,7 +68,7 @@ def _blank(status=FAILED, error=""):
     # numbers stay None because None and 0.00 are different facts about money.
     return {"status": status, "price": None, "shipping": None, "currency": "",
             "in_stock": None, "dispatch_days": None, "error": error,
-            "carrier": "", "postage_text": "",
+            "carrier": "", "postage_text": "", "seller": "",
             "delivery_min": "", "delivery_max": "", "delivery_postcode": "",
             "checked_at": time.strftime("%Y-%m-%d %H:%M:%S")}
 
@@ -284,6 +284,20 @@ def _ebay_dispatch_days(opt, now=None):
     return None
 
 
+def _ebay_seller(data):
+    """Who is selling it, as eBay names them. "" when eBay did not say.
+
+    Browse API returns seller as {"username", "feedbackPercentage",
+    "feedbackScore"}. The username is the name shown on the listing page, so it
+    is the one a person can recognise and check. Nothing is invented: no
+    username means "", and the screen falls back to naming the site.
+    """
+    s = data.get("seller") if isinstance(data, dict) else None
+    if not isinstance(s, dict):
+        return ""
+    return str(s.get("username") or "").strip()
+
+
 def from_ebay_item(data, now=None):
     """A Browse API item -> the common reading. Missing fields stay None."""
     out = _blank(FETCHED)
@@ -301,6 +315,7 @@ def from_ebay_item(data, now=None):
     out["available_qty"] = _ebay_qty(data)
     out["dispatch_days"] = _ebay_dispatch_days(opt, now)
     out["carrier"] = _ebay_carrier(opt)
+    out["seller"] = _ebay_seller(data)
     out["postage_text"] = _postage_text(opt, out["currency"])
     out["delivery_min"], out["delivery_max"] = _ebay_delivery(opt)
     out["delivery_postcode"] = _ebay_postcode_used(data)
