@@ -308,6 +308,44 @@
   .slbl{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
         color:var(--ink4);padding:14px 11px 4px}
   .navitem .ti{font-size:16px;width:18px;text-align:center}
+
+  /* ---- EXPANDING MASTER ITEMS, as Seller Central groups its menu ----
+     "manage inventory expands into manage all inventory, sell globally,
+      fulfillment by amazon etc etc"
+
+     The master row looks like a nav item because it IS one to click; what marks
+     it out is the chevron and the fact that the children indent under it. The
+     children are hidden with max-height rather than display:none so the reveal
+     can be animated, and are given overflow:hidden so a shut group cannot be
+     tabbed into. */
+  .navgroup .navkids{max-height:0;overflow:hidden;
+                     transition:max-height .18s ease}
+  /* Large enough for the longest group (Reports, seven children) with room to
+     spare. A fixed value is used rather than `none` because max-height cannot
+     animate to or from auto. */
+  .navgroup.open .navkids{max-height:520px}
+  .navmaster{font-weight:600;color:var(--ink)}
+  .navmaster .navchev{margin-left:auto;font-size:13px;opacity:.55;
+                      transition:transform .18s ease}
+  .navgroup.open .navmaster .navchev{transform:rotate(90deg)}
+  /* The indent is what says "these belong to the row above". The left rule
+     gives the eye a single line to follow down the group, which matters most
+     when several groups are open at once. */
+  .navgroup .navkids .navitem{padding-left:30px;font-size:11.5px;
+                              margin-left:11px;border-left:2px solid var(--line);
+                              border-radius:0}
+  .navgroup .navkids .navitem.active{border-left-color:var(--accent)}
+  /* A group holding the current screen stays marked even when the user shuts
+     it, so "where am I" survives collapsing the drawer you are standing in. */
+  .navgroup.hasactive .navmaster{color:var(--ink)}
+  .navgroup.hasactive:not(.open) .navmaster{background:var(--panel2)}
+  /* The badge a master wears on behalf of its shut children. Same red as the
+     child badges: a different colour would read as a different kind of problem.
+     .dotonly is the case where a child is flagged but has no number to show. */
+  .navmbadge{display:none;background:var(--red);color:#fff;padding:1px 6px;
+             border-radius:8px;font-size:10px;font-weight:600;margin-left:6px}
+  .navmbadge.dotonly{padding:0;width:7px;height:7px;border-radius:50%}
+
   .wsmain{flex:1;min-width:0;display:flex;flex-direction:column}
 
   /* ---- THE SIDEBAR FOLDS TO AN ICON RAIL ----
@@ -341,6 +379,16 @@
   #workspace.navmini .navitem span,
   #workspace.navmini .navitem .chev{display:none}
   #workspace.navmini .navitem.active{border-left-width:0;background:var(--accent-bg)}
+  /* IN THE RAIL, EVERY GROUP IS OPEN.
+     The rail is icons only, so a master row would be an icon that reveals more
+     icons -- two taps to reach a screen that was one tap away, and no label to
+     say what either does. Collapsing is a full-width idea. The masters are
+     hidden and their children shown flat, which is the same set of destinations
+     the rail had before the grouping existed. */
+  #workspace.navmini .navmaster{display:none}
+  #workspace.navmini .navgroup .navkids{max-height:none;overflow:visible}
+  #workspace.navmini .navgroup .navkids .navitem{padding-left:0;margin-left:0;
+                                                 border-left-width:0;font-size:0}
   #workspace.navmini .wsident{justify-content:center;margin-bottom:14px}
   #workspace.navmini .wsident>div:last-child{display:none}
   .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);

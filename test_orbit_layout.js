@@ -66,17 +66,41 @@ console.log("\n=== NOTHING WAS REORDERED OR REMOVED ===");
 // Renamed from "Account & sheets": a spreadsheet is no longer the store, only
 // an optional place to import products from, and a menu item named after it
 // said otherwise.
-const NAV = ["Listings", "Image refs", "Brand setup", "Account settings",
-             "Generate &amp; submit", "PPC", "Inventory", "Compare with Amazon",
-             "ASIN Monitor", "Supplier Import", "Research ASIN",
-             "AI &amp; settings"];
-let pos = -1, ordered = true;
-for (const item of NAV) {
-  const at = tpl.indexOf(item, pos + 1);
-  if (at < 0 || at < pos) { ordered = false; console.log("     out of order:", item); }
-  pos = at;
-}
-check("all 12 nav items present, in the original order", ordered, true);
+// THE ORDER PIN IS GONE, AND ON PURPOSE.
+//
+// It existed because the Orbit layout work was explicitly "additions only,
+// nothing moved". That constraint has since been replaced by a direct
+// instruction:
+//
+//     "i want the tools to be arranged under the relevant master tool, like we
+//      have in amazon, manage inventory expands into manage all inventory, sell
+//      globally, fulfillment by amazon etc etc"
+//
+// Rearranging IS the request now, so a test demanding the old flat order would
+// only ever be a test demanding the request be undone.
+//
+// PRESENCE IS THE HALF WORTH KEEPING, and it is kept harder than before. The
+// real hazard in regrouping a menu is not that it looks wrong -- that shows
+// immediately -- it is that a screen quietly stops being clickable while navTo,
+// the URL and the panel all still work. So the check moves from labels (which
+// the grouping legitimately renames, "Listings" -> "All listings" the way
+// Seller Central does) to data-sec, which is the identity the router uses and
+// must never change. test_nav_groups.js additionally checks the reverse
+// direction: that every screen navTo knows about has something to click.
+const NAV_SECS = ["listings", "imagerefs", "setup", "generate", "ppc",
+                  "inventory", "sync", "monitor", "miles", "variations",
+                  "orders", "returns", "sales", "finance"];
+const missingSecs = NAV_SECS.filter(
+  (s) => tpl.indexOf('data-sec="' + s + '"') < 0);
+if (missingSecs.length) console.log("     no longer clickable:", missingSecs.join(", "));
+check("every screen still has a nav item pointing at it",
+      missingSecs.length === 0, true);
+// The two that are actions rather than screens, so they have no data-sec.
+check("Research ASIN is still there", tpl.indexOf("asinOpen()") >= 0, true);
+check("Account settings is still there",
+      tpl.indexOf("openCurrentAccountSettings()") >= 0, true);
+check("AI &amp; settings is still there",
+      tpl.indexOf("openAISettings()") >= 0, true);
 check("the sidebar is still 210px", /\.sidebar\{width:210px/.test(css), true);
 check("the top bar is still there", /class="appbar"/.test(tpl), true);
 

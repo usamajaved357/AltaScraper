@@ -960,6 +960,12 @@ async function enterWorkspace(key){
 function navTo(sec){
   CUR_SEC=sec;
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
+  // OPEN THE GROUP THIS SCREEN LIVES IN. The sidebar's master items collapse,
+  // so without this the highlight would sit inside a shut drawer and the app
+  // would look like it had lost its place -- most visibly on a deep link into a
+  // group the user last left closed. Guarded because navgroups.js is a separate
+  // file and nav must not break if it fails to load.
+  if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
   ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport"].forEach(s=>{
