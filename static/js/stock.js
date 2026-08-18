@@ -38,10 +38,20 @@ function _skSym(){
   try{ return (typeof CUR_SYMBOL !== "undefined" && CUR_SYMBOL) || ""; }
   catch(e){ return ""; }
 }
-function _skMoney(v){
+/* `ccy` is optional and only used where a figure may not be in the account's own
+   currency -- Amazon settles a refund in the marketplace's currency, and the
+   money-back page can show two at once. Everywhere else the account symbol is
+   right and passing nothing keeps it. */
+function _skMoney(v, ccy){
   if(v === null || v === undefined || v === "") return "—";
-  return _skSym() + Number(v).toLocaleString(undefined,
+  const sym = ccy ? _skCcySym(ccy) : _skSym();
+  return sym + Number(v).toLocaleString(undefined,
     {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function _skCcySym(cc){
+  const m = {GBP: "£", USD: "$", EUR: "€", CAD: "$", AUD: "$",
+             SEK: "kr", PLN: "zł", AED: "AED "};
+  return m[String(cc || "").toUpperCase()] || (cc ? cc + " " : _skSym());
 }
 /* Orbit writes big money as "$141K". Same rule: thousands get a K, and only
    above 10,000 -- "9.4K" hides more than it saves. */
@@ -132,6 +142,56 @@ function _skSkeleton(){
     + '<div class="stk-grid">' + card + card + card + card + '</div></div>';
 }
 
+/* ============ THE PAGES ============
+ *
+ *   "i want each and every feature and page about the inventory and ppc, of
+ *    orbit into my app"
+ *
+ * Orbit splits inventory across tabs -- Overview, Forecasting, Actions -- and
+ * this screen had all three stacked in one scroll. On a phone that is four
+ * screens of scrolling before the product table, and the banner at the top
+ * stops being the first thing you see, which was its whole job.
+ *
+ * The banner and the cockpit cards stay ABOVE the tabs on every page, because
+ * "what is about to run out" is context for all three, not a page of its own.
+ *
+ * Tab state lives in STOCK so a redraw keeps it. It is deliberately NOT in the
+ * URL: this is one screen, and a link to a tab that only exists after data
+ * loads would open on an empty page.
+ */
+const STK_TABS = [
+  {k: "overview", t: "Overview", i: "ti-list-details",
+   d: "Every product, what you have, and how fast it is going."},
+  {k: "actions", t: "What to order", i: "ti-shopping-cart-plus",
+   d: "How many to buy, and the last day to order it."},
+  {k: "forecast", t: "If nothing changes", i: "ti-chart-line",
+   d: "Units short and cost to cover, at today's rate."},
+  {k: "money", t: "Money back", i: "ti-receipt-refund",
+   d: "Units Amazon lost, damaged or over-charged you for."},
+];
+
+function stockTab(k){
+  STOCK.tab = k;
+  stockRender();
+  // The tabs sit under a banner that can be tall. Jumping to them means the
+  // page you just chose is the thing you are looking at.
+  const el = document.getElementById("stk_tabbar");
+  if(el && el.scrollIntoView) el.scrollIntoView({block: "start", behavior: "smooth"});
+}
+
+function _skTabBar(){
+  const cur = STOCK.tab || "overview";
+  return '<div class="stk-tabbar" id="stk_tabbar" role="tablist">'
+    + STK_TABS.map(function(t){
+        return '<button class="stk-tab' + (t.k === cur ? " on" : "") + '" '
+             + 'role="tab" aria-selected="' + (t.k === cur) + '" '
+             + 'title="' + _skEsc(t.d) + '" '
+             + 'onclick="stockTab(' + jsArg(t.k) + ')">'
+             + '<i class="ti ' + t.i + '"></i> ' + _skEsc(t.t) + '</button>';
+      }).join("")
+    + '</div>';
+}
+
 function stockRender(){
   const host = document.getElementById("stockwrap");
   if(!host) return;
@@ -143,9 +203,14 @@ function stockRender(){
       + _skEsc(STOCK.note || "Nothing to show yet.") + '</div>';
     return;
   }
+  const tab = STOCK.tab || "overview";
+  let body;
+  if(tab === "actions")        body = _skOrderList();
+  else if(tab === "forecast")  body = _skForecast();
+  else if(tab === "money")     body = _skMoneyBack();
+  else                         body = _skFilters() + _skLedger();
   host.innerHTML = '<div class="stock">' + _skBanner(c) + _skCards(c)
-                 + _skOrderList() + _skForecast() + _skFilters() + _skLedger()
-                 + _skFooter(c) + '</div>';
+                 + _skTabBar() + body + _skFooter(c) + '</div>';
 }
 
 /* THE BANNER. One fact, in the largest type on the screen.
@@ -477,6 +542,105 @@ function _skOrderList(){
         + 'assumed)</span>') + '</td></tr>';
   });
   return h + '</tbody></table></div>';
+}
+
+/* MONEY BACK. Orbit's Reimbursements page, in the version that is true here.
+ *
+ * Most of Amazon's reimbursement categories are FBA -- units lost or damaged in
+ * a warehouse. There are zero FBA units on any of these accounts, so a page
+ * listing them would be theatre. What happens on every account is a refund, and
+ * a refund has arithmetic Amazon publishes.
+ *
+ * IT FILES NOTHING, and the page says so. Every row shows the whole sum so it
+ * can be checked rather than believed, and typed into a Seller Central case by
+ * a person who has decided to.
+ */
+function _skMoneyBack(){
+  const m = STOCK.moneyBack;
+  if(!m){
+    // Fetched the first time this page is opened rather than with the screen:
+    // it is a database read nobody pays for until they ask for it.
+    if(!STOCK.moneyBackAsked){ STOCK.moneyBackAsked = true; _skMoneyLoad(); }
+    return '<div class="card" style="padding:16px" class="cc">Checking the '
+         + 'settled orders…</div>';
+  }
+  if(m.error){
+    return '<div class="odp-note warn" style="padding:14px">'
+         + _skEsc(m.error) + '</div>';
+  }
+
+  const head = '<div style="padding:11px 14px;border-bottom:1px solid var(--line)">'
+    + '<b style="font-size:12.5px">Money Amazon owes back</b>'
+    + '<span class="infodot" title="' + _skEsc(m.rule || "") + ' This page finds '
+    + 'and shows the arithmetic. It never files a claim — that is a decision you '
+    + 'make in Seller Central with the figures in front of you.">i</span></div>';
+
+  // A ZERO WITH NO DENOMINATOR IS NOT AN ANSWER. "Nothing owed" means one thing
+  // when 200 refunds were examined and something else entirely when none were.
+  const scope = '<div class="odp-note" style="padding:9px 14px;border-top:0">'
+    + 'Checked ' + _skNum(m.refunds_checked || 0) + ' refunded order'
+    + ((m.refunds_checked === 1) ? '' : 's') + ' out of '
+    + _skNum(m.orders_checked || 0) + ' Amazon has settled. '
+    + _skEsc(m.rule || '') + '</div>';
+
+  if(!m.count){
+    return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">'
+      + head
+      + '<div style="padding:16px 14px">'
+      + (m.refunds_checked
+          ? '<b style="color:var(--ok)">Nothing owed.</b> Amazon kept less than '
+            + 'its own cap on every refund it has settled here.'
+          : '<b>No refunds have settled yet</b>, so there is nothing to check. '
+            + 'This page fills in as Amazon settles orders.')
+      + '</div>' + scope + '</div>';
+  }
+
+  const owed = Object.keys(m.owed_by_currency || {}).map(function(cc){
+    return _skMoney(m.owed_by_currency[cc], cc);
+  }).join(" + ");
+
+  let h = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">'
+    + head
+    + '<div style="padding:12px 14px;border-bottom:1px solid var(--line)">'
+    + '<span class="stk-eyebrow">Candidates</span>'
+    + '<div class="stk-headline is-warn">' + _skEsc(owed) + ' across '
+    + _skNum(m.count) + ' order' + (m.count === 1 ? '' : 's') + '</div>'
+    + '<div class="stk-sub">Called candidates on purpose: Amazon has exceptions '
+    + 'this cannot see — a promotional fee, a category minimum, a refund settled '
+    + 'across two events. Check the sum before you raise a case.</div></div>'
+    + '<table class="stk-table"><thead><tr>'
+    + '<th>Order</th><th>Settled</th><th class="r">Sale</th>'
+    + '<th class="r">Refunded</th><th class="r">Fee taken</th>'
+    + '<th class="r">Given back</th><th class="r">May keep</th>'
+    + '<th class="r">Owed</th></tr></thead><tbody>';
+
+  (m.candidates || []).forEach(function(c){
+    h += '<tr title="' + _skEsc(c.why) + '">'
+      + '<td class="stk-num">' + _skEsc(c.order_id) + '</td>'
+      + '<td class="cc">' + _skEsc(c.posted_date || '') + '</td>'
+      + '<td class="r stk-num">' + _skMoney(c.principal, c.currency) + '</td>'
+      + '<td class="r stk-num">' + _skMoney(c.refunded, c.currency)
+      + (c.share_pct < 99.5
+          ? '<div class="stk-gap">' + c.share_pct + '% of it</div>' : '')
+      + '</td>'
+      + '<td class="r stk-num">' + _skMoney(c.fee_on_refunded_part, c.currency) + '</td>'
+      + '<td class="r stk-num">' + _skMoney(c.returned, c.currency) + '</td>'
+      + '<td class="r stk-num">' + _skMoney(c.allowed_to_keep, c.currency) + '</td>'
+      + '<td class="r stk-num"><b style="color:#fbbf24">'
+      + _skMoney(c.owed, c.currency) + '</b></td></tr>';
+  });
+  return h + '</tbody></table>' + scope + '</div>';
+}
+
+async function _skMoneyLoad(){
+  try{
+    const j = await (await fetch("/inventory/money-back" + _skScopeQs())).json();
+    STOCK.moneyBack = (j && j.ok) ? j
+      : {error: (j && j.error) || "Could not read the settled orders."};
+  }catch(e){
+    STOCK.moneyBack = {error: "Could not read the settled orders: " + e};
+  }
+  if((STOCK.tab || "overview") === "money") stockRender();
 }
 
 /* PROJECTED BURN. Orbit's Forecasting tab, quoted: "Projects future inventory

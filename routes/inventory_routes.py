@@ -379,6 +379,37 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
                              or "").upper()
         return aid, mkt
 
+    @app.route("/inventory/money-back")
+    def inventory_money_back():
+        """Money Amazon owes back, found by checking Amazon's own published rule.
+
+        Orbit's Reimbursements page, in the version that is true for this
+        business. Most of Amazon's reimbursement categories are FBA -- units
+        lost or damaged in a warehouse -- and there are zero FBA units on any of
+        these accounts, so listing them would be theatre.
+
+        What happens on every account is a refund, and a refund has arithmetic
+        Amazon publishes: it returns the referral fee minus an administration
+        fee of the lesser of 5.00 or 20% of it. domain/money_back.py checks that
+        against what Amazon ACTUALLY took and returned, per order, from the
+        Finances API.
+
+        IT FILES NOTHING. It finds, and it shows the arithmetic so the figure
+        can be checked rather than believed. Filing is a decision a person makes
+        in Seller Central with the numbers in front of them.
+        """
+        from domain import money_back as _mb
+
+        aid, mkt = _scope()
+        if not aid:
+            return jsonify({"ok": False, "error": (
+                "Open an account first.")}), 400
+        try:
+            out = _mb.find(CONFIG_PATH, aid, mkt or None)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 500
+        return jsonify({"ok": True, **out})
+
     @app.route("/inventory/stock")
     def inventory_stock():
         """What you have, how fast it goes, and when it runs out.
