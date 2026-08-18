@@ -687,21 +687,25 @@ def get_fees(asin: str, price: float, creds: dict) -> dict:
                "fee_source": "estimated (15%)"}
     if not asin or price <= 0:
         return default
+    # THE CALL ITSELF MOVED to domain/amazon_fees.quote(). It was the only place
+    # in the app that could ask Amazon what a fee would actually be, and it was
+    # welded to this module's MARKETPLACE / MARKETPLACE_ID globals -- so the Fee
+    # Tracker could not reach it and would have had to write a second copy.
+    # CLAUDE.md Rule 12: extract first, then use it in one place.
+    #
+    # This function keeps its own return shape and its own defaults, so every
+    # existing caller here is unchanged. Only the HTTP call is shared.
     try:
-        fees_api = ProductFees(credentials=creds, marketplace=MARKETPLACE, timeout=30)
+        from domain import amazon_fees as _fees
         _fee_cur = "USD" if MARKETPLACE_ID == US_MARKETPLACE_ID else "GBP"
-        res = fees_api.get_product_fees_estimate_for_asin(
-            asin=asin, price=price, currency=_fee_cur,
-            is_fba=False, marketplace_id=MARKETPLACE_ID)
-        fee_detail = (res.payload.get("FeesEstimateResult", {})
-                      .get("FeesEstimate", {}).get("FeeDetailList", []))
-        referral = var_closing = 0.0
-        for fee in fee_detail:
-            amt = float(fee.get("FinalFee", {}).get("Amount", 0))
-            if fee.get("FeeType") == "ReferralFee":
-                referral = amt
-            elif fee.get("FeeType") == "VariableClosingFee":
-                var_closing = amt
+        q = _fees.quote(creds, MARKETPLACE, MARKETPLACE_ID, asin, price,
+                        is_fba=False, currency=_fee_cur)
+        if q.get("basis") != _fees.QUOTED:
+            if q.get("detail"):
+                console.print(f"  [yellow]Fees API: {str(q['detail'])[:60]}[/yellow]")
+            return default
+        referral = q.get("referral") or 0.0
+        var_closing = q.get("closing") or 0.0
         return {"referral_fee": referral, "variable_closing": var_closing,
                 "total_amazon_fees": round(referral + var_closing, 2),
                 "fee_source": "SP-API (exact)"}

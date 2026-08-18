@@ -284,6 +284,10 @@
       </div>
       <div class="navkids">
         <div class="navitem" data-sec="monitor" onclick="navTo('monitor')"><i class="ti ti-radar"></i> ASIN Monitor <span id="mon_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+        <!-- Orbit's five tracker menu items are one screen with a tab each: the
+             four are the same table pointed at a different number. -->
+        <div class="navitem" data-sec="trackers" onclick="navTo('trackers')" title="Watch a listing's sales rank, Buy Box price, your price or Amazon's cut, and be told when it drifts"><i class="ti ti-chart-dots"></i> Trackers</div>
+        <div class="navitem" data-sec="alerts" onclick="navTo('alerts')" title="Everything currently off the target you set"><i class="ti ti-bell"></i> Alerts <span id="alr_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
       </div>
     </div>
 
@@ -1098,6 +1102,38 @@
       <div id="dy_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- THE FOUR TRACKERS, on one screen with a tab each.
+         Orbit lists them as five separate menu items (All Trackers, BSR, Buy
+         Box, Price, Fee). They are the same table with a different number in
+         it, so five menu items would be five ways to reach one screen -- the
+         tabs do that in one place, and "All" is simply no filter. -->
+    <div id="sec_trackers" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-dots"></i> Trackers</h2>
+        <div class="sub">Watch a number on a listing — its sales rank, its Buy Box price, your price, or Amazon's cut — and be told when it drifts from what you wanted. Nothing is read until you press Check now.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" id="trk_refresh" onclick="trkRefresh()"><i class="ti ti-refresh"></i> Check now</button>
+          <button class="db-chip" onclick="trkLoad()"><i class="ti ti-reload"></i> Reload</button>
+        </div>
+      </div>
+      <div id="trk_tabs" class="stk-tabbar"></div>
+      <div id="trk_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- ALERTS -- the off-track rows from all four trackers in one list.
+         One count, not four badges: four is four chances to miss the one that
+         mattered. -->
+    <div id="sec_alerts" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-bell"></i> Alerts</h2>
+        <div class="sub">Everything currently off the target you set, worst first. A number that could not be read is listed as unknown rather than counted as fine.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="alertsLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="alr_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- IMAGE STUDIO, its own screen rather than a dialog over Listings. -->
     <div id="sec_imagestudio" class="wspanel">
       <div class="wstoolbar bleed">
@@ -1488,6 +1524,12 @@
      this is the one that decides what is revealed inside it; loaded BEFORE
      shell.js so navTo can call navGroupSyncActive the first time it runs. -->
 <script src="/static/js/navgroups.js?v={{ ASSET_V }}"></script>
+<!-- Which account and marketplace a request is about. Loaded EARLY, before any
+     screen that calls it: four screens had grown their own copy and two of them
+     had drifted into reading a variable nothing defines. One builder now. -->
+<script src="/static/js/scopeq.js?v={{ ASSET_V }}"></script>
+<!-- The four trackers (BSR, Buy Box, price, fee) and the alerts they feed. -->
+<script src="/static/js/trackers.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

@@ -3715,6 +3715,13 @@ def build_app(backend=None):
     import routes.daily_routes as _daily_routes
     _daily_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state)
+    # The four trackers -- BSR, Buy Box, price and fee -- and the single alert
+    # count they feed. Orbit lists them as five menu items plus Alerts; they are
+    # one engine pointed at different numbers, so they are one set of routes.
+    # See domain/trackers.py for why the metrics are data rather than code.
+    import routes.tracker_routes as _tracker_routes
+    _tracker_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

@@ -196,6 +196,75 @@ def for_order(config_path, workspace_id, marketplace, order_id, gross,
     return estimate(gross, rate, currency)
 
 
+def quote(creds, marketplace, marketplace_id, asin, price, is_fba=False,
+          currency=""):
+    """Amazon's OWN figure for this ASIN at this price -- the `quoted` tier.
+
+    getMyFeesEstimateForASIN. Unlike estimate(), nothing here is a percentage of
+    anything: Amazon returns the referral and closing fees it would actually
+    charge, for this ASIN's real category, which is the difference between "about
+    15%" and the number.
+
+    THIS WAS ONLY EVER INSIDE THE GENERATOR. amazon_listing_generator.get_fees
+    had the single copy, welded to that module's MARKETPLACE / MARKETPLACE_ID
+    globals and its console, so nothing outside the generator could ask Amazon
+    what a fee would be -- which is why the Fee Tracker needed it extracted
+    rather than written a second time (CLAUDE.md Rule 12). get_fees now calls
+    this and keeps its own return shape, so its callers are unchanged.
+
+    Returns the standard blank() shape with basis=QUOTED, or a blank with no
+    basis when Amazon could not be asked. It never raises and it never falls back
+    to a percentage: a caller that wants an estimate should ask for one, because
+    silently downgrading is how a screen ends up presenting a guess as Amazon's
+    own figure.
+    """
+    out = blank()
+    p = _f(price, None) if price is not None else None
+    if not asin or p is None or p <= 0:
+        return out
+    cur = str(currency or "").upper()
+    if not cur:
+        # Only two marketplaces are in use; anything else is asked for in GBP
+        # rather than guessed, and Amazon rejects a currency that does not match
+        # the marketplace, which surfaces as an error rather than a wrong number.
+        cur = "USD" if str(marketplace).upper() in ("US", "USA") else "GBP"
+    try:
+        from sp_api.api import ProductFees
+        from sp_api.base import Marketplaces
+        mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.UK
+        api = ProductFees(credentials=creds, marketplace=mkt, timeout=30)
+        res = api.get_product_fees_estimate_for_asin(
+            asin=asin, price=p, currency=cur, is_fba=bool(is_fba),
+            marketplace_id=marketplace_id)
+        pay = res.payload if hasattr(res, "payload") else (res or {})
+        details = ((pay.get("FeesEstimateResult") or {})
+                   .get("FeesEstimate") or {}).get("FeeDetailList") or []
+    except Exception as e:
+        out["detail"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+        return out
+    referral = closing = fba = other = 0.0
+    for d in details:
+        amt = _f((d.get("FinalFee") or {}).get("Amount"))
+        ft = d.get("FeeType") or ""
+        if ft == "ReferralFee":
+            referral += amt
+        elif ft == "VariableClosingFee":
+            closing += amt
+        elif ft in ("FBAFees", "FulfillmentFees"):
+            fba += amt
+        else:
+            other += amt
+    if not details:
+        out["detail"] = "Amazon returned no fee lines for this ASIN"
+        return out
+    out.update({"referral": round(referral, 2), "closing": round(closing, 2),
+                "fba": round(fba, 2), "other": round(other, 2),
+                "total": round(referral + closing + fba + other, 2),
+                "basis": QUOTED, "currency": cur,
+                "detail": "Amazon's own quote for this ASIN at %.2f" % p})
+    return out
+
+
 def rate_for(config_path, workspace_id, marketplace, end_date=None):
     """This account's own measured referral rate, or the 15% default.
 

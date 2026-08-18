@@ -1001,6 +1001,21 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- TRACKERS ----
+     Three states, and the third is the one that matters: "not known" must not
+     look like either a pass or a failure. A reading Amazon would not give, and
+     a number with no target set, are both genuinely unjudged -- and a
+     monitoring screen that renders those as a tick is a screen that lies. */
+  .trkpill{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;
+           border-radius:999px;white-space:nowrap}
+  .trkpill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .trkpill.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .trkpill.unk{background:var(--panel2);border:1px solid var(--line);color:var(--ink3)}
+  /* Drift is signed so positive always means WORSE, whichever way round the
+     metric runs -- so one colour rule covers all four trackers. */
+  .trkbad{color:#f0928f;font-weight:600}
+  .trkgood{color:#7fd6a2;font-weight:600}
+
   .apopts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
   .appres{font-size:11px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:3px 6px;cursor:pointer}
   .apmob{display:inline-flex;gap:5px;align-items:center;font-size:11px;color:var(--muted);cursor:pointer}
