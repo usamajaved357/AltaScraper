@@ -3728,6 +3728,12 @@ def build_app(backend=None):
     import routes.leading_routes as _leading_routes
     _leading_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # Where alerts go when nobody has the app open. Nothing sends until a
+    # channel is added AND switched on, and nothing is on a timer -- posting
+    # into somebody's Slack is outward-facing and cannot be taken back.
+    import routes.notify_routes as _notify_routes
+    _notify_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                            _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

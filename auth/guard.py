@@ -56,6 +56,13 @@ RULES = [
     ("/accounts/detect_brands",         "manage_accounts"),
     ("/accounts/detect_marketplaces",   "manage_accounts"),
     ("/settings",                       "manage_accounts"),
+    # -- notification channels. Two reasons this is not the default "edit":
+    #    a channel holds a webhook URL, which is a bearer credential -- whoever
+    #    has it can post into that Slack channel forever; and enabling one makes
+    #    this app start speaking OUTSIDE itself, into a room full of people who
+    #    did not ask it to. Both are decisions for whoever runs the account, not
+    #    for anyone who happens to be able to edit a listing.
+    ("/notify",                         "manage_accounts"),
     ("/sp_diagnose",                    "manage_accounts"),
     # /diag reports where state is stored, which environment variables are set,
     # and the tail of recent server tracebacks. That is operator information --

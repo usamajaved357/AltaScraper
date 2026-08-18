@@ -159,3 +159,4 @@ image_samples/
 # asin_monitor.json. Written beside config.json via domain/jsonstore.py.
 trackers.json
 .jsonstore.*.tmp
+notify.json

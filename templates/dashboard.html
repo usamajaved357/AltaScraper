@@ -291,6 +291,10 @@
              four are the same table pointed at a different number. -->
         <div class="navitem" data-sec="trackers" onclick="navTo('trackers')" title="Watch a listing's sales rank, Buy Box price, your price or Amazon's cut, and be told when it drifts"><i class="ti ti-chart-dots"></i> Trackers</div>
         <div class="navitem" data-sec="alerts" onclick="navTo('alerts')" title="Everything currently off the target you set"><i class="ti ti-bell"></i> Alerts <span id="alr_badge" style="display:none;background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;font-weight:600"></span></div>
+        <!-- Sits with the alerts it delivers rather than under Settings: what a
+             channel is FOR is the thing above it, and a notification setup
+             filed away from its alerts is one nobody connects to them. -->
+        <div class="navitem" data-sec="notify" onclick="navTo('notify')" title="Send alerts to Slack or a webhook — nothing sends until you switch a channel on"><i class="ti ti-send"></i> Notifications</div>
       </div>
     </div>
 
@@ -1137,6 +1141,21 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- NOTIFICATIONS -- where alerts go when nobody has the app open.
+         Nothing sends until a channel is added AND switched on, and nothing is
+         on a timer: posting into somebody's Slack is outward-facing and cannot
+         be taken back, so it happens when a person asks for it. -->
+    <div id="sec_notify" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-send"></i> Notifications</h2>
+        <div class="sub">Alerts are only visible inside this app until you add somewhere for them to go. A new channel arrives switched off — send a test first, then turn it on.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="ntfLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ntf_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- LEADING INDICATORS -- yesterday against its own history, in standard
          deviations. Nothing is fetched from Amazon here: it is a new reading of
          the daily figures the app has been storing all along. -->
@@ -1549,6 +1568,8 @@
 <script src="/static/js/trackers.js?v={{ ASSET_V }}"></script>
 <!-- Yesterday against its own history, in standard deviations. -->
 <script src="/static/js/leading.js?v={{ ASSET_V }}"></script>
+<!-- Where alerts go when nobody has the app open. -->
+<script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>
