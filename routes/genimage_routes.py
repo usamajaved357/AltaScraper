@@ -54,6 +54,47 @@ import threading
 # concept path -- the one people actually use, and the one that produced the
 # invented ingredient -- did not. One copy, both paths (CLAUDE.md Rule 12).
 #
+# A LIST IS THE EASIEST PLACE TO LIE.
+#
+# The first product-free panel generated after the presence fix was an
+# ingredient board for a multivitamin, and it was a good design carrying bad
+# data. MEASURED on that image:
+#
+#   * "Magnanese", "Molybdenese", "Setassium", "Mangnesium" -- four misspelt
+#     ingredient names, sitting under a headline in perfect type
+#   * Copper, Zinc, Iodine, Inositol, Coenzyme Q10 and Alpha Lipoic Acid each
+#     printed TWICE, once in each column
+#   * a headline reading "28" above a list of considerably more than 28 rows
+#
+# The listing carried no ingredient list at all, so the model filled the layout
+# it had been given. A designed panel has a shape to satisfy, and a model asked
+# for two columns WILL produce two full columns whether or not it has the facts.
+#
+# So the rule is that the SHAPE gives way to the FACTS, never the other way
+# round -- and it is general, because the same panel is a spec table for a tool
+# and a materials list for a bench.
+_LIST_RULES = (
+    "\nIF THE IMAGE CONTAINS A LIST, TABLE OR SET OF CALLOUTS:\n"
+    "- Every entry must come from the product details above. If there are only "
+    "six real entries, show six. NEVER pad a column, a grid or a layout to make "
+    "it look full -- a short honest list beats a full invented one, and "
+    "inventing a plausible-looking name is the worst outcome of all.\n"
+    "- COUNT THE ITEMS FIRST, THEN CHOOSE THE LAYOUT. Four facts get four "
+    "slots, not a six-slot grid with two repeated. Never pick a grid shape and "
+    "then find things to put in it -- that is how the same label ends up "
+    "printed three times, which is what a buyer notices before anything else "
+    "on the image.\n"
+    "- NO entry may appear twice anywhere in the image. Read back every label "
+    "you have drawn and check for repeats before finishing.\n"
+    "- If a headline states a COUNT, the number of entries shown must equal it "
+    "exactly. If you cannot show that many real entries, change the headline "
+    "rather than the list.\n"
+    "- Spell every entry exactly as the product details spell it. These are "
+    "proper names and a near-miss reads as a counterfeit.\n"
+    "- If the details do not contain enough to fill a list at all, do not draw "
+    "a list: use the space for one clear statement instead.\n")
+
+
 # Generic on purpose: it governs every product in every category, so it
 # constrains the KIND of statement rather than any particular claim.
 _IMAGE_TEXT_RULES = (
@@ -74,7 +115,18 @@ _IMAGE_TEXT_RULES = (
     "leaving the panel shorter.\n"
     "- NO invented awards, badges, seals, certifications, ratings or logos.\n"
     "- Every word must be spelled correctly and rendered completely; no "
-    "clipped, overlapping or half-drawn characters.\n")
+    "clipped, overlapping or half-drawn characters.\n"
+    # MEASURED: the brief writes a bullet as "+ Formulated for athletes", and the
+    # model drew a green '+' marker above the line AND kept the '+' at the front
+    # of the text. The bullet character in the brief is punctuation describing the
+    # list, not a word to be typeset.
+    "- A leading bullet character in the brief (+, -, *, or a dot) marks where a "
+    "line starts; it is NOT part of the words. Draw the marker OR the character, "
+    "never both, and never print the raw character at the front of a line that "
+    "already has a drawn bullet.\n"
+    + _LIST_RULES)
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -123,14 +175,50 @@ _PRESENCE_RULES = {
         "evidence -- and putting the product in it would waste the one slot "
         "that can say something the photographs cannot. Build it from "
         "typography, layout and simple iconography in the brand's colours. It "
-        "must still look like it belongs beside the other images in the set."
+        "must still look like it belongs beside the other images in the set.\n"
+        "IT IS A FLAT GRAPHIC, drawn directly on the canvas. Not a photograph "
+        "of a printed panel, not a poster on a wall, not a card lying on a "
+        "surface, and above all NOT the design wrapped onto a box or package "
+        "-- asked for a graphic, models reach for a packaging mockup, and the "
+        "result is a picture of the product after all. No perspective, no 3D, "
+        "no drop shadow behind a floating panel, no mock-up.\n"
+        "THERE IS NO BOTTLE, BOX, PACK, TUB OR UNIT ANYWHERE IN THE FRAME, at "
+        "any size, in the background, blurred, in shadow, or as a silhouette. "
+        "If you find yourself placing the product somewhere in the layout, the "
+        "layout is wrong -- use the space for the message instead. Take only "
+        "the COLOURS and the type style from the brand, never its object."
     ),
 }
 
 
+# An Amazon secondary image is SQUARE, and the model does not assume so.
+#
+# The first product-free panel came back as a tall poster centred in a square
+# frame with white margins down both sides -- a good design occupying about
+# half the pixels anyone would ever see. The presence rules say what to draw;
+# nothing said what shape to draw it in.
+_SQUARE_CANVAS = (
+    "\nCANVAS: a 1:1 SQUARE. Compose for a square and FILL IT edge to edge --"
+    " the design should reach all four edges, with no letterboxed panel, no"
+    " border and no empty margin down the sides. Keep every word and the"
+    " important edges of the subject inside the middle 90%, but the BACKGROUND"
+    " and layout must run to the edge of the frame."
+    # A panel sized for facts it does not have leaves a hole. Having told it to
+    # shorten the content rather than invent, it has to be told to re-balance
+    # the layout too, or the honesty shows up as half an empty image.
+    "\nBALANCE THE WHOLE SQUARE. Whatever content there is should be sized and"
+    " spaced to use the full height as well as the full width. If there is less"
+    " to say than the layout expected, make the type larger and the spacing"
+    " more generous rather than leaving the lower half empty -- a short message"
+    " set large is confident, the same message set small above a void looks"
+    " unfinished."
+)
+
+
 def _presence_rule(presence):
     """The instruction for how much product this image should contain."""
-    return _PRESENCE_RULES.get(presence or "hero", _PRESENCE_RULES["hero"])
+    return (_PRESENCE_RULES.get(presence or "hero", _PRESENCE_RULES["hero"])
+            + _SQUARE_CANVAS)
 
 
 BRAND_UNBRANDED = "unbranded"
@@ -661,9 +749,24 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                                         product_title=title, text_provider=tprov, image_provider=iprov,
                                         image_kind=image_kind, strength=strength,
                                         target_w=_tw, target_h=_th, extra_reference=_extra_ref,
-                                        # With no photograph to read, the spec has to come
-                                        # from the listing rather than from vision.
-                                        spec_image=(product_image if not _want_ref else ""))
+                                        # NO VISION READ FOR A PRODUCT-FREE IMAGE.
+                                        #
+                                        # The reading is injected as "EXACT PRODUCT SPEC
+                                        # (reproduce the product PRECISELY from this)",
+                                        # which is an instruction to DRAW THE PRODUCT --
+                                        # and it beat the rule telling it not to.
+                                        #
+                                        # MEASURED: a concept tagged "none", whose own text
+                                        # said "no product photo", came back as a large
+                                        # bottle on a kitchen counter. Withholding the
+                                        # reference image was not enough while the spec
+                                        # block was still saying reproduce it.
+                                        #
+                                        # The facts a graphic needs -- the numbers, the
+                                        # claims, the palette -- already travel in the
+                                        # brief from the listing, which is the better
+                                        # source for them anyway.
+                                        read_product=_want_ref)
         if not res.get("ok"):
             return jsonify(res), 400
         return _imgresult(res, extra={"concept": concept})

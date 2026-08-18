@@ -206,6 +206,69 @@ truthy("the target shape is stated in words", "CANVAS AND LAYOUT" in AI)
 truthy("  named as a wide banner when it is one", "WIDE BANNER" in AI)
 truthy("  with a safe area so text never sits on the edge", "SAFE AREA" in AI)
 
+print("\n== a concept may only need facts that exist ==")
+# FOUND BY GENERATING REAL IMAGES, not by reading code. The presence work made
+# product-free panels possible, and the first one was an ingredient board for a
+# product whose listing carries NO ingredient list -- the catalogue gives title,
+# attributes and images and nothing else. Three attempts, three failures:
+#   1. invented and duplicated names: "Magnanese", "Setassium", Copper twice
+#   2. outright noise: "SPORTPRFIBS", "MUTERIBL", plus empty white bars
+#   3. only once the STRATEGIST was stopped from proposing it did it come right
+# No amount of "do not invent" fixes this: a layout has a shape to fill, and a
+# model given a shape and no facts fills it with something.
+truthy("the strategist is told what the facts can fill", "_FACTS_BRIEF" in AI)
+truthy("  and must NAME the values a data image will print", '"facts_used"' in AI)
+truthy("  and propose something else when it cannot",
+       "the concept is not available for this product" in AI)
+truthy("  never a layout implying more facts than exist",
+       "promises four columns of content" in AI)
+# The downstream half: if a list IS drawn, it may not be padded or duplicated.
+truthy("a list may not be padded to look full", "_LIST_RULES" in RT)
+truthy("  no entry twice", "NO entry may appear twice" in RT)
+# MEASURED on the fifth generation: four real categories, but the model chose a
+# SIX-slot grid and filled the two spare slots by printing "HERBS" twice more.
+# The instruction not to pad was already there; what was missing was the order
+# of operations -- count, then choose the layout, never the reverse.
+truthy("  the item count decides the layout, not the reverse",
+       "COUNT THE ITEMS FIRST" in RT)
+truthy("  a stated count must match what is shown",
+       "the number of entries shown must equal it" in RT)
+truthy("  and no list at all beats an invented one",
+       "do not draw" in RT and "one clear statement instead" in RT)
+
+print("\n== punctuation in the brief is not text to typeset ==")
+# MEASURED on the sixth generation: the brief wrote its bullets as "+ Formulated
+# for athletes", and the model drew a green '+' marker above the line AND kept
+# the '+' at the front of the words. The bullet describes the list; it is not
+# part of the sentence.
+truthy("a leading bullet is marked as punctuation",
+       "is NOT part of the words" in RT)
+truthy("  drawn once, never twice", "never both" in RT)
+
+print("\n== a product-free image is a graphic, not a package mockup ==")
+# Attempt 2 obeyed "no product" by wrapping the design onto a 3D box -- which
+# is a picture of the product after all, by another route.
+truthy("it must be flat, drawn on the canvas", "IT IS A FLAT GRAPHIC" in RT)
+truthy("  and explicitly not a packaging mockup",
+       "NOT the design wrapped onto a box" in RT)
+truthy("  nor a photograph of a printed panel",
+       # Split across concatenated literals, so matched in the half that
+       # survives the join.
+       "Not a photograph " in RT and "of a printed panel" in RT)
+
+print("\n== a secondary image fills its square ==")
+# Attempt 1 was a tall poster centred in a square frame with white margins --
+# a good design occupying half the pixels anyone would see.
+truthy("the square canvas is stated", "_SQUARE_CANVAS" in RT)
+truthy("  and must reach all four edges", "FILL IT edge to edge" in RT)
+# Having told it to shorten content rather than invent, the layout has to
+# re-balance or the honesty shows up as half an empty image.
+truthy("  using the full height too", "BALANCE THE WHOLE SQUARE" in RT)
+truthy("  by setting the type larger rather than leaving a void",
+       "make the type larger" in RT)
+truthy("every presence rule carries the canvas",
+       "+ _SQUARE_CANVAS" in RT)
+
 print("\n== a phone gets its own composition, not the desktop squeezed ==")
 #     "in premium aplus content there is mobile version and desktop version but
 #      app is not making separate diensions content"

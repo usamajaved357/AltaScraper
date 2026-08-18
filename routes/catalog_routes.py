@@ -12,6 +12,35 @@ _INCLUDED_FULL = ["summaries", "images", "attributes", "productTypes", "salesRan
                   "dimensions", "identifiers"]
 _INCLUDED_MIN = ["summaries", "productTypes", "images"]
 
+# HOW MUCH OF AN ATTRIBUTE IS WORTH KEEPING.
+#
+# Every attribute used to be cut at 300 characters, which is generous for a
+# colour and destroys an ingredient list. It is where the image generator's
+# invented ingredients came from: asked for a panel of 28, it was handed a list
+# truncated mid-word after about fourteen and filled in the rest.
+#
+# The listing had them all along. This cap was hiding them.
+#
+# These are the fields where the VALUE IS THE WHOLE OF IT -- a list, a set of
+# instructions, a warning. Shortening one does not shorten the answer, it
+# falsifies it, and every one of them is something an image or a bullet may
+# legitimately need to quote in full.
+_LONG_FIELDS = {
+    "ingredients", "bullet_point", "product_description", "directions",
+    "safety_warning", "special_ingredients", "legal_disclaimer",
+    "material", "material_feature", "specific_uses_for_product",
+    "item_type_keyword", "style_keyword", "usage_instructions",
+    "care_instructions", "warranty_description", "included_components",
+    "specification_met", "compliance_media", "unit_count",
+}
+_LONG_CAP = 4000        # a full ingredient panel, comfortably
+_SHORT_CAP = 300        # unchanged for everything else
+
+
+def _cap_for(key):
+    """How many characters of this attribute to keep."""
+    return _LONG_CAP if str(key or "").strip().lower() in _LONG_FIELDS else _SHORT_CAP
+
 
 def register(app, *, _cfg, _state, CONFIG_PATH):
 
@@ -114,7 +143,19 @@ def register(app, *, _cfg, _state, CONFIG_PATH):
                 if v is not None and str(v).strip() and str(v) not in vals:
                     vals.append(str(v).strip())
             if vals:
-                attributes[k] = " | ".join(vals)[:300]
+                # THE CAP IS PER FIELD, because 300 characters is the right
+                # size for a colour and completely wrong for an ingredient list.
+                #
+                # Everything used to be cut at 300. That is where the image
+                # generator's invented ingredients came from: the panel asked
+                # for 28 and was handed a list truncated mid-word after about
+                # fourteen, so the model filled the rest -- "Magnanese",
+                # "Setassium", "Molybdenese". The data was in the listing the
+                # whole time; this line was hiding it.
+                #
+                # These are the fields whose VALUE IS THE WHOLE OF IT: cutting
+                # them short does not shorten the answer, it falsifies it.
+                attributes[k] = " | ".join(vals)[:_cap_for(k)]
         for sk, dest in (("manufacturer", "manufacturer"), ("modelNumber", "model_number"),
                          ("colorName", "color"), ("size", "size"), ("styleName", "style"),
                          ("packageQuantity", "package_quantity")):
