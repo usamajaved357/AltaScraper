@@ -16,8 +16,22 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
 
     @app.route("/aplus/modules", methods=["GET"])
     def aplus_modules():
-        """Return the A+ module catalog (basic + premium) with exact dimensions."""
-        return jsonify({"ok": True, "modules": _APLUS_MODULES})
+        """The A+ module catalog (basic + premium) with exact dimensions.
+
+        A module carrying a `mobile` size can be generated twice -- once for
+        each screen -- and the mobile one is COMPOSED for a phone rather than
+        being the desktop asset scaled down.
+        """
+        try:
+            import dashboard as _dash
+            note = getattr(_dash, "APLUS_MOBILE_IS_ASSUMED", "")
+        except Exception:
+            note = ""
+        return jsonify({"ok": True, "modules": _APLUS_MODULES,
+                        # Said out loud rather than left to be discovered: the
+                        # desktop figures are Amazon's published ones, the
+                        # mobile default is this app's (CLAUDE.md Rule 4).
+                        "mobile_size_note": note})
 
 
     @app.route("/aplus/generate", methods=["POST"])
@@ -53,10 +67,31 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         if not mod:
             return jsonify({"ok": False, "error": "Unknown A+ module."}), 404
 
+        # WHICH SCREEN THIS ONE IS FOR. A module that declares a mobile size can
+        # be generated twice, and the mobile one is COMPOSED for a phone rather
+        # than being the desktop asset squeezed into a narrow column -- a
+        # headline sized to read across 1464px is a few pixels tall on a phone.
+        viewport = (b.get("viewport", "desktop") or "desktop").lower()
+        _mob = mod.get("mobile") or {}
+        if viewport == "mobile" and _mob:
+            _w, _h = int(_mob["w"]), int(_mob["h"])
+        else:
+            viewport = "desktop"
+            _w, _h = int(mod["w"]), int(mod["h"])
+
         brief = (
             f"Design an Amazon A+ Content module: '{mod['name']}'. {mod['desc']} "
-            f"EXACT output size: {mod['w']}x{mod['h']} pixels (aspect ratio {mod['w']}:{mod['h']}). "
-            "Follow the 70% visual / 30% text rule, keep text short and readable on mobile, premium and clean. "
+            f"EXACT output size: {_w}x{_h} pixels (aspect ratio {_w}:{_h}). "
+            "Follow the 70% visual / 30% text rule, premium and clean. "
+            + ("THIS IS THE MOBILE RENDITION, read on a phone in a narrow "
+               "column. It carries the SAME message as the desktop version and "
+               "is composed differently for it: far larger type, fewer words, "
+               "elements STACKED vertically rather than side by side, and the "
+               "subject bigger in frame. Do not lay it out wide and expect it "
+               "to be legible small. "
+               if viewport == "mobile" else
+               "Text must still be readable when this is scaled down on a "
+               "phone. ")
             + (f"Seller's instruction: {instruction}. " if instruction else "")
             + (f"Benefit(s) to feature: {benefit_text}. " if benefit_text else "")
         )
@@ -94,21 +129,31 @@ def register(app, *, _APLUS_MODULES, _cfg, _load_img_instructions, _imgresult):
         enh = ai_providers.enhance_prompt(_cfg(), brief, title, provider=tprov, image_kind="aplus")
         if not enh.get("ok"):
             return jsonify({"ok": False, "error": "Prompt stage: " + enh.get("error", "")}), 400
-        detailed = enh["prompt"] + f"\n\nIMPORTANT: output the image at exactly {mod['w']}x{mod['h']} pixels."
-        _ar = ai_providers._closest_aspect_ratio(mod["w"], mod["h"])
+        # _w/_h, not mod["w"]/mod["h"] -- these three lines decide the shape that
+        # is asked for and the shape it is cut to, so a mobile rendition built
+        # from the desktop numbers would be the desktop image again.
+        detailed = enh["prompt"] + (
+            f"\n\nIMPORTANT: output the image at exactly {_w}x{_h} pixels."
+            "\nKeep every word and every important edge inside the middle 88% "
+            "of the frame. Text against the edge is how one of these gets "
+            "ruined.")
+        _ar = ai_providers._closest_aspect_ratio(_w, _h)
         gen = ai_providers.generate_image(_cfg(), detailed, reference_image=product_image,
                                           provider=iprov, strength=_strength,
                                           aspect_ratio=_ar, image_size="4K",
                                           extra_reference=product_image)
         if not gen.get("ok"):
             return jsonify({"ok": False, "error": "Image stage: " + gen.get("error", "")}), 400
-        # EXACT-DIMENSION RESIZE: the model returns ~square 4K regardless of the prompt;
-        # cover-crop + resize to the module's exact Amazon pixels so it's not rejected.
+        # EXACT DIMENSIONS. The model returns a roughly square image whatever it
+        # is asked for, so this is what makes it uploadable. It no longer
+        # cover-crops a large mismatch -- doing that discarded 59% of the height
+        # on a premium banner and cut every headline in half.
         if gen.get("image_b64"):
             try:
-                gen["image_b64"] = ai_providers._resize_to_exact(gen["image_b64"], int(mod["w"]), int(mod["h"]))
+                gen["image_b64"] = ai_providers._resize_to_exact(gen["image_b64"], _w, _h)
                 gen["mime"] = "image/png"
-                gen["resized_to"] = f"{mod['w']}x{mod['h']}"
+                gen["resized_to"] = f"{_w}x{_h}"
+                gen["viewport"] = viewport
             except Exception as _re:
                 gen["resize_error"] = str(_re)[:120]
 

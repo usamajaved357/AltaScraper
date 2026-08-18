@@ -206,6 +206,34 @@ truthy("the target shape is stated in words", "CANVAS AND LAYOUT" in AI)
 truthy("  named as a wide banner when it is one", "WIDE BANNER" in AI)
 truthy("  with a safe area so text never sits on the edge", "SAFE AREA" in AI)
 
+print("\n== a phone gets its own composition, not the desktop squeezed ==")
+#     "in premium aplus content there is mobile version and desktop version but
+#      app is not making separate diensions content"
+AP = open(r"D:\AltaScraper\routes\aplus_routes.py", encoding="utf-8-sig").read()
+_prem = {m["id"]: m for m in (_dash._APLUS_MODULES.get("premium") or [])}
+truthy("the full-width premium banner declares a mobile size",
+       (_prem.get("premium_full") or {}).get("mobile"))
+truthy("  and so does the premium header",
+       (_prem.get("premium_header") or {}).get("mobile"))
+truthy("the route can be asked for either screen", 'b.get("viewport"' in AP)
+truthy("  and the mobile one is COMPOSED for a phone",
+       "THIS IS THE MOBILE RENDITION" in AP)
+truthy("  stacked rather than laid out wide", "STACKED vertically" in AP)
+# THE TRAP: asking for mobile but still cutting to the desktop numbers would
+# quietly produce the desktop image again.
+check("the desktop size is not used to cut the mobile image",
+      'mod["w"]' in AP.split("def aplus_generate")[-1].split("_resize_to_exact")[-1][:200],
+      False)
+truthy("  the chosen size is what is asked for and cut to",
+       "_resize_to_exact(gen[\"image_b64\"], _w, _h)" in AP)
+truthy("  and the result says which screen it is for", 'gen["viewport"]' in AP)
+# RULE 4: the desktop figures are Amazon's; the mobile default is ours, and
+# saying so is the difference between a default and a claim.
+truthy("the mobile size is declared an assumption, not an Amazon figure",
+       "APLUS_MOBILE_IS_ASSUMED" in open(r"D:\AltaScraper\dashboard.py",
+                                         encoding="utf-8-sig").read())
+truthy("  and that is sent to the screen", "mobile_size_note" in AP)
+
 print("\n== what the image may SAY is checked on both paths ==")
 # This lived on the hand-built role path only -- and the strategist path, the
 # one people actually use, had no guard at all. It is what produced
