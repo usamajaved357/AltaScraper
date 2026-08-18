@@ -996,6 +996,7 @@ function navTo(sec){
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
     if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
     if(sec==="sellerimport"){ if(typeof sellerImportOnOpen==="function") sellerImportOnOpen(); }
+    if(sec==="inventory"){ if(typeof stockOnOpen==="function") stockOnOpen(); }
     _mark();
   }
   altaSyncUrl();

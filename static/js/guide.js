@@ -16,6 +16,62 @@
 // only step that reaches the live catalogue.
 
 const GUIDES = {
+  // THE STOCK COCKPIT. Written around the one thing that is genuinely different
+  // here from every other inventory tool: these listings are merchant-fulfilled,
+  // so "units" is a promise rather than a warehouse count, and the number that
+  // decides whether a low one matters is how fast the SUPPLIER can send more.
+  stock: {
+    title: "Inventory — how this page works",
+    lead: "What you have, how fast it is going, and whether you can get more "
+        + "before it runs out. It reads what the app already knows and changes "
+        + "nothing on Amazon.",
+    steps: [
+      {n: "1", h: "Read the headline first",
+       b: "It names the product that runs out soonest and the date it happens. "
+        + "That is the one thing on this screen worth acting on today.<br><br>"
+        + "The three cards beside it are the money: what you stand to lose if "
+        + "nothing is ordered, what the stock you hold cost you, and how many "
+        + "days of cover you have on average."},
+      {n: "2", h: "Know what “units” means here",
+       b: "It is the quantity on your Amazon listing — <b>what you have "
+        + "promised</b>, not what is in a warehouse. Every listing on these "
+        + "accounts is merchant-fulfilled: there is no FBA stock, and the item "
+        + "is bought from the supplier when an order arrives.<br><br>"
+        + "So a listing showing 4 units is a promise to supply four, and the "
+        + "question is whether four can be sourced in time."},
+      {n: "3", h: "Cover against restock is the whole judgement",
+       b: "<b>Cover</b> is how many days the listed quantity lasts at the rate "
+        + "it has been selling. <b>Restock</b> is how long your fastest usable "
+        + "supplier takes to dispatch, plus the safety buffer.<br><br>"
+        + "A product is flagged when cover is shorter than restock — it will "
+        + "run out before more can arrive. That is why 6 days of cover can be "
+        + "fine on one product and urgent on another."},
+      {n: "4", h: "Fill the gaps the review queue names",
+       b: "A row with no cost cannot be valued. A row with no supplier gets an "
+        + "assumed restock time and says so with a “?”. A row with no sales in "
+        + "the window has no rate, so it has no cover — that is honest rather "
+        + "than a zero.<br><br>"
+        + "Costs go on the Costs sheet on the Listings screen. Suppliers go in "
+        + "the Repricer. Both feed straight back into this page."},
+    ],
+    notes: [
+      "<b>Sold / day</b> is units sold over the last 30 days divided by 30 — "
+      + "Orbit's own definition. A product whose entire history falls inside "
+      + "that window is marked <i>new</i>, because two sales in three days is "
+      + "not two thirds of a sale a day sustained.",
+      "<b>Cover</b> is Orbit's DOS: units divided by the daily rate. No sales "
+      + "means no cover at all, never infinite cover.",
+      "<b>Revenue at risk</b> is a forecast and is the only figure here that "
+      + "is: for each product that runs out before more can arrive, the sales "
+      + "it would have made during the gap. It is not the value of the product.",
+      "<b>The five states</b> — safe, watch, order soon, order now, stockout "
+      + "likely — are Orbit's names in Orbit's order, healthiest to most "
+      + "urgent. The thresholds are ours: multiples of the restock time rather "
+      + "than a fixed number of days, because a supplier who ships next day "
+      + "needs far less warning than one who takes ten.",
+      "Nothing on this page writes anything or contacts Amazon. It is a view.",
+    ],
+  },
   // "give a button on the top of the page which explains how do this page works
   //  and what the information means etc etc."
   //

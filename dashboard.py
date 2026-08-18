@@ -3500,7 +3500,12 @@ def build_app(backend=None):
                                _parse_uplift_csv=_parse_uplift_csv,
                                _fetch_fba_inventory_via_spapi=_fetch_fba_inventory_via_spapi,
                                _num=_num, _INV_OUT_DIR=_INV_OUT_DIR, _inv2_cache=_inv2_cache,
-                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS, _cfg=_cfg)
+                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS, _cfg=_cfg,
+                               # The stock cockpit needs to know which account is
+                               # open and where the database is; the FBA
+                               # replenishment routes above never did.
+                               CONFIG_PATH=CONFIG_PATH, _state=_state,
+                               _active_account=_active_account)
     import routes.optimize_routes as _optimize_routes
     _optimize_routes.register(app, _state=_state, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH,
                               _build_patches=_build_patches, _require_publish=_require_publish)

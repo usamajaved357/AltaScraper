@@ -1,0 +1,417 @@
+/* ============ THE STOCK COCKPIT ============
+ *
+ *   "now start building the inventory feature same like orbit in our app"
+ *
+ * Orbit's Inventory Cockpit, rebuilt on this app's own data. The arithmetic and
+ * every rule live in domain/inventory_view.py; nothing is worked out here. This
+ * file draws what the server sends and nothing else -- which is why the headline
+ * and the table can never disagree, a fault this app has had to fix on three
+ * other screens.
+ *
+ * WHAT IS THE SAME AS ORBIT, AND WHAT IS NOT
+ *
+ * Same: the shape of the screen (a banner that states the one urgent fact, then
+ * four counts, then a per-SKU ledger), the five state names in Orbit's own order
+ * -- safe, watch, order soon, order now, stockout likely -- and its measured
+ * card sizes, weights and colours (see .stk- in dashboard.css).
+ *
+ * Not the same, deliberately: Orbit's headline unit is "network units = FBA +
+ * AWD + 3PL + verified inbound". Measured across all six accounts on 18 Aug
+ * 2026, this seller has ZERO FBA units -- everything is merchant-fulfilled and
+ * bought from an eBay supplier when an order lands. Copying those four columns
+ * would give three permanently empty ones and a fourth whose heading lies.
+ *
+ * So the question changes to the one that matters here: when an order arrives,
+ * can it be sourced before the promise is broken? The repricer has been
+ * recording every supplier's dispatch time for weeks, so that is answerable --
+ * and it is something Orbit cannot do at all, having no supplier data.
+ */
+
+let STOCK = {rows: [], cockpit: null, counts: {}, legend: [], filter: "",
+             q: "", sort: "status", dir: 1, loading: false};
+
+function _skEsc(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function _skSym(){
+  try{ return (typeof CUR_SYMBOL !== "undefined" && CUR_SYMBOL) || ""; }
+  catch(e){ return ""; }
+}
+function _skMoney(v){
+  if(v === null || v === undefined || v === "") return "—";
+  return _skSym() + Number(v).toLocaleString(undefined,
+    {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+/* Orbit writes big money as "$141K". Same rule: thousands get a K, and only
+   above 10,000 -- "9.4K" hides more than it saves. */
+function _skShort(v){
+  if(v === null || v === undefined) return "—";
+  const n = Number(v);
+  if(Math.abs(n) >= 10000) return _skSym() + (n / 1000).toFixed(0) + "K";
+  return _skMoney(n);
+}
+function _skNum(v){
+  return (v === null || v === undefined) ? "—"
+       : Number(v).toLocaleString();
+}
+function _skDate(iso){
+  if(!iso) return "—";
+  // Built by hand rather than with toLocaleDateString, which follows the
+  // machine's locale -- a server set to another language prints a month name
+  // the owner does not read. Same rule as domain/order_sources.py.
+  const m = ["Jan","Feb","Mar","Apr","May","Jun",
+             "Jul","Aug","Sep","Oct","Nov","Dec"];
+  const p = String(iso).split("-");
+  if(p.length !== 3) return String(iso);
+  return Number(p[2]) + " " + (m[Number(p[1]) - 1] || "?");
+}
+/* The state's css class. The server sends Orbit's words ("order soon"); the
+   stylesheet wants one token. */
+const _SK_CLS = {"safe": "safe", "watch": "watch", "order soon": "soon",
+                 "order now": "now", "stockout likely": "out",
+                 "unknown": "unknown"};
+
+function stockOnOpen(){ if(!STOCK.rows.length) stockLoad(); }
+
+async function stockLoad(force){
+  const host = document.getElementById("stockwrap");
+  if(!host) return;
+  if(STOCK.loading) return;
+  STOCK.loading = true;
+  if(force || !STOCK.rows.length) host.innerHTML = _skSkeleton();
+  let j = null;
+  try{
+    const qs = [];
+    try{
+      if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+        qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+      if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+        qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
+    }catch(e){}
+    j = await (await fetch("/inventory/stock"
+      + (qs.length ? "?" + qs.join("&") : ""))).json();
+  }catch(e){
+    host.innerHTML = '<div class="odp-note warn" style="padding:14px">'
+      + 'Could not load the stock view: ' + _skEsc(String(e)) + '</div>';
+    STOCK.loading = false;
+    return;
+  }finally{ STOCK.loading = false; }
+
+  if(!j || !j.ok){
+    host.innerHTML = '<div class="odp-note warn" style="padding:14px">'
+      + _skEsc((j && j.error) || "Could not load the stock view") + '</div>';
+    return;
+  }
+  STOCK.rows = j.rows || [];
+  STOCK.cockpit = j.cockpit || null;
+  STOCK.counts = j.counts || {};
+  STOCK.legend = j.legend || [];
+  STOCK.note = j.note || "";
+  STOCK.assumedLead = j.assumed_lead_days;
+  stockRender();
+}
+
+/* The loading state is the shape of the real thing, so nothing jumps when the
+   data lands. Orbit shimmers its skeletons (_skeletonShimmer_guoor_1); so does
+   this, and both stop under prefers-reduced-motion. */
+function _skSkeleton(){
+  const card = '<div class="stk-card"><div class="stk-skel" style="height:12px;'
+             + 'width:70%"></div><div class="stk-skel" style="height:24px;'
+             + 'width:50%"></div><div class="stk-skel" style="height:11px;'
+             + 'width:85%"></div></div>';
+  return '<div class="stock">'
+    + '<div class="stk-banner"><div class="stk-bannermain">'
+    + '<div class="stk-skel" style="height:11px;width:120px;margin-bottom:8px"></div>'
+    + '<div class="stk-skel" style="height:32px;width:60%;margin-bottom:8px"></div>'
+    + '<div class="stk-skel" style="height:13px;width:80%"></div></div>'
+    + '<div class="stk-bannercards">' + card + card + card + '</div></div>'
+    + '<div class="stk-grid">' + card + card + card + card + '</div></div>';
+}
+
+function stockRender(){
+  const host = document.getElementById("stockwrap");
+  if(!host) return;
+  const c = STOCK.cockpit;
+  if(!c){ host.innerHTML = ""; return; }
+  if(!STOCK.rows.length){
+    host.innerHTML = '<div class="odp-note" style="padding:16px;'
+      + 'border:1px dashed var(--line);border-radius:10px">'
+      + _skEsc(STOCK.note || "Nothing to show yet.") + '</div>';
+    return;
+  }
+  host.innerHTML = '<div class="stock">' + _skBanner(c) + _skCards(c)
+                 + _skFilters() + _skLedger() + _skFooter(c) + '</div>';
+}
+
+/* THE BANNER. One fact, in the largest type on the screen.
+ *
+ * Orbit leads with "141 critical ASINs need action". The same idea, but it says
+ * the PRODUCT and the DATE when there is one, because "5 need action" sends you
+ * looking and "AltaboltaVoo Ceiling Fan runs out today" does not. */
+function _skBanner(c){
+  const crit = c.critical || 0, out = c.out_now || 0;
+  const n = c.next_stockout;
+  let head, cls, sub;
+  // ALREADY OUT LEADS, because it is a fact rather than a forecast and there is
+  // nothing left to plan -- the listing is unbuyable now.
+  if(out > 0){
+    head = out + " product" + (out === 1 ? " is" : "s are") + " out of stock";
+    cls = "bad";
+  }else if(crit > 0){
+    head = crit + " product" + (crit === 1 ? "" : "s") + " need"
+         + (crit === 1 ? "s" : "") + " ordering";
+    cls = "bad";
+  }else if(c.covered_skus){
+    head = "Nothing needs ordering";
+    cls = "ok";
+  }else{
+    head = "Not enough sales to judge yet";
+    cls = "";
+  }
+  if(n && n.already_out){
+    sub = "<b>" + _skEsc(n.title || n.sku) + "</b> is showing zero and still "
+        + "selling — it cannot be bought right now."
+        + (out > 1 ? " It is the fastest-selling of the " + out + "." : "");
+  }else if(n){
+    sub = "Next to run out: <b>" + _skEsc(n.title || n.sku) + "</b> on <b>"
+        + _skDate(n.date) + "</b>"
+        + (n.cover_days !== null && n.cover_days !== undefined
+            ? " — about " + n.cover_days + " days of cover left." : ".");
+  }else{
+    sub = "No product has both a quantity and sales in the last "
+        + (c.window_days || 30) + " days, so nothing can be projected yet.";
+  }
+  return '<div class="stk-banner">'
+    + '<div class="stk-bannermain">'
+    +   '<div class="stk-eyebrow">Stock cockpit</div>'
+    +   '<h3 class="stk-headline ' + cls + '">' + _skEsc(head) + '</h3>'
+    +   '<p class="stk-sub">' + sub + '</p>'
+    + '</div>'
+    + '<div class="stk-bannercards">'
+    +   _skCard("risk", "Revenue at risk", _skShort(c.at_risk_value),
+               _skNum(c.at_risk_units) + " units at risk",
+               "A forecast, not a settled figure. For every product that runs "
+             + "out before more can arrive, the sales it would have made "
+             + "during the gap: velocity x days short x selling price. It is "
+             + "not the value of the product — losing three days of sales is "
+             + "not losing the product.")
+    +   _skCard("good", "Stock at cost", _skShort(c.value_at_cost),
+               _skNum(c.listed_units) + " units · "
+             + (c.uncosted_skus ? c.uncosted_skus + " with no cost"
+                                : "every product costed"),
+               "What the stock on your listings cost you. Orbit's rule: "
+             + "displayed units x resolved cost per unit. A product with no "
+             + "cost recorded contributes nothing and is counted separately "
+             + "rather than treated as free.")
+    +   _skCard("good", "Avg cover",
+               (c.avg_cover_days === null ? "—" : c.avg_cover_days + "d"),
+               c.covered_skus + " product" + (c.covered_skus === 1 ? "" : "s")
+             + " with sales",
+               "How many days the stock lasts at the current rate, averaged. "
+             + "Only over products that HAVE a rate — averaging in the ones "
+             + "nobody buys would describe products you are not selling.")
+    + '</div></div>';
+}
+
+function _skCard(kind, label, value, sub, help){
+  return '<div class="stk-card ' + kind + '"'
+    + (help ? ' title="' + _skEsc(help) + '"' : '') + '>'
+    + '<span class="lbl">' + _skEsc(label)
+    + (help ? ' <i class="ti ti-info-circle" style="opacity:.5"></i>' : '')
+    + '</span>'
+    + '<span class="val">' + value + '</span>'
+    + '<span class="sub">' + sub + '</span></div>';
+}
+
+function _skCards(c){
+  return '<div class="stk-grid">'
+    + _skCard("info", "Listed units", _skNum(c.listed_units),
+             c.skus + " product" + (c.skus === 1 ? "" : "s"),
+             "The quantity on your Amazon listings. NOT a warehouse count — "
+           + "these are merchant-fulfilled, so this is what has been PROMISED "
+           + "to Amazon, and the stock itself is bought when an order lands.")
+    + _skCard("cost", "Stock at cost", _skMoney(c.value_at_cost),
+             c.valued_skus + " of " + c.skus + " priced",
+             "Sum of units x cost per unit, over the products that have a "
+           + "cost recorded. Set the rest on the Costs sheet.")
+    + _skCard("risk", "Need ordering", _skNum(c.critical),
+             "order now or already out",
+             "Products whose cover is shorter than the time it takes to get "
+           + "more from the supplier. These are the ones that will break a "
+           + "delivery promise.")
+    + _skCard("risk", "Review queue", _skNum(c.review_queue),
+             "rows with something missing",
+             "Orbit's phrase: rows that are not fully safe and therefore "
+           + "deserve operator review. Here that means a missing cost, "
+           + "quantity, supplier or sales history — each one weakens the "
+           + "decision the row is asking you to make.")
+    + '</div>';
+}
+
+/* Filter by state. The counts sit on the buttons so the shape of the catalogue
+   is readable without opening anything. */
+function _skFilters(){
+  const order = ["stockout likely", "order now", "order soon", "watch", "safe",
+                 "unknown"];
+  let h = '<div class="stk-filters">'
+    + '<button class="stk-fbtn' + (STOCK.filter ? "" : " on") + '" '
+    + 'onclick="stockFilter(\'\')">All<span class="n">'
+    + STOCK.rows.length + '</span></button>';
+  order.forEach(function(k){
+    const n = STOCK.counts[k] || 0;
+    if(!n) return;
+    const meaning = (STOCK.legend.find(function(x){ return x.key === k; })
+                     || {}).meaning || "";
+    // jsArg(), not JSON.stringify: the app's own helper, because a stringified
+    // value pasted into a double-quoted attribute closes the attribute. There
+    // is a test that refuses this pattern anywhere in the app, and it caught
+    // this line.
+    h += '<button class="stk-fbtn' + (STOCK.filter === k ? " on" : "") + '" '
+      + 'title="' + _skEsc(meaning) + '" '
+      + 'onclick="stockFilter(' + jsArg(k) + ')">'
+      + _skEsc(k) + '<span class="n">' + n + '</span></button>';
+  });
+  h += '<span style="flex:1"></span>'
+    + '<input class="ed" id="stk_q" placeholder="Search SKU, ASIN or name…" '
+    + 'value="' + _skEsc(STOCK.q) + '" oninput="stockSearch(this.value)" '
+    + 'style="width:230px;padding:5px 10px;font-size:12px">'
+    + '</div>';
+  return h;
+}
+
+function stockFilter(k){ STOCK.filter = k; stockRender(); }
+function stockSearch(v){
+  STOCK.q = v || "";
+  // Only the table is redrawn, so the caret stays where it is.
+  const t = document.getElementById("stk_ledger");
+  if(t) t.outerHTML = _skLedger();
+}
+function stockSort(col){
+  if(STOCK.sort === col) STOCK.dir = -STOCK.dir;
+  else { STOCK.sort = col; STOCK.dir = 1; }
+  const t = document.getElementById("stk_ledger");
+  if(t) t.outerHTML = _skLedger();
+}
+
+function _skVisible(){
+  const q = (STOCK.q || "").trim().toLowerCase();
+  let rows = STOCK.rows.filter(function(r){
+    if(STOCK.filter && r.status !== STOCK.filter) return false;
+    if(!q) return true;
+    return (String(r.sku) + " " + String(r.asin) + " " + String(r.title))
+             .toLowerCase().indexOf(q) >= 0;
+  });
+  const key = STOCK.sort, dir = STOCK.dir;
+  const ORDER = ["safe", "watch", "order soon", "order now", "stockout likely",
+                 "unknown"];
+  rows = rows.slice().sort(function(a, b){
+    let x, y;
+    if(key === "status"){ x = ORDER.indexOf(a.status); y = ORDER.indexOf(b.status); }
+    else if(key === "product"){
+      x = String(a.title || a.sku).toLowerCase();
+      y = String(b.title || b.sku).toLowerCase();
+    }else{
+      // A missing number sorts LAST whichever way the column is pointing: an
+      // unknown cover is not the shortest cover, and putting it at the top of
+      // "most urgent" would be inventing an emergency.
+      x = a[key]; y = b[key];
+      if(x === null || x === undefined) return 1;
+      if(y === null || y === undefined) return -1;
+    }
+    if(x < y) return -dir;
+    if(x > y) return dir;
+    return 0;
+  });
+  return rows;
+}
+
+function _skHead(col, label, cls){
+  const on = STOCK.sort === col;
+  return '<th class="' + (cls || "") + '" onclick="stockSort(' + jsArg(col) + ')">'
+    + _skEsc(label)
+    + (on ? '<span class="dir">' + (STOCK.dir > 0 ? "▲" : "▼") + '</span>' : '')
+    + '</th>';
+}
+
+function _skLedger(){
+  const rows = _skVisible();
+  let h = '<div id="stk_ledger" class="card" style="padding:0;overflow:hidden">'
+        + '<table class="stk-table"><thead><tr>'
+        + _skHead("product", "Product")
+        + _skHead("listed_qty", "Units", "r")
+        + _skHead("velocity", "Sold / day", "r")
+        + _skHead("cover_days", "Cover", "r")
+        + _skHead("lead_days", "Restock", "r")
+        + _skHead("value_at_cost", "Value", "r")
+        + _skHead("status", "Status")
+        + '</tr></thead><tbody>';
+  if(!rows.length){
+    h += '<tr><td colspan="7" class="cc" style="padding:20px;text-align:center">'
+      + 'Nothing matches that.</td></tr>';
+  }
+  rows.forEach(function(r){
+    const cls = _SK_CLS[r.status] || "unknown";
+    // The bar compares cover against the restock time -- the ratio the status
+    // is decided on -- so the colour and the length always agree with the chip.
+    const ratio = (r.cover_days !== null && r.cover_days !== undefined
+                   && r.lead_days) ? (r.cover_days / r.lead_days) : null;
+    const pct = ratio === null ? 0 : Math.max(4, Math.min(100, ratio / 3 * 100));
+    const barCol = ratio === null ? "var(--line)"
+                 : ratio >= 3 ? "#34d399" : ratio >= 2 ? "#fde047"
+                 : ratio >= 1.5 ? "#fbbf24" : "#f87171";
+    h += '<tr>'
+      + '<td><div class="stk-prod">'
+      +   (r.img ? '<img class="stk-thumb" src="' + _skEsc(r.img) + '" alt="">'
+                 : '<div class="stk-thumb"></div>')
+      +   '<div class="stk-pname"><b title="' + _skEsc(r.title) + '">'
+      +   _skEsc(r.title || "(no title)") + '</b>'
+      +   '<span>' + _skEsc(r.sku) + '</span></div></div></td>'
+      + '<td class="r stk-num">' + _skNum(r.listed_qty) + '</td>'
+      + '<td class="r stk-num">'
+      +   (r.velocity === null || r.velocity === undefined ? '<span class="cc">—</span>'
+            : Number(r.velocity).toFixed(2)
+              + (r.provisional ? ' <span class="cc" title="Its whole sales '
+                 + 'history is inside this window, so the daily rate is thin. '
+                 + 'Two sales in three days is not 0.67 a day sustained.">new</span>'
+                 : ''))
+      + '</td>'
+      + '<td class="r stk-num">'
+      +   (r.cover_days === null ? '<span class="cc">—</span>'
+            : r.cover_days + 'd')
+      +   '<div class="stk-bar"><i style="width:' + pct + '%;background:'
+      +   barCol + '"></i></div></td>'
+      + '<td class="r stk-num" title="'
+      +   (r.lead_known
+            ? 'The fastest supplier that can actually be bought from: '
+              + r.dispatch_days + ' days to dispatch plus a '
+              + r.buffer_days + ' day buffer.'
+            : 'No supplier is tracked for this SKU, so ' + STOCK.assumedLead
+              + ' days is assumed. Add one in the Repricer for a real figure.')
+      +   '">' + r.lead_days + 'd'
+      +   (r.lead_known ? '' : '<span class="cc">?</span>') + '</td>'
+      + '<td class="r stk-num">' + _skMoney(r.value_at_cost) + '</td>'
+      + '<td><span class="stk-chip ' + cls + '">' + _skEsc(r.status) + '</span>'
+      +   (r.already_out
+            ? '<div style="font-size:10px;margin-top:3px;color:#fca5a5">'
+              + 'out now</div>'
+            : (r.runs_out && (r.status === "order now"
+                              || r.status === "stockout likely")
+                ? '<div class="cc" style="font-size:10px;margin-top:3px">out '
+                  + _skDate(r.runs_out) + '</div>' : ''))
+      +   ((r.gaps || []).length
+            ? '<div class="stk-gap">' + _skEsc(r.gaps.join(" · ")) + '</div>'
+            : '')
+      + '</td></tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+
+function _skFooter(c){
+  return '<div class="odp-note" style="margin-top:10px">'
+    + 'As at ' + _skDate(c.as_at) + '. Sales are the last ' + c.window_days
+    + ' days. Cover is the listed quantity divided by that rate; a product is '
+    + 'flagged when its cover is shorter than the time its supplier takes to '
+    + 'send more. Nothing here changes anything on Amazon.'
+    + '</div>';
+}
