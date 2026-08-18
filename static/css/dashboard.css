@@ -2607,6 +2607,49 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- parent and child, the way Seller Central draws it ------------------
+   "ALSO I WANT MY APP TO SHOW the parents and child relation like we have in
+    amazon."
+   The parent is a header you can open; the children sit under it, indented and
+   joined by a rule, so the relationship is visible rather than described. */
+.varfam-wrap{ margin:0 0 16px; }
+.varfam-head{ font-size:12.5px; margin:2px 0 8px; display:flex; gap:8px;
+              align-items:baseline; flex-wrap:wrap; }
+.varfam{
+  border:1px solid var(--line); border-radius:8px;
+  background:var(--panel); margin-bottom:7px; overflow:hidden;
+}
+.varfam.orphan{ border-color:var(--warn-line, #5c4528); }
+.varfam-p{
+  display:flex; align-items:center; gap:10px; padding:9px 11px;
+  cursor:pointer; min-height:46px;
+}
+.varfam-p:hover{ background:var(--panel2); }
+.varfam-p > .ti{ color:var(--ink3); font-size:15px; flex:0 0 auto; }
+.varfam-th{
+  width:34px; height:34px; flex:0 0 34px; border-radius:5px;
+  object-fit:cover; background:var(--panel2); border:1px solid var(--line);
+}
+.varfam-nm{ min-width:0; flex:1; }
+.varfam-t{
+  font-size:12.5px; font-weight:600; line-height:1.35;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.varfam-s{ font-size:11px; margin-top:1px;
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.varfam-q{ font-size:11px; color:var(--ink3); white-space:nowrap;
+           font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.varfam-q.out{ color:var(--red); }
+/* The children, indented under their parent and tied to it by a rule -- the
+   line is what makes it read as a family rather than as another list. */
+.varfam-kids{ border-top:1px solid var(--line); padding:3px 0 3px 26px;
+              background:rgba(0,0,0,.14); }
+.varfam-k{
+  display:flex; align-items:center; gap:9px; padding:6px 11px 6px 12px;
+  border-left:2px solid var(--line); margin-left:6px; min-height:40px;
+}
+.varfam-k .varfam-th{ width:30px; height:30px; flex:0 0 30px; }
+
 /* ---- the inventory pages ------------------------------------------------
    "i want each and every feature and page about the inventory and ppc, of
     orbit into my app"

@@ -22,6 +22,17 @@ from listing import variations as _var
 from routes import scope as _scope_mod
 
 
+def _skus_first(v):
+    """The first SKU out of Amazon's parentSkus/childSkus list, or ""."""
+    if isinstance(v, str):
+        return v.strip()
+    for x in (v or []):
+        x = str(x or "").strip()
+        if x:
+            return x
+    return ""
+
+
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
              _schema_for=None, _public_media_url=lambda u: ""):
     """Attach /variations/* to the app."""
@@ -144,6 +155,32 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         except Exception:
             return None
 
+    @app.route("/variations/families")
+    def variations_families():
+        """The parent/child families that already exist, as Amazon holds them.
+
+            "ALSO I WANT MY APP TO SHOW the parents and child relation like we
+             have in amazon."
+
+        Read-only, and read from the stored snapshot rather than from Amazon --
+        the relationships are collected on the pass that already visits every
+        SKU for its thumbnail, so this costs nothing and answers instantly.
+
+        Everything else on this screen CREATES a family. This is the half that
+        shows you the ones you have.
+        """
+        from domain import families as _fam
+
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        try:
+            out = _fam.for_account(CONFIG_PATH, wsid, mkt)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:300]}), 500
+        return jsonify({"ok": True, **out})
+
     @app.route("/variations/candidates")
     def variations_candidates():
         """The account's live listings, with what they vary by, for picking from."""
@@ -194,8 +231,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                         # screen can now resolve live rather than giving up.
                         "product_type": (str(it.get("product_type") or "")
                                          or types.get(sku, "")),
-                        # Already in a family? Then it is not free to join another.
-                        "parent_sku": str(it.get("parent_sku") or ""),
+                        # Already in a family? Then it is not free to join
+                        # another. This read `parent_sku` -- singular -- which
+                        # nothing has ever written, so the "already in a family"
+                        # chip on this screen has been dead since it was added.
+                        # Amazon's field is parentSkus, a LIST, and it is now
+                        # stored on the snapshot as parent_skus.
+                        "parent_sku": (_skus_first(it.get("parent_skus"))
+                                       or str(it.get("parent_sku") or "")),
                         "variation_theme": str(it.get("variation_theme") or "")})
         out.sort(key=lambda r: r["sku"])
         # An empty list has more than one cause and they need different actions.

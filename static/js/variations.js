@@ -16,7 +16,135 @@ function _vesc(s){
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function variationsOnOpen(){ VARS.picked = []; variationsLoad(""); }
+function variationsOnOpen(){ VARS.picked = []; variationsLoad(""); varFamiliesLoad(); }
+
+/* ============ THE FAMILIES YOU ALREADY HAVE ============
+ *
+ *   "ALSO I WANT MY APP TO SHOW the parents and child relation like we have in
+ *    amazon."
+ *
+ * Everything else on this screen CREATES a family. This is the half that shows
+ * the ones that exist, the way Seller Central does it: the parent as a header,
+ * its children under it, and what differs between them.
+ *
+ * Read from the stored snapshot, so it is instant and costs no Amazon call --
+ * the relationships are collected on the pass that already fetches every SKU's
+ * thumbnail. Before this they were read only by the 300-SKU full pull, into an
+ * in-memory cache a restart erased, so the app could build a family and then
+ * never show you one.
+ */
+const VARFAM = {data: null, open: {}, loading: false};
+
+async function varFamiliesLoad(){
+  VARFAM.loading = true;
+  varFamiliesRender();
+  try{
+    const j = await (await fetch("/variations/families")).json();
+    VARFAM.data = (j && j.ok) ? j : {error: (j && j.error) || "Could not read them."};
+  }catch(e){
+    VARFAM.data = {error: "Could not read them: " + e};
+  }
+  VARFAM.loading = false;
+  varFamiliesRender();
+}
+
+function varFamilyToggle(sku){
+  VARFAM.open[sku] = !VARFAM.open[sku];
+  varFamiliesRender();
+}
+
+function varFamiliesRender(){
+  const host = document.getElementById("varfamilies");
+  if(!host) return;
+  const d = VARFAM.data;
+  if(VARFAM.loading && !d){
+    host.innerHTML = '<div class="cc" style="padding:10px 2px">'
+      + 'Reading your families…</div>';
+    return;
+  }
+  if(!d) { host.innerHTML = ""; return; }
+  if(d.error){
+    host.innerHTML = '<div class="odp-note warn" style="padding:11px 13px">'
+      + _vesc(d.error) + '</div>';
+    return;
+  }
+
+  // A ZERO NEEDS ITS DENOMINATOR. "No families" means one thing when every SKU
+  // has been asked about and something else when none have -- Amazon only says
+  // who a SKU's parent is when that SKU has been read individually, and the
+  // refresher works through the catalogue a batch at a time.
+  const known = d.relationships_known_for || 0, counted = d.counted || 0;
+  if(!d.family_count){
+    host.innerHTML = '<div class="odp-note" style="padding:11px 13px">'
+      + (known >= counted && counted
+          ? '<b>No variation families yet.</b> Every listing here stands on its '
+            + 'own. Use the steps below to join some.'
+          : '<b>Nothing to show yet.</b> Amazon only says which listing is a '
+            + 'parent when that listing has been read individually, and '
+            + _vesc(String(known)) + ' of ' + _vesc(String(counted))
+            + ' have been so far. Press Sync on the Listings screen and come '
+            + 'back.')
+      + '</div>';
+    return;
+  }
+
+  let h = '<div class="varfam-head">'
+    + '<b>Your variation families</b> '
+    + '<span class="cc">' + d.family_count + ' famil'
+    + (d.family_count === 1 ? 'y' : 'ies') + ' · '
+    + d.in_family + ' of ' + counted + ' listings are in one</span></div>';
+
+  (d.families || []).forEach(function(f){
+    const open = !!VARFAM.open[f.parent_sku];
+    const p = f.parent || {};
+    const title = _vesc(p.title || f.parent_sku);
+    h += '<div class="varfam' + (f.orphan ? ' orphan' : '') + '">'
+      + '<div class="varfam-p" onclick="varFamilyToggle(' + jsArg(f.parent_sku) + ')">'
+      + '<i class="ti ti-chevron-' + (open ? 'down' : 'right') + '"></i>'
+      + (p.img ? thumbImg(p.img, 34, {cls: "varfam-th"})
+               : '<span class="varfam-th"></span>')
+      + '<div class="varfam-nm">'
+      +   '<div class="varfam-t">' + title + '</div>'
+      +   '<div class="cc varfam-s">' + _vesc(f.parent_sku)
+      +     (f.theme ? ' · differs by ' + _vesc(f.theme.toLowerCase()) : '')
+      +     ' · ' + f.child_count + ' child' + (f.child_count === 1 ? '' : 'ren')
+      +     ' · ' + f.in_stock_children + ' in stock'
+      +   '</div>'
+      + '</div>'
+      // The parent is not buyable on Amazon -- it holds the family, the children
+      // hold the price and the stock. Said, because a parent with no quantity
+      // looks broken if you do not know that.
+      + (f.orphan
+          ? '<span class="db-chip" style="color:var(--warn)" title="These '
+            + 'listings name a parent that is not in this account. Usually a '
+            + 'listing built against another seller’s parent, or a parent '
+            + 'that was deleted.">parent not here</span>'
+          : '<span class="cc varfam-q">parent — not sold on its own</span>')
+      + '</div>';
+
+    if(open){
+      h += '<div class="varfam-kids">';
+      (f.children || []).forEach(function(c){
+        const q = (c.qty === "" || c.qty === null || c.qty === undefined)
+                ? null : Number(c.qty);
+        h += '<div class="varfam-k">'
+          + (c.img ? thumbImg(c.img, 30, {cls: "varfam-th"})
+                   : '<span class="varfam-th"></span>')
+          + '<div class="varfam-nm">'
+          +   '<div class="varfam-t">' + _vesc(c.title || c.sku) + '</div>'
+          +   '<div class="cc varfam-s">' + _vesc(c.sku)
+          +     (c.asin ? ' · ' + _vesc(c.asin) : '') + '</div>'
+          + '</div>'
+          + '<span class="varfam-q' + (q === 0 ? ' out' : '') + '">'
+          + (q === null ? '—' : (q + ' in stock')) + '</span>'
+          + '</div>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+  });
+  host.innerHTML = h;
+}
 
 async function variationsLoad(q){
   const host = document.getElementById("varbody");
@@ -66,6 +194,11 @@ function variationsRender(q){
   // above, at the top of _varSteps(), which is a different function that
   // returns its own string.
   let h = "";
+
+  // THE FAMILIES THAT ALREADY EXIST, above the wizard that makes new ones.
+  // Its own host element so it can be redrawn on its own -- expanding a family
+  // must not rebuild the picker underneath and lose what is ticked.
+  h += '<div id="varfamilies" class="varfam-wrap"></div>';
 
   // WHAT THIS SCREEN IS, before what to do on it.
   //
@@ -157,6 +290,9 @@ function variationsRender(q){
   });
   h += '</div>';
   host.innerHTML = h;
+  // The families panel lives inside the markup just replaced, so it has to be
+  // drawn again. Its DATA is not re-fetched -- only the markup was lost.
+  varFamiliesRender();
 }
 
 let _varTimer=null;

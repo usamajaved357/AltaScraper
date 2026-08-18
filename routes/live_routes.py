@@ -323,7 +323,15 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                     try:
                         resp = li.get_listings_item(seller, sku,
                                                     marketplaceIds=[mid] if mid else None,
-                                                    includedData="summaries,issues,fulfillmentAvailability,attributes")
+                                                    # relationships costs nothing extra: it rides on
+                                                    # the getListingsItem call this loop already
+                                                    # makes for every SKU. It is where Amazon says
+                                                    # which SKU is a parent and which are its
+                                                    # children -- the family tree Seller Central
+                                                    # draws. Before this it was only ever read by
+                                                    # the 300-SKU full pull, into an in-memory cache
+                                                    # that a restart erased.
+                                                    includedData="summaries,issues,fulfillmentAvailability,attributes,relationships")
                         pay = resp.payload if hasattr(resp, "payload") else resp
                         summaries = (pay or {}).get("summaries", []) if isinstance(pay, dict) else []
                         issues = (pay or {}).get("issues", []) if isinstance(pay, dict) else []
@@ -389,8 +397,17 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                             _lt = live_title
                         except Exception:
                             _lt = ""
-                        if fulfillment or handling is not None or _lt:
-                            meta[sku] = {"fulfillment": fulfillment, "handling": handling, "title": _lt}
+                        # WHO THIS SKU BELONGS TO. Read through the same helper
+                        # the full pull uses, so one function decides what
+                        # Amazon's relationships block means (Rule 12).
+                        _var = _mirror_variations(pay if isinstance(pay, dict) else {})
+                        if (fulfillment or handling is not None or _lt
+                                or _var["is_parent"] or _var["is_child"]):
+                            meta[sku] = {"fulfillment": fulfillment,
+                                         "handling": handling, "title": _lt,
+                                         "variation_theme": _var["theme"],
+                                         "parent_skus": _var["parent_skus"],
+                                         "child_skus": _var["child_skus"]}
                     except Exception as _ie:
                         # A SKU that fails here used to vanish silently, so a
                         # throttled batch was indistinguishable from "Amazon has
