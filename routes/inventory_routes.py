@@ -413,11 +413,21 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
         if not rows:
             note = ("No listings are cached for %s on %s yet — press Sync on "
                     "the Listings screen and come back." % (aid, mkt))
+        try:
+            horizon = max(7, min(180, int(request.args.get("horizon") or 30)))
+        except (TypeError, ValueError):
+            horizon = 30
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
             "cockpit": _iv.cockpit(rows),
             "counts": _iv.counts(rows),
             "rows": rows,
+            # Orbit's Actions tab: what to order, how many, by when. Proposes
+            # only -- nothing here places an order or contacts a supplier.
+            "to_order": _iv.to_order(rows, horizon_days=horizon),
+            "horizon_days": horizon,
+            # Orbit's Forecasting tab: projected burn over several horizons.
+            "forecast": _iv.forecast(rows),
             # The legend travels with the data so the screen never has to keep
             # its own copy of what the five states mean.
             "legend": [{"key": k, "meaning": _iv.STATUS_MEANING[k]}
@@ -425,3 +435,50 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
             "assumed_lead_days": _iv.ASSUMED_LEAD_DAYS,
             "note": note,
         })
+
+    @app.route("/inventory/order-list.csv")
+    def inventory_order_list_csv():
+        """The order list as a spreadsheet, to work from or send to a supplier.
+
+        A SUGGESTION IN A FILE, not an order. Nothing about downloading it
+        reaches Amazon or a supplier -- see the module docstring and Rule 8.
+        """
+        import csv as _csv
+        import io as _io
+
+        from flask import Response
+
+        from domain import catalogue as _cat
+        from domain import cogs_store as _cs
+        from domain import inventory_view as _iv
+
+        aid, mkt = _scope()
+        if not aid or not mkt:
+            return jsonify({"ok": False, "error": "no account"}), 400
+        try:
+            idx = _cat.index(CONFIG_PATH, aid, mkt, include_drafts=True)
+        except Exception:
+            idx = {}
+        rows = _iv.rows(CONFIG_PATH, aid, mkt,
+                        overrides=_cs.all_overrides(CONFIG_PATH), catalogue=idx)
+        try:
+            horizon = max(7, min(180, int(request.args.get("horizon") or 30)))
+        except (TypeError, ValueError):
+            horizon = 30
+
+        cols = ["sku", "asin", "title", "units", "unit_cost", "spend",
+                "order_by", "late", "listed_qty", "velocity", "cover_days",
+                "lead_days", "lead_known", "status", "why"]
+        buf = _io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(cols)
+        for r in _iv.to_order(rows, horizon_days=horizon):
+            w.writerow(["" if r.get(c) is None else r.get(c) for c in cols])
+        name = "to-order-%s-%s.csv" % (aid or "account", mkt or "")
+        # A byte-order mark so Excel reads it as UTF-8 and a pound sign
+        # survives -- the same reason every other export in this app has one.
+        # As the escape, not a literal: see test_encoding.js.
+        return Response(
+            "\ufeff" + buf.getvalue(),
+            mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="%s"' % name})

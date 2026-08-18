@@ -1381,7 +1381,7 @@ function liveTile(it){
   // image slot — filled from the real getListingsItem image (fetched in batch after render)
   var sidv = sid(it.sku||it.asin||'');
   var imgHtml = it.img
-    ? `<img src="${esc(it.img)}" loading="lazy">`
+    ? `<img src="${esc(thumbUrl(it.img,120))}" loading="lazy" decoding="async">`
     : (it._noImg
         ? `<div class="noimgmsg"><i class="ti ti-photo-off"></i><span>No image uploaded</span></div>`
         : `<i class="ti ti-cloud-check" id="liveimg_${sidv}"></i>`);

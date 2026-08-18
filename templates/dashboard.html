@@ -551,9 +551,30 @@
     <div id="sec_ppc" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2>PPC</h2>
-        <div class="sub">Amazon Sponsored Products — campaign builder, harvest, audits, forecasts, weekly decks. Ask the agent below or use a shortcut. Every deliverable is scoped to this workspace's account and marketplace.</div></div>
+        <div class="sub">What the advertising is doing, and what it is wasting. Every figure comes from your own Search Term Report — nothing here changes a bid, a budget or a campaign.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="openGuide('ppc')"
+                title="What this page does, where the figures come from, and what each one means.">
+          <i class="ti ti-book"></i> How this page works</button>
+        <input type="file" id="ppc_report_file" accept=".csv,.tsv,.txt,.xlsx"
+               style="display:none" onchange="ppcReportUpload(this)">
+        <label class="db-chip" for="ppc_report_file" style="cursor:pointer"
+               title="Seller Central > Advertising > Measurement &amp; Reporting > Sponsored Products > Search Term Report. Nothing is sent to Amazon.">
+          <i class="ti ti-table-import"></i> Upload Search Term Report</label>
+        <button class="db-chip" onclick="ppcAnalyticsLoad(true)">
+          <i class="ti ti-refresh"></i> Refresh</button>
       </div>
 
+      <!-- PPC ANALYTICS. Orbit's advertising screens, rebuilt on a report that
+           can be downloaded from Seller Central today -- see
+           orbit_ppc_complete.md. The Advertising API is a separate OAuth this
+           app does not have, so nothing here waits for it. -->
+      <div id="ppcwrap"></div>
+
+      <details class="foldgroup" style="margin:18px 0 14px">
+        <summary><i class="ti ti-tools"></i> Campaign builder, harvester and the agent
+          <span class="cc">— the tools that MAKE things: bulk campaign files,
+          harvest and negative lists, audits and weekly decks.</span></summary>
       <div style="display:grid;grid-template-columns:340px 1fr;gap:14px;min-height:420px">
         <!-- Left: shortcut buttons -->
         <div>
@@ -590,6 +611,7 @@
           </div>
         </div>
       </div>
+      </details>
 
       <!-- Campaign-builder shortcut modal -->
       <div id="ppc_builder_modal" class="modalwrap">
@@ -1197,6 +1219,9 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- FIRST, because everything that draws a product picture calls it. One rule
+     about Amazon's image CDN, in one place (CLAUDE.md Rule 12). -->
+<script src="/static/js/thumbs.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
 <!-- One way to ask "is it done yet". BEFORE every screen that polls -- miles,
      inventory, runqueue and settings all build their pollers with altaPoller at
@@ -1216,6 +1241,9 @@
 <!-- The stock cockpit. Its own file, per CLAUDE.md Rule 7: inventory.js is the
      FBA replenishment planner and shares no code with it. -->
 <script src="/static/js/stock.js?v={{ ASSET_V }}"></script>
+<!-- PPC analytics. Its own file: ppc.js is the campaign builder and the agent,
+     and shares no code with it (CLAUDE.md Rule 7). -->
+<script src="/static/js/ppcview.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/submit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/runqueue.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/handling.js?v={{ ASSET_V }}"></script>

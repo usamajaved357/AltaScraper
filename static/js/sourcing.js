@@ -1069,7 +1069,7 @@ function _srcItemCell(item, sku){
   const pic = it.img
     ? '<span style="position:relative;flex:0 0 38px;line-height:0" title="'
       + _sesc(why) + '">'
-      + '<img src="' + _sesc(it.img) + '" loading="lazy" alt="" style="width:38px;'
+      + '<img src="' + _sesc(thumbUrl(it.img, 38)) + '" loading="lazy" decoding="async" alt="" style="width:38px;'
       + 'height:38px;object-fit:contain;background:#0d1220;border-radius:6px">'
       + (fromSupplier
           ? '<span style="position:absolute;right:-2px;bottom:-2px;'
@@ -1500,7 +1500,7 @@ async function sourcingPickerLoad(q){
       // is forty words of keywords; neither says what the thing is, and
       // enrolling the wrong one reprices it against somebody else's supplier.
       +  (it.img
-          ? '<img src="'+_sesc(it.img)+'" loading="lazy" alt="" '
+          ? '<img src="'+_sesc(thumbUrl(it.img, 38))+'" loading="lazy" decoding="async" alt="" '
             + 'style="width:38px;height:38px;object-fit:contain;background:#0d1220;'
             + 'border-radius:5px;flex:0 0 auto">'
           : '<span style="width:38px;height:38px;border-radius:5px;flex:0 0 auto;'

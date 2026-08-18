@@ -109,6 +109,9 @@ async function stockLoad(force){
   STOCK.legend = j.legend || [];
   STOCK.note = j.note || "";
   STOCK.assumedLead = j.assumed_lead_days;
+  STOCK.toOrder = j.to_order || [];
+  STOCK.forecast = j.forecast || [];
+  STOCK.horizon = j.horizon_days || 30;
   stockRender();
 }
 
@@ -141,7 +144,8 @@ function stockRender(){
     return;
   }
   host.innerHTML = '<div class="stock">' + _skBanner(c) + _skCards(c)
-                 + _skFilters() + _skLedger() + _skFooter(c) + '</div>';
+                 + _skOrderList() + _skForecast() + _skFilters() + _skLedger()
+                 + _skFooter(c) + '</div>';
 }
 
 /* THE BANNER. One fact, in the largest type on the screen.
@@ -362,7 +366,7 @@ function _skLedger(){
                  : ratio >= 1.5 ? "#fbbf24" : "#f87171";
     h += '<tr>'
       + '<td><div class="stk-prod">'
-      +   (r.img ? '<img class="stk-thumb" src="' + _skEsc(r.img) + '" alt="">'
+      +   (r.img ? thumbImg(r.img, 34, {cls: "stk-thumb", alt: ""})
                  : '<div class="stk-thumb"></div>')
       +   '<div class="stk-pname"><b title="' + _skEsc(r.title) + '">'
       +   _skEsc(r.title || "(no title)") + '</b>'
@@ -405,6 +409,120 @@ function _skLedger(){
       + '</td></tr>';
   });
   return h + '</tbody></table></div>';
+}
+
+/* WHAT TO ORDER. Orbit's Actions tab, quoted: "Primary execution system of
+ * record for Steven inventory actions."
+ *
+ * Orbit's version can EXECUTE behind approval gates. This one only ever
+ * proposes: it is a list to work from, and nothing on this page places an
+ * order, messages a supplier or touches Amazon.
+ *
+ * It sits above the ledger because it is the answer, and the ledger is the
+ * working. Somebody opening this screen wants to know what to buy.
+ */
+function _skOrderList(){
+  const rows = STOCK.toOrder || [];
+  if(!rows.length) return "";
+  let spend = 0, known = true;
+  rows.forEach(function(r){
+    if(r.spend === null || r.spend === undefined) known = false;
+    else spend += r.spend;
+  });
+  let h = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">'
+    + '<div style="padding:11px 14px;border-bottom:1px solid var(--line);'
+    + 'display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+    + '<b style="font-size:12.5px">What to order</b>'
+    + '<span class="infodot" title="Enough to cover the restock time plus '
+    + STOCK.horizon + ' days of selling, less what is already listed. This is a '
+    + 'suggestion — nothing here places an order or contacts a supplier.">i</span>'
+    + '<span class="cc" style="font-size:11.5px">' + rows.length + ' product'
+    + (rows.length === 1 ? '' : 's') + (known || spend
+        ? ' · about ' + _skMoney(spend) + (known ? '' : ' of the priced ones')
+        : '') + '</span>'
+    + '<span style="flex:1"></span>'
+    + '<a class="db-chip" style="text-decoration:none" '
+    + 'href="/inventory/order-list.csv' + _skScopeQs() + '" '
+    + 'title="The full list as a spreadsheet, to work from or send on.">'
+    + '<i class="ti ti-download"></i> Export</a>'
+    + '</div>'
+    + '<table class="stk-table"><thead><tr>'
+    + '<th>Product</th><th class="r">Order</th><th class="r">At cost</th>'
+    + '<th class="r">Order by</th><th>Why</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    h += '<tr><td><div class="stk-prod">'
+      + (r.img ? thumbImg(r.img, 34, {cls: "stk-thumb", alt: ""})
+               : '<div class="stk-thumb"></div>')
+      + '<div class="stk-pname"><b title="' + _skEsc(r.title) + '">'
+      + _skEsc(r.title || r.sku) + '</b><span>' + _skEsc(r.sku) + '</span>'
+      + '</div></div></td>'
+      + '<td class="r stk-num"><b>' + _skNum(r.units) + '</b>'
+      + (r.provisional ? '<div class="cc" style="font-size:10px" title="Its '
+        + 'whole sales history is inside the 30-day window, so the rate behind '
+        + 'this number is thin.">rate is provisional</div>' : '')
+      + '</td>'
+      + '<td class="r stk-num">' + _skMoney(r.spend)
+      + (r.spend === null || r.spend === undefined
+          ? '<div class="stk-gap">no cost set</div>' : '') + '</td>'
+      + '<td class="r stk-num">'
+      // ALREADY LATE IS NOT A DEADLINE. Showing a date in the past as though it
+      // were something to plan for is worse than saying the gap is unavoidable.
+      + (r.late
+          ? '<span style="color:#fca5a5">already late</span>'
+          : (r.order_by ? _skDate(r.order_by) : '<span class="cc">—</span>'))
+      + '</td>'
+      + '<td class="cc" style="font-size:11px">' + _skEsc(r.why)
+      + (r.lead_known ? '' : ' <span title="No supplier is tracked for this '
+        + 'SKU, so ' + STOCK.assumedLead + ' days is assumed.">(restock time '
+        + 'assumed)</span>') + '</td></tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+
+/* PROJECTED BURN. Orbit's Forecasting tab, quoted: "Projects future inventory
+ * burn by combining current stock, forecast demand, and dated inbound
+ * arrivals."
+ *
+ * There is no inbound here, so it combines the two things that do exist. It is
+ * a straight line at the current rate and says so -- pretending to a seasonal
+ * model on thirty days of history would be inventing precision.
+ */
+function _skForecast(){
+  const f = STOCK.forecast || [];
+  if(!f.length || !f.some(function(x){ return x.units_selling; })) return "";
+  let h = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">'
+    + '<div style="padding:11px 14px;border-bottom:1px solid var(--line)">'
+    + '<b style="font-size:12.5px">If nothing changes</b>'
+    + '<span class="infodot" title="A straight line at the rate each product '
+    + 'has been selling for the last 30 days. Not a seasonal forecast — there '
+    + 'is not enough history for one, and pretending otherwise would be '
+    + 'inventing precision.">i</span></div>'
+    + '<table class="stk-table"><thead><tr>'
+    + '<th>Over</th><th class="r">Units sold</th><th class="r">Short by</th>'
+    + '<th class="r">Products short</th><th class="r">Cost to cover</th>'
+    + '</tr></thead><tbody>';
+  f.forEach(function(r){
+    h += '<tr><td><b>' + r.days + ' days</b></td>'
+      + '<td class="r stk-num">' + _skNum(r.units_selling) + '</td>'
+      + '<td class="r stk-num"' + (r.units_short ? ' style="color:#fbbf24"' : '')
+      + '>' + _skNum(r.units_short) + '</td>'
+      + '<td class="r stk-num">' + _skNum(r.skus_short) + '</td>'
+      + '<td class="r stk-num">' + _skMoney(r.cost_to_cover)
+      + (r.cost_complete ? '' : '<div class="stk-gap">priced ones only</div>')
+      + '</td></tr>';
+  });
+  return h + '</tbody></table></div>';
+}
+
+function _skScopeQs(){
+  const qs = [];
+  try{
+    if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+      qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+      qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  }catch(e){}
+  return qs.length ? "?" + qs.join("&") : "";
 }
 
 function _skFooter(c){

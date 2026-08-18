@@ -49,29 +49,107 @@ CDP = "http://127.0.0.1:9222"
 OUTDIR = "orbit_inventory"
 SHOTS = os.path.join(OUTDIR, "shots")
 
-ROUTES = [
-    ("overview",          BASE + "/inventory/overview"),
-    ("inventory-index",   BASE + "/inventory"),
-    ("inventory-overview", BASE + "/inventory/inventory-overview"),
-    ("forecasting",       BASE + "/inventory/forecasting"),
-    ("sales-forecast",    BASE + "/inventory/sales-forecast"),
-    ("actions",           BASE + "/inventory/actions"),
-    ("shipments",         BASE + "/inventory/shipments"),
-    ("comms",             BASE + "/inventory/comms"),
-    ("cogs-settings",     BASE + "/cogs"),
-    ("reimbursements",    BASE + "/reimbursements"),
-]
+# SECTIONS. The machinery below -- the settle that waits for real data, the
+# screenshot walker that drives Orbit's inner scroller, the phase-stamped
+# network recorder, the structural overlay finder -- is not specific to
+# inventory. It took a day to get right, and a second copy of it pointed at the
+# advertising routes would drift from this one immediately (Rule 12).
+#
+# So the route table and the output directory are per SECTION, chosen with
+# --section, and everything else is shared.
+#
+# The PPC routes are from orbit_full_audit.md's own sidebar crawl:
+#     Advertising    -> /ppc            (PPC Analytics)
+#     Search Terms   -> /ppc/search-terms
+#     Campaigns      -> /ppc/campaigns  (Campaign Analytics)
+#     Live Tracker   -> /ppc/live
+#     Dr PPC Console -> /agents/dr-ppc-grok
+SECTIONS = {
+    "inventory": {
+        "outdir": "orbit_inventory",
+        "routes": [
+            ("overview",           BASE + "/inventory/overview"),
+            ("inventory-index",    BASE + "/inventory"),
+            ("inventory-overview", BASE + "/inventory/inventory-overview"),
+            ("forecasting",        BASE + "/inventory/forecasting"),
+            ("sales-forecast",     BASE + "/inventory/sales-forecast"),
+            ("actions",            BASE + "/inventory/actions"),
+            ("shipments",          BASE + "/inventory/shipments"),
+            ("comms",              BASE + "/inventory/comms"),
+            ("cogs-settings",      BASE + "/cogs"),
+            ("reimbursements",     BASE + "/reimbursements"),
+        ],
+        # The cockpit buttons to click and document.
+        "buttons": ["Run AutoPilot", "Open action queue", "Autopilot onboarding",
+                    "Open reimbursements", "Steven actions"],
+    },
+    "ppc": {
+        "outdir": "orbit_ppc",
+        "routes": [
+            ("ppc-analytics",  BASE + "/ppc"),
+            ("search-terms",   BASE + "/ppc/search-terms"),
+            ("campaigns",      BASE + "/ppc/campaigns"),
+            ("live-tracker",   BASE + "/ppc/live"),
+            ("dr-ppc",         BASE + "/agents/dr-ppc-grok"),
+        ],
+        # DELIBERATELY EMPTY BY DEFAULT.
+        #
+        # CLAUDE.md Rule 8: never change a bid or budget unless the user names
+        # the exact new value. On an advertising screen the buttons are the
+        # dangerous surface -- "apply", "optimise", "harvest", "negate" all
+        # write to live campaigns spending real money on a client account.
+        #
+        # The clicks part therefore clicks NOTHING on ppc unless --buttons
+        # names something explicitly. Capturing what a control would do is the
+        # deliverable; triggering it is not.
+        "buttons": [],
+    },
+}
+
+ROUTES = SECTIONS["inventory"]["routes"]
+
+
+def use_section(name):
+    """Point the module at one section's routes and output directory."""
+    global ROUTES, OUTDIR, SHOTS, COCKPIT_BUTTONS
+    s = SECTIONS.get(name)
+    if not s:
+        raise SystemExit("unknown --section %r; try one of: %s"
+                         % (name, ", ".join(sorted(SECTIONS))))
+    ROUTES = s["routes"]
+    OUTDIR = s["outdir"]
+    SHOTS = os.path.join(OUTDIR, "shots")
+    COCKPIT_BUTTONS = list(s["buttons"])
+    return s
+
+
+def PRIMARY():
+    """The section's landing page -- the first route in its table.
+
+    The parts below used to navigate to BASE + "/inventory/overview" written
+    out in each body, so --section chose where the files were WRITTEN and not
+    what was captured. Everything goes through here now.
+    """
+    return ROUTES[0][1]
+
+
+def TOOLTIP_ROUTES():
+    """Which routes to hunt tooltips on: the first three of the section.
+
+    Tooltips are where Orbit states its own rules in its own words, and they
+    are cheap to collect, so this takes the section's main screens rather than
+    one.
+    """
+    return [(n, u) for n, u in ROUTES[:3]]
+
 
 # The buttons named in the brief, plus the ones the earlier audit found on the
 # cockpit. Matched on visible text because Orbit's class names are
 # content-hashed (_statCard_xa5pv_431) and change every build.
-COCKPIT_BUTTONS = [
-    "Run AutoPilot",
-    "Open action queue",
-    "Autopilot onboarding",
-    "Open reimbursements",
-    "Steven actions",
-]
+#
+# Replaced wholesale by use_section(); this is the inventory default so the tool
+# behaves exactly as before when no --section is given.
+COCKPIT_BUTTONS = list(SECTIONS["inventory"]["buttons"])
 
 STEVEN_QUESTIONS = [
     "Which ASINs need reordering this week?",
@@ -562,7 +640,7 @@ def part_clicks(page, net, doc, args):
     """The cockpit buttons: what each one opens."""
     doc("# Part B — Buttons and what they open")
     doc()
-    url = BASE + "/inventory/overview"
+    url = PRIMARY()
     net.phase = "load:overview"
     page.goto(url, wait_until="commit", timeout=60000)
     settle(page)
@@ -678,7 +756,7 @@ def part_table(page, net, doc, args):
     """The product table: columns, sorting, search, a row, an expansion."""
     doc("# Part C — The product table")
     doc()
-    url = BASE + "/inventory/overview"
+    url = PRIMARY()
     net.phase = "load:overview"
     page.goto(url, wait_until="commit", timeout=60000)
     settle(page)
@@ -925,9 +1003,7 @@ def part_tooltips(page, net, doc, args):
     doc("Orbit states its own rules in these tooltips. Everything here is copy "
         "read off the page, not inference.")
     doc()
-    for name, url in [("overview", BASE + "/inventory/overview"),
-                      ("forecasting", BASE + "/inventory/forecasting"),
-                      ("actions", BASE + "/inventory/actions")]:
+    for name, url in TOOLTIP_ROUTES():
         doc("## Route `%s`" % name)
         doc()
         net.phase = "tooltips:%s" % name
@@ -1001,7 +1077,7 @@ def part_steven(page, net, doc, args):
     """Steven: open the agent and actually talk to it."""
     doc("# Part E — Steven, the inventory agent")
     doc()
-    url = BASE + "/inventory/overview"
+    url = PRIMARY()
     net.phase = "load:overview"
     page.goto(url, wait_until="commit", timeout=60000)
     settle(page)
@@ -1139,7 +1215,7 @@ def part_design(page, net, doc, args):
     doc("# Part F — Design specification")
     doc()
     net.phase = "design"
-    page.goto(BASE + "/inventory/overview", wait_until="commit", timeout=60000)
+    page.goto(PRIMARY(), wait_until="commit", timeout=60000)
     settle(page)
     if not signed_in(page):
         doc("**Not signed in.**")
@@ -1365,8 +1441,17 @@ PARTS = {"routes": part_routes, "clicks": part_clicks, "table": part_table,
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("part", choices=list(PARTS) + ["assemble", "all"])
+    p.add_argument("--section", default="inventory", choices=sorted(SECTIONS),
+                   help="which part of Orbit to capture. Chooses the route "
+                        "table and the output directory; everything else is "
+                        "shared (Rule 12).")
+    p.add_argument("--buttons", default="",
+                   help="comma-separated button labels to click. On --section "
+                        "ppc this is EMPTY by default and must be named "
+                        "explicitly: an advertising button writes to live "
+                        "campaigns spending real money (CLAUDE.md Rule 8).")
     p.add_argument("--cdp", default=CDP)
-    p.add_argument("--out", default="orbit_inventory_complete.md")
+    p.add_argument("--out", default="")
     p.add_argument("--width", type=int, default=1600)
     p.add_argument("--limit", type=int, default=400,
                    help="max elements listed per route in the scan")
@@ -1375,6 +1460,21 @@ def main(argv=None):
                    help="seconds to let each Steven answer finish streaming")
     p.add_argument("--search-term", default="sandal")
     a = p.parse_args(argv)
+
+    # Point the module at the chosen section BEFORE anything reads ROUTES,
+    # OUTDIR or SHOTS -- part_assemble included, which globs OUTDIR.
+    sec = use_section(a.section)
+    if a.buttons.strip():
+        globals()["COCKPIT_BUTTONS"] = [b.strip() for b in a.buttons.split(",")
+                                        if b.strip()]
+    if not a.out:
+        a.out = "orbit_%s_complete.md" % a.section
+    print("section: %s -> %s (%d route(s), %d button(s) to click)"
+          % (a.section, OUTDIR, len(ROUTES), len(COCKPIT_BUTTONS)))
+    if a.section != "inventory" and not COCKPIT_BUTTONS:
+        print("  no buttons will be clicked. Pass --buttons \"A,B\" to click "
+              "specific ones -- but read CLAUDE.md Rule 8 first: an "
+              "advertising control writes to live campaigns.")
 
     if a.part == "assemble":
         return part_assemble(a)

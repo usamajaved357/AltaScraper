@@ -101,6 +101,66 @@ CREATE TABLE IF NOT EXISTS ads_daily (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ads_key
     ON ads_daily(workspace_id, marketplace, date, asin);
 
+/* EVERY SEARCH TERM AMAZON CHARGED FOR, KEPT.
+   -----------------------------------------------------------------------
+   domain/ppc_module.py has ingested SP Search Term Reports since it was
+   written -- it detects the family, normalises the columns and hands back
+   canonical rows. What it never did was KEEP them: /ppc/harvest turned an
+   upload into three CSVs and threw the rows away, so the app could act on a
+   report once and could never show you what it said.
+
+   That is the whole reason the PPC screens had nothing to draw. The
+   Advertising API is a separate OAuth from SP-API and is not connected on any
+   account (measured 18 Aug 2026: ads_daily 0 rows, ppc_campaigns 0 rows, no
+   credentials anywhere) -- but the Search Term Report is downloadable from
+   Seller Central by hand, and every metric on Orbit's PPC screens except the
+   intraday tracker is computable from it alone.
+
+   ONE ROW PER (report, search term, match type, campaign, ad group). The same
+   term appears many times across a report -- once per targeting that triggered
+   it -- and collapsing them on the way in would throw away the match-type
+   breakdown, which is most of what the screen is for.
+
+   `report_id` groups an upload so a later one can replace it wholesale rather
+   than double every figure. */
+CREATE TABLE IF NOT EXISTS ppc_search_terms (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    report_id    TEXT NOT NULL,
+    date_from    TEXT,
+    date_to      TEXT,
+    search_term  TEXT NOT NULL,
+    keyword      TEXT,                   -- the targeting that triggered it
+    match_type   TEXT,
+    campaign     TEXT,
+    ad_group     TEXT,
+    impressions  INTEGER,
+    clicks       INTEGER,
+    spend        REAL,
+    sales        REAL,
+    orders       INTEGER,
+    units        INTEGER,
+    uploaded_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_pst_scope
+    ON ppc_search_terms(workspace_id, marketplace, report_id);
+CREATE INDEX IF NOT EXISTS idx_pst_term
+    ON ppc_search_terms(workspace_id, marketplace, search_term);
+
+/* The brand's own words, so branded spend can be told from non-branded.
+   Amazon does not report this split -- the seller says which terms are theirs
+   and everything else follows. Orbit does the same thing with its "Add brand
+   term..." box, and it is the single most useful cut on the whole screen:
+   paying to appear on your own name is defensive, and mixing it in makes a
+   healthy-looking ACOS out of money that was never winning new customers. */
+CREATE TABLE IF NOT EXISTS ppc_brand_terms (
+    workspace_id TEXT NOT NULL,
+    term         TEXT NOT NULL,
+    added_at     TEXT,
+    PRIMARY KEY (workspace_id, term)
+);
+
 -- WHAT AMAZON TOOK, AND WHAT WENT BACK TO BUYERS.
 --
 -- From the Finances API (listFinancialEvents), which is a different thing from

@@ -16,8 +16,24 @@ from flask import request, jsonify
 
 
 def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_context,
-             _cfg, CHAT_MODEL):
-    """Attach the /ppc/* routes to the existing Flask app."""
+             _cfg, CHAT_MODEL, CONFIG_PATH=None, _state=None,
+             _active_account=None):
+    """Attach the /ppc/* routes to the existing Flask app.
+
+    TWO FEATURES, ONE PREFIX. The routes above are the campaign BUILDER: they
+    turn an uploaded keyword file into a Seller Central bulk CSV, and turn a
+    Search Term Report into harvest and negative files. They make things.
+
+    The /ppc/analytics group at the bottom is the ANALYTICS screen, added
+    18 Aug 2026 after the Orbit PPC capture. It answers "what is the
+    advertising doing, and what is it wasting" from the report the builder
+    already knows how to read but never kept.
+
+    NEITHER WRITES A BID OR A BUDGET. CLAUDE.md Rule 8, and Orbit's own words
+    for the same rule -- "approval gates, reversible actions, and an audit
+    trail before changes reach Amazon. Nothing changes without the configured
+    controls."
+    """
 
     @app.route("/ppc/build_campaigns", methods=["POST"])
     def ppc_build_campaigns():
@@ -604,3 +620,217 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         return jsonify({"ok": True, "reply": reply,
                         "routed_skill": routed,
                         "next_action":  next_action})
+
+    # ------------------------------------------------------------------
+    #  PPC ANALYTICS -- Orbit's advertising screens, on a report you can
+    #  download from Seller Central today.
+    # ------------------------------------------------------------------
+    #  See orbit_ppc_complete.md for what was captured and what each metric
+    #  means. The Advertising API is a separate OAuth from SP-API and is
+    #  connected on none of the six accounts, so nothing here waits for it:
+    #  every figure comes from an uploaded SP Search Term Report, which
+    #  domain/ppc_module.py has always been able to read.
+    #
+    #  READ ONLY. No bid, no budget, no negation is applied from any of these.
+
+    def _ppc_scope():
+        """(account, marketplace) however the caller said it.
+
+        THE JSON BODY COUNTS TOO. Found by testing: /ppc/brand_terms is posted
+        as JSON, so there were no args and no form -- the account fell back to
+        whichever workspace happened to be open on the server, and a brand term
+        added while looking at jack_uk was saved against a different account.
+        The save reported success and the split never appeared.
+        """
+        body = {}
+        try:
+            body = request.get_json(silent=True) or {}
+        except Exception:
+            body = {}
+        form = request.form if request.form else {}
+        aid = (request.args.get("id") or request.args.get("account_id")
+               or form.get("id") or form.get("account_id")
+               or body.get("id") or body.get("account_id") or "").strip()
+        mkt = (request.args.get("marketplace") or form.get("marketplace")
+               or body.get("marketplace") or "").strip().upper()
+        if not aid or not mkt:
+            try:
+                acc = (_active_account() or {}) if callable(_active_account) else {}
+            except Exception:
+                acc = {}
+            aid = aid or str(acc.get("id")
+                             or (_state or {}).get("active_account_id") or "")
+            mkt = mkt or str(acc.get("default_marketplace")
+                             or (_state or {}).get("active_marketplace")
+                             or "").upper()
+        return aid, mkt
+
+    @app.route("/ppc/report/upload", methods=["POST"])
+    def ppc_report_upload():
+        """Keep an SP Search Term Report so the screens have something to draw.
+
+        The harvester above reads exactly this file and throws the rows away
+        once it has written its CSVs. This keeps them, through the SAME
+        ingester -- one reader, so a file that harvests cannot fail to display
+        (Rule 12).
+        """
+        from domain import ppc_view as _pv
+        if _PPC is None:
+            return jsonify({"ok": False,
+                            "error": "PPC module not available: %s"
+                                     % _PPC_IMPORT_ERR}), 500
+        aid, mkt = _ppc_scope()
+        if not aid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"ok": False, "error": "no file"}), 400
+        try:
+            ingest = _PPC.ingest_csv_bytes(f.read())
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "could not read that file: %s"
+                                     % str(e)[:200]}), 400
+        fam = ingest.get("family") or "unknown"
+        rows = ingest.get("rows") or []
+        if fam != "sp_search_term_report":
+            # Named rather than "invalid file": knowing WHICH report was
+            # uploaded is most of the way to fixing it.
+            return jsonify({"ok": False, "error": (
+                "That looks like a %s, not an SP Search Term Report. Download "
+                "it from Seller Central: Advertising > Measurement & Reporting "
+                "> Sponsored Products > Search Term Report." % fam)}), 400
+        if not rows:
+            return jsonify({"ok": False, "error": (
+                "That report has no rows in it.")}), 400
+        rid, kept = _pv.store_rows(
+            CONFIG_PATH, aid, mkt, rows,
+            report_id=(request.form.get("report_id") or "").strip() or None,
+            date_from=(request.form.get("date_from") or "").strip(),
+            date_to=(request.form.get("date_to") or "").strip())
+        return jsonify({"ok": True, "report_id": rid, "rows": kept,
+                        "note": "Kept %d row%s. Nothing was sent to Amazon."
+                                % (kept, "" if kept == 1 else "s")})
+
+    @app.route("/ppc/analytics")
+    def ppc_analytics():
+        """Everything the advertising screen draws, from the stored report."""
+        from domain import ppc_view as _pv
+        aid, mkt = _ppc_scope()
+        if not aid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+
+        meta = _pv.report_meta(CONFIG_PATH, aid, mkt)
+        if not meta:
+            # NOT AN ERROR, AND NOT ZEROES. There is no report yet, which is a
+            # setup step rather than a result -- and a screen full of 0.00
+            # would read as "your advertising made nothing".
+            return jsonify({
+                "ok": True, "account": aid, "marketplace": mkt,
+                "report": None, "totals": None, "terms": [],
+                "match_types": [], "branded": None, "brand_terms": [],
+                "note": ("No Search Term Report has been uploaded for this "
+                         "account yet. Download one from Seller Central "
+                         "(Advertising > Measurement & Reporting > Sponsored "
+                         "Products > Search Term Report) and upload it here. "
+                         "Amazon's Advertising API is a separate connection "
+                         "this app does not have, so the report is how the "
+                         "figures get in."),
+            })
+
+        rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"])
+        brands = _pv.brand_terms(CONFIG_PATH, aid)
+        total_sales = None
+        if meta.get("date_from") and meta.get("date_to"):
+            total_sales = _pv.total_sales_for(CONFIG_PATH, aid, mkt,
+                                              meta["date_from"], meta["date_to"])
+        totals = _pv.totals(rows, total_sales=total_sales)
+
+        # AGAINST THE PREVIOUS REPORT. Orbit puts a period-over-period change
+        # under every headline figure and it is most of what makes them useful:
+        # a 19% ACOS means nothing until you know last month's was 14%.
+        #
+        # The previous UPLOAD, not a date range: one report is one window, and
+        # slicing a single upload into halves would compare two arbitrary
+        # subsets rather than two periods. None until there are two.
+        all_reports = _pv.reports(CONFIG_PATH, aid, mkt)
+        change = None
+        if len(all_reports) > 1:
+            prev_rows = _pv.load_rows(CONFIG_PATH, aid, mkt,
+                                      all_reports[1]["report_id"])
+            change = _pv.compare(totals, _pv.totals(prev_rows))
+
+        return jsonify({
+            "ok": True, "account": aid, "marketplace": mkt,
+            "report": meta,
+            "reports": all_reports,
+            "totals": totals,
+            "change": change,
+            "compared_with": (all_reports[1] if len(all_reports) > 1 else None),
+            "terms": _pv.by_term(rows, brands)[:400],
+            "match_types": _pv.by_match_type(rows),
+            "campaigns": _pv.by_campaign(rows),
+            "branded": _pv.branded_split(rows, brands),
+            "brand_terms": brands,
+            "note": "",
+        })
+
+    @app.route("/ppc/analytics.csv")
+    def ppc_analytics_csv():
+        """Orbit's Export button: every search term, as a spreadsheet.
+
+        The whole table, not the 400 the screen draws -- an export that silently
+        truncates is worse than no export, because nothing on the file says it
+        is short.
+        """
+        from flask import Response
+        from domain import ppc_view as _pv
+        aid, mkt = _ppc_scope()
+        meta = _pv.report_meta(CONFIG_PATH, aid, mkt) if aid and mkt else None
+        if not meta:
+            return jsonify({"ok": False,
+                            "error": "no report to export"}), 400
+        rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"])
+        terms = _pv.by_term(rows, _pv.brand_terms(CONFIG_PATH, aid))
+        name = "search-terms-%s-%s-%s.csv" % (aid or "account", mkt or "",
+                                              meta.get("date_to") or "")
+        return Response(
+            _pv.to_csv(terms), mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="%s"' % name})
+
+    @app.route("/ppc/brand_terms", methods=["GET", "POST"])
+    def ppc_brand_terms():
+        """The seller's own brand words. Amazon does not report this split.
+
+        Orbit's "Add brand term..." box, and the most useful cut on the whole
+        screen: paying to appear on your own name is defensive, and mixing it
+        in makes a healthy-looking ACOS out of money that never won a new
+        customer.
+        """
+        import datetime as _dt
+
+        from data import db as _db
+        from domain import ppc_view as _pv
+        aid, _mkt = _ppc_scope()
+        if not aid:
+            return jsonify({"ok": False,
+                            "error": "open an account first"}), 400
+        conn = _db.get_db(CONFIG_PATH)
+        if request.method == "POST":
+            b = request.get_json(force=True, silent=True) or {}
+            now = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            add = [str(t).strip().lower() for t in (b.get("add") or [])
+                   if str(t).strip()]
+            drop = [str(t).strip().lower() for t in (b.get("remove") or [])
+                    if str(t).strip()]
+            for t in add:
+                conn.execute("INSERT OR IGNORE INTO ppc_brand_terms "
+                             "(workspace_id, term, added_at) VALUES (?,?,?)",
+                             (aid, t, now))
+            for t in drop:
+                conn.execute("DELETE FROM ppc_brand_terms WHERE "
+                             "workspace_id=? AND term=?", (aid, t))
+            conn.commit()
+        return jsonify({"ok": True, "terms": _pv.brand_terms(CONFIG_PATH, aid)})

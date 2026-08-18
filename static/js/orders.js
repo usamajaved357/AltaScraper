@@ -316,7 +316,7 @@ function _ordItemCell(r){
   const img = _ordItemImage(it);
   return '<div style="display:flex;gap:8px;align-items:center">'
     + (img
-        ? '<img src="' + _oEsc(img) + '" loading="lazy" style="width:34px;height:34px;'
+        ? '<img src="' + _oEsc(thumbUrl(img, 34)) + '" loading="lazy" decoding="async" style="width:34px;height:34px;'
           + 'object-fit:contain;background:#0d1220;border-radius:5px;flex:0 0 34px">'
         : '<span style="width:34px;height:34px;border-radius:5px;background:#0d1220;'
           + 'display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px">'

@@ -7,6 +7,9 @@ function ppcOnOpen(){
     const mkt=WS_MARKET||"UK";
     el.textContent=acct+" · "+mkt;
   }
+  // The analytics screen at the top of the same page. Its own file; this is
+  // only the hand-off, so opening the section fills both halves.
+  if(typeof ppcAnalyticsOnOpen === "function") ppcAnalyticsOnOpen();
 }
 function ppcAppendChat(who, text){
   const box=document.getElementById("ppc_chatlog"); if(!box) return;

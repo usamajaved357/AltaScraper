@@ -450,6 +450,134 @@ def cockpit(rows_in, today=None):
     }
 
 
+def to_order(rows_in, horizon_days=30, today=None):
+    """What to order, how many, and by when. Orbit's Actions tab.
+
+        "Approval Queue -- Primary execution system of record for Steven
+         inventory actions."  (quoted)
+
+    Orbit's version proposes purchase orders and can execute them behind
+    approval gates. THIS ONE ONLY EVER PROPOSES. Nothing here places an order,
+    messages a supplier or touches Amazon -- see the module docstring and
+    CLAUDE.md Rule 8. It is a list to work from.
+
+    HOW MANY. Enough to cover the restock time plus `horizon_days` of selling,
+    less what is already listed:
+
+        need = velocity x (lead_days + horizon_days) - listed_qty
+
+    INFERRED, and stated rather than hidden: Orbit does not publish its reorder
+    quantity rule. The shape is the standard one -- cover the lead time so you
+    do not run out while waiting, plus a horizon so you are not ordering again
+    next week.
+
+    BY WHEN. The last day an order can be placed and still arrive before the
+    stock runs out: runs_out minus the lead time. A date in the past means it
+    is already too late to avoid a gap, which is worth saying out loud.
+    """
+    day = today or _dt.date.today()
+    out = []
+    for r in (rows_in or []):
+        if not r.get("velocity"):
+            continue                     # nothing to forecast from
+        if r["status"] not in (ORDER_NOW, STOCKOUT, ORDER_SOON, WATCH):
+            continue
+        lead = float(r.get("lead_days") or ASSUMED_LEAD_DAYS)
+        qty = int(r.get("listed_qty") or 0)
+        need = r["velocity"] * (lead + float(horizon_days)) - qty
+        if need <= 0:
+            continue
+        units = int(round(need + 0.4999))     # never round a shortfall down
+        cost = r.get("unit_cost")
+        cover = r.get("cover_days")
+        # The last day this can be ordered and still land before the shelf is
+        # empty. Negative means the gap is already unavoidable.
+        days_left = None if cover is None else round(cover - lead, 1)
+        out.append({
+            "sku": r["sku"], "asin": r.get("asin"), "title": r.get("title"),
+            "img": r.get("img"), "status": r["status"],
+            "already_out": bool(r.get("already_out")),
+            "listed_qty": qty, "velocity": r["velocity"],
+            "cover_days": cover, "lead_days": lead,
+            "lead_known": bool(r.get("lead_known")),
+            "units": units,
+            "unit_cost": cost,
+            "spend": (None if cost is None else round(cost * units, 2)),
+            "order_by": (None if days_left is None else
+                         (day + _dt.timedelta(days=int(days_left))).isoformat()),
+            "days_left": days_left,
+            "late": bool(days_left is not None and days_left < 0),
+            "horizon_days": horizon_days,
+            "provisional": bool(r.get("provisional")),
+            "why": ("It is out of stock and still selling."
+                    if r.get("already_out") else
+                    "%.1f days of cover against a %d day restock."
+                    % (cover or 0, int(lead))),
+        })
+    # Most urgent first: already out, then least time left, then FASTEST SELLER.
+    #
+    # The tiebreak is velocity, not spend. Sorting by money buried the worst
+    # problem on the real data: nestwell's ceiling fan sells 0.73 a day and
+    # needs 28 units, but it has no cost recorded, so `spend` was None -> 0 and
+    # it sorted BELOW four products selling one unit a month. A figure being
+    # unknown must never make a row look unimportant -- the same rule that
+    # governs missing costs everywhere else in this app.
+    out.sort(key=lambda x: (not x["already_out"],
+                            x["days_left"] if x["days_left"] is not None else 1e9,
+                            -(x["velocity"] or 0)))
+    return out
+
+
+def forecast(rows_in, horizons=(30, 60, 90, 180)):
+    """Projected burn. Orbit's Forecasting tab, quoted:
+
+        "Inventory Projections -- Projects future inventory burn by combining
+         current stock, forecast demand, and dated inbound arrivals."
+
+    No inbound here, because there is none -- see the module docstring. So it
+    combines the two things that do exist: what is listed, and how fast it goes.
+
+    Per horizon: how many units will sell, how many of those are covered by
+    stock already listed, what the shortfall is, and what that shortfall would
+    cost to buy. Straight-line at the current rate, which is stated on screen --
+    it is a projection, not a seasonal model, and pretending otherwise on 30
+    days of history would be inventing precision.
+    """
+    out = []
+    for h in horizons:
+        units = short = 0.0
+        cost = 0.0
+        skus_short = 0
+        priced = True
+        for r in (rows_in or []):
+            v = r.get("velocity")
+            if not v:
+                continue
+            will_sell = v * h
+            units += will_sell
+            have = float(r.get("listed_qty") or 0)
+            gap = max(0.0, will_sell - have)
+            if gap > 0:
+                short += gap
+                skus_short += 1
+                c = r.get("unit_cost")
+                if c is None:
+                    priced = False
+                else:
+                    cost += c * gap
+        out.append({
+            "days": h,
+            "units_selling": int(round(units)),
+            "units_short": int(round(short)),
+            "skus_short": skus_short,
+            "cost_to_cover": round(cost, 2),
+            # Whether that cost covers every short SKU or only the priced ones.
+            # A buying budget that quietly omits a product is worse than none.
+            "cost_complete": priced,
+        })
+    return out
+
+
 def counts(rows_in):
     """How many SKUs are in each state, for the legend and the filter chips."""
     out = {s: 0 for s in STATUS_ORDER}

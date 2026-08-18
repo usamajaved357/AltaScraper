@@ -445,7 +445,7 @@ function salesDrawBreakdown(){
         // and the name come with the row, from the same catalogue the Listings
         // cards and the Orders screen use.
         const pic = r.img
-          ? '<img src="'+_sEsc(r.img)+'" loading="lazy" alt="" style="width:30px;'
+          ? '<img src="'+_sEsc(thumbUrl(r.img, 30))+'" loading="lazy" decoding="async" alt="" style="width:30px;'
             + 'height:30px;object-fit:contain;background:#0d1220;border-radius:5px;'
             + 'flex:0 0 30px">'
           : '<span style="width:30px;height:30px;border-radius:5px;background:#0d1220;'
