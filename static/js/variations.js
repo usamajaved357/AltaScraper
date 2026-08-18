@@ -74,16 +74,27 @@ function varFamiliesRender(){
   // who a SKU's parent is when that SKU has been read individually, and the
   // refresher works through the catalogue a batch at a time.
   const known = d.relationships_known_for || 0, counted = d.counted || 0;
+  const left = Math.max(0, counted - known);
   if(!d.family_count){
+    // LEAD WITH WHAT IS TRUE, then qualify it. An earlier version led with
+    // "nothing to show yet — press Sync" whenever a single listing was
+    // outstanding, so 46 of 47 read as "not ready" when it is effectively
+    // done. Both facts belong on screen; neither may hide the other.
     host.innerHTML = '<div class="odp-note" style="padding:11px 13px">'
-      + (known >= counted && counted
-          ? '<b>No variation families yet.</b> Every listing here stands on its '
-            + 'own. Use the steps below to join some.'
-          : '<b>Nothing to show yet.</b> Amazon only says which listing is a '
-            + 'parent when that listing has been read individually, and '
-            + _vesc(String(known)) + ' of ' + _vesc(String(counted))
-            + ' have been so far. Press Sync on the Listings screen and come '
-            + 'back.')
+      + (counted && known
+          ? '<b>No variation families found.</b> Every listing read so far '
+            + 'stands on its own. Use the steps below to join some.'
+          : '<b>Nothing has been read yet.</b> Amazon only says which listing '
+            + 'is a parent when that listing has been read individually.')
+      + (left
+          ? '<div class="cc" style="margin-top:5px">'
+            + _vesc(String(left)) + ' of ' + _vesc(String(counted))
+            + ' listing' + (left === 1 ? ' has' : 's have')
+            + ' not been read individually yet, so a family among '
+            + (left === 1 ? 'it' : 'them') + ' would not show here. '
+            + 'The app works through them in the background; pressing Sync on '
+            + 'the Listings screen speeds it up.</div>'
+          : '')
       + '</div>';
     return;
   }

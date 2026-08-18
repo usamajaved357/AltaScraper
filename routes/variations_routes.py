@@ -171,7 +171,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         """
         from domain import families as _fam
 
-        wsid, mkt = _scope()
+        # _scope() here returns THREE values -- the account object as well as
+        # its id and marketplace. Every other route in this file unpacks three;
+        # this one unpacked two and failed with "too many values to unpack",
+        # which reads like a data problem rather than a typo.
+        _acc, wsid, mkt = _scope()
         if not wsid or not mkt:
             return jsonify({"ok": False, "error": (
                 "Open an account and pick a marketplace first.")}), 400

@@ -167,7 +167,14 @@ truthy("for_account reports how much of the catalogue has been asked",
        "relationships_known_for" in SRC)
 JS = open(r"D:\AltaScraper\static\js\variations.js", encoding="utf-8-sig").read()
 truthy("and the screen tells the two apart",
-       "have been so far" in JS and "No variation families yet" in JS)
+       "No variation families found" in JS
+       and "Nothing has been read yet" in JS)
+# It must LEAD with what is true and qualify after -- an earlier version led
+# with "press Sync" whenever one listing was outstanding, so 46 of 47 read as
+# "not ready" when it was effectively done.
+truthy("  and says how many are still outstanding without hiding the answer",
+       re.search(r"No variation families found[\s\S]{0,600}not been read "
+                 r"individually yet", JS))
 
 print("\n== the screen shows the family, and creating one still works ==")
 truthy("families are loaded when the screen opens", "varFamiliesLoad()" in JS)
