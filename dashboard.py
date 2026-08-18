@@ -3587,6 +3587,11 @@ def build_app(backend=None):
     import routes.weekly_routes as _weekly_routes
     _weekly_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                             _active_account=_active_account, _state=_state)
+    # The daily round -- the checklist somebody works through every morning,
+    # run by the app. See routes/daily_routes.py.
+    import routes.daily_routes as _daily_routes
+    _daily_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

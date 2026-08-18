@@ -2607,6 +2607,55 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- the daily round ----------------------------------------------------
+   "a page where all of these metrics results are being shown and it highlights
+    the things which are off track"
+   Off-track first and loudest; fine folded away; and "could not be checked" as
+   its own group with the reason on every row -- never a tick, because a check
+   that cannot run and looks fine is the paper checklist's exact failure. */
+.dy-head{
+  border:1px solid var(--line); border-left-width:3px; border-radius:10px;
+  background:var(--panel); padding:15px 17px; margin-bottom:14px;
+}
+.dy-head.bad{ border-left-color:var(--red); }
+.dy-head.part{ border-left-color:var(--warn); }
+.dy-head.good{ border-left-color:var(--ok); }
+.dy-eyebrow{ font-size:11px; font-weight:800; letter-spacing:.88px;
+             text-transform:uppercase; color:var(--ink3); }
+.dy-headline{ font-size:23px; font-weight:700; line-height:1.2; margin:5px 0 5px; }
+.dy-head.bad .dy-headline{ color:#fca5a5; }
+.dy-head.good .dy-headline{ color:var(--ok); }
+.dy-sub{ font-size:11.5px; }
+
+.dy-group{ margin-bottom:14px; }
+.dy-gh{
+  font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+  color:var(--ink3); margin:0 0 7px; display:flex; gap:6px; align-items:center;
+}
+.dy-row{
+  display:flex; gap:11px; align-items:flex-start;
+  border:1px solid var(--line); border-left-width:3px; border-radius:8px;
+  background:var(--panel); padding:11px 13px; margin-bottom:6px;
+}
+.dy-row.off{ border-left-color:var(--red); }
+.dy-row.unknown{ border-left-color:var(--line); opacity:.9; }
+.dy-row.ok{ border-left-color:var(--ok); }
+.dy-ico{ font-size:16px; flex:0 0 auto; margin-top:1px; }
+.dy-row.off .dy-ico{ color:#fca5a5; }
+.dy-row.unknown .dy-ico{ color:var(--ink4); }
+.dy-row.ok .dy-ico{ color:var(--ok); }
+.dy-main{ flex:1; min-width:0; }
+.dy-t{ font-size:13px; font-weight:600; line-height:1.35; }
+/* The figure, always shown -- "fine" with no number is not something anybody
+   can act on tomorrow. */
+.dy-v{ font-weight:700; font-variant-numeric:tabular-nums; margin-left:5px; }
+.dy-row.off .dy-v{ color:#fca5a5; }
+.dy-d{ font-size:11.5px; color:var(--ink2); line-height:1.5; margin-top:3px; }
+.dy-needs{ font-size:11.5px; color:var(--ink3); line-height:1.5; margin-top:3px;
+           font-style:italic; }
+.dy-act{ font-size:11.5px; color:var(--accent); line-height:1.5; margin-top:4px; }
+.dy-g{ font-size:10.5px; white-space:nowrap; flex:0 0 auto; margin-top:2px; }
+
 /* ---- how the finished image is branded ----------------------------------
    "let the user chose the brand name for its item, whether he wants the images
     to be unbranded (without brand name printed on it), or branded (any name he

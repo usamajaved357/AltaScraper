@@ -181,6 +181,9 @@
     <!-- The client KPI pack. Next to Returns because both are built from a
          report rather than from live listing data, and both are things you send
          somebody rather than things you act on inside the app. -->
+    <!-- First of the reporting group: it is the screen you open every morning,
+         and it is the only one whose job is to tell you to go elsewhere. -->
+    <div class="navitem" data-sec="daily" onclick="navTo('daily')" title="The morning check, run by the app — what needs attention today"><i class="ti ti-checklist"></i> Daily round</div>
     <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
     <!-- Its own screen rather than a dialog over Listings: generating a set of
          images is a job you come back to and compare within, and a modal is a
@@ -976,6 +979,21 @@
       <div id="wk_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- THE DAILY ROUND. Replaces a Fillout checklist of fourteen things
+         somebody works through in Seller Central every morning and ticks off.
+         The looking is what a computer should do; the only output that matters
+         is the short list of what is wrong today. -->
+    <div id="sec_daily" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-checklist"></i> Daily round</h2>
+        <div class="sub">Everything the morning check looks at, run by the app. What needs attention is first; what could not be checked says so rather than showing a tick.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="dailyLoad()"><i class="ti ti-refresh"></i> Run again</button>
+        </div>
+      </div>
+      <div id="dy_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- IMAGE STUDIO, its own screen rather than a dialog over Listings. -->
     <div id="sec_imagestudio" class="wspanel">
       <div class="wstoolbar bleed">
@@ -1338,6 +1356,8 @@
 <script src="/static/js/returns.js?v={{ ASSET_V }}"></script>
 <!-- The weekly KPI pack. Same two-buttons-per-report shape as Returns above. -->
 <script src="/static/js/weekly.js?v={{ ASSET_V }}"></script>
+<!-- The daily round: the morning checklist, run by the app. -->
+<script src="/static/js/daily.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/variations.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sellerimport.js?v={{ ASSET_V }}"></script>
 <!-- The product queue, which owns loadInputSheet/filterInputSheet outright --
