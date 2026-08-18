@@ -173,6 +173,12 @@ async function openAISettings(){
   // current GLOBAL eBay creds (App ID shown; Cert never returned, only a masked tail)
   let eb; try{ eb=await (await fetch("/settings/ebay")).json(); }catch(e){ eb={ok:false}; }
   const ebSafe=(eb&&eb.ok)?eb:{ebay_app_id:"",has_cert:false,cert_tail:""};
+  // The ADVERTISING login -- a different connection from SP-API. Secrets are
+  // never returned, only whether one is stored and its last four characters.
+  let ad; try{ ad=await (await fetch("/settings/ads")).json(); }catch(e){ ad={ok:false}; }
+  const adSafe=(ad&&ad.ok)?ad:{ads_client_id:"",ads_profile_id:"",
+                               has_secret:false,secret_tail:"",
+                               has_refresh:false,refresh_tail:""};
   const keyNote = s.has_key
     ? (s.discover_ok ? `<span class="cc" style="color:var(--ok)">\u2713 OpenRouter connected \u2014 ${ (s.text_models||[]).length } text models, ${ (s.image_models||[]).length } image models available</span>`
                      : `<span class="cc" style="color:var(--warn)">Key present, but model discovery failed: ${esc(s.discover_error||'')} (showing fallback list)</span>`)
@@ -200,6 +206,31 @@ async function openAISettings(){
         <tr><td class="k">eBay Cert ID <span class="cc">(secret)</span></td><td class="v"><input class="ed" id="ebay_cert" type="password" placeholder="${ebSafe.has_cert?('•••• '+esc(ebSafe.cert_tail||'')+' — leave blank to keep'):'paste Cert ID'}"></td></tr>
       </table>
       <div style="margin-top:8px"><button class="primary" onclick="saveEbaySettings()"><i class="ti ti-check"></i> Save eBay credentials</button> <span id="ebay_status" class="cc"></span></div>
+    </div>
+    <div class="adminbox" style="margin-top:12px">
+      <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-target-arrow"></i> Amazon Advertising credentials <span class="cc">(global default)</span></div>
+      <div class="cc" style="font-size:11.5px;margin-bottom:8px">
+        A <b>different login from SP-API</b> — its own developer registration, its own
+        Login-with-Amazon application and its own refresh token. An SP-API token will not
+        work here and one cannot be derived from the other.
+        <br><br>Six things on the PPC screen need it and cannot be built without it: the
+        day trail, the 7/14/30 day toggle, the per-ASIN table, the Sponsored
+        Products/Brands/Display split, the enabled/paused filter and the live tracker.
+        The Search Term Report carries none of them.
+        <br><br>Read-only: this app never writes a bid, a budget or a campaign state.
+      </div>
+      <table class="kv">
+        <tr><td class="k">Client ID</td><td class="v"><input class="ed" id="ads_client" value="${esc(adSafe.ads_client_id||'')}" placeholder="amzn1.application-oa2-client...."></td></tr>
+        <tr><td class="k">Client secret</td><td class="v"><input class="ed" id="ads_secret" type="password" placeholder="${adSafe.has_secret?('•••• '+esc(adSafe.secret_tail||'')+' — leave blank to keep'):'paste the client secret'}"></td></tr>
+        <tr><td class="k">Refresh token</td><td class="v"><input class="ed" id="ads_refresh" type="password" placeholder="${adSafe.has_refresh?('•••• '+esc(adSafe.refresh_tail||'')+' — leave blank to keep'):'Atzr|....'}"></td></tr>
+        <tr><td class="k">Profile ID <span class="cc">(one advertising account in one marketplace)</span></td><td class="v"><input class="ed" id="ads_profile" value="${esc(adSafe.ads_profile_id||'')}" placeholder="press Test to list the ones this login can see"></td></tr>
+      </table>
+      <div style="margin-top:8px">
+        <button class="primary" onclick="saveAdsSettings()"><i class="ti ti-check"></i> Save advertising credentials</button>
+        <button onclick="testAdsSettings()"><i class="ti ti-plug-connected"></i> Test connection</button>
+        <span id="ads_status" class="cc"></span>
+      </div>
+      <div id="ads_result" style="margin-top:8px"></div>
     </div>
     <div class="adminbox">
       <div style="font-weight:600;margin-bottom:6px"><i class="ti ti-shield-lock"></i> Admin — transparency &amp; access</div>
@@ -260,6 +291,88 @@ async function saveEbaySettings(){
     if(j.ok){ if(st) st.innerHTML='<span style="color:var(--ok)">✓ saved</span>'; toast("eBay credentials saved"); }
     else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
   }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
+}
+
+/* ---- the ADVERTISING connection ----
+ *
+ * A different login from SP-API, and the only thing standing between the PPC
+ * screen and six of Orbit's features. A blank secret keeps the stored one, so
+ * correcting the profile id cannot wipe the token.
+ */
+async function saveAdsSettings(){
+  const v = id => ((document.getElementById(id) || {}).value || "").trim();
+  const st = document.getElementById("ads_status");
+  if(st) st.textContent = "Saving…";
+  try{
+    const j = await (await fetch("/settings/ads", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        ads_client_id: v("ads_client"), ads_client_secret: v("ads_secret"),
+        ads_refresh_token: v("ads_refresh"), ads_profile_id: v("ads_profile")})
+    })).json();
+    if(j.ok){
+      if(st) st.innerHTML = '<span style="color:var(--ok)">✓ saved</span>';
+      toast("Advertising credentials saved");
+    }else{
+      if(st) st.innerHTML = '<span style="color:var(--red)">'
+        + esc(j.error || "failed") + '</span>';
+    }
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + esc(String(e)) + '</span>';
+  }
+}
+
+/* Makes ONE real call: the token exchange, then the profiles this login can
+ * see. Listing them is also how the profile id gets set honestly -- pick from
+ * what Amazon says exists rather than typing a number off a screenshot. */
+async function testAdsSettings(){
+  const st = document.getElementById("ads_status");
+  const out = document.getElementById("ads_result");
+  if(st) st.textContent = "Asking Amazon…";
+  if(out) out.innerHTML = "";
+  let j;
+  try{
+    j = await (await fetch("/settings/ads/test", {method: "POST"})).json();
+  }catch(e){
+    if(st) st.innerHTML = '<span style="color:var(--red)">' + esc(String(e)) + '</span>';
+    return;
+  }
+  if(st) st.textContent = "";
+  if(!j || !j.connected){
+    if(out) out.innerHTML = '<div class="odp-note warn" style="padding:10px 12px">'
+      + '<b>Not connected.</b> ' + esc((j && j.error) || "Unknown error")
+      + '<div class="cc" style="margin-top:5px">This marketplace is served by the '
+      + esc((j && j.region) || "?") + ' advertising endpoint. A token issued in a '
+      + 'different region fails here with what looks like a credentials error.</div>'
+      + '</div>';
+    return;
+  }
+  let h = '<div class="odp-note" style="padding:10px 12px">'
+    + '<b style="color:var(--ok)">Connected.</b> ' + esc(j.region)
+    + ' endpoint, ' + (j.profiles || []).length + ' profile(s) visible.'
+    + (j.note ? '<div style="color:var(--warn);margin-top:5px">' + esc(j.note)
+                + '</div>' : '')
+    + '</div>';
+  if((j.profiles || []).length){
+    h += '<table class="kv" style="margin-top:6px"><tr><th>Profile</th>'
+       + '<th>Country</th><th>Type</th><th>Id</th><th></th></tr>';
+    (j.profiles || []).forEach(function(p){
+      const on = String(p.profile_id) === String(j.profile_id);
+      h += '<tr><td>' + esc(p.name || '—') + '</td><td>' + esc(p.country)
+         + '</td><td>' + esc(p.type) + '</td><td>' + esc(p.profile_id) + '</td>'
+         + '<td>' + (on ? '<span style="color:var(--ok)">in use</span>'
+                        : '<button onclick="useAdsProfile(' + jsArg(p.profile_id)
+                          + ')">use this</button>') + '</td></tr>';
+    });
+    h += '</table>';
+  }
+  if(out) out.innerHTML = h;
+}
+
+function useAdsProfile(pid){
+  const el = document.getElementById("ads_profile");
+  if(el) el.value = pid;
+  saveAdsSettings().then(testAdsSettings);
 }
 
 // ---- GLOBAL generation status bar + full-visibility panel (works everywhere) ----

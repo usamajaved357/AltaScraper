@@ -11,6 +11,8 @@ import json
 
 from flask import request, jsonify
 
+from config import settings as _settings
+
 
 def register(app, *, _cfg, CONFIG_PATH, _state, _client):
     """Attach the settings / ai / admin routes to the existing Flask app."""
@@ -171,6 +173,84 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
         g = _re.search(r"[#?&]gid=(\d+)", u)
         return sid, (g.group(1) if g else "")
 
+
+    @app.route("/settings/ads", methods=["GET", "POST"])
+    def settings_ads():
+        """The Amazon ADVERTISING credentials -- a different login from SP-API.
+
+        Six of Orbit's PPC features cannot be built from the Search Term Report
+        and are not blocked on effort: the day trail, the 7/14/30 toggle, the
+        per-ASIN table, the SP/SB/SD split, the enabled/paused filter and the
+        live tracker. All six need this connection, and only the account owner
+        can make it -- it is its own developer registration, its own
+        Login-with-Amazon application and its own refresh token.
+
+        Same shape as the eBay keys: one set can serve every account, and an
+        account advertising through its own agency login overrides it on the
+        account object. GET never returns a secret -- only whether one is
+        stored and its last four characters, so you can tell which is saved.
+        """
+        from api import amazon_ads as _ads
+
+        cfg = _cfg()
+        if request.method == "GET":
+            def tail(v):
+                v = str(v or "")
+                return (v[-4:] if len(v) >= 4 else "•" * len(v)) if v else ""
+            return jsonify({
+                "ok": True,
+                "ads_client_id": str(cfg.get("ads_client_id", "") or ""),
+                "ads_profile_id": str(cfg.get("ads_profile_id", "") or ""),
+                "has_secret": bool(str(cfg.get("ads_client_secret", "") or "").strip()),
+                "secret_tail": tail(cfg.get("ads_client_secret")),
+                "has_refresh": bool(str(cfg.get("ads_refresh_token", "") or "").strip()),
+                "refresh_tail": tail(cfg.get("ads_refresh_token")),
+                "fields": list(_ads.FIELDS),
+            })
+        b = request.get_json(force=True) or {}
+        try:
+            raw = _settings.read_raw(CONFIG_PATH)
+            for f in ("ads_client_id", "ads_profile_id"):
+                if f in b:
+                    raw[f] = str(b.get(f) or "").strip()
+            # A blank secret KEEPS the stored one, so editing the client id
+            # alone cannot wipe the token. Same rule as the eBay cert above.
+            for f in ("ads_client_secret", "ads_refresh_token"):
+                v = str(b.get(f) or "").strip()
+                if v and not v.startswith(("•", "*", "PUT_", "ROTATE")):
+                    raw[f] = v
+            _settings.write_raw(raw, CONFIG_PATH)
+            _state["cfg"] = None
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    @app.route("/settings/ads/test", methods=["POST"])
+    def settings_ads_test():
+        """Does the advertising connection actually work?
+
+        Makes ONE real call -- the token exchange, then listing the profiles
+        this login can see. Listing them is also how the profile id gets set
+        honestly: pick from what Amazon says exists rather than typing a number
+        off a screenshot.
+
+        Read-only. Nothing in api/amazon_ads.py can write a bid, a budget or a
+        campaign state (CLAUDE.md Rule 8).
+        """
+        from api import amazon_ads as _ads
+
+        # The open account, resolved the same way every other route here does --
+        # from _state, against the accounts in config. An account may override
+        # the global advertising login with its own, so which one is open
+        # changes the answer.
+        cfg = _cfg() or {}
+        aid = str((_state or {}).get("active_account_id") or "")
+        acc = next((a for a in (cfg.get("accounts") or [])
+                    if str(a.get("id")) == aid), {}) if aid else {}
+        mkt = (request.get_json(silent=True) or {}).get("marketplace") \
+            or acc.get("default_marketplace") \
+            or (_state or {}).get("active_marketplace") or "UK"
+        return jsonify(_ads.test(_cfg, acc, mkt))
 
     @app.route("/settings/ebay", methods=["GET", "POST"])
     def settings_ebay():

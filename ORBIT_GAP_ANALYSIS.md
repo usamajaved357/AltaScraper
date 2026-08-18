@@ -14,6 +14,7 @@ Built from the two captures: `orbit_inventory_complete.md` and
 | **added** | built in response to this comparison |
 | **adapted** | built, but answering the version of the question that applies here |
 | **blocked** | cannot be built until something is connected — says what |
+| **waiting** | built as far as it can be; the rest needs the Amazon ADVERTISING API, which is a separate login from SP-API. That connection now exists — Settings → Amazon Advertising credentials, with a Test button that lists the profiles your login can see. Each row says what the Search Term Report genuinely cannot carry. |
 | **n/a** | genuinely does not apply to this business, with the reason |
 
 ---
@@ -44,7 +45,7 @@ Built from the two captures: `orbit_inventory_complete.md` and
 | 20 | Comms tab — supplier messaging | **blocked** | Deliberate: it sends messages to suppliers. Not built without an explicit instruction. |
 | 21 | AutoPilot — automatic reordering | **blocked** | Would place purchase orders. Rule 8 territory; needs an explicit decision. |
 | 22 | Steven, the inventory agent | **blocked** | Needs an LLM call per question; the app has Anthropic wired for copy, so it is possible — but it is a feature request, not a gap. |
-| 23 | Reimbursements | **blocked** | Files claims with Amazon. Not built without an explicit instruction. |
+| 23 | Reimbursements | **added** | As **Money back**, an inventory page. FBA categories cannot happen here (zero FBA units on all six accounts), so it checks the one that does: on a refund Amazon returns the referral fee minus the lesser of 5.00 or 20% of it, and `order_fees` holds what it actually took and gave back. It FINDS; it never files. Measured on the live data: 7 refunds, Amazon kept less than its cap on every one. |
 | 24 | Settings at /cogs | **done** | The Costs sheet on the Listings screen. |
 
 ---
@@ -56,20 +57,20 @@ Built from the two captures: `orbit_inventory_complete.md` and
 | 1 | AD SPEND / AD SALES / TOTAL SALES headline | **done** | |
 | 2 | ACOS / TACOS / ROAS | **done** | Formulas checked against Orbit's own rendered figures. |
 | 3 | Period-over-period change on each | **added** | See below. |
-| 4 | Day trail — cumulative spend by hour | **blocked** | The Search Term Report is not dated per row. Needs the Advertising API. |
-| 5 | 7 / 14 / 30 day toggle | **blocked** | Same reason: one report is one window. |
+| 4 | Day trail — cumulative spend by hour | **waiting** | The report is not dated per row. |
+| 5 | 7 / 14 / 30 day toggle | **waiting** | One report is one window. |
 | 6 | Branded vs non-branded, with "Add brand term" | **done** | The most transferable idea on Orbit's page. |
-| 7 | Per-ASIN table with Sessions / Page Views / Buy Box | **blocked** | The Search Term Report has no ASIN column. Sessions and Buy Box come from the Business Report, which is a different upload. |
+| 7 | Per-ASIN table with Sessions / Page Views / Buy Box | **waiting** | The report has no ASIN column; Sessions and Buy Box come from the Business Report, a different upload. |
 | 8 | Search Terms table with an Opportunity column | **done** | Ours says what the term DID, never what to do. |
 | 9 | WASTED SPEND | **done** | Orbit's best metric; our definition stated. |
 | 10 | Match type filters | **done** | |
 | 11 | Min/Max range filters | **added** | See below. |
 | 12 | **Export** | **added** | See below. |
 | 13 | **Campaign Analytics — campaign-level table** | **added** | The report carries campaign and ad group. See below. |
-| 14 | SP / SB / SD split | **blocked** | The Search Term Report is Sponsored Products only. Match type is the split that exists. |
-| 15 | Enabled / Paused filter | **blocked** | Campaign status is not in the report. |
+| 14 | SP / SB / SD split | **waiting** | The report is Sponsored Products only; match type is the split that exists today. |
+| 15 | Enabled / Paused filter | **waiting** | Campaign status is not in the report. |
 | 16 | % of spend vs % of profit | **done** | Orbit's own idea and the best pair of columns on its page. |
-| 17 | Live Tracker — hourly | **blocked** | Needs the Advertising API. |
+| 17 | Live Tracker — hourly | **waiting** | |
 | 18 | Dr PPC console — read-only analyst | **done** | The PPC agent already on the page. |
 | 19 | Managed PPC — approval gates, audit trail | **n/a** | It is Orbit's paid upsell. The repricer in this app already has that shape. |
 
