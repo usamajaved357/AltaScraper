@@ -16,6 +16,71 @@
 // only step that reaches the live catalogue.
 
 const GUIDES = {
+  // PPC ANALYTICS. The thing worth leading with is where the figures come from:
+  // this app has no Advertising API connection, so everything is read from a
+  // report the seller downloads. Somebody who does not know that will wonder
+  // why the screen is empty and conclude it is broken.
+  ppc: {
+    title: "PPC — how this page works",
+    lead: "What your advertising is doing, and what it is wasting. Every figure "
+        + "comes from your own Search Term Report. Nothing here changes a bid, "
+        + "a budget or a campaign.",
+    steps: [
+      {n: "1", h: "Get the report",
+       b: "In Seller Central: <b>Advertising → Measurement &amp; Reporting → "
+        + "Sponsored Products → Search Term Report</b>. Pick a date range, "
+        + "download the CSV, and upload it with the button at the top of this "
+        + "page.<br><br>"
+        + "<b>Why a file and not a live connection.</b> Amazon's Advertising "
+        + "API is a completely separate login from the one this app uses for "
+        + "listings and orders — its own client id, secret and refresh token — "
+        + "and it is not connected. The report carries everything except the "
+        + "hour-by-hour view, so nothing waits on it."},
+      {n: "2", h: "Start with what bought nothing",
+       b: "The headline is the spend that produced no orders. It is the only "
+        + "figure on the page that names an action rather than scoring you.<br><br>"
+        + "A term needs at least ten clicks before it is counted — below that, "
+        + "no orders is evidence of nothing, and negating on it would throw "
+        + "away a term that was never given a chance."},
+      {n: "3", h: "Tell it your brand name",
+       b: "Amazon does not report which searches were for your brand. Type your "
+        + "brand words into the box and every term containing one is counted "
+        + "as branded.<br><br>"
+        + "It matters more than it sounds: paying to appear on your own name is "
+        + "defensive, not growth. Mixed together they make a healthy-looking "
+        + "ACOS out of money that never won a new customer. Split apart, the "
+        + "non-branded ACOS is the number that tells you whether the "
+        + "advertising is actually working."},
+      {n: "4", h: "Act on it in the harvester, not here",
+       b: "This page reports. The <b>campaign builder and harvester</b> below "
+        + "turn what you have found into a Seller Central bulk file — new "
+        + "keywords in all three match types, and negatives for the terms that "
+        + "wasted money.<br><br>"
+        + "You review that file and upload it yourself. Nothing in this app "
+        + "ever changes a bid or a budget on its own."},
+    ],
+    notes: [
+      "<b>ACOS</b> is spend over the sales the ads made — does the advertising "
+      + "pay for itself. <b>TACOS</b> is spend over ALL your sales, ad and "
+      + "organic — what advertising costs the business. A brand can have a "
+      + "healthy ACOS and a TACOS that is eating it, and only the second "
+      + "answers whether you should be spending this at all.",
+      "<b>CPC</b> is cost per click. <b>CPA</b> is cost per <i>acquisition</i>. "
+      + "A term with a cheap CPC and a terrible CPA is the expensive kind of "
+      + "cheap.",
+      "<b>CTR</b> asks whether the AD is worth clicking. <b>CVR</b> asks "
+      + "whether the LISTING converts the traffic the ad bought. A bad ACOS "
+      + "with a good CTR and a poor CVR is a listing problem, not an ads one.",
+      "<b>Match types.</b> Broad discovers, exact converts. The % of spend "
+      + "against % of profit columns are the point — a match type taking 40% "
+      + "of the spend and returning 12% of the profit is the one to look at.",
+      "A blank figure means it could not be worked out, never zero. A term with "
+      + "no clicks has no CTR; printing 0% would invite acting on a number "
+      + "nobody measured.",
+      "TACOS needs total sales, which come from your orders rather than the ad "
+      + "report — so it appears once the report carries its date range.",
+    ],
+  },
   // THE STOCK COCKPIT. Written around the one thing that is genuinely different
   // here from every other inventory tool: these listings are merchant-fulfilled,
   // so "units" is a promise rather than a warehouse count, and the number that

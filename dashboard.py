@@ -3513,7 +3513,11 @@ def build_app(backend=None):
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,
                          _parse_pct_from_context=_parse_pct_from_context,
-                         _cfg=_cfg, CHAT_MODEL=CHAT_MODEL)
+                         _cfg=_cfg, CHAT_MODEL=CHAT_MODEL,
+                         # The analytics screen needs the database and which
+                         # account is open; the campaign builder never did.
+                         CONFIG_PATH=CONFIG_PATH, _state=_state,
+                         _active_account=_active_account)
     import routes.accounts_routes as _accounts_routes
     _accounts_routes.register(app, _state=_state, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH,
                               _LIVE_CACHE=_LIVE_CACHE,
