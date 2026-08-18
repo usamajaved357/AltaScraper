@@ -55,53 +55,115 @@ check("a negative price is not a bargain", S.landed_cost(chk(price=-5.0)), None)
 
 
 print("\n=== the price is the user's own rule, not a second one ===")
-# cost + 15% fee + 3.00 postage label + 2.00 ads + 1.00 profit, solved for price:
-#   (cost + 6.00) / 0.85
 from listing import pricing as P
 
-check("9.50 landed -> 18.24", S.floor_price(9.50), 18.24)
-check("10.00 landed -> 18.83", S.floor_price(10.00), 18.83)
-check("15.00 landed -> 24.71", S.floor_price(15.00), 24.71)
-check("rounded UP, never down", S.floor_price(9.50) >= 15.50 / 0.85, True)
-check("no cost, no floor", S.floor_price(None), None)
+# THE ALLOWANCES ARE NO LONGER ASSUMED, SO A TEST OF THE MECHANISM STATES THEM.
+#
+#     "do not add 3 pounds postage and 2 pounds ad cost and 1 pound profit space
+#      on your own, if i added this rule earlier, remove it."
+#
+# 3.00 / 2.00 / 1.00 used to be the defaults, and every number below was written
+# against them. They are now 0.00 and the owner sets them, so the rule is passed
+# in explicitly. That is better either way: a test of "does the floor work"
+# should not silently change its answer when a default does.
+# min_roi_pct 0 as well: the never-sell-at-break-even floor did not exist when
+# these numbers were written, and it is a SECOND floor -- with it on, 9.50 asks
+# 19.30 rather than 18.24. Switched off here so this block still tests the flat
+# rule on its own. The safety floor gets its own tests below.
+ALLOW = {"shipping_label": 3.00, "ads_margin": 2.00, "min_profit": 1.00,
+         "min_roi_pct": 0}
+
+# cost + 15% fee + 3.00 postage label + 2.00 ads + 1.00 profit, solved for price:
+#   (cost + 6.00) / 0.85
+check("9.50 landed -> 18.24", S.floor_price(9.50, ALLOW), 18.24)
+check("10.00 landed -> 18.83", S.floor_price(10.00, ALLOW), 18.83)
+check("15.00 landed -> 24.71", S.floor_price(15.00, ALLOW), 24.71)
+check("rounded UP, never down", S.floor_price(9.50, ALLOW) >= 15.50 / 0.85, True)
+check("no cost, no floor", S.floor_price(None, ALLOW), None)
+
+print("  -- NOTHING is added that the owner did not ask for --")
+check("the postage allowance defaults to nothing", P.PRICING_RULE_SHIPPING_LABEL, 0.00)
+check("  the ads allowance too", P.PRICING_RULE_ADS_MARGIN, 0.00)
+check("  and the flat profit", P.PRICING_RULE_MIN_PROFIT, 0.00)
+
+print("  -- but it will not sell at break-even either --")
+# With all three amounts at zero the flat rule is cost + Amazon's fee exactly,
+# which earns nothing. min_roi_pct is the floor under that, stated as a share of
+# the cash put in so it means the same on a cheap unit and a dear one.
+check("a bare rule still asks for the safety return",
+      S.has_profit_requirement({}), True)
+check("  9.50 at 20% back on the cash", S.floor_price(9.50, {}), 13.42)
+# >= because the floor is rounded UP -- a floor rounded down is not a floor --
+# so it lands a fraction above the target rather than exactly on it.
+check("  and that price really does return at least 20%",
+      P.achieved(S.floor_price(9.50, {}), 9.50, 0.15)["roi_pct"] >= 20.0, True)
+check("  it is NOT one of the two profit targets", S.targets_set({}), [])
+check("  so a screen can still say 'no target set'", S.target_floor(9.50, {}), None)
+
+print("  -- turning the safety floor off means refusing, never break-even --")
+check("nothing asks for any profit now",
+      S.has_profit_requirement({"min_roi_pct": 0}), False)
+check("  so it refuses to price at all",
+      S.floor_price(9.50, {"min_roi_pct": 0}), None)
+check("  and says so in words the owner can act on",
+      "no profit requirement is set" in
+      S.decide({"price": 20.0, "quantity": 5, "lead_days": 3},
+               [(src(1), chk(price=8.00, shipping=1.50))],
+               {"min_roi_pct": 0}, NOW)["reason"], True)
+print("  -- and any one of the five switches it back on --")
+for k, v in (("min_profit", 1.00), ("shipping_label", 3.00),
+             ("ads_margin", 2.00), ("target_roi_pct", 20.0),
+             ("min_roi_pct", 5.0)):
+    check("  %s makes it a real floor again" % k,
+          S.floor_price(9.50, {"min_roi_pct": 0, k: v}) is not None, True)
 
 print("  -- it is the SAME rule the generator prices with --")
 # The generator knows the fee in pounds; the repricer only knows the rate. The
 # two must land on the same number or a repriced listing would jump away from
 # the price it was created at.
-r = S.floor_price(9.50)
+r = S.floor_price(9.50, ALLOW)
 check("solved from the rate", r, 18.24)
 check("  agrees with the generator's own function fed that price's fee",
-      P.floor_from_fees(9.50, round(r * 0.15, 3)), 18.24)
+      P.floor_from_fees(9.50, round(r * 0.15, 3), 3.00, 2.00, 1.00), 18.24)
 check("  and the generator still prices as it always did",
-      P.compute_selling_price(9.50, 2.736, 0)["floor"], 18.24)
+      P.compute_selling_price(9.50, 2.736, 0, 3.00, 2.00, 1.00,
+                              min_roi_pct=0)["floor"], 18.24)
 check("  competitor above the floor still wins THERE (creation only)",
       P.compute_selling_price(9.50, 2.736, 25.00)["selling_price"], 25.00)
 
+print("  -- the generator will not create a listing at break-even --")
+# With the allowances gone its floor would be cost + fee exactly, so it carries
+# its own percentage minimum. A competitor above it is untouched by any of this.
+check("a floor-priced listing still returns something",
+      P.compute_selling_price(9.50, 2.736, 0)["floor"] > 9.50 + 2.736, True)
+check("  at least the stated ROI on the cash",
+      P.achieved(P.compute_selling_price(9.50, 2.736, 0)["floor"], 9.50,
+                 0.15)["roi_pct"] >= P.PRICING_RULE_MIN_ROI_PCT, True)
+
 print("  -- and it is NOT the percentage-margin model that was wrong --")
 check("the discarded formula would have said 12.67; this does not",
-      S.floor_price(9.50) != 12.67, True)
-check("  because postage and ads are real money",
-      round(S.floor_price(9.50) - (9.50 / 0.75), 2), 5.57)
+      S.floor_price(9.50, ALLOW) != 12.67, True)
+check("  because postage and ads are real money WHEN THEY ARE SET",
+      round(S.floor_price(9.50, ALLOW) - (9.50 / 0.75), 2), 5.57)
 
 print("  -- a SKU that posts in a bigger box can say so --")
 check("6.00 postage instead of 3.00",
-      S.floor_price(9.50, {"shipping_label": 6.00}), 21.77)
+      S.floor_price(9.50, dict(ALLOW, shipping_label=6.00)), 21.77)
 
 print("  -- a rate that cannot be priced against --")
 check("a 100% referral rate is refused, not divided by zero",
-      S.floor_price(10.00, {"referral_rate": 1.0}), None)
+      S.floor_price(10.00, dict(ALLOW, referral_rate=1.0)), None)
 check("  and does NOT come back as a negative price",
-      S.floor_price(10.00, {"referral_rate": 1.5}), None)
+      S.floor_price(10.00, dict(ALLOW, referral_rate=1.5)), None)
 check("  99% is refused too, not priced at thousands",
-      S.floor_price(10.00, {"referral_rate": 0.995}), None)
+      S.floor_price(10.00, dict(ALLOW, referral_rate=0.995)), None)
 
 
 print("\n=== a source is only usable if we can say why it is ===")
 def why(source, c, rule=None):
     return S.usable(source, c, rule or {}, NOW)[1]
 
-check("a good source is usable", S.usable(src(1), chk(), {}, NOW)[0], True)
+check("a good source is usable", S.usable(src(1), chk(), ALLOW, NOW)[0], True)
 check("turned off", why(src(1, enabled=0), chk()), "source turned off")
 check("never checked", why(src(1), None), "never checked")
 truthy("a failed check says so", "last check failed" in why(src(1), chk(status=S.FAILED)))
@@ -125,7 +187,7 @@ check("dispatch unknown when a limit is set",
       why(src(1), chk(dispatch=None), {"max_dispatch_days": 5}),
       "dispatch time unknown")
 check("but dispatch may be unknown when no limit is set",
-      S.usable(src(1), chk(dispatch=None), {}, NOW)[0], True)
+      S.usable(src(1), chk(dispatch=None), ALLOW, NOW)[0], True)
 
 
 print("\n=== units, not arithmetic: a supplier in the wrong currency ===")
@@ -143,7 +205,7 @@ check("  and a source with no currency at all is refused too",
       why(src(1), dict(GBP, currency=""), {"currency": "GBP"}),
       "the supplier's currency is unknown")
 check("with no expected currency the check is skipped",
-      S.usable(src(1), USD, {}, NOW)[0], True)
+      S.usable(src(1), USD, ALLOW, NOW)[0], True)
 check("a USD source for a US listing is fine",
       S.usable(src(1), USD, {"currency": "USD"}, NOW)[0], True)
 print("  -- and it is NOT silently converted --")
@@ -176,7 +238,7 @@ check("postage counts when comparing -- cheap item, dear postage loses",
 
 print("  -- rejections are kept even when something IS chosen --")
 ch, rej = S.choose([(src(1, label="A"), chk(price=10.0)),
-                    (src(2, label="B"), chk(status=S.FAILED))], {}, NOW)
+                    (src(2, label="B"), chk(status=S.FAILED))], ALLOW, NOW)
 check("one chosen", ch[0]["label"], "A")
 check("  and the other explained", len(rej), 1)
 check("  by name", rej[0]["label"], "B")
@@ -186,21 +248,21 @@ print("\n=== THE ONE THAT MATTERS: unreadable is not out of stock ===")
 CUR = {"price": 20.00, "quantity": 5, "lead_days": 5}
 
 d = S.decide(CUR, [(src(1), chk(status=S.FAILED)),
-                   (src(2), chk(status=S.FAILED))], {}, NOW)
+                   (src(2), chk(status=S.FAILED))], ALLOW, NOW)
 check("every source unreadable -> do NOTHING", d["action"], "none")
 check("  and say why", d["blocked_by"], "no usable data from 2 of 2 sources")
 check("  the listing is NOT taken out of stock", d["quantity"], None)
 
-d = S.decide(CUR, [(src(1), chk(at=STALE)), (src(2), chk(at=STALE))], {}, NOW)
+d = S.decide(CUR, [(src(1), chk(at=STALE)), (src(2), chk(at=STALE))], ALLOW, NOW)
 check("stale readings are unreadable too", d["action"], "none")
 
 d = S.decide(CUR, [(src(1), chk(in_stock=False)),
-                   (src(2), chk(status=S.FAILED))], {}, NOW)
+                   (src(2), chk(status=S.FAILED))], ALLOW, NOW)
 check("one out of stock, one unreadable -> still do nothing", d["action"], "none")
 truthy("  because the unreadable one might have supplied it", d["blocked_by"])
 
 d = S.decide(CUR, [(src(1), chk(in_stock=False)),
-                   (src(2), chk(in_stock=False))], {}, NOW)
+                   (src(2), chk(in_stock=False))], ALLOW, NOW)
 check("ALL definitely out of stock -> out of stock", d["action"], "out_of_stock")
 check("  quantity zero", d["quantity"], 0)
 truthy("  naming the sources", "out of stock at the supplier" in d["reason"])
@@ -208,13 +270,13 @@ truthy("  naming the sources", "out of stock at the supplier" in d["reason"])
 print("  -- an ended listing is evidence, but not on one reading --")
 # A 404 is what an ended item looks like AND what a blip, a rate-limit and a
 # marketplace mismatch look like. Acting on the first one zeroes a live listing.
-d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=1))], {}, NOW)
+d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=1))], ALLOW, NOW)
 check("seen ended ONCE -> change nothing", d["action"], "none")
 check("  quantity untouched", d["quantity"], None)
 truthy("  and it says it could not read the source",
        "could not be read" in d["reason"] or "no usable data" in d["blocked_by"])
 
-d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=2))], {}, NOW)
+d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=2))], ALLOW, NOW)
 check("seen ended TWICE -> out of stock", d["action"], "out_of_stock")
 check("  quantity zero", d["quantity"], 0)
 
@@ -224,51 +286,75 @@ check("one reading is enough if the rule says so", d["action"], "out_of_stock")
 
 # The count has to come from somewhere real. A check that arrives without one
 # has no history behind it, so it cannot be confirmed.
-d = S.decide(CUR, [(src(1), {"status": S.GONE, "checked_at": FRESH})], {}, NOW)
+d = S.decide(CUR, [(src(1), {"status": S.GONE, "checked_at": FRESH})], ALLOW, NOW)
 check("a reading with no history behind it is not confirmation",
       d["action"], "none")
 
 print("  -- one confirmed-gone source does not blind the others --")
 d = S.decide(CUR, [(src(1), chk(status=S.GONE, gone_streak=2)),
-                   (src(2), chk(price=9.00, shipping=0.0))], {}, NOW)
+                   (src(2), chk(price=9.00, shipping=0.0))], ALLOW, NOW)
 check("the readable source still prices it", d["action"], "update")
 
 d = S.decide(CUR, [(src(1), chk(dispatch=9))], {"max_dispatch_days": 5}, NOW)
 check("too slow is a decision, not a blind spot", d["action"], "out_of_stock")
 
 check("no sources at all -> nothing",
-      S.decide(CUR, [], {}, NOW)["action"], "none")
+      S.decide(CUR, [], ALLOW, NOW)["action"], "none")
 check("disabled sources do not count as sources",
-      S.decide(CUR, [(src(1, enabled=0), chk())], {}, NOW)["action"], "none")
+      S.decide(CUR, [(src(1, enabled=0), chk())], ALLOW, NOW)["action"], "none")
 
 
 print("\n=== a normal day: the price follows the supplier ===")
 d = S.decide(CUR, [(src(1, label="eBay A"), chk(price=8.00, shipping=1.50, dispatch=3))],
-             {}, NOW)
+             ALLOW, NOW)
 check("it updates", d["action"], "update")
 check("  8.00 + 1.50 postage = 9.50 landed -> 18.24", d["price"], 18.24)
 check("  handling is the supplier's 3 days plus a 2 day buffer", d["lead_days"], 5)
 check("  never the supplier's promise on its own", d["lead_days"] > 3, True)
 check("  quantity restored", d["quantity"], 5)
 check("  and it names the source it used", d["source_id"], 1)
-truthy("  the reason shows the whole sum", "+ 3.00 postage + 2.00 ads" in d["reason"])
+
+# THE REASON IS PROSE NOW, NOT A FORMULA.
+#
+#     "first of all this is very confusing even i am not able to understand
+#      what do it means"
+#
+# It used to be asserted by looking for the substring "+ 3.00 postage + 2.00
+# ads", which is precisely the arithmetic identity that made it unreadable. What
+# matters is that the sentence answers the questions somebody actually has, so
+# that is what is checked -- and that the numbers in it are the ones the decision
+# used, which is checked against the structured breakdown rather than by parsing
+# the prose back out (CLAUDE.md Rule 4).
+print("  -- and the reason reads as English --")
+truthy("  says where it is being bought", "Buying from eBay A" in d["reason"])
+truthy("  says what it costs delivered", "9.50 delivered" in d["reason"])
+truthy("  says what it will sell for", "Selling at 18.24" in d["reason"])
+truthy("  says what that leaves", "leaves 1.00 a unit" in d["reason"])
+truthy("  names Amazon's cut", "Amazon's 2.74 fee" in d["reason"])
+truthy("  says how long it takes, in words", "Handling time 5 days" in d["reason"])
+truthy("  and no longer reads as an equation",
+       "=" not in d["reason"] and " + " not in d["reason"])
+check("  the sum is still available in full, structured",
+      (round(d["breakdown"]["cost"], 2), d["breakdown"]["price"],
+       d["breakdown"]["postage_label"], d["breakdown"]["ads"]),
+      (9.50, 18.24, 3.00, 2.00))
 
 print("  -- the supplier drops their price, so do we --")
 cheaper = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
-                   [(src(1), chk(price=7.00, shipping=1.50, dispatch=3))], {}, NOW)
+                   [(src(1), chk(price=7.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
 check("cheaper source -> lower price", cheaper["price"], 17.06)
 check("  which is a real drop", cheaper["price"] < 18.24, True)
 
 print("  -- and when they put it up --")
 dearer = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
-                  [(src(1), chk(price=9.00, shipping=1.50, dispatch=3))], {}, NOW)
+                  [(src(1), chk(price=9.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
 check("dearer source -> higher price", dearer["price"], 19.42)
 
 print("  -- the competitor is NOT consulted (you asked for source-only) --")
 check("no competitor field is even accepted", "competitor" in S.DEFAULT_RULE, False)
 
 print("  -- a slower supplier stretches the handling time --")
-slow = S.decide(CUR, [(src(1), chk(price=8.00, shipping=1.50, dispatch=8))], {}, NOW)
+slow = S.decide(CUR, [(src(1), chk(price=8.00, shipping=1.50, dispatch=8))], ALLOW, NOW)
 check("8 day dispatch -> 10 day handling", slow["lead_days"], 10)
 
 
@@ -279,33 +365,33 @@ print("  -- min_price is the backstop against a MISREAD cost --")
 # disaster. Only an absolute number the user set stops it.
 misread = chk(price=0.50, shipping=0.0, dispatch=3)
 d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
-             [(src(1), misread)], {"max_change_pct": 100.0}, NOW)
+             [(src(1), misread)], dict(ALLOW, max_change_pct=100.0), NOW)
 check("without min_price the floor does NOT save you", d["price"], 7.65)
 d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
-             [(src(1), misread)], {"max_change_pct": 100.0, "min_price": 12.00}, NOW)
+             [(src(1), misread)], dict(ALLOW, max_change_pct=100.0, min_price=12.00), NOW)
 check("with min_price the price cannot go under it", d["price"], 12.0)
 
 print("  -- max_change_pct catches the sudden misparse --")
 d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
-             [(src(1), misread)], {}, NOW)
+             [(src(1), misread)], ALLOW, NOW)
 check("a 58% drop is held, not pushed", d["action"], "none")
 truthy("  and says how far out it was", "exceeds" in d["blocked_by"])
 check("a move inside the limit goes through",
       S.decide({"price": 15.00, "quantity": 5, "lead_days": 5},
-               [(src(1), chk(price=8.00, shipping=1.50))], {}, NOW)["action"], "update")
+               [(src(1), chk(price=8.00, shipping=1.50))], ALLOW, NOW)["action"], "update")
 
 print("  -- the floor still holds when min_price is BELOW it --")
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0, dispatch=3))],
-             {"min_price": 5.00}, NOW)
+             dict(ALLOW, min_price=5.00), NOW)
 check("a low min_price cannot drag the price under the rule", d["price"], 18.24)
 
 print("  -- a ceiling under the floor means we cannot sell it at all --")
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
-             {"max_price": 12.00}, NOW)
+             dict(ALLOW, max_price=12.00), NOW)
 check("out of stock rather than at a loss", d["action"], "out_of_stock")
 truthy("  explaining the arithmetic", "ceiling" in d["reason"])
 d = S.decide(CUR, [(src(1), chk(price=9.50, shipping=0.0))],
-             {"min_price": 25.00, "max_price": 20.00}, NOW)
+             dict(ALLOW, min_price=25.00, max_price=20.00), NOW)
 check("a ceiling above the floor caps a raised price", d["price"], 20.0)
 
 print("  -- a rate the rule cannot price against stops everything --")
@@ -315,11 +401,11 @@ truthy("  and named", "pricing rule" in d["blocked_by"])
 
 print("  -- and we do not push trivia --")
 d = S.decide({"price": 18.30, "quantity": 5, "lead_days": 5},
-             [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], {}, NOW)
+             [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
 check("a 6p difference is left alone", d["action"], "none")
 truthy("  politely", "already within" in d["reason"])
 d = S.decide({"price": 18.30, "quantity": 5, "lead_days": 9},
-             [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], {}, NOW)
+             [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
 check("but a wrong handling time is still worth fixing", d["action"], "update")
 
 
@@ -328,7 +414,8 @@ r = S.rule_with_defaults({"shipping_label": 6.0})
 check("the one you set", r["shipping_label"], 6.0)
 check("  the rest defaulted", r["referral_rate"], 0.15)
 check("a NULL column does not wipe a default",
-      S.rule_with_defaults({"shipping_label": None})["shipping_label"], 3.00)
+      S.rule_with_defaults({"shipping_label": None})["shipping_label"],
+      P.PRICING_RULE_SHIPPING_LABEL)
 check("the per-unit costs default to the shared pricing rule",
       (r["ads_margin"], r["min_profit"]),
       (P.PRICING_RULE_ADS_MARGIN, P.PRICING_RULE_MIN_PROFIT))
@@ -349,13 +436,21 @@ from listing import pricing as _P
 
 COST = 11.95
 def _price(kind, pct):
-    return S.floor_price(COST, {"profit_target_kind": kind, "profit_target_pct": pct})
+    # ALLOW, because every number in this block was written when the three
+    # per-unit allowances were the defaults. They are 0.00 now and the owner
+    # sets them; stating them keeps this a test of the TARGET mechanism rather
+    # than of what a default happens to be.
+    return S.floor_price(COST, dict(ALLOW, profit_target_kind=kind,
+                                    profit_target_pct=pct))
 
 # Checked by running the price back through the INVERSE, not by re-deriving it
 # with the same formula that produced it -- that would only prove it is
 # self-consistent.
 for kind, pct in (("margin", 20.0), ("margin", 35.0), ("roi", 20.0), ("roi", 35.0)):
-    got = _P.achieved(_price(kind, pct), COST, 0.15)
+    # The inverse must be given the SAME allowances the price was built with,
+    # or it is measuring a different question and will always read high.
+    got = _P.achieved(_price(kind, pct), COST, 0.15,
+                      ALLOW["shipping_label"], ALLOW["ads_margin"])
     hit = got["margin_pct"] if kind == "margin" else got["roi_pct"]
     check("%s of %.0f%% actually returns %s%%" % (kind, pct, pct), abs(hit - pct) < 0.15, True)
 
@@ -364,7 +459,7 @@ check("margin asks more than ROI for the same number",
       _price("margin", 20.0) > _price("roi", 20.0), True)
 
 # A target ADDS a floor; it never removes the one already there.
-flat = S.floor_price(COST, {})
+flat = S.floor_price(COST, ALLOW)
 check("a tiny target cannot drag the price below the flat rule",
       _price("roi", 1.0), flat)
 truthy("  even though the target alone would ask less",
@@ -381,11 +476,11 @@ check("an unknown kind is not a target", _P.floor_from_target(COST, 0.15, "gross
 check("no target set -> no target floor", S.target_floor(COST, {}), None)
 
 print("  -- the flag reads the CURRENT price, not the proposed one --")
-st = S.target_status(21.99, COST, {"profit_target_kind": "roi", "profit_target_pct": 20.0})
+st = S.target_status(21.99, COST, dict(ALLOW, profit_target_kind="roi", profit_target_pct=20.0))
 check("a listing under the target says so", st["meets"], False)
 check("  and how far under", st["short_by"], 5.4)
 check("  in the units that were asked for", st["kind"], "roi")
-st = S.target_status(30.00, COST, {"profit_target_kind": "roi", "profit_target_pct": 20.0})
+st = S.target_status(30.00, COST, dict(ALLOW, profit_target_kind="roi", profit_target_pct=20.0))
 check("a listing over it is not flagged", st["meets"], True)
 check("no target set -> nothing to say", S.target_status(21.99, COST, {}), None)
 # "cannot tell" and "fails" are different, and only one is worth a red chip.
@@ -396,7 +491,7 @@ check("an unknown price cannot be judged",
 print("  -- and the decision carries it --")
 d = S.decide({"price": 21.99, "quantity": 5, "lead_days": 4},
              [(src(1), chk(price=COST, shipping=0.0))],
-             {"profit_target_kind": "roi", "profit_target_pct": 20.0}, NOW)
+             dict(ALLOW, profit_target_kind="roi", profit_target_pct=20.0), NOW)
 check("the target travels with the decision", (d["target"] or {})["meets"], False)
 truthy("  the price it would set clears the target",
        _P.achieved(d["price"], COST, 0.15)["roi_pct"] >= 20.0)
@@ -404,7 +499,7 @@ truthy("  and the breakdown says which floor decided it",
        d["breakdown"]["targets"] == [{"kind": "roi", "pct": 20.0}]
        and d["breakdown"]["target_floor"] is not None)
 d2 = S.decide({"price": 21.99, "quantity": 5, "lead_days": 4},
-              [(src(1), chk(price=COST, shipping=0.0))], {}, NOW)
+              [(src(1), chk(price=COST, shipping=0.0))], ALLOW, NOW)
 check("with no target the decision says so, rather than passing", d2["target"], None)
 
 
@@ -458,7 +553,7 @@ check("  for either of them", [p["meets"] for p in st3["parts"]], [None, None])
 print("\n--- the old single setting still works, untouched ---")
 # An account that set '20% roi' before there were two boxes must not silently
 # lose its floor. rule_with_defaults folds it into the ROI box.
-old = S.rule_with_defaults({"profit_target_kind": "roi", "profit_target_pct": 20.0})
+old = S.rule_with_defaults(dict(ALLOW, profit_target_kind="roi", profit_target_pct=20.0))
 check("it becomes the ROI target", old["target_roi_pct"], 20.0)
 check("  and does not invent a margin one", old["target_margin_pct"], None)
 check("the margin form too",

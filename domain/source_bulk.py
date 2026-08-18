@@ -49,6 +49,54 @@ _URL_COLS = ("url", "link", "source", "source url", "source link", "supplier",
 
 _ASIN_RE = re.compile(r"\b(B0[A-Z0-9]{8})\b", re.I)
 
+# NUMBERED SUPPLIER COLUMNS: "supplier 1", "source 2", "link 3", "url 10".
+#
+#     "give the option in the template in the repricer page to add multiple
+#      supplier links, write the heading yourself, supplier 1, supplier 2,
+#      supplier 3, supplier 4 and so on upto 10 and the user should be told that
+#      he can add more suplliers by adding more columns after 10 and giving the
+#      heading of 11th count, 12 count and so on."
+#
+# The whole header has to match, not a substring. That is what keeps the trap
+# described above the template headers shut: a column called "current supplier
+# link" contains "supplier" but is not "supplier <n>", so it cannot be mistaken
+# for one. There is no upper bound here on purpose -- the template offers ten and
+# a person who adds "supplier 11" gets supplier 11.
+_SUPPLIER_N_RE = re.compile(
+    r"^(?:supplier|source|link|url|ebay)\s*(\d+)$")
+
+# How many the template hands out. Ten is enough for every SKU on the account
+# and short enough to stay readable in a spreadsheet.
+TEMPLATE_SUPPLIER_COLS = 10
+
+
+def url_columns(headers):
+    """Every column that holds a supplier link, in the order they should be read.
+
+    Numbered columns first, by their number, then any single unnumbered link
+    column ("supplier link", "url", "source"). Returns [] when there is none.
+
+    WHY EVERY COLUMN AND NOT THE FIRST. apply_rows used _pick, which returns one
+    index, so a sheet with ten supplier columns would have had nine of them read
+    and silently dropped -- the exact failure the template's own comment warned
+    about when it argued for rows instead of columns. Rows still work; this makes
+    columns work too, so a sheet written either way does what it looks like it
+    does.
+    """
+    numbered = []
+    for i, h in enumerate(headers or []):
+        m = _SUPPLIER_N_RE.match(_norm(h))
+        if m:
+            try:
+                numbered.append((int(m.group(1)), i))
+            except (TypeError, ValueError):
+                pass
+    out = [i for _n, i in sorted(numbered)]
+    plain = _pick(headers, _URL_COLS)
+    if plain >= 0 and plain not in out:
+        out.append(plain)
+    return out
+
 
 def _norm(s):
     return re.sub(r"[^a-z0-9]+", " ", str(s or "").strip().lower()).strip()
@@ -224,7 +272,8 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
 # the person had just typed. One column, arriving pre-filled with whatever is
 # attached now, is both unambiguous to the parser and the thing a person
 # actually wants: you can see what is there and change it.
-TEMPLATE_HEADERS = ["sku", "asin", "product", "supplier link"]
+TEMPLATE_HEADERS = ["sku", "asin", "product"] + [
+    "supplier %d" % i for i in range(1, TEMPLATE_SUPPLIER_COLS + 1)]
 
 
 def template_rows(config_path, workspace_id, marketplace, enrolled,
@@ -277,24 +326,35 @@ def template_rows(config_path, workspace_id, marketplace, enrolled,
         if not s:
             continue
         got = _cat.look(idx, s)
-        have = [u for u in (srcs.get(s) or []) if str(u or "").strip()]
-        # One row per supplier it already has, then one blank to add another.
-        for u in have:
-            out.append([s,
-                        got.get("asin") or _link._asin_from_sku(s),
-                        got.get("title") or "",
-                        str(u)])
-        out.append([s,
-                    # OUR ASIN if the catalogue knows it. Falling back to the
-                    # one inside the SKU is falling back to the COMPETITOR's
-                    # (Rule 1) -- which is still the right thing in a column
-                    # headed "asin" here, because that is what the upload
-                    # matches on and how the app already finds a listing from a
-                    # pasted ASIN. Same reader source_link uses, not a second
-                    # copy of the pattern (Rule 12).
-                    got.get("asin") or _link._asin_from_sku(s),
-                    got.get("title") or "",
-                    ""])
+        have = [str(u) for u in (srcs.get(s) or []) if str(u or "").strip()]
+        # ONE ROW PER SKU, suppliers ACROSS the columns.
+        #
+        # This used to be one row per supplier with a blank row underneath to add
+        # another, because apply_rows could only read a single link column and
+        # extra columns would have been silently ignored. It reads every numbered
+        # column now, so the shape he asked for is the shape he gets -- and it is
+        # the better one anyway: forty SKUs are forty rows rather than ninety,
+        # and a SKU's suppliers sit side by side where they can be compared.
+        #
+        # Rows still work. Two rows carrying the same SKU and different links
+        # still give that SKU two sources, so a sheet written the old way, or
+        # exported from somewhere else, is unaffected.
+        row = [s,
+               # OUR ASIN if the catalogue knows it. Falling back to the one
+               # inside the SKU is falling back to the COMPETITOR's (Rule 1) --
+               # which is still the right thing in a column headed "asin" here,
+               # because that is what the upload matches on and how the app
+               # already finds a listing from a pasted ASIN. Same reader
+               # source_link uses, not a second copy of the pattern (Rule 12).
+               got.get("asin") or _link._asin_from_sku(s),
+               got.get("title") or ""]
+        # Every link it already has, then empty columns to fill. A SKU with more
+        # suppliers than the template has columns keeps them all: the row simply
+        # runs wider than the header, and read_table pads the header out.
+        row.extend(have)
+        while len(row) < 3 + TEMPLATE_SUPPLIER_COLS:
+            row.append("")
+        out.append(row)
     # SKUs WITH NO SUPPLIER AT ALL FIRST, and each SKU's rows kept together.
     #
     # The sheet is opened to do a job, and the SKUs with nothing attached are
@@ -328,17 +388,19 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
     """
     i_sku = _pick(headers, _SKU_COLS)
     i_asin = _pick(headers, _ASIN_COLS)
-    i_url = _pick(headers, _URL_COLS)
+    # EVERY supplier column, not the first one. See url_columns().
+    i_urls = url_columns(headers)
 
     out = {"ok": True, "attached": 0, "already": 0, "skipped": 0,
            "tracked": 0, "rows": [],
            "columns": {"sku": (headers[i_sku] if i_sku >= 0 else ""),
                        "asin": (headers[i_asin] if i_asin >= 0 else ""),
-                       "url": (headers[i_url] if i_url >= 0 else "")}}
-    if i_url < 0:
+                       "url": ", ".join(str(headers[i]) for i in i_urls)}}
+    if not i_urls:
         out["ok"] = False
-        out["error"] = ("no supplier link column found. Name one of the columns "
-                        "'url', 'link', 'source' or 'supplier'.")
+        out["error"] = ("no supplier link column found. Name the columns "
+                        "'supplier 1', 'supplier 2' and so on — or use a single "
+                        "column called 'url', 'link', 'source' or 'supplier'.")
         return out
     if i_sku < 0 and i_asin < 0:
         out["ok"] = False
@@ -352,12 +414,23 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
     for n, r in enumerate(rows, start=2):        # row 1 is the header
         sku = cell(r, i_sku)
         asin = cell(r, i_asin)
-        url = cell(r, i_url)
-        rep = {"line": n, "sku": sku, "asin": asin, "url": url,
+        # EVERY link on this row. A row can now carry ten of them, and the same
+        # link typed into two columns is attached once -- ensure_source would
+        # have said "already had it" the second time, but reporting it as a
+        # duplicate is clearer than reporting it as a no-op.
+        urls, seen_u = [], set()
+        for i in i_urls:
+            u = cell(r, i)
+            if u and u.lower() not in seen_u:
+                seen_u.add(u.lower())
+                urls.append(u)
+        rep = {"line": n, "sku": sku, "asin": asin,
+               "url": ", ".join(urls), "urls": urls,
                "status": "", "note": ""}
-        if not url:
-            # An ASIN typed into the url column is a common slip; say so rather
-            # than "no link".
+        if not urls:
+            # A row with nothing in any supplier column is the normal state of a
+            # SKU nobody has filled in yet, so it is skipped quietly rather than
+            # reported as a fault.
             rep["status"] = "skipped"
             rep["note"] = "no supplier link on this row"
             out["skipped"] += 1
@@ -365,13 +438,24 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
             continue
         # An ASIN can be pasted anywhere in an Amazon URL; pull it out.
         if not asin and not sku:
-            m = _ASIN_RE.search(url)
-            if m:
-                asin = m.group(1)
-        kind, why = _link.classify(url)
-        if not kind:
+            for u in urls:
+                m = _ASIN_RE.search(u)
+                if m:
+                    asin = m.group(1)
+                    break
+
+        # Each link is judged on its own. One unreadable link on a row must not
+        # throw away the nine beside it that were fine.
+        good, bad = [], []
+        for u in urls:
+            kind, why = _link.classify(u)
+            if kind:
+                good.append((u, kind))
+            else:
+                bad.append("%s — %s" % (u[:48], why))
+        if not good:
             rep["status"] = "skipped"
-            rep["note"] = why
+            rep["note"] = "; ".join(bad)
             out["skipped"] += 1
             out["rows"].append(rep)
             continue
@@ -388,21 +472,29 @@ def apply_rows(config_path, workspace_id, marketplace, headers, rows):
 
         done = []
         for s in targets:
+            n_new = n_had = 0
             try:
                 _repo.enrol(config_path, workspace_id, marketplace, s, mode="dry_run")
                 out["tracked"] += 1
-                _sid, created = _repo.ensure_source(
-                    config_path, workspace_id, marketplace, s, url,
-                    kind=kind, label=url)
-                if created:
-                    out["attached"] += 1
-                    done.append(s + " ✓")
-                else:
-                    out["already"] += 1
-                    done.append(s + " (already had it)")
+                for u, kind in good:
+                    _sid, created = _repo.ensure_source(
+                        config_path, workspace_id, marketplace, s, u,
+                        kind=kind, label=u)
+                    if created:
+                        out["attached"] += 1
+                        n_new += 1
+                    else:
+                        out["already"] += 1
+                        n_had += 1
+                done.append("%s ✓ %d supplier%s%s"
+                            % (s, n_new, "" if n_new == 1 else "s",
+                               "" if not n_had else
+                               " (%d already had)" % n_had))
             except Exception as e:
                 out["skipped"] += 1
                 done.append("%s failed: %s" % (s, str(e)[:60]))
+        if bad:
+            done.append("skipped: " + "; ".join(bad))
         rep["status"] = "attached"
         rep["matched"] = targets
         # An ASIN carrying more than one SKU is worth saying out loud: the same

@@ -126,18 +126,31 @@ truthy("the price goes UP, not held down at 40.00", up["price"] > 40.00)
 print("      at a 35.00 cost the price becomes %.2f" % up["price"])
 falsy("  so it is no longer 'held'", up["held"])
 check("  and the hold is recorded as beaten", up["hold_exceeded"], 40.00)
+# THE WORDING CHANGED DELIBERATELY. The reason used to be one semicolon-joined
+# line containing an arithmetic identity; it is sentences now, because the owner
+# could not read the old one. What it has to SAY is unchanged, so that is what is
+# asserted -- the held price, and that the cost outgrew it.
 truthy("the log explains why it went above the held price",
-       "above the 40.00 held price" in up["reason"])
+       "held price of 40.00" in up["reason"]
+       and "no longer covers the cost" in up["reason"])
 # THE WHOLE SAFETY ARGUMENT. A hold that could pin a price below cost would be a
 # machine for losing money. It is a floor among floors, so the higher one wins.
 truthy("a held price can never force a sale below cost", up["price"] > 35.00)
-# AND THEN THE CHANGE CAP CATCHES IT, which is correct and worth pinning down.
-# 40.00 -> 55.30 is a 38% move against a 25% limit, so it waits for a human
-# instead of being pushed. The hold did its job (the price went UP, not down); the
-# cap is a separate guard doing its own job on top. Anyone setting a hold far from
-# the current price should expect the first move to be held for review.
-check("a 38% jump waits for a human, as any big move does", up["action"], "none")
-truthy("  and says why", "exceeds the 25.0% limit" in (up["blocked_by"] or ""))
+# AND THEN THE CHANGE CAP CATCHES IT -- WHEN THE MOVE IS BIG ENOUGH.
+#
+# This used to read "a 38% jump waits for a human": 40.00 -> 55.30 against a 25%
+# limit. The price at a 35.00 cost is 49.42 now rather than 55.30, because the
+# 3.00 postage and 2.00 ads that used to be added to every price are gone. That
+# is a 23.6% rise, which is INSIDE the cap, so it is proposed rather than held --
+# correct, and a different case from the one this was pinning.
+#
+# So both are pinned: the move that fits goes through, and a move that does not
+# still waits for a human.
+check("a rise inside the cap is proposed", up["action"], "update")
+tight = decide({"price": 40.00, "quantity": 5, "lead_days": 3}, 35.00,
+               dict(HELD, max_change_pct=10.0))
+check("  a jump past the limit still waits for a human", tight["action"], "none")
+truthy("  and says why", "exceeds the 10.0% limit" in (tight["blocked_by"] or ""))
 # With the cap widened, the same decision goes through -- proving the block is the
 # cap and not the hold.
 wide = decide({"price": 40.00, "quantity": 5, "lead_days": 3}, 35.00,
@@ -182,7 +195,7 @@ check("  the same cap applies when a change is proposed",
 truthy("  and the log names the clash",
        "capped by the 30.00 ceiling" in capped_move["reason"])
 truthy("  naming the held price too",
-       "40.00 held price" in capped_move["reason"])
+       "held price of 40.00" in capped_move["reason"])
 
 print("\n=== the two boxes are separate, and must stay separate ===")
 check("hold_price exists in its own right", S.DEFAULT_RULE["hold_price"], None)

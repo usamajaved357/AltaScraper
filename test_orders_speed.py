@@ -116,7 +116,24 @@ truthy("  including the nested ones", "_nested_json" in M)
 truthy("  quoted properly", 'replace(/"/g, \'""\')' in M)
 truthy("  with a BOM so Excel reads it", '"\\ufeff" + lines.join' in M)
 truthy("  named for the account and the day", "deleted-listings-" in M)
-truthy("and it is on the warning itself too", "save a backup" in M)
+# IT MOVED, AND TO A BETTER PLACE. It used to sit on a one-line red warning that
+# named the first three SKUs and hid the rest -- the only trace deleted listings
+# had anywhere in the app. They have their own view now ("Removed"), so the
+# backup is offered next to the listings it would back up, where they can be
+# looked at first. Asked for as: "i also asked you to give me a button where the
+# deleted listings go when they are deleted from amazon but they are stored in
+# the app".
+truthy("and it is offered beside the listings themselves",
+       "Save a backup" in M and "backupDeletedRows()" in M)
+truthy("  which now have a view of their own",
+       'LIST_SOURCE==="removed"' in M)
+truthy("  reachable from the toolbar", 'data-src="removed"' in
+       open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read())
+truthy("  and the old warning points at it instead of hiding them",
+       "see ${goneRows.length>1?'them':'it'} in Removed" in M)
+# Clearing them is still a deliberate act and still says it does not touch Amazon.
+truthy("  clearing is still separate from Amazon",
+       "does not touch Amazon" in M)
 
 print("\n=== the Orders page reads what it already knows ===")
 # Measured: ~65s for 24 orders, one sequential Amazon call each. After: 2.5s on

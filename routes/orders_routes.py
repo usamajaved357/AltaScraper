@@ -140,6 +140,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except (TypeError, ValueError):
                 cap = 60
             cost_of = _cost_fn()
+            # One fee resolver per account, built on first use and kept for the
+            # rest of the request -- see _fees_fn for why it must not be rebuilt
+            # per order.
+            _fee_fns = {}
             # THE PICTURE, RESOLVED HERE RATHER THAN IN THE BROWSER.
             #
             # It was matched in the page against LIVE_ITEMS -- the catalogue the
@@ -172,12 +176,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # counting them. Asked for as: "i want to see the item picture
                 # and name of the item and profit and roi and margin or each
                 # order without opening the order details".
-                d = _ov.profit_detail(items, r.get("total"), cost_of)
+                # AMAZON'S OWN FEE WHERE IT HAS SETTLED THE ORDER. Resolved per
+                # account, because the measured rate and the marketplace differ
+                # between them and this list spans several.
+                _ff = _fee_fns.get(r["account_id"])
+                if _ff is None:
+                    _ff = _fees_fn(r["account_id"], _mkt_of(r["account_id"]))
+                    _fee_fns[r["account_id"]] = _ff
+                d = _ov.profit_detail(items, r.get("total"), cost_of,
+                                      fees=_ff(r["order_id"], r.get("total")))
                 r["profit"] = d["profit"]
                 r["margin_pct"] = d["margin_pct"]
                 r["roi_pct"] = d["roi_pct"]
                 r["cogs"] = d["cogs"]
                 r["profit_note"] = d["note"]
+                r["fees"] = d.get("fees")
+                r["fees_basis"] = d.get("fees_basis")
                 it = _ov.item_summary(items)
                 it["img"] = _cat_look(pics, it).get("img") or ""
                 r["item"] = it
@@ -219,6 +233,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                            [(str(a.get("id") or ""), _marketplace(a))
                             for a in _accounts_in_scope()])
 
+    def _mkt_of(account_id):
+        """The marketplace for one account id, or "" when it is not configured."""
+        for a in (_cfg() or {}).get("accounts", []) or []:
+            if str(a.get("id") or "") == str(account_id):
+                return _marketplace(a)
+        return ""
+
     def _cost_fn():
         """sku -> (cost, source), from the ONE resolver (domain/cogs.py).
 
@@ -236,6 +257,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         from domain import cogs_store as _cs
         return _cogs.lookup(_cs.all_overrides(CONFIG_PATH),
                             str(_state.get("active_account_id", "") or ""))
+
+    def _fees_fn(account_id, marketplace):
+        """(order_id, gross) -> what Amazon took. Real figure where it exists.
+
+        Every order screen used to multiply the total by a flat 15%, including
+        orders Amazon had already settled and itemised. So a figure the app had
+        been TOLD was ignored in favour of one it had guessed.
+
+        The account's own measured rate is looked up ONCE here rather than per
+        order -- it reads 120 days of finance records, which is not something to
+        do sixty times while drawing a list.
+        """
+        from domain import amazon_fees as _af
+        rate, _basis, _detail = _af.rate_for(CONFIG_PATH, account_id, marketplace)
+        cur = "USD" if str(marketplace or "").upper() == "US" else "GBP"
+
+        def _f(order_id, gross):
+            return _af.for_order(CONFIG_PATH, account_id, marketplace,
+                                 order_id, gross, rate=rate, currency=cur)
+        return _f
 
     def _items_from_store(account_id, marketplace, order_id):
         """One order's lines from order_lines, or None if it is not there.
@@ -345,6 +386,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return jsonify({"ok": True, "items": {}, "note": ""})
         cost_of = _cost_fn()
         pics = _pictures()
+        _fee_fns = {}
         out, unread = {}, 0
         for w in want:
             oid = str(w.get("order_id") or "").strip()
@@ -355,13 +397,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if items is None:
                 unread += 1
                 continue
-            d = _ov.profit_detail(items, w.get("total"), cost_of)
+            _ff = _fee_fns.get(aid)
+            if _ff is None:
+                _ff = _fees_fn(aid, _mkt_of(aid))
+                _fee_fns[aid] = _ff
+            d = _ov.profit_detail(items, w.get("total"), cost_of,
+                                  fees=_ff(oid, w.get("total")))
             it = _ov.item_summary(items)
             it["img"] = _cat_look(pics, it).get("img") or ""
             out[oid] = {"item": it, "lines": len(items),
                         "profit": d["profit"], "margin_pct": d["margin_pct"],
                         "roi_pct": d["roi_pct"], "cogs": d["cogs"],
-                        "profit_note": d["note"]}
+                        "profit_note": d["note"], "fees": d.get("fees"),
+                        "fees_basis": d.get("fees_basis")}
         note = ""
         if unread:
             note = ("%d of %d could not be read from Amazon — usually rate "
@@ -414,21 +462,28 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # it said only that the profit could not be worked out, without naming
         # which line was missing one.
         cost_of = _cost_fn()
-        bd = _ov.line_breakdown(items, row.get("total"), cost_of)
+        fees = _fees_fn(aid, mkt)(oid, row.get("total"))
+        bd = _ov.line_breakdown(items, row.get("total"), cost_of, fees=fees)
         row["profit"] = bd["totals"]["profit"]
         row["margin_pct"] = bd["totals"]["margin_pct"]
         row["profit_note"] = bd["totals"]["note"]
+        row["fees_basis"] = bd["totals"].get("fees_basis")
         return jsonify({"ok": True, "order_id": oid, "order": row,
                         "items": items,
                         "breakdown": bd,
                         # WHERE TO BUY EACH LINE FROM. Read from what the last
                         # sweep already stored, so opening an order contacts no
                         # supplier and costs nothing.
-                        "sources": _sources_for_items(aid, mkt, items),
+                        "sources": _sources_for_items(aid, mkt, items, bd),
                         "pii_note": _ov.PII_NOTE})
 
-    def _sources_for_items(account_id, marketplace, items):
+    def _sources_for_items(account_id, marketplace, items, breakdown=None):
         """{sku: {options, summary}} for the lines of one order.
+
+        `breakdown` is line_breakdown's reply. Its per-line fee is handed to each
+        SKU's options so "what would I make buying from this supplier" is worked
+        out against the same Amazon fee as "what did this order make" -- the two
+        used to be computed differently and contradicted each other on screen.
 
         Reads the readings the repricer's sweep already took -- it does NOT go to
         eBay. Opening an order must not fire off a dozen supplier calls, and the
@@ -446,6 +501,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             now = _dt.datetime.now()
         except Exception:
             return out
+        # Amazon's fee for each LINE, keyed by SKU, from the breakdown that has
+        # already been worked out. Per unit, because a source option prices one
+        # unit and the line may be several.
+        fee_per_unit = {}
+        for L in ((breakdown or {}).get("lines") or []):
+            try:
+                if L.get("fee") is not None and L.get("qty"):
+                    fee_per_unit[str(L.get("sku") or "")] = \
+                        round(float(L["fee"]) / int(L["qty"]), 4)
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
         for it in (items or []):
             sku = str((it or {}).get("sku") or "")
             if not sku or sku in out:
@@ -470,7 +536,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 rule = None
             try:
                 opts = _osrc.options_for(CONFIG_PATH, account_id, marketplace, sku,
-                                         sell_price=unit, rule=rule, now=now)
+                                         sell_price=unit, rule=rule, now=now,
+                                         fee_amount=fee_per_unit.get(sku))
                 out[sku] = {"options": opts, "summary": _osrc.summary(opts),
                             "unit_price": unit}
             except Exception as exc:

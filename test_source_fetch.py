@@ -207,7 +207,12 @@ check("  but the history is kept", len(R.history(CFG, sid1)), 2)
 print("  -- and they arrive in the shape the decision engine wants --")
 pairs = R.pairs_for(CFG, WS, MKT, SKU)
 check("one pair per source", len(pairs), 2)
-d = S.decide({"price": 20.0, "quantity": 5, "lead_days": 5}, pairs, {}, NOW)
+# The old per-unit allowances, stated rather than assumed: they used to be the
+# defaults (3.00 postage, 2.00 ads, 1.00 profit) and are 0.00 now, and this test
+# is about reading stored rows -- not about what a default happens to be.
+_ALLOW = {"shipping_label": 3.00, "ads_margin": 2.00, "min_profit": 1.00,
+          "min_roi_pct": 0}
+d = S.decide({"price": 20.0, "quantity": 5, "lead_days": 5}, pairs, _ALLOW, NOW)
 check("it decides from stored rows", d["action"], "update")
 check("  using the one with a known postage", d["source_id"], sid1)
 truthy("  and explains why the other was skipped",

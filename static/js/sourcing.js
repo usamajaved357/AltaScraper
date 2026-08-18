@@ -146,9 +146,12 @@ async function sourcingAlerts(){
 }
 
 async function sourcingMaster(on){
-  if(on && !confirm("Turn the master switch ON?\n\nArmed SKUs will then have their "
-                  + "price, stock and handling time changed on Amazon automatically. "
-                  + "SKUs still in dry run are unaffected.")) return;
+  if(on && !await srcConfirm({
+      title: "Turn auto-pricing on?",
+      body: "Armed SKUs will then have their price, stock and handling time "
+          + "changed on Amazon automatically, without anyone watching. SKUs "
+          + "still in dry run are unaffected.",
+      confirm: "Turn it on", risk: true})) return;
   try{
     const j = await (await fetch("/sourcing/master",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -160,8 +163,11 @@ async function sourcingMaster(on){
 }
 
 async function sourcingArm(sku, live){
-  if(live && !confirm("Arm "+sku+"?\n\nFrom then on the app may change this listing's "
-                    + "price, stock and handling time on Amazon by itself.")) return;
+  if(live && !await srcConfirm({
+      title: "Arm " + sku + "?",
+      body: "From then on the app may change this listing's price, stock and "
+          + "handling time on Amazon by itself, without anyone watching.",
+      confirm: "Arm it", risk: true})) return;
   try{
     const j = await (await fetch("/sourcing/arm",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -348,6 +354,58 @@ function _srcModal(title, bodyHtml, onOk){
   if(first) first.focus();
 }
 
+/* A confirmation in the app's own skin, awaited like confirm() but not white.
+ *
+ *     "i dont like this white appearing messages over the window. modern apps
+ *      do not behave like this."
+ *
+ * confirm() cannot be styled, appears attached to the browser rather than to the
+ * page, and on a dark app reads as an error from somewhere else. This is the
+ * same shape -- resolves true or false, blocks nothing -- so a call site only
+ * has to gain an `await`.
+ *
+ * The body is plain text, wrapped here, because every caller is writing a
+ * sentence rather than markup and one of them writing a tag by accident should
+ * not be able to put it on the page.
+ */
+function srcConfirm(o){
+  const opt = o || {};
+  return new Promise(function(resolve){
+    const old = document.getElementById("srcconfirm");
+    if(old) old.remove();
+    const wrap = document.createElement("div");
+    wrap.id = "srcconfirm";
+    wrap.className = "modalwrap open";
+    wrap.style.zIndex = "9100";
+    const para = String(opt.body || "").split("\n\n").map(function(p){
+      return '<p style="margin:0 0 9px;font-size:12.5px;line-height:1.6">'
+           + _sesc(p) + '</p>';
+    }).join("");
+    wrap.innerHTML = '<div class="modal" style="max-width:480px">'
+      + '<h3>' + _sesc(opt.title || "Are you sure?") + '</h3>'
+      + '<div class="cc" style="margin:8px 0 0">' + para + '</div>'
+      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
+      + '<button class="db-chip" id="srcconfirm_no">Cancel</button>'
+      + '<button class="db-chip ' + (opt.risk ? 'risk' : 'go') + '" '
+      + 'id="srcconfirm_yes">' + _sesc(opt.confirm || "Yes") + '</button>'
+      + '</div></div>';
+    document.body.appendChild(wrap);
+    const done = function(v){
+      wrap.remove();
+      document.removeEventListener("keydown", key);
+      resolve(v);
+    };
+    const key = function(ev){
+      if(ev.key === "Escape"){ ev.preventDefault(); done(false); }
+    };
+    document.addEventListener("keydown", key);
+    wrap.onclick = function(e){ if(e.target === wrap) done(false); };
+    wrap.querySelector("#srcconfirm_no").onclick = function(){ done(false); };
+    wrap.querySelector("#srcconfirm_yes").onclick = function(){ done(true); };
+    wrap.querySelector("#srcconfirm_yes").focus();
+  });
+}
+
 // The chip on a row that is not earning what it is supposed to. Deliberately
 // says how far short, not just that it is short -- 0.4% under is a rounding
 // argument and 12% under is a supplier you should stop buying from.
@@ -392,11 +450,14 @@ async function sourcingTrackAll(btn){
       return;
     }
     if(!todo.length){ toast("Every live listing is already being tracked."); return; }
-    if(!confirm("Start tracking " + todo.length + " listing" + (todo.length===1?"":"s") + "?\n\n"
-              + "This records what each one costs at its supplier, every 4 hours.\n"
-              + "It does NOT change any price — auto-pricing stays "
-              + (SRC_MASTER ? "as it is" : "off") + ", and each SKU still has to be "
-              + "armed separately before anything can reach Amazon.")) return;
+    if(!await srcConfirm({
+        title: "Start tracking " + todo.length + " listing"
+             + (todo.length === 1 ? "" : "s") + "?",
+        body: "This records what each one costs at its supplier, every 4 hours.\n\n"
+            + "It does NOT change any price — auto-pricing stays "
+            + (SRC_MASTER ? "as it is" : "off") + ", and each SKU still has to "
+            + "be armed separately before anything can reach Amazon.",
+        confirm: "Start tracking"})) return;
     if(btn) btn.innerHTML = '<span class="genspin"></span> tracking ' + todo.length + '…';
     const j = await (await fetch("/sourcing/enrol_bulk",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -514,6 +575,14 @@ function sourcingRender(j){
   }
 
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
+    // "give a button on the top of the page which explains how do this page
+    //  works and what the information means etc etc." First in the row, because
+    //  the answer to "what does any of this mean" should not be the seventh
+    //  button along.
+    +  '<button class="db-chip" onclick="openGuide(\'repricer\')" title="'
+    +  'What this page does, what each figure means, and what it will and will '
+    +  'not change on Amazon.">'
+    +  '<i class="ti ti-book"></i> How this page works</button>'
     +  '<button class="db-chip" onclick="sourcingCheckNow(this)">'
     +  '<i class="ti ti-refresh"></i> Re-read suppliers now</button>'
     +  '<button class="db-chip" onclick="sourcingAddPrompt()">'
@@ -537,16 +606,28 @@ function sourcingRender(j){
     // first filled by the asins enrolled for tracking in the repricer, the user
     // will fill that template and upload it back". A blank sheet means typing
     // forty SKUs by hand, and a hand-typed SKU is the one that silently matches
-    // nothing. Only the "new supplier link" column comes out empty.
+    // nothing.
+    //
+    // TEN SUPPLIER COLUMNS, AND MORE IF YOU WANT THEM. It used to be one link
+    // column and one row per supplier, because the reader could only see a
+    // single link column and extra ones would have been silently ignored. It
+    // reads every numbered column now:
+    //
+    //   "give the option in the template in the repricer page to add multiple
+    //    supplier links ... supplier 1, supplier 2 ... upto 10 and the user
+    //    should be told that he can add more suplliers by adding more columns
+    //    after 10 and giving the heading of 11th count, 12 count and so on"
     +  '<a class="db-chip" href="/sourcing/template.csv" '
     +  'style="text-decoration:none" title="'
     +  'Downloads a sheet already listing every SKU you are tracking, with its '
-    +  'ASIN, product name and every supplier link it has now — one row per '
-    +  'link, with a blank row under each SKU to add another. FOR SEVERAL '
-    +  'SUPPLIERS ON ONE SKU, add more rows with the same SKU rather than more '
-    +  'columns; the repricer then compares them and buys from the cheapest. '
-    +  'Fill in the link column and upload it back with the button on the left. '
-    +  'Rows you leave blank are not changed.">'
+    +  'ASIN, product name, and its suppliers spread across ten columns headed '
+    +  '“supplier 1” to “supplier 10”. One row per SKU. '
+    +  'NEED MORE THAN TEN? Add another column and head it “supplier 11”, then '
+    +  '“supplier 12”, and so on — there is no limit, the app reads every '
+    +  'numbered column it finds. '
+    +  'Fill in the blanks and upload it back with the button on the left. '
+    +  'Columns you leave blank are not changed, and a link that is already '
+    +  'attached is left alone.">'
     +  '<i class="ti ti-file-download"></i> Get the template</a>'
     +  '<button class="db-chip" onclick="sourcingCheckListings()" title="'
     +  'Asks Amazon whether it still has each tracked SKU. Any it no longer has '
@@ -581,8 +662,93 @@ function sourcingRender(j){
     body.innerHTML = h; return;
   }
 
+  // The selection bar sits directly above the rows it acts on, and only when
+  // something is selected -- a permanent empty toolbar is one more thing to read
+  // past on a screen that already has plenty.
+  h += '<div id="srcselbar"></div>';
+
   SRC_ROWS.forEach(function(r, i){ h += sourcingRow(r, i); });
   body.innerHTML = h;
+  _srcSelBar();
+}
+
+/* ---- selecting several SKUs ------------------------------------------------
+ *
+ *     "also allow to select multiple skus at once and unroll them from tracking"
+ *
+ * The selection is kept by SKU rather than by row index, so it survives a
+ * re-render after a check or an arm -- indices shift when the list re-sorts and
+ * would silently move the tick onto a different product.
+ */
+let SRC_SEL = new Set();
+
+function sourcingSelect(sku, on){
+  if(on) SRC_SEL.add(String(sku)); else SRC_SEL.delete(String(sku));
+  _srcSelBar();
+}
+
+function sourcingSelectAll(on){
+  SRC_SEL = on ? new Set(SRC_ROWS.map(function(r){ return String(r.sku); }))
+               : new Set();
+  document.querySelectorAll(".srcsel").forEach(function(b){ b.checked = !!on; });
+  _srcSelBar();
+}
+
+function _srcSelBar(){
+  const el = document.getElementById("srcselbar");
+  if(!el) return;
+  // Only SKUs still on screen count. A filter change can leave a tick on a row
+  // nobody can see, and acting on forty when four are visible is the kind of
+  // surprise this bar exists to prevent.
+  const shown = new Set(SRC_ROWS.map(function(r){ return String(r.sku); }));
+  const picked = [...SRC_SEL].filter(function(s){ return shown.has(s); });
+  if(!picked.length){ el.innerHTML = ""; return; }
+  const armed = SRC_ROWS.filter(function(r){
+    return picked.indexOf(String(r.sku)) >= 0 && r.mode === "live"; }).length;
+  el.innerHTML =
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
+    + 'padding:9px 11px;margin-bottom:10px;border:1px solid var(--accent-line);'
+    + 'background:var(--accent-bg);border-radius:7px;font-size:12.5px">'
+    + '<b>' + picked.length + ' selected</b>'
+    + (armed ? '<span style="color:var(--warn)">' + armed + ' of them armed</span>' : '')
+    + '<span style="flex:1"></span>'
+    + '<button class="db-chip" onclick="sourcingSelectAll(true)">Select all '
+    + SRC_ROWS.length + '</button>'
+    + '<button class="db-chip" onclick="sourcingSelectAll(false)">Clear</button>'
+    + '<button class="db-chip risk" onclick="sourcingUnenrolSelected()">'
+    + '<i class="ti ti-eye-off"></i> Stop tracking ' + picked.length + '</button>'
+    + '</div>';
+}
+
+async function sourcingUnenrolSelected(){
+  const shown = new Set(SRC_ROWS.map(function(r){ return String(r.sku); }));
+  const skus = [...SRC_SEL].filter(function(s){ return shown.has(s); });
+  if(!skus.length) return;
+  const armed = SRC_ROWS.filter(function(r){
+    return skus.indexOf(String(r.sku)) >= 0 && r.mode === "live"; }).length;
+  // NOTHING IS DELETED, and that is the point worth making before the click
+  // rather than after it -- the links and the price history are the expensive
+  // part, and a supplier price on a day nobody was watching cannot be recovered.
+  const ok = await srcConfirm({
+    title: "Stop tracking " + skus.length + " SKU" + (skus.length === 1 ? "" : "s") + "?",
+    body: "Their supplier links and price history are KEPT — enrol one again "
+        + "later and everything is still attached. Nothing is deleted and "
+        + "nothing on Amazon changes."
+        + (armed ? "\n\n" + armed + " of them are armed for auto-pricing. "
+                 + "Stopping tracking takes them out of it." : ""),
+    confirm: "Stop tracking",
+    risk: true,
+  });
+  if(!ok) return;
+  try{
+    const j = await (await fetch("/sourcing/unenrol_bulk",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:_srcBody({skus: skus})})).json();
+    if(!j || !j.ok){ toast((j&&j.error)||"Could not stop tracking those"); return; }
+    SRC_SEL = new Set();
+    toast(j.note || ("Stopped tracking " + (j.unenrolled || 0)));
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
 }
 
 // A SUPPLIER LINK IS NOT DATA TO READ.
@@ -815,26 +981,73 @@ function _glanceRow(g){
   const stockTone = (g.units_available === null || g.units_available === undefined) ? ''
                   : (g.units_available <= 0 ? 'var(--red)'
                      : g.units_available <= 3 ? 'var(--warn)' : '');
+  const p = g.promo;
+  const pTone = function(v, hi, mid){
+    return (v === null || v === undefined) ? ''
+         : (v >= hi ? 'var(--ok)' : v >= mid ? 'var(--warn)' : 'var(--red)');
+  };
   const bits = [
-    cell('source price', _smoney(g.landed),
-         '', 'What one unit costs you delivered: '
-         + _smoney(g.source_price) + ' + ' + _smoney(g.source_postage) + ' postage'),
-    cell('sells at', _smoney(g.sell_price), '',
-         'What Amazon is charging for it right now'),
+    cell('cheapest source', _smoney(g.landed),
+         '', 'What one unit costs you delivered from the cheapest usable '
+         + 'supplier: ' + _smoney(g.source_price) + ' + '
+         + _smoney(g.source_postage) + ' postage'),
+    cell('selling price', _smoney(g.sell_price), '',
+         'What Amazon is charging for it right now, before any coupon'),
     cell('profit / unit', _smoney(g.profit), mTone,
-         'At the current price, after Amazon’s cut, your postage label and the ads allowance'),
+         'At the full selling price, after what the stock cost and Amazon’s fee'
+         + (g.fee == null ? '' : ' of ' + _smoney(g.fee))),
     cell('margin', pct(g.margin_pct), mTone, 'Profit as a share of the selling price'),
     cell('ROI', pct(g.roi_pct), rTone, 'Profit as a share of what you paid for the unit'),
-    cell('units at source', g.units_available, stockTone,
-         'How many the supplier says are left. eBay sometimes reports a floor rather than a count.'),
-    cell('handling', (g.handling_days == null ? null : g.handling_days + 'd'), '',
-         'Supplier dispatch ' + (g.dispatch_days == null ? '?' : g.dispatch_days)
-         + 'd plus the safety buffer — what would be promised to the buyer'),
-  ].filter(Boolean);
-  if(!bits.length) return '';
-  return '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;'
-       + 'padding:8px 10px;background:var(--panel2);border-radius:6px">'
-       + bits.join("") + '</div>';
+  ];
+
+  // THE SAME THREE AGAIN, WITH THE COUPON ON.
+  //
+  //     "show profit per unit when no promotion like coupon or discounts etc
+  //      are applied and also show the profit when some coupons or promotions
+  //      etc are applied ... also show roi and margin in both cases"
+  //
+  // Only when a discount was actually measured. Showing an identical pair of
+  // columns on every row would be four more numbers to read past on the SKUs
+  // that have no coupon at all, and would imply the app had checked and found
+  // nothing when in fact it cannot check -- see domain/promotions.py.
+  if(p){
+    const why = 'After the discount this SKU has actually been selling under: '
+              + _smoney(p.amount_per_unit) + ' a unit'
+              + (p.pct == null ? '' : ' (about ' + p.pct.toFixed(0) + '% off)')
+              + '. ' + (g.promo_note || '');
+    bits.push(cell('after coupon', _smoney(g.sell_price_promo), 'var(--warn)', why));
+    bits.push(cell('profit / unit', _smoney(g.profit_promo),
+                   pTone(g.margin_pct_promo, 20, 8), why));
+    bits.push(cell('margin', pct(g.margin_pct_promo),
+                   pTone(g.margin_pct_promo, 20, 8), why));
+    bits.push(cell('ROI', pct(g.roi_pct_promo),
+                   pTone(g.roi_pct_promo, 30, 12), why));
+  }
+
+  bits.push(cell('units at source', g.units_available, stockTone,
+       'How many the supplier says are left. eBay sometimes reports a floor rather than a count.'));
+  // HANDLING TIME AS IT STANDS NOW. "also show ... the handling time set for
+  // each item at that time" -- what is promised to the buyer today, and what it
+  // is built from, rather than only the one the repricer would propose.
+  bits.push(cell('handling', (g.handling_days == null ? null : g.handling_days + 'd'), '',
+       'Supplier dispatch ' + (g.dispatch_days == null ? '?' : g.dispatch_days)
+       + 'd plus the safety buffer — what would be promised to the buyer'));
+
+  const kept = bits.filter(Boolean);
+  if(!kept.length) return '';
+  // The coupon pair is separated by a divider rather than run together with the
+  // full-price figures, because two "profit / unit" labels side by side with
+  // nothing between them is the free-flowing text problem all over again.
+  let h = '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;'
+        + 'padding:8px 10px;background:var(--panel2);border-radius:6px;'
+        + 'align-items:flex-start">' + kept.join("");
+  if(p){
+    h += '<span class="cc" style="width:100%;font-size:10px;margin-top:2px">'
+      +  '<i class="ti ti-tag"></i> The four figures after “after coupon” are '
+      +  'the same sale with the discount applied. ' + _sesc(g.promo_note || '')
+      +  '</span>';
+  }
+  return h + '</div>';
 }
 
 // The picture and the name, with the SKU underneath it as the small print it
@@ -902,10 +1115,12 @@ function _goneChip(d){
 // Ask Amazon which enrolled SKUs it still has. One call per SKU, so it is a
 // button rather than something that runs on every draw.
 async function sourcingCheckListings(){
-  if(!confirm("Check every tracked SKU against Amazon?\n\nThis asks Amazon once "
-            + "per SKU, so it takes a moment on a long list. Any SKU Amazon no "
-            + "longer has is marked and its auto-pricing switched off — nothing "
-            + "is deleted.")) return;
+  if(!await srcConfirm({
+      title: "Check every tracked SKU against Amazon?",
+      body: "This asks Amazon once per SKU, so it takes a moment on a long "
+          + "list. Any SKU Amazon no longer has is marked and its auto-pricing "
+          + "switched off — nothing is deleted.",
+      confirm: "Check them"})) return;
   toast("Asking Amazon about each tracked SKU…");
   try{
     const j = await (await fetch("/sourcing/check_listings", {method:"POST",
@@ -954,6 +1169,19 @@ function _srcCountChip(r, id){
        + label + '</button>';
 }
 
+/* The same shape domain/order_sources.summary() returns, worked out in the
+ * browser from the options the row already carries. Only the two fields the
+ * renderer reads are needed; asking the server for the rest would be a second
+ * round trip for something already on the page. */
+function _srcOptSummary(opts){
+  const o = opts || [];
+  const buyable = o.filter(function(x){ return x.state === "buyable"; });
+  return {total: o.length, buyable: buyable.length,
+          dead: o.filter(function(x){ return x.state === "dead"; }).length,
+          all_dead: !!(o.length && !buyable.length
+                       && !o.filter(function(x){ return x.state === "unknown"; }).length)};
+}
+
 function sourcingRow(r, i){
   const d = r.decision || {}, cur = r.current || {};
   const id = "srcrow_"+i;
@@ -964,6 +1192,15 @@ function sourcingRow(r, i){
   // about" -- 10.39_3Days_B0F6LQ1S93 is unreadable, and this screen is where
   // you decide whether to keep selling something.
   h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+    // PICK SEVERAL AND ACT ON THEM ONCE. "also allow to select multiple skus at
+    // once and unroll them from tracking" -- removing forty one at a time is
+    // forty confirmations, and forty is the normal case after a bulk import
+    // that pulled in more than was wanted.
+    +  '<input type="checkbox" class="srcsel" data-sku="' + _sesc(r.sku) + '"'
+    +  (SRC_SEL.has(r.sku) ? ' checked' : '')
+    +  ' onclick="event.stopPropagation();sourcingSelect(' + _sarg(r.sku)
+    +  ',this.checked)" title="Select this SKU" '
+    +  'style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);flex:none">'
     +  _srcItemCell(r.item, r.sku)
     +  _goneChip(d)
     +  _actionChip(d)
@@ -1011,6 +1248,27 @@ function sourcingRow(r, i){
   // Blank where unknown. A margin shown as 0% because nothing could be read is a
   // number somebody would act on.
   h += _glanceRow(r.glance);
+
+  // EVERY SUPPLIER LINK, ON THE ROW.
+  //
+  //     "i want to be shown all the available supplier/ source links and
+  //      highlight the cheapest of all of them ... and under it where the
+  //      source links are mentioned show the delivery time of the suppliers"
+  //
+  // They were only ever behind a button labelled "Why?", which sounds like it
+  // explains the price rather than lists the suppliers -- so with one link on
+  // every SKU there was no way to tell whether that was all of them or all the
+  // screen was showing.
+  //
+  // Drawn by _ordSourcesHtml, which is the ORDER panel's renderer, from the same
+  // options_for data. One list, one ranking, one delivery sentence, on both
+  // screens (Rule 12). If orders.js has not loaded the row simply keeps the
+  // count chip it always had rather than breaking.
+  if((r.options || []).length && typeof _ordSourcesHtml === "function"){
+    h += _ordSourcesHtml({options: r.options,
+                          summary: _srcOptSummary(r.options),
+                          unit_price: (r.current || {}).price});
+  }
 
   // The reason line is the point of the whole screen.
   h += '<div class="cc" style="font-size:11.5px;margin-top:5px;line-height:1.5">'
@@ -1287,7 +1545,11 @@ async function sourcingEnrolPicked(sku){
 }
 
 async function sourcingUnenrol(sku){
-  if(!confirm("Stop watching "+sku+"? Its suppliers and history are kept.")) return;
+  if(!await srcConfirm({
+      title: "Stop tracking " + sku + "?",
+      body: "Its supplier links and price history are kept — enrol it again "
+          + "later and everything is still attached. Nothing on Amazon changes.",
+      confirm: "Stop tracking", risk: true})) return;
   try{
     const j = await (await fetch("/sourcing/enrol",{method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -1314,7 +1576,11 @@ async function sourcingAddSourcePrompt(sku){
 }
 
 async function sourcingRemoveSource(sid){
-  if(!confirm("Remove this supplier?")) return;
+  if(!await srcConfirm({
+      title: "Remove this supplier?",
+      body: "The repricer will stop reading its price. The other suppliers on "
+          + "this SKU are not affected.",
+      confirm: "Remove it", risk: true})) return;
   try{
     const j = await (await fetch("/sourcing/source/remove",{method:"POST",
       headers:{"Content-Type":"application/json"},

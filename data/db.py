@@ -681,6 +681,19 @@ _ADDED_COLUMNS = [
     # Separate from min_price, which is loss protection -- see hold_price in
     # domain/sourcing.DEFAULT_RULE for why one column could not be both.
     ("sourcing_rules", "hold_price", "REAL"),
+    # THE NEVER-SELL-AT-BREAK-EVEN FLOOR, as a percentage of what the unit cost.
+    # It arrived when the invented 3.00 postage / 2.00 ads / 1.00 profit were
+    # removed from the pricing rule: with those at zero, cost + Amazon's fee is
+    # the whole floor and a sale at it earns nothing. NULL means "use the
+    # default", which is listing/pricing.PRICING_RULE_MIN_ROI_PCT.
+    ("sourcing_rules", "min_roi_pct", "REAL"),
+    # THE SELLER'S OWN PER-UNIT COSTS. Previously code constants only, which was
+    # fine while they were 3.00/2.00/1.00 for everyone. They default to 0.00 now
+    # -- nothing is assumed on the owner's behalf -- so there has to be somewhere
+    # to say "this one really does cost me 4.20 to post". NULL means the default.
+    ("sourcing_rules", "shipping_label", "REAL"),
+    ("sourcing_rules", "ads_margin", "REAL"),
+    ("sourcing_rules", "min_profit", "REAL"),
 ]
 
 

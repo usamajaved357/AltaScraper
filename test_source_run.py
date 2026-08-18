@@ -77,6 +77,14 @@ R.enrol(CFG, WS, MKT, SKU)
 sid = R.add_source(CFG, WS, MKT, SKU, "https://ebay.co.uk/itm/111", label="eBay A")
 reading(sid)
 
+# THE ALLOWANCES ARE SET HERE RATHER THAN ASSUMED. 3.00 postage, 2.00 ads and
+# 1.00 profit used to be the defaults and 18.24 was written against them; the
+# owner asked for them to go, so a test that still wants that price says so.
+# min_roi_pct 0 switches off the never-sell-at-break-even floor, which is a
+# second floor and would otherwise ask 19.30 here.
+R.save_rule(CFG, WS, MKT, "", {"shipping_label": 3.00, "ads_margin": 2.00,
+                               "min_profit": 1.00, "min_roi_pct": 0})
+
 current, d = RUN.decide_one(CFG, WS, MKT, SKU, NOW)
 check("it would update", d["action"], "update")
 check("  to the price the rule gives (9.50 landed -> 18.24)", d["price"], 18.24)

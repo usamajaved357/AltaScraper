@@ -15,6 +15,17 @@ config.json*
 # zip of the app must NEVER be committed. (e.g. "new app for brands shopify to amazon.zip")
 *.zip
 
+# --- ANOTHER COMPANY'S BUSINESS DATA ---
+# The Orbit inventory capture. It holds live figures, ASINs, unit costs and
+# screenshots for real agency CLIENTS (flux-footwear and others) -- not this
+# app's data and not ours to publish. ORBIT_INVENTORY_HANDOVER.md section 9
+# asks for a decision on this rather than a default, and out is the reversible
+# direction: the files are on disk and can be added deliberately at any time,
+# whereas a commit of a client's cost data cannot be taken back out of history.
+# (This repo already has live API keys in its old history awaiting rotation.)
+orbit_inventory/
+orbit_inventory_complete.md
+
 # --- Local data caches / runtime state (machine-specific, per CLAUDE.md §2 — never commit) ---
 # These are written at runtime (they live on the persistent disk on the server), so they
 # change every time the app runs -- they are app STATE, not code / bug fixes.

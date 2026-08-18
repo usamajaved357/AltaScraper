@@ -148,7 +148,31 @@ def to_item(item):
 DEFAULT_REFERRAL_RATE = 0.15
 
 
-def profit_for(items, order_total, cost_of, referral_rate=None):
+def _fee_for(order_total, referral_rate, fees=None):
+    """(amount, note) -- what Amazon took, preferring what it actually charged.
+
+    `fees` is a domain/amazon_fees.py reply. When Amazon has settled the order it
+    carries the real referral, FBA and closing fees and the answer is exact; when
+    it has not, this falls back to a percentage of what the buyer paid, which is
+    what every order screen did before and is labelled as an estimate.
+
+    Kept here, in ONE function, because three callers below need the same answer
+    and a fourth copy of `total * 0.15` is how the app came to contradict itself
+    about the same order (CLAUDE.md Rule 12).
+    """
+    if fees and fees.get("total") is not None:
+        return round(float(fees["total"]), 2), (
+            fees.get("detail")
+            or "Amazon's own figure for this order")
+    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
+    if order_total is None:
+        return None, ""
+    return round(float(order_total) * rate, 2), (
+        "estimated at %.1f%% -- Amazon's exact fee for this order arrives with "
+        "the finance records" % (rate * 100))
+
+
+def profit_for(items, order_total, cost_of, referral_rate=None, fees=None):
     """(profit, margin_pct, note) for one order, or (None, None, why).
 
     `cost_of` is a function sku -> (cost_or_None, source), which is
@@ -190,7 +214,6 @@ def profit_for(items, order_total, cost_of, referral_rate=None):
     """
     if order_total is None:
         return None, None, "Amazon has not released this order's total yet"
-    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
 
     cogs, unknown = 0.0, []
     for it in items or []:
@@ -205,15 +228,14 @@ def profit_for(items, order_total, cost_of, referral_rate=None):
         return None, None, ("no cost recorded for %s, so this order's profit "
                             "cannot be worked out" % ", ".join(unknown[:3]))
 
-    fees = round(float(order_total) * rate, 2)
-    profit = round(float(order_total) - fees - cogs, 2)
+    fee, fee_note = _fee_for(order_total, referral_rate, fees)
+    profit = round(float(order_total) - fee - cogs, 2)
     margin = (round(profit / float(order_total) * 100, 1)
               if float(order_total) else None)
-    return profit, margin, ("estimated: Amazon's exact fee for this order "
-                            "arrives with the finance records")
+    return profit, margin, fee_note
 
 
-def profit_detail(items, order_total, cost_of, referral_rate=None):
+def profit_detail(items, order_total, cost_of, referral_rate=None, fees=None):
     """Everything an order row needs about what it made, in one call.
 
     {profit, margin_pct, roi_pct, cogs, fees, note}
@@ -228,12 +250,13 @@ def profit_detail(items, order_total, cost_of, referral_rate=None):
     Wraps profit_for so the honesty rule stays in ONE place: if any line's cost
     is unknown, nothing is shown at all.
     """
-    profit, margin, note = profit_for(items, order_total, cost_of, referral_rate)
+    profit, margin, note = profit_for(items, order_total, cost_of, referral_rate,
+                                      fees)
     out = {"profit": profit, "margin_pct": margin, "roi_pct": None,
-           "cogs": None, "fees": None, "note": note}
+           "cogs": None, "fees": None, "note": note,
+           "fees_basis": (fees or {}).get("basis") or "estimated"}
     if profit is None:
         return out
-    rate = DEFAULT_REFERRAL_RATE if referral_rate is None else float(referral_rate)
     cogs = 0.0
     for it in items or []:
         cost, _src = cost_of(str((it or {}).get("sku") or "")) if cost_of else (None, "")
@@ -241,14 +264,14 @@ def profit_detail(items, order_total, cost_of, referral_rate=None):
             return out                      # cannot happen: profit_for refused
         cogs += float(cost) * (int((it or {}).get("qty") or 0) or 1)
     out["cogs"] = round(cogs, 2)
-    out["fees"] = round(float(order_total) * rate, 2)
+    out["fees"], _ = _fee_for(order_total, referral_rate, fees)
     # Return on the cash. Undefined when the stock cost nothing recorded --
     # dividing by zero would report an infinite return on a free product.
     out["roi_pct"] = round(profit / cogs * 100, 1) if cogs else None
     return out
 
 
-def line_breakdown(items, order_total, cost_of, referral_rate=None):
+def line_breakdown(items, order_total, cost_of, referral_rate=None, fees=None):
     """What each LINE of an order brought in and what came off it.
 
         "i am not able to see the earnings of each order and not the breakdown of
@@ -282,6 +305,12 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None):
         total = float(order_total) if order_total is not None else None
     except (TypeError, ValueError):
         total = None
+    # WHAT AMAZON TOOK -- its own figure where the order has settled, an estimate
+    # where it has not. One call, shared out across the lines below, so the sum of
+    # the lines always equals the order's own fee rather than a second derivation
+    # of it that rounds differently.
+    order_fee, fee_note = _fee_for(total, referral_rate, fees)
+    fee_basis = (fees or {}).get("basis") or "estimated"
 
     # What the lines add up to, used to apportion the fee. NOT the order total:
     # they can differ (postage, gift wrap, a coupon), and dividing by the wrong
@@ -305,8 +334,8 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None):
         # The share of the order's fee this line accounts for. When the lines add
         # up to nothing there is nothing to share out, so it stays unknown rather
         # than being spread evenly over a guess.
-        if total is not None and rev_sum > 0:
-            fee = round(total * rate * (rev / rev_sum), 2)
+        if order_fee is not None and rev_sum > 0:
+            fee = round(order_fee * (rev / rev_sum), 2)
         else:
             fee = None
         profit = (round(rev - fee - cogs, 2)
@@ -320,7 +349,7 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None):
             "unit_cost": (None if cost is None else round(float(cost), 2)),
             "cogs": (None if cogs is None else round(cogs, 2)),
             "cogs_source": src or "",
-            "fee": fee, "fee_estimated": True,
+            "fee": fee, "fee_estimated": (fee_basis != "actual"),
             "profit": profit,
             "margin_pct": (round(profit / rev * 100, 1)
                            if (profit is not None and rev) else None),
@@ -339,8 +368,14 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None):
     totals = {
         "revenue": round(t_rev, 2),
         "order_total": total,
-        "fees": round(t_fee, 2) if total is not None else None,
+        "fees": round(t_fee, 2) if order_fee is not None else None,
         "fee_rate": rate,
+        # WHERE THE FEE CAME FROM, so the panel can say "Amazon charged" rather
+        # than "we estimate" once the settlement has arrived -- and never the
+        # other way round.
+        "fees_basis": fee_basis,
+        "fees_note": fee_note,
+        "fee_parts": (fees or {}),
         # THE COST SO FAR, and whether it is all of it. A partial cost total
         # presented as the whole is how an order comes to look profitable.
         "cogs": round(t_cogs, 2),
@@ -349,7 +384,7 @@ def line_breakdown(items, order_total, cost_of, referral_rate=None):
     }
     # The order's own profit follows the same all-or-nothing rule as everywhere
     # else -- profit_for owns it, and is called rather than repeated (Rule 12).
-    p, m, note = profit_for(items, order_total, cost_of, referral_rate)
+    p, m, note = profit_for(items, order_total, cost_of, referral_rate, fees)
     totals["profit"] = p
     totals["margin_pct"] = m
     totals["note"] = note

@@ -12,10 +12,12 @@ everything that changes what it WILL do needs 'publish', which is the permission
 for pushing changes to Amazon -- and that is precisely what enrolling a SKU
 eventually causes.
 """
+import datetime as _dt
 import json
 
 from flask import request, jsonify, Response
 
+from domain import order_sources as _osrc
 from domain import source_apply as _apply
 from domain import source_bulk as _bulk
 from domain import source_drift as _drift
@@ -143,6 +145,21 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         # A picture taken from a draft is marked as the SUPPLIER's, never shown
         # as though it were what is live on Amazon.
         idx = _cat.index(CONFIG_PATH, wsid, mkt, include_drafts=True)
+        # WHAT DISCOUNT EACH SKU HAS ACTUALLY BEEN SELLING UNDER.
+        #
+        #     "the app should automatically know when which promotion or coupon
+        #      is applied and how much is applied and make the calculations
+        #      accordingly"
+        #
+        # Amazon does not expose the seller's running coupons to this app, so it
+        # is measured from what buyers were really charged on settled orders --
+        # see domain/promotions.py. Read ONCE for the whole list; per row it
+        # would be one query per SKU on a screen that draws sixty of them.
+        try:
+            from domain import promotions as _promos
+            _promos_by_sku = _promos.measured(CONFIG_PATH, wsid, mkt)
+        except Exception:
+            _promos_by_sku = {}
         rows = []
         for d in run["decisions"]:
             pairs = _repo.pairs_for(CONFIG_PATH, d["workspace_id"],
@@ -161,7 +178,25 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _rule = _sourcing.rule_with_defaults(
                 _repo.rule_for(CONFIG_PATH, d["workspace_id"],
                                d["marketplace"], d["sku"]))
-            rows.append({**d, "sources": srcs,
+            # THE SUPPLIER LINKS, RANKED, on the row itself.
+            #
+            #     "i want to be shown all the available supplier/ source links
+            #      and highlight the cheapest of all of them ... under it where
+            #      the source links are mentioned show the delivery time of the
+            #      suppliers"
+            #
+            # Through domain/order_sources.options_for -- the SAME function the
+            # order panel draws its list from -- so the repricer and the order
+            # screen cannot disagree about which link is cheapest, what it costs
+            # delivered, or when it would arrive (Rule 12).
+            try:
+                _opts = _osrc.options_for(
+                    CONFIG_PATH, d["workspace_id"], d["marketplace"], d["sku"],
+                    sell_price=(d.get("current") or {}).get("price"),
+                    rule=_rule, now=_dt.datetime.now())
+            except Exception:
+                _opts = []
+            rows.append({**d, "sources": srcs, "options": _opts,
                          "drift": _drift.for_sku(
                              _COGS_OVERRIDE, d["workspace_id"], d["sku"], pairs,
                              (d.get("decision") or {}).get("source_id")),
@@ -169,7 +204,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                          # today's supplier price against today's Amazon price.
                          "glance": _drift.at_a_glance(
                              pairs, d.get("current"), _rule,
-                             (d.get("decision") or {}).get("source_id")),
+                             (d.get("decision") or {}).get("source_id"),
+                             promo=_promos_by_sku.get(d["sku"])),
                          "item": _cat.look(idx, d["sku"]),
                          "rule": _rule})
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
@@ -408,6 +444,41 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             # misread supplier cost.
             _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
         return jsonify({"ok": True})
+
+    @app.route("/sourcing/unenrol_bulk", methods=["POST"])
+    def sourcing_unenrol_bulk():
+        """Stop tracking several SKUs at once.
+
+        "also allow to select multiple skus at once and unroll them from
+         tracking"
+
+        Removing them one at a time is fine for one and unusable for forty, and
+        forty is the normal case after a bulk import that pulled in more than
+        was wanted.
+
+        NOTHING IS DELETED. unenrol() sets enrolled=0 and keeps the row, so the
+        supplier links and the price history survive -- re-enrolling a SKU
+        later finds everything still attached. That is deliberate: a mis-click
+        here would otherwise throw away readings that took days to collect.
+        """
+        b = _body()
+        wsid, mkt = _where()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not skus:
+            return jsonify({"ok": False, "error": "no skus"}), 400
+        done, failed = 0, []
+        for s in skus:
+            try:
+                _repo.unenrol(CONFIG_PATH, wsid, mkt, s)
+                done += 1
+            except Exception as e:
+                failed.append("%s: %s" % (s, str(e)[:60]))
+        return jsonify({
+            "ok": True, "unenrolled": done, "failed": failed,
+            "note": ("Stopped tracking %d SKU%s. Their supplier links and price "
+                     "history are kept — enrol one again and everything is still "
+                     "attached." % (done, "" if done == 1 else "s")),
+        })
 
     @app.route("/sourcing/enrol_bulk", methods=["POST"])
     def sourcing_enrol_bulk():

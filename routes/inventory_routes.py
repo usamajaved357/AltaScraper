@@ -15,8 +15,25 @@ from flask import request, jsonify
 def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
              _parse_3pl_csv, _parse_sales_csv, _parse_uplift_csv,
              _fetch_fba_inventory_via_spapi, _num, _INV_OUT_DIR,
-             _inv2_cache, _INV_ALERT_COUNTS, _cfg):
-    """Attach the /inventory/* routes to the existing Flask app."""
+             _inv2_cache, _INV_ALERT_COUNTS, _cfg,
+             CONFIG_PATH=None, _state=None, _active_account=None):
+    """Attach the /inventory/* routes to the existing Flask app.
+
+    TWO FEATURES LIVE HERE AND THEY ARE NOT THE SAME THING.
+
+    The routes below this docstring are the FBA replenishment model -- the
+    automated port of the Lure Essentials control sheet. It wants an FBA
+    inventory report and an uploaded 3PL stock file, and it answers "how much
+    should I send to Amazon".
+
+    /inventory/stock at the bottom is the STOCK COCKPIT, added 18 Aug 2026 after
+    the Orbit capture. It answers a different question -- "what have I got, how
+    fast is it going, and when does it run out" -- from data this app already
+    holds, with no report to build and no file to upload.
+
+    They share a URL prefix because they are both about inventory, and nothing
+    else: no code is shared between them.
+    """
 
     @app.route("/inventory/build", methods=["POST"])
     def inventory_build():
@@ -332,3 +349,79 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
         if not account_id:
             return jsonify({"count": 0})
         return jsonify({"count": _INV_ALERT_COUNTS.get(account_id, 0)})
+
+    # ------------------------------------------------------------------
+    #  THE STOCK COCKPIT
+    # ------------------------------------------------------------------
+    #  "now start building the inventory feature same like orbit in our app"
+    #
+    #  Nothing to upload and no report to wait for: every figure comes from data
+    #  the app already holds -- the listing quantities from the last sync, the
+    #  sales from order_lines, the costs from the one COGS resolver, and the
+    #  supplier dispatch times the repricer has been recording for weeks.
+    #
+    #  READ ONLY. It changes nothing on Amazon and writes nothing anywhere.
+
+    def _scope():
+        """(account_id, marketplace) for this request, however it was asked."""
+        aid = (request.args.get("id") or request.args.get("account_id")
+               or "").strip()
+        mkt = (request.args.get("marketplace") or "").strip().upper()
+        if not aid or not mkt:
+            try:
+                acc = (_active_account() or {}) if callable(_active_account) else {}
+            except Exception:
+                acc = {}
+            aid = aid or str(acc.get("id") or
+                             (_state or {}).get("active_account_id") or "")
+            mkt = mkt or str(acc.get("default_marketplace")
+                             or (_state or {}).get("active_marketplace")
+                             or "").upper()
+        return aid, mkt
+
+    @app.route("/inventory/stock")
+    def inventory_stock():
+        """What you have, how fast it goes, and when it runs out.
+
+        Returns {cockpit, counts, rows, legend}. One pass over the data builds
+        all of them, and the cockpit is computed FROM the rows rather than by a
+        second pass -- so the headline figure and the table can never disagree,
+        which is a fault this app has had to fix on three other screens.
+        """
+        from domain import catalogue as _cat
+        from domain import cogs_store as _cs
+        from domain import inventory_view as _iv
+
+        aid, mkt = _scope()
+        if not aid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        try:
+            idx = _cat.index(CONFIG_PATH, aid, mkt, include_drafts=True)
+        except Exception:
+            idx = {}
+        try:
+            rows = _iv.rows(CONFIG_PATH, aid, mkt,
+                            overrides=_cs.all_overrides(CONFIG_PATH),
+                            catalogue=idx)
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "%s: %s" % (type(e).__name__,
+                                                 str(e)[:200])}), 500
+
+        note = ""
+        if not rows:
+            note = ("No listings are cached for %s on %s yet — press Sync on "
+                    "the Listings screen and come back." % (aid, mkt))
+        return jsonify({
+            "ok": True, "account": aid, "marketplace": mkt,
+            "cockpit": _iv.cockpit(rows),
+            "counts": _iv.counts(rows),
+            "rows": rows,
+            # The legend travels with the data so the screen never has to keep
+            # its own copy of what the five states mean.
+            "legend": [{"key": k, "meaning": _iv.STATUS_MEANING[k]}
+                       for k in _iv.STATUS_ORDER],
+            "assumed_lead_days": _iv.ASSUMED_LEAD_DAYS,
+            "note": note,
+        })

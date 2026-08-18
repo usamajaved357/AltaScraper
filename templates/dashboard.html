@@ -201,6 +201,16 @@
           <button class="mktbtn on" data-src="drafts" onclick="setListSource('drafts')">Drafts</button>
           <button class="mktbtn" data-src="live" onclick="setListSource('live')">Live on Amazon</button>
           <button class="mktbtn" data-src="all" onclick="setListSource('all')">All</button>
+          <!-- WHERE DELETED LISTINGS GO.
+               They were already kept -- never auto-deleted -- but they were
+               hidden from every view, and the only trace was a red line naming
+               the first three SKUs. So there was nothing to click and nowhere
+               they lived. Asked for as: "i also asked you to give me a button
+               where the deleted listings go when they are deleted from amazon
+               but they are stored in the app". -->
+          <button class="mktbtn" data-src="removed" id="srcbtn_removed"
+                  title="Listings this app still holds that Amazon no longer has. Nothing is ever deleted automatically."
+                  onclick="setListSource('removed')" style="display:none">Removed</button>
           <button class="mktbtn" title="Sync live listings from Amazon now" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
           <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
@@ -338,16 +348,25 @@
           <input id="gensel_value" class="ed" type="text"
                  placeholder="Paste an eBay / Amazon URL, or type a value…"
                  oninput="genSelOnInput()" style="flex:1;min-width:240px">
+          <!-- "Row number" WAS THE DEFAULT AND IT IS GONE.
+               It is a Google Sheets idea: pick the product on line 5 of the
+               spreadsheet. The queue below is a database table and shows no row
+               number anywhere, so it asked for a number that is on no screen in
+               this app -- and the ordinal it counts is not the id the queue
+               uses internally either, so a guess would have selected the wrong
+               product rather than failing.
+               ASIN, eBay item and a pasted URL all still work, and all three
+               are things you can actually read off the queue. -->
           <select id="gensel_type" class="ed" style="width:auto;min-width:150px"
                   title="What you're entering (ignored when a URL is pasted)">
-            <option value="row" selected>Row number</option>
-            <option value="asin">ASIN</option>
+            <option value="asin" selected>ASIN</option>
             <option value="ebay_item">eBay item number</option>
           </select>
         </div>
         <div id="gensel_hint" class="cc" style="font-size:12px;margin-top:8px">
-          Row numbers can be comma-separated (e.g. 2, 5, 7). For one product you
-          can paste its URL — the dropdown is ignored then.
+          Leave this empty to generate everything queued below. To pick one,
+          paste its Amazon or eBay link — the dropdown is ignored then — or type
+          its ASIN or eBay item number.
         </div>
       </div>
       <div id="genhow"></div>
@@ -663,10 +682,37 @@
     <!-- INVENTORY REPLENISHMENT -->
     <div id="sec_inventory" class="wspanel">
       <div class="wstoolbar bleed">
-        <div><h2>Inventory replenishment</h2>
-        <div class="sub">Fully automated. Pulls FBA inventory + sales velocity from SP-API. Applies four-bucket zero-velocity classification (Active / New Launch / Dormant / Dead). Coloured xlsx output mirrors your original Excel model.</div></div>
+        <div><h2>Inventory</h2>
+        <div class="sub">What you have, how fast it is going, and when it runs out.</div></div>
+        <span class="spacer" style="flex:1"></span>
+        <button class="db-chip" onclick="openGuide('stock')"
+                title="What this page does and what every figure on it means.">
+          <i class="ti ti-book"></i> How this page works</button>
+        <button class="db-chip" onclick="stockLoad(true)"
+                title="Re-read the listing quantities, sales and supplier times.">
+          <i class="ti ti-refresh"></i> Refresh</button>
       </div>
 
+      <!-- THE STOCK COCKPIT.
+           "now start building the inventory feature same like orbit in our app"
+
+           Built from data the app already holds, so there is nothing to upload
+           and no Amazon report to wait for. The replenishment tool below is a
+           separate thing that needs an FBA report and a 3PL file; this needs
+           neither, which is why it is the part of the screen you see first. -->
+      <div id="stockwrap"></div>
+
+      <!-- THE OLDER TOOL, KEPT AND NOW LABELLED. It lost its heading when the
+           panel's own <h2> became "Inventory", and an unlabelled block of
+           number boxes under a table reads as part of the table. It answers a
+           different question -- "how much should I SEND to Amazon" -- and it
+           needs an FBA report and a 3PL file, so it is folded away until
+           somebody wants it. -->
+      <details class="foldgroup" style="margin-top:18px">
+        <summary><i class="ti ti-truck-loading"></i> FBA replenishment planner
+          <span class="cc">— the automated port of the Lure Essentials control
+          sheet. Needs an FBA inventory report and a 3PL stock file, and answers
+          how much to send to Amazon.</span></summary>
       <div style="padding:14px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
           <div>
@@ -722,6 +768,7 @@
           <b>How it works:</b> Fetches FBA inventory via the SP-API <code>GET_FBA_MYI_ALL_INVENTORY_DATA</code> report (cached 6h by default). Fetches sales velocity per SKU via the Orders API over the sales window. Classifies each SKU as <b>ACTIVE</b> (has sales), <b>NEW_LAUNCH</b> (0 sales but &lt;60 days old), <b>DORMANT</b> (0 sales, 60-365 days), or <b>DEAD</b> (0 sales &gt;365 days or Discontinued). Only ACTIVE and NEW_LAUNCH SKUs get reorder recommendations. The red badge in the sidebar shows count of SKUs needing reorder.
         </div>
       </div>
+      </details>
     </div>
 
     <!-- MILES LUBRICANTS IMPORT -->
@@ -1166,6 +1213,9 @@
 <script src="/static/js/miles.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ppc.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/inventory.js?v={{ ASSET_V }}"></script>
+<!-- The stock cockpit. Its own file, per CLAUDE.md Rule 7: inventory.js is the
+     FBA replenishment planner and shares no code with it. -->
+<script src="/static/js/stock.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/submit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/runqueue.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/handling.js?v={{ ASSET_V }}"></script>

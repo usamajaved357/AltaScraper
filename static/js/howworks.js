@@ -519,5 +519,7 @@ function genSelOnInput(){
   if(dd){ dd.disabled=isUrl; dd.style.opacity=isUrl?.45:1; }
   if(hint){ hint.textContent = isUrl
     ? "URL detected — the platform is read from the link, so the dropdown is ignored."
-    : "Row numbers can be comma-separated (e.g. 2, 5, 7). For one product you can paste its URL — the dropdown is ignored then."; }
+    : "Leave this empty to generate everything queued below. To pick one, paste "
+      + "its Amazon or eBay link — the dropdown is ignored then — or type its "
+      + "ASIN or eBay item number."; }
 }

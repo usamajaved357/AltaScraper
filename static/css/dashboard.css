@@ -2925,3 +2925,338 @@ table.ordtable tbody tr.orddetail > td{
   clip:rect(0 0 0 0); clip-path:inset(50%);
   overflow:hidden; white-space:nowrap;
 }
+
+/* =====================================================================
+   THE STOCK COCKPIT -- the Inventory screen
+   =====================================================================
+   "now start building the inventory feature same like orbit in our app"
+   "i want you to build the mentioned features in detail, same animation
+    same everything"
+
+   MEASURED, NOT GUESSED. Every number below was read off Orbit's own
+   rendered elements during the 18 Aug 2026 capture and is recorded in
+   orbit_inventory/design.md. Where a value is ours, it says so.
+
+     banner stat card   152.1 x 198.3, bg rgba(12,18,31,.56), 1px border,
+                        radius 8, padding 16, gap 7
+       label            11px / 800 / rgb(209,213,219) / ls .88px / uppercase
+       value            26px / 700 / rgb(243,244,246)
+       sub              12px / 400
+     grid stat card     299.8 x 137.8, bg rgba(15,23,42,.34), 1px border,
+                        radius 8, padding 14, gap 8
+       label            10px / 800 / rgb(156,163,175) / ls .6px / uppercase
+       value            24px / 850
+       sub              11px / 400 / rgb(156,163,175)
+
+   The BORDER is what distinguishes one card from another in Orbit -- cyan
+   for the neutral count, green for healthy money, amber for cost, red for
+   the queue -- while the fill stays identical. Copied, because it is a good
+   idea: four differently-filled boxes shout, four differently-outlined ones
+   read as a set.
+   ===================================================================== */
+.stock{ display:block; }
+
+/* ---- the banner -------------------------------------------------------- */
+.stk-banner{
+  border:1px solid var(--line); border-radius:12px;
+  background:linear-gradient(135deg, rgb(26,29,41) 0%, rgb(45,50,66) 100%);
+  padding:18px 20px; margin-bottom:14px;
+  display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;
+  animation:stkFadeSlideUp .5s ease both;
+}
+.stk-bannermain{ flex:1; min-width:280px; }
+.stk-eyebrow{
+  font-size:11px; font-weight:800; letter-spacing:.88px; text-transform:uppercase;
+  color:var(--ink3); margin:0 0 6px;
+}
+/* 32px rather than Orbit's 3.2em: the same visual weight against this app's
+   13px body text, which is a size smaller than Orbit's 14px. */
+.stk-headline{
+  font-size:32px; font-weight:700; line-height:1.12; margin:0 0 6px;
+  color:var(--ink); letter-spacing:-.5px;
+}
+.stk-headline.ok{ color:var(--ok); }
+.stk-headline.bad{ color:#fca5a5; }
+.stk-sub{ font-size:12.5px; color:var(--ink2); line-height:1.55; margin:0; }
+.stk-bannercards{ display:flex; gap:10px; flex-wrap:wrap; }
+
+/* ---- the cards --------------------------------------------------------- */
+.stk-card{
+  background:rgba(12,18,31,.56); border:1px solid var(--line);
+  border-radius:8px; padding:16px; gap:7px;
+  display:flex; flex-direction:column; min-width:152px;
+  animation:stkFadeSlideUp .5s ease both;
+}
+.stk-card.risk { border-color:rgba(248,113,113,.36); }
+.stk-card.good { border-color:rgba(34,197,94,.24); }
+.stk-card.cost { border-color:rgba(251,191,36,.28); }
+.stk-card.info { border-color:rgba(103,232,249,.26); }
+.stk-card .lbl{
+  font-size:11px; font-weight:800; letter-spacing:.88px; text-transform:uppercase;
+  color:var(--ink2);
+}
+.stk-card .val{
+  font-size:26px; font-weight:700; color:var(--ink); line-height:1.1;
+  font-variant-numeric:tabular-nums;
+}
+.stk-card .sub{ font-size:12px; font-weight:400; color:var(--ink2); }
+
+/* The row under the banner. Orbit's grid card is wider with a smaller label. */
+.stk-grid{
+  display:grid; gap:10px; margin-bottom:14px;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+}
+.stk-grid .stk-card{
+  background:rgba(15,23,42,.34); padding:14px; gap:8px; min-width:auto;
+}
+.stk-grid .stk-card .lbl{ font-size:10px; letter-spacing:.6px; color:var(--ink3); }
+.stk-grid .stk-card .val{ font-size:24px; font-weight:800; }
+.stk-grid .stk-card .sub{ font-size:11px; color:var(--ink3); }
+
+/* Stagger, so the row assembles rather than appearing. Orbit does the same with
+   _fadeSlideUp on its cards; the delays are ours. */
+.stk-grid .stk-card:nth-child(1){ animation-delay:.02s; }
+.stk-grid .stk-card:nth-child(2){ animation-delay:.06s; }
+.stk-grid .stk-card:nth-child(3){ animation-delay:.10s; }
+.stk-grid .stk-card:nth-child(4){ animation-delay:.14s; }
+.stk-bannercards .stk-card:nth-child(1){ animation-delay:.04s; }
+.stk-bannercards .stk-card:nth-child(2){ animation-delay:.08s; }
+.stk-bannercards .stk-card:nth-child(3){ animation-delay:.12s; }
+
+/* ---- the state chips --------------------------------------------------- */
+/* Orbit's five, in Orbit's order: safe, watch, order soon, order now,
+   stockout likely -- "ordered from healthiest to most urgent". */
+.stk-chip{
+  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+  font-size:10.5px; font-weight:600; letter-spacing:.02em;
+  border-radius:5px; padding:2px 8px; border:1px solid transparent;
+}
+.stk-chip.safe    { color:#34d399; border-color:rgba(16,185,129,.32); background:rgba(16,185,129,.10); }
+.stk-chip.watch   { color:#fde047; border-color:rgba(251,191,36,.30); background:rgba(251,191,36,.09); }
+.stk-chip.soon    { color:#fbbf24; border-color:rgba(245,158,11,.36); background:rgba(245,158,11,.11); }
+.stk-chip.now     { color:#f87171; border-color:rgba(239,68,68,.38);  background:rgba(239,68,68,.11); }
+.stk-chip.out     { color:#fecaca; border-color:rgba(239,68,68,.55);  background:rgba(239,68,68,.20); }
+.stk-chip.unknown { color:var(--ink3); border-color:var(--line); }
+/* ONLY "stockout likely" pulses. If everything moves, nothing is urgent.
+   Orbit's own _pulse_16kzi_1, in its red rather than its green. */
+.stk-chip.out{ animation:stkPulseRing 2s ease-in-out infinite; }
+
+/* ---- the filter row ---------------------------------------------------- */
+.stk-filters{ display:flex; gap:7px; flex-wrap:wrap; align-items:center;
+              margin-bottom:12px; }
+.stk-fbtn{
+  background:var(--panel2); border:1px solid var(--line); color:var(--ink2);
+  border-radius:999px; padding:5px 12px; font-size:12px; cursor:pointer;
+  transition:border-color .2s ease, color .2s ease, background .2s ease;
+  font-family:inherit;
+}
+.stk-fbtn:hover{ border-color:var(--line2); color:var(--ink); }
+.stk-fbtn.on{ border-color:var(--accent); color:var(--accent);
+              background:var(--accent-bg); }
+.stk-fbtn .n{ opacity:.6; margin-left:5px; font-variant-numeric:tabular-nums; }
+
+/* ---- the ledger -------------------------------------------------------- */
+.stk-table{ width:100%; border-collapse:collapse; font-size:12px; }
+.stk-table th{
+  text-align:left; font-size:10px; font-weight:800; letter-spacing:.6px;
+  text-transform:uppercase; color:var(--ink3); padding:8px 9px;
+  border-bottom:1px solid var(--line); white-space:nowrap;
+  background:var(--panel); position:sticky; top:0; z-index:1; cursor:pointer;
+  user-select:none;
+}
+.stk-table th:hover{ color:var(--ink); }
+.stk-table th.r, .stk-table td.r{ text-align:right; }
+.stk-table th .dir{ opacity:.55; font-size:9px; margin-left:3px; }
+.stk-table td{
+  padding:9px; border-bottom:1px solid var(--line); vertical-align:middle;
+}
+.stk-table tbody tr{ transition:background-color .15s ease; }
+.stk-table tbody tr:hover td{ background:var(--panel2); }
+.stk-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+.stk-prod{ display:flex; gap:9px; align-items:center; min-width:0; }
+.stk-thumb{
+  width:34px; height:34px; border-radius:6px; flex:none; object-fit:cover;
+  background:var(--panel2); border:1px solid var(--line);
+}
+.stk-pname{ min-width:0; }
+.stk-pname b{
+  display:block; font-weight:500; font-size:12px; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px;
+}
+.stk-pname span{
+  font-family:ui-monospace,Consolas,monospace; font-size:10px; color:var(--ink4);
+}
+/* Cover against the restock time, so "6 days" and "6 days when it takes 10 to
+   replace" are told apart at a glance rather than by arithmetic. */
+.stk-bar{ height:5px; border-radius:3px; background:var(--panel2);
+          overflow:hidden; margin-top:4px; width:88px; }
+.stk-bar i{ display:block; height:100%; border-radius:3px;
+            transition:width .5s ease; }
+.stk-gap{ font-size:10px; color:var(--warn); }
+
+/* ---- motion, and the switch that turns it off -------------------------- */
+/* Orbit's own keyframes, renamed: _fadeSlideUp_rvulv_1, _pulse_16kzi_1 and
+   _skeletonShimmer_guoor_1, verbatim from orbit_inventory/design.md. */
+@keyframes stkFadeSlideUp{
+  0%  { opacity:0; transform:translateY(4px); }
+  100%{ opacity:1; transform:translateY(0); }
+}
+@keyframes stkPulseRing{
+  0%  { box-shadow:0 0 0 0 rgba(239,68,68,.55); }
+  70% { box-shadow:0 0 0 7px rgba(239,68,68,0); }
+  100%{ box-shadow:0 0 0 0 rgba(239,68,68,0); }
+}
+@keyframes stkShimmer{
+  0%  { background-position:200% 0; }
+  100%{ background-position:-200% 0; }
+}
+.stk-skel{
+  background:linear-gradient(90deg, var(--panel2) 25%, var(--line) 37%,
+                             var(--panel2) 63%);
+  background-size:400% 100%;
+  animation:stkShimmer 1.4s ease infinite;
+  border-radius:6px;
+}
+@media (prefers-reduced-motion: reduce){
+  .stk-banner, .stk-card, .stk-chip.out, .stk-skel{ animation:none; }
+  .stk-bar i{ transition:none; }
+}
+
+/* =====================================================================
+   THE ORDER PANEL -- what opens when you click an order number
+   =====================================================================
+       "RIGHT NOW THE TEXT APPEARS IN A FREE FORM WHEN I CLICK ON THE ORDER
+        NUMBER INSIDE THE ORDERS TAB ... also the order page is not arranged
+        the, text mixes freely into each other."
+
+   He was right, and the cause was that the whole panel was built from inline
+   styles: every element carried its own padding and font-size, nothing shared
+   a baseline, and there was no grid for anything to line up against. Text that
+   is only ever positioned relative to the text before it runs together as soon
+   as one piece grows.
+
+   So the panel has sections now, and the sections have a shape:
+
+       .odp          the panel
+       .odp-sec      one section, with a rule above it and a heading
+       .odp-h        that heading
+       .odp-item     one ordered line: title, identifiers, quantity, price
+       .odp-ids      the SKU / ASIN chips under a title
+       .odp-src      the supplier table -- a GRID, so the columns align down
+                     the page instead of each row setting its own widths
+       .odp-kv       label/value pairs for the delivery dates
+
+   Everything here is new. No existing class is touched.
+   ===================================================================== */
+.odp{
+  border:1px solid var(--line); border-radius:10px;
+  background:var(--panel); padding:0; margin:2px 0 6px;
+  font-size:12px; line-height:1.55;
+}
+.odp-sec{ padding:11px 14px; border-top:1px solid var(--line); }
+.odp-sec:first-child{ border-top:0; }
+.odp-h{
+  display:flex; align-items:center; gap:7px; margin:0 0 9px;
+  font-size:11px; font-weight:600; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--ink3);
+}
+.odp-h .ti{ font-size:14px; color:var(--ink4); }
+.odp-h .odp-count{ color:var(--ink4); font-weight:500; letter-spacing:0;
+                   text-transform:none; }
+
+/* ---- one ordered line -------------------------------------------------- */
+.odp-item{
+  display:grid; grid-template-columns:1fr auto auto; gap:2px 12px;
+  align-items:baseline; padding:8px 0; border-top:1px solid var(--line);
+}
+.odp-item:first-of-type{ border-top:0; padding-top:0; }
+.odp-title{
+  grid-column:1; font-size:12.5px; color:var(--ink); font-weight:500;
+  /* Two lines then ellipsis: one line hid too much of a long Amazon title,
+     and unbounded made the row height jump between products. */
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.odp-qty{ grid-column:2; color:var(--ink3); white-space:nowrap;
+          font-variant-numeric:tabular-nums; }
+.odp-price{ grid-column:3; white-space:nowrap; font-weight:600;
+            font-variant-numeric:tabular-nums; }
+.odp-ids{ grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:6px;
+          margin-top:3px; align-items:center; }
+.odp-id{
+  font-family:ui-monospace,Consolas,monospace; font-size:10px;
+  color:var(--ink4); background:var(--panel2); border:1px solid var(--line);
+  border-radius:5px; padding:1px 6px; white-space:nowrap;
+}
+.odp-id.link{ color:var(--accent); text-decoration:none; }
+.odp-id.link:hover{ border-color:var(--accent); background:var(--accent-bg); }
+.odp-id .ti{ font-size:11px; vertical-align:-1px; }
+
+/* ---- a status, with what it means ------------------------------------- */
+.odp-state{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:10.5px; border-radius:5px; padding:1px 7px;
+  border:1px solid var(--line); white-space:nowrap;
+}
+.odp-state.warn{ color:var(--warn); border-color:var(--warn-line); }
+.odp-state.bad { color:#fca5a5;     border-color:var(--red-line); }
+.odp-state.ok  { color:var(--ok);   border-color:var(--ok-line, var(--line)); }
+.odp-why{
+  grid-column:1 / -1; margin-top:4px; font-size:11px; color:var(--ink3);
+  line-height:1.5;
+}
+
+/* ---- the supplier list: a grid, so columns line up -------------------- */
+.odp-src{ display:grid; grid-template-columns:auto 1fr auto auto; gap:0 10px; }
+.odp-src-h{
+  font-size:10px; color:var(--ink4); text-transform:uppercase;
+  letter-spacing:.04em; padding-bottom:4px; border-bottom:1px solid var(--line);
+}
+.odp-src-h.r, .odp-src .r{ text-align:right; }
+.odp-src > *{ padding:5px 0; align-self:center; }
+.odp-rank{
+  font-size:10px; color:var(--ink4); white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.odp-rank.best{ color:var(--ok); font-weight:600; }
+.odp-link{
+  color:var(--accent); text-decoration:none; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;
+}
+.odp-link:hover{ text-decoration:underline; }
+.odp-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+.odp-num.neg{ color:var(--red); }
+.odp-num .sub{ color:var(--ink4); font-size:10.5px; font-weight:400; }
+/* The delivery sentence sits under its own row and spans the whole grid, so
+   it can be a full sentence without squeezing the numbers beside it. */
+.odp-ship{
+  grid-column:1 / -1; margin:-2px 0 4px; padding:0 0 6px 0;
+  font-size:10.5px; color:var(--ink3); border-bottom:1px solid var(--line);
+}
+.odp-row-dead{ opacity:.5; }
+
+/* ---- delivery dates --------------------------------------------------- */
+.odp-kv{ display:grid; grid-template-columns:auto 1fr; gap:5px 14px;
+         font-size:11.5px; }
+.odp-kv dt{ color:var(--ink3); white-space:nowrap; }
+.odp-kv dd{ margin:0; color:var(--ink); }
+
+/* ---- the little (i) that explains a line ------------------------------ */
+.odp-i{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:15px; height:15px; border-radius:50%; cursor:help; flex:none;
+  border:1px solid var(--line2); color:var(--ink3); font-size:10px;
+  background:none; padding:0; line-height:1; vertical-align:-2px;
+}
+.odp-i:hover{ border-color:var(--accent); color:var(--accent); }
+
+/* ---- notes under a table --------------------------------------------- */
+.odp-note{ font-size:10.5px; color:var(--ink3); margin-top:5px; line-height:1.5; }
+.odp-note.warn{ color:var(--warn); }
+
+@media (max-width: 720px){
+  /* Four columns of supplier do not fit a phone; the price and the profit
+     keep their own line under the link rather than being squeezed to nothing. */
+  .odp-src{ grid-template-columns:auto 1fr; }
+  .odp-src .odp-num{ grid-column:2; text-align:right; }
+}

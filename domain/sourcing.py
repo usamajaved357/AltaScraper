@@ -117,6 +117,24 @@ DEFAULT_RULE = {
     "shipping_label":       _pricing.PRICING_RULE_SHIPPING_LABEL,
     "ads_margin":           _pricing.PRICING_RULE_ADS_MARGIN,
     "min_profit":           _pricing.PRICING_RULE_MIN_PROFIT,
+    # NEVER SELL AT BREAK-EVEN. Separate from the two profit TARGETS below, and
+    # deliberately so.
+    #
+    # The three amounts above used to default to 3.00, 2.00 and 1.00, which meant
+    # every rule implicitly demanded at least a pound of profit whether or not
+    # anyone had asked for one. The owner asked for those to go -- "do not add 3
+    # pounds postage and 2 pounds ad cost and 1 pound profit space on your own"
+    # -- and they have. With all three at zero, cost + Amazon's fee is the whole
+    # floor, and that is the price at which a sale earns nothing at all.
+    #
+    # So the safety floor is stated as a percentage of the cash actually put in,
+    # which means the same thing on a 12.00 unit and a 60.00 one. A flat pound
+    # does not: it is 8% back on one and under 2% on the other.
+    #
+    # It is NOT a target. targets_set() ignores it, so "no target set" still
+    # means what it always meant and the screen can still say so. It is the line
+    # below which the app will not go, and setting it to 0 removes it.
+    "min_roi_pct":          _pricing.PRICING_RULE_MIN_ROI_PCT,
     # What this listing sells in. Set from the marketplace by source_run.py; a
     # supplier quoting anything else is refused rather than silently converted
     # at 1:1. None disables the check, which is only right where every source is
@@ -432,15 +450,52 @@ def floor_price(cost, rule=None):
                                     shipping_label=rule["shipping_label"],
                                     ads_margin=rule["ads_margin"],
                                     min_profit=rule["min_profit"])
+    # THE SAFETY FLOOR. With the three per-unit amounts at 0.00, `flat` above is
+    # exactly cost + Amazon's fee -- break-even. See min_roi_pct in DEFAULT_RULE.
+    safety = None
+    _mr = _num(rule.get("min_roi_pct"))
+    if _mr is not None and _mr > 0:
+        safety = _pricing.floor_from_target(c, rule["referral_rate"], "roi", _mr,
+                                            shipping_label=rule["shipping_label"],
+                                            ads_margin=rule["ads_margin"])
+    floors = [f for f in (flat, safety) if f is not None]
+    flat = max(floors) if floors else None
+
     tgt = target_floor(c, rule)
     if flat is None:
         return tgt
     if tgt is None:
+        # Nothing asks for any profit at all -- every amount and both targets are
+        # zero. Refused rather than priced, because pricing to break-even is
+        # worse than the padding this replaced, and decide() says how to fix it.
+        if not has_profit_requirement(rule):
+            return None
         return flat
     # The HIGHER of the two, always. A percentage target is a floor being added
     # to the rule, not one replacing it -- so switching it on can raise a price
     # and must never lower one.
     return max(flat, tgt)
+
+
+def has_profit_requirement(rule=None):
+    """Does this rule ask for ANY profit at all? True/False.
+
+    True when a percentage target is set, or when one of the per-unit amounts is
+    non-zero -- a flat min_profit, or a postage or ads allowance the owner has
+    entered, all of which put the floor above break-even.
+
+    Exists because "no requirement" became possible for the first time when the
+    invented 3.00/2.00/1.00 defaults were removed. Before that every rule
+    implicitly demanded at least a pound, so nothing had to ask.
+    """
+    rule = rule_with_defaults(rule)
+    if targets_set(rule):
+        return True
+    for k in ("min_roi_pct", "min_profit", "shipping_label", "ads_margin"):
+        v = _num(rule.get(k))
+        if v is not None and v > 0:
+            return True
+    return False
 
 
 def targets_set(rule=None):
@@ -701,13 +756,24 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         # never the culprit and is not blamed.
         rate = rule["referral_rate"]
         bad = unreachable_targets(cost, rule)
-        out["reason"] = (
-            ("a %s target of %g%% cannot be met at any price once Amazon takes "
-             "%.0f%% -- the two are competing for the same pound"
-             % (bad[0][0], bad[0][1], rate * 100))
-            if bad else
-            ("a referral rate of %.0f%% leaves nothing to price into"
-             % (rate * 100)))
+        if bad:
+            out["reason"] = (
+                "a %s target of %g%% cannot be met at any price once Amazon "
+                "takes %.0f%% -- the two are competing for the same pound"
+                % (bad[0][0], bad[0][1], rate * 100))
+        elif not has_profit_requirement(rule):
+            # Said in full, because it is the one refusal the owner can fix in a
+            # moment and would otherwise read as a fault in the app.
+            out["reason"] = (
+                "no profit requirement is set for this SKU, so there is nothing "
+                "to price towards -- cost plus Amazon's fee is break-even. Set a "
+                "margin or an ROI target in the repricer's settings and it will "
+                "price to it. (Nothing is assumed on your behalf any more: the "
+                "3.00 postage, 2.00 ads and 1.00 profit that used to be added "
+                "automatically have been removed.)")
+        else:
+            out["reason"] = ("a referral rate of %.0f%% leaves nothing to price "
+                             "into" % (rate * 100))
         return out
 
     price = floor
@@ -826,24 +892,58 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
                             "; handling %d days (%d + %d buffer)"
                             % (lead, int(disp), int(rule["handling_buffer_days"]))))
     else:
-        out["reason"] = ("%s of %d usable source(s): %s at %.2f landed; price %.2f "
-                         "= %.2f cost + %.2f fee + %.2f postage + %.2f ads + %.2f profit%s%s"
-                         % (rule["strategy"], len(live) - len(rejections),
-                            src.get("label") or src.get("url"), cost, price,
-                            cost, price * rule["referral_rate"], rule["shipping_label"],
-                            rule["ads_margin"], rule["min_profit"],
-                            # Named when a hold exists but the cost has outgrown it,
-                            # so the log shows the hold was considered rather than
-                            # leaving it to look as though it had been forgotten.
-                            ("; above the %.2f held price, because the source has "
-                             "risen" % out["hold_exceeded"]
-                             if out.get("hold_exceeded") is not None else
-                             "; the %.2f held price was capped by the %.2f ceiling"
-                             % (out["hold_capped"]["hold"],
-                                out["hold_capped"]["ceiling"])
-                             if out.get("hold_capped") else ""),
-                            "" if lead is None else "; handling %d days (%d + %d buffer)"
-                            % (lead, int(disp), int(rule["handling_buffer_days"]))))
+        # WRITTEN AS SENTENCES A PERSON READS, not as a formula.
+        #
+        #   "first of all this is very confusing even i am not able to
+        #    understand what do it means"
+        #
+        # It used to read: "cheapest of 1 usable source(s): eBay item
+        # 234416204068 at 12.99 landed; price 22.35 = 12.99 cost + 3.35 fee +
+        # 3.00 postage + 2.00 ads + 1.00 profit; handling 5 days (3 + 2 buffer)".
+        # Three semicolon-joined clauses, an arithmetic identity in the middle,
+        # and the two largest terms in it were amounts nobody had asked for.
+        #
+        # Now: where it is being bought, what it costs, what it will sell for,
+        # what that leaves, and how long it takes -- one thing per clause, in
+        # the order somebody actually asks them.
+        got = _pricing.achieved(price, cost, rule["referral_rate"],
+                                shipping_label=rule["shipping_label"],
+                                ads_margin=rule["ads_margin"])
+        bits = []
+        n_usable = len(live) - len(rejections)
+        bits.append("Buying from %s at %.2f delivered%s."
+                    % (src.get("label") or src.get("url"), cost,
+                       "" if n_usable <= 1 else
+                       " -- the %s of %d sources that can be used"
+                       % ("cheapest" if rule["strategy"] == "cheapest"
+                          else rule["strategy"], n_usable)))
+        bits.append("Selling at %.2f leaves %.2f a unit after Amazon's %.2f fee%s."
+                    % (price, got["profit"] if got["profit"] is not None else 0.0,
+                       price * rule["referral_rate"],
+                       "" if not (rule["shipping_label"] or rule["ads_margin"])
+                       else " and your %.2f of postage and ads"
+                            % (float(rule["shipping_label"])
+                               + float(rule["ads_margin"]))))
+        if got.get("roi_pct") is not None:
+            bits.append("That is %.0f%% back on what you paid and %.0f%% of the "
+                        "sale price." % (got["roi_pct"], got["margin_pct"] or 0))
+        tset = targets_set(rule)
+        if tset:
+            bits.append("The price is the least that meets your %s."
+                        % " and ".join("%g%% %s target" % (p, k)
+                                       for k, p in tset))
+        if out.get("hold_exceeded") is not None:
+            bits.append("Your held price of %.2f no longer covers the cost, so "
+                        "the price has risen above it." % out["hold_exceeded"])
+        elif out.get("hold_capped"):
+            bits.append("Your held price of %.2f was capped by the %.2f ceiling."
+                        % (out["hold_capped"]["hold"],
+                           out["hold_capped"]["ceiling"]))
+        if lead is not None:
+            bits.append("Handling time %d days -- %d for the supplier to dispatch "
+                        "plus %d days' safety." % (lead, int(disp),
+                                                   int(rule["handling_buffer_days"])))
+        out["reason"] = " ".join(bits)
 
     # ---- guards against acting on a number that only LOOKS right ----------
     if cur_price is not None and cur_price > 0:

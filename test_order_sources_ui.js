@@ -98,8 +98,15 @@ const i1 = h.indexOf("itm/1"), i2 = h.indexOf("itm/2"), i3 = h.indexOf("itm/3");
 truthy("all three links are on the panel", i1 >= 0 && i2 >= 0 && i3 >= 0);
 truthy("  cheapest before dearer", i1 < i2);
 truthy("  and the ended one last", i2 < i3);
-truthy("the cheapest is labelled as such", /cheapest/.test(h));
-truthy("  and the ended one is labelled gone", /gone/.test(h));
+// WORDING CHANGED WITH THE LAYOUT. The rank column is narrow now, so the marker
+// is "best" rather than "cheapest" and it carries a class the stylesheet colours
+// -- and an ended link says what has actually happened to it in its own line
+// rather than being labelled with one word. What has to be true is unchanged:
+// the cheapest is visibly marked, and a dead one is visibly dead.
+truthy("the cheapest is marked", /odp-rank best/.test(h) && />best</.test(h));
+truthy("  and the ended one says the listing has ended",
+       /the listing has ended/.test(h));
+truthy("  and is drawn as dead", /odp-row-dead/.test(h));
 
 console.log("\n=== profit in pounds, per link, as asked ===");
 truthy("the profit on the cheapest is shown", h.includes("9.00"));
@@ -137,8 +144,12 @@ falsy("  really not", /1 days handling/.test(one));
 console.log("\n=== the profit is against what THIS buyer paid ===");
 // Not the current listing price. A line sold under a coupon does not earn what
 // the listing earns today, and the panel says which figure it used.
-truthy("the panel says what the buyer paid", /this buyer paid/.test(h));
+truthy("the panel says what the buyer paid", /this buyer actually paid/.test(h));
 truthy("  and names the amount", h.includes("30.00"));
+// And explains the delivery sentence, which was asked for by name: "explain in
+// a i button somewhere what this line means".
+truthy("  and there is an (i) explaining the delivery line",
+       /class="odp-i"/.test(h) && /days handling/.test(h));
 
 console.log("\n=== every link gone: the loudest thing on the panel ===");
 const gone = render({
@@ -152,8 +163,11 @@ const gone = render({
 });
 truthy("it says every supplier is out", /Every supplier for this SKU is/.test(gone));
 truthy("  and that there is nowhere to buy it", /nowhere to buy/.test(gone));
-// Red, not the same amber as every other note on the screen.
-truthy("  in the red style, not the ordinary one", gone.includes("#2a1414"));
+// Marked as a warning rather than as an ordinary note. The colour used to be a
+// hex literal inline; it is a class the stylesheet owns now, which is the whole
+// point of the layout change -- see .odp in dashboard.css.
+truthy("  in the warning style, not the ordinary one",
+       /odp-note warn/.test(gone));
 // The links are still listed even though they are all dead: three ended
 // suppliers is a different situation from one, and hiding them makes them look
 // the same.

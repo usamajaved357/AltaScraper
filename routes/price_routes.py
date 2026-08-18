@@ -117,7 +117,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         return None
 
     def _floor_for(sku, acc, mkt, price):
-        """The lowest this may go before it stops making money. (floor, why)."""
+        """The lowest this may go before it stops making money. (floor, why).
+
+        THE ACCOUNT'S OWN RULE, not a hardcoded one.
+
+        This called floor_from_rate(cost, 0.15) directly, which ignored every
+        setting the owner had made -- their measured referral rate, their postage
+        and ads allowances, their minimum return -- and quietly assumed a flat
+        15% and the old built-in 3.00/2.00/1.00. Those defaults are 0.00 now, so
+        the same call returns cost/(1-rate), which is BREAK-EVEN, and a warning
+        built on it would tell someone a price was safe when it earns nothing.
+
+        domain/sourcing.floor_price is the one function that turns a cost and a
+        rule into a floor, and it is what the repricer prices with. Using it here
+        means the number this screen warns about and the number the repricer
+        works to are the same number (Rule 12).
+        """
         from domain import cogs as _cogs
         cost = None
         try:
@@ -128,17 +143,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             return None, ("This SKU records no source cost, so there is no floor "
                           "to check the new price against.")
         try:
-            from listing import pricing as _pricing
-            # The account's own referral rate is not known here, so the app's
-            # standard rule is used -- the same one that priced the listing when
-            # it was created, rather than a second formula invented for this
-            # screen (Rule 12).
-            floor = _pricing.floor_from_rate(cost, 0.15)
-            if isinstance(floor, dict):
-                floor = floor.get("floor")
-            return (float(floor) if floor is not None else None), ""
+            from domain import source_repo as _repo
+            from domain import sourcing as _sourcing
+            rule = None
+            try:
+                rule = _repo.rule_for(CONFIG_PATH, (acc or {}).get("id") or "",
+                                      mkt, sku)
+            except Exception:
+                rule = None
+            floor = _sourcing.floor_price(cost, rule)
+            if floor is None:
+                return None, ("This account has no profit requirement set, so "
+                              "there is no floor to check against. Set a margin "
+                              "or ROI target in the repricer to get one.")
+            return float(floor), ""
         except Exception as e:
             return None, "The floor could not be worked out (%s)." % str(e)[:80]
+
 
     @app.route("/listing/price/preview", methods=["POST"])
     def listing_price_preview():
@@ -178,24 +199,55 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         if err:
             return jsonify({"ok": False, "error": err}), 400
 
-        warn = []
+        # WARNINGS ARE FOR THINGS THAT ARE ACTUALLY WRONG.
+        #
+        #     "why is it giving me fake and wrong warnings ... i do not know
+        #      about which floor is it talking about. i was increasing the price,
+        #      not decreasing it."
+        #
+        # Three things were being reported as warnings that are not warnings:
+        #
+        #   * "this SKU records no source cost, so there is no floor" -- true of
+        #     every hand-named SKU, and it is a fact about the setup, not a
+        #     danger in this change. It is a NOTE now.
+        #   * the floor text named "postage and advertising" as though they had
+        #     been deducted. They are 0.00 unless the owner sets them, so the
+        #     sentence described money that had not been counted.
+        #   * a large move was flagged in BOTH directions with the same wording,
+        #     "usually a typo -- check the decimal point", on a deliberate price
+        #     rise. Raising a price is the ordinary thing this screen is for.
+        #
+        # So: warnings only when money is at risk, notes for everything else, and
+        # the two are kept apart in the reply so the screen can show them
+        # differently.
+        warn, notes = [], []
         if floor is not None and new_price < floor:
             warn.append(
-                "%.2f is below this product's floor of %.2f — the price at which "
-                "it stops making money once the stock, Amazon's fees, postage and "
-                "advertising are paid. Every unit sold at %.2f loses about %.2f."
+                "%.2f is below this product's floor of %.2f — the least it can "
+                "sell for and still meet your profit rule once the stock and "
+                "Amazon's fees are paid. Every unit sold at %.2f gives up about "
+                "%.2f against that."
                 % (new_price, floor, new_price, floor - new_price))
         elif why:
-            warn.append(why)
+            notes.append(why)
+        elif floor is not None:
+            notes.append("Above this product's floor of %.2f, so it still meets "
+                         "your profit rule." % floor)
         if now is not None and now > 0:
             move = (new_price - now) / now * 100.0
-            if abs(move) >= 30:
-                warn.append("That is a %.0f%% change from %.2f. Large moves are "
-                            "usually a typo — check the decimal point."
-                            % (move, now))
+            # A CUT is the direction worth questioning: it is the one that can
+            # lose money on every unit, and the one a misplaced decimal point
+            # produces. A rise is stated, not warned about.
+            if move <= -30:
+                warn.append("That cuts the price by %.0f%%, from %.2f to %.2f. "
+                            "A drop that size is usually a misplaced decimal "
+                            "point." % (abs(move), now, new_price))
+            elif move >= 30:
+                notes.append("That raises the price by %.0f%%, from %.2f to %.2f."
+                             % (move, now, new_price))
         return jsonify({"ok": True, "sku": sku, "marketplace": mkt,
                         "current": now, "new": new_price, "floor": floor,
-                        "warnings": warn, "patches": patches,
+                        "warnings": warn, "notes": notes, "patches": patches,
                         "product_type": live.get("productType") or "",
                         "note": ("Nothing has been sent. This is exactly what "
                                  "would be.")})
