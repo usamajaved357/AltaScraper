@@ -154,3 +154,8 @@ Screenshot*.png
 
 # Sample images generated while testing the image pipeline -- large PNGs, not source.
 image_samples/
+
+# Tracker readings and watch list -- runtime state, machine-specific, like
+# asin_monitor.json. Written beside config.json via domain/jsonstore.py.
+trackers.json
+.jsonstore.*.tmp

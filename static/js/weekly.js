@@ -31,11 +31,10 @@ function weeklyOnOpen(){
   weeklyLoad();
 }
 
-function _wkQs(){
-  const a = (typeof WS_ID !== "undefined" && WS_ID) ? WS_ID : "";
-  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
-  return "?id=" + encodeURIComponent(a) + "&marketplace=" + encodeURIComponent(m);
-}
+// See the note in daily.js: this was the same hand-built copy, reading an
+// undefined WS_ID and forwarding "__all__" as though it were a marketplace.
+// One shared builder now (CLAUDE.md Rule 12) -- static/js/scopeq.js.
+function _wkQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
 async function weeklyLoad(){
   WK.loading = true; weeklyRender();
@@ -77,8 +76,14 @@ async function weeklyUploadFile(input){
   fd.append("file", f);
   const d = (document.getElementById("wk_week") || {}).value || "";
   if(d) fd.append("week_start", d);
-  if(typeof WS_ID !== "undefined" && WS_ID) fd.append("id", WS_ID);
-  if(typeof WS_MARKET !== "undefined" && WS_MARKET) fd.append("marketplace", WS_MARKET);
+  // The upload posts a form rather than a query string, so it takes the id on
+  // its own. Same source as every other screen's -- previously the undefined
+  // WS_ID, which meant an uploaded week was filed against whichever account the
+  // server happened to think was active rather than the one on screen.
+  const _sid = (typeof scopeAccountId === "function") ? scopeAccountId() : "";
+  if(_sid) fd.append("id", _sid);
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+    fd.append("marketplace", WS_MARKET);
   toast("Reading " + f.name + "…");
   try{
     const j = await (await fetch("/weekly/upload", {method: "POST", body: fd})).json();

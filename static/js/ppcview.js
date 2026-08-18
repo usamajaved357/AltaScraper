@@ -503,16 +503,9 @@ async function ppcReportUpload(input){
 
 /* The account and marketplace as a query string, for links (the CSV export)
    that cannot post a body. */
-function _pvScopeQs(){
-  const qs = [];
-  try{
-    if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
-      qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
-    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
-      qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
-  }catch(e){}
-  return qs.length ? "?" + qs.join("&") : "";
-}
+// Byte-for-byte identical to stock.js's copy before this. One builder now
+// (CLAUDE.md Rule 12) -- static/js/scopeq.js.
+function _pvScopeQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
 /* CAMPAIGN ANALYTICS. Orbit gives this its own route; the Search Term Report
  * carries the campaign and ad group names, so the table that matters can be

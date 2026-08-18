@@ -678,16 +678,11 @@ function _skForecast(){
   return h + '</tbody></table></div>';
 }
 
-function _skScopeQs(){
-  const qs = [];
-  try{
-    if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
-      qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
-    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
-      qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
-  }catch(e){}
-  return qs.length ? "?" + qs.join("&") : "";
-}
+// This was the CAREFUL copy -- it read CUR_ACCOUNT and dropped "__all__" where
+// daily.js and weekly.js did neither. Now it is the shared one, so those two get
+// the same care instead of the app having two answers to one question
+// (CLAUDE.md Rule 12). See static/js/scopeq.js.
+function _skScopeQs(){ return (typeof scopeQs === "function") ? scopeQs() : ""; }
 
 function _skFooter(c){
   return '<div class="odp-note" style="margin-top:10px">'

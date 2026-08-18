@@ -968,7 +968,7 @@ function navTo(sec){
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1000,6 +1000,12 @@ function navTo(sec){
     if(sec==="returns"){  if(typeof returnsOnOpen==="function")  returnsOnOpen(); }
   if(sec==="daily"){    if(typeof dailyOnOpen==="function")    dailyOnOpen(); }
   if(sec==="weekly"){   if(typeof weeklyOnOpen==="function")   weeklyOnOpen(); }
+  // The trackers and their alerts. Both read STORED readings only -- opening
+  // either never calls Amazon. A check costs an API call per ASIN and happens
+  // when the button is pressed, which is the lesson the ASIN Monitor was rebuilt
+  // around ("i dont want the asin monitor to be working always").
+  if(sec==="trackers"){ if(typeof trkLoad==="function")    trkLoad(); }
+  if(sec==="alerts"){   if(typeof alertsLoad==="function") alertsLoad(); }
   if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
