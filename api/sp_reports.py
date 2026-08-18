@@ -34,7 +34,16 @@ POLL_SLOW = 4               # and after that
 
 
 class ReportError(Exception):
-    """Raised with a message meant to be shown to a person."""
+    """Raised with a message meant to be shown to a person.
+
+    Carries `status` when Amazon ended the report in one, because CANCELLED and
+    FATAL are NOT the same answer and a caller sometimes has to tell them apart
+    -- see the note where they are raised.
+    """
+
+    def __init__(self, message, status=""):
+        super().__init__(message)
+        self.status = status
 
 
 def _payload(resp):
@@ -92,10 +101,28 @@ def create_and_wait(rc, report_type, marketplace_ids=None, options=None,
         if status == "DONE":
             return pay.get("reportDocumentId")
         if status in ("CANCELLED", "FATAL"):
-            # CANCELLED is Amazon's answer for "there is no data for that range",
-            # which is not a failure and must not be reported as one.
-            raise ReportError("Amazon returned %s for this report. For a date range "
-                              "with no sales that is normal." % status)
+            # THESE ARE TWO DIFFERENT ANSWERS AND WERE REPORTED AS ONE.
+            #
+            # CANCELLED is Amazon saying "there is no data for that range". Not
+            # a failure, and it must not be shown as one.
+            #
+            # FATAL is Amazon saying it COULD NOT PRODUCE the report. For the
+            # sales report that usually still means an empty range; for a
+            # Brand Analytics report it usually means the account is not
+            # entitled to it. Telling a seller "for a date range with no sales
+            # that is normal" when the real answer is "you do not have Brand
+            # Registry" sends them looking for a sales problem that does not
+            # exist. The status is attached so a caller who knows which report
+            # it asked for can say which it was.
+            if status == "CANCELLED":
+                msg = ("Amazon returned CANCELLED for this report, which is how "
+                       "it says there is no data for that date range.")
+            else:
+                msg = ("Amazon returned FATAL for this report -- it accepted the "
+                       "request and then could not produce it. That is usually "
+                       "either an empty date range or a report this account is "
+                       "not entitled to.")
+            raise ReportError(msg, status=status)
         if on_wait:
             try:
                 on_wait(attempt)

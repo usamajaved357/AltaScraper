@@ -1001,6 +1001,20 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- KEYWORDS (SQP) ----
+     The break cards are the point of the screen: four different jobs, each with
+     a count and the sales that went elsewhere. Clickable, because "show me the
+     eleven queries where they see us and scroll past" is the actual next
+     action. */
+  .sqp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+             gap:9px;margin:4px 0 10px}
+  .sqp-card{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+            padding:11px 13px;cursor:pointer;transition:border-color .12s,background .12s}
+  .sqp-card:hover{border-color:var(--accent);background:var(--panel)}
+  .sqp-card.on{border-color:var(--accent);background:var(--accent-bg)}
+  .sqp-n{font-size:21px;font-weight:700;line-height:1.1}
+  .sqp-l{font-size:12px;font-weight:600;color:var(--ink2)}
+
   /* ---- LEADING INDICATORS ----
      Four states, and the fourth is the important one: a figure with too little
      history, or a day Amazon has not reported, is genuinely UNJUDGED. It gets
