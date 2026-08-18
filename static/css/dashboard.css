@@ -2607,6 +2607,36 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 @media (max-width:1200px){ .ri-kpis{ grid-template-columns:repeat(3,1fr); } }
 @media (max-width:700px){  .ri-kpis{ grid-template-columns:repeat(2,1fr); } }
 
+/* ---- how the finished image is branded ----------------------------------
+   "let the user chose the brand name for its item, whether he wants the images
+    to be unbranded (without brand name printed on it), or branded (any name he
+    can type or select from the registered trademarks"
+   Three states shown together rather than hidden behind a dropdown: which one
+   is chosen changes what comes out of a paid generation, so it should be
+   readable at a glance rather than found. */
+.brandpane{
+  border:1px solid var(--line); border-radius:8px; background:var(--panel);
+  padding:11px 12px; margin-bottom:10px;
+}
+.brandpane-h{
+  font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+  color:var(--ink3); margin-bottom:8px;
+}
+.brandpane-opts{ display:grid; gap:6px;
+                 grid-template-columns:repeat(auto-fit, minmax(215px, 1fr)); }
+.brandopt{
+  display:flex; gap:8px; align-items:flex-start;
+  border:1px solid var(--line); border-radius:7px; padding:9px 10px;
+  cursor:pointer; font-size:12px; line-height:1.45; min-width:0;
+  transition:border-color .15s ease, background .15s ease;
+}
+.brandopt:hover{ border-color:var(--accent); }
+.brandopt.on{ border-color:var(--accent); background:rgba(45,212,168,.07); }
+.brandopt input{ margin-top:2px; flex:0 0 auto; }
+.brandopt .cc{ font-size:11px; }
+.brandchip.on{ border-color:var(--accent); color:var(--accent);
+               background:rgba(45,212,168,.09); }
+
 /* ---- the weekly KPI pack ------------------------------------------------
    Replaces a spreadsheet. Cards for the headline figures, each carrying its
    movement against the week before -- BETTER and WORSE rather than up and

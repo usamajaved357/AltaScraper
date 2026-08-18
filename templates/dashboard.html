@@ -182,6 +182,10 @@
          report rather than from live listing data, and both are things you send
          somebody rather than things you act on inside the app. -->
     <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
+    <!-- Its own screen rather than a dialog over Listings: generating a set of
+         images is a job you come back to and compare within, and a modal is a
+         thing you are expected to finish and dismiss. -->
+    <div class="navitem" data-sec="imagestudio" onclick="navTo('imagestudio')" title="Make a listing's main and secondary images from its source photographs"><i class="ti ti-photo-edit"></i> Image Studio</div>
     <!-- Sits next to Sales because it answers the other half of the same
          question: Sales says what was bought, this says how many people looked
          and how many of them bought. -->
@@ -972,6 +976,26 @@
       <div id="wk_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- IMAGE STUDIO, its own screen rather than a dialog over Listings. -->
+    <div id="sec_imagestudio" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-photo-edit"></i> Image Studio</h2>
+        <div class="sub">Make a listing's main and secondary images from its source photographs. Nothing here reaches Amazon &mdash; images are generated, reviewed and saved to the listing's library; sending one to a live slot is a separate, deliberate step.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="navTo('listings')"
+                  title="Back to the listings, to pick a different product"><i class="ti ti-arrow-left"></i> Listings</button>
+        </div>
+      </div>
+      <div id="studiobody" style="padding:4px 0">
+        <div class="odp-note" style="padding:16px;border:1px dashed var(--line);border-radius:10px">
+          <b>Pick a product first.</b>
+          <div class="cc" style="margin-top:6px">Open <b>Listings</b> and press the
+            photo button on any product &mdash; or tick several and use
+            <b>Generate main images</b> to work through them as a batch.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- AI SPEND: what the AI cost, per account and per feature. Read-only —
          this screen spends nothing itself. Shown as a chart AND written out in
          words, because the chart answers "is it going up" while the tables
@@ -1259,23 +1283,16 @@
   </div>
 </div>
 
-<div class="modalwrap" id="imgstudio">
-  <div class="modal" style="max-width:860px">
-    <button class="x" onclick="closeStudio()">×</button>
-    <!-- Introduced the way the other screens introduce themselves: a title, and
-         one line of plain English saying what it is for and what it will not do.
-         A modal that opens off a screen should not change key. -->
-    <div class="panelhead">
-      <div>
-        <p class="paneltitle"><i class="ti ti-photo-edit"></i> Image Studio</p>
-        <p class="panelsub">Make this listing's main and secondary images from its
-          source photographs<span class="infodot"
-          title="Nothing here reaches Amazon. Images are generated, reviewed and saved to this listing's library; sending one to a slot on the live listing is a separate, deliberate step.">i</span></p>
-      </div>
-    </div>
-    <div id="studiobody">Loading…</div>
-  </div>
-</div>
+<!-- The Image Studio used to be a MODAL over the Listings screen. Asked for as
+     "make the image studio as its own seperate page", and it was the right
+     call: generating a set of images is a job you come back to, compare within
+     and leave running, and a modal is a thing you are expected to finish and
+     dismiss. It also could not be linked to, and a dialog 860px wide was
+     showing eight generated images four to a row.
+
+     The section now lives with the other screens; #studiobody is unchanged, so
+     everything that renders into it kept working without being touched. -->
+
 
 <div class="toast" id="toast"></div>
 

@@ -99,7 +99,7 @@ function pasteToStudio(){
     manualRef: img, recipes: [], results: {}
   };
   closePasteListing();
-  const el = document.getElementById("imgstudio"); if(el) el.classList.add("open");
+  _studioShow();   // its own screen now, not a modal over Listings
   if(typeof loadRecipes==="function"){ loadRecipes().then(()=>{ try{ renderStudio(); }catch(e){} }); }
   else { try{ renderStudio(); }catch(e){} }
   if(typeof studioLoadModels==="function") studioLoadModels();

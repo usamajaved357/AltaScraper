@@ -11,6 +11,90 @@ import re
 import threading
 
 
+# ---------------------------------------------------------------------------
+# HOW THE FINISHED IMAGE IS BRANDED
+# ---------------------------------------------------------------------------
+#
+#     "let the user chose the brand name for its item, whether he wants the
+#      images to be unbranded (without brand name printed on it), or branded
+#      (any name he can type or select from the registered trademarks"
+#
+# There were TWO rules before this and neither of them is what was asked for:
+#
+#     remove   erase whatever logo the photo has, blend the surface, leave it
+#              clean. Right for a competitor's photo.
+#     keep     reproduce the product's own logo faithfully. Right when the
+#              photo is already the seller's own branded product.
+#
+# "Branded" is a THIRD thing: the photo is a plain supplier product, and it has
+# to come out carrying the SELLER'S name. That is not the opposite of
+# unbranded -- it is remove-then-apply, and doing it in one instruction matters
+# because two passes over the same surface is how a ghost of the old logo
+# survives under the new one.
+#
+# This is the app's actual business (CLAUDE.md Rule 1): brand new listings under
+# the owner's own names, built from a competitor's product data. A generic photo
+# becoming their own branded product is the whole point.
+
+BRAND_UNBRANDED = "unbranded"
+BRAND_BRANDED = "branded"
+BRAND_KEEP = "keep"
+
+_RULE_REMOVE = (
+    "LOGO RULE: If the product/packaging shows a BRAND LOGO, brand name, or store branding, "
+    "REMOVE it cleanly — erase the logo and blend that area to match the surrounding product "
+    "surface (same colour, material, finish), as if the logo was never there. Do NOT replace it "
+    "with any other text or logo; leave it clean. If there is NO logo present, simply keep the "
+    "product exactly as-is. Keep ALL other product details — shape, colours, proportions, "
+    "material, and any NON-branding text (like size, directions) — unchanged."
+)
+
+_RULE_KEEP = (
+    "LOGO RULE: KEEP the product's own brand logo and all its label text exactly as shown — this "
+    "is the brand's real product. Reproduce the logo, brand name, and all text faithfully."
+)
+
+
+def _brand_rule(brand_mode, brand_name, remove_logo):
+    """The logo instruction for this image, and the name actually applied.
+
+    Returns (rule_text, brand_applied). `brand_applied` is "" for every mode
+    that prints nothing, so a caller can say what happened without re-deriving
+    it from the mode.
+
+    `brand_mode` wins when it is set. When it is not, the older source/
+    preserve_logo pair still decides -- every existing caller keeps working and
+    nothing had to be migrated to add this.
+    """
+    mode = (brand_mode or "").lower()
+
+    if mode == BRAND_BRANDED and brand_name:
+        return (
+            "BRANDING RULE: This product is being sold under the brand name "
+            f"\"{brand_name}\". FIRST remove any existing brand logo, brand name or store "
+            "branding from the product and packaging — erase it and blend the area into the "
+            "surrounding surface so no trace, outline or shadow of the old marking remains. "
+            f"THEN print \"{brand_name}\" onto the product or its packaging in the place the "
+            "original branding occupied, as clean, professional, correctly spelled typography "
+            "that follows the surface — its curve, perspective, lighting and material finish — "
+            "so it reads as genuinely printed on the product rather than pasted over the photo. "
+            "Keep the typography restrained and legible; do NOT invent a graphic logo, mascot or "
+            "emblem, and do NOT add the name anywhere except where product branding belongs. "
+            "Everything else — shape, colours, proportions, material, and all NON-branding text "
+            "such as size or directions — stays exactly as in the reference.",
+            brand_name,
+        )
+
+    if mode == BRAND_UNBRANDED:
+        return (_RULE_REMOVE + " The finished image must carry NO brand name at all.", "")
+
+    if mode == BRAND_KEEP:
+        return (_RULE_KEEP, "")
+
+    # No explicit mode: the original behaviour, decided by source/preserve_logo.
+    return ((_RULE_REMOVE if remove_logo else _RULE_KEEP), "")
+
+
 def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOCK, _SECONDARY_ROLES, _active_brand, _cfg, _imgresult, _load_img_instructions, _load_recipes, _new_img_job, _records, _run_img_jobs_bg, _safe_sku, _save_img_instructions, _sku_dir, _state, _write_attrs_for_sku, _ws):
     """Attach the /genimage routes to the existing Flask app."""
 
@@ -532,6 +616,15 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         title = b.get("title", "")
         source = (b.get("source", "competitor") or "competitor").lower()   # 'competitor' | 'brand'
         preserve_logo = b.get("preserve_logo", True)
+        # HOW THE FINISHED IMAGE IS BRANDED. Asked for as:
+        #   "let the user chose the brand name for its item, whether he wants
+        #    the images to be unbranded (without brand name printed on it), or
+        #    branded (any name he can type or select from the registered
+        #    trademarks"
+        # See _brand_rule below for what each mode does and why "branded" is a
+        # THIRD rule rather than the opposite of "unbranded".
+        brand_mode = (b.get("brand_mode", "") or "").lower()
+        brand_name = (b.get("brand_name", "") or "").strip()
         instruction = (b.get("instruction", "") or "").strip()
         tprov = b.get("text_provider") or None
         iprov = b.get("image_provider") or None
@@ -555,20 +648,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
         except Exception:
             spec = ""
 
-        if remove_logo:
-            logo_rule = (
-                "LOGO RULE: If the product/packaging shows a BRAND LOGO, brand name, or store branding, "
-                "REMOVE it cleanly — erase the logo and blend that area to match the surrounding product "
-                "surface (same colour, material, finish), as if the logo was never there. Do NOT replace it "
-                "with any other text or logo; leave it clean. If there is NO logo present, simply keep the "
-                "product exactly as-is. Keep ALL other product details — shape, colours, proportions, "
-                "material, and any NON-branding text (like size, directions) — unchanged."
-            )
-        else:
-            logo_rule = (
-                "LOGO RULE: KEEP the product's own brand logo and all its label text exactly as shown — this "
-                "is the brand's real product. Reproduce the logo, brand name, and all text faithfully."
-            )
+        logo_rule, brand_applied = _brand_rule(brand_mode, brand_name, remove_logo)
 
         brief = (
             "Produce a clean, professional Amazon MAIN product image from the reference image. "
@@ -585,7 +665,10 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                                         image_kind="main", strength=strength, read_product=False)
         if not res.get("ok"):
             return jsonify(res), 400
-        return _imgresult(res, extra={"source": source, "logo_removed": remove_logo})
+        return _imgresult(res, extra={"source": source, "logo_removed": remove_logo,
+                                      "brand_mode": brand_mode or ("keep" if not remove_logo
+                                                                   else "unbranded"),
+                                      "brand_applied": brand_applied})
 
     @app.route("/genimage/recipe", methods=["POST"])
     def genimage_recipe():

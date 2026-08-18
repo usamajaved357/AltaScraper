@@ -113,10 +113,22 @@ async function confirmIfExisting(skus, kind){
     + "Generate anyway?");
 }
 
+/* SHOW THE STUDIO. It was a modal over Listings and is now its own screen --
+ * "make the image studio as its own seperate page".
+ *
+ * One function, because FIVE places open it (Listings twice, the card grid, ASIN
+ * research and Paste listing) and each was doing
+ * `getElementById("imgstudio").classList.add("open")` by hand. With the modal
+ * gone that line would have been five silent no-ops -- the studio simply never
+ * appearing, with nothing thrown to say why. */
+function _studioShow(){
+  if(typeof navTo === "function") navTo("imagestudio");
+}
+
 async function openStudioSingle(sku){
   const it=_itemForSku(sku);
   STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), results:{} };
-  document.getElementById("imgstudio").classList.add("open");
+  _studioShow();
   renderStudio();
   studioLoadModels();
   loadStudioInstructions();
@@ -126,12 +138,25 @@ async function openStudioBatch(){
   if(!skus.length){ toast("Select some products first (tick the cards)."); return; }
   const items=skus.map(_itemForSku).filter(Boolean);
   STUDIO={ skus:skus.map(String), items:items, brand:(CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), results:{} };
-  document.getElementById("imgstudio").classList.add("open");
+  _studioShow();
   renderStudio();
   studioLoadModels();
   loadStudioInstructions();
 }
-function closeStudio(){ document.getElementById("imgstudio").classList.remove("open"); }
+/* Kept: the old close button is gone with the modal, but other code calls this.
+   Going "back" from a screen means the screen you came from, and that is
+   Listings for every path that opens the studio. */
+function closeStudio(){ if(typeof navTo === "function") navTo("listings"); }
+
+/* Drawn when the section is opened directly -- from a link, or by pressing
+   Image Studio in the menu with nothing chosen. Without this the panel would
+   show whatever the last visit left in it. */
+function imagestudioOnOpen(){
+  if(!(STUDIO.skus || []).length) return;   // nothing picked: the placeholder stands
+  renderStudio();
+  studioLoadModels();
+  loadStudioInstructions();
+}
 // known strengths of popular image models (shown as guidance next to the picker)
 const IMG_MODEL_NOTES=[
   {match:/seedream/i, note:"★ Best for product shots & packaging, native up to 4K, strong text — top pick for main images"},
@@ -251,6 +276,125 @@ function renderStudio(){
     <div id="studio_progress" style="margin-top:14px"></div>
     <div id="studio_results" class="studiogrid" style="margin-top:14px"></div>`;
 }
+/* ============ HOW THE FINISHED IMAGE IS BRANDED ============
+ *
+ *   "let the user chose the brand name for its item, whether he wants the
+ *    images to be unbranded (without brand name printed on it), or branded
+ *    (any name he can type or select from the registered trademarks"
+ *
+ * Three states, and the middle one did not exist before:
+ *
+ *   UNBRANDED  erase whatever branding the photo has and leave it clean
+ *   BRANDED    erase it AND print the chosen name where the branding belongs
+ *   KEEP       the photo is already your own branded product; reproduce it
+ *
+ * The registered names come from the account's own brands, so the common case
+ * is one tap. Anything else can be typed — a brand may be registered and not
+ * yet recorded here, and refusing to print it would be the app deciding what
+ * the seller owns.
+ */
+function _studioBrands(){
+  const out = [];
+  try{
+    (CUR_ACCOUNT && CUR_ACCOUNT.brands ? CUR_ACCOUNT.brands : []).forEach(function(b){
+      const s = String(b || "").trim();
+      if(s && out.indexOf(s) < 0) out.push(s);
+    });
+  }catch(e){}
+  return out;
+}
+
+function brandPaneHTML(){
+  const brands = _studioBrands();
+  const chosen = STUDIO.brandName || brands[0] || "";
+  // Default: BRANDED when the account has a registered name, because this app
+  // exists to create listings under the owner's own brands (CLAUDE.md Rule 1).
+  // With no name recorded, unbranded is the only honest default.
+  const mode = STUDIO.brandMode || (brands.length ? "branded" : "unbranded");
+  return `
+    <div class="brandpane">
+      <div class="brandpane-h">Brand on the finished image</div>
+      <div class="brandpane-opts">
+        <label class="brandopt ${mode==='unbranded'?'on':''}">
+          <input type="radio" name="src_brandmode" value="unbranded"
+                 ${mode==='unbranded'?'checked':''} onchange="studioBrandModeChange()">
+          <span><b>Unbranded</b><br><span class="cc">No brand name printed on it at all. Any logo in the photo is erased and the surface blended clean.</span></span>
+        </label>
+        <label class="brandopt ${mode==='branded'?'on':''}">
+          <input type="radio" name="src_brandmode" value="branded"
+                 ${mode==='branded'?'checked':''} onchange="studioBrandModeChange()">
+          <span><b>Branded</b><br><span class="cc">The old branding is erased and your name is printed where product branding belongs.</span></span>
+        </label>
+        <label class="brandopt ${mode==='keep'?'on':''}">
+          <input type="radio" name="src_brandmode" value="keep"
+                 ${mode==='keep'?'checked':''} onchange="studioBrandModeChange()">
+          <span><b>Keep what is there</b><br><span class="cc">The photo is already your own branded product — reproduce its logo and label faithfully.</span></span>
+        </label>
+      </div>
+      <div id="src_brandname_row" style="${mode==='branded'?'':'display:none'}">
+        <label class="cc" style="display:block;margin:9px 0 4px">Which name?</label>
+        <div class="secrow" style="gap:8px;flex-wrap:wrap;align-items:center">
+          ${brands.map(b => '<button type="button" class="db-chip brandchip'
+              + (b === chosen ? ' on' : '') + '" onclick="studioPickBrand('
+              + jsArg(b) + ')">' + _giEsc(b) + '</button>').join("")}
+          <input id="src_brand_name" class="ed" style="flex:1 1 180px;min-width:150px"
+                 value="${_giEsc(chosen)}" placeholder="or type any name"
+                 oninput="studioBrandTyped(this.value)">
+        </div>
+        ${brands.length ? '' : '<div class="cc" style="margin-top:6px;font-size:11px">'
+          + 'This account has no brand recorded, so there is nothing to offer. '
+          + 'Type the name you sell under.</div>'}
+        <div id="src_brand_warn"></div>
+      </div>
+    </div>`;
+}
+
+function studioBrandModeChange(){
+  const el = document.querySelector('input[name="src_brandmode"]:checked');
+  STUDIO.brandMode = el ? el.value : "unbranded";
+  const row = document.getElementById("src_brandname_row");
+  if(row) row.style.display = (STUDIO.brandMode === "branded") ? "" : "none";
+  document.querySelectorAll(".brandopt").forEach(function(l){
+    const r = l.querySelector("input");
+    l.classList.toggle("on", !!(r && r.checked));
+  });
+  studioBrandTyped(STUDIO.brandName || "");
+}
+
+function studioPickBrand(name){
+  STUDIO.brandName = String(name || "");
+  const box = document.getElementById("src_brand_name");
+  if(box) box.value = STUDIO.brandName;
+  document.querySelectorAll(".brandchip").forEach(function(b){
+    b.classList.toggle("on", (b.textContent || "").trim() === STUDIO.brandName);
+  });
+  studioBrandTyped(STUDIO.brandName);
+}
+
+/* A NAME THAT IS NOT YOURS IS A TRADEMARK PROBLEM, not a typo. Printing
+ * somebody else's brand onto a product image is infringement, and Amazon takes
+ * the listing down rather than asking. Warned, never blocked: a brand can be
+ * registered to this seller and simply not recorded in the app yet, and the app
+ * refusing would be it deciding what the seller owns. */
+function studioBrandTyped(v){
+  STUDIO.brandName = String(v || "");
+  const warn = document.getElementById("src_brand_warn");
+  if(!warn) return;
+  const mine = _studioBrands().map(x => x.toLowerCase());
+  const n = STUDIO.brandName.trim().toLowerCase();
+  if(!n || !mine.length || mine.indexOf(n) >= 0){ warn.innerHTML = ""; return; }
+  warn.innerHTML = '<div class="odp-note warn" style="padding:8px 10px;margin-top:7px;font-size:11.5px">'
+    + '<b>Not one of this account\'s registered names.</b> If '
+    + _giEsc(STUDIO.brandName) + ' belongs to somebody else, printing it on the '
+    + 'product is trademark infringement and Amazon removes the listing rather '
+    + 'than asking. Fine if it is yours and simply not recorded here.</div>';
+}
+
+function _giEsc(s){
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function sourcePaneHTML(batch,n){
   // default: if this workspace has brand profiles/CSV products, assume 'brand' (keep logo);
   // otherwise assume 'competitor' (dropshipping/scrape -> remove logo)
@@ -258,18 +402,16 @@ function sourcePaneHTML(batch,n){
   return `
     <div class="cc" style="margin-bottom:8px">Turn the <b>source product photo</b> (from eBay/Amazon, or your brand's own upload) into a clean Amazon main image — <b>pure white background, product kept identical</b>. ${batch?('Applies to each of '+n+' selected products.'):''}</div>
     ${batch?'':refPickerHTML()}
-    <div class="secrow">
+    ${brandPaneHTML()}
+    <div class="secrow" style="margin-top:10px">
       <label class="cc">Where is this image from?</label>
       <select id="src_source" class="ed" onchange="srcSourceChange()">
-        <option value="competitor" ${looksBrand?'':'selected'}>Competitor / eBay / Amazon scrape — remove their logo</option>
-        <option value="brand" ${looksBrand?'selected':''}>My brand's own product (CSV/upload) — keep my product &amp; logo</option>
+        <option value="competitor" ${looksBrand?'':'selected'}>Competitor / eBay / Amazon scrape</option>
+        <option value="brand" ${looksBrand?'selected':''}>My brand's own product (CSV/upload)</option>
       </select>
     </div>
-    <div id="src_brandopts" style="margin-top:8px;${looksBrand?'':'display:none'}">
-      <label class="seccheck"><input type="checkbox" id="src_preserve_logo" checked> Preserve product <b>and logo</b> (keep my branding exactly)</label>
-    </div>
-    <div id="src_competitornote" class="cc" style="margin-top:8px;font-size:11px;${looksBrand?'display:none':''}">
-      Any brand logo found on the product will be cleanly removed (blended to match the surface — no replacement). If the photo has no logo, the product is kept as-is.
+    <div id="src_brandopts" style="display:none">
+      <label class="seccheck"><input type="checkbox" id="src_preserve_logo" checked></label>
     </div>
     <label class="cc" style="margin-top:10px;display:block">Optional — any other edits you want</label>
     <textarea id="src_instruction" class="ed" rows="2" placeholder="e.g. straighten the bottle, brighten it, remove the reflection, centre it"></textarea>
@@ -346,12 +488,14 @@ function onManualRefFile(input){
   rd.onerror=function(){ toast("Could not read that file."); };
   rd.readAsDataURL(f);
 }
+/* Where the photo came from. It no longer decides the LOGO -- that is the brand
+   pane above, which can say "print this name", something this control could
+   never express. Kept because it still tells the AI what it is looking at, and
+   because the older callers send it. */
 function srcSourceChange(){
   const v=(document.getElementById("src_source")||{}).value;
   const bo=document.getElementById("src_brandopts");
-  const cn=document.getElementById("src_competitornote");
   if(bo) bo.style.display = v==="brand"?"block":"none";
-  if(cn) cn.style.display = v==="competitor"?"block":"none";
 }
 async function studioRunSource(){
   const source=(document.getElementById("src_source")||{}).value||"competitor";
@@ -365,8 +509,18 @@ async function studioRunSource(){
     // single product: honour the reference the user picked (eBay picker) OR a
     // manually-provided upload/URL; batch: each product uses its own image.
     const ref=(single && (STUDIO.chosenRef||STUDIO.manualRef)) ? (STUDIO.chosenRef||STUDIO.manualRef) : _refImgForItem(it);
-    jobs.push({sku:sku, ref:ref, label:(source==="brand"?"brand-clean":"logo-removed"), payload:{
+    // HOW IT IS BRANDED, chosen above. Sent explicitly so the server does not
+    // have to infer it from source/preserve_logo, which only ever expressed
+    // "erase" or "keep" and could not say "print this name".
+    const bmode = STUDIO.brandMode || "unbranded";
+    const bname = (document.getElementById("src_brand_name")||{}).value
+                  || STUDIO.brandName || "";
+    jobs.push({sku:sku, ref:ref,
+      label:(bmode==="branded" ? ("branded-" + (bname||"?"))
+            : bmode==="keep" ? "logo-kept" : "unbranded"),
+      payload:{
       product_image:ref, title:(it&&it.title)||"", source:source, preserve_logo:preserveLogo,
+      brand_mode:bmode, brand_name:bname,
       instruction:instr, fidelity:fid, text_provider:(window.AI_TEXT||null), image_provider:(window.AI_IMAGE||null)
     }});
   });
