@@ -337,6 +337,144 @@ def by_match_type(rows):
     return out
 
 
+def by_campaign(rows):
+    """Orbit's Campaign Analytics table, on what the report actually carries.
+
+    Orbit splits campaigns by SP / SB / SD and shows Enabled / Paused. The
+    Search Term Report is Sponsored Products only and carries no status, so
+    neither of those can be honestly shown -- but it DOES carry the campaign and
+    ad group names, which is the cut that answers "which campaign is burning the
+    money".
+
+    Same % of spend against % of profit as by_match_type, for the same reason:
+    a campaign taking 40% of the spend and returning 12% of the profit is
+    visible without arithmetic.
+    """
+    agg = {}
+    for r in rows or []:
+        k = str(r.get("campaign") or "").strip() or "(no campaign named)"
+        e = agg.setdefault(k, {"campaign": k, "impressions": 0, "clicks": 0,
+                               "orders": 0, "spend": 0.0, "sales": 0.0,
+                               "ad_groups": set(), "terms": set(),
+                               "match_types": set()})
+        e["impressions"] += _i(r.get("impressions"))
+        e["clicks"] += _i(r.get("clicks"))
+        e["orders"] += _i(r.get("orders"))
+        e["spend"] += _f(r.get("spend"))
+        e["sales"] += _f(r.get("sales"))
+        for f, s in (("ad_group", "ad_groups"), ("search_term", "terms"),
+                     ("match_type", "match_types")):
+            v = str(r.get(f) or "").strip()
+            if v:
+                e[s].add(v)
+
+    tot_spend = sum(e["spend"] for e in agg.values())
+    tot_profit = sum(e["sales"] - e["spend"] for e in agg.values())
+    out = []
+    for e in agg.values():
+        e["ad_groups"] = sorted(e["ad_groups"])
+        e["match_types"] = sorted(e["match_types"])
+        e["terms"] = len(e["terms"])
+        e["spend"] = round(e["spend"], 2)
+        e["sales"] = round(e["sales"], 2)
+        e["profit"] = round(e["sales"] - e["spend"], 2)
+        e["acos"] = rate(e["spend"], e["sales"])
+        e["roas"] = rate(e["sales"], e["spend"], pct=False)
+        e["ctr"] = rate(e["clicks"], e["impressions"])
+        e["cvr"] = rate(e["orders"], e["clicks"])
+        e["cpc"] = rate(e["spend"], e["clicks"], pct=False)
+        e["cpa"] = rate(e["spend"], e["orders"], pct=False)
+        e["pct_spend"] = rate(e["spend"], tot_spend)
+        e["pct_profit"] = (rate(e["profit"], tot_profit)
+                           if tot_profit > 0 else None)
+        out.append(e)
+    out.sort(key=lambda x: -x["spend"])
+    return out
+
+
+def compare(now, before):
+    """Period-over-period change on each headline figure. Orbit shows one.
+
+    {metric: {now, before, change_pct, direction}}. `direction` is "better" or
+    "worse" rather than up/down, because for ACOS and wasted spend DOWN is the
+    good direction and an arrow alone would read backwards on half the row.
+
+    None when there is nothing to compare against -- one report is one window,
+    and inventing a baseline would be worse than showing none.
+    """
+    if not now or not before:
+        return None
+    # For these, LOWER is better.
+    lower_better = {"acos", "tacos", "cpc", "cpa", "wasted_spend", "spend"}
+    out = {}
+    for k in ("spend", "sales", "acos", "roas", "ctr", "cvr", "cpc", "cpa",
+              "wasted_spend", "orders", "clicks"):
+        a, b = now.get(k), before.get(k)
+        if a is None or b is None or not b:
+            continue
+        chg = round((float(a) - float(b)) / abs(float(b)) * 100.0, 1)
+        better = (chg < 0) if k in lower_better else (chg > 0)
+        out[k] = {"now": a, "before": b, "change_pct": chg,
+                  "direction": ("better" if chg and better
+                                else ("worse" if chg else "same"))}
+    return out or None
+
+
+def reports(config_path, workspace_id, marketplace, limit=12):
+    """Every stored report, newest first, so two can be compared."""
+    from data import db as _db
+    try:
+        conn = _db.get_db(config_path)
+        return [{"report_id": r["report_id"], "date_from": r["a"],
+                 "date_to": r["b"], "rows": r["n"], "uploaded_at": r["up"]}
+                for r in conn.execute(
+                    "SELECT report_id, MIN(date_from) a, MAX(date_to) b, "
+                    "       COUNT(*) n, MAX(uploaded_at) up "
+                    "FROM ppc_search_terms WHERE workspace_id=? AND "
+                    "marketplace=? GROUP BY report_id "
+                    "ORDER BY up DESC LIMIT ?",
+                    (workspace_id, marketplace, int(limit)))]
+    except Exception:
+        return []
+
+
+def to_csv(terms):
+    """The terms table as a CSV, for Orbit's Export button.
+
+    Written with the csv module rather than by joining commas: a search term can
+    contain one, and the sheet this app already hands out for supplier links was
+    broken exactly that way once (see domain/cogs.apply_sheet).
+    """
+    import csv as _csv
+    import io as _io
+
+    cols = ["search_term", "opportunity", "why", "match_types", "campaigns",
+            "branded", "impressions", "clicks", "ctr", "cpc", "cpa",
+            "spend", "sales", "orders", "acos", "roas", "profit"]
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(cols)
+    for t in terms or []:
+        row = []
+        for c in cols:
+            v = t.get(c)
+            if isinstance(v, list):
+                v = ", ".join(str(x) for x in v)
+            elif v is None:
+                v = ""            # blank, never 0 -- see rate()
+            elif v is True:
+                v = "yes"
+            elif v is False:
+                v = "no"
+            row.append(v)
+        w.writerow(row)
+    # A byte-order mark, so Excel opens it as UTF-8 and a pound sign survives.
+    # Written as the escape, never as a literal BOM character: a real one
+    # sitting in the middle of a source file is invisible and breaks parsers
+    # that only expect one at the start. test_encoding.js refuses them.
+    return "\ufeff" + buf.getvalue()
+
+
 def branded_split(rows, brands):
     """Branded against non-branded, Orbit's most transferable idea.
 

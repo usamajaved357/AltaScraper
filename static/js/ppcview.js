@@ -113,8 +113,8 @@ function ppcAnalyticsRender(){
   }
 
   host.innerHTML = _pvBanner(j) + _pvCards(j) + _pvBrand(j)
-                 + _pvMatchTable(j) + _pvFilters(j) + _pvTermTable(j)
-                 + _pvFooter(j);
+                 + _pvMatchTable(j) + _pvCampaignTable(j)
+                 + _pvFilters(j) + _pvTermTable(j) + _pvFooter(j);
 }
 
 /* THE BANNER. Orbit leads /ppc with the spend and the efficiency; the one thing
@@ -165,12 +165,12 @@ function _pvBanner(j){
              + "Orbit's own metric and the best thing on its screen: it turns "
              + "an ACOS into a number you can stop spending. Only terms with "
              + (t.min_clicks_to_judge || 10) + " or more clicks count — below "
-             + "that a zero-order term is evidence of nothing.")
+             + "that a zero-order term is evidence of nothing.", "wasted_spend")
     +   _pvCard("cost", "Ad spend", _pvShort(t.spend),
                _pvN(t.acos, "%") + " ACOS · " + _pvN(t.roas, "x", 2) + " ROAS",
                "ACOS is spend divided by the sales the ads made — whether the "
              + "advertising pays for itself. ROAS is the same thing the other "
-             + "way up.")
+             + "way up.", "spend")
     +   _pvCard(t.tacos === null ? "info" : "good", "TACOS",
                t.tacos === null ? "—" : _pvN(t.tacos, "%"),
                // A contradiction gets said out loud rather than shown as a
@@ -188,13 +188,37 @@ function _pvBanner(j){
     + '</div></div>';
 }
 
-function _pvCard(kind, label, value, sub, help){
+function _pvCard(kind, label, value, sub, help, metric){
   return '<div class="stk-card ' + kind + '"'
     + (help ? ' title="' + _pvEsc(help) + '"' : '') + '>'
     + '<span class="lbl">' + _pvEsc(label)
     + (help ? ' <i class="ti ti-info-circle" style="opacity:.5"></i>' : '')
-    + '</span><span class="val">' + value + '</span>'
+    + '</span><span class="val">' + value + _pvChange(metric) + '</span>'
     + '<span class="sub">' + sub + '</span></div>';
+}
+
+/* PERIOD-OVER-PERIOD, under every headline figure. Orbit shows one and it is
+ * most of what makes the number useful: 19% ACOS means nothing until you know
+ * last month's was 14%.
+ *
+ * BETTER AND WORSE, NOT UP AND DOWN. For ACOS, CPC, CPA and wasted spend, down
+ * is the good direction — a green arrow pointing up would read backwards on
+ * half the row. The server decides which, because it is the same judgement the
+ * arithmetic makes.
+ */
+function _pvChange(metric){
+  const j = PPCV.data, c = j && j.change && metric ? j.change[metric] : null;
+  if(!c || c.change_pct === 0) return "";
+  const good = c.direction === "better";
+  const arrow = c.change_pct > 0 ? "▲" : "▼";
+  const prev = j.compared_with || {};
+  return '<span style="font-size:12px;font-weight:600;margin-left:7px;color:'
+    + (good ? "var(--ok)" : "#f87171") + '" title="'
+    + _pvEsc("Was " + c.before + " in the previous report"
+             + (prev.date_to ? " (to " + prev.date_to + ")" : "") + ". "
+             + (good ? "This is the better direction for this metric."
+                     : "This is the worse direction for this metric.")) + '">'
+    + arrow + Math.abs(c.change_pct).toFixed(0) + '%</span>';
 }
 
 function _pvCards(j){
@@ -202,17 +226,18 @@ function _pvCards(j){
   return '<div class="stk-grid">'
     + _pvCard("good", "Ad sales", _pvShort(t.sales),
              (t.orders || 0) + " orders",
-             "Sales Amazon attributed to these ads in the report window.")
+             "Sales Amazon attributed to these ads in the report window.",
+             "sales")
     + _pvCard("info", "Clicks", (t.clicks || 0).toLocaleString(),
              _pvN(t.ctr, "%") + " CTR · " + _pvMoney(t.cpc) + " CPC",
              "CTR is clicks over impressions — whether the ad is worth "
-           + "clicking. CPC is what each click cost.")
+           + "clicking. CPC is what each click cost.", "clicks")
     + _pvCard("info", "Conversion", _pvN(t.cvr, "%"),
              _pvMoney(t.cpa) + " per order",
              "CVR is orders over clicks — whether the LISTING converts the "
            + "traffic the ad bought. CPA is cost per ACQUISITION, not per "
            + "click: a term with a cheap CPC and a terrible CPA is the "
-           + "expensive kind of cheap.")
+           + "expensive kind of cheap.", "cvr")
     + _pvCard("cost", "Search terms", (t.terms || 0).toLocaleString(),
              (t.rows || 0) + " report rows",
              "One row per term. The report has a row per targeting that "
@@ -347,6 +372,10 @@ function _pvFilters(j){
     + (j.brand_terms && j.brand_terms.length
         ? btn("branded", "Branded") + btn("nonbranded", "Non-branded") : "")
     + '<span style="flex:1"></span>'
+    + '<a class="stk-fbtn" href="/ppc/analytics.csv' + _pvScopeQs()
+    + '" style="text-decoration:none" title="Every search term in the report, '
+    + 'not just the ones on screen — an export that silently truncates is '
+    + 'worse than none.">Export</a>'
     + '<input class="ed" placeholder="Search terms…" value="' + _pvEsc(PPCV.q)
     + '" oninput="ppcSearch(this.value)" '
     + 'style="width:210px;padding:5px 10px;font-size:12px"></div>';
@@ -469,4 +498,65 @@ async function ppcReportUpload(input){
     toast(j.note || ("Kept " + j.rows + " rows"));
     ppcAnalyticsLoad(true);
   }catch(e){ toast(String(e)); input.value = ""; }
+}
+
+
+/* The account and marketplace as a query string, for links (the CSV export)
+   that cannot post a body. */
+function _pvScopeQs(){
+  const qs = [];
+  try{
+    if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id)
+      qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+    if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
+      qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  }catch(e){}
+  return qs.length ? "?" + qs.join("&") : "";
+}
+
+/* CAMPAIGN ANALYTICS. Orbit gives this its own route; the Search Term Report
+ * carries the campaign and ad group names, so the table that matters can be
+ * built without the Advertising API.
+ *
+ * What it CANNOT show, and does not pretend to: SP / SB / SD (the report is
+ * Sponsored Products only) and Enabled / Paused (status is not in the file).
+ */
+function _pvCampaignTable(j){
+  const use = j.campaigns || [];
+  // One campaign is not a breakdown, and a report with no campaign column at
+  // all collapses to a single "(no campaign named)" row -- drawing a table of
+  // one row that repeats the headline is noise.
+  if(use.length < 2) return "";
+  let h = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">'
+    + '<div style="padding:10px 14px;border-bottom:1px solid var(--line)">'
+    + '<b style="font-size:12.5px">Campaigns</b>'
+    + '<span class="infodot" title="From the campaign names in your report. It '
+    + 'cannot show SP / SB / SD or Enabled / Paused — the Search Term Report is '
+    + 'Sponsored Products only and carries no campaign status. Connecting the '
+    + 'Advertising API would add both.">i</span></div>'
+    + '<table class="stk-table"><thead><tr>'
+    + '<th>Campaign</th><th class="r">Terms</th><th class="r">Spend</th>'
+    + '<th class="r">% of spend</th><th class="r">Sales</th>'
+    + '<th class="r">Profit</th><th class="r">% of profit</th>'
+    + '<th class="r">ACOS</th><th class="r">CPC</th></tr></thead><tbody>';
+  use.forEach(function(r){
+    const over = (r.pct_profit !== null && r.pct_spend !== null
+                  && r.pct_spend - r.pct_profit > 15);
+    h += '<tr><td><div class="stk-pname"><b title="' + _pvEsc(r.campaign) + '">'
+      + _pvEsc(r.campaign) + '</b><span>'
+      + _pvEsc((r.ad_groups || []).slice(0, 3).join(", "))
+      + ((r.ad_groups || []).length > 3 ? " +" + (r.ad_groups.length - 3) : "")
+      + '</span></div></td>'
+      + '<td class="r stk-num">' + (r.terms || 0) + '</td>'
+      + '<td class="r stk-num">' + _pvMoney(r.spend) + '</td>'
+      + '<td class="r stk-num"' + (over ? ' style="color:#f87171"' : '') + '>'
+      + _pvN(r.pct_spend, "%") + '</td>'
+      + '<td class="r stk-num">' + _pvMoney(r.sales) + '</td>'
+      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:#f87171"' : '')
+      + '>' + _pvMoney(r.profit) + '</td>'
+      + '<td class="r stk-num">' + _pvN(r.pct_profit, "%") + '</td>'
+      + '<td class="r stk-num">' + _pvN(r.acos, "%") + '</td>'
+      + '<td class="r stk-num">' + _pvMoney(r.cpc) + '</td></tr>';
+  });
+  return h + '</tbody></table></div>';
 }

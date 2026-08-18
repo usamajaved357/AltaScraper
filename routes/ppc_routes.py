@@ -746,16 +746,59 @@ def register(app, *, _PPC, _PPC_IMPORT_ERR, _PPC_OUT_DIR, _parse_pct_from_contex
         if meta.get("date_from") and meta.get("date_to"):
             total_sales = _pv.total_sales_for(CONFIG_PATH, aid, mkt,
                                               meta["date_from"], meta["date_to"])
+        totals = _pv.totals(rows, total_sales=total_sales)
+
+        # AGAINST THE PREVIOUS REPORT. Orbit puts a period-over-period change
+        # under every headline figure and it is most of what makes them useful:
+        # a 19% ACOS means nothing until you know last month's was 14%.
+        #
+        # The previous UPLOAD, not a date range: one report is one window, and
+        # slicing a single upload into halves would compare two arbitrary
+        # subsets rather than two periods. None until there are two.
+        all_reports = _pv.reports(CONFIG_PATH, aid, mkt)
+        change = None
+        if len(all_reports) > 1:
+            prev_rows = _pv.load_rows(CONFIG_PATH, aid, mkt,
+                                      all_reports[1]["report_id"])
+            change = _pv.compare(totals, _pv.totals(prev_rows))
+
         return jsonify({
             "ok": True, "account": aid, "marketplace": mkt,
             "report": meta,
-            "totals": _pv.totals(rows, total_sales=total_sales),
+            "reports": all_reports,
+            "totals": totals,
+            "change": change,
+            "compared_with": (all_reports[1] if len(all_reports) > 1 else None),
             "terms": _pv.by_term(rows, brands)[:400],
             "match_types": _pv.by_match_type(rows),
+            "campaigns": _pv.by_campaign(rows),
             "branded": _pv.branded_split(rows, brands),
             "brand_terms": brands,
             "note": "",
         })
+
+    @app.route("/ppc/analytics.csv")
+    def ppc_analytics_csv():
+        """Orbit's Export button: every search term, as a spreadsheet.
+
+        The whole table, not the 400 the screen draws -- an export that silently
+        truncates is worse than no export, because nothing on the file says it
+        is short.
+        """
+        from flask import Response
+        from domain import ppc_view as _pv
+        aid, mkt = _ppc_scope()
+        meta = _pv.report_meta(CONFIG_PATH, aid, mkt) if aid and mkt else None
+        if not meta:
+            return jsonify({"ok": False,
+                            "error": "no report to export"}), 400
+        rows = _pv.load_rows(CONFIG_PATH, aid, mkt, meta["report_id"])
+        terms = _pv.by_term(rows, _pv.brand_terms(CONFIG_PATH, aid))
+        name = "search-terms-%s-%s-%s.csv" % (aid or "account", mkt or "",
+                                              meta.get("date_to") or "")
+        return Response(
+            _pv.to_csv(terms), mimetype="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="%s"' % name})
 
     @app.route("/ppc/brand_terms", methods=["GET", "POST"])
     def ppc_brand_terms():
