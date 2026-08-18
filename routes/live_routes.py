@@ -596,7 +596,22 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             doc_id = None
             report_source = "new"
             report_built_at = ""
+            # TWO LISTS, ON PURPOSE, because only one of them may decide whether
+            # the result is trustworthy.
+            #
+            #   warnings  a whole category of listing is MISSING from this sync
+            #             (the inactive report failed). This sets `partial`, and
+            #             `partial` is what makes the store fill the gaps from
+            #             the previous record.
+            #   notes     something worth telling the user that says nothing
+            #             about whether the data is complete -- "there are fewer
+            #             listings than last time" is the one that matters, and
+            #             merging the two is what froze two accounts' quantities
+            #             for half a day. See the save() call below.
+            #
+            # Both reach the screen; only `warnings` votes.
             warnings = []
+            notes = []
             # 0) reuse a recently-generated report ONLY when not forcing. When the
             #    user clicks Sync (force=True), we must generate a FRESH report so
             #    edits made on Amazon are reflected — reusing the old report would
@@ -774,26 +789,47 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                             "means the report was still being generated. Your last "
                             "successful sync is still shown -- nothing was lost. "
                             "Try Sync again in a minute."]})
-                warnings = list(warnings or []) + [
+                # AN OBSERVATION, NOT A FAULT -- and the difference matters,
+                # because `partial` decides whether the store accepts the write.
+                #
+                # This used to be appended to `warnings`, and `partial` was
+                # bool(warnings). So a catalogue that legitimately got smaller --
+                # somebody deleted a listing -- marked its own sync incomplete,
+                # and the store refused it. It refused every later one too, for
+                # the same reason, and the message said "Showing the new result"
+                # while the disk kept the old. Two accounts sat frozen for half a
+                # day with restocked SKUs still reading qty 0.
+                #
+                # Kept separate so it still reaches the screen and no longer
+                # votes on whether the data is trustworthy.
+                notes = list(notes or []) + [
                     f"Amazon returned {len(items)} listing(s), {_shrink} fewer than "
                     f"the last sync ({len(_prev_items)}). Showing the new result. If "
                     f"that is unexpected, sync again -- a partly-built report can "
                     f"come back short."]
             _LIVE_CACHE[ck] = {"ts": _t.time(), "items": items}
-            # DURABLE WRITE. Everything above is process memory that a restart or a
-            # redeploy erases; this is the copy that survives. save() also refuses to
-            # let a PARTIAL result overwrite a larger COMPLETE one, so a failed
-            # inactive-report half can no longer shrink a good catalogue on disk.
+            # DURABLE WRITE. Everything above is process memory that a restart or
+            # a redeploy erases; this is the copy that survives.
+            #
+            # `partial` means ONE thing: a whole category of listing is missing
+            # from this sync because a report failed. Only the inactive-report
+            # handlers above set it. save() then fills those gaps from the
+            # previous record rather than refusing the write, so a failed half
+            # can neither erase a good catalogue nor freeze it.
             _stored = _snap.save(CONFIG_PATH, aid, mkt, items,
                                  report_source=report_source,
-                                 partial=bool(warnings), warnings=warnings)
-            _kept = (_stored.get("count", len(items)) != len(items))
+                                 partial=bool(warnings),
+                                 warnings=(list(warnings or []) + list(notes or [])))
+            _carried = int(_stored.get("carried_listings") or 0)
             return jsonify({"ok": True, "items": items, "count": len(items),
                             "cached": False, "columns": hdr,
                             "report_source": report_source,
                             "report_built_at": report_built_at,
-                            "partial": bool(warnings), "warnings": warnings,
-                            "snapshot_kept_larger": _kept,
+                            "partial": bool(warnings),
+                            "warnings": list(warnings or []) + list(notes or []),
+                            # How many listings the stored copy kept from the
+                            # previous sync because this one could not see them.
+                            "carried_listings": _carried,
                             "synced_at": _t.time()})
         except Exception as e:
             # Print the FULL traceback to the terminal so the real cause is always
