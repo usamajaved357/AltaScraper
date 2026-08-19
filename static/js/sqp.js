@@ -54,7 +54,26 @@ function sqpRender() {
   if (SQP.loading) { box.innerHTML = '<div class="cc" style="padding:14px">Asking Amazon for the report — these are built on request and can take a minute…</div>'; return; }
   if (SQP.note) { box.innerHTML = '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;color:#e6d9b8">' + esc(SQP.note) + "</div>"; return; }
   const d = SQP.data;
-  if (!d) { box.innerHTML = ""; return; }
+  if (!d) {
+    // NOT A BLANK SCREEN. Amazon BUILDS this report on request, roughly one a
+    // minute, so opening the page deliberately does not fetch it — but a screen
+    // that draws nothing and says nothing is indistinguishable from one that is
+    // broken. Found by opening every screen in a browser and measuring what
+    // each one actually drew: this was the only one that drew nothing at all.
+    box.innerHTML =
+      '<div class="card" style="padding:18px">' +
+      '<div style="font-weight:600;margin-bottom:6px">Press “Get the report”</div>' +
+      '<div class="cc" style="font-size:12.5px;line-height:1.55;max-width:660px">' +
+      "Amazon builds this report when it is asked for, which takes up to a minute " +
+      "and is rationed — so it is not fetched automatically when you open the page. " +
+      "It reports by week, and defaults to the week that finished most recently." +
+      "<br><br>" +
+      "Search Query Performance is a <b>Brand Analytics</b> report and needs Brand " +
+      "Registry on the account. If Amazon refuses it, this screen will say so " +
+      "rather than showing you an empty week." +
+      "</div></div>";
+    return;
+  }
 
   let html = '<div class="ld-head"><div>' +
     '<div class="ld-day">' + esc(d.start) + " → " + esc(d.end) + "</div>" +

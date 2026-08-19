@@ -186,6 +186,8 @@
       </div>
       <div class="navkids">
         <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> All listings</div>
+        <div class="navitem" data-sec="catalog" onclick="navTo('catalog')" title="Every product ranked by revenue, with concentration, dead stock and the tail"><i class="ti ti-package-import"></i> Product Catalog</div>
+        <div class="navitem" data-sec="categories" onclick="navTo('categories')" title="Which Amazon categories your products are ranked in"><i class="ti ti-sitemap"></i> Category Explorer</div>
         <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
         <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
         <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
@@ -247,6 +249,7 @@
         <i class="ti ti-chevron-right chev navchev"></i>
       </div>
       <div class="navkids">
+        <div class="navitem" data-sec="overview" onclick="navTo('overview')" title="Every account and marketplace, month by month"><i class="ti ti-building-store"></i> Business overview</div>
         <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
         <!-- Sits next to Sales because it answers the other half of the same
              question: Sales says what was bought, this says how many people
@@ -260,6 +263,7 @@
         <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
         <!-- Reads the same daily figures as Sales, and answers the question
              Sales cannot: is this a NORMAL amount of movement for this account. -->
+        <div class="navitem" data-sec="compliance" onclick="navTo('compliance')" title="Scan a live listing for forbidden brands, restricted phrasing and category claims"><i class="ti ti-shield-search"></i> Compliance checker</div>
         <div class="navitem" data-sec="sqp" onclick="navTo('sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</div>
         <div class="navitem" data-sec="leading" onclick="navTo('leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</div>
         <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
@@ -1142,6 +1146,61 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- CATEGORY EXPLORER -- where this account's products sit in Amazon's
+         category tree. One Catalog call per product, so it is a button. -->
+    <div id="sec_categories" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-sitemap"></i> Category Explorer</h2>
+        <div class="sub">Which Amazon categories your products are actually ranked in, and how many are in none. A product with no rank usually means it has not sold &mdash; which is different from one nobody has looked up.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="catsLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="cats_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- BUSINESS OVERVIEW (Orbit's Brand Overview) -- every account and
+         marketplace, month by month. The ONE screen that is not scoped to the
+         account you are standing in, because "how is the business doing" is not
+         a question about one account. -->
+    <div id="sec_overview" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-building-store"></i> Business overview</h2>
+        <div class="sub">Every account and marketplace, month by month, in one grid. Totals are grouped by currency &mdash; pounds and dollars are never added together.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="ovwLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ovw_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- COMPLIANCE CHECKER -- runs this app's own rules against what is LIVE on
+         Amazon, rather than against copy it is about to submit. Reads only. -->
+    <div id="sec_compliance" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-shield-search"></i> Compliance checker</h2>
+        <div class="sub">Scan a live listing against the rules this app already uses when it writes copy &mdash; forbidden brand names, restricted phrasing, category claims, IP. Until now those only ran on listings this app was about to submit.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="cmpLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="cmp_body" style="padding:4px 0"></div>
+    </div>
+
+    <!-- PRODUCT CATALOG (Orbit's ASINs page) -- every product ranked, with the
+         four findings that each change a decision. Reads the app's own sales
+         table and catalogue snapshot; calls Amazon for nothing. -->
+    <div id="sec_catalog" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-package-import"></i> Product Catalog</h2>
+        <div class="sub">Every product you sell, ranked by what it earns &mdash; with how concentrated the revenue is, what your best product is worth, and which products are listed and earning nothing.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="catpLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="catp_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- KEYWORDS (SQP) -- the only report that shows the SEARCH rather than what
          happened after somebody arrived. Its value is the share: your slice of
          what a query produced across every seller. -->
@@ -1507,6 +1566,9 @@
 
 <!-- FIRST, because everything that draws a product picture calls it. One rule
      about Amazon's image CDN, in one place (CLAUDE.md Rule 12). -->
+<!-- One currency-code to symbol map. Loaded EARLY: four screens had their own
+     and three more were written against a variable that never existed. -->
+<script src="/static/js/money.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/thumbs.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
 <!-- One way to ask "is it done yet". BEFORE every screen that polls -- miles,
@@ -1587,6 +1649,14 @@
 <script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
 <!-- Keywords (Search Query Performance): what people typed. -->
 <script src="/static/js/sqp.js?v={{ ASSET_V }}"></script>
+<!-- The Product Catalog: every ASIN, ranked, with the four findings. -->
+<script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
+<!-- Scan a LIVE listing against this app's own compliance rules. -->
+<script src="/static/js/compliance.js?v={{ ASSET_V }}"></script>
+<!-- Every account, month by month. The one screen not scoped to one account. -->
+<script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
+<!-- Where this account's products sit in Amazon's category tree. -->
+<script src="/static/js/categories.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

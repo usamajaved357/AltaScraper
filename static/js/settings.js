@@ -48,6 +48,19 @@ function _fmtBytes(n){
   if(n<1048576) return (n/1024).toFixed(0)+' KB';
   return (n/1048576).toFixed(2)+' MB';
 }
+// Each SKU folder's images, by SKU. Filled as the library is drawn and read
+// back when a picture is clicked, so the viewer can step through the folder
+// rather than the cell having to carry the whole list in its onclick.
+let _MEDIA_FOLDERS = {};
+
+function mediaOpenAt(sku, index){
+  var list = _MEDIA_FOLDERS[sku] || [];
+  var it = list[index];
+  if(!it) return;
+  if(typeof ilPreview === 'function') ilPreview(it.url, it.name, list, index);
+  else window.open(it.url, '_blank');
+}
+
 async function loadMediaLibrary(){
   var host=document.getElementById('medialib'); if(!host) return;
   try{
@@ -55,8 +68,43 @@ async function loadMediaLibrary(){
     if(!j.ok){ host.innerHTML='<div class="cc">Could not load media: '+esc(j.error||'')+'</div>'; return; }
     if(!j.folders||!j.folders.length){ host.innerHTML='<div class="emptynote">No media yet. Generated and uploaded images will appear here, filed by SKU.</div>'; return; }
     host.innerHTML=j.folders.map(function(f){
-      return '<details class="mediafolder"><summary><i class="ti ti-folder"></i> '+esc(f.sku)+' <span class="cc">('+f.count+')</span></summary>'+
-        '<div class="mediagrid">'+f.files.map(function(im){
+      // WHAT PRODUCT THIS FOLDER IS.
+      //
+      //   "write the name of the item first 4 words only and the asin of the
+      //    item along with the main image of the item on the folder containing
+      //    the images created for that sku"
+      //
+      // 8.00_3Days_B0G1K5B7QS is a filename, not a product. Four words is
+      // deliberate and enough: it is a label to recognise a row by, not a
+      // title to read, and a full Amazon title would wrap to three lines and
+      // push every folder apart.
+      var _words = String(f.title||'').trim().split(/\s+/).filter(Boolean);
+      var _short = _words.slice(0,4).join(' ');
+      var _more  = _words.length > 4;
+      var _pic = f.img
+        ? '<img class="mfpic" src="'+esc(f.img)+'" loading="lazy" alt="">'
+        : '<span class="mfpic mfnopic"><i class="ti ti-photo-off"></i></span>';
+      var _name = _short
+        ? '<span class="mfname" title="'+esc(f.title)+'">'+esc(_short)+(_more?'…':'')+'</span>'
+        : '';
+      // The ASIN is shown only when the catalogue actually knows one. The SKU
+      // format carries a COMPETITOR ASIN as its last part, and printing that
+      // as "the ASIN of the item" would label every folder with somebody
+      // else's product.
+      var _asin = f.asin
+        ? '<span class="mfasin">'+esc(f.asin)+'</span>'
+        : '';
+      // The list this folder holds, kept by SKU so a cell's onclick can be a
+      // short call rather than a copy of the folder's contents.
+      _MEDIA_FOLDERS[f.sku] = f.files.map(function(x){
+        return {url:x.url, name:(x.name || String(x.url||'').split('/').pop() || 'image')};
+      });
+      return '<details class="mediafolder"><summary>'+
+        '<i class="ti ti-folder"></i>'+_pic+
+        '<span class="mfmeta">'+_name+_asin+
+        '<span class="mfsku">'+esc(f.sku)+'</span></span>'+
+        '<span class="cc mfcount">('+f.count+')</span></summary>'+
+        '<div class="mediagrid">'+f.files.map(function(im, _ix){
           var _dim=(im.width&&im.height)?(im.width+'×'+im.height+' px'):'';
           var _sz=(im.bytes)?_fmtBytes(im.bytes):'';
           var _grp=im.group?('<span class="medagroup">'+esc(im.group)+'</span>'):'';
@@ -78,9 +126,12 @@ async function loadMediaLibrary(){
           // fix if either is wrong (Rule 12). window.open stays as the fallback
           // for the case where that file has not loaded.
           var _nm = (im.name || im.url.split('/').pop() || 'image');
-          var _open = (typeof ilPreview === 'function')
-            ? 'ilPreview(' + jsArg(im.url) + ',' + jsArg(_nm) + ')'
-            : 'window.open(\'' + esc(im.url) + '\')';
+          // Opens with the WHOLE FOLDER behind it, so the viewer can put arrows
+          // on it and step through -- "as we have an option in the google
+          // drive". The list is looked up by SKU at click time rather than
+          // written into every cell: a folder of twenty images would otherwise
+          // carry twenty copies of its own contents in its own markup.
+          var _open = 'mediaOpenAt(' + jsArg(f.sku) + ',' + _ix + ')';
           return '<div class="mediacell"><img src="'+esc(im.url)+'" loading="lazy" '+
             'title="Click to view it full size" style="cursor:zoom-in" '+
             'onclick="'+esc(_open)+'">'+_grp+

@@ -3595,7 +3595,11 @@ def build_app(backend=None):
                            _records=_records, _ws=_ws, _drive_upload_image=_drive_upload_image,
                            _drive_map_put=_drive_map_put, _account_media_root=_account_media_root,
                            _sniff_image_ext=_sniff_image_ext, _to_jpeg_bytes=_to_jpeg_bytes,
-                           _drive_map_remove=_drive_map_remove, _drive_delete_file=_drive_delete_file)
+                           _drive_map_remove=_drive_map_remove, _drive_delete_file=_drive_delete_file,
+                           # So a media folder can say WHICH PRODUCT it is --
+                           # name, ASIN and main picture, through the one shared
+                           # catalogue lookup the other screens use.
+                           CONFIG_PATH=CONFIG_PATH)
     # Same media folder, opposite question: media_routes shows the ACTIVE
     # workspace's images, this one shows every image on the disk regardless of
     # workspace -- which is the only way to tell "filed somewhere else" apart
@@ -3740,6 +3744,30 @@ def build_app(backend=None):
     import routes.sqp_routes as _sqp_routes
     _sqp_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                          _active_account=_active_account, _state=_state)
+    # The Product Catalog -- Orbit's ASINs page. Every product ranked, with the
+    # four findings above it. Reads the app's own sales table and catalogue
+    # snapshot; calls Amazon for nothing.
+    import routes.catalog_page_routes as _catalog_page_routes
+    _catalog_page_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                  _active_account=_active_account, _state=_state)
+    # The Compliance checker. Runs this app's own rules -- each written after a
+    # real listing was refused -- against what is actually LIVE on Amazon,
+    # rather than only against copy it is about to submit. Reads only.
+    import routes.compliance_routes as _compliance_routes
+    _compliance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                _active_account=_active_account, _state=_state)
+    # The business overview -- every account and marketplace, month by month.
+    # The ONE route that deliberately ignores the active account, because "how
+    # is the business doing" is not a question about one of them.
+    import routes.overview_routes as _overview_routes
+    _overview_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _active_account=_active_account, _state=_state)
+    # Category Explorer -- where this account's products sit in Amazon's
+    # category tree. One Catalog call per product, so populating it is a button
+    # and nothing here runs on a timer or on page load.
+    import routes.category_routes as _category_routes
+    _category_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

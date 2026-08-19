@@ -23,7 +23,7 @@ function leadFmt(v, kind) {
   const n = Number(v);
   if (isNaN(n)) return "—";
   if (kind === "money") {
-    const c = (typeof CURRENCY_SYMBOL !== "undefined" && CURRENCY_SYMBOL) ? CURRENCY_SYMBOL : "";
+    const c = (typeof curSymbol === "function") ? curSymbol("") : "";
     return c + n.toFixed(2);
   }
   if (kind === "percent") return n.toFixed(2) + "%";

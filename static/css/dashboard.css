@@ -888,10 +888,48 @@
   .mediafolder>summary{cursor:pointer;padding:10px 12px;font-size:13px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
   .mediafolder>summary::-webkit-details-marker{display:none}
   .mediafolder>summary .ti{color:var(--warn)}
+  /* ---- A FOLDER SAYS WHICH PRODUCT IT IS ----
+     "write the name of the item first 4 words only and the asin of the item
+      along with the main image of the item on the folder"
+     8.00_3Days_B0G1K5B7QS is a filename, not a product. The picture does most
+     of the recognising; the four words and the ASIN confirm it. */
+  .mediafolder>summary .mfpic{width:34px;height:34px;border-radius:6px;object-fit:cover;
+                              flex:0 0 34px;background:var(--panel2);
+                              border:1px solid var(--line);display:block}
+  .mfnopic{display:flex !important;align-items:center;justify-content:center;
+           color:var(--ink4);font-size:15px}
+  .mfmeta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+  .mfname{font-size:12.5px;font-weight:600;color:var(--ink);
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mfasin{font-size:10.5px;font-weight:600;color:var(--accent);
+          font-family:ui-monospace,Menlo,Consolas,monospace}
+  /* The SKU is still there, because it is what the folder is actually named and
+     what every other screen calls this row -- just no longer the only thing. */
+  .mfsku{font-size:10px;color:var(--ink4);font-weight:500;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mfcount{flex:0 0 auto}
+
   .mediagrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:0 12px 12px}
   .mediacell{position:relative;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--panel);aspect-ratio:1}
   .mediameta{position:absolute;left:0;right:0;bottom:0;background:rgba(8,10,14,.82);color:#b8c2d4;font-size:9.5px;padding:2px 4px;text-align:center;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mediacell img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
+
+  /* ---- STEPPING THROUGH A FOLDER, AS DRIVE DOES ----
+     Big targets pinned to the sides rather than small ones under the picture:
+     at this size the picture fills most of the screen, and an arrow you have to
+     aim for is one you stop using. They stop at the ends rather than wrapping --
+     wrapping means you can never tell whether you have seen everything. */
+  #ilpreview .ilnav{position:fixed;top:50%;transform:translateY(-50%);
+                    width:46px;height:78px;border:none;border-radius:10px;
+                    background:rgba(255,255,255,.07);color:#e6ecf5;font-size:26px;
+                    cursor:pointer;display:flex;align-items:center;
+                    justify-content:center;z-index:2;transition:background .12s,opacity .12s}
+  #ilpreview .ilnav:hover{background:rgba(255,255,255,.16)}
+  #ilpreview .ilprev{left:14px}
+  #ilpreview .ilnext{right:14px}
+  /* Dimmed, not removed: an arrow that vanishes at the last picture moves the
+     other one under your cursor. */
+  #ilpreview .ilnav.off{opacity:.2;cursor:default;background:rgba(255,255,255,.04)}
   .mediadel{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;
             background:rgba(0,0,0,.6);border:none;color:var(--red);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
   .mediadel:hover{background:var(--red-bg)}
@@ -1031,6 +1069,80 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- BUSINESS OVERVIEW ----
+     One total card per CURRENCY, never one grand total: pounds and dollars are
+     not added, so there is no single number to make big.
+
+     The two marks in the grid are the honest ones. "·" is a month with nothing
+     STORED, which is not a month with no sales -- drawing a 0 there would show
+     a collapse that never happened. "*" is the current month, which is not
+     finished, and a chart that omits that shows every business falling off a
+     cliff on the 3rd. */
+  .ovw-totals{display:flex;gap:9px;flex-wrap:wrap;margin:4px 0 10px}
+  .ovw-total{background:var(--panel2);border:1px solid var(--line);
+             border-radius:9px;padding:12px 16px;min-width:170px}
+  .ovw-grid td, .ovw-grid th{text-align:right;white-space:nowrap}
+  .ovw-grid td:first-child, .ovw-grid th:first-child{text-align:left}
+  .ovw-none{color:var(--ink4);text-align:center !important}
+  .ovw-partial{color:var(--ink2)}
+  .ovw-star{color:var(--warn);font-weight:700;margin-left:2px}
+
+  /* ---- COMPLIANCE CHECKER ----
+     The score is for SORTING and nothing more, so it is big but it sits beside
+     the findings rather than above them on its own.
+
+     .cmp-gaps is the important one: what the scan could NOT check goes ABOVE
+     the findings, not under them. A scan that skipped half its checks and
+     scored 96 is not a listing in good order, and burying that at the bottom is
+     how the number turns into a lie. */
+  .cmp-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;
+            padding:2px 0 10px}
+  .cmp-score{width:66px;height:66px;border-radius:12px;display:flex;
+             align-items:center;justify-content:center;font-size:26px;
+             font-weight:700;flex:0 0 66px}
+  .cmp-score.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .cmp-score.warn{background:#2a2415;border:1px solid #55492a;color:#e3c98a}
+  .cmp-score.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .cmp-counts{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-items:center}
+  .cmp-mini{display:inline-block;min-width:30px;text-align:center;font-weight:700;
+            font-size:11px;padding:2px 7px;border-radius:6px}
+  .cmp-mini.ok{background:#16291d;color:#7fd6a2}
+  .cmp-mini.warn{background:#2a2415;color:#e3c98a}
+  .cmp-mini.off{background:#2b1a1a;color:#f0928f}
+  .cmp-gaps{background:#241f10;border:1px solid #3a3320;border-radius:8px;
+            padding:10px 12px;margin:0 0 12px}
+  .cmp-gapsk{font-size:11px;font-weight:700;letter-spacing:.05em;
+             text-transform:uppercase;color:#e3c98a;margin-bottom:5px}
+  .cmp-gap{font-size:11.5px;color:#e6d9b8;line-height:1.5;margin-top:4px}
+
+  /* ---- PRODUCT CATALOG ----
+     Four findings above the table. A catalogue of eighty products is a list
+     nobody reads; these are the reason to open the page, so they are sentences
+     rather than numbers needing interpretation, and they go first.
+
+     Only ONE of them carries a colour: "listed and earning nothing" is the only
+     card that names work to do. The other three are facts about the shape of
+     the business, and colouring all four would make none of them stand out. */
+  .catp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+              gap:9px;margin:4px 0 12px}
+  .catp-card{background:var(--panel2);border:1px solid var(--line);
+             border-radius:9px;padding:12px 14px}
+  .catp-card.warn{border-color:#55492a;background:#241f10}
+  .catp-k{font-size:10px;font-weight:700;letter-spacing:.07em;
+          text-transform:uppercase;color:var(--ink4)}
+  .catp-v{font-size:24px;font-weight:700;line-height:1.15;margin:3px 0 2px}
+  .catp-s{font-size:11.5px;color:var(--ink3);line-height:1.45}
+  .catp-counts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;
+               font-size:12px;color:var(--ink2);padding:2px 0 10px}
+  .catp-bar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .catp-img{width:34px;height:34px;border-radius:6px;object-fit:cover;flex:0 0 34px;
+            background:var(--panel2);border:1px solid var(--line);display:block}
+  .catp-noimg{display:flex;align-items:center;justify-content:center;
+              color:var(--ink4);font-size:14px}
+  /* A product earning nothing is dimmed rather than hidden -- the catalogue
+     page is the one place those most need to be visible. */
+  .catp-dead{opacity:.62}
+
   /* ---- KEYWORDS (SQP) ----
      The break cards are the point of the screen: four different jobs, each with
      a count and the sales that went elsewhere. Clickable, because "show me the

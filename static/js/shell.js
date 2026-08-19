@@ -968,7 +968,7 @@ function navTo(sec){
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1014,6 +1014,16 @@ function navTo(sec){
   // Amazon BUILDS this report on request, roughly one a minute, so opening the
   // screen does not fetch it -- "Get the report" does.
   if(sec==="sqp"){      if(typeof sqpRender==="function")  sqpRender(); }
+  // Reads the app's own sales table and catalogue snapshot -- no Amazon call.
+  if(sec==="catalog"){  if(typeof catpLoad==="function")   catpLoad(); }
+  // Loads the scan HISTORY only. A scan is an Amazon call and a button press.
+  if(sec==="compliance"){ if(typeof cmpLoad==="function") cmpLoad(); }
+  // Reads EVERY account, so it is the one screen the account switcher does not
+  // narrow. Nothing is fetched from Amazon -- it reads what is already stored.
+  if(sec==="overview"){ if(typeof ovwLoad==="function")   ovwLoad(); }
+  // Draws the STORED map. Reading from Amazon is one call per product and is
+  // therefore a button, never something that happens on open.
+  if(sec==="categories"){ if(typeof catsLoad==="function") catsLoad(); }
   if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }

@@ -21,7 +21,7 @@ from flask import request, jsonify, send_from_directory
 def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
              _drive_folder_id_from_url, _records, _ws, _drive_upload_image,
              _drive_map_put, _account_media_root, _sniff_image_ext, _to_jpeg_bytes,
-             _drive_map_remove, _drive_delete_file):
+             _drive_map_remove, _drive_delete_file, CONFIG_PATH=""):
     """Attach the /media/* routes to the existing Flask app."""
 
     @app.route("/media/<path:relpath>")
@@ -201,6 +201,45 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
                     out.append({"sku": base, "count": len(files), "files": files})
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 500
+
+        # WHAT PRODUCT THIS FOLDER IS.
+        #
+        #     "write the name of the item first 4 words only and the asin of the
+        #      item along with the main image of the item on the folder"
+        #
+        # A folder called 8.00_3Days_B0G1K5B7QS is a filename, not a product. The
+        # name, the ASIN and the live main image come from domain/catalogue --
+        # the SAME lookup Sales, Traffic and Orders use -- so this folder shows
+        # the picture and title the rest of the app shows for that SKU, rather
+        # than a fourth reading of the snapshot that quietly disagrees with them
+        # (CLAUDE.md Rule 12).
+        #
+        # Best effort: a folder the catalogue cannot name still lists its images.
+        # A missing label is a missing label; it is not a reason to fail.
+        try:
+            from domain import catalogue as _cat
+            mkt = str(_state.get("active_marketplace") or "").upper()
+            idx = _cat.index(CONFIG_PATH, aid, mkt, include_drafts=True) or {}
+            for f in out:
+                rec = _cat.look(idx, f["sku"]) or {}
+                if not rec.get("title") and not rec.get("asin"):
+                    # The SKU format carries the competitor ASIN as its last
+                    # underscore-separated part (price_days_ASIN). That is a
+                    # REFERENCE, not this listing's own ASIN -- so it is only
+                    # used to find the record, never reported as the product's.
+                    tail = f["sku"].rsplit("_", 1)[-1]
+                    if len(tail) == 10:
+                        rec = _cat.look(idx, tail) or {}
+                f["title"] = rec.get("title") or ""
+                f["asin"] = rec.get("asin") or ""
+                f["img"] = rec.get("img") or ""
+                f["img_source"] = rec.get("img_source") or ""
+        except Exception:
+            for f in out:
+                f.setdefault("title", "")
+                f.setdefault("asin", "")
+                f.setdefault("img", "")
+                f.setdefault("img_source", "")
         return jsonify({"ok": True, "folders": out})
 
     @app.route("/media/zip")

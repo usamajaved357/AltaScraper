@@ -644,25 +644,59 @@ function ilUpload(inp){
 // is on top.
 let _IL_PREVIEW = null;
 
-function ilPreview(url, name){
+// THE PICTURES EITHER SIDE OF THE ONE YOU OPENED.
+//
+//     "allow me to swich between images within the folder of the sku by the
+//      arrows as we have an option in the google drive"
+//
+// The viewer took ONE url and knew nothing about where it came from, so opening
+// a picture, closing it, and opening the next was the only way through a folder
+// of twelve. It now optionally takes the whole list and which one you clicked.
+//
+// Deliberately backwards compatible: called with two arguments it behaves
+// exactly as before, no arrows, because it is the shared viewer for BOTH
+// galleries (Rule 12) and the other one has no list to give it.
+let _IL_SET = { items: [], i: 0 };
+
+function ilPreview(url, name, items, index){
   if(!url) return;
   ilPreviewClose();
+  // Normalise the list: [{url, name}] or plain urls, either is accepted so a
+  // caller does not have to reshape its own data to use this.
+  const list = Array.isArray(items) ? items.map(function(it){
+    return (typeof it === "string") ? {url: it, name: it.split("/").pop()}
+                                    : {url: it.url, name: it.name || (it.url||"").split("/").pop()};
+  }).filter(function(x){ return x.url; }) : [];
+  let at = (typeof index === "number") ? index
+         : list.findIndex(function(x){ return x.url === url; });
+  if(at < 0) at = 0;
+  _IL_SET = { items: list, i: at };
+  const many = list.length > 1;
+
   const el = document.createElement("div");
   el.id = "ilpreview";
   el.style.cssText = "position:fixed;inset:0;z-index:400;background:rgba(6,9,15,.92);"
     + "display:flex;align-items:center;justify-content:center;flex-direction:column;"
     + "gap:10px;padding:26px;cursor:zoom-out";
   el.innerHTML =
-      '<img src="' + _ilEsc(url) + '" alt="' + _ilEsc(name || "") + '" '
+      (many ? '<button class="ilnav ilprev" title="Previous (left arrow)" '
+            + 'onclick="event.stopPropagation();ilStep(-1)">'
+            + '<i class="ti ti-chevron-left"></i></button>' : '')
+    + (many ? '<button class="ilnav ilnext" title="Next (right arrow)" '
+            + 'onclick="event.stopPropagation();ilStep(1)">'
+            + '<i class="ti ti-chevron-right"></i></button>' : '')
+    + '<img id="ilpreviewimg" src="' + _ilEsc(url) + '" alt="' + _ilEsc(name || "") + '" '
     + 'style="max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px;'
     + 'background:#0d1220;box-shadow:0 18px 60px rgba(0,0,0,.6);cursor:default">'
     + '<div style="display:flex;gap:8px;align-items:center;max-width:94vw">'
-    + '<span class="cc" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;'
-    + 'white-space:nowrap">' + _ilEsc(name || "") + '</span>'
-    + '<button class="db-chip" onclick="event.stopPropagation();ilDownloadOne('
+    + (many ? '<span class="cc" id="ilpreviewcount" style="font-size:11.5px;'
+            + 'white-space:nowrap">' + (at + 1) + ' of ' + list.length + '</span>' : '')
+    + '<span class="cc" id="ilpreviewname" style="font-size:11.5px;overflow:hidden;'
+    + 'text-overflow:ellipsis;white-space:nowrap">' + _ilEsc(name || "") + '</span>'
+    + '<button class="db-chip" id="ilpreviewdl" onclick="event.stopPropagation();ilDownloadOne('
     + jsArg(url) + ',' + jsArg(name || "image") + ')">'
     + '<i class="ti ti-download"></i> Download</button>'
-    + '<button class="db-chip" onclick="event.stopPropagation();window.open('
+    + '<button class="db-chip" id="ilpreviewopen" onclick="event.stopPropagation();window.open('
     + jsArg(url) + ',\'_blank\')"><i class="ti ti-external-link"></i> Open</button>'
     + '<button class="db-chip" onclick="ilPreviewClose()">Close</button>'
     + '</div>';
@@ -677,7 +711,53 @@ function ilPreview(url, name){
   document.addEventListener("keydown", _ilPreviewKey);
 }
 
+// Move to the picture n places away, WITHOUT rebuilding the viewer.
+//
+// Swapping the src rather than tearing the overlay down and putting a new one
+// up is what makes this feel like Drive: the frame stays put, only the picture
+// changes. Rebuilding would flash the backdrop on every arrow press.
+//
+// It STOPS at the ends rather than wrapping. Wrapping means you can never tell
+// whether you have seen everything, which is the one thing a folder viewer has
+// to be clear about.
+function ilStep(n){
+  const set = _IL_SET;
+  if(!set || !set.items || set.items.length < 2) return;
+  const to = set.i + n;
+  if(to < 0 || to >= set.items.length) return;
+  set.i = to;
+  const it = set.items[to];
+  const img = document.getElementById("ilpreviewimg");
+  if(img){ img.src = it.url; img.alt = it.name || ""; }
+  const nm = document.getElementById("ilpreviewname");
+  if(nm) nm.textContent = it.name || "";
+  const ct = document.getElementById("ilpreviewcount");
+  if(ct) ct.textContent = (to + 1) + " of " + set.items.length;
+  // The buttons carry the url in their onclick, so they have to move too --
+  // otherwise Download quietly saves the picture you were looking at three
+  // arrows ago, which is worse than having no button.
+  const dl = document.getElementById("ilpreviewdl");
+  if(dl) dl.setAttribute("onclick", "event.stopPropagation();ilDownloadOne("
+    + jsArg(it.url) + "," + jsArg(it.name || "image") + ")");
+  const op = document.getElementById("ilpreviewopen");
+  if(op) op.setAttribute("onclick", "event.stopPropagation();window.open("
+    + jsArg(it.url) + ",'_blank')");
+  // Grey out the arrow that can no longer do anything.
+  const prev = document.querySelector("#ilpreview .ilprev");
+  const next = document.querySelector("#ilpreview .ilnext");
+  if(prev) prev.classList.toggle("off", to <= 0);
+  if(next) next.classList.toggle("off", to >= set.items.length - 1);
+}
+
 function _ilPreviewKey(ev){
+  // The arrow keys, because that is how anyone actually moves through a folder
+  // of pictures. Handled before Escape so the two cannot interfere.
+  if(ev.key === "ArrowLeft" || ev.key === "ArrowRight"){
+    ev.stopPropagation();
+    ev.preventDefault();
+    ilStep(ev.key === "ArrowLeft" ? -1 : 1);
+    return;
+  }
   // Escape closes the PREVIEW and stops there. Without this the same key would
   // reach the library behind it and shut both, so a glance at one picture would
   // cost you the panel you were working in.
@@ -688,6 +768,7 @@ function _ilPreviewKey(ev){
 }
 
 function ilPreviewClose(){
+  _IL_SET = { items: [], i: 0 };
   document.removeEventListener("keydown", _ilPreviewKey);
   if(_IL_PREVIEW && _IL_PREVIEW.parentNode){
     _IL_PREVIEW.parentNode.removeChild(_IL_PREVIEW);
