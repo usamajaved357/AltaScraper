@@ -104,6 +104,18 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         except Exception as e:
             notes.append("stock: %s" % str(e)[:120])
 
+        # ---- the real selling rate, from recorded stock history -------------
+        # Separate from the cockpit above because it answers a different
+        # question: not "what does the app think needs ordering" but "what is
+        # selling faster than its cover lasts", measured over the days each
+        # product was actually in stock. Left out of ctx entirely when it
+        # fails, so the check reports "could not look" rather than "fine".
+        try:
+            from domain import stock_metrics as _sm
+            ctx["coverage"] = _sm.for_account(CONFIG_PATH, wsid, mkt, window=30)
+        except Exception as e:
+            notes.append("coverage: %s" % str(e)[:120])
+
         # ---- suppliers with nothing left to buy ----------------------------
         try:
             from domain import stock_alerts as _alerts
