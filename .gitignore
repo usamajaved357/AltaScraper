@@ -161,3 +161,4 @@ trackers.json
 .jsonstore.*.tmp
 notify.json
 compliance_scans.json
+categories.json

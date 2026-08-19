@@ -100,10 +100,26 @@ def fetch_offers(creds, asins, marketplace, seller_id="", log=print):
 def fetch_bsr(creds, asins, marketplace, log=print):
     """{asin: rank|None} -- the best (lowest) sales rank Amazon reports.
 
-    An ASIN can carry several ranks: one in a broad display group and one or more
-    in narrower categories. The BEST one is taken because that is the rank a
-    seller quotes and watches, and mixing "#4 in a niche" with "#180,000 overall"
-    across readings would produce a chart of nothing.
+    A thin view over fetch_ranks(), which returns the category as well. Kept as
+    its own name because the trackers only ever want the number, and a caller
+    that has to reach into a dict for one field is a caller that will get it
+    wrong somewhere.
+    """
+    return {a: (d or {}).get("rank")
+            for a, d in (fetch_ranks(creds, asins, marketplace, log) or {}).items()}
+
+
+def fetch_ranks(creds, asins, marketplace, log=print):
+    """{asin: {rank, category, all}} -- the best rank AND where it is ranked.
+
+    An ASIN can carry several ranks: one in a broad display group and one or
+    more in narrower categories. The BEST (lowest) one is taken because that is
+    the rank a seller quotes and watches, and mixing "#4 in a niche" with
+    "#180,000 overall" across readings would produce a chart of nothing.
+
+    The CATEGORY comes back too, because it is the same call and the Category
+    Explorer would otherwise make it a second time. `all` keeps every rank the
+    listing carries, so a screen can show the niche as well as the headline.
     """
     out = {}
     asins = [str(a).strip().upper() for a in (asins or []) if str(a).strip()]
@@ -129,17 +145,27 @@ def fetch_bsr(creds, asins, marketplace, log=print):
             pay = res.payload if hasattr(res, "payload") else (res or {})
         except Exception as e:
             log("tracker_fetch: bsr %s: %s" % (a, str(e)[:100]))
-            out[a] = None
+            out[a] = {"rank": None, "category": "", "all": []}
             continue
         best = None
+        best_cat = ""
+        every = []
         for block in (pay.get("salesRanks") or []):
             ranks = (block.get("classificationRanks") or []) + \
                     (block.get("displayGroupRanks") or [])
             for r in ranks:
                 v = _num(r.get("rank"))
-                if v is not None and v > 0 and (best is None or v < best):
-                    best = v
-        out[a] = best
+                # The name Amazon uses differs between the two kinds of rank.
+                # Both are read rather than one being assumed, because a missing
+                # category turns the Category Explorer into a list of blanks.
+                cat = (r.get("title") or r.get("classificationName")
+                       or r.get("displayGroupName") or "")
+                if v is None or v <= 0:
+                    continue
+                every.append({"rank": v, "category": str(cat)})
+                if best is None or v < best:
+                    best, best_cat = v, str(cat)
+        out[a] = {"rank": best, "category": best_cat, "all": every}
     return out
 
 

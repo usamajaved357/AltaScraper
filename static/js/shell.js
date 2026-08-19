@@ -968,7 +968,7 @@ function navTo(sec){
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1021,6 +1021,9 @@ function navTo(sec){
   // Reads EVERY account, so it is the one screen the account switcher does not
   // narrow. Nothing is fetched from Amazon -- it reads what is already stored.
   if(sec==="overview"){ if(typeof ovwLoad==="function")   ovwLoad(); }
+  // Draws the STORED map. Reading from Amazon is one call per product and is
+  // therefore a button, never something that happens on open.
+  if(sec==="categories"){ if(typeof catsLoad==="function") catsLoad(); }
   if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }

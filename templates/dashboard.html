@@ -187,6 +187,7 @@
       <div class="navkids">
         <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> All listings</div>
         <div class="navitem" data-sec="catalog" onclick="navTo('catalog')" title="Every product ranked by revenue, with concentration, dead stock and the tail"><i class="ti ti-package-import"></i> Product Catalog</div>
+        <div class="navitem" data-sec="categories" onclick="navTo('categories')" title="Which Amazon categories your products are ranked in"><i class="ti ti-sitemap"></i> Category Explorer</div>
         <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
         <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
         <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
@@ -1145,6 +1146,19 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- CATEGORY EXPLORER -- where this account's products sit in Amazon's
+         category tree. One Catalog call per product, so it is a button. -->
+    <div id="sec_categories" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-sitemap"></i> Category Explorer</h2>
+        <div class="sub">Which Amazon categories your products are actually ranked in, and how many are in none. A product with no rank usually means it has not sold &mdash; which is different from one nobody has looked up.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="catsLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="cats_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- BUSINESS OVERVIEW (Orbit's Brand Overview) -- every account and
          marketplace, month by month. The ONE screen that is not scoped to the
          account you are standing in, because "how is the business doing" is not
@@ -1641,6 +1655,8 @@
 <script src="/static/js/compliance.js?v={{ ASSET_V }}"></script>
 <!-- Every account, month by month. The one screen not scoped to one account. -->
 <script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
+<!-- Where this account's products sit in Amazon's category tree. -->
+<script src="/static/js/categories.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

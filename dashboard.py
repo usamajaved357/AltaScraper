@@ -3762,6 +3762,12 @@ def build_app(backend=None):
     import routes.overview_routes as _overview_routes
     _overview_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                               _active_account=_active_account, _state=_state)
+    # Category Explorer -- where this account's products sit in Amazon's
+    # category tree. One Catalog call per product, so populating it is a button
+    # and nothing here runs on a timer or on page load.
+    import routes.category_routes as _category_routes
+    _category_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and
