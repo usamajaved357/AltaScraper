@@ -479,6 +479,12 @@
         <button class="db-chip risk" onclick="submitLive()"><i class="ti ti-cloud-upload"></i> Submit · go live</button>
         <button class="db-chip risk" id="stopbtn" onclick="stopRun()" disabled title="Stops the current run"><i class="ti ti-player-stop"></i> Stop</button>
       </div>
+      <!-- WHAT GENERATE WOULD DO, BEFORE IT DOES IT.
+           The only way to find out what a run would skip was to press Generate
+           and read the log as it scrolled — by which point the money is being
+           spent. This asks the generator's own duplicate rule and reports the
+           answer. It calls nothing and costs nothing. -->
+      <div id="genplan" class="genplan"></div>
       <!-- Row selector: pick which input-sheet rows to generate -->
       <!-- The card, the title and the sub-line the other screens use, instead of
            a border, a radius and a background typed inline; and `.ed`, which is
@@ -1702,6 +1708,8 @@
 <script src="/static/js/drppc.js?v={{ ASSET_V }}"></script>
 <!-- The Image Library as its own page: the SAME library, inline, with a picker. -->
 <script src="/static/js/imagelibrary.js?v={{ ASSET_V }}"></script>
+<!-- What Generate would do, shown before you press it. -->
+<script src="/static/js/genplan.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

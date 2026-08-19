@@ -992,7 +992,10 @@ function navTo(sec){
   if(_fresh){
     if(sec==="setup")     loadBrandPanel();
     if(sec==="imagerefs") loadImageRefs();
-    if(sec==="generate"){ loadTargetAccount(); loadInputSheet(); }
+    if(sec==="generate"){ loadTargetAccount(); loadInputSheet();
+      // What a run WOULD do, before it does it. Costs nothing -- it asks
+      // the generator's own duplicate rule and reports the answer.
+      if(typeof genplanLoad==="function") genplanLoad(); }
     if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
     if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
     if(sec==="traffic"){  if(typeof trafficOnOpen==="function") trafficOnOpen(); }

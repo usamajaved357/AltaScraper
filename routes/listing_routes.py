@@ -1558,6 +1558,41 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
         return Response(stream(), mimetype="text/event-stream")
 
+    @app.route("/run/plan")
+    def run_plan():
+        """What a Generate would DO, before it does it.
+
+            "check and let me know if the current workflow of listing generation
+             works while preventing the already created listing copies to be
+             created again"
+
+        Until now the only way to find out what a run would skip was to press
+        Generate and read the log as it scrolled -- by which point the money is
+        being spent. This answers the question first.
+
+        It calls the generator's OWN duplicate rule (domain/generate_plan reads
+        load_existing_skus_and_asins and applies process_row's condition), so it
+        cannot disagree with the run it is describing. It spends nothing: no AI
+        call, no Amazon call, no write.
+        """
+        wsid = (request.args.get("account_id") or request.args.get("id") or "").strip()
+        if not wsid:
+            try:
+                acc = _active_account() or {}
+            except Exception:
+                acc = {}
+            wsid = str(acc.get("id") or _state.get("active_account_id") or "")
+        if not wsid:
+            return jsonify({"ok": False, "error": "No account selected."}), 400
+        try:
+            from domain import generate_plan as _gp
+            out = _gp.for_workspace(CONFIG_PATH, wsid, _cfg() or {})
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "%s: %s" % (type(e).__name__, str(e)[:200])}), 500
+        out["ok"] = True
+        return jsonify(out)
+
     @app.route("/run/health")
     def run_health():
         """The honest state of the run -- does NOT depend on the log stream.

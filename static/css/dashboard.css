@@ -1069,6 +1069,28 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- WHAT GENERATE WOULD DO ----
+     Sits directly under the Generate button, because it is about to be pressed.
+     Ordinary state is quiet; the .bad state is a queue with NOTHING on record,
+     which is what a broken duplicate check looks like and is worth an alarm. */
+  .genplan{margin:0 0 14px}
+  .genplan-in{background:var(--panel2);border:1px solid var(--line);
+              border-radius:9px;padding:11px 13px}
+  .genplan-in.bad{border-color:#5c2f2f;background:#2b1a1a}
+  .genplan-bad{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f;
+               border-radius:9px;padding:11px 13px;font-size:12px}
+  .genplan-nums{display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;
+                margin-bottom:5px}
+  .genplan-n{font-size:12px;color:var(--ink2)}
+  .genplan-n b{font-size:16px;color:var(--ink);margin-right:3px}
+  .genplan-n.go b{color:var(--accent)}
+  .genplan-n.warn b{color:var(--warn)}
+  .genplan-say{font-size:12px;color:var(--ink2);line-height:1.5;max-width:760px}
+  .genplan-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  .genplan-list span{font-size:10.5px;font-family:ui-monospace,Menlo,Consolas,monospace;
+                     background:var(--panel);border:1px solid var(--line);
+                     border-radius:5px;padding:2px 6px;color:var(--ink3)}
+
   /* ---- IMAGE LIBRARY PAGE ----
      A picker beside the library rather than above it, so choosing the next
      product does not scroll the images off the screen -- which is the round
