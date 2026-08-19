@@ -17,6 +17,7 @@ get_all_records() on SheetLikeStore returns dicts keyed by the SHEET's column
 names, which is exactly what _records() returned before, so nothing downstream
 can tell the difference.
 """
+from data.store import FIRST_DATA_ROW as _FIRST_DATA_ROW
 from data.store import ListingStore, SheetLikeStore
 
 
@@ -37,7 +38,27 @@ def make(state, config_path=None):
         # quota and no network, so the cache has nothing to protect against --
         # and dropping it means a row edited by a background job is visible
         # immediately rather than up to 12 seconds later.
-        return ws.get_all_records()
+        rows = ws.get_all_records()
+        # "_row" IS PART OF THE SHAPE. dashboard._records() stamps the sheet row
+        # number onto every record, and callers use it to address a row for
+        # writing. This one did not, so on the database backend that key was
+        # None -- and _apply_edits_batch, which is the ONLY way auto-fix writes
+        # anything, passed it straight into update_cell:
+        #
+        #     TypeError: int() argument must be a string, a bytes-like object
+        #                or a real number, not 'NoneType'
+        #
+        # Every field, every round, every SKU. Auto-fix asked the AI for values,
+        # got good ones back -- item_package_dimensions.length.value = 50,
+        # .unit = centimeters, size = 148cm -- and threw all of them away, then
+        # reported "Nothing new to apply" and stopped. Measured on three real
+        # Nestwell rows: 9 suggestions produced, 9 discarded, 2 of 3 SKUs stuck.
+        #
+        # The number is the inverse of SheetLikeStore._sku_for_row, so the two
+        # cannot drift apart.
+        for i, r in enumerate(rows):
+            r["_row"] = i + _FIRST_DATA_ROW
+        return rows
 
     return _ws, _records
 

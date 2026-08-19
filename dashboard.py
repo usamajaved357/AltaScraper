@@ -2666,6 +2666,28 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
             an = a.lower().replace(" ", "_").replace("-", "_")
             if vn in an or an in vn:
                 return a, True
+        # 5) UNIT ABBREVIATIONS. A source says "50 cm" and Amazon's enum says
+        #    "centimeters" -- and "cm" is not a substring of "centimeters", so
+        #    every step above misses it. The value was then written through
+        #    unsnapped, Amazon rejected it, and the round was spent finding that
+        #    out. Same for kg, lbs, mm, oz, in, ft.
+        #
+        #    The expansion table is the generator's _DIM_UNIT_NORM -- the app's
+        #    one unit vocabulary, not a second copy (CLAUDE.md Rule 12). Its
+        #    values are Title Case for the flat file and Amazon's schema enum is
+        #    lower case, so the comparison is case-insensitive, and the
+        #    expansion is only ACCEPTED when it really is one of Amazon's own
+        #    allowed values -- it can never invent one.
+        try:
+            from amazon_listing_generator import _norm_dim_unit as _nu
+            _ex = _nu(v)
+            if _ex and _ex.lower() != v.lower():
+                _exn = _ex.lower().replace(" ", "_").replace("-", "_")
+                for a in allowed:
+                    if a.lower().replace(" ", "_").replace("-", "_") == _exn:
+                        return a, True
+        except Exception:
+            pass
         return v, False                       # no match -> caller decides
 
     # ---- DETERMINISTIC VALUE+UNIT SPLIT FROM SOURCE DATA -------------------
@@ -2689,24 +2711,45 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
     def _from_source(field):
         # For dot-keys, look up the parent in the source and split
         if "." in field:
-            parent = _parent_of.get(field) or field.split(".", 1)[0]
-            leaf   = field.split(".", 1)[1]     # 'value' or 'unit' typically
+            parts  = field.split(".")
+            parent = _parent_of.get(field) or parts[0]
+            # THE LEAF IS THE LAST SEGMENT, NOT THE SECOND.
+            #
+            # A dimension is two levels deep in Amazon's schema, so the expanded
+            # key is 'item_package_dimensions.length.value'. split(".", 1) made
+            # the leaf "length.value", which is neither "value" nor "unit", so
+            # the fall-through branch fired and handed the WHOLE source string
+            # ("50 x 10 x 5 cm") to a numeric sub-field.
+            leaf = parts[-1]                       # 'value' / 'unit'
+            # ...and which axis of the dimension this is, when there is one.
+            axis = parts[-2] if len(parts) >= 3 else ""   # length / width / height
             f = parent.lower().replace("_", " ").strip()
             for src_name, src in (("eBay", ebay), ("Amazon competitor (SP-API)", sp)):
                 for k, v in src.items():
                     if not v:
                         continue
                     kk = k.lower().replace("_", " ")
-                    if kk == f or f in kk or kk in f:
-                        # Split the combined string into value + unit
-                        num, unit = _split_source_value_unit(v)
-                        if leaf == "value" and num is not None:
-                            return num, src_name
-                        if leaf == "unit" and unit:
-                            return unit, src_name
-                        # Fallback for non-value/unit leaves: use the whole string
-                        if leaf not in ("value", "unit"):
-                            return str(v), src_name
+                    # AN AXIS SUB-FIELD NEEDS A SOURCE THAT NAMES THAT AXIS.
+                    # A source key called "item dimensions" holding "50 x 10 x 5
+                    # cm" cannot say which number is the length -- the first one
+                    # would be handed to length, width AND height alike. So it is
+                    # skipped here and the AI, which can see the whole string,
+                    # does the attribution. A source that says "Length: 50 cm"
+                    # still fills length.value deterministically, no AI needed.
+                    if axis:
+                        if axis.lower() not in kk:
+                            continue
+                    elif not (kk == f or f in kk or kk in f):
+                        continue
+                    # Split the combined string into value + unit
+                    num, unit = _split_source_value_unit(v)
+                    if leaf == "value" and num is not None:
+                        return num, src_name
+                    if leaf == "unit" and unit:
+                        return unit, src_name
+                    # Fallback for non-value/unit leaves: use the whole string
+                    if leaf not in ("value", "unit"):
+                        return str(v), src_name
             return None, None
         # Flat field lookup
         f = field.lower().replace("_", " ").strip()
