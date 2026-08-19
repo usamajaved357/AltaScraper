@@ -609,9 +609,21 @@ def _sf_enum_of(node):
         return None
     if isinstance(node.get("enum"), list):
         return [str(x) for x in node["enum"]]
-    it = node.get("items")
-    if isinstance(it, dict):
-        props = it.get("properties")
+    # Amazon writes this shape two ways, and until now only the first was read:
+    #
+    #   with the array wrapper     node.items.properties.value.enum
+    #   without it                 node.properties.value.enum
+    #
+    # unit_count.type is the second kind -- a plain object whose `value` carries
+    # the closed list ["gram", "millilitre"] on MACHINE_LUBRICANT. Returning
+    # None for it meant auto-fix drew a free-text box, the AI answered "Count"
+    # from the field's description, and Amazon refused it every time. The
+    # surrounding code already guards against Amazon omitting the array marker
+    # (see _extract_subfields); this is the same omission, one level in.
+    for _src in (node.get("items"), node):
+        if not isinstance(_src, dict):
+            continue
+        props = _src.get("properties")
         vp = props.get("value") if isinstance(props, dict) else None
         if isinstance(vp, dict) and isinstance(vp.get("enum"), list):
             return [str(x) for x in vp["enum"]]

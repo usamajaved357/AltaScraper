@@ -803,6 +803,43 @@ def get_product_type_schema(product_type: str, creds: dict, marketplace: str = N
                 result["required"][field] = meta
             else:
                 result["optional"][field] = meta
+
+            # NESTED CLOSED LISTS, one level down.
+            #
+            # The four lookups above stop at the item level, so an enum that
+            # lives on a NAMED sub-field was invisible -- to this, to the
+            # generation prompt, and to auto-fix. Measured on MACHINE_LUBRICANT:
+            #
+            #     unit_count.items.properties.type.properties.value.enum
+            #         ["gram", "millilitre"]
+            #
+            # Nothing ever showed that list, so the AI answered "Count" (which
+            # is what the field's own DESCRIPTION suggests) and Amazon refused
+            # it on every attempt. unit_count is required for that product type,
+            # so the listing could not pass at all.
+            #
+            # Registered under a dotted name because that is exactly how the row
+            # stores it and how _renest folds it back -- "unit_count.type" is a
+            # key the AI can already answer.
+            for _sub, _sp in (item_props or {}).items():
+                if _sub in ("marketplace_id", "language_tag", "value", "unit"):
+                    continue
+                if not isinstance(_sp, dict):
+                    continue
+                _sip = _sp.get("properties") or (
+                    (_sp.get("items") or {}).get("properties")
+                    if isinstance(_sp.get("items"), dict) else {}) or {}
+                _svp = _sip.get("value") if isinstance(_sip, dict) else None
+                _sen = ((_svp or {}).get("enum") if isinstance(_svp, dict) else None) \
+                    or _sp.get("enum") or []
+                if not _sen:
+                    continue
+                result["all"]["%s.%s" % (field, _sub)] = {
+                    "allowed":     [str(a) for a in list(_sen)[:20]],
+                    "description": (_sp.get("title")
+                                    or ("%s %s" % (field, _sub)).replace("_", " ").title()),
+                    "required":    field in req_set,
+                }
         return result
 
     for attempt in range(2):
@@ -1455,6 +1492,20 @@ def build_prompt(comp_data: dict, pricing: dict, financials: dict,
             vals = list(_static_pt[k])[:20]
         if vals:
             lines.append(f"  {k}: " + " | ".join(str(v) for v in vals))
+    # The nested closed lists the extractor now registers under a dotted name
+    # (see the comment beside result["all"] there). Shown for any attribute
+    # already being asked about, plus anything Amazon marks required -- these
+    # are the lists that were never printed, so the AI answered from the field's
+    # description instead and Amazon refused the value every time.
+    _rel = set(relevant)
+    for k, meta in sorted(_live_all.items()):
+        if "." not in k or not (meta or {}).get("allowed"):
+            continue
+        if k.split(".", 1)[0] not in _rel and not meta.get("required"):
+            continue
+        lines.append("  %s: %s   <- use one of these exactly%s"
+                     % (k, " | ".join(str(v) for v in meta["allowed"][:20]),
+                        " (REQUIRED)" if meta.get("required") else ""))
     if lines:
         enforced_section = (
             f"\nAMAZON-ENFORCED ATTRIBUTE VALUES for {product_type} "
@@ -6548,6 +6599,43 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                      "item_condition_type"}
     for _bad in _STRIP_ALWAYS:
         A.pop(_bad, None)
+
+    # 3) item_dimensions_fraction -- the SAME measurement, a second time, in a
+    #    field that only accepts fractions.
+    #
+    # Read off the live TOOLS schema rather than assumed:
+    #
+    #     titles["item_dimensions"]           "Product Dimensions"
+    #     titles["item_dimensions_fraction"]  "Product Dimensions"   <- same title
+    #     subfields[...fraction]              length.decimal_value, kind number
+    #     required                            contains NEITHER
+    #
+    # It is Amazon's fractional representation of a size -- for a "3 1/2 inch"
+    # imperial product. Our measurements are whole millimetres, and Amazon
+    # rejects a whole number in it:
+    #
+    #     [E] item_dimensions_fraction Value '350.' for attribute 'Product
+    #     Dimensions' has too few decimal places. It has 0 decimal places but
+    #     the minimum allowed is '1'.
+    #
+    # That '350.' is Amazon RENDERING the number we sent, which really was
+    # 350.0 -- the payload we saved is correct. The field simply will not take a
+    # whole number, and it is optional, and item_dimensions already carries the
+    # identical measurement. So it is dropped when the schema does not require
+    # it: three errors removed and nothing lost.
+    #
+    # Only 7 of the 94 cached product types have this attribute at all. If one
+    # ever REQUIRES it, it is kept and the fraction problem becomes a real
+    # problem to solve rather than one we caused by sending a duplicate.
+    #
+    # Said out loud rather than added to the "no such attribute" list above --
+    # that list has already been printed by this point, and this is a different
+    # reason anyway: the attribute exists, we are choosing not to send it.
+    if "item_dimensions_fraction" in A and "item_dimensions_fraction" not in (required or []):
+        A.pop("item_dimensions_fraction", None)
+        console.print("  [yellow]Not sent -- item_dimensions_fraction is the "
+                      "same measurement as item_dimensions in a fractions-only "
+                      "field, and %s does not require it.[/yellow]" % pt)
     # Also drop any attribute that is NOT part of THIS product type's schema --
     # Amazon warns "attribute does not belong to the product type" and ignores
     # them, but they clutter the response and can confuse validation. Only strip
