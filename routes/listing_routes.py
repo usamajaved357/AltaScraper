@@ -413,6 +413,32 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         fields = [f for f in fields
                   if str(f).split(".", 1)[0].strip().lower() not in _ID_SKIP]
 
+        # Rule 1 AGAIN, FOR THE BRAND ITSELF -- the same rule, the same reason.
+        #
+        # The sources this endpoint reads are the COMPETITOR's: the eBay
+        # listing's item specifics and the competitor ASIN's SP-API record. Both
+        # carry a Brand, and _from_source matches on the field name, so asking
+        # it to fill "brand" returns THEIR brand. Proven by calling it directly:
+        # for a Nestwell Goods squeegee it offered
+        #
+        #     brand = 'YL'   source = eBay
+        #
+        # and auto-fix applies suggestions without being asked, so a run wrote
+        # another company's brand onto the owner's listing. That is the whole
+        # thing this app is built not to do (CLAUDE.md Rule 1) -- and it is why
+        # a Brand Name box showed "YL" on a row whose Brand column says
+        # "Nestwell Goods".
+        #
+        # The brand is not researched. It is the owner's, it is already on the
+        # row, and it is the only answer that can be right.
+        _BRAND_FIELDS = {"brand", "brand_name", "manufacturer"}
+        _own_brand = (str(row.get("Brand", "") or "").strip()
+                      or str(cfg.get("brand_name", "") or "").strip())
+        _brand_asked = [f for f in fields
+                        if str(f).split(".", 1)[0].strip().lower() in _BRAND_FIELDS]
+        fields = [f for f in fields
+                  if str(f).split(".", 1)[0].strip().lower() not in _BRAND_FIELDS]
+
         # ---- gather SOURCES (the eBay product is the anchor) ----
         sources = {"ebay": {}, "sp": {}, "ebay_image": "", "raw": {}}
         # tier 1: eBay specifics
@@ -438,6 +464,26 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
         # ---- per-field resolution via the priority chain + AI to finalise ----
         suggestions = _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplace)
+
+        # The brand fields, answered from the row rather than from a competitor.
+        for _bf in _brand_asked:
+            if _own_brand:
+                suggestions.append({
+                    "field": _bf, "value": _own_brand,
+                    "source": "your own brand", "confidence": "high",
+                    "note": "This listing's own brand, taken from the row. Never "
+                            "read from the competitor or the eBay source -- their "
+                            "brand is theirs.",
+                })
+            else:
+                # Nothing to offer, and inventing one is exactly the failure.
+                suggestions.append({
+                    "field": _bf, "value": "", "source": "none", "confidence": "low",
+                    "note": "No brand is set on this listing or on the account. "
+                            "Set it in the row's Brand box or in the account's "
+                            "settings -- it must be YOUR brand, and it is never "
+                            "taken from the competitor.",
+                })
         return jsonify({"ok": True,
                         "product": {"title": title, "sku": sku, "product_type": product_type,
                                     "ebay_image": sources["ebay_image"], "ebay_url": ebay_url},
