@@ -968,7 +968,7 @@ function navTo(sec){
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1011,6 +1011,9 @@ function navTo(sec){
   // Reads the channel list and the delivery log. Opening this screen NEVER
   // sends anything -- that is a button, deliberately.
   if(sec==="notify"){   if(typeof ntfLoad==="function")    ntfLoad(); }
+  // Amazon BUILDS this report on request, roughly one a minute, so opening the
+  // screen does not fetch it -- "Get the report" does.
+  if(sec==="sqp"){      if(typeof sqpRender==="function")  sqpRender(); }
   if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }

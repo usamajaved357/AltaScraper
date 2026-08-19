@@ -260,6 +260,7 @@
         <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
         <!-- Reads the same daily figures as Sales, and answers the question
              Sales cannot: is this a NORMAL amount of movement for this account. -->
+        <div class="navitem" data-sec="sqp" onclick="navTo('sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</div>
         <div class="navitem" data-sec="leading" onclick="navTo('leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</div>
         <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
       </div>
@@ -1141,6 +1142,20 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- KEYWORDS (SQP) -- the only report that shows the SEARCH rather than what
+         happened after somebody arrived. Its value is the share: your slice of
+         what a query produced across every seller. -->
+    <div id="sec_sqp" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-search"></i> Keywords</h2>
+        <div class="sub">What people actually typed, and where your funnel breaks for each search &mdash; not seen, not clicked, not added, or not bought. Four different jobs; averaged into &ldquo;conversion is bad&rdquo; they are none of them.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="sqpLoad()"><i class="ti ti-refresh"></i> Get the report</button>
+        </div>
+      </div>
+      <div id="sqp_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- NOTIFICATIONS -- where alerts go when nobody has the app open.
          Nothing sends until a channel is added AND switched on, and nothing is
          on a timer: posting into somebody's Slack is outward-facing and cannot
@@ -1570,6 +1585,8 @@
 <script src="/static/js/leading.js?v={{ ASSET_V }}"></script>
 <!-- Where alerts go when nobody has the app open. -->
 <script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
+<!-- Keywords (Search Query Performance): what people typed. -->
+<script src="/static/js/sqp.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

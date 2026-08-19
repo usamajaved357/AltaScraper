@@ -486,6 +486,36 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
         padding:14px 16px;display:flex;flex-direction:column;gap:10px}
   .card.flag{border-color:#5a2230}
+
+  /* ---- A WIDE TABLE SCROLLS; IT DOES NOT GET CUT OFF ----
+     Reported as "the page cutting my visuals and getting out of the screen
+     where i can not see the text or graphics".
+
+     MEASURED in a real browser rather than guessed at, because a page-width
+     check says nothing here: the PAGE fits perfectly. What was happening is
+     worse than overflow. Our cards are `overflow:hidden` so their corners stay
+     round, and a table wider than its card is therefore CLIPPED -- no
+     scrollbar, no way to reach it, the columns simply gone. At 1280px:
+
+         Weekly KPIs   583px of table invisible
+         Listings       43px, which is the whole Actions column
+
+     Overflow at least leaves the content reachable. This did not.
+
+     The rule already existed -- but only inside mobile.css's phone media query,
+     so every desktop kept clipping. It is a general truth about a wide table in
+     a rounded box, not a phone problem, so it lives here now and mobile.css
+     keeps only the genuinely phone-specific part (the min-width floor that
+     stops a table squashing instead of scrolling).
+
+     `!important` because several of these cards carry the overflow inline. */
+  #workspace .card:has(> table),
+  #workspace .card:has(> .stk-table),
+  .ltwrap, #stk_ledger, #ppc_terms{
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    overscroll-behavior-x:contain;
+  }
   .top{display:flex;align-items:center;gap:8px}
   .badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 9px;
          border-radius:999px;text-transform:uppercase;white-space:nowrap}
@@ -1001,6 +1031,20 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- KEYWORDS (SQP) ----
+     The break cards are the point of the screen: four different jobs, each with
+     a count and the sales that went elsewhere. Clickable, because "show me the
+     eleven queries where they see us and scroll past" is the actual next
+     action. */
+  .sqp-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+             gap:9px;margin:4px 0 10px}
+  .sqp-card{background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+            padding:11px 13px;cursor:pointer;transition:border-color .12s,background .12s}
+  .sqp-card:hover{border-color:var(--accent);background:var(--panel)}
+  .sqp-card.on{border-color:var(--accent);background:var(--accent-bg)}
+  .sqp-n{font-size:21px;font-weight:700;line-height:1.1}
+  .sqp-l{font-size:12px;font-weight:600;color:var(--ink2)}
+
   /* ---- LEADING INDICATORS ----
      Four states, and the fourth is the important one: a figure with too little
      history, or a day Amazon has not reported, is genuinely UNJUDGED. It gets
