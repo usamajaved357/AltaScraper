@@ -202,6 +202,29 @@ function _scDragStart(cid, i, ev){
   if(sel) sel.setAttribute("width", 0);
 }
 
+/* WHICH SCREEN A DRAG ON THIS CHART ZOOMS.
+ *
+ * salesChart() is shared -- Sales, Traffic and AI spend all draw with it -- so
+ * every one of those charts got the drag hit-targets, and _scDragEnd sent all
+ * of them to salesZoomTo(). Dragging across the Traffic chart therefore read
+ * ITS column numbers as offsets into the SALES screen's dates and quietly
+ * reloaded a screen you were not looking at. The AI spend page even advertises
+ * "drag across to zoom into those days" under a chart where the gesture did
+ * nothing visible at all.
+ *
+ * A chart now names its own handler. The registry is by chart id, so two charts
+ * on one page zoom independently, and a chart that names none still falls back
+ * to salesZoomTo -- which is what the Sales screen has always relied on.
+ */
+const _SC_ZOOM = {};
+
+function scZoomTarget(cid, fnName){
+  // Cleared, not left stale: a chart id reused by another screen must not
+  // inherit the previous screen's zoom.
+  if(fnName) _SC_ZOOM[cid] = fnName;
+  else delete _SC_ZOOM[cid];
+}
+
 // DRAG ACROSS A CHART TO ZOOM INTO THOSE DAYS -- the Keepa gesture. A date-range
 // picker exists above the charts, but reading a shape and then translating it
 // into two dates in two boxes is the step nobody takes, so the interesting week
@@ -215,7 +238,15 @@ function _scDragEnd(cid, i){
   const a = Math.min(d.fromIndex, i), b = Math.max(d.fromIndex, i);
   // A click is not a drag. Two points is the smallest range worth zooming to.
   if(b - a < 1) return;
-  if(typeof salesZoomTo === "function") salesZoomTo(a, b);
+  // OPT IN, NEVER A FALLBACK. A chart zooms only if it named a handler, because
+  // "zoom whatever the Sales screen is showing" is wrong for every chart whose
+  // columns are not those dates -- and two of them are not: the week card draws
+  // seven days of its own, and Today draws twenty-four HOURS. Dragging 9am-2pm
+  // across the hourly chart used to zoom the whole screen to the 9th-14th day
+  // of the range, which looks like a feature doing something and is nonsense.
+  const named = _SC_ZOOM[cid];
+  const fn = named ? window[named] : null;
+  if(typeof fn === "function") fn(a, b, cid);
 }
 // ---- THE CURVE ----------------------------------------------------------
 //
@@ -590,6 +621,9 @@ function salesChart(points, opts){
 
   const LINE = o.color || SC_GOLD;
   const cid0 = o.id || ("c" + Math.abs(_scHash(String(o.title || "") + points.length)));
+  // Whose dates a drag across THIS chart narrows. Registered at draw time so it
+  // travels with the chart rather than being decided inside the drag handler.
+  scZoomTarget(cid0, o.onZoom);
 
   // THE PREVIOUS PERIOD, FIRST, so the current one is drawn over it. Grey and
   // dashed, thinner, and with no fill: it is context, and context that competes
@@ -800,8 +834,13 @@ function salesChart(points, opts){
      + (o.subtitle ? '<div class="cc" style="font-size:10.5px;margin:-1px 0 5px">'
                      + _scEsc(o.subtitle) + '</div>' : '')
      + (legend ? '<div style="margin:-1px 0 5px">' + legend + '</div>' : '')
+     // ONLY PROMISE THE GESTURE WHERE IT EXISTS. This line was printed under
+     // every chart salesChart draws, including the ones that cannot zoom -- so
+     // the AI spend page told you to drag across a chart where dragging moved
+     // nothing you could see.
      + '<div class="cc" style="font-size:10px;margin:-2px 0 5px;opacity:.65">'
-     + 'Hover for the day’s figure · drag across to zoom into those days</div>');
+     + 'Hover for the day’s figure'
+     + (o.onZoom ? ' · drag across to zoom into those days' : '') + '</div>');
 
   return '<div style="margin-bottom:' + (compact ? "0" : "14px") + '">'
        + head
@@ -1049,6 +1088,7 @@ function salesCombo(o){
   const barVals = (barsOn && bars.values || []).map(_scNum).filter(function(v){ return v !== null; });
 
   const cid0 = o.id || "combo";
+  scZoomTarget(cid0, o.onZoom);         // same rule as salesChart above
   const mLo = Math.min(0, moneyVals.length ? Math.min.apply(null, moneyVals) : 0);
   const mHi = _scNiceMax(moneyVals.length ? Math.max.apply(null, moneyVals) : 1);
   const mSpan = (mHi - mLo) || 1;
@@ -1266,10 +1306,12 @@ function salesCombo(o){
     : '';
 
   return '<div id="' + cid + '_wrap" style="margin:4px 0 0">'
-       // Says the gesture exists. Nobody discovers drag-to-zoom by accident.
+       // Says the gesture exists. Nobody discovers drag-to-zoom by accident --
+       // and it is only claimed on a chart that named a zoom handler.
        + '<div class="cc" style="font-size:10px;margin:0 0 4px;opacity:.65">'
-       + 'Hover for the day’s figures · drag across to zoom · click a name below '
-       + 'to hide that line'
+       + 'Hover for the day’s figures'
+       + (o.onZoom ? ' · drag across to zoom' : '')
+       + ' · click a name below to hide that line'
        + '<span id="' + cid + '_read" style="margin-left:auto"></span></div>'
        + '<div style="position:relative">'
        // Fixed height, width taken from the container -- the same rule as the

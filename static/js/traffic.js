@@ -21,7 +21,10 @@
 // tiles, the charts and the table cannot disagree about a number they all
 // describe. That is the failure the Sales screen had to be rescued from twice.
 
-let TRAF = {preset: "30d", group: "asin", data: null, busy: false, sort: "sessions"};
+let TRAF = {preset: "30d", group: "asin", data: null, busy: false, sort: "sessions",
+            // A dragged range, and where to go back to. Empty until somebody
+            // drags across a chart.
+            start: "", end: "", _zoomBack: null};
 
 const TRAF_PRESETS = [["7d", "7d"], ["14d", "14d"], ["30d", "30d"],
                       ["60d", "60d"], ["90d", "90d"]];
@@ -44,7 +47,12 @@ function _tNum(v, kind, cur){
 
 function trafficOnOpen(){ if(!TRAF.data) trafficLoad(); else trafficRender(); }
 
-function trafficSetPreset(p){ TRAF.preset = p; trafficLoad(); }
+function trafficSetPreset(p){
+  // Picking a preset ENDS a zoom. Left set, the "Zoomed to…" banner would keep
+  // claiming a range the screen is no longer showing.
+  TRAF.preset = p; TRAF.start = ""; TRAF.end = ""; TRAF._zoomBack = null;
+  trafficLoad();
+}
 function trafficSetGroup(g){ TRAF.group = g; trafficLoad(); }
 function trafficSort(k){
   TRAF.sort = (TRAF.sort === k) ? ("-" + k) : k;
@@ -54,9 +62,46 @@ function trafficSort(k){
 function _tQuery(){
   const q = ["preset=" + encodeURIComponent(TRAF.preset),
              "group=" + encodeURIComponent(TRAF.group)];
+  // A dragged range. /traffic/summary has always accepted preset=custom with
+  // explicit dates -- the screen simply never sent them.
+  if(TRAF.preset === "custom" && TRAF.start && TRAF.end){
+    q.push("start=" + encodeURIComponent(TRAF.start));
+    q.push("end=" + encodeURIComponent(TRAF.end));
+  }
   if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__")
     q.push("marketplace=" + encodeURIComponent(WS_MARKET));
   return q.join("&");
+}
+
+/* DRAG ACROSS ANY TRAFFIC CHART TO ZOOM INTO THOSE DAYS.
+ *
+ * The gesture was already on these charts -- salesChart draws the hit targets --
+ * but it called salesZoomTo, so it read this chart's column numbers as offsets
+ * into the SALES screen's dates and reloaded a screen you were not looking at.
+ * Now each chart names this handler instead (see scZoomTarget in
+ * salescharts.js), and the indices are resolved against THIS screen's dates.
+ *
+ * The dates come from the same d.dates array every chart on the page is drawn
+ * from, so a drag can only ever select days that are on screen. */
+function trafficZoomTo(i, j){
+  const dates = ((TRAF.data || {}).dates) || [];
+  const from = dates[Math.max(0, Math.min(i, j))];
+  const to   = dates[Math.min(dates.length - 1, Math.max(i, j))];
+  if(!from || !to) return;
+  // Remember where we came from, so "Show the whole period" is one press and
+  // not a hunt for which preset was on before.
+  TRAF._zoomBack = {preset: TRAF.preset, start: TRAF.start, end: TRAF.end};
+  TRAF.preset = "custom"; TRAF.start = from; TRAF.end = to;
+  trafficLoad();
+}
+
+function trafficZoomOut(){
+  const z = TRAF._zoomBack;
+  if(!z) return;
+  TRAF.preset = z.preset || "30d";
+  TRAF.start = z.start || ""; TRAF.end = z.end || "";
+  TRAF._zoomBack = null;
+  trafficLoad();
 }
 
 async function trafficLoad(){
@@ -151,6 +196,18 @@ function trafficRender(){
     return dates.map(function(x, i){ return {label: x, value: (arr || [])[i]}; });
   };
 
+  // A WAY OUT OF A ZOOM, beside the charts rather than in a date box -- the same
+  // banner the Sales screen shows, because the gesture is now the same gesture.
+  // Without it the only route back is remembering which preset was on before.
+  if(TRAF._zoomBack){
+    h += '<div style="display:flex;align-items:center;gap:9px;margin:0 0 10px;'
+      +  'padding:8px 11px;border:1px solid var(--accent);border-radius:7px;font-size:12px">'
+      +  '<i class="ti ti-zoom-in"></i> Zoomed to <b>' + _tEsc(TRAF.start)
+      +  '</b> → <b>' + _tEsc(TRAF.end) + '</b>'
+      +  '<button class="db-chip" style="margin-left:auto" onclick="trafficZoomOut()">'
+      +  'Back to the full range</button></div>';
+  }
+
   // ---- Traffic Overview -------------------------------------------------
   h += '<div class="salespanel" style="margin:16px 0">'
     + '<div class="panelhead" style="margin:0 0 10px;padding:0"><div>'
@@ -159,7 +216,7 @@ function trafficRender(){
     + (typeof salesCombo === "function"
         // kind:"count" -- these are sessions and page views, and the axis would
         // otherwise be labelled in pounds.
-        ? salesCombo({id: "traf_overview", columns: dates, bars: null, currency: cur,
+        ? salesCombo({id: "traf_overview", onZoom: "trafficZoomTo", columns: dates, bars: null, currency: cur,
                       kind: "count",
                       width: scChartWidth("trafbody", 1365), height: 240,
                       lines: [{key: "sessions", values: S.sessions},
@@ -173,7 +230,7 @@ function trafficRender(){
     + '<p class="paneltitle">Performance Metrics</p>'
     + '<p class="panelsub">Conversion Rate &amp; Buy Box %</p></div></div>'
     + (typeof salesCombo === "function"
-        ? salesCombo({id: "traf_perf", columns: dates, bars: null, currency: cur,
+        ? salesCombo({id: "traf_perf", onZoom: "trafficZoomTo", columns: dates, bars: null, currency: cur,
                       kind: "pct",
                       width: scChartWidth("trafbody", 1365), height: 240,
                       lines: [{key: "conversion", values: S.conversion},
@@ -193,7 +250,7 @@ function trafficRender(){
     + _tDonut(ch)
     + '<div style="flex:1;min-width:0">'
     + (typeof salesCombo === "function"
-        ? salesCombo({id: "traf_channel", columns: dates, bars: null, currency: cur,
+        ? salesCombo({id: "traf_channel", onZoom: "trafficZoomTo", columns: dates, bars: null, currency: cur,
                       kind: "count",
                       width: scChartWidth("trafbody", 1000), height: 240,
                       lines: [{key: "browser", values: S.browser},
@@ -209,7 +266,7 @@ function trafficRender(){
       + '<p class="paneltitle">Top ASINs Trend</p>'
       + '<p class="panelsub">Daily sessions</p></div></div>'
       + (typeof salesCombo === "function"
-          ? salesCombo({id: "traf_trend", columns: dates, bars: null, currency: cur,
+          ? salesCombo({id: "traf_trend", onZoom: "trafficZoomTo", columns: dates, bars: null, currency: cur,
                         kind: "count",
                         width: scChartWidth("trafbody", 1365), height: 240,
                         lines: trend.map(function(t, i){
