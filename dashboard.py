@@ -3874,6 +3874,14 @@ def build_app(backend=None):
     import routes.leading_routes as _leading_routes
     _leading_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # The assistant that can actually look. It answers a plain-English question
+    # by calling the app's OWN read-only screens and reporting what came back --
+    # never from memory, and never about an account other than the open one.
+    # Every tool is a GET from a fixed list; nothing it can reach writes.
+    # See domain/agent_tools.py for the list and why it calls screens.
+    import routes.agent_routes as _agent_routes
+    _agent_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
     # Where alerts go when nobody has the app open. Nothing sends until a
     # channel is added AND switched on, and nothing is on a timer -- posting
     # into somebody's Slack is outward-facing and cannot be taken back.

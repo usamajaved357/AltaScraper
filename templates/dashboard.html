@@ -1741,6 +1741,12 @@
 <script src="/static/js/compliance.js?v={{ ASSET_V }}"></script>
 <!-- Money Amazon owes back. The renderer is shared with the Inventory tab. -->
 <script src="/static/js/reimbursements.js?v={{ ASSET_V }}"></script>
+<!-- Ask about this account. Builds its own panel and button, so this line is
+     the only markup it needs. Separate from the "Ask Claude" box at the bottom
+     of Listings: that one helps fill in one product's attributes and can read a
+     competitor image; this one reads the account's own figures and cannot.
+     See static/js/assistant.js and domain/agent_tools.py. -->
+<script src="/static/js/assistant.js?v={{ ASSET_V }}"></script>
 <!-- Every account, month by month. The one screen not scoped to one account. -->
 <script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
 <!-- Where this account's products sit in Amazon's category tree. -->
