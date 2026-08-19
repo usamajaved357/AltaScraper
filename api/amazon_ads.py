@@ -27,9 +27,18 @@ WHAT THIS FILE IS, AND IS NOT
 It is the connection and the read calls. It is NOT a bid manager: nothing here
 writes a bid, a budget, a negation or a campaign state. CLAUDE.md Rule 8 --
 "NEVER change bids or budgets on any campaign unless the user explicitly
-specifies in their message the exact new value" -- and a module that cannot
-write cannot be made to break that rule by a later mistake. Every function below
-is a GET or a report request.
+specifies in their message the exact new value" -- and a module that CANNOT
+write cannot be made to break that rule by a later mistake.
+
+THAT GUARANTEE IS ENFORCED, NOT PROMISED. Amazon's reporting API needs a POST to
+ASK for a report, so a POST does exist here -- and it is whitelisted to the
+reporting paths in _post_json(). Anything else raises before a request is built.
+A whitelist is the difference between "we do not write bids" and "we cannot",
+and only the second survives somebody adding a helpful convenience later.
+
+READING A REPORT IS NOT WRITING. The POST creates a report job on Amazon's side;
+it changes no campaign, no bid, no budget and no state on the advertising
+account. It is a read expressed in an awkward verb.
 
 THE REGIONS ARE NOT INTERCHANGEABLE
 A token issued in Europe does not work against the North America endpoint, and
@@ -151,7 +160,7 @@ def access_token(creds):
 
 
 def _get(path, creds, marketplace, with_profile=True, accept=None):
-    """One authenticated GET. Read-only by construction -- there is no _post."""
+    """One authenticated GET. Read-only by construction."""
     url = endpoint_for(marketplace).rstrip("/") + path
     headers = {
         "Authorization": "Bearer " + access_token(creds),
@@ -250,3 +259,289 @@ def test(cfg, account, marketplace):
                  "Reports would come back empty rather than failing, so pick one "
                  "from the list." % str(marketplace or "").upper()),
     }
+
+
+# ---------------------------------------------------------------------------
+# READING CAMPAIGN DATA
+# ---------------------------------------------------------------------------
+#
+# BUILT BEFORE THE CREDENTIALS EXIST, and that is the whole problem with it.
+#
+# CLAUDE.md Rule 4 is explicit: never guess what Amazon returns, read the schema.
+# Right now there is no connection, so the schema cannot be read -- which means
+# every field name below is from Amazon's published documentation and NOT from a
+# live response. That is a materially weaker thing and it is said out loud here
+# rather than discovered later.
+#
+# So the code is built to be CORRECTED IN ONE PLACE rather than to be right
+# first time:
+#
+#   * every field is looked up through _pick() with several candidate names,
+#     because Amazon's v2 and v3 APIs spell the same thing differently and the
+#     campaign endpoints are mid-migration
+#   * raw_sample() returns Amazon's UNTOUCHED response, so the moment the
+#     connection works one call shows exactly what really arrives
+#   * nothing silently defaults to 0: a field that could not be found comes back
+#     None, so a mapping that misses shows as "unknown" rather than as a
+#     campaign that spent nothing
+#
+# The first thing to do once the API is connected is call raw_sample() and check
+# the names against MAPPING. That is Rule 4's own prescription -- add the
+# diagnostic, read what Amazon actually sends, fix from what it says.
+
+# Paths a POST may reach. Reporting only: asking for a report changes nothing on
+# the advertising account, and nothing else may be posted at all.
+_POST_ALLOWED = ("/reporting/reports",)
+
+
+def _post_json(path, creds, marketplace, body, with_profile=True):
+    """POST, whitelisted to the reporting paths. Anything else raises.
+
+    This is what keeps "cannot write a bid" true rather than merely intended:
+    the check is on the path, before a request object exists, so a later caller
+    cannot reach a campaign-write endpoint through this function however it is
+    called.
+    """
+    if not any(path.startswith(p) for p in _POST_ALLOWED):
+        raise RuntimeError(
+            "Refused: %s is not a reporting path. This module reads; it does "
+            "not write campaigns, bids or budgets (CLAUDE.md Rule 8)." % path)
+    url = endpoint_for(marketplace).rstrip("/") + path
+    headers = {
+        "Authorization": "Bearer " + access_token(creds),
+        "Amazon-Advertising-API-ClientId": creds.get("ads_client_id", ""),
+        "Content-Type": "application/vnd.createasyncreportrequest.v3+json",
+    }
+    if with_profile and creds.get("ads_profile_id"):
+        headers["Amazon-Advertising-API-Scope"] = str(creds["ads_profile_id"])
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            return json.loads(r.read().decode("utf-8") or "null")
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:400]
+        except Exception:
+            pass
+        raise RuntimeError("Amazon Advertising refused the report request "
+                           "(HTTP %s). %s" % (e.code, detail))
+
+
+def _pick(d, *names):
+    """The first of these keys that is present. None when none of them are.
+
+    Several candidate names per field, because Amazon spells the same thing
+    differently between the v2 and v3 campaign endpoints and this code was
+    written before it could see a real response. When the connection is live,
+    check MAPPING against raw_sample() and delete the ones that never appear.
+    """
+    if not isinstance(d, dict):
+        return None
+    for n in names:
+        if n in d and d[n] is not None:
+            return d[n]
+    return None
+
+
+def _num(v):
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f == f else None
+
+
+# Every field name this module depends on, in ONE table. When the API is
+# connected, this is the only thing that should need correcting.
+MAPPING = {
+    "campaign_id": ("campaignId", "campaign_id", "id"),
+    "campaign_name": ("name", "campaignName", "campaign_name"),
+    "state": ("state", "status", "servingStatus"),
+    "budget": ("budget", "dailyBudget", "budgetAmount"),
+    "target_type": ("targetingType", "targeting_type"),
+    "impressions": ("impressions",),
+    "clicks": ("clicks",),
+    "spend": ("cost", "spend"),
+    "orders": ("purchases30d", "attributedConversions30d", "purchases", "orders"),
+    "sales": ("sales30d", "attributedSales30d", "sales", "attributedSales1d"),
+    "search_term": ("searchTerm", "query", "search_term"),
+    "keyword": ("keywordText", "targeting", "keyword", "matchedTarget"),
+    "match_type": ("matchType", "match_type"),
+    "asin": ("advertisedAsin", "asin", "promotedAsin"),
+}
+
+
+def _row(d):
+    """One performance row, normalised, with nothing invented.
+
+    A metric Amazon did not send is None, NOT 0. A campaign whose spend could
+    not be read must not appear to have spent nothing -- that is the difference
+    between "no data" and "free", and only one of them is a reason to relax.
+    """
+    out = {}
+    for key, names in MAPPING.items():
+        v = _pick(d, *names)
+        out[key] = v
+    for k in ("impressions", "clicks", "spend", "orders", "sales", "budget"):
+        out[k] = _num(out.get(k))
+    for k in ("campaign_id", "campaign_name", "state", "target_type",
+              "search_term", "keyword", "match_type", "asin"):
+        out[k] = str(out[k]) if out.get(k) is not None else ""
+    return out
+
+
+def raw_sample(creds, marketplace, what="campaigns"):
+    """Amazon's UNTOUCHED response, for checking MAPPING against reality.
+
+    Rule 4's own prescription: when a value is wrong, do not guess -- add a
+    diagnostic that prints the raw thing Amazon sends, read it, and fix from
+    what it literally says. This exists from the start because the mapping above
+    was written without a live connection to read.
+    """
+    if what == "profiles":
+        return _get("/v2/profiles", creds, marketplace, with_profile=False)
+    if what == "adgroups":
+        return _get("/v2/sp/adGroups?count=5", creds, marketplace)
+    return _get("/v2/sp/campaigns?count=5", creds, marketplace)
+
+
+def campaigns(creds, marketplace):
+    """Every Sponsored Products campaign, normalised.
+
+    Structure only -- name, state, budget, targeting type. The PERFORMANCE
+    numbers come from a report (see report_request), because the campaign
+    endpoint does not carry them.
+    """
+    got = _get("/v2/sp/campaigns", creds, marketplace)
+    return [_row(c) for c in (got or []) if isinstance(c, dict)]
+
+
+# Amazon's v3 reporting: ask for a report, poll until it is built, download it.
+# Same three-step shape as the SP-API reports this app already handles.
+REPORT_TYPES = {
+    "campaign": {
+        "reportTypeId": "spCampaigns",
+        "groupBy": ["campaign"],
+        "columns": ["campaignId", "campaignName", "impressions", "clicks",
+                    "cost", "purchases30d", "sales30d", "campaignStatus",
+                    "campaignBudgetAmount"],
+    },
+    "search_term": {
+        "reportTypeId": "spSearchTerm",
+        "groupBy": ["searchTerm"],
+        "columns": ["campaignId", "campaignName", "searchTerm", "keyword",
+                    "matchType", "impressions", "clicks", "cost",
+                    "purchases30d", "sales30d"],
+    },
+    "advertised_product": {
+        "reportTypeId": "spAdvertisedProduct",
+        "groupBy": ["advertiser"],
+        "columns": ["campaignId", "campaignName", "advertisedAsin",
+                    "impressions", "clicks", "cost", "purchases30d", "sales30d"],
+    },
+}
+
+
+def report_request(creds, marketplace, kind, start, end):
+    """Ask Amazon to build one report. Returns its id.
+
+    A POST, and the only kind this module can make -- see _post_json.
+    """
+    spec = REPORT_TYPES.get(kind)
+    if not spec:
+        raise RuntimeError("Unknown report kind: %s" % kind)
+    body = {
+        "name": "altascraper %s %s..%s" % (kind, start, end),
+        "startDate": start,
+        "endDate": end,
+        "configuration": {
+            "adProduct": "SPONSORED_PRODUCTS",
+            "groupBy": spec["groupBy"],
+            "columns": spec["columns"],
+            "reportTypeId": spec["reportTypeId"],
+            "timeUnit": "SUMMARY",
+            "format": "GZIP_JSON",
+        },
+    }
+    got = _post_json("/reporting/reports", creds, marketplace, body) or {}
+    rid = got.get("reportId") or got.get("reportid")
+    if not rid:
+        raise RuntimeError("Amazon returned no report id: %s"
+                           % json.dumps(got)[:300])
+    return str(rid)
+
+
+def report_status(creds, marketplace, report_id):
+    """{status, url} for a report being built."""
+    got = _get("/reporting/reports/" + str(report_id), creds, marketplace) or {}
+    return {"status": str(got.get("status") or ""),
+            "url": str(got.get("url") or ""),
+            "failure": str(got.get("failureReason") or "")}
+
+
+def report_download(url):
+    """Fetch and decompress a finished report. Returns a list of rows.
+
+    The download URL is pre-signed and takes no auth header -- sending one is a
+    403, which is a confusing way to fail.
+    """
+    import gzip
+    import io
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+        raw = r.read()
+    try:
+        raw = gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+    except Exception:
+        # Amazon has been known to serve it uncompressed despite GZIP_JSON.
+        pass
+    txt = raw.decode("utf-8", "replace").strip()
+    if not txt:
+        return []
+    try:
+        got = json.loads(txt)
+    except Exception:
+        # Some report types come back as one JSON object per line.
+        got = [json.loads(l) for l in txt.splitlines() if l.strip()]
+    if isinstance(got, dict):
+        got = got.get("rows") or got.get("data") or []
+    return [_row(r) for r in got if isinstance(r, dict)]
+
+
+def report(creds, marketplace, kind, start, end, wait=90, on_wait=None):
+    """The whole three-step sequence, or an explanation of why not.
+
+    Polls for up to `wait` seconds. Amazon builds these in anything from a few
+    seconds to a couple of minutes, so a caller that cannot wait gets a clear
+    "still building" rather than a silent empty list.
+    """
+    rid = report_request(creds, marketplace, kind, start, end)
+    waited = 0
+    while waited < wait:
+        st = report_status(creds, marketplace, rid)
+        s = st["status"].upper()
+        if s in ("COMPLETED", "SUCCESS"):
+            if not st["url"]:
+                return {"ok": False, "report_id": rid,
+                        "error": "Amazon says the report is ready but gave no "
+                                 "download link."}
+            return {"ok": True, "report_id": rid,
+                    "rows": report_download(st["url"])}
+        if s in ("FAILURE", "FAILED", "CANCELLED"):
+            return {"ok": False, "report_id": rid,
+                    "error": "Amazon could not build the report: %s"
+                             % (st["failure"] or s)}
+        time.sleep(5)
+        waited += 5
+        if on_wait:
+            try:
+                on_wait(waited)
+            except Exception:
+                pass
+    return {"ok": False, "report_id": rid, "pending": True,
+            "error": "Amazon is still building the report after %ds. It keeps "
+                     "building — ask again shortly with this id." % wait}

@@ -958,6 +958,11 @@ async function enterWorkspace(key){
 }
 
 function navTo(sec){
+  // LEAVING THE IMAGE LIBRARY PAGE HANDS THE LIBRARY BACK TO ITS MODAL.
+  // Without this, pressing the images button on a Listings row would draw into
+  // a container on a page nobody is looking at, and the modal would open empty.
+  if(CUR_SEC === "imagelib" && sec !== "imagelib"
+     && typeof imagelibOnLeave === "function") imagelibOnLeave();
   CUR_SEC=sec;
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
   // OPEN THE GROUP THIS SCREEN LIVES IN. The sidebar's master items collapse,
@@ -968,7 +973,7 @@ function navTo(sec){
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -987,7 +992,10 @@ function navTo(sec){
   if(_fresh){
     if(sec==="setup")     loadBrandPanel();
     if(sec==="imagerefs") loadImageRefs();
-    if(sec==="generate"){ loadTargetAccount(); loadInputSheet(); }
+    if(sec==="generate"){ loadTargetAccount(); loadInputSheet();
+      // What a run WOULD do, before it does it. Costs nothing -- it asks
+      // the generator's own duplicate rule and reports the answer.
+      if(typeof genplanLoad==="function") genplanLoad(); }
     if(sec==="miles"){    milesLoadResults(); milesLoadPref(); }
     if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
     if(sec==="traffic"){  if(typeof trafficOnOpen==="function") trafficOnOpen(); }
@@ -1024,6 +1032,10 @@ function navTo(sec){
   // Draws the STORED map. Reading from Amazon is one call per product and is
   // therefore a button, never something that happens on open.
   if(sec==="categories"){ if(typeof catsLoad==="function") catsLoad(); }
+  // Checks the CONNECTION on open, never the reports -- those are two Amazon
+  // report builds and belong behind the button.
+  if(sec==="drppc"){ if(typeof drpOnOpen==="function")   drpOnOpen(); }
+  if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
   if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }

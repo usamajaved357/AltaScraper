@@ -74,6 +74,37 @@ function _ilCurrentMain(sku){
   }catch(e){ return ""; }
 }
 
+/* WHERE THE LIBRARY DRAWS ITSELF.
+ *
+ *   "make the image library work on its own as a separate page, i should not
+ *    have to go from one page to another to just create images"
+ *
+ * It has always been a modal over Listings, opened per SKU. That is right when
+ * you are already looking at a row and want its pictures; it is wrong as the
+ * place you go to WORK on images, because every SKU means going back to
+ * Listings, finding the row, and opening it again.
+ *
+ * So the library can now render into a page instead. Set the host id and it
+ * draws there; leave it and it is the modal exactly as before. The modal is
+ * still the default deliberately -- the row button is a real workflow and
+ * changing it was not asked for.
+ */
+let _IL_HOST = "";
+
+function ilRenderInto(elementId){
+  _IL_HOST = elementId || "";
+}
+
+/* The element the library's markup goes into: the page host when one is set,
+   the modal's own body otherwise. One function, so nothing has to remember. */
+function _ilBody(){
+  if(_IL_HOST){
+    const p = document.getElementById(_IL_HOST);
+    if(p) return p;
+  }
+  return document.getElementById("imglibbody");
+}
+
 async function openImageLibrary(sku, isLive){
   IMGLIB = {sku:sku, files:[], main:_ilCurrentMain(sku), live:!!isLive,
             showAll:false, otherCount:0,
@@ -82,17 +113,21 @@ async function openImageLibrary(sku, isLive){
             // useful -- but not before it is VISIBLE, which is why this loads
             // alongside the images rather than in front of them.
             slots:null, slotsState:"", slotsErr:"", isChild:false};
-  let host = document.getElementById("imglibwrap");
-  if(!host){
-    host = document.createElement("div");
-    host.id = "imglibwrap";
-    host.className = "modalwrap";
-    host.style.zIndex = "120";
-    host.innerHTML = '<div class="modal" style="max-width:860px"><div id="imglibbody"></div></div>';
-    host.addEventListener("click", function(e){ if(e.target === host) closeImageLibrary(); });
-    document.body.appendChild(host);
+  // On a page host there is no modal to build or open -- the container is
+  // already on screen and staying there.
+  if(!_IL_HOST){
+    let host = document.getElementById("imglibwrap");
+    if(!host){
+      host = document.createElement("div");
+      host.id = "imglibwrap";
+      host.className = "modalwrap";
+      host.style.zIndex = "120";
+      host.innerHTML = '<div class="modal" style="max-width:860px"><div id="imglibbody"></div></div>';
+      host.addEventListener("click", function(e){ if(e.target === host) closeImageLibrary(); });
+      document.body.appendChild(host);
+    }
+    host.classList.add("open");
   }
-  host.classList.add("open");
   _ilRender('<div class="cc" style="padding:20px"><span class="genspin"></span> Loading this listing\'s images…</div>');
   await _ilLoad();
   // Not awaited: the grid is usable while the slots are still coming. Reading
@@ -353,7 +388,7 @@ async function ilBringHere(fromId){
 }
 
 function _ilRender(html){
-  const b = document.getElementById("imglibbody");
+  const b = _ilBody();
   if(b) b.innerHTML = html;
 }
 
