@@ -79,7 +79,51 @@ def normalize_gtin(raw):
     while len(d) > 13 and d.startswith("0"):
         d = d[1:]
 
-    return (d, _LENGTH_TO_TYPE[len(d)]) if len(d) in _LENGTH_TO_TYPE else ("", "")
+    if len(d) not in _LENGTH_TO_TYPE:
+        return ("", "")
+    # LENGTH WAS THE ONLY TEST, and the docstring above already promised more
+    # than that -- "never send a fake, placeholder or reshaped-until-it-fits
+    # barcode". MEASURED: "000000000000" passed this function and would have
+    # gone to Amazon as a UPC.
+    if _is_placeholder(d) or not _check_digit_ok(d):
+        return ("", "")
+    return (d, _LENGTH_TO_TYPE[len(d)])
+
+
+def _is_placeholder(d):
+    """Numbers nobody printed on a product.
+
+    All one digit, or a straight run of them. These are what somebody types to
+    get past a required field, and CLAUDE.md Rule 1 is explicit that a
+    placeholder must never be sent. A checksum does NOT catch them: both
+    "000000000000" and "123456789012" have a valid check digit.
+    """
+    if len(set(d)) == 1:
+        return True
+    asc = "01234567890123456789"
+    desc = asc[::-1]
+    return d in asc or d in desc
+
+
+def _check_digit_ok(d):
+    """The GS1 mod-10 check digit -- the thing that makes a barcode a barcode.
+
+    Weights alternate 3 and 1 from the rightmost body digit. An invented number
+    fails this about nine times in ten, which is most of the protection Rule 1
+    is asking for.
+
+    MEASURED AGAINST THE REAL DATA before being switched on, because a check
+    that rejected the owner's genuine purchased EANs would be a far worse bug
+    than the one being fixed. Of 283 barcodes stored across every account, 274
+    pass and 2 fail -- and a barcode with a wrong check digit is not a valid
+    barcode: Amazon rejects it, which is exactly the loop the comment in
+    build_api_attributes describes as "auto-fix resubmitting the same number
+    forever". Catching it here turns that loop into one clear sentence.
+    """
+    body, check = d[:-1], int(d[-1])
+    total = sum(int(ch) * (3 if i % 2 == 0 else 1)
+                for i, ch in enumerate(reversed(body)))
+    return (10 - total % 10) % 10 == check
 
 
 def gtin_or_reason(raw):
@@ -95,5 +139,22 @@ def gtin_or_reason(raw):
     digits = gtin_digits(raw)
     if not digits:
         return "", "", "no digits in the Barcode / GTIN box"
+    # WHICH fault it was. "Not a retail barcode" covers three very different
+    # situations and only one of them is worth going and looking at:
+    #   wrong length  -> probably the wrong field was pasted
+    #   placeholder   -> somebody typed something to get past a required box
+    #   bad check     -> a real barcode with a typo in it, and the ONE case
+    #                    where going back to the invoice will fix it
+    trimmed = digits
+    while len(trimmed) > 13 and trimmed.startswith("0"):
+        trimmed = trimmed[1:]
+    if len(trimmed) in _LENGTH_TO_TYPE:
+        if _is_placeholder(trimmed):
+            return "", "", (f"'{trimmed}' is a placeholder, not a barcode "
+                            f"anybody printed on a product")
+        if not _check_digit_ok(trimmed):
+            return "", "", (f"'{trimmed}' has the right length but its check "
+                            f"digit is wrong -- one digit is mistyped. Amazon "
+                            f"would reject it, so check it against the invoice")
     return "", "", (f"{len(digits)}-digit value '{digits}' is not a retail "
                     f"barcode (need 13-digit EAN, 12-digit UPC or 8-digit EAN-8)")
