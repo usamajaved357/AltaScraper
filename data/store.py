@@ -33,6 +33,13 @@ from data.column_map import (COL_TO_HEADER, HEADER_TO_COL, INTERNAL_COLS,
 # row_values(1), get_all_values(), and A1-notation batch updates.
 ORDERED_HEADERS = list(HEADER_TO_COL.keys())
 
+# Row 1 is the header, so the first listing sits at row 2. Everything that
+# converts between "index in the row list" and "sheet row number" goes through
+# this: _sku_for_row below, and data/backend._records, which stamps the row
+# number onto each record the way dashboard._records does on the sheet. It was
+# a bare 2 in each of those places, and the third one simply never got written.
+FIRST_DATA_ROW = 2
+
 _WRITE_LOCK = threading.RLock()
 
 
@@ -447,7 +454,7 @@ class SheetLikeStore:
 
     def _sku_for_row(self, row_n):
         rows = self.store.get_all_rows()
-        idx = int(row_n) - 2
+        idx = int(row_n) - FIRST_DATA_ROW
         if idx < 0 or idx >= len(rows):
             return None
         return rows[idx].get("SKU")
