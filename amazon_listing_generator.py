@@ -2096,17 +2096,42 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
         return {"matched_categories": [], "highest_risk": "",
                 "summary": "", "requirements": []}
 
-    haystack = " ".join([
-        item_name or "",
-        listing.get("title", ""),
+    # WHERE a keyword matched decides what the match is allowed to MEAN.
+    #
+    # The title is where a product says what it IS -- Amazon requires that of a
+    # title. The bullets and search terms are where it says what it is used
+    # WITH, what it is safe NEAR, what it STORES, and every adjacent thing
+    # somebody might search for. A keyword found in the second place is not
+    # evidence about the product at all, and treating it as such produced these,
+    # measured on nestwell_goods:
+    #
+    #   Stand Up Weed Puller     -> food_consumables  "safe near ... edible plants"
+    #   Wireless Earbuds         -> sports_fitness    search terms "gym sport commute"
+    #   Gel Seat Cushion         -> toys_children     "car seat pad"
+    #   Folding Bar Stool        -> toys_children     "folding high chair" (tall, not infant)
+    #   Foldable Storage Boxes   -> toys_children     "stores ... toys, books"
+    #
+    # A weed puller carrying an allergen-declaration requirement is not a
+    # cautious flag, it is noise, and noise is what makes the whole compliance
+    # column ignorable.
+    #
+    # THE RULE, and it is the same one the IP check settled on: title evidence
+    # ASSIGNS the category; body-only evidence is reported as a NOTE and does
+    # not raise the risk level. Nothing is thrown away -- a lithium battery
+    # mentioned only in a bullet is still surfaced, it just stops blocking a bar
+    # stool as an infant high chair.
+    _title_hay = " ".join([item_name or "", listing.get("title", "")]).lower()
+    _body_hay = " ".join([
         listing.get("bullet_1", ""), listing.get("bullet_2", ""),
         listing.get("bullet_3", ""), listing.get("bullet_4", ""),
         listing.get("bullet_5", ""),
         listing.get("description", ""),
         listing.get("search_terms", ""),
     ]).lower()
+    haystack = (_title_hay + " " + _body_hay)
 
     matched     = []
+    mentioned   = []          # found in the copy only -- a note, never a hold
     all_reqs    = []
     highest     = ""
     # WEAK KEYWORDS -- why almost every listing used to flag.
@@ -2161,6 +2186,14 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
                     for kw in kws)
                 if not _strong_hit:
                     continue
+            # Did the keyword that fired appear in the TITLE, or only in the
+            # copy? The same word means different things in the two places.
+            _in_title = re.search(
+                rf"(?<![\w-]){re.escape(_matched_kw)}(?![\w-])",
+                _title_hay) is not None
+            if not _in_title:
+                mentioned.append((cat_key, _matched_kw))
+                continue
             matched.append(cat_key)
             all_reqs.extend(rule.get("requirements", []))
             risk = rule.get("risk_level", "")
@@ -2209,7 +2242,28 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
     else:
         summary = ""
 
+    # The body-only matches, said plainly and separately -- so a real one can
+    # still be acted on, and a false one reads as what it is. The word that
+    # fired is named, because "possibly toys_children" with no reason attached
+    # is not something anybody can check.
+    if mentioned:
+        _seen, _parts = set(), []
+        for _cat, _kw in mentioned:
+            if _cat in _seen:
+                continue
+            _seen.add(_cat)
+            _parts.append(f"{_cat} (\"{_kw}\")")
+        _note = ("COMPLIANCE NOTE (no hold): the copy mentions "
+                 + ", ".join(_parts)
+                 + " -- not in the title, so this may be describing what the "
+                   "product is used with rather than what it is. Check if it "
+                   "applies.")
+        summary = (summary + " | " + _note) if summary else _note
+
     return {"matched_categories": matched,
+            # Named separately so a caller can tell the two apart without
+            # parsing the sentence above.
+            "mentioned_categories": [c for c, _ in mentioned],
             "highest_risk":       highest,
             "summary":            summary,
             "requirements":       deduped_reqs}

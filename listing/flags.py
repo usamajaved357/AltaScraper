@@ -38,6 +38,12 @@ _FLAG_NOTE_PREFIXES = (
     # recognised as ours, so every rescan would append a fresh copy alongside
     # the old one and the Notes cell would grow without limit.
     "ip note",
+    # And the same for the compliance check, which now separates "the title
+    # says this is an X" from "the copy mentions X somewhere". The second heads
+    # its segment "COMPLIANCE NOTE (no hold)", which "compliance [" above does
+    # not match -- so without this line every rescan would leave the previous
+    # note in place and add another.
+    "compliance note",
     "phrases:",
     "suspected brand words",
     "possible brand words",
