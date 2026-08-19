@@ -3595,7 +3595,11 @@ def build_app(backend=None):
                            _records=_records, _ws=_ws, _drive_upload_image=_drive_upload_image,
                            _drive_map_put=_drive_map_put, _account_media_root=_account_media_root,
                            _sniff_image_ext=_sniff_image_ext, _to_jpeg_bytes=_to_jpeg_bytes,
-                           _drive_map_remove=_drive_map_remove, _drive_delete_file=_drive_delete_file)
+                           _drive_map_remove=_drive_map_remove, _drive_delete_file=_drive_delete_file,
+                           # So a media folder can say WHICH PRODUCT it is --
+                           # name, ASIN and main picture, through the one shared
+                           # catalogue lookup the other screens use.
+                           CONFIG_PATH=CONFIG_PATH)
     # Same media folder, opposite question: media_routes shows the ACTIVE
     # workspace's images, this one shows every image on the disk regardless of
     # workspace -- which is the only way to tell "filed somewhere else" apart

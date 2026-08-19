@@ -888,10 +888,48 @@
   .mediafolder>summary{cursor:pointer;padding:10px 12px;font-size:13px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
   .mediafolder>summary::-webkit-details-marker{display:none}
   .mediafolder>summary .ti{color:var(--warn)}
+  /* ---- A FOLDER SAYS WHICH PRODUCT IT IS ----
+     "write the name of the item first 4 words only and the asin of the item
+      along with the main image of the item on the folder"
+     8.00_3Days_B0G1K5B7QS is a filename, not a product. The picture does most
+     of the recognising; the four words and the ASIN confirm it. */
+  .mediafolder>summary .mfpic{width:34px;height:34px;border-radius:6px;object-fit:cover;
+                              flex:0 0 34px;background:var(--panel2);
+                              border:1px solid var(--line);display:block}
+  .mfnopic{display:flex !important;align-items:center;justify-content:center;
+           color:var(--ink4);font-size:15px}
+  .mfmeta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+  .mfname{font-size:12.5px;font-weight:600;color:var(--ink);
+          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mfasin{font-size:10.5px;font-weight:600;color:var(--accent);
+          font-family:ui-monospace,Menlo,Consolas,monospace}
+  /* The SKU is still there, because it is what the folder is actually named and
+     what every other screen calls this row -- just no longer the only thing. */
+  .mfsku{font-size:10px;color:var(--ink4);font-weight:500;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mfcount{flex:0 0 auto}
+
   .mediagrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:0 12px 12px}
   .mediacell{position:relative;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--panel);aspect-ratio:1}
   .mediameta{position:absolute;left:0;right:0;bottom:0;background:rgba(8,10,14,.82);color:#b8c2d4;font-size:9.5px;padding:2px 4px;text-align:center;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mediacell img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
+
+  /* ---- STEPPING THROUGH A FOLDER, AS DRIVE DOES ----
+     Big targets pinned to the sides rather than small ones under the picture:
+     at this size the picture fills most of the screen, and an arrow you have to
+     aim for is one you stop using. They stop at the ends rather than wrapping --
+     wrapping means you can never tell whether you have seen everything. */
+  #ilpreview .ilnav{position:fixed;top:50%;transform:translateY(-50%);
+                    width:46px;height:78px;border:none;border-radius:10px;
+                    background:rgba(255,255,255,.07);color:#e6ecf5;font-size:26px;
+                    cursor:pointer;display:flex;align-items:center;
+                    justify-content:center;z-index:2;transition:background .12s,opacity .12s}
+  #ilpreview .ilnav:hover{background:rgba(255,255,255,.16)}
+  #ilpreview .ilprev{left:14px}
+  #ilpreview .ilnext{right:14px}
+  /* Dimmed, not removed: an arrow that vanishes at the last picture moves the
+     other one under your cursor. */
+  #ilpreview .ilnav.off{opacity:.2;cursor:default;background:rgba(255,255,255,.04)}
   .mediadel{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:6px;
             background:rgba(0,0,0,.6);border:none;color:var(--red);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
   .mediadel:hover{background:var(--red-bg)}
