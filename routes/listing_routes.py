@@ -1000,7 +1000,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         out  = []
         for r in rows:
             res = _flags.rescan_row(r, _iprules, _crules)
-            if res["eligible"] and res["changed"]:
+            # Anything the flags CHANGED, whatever the row's status. The Status
+            # column protects itself -- decide_status returns a status it does
+            # not own untouched, so it never lands in `changed` for a LIVE or
+            # APPROVED row and only Notes / Compliance Risk / IP Risk are
+            # written. Filtering the whole ROW out here instead is what left 37
+            # already-selling listings wearing a badge from a rule that no
+            # longer makes that finding.
+            if res["changed"]:
                 out.append(res)
         return ws, rows, out
 
@@ -1022,6 +1029,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                           "old_comp": c["old"]["compliance_risk"],
                           "new_comp": c["new"]["compliance_risk"],
                           "new_notes": c["new"]["notes"][:300],
+                          # So the confirmation can say "badge corrected, status
+                          # left alone" rather than leaving somebody to wonder
+                          # why a LIVE row still reads LIVE.
+                          "status_owned": c.get("status_owned", True),
                           "changed": sorted(c["changed"])}
                          for c in changes[:500]],
             })
@@ -1030,11 +1041,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
     @app.route("/rescan/apply", methods=["POST"])
     def rescan_apply():
-        """Write the re-judged flags back. ONLY the four flag columns, ONLY rows
-        whose status the flags own (NEEDS_REVIEW / IP_HOLD / COMPLIANCE_HOLD).
-        Copy, prices, SKUs and attributes are never touched, and an APPROVED,
-        LIVE, ERROR or API_* row is never rewritten -- those are the operator's
-        decision or Amazon's own state."""
+        """Write the re-judged flags back. ONLY the four flag columns.
+
+        Copy, prices, SKUs and attributes are never touched.
+
+        The STATUS of an APPROVED, LIVE, ERROR or API_* row is never rewritten --
+        that is the operator's decision or Amazon's own state. Its Notes,
+        Compliance Risk and IP Risk are, because those three are this app's own
+        verdict about its own copy, and a listing that is live on Amazon has as
+        much right to a correct badge as one that is not."""
         try:
             ws, _rows, changes = _rescan_compute()
             if not changes:

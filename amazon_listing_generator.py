@@ -6355,6 +6355,42 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
             A["supplier_declared_has_product_identifier_exemption"] = [
                 {"value": True, "marketplace_id": mid}]
 
+    # =====================================================================
+    # RULE 1, ENFORCED AT THE LAST POSSIBLE MOMENT
+    # =====================================================================
+    #
+    # CLAUDE.md Rule 1: "NEVER -- under any circumstances, in any branch, for
+    # any reason: Send merchant_suggested_asin."
+    #
+    # It could. MEASURED, not reasoned about: a row whose Attributes JSON
+    # contained merchant_suggested_asin came through this function with it
+    # intact, and would have gone to Amazon alongside requirements="LISTING".
+    #
+    #     attributes_json carries it -> merchant_suggested_asin present: True
+    #
+    # Two 'keep' sets above deliberately preserve unknown-but-present fields, on
+    # the reasoning that if a field is there the AI or the user put it there for
+    # a reason. That reasoning is right in general and wrong for this one field,
+    # because THIS field changes what the listing IS: it turns a new product
+    # under the owner's own brand into an offer on somebody else's ASIN. That is
+    # the entire business model, inverted, by one attribute.
+    #
+    # routes/listing_routes.py already strips it from the auto-fix loop, which
+    # closed one door. This closes the rest: the AI writing it into attributes,
+    # a seller import carrying it over, a hand edit, or any future path nobody
+    # has thought of yet.
+    #
+    # It is dropped HERE, at the end, because this is the last thing that
+    # touches the payload before it is sent -- so there is no ordering in which
+    # something can re-add it afterwards. Rule 1 becomes a property of the
+    # payload rather than a promise made by every caller.
+    for _forbidden in ("merchant_suggested_asin", "merchant_suggested_asin_type"):
+        if _forbidden in A:
+            console.print(f"  [yellow]Dropped {_forbidden} -- this app creates NEW "
+                          f"listings under its own brand, never an offer on "
+                          f"another seller's ASIN (Rule 1).[/yellow]")
+            A.pop(_forbidden, None)
+
     return A
 
 

@@ -276,17 +276,27 @@ async function rescanFlags(){
     if(x.old_status!==x.new_status) bits.push(`${x.old_status} → ${x.new_status}`);
     if(x.old_ip!==x.new_ip)   bits.push(`IP ${x.old_ip||"none"} → ${x.new_ip||"none"}`);
     if(x.old_comp!==x.new_comp) bits.push(`Compliance ${x.old_comp||"none"} → ${x.new_comp||"none"}`);
+    // Say which rows keep their status, rather than leaving somebody to wonder
+    // why a LIVE listing still reads LIVE after a re-check.
+    if(x.status_owned === false) bits.push(`(${x.old_status} kept)`);
     return `• ${x.sku}  ${bits.join("   ")}`;
   }).join("\n");
   const more = r.changes>40 ? `\n…and ${r.changes-40} more` : "";
+  const _kept = r.rows.filter(x=>x.status_owned === false).length;
 
   const ok = confirm(
     `Re-check flags\n\n`+
     `Scanned ${r.scanned} rows. ${r.changes} would change.\n\n`+
     `${lines}${more}\n\n`+
     `Only Status, Notes, Compliance Risk and IP Risk are written.\n`+
-    `Your copy, prices and SKUs are NOT touched, and APPROVED / LIVE / ERROR\n`+
-    `rows are skipped entirely.\n\nApply these changes to ${storeName()}?`);
+    `Your copy, prices and SKUs are NOT touched.\n\n`+
+    (_kept
+      ? `${_kept} of these are APPROVED / LIVE / SUBMITTED / API_* rows. Their\n`+
+        `STATUS is left exactly as it is — that is Amazon's state or your own\n`+
+        `decision. Only the badge and the note are corrected, because those are\n`+
+        `this app's verdict about its own copy.\n\n`
+      : "")+
+    `Apply these changes to ${storeName()}?`);
   if(!ok){ toast("Nothing written"); return; }
 
   try{
@@ -374,7 +384,56 @@ function isHold(s){return s==="IP_HOLD"||s==="COMPLIANCE_HOLD"||s==="ERROR"||s==
 // did not show on a clean account -- but any row still carrying a tab_gid from
 // the spreadsheet era brought the whole strip back. Hidden-unless is not gone.
 function tabPass(r){ return true; }             // kept: still called from a card path
+// FIND ONE LISTING BY WHAT IS PRINTED ON IT.
+//
+//     "let me search the listing using the sku, asin, or a ean used in it in
+//      the app"
+//
+// There was a status filter and no way to find a single product at all. On an
+// account with 85 listings the only way to reach one was to scroll, and the
+// three things you actually have in your hand when you go looking are its SKU
+// (off a label), its ASIN (off Seller Central) or its barcode (off the box).
+//
+// The SKU carries the competitor ASIN inside it (price_days_ASIN), so searching
+// an ASIN finds both the listing whose own ASIN it is AND any listing built
+// from it as a reference. That is a feature, not a collision: they are both
+// answers to "show me the thing to do with B0XXXXXXXX".
+let SEARCH_Q = "";
+
+function _sq(v){ return String(v == null ? "" : v).toLowerCase(); }
+
+function matchesSearch(r){
+  const q = SEARCH_Q.trim().toLowerCase();
+  if(!q) return true;
+  // Digits only for the barcode, so "5060 5415 10005" off a box finds the
+  // listing that stores it as 5060541510005.
+  const qDigits = q.replace(/\D/g, "");
+  const fields = [r.sku, r.asin, r.competitor_asin, r.upc, r.title,
+                  r.model_number, r.source_url];
+  for(const f of fields){
+    if(!f) continue;
+    const s = _sq(f);
+    if(s.indexOf(q) >= 0) return true;
+    if(qDigits.length >= 6 && s.replace(/\D/g, "").indexOf(qDigits) >= 0) return true;
+  }
+  // The attributes blob, so an EAN stored only inside the payload is still
+  // findable -- that is where a barcode ends up once a listing is built.
+  if(qDigits.length >= 6){
+    try{
+      const blob = String(r.attributes_json || r["Attributes JSON"] || "");
+      if(blob && blob.replace(/\D/g, "").indexOf(qDigits) >= 0) return true;
+    }catch(e){}
+  }
+  return false;
+}
+
+function setSearch(v){
+  SEARCH_Q = v || "";
+  render();
+}
+
 function passFilter(r){
+  if(!matchesSearch(r)) return false;
   if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
@@ -392,9 +451,38 @@ function renderTabFilter(){
   const host=document.getElementById("tabfilter");
   if(!host) return;
   const _dupN=(typeof countDuplicateSkus==="function")?countDuplicateSkus():0;
-  if(!_dupN){ host.style.display="none"; host.innerHTML=""; return; }
+  // THE SEARCH BOX STAYS WHATEVER ELSE IS IN HERE.
+  //
+  // This strip used to hide itself entirely when there were no duplicates,
+  // which is right for a duplicates toggle and wrong for the only way to find a
+  // listing. The box is drawn first and unconditionally; the duplicates pill
+  // joins it when there is something to toggle.
+  //
+  // The value is read back from SEARCH_Q rather than left in the DOM, because
+  // render() rebuilds this strip and a box that empties itself as you type is
+  // worse than no box.
+  const _hits = (SEARCH_Q.trim() && Array.isArray(ROWS))
+    ? ROWS.filter(matchesSearch).length : -1;
   host.style.display="";
-  host.innerHTML=`<button class="tabpill dup ${DUP_ONLY?'active':''}" onclick="toggleDupOnly()" title="Show only duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> Duplicates <span class="tabcount">${_dupN}</span></button>`;
+  host.innerHTML =
+    `<div class="lsearch">
+       <i class="ti ti-search"></i>
+       <input id="lsearch_in" class="ed" placeholder="Find by SKU, ASIN or barcode…"
+              value="${esc(SEARCH_Q)}" oninput="setSearch(this.value)">
+       ${SEARCH_Q.trim()
+          ? `<button class="ib" title="Clear" onclick="setSearch('')"><i class="ti ti-x"></i></button>
+             <span class="cc" style="font-size:11.5px;white-space:nowrap">${_hits} match${_hits===1?'':'es'}</span>`
+          : ""}
+     </div>` +
+    (_dupN
+      ? `<button class="tabpill dup ${DUP_ONLY?'active':''}" onclick="toggleDupOnly()" title="Show only duplicate copies so you can delete the extras"><i class="ti ti-copy"></i> Duplicates <span class="tabcount">${_dupN}</span></button>`
+      : "");
+  // Typing rebuilds the strip, so the caret has to be put back or every
+  // keystroke would drop focus after the first one.
+  if(SEARCH_Q){
+    const el=document.getElementById("lsearch_in");
+    if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }
 }
 // Switch the tab filter. When a SPECIFIC tab is chosen we also point the workspace's
 // active tab at it (server-side), so edits / approvals / image pushes land on the tab

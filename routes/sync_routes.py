@@ -11,7 +11,8 @@ from flask import request, jsonify
 import time
 
 
-def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache):
+def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache,
+             CONFIG_PATH=""):
     import domain.accounts as _acc
     from listing import sync as _sync
 
@@ -53,7 +54,13 @@ def register(app, *, _cfg, _active_account, _records, _ws, _bust_records_cache):
         reason. PULL reflects the LIVE read-test; PUSH is inferred until a real push."""
         cfg = _cfg()
         out = []
-        for a in _acc.load_accounts(cfg):
+        # ONLY the accounts this caller may open. This listed every account in
+        # the config, from any workspace -- so somebody standing in one brand
+        # could read every other brand's seller id and the operator's note on
+        # why an account was suspended. Same helper the home screen uses, so
+        # the two lists can never disagree (CLAUDE.md Rule 12).
+        from auth import users as _users
+        for a in _users.visible_accounts(CONFIG_PATH, _acc.load_accounts(cfg)):
             c = _sync.capability(a)
             out.append({"id": a.get("id"), "label": a.get("label", a.get("id")),
                         "seller_id": a.get("seller_id", ""),

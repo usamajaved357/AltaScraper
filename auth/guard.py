@@ -244,6 +244,81 @@ WORKSPACE_SWITCH = {
     "/view/set":        "key",
 }
 
+# THE OTHER WAY IN, WHICH WAS OPEN.
+#
+#     "why is one user able to see the information of another user, every
+#      account is separate ... i am concerned that when i give this tool out to
+#      random people to test and use they will be able to see other people
+#      information"
+#
+# The design above is sound AS FAR AS IT GOES: refuse the switch, and since
+# every data route reads whichever account is currently selected, one choke
+# point covers all of them.
+#
+# It stopped being true. Routes now accept an EXPLICIT account -- ?id=jack_uk,
+# ?account_id=..., or the same in a POST body -- because a screen has to be able
+# to say which account it is showing rather than trusting a process-wide
+# variable. That was itself a fix, for a real bug where pressing Generate while
+# looking at Jack Reacherd ran against Nestwell.
+#
+# But check() is handed the PATH ONLY. It never sees the query string, so a
+# named account was never checked against the user's list. MEASURED with a user
+# restricted to nestwell_goods:
+#
+#     POST /accounts/select {id: jack_uk}  -> refused, correctly
+#     GET  /trackers?id=jack_uk            -> ALLOWED
+#     GET  /catalog/products?id=jack_uk    -> ALLOWED
+#     GET  /overview                       -> ALLOWED, and reads every account
+#
+# So the account is now checked WHEREVER IT IS NAMED, on every request, which
+# puts the enforcement back at one place and makes it hold for routes nobody
+# has written yet.
+WORKSPACE_PARAMS = ("id", "account_id", "workspace_id", "workspace", "ws")
+
+# Paths where an `id` means something else entirely. Checking these against the
+# workspace list would refuse ordinary work -- deleting a media file by id,
+# editing a user by id -- so they are named rather than guessed at.
+WORKSPACE_PARAM_EXEMPT = (
+    "/users",            # user ids
+    "/media",            # media/file ids
+    "/notify/channel",   # channel ids
+    "/trackers/watch",   # asin + metric, no workspace
+    "/input/",           # input row ids
+    "/listing/",         # sku-scoped
+    "/row",              # row ids
+    "/genimage",         # job ids
+    "/aplus",            # module ids
+    "/drive",            # drive file ids
+)
+
+
+def named_workspace(path, args, json_body):
+    """The account this request names, if it names one. "" when it does not.
+
+    Read from the query string first and the body second, because that is the
+    order the routes themselves read them in -- and a check that looked
+    somewhere else from the code it protects would be a check in name only.
+    """
+    p = str(path or "")
+    for ex in WORKSPACE_PARAM_EXEMPT:
+        if p.startswith(ex):
+            return ""
+    for field in WORKSPACE_PARAMS:
+        try:
+            v = (args or {}).get(field)
+        except Exception:
+            v = None
+        if v:
+            return str(v).strip()
+    for field in WORKSPACE_PARAMS:
+        try:
+            v = (json_body or {}).get(field)
+        except Exception:
+            v = None
+        if v:
+            return str(v).strip()
+    return ""
+
 
 # Which FEATURE AREA a path belongs to. First match wins, most specific first.
 # This is the "may they SEE it" axis; RULES above is "may they DO it".
@@ -258,6 +333,29 @@ FEATURE_PATHS = [
     #      these sits under a broader prefix below. Every one of them inherits
     #      its area's level until it is set individually (see FEATURE_PARENT in
     #      auth/users.py), so adding them changed nobody's access.
+    # ---- THE SCREENS ADDED LATER, WHICH WERE UNGOVERNED ----
+    #
+    # MEASURED: feature_for() returned nothing for all ten of them, so they were
+    # governed by RULES alone -- which is "any user who may edit". A person with
+    # sales set to `none` could open the Business Overview and read every
+    # account's revenue.
+    #
+    # They are mapped onto the EXISTING features rather than given ten new ones,
+    # because the question "may this person see turnover" does not become a
+    # different question because the screen is new. Ten more checkboxes would be
+    # ten more things to set correctly and the same answer either way.
+    ("/overview",             "sales"),      # it IS revenue, across accounts
+    ("/leading",              "sales"),      # yesterday's revenue and units
+    ("/catalog/products",     "listings"),   # the product catalogue
+    ("/categories",           "listings"),
+    ("/compliance",           "listings"),
+    ("/trackers",             "monitor"),    # watching an ASIN's numbers
+    ("/sqp",                  "traffic"),    # search performance is traffic
+    ("/drppc",                "ppc"),
+    # /notify holds a webhook credential and is already restricted to
+    # manage_accounts by RULES; the feature axis follows the same reasoning.
+    ("/notify",               "accounts"),
+
     ("/orders",               "orders"),
     ("/returns",              "returns"),
     ("/traffic",              "traffic"),
@@ -331,11 +429,16 @@ def required_permission(path, method):
     return "edit"                         # unlisted mutation -> fails closed
 
 
-def check(path, method, user, json_body=None):
+def check(path, method, user, json_body=None, args=None):
     """Decide one request. Returns (allowed: bool, message: str).
 
     `json_body` is only needed for workspace switches; pass the parsed body or
     None. It is read defensively -- a malformed body must not crash the doorman.
+
+    `args` is the query string. Without it a request naming another account --
+    ?id=jack_uk -- is invisible to this function, which is exactly how a user
+    restricted to one workspace could read every other one. It defaults to None
+    so existing callers keep working, and the doorman always passes it.
     """
     if not user:
         return False, "Not signed in."
@@ -356,6 +459,19 @@ def check(path, method, user, json_body=None):
             if not users.can_access_workspace(user, ws):
                 return False, "You do not have access to that workspace."
             return True, ""
+
+    # 1b. AN ACCOUNT NAMED ANYWHERE ELSE IN THE REQUEST.
+    #
+    # Routes take ?id=<account> so a screen can say which account it is showing
+    # rather than trusting a process-wide variable. Nothing checked it. A user
+    # restricted to nestwell_goods could read jack_uk by asking for it.
+    #
+    # Checked HERE, before features and permissions, for the same reason the
+    # switch is: no amount of feature access makes another company's turnover
+    # your business.
+    named = named_workspace(p, args, json_body)
+    if named and not users.can_access_workspace(user, named):
+        return False, "You do not have access to that workspace."
 
     # 2. FEATURE ACCESS -- "may they see this area at all?"
     #
@@ -517,7 +633,10 @@ def make_doorman(config_path, app_password, login_endpoint="_login"):
             user = users.bootstrap_user()
 
         body = request.get_json(silent=True) if request.method == "POST" else None
-        ok, why = check(request.path, request.method, user, body)
+        # THE QUERY STRING GOES IN TOO. Without it, a request naming another
+        # account (?id=jack_uk) is invisible to the check -- which is how a user
+        # restricted to one workspace could read every other one.
+        ok, why = check(request.path, request.method, user, body, request.args)
         if not ok:
             # 403 with a plain reason, as JSON -- every fetch() in the app expects
             # JSON and would otherwise report a parse error instead of the cause.

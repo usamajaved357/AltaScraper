@@ -72,27 +72,38 @@ function leadRender() {
   const d = LEAD.data;
   if (!d) { box.innerHTML = ""; return; }
 
-  let head = '<div class="ld-head">' +
-    '<div><div class="ld-day">' + esc(d.day) + "</div>" +
-    '<div class="cc" style="font-size:11.5px">Compared with the ' + d.window_days +
-    " days before it. A figure needs " + d.min_days +
-    " days of history before it can be judged at all.</div></div>" +
-    '<div class="ld-counts">' +
-    '<span class="ld-pill off">' + d.off + " off track</span>" +
-    '<span class="ld-pill warn">' + d.watch + " worth a look</span>" +
-    '<span class="ld-pill ok">' + d.on_track + " on track</span>" +
-    '<span class="ld-pill unk">' + d.unknown + " not enough to say</span>" +
-    "</div></div>";
+  // The state of yesterday in four numbers, before any of the table is read.
+  // Through the shared stat cards rather than this page's own row of pills --
+  // three screens had grown their own version of the same idea, which is the
+  // duplication Rule 12 is about.
+  let head = uiStats([
+    { label: "Off track", value: d.off, tone: d.off ? "bad" : "",
+      note: d.off ? "further from normal than usual" : "nothing unusual" },
+    { label: "Worth a look", value: d.watch, tone: d.watch ? "warn" : "",
+      note: "drifting, not yet unusual" },
+    { label: "On track", value: d.on_track, tone: "",
+      note: "within the normal range" },
+    // NOT a pass. Too little history, or a day Amazon has not reported.
+    { label: "Not enough to say", value: d.unknown,
+      note: "needs " + d.min_days + " days of history" },
+  ]) +
+  '<div class="cc" style="font-size:11.5px;margin:-4px 0 12px">' +
+  "<b>" + esc(d.day) + "</b> compared with the " + d.window_days +
+  " days before it." + "</div>";
 
   if (d.note) {
     head += '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;' +
             'color:#e6d9b8">' + esc(d.note) + "</div>";
   }
 
-  let html = head + '<div class="card" style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+  let html = head + uiPanel("Yesterday against its own history",
+    "Measured in standard deviations, because \u201cdown 22%\u201d means nothing on its " +
+    "own \u2014 if a figure swings that much every week it is Tuesday, and if it has " +
+    "never moved 4% it is an emergency.",
+    '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>Figure</th><th>Yesterday</th><th>Usually</th><th>Give or take</th>" +
     "<th>How unusual</th><th>Last fortnight</th><th>Status</th>" +
-    "</tr></thead><tbody>";
+    "</tr></thead><tbody>");
   (d.indicators || []).forEach(function (i) {
     html += "<tr>" +
       '<td><div style="font-weight:600">' + esc(i.label) + "</div>" +
@@ -116,7 +127,7 @@ function leadRender() {
                 esc(i.note) + "</div>" : "") +
       "</td></tr>";
   });
-  html += "</tbody></table></div>";
+  html += "</tbody></table></div></div>";
   box.innerHTML = html;
 }
 

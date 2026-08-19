@@ -30,51 +30,52 @@ function catsRender() {
   if (!d) { box.innerHTML = ""; return; }
   const c = d.counts || {};
 
-  let html =
-    '<div class="card" style="padding:13px;margin-bottom:12px;display:flex;' +
-    'gap:10px;align-items:center;flex-wrap:wrap">' +
+  let html = uiToolbar(
     '<button class="primary" onclick="catsPopulate()"' + (CATS.loading ? " disabled" : "") + '>' +
-    '<i class="ti ti-download"></i> Populate from Amazon</button>' +
-    '<div class="cc" style="font-size:11.5px;max-width:560px">One call per product, ' +
-    "so it is capped per press and picks up where it left off. " +
-    (d.fetched_at ? "Last read " + esc(d.fetched_at) + "." : "Never read yet.") +
-    "</div></div>";
+    '<i class="ti ti-download"></i> Populate from Amazon</button>',
+    '<div class="cc" style="font-size:11.5px;max-width:560px;text-align:right">One call per ' +
+    "product, so it is capped per press and picks up where it left off. " +
+    (d.fetched_at ? "Last read " + esc(d.fetched_at) + "." : "Never read yet.") + "</div>");
 
   if (d.note) {
     html += '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;' +
             'color:#e6d9b8;margin-bottom:12px">' + esc(d.note) + "</div>";
   }
 
-  html += '<div class="catp-cards">' +
-    '<div class="catp-card"><div class="catp-k">Categories</div>' +
-    '<div class="catp-v">' + (c.categories || 0) + "</div>" +
-    '<div class="catp-s">you have products ranked in</div></div>' +
-    '<div class="catp-card"><div class="catp-k">Placed</div>' +
-    '<div class="catp-v">' + (c.mapped || 0) + "</div>" +
-    '<div class="catp-s">of ' + (c.products || 0) + " products in the catalogue</div></div>" +
-    '<div class="catp-card' + (c.uncategorized ? " warn" : "") + '">' +
-    '<div class="catp-k">No category</div>' +
-    '<div class="catp-v">' + (c.uncategorized || 0) + "</div>" +
+  html += '<div class="ui-stats">' +
+    '<div class="ui-stat"><div class="ui-stat-k">Categories</div>' +
+    '<div class="ui-stat-v">' + (c.categories || 0) + "</div>" +
+    '<div class="ui-note">you have products ranked in</div></div>' +
+    '<div class="ui-stat"><div class="ui-stat-k">Placed</div>' +
+    '<div class="ui-stat-v">' + (c.mapped || 0) + "</div>" +
+    '<div class="ui-note">of ' + (c.products || 0) + " products in the catalogue</div></div>" +
+    '<div class="ui-stat' + (c.uncategorized ? " warn" : "") + '">' +
+    '<div class="ui-stat-k">No category</div>' +
+    '<div class="ui-stat-v">' + (c.uncategorized || 0) + "</div>" +
     // The distinction that stops a pointless second press.
-    '<div class="catp-s">' + (c.never_checked || 0) + " never read; " +
+    '<div class="ui-note">' + (c.never_checked || 0) + " never read; " +
     ((c.uncategorized || 0) - (c.never_checked || 0)) +
     " read and Amazon gave no rank</div></div>" +
     "</div>";
 
   if (!(d.categories || []).length && !(d.uncategorized || []).length) {
+    html += uiEmpty("Nothing read yet",
+      "A product's category comes from its sales ranks, which is one call to Amazon per " +
+      "product — so this page draws what is stored and fetches nothing on its own. " +
+      "Press Populate to read them.");
     box.innerHTML = html;
     return;
   }
 
   if ((d.categories || []).length) {
-    html += '<div class="card" style="overflow-x:auto;margin-bottom:12px">' +
+    let t = '<div style="overflow-x:auto">' +
       '<table class="stk-table"><thead><tr><th>Category</th><th>Products</th>' +
       "<th>Best rank</th><th>What is in it</th></tr></thead><tbody>";
     d.categories.forEach(function (cat) {
       const names = cat.products.slice(0, 4).map(function (p) {
         return (p.title || p.asin).slice(0, 34);
       }).join(", ");
-      html += "<tr>" +
+      t += "<tr>" +
         '<td style="font-weight:600">' + esc(cat.category) + "</td>" +
         "<td>" + cat.products.length + "</td>" +
         "<td>" + (cat.best_rank === null || cat.best_rank === undefined
@@ -84,20 +85,17 @@ function catsRender() {
         (cat.products.length > 4 ? " …and " + (cat.products.length - 4) + " more" : "") +
         "</td></tr>";
     });
-    html += "</tbody></table></div>";
+    t += "</tbody></table></div>";
+    html += uiPanel("Where your products sit",
+      "Best rank is the strongest position any one of your products holds in that " +
+      "category — not an average, which would hide it.", t);
   }
 
   if ((d.uncategorized || []).length) {
-    html += '<div class="card"><div style="font-weight:600;padding:2px 0 8px">' +
-      "Not in any category (" + d.uncategorized.length + ")</div>" +
-      '<div class="cc" style="font-size:11.5px;margin-bottom:8px;max-width:660px">' +
-      "Amazon ranks a listing once it has sales history. A product here either " +
-      "has not been read yet, or was read and Amazon had no rank for it — which " +
-      "usually means it has not sold." + "</div>" +
-      '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+    let u = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
       "<th>ASIN</th><th>Product</th><th>Read yet?</th></tr></thead><tbody>";
     d.uncategorized.slice(0, 200).forEach(function (p) {
-      html += "<tr>" +
+      u += "<tr>" +
         '<td style="font-weight:600">' + esc(p.asin) + "</td>" +
         '<td class="cc" style="font-size:11.5px;max-width:420px;overflow:hidden;' +
         'text-overflow:ellipsis;white-space:nowrap">' + esc(p.title || "") + "</td>" +
@@ -105,7 +103,11 @@ function catsRender() {
           ? '<span class="ld-pill unk">read — no rank</span>'
           : '<span class="ld-pill warn">not read yet</span>') + "</td></tr>";
     });
-    html += "</tbody></table></div></div>";
+    u += "</tbody></table></div>";
+    html += uiPanel("Not in any category (" + d.uncategorized.length + ")",
+      "Amazon ranks a listing once it has sales history. A product here either has not " +
+      "been read yet, or was read and Amazon had no rank for it — which usually means " +
+      "it has not sold.", u);
   }
 
   box.innerHTML = html;

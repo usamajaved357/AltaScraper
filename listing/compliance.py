@@ -917,6 +917,112 @@ def check_numeric_grounding(listing: dict, source_text: str) -> dict:
     return result
 
 
+# A comparative phrase is only a TRADEMARK problem when it points AT somebody's
+# brand. "Compatible with standard garden tap outlets" is not trading on anyone's
+# name; "compatible with Windows" is. Measured on the 295 stored listings: 68
+# occurrences of these phrases across 48 held rows, and exactly TWO pointed at a
+# brand (iPhone, Windows). The other 46 rows were held for saying what their
+# product fits.
+#
+_PHRASE_NEEDS_OBJECT = frozenset({
+    "compatible with", "replacement for", "alternative to", "equivalent to",
+    "compare to", "compares to", "comparable to", "approved by",
+    "recommended by", "works with", "better than", "as good as", "same as",
+    "replaces", "made by", "produced by",
+})
+
+# REPORTED, NEVER HELD. Three words that name nobody:
+#
+#   "fits all"       "Fits all standard SDS Plus rotary hammers"
+#   "universal fit"  "STRETCHY UNIVERSAL FIT -- naturally elastic neoprene"
+#        Absolute-fit OVERCLAIMS. Worth a review and Amazon can act on them, but
+#        no trademark is involved, so holding a listing for IP because it said
+#        "universal fit" is exactly the false flag this pass is about.
+#
+#   "branded"        "a Leech-branded hard case", "QUALITY BRANDED APPAREL"
+#        Describes the seller's OWN logo on the seller's OWN merchandise in all
+#        14 rows it held. Judging it by whether a capitalised word sits nearby
+#        was tried and measured: it picked out "Genuine", "Authentically",
+#        "Sporty" and "Swedish-flag" -- the same zero-precision guess as the
+#        capitalised-word scan, so it gets the same treatment.
+_PHRASE_NOTE_ONLY = frozenset({"fits all", "universal fit", "branded"})
+
+# Everything else in ip_rules.json -- "oem approved", "factory approved",
+# "manufacturer recommended", "manufacturer approved", "like the famous",
+# "like the popular" -- makes its claim regardless of context and still fires
+# on its own.
+
+
+def _probable_brand_token(tok: str, safe_lc, brand_words) -> bool:
+    """Could this ONE word be somebody else's brand name?
+
+    THE single definition, called by both the capitalised-word scan and the
+    comparative-phrase check below, so "is this a brand?" cannot come to mean
+    two different things inside one function (CLAUDE.md Rule 12).
+
+    Deliberately conservative -- it answers "worth looking at", never "proven".
+    """
+    if not tok or len(tok) < 3:
+        return False                      # 1-2 char tokens match far too much
+    # camelCase is a brand shape, not an English one: iPhone, iPad, macOS, eBay.
+    # Requiring an uppercase FIRST letter missed every one of them, which is why
+    # "works with recent iPhone 12" -- the one real trademark leak in the whole
+    # stored set -- read the same as "works with a common socket wrench".
+    camel = (not tok[0].isupper()) and any(ch.isupper() for ch in tok[1:])
+    if not tok[0].isupper() and not camel:
+        return False
+    # ALL CAPS is this app's own emphasis style (PORTABLE, OUTDOOR, SDS), not a
+    # brand. Left in, every house-style bullet label read as a possible brand.
+    if tok.isupper():
+        return False
+    tok_lc = tok.lower().rstrip("'")
+    # Contractions and possessives are ordinary English: "Father's", "You're".
+    if "'" in tok_lc:
+        stem, _, suffix = tok_lc.rpartition("'")
+        if stem and suffix in ("s", "re", "t", "ll", "ve", "d", "m"):
+            tok_lc = stem
+    if not tok_lc:
+        return False
+    if tok_lc in brand_words:             # our own brand
+        return False
+    if tok_lc in safe_lc:                 # the maintained allowlist
+        return False
+    # Compound descriptors: "PFOA-free", "Water-Resistant", "Lead-safe".
+    head = re.sub(r"-(free|resistant|proof|safe|friendly|ready|grade|tested|"
+                  r"certified|approved|coated|treated|based)$", "", tok_lc)
+    if head and head != tok_lc and head in safe_lc:
+        return False
+    return True
+
+
+# A full stop, colon, semicolon, comma or the house-style dash all end the run
+# of words a phrase can sensibly be pointing at.
+#
+#   "compatible with circlip-style hubs. Check the underside..."  -> "Check"
+#   "works with magnets: Compatible with all magnet-backed..."    -> "Compatible"
+#   "Made by Headbanger Lures, a Swedish brand trusted by..."     -> "Swedish"
+#
+# All three were holds on real listings, and all three are the scan reading past
+# the end of the clause. A list still works, because its FIRST item is inside
+# the window: "compatible with Bosch, Makita and DeWalt" still finds Bosch.
+_CLAUSE_END = re.compile(r"[.!?:;,]|\s[—–-]\s")
+
+
+def _phrase_points_at_brand(text: str, phrase: str, safe_lc, brand_words,
+                            lookahead: int = 4):
+    """Does this comparative phrase name a brand? Returns the word, or None.
+
+    Reads the few words immediately after each occurrence, stopping at the end
+    of the clause. Four is enough for "works with recent iPhone 12".
+    """
+    for m in re.finditer(r"\b" + re.escape(phrase) + r"\b", text, re.I):
+        tail = _CLAUSE_END.split(text[m.end():m.end() + 90], maxsplit=1)[0]
+        for tok in re.findall(r"[A-Za-z][A-Za-z\-']*", tail)[:lookahead]:
+            if _probable_brand_token(tok, safe_lc, brand_words):
+                return tok
+    return None
+
+
 def check_ip_violations(listing: dict, brand: str, ip_rules: dict,
                         competitor_brands=None) -> dict:
     """
@@ -937,8 +1043,9 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict,
       "summary":         short string for the Notes column,
     }
     """
-    empty = {"has_violations": False, "phrases_found": [],
-             "unknown_caps": [], "competitor_hits": [], "summary": ""}
+    empty = {"has_violations": False, "phrases_found": [], "phrase_evidence": [],
+             "phrase_generic": [], "phrase_note_only": [], "unknown_caps": [],
+             "caps_over_threshold": False, "competitor_hits": [], "summary": ""}
     if not ip_rules:
         return empty
 
@@ -1015,38 +1122,13 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict,
             continue
         tokens = re.findall(r"[A-Za-z][A-Za-z\-']*", sent)
         for i, tok in enumerate(tokens):
-            if not tok or not tok[0].isupper():
-                continue
             if i == 0:                              # sentence opener -- skip
                 continue
-            tok_lc = tok.lower()
-            # Contractions and possessives are ordinary English, never brands.
-            # "Father's", "You're" and "Whole'" were all reported as suspected
-            # brands on a real run -- they are a family word, a pronoun and a
-            # stray quote mark. Reduce to the base word and judge THAT.
-            tok_lc = tok_lc.rstrip("'")
-            if "'" in tok_lc:
-                _stem, _, _suffix = tok_lc.rpartition("'")
-                if _stem and _suffix in ("s", "re", "t", "ll", "ve", "d", "m"):
-                    tok_lc = _stem
-            if not tok_lc:
+            # Every per-token rule now lives in ONE place and is shared with the
+            # comparative-phrase check, rather than being written out twice.
+            if not _probable_brand_token(tok, safe_lc, brand_words):
                 continue
-            if tok_lc in brand_words:               # our own brand
-                continue
-            if tok_lc in safe_lc:                   # explicit allowlist
-                continue
-            # Strip common compound suffixes ("PFOA-free", "Water-Resistant", "Lead-safe")
-            # and re-check against safelist with just the head word
-            head = re.sub(r"-(free|resistant|proof|safe|friendly|ready|grade|tested|certified|approved|coated|treated|based)$",
-                          "", tok_lc)
-            if head and head != tok_lc and head in safe_lc:
-                continue
-            # Pure-uppercase short tokens (<=5) treated as acronyms
-            if tok.isupper() and len(tok) <= 15:   # ALL-CAPS = emphasis label (PORTABLE, OUTDOOR, SECONDS), not a brand
-                continue
-            # Single letter (e.g. "I" in some contexts) -- skip
-            if len(tok) <= 1:
-                continue
+            tok_lc = tok.lower().rstrip("'")
             # Already reported this token in this listing -- skip duplicates
             if tok_lc in seen_unknowns:
                 continue
@@ -1058,22 +1140,65 @@ def check_ip_violations(listing: dict, brand: str, ip_rules: dict,
     threshold = ip_rules.get("max_unrecognised", 4)
     caps_violation = len(unknown_caps) > threshold
 
-    # A competitor brand in our copy is PROOF, so it violates on its own. The
-    # capitalised-word scan stays a guess and keeps its tolerance threshold.
-    has_violations = bool(phrases_found) or caps_violation or bool(competitor_hits)
+    # --- Which of the matched phrases are EVIDENCE? --------------------------
+    # A comparative phrase pointed at a generic noun is not trading on anyone's
+    # name. Split them so the hold rests on the ones that name a brand and the
+    # rest are still reported, as a note.
+    phrase_evidence, phrase_generic, phrase_noteonly = [], [], []
+    for phrase in phrases_found:
+        p_lc = phrase.lower()
+        if p_lc in _PHRASE_NOTE_ONLY:
+            phrase_noteonly.append(phrase)      # names nobody
+        elif p_lc in _PHRASE_NEEDS_OBJECT:
+            named = _phrase_points_at_brand(phrase_scan_text, phrase,
+                                            safe_lc, brand_words)
+            (phrase_evidence.append(f"{phrase} {named}") if named
+             else phrase_generic.append(phrase))
+        else:
+            phrase_evidence.append(phrase)      # claims on its own, no object needed
+
+    # ONLY EVIDENCE HOLDS A LISTING.
+    #
+    #   proof   -- a competitor's brand in our copy, or a comparative phrase
+    #              pointed at a brand name. Those hold.
+    #   a guess -- unrecognised capitalised words. Reported, never held.
+    #
+    # Measured over the 295 stored listings: 21 rows were held purely on the
+    # guess, and the words that held them were Modes, Battery, Tripod, Base,
+    # Hanging, Hook, Indicator, Keyboard, Mouse, Gang, Switched, Extension.
+    # None of those is a brand -- they are ordinary nouns inside this app's own
+    # Title Case feature lists. A check with no true positives should not be
+    # able to block a listing, so it now writes a note and leaves the row at
+    # NEEDS_REVIEW where a person can look at it.
+    has_violations = bool(competitor_hits) or bool(phrase_evidence)
 
     summary_parts = []
     if competitor_hits:
         summary_parts.append(f"COMPETITOR BRAND in copy: {', '.join(competitor_hits[:5])}")
-    if phrases_found:
-        summary_parts.append(f"phrases: {', '.join(phrases_found[:5])}")
+    if phrase_evidence:
+        summary_parts.append(f"phrases: {', '.join(phrase_evidence[:5])}")
+    if phrase_generic:
+        # Kept visible, but said plainly so nobody reads it as a trademark hit.
+        summary_parts.append("phrases: " + ", ".join(phrase_generic[:5])
+                             + " (generic - not pointed at a brand)")
+    if phrase_noteonly:
+        summary_parts.append("phrases: " + ", ".join(phrase_noteonly[:5])
+                             + " (worth a read, but names no brand)")
     if caps_violation:
         summary_parts.append(f"possible brand words (unconfirmed): {', '.join(unknown_caps[:8])}")
+
+    # The head says whether this is a hold or a note, because a note that opens
+    # "IP RISK" reads as a hold on a row that is not held.
+    head = "IP RISK | " if has_violations else "IP NOTE (no hold) | "
 
     return {
         "has_violations":  has_violations,
         "phrases_found":   phrases_found,
+        "phrase_evidence": phrase_evidence,
+        "phrase_generic":  phrase_generic,
+        "phrase_note_only": phrase_noteonly,
         "unknown_caps":    unknown_caps,
+        "caps_over_threshold": caps_violation,
         "competitor_hits": competitor_hits,
-        "summary":         ("IP RISK | " + " | ".join(summary_parts)) if summary_parts else "",
+        "summary":         (head + " | ".join(summary_parts)) if summary_parts else "",
     }

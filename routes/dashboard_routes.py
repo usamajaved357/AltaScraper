@@ -52,22 +52,42 @@ _LIVE = {"LIVE"}
 
 
 def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="SKU",
-             _INV_ALERT_COUNTS=None):
+             _INV_ALERT_COUNTS=None, CONFIG_PATH=""):
 
-    _CACHE = {"ts": 0, "data": None}
+    # KEYED BY WHO IS ASKING, not one bucket for everybody.
+    #
+    # This was a single {ts, data} slot with a 60-second life, so the first
+    # person to open the home screen filled it and the next person -- on another
+    # account, with different access -- was handed that answer verbatim. Scoping
+    # the account list without also splitting the cache would have fixed nothing
+    # for the first minute after anybody signed in.
+    #
+    # The key is the set of accounts the caller can actually see, so two people
+    # with the same access still share one entry (which is the point of the
+    # cache), and somebody's access changing produces a different key.
+    _CACHE = {}
     _TTL = 60
 
     def _accounts():
         # Use the SAME source /accounts/list uses -- load_accounts() migrates from legacy
         # config when cfg["accounts"] is empty, so a legacy config still yields accounts.
+        got = []
         try:
             import accounts as _acc
-            got = _acc.load_accounts(_cfg() or {}, None)
-            if got:
-                return list(got)
+            got = list(_acc.load_accounts(_cfg() or {}, None) or [])
         except Exception:
             pass
-        return list((_cfg() or {}).get("accounts", []) or [])
+        if not got:
+            got = list((_cfg() or {}).get("accounts", []) or [])
+        # ONLY what this caller may open. The home screen counts every listing,
+        # every hold and every live SKU across the accounts it is given, so an
+        # unfiltered list here means one brand's numbers on another brand's home
+        # screen. Same helper as /accounts/list (CLAUDE.md Rule 12).
+        try:
+            from auth import users as _users
+            return _users.visible_accounts(CONFIG_PATH, got)
+        except Exception:
+            return got
 
     def _read_account_rows(book_cache, acc):
         """Return (header, rows) for ONE account's output tab, or (None, None) if unreadable.
@@ -364,8 +384,11 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
     def dashboard_summary():
         force = request.args.get("force")
         now = time.time()
-        if not force and _CACHE["data"] and (now - _CACHE["ts"] < _TTL):
-            out = dict(_CACHE["data"]); out["cached"] = True
+        # The accounts this caller can see ARE the cache key -- see _CACHE above.
+        key = ",".join(sorted(str(a.get("id") or "") for a in _accounts()))
+        hit = _CACHE.get(key)
+        if not force and hit and (now - hit["ts"] < _TTL):
+            out = dict(hit["data"]); out["cached"] = True
             return jsonify(out)
         try:
             data = _build_summary()
@@ -374,8 +397,12 @@ def register(app, *, _cfg, _client, _state, STATUS_HEADER="Status", SKU_HEADER="
             print("[dashboard/summary] EXCEPTION:")
             traceback.print_exc()
             return jsonify({"ok": False, "error": str(e)[:200]}), 500
-        _CACHE["ts"] = now
-        _CACHE["data"] = data
+        _CACHE[key] = {"ts": now, "data": data}
+        # Never let the key set grow without limit -- one entry per distinct
+        # access pattern is small, but a bounded dict cannot become a leak.
+        if len(_CACHE) > 40:
+            for k in sorted(_CACHE, key=lambda k: _CACHE[k]["ts"])[:20]:
+                _CACHE.pop(k, None)
         out = dict(data); out["cached"] = False
         return jsonify(out)
 

@@ -3215,14 +3215,49 @@ def _imgresult(res, extra=None):
 #
 # `none` is the one that could not be expressed before, and it is why the sets
 # looked repetitive.
+#
+# ---------------------------------------------------------------------------
+# AND THE ORDER IS PART OF THE WORK
+# ---------------------------------------------------------------------------
+#
+#     "there should be a story or a logic behind every image that why it comes
+#      first second and third and so on"
+#
+# A buyer does not study a carousel; they SWIPE it, in order, and stop the
+# moment they are convinced or bored. So the slots are not eight equal boxes --
+# they are a sequence, and each one answers the question the one before it
+# raises.
+#
+# `order` is where a role belongs and `why` is the reason, written as a sentence
+# that goes ON THE SCREEN rather than staying in a comment, because the person
+# choosing which images to make is the person who needs it.
+#
+# The sequence is a decision path, not a tidy-looking list:
+#
+#     1-2   care, then how          why it matters, then the part that does it
+#     3     will it fit             disqualifying, so it comes before aspiration
+#     4-5   picture yourself        only works once the practical doubt is dead
+#     6-7   what arrives, effort    the last two practical objections
+#     8-9   numbers, then quality   they are comparing now, not browsing
+#     10-12 believe, then choose    proof answers a doubt that only exists once
+#                                   somebody already wants the thing
 _SECONDARY_ROLES = {
     "benefit": {
+        "order": 1,
+        "why": (
+            "They have already seen the product in the main image. This is the "
+            "one reason to keep swiping -- get it wrong and none of the others "
+            "are ever seen."),
         "present": "hero",
         "brief": ("A single-benefit image: ONE clear benefit, a short bold headline of a few "
                   "words, and a visual that PROVES it rather than decorating it. Generous "
                   "negative space, premium and minimal -- never a wall of text."),
     },
     "feature": {
+        "order": 2,
+        "why": (
+            "Answers the how? that slot 1 just raised: the part that actually "
+            "delivers what was promised."),
         "present": "detail",
         "brief": ("A feature callout: ONE part or function, shown CLOSE UP -- the mechanism, "
                   "the texture, the fitting, the seal. Thin clean leader lines to at most "
@@ -3230,18 +3265,32 @@ _SECONDARY_ROLES = {
                   "the part."),
     },
     "lifestyle": {
+        "order": 4,
+        "why": (
+            "Now they can picture owning it. Aspiration only works once the "
+            "practical objection is dead."),
         "present": "in_use",
         "brief": ("A real moment of use, in the place and by the kind of person this product "
                   "is actually for. Natural light, believable setting, nothing staged-looking. "
                   "Minimal text or none -- the scene carries it."),
     },
     "dimensions": {
+        "order": 3,
+        "why": (
+            "Will it fit? is the most common unanswered question on Amazon and a "
+            "leading cause of returns. It comes before anything aspirational "
+            "because it is disqualifying."),
         "present": "hero",
         "brief": ("Size, made obvious. Clean dimension lines with real measurements, and where "
                   "it helps, the product beside an everyday object of known size so the scale "
                   "is felt rather than read. Plain background, few words."),
     },
     "trust": {
+        "order": 10,
+        "why": (
+            "Reasons to believe. Proof answers a doubt that only exists once "
+            "somebody wants the thing; earlier, it answers a question nobody has "
+            "asked yet."),
         "present": "none",
         "brief": ("The reason to believe, as icons and short lines on a clean panel -- the "
                   "material, the standard it is made to, the guarantee, what it is tested "
@@ -3249,6 +3298,10 @@ _SECONDARY_ROLES = {
                   "Only ever claims the listing actually supports."),
     },
     "comparison": {
+        "order": 12,
+        "why": (
+            "Why this one rather than the other tab they have open. Last, "
+            "because it is the final question anybody asks."),
         "present": "none",
         "brief": ("A clean comparison that contrasts the outcome this product gives against "
                   "the ordinary alternative -- a tidy two-column table or a before/after. "
@@ -3257,6 +3310,10 @@ _SECONDARY_ROLES = {
     # These two were offered on screen and did not exist here, so choosing
     # either silently produced a benefit infographic instead.
     "detail": {
+        "order": 9,
+        "why": (
+            "Material and making, close up -- the quality argument, for "
+            "somebody who has decided they want one and is choosing which."),
         "present": "detail",
         "brief": ("A macro study of the material and the making: the weave, the grain, the "
                   "weld, the finish, the powder, the capsule. Frame-filling, beautifully lit, "
@@ -3264,6 +3321,10 @@ _SECONDARY_ROLES = {
                   "tat'."),
     },
     "usecase": {
+        "order": 5,
+        "why": (
+            "The specific occasion they are buying FOR -- narrower than the "
+            "lifestyle, and it closes the is this for me gap."),
         "present": "in_use",
         "brief": ("One specific situation this product is bought FOR, shown as a scene a buyer "
                   "recognises as their own problem. Not a generic lifestyle shot -- a "
@@ -3272,18 +3333,29 @@ _SECONDARY_ROLES = {
     # New. Each of these is a slot the old set could not fill, and each is a
     # kind of image that routinely outperforms another photograph of the box.
     "contents": {
+        "order": 6,
+        "why": (
+            "What actually arrives in the box. Kills is the stand included?, "
+            "which otherwise sends people to the Q&A and often to a competitor."),
         "present": "hero",
         "brief": ("Everything that comes in the box, laid out flat and evenly lit, each item "
                   "labelled with what it is and how many. Exactly what is supplied -- no "
                   "extra piece, no spare, nothing borrowed from the reference photo."),
     },
     "howto": {
+        "order": 7,
+        "why": (
+            "How much effort it is to use. The last practical objection."),
         "present": "in_use",
         "brief": ("How it is used, in three or four numbered steps across one image. Each step "
                   "a small clear picture with a few words under it. This is the image that "
                   "answers 'will I be able to work it'."),
     },
     "spec": {
+        "order": 8,
+        "why": (
+            "The numbers. By here they are comparing rather than browsing, and a "
+            "comparer wants a spec panel."),
         "present": "none",
         "brief": ("The specification, as a designed panel rather than a photograph: the table, "
                   "chart or facts panel this product's buyer wants to read, with the handful "
@@ -3291,6 +3363,9 @@ _SECONDARY_ROLES = {
                   "listing, none invented."),
     },
     "evidence": {
+        "order": 11,
+        "why": (
+            "The harder proof, for the same reason, one step further on."),
         "present": "none",
         "brief": ("The proof behind the claim, shown as a designed image -- the testing, the "
                   "standard, the certification, the record of use. No product needed. ONLY "
@@ -3837,7 +3912,8 @@ def build_app(backend=None):
                                  CONFIG_PATH=CONFIG_PATH)
     import routes.sync_routes as _sync_routes
     _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
-                          _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
+                          _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache,
+                          CONFIG_PATH=CONFIG_PATH)
     # Bulk handling-time updates (sheet + live Amazon push).
     import routes.handling_routes as _handling_routes
     _handling_routes.register(app, _cfg=_cfg, _active_account=_active_account,
@@ -3870,7 +3946,8 @@ def build_app(backend=None):
     import routes.dashboard_routes as _dashboard_routes
     _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,
                                STATUS_HEADER=STATUS_HEADER, SKU_HEADER=SKU_HEADER,
-                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS)
+                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS,
+                               CONFIG_PATH=CONFIG_PATH)
     # ASIN research (read-only Catalog Items lookup; no publish)
     import routes.catalog_routes as _catalog_routes
     _catalog_routes.register(app, _cfg=_cfg, _state=_state, CONFIG_PATH=CONFIG_PATH)

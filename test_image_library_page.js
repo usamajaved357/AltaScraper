@@ -71,7 +71,15 @@ console.log("== the picker is the point of the page ==");
 check("products are listed", /imgp-row/.test(PG));
 check("  searchable by sku, asin and title",
   /r\.sku.*indexOf/.test(PG) && /r\.asin/.test(PG) && /r\.title/.test(PG));
-check("  from the shared product list", /\/catalog\/products/.test(PG));
+// The list itself moved into static/js/productpicker.js when the Image Studio
+// needed the identical picker -- two copies would have drifted the first time
+// either page changed how a product is chosen. So this page must USE the shared
+// one rather than fetch its own, which is a stronger statement than the one
+// this assertion used to make.
+check("  from the shared picker, not a second fetch",
+  /ppLoad\(/.test(PG) && !/\/catalog\/products/.test(PG));
+check("  and the picker is the thing that fetches",
+  /\/catalog\/products/.test(codeOnly(read("static/js/productpicker.js"))));
 // A picker of four hundred rows is a scrollbar nobody uses, and a silent cap
 // reads as "that is all there is".
 check("  capped, and it says so", /slice\(0, 60\)/.test(PG) && /Showing 60 of/.test(PG));

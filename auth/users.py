@@ -363,6 +363,35 @@ def can_access_workspace(user, workspace_id):
     return (str(workspace_id or "") or "dropshipping") in [str(a) for a in allowed]
 
 
+def visible_accounts(config_path, accounts):
+    """Filter a list of account records down to the ones the CALLER may open.
+
+    ONE implementation, so that every list an account can appear in gives the
+    same answer as the doorman that guards the pages behind it. It used to live
+    inside routes/accounts_routes.py, which meant the home screen was scoped and
+    /sync/capabilities was not -- that route handed every account's seller id
+    and suspension note to whoever asked, from any workspace (CLAUDE.md Rule 12).
+
+    Falls open when there is no signed-in user (background work, or the
+    shared-password owner who is the only user). That is the same rule
+    auth/guard.py applies, not a shortcut.
+    """
+    try:
+        from flask import session
+        uid = session.get("uid")
+        if not uid:
+            return accounts
+        u = get_user(config_path, uid)
+        if not u:
+            return accounts
+        return [a for a in accounts
+                if can_access_workspace(u, str(a.get("id") or ""))]
+    except Exception:
+        # A permissions lookup that fails must not empty somebody's screen; the
+        # doorman still refuses anything they may not open.
+        return accounts
+
+
 # ---- mutations -----------------------------------------------------------
 
 def create_user(config_path, email, name="", role="lister", permissions=None,

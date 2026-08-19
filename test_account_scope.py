@@ -111,9 +111,55 @@ check("NOT supplying the field at all still defaults to everything",
 
 print("\n=== one implementation, not two (Rule 12) ===")
 s = open(r"D:\AltaScraper\routes\accounts_routes.py", encoding="utf-8").read()
-check("the list calls the shared rule", "users.can_access_workspace" in s, True)
+check("the list calls the shared rule", "users.visible_accounts" in s, True)
 check("  via a single helper", s.count("def _visible_accounts("), 1)
 check("  used by the list route", s.count("_visible_accounts(al)"), 1)
+# The rule itself lives in ONE place, not once per route file.
+check("  and the rule itself is in auth/users", hasattr(users, "visible_accounts"), True)
+
+
+print("\n=== EVERY list of accounts is scoped, not just the home screen ===")
+# THE LEAK: /sync/capabilities looped every account in the config and returned
+# each one's seller id and the operator's note on why it was suspended -- from
+# any workspace, to anybody. Found by reading the endpoint's real response while
+# standing in a single account.
+#
+#   "why is one user able to see the information of another user, every account
+#    is separate ... i am concerned that when i give this tool out to random
+#    people to test and use they will be able to see other people information"
+_sync_src = open(r"D:\AltaScraper\routes\sync_routes.py", encoding="utf-8").read()
+check("sync/capabilities filters before it lists",
+      "_users.visible_accounts(" in _sync_src, True)
+check("  and never loops the raw account list",
+      "for a in _acc.load_accounts(" in _sync_src, False)
+
+_dash_src = open(r"D:\AltaScraper\routes\dashboard_routes.py", encoding="utf-8").read()
+check("the home screen's account list is scoped too",
+      "_users.visible_accounts(" in _dash_src, True)
+# AND ITS CACHE IS KEYED BY WHO IS ASKING. /dashboard/summary held a single
+# {ts, data} slot with a 60-second life, so the first person to open the home
+# screen filled it and the next person -- on another account -- was handed that
+# answer verbatim. Scoping the list without splitting the cache fixes nothing
+# for the first minute after anybody signs in.
+check("  and its cache is per-caller, not one bucket for everybody",
+      '_CACHE["data"]' not in _dash_src and "_CACHE.get(key)" in _dash_src, True)
+check("  keyed on the accounts that caller can see",
+      "sorted(str(a.get(\"id\")" in _dash_src, True)
+
+
+print("\n=== the filter really filters ===")
+scoped, _t4 = users.create_user(CFG, "onebrand@x.com", "OneBrand", role="lister",
+                                workspaces=["jack_uk"])
+ACCOUNTS = [{"id": "jack_uk"}, {"id": "sheelady_us"}, {"id": "nestwell_goods"}]
+_u = users.get_user(CFG, scoped["id"])
+check("a one-workspace user sees one account",
+      [a["id"] for a in ACCOUNTS
+       if users.can_access_workspace(_u, a["id"])], ["jack_uk"])
+# With no signed-in user the helper falls open -- that is the shared-password
+# owner, and it is the same rule the doorman applies. Asserted so that a future
+# change cannot quietly turn it into "nobody sees anything".
+check("  and with no session it falls open, deliberately",
+      len(users.visible_accounts(CFG, ACCOUNTS)), 3)
 
 shutil.rmtree(TMP, ignore_errors=True)
 print("\nFAILURES: %d" % len(fails))

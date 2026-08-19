@@ -32,10 +32,29 @@ function ntfRender() {
 
   let html = "";
 
+  // ---- how it stands ------------------------------------------------------
+  // "On" is the number that matters and it is deliberately not the same as
+  // "added": a channel arrives switched off, so added-but-never-turned-on is
+  // the state where somebody believes they are being told and is not.
+  const on = NTF.channels.filter(function (c) { return c.enabled; }).length;
+  const failed = NTF.log.filter(function (e) { return e.result === "failed"; }).length;
+  const sent = NTF.log.filter(function (e) { return e.result === "sent"; }).length;
+  html += uiStats([
+    { label: "Places to send to", value: NTF.channels.length,
+      note: NTF.channels.length ? "added" : "alerts stay inside this app" },
+    { label: "Switched on", value: on, tone: (NTF.channels.length && !on) ? "warn" : "",
+      note: (NTF.channels.length && !on)
+        ? "added but none broadcasting yet"
+        : "receiving alerts" },
+    { label: "Sent", value: sent,
+      note: "of " + NTF.log.length + " logged send" + (NTF.log.length === 1 ? "" : "s") },
+    { label: "Failed", value: failed, tone: failed ? "bad" : "",
+      note: failed ? "reason is in the log below" : "none" }
+  ]);
+
   // ---- add ----------------------------------------------------------------
-  html +=
-    '<div class="card" style="padding:14px;margin-bottom:12px">' +
-    '<div style="font-weight:600;margin-bottom:8px">Add somewhere to send to</div>' +
+  html += uiPanel("Add somewhere to send to",
+    "Slack, or a webhook for anything else.",
     '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">' +
     '<div><label class="cc" style="display:block;font-size:11px">Type</label>' +
     '<select id="ntf_kind" class="ed" style="width:150px">' +
@@ -53,20 +72,19 @@ function ntfRender() {
     "mistyped address never posts into somebody else's channel. For Slack, create an " +
     "<b>Incoming Webhook</b> in your workspace and paste the URL. For anything else " +
     "(Zapier, Make, n8n, a WhatsApp bridge) use Webhook and the whole alert is posted as JSON." +
-    "</div></div>";
+    "</div>");
 
   // ---- channels -----------------------------------------------------------
   if (!NTF.channels.length) {
-    html += '<div class="card" style="padding:18px">' +
-      '<div style="font-weight:600;margin-bottom:4px">Nothing is set up</div>' +
-      '<div class="cc" style="font-size:12.5px;max-width:640px">Alerts are only visible ' +
-      "inside this app until you add somewhere for them to go.</div></div>";
+    html += uiEmpty("Nothing is set up",
+      "Alerts are only visible inside this app until you add somewhere for them to go — " +
+      "and an alert nobody is looking at is not an alert.");
   } else {
-    html += '<div class="card" style="overflow-x:auto;margin-bottom:12px">' +
+    let t = '<div style="overflow-x:auto">' +
       '<table class="stk-table"><thead><tr><th>Name</th><th>Type</th><th>Address</th>' +
       "<th>Events</th><th>Last</th><th>On</th><th></th></tr></thead><tbody>";
     NTF.channels.forEach(function (c) {
-      html += "<tr>" +
+      t += "<tr>" +
         '<td style="font-weight:600">' + esc(c.label || "(unnamed)") + "</td>" +
         "<td>" + esc(c.kind) + "</td>" +
         // Redacted, always. The server never sends the whole thing.
@@ -85,29 +103,30 @@ function ntfRender() {
         '<i class="ti ti-trash"></i></button></td>' +
         "</tr>";
     });
-    html += "</tbody></table></div>";
+    t += "</tbody></table></div>";
+    html += uiPanel("Where alerts go", "The address is always shown redacted — the full " +
+      "webhook URL is a password and never leaves the server.", t);
   }
 
   // ---- send now -----------------------------------------------------------
-  html += '<div class="card" style="padding:14px;margin-bottom:12px">' +
-    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+  html += uiToolbar(
     '<button class="db-chip" onclick="ntfSendNow()"><i class="ti ti-bell-ringing"></i> ' +
-    "Send what is off target now</button>" +
-    '<div class="cc" style="font-size:11.5px;max-width:560px">Sends the current tracker ' +
-    "alerts to every channel that is on. The same alert is not repeated within " +
-    NTF.quiet + " hours — an unchanged problem sent every hour is how a channel ends up muted." +
-    "</div></div></div>";
+    "Send what is off target now</button>",
+    '<div class="cc" style="font-size:11.5px;max-width:560px;text-align:right">Sends the ' +
+    "current tracker alerts to every channel that is on. The same alert is not repeated " +
+    "within " + NTF.quiet + " hours — an unchanged problem sent every hour is how a " +
+    "channel ends up muted.</div>");
 
   // ---- log ----------------------------------------------------------------
-  html += '<div class="card" style="overflow-x:auto">' +
-    '<div style="padding:10px 12px;font-weight:600">What has been sent</div>';
   if (!NTF.log.length) {
-    html += '<div class="cc" style="padding:0 12px 12px;font-size:12px">Nothing yet.</div>';
+    html += uiPanel("What has been sent", "Every send and every failure is recorded here.",
+      '<div class="cc" style="padding:2px;font-size:12px">Nothing yet.</div>');
   } else {
-    html += '<table class="stk-table"><thead><tr><th>When</th><th>Where</th>' +
+    let t = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+      "<th>When</th><th>Where</th>" +
       "<th>What</th><th>Result</th><th>Detail</th></tr></thead><tbody>";
     NTF.log.forEach(function (e) {
-      html += "<tr>" +
+      t += "<tr>" +
         '<td class="cc" style="font-size:11px">' + esc(e.at || "") + "</td>" +
         "<td>" + esc(e.channel || "") + "</td>" +
         "<td>" + esc(e.subject || "") + "</td>" +
@@ -118,9 +137,11 @@ function ntfRender() {
         '<td class="cc" style="font-size:11px;max-width:340px">' + esc(e.detail || "") + "</td>" +
         "</tr>";
     });
-    html += "</tbody></table>";
+    t += "</tbody></table></div>";
+    html += uiPanel("What has been sent",
+      "A failure's reason is shown rather than swallowed — a notification system whose " +
+      "failures are invisible turns “nobody told me” into “the app said it was fine”.", t);
   }
-  html += "</div>";
 
   box.innerHTML = html;
 }

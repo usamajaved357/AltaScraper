@@ -42,40 +42,45 @@ function drpRender() {
 
   // ---- not connected: the most likely state for a while ------------------
   if (st && !st.connected) {
-    let html = '<div class="card" style="padding:18px">' +
-      '<div style="font-weight:650;font-size:15px;margin-bottom:6px">' +
-      "The Amazon Advertising API is not connected yet</div>" +
-      '<div class="cc" style="font-size:12.5px;line-height:1.6;max-width:700px">' +
+    // The four values, drawn as the same stat row every other screen opens
+    // with — so "three of four in place" is readable at a glance instead of
+    // being a sentence in a paragraph.
+    const need = st.missing || [];
+    const total = 4;
+    let html = uiStats([
+      { label: "Connection", value: "Not yet",
+        tone: "warn", note: "no advertising data can be read" },
+      { label: "Values in place", value: (total - need.length) + " of " + total,
+        tone: need.length ? "warn" : "",
+        note: need.length
+          ? "still needed: " + need.map(function (m) {
+              return m.replace("ads_", "").replace(/_/g, " ");
+            }).join(", ")
+          : "all four are set" },
+      { label: "Rules ready", value: "6",
+        note: "built and tested, waiting only on the connection" },
+      { label: "Bids this app can change", value: "0",
+        note: "enforced, not promised — Rule 8" }
+    ]);
+
+    let body = '<div class="cc" style="font-size:12.5px;line-height:1.6;max-width:700px">' +
       esc(st.error || "") + "</div>";
-    if ((st.missing || []).length) {
-      html += '<div class="cc" style="font-size:12px;margin-top:10px">' +
-        "<b>Still needed:</b> " +
-        st.missing.map(function (m) {
-          return esc(m.replace("ads_", "").replace(/_/g, " "));
-        }).join(", ") + "</div>";
-    }
     if ((st.how || []).length) {
-      html += '<ol class="drp-how">';
-      st.how.forEach(function (h) { html += "<li>" + esc(h) + "</li>"; });
-      html += "</ol>";
+      body += '<ol class="drp-how">';
+      st.how.forEach(function (h) { body += "<li>" + esc(h) + "</li>"; });
+      body += "</ol>";
     }
-    // Everything else on this screen is built and waiting. Said plainly, so it
-    // does not look like a screen that has not been made yet.
-    html += '<div class="cc" style="font-size:11.5px;margin-top:12px;max-width:700px">' +
-      "Everything on this page is built and tested — it is waiting only for the " +
-      "connection. The moment those four values are in, press Run and it works." +
-      "</div>";
-    html += '<div style="margin-top:12px"><button class="db-chip" onclick="drpStatus()">' +
+    body += '<div style="margin-top:12px"><button class="db-chip" onclick="drpStatus()">' +
       '<i class="ti ti-refresh"></i> Check again</button></div>';
-    html += "</div>";
+    html += uiPanel("How to connect it",
+      "Everything on this page is built and tested — it is waiting only for the " +
+      "connection. The moment those values are in, press Run and it works.", body);
     box.innerHTML = html;
     return;
   }
 
   // ---- connected ----------------------------------------------------------
-  let html =
-    '<div class="card" style="padding:13px;margin-bottom:12px;display:flex;' +
-    'gap:8px;align-items:flex-end;flex-wrap:wrap">' +
+  let html = uiToolbar(
     '<div><label class="cc" style="display:block;font-size:11px">Look back</label>' +
     '<select id="drp_days" class="ed" style="width:120px">' +
     ["7", "14", "30", "60", "90"].map(function (d) {
@@ -85,11 +90,10 @@ function drpRender() {
     '<div><label class="cc" style="display:block;font-size:11px">ACOS target %</label>' +
     '<input id="drp_target" class="ed" style="width:110px" placeholder="optional" ' +
     'value="' + esc(DRP.target) + '"></div>' +
-    '<button class="primary" onclick="drpRun()"><i class="ti ti-stethoscope"></i> Run</button>' +
-    '<div class="cc" style="font-size:11.5px;max-width:420px">Without a target, ' +
-    "nothing here judges whether an ACOS is good or bad — a guessed target is " +
-    "confident advice about a number nobody chose." +
-    "</div></div>";
+    '<button class="primary" onclick="drpRun()"><i class="ti ti-stethoscope"></i> Run</button>',
+    '<div class="cc" style="font-size:11.5px;max-width:420px;text-align:right">Without a ' +
+    "target, nothing here judges whether an ACOS is good or bad — a guessed target is " +
+    "confident advice about a number nobody chose.</div>");
 
   if (DRP.note) {
     html += '<div class="sresfail" style="margin-bottom:12px">' + esc(DRP.note) + "</div>";
@@ -97,27 +101,30 @@ function drpRender() {
 
   const d = DRP.data;
   if (!d) {
-    html += '<div class="card" style="padding:18px"><div class="cc">' +
-      "Press Run to pull the campaign and search-term reports." + "</div></div>";
+    html += uiEmpty("Press Run",
+      "Amazon builds the campaign and search-term reports when they are asked for, which " +
+      "takes up to a couple of minutes — so opening this page deliberately does not fetch " +
+      "them.");
     box.innerHTML = html;
     return;
   }
 
   // ---- headline -----------------------------------------------------------
   const t = d.totals || {};
-  html += '<div class="catp-cards">' +
-    '<div class="catp-card"><div class="catp-k">Spend</div>' +
-    '<div class="catp-v">' + drpMoney(t.spend) + "</div>" +
-    '<div class="catp-s">' + esc(d.start || "") + " → " + esc(d.end || "") + "</div></div>" +
-    '<div class="catp-card"><div class="catp-k">Sales from ads</div>' +
-    '<div class="catp-v">' + drpMoney(t.sales) + "</div>" +
-    '<div class="catp-s">' + (t.acos === null || t.acos === undefined ? "ACOS unknown"
-      : "ACOS " + (t.acos * 100).toFixed(0) + "%") + "</div></div>" +
-    '<div class="catp-card' + (t.wasted ? " warn" : "") + '">' +
-    '<div class="catp-k">Spent with no sales</div>' +
-    '<div class="catp-v">' + drpMoney(t.wasted) + "</div>" +
-    '<div class="catp-s">on terms with enough clicks to judge</div></div>' +
-    "</div>";
+  html += uiStats([
+    { label: "Spend", value: drpMoney(t.spend),
+      note: (d.start || "") + " → " + (d.end || "") },
+    { label: "Sales from ads", value: drpMoney(t.sales),
+      note: (t.acos === null || t.acos === undefined ? "ACOS unknown"
+             : "ACOS " + (t.acos * 100).toFixed(0) + "%") },
+    { label: "Spent with no sales", value: drpMoney(t.wasted),
+      tone: t.wasted ? "warn" : "",
+      note: "on terms with enough clicks to judge" },
+    { label: "Things to look at", value: (d.findings || []).length,
+      tone: (d.findings || []).some(function (f) { return f.severity === "critical"; })
+        ? "bad" : "",
+      note: "each one names the exact change — none is applied" }
+  ]);
 
   // What was NOT judged, above the findings — same rule as the compliance
   // screen. A console that skipped half its checks and found nothing is not an
@@ -130,17 +137,19 @@ function drpRender() {
   }
 
   if (!(d.findings || []).length) {
-    html += '<div class="card" style="padding:18px"><div class="cc">' +
-      "Nothing to flag from the rules that ran." + "</div></div>";
+    html += uiEmpty("Nothing to flag",
+      "None of the rules that ran found anything over the window above. Check what was " +
+      "not judged, above — a console that skipped half its checks and found nothing is " +
+      "not an account in good order.");
     box.innerHTML = html;
     return;
   }
 
-  html += '<div class="card" style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+  let tb = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>Verdict</th><th>What</th><th>The finding</th><th>Why</th>" +
     "<th>What to do</th></tr></thead><tbody>";
   d.findings.forEach(function (f) {
-    html += "<tr>" +
+    tb += "<tr>" +
       "<td>" + drpSev(f.severity) + "</td>" +
       '<td style="font-weight:600;max-width:200px;overflow:hidden;' +
       'text-overflow:ellipsis">' + esc(f.subject || "") + "</td>" +
@@ -149,7 +158,10 @@ function drpRender() {
       '<td class="cc" style="font-size:11.5px;max-width:300px">' + esc(f.do || "") + "</td>" +
       "</tr>";
   });
-  html += "</tbody></table></div>";
+  tb += "</tbody></table></div>";
+  html += uiPanel("What to change, worst first",
+    "Every row names the exact change and stops there. Nothing in this app can write a " +
+    "bid — the advertising module whitelists its only POST to the reporting paths.", tb);
   box.innerHTML = html;
 }
 

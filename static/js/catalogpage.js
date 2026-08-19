@@ -78,12 +78,12 @@ function catpRender() {
                  s: f.losers.label, cls: "" });
   }
   if (cards.length) {
-    html += '<div class="catp-cards">';
+    html += '<div class="ui-stats">';
     cards.forEach(function (c) {
-      html += '<div class="catp-card ' + c.cls + '">' +
-        '<div class="catp-k">' + esc(c.k) + "</div>" +
-        '<div class="catp-v">' + esc(String(c.v)) + "</div>" +
-        '<div class="catp-s">' + esc(c.s) + "</div></div>";
+      html += '<div class="ui-stat ' + c.cls + '">' +
+        '<div class="ui-stat-k">' + esc(c.k) + "</div>" +
+        '<div class="ui-stat-v">' + esc(String(c.v)) + "</div>" +
+        '<div class="ui-note">' + esc(c.s) + "</div></div>";
     });
     html += "</div>";
   }
@@ -127,10 +127,11 @@ function catpRender() {
     box.innerHTML = html;
     return;
   }
-  html += '<div class="card" style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+  html += uiPanel('Every product, best first', 'Ranked by what it earns. A product with no cost entered shows no margin rather than a flattering one.',
+    '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>#</th><th>Product</th><th>Parent</th><th>Units</th><th>Revenue</th>" +
     "<th>Share</th><th>Unit cost</th><th>Margin</th><th>Days with sales</th>" +
-    "</tr></thead><tbody>";
+    "</tr></thead><tbody>");
   rows.forEach(function (r) {
     const dead = (r.revenue <= 0 && r.units <= 0);
     html += '<tr' + (dead ? ' class="catp-dead"' : "") + ">" +
@@ -159,7 +160,7 @@ function catpRender() {
       '<td class="cc">' + (r.days || 0) + "</td>" +
       "</tr>";
   });
-  html += "</tbody></table></div>";
+  html += "</tbody></table></div></div>";
   box.innerHTML = html;
 }
 

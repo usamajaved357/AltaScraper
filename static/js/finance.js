@@ -352,6 +352,44 @@ function financeRender(){
     body.innerHTML = h; return;
   }
 
+  // WHAT THE PERIOD CAME TO, before the table.
+  //
+  // Every one of these was already computed by _finTotals and shown only in the
+  // last ROW of a nine-column table, below the fold on a short screen. The one
+  // number this page exists to give you -- what the products left behind -- was
+  // the hardest thing on it to find.
+  //
+  // The totals are for what is VISIBLE, which is why the caption above says so
+  // when a filter is on. Cards that quietly showed whole-period totals over a
+  // filtered table would be the most misleading arrangement here.
+  h += uiStats([
+    {label: "Revenue", value: _fmoney(t.revenue, ""),
+     note: t.units + " unit" + (t.units === 1 ? "" : "s") + " across "
+           + t.products + " product" + (t.products === 1 ? "" : "s")},
+    {label: "What it cost", value: _fmoney(t.fees + t.cogs, ""),
+     note: "Amazon " + _fmoney(t.fees, "") + " · stock " + _fmoney(t.cogs, "")},
+    {label: "Contribution", value: _fmoney(t.contribution, ""),
+     // Withheld, not zero. A blank contribution means a product has no cost
+     // recorded, and printing 0 there would read as "it earned nothing".
+     tone: (t.contribution === null) ? "warn"
+           : (t.contribution < 0 ? "bad" : "good"),
+     note: (t.contribution === null)
+           ? "withheld - a product has no cost recorded"
+           : "after fees, stock, refunds and promotions"},
+    {label: "Margin", value: _fpct(t.margin_pct),
+     tone: (t.margin_pct === null || t.margin_pct === undefined) ? ""
+           : (t.margin_pct < 0 ? "bad" : (t.margin_pct < 10 ? "warn" : "good")),
+     note: (t.ad_spend === null)
+           ? "before advertising - ad spend is not connected"
+           : "after " + _fmoney(t.ad_spend, "") + " of ad spend"},
+  ]);
+
+  h += '<div class="salespanel"><div class="panelhead"><div>'
+    +  '<div class="paneltitle">Every product, and what it left behind</div>'
+    +  '<div class="panelsub">Totals are recomputed from the parts, never summed '
+    +  'from the column above — summing would quietly drop every product whose '
+    +  'contribution is withheld and present the remainder as the whole.</div>'
+    +  '</div></div>';
   h += '<div style="overflow-x:auto"><table class="kv" style="width:100%;min-width:820px">'
     +  '<thead><tr>';
   FIN_COLS.forEach(function(c){
@@ -411,14 +449,12 @@ function financeRender(){
     h += '<td style="text-align:'+(c.kind==="text"?"left":"right")+';padding:7px 8px">'
       +  cell+'</td>';
   });
-  h += '</tr></tfoot></table></div>';
+  h += '</tr></tfoot></table></div></div>';
 
-  h += '<div class="cc" style="font-size:11px;margin-top:10px">'
-    +  'Totals are recomputed from the parts, not summed from the column above — '
-    +  'summing would quietly drop every product whose contribution is withheld '
-    +  'and present the remainder as the whole.'
-    +  (cur ? ' Amounts in '+_fesc(cur)+'.' : '')
-    +  '</div>';
+  if(cur){
+    h += '<div class="cc" style="font-size:11px;margin-top:10px">'
+      +  'Amounts in '+_fesc(cur)+'.</div>';
+  }
 
   body.innerHTML = h;
 }

@@ -127,5 +127,32 @@ truthy("  including the labels it collapses to font-size:0",
 truthy("  and the fold control itself, which a drawer has no use for",
        /\.navtoggle\{[^}]*display:none/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
 
+/* ------------------------------------------------------------------------ *
+ * EVERY ADDRESSABLE SCREEN IS ALSO A SCREEN navTo() MAKES VISIBLE.
+ *
+ * navTo keeps two lists of the same thing: one decides which panel gets .show,
+ * ALTA_SECTIONS decides which screens have an address and therefore a nav link
+ * and an "open in a new tab". Permissions was added to the second and left out
+ * of the first, so it had a link, an address, and an onOpen that ran and drew
+ * the whole page into a panel that was never shown. It looked like a blank
+ * screen with no error, and only opening it in a real browser found it.
+ *
+ * Listings is excluded on purpose: it is the one panel navTo shows with an
+ * explicit style.display rather than the .show class, on its own line above.
+ * ------------------------------------------------------------------------ */
+console.log("\n== no screen can have an address but no way to be seen ==");
+const _navBody = fnBody(SHELL, "navTo");
+const _showList = (/\[([^\]]*)\]\.forEach\(s=>\{/.exec(_navBody) || [])[1] || "";
+const _shown = _showList.split(",").map(s => s.trim().replace(/^["']|["']$/g, ""))
+                        .filter(Boolean);
+const _addr = ((/const ALTA_SECTIONS\s*=\s*\[([\s\S]*?)\]/.exec(SHELL) || [])[1] || "")
+              .split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+truthy("navTo has a show-list at all", _shown.length > 10);
+truthy("  and an address list", _addr.length > 10);
+check("every addressable section is one navTo can show",
+      _addr.filter(s => s !== "listings" && _shown.indexOf(s) < 0), []);
+check("  and nothing is shown that has no address",
+      _shown.filter(s => _addr.indexOf(s) < 0), []);
+
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);
