@@ -976,7 +976,16 @@ function navTo(sec){
   if(typeof navSyncHrefs === "function") navSyncHrefs();
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib"].forEach(s=>{
+  // THIS LIST IS WHAT MAKES A SCREEN VISIBLE, and it is a second list of the
+  // same screens as ALTA_SECTIONS below. "permissions" was added to that one --
+  // so it got an address, a nav link and an onOpen that ran and drew the page --
+  // and left out of this one, so the panel it drew into never had .show put on
+  // it. Every part of the screen worked except being seen.
+  //
+  // Found by opening every section in a real browser and photographing it:
+  // Permissions came back as an empty page with no error, which is exactly what
+  // a missing entry here looks like.
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
