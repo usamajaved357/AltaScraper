@@ -140,10 +140,32 @@ console.log("\n=== no JS logic was touched ===");
 // class="navitem active" on the one that starts selected, so the class is
 // matched loosely -- pinning it exactly missed Listings and reported 8 of 9,
 // which reads as "a nav item was deleted".
-const _navOnly = (tpl.match(/class="navitem[^"]*"[^>]*onclick="navTo\('[a-z]+'\)/g) || []);
-check("every onclick in the nav is unchanged",
-      _navOnly.filter(s => /'(listings|imagerefs|setup|generate|ppc|inventory|sync|monitor|miles)'/.test(s)).length,
-      9);
+// THE HANDLER MOVED, ON PURPOSE, and this assertion moved with it.
+//
+// It pinned the literal string onclick="navTo('x')". The nav items are now
+// <a href> elements calling navGo(event, 'x') -- because they were divs, and a
+// browser offers "open in new tab" for LINKS:
+//
+//     "i see that when i right click on them i dont get an option to open them
+//      to the new tab"
+//
+// navGo calls navTo for an ordinary click and lets the browser handle a
+// ctrl/cmd/middle click, so the BEHAVIOUR this check was protecting is intact.
+// What it was actually asserting -- the exact spelling of a handler -- is not
+// worth protecting, and a check that fires on a requested change is one that
+// gets deleted rather than read.
+//
+// So it now asserts the thing that matters: every one of those sections is
+// still reachable from the nav, and still routes in JavaScript rather than
+// reloading the page.
+const _navItems = (tpl.match(/class="navitem[^"]*"[^>]*data-sec="[a-z]+"/g) || []);
+const _navSecs = _navItems.map(s => (s.match(/data-sec="([a-z]+)"/) || [])[1]);
+const _want = ["listings", "imagerefs", "setup", "generate", "ppc",
+               "inventory", "sync", "monitor", "miles"];
+check("every original nav section is still reachable",
+      _want.filter(s => _navSecs.indexOf(s) >= 0).length, _want.length);
+check("  and they route in JS rather than reloading",
+      (tpl.match(/onclick="return navGo\(event,'[a-z]+'\)"/g) || []).length >= 9, true);
 check("no route or endpoint appears in the CSS", /\/(live|users|input)\//.test(css), false);
 
 console.log("\n=== the stylesheet is well formed ===");

@@ -971,6 +971,9 @@ function navTo(sec){
   // group the user last left closed. Guarded because navgroups.js is a separate
   // file and nav must not break if it fails to load.
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
+  // The nav items are real links now, and half of each address is the
+  // workspace -- which moves. Re-point them whenever the section changes.
+  if(typeof navSyncHrefs === "function") navSyncHrefs();
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
   ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib"].forEach(s=>{
@@ -1099,9 +1102,63 @@ function enterWorkspaceBlank(){
 // Sections that get their own address, so /w/<account>/<section> opens them.
 // "weekly" is here because a client KPI pack is a thing you send somebody a
 // link to, which is the whole reason this list exists.
+// EVERY screen, not thirteen of them.
+//
+// This list decides which sections have an address. It had thirteen entries
+// while the app had twenty-eight screens, so most of them could not be linked
+// to, bookmarked, restored after a refresh, or opened in a second tab -- and
+// the ones added most recently were exactly the ones missing.
+//
+// It is also what makes right-click "open in a new tab" work: a nav item can
+// only be a real link if there is an address for it to point at.
 const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "sales","traffic","hourly","ppc","inventory","sync","monitor","miles",
-                       "weekly"];
+                       "weekly","daily","orders","returns","variations","sellerimport",
+                       "sourcing","finance","aiusage","imagestudio","imagelib",
+                       "trackers","alerts","leading","notify","sqp","catalog",
+                       "compliance","overview","categories","drppc"];
+
+// THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
+//
+//     "i see that when i right click on them i dont get an option to open them
+//      to the new tab"
+//
+// They were <div onclick=...>. A browser offers "open in new tab" for LINKS --
+// it has no idea a div is navigation. So the nav items are anchors now, and
+// this builds what they point at. Single click is still handled in JavaScript
+// and never reloads the page; the href is there for the right-click menu,
+// ctrl-click, middle-click and for showing the address on hover.
+function altaPathFor(sec){
+  if(!ACTIVE_WS || ACTIVE_WS.brand === "new") return "";
+  if(ALTA_SECTIONS.indexOf(sec) < 0) return "";
+  const slug = String(ACTIVE_WS.key || "") || "dropshipping";
+  return "/w/" + encodeURIComponent(slug) + "/" + sec;
+}
+
+// Point every nav link at the CURRENT workspace. Called when one is opened and
+// whenever the section changes, because the workspace is half of the address
+// and it moves.
+function navSyncHrefs(){
+  try{
+    document.querySelectorAll(".navitem[data-sec]").forEach(function(el){
+      const p = altaPathFor(el.dataset.sec);
+      if(p && el.tagName === "A") el.setAttribute("href", p);
+    });
+  }catch(e){}
+}
+
+// A nav click. Returns false for an ORDINARY click so the page never reloads,
+// and true for a modified one so the browser does what it always does --
+// ctrl/cmd-click and middle-click open a new tab, and taking that away would
+// be replacing one missing behaviour with another.
+function navGo(ev, sec){
+  try{
+    if(ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1)) return true;
+    if(ev && ev.preventDefault) ev.preventDefault();
+  }catch(e){}
+  navTo(sec);
+  return false;
+}
 
 let _ALTA_ROUTED    = false;  // has the one-time restore-from-address already run?
 let _ALTA_RESTORING = false;  // true while replaying an address: replace, never push

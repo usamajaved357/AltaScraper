@@ -69,6 +69,42 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             return jsonify({"ok": False,
                             "error": "Sales data unavailable: %s" % str(e)[:160]}), 500
 
+        # ONLY THE ACCOUNTS THIS USER MAY SEE.
+        #
+        #     "why is one user able to see the information of another user ...
+        #      i am concerned that when i give this tool out to random people
+        #      to test and use they will be able to see other people
+        #      information"
+        #
+        # This is the one screen that deliberately reads every account, which
+        # makes it the one screen where "every account" has to mean "every
+        # account THEY may open". The doorman cannot help here: no account is
+        # named in the request, so there is nothing for it to refuse.
+        #
+        # An owner with the "*" wildcard sees everything, exactly as before. A
+        # user restricted to nestwell_goods sees nestwell_goods, and the screen
+        # is honest about it rather than quietly showing a smaller total.
+        allowed_note = ""
+        try:
+            from auth import users as _users
+            from flask import session as _session
+            _uid = _session.get("uid")
+            _me = _users.get_user(CONFIG_PATH, _uid) if _uid else None
+            if _me:
+                _before = len(accts)
+                accts = [a for a in accts
+                         if _users.can_access_workspace(_me, str(a.get("id") or ""))]
+                if len(accts) < _before:
+                    allowed_note = (
+                        "Showing the %d account%s you have access to, of %d."
+                        % (len(accts), "" if len(accts) == 1 else "s", _before))
+        except Exception:
+            # A failure here must not widen access. If who-you-are cannot be
+            # established, no account is aggregated.
+            accts = []
+            allowed_note = ("Could not establish which accounts you may see, so "
+                            "none are shown.")
+
         blocks = []
         problems = []
         for a in accts:
@@ -168,7 +204,10 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                "labels": labels, "blocks": blocks,
                "totals": sorted(totals.values(), key=lambda t: -t["sales"]),
                "unsynced": unsynced,
-               "problems": problems}
+               "problems": problems,
+               # Said out loud. A restricted user seeing three accounts must not
+               # be left thinking that is the whole business.
+               "access_note": allowed_note}
         if unsynced:
             out["unsynced_note"] = (
                 "%s ha%s no stored sales for this period at all. That is not "

@@ -41,6 +41,12 @@ function ovwRender() {
   if (!d) { box.innerHTML = ""; return; }
 
   let html = "";
+  // Which accounts this is, when it is not all of them. A restricted user
+  // seeing three of six must not be left thinking that is the whole business.
+  if (d.access_note) {
+    html += '<div class="cc" style="font-size:11.5px;margin:0 0 10px">' +
+            esc(d.access_note) + "</div>";
+  }
   if (d.note) {
     html += '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;' +
             'color:#e6d9b8;margin-bottom:12px">' + esc(d.note) + "</div>";
