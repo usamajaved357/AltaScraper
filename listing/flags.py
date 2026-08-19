@@ -48,6 +48,22 @@ _FLAG_NOTE_PREFIXES = (
 
 # Statuses a rescan may rewrite. Everything else is either the operator's
 # decision (APPROVED) or Amazon's own state (LIVE / API_*) and is never touched.
+#
+# THIS GOVERNS THE STATUS COLUMN ONLY, and that distinction is the whole point.
+# The other three columns -- Notes, Compliance Risk, IP Risk -- are this app's
+# own verdict about its own copy, not Amazon's state and not the operator's
+# decision, so they are correctable on any row.
+#
+# Gating all four on this set is what left the reported symptom in place:
+#
+#     "i see ip hold and ip high symbols on many items where it does not
+#      have to be"
+#
+# Measured on the 295 stored listings: of the 72 rows carrying an IP flag, 37
+# were LIVE, APPROVED, SUBMITTED or API_ERROR. Every one of them was unreachable
+# -- a listing already selling on Amazon, wearing an IP: HIGH badge from a rule
+# that no longer makes that finding, with no way to clear it short of editing
+# the database by hand. Seventeen of jack_uk's twenty were exactly that.
 RESCANNABLE_STATUSES = {"NEEDS_REVIEW", "IP_HOLD", "COMPLIANCE_HOLD", ""}
 
 
@@ -165,6 +181,9 @@ def rescan_row(row: dict, ip_rules: dict, compliance_rules: dict) -> dict:
     new = {"status": new_status, "notes": new_notes,
            "compliance_risk": new_comp_risk, "ip_risk": new_ip_risk}
 
+    # decide_status() already returns a status it does not own untouched, so on
+    # a LIVE or APPROVED row "status" simply never appears in `changed` and the
+    # caller writes the other three columns. There is no second rule here.
     return {
         "sku":     str(row.get("SKU", "") or ""),
         "title":   listing["title"][:60],
@@ -172,5 +191,8 @@ def rescan_row(row: dict, ip_rules: dict, compliance_rules: dict) -> dict:
         "new":     new,
         "changed": {k for k in new if old.get(k, "") != new[k]},
         "dropped_notes": dropped,
-        "eligible": cur_status in RESCANNABLE_STATUSES,
+        # Whether the STATUS is ours to rewrite. Reported so a caller can say
+        # "the badge was corrected, the status was left alone" rather than
+        # leaving somebody to wonder why a LIVE row still reads LIVE.
+        "status_owned": cur_status in RESCANNABLE_STATUSES,
     }

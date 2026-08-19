@@ -276,17 +276,27 @@ async function rescanFlags(){
     if(x.old_status!==x.new_status) bits.push(`${x.old_status} → ${x.new_status}`);
     if(x.old_ip!==x.new_ip)   bits.push(`IP ${x.old_ip||"none"} → ${x.new_ip||"none"}`);
     if(x.old_comp!==x.new_comp) bits.push(`Compliance ${x.old_comp||"none"} → ${x.new_comp||"none"}`);
+    // Say which rows keep their status, rather than leaving somebody to wonder
+    // why a LIVE listing still reads LIVE after a re-check.
+    if(x.status_owned === false) bits.push(`(${x.old_status} kept)`);
     return `• ${x.sku}  ${bits.join("   ")}`;
   }).join("\n");
   const more = r.changes>40 ? `\n…and ${r.changes-40} more` : "";
+  const _kept = r.rows.filter(x=>x.status_owned === false).length;
 
   const ok = confirm(
     `Re-check flags\n\n`+
     `Scanned ${r.scanned} rows. ${r.changes} would change.\n\n`+
     `${lines}${more}\n\n`+
     `Only Status, Notes, Compliance Risk and IP Risk are written.\n`+
-    `Your copy, prices and SKUs are NOT touched, and APPROVED / LIVE / ERROR\n`+
-    `rows are skipped entirely.\n\nApply these changes to ${storeName()}?`);
+    `Your copy, prices and SKUs are NOT touched.\n\n`+
+    (_kept
+      ? `${_kept} of these are APPROVED / LIVE / SUBMITTED / API_* rows. Their\n`+
+        `STATUS is left exactly as it is — that is Amazon's state or your own\n`+
+        `decision. Only the badge and the note are corrected, because those are\n`+
+        `this app's verdict about its own copy.\n\n`
+      : "")+
+    `Apply these changes to ${storeName()}?`);
   if(!ok){ toast("Nothing written"); return; }
 
   try{
