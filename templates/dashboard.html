@@ -248,6 +248,7 @@
         <i class="ti ti-chevron-right chev navchev"></i>
       </div>
       <div class="navkids">
+        <div class="navitem" data-sec="overview" onclick="navTo('overview')" title="Every account and marketplace, month by month"><i class="ti ti-building-store"></i> Business overview</div>
         <div class="navitem" data-sec="sales" onclick="navTo('sales')"><i class="ti ti-chart-line"></i> Sales</div>
         <!-- Sits next to Sales because it answers the other half of the same
              question: Sales says what was bought, this says how many people
@@ -1144,6 +1145,21 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- BUSINESS OVERVIEW (Orbit's Brand Overview) -- every account and
+         marketplace, month by month. The ONE screen that is not scoped to the
+         account you are standing in, because "how is the business doing" is not
+         a question about one account. -->
+    <div id="sec_overview" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-building-store"></i> Business overview</h2>
+        <div class="sub">Every account and marketplace, month by month, in one grid. Totals are grouped by currency &mdash; pounds and dollars are never added together.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="ovwLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="ovw_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- COMPLIANCE CHECKER -- runs this app's own rules against what is LIVE on
          Amazon, rather than against copy it is about to submit. Reads only. -->
     <div id="sec_compliance" class="wspanel">
@@ -1623,6 +1639,8 @@
 <script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
 <!-- Scan a LIVE listing against this app's own compliance rules. -->
 <script src="/static/js/compliance.js?v={{ ASSET_V }}"></script>
+<!-- Every account, month by month. The one screen not scoped to one account. -->
+<script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

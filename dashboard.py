@@ -3756,6 +3756,12 @@ def build_app(backend=None):
     import routes.compliance_routes as _compliance_routes
     _compliance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                 _active_account=_active_account, _state=_state)
+    # The business overview -- every account and marketplace, month by month.
+    # The ONE route that deliberately ignores the active account, because "how
+    # is the business doing" is not a question about one of them.
+    import routes.overview_routes as _overview_routes
+    _overview_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and
