@@ -543,8 +543,16 @@ def get_competitor_asin_data(asin: str, creds: dict) -> dict:
                     sub = dims.get(axis)
                     if isinstance(sub, dict) and sub.get("value") not in (None, ""):
                         unit = str(sub.get("unit", "")).strip()
+                        # Rounded HERE, at the one place these enter the app, so
+                        # nothing downstream has to remember to do it. Amazon's
+                        # catalogue hands back converted values carrying the full
+                        # error of the conversion -- 9.842519675 inches for a
+                        # 25 cm head.
+                        _num = _dim_number(sub.get("value"))
+                        if not _num:
+                            continue
                         attributes.setdefault(f"item_{pre}{axis}",
-                                              f"{sub['value']} {unit}".strip())
+                                              f"{_num} {unit}".strip())
             break   # only the first matching marketplace
 
         images = []
@@ -3251,6 +3259,34 @@ def _norm_dim_unit(raw: str) -> str:
         return ""
     u = u.split()[0]                          # "centimeters (cm)" -> "centimeters"
     return _DIM_UNIT_NORM.get(u, u)
+
+
+def _dim_number(raw) -> str:
+    """A physical measurement, written the way a person writes one.
+
+    Amazon's catalogue returns dimensions already converted, so the numbers
+    arrive with the full error of that conversion:
+
+        item_length  9.842519675 inches      (25 cm)
+        item_height  157.48 inches           (4 m)
+        item_width   13.779527545 inches     (35 cm)
+
+    Nine decimal places on the width of a squeegee is not precision, it is
+    float noise -- and it is shown to buyers and to whoever is checking the
+    draft. Reported as "some data is put in there which do not make any sense".
+
+    Two decimals, with trailing zeros removed so 35.0 reads as 35. Anything
+    that is not a number is handed back untouched rather than mangled.
+    """
+    s = str(raw if raw is not None else "").strip()
+    if not s:
+        return ""
+    try:
+        n = float(s)
+    except (TypeError, ValueError):
+        return s
+    out = ("%.2f" % n).rstrip("0").rstrip(".")
+    return out or "0"
 
 
 # Safety & compliance attribute keys whose values are taken verbatim from the

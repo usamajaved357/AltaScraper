@@ -33,13 +33,26 @@ function imgpRender() {
     });
   }
 
+  // HOW MANY HAVE NO PICTURE, said out loud.
+  //
+  //     "i am not able to see the image thumbnails in image studio page for
+  //      many asins also in the image library also in the image refs"
+  //
+  // Measured in a browser on jack_uk's Image Studio: 65 thumbnails, 65 of them
+  // loaded, ZERO broken -- and 25 tiles drawn as a bare grey photo icon because
+  // those products have no image at all. Nothing was failing to load. But a
+  // silent grey icon is indistinguishable from a thumbnail that broke, so it
+  // reads as a fault in the app rather than as work not done yet.
+  const _noPic = (IMGP.items || []).filter(function (r) { return !r.img; }).length;
+
   let html =
     '<div class="imgp-bar">' +
     '<input class="ed" id="imgp_q" placeholder="Find a product — SKU, ASIN or title…" ' +
     'style="flex:1;min-width:200px" value="' + esc(IMGP.q) +
     '" oninput="imgpSearch(this.value)">' +
     '<span class="cc" style="font-size:11.5px">' + items.length + " of " +
-    (IMGP.items || []).length + " products</span>" +
+    (IMGP.items || []).length + " products" +
+    (_noPic ? " · " + _noPic + " with no image yet" : "") + "</span>" +
     "</div>";
 
   if (IMGP.note) {
@@ -55,12 +68,18 @@ function imgpRender() {
       const on = (String(r.sku) === String(IMGP.sku)) ? " on" : "";
       html += '<div class="imgp-row' + on + '" onclick="imgpPick(' +
         jsArg(String(r.sku)) + ')">' +
+        // The tile SAYS it has no picture rather than showing a grey icon that
+        // could equally mean a thumbnail failed to load. Picking the row still
+        // works -- that is how you get to generating one.
         (r.img ? '<img src="' + esc(r.img) + '" loading="lazy" alt="">'
-               : '<span class="imgp-noimg"><i class="ti ti-photo-off"></i></span>') +
+               : '<span class="imgp-noimg" title="No image for this product yet '
+                 + '— pick it to make one"><i class="ti ti-photo-off"></i></span>') +
         '<div class="imgp-meta">' +
         '<div class="imgp-t">' + esc((r.title || r.sku || "").slice(0, 58)) + "</div>" +
         '<div class="cc" style="font-size:10.5px">' + esc(r.sku || "") +
-        (r.asin ? " · " + esc(r.asin) : "") + "</div></div></div>";
+        (r.asin ? " · " + esc(r.asin) : "") +
+        (r.img ? "" : ' · <span style="color:var(--warn)">no image yet</span>') +
+        "</div></div></div>";
     });
     html += "</div>";
     if (items.length > 60) {
