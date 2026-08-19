@@ -261,6 +261,7 @@
         <div class="navitem" data-sec="weekly" onclick="navTo('weekly')" title="One week, every headline figure, frozen — the client KPI pack"><i class="ti ti-calendar-stats"></i> Weekly KPIs</div>
         <!-- Reads the same daily figures as Sales, and answers the question
              Sales cannot: is this a NORMAL amount of movement for this account. -->
+        <div class="navitem" data-sec="compliance" onclick="navTo('compliance')" title="Scan a live listing for forbidden brands, restricted phrasing and category claims"><i class="ti ti-shield-search"></i> Compliance checker</div>
         <div class="navitem" data-sec="sqp" onclick="navTo('sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</div>
         <div class="navitem" data-sec="leading" onclick="navTo('leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</div>
         <div class="navitem" data-sec="aiusage" onclick="navTo('aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</div>
@@ -1143,6 +1144,19 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- COMPLIANCE CHECKER -- runs this app's own rules against what is LIVE on
+         Amazon, rather than against copy it is about to submit. Reads only. -->
+    <div id="sec_compliance" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-shield-search"></i> Compliance checker</h2>
+        <div class="sub">Scan a live listing against the rules this app already uses when it writes copy &mdash; forbidden brand names, restricted phrasing, category claims, IP. Until now those only ran on listings this app was about to submit.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="cmpLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="cmp_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- PRODUCT CATALOG (Orbit's ASINs page) -- every product ranked, with the
          four findings that each change a decision. Reads the app's own sales
          table and catalogue snapshot; calls Amazon for nothing. -->
@@ -1607,6 +1621,8 @@
 <script src="/static/js/sqp.js?v={{ ASSET_V }}"></script>
 <!-- The Product Catalog: every ASIN, ranked, with the four findings. -->
 <script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
+<!-- Scan a LIVE listing against this app's own compliance rules. -->
+<script src="/static/js/compliance.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

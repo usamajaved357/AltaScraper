@@ -160,3 +160,4 @@ image_samples/
 trackers.json
 .jsonstore.*.tmp
 notify.json
+compliance_scans.json

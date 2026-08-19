@@ -1069,6 +1069,34 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- COMPLIANCE CHECKER ----
+     The score is for SORTING and nothing more, so it is big but it sits beside
+     the findings rather than above them on its own.
+
+     .cmp-gaps is the important one: what the scan could NOT check goes ABOVE
+     the findings, not under them. A scan that skipped half its checks and
+     scored 96 is not a listing in good order, and burying that at the bottom is
+     how the number turns into a lie. */
+  .cmp-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;
+            padding:2px 0 10px}
+  .cmp-score{width:66px;height:66px;border-radius:12px;display:flex;
+             align-items:center;justify-content:center;font-size:26px;
+             font-weight:700;flex:0 0 66px}
+  .cmp-score.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
+  .cmp-score.warn{background:#2a2415;border:1px solid #55492a;color:#e3c98a}
+  .cmp-score.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
+  .cmp-counts{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;align-items:center}
+  .cmp-mini{display:inline-block;min-width:30px;text-align:center;font-weight:700;
+            font-size:11px;padding:2px 7px;border-radius:6px}
+  .cmp-mini.ok{background:#16291d;color:#7fd6a2}
+  .cmp-mini.warn{background:#2a2415;color:#e3c98a}
+  .cmp-mini.off{background:#2b1a1a;color:#f0928f}
+  .cmp-gaps{background:#241f10;border:1px solid #3a3320;border-radius:8px;
+            padding:10px 12px;margin:0 0 12px}
+  .cmp-gapsk{font-size:11px;font-weight:700;letter-spacing:.05em;
+             text-transform:uppercase;color:#e3c98a;margin-bottom:5px}
+  .cmp-gap{font-size:11.5px;color:#e6d9b8;line-height:1.5;margin-top:4px}
+
   /* ---- PRODUCT CATALOG ----
      Four findings above the table. A catalogue of eighty products is a list
      nobody reads; these are the reason to open the page, so they are sentences

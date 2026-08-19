@@ -3750,6 +3750,12 @@ def build_app(backend=None):
     import routes.catalog_page_routes as _catalog_page_routes
     _catalog_page_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                   _active_account=_active_account, _state=_state)
+    # The Compliance checker. Runs this app's own rules -- each written after a
+    # real listing was refused -- against what is actually LIVE on Amazon,
+    # rather than only against copy it is about to submit. Reads only.
+    import routes.compliance_routes as _compliance_routes
+    _compliance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and
