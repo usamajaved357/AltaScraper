@@ -30,20 +30,45 @@ function cmpRender() {
   const box = document.getElementById("cmp_body");
   if (!box) return;
 
-  let html =
-    '<div class="card" style="padding:13px;margin-bottom:12px;display:flex;' +
-    'gap:8px;align-items:flex-end;flex-wrap:wrap">' +
+  let html = uiToolbar(
     '<div><label class="cc" style="display:block;font-size:11px">ASIN to scan</label>' +
     '<input id="cmp_asin" class="ed" style="width:160px" placeholder="B0XXXXXXXX"></div>' +
     '<button class="primary" onclick="cmpScan()"' + (CMP.loading ? " disabled" : "") + '>' +
-    '<i class="ti ti-shield-search"></i> ' + (CMP.loading ? "Scanning…" : "Scan it") + "</button>" +
-    '<div class="cc" style="font-size:11.5px;max-width:460px">Reads what is actually ' +
-    "LIVE on Amazon, not the draft this app holds. Nothing is changed — editing a " +
-    "live listing is a submission, and that stays your decision." +
-    "</div></div>";
+    '<i class="ti ti-shield-search"></i> ' + (CMP.loading ? "Scanning…" : "Scan it") + "</button>",
+    '<div class="cc" style="font-size:11.5px;max-width:460px;text-align:right">Reads what is ' +
+    "actually LIVE on Amazon, not the draft this app holds. Nothing is changed — editing a " +
+    "live listing is a submission, and that stays your decision.</div>");
 
   if (CMP.note) {
     html += '<div class="sresfail" style="margin-bottom:12px">' + esc(CMP.note) + "</div>";
+  }
+
+  // ---- how the account stands, before any single scan is read -------------
+  // Four numbers at the top say how things ARE. A screen that opens with a
+  // table makes you do the reading first, and mostly nobody does.
+  if (CMP.scans.length) {
+    const scored = CMP.scans.filter(function (s) { return typeof s.score === "number"; });
+    const avg = scored.length
+      ? Math.round(scored.reduce(function (a, s) { return a + s.score; }, 0) / scored.length)
+      : null;
+    let crit = 0, maj = 0;
+    CMP.scans.forEach(function (s) {
+      crit += (s.counts && s.counts.critical) || 0;
+      maj += (s.counts && s.counts.major) || 0;
+    });
+    const seen = {};
+    CMP.scans.forEach(function (s) { seen[s.asin] = 1; });
+    html += uiStats([
+      { label: "Listings scanned", value: Object.keys(seen).length,
+        note: CMP.scans.length + " scan" + (CMP.scans.length === 1 ? "" : "s") + " in total" },
+      { label: "Average score", value: avg === null ? "" : avg,
+        tone: avg === null ? "" : (avg >= 90 ? "" : (avg >= 70 ? "warn" : "bad")),
+        note: "across every scan, out of 100" },
+      { label: "Critical findings", value: crit, tone: crit ? "bad" : "",
+        note: crit ? "a refusal or takedown risk" : "none found" },
+      { label: "Major findings", value: maj, tone: maj ? "warn" : "",
+        note: maj ? "worth fixing before the next edit" : "none found" }
+    ]);
   }
 
   // ---- the scan just run --------------------------------------------------
@@ -80,7 +105,11 @@ function cmpRender() {
       html += '<div class="cc" style="padding:10px 2px;font-size:12.5px">' +
         "No findings from the checks that ran." + "</div>";
     } else {
-      html += '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+      html += '<div class="panelhead" style="padding-left:0"><div>' +
+        '<div class="paneltitle">Every finding, worst first</div>' +
+        '<div class="panelsub">Every point off the score above is one of these rows — ' +
+        "the number is for sorting, the rows are the answer.</div></div></div>" +
+        '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
         "<th>Severity</th><th>What</th><th>Where</th><th>Why it matters</th>" +
         "<th>What to do</th></tr></thead><tbody>";
       r.findings.forEach(function (f) {
@@ -98,16 +127,21 @@ function cmpRender() {
   }
 
   // ---- history ------------------------------------------------------------
-  html += '<div class="card"><div style="font-weight:600;padding:2px 0 8px">' +
-    "Earlier scans</div>";
   if (!CMP.scans.length) {
-    html += '<div class="cc" style="font-size:12px">Nothing scanned yet.</div>';
-  } else {
-    html += '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+    html += uiEmpty("Nothing scanned yet",
+      "These checks were written after real listings were refused or taken down, and " +
+      "until now they only ran on copy this app was about to submit. A listing written " +
+      "before a rule existed, or edited in Seller Central afterwards, has never been " +
+      "looked at. Put an ASIN in the box above to look at one.");
+    box.innerHTML = html;
+    return;
+  }
+  {
+    let t = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
       "<th>When</th><th>ASIN</th><th>Product</th><th>Score</th><th>Status</th>" +
       "<th>Findings</th></tr></thead><tbody>";
     CMP.scans.forEach(function (s) {
-      html += "<tr>" +
+      t += "<tr>" +
         '<td class="cc" style="font-size:11px">' + esc(s.at || "") + "</td>" +
         '<td style="font-weight:600">' + esc(s.asin) + "</td>" +
         '<td class="cc" style="font-size:11px;max-width:280px;overflow:hidden;' +
@@ -118,9 +152,10 @@ function cmpRender() {
                               (s.counts.minor || 0)) || 0) + "</td>" +
         "</tr>";
     });
-    html += "</tbody></table></div>";
+    t += "</tbody></table></div>";
+    html += uiPanel("Earlier scans", "Newest first. A score moving down between two " +
+      "scans of the same ASIN means the live listing changed, not that the rules did.", t);
   }
-  html += "</div>";
 
   box.innerHTML = html;
 }

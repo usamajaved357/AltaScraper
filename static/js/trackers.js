@@ -76,6 +76,32 @@ function trkTab(m) {
   trkRender();
 }
 
+// WHAT THE SCREEN SAYS BEFORE YOU READ ANYTHING.
+//
+// This page opened with a table. A table makes you do the reading before you
+// know anything, and most of the time nobody does. These four are the state of
+// the account in one glance: how much is watched, how much is wrong, how much
+// is unjudged, and when it was last looked at.
+function trkStatCards() {
+  const rows = TRK.rows || [];
+  const off = rows.filter(function (r) { return r.status === "off"; }).length;
+  const unk = rows.filter(function (r) { return r.status === "unknown"; }).length;
+  const last = rows.map(function (r) { return r.last_at || ""; })
+                   .filter(Boolean).sort().pop();
+  return uiStats([
+    { label: "Being watched", value: rows.length,
+      note: rows.length ? "across " + new Set(rows.map(function (r) { return r.asin; })).size +
+            " product(s)" : "nothing yet" },
+    { label: "Off target", value: off, tone: off ? "bad" : "",
+      note: off ? "worth acting on" : "nothing is off" },
+    // Not a failure and not a pass -- no reading, or no target set.
+    { label: "Not known", value: unk, tone: unk ? "warn" : "",
+      note: "no reading, or no target set" },
+    { label: "Last checked", value: last ? esc(last.slice(0, 16)) : "never",
+      note: "nothing is read until you press Check now" },
+  ]);
+}
+
 function trkRender() {
   const box = document.getElementById("trk_body");
   if (!box) return;
@@ -86,22 +112,24 @@ function trkRender() {
     // An empty screen has to say what to DO, not just that it is empty. The
     // trackers are opt-in per ASIN, so "nothing here" is the normal first state
     // and needs to read as a starting point rather than a failure.
-    box.innerHTML =
-      '<div class="card" style="padding:18px">' +
-      '<div style="font-weight:600;margin-bottom:6px">Nothing is being tracked yet</div>' +
-      '<div class="cc" style="font-size:12.5px;line-height:1.55;max-width:640px">' +
-      'A tracker watches one number on one listing and tells you when it moves away ' +
-      'from what you wanted. Add an ASIN below, choose which number to watch and what ' +
-      'you are aiming for, then press <b>Check now</b>. Nothing is read from Amazon ' +
-      'until you do — each check costs an API call, so it happens when you ask.' +
-      "</div>" + trkAddForm() + "</div>";
+    box.innerHTML = trkStatCards() +
+      uiEmpty("Nothing is being tracked yet",
+        "A tracker watches one number on one listing and tells you when it moves " +
+        "away from what you wanted. Add an ASIN below, choose which number to " +
+        "watch and what you are aiming for, then press <b>Check now</b>. Nothing " +
+        "is read from Amazon until you do — each check costs an API call, so it " +
+        "happens when you ask.") +
+      trkAddForm();
     return;
   }
-  let html = trkAddForm() +
-    '<div class="card" style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+  let html = trkStatCards() + trkAddForm() +
+    uiPanel("Everything being watched",
+            "Drift is measured against the target you set, and positive always " +
+            "means worse — whichever direction better happens to be for that number.",
+    '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>Product</th><th>Tracker</th><th>Now</th><th>Target</th><th>Drift</th>" +
     "<th>Change</th><th>Status</th><th>Last read</th><th></th>" +
-    "</tr></thead><tbody>";
+    "</tr></thead><tbody>");
   rows.forEach(function (r) {
     html += "<tr>" +
       "<td><div style=\"font-weight:600\">" + esc(r.asin) + "</div>" +
@@ -121,7 +149,7 @@ function trkRender() {
       r.asin + "','" + r.metric + "')\"><i class=\"ti ti-x\"></i></button></td>" +
       "</tr>";
   });
-  html += "</tbody></table></div>";
+  html += "</tbody></table></div></div>";
   box.innerHTML = html;
 }
 
@@ -131,18 +159,20 @@ function trkAddForm() {
   Object.keys(ms).forEach(function (k) {
     opts += '<option value="' + k + '">' + esc(ms[k].label || k) + "</option>";
   });
-  return '<div class="card" style="padding:12px;margin-bottom:10px;display:flex;' +
-    'gap:8px;align-items:flex-end;flex-wrap:wrap">' +
-    '<div><label class="cc" style="display:block;font-size:11px">ASIN</label>' +
-    '<input id="trk_asin" class="ed" style="width:130px" placeholder="B0XXXXXXXX"></div>' +
-    '<div><label class="cc" style="display:block;font-size:11px">Watch</label>' +
-    '<select id="trk_metric" class="ed" style="width:150px">' + opts + "</select></div>" +
-    '<div><label class="cc" style="display:block;font-size:11px">Target</label>' +
-    '<input id="trk_target" class="ed" style="width:100px" placeholder="optional"></div>' +
-    '<button class="primary" onclick="trkAdd()"><i class="ti ti-plus"></i> Track it</button>' +
-    '<div class="cc" style="font-size:11px;max-width:320px">Without a target the value is ' +
-    'recorded but nothing can be off track — there is nothing to be off.</div>' +
-    "</div>";
+  // WAS A MOSTLY-EMPTY BOX. The fields were laid out with flex and a wide
+  // explanatory note, which pushed them into the right-hand corner of a card
+  // that was otherwise blank -- most of a screen given over to nothing. It is a
+  // toolbar now: the controls sit together on the left, at the size they need,
+  // and the note goes underneath where it belongs.
+  return uiToolbar(
+    '<span class="ui-lbl">Watch a number</span>' +
+    '<input id="trk_asin" class="ed" style="width:140px" placeholder="B0XXXXXXXX">' +
+    '<select id="trk_metric" class="ed" style="width:160px">' + opts + "</select>" +
+    '<input id="trk_target" class="ed" style="width:110px" placeholder="target (optional)">' +
+    '<button class="primary" onclick="trkAdd()"><i class="ti ti-plus"></i> Track it</button>',
+    '<span class="cc" style="font-size:11px;max-width:330px;text-align:right">' +
+    "Without a target the value is recorded but nothing can be off track — " +
+    "there is nothing to be off.</span>");
 }
 
 async function trkLoad() {
@@ -237,17 +267,32 @@ async function alertsLoad() {
   if (!j.ok) { if (box) box.innerHTML = '<div class="sresfail">' + esc(j.error || "failed") + "</div>"; return; }
   const cur = trkCur();
   if (!j.rows.length) {
-    box.innerHTML = '<div class="card" style="padding:18px">' +
-      '<div style="font-weight:600;margin-bottom:4px">Nothing is off target</div>' +
-      '<div class="cc" style="font-size:12.5px">Only numbers with a target set can be off one. ' +
-      'Anything that could not be read is shown as unknown on the Trackers screen rather than ' +
-      "counted as fine here.</div></div>";
+    box.innerHTML =
+      uiStats([{ label: "Off target", value: 0, tone: "good",
+                 note: "nothing needs attention" }]) +
+      uiEmpty("Nothing is off target",
+        "Only numbers with a target set can be off one. Anything that could not " +
+        "be read is shown as <b>not known</b> on the Trackers screen rather than " +
+        "counted as fine here.");
     trkBadge(0);
     return;
   }
-  let html = '<div class="card" style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+  // The worst one, named, above the list -- so the screen says something before
+  // it is read rather than after.
+  const worst = j.rows[0] || {};
+  let html = uiStats([
+    { label: "Off target", value: j.count, tone: "bad" },
+    { label: "Worst", value: esc(worst.asin || "—"),
+      note: worst.tracker || "" },
+    { label: "How far off",
+      value: (worst.drift === null || worst.drift === undefined)
+        ? "—" : ("+" + (worst.drift * 100).toFixed(0) + "%"),
+      note: "against the target you set" },
+  ]) +
+  uiPanel("Everything off target", "Worst first.",
+    '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>Product</th><th>Tracker</th><th>Now</th><th>Target</th><th>Drift</th><th>Last read</th>" +
-    "</tr></thead><tbody>";
+    "</tr></thead><tbody>");
   j.rows.forEach(function (r) {
     html += "<tr><td><div style=\"font-weight:600\">" + esc(r.asin) + "</div>" +
       '<div class="cc" style="font-size:11px">' + esc((r.name || "").slice(0, 60)) + "</div></td>" +
@@ -257,7 +302,7 @@ async function alertsLoad() {
       "<td>" + trkDrift(r.drift) + "</td>" +
       '<td class="cc" style="font-size:11px">' + esc(r.last_at || "never") + "</td></tr>";
   });
-  html += "</tbody></table></div>";
+  html += "</tbody></table></div></div>";
   box.innerHTML = html;
   trkBadge(j.count);
 }

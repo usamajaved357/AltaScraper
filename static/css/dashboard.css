@@ -300,6 +300,10 @@
            border-left:3px solid transparent;
            border-radius:0 var(--radius-sm) var(--radius-sm) 0;
            transition:color .12s,background-color .12s,border-color .12s}
+  /* The nav items are <a> elements now, so that right-click offers "open in a
+     new tab". That brought the browser's default link styling with it and every
+     menu entry came out underlined. They are navigation, not prose. */
+  a.navitem, a.navitem:hover, a.navitem:visited{text-decoration:none}
   .navitem:hover{background:var(--panel2);color:var(--ink)}
   .navitem.active{background:var(--accent-bg);border-left-color:var(--accent);color:var(--accent)}
   .navitem.active:hover{background:var(--accent-bg)}
@@ -1069,6 +1073,65 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* =====================================================================
+     THE PIECES EVERY SCREEN IS BUILT FROM
+     =====================================================================
+     "some pages that looks very good and nice like sales page hourly sales
+      traffic but almost every other page do not look attractive"
+
+     Those three look right because they were built to Orbit's measured design:
+     a row of stat cards with the number large and the movement beside it, then
+     titled panels holding the detail. Everything since has been a bare table in
+     a plain box -- and a bare table is a spreadsheet, not a screen.
+
+     The difference was a VOCABULARY that only those pages had. These are the
+     same measurements, reachable by any page (see static/js/pageui.js). Nothing
+     here is new design; it is the existing design made available. */
+  .ui-stats{display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+            gap:10px;margin:0 0 12px}
+  .ui-stat{background:rgb(45,50,66);border:1px solid rgb(55,65,81);
+           border-radius:8px;padding:12px 14px;min-width:0}
+  .ui-stat-k{font-size:11.5px;color:rgb(156,163,175);line-height:17px;
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ui-stat-v{font-size:24px;font-weight:650;line-height:33px;
+             color:rgb(243,244,246);letter-spacing:-.2px}
+  .ui-note{font-size:11px;color:rgb(156,163,175);line-height:16px}
+  /* Signed so POSITIVE IS BETTER, decided by the caller -- for ACOS and cost
+     down is the good direction, and an arrow alone reads backwards on half the
+     rows. */
+  .ui-delta{font-size:11.5px;font-weight:600;line-height:16px}
+  .ui-delta.up{color:#4ade80}
+  .ui-delta.down{color:#f87171}
+  .ui-delta.flat{color:rgb(156,163,175)}
+  /* A card that is itself the finding, not just a number. Used sparingly --
+     if everything is coloured, nothing is. */
+  .ui-stat.warn{border-color:#55492a;background:#241f10}
+  .ui-stat.bad{border-color:#5c2f2f;background:#2b1a1a}
+  .ui-stat.good{border-color:#2c5840;background:#16291d}
+  /* Some of these cards ARE the filter -- Keywords uses them to narrow the
+     table to the queries that break at that step, which is the actual next
+     action. A card you can press has to look like one. */
+  .ui-stat[onclick]{cursor:pointer;transition:border-color .12s,background .12s}
+  .ui-stat[onclick]:hover{border-color:var(--accent)}
+  .ui-stat.on{border-color:var(--accent);background:var(--accent-bg)}
+
+  .ui-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+              background:rgb(37,41,55);border:1px solid rgb(55,65,81);
+              border-radius:10px;padding:8px 12px;margin:0 0 12px}
+  .ui-toolbar .spacer{flex:1}
+  .ui-lbl{font-size:10.5px;font-weight:700;letter-spacing:.07em;
+          text-transform:uppercase;color:rgb(156,163,175)}
+
+  /* Every screen has an empty state and most of them said "nothing here",
+     which is indistinguishable from broken. */
+  .ui-empty{background:rgb(37,41,55);border:1px solid rgb(55,65,81);
+            border-radius:12px;padding:26px 24px;text-align:left}
+  .ui-empty-t{font-size:15px;font-weight:650;margin-bottom:6px;
+              color:rgb(243,244,246)}
+  .ui-empty-b{font-size:12.5px;line-height:1.6;color:rgb(156,163,175);
+              max-width:640px}
+
   /* ---- USER PERMISSIONS, THE WAY SELLER CENTRAL LAYS THEM OUT ----
      The area down the left, the three levels across the top, one radio per row.
      The point of the columns is that they can be READ DOWN: you see at a glance

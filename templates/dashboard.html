@@ -1634,6 +1634,9 @@
 <!-- One currency-code to symbol map. Loaded EARLY: four screens had their own
      and three more were written against a variable that never existed. -->
 <script src="/static/js/money.js?v={{ ASSET_V }}"></script>
+<!-- The pieces every screen is built from: stat cards, titled panels, toolbars.
+     Loaded EARLY because most screens call them while rendering. -->
+<script src="/static/js/pageui.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/thumbs.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
 <!-- One way to ask "is it done yet". BEFORE every screen that polls -- miles,

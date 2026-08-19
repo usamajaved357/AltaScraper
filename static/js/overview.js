@@ -54,12 +54,12 @@ function ovwRender() {
 
   // ---- totals, per currency ----------------------------------------------
   if ((d.totals || []).length) {
-    html += '<div class="ovw-totals">';
+    html += '<div class="ui-stats">';
     d.totals.forEach(function (t) {
-      html += '<div class="ovw-total">' +
-        '<div class="catp-k">' + esc(t.currency || "unknown currency") + "</div>" +
-        '<div class="catp-v">' + ovwFmt(t.sales, t.currency) + "</div>" +
-        '<div class="catp-s">' + Math.round(t.units).toLocaleString() +
+      html += '<div class="ui-stat">' +
+        '<div class="ui-stat-k">' + esc(t.currency || "unknown currency") + "</div>" +
+        '<div class="ui-stat-v">' + ovwFmt(t.sales, t.currency) + "</div>" +
+        '<div class="ui-note">' + Math.round(t.units).toLocaleString() +
         " units · " + t.accounts + " account" + (t.accounts === 1 ? "" : "s") +
         "</div></div>";
     });
@@ -75,8 +75,9 @@ function ovwRender() {
   const labels = d.labels || [];
   if (!(d.blocks || []).length) { box.innerHTML = html; return; }
 
-  html += '<div class="card" style="overflow-x:auto"><table class="stk-table ovw-grid">' +
-    "<thead><tr><th>Account</th>";
+  html += uiPanel('Every account, month by month', 'Totals are grouped by currency further up -- pounds and dollars are never added together.',
+    '<div style="overflow-x:auto"><table class="stk-table ovw-grid">' +
+    "<thead><tr><th>Account</th>");
   labels.forEach(function (k) {
     html += "<th>" + esc(ovwMonthName(k)) + "</th>";
   });
@@ -108,7 +109,7 @@ function ovwRender() {
                   : '<span class="cc" title="nothing synced for this account">not synced</span>') +
       "</td></tr>";
   });
-  html += "</tbody></table></div>";
+  html += "</tbody></table></div></div>";
 
   html += '<div class="cc" style="font-size:11px;margin-top:8px">' +
     "<b>·</b> means nothing stored for that month, which is not the same as no sales. " +

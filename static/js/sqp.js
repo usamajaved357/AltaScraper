@@ -61,17 +61,19 @@ function sqpRender() {
     // broken. Found by opening every screen in a browser and measuring what
     // each one actually drew: this was the only one that drew nothing at all.
     box.innerHTML =
-      '<div class="card" style="padding:18px">' +
-      '<div style="font-weight:600;margin-bottom:6px">Press “Get the report”</div>' +
-      '<div class="cc" style="font-size:12.5px;line-height:1.55;max-width:660px">' +
-      "Amazon builds this report when it is asked for, which takes up to a minute " +
-      "and is rationed — so it is not fetched automatically when you open the page. " +
-      "It reports by week, and defaults to the week that finished most recently." +
-      "<br><br>" +
-      "Search Query Performance is a <b>Brand Analytics</b> report and needs Brand " +
-      "Registry on the account. If Amazon refuses it, this screen will say so " +
-      "rather than showing you an empty week." +
-      "</div></div>";
+      uiStats([
+        { label: "Report", value: "Not fetched", note: "Amazon builds it on request" },
+        { label: "Reports by", value: "Week", note: "defaults to the week just finished" },
+        { label: "Needs", value: "Brand Registry",
+          note: "Search Query Performance is a Brand Analytics report" },
+        { label: "What it shows", value: "Your share",
+          note: "your slice of a query across every seller" }
+      ]) +
+      uiEmpty("Press “Get the report”",
+        "Amazon builds this report when it is asked for, which takes up to a minute and " +
+        "is rationed — so it is not fetched automatically when you open the page. " +
+        "If Amazon refuses it because the account is not Brand Registered, this screen " +
+        "will say so rather than showing you an empty week.");
     return;
   }
 
@@ -93,14 +95,14 @@ function sqpRender() {
   // ---- where the funnel breaks, across all queries ------------------------
   const s = d.summary || {};
   const order = ["impression", "click", "cart", "purchase", "none", "unreadable"];
-  html += '<div class="sqp-cards">';
+  html += '<div class="ui-stats">';
   order.forEach(function (k) {
     const c = s[k];
     if (!c || !c.count) return;
     const on = SQP.filter === k ? " on" : "";
-    html += '<div class="sqp-card' + on + '" onclick="sqpFilter(\'' + k + '\')">' +
-      '<div class="sqp-n">' + c.count + "</div>" +
-      '<div class="sqp-l">' + esc(c.label) + "</div>" +
+    html += '<div class="ui-stat' + on + '" onclick="sqpFilter(\'' + k + '\')">' +
+      '<div class="ui-stat-v">' + c.count + "</div>" +
+      '<div class="ui-stat-k">' + esc(c.label) + "</div>" +
       (c.missed ? '<div class="cc" style="font-size:11px">' + sqpNum(c.missed) +
                   " sales went elsewhere</div>" : "") +
       (c.do ? '<div class="cc" style="font-size:11px;margin-top:5px;line-height:1.45">' +
@@ -128,9 +130,10 @@ function sqpRender() {
     box.innerHTML = html;
     return;
   }
-  html += '<div class="card" style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
+  html += uiPanel('Every search, and where it breaks', "Your figure over the whole query's -- the share is what turns “we sold four” into “we sold four out of two hundred”.",
+    '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>' +
     "<th>Search</th><th>Seen</th><th>Clicked</th><th>Added</th><th>Bought</th>" +
-    "<th>Missed</th><th>Where it breaks</th></tr></thead><tbody>";
+    "<th>Missed</th><th>Where it breaks</th></tr></thead><tbody>");
   rows.forEach(function (r) {
     const sh = r.shares || {};
     html += "<tr>" +
@@ -149,7 +152,7 @@ function sqpRender() {
         : '<span class="cc" style="font-size:11.5px">' + esc(r.note || "") + "</span>") +
       "</td></tr>";
   });
-  html += "</tbody></table></div>";
+  html += "</tbody></table></div></div>";
   box.innerHTML = html;
 }
 
