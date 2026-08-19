@@ -379,6 +379,42 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
                              or "").upper()
         return aid, mkt
 
+    @app.route("/inventory/coverage")
+    def inventory_coverage():
+        """How fast each SKU really sells, and what that means for cover.
+
+        The pace is OOS-ADJUSTED: the mean over the days the SKU was actually
+        sellable, not over the calendar. A flat units/days average counts every
+        day a product was out of stock as a day it sold nothing, which
+        understates demand by exactly the amount that matters.
+
+        That needs a stock history, and Amazon keeps none for a
+        merchant-fulfilled seller, so the app records the quantity every time
+        the live catalogue refreshes (domain/stock_history.py). This starts
+        empty and fills a day at a time; the response says how much history it
+        had, and a pace built on too few days is refused rather than reported.
+
+        The thirty-day gap is a COVERAGE SHORTFALL, not a purchase order -- it
+        knows nothing about minimum order quantities, case packs or lead times.
+        Reads only.
+        """
+        from domain import stock_metrics as _sm
+
+        aid, mkt = _scope()
+        if not aid:
+            return jsonify({"ok": False, "error": "Open an account first."}), 400
+        try:
+            days = int(request.args.get("window") or 30)
+        except (TypeError, ValueError):
+            days = 30
+        days = max(7, min(days, 90))
+        try:
+            return jsonify(_sm.for_account(CONFIG_PATH, aid, mkt or "", window=days))
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "Could not work out coverage: %s"
+                                     % str(e)[:200]}), 500
+
     @app.route("/inventory/money-back")
     def inventory_money_back():
         """Money Amazon owes back, found by checking Amazon's own published rule.

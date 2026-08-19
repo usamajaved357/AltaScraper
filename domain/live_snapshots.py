@@ -253,6 +253,22 @@ def save(config_path, account_id, marketplace, items, report_source="",
         data[k] = rec
         _MEM["data"] = data
         _write_all(config_path, data)
+
+    # KEEP A DAY'S STOCK LEVEL, because Amazon does not.
+    #
+    # This snapshot is the only place the app ever sees a quantity, and it is
+    # overwritten by the next refresh. Recording it per day is what makes an
+    # OOS-ADJUSTED sales pace possible -- one that does not count the days a
+    # product was out of stock as days it sold nothing. See
+    # domain/stock_history.py for why that distinction is the whole point.
+    #
+    # Best-effort and never fatal: a snapshot is worth having whether or not
+    # its history was written.
+    try:
+        from domain import stock_history as _sh
+        _sh.record(config_path, account_id, marketplace, rec.get("items") or [])
+    except Exception:
+        pass
     return rec
 
 

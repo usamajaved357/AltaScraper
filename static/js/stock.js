@@ -167,6 +167,12 @@ const STK_TABS = [
    d: "How many to buy, and the last day to order it."},
   {k: "forecast", t: "If nothing changes", i: "ti-chart-line",
    d: "Units short and cost to cover, at today's rate."},
+  // THE PACE, MEASURED PROPERLY. Its own tab because it answers a different
+  // question from "what do I have": how fast does this really sell, counting
+  // only the days it was there to be sold.
+  {k: "coverage", t: "Real pace & cover", i: "ti-gauge",
+   d: "How fast each product sells on the days it is IN STOCK, and how long "
+      + "what you have will last at that rate."},
   {k: "money", t: "Money back", i: "ti-receipt-refund",
    d: "Units Amazon lost, damaged or over-charged you for."},
 ];
@@ -208,6 +214,7 @@ function stockRender(){
   let body;
   if(tab === "actions")        body = _skOrderList();
   else if(tab === "forecast")  body = _skForecast();
+  else if(tab === "coverage")  body = _skCoverage();
   else if(tab === "money")     body = _skMoneyBack();
   else                         body = _skFilters() + _skLedger();
   host.innerHTML = '<div class="stock">' + _skBanner(c) + _skCards(c)
@@ -556,6 +563,117 @@ function _skOrderList(){
  * can be checked rather than believed, and typed into a Seller Central case by
  * a person who has decided to.
  */
+/* HOW FAST IT REALLY SELLS.
+ *
+ * The pace here is the mean over the days the product was IN STOCK, not over
+ * the calendar. A product that sold thirty units while out of stock for twenty
+ * days is not selling one a day -- it is selling three a day and losing two
+ * thirds of the month, and every figure downstream inherits that difference.
+ *
+ * Amazon keeps no stock history for a merchant-fulfilled seller, so the app
+ * records it on every catalogue refresh. That means this starts empty and
+ * fills a day at a time, and it says so rather than showing a confident pace
+ * built on three days.
+ */
+function _skCoverage(){
+  const c = STOCK.coverage;
+  if(!c){
+    if(!STOCK.coverageAsked){ STOCK.coverageAsked = true; _skCoverageLoad(); }
+    return '<div class="cc" style="padding:16px">Working out the real pace…</div>';
+  }
+  if(c.error){
+    return '<div class="odp-note warn" style="padding:14px">'
+         + _skEsc(c.error) + '</div>';
+  }
+  const n = c.counts || {};
+  const hist = c.history || {};
+  let h = "";
+  if(typeof uiStats === "function"){
+    h += uiStats([
+      {label: "Out of stock", value: n.out_of_stock || 0,
+       tone: (n.out_of_stock ? "bad" : ""),
+       note: (n.out_of_stock ? "nothing sellable right now" : "none")},
+      {label: "Will run short", value: n.needs_attention || 0,
+       tone: (n.needs_attention ? "warn" : ""),
+       note: "at the pace they actually sell"},
+      {label: "Covered", value: n.ok || 0, note: "for the next 30 days"},
+      {label: "Days of history", value: hist.days || 0,
+       tone: ((hist.days || 0) < 7 ? "warn" : ""),
+       note: (hist.days ? "recorded since " + _skEsc(hist.first || "")
+                        : "recording starts on the next refresh")},
+    ]);
+  }
+  // A ZERO WITH NO DENOMINATOR IS NOT AN ANSWER, and neither is a pace with no
+  // history behind it. Both notes are shown, always.
+  h += '<div class="cc" style="font-size:11.5px;line-height:1.55;max-width:790px;'
+    + 'margin:0 0 12px">' + _skEsc(c.note || "") + " " + _skEsc(c.gap_is_not_a_po || "")
+    + "</div>";
+
+  const rows = c.rows || [];
+  if(!rows.length){
+    return h + '<div class="odp-note" style="padding:14px">Nothing recorded yet. '
+      + 'Stock levels are captured each time the live catalogue refreshes.</div>';
+  }
+
+  let t = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>'
+    + '<th>Product</th><th>Have</th><th>In stock</th>'
+    + '<th>Pace / day</th><th>Trend</th><th>30-day demand</th>'
+    + '<th>Cover</th><th>Short by</th><th>Status</th></tr></thead><tbody>';
+  const LABEL = {out_of_stock: "Out of stock", needs_attention: "Will run short",
+                 unknown: "Not enough history", ok: "Covered"};
+  const TONE = {out_of_stock: "off", needs_attention: "warn",
+                unknown: "unk", ok: "ok"};
+  rows.forEach(function(r){
+    t += '<tr title="' + _skEsc(r.why || "") + '">'
+      + '<td><b>' + _skEsc(r.sku) + '</b></td>'
+      + '<td>' + (r.on_hand === null ? '<span class="cc">—</span>' : r.on_hand) + '</td>'
+      + '<td>' + (r.in_stock_rate === null ? '<span class="cc">—</span>'
+                                           : r.in_stock_rate + '%')
+      + (r.oos_days ? '<div class="cc" style="font-size:10.5px">' + r.oos_days
+                      + ' day(s) out</div>' : '')
+      + '</td>'
+      // The pace carries the number of days it was computed over, because a
+      // rate from eight days and one from ninety are not the same claim.
+      + '<td>' + (r.pace_30d === null ? '<span class="cc">not yet</span>'
+                                      : '<b>' + r.pace_30d + '</b>')
+      + (r.pace_30d !== null ? '<div class="cc" style="font-size:10.5px">over '
+                               + r.pace_30d_days + ' in-stock day(s)</div>' : '')
+      + '</td>'
+      + '<td>' + (r.velocity_trend_pct === null ? '<span class="cc">—</span>'
+          : '<span style="color:' + (r.velocity_trend_pct >= 0 ? 'var(--ok)' : 'var(--red)')
+            + '">' + (r.velocity_trend_pct > 0 ? '+' : '') + r.velocity_trend_pct
+            + '%</span>') + '</td>'
+      + '<td>' + (r.forecast_demand_30d === null ? '<span class="cc">—</span>'
+                                                 : r.forecast_demand_30d) + '</td>'
+      + '<td>' + (r.days_of_cover === null ? '<span class="cc">—</span>'
+                                           : r.days_of_cover + 'd') + '</td>'
+      + '<td>' + (r.stock_gap_30d === null || r.stock_gap_30d <= 0
+                  ? '<span class="cc">—</span>'
+                  : '<b style="color:var(--warn)">' + r.stock_gap_30d + '</b>') + '</td>'
+      + '<td><span class="ld-pill ' + (TONE[r.status] || "unk") + '">'
+      + _skEsc(LABEL[r.status] || r.status) + '</span></td></tr>';
+  });
+  t += '</tbody></table></div>';
+
+  return h + ((typeof uiPanel === "function")
+    ? uiPanel("Every product, worst first",
+        "The pace is measured over the days each product was in stock. A "
+        + "product out of stock for most of the month has a HIGHER real pace "
+        + "than the calendar suggests, not a lower one.", t)
+    : t);
+}
+
+async function _skCoverageLoad(){
+  try{
+    const j = await (await fetch("/inventory/coverage" + _skScopeQs())).json();
+    STOCK.coverage = (j && j.ok) ? j
+      : {error: (j && j.error) || "Could not work out coverage."};
+  }catch(e){
+    STOCK.coverage = {error: "Could not work out coverage: " + e};
+  }
+  if((STOCK.tab || "overview") === "coverage") stockRender();
+}
+
 function _skMoneyBack(){
   // ONE RENDERER, TWO PLACES. This check has its own page now
   // (static/js/reimbursements.js) and the tab draws the SAME block, because two
