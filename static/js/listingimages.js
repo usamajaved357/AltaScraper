@@ -236,8 +236,22 @@ function _ilDrawFolders(){
   h += '<div id="il_elsewhere"></div>';
 
   if(!list.length){
-    h += '<div class="empty" style="padding:24px">No images stored for '
-       + '<b>this workspace</b> yet.</div>';
+    // WHAT TO DO, not just that there is nothing. Measured across the accounts:
+    // nestwell_goods and selvora_limited have ZERO image files on disk, while
+    // jack_uk has 75 that all load -- so "I cannot see the thumbnails" on those
+    // accounts was a screen with nothing to show, saying so in six words and
+    // offering no way forward.
+    h += (typeof uiEmpty === "function"
+      ? uiEmpty("No images stored for this workspace yet",
+          "Every image this app generates or you upload is filed here under its "
+          + "SKU. Nothing has been made for this account yet — open a listing and "
+          + "use <b>Image Studio</b> to create one, or upload your own from the "
+          + "listing's image button.",
+          '<button class="db-chip" onclick="closeImageLibrary();'
+          + 'if(typeof navTo===\'function\')navTo(\'imagestudio\')">'
+          + '<i class="ti ti-sparkles"></i> Open Image Studio</button>')
+      : '<div class="empty" style="padding:24px">No images stored for '
+        + '<b>this workspace</b> yet.</div>');
     _ilRender(h); return;
   }
 

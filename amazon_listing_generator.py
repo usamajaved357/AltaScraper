@@ -543,8 +543,16 @@ def get_competitor_asin_data(asin: str, creds: dict) -> dict:
                     sub = dims.get(axis)
                     if isinstance(sub, dict) and sub.get("value") not in (None, ""):
                         unit = str(sub.get("unit", "")).strip()
+                        # Rounded HERE, at the one place these enter the app, so
+                        # nothing downstream has to remember to do it. Amazon's
+                        # catalogue hands back converted values carrying the full
+                        # error of the conversion -- 9.842519675 inches for a
+                        # 25 cm head.
+                        _num = _dim_number(sub.get("value"))
+                        if not _num:
+                            continue
                         attributes.setdefault(f"item_{pre}{axis}",
-                                              f"{sub['value']} {unit}".strip())
+                                              f"{_num} {unit}".strip())
             break   # only the first matching marketplace
 
         images = []
@@ -3253,6 +3261,34 @@ def _norm_dim_unit(raw: str) -> str:
     return _DIM_UNIT_NORM.get(u, u)
 
 
+def _dim_number(raw) -> str:
+    """A physical measurement, written the way a person writes one.
+
+    Amazon's catalogue returns dimensions already converted, so the numbers
+    arrive with the full error of that conversion:
+
+        item_length  9.842519675 inches      (25 cm)
+        item_height  157.48 inches           (4 m)
+        item_width   13.779527545 inches     (35 cm)
+
+    Nine decimal places on the width of a squeegee is not precision, it is
+    float noise -- and it is shown to buyers and to whoever is checking the
+    draft. Reported as "some data is put in there which do not make any sense".
+
+    Two decimals, with trailing zeros removed so 35.0 reads as 35. Anything
+    that is not a number is handed back untouched rather than mangled.
+    """
+    s = str(raw if raw is not None else "").strip()
+    if not s:
+        return ""
+    try:
+        n = float(s)
+    except (TypeError, ValueError):
+        return s
+    out = ("%.2f" % n).rstrip("0").rstrip(".")
+    return out or "0"
+
+
 # Safety & compliance attribute keys whose values are taken verbatim from the
 # live SP-API schema enum (injected into the generation prompt). These are
 # written to the flat file WITHOUT fuzzy snapping, because the static
@@ -5187,22 +5223,55 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     _special_shape = {"battery", "num_batteries", "light_source", "power_source_type",
                       "has_multiple_battery_powered_components", "supplier_declared_dg_hz_regulation",
                       "special_feature", "warranty_description", "safety_data_sheet_url", "ghs"}
-    alias     = {"colour": "color"}
+    # OUR NAME -> AMAZON'S NAME. The generation prompt asks the AI for a fixed
+    # list of useful facts, and a few of them are asked for under a name Amazon
+    # does not use. Renaming keeps the VALUE, which is real and researched;
+    # dropping it would throw away work and then look like the AI failed.
+    #   special_features  Amazon's key is singular. It is in _special_shape
+    #                     below, which shapes it properly.
+    #   item_condition    Amazon's key is condition_type, and this function has
+    #                     already set it to new_new further up -- so the AI's
+    #                     "New" is a duplicate under a name Amazon rejects.
+    alias     = {"colour": "color", "special_features": "special_feature",
+                 "item_condition": "condition_type"}
+    # WHAT AMAZON HAS NO FIELD FOR, DROPPED AND NAMED.
+    #
+    #     "we dont need to be sending unnecessary information to amazon like
+    #      [W] included_components ... does not belong or is no longer
+    #      applicable to the product type you were trying to list"
+    #
+    # Measured on four real SQUEEGEE drafts: 7 to 11 attributes per listing that
+    # this product type has no field for at all -- included_components,
+    # unit_count_type, item_type_keyword, item_condition, special_features. The
+    # generation prompt asks for them on every product regardless of type, and
+    # this loop sent every one of them.
+    #
+    # ONLY when a schema actually loaded. With no schema we cannot tell "Amazon
+    # has no such field" from "we failed to ask", and dropping on a failed fetch
+    # would quietly strip a good listing. The dropped names are collected and
+    # printed, never discarded in silence.
+    _schema_names = set(props or {}) | set(required or set())
+    _dropped_unknown = []
     for k, v in pa.items():
         if k in skip_axes or _is_blank(v):
             continue
         f = alias.get(k, k)
         if f in A or f in _special_shape:
             continue
-        # Write the value. The user/generator put it in pa deliberately, so even
-        # if Amazon's slim ENFORCED schema doesn't list this field (has(f) False)
-        # and it's not in the static required set, we still send it -- dropping a
-        # value the user applied is what caused "X required but missing" for
-        # special_feature / warranty_description / safety_data_sheet_url.
         _fprop = props.get(f) if isinstance(props.get(f), dict) else {}
+        if not _fprop and _schema_names and f not in _schema_names:
+            _dropped_unknown.append(k if k == f else ("%s (as %s)" % (k, f)))
+            continue
+        # Written even when Amazon's slim ENFORCED schema omits the definition,
+        # as long as the field EXISTS for this product type -- has(f) alone
+        # wrongly dropped user-applied values like material / color /
+        # light_source, which is what caused "X required but missing".
         shaped = _shape_simple(_fprop, v, mid) if _fprop else [{"value": str(v), "marketplace_id": mid}]
         if shaped:
             A[f] = shaped
+    if _dropped_unknown:
+        console.print("  [yellow]Not sent -- %s has no such attribute: %s[/yellow]"
+                      % (pt, ", ".join(sorted(_dropped_unknown))))
 
     # --- SPECIAL NESTED FIELDS (always shaped to Amazon's exact structure) ----
     # FLASHLIGHT (and similar electronics) need these in a specific nested shape.

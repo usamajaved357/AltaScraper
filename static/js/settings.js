@@ -66,7 +66,22 @@ async function loadMediaLibrary(){
   try{
     var j=await (await fetch('/media/list')).json();
     if(!j.ok){ host.innerHTML='<div class="cc">Could not load media: '+esc(j.error||'')+'</div>'; return; }
-    if(!j.folders||!j.folders.length){ host.innerHTML='<div class="emptynote">No media yet. Generated and uploaded images will appear here, filed by SKU.</div>'; return; }
+    if(!j.folders||!j.folders.length){
+      // SAY WHAT TO DO. Measured: nestwell_goods and selvora_limited have zero
+      // image files on disk, so this screen was a single grey sentence and no
+      // way forward -- which is what "i am not able to see the thumbnails"
+      // looks like from the outside.
+      host.innerHTML = (typeof uiEmpty === "function"
+        ? uiEmpty("No images for this account yet",
+            "Every image the app generates, and everything you upload, is filed "
+            + "here under its SKU. Nothing has been made for this account yet.",
+            '<button class="db-chip" onclick="if(typeof navTo===\'function\')'
+            + 'navTo(\'imagestudio\')"><i class="ti ti-sparkles"></i> '
+            + 'Open Image Studio</button>')
+        : '<div class="emptynote">No media yet. Generated and uploaded images '
+          + 'will appear here, filed by SKU.</div>');
+      return;
+    }
     host.innerHTML=j.folders.map(function(f){
       // WHAT PRODUCT THIS FOLDER IS.
       //

@@ -23,7 +23,11 @@
 // data. A second chart implementation here would drift from that one on the
 // first fix made to either.
 
-let AIU = {data: null, days: 30, busy: false, calls: null, callsFor: ""};
+let AIU = {data: null, days: 30, busy: false, calls: null, callsFor: "",
+           // A dragged range, and the dates the chart was drawn from. Mirrors
+           // SALES._chartDates -- the drag gives column numbers, and only the
+           // chart knows which day each column was.
+           start: "", end: "", _zoomBack: null, _chartDates: []};
 
 function _aiEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -67,7 +71,41 @@ function _aiColour(name){
 }
 
 function aiUsageOnOpen(){ if(!AIU.data) aiUsageLoad(); else aiUsageRender(); }
-function aiUsageSetDays(d){ AIU.days = d; aiUsageLoad(); }
+function aiUsageSetDays(d){
+  // Picking a window ENDS a zoom, or the banner would claim a range the screen
+  // is no longer showing.
+  AIU.days = d; AIU.start = ""; AIU.end = ""; AIU._zoomBack = null;
+  aiUsageLoad();
+}
+
+/* DRAG ACROSS THE SPEND CHART TO ZOOM INTO THOSE DAYS.
+ *
+ * The chart already carried the gesture -- it is drawn by salesChart, whose
+ * footer even advertises it -- but the drag called salesZoomTo, so on this page
+ * it reloaded the SALES screen behind your back and this one did not move.
+ *
+ * /aiusage/summary has always accepted explicit start and end dates; the screen
+ * only ever sent ?days=N. Sending them means the whole page narrows together --
+ * the total, the per-account bars and the per-feature bars as well as the chart
+ * -- rather than a zoomed chart sitting above breakdowns for a wider period. */
+function aiZoomTo(i, j){
+  const dates = AIU._chartDates || [];
+  const from = dates[Math.max(0, Math.min(i, j))];
+  const to   = dates[Math.min(dates.length - 1, Math.max(i, j))];
+  if(!from || !to) return;
+  AIU._zoomBack = {days: AIU.days, start: AIU.start, end: AIU.end};
+  AIU.start = from; AIU.end = to;
+  aiUsageLoad();
+}
+
+function aiZoomOut(){
+  const z = AIU._zoomBack;
+  if(!z) return;
+  AIU.days = z.days || 30;
+  AIU.start = z.start || ""; AIU.end = z.end || "";
+  AIU._zoomBack = null;
+  aiUsageLoad();
+}
 
 async function aiUsageLoad(){
   const body = document.getElementById("aiu_body");
@@ -76,7 +114,11 @@ async function aiUsageLoad(){
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Reading what the AI has cost…</div>';
   try{
-    const j = await (await fetch("/aiusage/summary?days=" + AIU.days)).json();
+    // A dragged range wins over the day count; otherwise the day count stands.
+    const _q = (AIU.start && AIU.end)
+      ? ("start=" + encodeURIComponent(AIU.start) + "&end=" + encodeURIComponent(AIU.end))
+      : ("days=" + AIU.days);
+    const j = await (await fetch("/aiusage/summary?" + _q)).json();
     if(!j || !j.ok){
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _aiEsc((j && j.error) || "Could not read the usage record") + '</div>';
@@ -159,9 +201,20 @@ function _aiChart(d){
     pts.push({label: iso, value: r ? Number(r.cost || 0) : 0});
     cur = new Date(cur.getTime() + 86400000);
   }
-  return '<div style="margin:0 0 16px">'
+  // Which day each column is, so a drag can be turned back into two dates.
+  AIU._chartDates = pts.map(function(p){ return p.label; });
+  let head = "";
+  if(AIU._zoomBack){
+    head = '<div style="display:flex;align-items:center;gap:9px;margin:0 0 10px;'
+         + 'padding:8px 11px;border:1px solid var(--accent);border-radius:7px;font-size:12px">'
+         + '<i class="ti ti-zoom-in"></i> Zoomed to <b>' + _aiEsc(AIU.start)
+         + '</b> → <b>' + _aiEsc(AIU.end) + '</b>'
+         + '<button class="db-chip" style="margin-left:auto" onclick="aiZoomOut()">'
+         + 'Back to the full range</button></div>';
+  }
+  return '<div style="margin:0 0 16px">' + head
     + salesChart(pts, {title: "Spend per day", kind: "money", color: "#6ac7e8",
-                       id: "aiu_daily", width: 980, height: 240,
+                       id: "aiu_daily", onZoom: "aiZoomTo", width: 980, height: 240,
                        subtitle: "US dollars. Hover any day for the figure."})
     + '</div>';
 }

@@ -702,7 +702,10 @@ function salesDrawCharts(ser){
         // The currency, so the money axis reads "£28.0k" rather than a bare
         // number. Orbit's reads "$28.0k".
         currency: (ser && ser.currency),
-        id: "sales_combo", columns: dates,
+        // Its columns ARE SALES._chartDates, so a drag across it can be turned
+        // back into two dates. The week and Today charts deliberately do not
+        // name a handler -- their columns are a different set entirely.
+        id: "sales_combo", onZoom: "salesZoomTo", columns: dates,
         // Orbit's Sales Report keeps a 320px height at every width -- measured
         // 1365x320 on desktop and 340x320 on a phone. See scChartWidth.
         width: scChartWidth("sales_charts", 1365), height: 320,
@@ -1531,7 +1534,9 @@ function salesDrawOrgPpc(ser){
   // Measured: Orbit's Organic vs PPC panel is 1365 x 380, taller than its Sales
   // Report because the two areas overlap and need the room to stay readable.
   const chart = salesCombo({
-    id: "orgppc", columns: cols, bars: null, currency: (ser && ser.currency),
+    // Same columns as the main chart (both are ser.columns), so it zooms too.
+    id: "orgppc", onZoom: "salesZoomTo", columns: cols, bars: null,
+    currency: (ser && ser.currency),
     lines: [{key: "organic", values: organic}, {key: "ppc", values: ppc}],
     width: scChartWidth("sales_orgppc", 1365), height: 380,
   });
