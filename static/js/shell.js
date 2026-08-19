@@ -985,7 +985,7 @@ function navTo(sec){
   // Found by opening every section in a real browser and photographing it:
   // Permissions came back as an empty page with no error, which is exactly what
   // a missing entry here looks like.
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions","reimbursements"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1059,6 +1059,7 @@ function navTo(sec){
     if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }
     if(sec==="sellerimport"){ if(typeof sellerImportOnOpen==="function") sellerImportOnOpen(); }
     if(sec==="inventory"){ if(typeof stockOnOpen==="function") stockOnOpen(); }
+    if(sec==="reimbursements"){ if(typeof reimbursementsOnOpen==="function") reimbursementsOnOpen(); }
     _mark();
   }
   altaSyncUrl();
@@ -1130,7 +1131,8 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
-                       "compliance","overview","categories","drppc","permissions"];
+                       "compliance","overview","categories","drppc","permissions",
+                       "reimbursements"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //

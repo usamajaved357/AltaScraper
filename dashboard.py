@@ -2775,7 +2775,31 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
         "battery", "lithium_battery", "number_of_lithium_ion_cells",
         "number_of_lithium_metal_cells", "supplier_declared_dg_hz_regulation",
     }
-    _code_owned_hits = []
+    # THE BRAND IS NEVER RESEARCHED (CLAUDE.md Rule 1).
+    #
+    # Every source this function reads belongs to somebody else -- the eBay
+    # listing's item specifics and the competitor ASIN's SP-API record -- and
+    # both carry a Brand. _from_source matches on the field name, so asking it
+    # for "brand" hands back THEIRS. Proven by calling this directly: for a
+    # Nestwell Goods squeegee it returned brand='YL', source=eBay.
+    #
+    # The route above supplies the owner's own brand from the row. This is the
+    # second lock, at the point where competitor data is actually read, so a
+    # future caller cannot reintroduce the leak by forgetting the first one.
+    _BRAND_NEVER = {"brand", "brand_name", "manufacturer"}
+    _brand_blocked = []
+    for field in list(fields):
+        if str(field).split(".", 1)[0].strip().lower() in _BRAND_NEVER:
+            _brand_blocked.append({
+                "field": field, "value": "", "source": "none", "confidence": "low",
+                "note": "The brand is yours and is taken from the listing, never "
+                        "from the competitor or the eBay source.",
+                "_code_owned": True,
+            })
+    fields = [f for f in fields
+              if str(f).split(".", 1)[0].strip().lower() not in _BRAND_NEVER]
+
+    _code_owned_hits = list(_brand_blocked)
     for field in list(fields):
         if str(field).strip().lower() in _CODE_OWNED:
             _code_owned_hits.append({
@@ -3850,6 +3874,14 @@ def build_app(backend=None):
     import routes.leading_routes as _leading_routes
     _leading_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # The assistant that can actually look. It answers a plain-English question
+    # by calling the app's OWN read-only screens and reporting what came back --
+    # never from memory, and never about an account other than the open one.
+    # Every tool is a GET from a fixed list; nothing it can reach writes.
+    # See domain/agent_tools.py for the list and why it calls screens.
+    import routes.agent_routes as _agent_routes
+    _agent_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
     # Where alerts go when nobody has the app open. Nothing sends until a
     # channel is added AND switched on, and nothing is on a timer -- posting
     # into somebody's Slack is outward-facing and cannot be taken back.

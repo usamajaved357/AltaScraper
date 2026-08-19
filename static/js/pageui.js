@@ -85,6 +85,39 @@ function uiToolbar(left, right) {
     '<span class="spacer"></span>' + (right || "") + "</div>";
 }
 
+/* WHERE THIS NUMBER CAME FROM.
+ *
+ * Orbit's brand agent cites every figure it gives:
+ *
+ *     "DE 3P revenue EUR 124,312 MTD (Aug 1-19) vs EUR 198,450 last month full
+ *      month -- source: get_brand_snapshot 2026-08-19, marketplace
+ *      A1PA6795UKMFR9, 3P side."
+ *
+ * Our screens show the figure and not the provenance, which is fine right up
+ * until somebody asks "why does this not match Seller Central" -- and then the
+ * first twenty minutes go on working out which feed, which dates, and how
+ * stale. Amazon has two feeds that describe the same trade and they disagree
+ * for days at a time, so a number without its source is a number you cannot
+ * act on.
+ *
+ * `parts` is an ordered list of {k, v} -- feed, dates, account, marketplace,
+ * currency, as-of. Anything null or empty is dropped rather than printed as a
+ * blank, because "Marketplace: —" is worse than no line at all.
+ */
+function uiSource(parts, note) {
+  const shown = (parts || []).filter(function (p) {
+    return p && p.v !== null && p.v !== undefined && String(p.v).trim() !== "";
+  });
+  if (!shown.length && !note) return "";
+  return '<div class="ui-source">' +
+    shown.map(function (p) {
+      return '<span class="ui-source-i"><b>' + esc(p.k) + '</b> ' +
+             esc(String(p.v)) + "</span>";
+    }).join("") +
+    (note ? '<span class="ui-source-n">' + esc(note) + "</span>" : "") +
+    "</div>";
+}
+
 // An empty state that says what to DO. Every screen has one and most of them
 // said "nothing here", which is indistinguishable from broken.
 function uiEmpty(title, body, action) {

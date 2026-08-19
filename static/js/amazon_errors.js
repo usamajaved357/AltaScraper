@@ -20,8 +20,14 @@
   }
 
   // pull distinct 'quoted_snake_case' attribute names out of a message (drops the ASIN)
+  //
+  // AMAZON USES CURLY QUOTES TOO. Real messages carry both:
+  //   The field 'width.unit' for the attribute 'Package Width Unit' ...
+  //   The provided value for ‘Item Display Width’ is invalid
+  // Matching only the straight quote missed every message of the second kind,
+  // and those are 6 of the 11 the translator could not read.
   function quotedAttrs(t) {
-    var out = [], m, re = /'([A-Za-z][A-Za-z0-9_ ]*)'/g;
+    var out = [], m, re = /['‘]([A-Za-z][A-Za-z0-9_. ]*)['’]/g;
     while ((m = re.exec(t))) {
       var v = m[1].trim();
       if (v && !/^B0[A-Z0-9]{8}$/i.test(v) && out.indexOf(v) < 0) out.push(v);
@@ -29,7 +35,105 @@
     return out;
   }
 
+  // The attribute name Amazon prefixes its line with: "item_package_dimensions
+  // The provided value ..." -> "item_package_dimensions".
+  function leadField(t) {
+    return (String(t).match(/^\s*([a-z][a-z0-9_]+)\b/) || [])[1] || "";
+  }
+
   var AMZ_ERROR_PATTERNS = [
+    {
+      // "Value '10.' ... has too few decimal places. It has 0 decimal places
+      //  but the minimum allowed is '1'."
+      //
+      // Two different faults wear this message. '10.' is a MALFORMED number --
+      // a trailing dot with nothing after it, which is what stripping zeros
+      // without then handling the dot produces. '10' is a well-formed number
+      // that Amazon still refuses, because these dimension attributes demand at
+      // least one decimal place. Saying which one it is saves the guess.
+      id: "too_few_decimals",
+      test: function (t) { return /too few decimal places/i.test(t); },
+      build: function (t) {
+        var val = (t.match(/Value\s+['‘]([^'’]*)['’]/i) || [])[1] || "";
+        var attr = (t.match(/for attribute\s+['‘]([^'’]+)['’]/i) || [])[1] || leadField(t) || "this field";
+        var min = (t.match(/minimum allowed is\s+['‘](\d+)['’]/i) || [])[1] || "1";
+        var malformed = /\.\s*$/.test(val);
+        return {
+          icon: "⚠️",
+          title: "Number needs a decimal place",
+          plain: "Amazon wants at least <b>" + E(min) + "</b> decimal place" +
+                 (min === "1" ? "" : "s") + " for <b>" + E(attr) + "</b>" +
+                 (val ? ", and got <b>" + E(val) + "</b>" : "") + ". " +
+                 (malformed
+                   ? "That value ends in a dot with nothing after it, which is a " +
+                     "number that was trimmed badly rather than one you typed."
+                   : "A whole number is not enough here."),
+          action: "Write it as " + (val ? E(val.replace(/\.$/, "")) : "the number") +
+                  ".0 rather than " + (val ? E(val.replace(/\.$/, "")) : "a whole number") +
+                  ", then Preview again."
+        };
+      }
+    },
+    {
+      // "The provided value for 'Item Display Width' is invalid" -- Amazon's
+      // least helpful message, and 6 of the 11 the translator could not read.
+      // It says nothing about WHY, so this must not pretend to know either.
+      id: "provided_value_invalid",
+      test: function (t) { return /the provided value for\s+['‘][^'’]+['’]\s+is invalid/i.test(t); },
+      build: function (t) {
+        var attr = (t.match(/provided value for\s+['‘]([^'’]+)['’]/i) || [])[1] || "a field";
+        var parent = leadField(t);
+        return {
+          icon: "⚠️",
+          title: "Value rejected",
+          plain: "Amazon refused the value for <b>" + E(attr) + "</b>" +
+                 (parent ? " (part of <b>" + E(parent) + "</b>)" : "") +
+                 " and did not say why. In practice it is almost always the " +
+                 "SHAPE rather than the number: a measurement needs both a value " +
+                 "and a unit, and the unit has to be one from Amazon's own list.",
+          action: "Open " + E(parent || attr) + " in the editor, check the value and " +
+                  "its unit are both filled and the unit came from the dropdown, then Preview again."
+        };
+      }
+    },
+    {
+      // Barcode already linked to a DIFFERENT product. Distinct from the
+      // catalogue-conflict pattern below: this one names the ASIN outright and
+      // tells you to dispute or delete, so it gets its own answer.
+      id: "barcode_linked_elsewhere",
+      test: function (t) { return /bar ?code[\s\S]*already linked to product/i.test(t); },
+      build: function (t, ctx) {
+        var bc = (t.match(/bar ?code\s+(\d{8,14})/i) || [])[1] ||
+                 ((ctx && ctx.barcode) ? String(ctx.barcode).trim() : "");
+        var asin = (t.match(/product\s+([A-Z0-9]{10})/i) || [])[1] || "another product";
+        return {
+          icon: "⛔",
+          title: "Barcode belongs to another product",
+          plain: "Barcode " + (bc ? "<b>" + E(bc) + "</b>" : "") + " is already " +
+                 "registered to <b>" + E(asin) + "</b>, which Amazon can see is not " +
+                 "what you are listing. This happens with bought or reused EANs — " +
+                 "they carry whatever product they were first registered against.",
+          action: "Clear the Barcode / GTIN box so the listing uses the GTIN exemption, " +
+                  "or put in a barcode registered to THIS product. Never invent one."
+        };
+      }
+    },
+    {
+      // Not an error at all. It was being shown in a red box beside real ones.
+      id: "under_review",
+      test: function (t) { return /reviewing this listing to determine if any additional information/i.test(t); },
+      build: function (t) {
+        var hrs = (t.match(/up to\s+(\d+)\s*hours/i) || [])[1] || "48";
+        return {
+          icon: "⏳",
+          title: "Accepted — Amazon is reviewing it",
+          plain: "This is not a rejection. Amazon has taken the listing and is " +
+                 "checking whether it needs anything else, which takes up to <b>" +
+                 E(hrs) + " hours</b>. If it needs something, it will say so here.",
+          action: "Nothing to do. Check back after " + E(hrs) + " hours."
+        };
+      }
+    },
     {
       // Barcode matched an EXISTING ASIN, then attributes disagreed with that catalogue record.
       id: "barcode_catalogue_conflict",

@@ -264,7 +264,7 @@ function _ilDrawFolders(){
        + 'style="border:1px solid ' + (isMine ? 'var(--accent)' : 'var(--line)')
        + ';border-radius:10px;overflow:hidden;background:var(--panel);cursor:pointer">'
        + (cover
-           ? '<img src="' + _ilEsc(cover.url) + '" loading="lazy" '
+           ? '<img src="' + _ilEsc(typeof thumbUrl==="function"?thumbUrl(cover.url,160):cover.url) + '" loading="lazy" '
              + 'style="width:100%;height:110px;object-fit:contain;background:#0d1220;display:block">'
            : '<div style="height:110px;background:#0d1220;display:flex;align-items:center;'
              + 'justify-content:center"><i class="ti ti-folder" style="font-size:34px;opacity:.5"></i></div>')
@@ -514,7 +514,7 @@ function _ilDraw(){
       const ptIndex = isMain ? 0 : (++ptNo);
       h += '<div style="border:1px solid ' + (isMain ? "var(--ok)" : "var(--line)")
          + ';border-radius:8px;overflow:hidden;background:var(--panel)">'
-         + '<img src="' + _ilEsc(f.url) + '" loading="lazy" '
+         + '<img src="' + _ilEsc(typeof thumbUrl==="function"?thumbUrl(f.url,160):f.url) + '" loading="lazy" '
          + 'onclick="ilPreview(' + jsArg(f.url) + ',' + jsArg(f.name) + ')" '
          + 'title="Click to view full size" '
          + 'style="width:100%;height:120px;object-fit:contain;background:#0d1220;'
@@ -608,7 +608,7 @@ function _ilLastSendBanner(){
   if(!s) return "";
   return '<div style="border:1px solid #26403a;background:#10231f;border-radius:6px;'
     + 'padding:9px 11px;margin-bottom:12px;display:flex;gap:10px;align-items:center">'
-    + '<img src="' + _ilEsc(s.url) + '" alt="" style="width:38px;height:38px;'
+    + '<img src="' + _ilEsc(typeof thumbUrl==="function"?thumbUrl(s.url,64):s.url) + '" alt="" style="width:38px;height:38px;'
     + 'object-fit:contain;background:#0d1220;border-radius:5px;flex:0 0 38px">'
     + '<div style="min-width:0;flex:1">'
     + '<div style="font-size:12px;font-weight:600">'

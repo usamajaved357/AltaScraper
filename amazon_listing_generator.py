@@ -2096,17 +2096,42 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
         return {"matched_categories": [], "highest_risk": "",
                 "summary": "", "requirements": []}
 
-    haystack = " ".join([
-        item_name or "",
-        listing.get("title", ""),
+    # WHERE a keyword matched decides what the match is allowed to MEAN.
+    #
+    # The title is where a product says what it IS -- Amazon requires that of a
+    # title. The bullets and search terms are where it says what it is used
+    # WITH, what it is safe NEAR, what it STORES, and every adjacent thing
+    # somebody might search for. A keyword found in the second place is not
+    # evidence about the product at all, and treating it as such produced these,
+    # measured on nestwell_goods:
+    #
+    #   Stand Up Weed Puller     -> food_consumables  "safe near ... edible plants"
+    #   Wireless Earbuds         -> sports_fitness    search terms "gym sport commute"
+    #   Gel Seat Cushion         -> toys_children     "car seat pad"
+    #   Folding Bar Stool        -> toys_children     "folding high chair" (tall, not infant)
+    #   Foldable Storage Boxes   -> toys_children     "stores ... toys, books"
+    #
+    # A weed puller carrying an allergen-declaration requirement is not a
+    # cautious flag, it is noise, and noise is what makes the whole compliance
+    # column ignorable.
+    #
+    # THE RULE, and it is the same one the IP check settled on: title evidence
+    # ASSIGNS the category; body-only evidence is reported as a NOTE and does
+    # not raise the risk level. Nothing is thrown away -- a lithium battery
+    # mentioned only in a bullet is still surfaced, it just stops blocking a bar
+    # stool as an infant high chair.
+    _title_hay = " ".join([item_name or "", listing.get("title", "")]).lower()
+    _body_hay = " ".join([
         listing.get("bullet_1", ""), listing.get("bullet_2", ""),
         listing.get("bullet_3", ""), listing.get("bullet_4", ""),
         listing.get("bullet_5", ""),
         listing.get("description", ""),
         listing.get("search_terms", ""),
     ]).lower()
+    haystack = (_title_hay + " " + _body_hay)
 
     matched     = []
+    mentioned   = []          # found in the copy only -- a note, never a hold
     all_reqs    = []
     highest     = ""
     # WEAK KEYWORDS -- why almost every listing used to flag.
@@ -2161,6 +2186,14 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
                     for kw in kws)
                 if not _strong_hit:
                     continue
+            # Did the keyword that fired appear in the TITLE, or only in the
+            # copy? The same word means different things in the two places.
+            _in_title = re.search(
+                rf"(?<![\w-]){re.escape(_matched_kw)}(?![\w-])",
+                _title_hay) is not None
+            if not _in_title:
+                mentioned.append((cat_key, _matched_kw))
+                continue
             matched.append(cat_key)
             all_reqs.extend(rule.get("requirements", []))
             risk = rule.get("risk_level", "")
@@ -2209,7 +2242,28 @@ def check_compliance(item_name: str, listing: dict, rules: dict) -> dict:
     else:
         summary = ""
 
+    # The body-only matches, said plainly and separately -- so a real one can
+    # still be acted on, and a false one reads as what it is. The word that
+    # fired is named, because "possibly toys_children" with no reason attached
+    # is not something anybody can check.
+    if mentioned:
+        _seen, _parts = set(), []
+        for _cat, _kw in mentioned:
+            if _cat in _seen:
+                continue
+            _seen.add(_cat)
+            _parts.append(f"{_cat} (\"{_kw}\")")
+        _note = ("COMPLIANCE NOTE (no hold): the copy mentions "
+                 + ", ".join(_parts)
+                 + " -- not in the title, so this may be describing what the "
+                   "product is used with rather than what it is. Check if it "
+                   "applies.")
+        summary = (summary + " | " + _note) if summary else _note
+
     return {"matched_categories": matched,
+            # Named separately so a caller can tell the two apart without
+            # parsing the sentence above.
+            "mentioned_categories": [c for c, _ in mentioned],
             "highest_risk":       highest,
             "summary":            summary,
             "requirements":       deduped_reqs}
@@ -3179,8 +3233,24 @@ def load_dropdown_values(gc, sheet_id: str, label: str) -> dict:
     return result
 
 
+# BRITISH AND AMERICAN SPELLINGS OF THE SAME WORD. Amazon's UK lists say
+# Aluminium, Microfibre, Grey and Colour; the AI and eBay's sellers write them
+# either way. Comparing the raw strings makes those a miss, and a miss here
+# means the value goes to Amazon unsnapped.
+_SPELLING = (("fibre", "fiber"), ("metre", "meter"), ("litre", "liter"),
+             ("colour", "color"), ("aluminium", "aluminum"), ("grey", "gray"),
+             ("centre", "center"), ("mould", "mold"), ("jewellery", "jewelry"))
+
+
+def _spell(s: str) -> str:
+    out = str(s or "").lower()
+    for uk, us in _SPELLING:
+        out = out.replace(uk, us)
+    return out
+
+
 def snap_to_valid(value: str, valid_list: list) -> str:
-    """5-strategy fuzzy match to Amazon's exact valid dropdown value."""
+    """Fuzzy match to Amazon's exact valid dropdown value."""
     if not value or not valid_list:
         return ""
     v = value.strip()
@@ -3190,19 +3260,58 @@ def snap_to_valid(value: str, valid_list: list) -> str:
     for item in valid_list:
         if item.lower() == v_lower:
             return item
+    # Same word, other side of the Atlantic.
+    v_sp = _spell(v_lower)
     for item in valid_list:
-        if item.lower() in v_lower:
+        if _spell(item) == v_sp:
             return item
-    for item in valid_list:
-        if v_lower in item.lower():
-            return item
+    # SUBSTRING MATCHING NEEDS SOMETHING TO MATCH ON. With no length guard,
+    # "a" matched "Acrylic" and "s" matched "Steel" -- a single character
+    # snapping to whichever option happened to contain it. Exact and
+    # case-insensitive matching above still catch legitimately short values
+    # like the sizes S, M and L, which is why the guard is only here.
+    if len(v_lower) >= 3:
+        for item in valid_list:
+            if item.lower() in v_lower:
+                return item
+        for item in valid_list:
+            if v_lower in item.lower():
+                return item
     v_words   = set(v_lower.split())
     best, best_score = "", 0
     for item in valid_list:
         score = len(v_words & set(item.lower().split()))
         if score > best_score:
             best_score, best = score, item
-    return best if best_score >= 1 else ""
+    if best_score >= 1:
+        return best
+    # THE SAME WORD IN ANOTHER FORM. 'Rectangle' and Amazon's 'Rectangular'
+    # share no whole word and neither contains the other, so every strategy
+    # above misses -- and it was one of the values sitting unmatched on a real
+    # draft. Six characters is enough to make it the same word and short enough
+    # to still be a word; anything looser starts matching 'Round' to 'Rounded
+    # Corner Something'.
+    if len(v_sp) >= 6:
+        for item in valid_list:
+            i_sp = _spell(item)
+            if len(i_sp) >= 6 and i_sp[:6] == v_sp[:6]:
+                return item
+    # LAST RESORT: AN INITIALISM. Amazon spells its materials out in full, and
+    # the trade does not: 'ABS' is Acrylonitrile Butadiene Styrene, 'MDF' is
+    # Medium Density Fibreboard, 'PVC' is Polyvinyl Chloride. Found on real
+    # drafts, where 'ABS' matched nothing and was sent as-is.
+    #
+    # Deliberately strict: 2-5 letters, no spaces, and the initials of a
+    # MULTI-word option must match exactly. Anything looser starts matching
+    # short words to unrelated options.
+    if 2 <= len(v) <= 5 and v.isalpha():
+        for item in valid_list:
+            parts = str(item).split()
+            if len(parts) < 2:
+                continue
+            if "".join(p[0] for p in parts).lower() == v_lower:
+                return item
+    return ""
 
 
 # Column letter from a 0-based index. Was implemented identically here AND in
@@ -3275,8 +3384,19 @@ def _dim_number(raw) -> str:
     float noise -- and it is shown to buyers and to whoever is checking the
     draft. Reported as "some data is put in there which do not make any sense".
 
-    Two decimals, with trailing zeros removed so 35.0 reads as 35. Anything
-    that is not a number is handed back untouched rather than mangled.
+    Two decimals, with pointless trailing zeros removed -- but NEVER below one
+    decimal place, because Amazon rejects a whole number here:
+
+        item_dimensions_fraction  Value '10.' for attribute 'Overall Height
+        Derived' has too few decimal places. It has 0 decimal places but the
+        minimum allowed is '1'.
+
+    That message is off a real listing, and it is why this returns "35.0" and
+    not "35". It also shows what a badly-trimmed number looks like when it
+    reaches Amazon -- "10." is a trailing dot with nothing after it, which is
+    what stripping zeros without then handling the dot produces.
+
+    Anything that is not a number is handed back untouched rather than mangled.
     """
     s = str(raw if raw is not None else "").strip()
     if not s:
@@ -3285,8 +3405,13 @@ def _dim_number(raw) -> str:
         n = float(s)
     except (TypeError, ValueError):
         return s
-    out = ("%.2f" % n).rstrip("0").rstrip(".")
-    return out or "0"
+    out = "%.2f" % n
+    # 9.84 stays; 35.00 becomes 35.0; never 35, and never a bare "35."
+    if out.endswith("0") and not out.endswith(".00"):
+        out = out[:-1]
+    elif out.endswith(".00"):
+        out = out[:-2] + "0"
+    return out
 
 
 # Safety & compliance attribute keys whose values are taken verbatim from the
@@ -5250,8 +5375,23 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # has no such field" from "we failed to ask", and dropping on a failed fetch
     # would quietly strip a good listing. The dropped names are collected and
     # printed, never discarded in silence.
+    def _allowed_values(fprop):
+        """Amazon's allowed list for this field, read the same way the schema
+        extractor reads it -- value.enum, then item.enum, then the field's own."""
+        if not isinstance(fprop, dict):
+            return []
+        items = fprop.get("items", {})
+        ip = items.get("properties", {}) if isinstance(items, dict) else {}
+        vp = ip.get("value", {}) if isinstance(ip, dict) else {}
+        out = (vp.get("enum") if isinstance(vp, dict) else None) \
+            or (ip.get("enum") if isinstance(ip, dict) else None) \
+            or (items.get("enum") if isinstance(items, dict) else None) \
+            or fprop.get("enum") or []
+        return [str(a) for a in out]
+
     _schema_names = set(props or {}) | set(required or set())
     _dropped_unknown = []
+    _snapped = []
     for k, v in pa.items():
         if k in skip_axes or _is_blank(v):
             continue
@@ -5262,6 +5402,58 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         if not _fprop and _schema_names and f not in _schema_names:
             _dropped_unknown.append(k if k == f else ("%s (as %s)" % (k, f)))
             continue
+        # SNAP TO AMAZON'S OWN VOCABULARY BEFORE SENDING.
+        #
+        #     "some information is filled but do not accurately represent
+        #      the listing"
+        #
+        # Measured over every stored draft, checking each value against the
+        # cached live schema: 211 of 1220 values -- 17% -- are not on Amazon's
+        # list for their field.
+        #
+        #     is_fragile   'No'                       allowed: True / False
+        #     item_shape   'N/A', 'Pole', 'Cylindrical'  allowed: Round, Square,
+        #                                                Rectangular, Oval, ...
+        #     material     'ABS', 'Aircraft-grade aluminium', 'Rubber | Plastic'
+        #                  allowed: 69 controlled names incl. 'Aluminium' and
+        #                  'Acrylonitrile Butadiene Styrene'
+        #
+        # The app has always had a 5-strategy matcher for exactly this --
+        # snap_to_valid -- but it was only ever pointed at the STATIC
+        # valid_values.json used by the flat-file builder. The API path, which
+        # is the one in use, never snapped at all. Same function, pointed at the
+        # LIVE schema, which is the authority (CLAUDE.md Rule 12).
+        #
+        # NEVER BLANKS. snap_to_valid returns "" when nothing matches, and the
+        # original value is kept in that case -- a value Amazon rejects with a
+        # readable error beats a field silently emptied.
+        if isinstance(v, str) and f not in _COMPLIANCE_PASSTHROUGH:
+            _allow = _allowed_values(_fprop)
+            if _allow:
+                _lowall = {str(a).strip().lower() for a in _allow}
+                _vs = v.strip()
+                # A YES/NO ANSWER TO A TRUE/FALSE FIELD. is_fragile's allowed
+                # list is exactly True and False, and 52 stored drafts answer
+                # it "No". Only fires when the field really is boolean, so it
+                # cannot touch a field where "No" is itself an option.
+                if _lowall <= {"true", "false"} and _vs.lower() in (
+                        "yes", "no", "y", "n", "true", "false"):
+                    _want = "true" if _vs.lower() in ("yes", "y", "true") else "false"
+                    _snap = next((a for a in _allow if str(a).lower() == _want), "")
+                # "NOT APPLICABLE" ON A FIELD WITH NO SUCH OPTION. 'N/A' is not
+                # a shape. Where Amazon offers no not-applicable value, the
+                # honest thing is to send nothing rather than the letters N/A.
+                elif (_vs.lower().replace(".", "").replace(" ", "") in
+                        ("na", "n/a", "none", "notapplicable", "nil", "-")
+                      and not any(x in _lowall for x in
+                                  ("n/a", "na", "none", "not applicable"))):
+                    _dropped_unknown.append("%s (was %r, no such option)" % (f, _vs[:20]))
+                    continue
+                else:
+                    _snap = snap_to_valid(v, _allow)
+                if _snap and _snap != v:
+                    _snapped.append("%s %r -> %r" % (f, v[:28], _snap))
+                    v = _snap
         # Written even when Amazon's slim ENFORCED schema omits the definition,
         # as long as the field EXISTS for this product type -- has(f) alone
         # wrongly dropped user-applied values like material / color /
@@ -5272,6 +5464,9 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     if _dropped_unknown:
         console.print("  [yellow]Not sent -- %s has no such attribute: %s[/yellow]"
                       % (pt, ", ".join(sorted(_dropped_unknown))))
+    if _snapped:
+        console.print("  [cyan]Snapped to Amazon's allowed values: %s[/cyan]"
+                      % "; ".join(_snapped[:8]))
 
     # --- SPECIAL NESTED FIELDS (always shaped to Amazon's exact structure) ----
     # FLASHLIGHT (and similar electronics) need these in a specific nested shape.

@@ -234,6 +234,67 @@ def check_stock(ctx):
               detail=str(cockpit.get("headline") or "Nothing needs ordering."))
 
 
+def check_selling_into_empty(ctx):
+    """Selling fast, and about to have nothing left to sell.
+
+    Orbit's brand agent names this as the join worth having -- it calls it
+    "ads spending into stockout", and reaches it by activating two domains and
+    crossing low-stock ASINs against top-spend ones. The advertising half needs
+    the Advertising API, which is not connected. The half that IS answerable is
+    the more important one anyway: a product selling faster than its cover.
+
+    It reads the OOS-ADJUSTED pace (domain/stock_metrics), so the days a product
+    sat out of stock do not drag its apparent demand down. That distinction is
+    the whole reason this check can be trusted: on a flat average a product that
+    keeps running out looks like a slow seller, which is precisely backwards.
+
+    Silent until the history is there. A pace needs known in-stock days behind
+    it, and this says so rather than reporting nothing as if it were good news.
+    """
+    cov = ctx.get("coverage")
+    if cov is None or not isinstance(cov, dict):
+        return _r("selling_into_empty", "Selling faster than the stock lasts",
+                  G_STOCK, UNKNOWN, needs="the Inventory screen's pace history")
+
+    rows = cov.get("rows") or []
+    hist = (cov.get("history") or {}).get("days", 0)
+    rated = [r for r in rows if r.get("pace_30d") is not None]
+    if not rated:
+        return _r("selling_into_empty", "Selling faster than the stock lasts",
+                  G_STOCK, UNKNOWN,
+                  needs="more days of recorded stock levels",
+                  detail="Stock levels have been recorded for %d day(s). A "
+                         "selling rate needs several days it was in stock "
+                         "before it means anything." % _n(hist))
+
+    # Runs out inside a fortnight AND is genuinely moving. Two conditions,
+    # because "low cover" on something that sells once a quarter is not urgent
+    # and would bury the ones that are.
+    urgent = [r for r in rated
+              if r.get("days_of_cover") is not None
+              and r["days_of_cover"] <= 14
+              and (r.get("pace_30d") or 0) >= 0.5]
+    urgent.sort(key=lambda r: r.get("days_of_cover") or 0)
+
+    if not urgent:
+        return _r("selling_into_empty", "Selling faster than the stock lasts",
+                  G_STOCK, OK, value="0",
+                  detail="Nothing with a measured selling rate runs out inside "
+                         "a fortnight.")
+
+    first = urgent[0]
+    return _r("selling_into_empty", "Selling faster than the stock lasts",
+              G_STOCK, OFF, value=str(len(urgent)),
+              detail="%s has %s day(s) left at %s a day — measured over the "
+                     "days it was actually in stock, not the calendar.%s"
+                     % (str(first.get("sku") or "")[:38],
+                        first.get("days_of_cover"), first.get("pace_30d"),
+                        ("" if len(urgent) == 1
+                         else " %d more are in the same position."
+                              % (len(urgent) - 1))),
+              action="Open Inventory → Real pace & cover.")
+
+
 def check_suppliers(ctx):
     """Enrolled SKUs with nowhere left to buy from."""
     alerts = ctx.get("supplier_alerts")
@@ -416,7 +477,8 @@ def unavailable():
 
 
 CHECKS = (check_unshipped, check_cancel_requests, check_fbm, check_stranded,
-          check_delisted, check_stock, check_suppliers, check_repricer,
+          check_delisted, check_stock, check_selling_into_empty,
+          check_suppliers, check_repricer,
           check_sync, check_ads, check_organic_split)
 
 

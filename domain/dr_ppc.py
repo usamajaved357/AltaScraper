@@ -152,6 +152,69 @@ def check_wasted_spend(rows, currency=""):
     return out
 
 
+def check_toxic_stem(rows, currency="", min_terms=3):
+    """One negative PHRASE that kills a whole family of waste.
+
+    Dr PPC, asked how it picks a negative match type:
+
+        "Choose negative match type from how broad the damage is ... prefer neg
+         exact, neg phrase for toxic stems; avoid broad negatives."
+
+    check_wasted_spend above is right to recommend a negative EXACT per term --
+    that is the surgical answer, and it is the safe one. But when twenty wasted
+    terms all contain the same word, twenty negative exacts is twenty pieces of
+    work that will not stop the twenty-first. One negative phrase does.
+
+    DELIBERATELY CONSERVATIVE. A phrase negative blocks every future query
+    containing that word, so it needs real evidence: several distinct wasted
+    terms, and the word must not appear in anything that HAS sold. A stem that
+    also converts is not toxic, it is just broad.
+    """
+    out = []
+    wasted = [r for r in rows
+              if (_n(r.get("clicks")) or 0) >= MIN_CLICKS
+              and (_n(r.get("sales")) or 0) <= 0
+              and (_n(r.get("spend")) or 0) > 0]
+    if len(wasted) < min_terms:
+        return out
+
+    # Words that appear in anything that sold are off limits, whatever they
+    # cost elsewhere -- negating them would cut the converting queries too.
+    safe = set()
+    for r in rows:
+        if (_n(r.get("sales")) or 0) > 0:
+            safe.update(str(r.get("search_term") or "").lower().split())
+
+    by_word = {}
+    for r in wasted:
+        term = str(r.get("search_term") or r.get("keyword") or "")
+        for w in set(term.lower().split()):
+            # One- and two-letter words are not stems, they are noise.
+            if len(w) < 3 or w in safe:
+                continue
+            by_word.setdefault(w, []).append(r)
+
+    for word, hits in sorted(by_word.items(),
+                             key=lambda kv: -sum((_n(r.get("spend")) or 0)
+                                                 for r in kv[1])):
+        if len(hits) < min_terms:
+            continue
+        spend = sum((_n(r.get("spend")) or 0) for r in hits)
+        clicks = sum((_n(r.get("clicks")) or 0) for r in hits)
+        out.append(_f(
+            CRITICAL, "toxic-stem", word,
+            "%s%.2f wasted across %d different searches containing \"%s\""
+            % (currency, spend, len(hits), word),
+            "Every one of these has enough clicks to judge and not one sale, and "
+            "they all share this word. Negating them one at a time will not stop "
+            "the next search that contains it.",
+            "Add \"%s\" as a negative PHRASE rather than %d separate negative "
+            "exacts. It has never appeared in a search that sold, so nothing "
+            "converting is lost." % (word, len(hits)),
+            {"spend": spend, "clicks": clicks, "terms": len(hits)}))
+    return out[:5]          # the worst handful; a list of stems is not a plan
+
+
 def check_acos(rows, target, currency=""):
     """Terms converting, but not profitably enough.
 
@@ -295,12 +358,35 @@ def run(campaign_rows, term_rows, target=None, product_margin=None, currency="")
     """
     tgt, why = target_for(product_margin, target)
     findings = []
+    findings += check_toxic_stem(term_rows or [], currency)
     findings += check_wasted_spend(term_rows or [], currency)
     findings += check_acos(term_rows or [], tgt, currency)
     findings += check_harvest(term_rows or [], tgt, currency)
     findings += check_budget_capped(campaign_rows or [], currency)
     findings += check_no_impressions(campaign_rows or [])
-    findings.sort(key=lambda f: (_ORDER.get(f["severity"], 3),
+
+    # THE ORDER TO WORK IN, which is not the order of severity.
+    #
+    # Dr PPC, asked what to fix first:
+    #
+    #     "big zero-order waste -> expensive inefficiency -> scale capped
+    #      winners -> harvest -> bid tune -> placement -> daypart"
+    #
+    # Sorting by severity alone put a high-ACOS keyword that is at least SELLING
+    # above a budget-capped winner that is turning custom away, because both are
+    # critical. Money leaving with nothing back comes first; money being left on
+    # the table comes next; making more of what works comes after that. Within a
+    # kind it is still biggest spend first.
+    _KIND_ORDER = {
+        "toxic-stem": 0,        # a family of waste, stopped in one move
+        "wasted-spend": 1,      # money out, nothing back
+        "high-acos": 2,         # selling, but costing too much
+        "budget-capped": 3,     # working, and being turned off by a cap
+        "harvest": 4,           # proven demand, not yet controlled
+        "no-impressions": 5,    # not running at all
+    }
+    findings.sort(key=lambda f: (_KIND_ORDER.get(f["kind"], 9),
+                                 _ORDER.get(f["severity"], 3),
                                  -(f["numbers"].get("spend") or 0)))
 
     notes = []

@@ -196,6 +196,37 @@ CREATE TABLE IF NOT EXISTS weekly_kpi (
 CREATE INDEX IF NOT EXISTS idx_wkpi_scope
     ON weekly_kpi(workspace_id, marketplace, week_start DESC);
 
+/* HOW MUCH STOCK THERE WAS, ON EACH DAY.
+ *
+ * Amazon does not keep this for a merchant-fulfilled seller. It reports what
+ * stock is there NOW; the history is gone the moment it changes. Without it,
+ * "how fast does this sell" can only be answered by dividing units by days --
+ * and that counts every day the product was OUT OF STOCK as a day it sold
+ * nothing, which understates real demand by exactly the amount that matters.
+ *
+ * So the quantity is recorded each time the live catalogue is refreshed, which
+ * already happens on a timer. One row per SKU per day; the LAST reading of a
+ * day wins, because what matters for "was it sellable today" is whether it ran
+ * out, and a re-check later in the day is the better evidence.
+ *
+ * This starts empty. The metrics that need it say so rather than guessing --
+ * a velocity computed over two days of history is not a velocity.
+ */
+CREATE TABLE IF NOT EXISTS stock_daily (
+    workspace_id TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    date         TEXT NOT NULL,          -- YYYY-MM-DD
+    sku          TEXT NOT NULL,
+    asin         TEXT,
+    qty          INTEGER,                -- NULL means Amazon did not say
+    status       TEXT,                   -- Active / Inactive / Incomplete
+    fulfillment  TEXT,                   -- DEFAULT (merchant) / AMAZON (FBA)
+    recorded_at  TEXT,
+    PRIMARY KEY (workspace_id, marketplace, date, sku)
+);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_scope
+    ON stock_daily(workspace_id, marketplace, sku, date DESC);
+
 -- WHAT AMAZON TOOK, AND WHAT WENT BACK TO BUYERS.
 --
 -- From the Finances API (listFinancialEvents), which is a different thing from

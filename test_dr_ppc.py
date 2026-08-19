@@ -198,6 +198,57 @@ code = "\n".join(l for l in src.split("\n") if not l.strip().startswith("#"))
 truthy("the advisor makes no requests of its own", "urllib" not in code
        and "requests" not in code)
 
+# ---------------------------------------------------------------------------
+print("\n== one negative phrase, not twenty negative exacts ==")
+# Dr PPC, asked how it picks a negative match type: "Choose negative match type
+# from how broad the damage is ... prefer neg exact, neg phrase for toxic
+# stems; avoid broad negatives."
+#
+# A negative exact per wasted term is the safe answer and it is what
+# check_wasted_spend gives. But when every wasted term shares a word, that is
+# twenty pieces of work that will not stop the twenty-first search.
+_TERMS = [
+    {"search_term": "cheap free squeegee", "clicks": 12, "spend": 9.0,
+     "sales": 0, "orders": 0, "campaign_name": "C1"},
+    {"search_term": "free window cleaner", "clicks": 11, "spend": 7.5,
+     "sales": 0, "orders": 0, "campaign_name": "C1"},
+    {"search_term": "free sample mop", "clicks": 14, "spend": 8.0,
+     "sales": 0, "orders": 0, "campaign_name": "C1"},
+    {"search_term": "window squeegee pole", "clicks": 30, "spend": 12.0,
+     "sales": 60.0, "orders": 4, "campaign_name": "C1"},
+]
+_stems = D.check_toxic_stem(_TERMS, currency="£")
+check("the shared word is found", [s["subject"] for s in _stems], ["free"])
+truthy("  and a PHRASE negative is what it asks for",
+       "negative PHRASE" in _stems[0]["do"])
+truthy("  naming how many exacts it replaces", "3 separate" in _stems[0]["do"])
+check("  with the whole wasted spend", _stems[0]["numbers"]["spend"], 24.5)
+
+# THE GUARD THAT MATTERS. "squeegee" appears in a wasted term AND in the one
+# that sold. Negating it would cut the converting search too.
+truthy("a word that also appears in a SELLING search is never negated",
+       "squeegee" not in [s["subject"] for s in _stems])
+truthy("  nor is 'window'", "window" not in [s["subject"] for s in _stems])
+
+# One or two wasted terms is a coincidence, not a stem.
+check("two terms are not enough to call it toxic",
+      D.check_toxic_stem(_TERMS[:2], currency="£"), [])
+
+print("\n== the order to work in is not the order of severity ==")
+# "big zero-order waste -> expensive inefficiency -> scale capped winners ->
+#  harvest -> bid tune -> placement -> daypart"
+_out = D.run([{"campaign_name": "C1", "spend": 50.0, "budget": 50.0,
+                 "sales": 400.0, "impressions": 900}],
+               _TERMS, target=0.30, currency="£")
+_kinds = [f["kind"] for f in _out["findings"]]
+truthy("the stem leads", _kinds and _kinds[0] == "toxic-stem")
+truthy("  waste before anything that is at least selling",
+       _kinds.index("wasted-spend") < _kinds.index("harvest"))
+# A high-ACOS keyword is still SELLING; a capped winner is turning custom away.
+if "budget-capped" in _kinds and "harvest" in _kinds:
+    truthy("  a capped winner outranks a harvest",
+           _kinds.index("budget-capped") < _kinds.index("harvest"))
+
 print("\n%d failed" % len(FAIL))
 for f in FAIL:
     print("  -", f)

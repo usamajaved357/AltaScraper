@@ -108,7 +108,12 @@ check("there is a nav item", /data-sec="permissions"/.test(HTML));
 check("  and a panel", /id="sec_permissions"/.test(HTML));
 check("  the script is loaded", /permissions\.js\?v=/.test(HTML));
 check("  navTo knows it", /permissionsOnOpen/.test(SHELL));
-check("  and it has its own address", /"permissions"\]/.test(SHELL));
+// MEMBERSHIP, NOT POSITION. This used to match /"permissions"\]/, which only
+// passed while permissions happened to be the LAST entry in ALTA_SECTIONS --
+// so adding any section after it failed a test about permissions having an
+// address. What matters is that it is in the list at all.
+check("  and it has its own address",
+      /const ALTA_SECTIONS\s*=\s*\[[\s\S]*?"permissions"[\s\S]*?\]/.test(SHELL));
 check("  styled as a table", /\.perm-table\{/.test(CSS));
 
 console.log("\n" + FAIL.length + " failed");

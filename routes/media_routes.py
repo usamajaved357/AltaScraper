@@ -24,10 +24,70 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
              _drive_map_remove, _drive_delete_file, CONFIG_PATH=""):
     """Attach the /media/* routes to the existing Flask app."""
 
+    # Sizes a thumbnail is ever asked for, so one file is cached per size rather
+    # than one per screen width. Mirrors _thumbBucket in static/js/thumbs.js.
+    _THUMB_SIZES = (160, 320, 640)
+
     @app.route("/media/<path:relpath>")
     def media_serve(relpath):
-        """Serve a stored media file by its media/<sku>/<file> path."""
-        return send_from_directory(_media_root(), relpath)
+        """Serve a stored media file by its media/<sku>/<file> path.
+
+        WITH ?w=, SERVE A THUMBNAIL INSTEAD OF THE ORIGINAL.
+
+            "i am not able to see the image thumbnails in image studio page for
+             many asins also in the image library also in the image refs"
+
+        Measured in a browser across six screen/account pairs: not one image was
+        BROKEN. What was happening is that they had not arrived yet -- 94 of the
+        194 images on Image refs were still in flight after eleven seconds.
+
+        The reason is that these are the ORIGINALS. A generated image is
+        4096x4096 and about 2 MB, and the grids were drawing hundreds of them at
+        88 pixels wide. thumbUrl() already shrinks Amazon's CDN links, but it
+        returns a local /media path untouched, because there was nothing here to
+        answer a size request -- so every local picture came down at full size.
+
+        Resized once per (file, width) and cached beside the original under
+        .thumbs/. The cache is keyed on the source file's modification time, so
+        replacing an image replaces its thumbnail rather than serving a stale
+        one. If anything at all goes wrong -- no Pillow, an unreadable file, a
+        format that cannot be resized -- the ORIGINAL is served. A slow picture
+        is better than a missing one.
+        """
+        try:
+            want = int(request.args.get("w") or 0)
+        except (TypeError, ValueError):
+            want = 0
+        if want <= 0:
+            return send_from_directory(_media_root(), relpath)
+
+        # Round up to a cached bucket; anything larger is served as-is.
+        size = next((s for s in _THUMB_SIZES if want <= s), 0)
+        root = os.path.normpath(_media_root())
+        src = os.path.normpath(os.path.join(root, relpath))
+        # A path is user data. Refuse anything that resolves outside the root.
+        if not src.startswith(root) or not os.path.isfile(src):
+            return send_from_directory(_media_root(), relpath)
+        if not size or os.path.getsize(src) < 60 * 1024:
+            return send_from_directory(_media_root(), relpath)   # already small
+
+        try:
+            from PIL import Image
+            stamp = int(os.path.getmtime(src))
+            base = os.path.basename(src).rsplit(".", 1)[0]
+            cdir = os.path.join(os.path.dirname(src), ".thumbs")
+            cache = os.path.join(cdir, "%s.%d.%d.jpg" % (base, size, stamp))
+            if not os.path.isfile(cache):
+                os.makedirs(cdir, exist_ok=True)
+                with Image.open(src) as im:
+                    im = im.convert("RGB")
+                    im.thumbnail((size, size), Image.LANCZOS)
+                    im.save(cache, "JPEG", quality=82, optimize=True)
+            return send_from_directory(cdir, os.path.basename(cache),
+                                       max_age=60 * 60 * 24 * 30)
+        except Exception:
+            # Never fail a picture over a resize.
+            return send_from_directory(_media_root(), relpath)
 
     @app.route("/media/upload", methods=["POST"])
     def media_upload():

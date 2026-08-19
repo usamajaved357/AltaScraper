@@ -3975,3 +3975,12 @@ table.ordtable tbody tr.orddetail > td{
   #autofix_panel .af-head{cursor:move;user-select:none}
   #autofix_panel.af-min{width:auto!important;min-width:260px;max-height:none}
   #autofix_panel.af-min > *:not(.af-head){display:none}
+
+  /* ---- where a figure came from -------------------------------------------
+     Amazon has two feeds that describe the same trade and they disagree for
+     days at a time, so a number without its source is a number you cannot act
+     on. Quiet by design: this is provenance, not content. */
+  .ui-source{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
+    margin:2px 0 12px;font-size:10.5px;color:var(--muted);line-height:1.6}
+  .ui-source-i b{font-weight:600;color:var(--ink3);margin-right:3px}
+  .ui-source-n{opacity:.85;max-width:640px}
