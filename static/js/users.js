@@ -123,25 +123,93 @@ function can(perm){
   return (ME.permissions || []).indexOf(perm) >= 0;
 }
 
-// Dim the controls this person cannot use, rather than removing them, so the
-// app does not look broken or subtly different for different people. The title
-// says why. Anything missed here still fails safely at the server.
+// WHICH SECTION BELONGS TO WHICH FEATURE.
+//
+// Mirrors auth/guard.FEATURE_PATHS. It has to be stated on this side too
+// because the sidebar is drawn in the browser and the server never sees it --
+// but it is the SERVER that decides: everything below only hides things, and a
+// screen hidden here is still refused there if somebody types its address.
+const SECTION_FEATURE = {
+  listings:"listings", generate:"generate", sync:"listings", variations:"variations",
+  sellerimport:"sellerimport", miles:"listings",
+  imagestudio:"images", imagerefs:"images", imagelib:"images",
+  inventory:"inventory", sourcing:"repricer",
+  orders:"orders", returns:"returns",
+  sales:"sales", overview:"sales", leading:"sales", hourly:"hourly",
+  traffic:"traffic", sqp:"traffic", finance:"finance", aiusage:"aiusage",
+  weekly:"sales", daily:"sales",
+  ppc:"ppc", drppc:"ppc",
+  monitor:"monitor", trackers:"monitor", alerts:"monitor",
+  catalog:"listings", categories:"listings", compliance:"listings",
+  notify:"accounts", setup:"accounts",
+};
+
+function featureLevel(feat){
+  if(!ME) return "edit";
+  const f = (ME.features || {});
+  const v = f[feat];
+  return (v === undefined || v === null || v === "") ? "edit" : String(v);
+}
+
+// HIDDEN, NOT DIMMED.
+//
+//     "when the user do not have access to a certain feature it should not be
+//      displayed to it even not in grey color, he should not even see a sign
+//      of it"
+//
+// This used to set opacity to .45, on the reasoning that the app should not
+// look different for different people. That is the wrong trade for a tool being
+// handed to people outside the business: a greyed-out control still tells you
+// the feature exists, what it is called, and roughly what it does. For somebody
+// who is only meant to see one account, the shape of everything else is itself
+// information.
+//
+// So a feature set to `none` leaves NO trace: the nav item is removed, the
+// group holding it disappears when it empties, and the controls go with it.
+// Nothing here is a security boundary -- auth/guard refuses the request
+// whatever the browser shows -- this is about not advertising what somebody
+// cannot have.
 function applyPermissionsToUI(){
   if(!ME) return;
+
+  // 1. Whole sections the person has no access to.
+  document.querySelectorAll(".navitem[data-sec]").forEach(function(el){
+    const feat = SECTION_FEATURE[el.dataset.sec];
+    if(!feat) return;
+    if(featureLevel(feat) === "none"){
+      el.style.display = "none";
+      el.setAttribute("data-hidden-by-permission", "1");
+    }
+  });
+
+  // 2. A group whose children have all gone should go too -- an expander that
+  //    opens onto nothing is worse than no expander.
+  document.querySelectorAll(".navgroup").forEach(function(g){
+    const kids = g.querySelectorAll(".navkids .navitem");
+    const gone = g.querySelectorAll('.navkids .navitem[data-hidden-by-permission]');
+    if(kids.length && kids.length === gone.length) g.style.display = "none";
+  });
+
+  // 3. Individual controls, by permission rather than by feature.
   const RULES = [
     ["publish",         '[onclick*="submitAll"],[onclick*="pushLive"],[onclick*="bulkHandling"]'],
     ["approve_delete",  '[onclick*="bulkStatus"],[onclick*="bulkDelete"],[onclick*="approve"]'],
-    ["ppc",             '[data-sec="ppc"]'],
     ["manage_accounts", '#aibtn,[onclick*="openAccountEditor"],[onclick*="openCurrentAccountSettings"]'],
   ];
   RULES.forEach(function(r){
     if(can(r[0])) return;
     document.querySelectorAll(r[1]).forEach(function(el){
-      el.style.opacity = ".45";
-      el.style.pointerEvents = "none";
-      el.title = "You do not have permission for this. Needs: "
-               + ((USERS_META && USERS_META.all_permissions[r[0]]) || r[0]);
+      el.style.display = "none";
+      el.setAttribute("data-hidden-by-permission", "1");
     });
+  });
+
+  // 4. A read-only feature keeps its screen and loses its buttons -- that is a
+  //    different thing from having no access, and conflating them would hide
+  //    screens from people who are meant to read them.
+  document.querySelectorAll("[data-sec]").forEach(function(el){
+    const feat = SECTION_FEATURE[el.dataset.sec];
+    if(feat && featureLevel(feat) === "view") el.setAttribute("data-readonly", "1");
   });
 }
 

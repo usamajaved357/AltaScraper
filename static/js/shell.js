@@ -1039,6 +1039,7 @@ function navTo(sec){
   // report builds and belong behind the button.
   if(sec==="drppc"){ if(typeof drpOnOpen==="function")   drpOnOpen(); }
   if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
+  if(sec==="permissions"){ if(typeof permissionsOnOpen==="function") permissionsOnOpen(); }
   // studioPickerOnOpen draws the product picker and then calls
   // imagestudioOnOpen itself, so the Studio works with nothing chosen -- it no
   // longer has to be entered from Listings.
@@ -1120,7 +1121,7 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
-                       "compliance","overview","categories","drppc"];
+                       "compliance","overview","categories","drppc","permissions"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //

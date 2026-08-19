@@ -318,6 +318,7 @@
         <i class="ti ti-chevron-right chev navchev"></i>
       </div>
       <div class="navkids">
+        <a class="navitem" data-sec="permissions" href="#" onclick="return navGo(event,'permissions')" title="Who can open which accounts, and what they can do inside them"><i class="ti ti-users-group"></i> User permissions</a>
         <a class="navitem" data-sec="setup" id="nav_setup" href="#" onclick="return navGo(event,'setup')"><i class="ti ti-settings"></i> Brand setup</a>
         <!-- Called "Account & sheets" while a spreadsheet WAS the store. It is
              not: listings, prices, sales and finance are in this app's own
@@ -1154,6 +1155,24 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- USER PERMISSIONS, its own page.
+         "make the user permission a separate page exact copy paste of like
+          amazon and how amazon distributes the permissions columns"
+         Seventeen dropdowns in a modal became a table: the area down the left,
+         None / View / View &amp; Edit across the top, one radio per row, and a
+         "set all" on every group heading. A column of radios can be read down;
+         seventeen dropdowns each have to be opened to be read. -->
+    <div id="sec_permissions" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-users-group"></i> User permissions</h2>
+        <div class="sub">Who can open which accounts, and what they can do inside them. An area set to <b>No access</b> is not shown to that person at all &mdash; not greyed out, no trace of it in the menu.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="permLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="perm_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- IMAGE LIBRARY, its own page.
          "i should not have to go from one page to another to just create
           images". The library was a modal over Listings, opened from a row, so
@@ -1710,6 +1729,8 @@
 <script src="/static/js/productpicker.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/imagelibrary.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/studiopicker.js?v={{ ASSET_V }}"></script>
+<!-- User permissions, laid out the way Seller Central lays them out. -->
+<script src="/static/js/permissions.js?v={{ ASSET_V }}"></script>
 <!-- What Generate would do, shown before you press it. -->
 <script src="/static/js/genplan.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for

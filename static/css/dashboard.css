@@ -1069,6 +1069,44 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- USER PERMISSIONS, THE WAY SELLER CENTRAL LAYS THEM OUT ----
+     The area down the left, the three levels across the top, one radio per row.
+     The point of the columns is that they can be READ DOWN: you see at a glance
+     that this person has View on everything in Money and nothing in Operations.
+     Seventeen dropdowns each had to be opened to be read. */
+  .perm-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+             padding:2px 0 12px}
+  .perm-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .perm-table th{text-align:left;font-size:10.5px;font-weight:700;
+                 letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);
+                 padding:10px 12px;border-bottom:1px solid var(--line)}
+  .perm-table td{padding:8px 12px;border-bottom:1px solid var(--line)}
+  .perm-col{text-align:center;width:118px}
+  .perm-table tr:last-child td{border-bottom:0}
+  /* The group heading is a row, so "set all" sits in the same columns as the
+     radios it sets -- which is what makes it obvious what it will do. */
+  .perm-group td{background:var(--panel2);font-weight:700;font-size:11px;
+                 letter-spacing:.05em;text-transform:uppercase;color:var(--ink3)}
+  .perm-all{background:none;border:1px solid var(--line);border-radius:5px;
+            color:var(--ink3);font-size:10px;padding:2px 8px;cursor:pointer;
+            font-family:inherit}
+  .perm-all:hover{border-color:var(--accent);color:var(--accent)}
+  /* A page that sits under an area is indented, so the hierarchy is visible
+     without reading the labels. */
+  .perm-child td:first-child{padding-left:26px}
+  .perm-inherit{font-size:10.5px;color:var(--ink4);display:inline-flex;
+                align-items:center;gap:5px;white-space:nowrap;cursor:pointer}
+  .perm-inherit.on{color:var(--ink2)}
+  .perm-ws{display:flex;flex-wrap:wrap;gap:7px}
+  .perm-wsopt{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+              background:var(--panel2);border:1px solid var(--line);
+              border-radius:7px;padding:5px 10px;cursor:pointer}
+  .perm-wsopt.on{border-color:var(--accent);background:var(--accent-bg);
+                 color:var(--accent)}
+  /* "Every account" is checked, so the individual ones stop meaning anything --
+     shown dimmed rather than removed so the list of what exists is still there. */
+  .perm-wsopt.dim{opacity:.45;cursor:default}
+
   /* ---- FINDING ONE LISTING ----
      "let me search the listing using the sku, asin, or a ean used in it"
      Sits in the filter strip, before the duplicates pill, and stays there when

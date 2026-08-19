@@ -333,6 +333,29 @@ FEATURE_PATHS = [
     #      these sits under a broader prefix below. Every one of them inherits
     #      its area's level until it is set individually (see FEATURE_PARENT in
     #      auth/users.py), so adding them changed nobody's access.
+    # ---- THE SCREENS ADDED LATER, WHICH WERE UNGOVERNED ----
+    #
+    # MEASURED: feature_for() returned nothing for all ten of them, so they were
+    # governed by RULES alone -- which is "any user who may edit". A person with
+    # sales set to `none` could open the Business Overview and read every
+    # account's revenue.
+    #
+    # They are mapped onto the EXISTING features rather than given ten new ones,
+    # because the question "may this person see turnover" does not become a
+    # different question because the screen is new. Ten more checkboxes would be
+    # ten more things to set correctly and the same answer either way.
+    ("/overview",             "sales"),      # it IS revenue, across accounts
+    ("/leading",              "sales"),      # yesterday's revenue and units
+    ("/catalog/products",     "listings"),   # the product catalogue
+    ("/categories",           "listings"),
+    ("/compliance",           "listings"),
+    ("/trackers",             "monitor"),    # watching an ASIN's numbers
+    ("/sqp",                  "traffic"),    # search performance is traffic
+    ("/drppc",                "ppc"),
+    # /notify holds a webhook credential and is already restricted to
+    # manage_accounts by RULES; the feature axis follows the same reasoning.
+    ("/notify",               "accounts"),
+
     ("/orders",               "orders"),
     ("/returns",              "returns"),
     ("/traffic",              "traffic"),
