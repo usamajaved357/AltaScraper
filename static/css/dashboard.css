@@ -1069,6 +1069,19 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- FINDING ONE LISTING ----
+     "let me search the listing using the sku, asin, or a ean used in it"
+     Sits in the filter strip, before the duplicates pill, and stays there when
+     that pill is absent -- it is the only way to reach a single product on an
+     account with eighty of them, so it must not hide with the thing beside it. */
+  .lsearch{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
+           border:1px solid var(--line);border-radius:8px;padding:3px 9px;
+           min-width:260px;max-width:420px;flex:1}
+  .lsearch .ti{color:var(--ink4);font-size:15px;flex:0 0 auto}
+  .lsearch input{background:none;border:none;outline:none;flex:1;min-width:0;
+                 color:var(--ink);font-size:12.5px;padding:4px 0}
+  .lsearch input::placeholder{color:var(--ink4)}
+
   /* ---- THE ORDER OF THE IMAGES ----
      "there should be a story or a logic behind every image that why it comes
       first second and third"
