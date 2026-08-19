@@ -33,6 +33,11 @@ _FLAG_NOTE_PREFIXES = (
     "compliance [",
     "key reqs:",
     "ip risk",
+    # The IP check now heads its summary "IP NOTE (no hold)" when what it found
+    # is a note rather than evidence. Without this the note would never be
+    # recognised as ours, so every rescan would append a fresh copy alongside
+    # the old one and the Notes cell would grow without limit.
+    "ip note",
     "phrases:",
     "suspected brand words",
     "possible brand words",

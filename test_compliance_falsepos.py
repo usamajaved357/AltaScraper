@@ -95,10 +95,18 @@ print("\n== a bullet's own house style is not evidence of a stolen brand ==")
 # ordinary listing went to IP_HOLD on the strength of its own formatting.
 # Measured on the sensory swing: "Heavy-duty, Aerial, Yoga, Sensory, Swing"
 # reported as possible brands. Not one of them is a brand.
-import json as _json
 from listing import compliance as _cmp
 
-_rules = _json.load(open(r"D:\AltaScraper\ip_rules.json", encoding="utf-8"))
+# THROUGH THE APP'S OWN LOADER, not json.load. The file stores
+# "safe_capitalised_words" and "max_allowed_caps_words_unrecognised"; it is
+# load_ip_rules() that turns those into the "safe_capitalised_lc" and
+# "max_unrecognised" keys the check actually reads. Reading the file directly
+# tested a run with an EMPTY 919-word allowlist -- a harder test than reality,
+# which sounds safe until it hides a rule that only misbehaves once the
+# allowlist is present.
+from amazon_listing_generator import load_ip_rules as _load_ip
+
+_rules = _load_ip()
 
 
 def ip(listing, brand="AltaboltaVoo"):
@@ -133,6 +141,97 @@ _sneaky["bullet_1"] = ("SOFT FABRIC — The swing is made by Zorbulex Fabricatio
 _out2 = ip(_sneaky)
 check("a real unknown name is still reported",
       len(_out2["unknown_caps"]) >= 4, True)
+
+# ---------------------------------------------------------------------------
+print("\n== a hold needs EVIDENCE; a guess is only ever a note ==")
+# THE REPORT: "i see ip hold and ip high symbols on many items where it does
+# not have to be". Measured across the 295 stored listings: 72 rows carried an
+# IP flag, and re-judging them found 68 occurrences of a comparative phrase of
+# which exactly TWO pointed at a brand (iPhone, macOS). The other rows were held
+# for saying what their product fits, or for ordinary nouns inside the app's own
+# Title Case feature lists.
+
+
+def body(*bullets):
+    d = {"title": "Garden Hose Connector Set Brass 3/4 Inch",
+         "description_html": "", "search_terms": ""}
+    for i, b in enumerate(bullets, 1):
+        d["bullet_%d" % i] = b
+    return d
+
+
+# --- the phrase must point AT something before it holds --------------------
+_generic = ip(body("COMPATIBLE WITH UK TAPS — Compatible with standard garden "
+                   "tap outlets commonly found on UK properties."))
+check("'compatible with standard garden tap outlets' does not hold",
+      _generic["has_violations"], False)
+check("  but it is still reported", _generic["phrase_generic"], ["compatible with"])
+check("  and the note says so rather than saying IP RISK",
+      _generic["summary"].startswith("IP NOTE (no hold)"), True)
+
+_brandy = ip(body("WORKS WITH YOUR PHONE — Works with recent iPhone 12, 13 and "
+                  "14 series models."))
+check("'works with recent iPhone' DOES hold", _brandy["has_violations"], True)
+check("  and names what it found", _brandy["phrase_evidence"], ["works with iPhone"])
+check("  under the IP RISK head", _brandy["summary"].startswith("IP RISK"), True)
+
+# camelCase is the shape that carried the one real leak in the whole stored set.
+check("a lower-case-initial brand is still caught",
+      ip(body("PLUG AND PLAY — Compatible with macOS out of the box."))
+      ["has_violations"], True)
+
+# --- the scan must not read past the end of the clause ---------------------
+check("a full stop ends the lookahead",
+      ip(body("FITS MOST MIXERS — Compatible with circlip-style hubs. Check the "
+              "underside of your stand mixer for the fitting."))["has_violations"],
+      False)
+check("a colon ends it too",
+      ip(body("MAGNETIC BOARD — Works with magnets: Compatible with all "
+              "magnet-backed items including fridge magnets."))["has_violations"],
+      False)
+check("and a comma ends it",
+      ip(body("SWEDISH HERITAGE — Made by Selvora Limited, a Swedish brand "
+              "trusted by anglers."), brand="Selvora Limited")["has_violations"],
+      False)
+# The comma guard must not hide a real name: a list's FIRST item is inside it.
+check("  without hiding the first name in a list",
+      ip(body("TOOL FIT — Compatible with Makita, Bosch and DeWalt "
+              "batteries."))["has_violations"], True)
+
+# --- words that name nobody --------------------------------------------
+_own = ip(body("QUALITY BRANDED APPAREL — Each pair arrives in a branded hard "
+               "zipper case with a microfibre cleaning cloth."))
+check("'branded' on your own merchandise does not hold",
+      _own["has_violations"], False)
+check("  and is reported as note-only", _own["phrase_note_only"], ["branded"])
+check("'universal fit' is an overclaim, not a trademark hold",
+      ip(body("STRETCHY UNIVERSAL FIT — The naturally elastic neoprene "
+              "accommodates most head sizes."))["has_violations"], False)
+
+# --- but the unconditional claims still fire -------------------------------
+check("'oem approved' still holds on its own",
+      ip(body("GENUINE QUALITY — This part is OEM approved for peace of "
+              "mind."))["has_violations"], True)
+check("'manufacturer recommended' still holds",
+      ip(body("TRUSTED — Manufacturer recommended for daily "
+              "use."))["has_violations"], True)
+
+# --- and the caps guess never holds, however many it finds -----------------
+_many = ip(body("FEATURE PACKED — Three Modes, Battery Indicator, Tripod Base, "
+                "Hanging Hook, Magnetic Mount, Folding Handle and Carry Strap."))
+check("a pile of capitalised nouns is reported",
+      len(_many["unknown_caps"]) > _rules.get("max_unrecognised", 4), True)
+check("  but never holds the listing on its own", _many["has_violations"], False)
+check("  and the note calls it unconfirmed",
+      "unconfirmed" in _many["summary"], True)
+
+# A competitor's brand is PROOF and still holds on its own -- that check is
+# what the hold is for, and it is untouched.
+check("a competitor's brand in the copy still holds",
+      _cmp.check_ip_violations(body("BUILT TO LAST — A sturdy connector for "
+                                    "your Hozelock system."),
+                               "AltaboltaVoo", _rules,
+                               ["Hozelock"])["has_violations"], True)
 
 print("\n%d failed" % len(fails))
 for f in fails:

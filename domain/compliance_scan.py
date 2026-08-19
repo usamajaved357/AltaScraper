@@ -159,24 +159,39 @@ def scan(listing, brand="", product_type="", ip_rules=None, source_text=""):
     if ip_rules:
         try:
             r = C.check_ip_violations(listing, brand, ip_rules) or {}
-            for h in (r.get("hits") or r.get("phrases") or []):
-                if isinstance(h, dict):
-                    term = h.get("phrase") or h.get("term") or ""
-                    where = h.get("field", "")
-                else:
-                    term, where = str(h), ""
+            # THE KEYS THIS READS MUST BE THE KEYS THE CHECK RETURNS. It used to
+            # look for "hits"/"phrases"/"unrecognised"/"caps", none of which
+            # check_ip_violations has ever produced -- so the IP section of this
+            # scan silently reported nothing, on every listing, always.
+            for h in (r.get("phrase_evidence") or []):
                 findings.append(_finding(
-                    MAJOR, "ip-phrase", term, where,
-                    "A comparative or compatibility phrase. Amazon treats these "
-                    "as trading on another brand's name.",
-                    "Say what the product is, not what it is like or fits."))
-            for w in (r.get("unrecognised") or r.get("caps") or []):
+                    MAJOR, "ip-phrase", str(h), "",
+                    "A comparative phrase pointed at a brand name. Amazon treats "
+                    "these as trading on another brand.",
+                    "Say what the product is, not whose product it is like."))
+            for h in (r.get("phrase_note_only") or []):
                 findings.append(_finding(
-                    MINOR, "unknown-capitalised", str(w), "",
-                    "A capitalised word that is not a recognised safe term. It "
-                    "may read as a brand name.",
-                    "Lower-case it if it is an ordinary word; remove it if it is "
-                    "somebody's mark."))
+                    MINOR, "ip-phrase-noteonly", str(h), "",
+                    "Worth a read, but it names nobody -- \"universal fit\" and "
+                    "\"branded\" are claims about your own product, not about "
+                    "somebody else's mark.",
+                    "Only act on this if the claim is not true of your product."))
+            for h in (r.get("phrase_generic") or []):
+                # Reported, but honestly: it is not pointed at anyone's brand.
+                findings.append(_finding(
+                    MINOR, "ip-phrase-generic", str(h), "",
+                    "A compatibility phrase pointed at a generic thing, not at a "
+                    "brand. Not a trademark problem, but Amazon can still read it "
+                    "as a comparison.",
+                    "Usually fine. Reword only if the thing it names is a brand."))
+            if r.get("caps_over_threshold"):
+                for w in (r.get("unknown_caps") or []):
+                    findings.append(_finding(
+                        MINOR, "unknown-capitalised", str(w), "",
+                        "A capitalised word that is not on the safe list. It MAY "
+                        "read as a brand name -- this is a guess, not a finding.",
+                        "Lower-case it if it is an ordinary word; remove it if it "
+                        "is somebody's mark."))
         except Exception as e:
             notes.append("IP check failed: %s" % str(e)[:110])
 
