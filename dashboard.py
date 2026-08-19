@@ -3744,6 +3744,12 @@ def build_app(backend=None):
     import routes.sqp_routes as _sqp_routes
     _sqp_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                          _active_account=_active_account, _state=_state)
+    # The Product Catalog -- Orbit's ASINs page. Every product ranked, with the
+    # four findings above it. Reads the app's own sales table and catalogue
+    # snapshot; calls Amazon for nothing.
+    import routes.catalog_page_routes as _catalog_page_routes
+    _catalog_page_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                  _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

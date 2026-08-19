@@ -345,7 +345,13 @@ function _scFmt(v, kind){
  *
  * The exact figure is never lost -- it is in the hover card and in the grid
  * below, both to the penny. */
-const SC_CUR = {GBP: "£", USD: "$", EUR: "€", CAD: "$", AUD: "$", JPY: "¥"};
+// Was a private copy of the currency map that rendered CAD and AUD both as
+// "$". One map now, in static/js/money.js (CLAUDE.md Rule 12). Read through a
+// getter rather than captured at load, so the order of the script tags cannot
+// silently empty it -- which is exactly what happened to weekly.js.
+function _scCur(code){
+  return (typeof curSymbol === "function") ? curSymbol(code) : "";
+}
 
 /* `span` is the height of the whole axis, and it is what decides the number of
  * decimals -- NOT the individual value. Deciding per value gave one axis reading
@@ -358,7 +364,7 @@ function _scAxis(v, kind, currency, span){
   const n = Number(v);
   if(!isFinite(n)) return "";
   if(kind === "pct") return n.toFixed(0) + "%";
-  const sym = (kind === "money") ? (SC_CUR[String(currency || "").toUpperCase()] || "£") : "";
+  const sym = (kind === "money") ? (_scCur(currency) || "£") : "";
   if(n === 0) return sym + "0";               // "£0", never "£0.0k"
   const sc = Math.abs(Number(span)) || Math.abs(n);
   if(sc >= 1e6) return sym + (n / 1e6).toFixed(1) + "m";

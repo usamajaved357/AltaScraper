@@ -49,9 +49,10 @@ function _skMoney(v, ccy){
     {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 function _skCcySym(cc){
-  const m = {GBP: "£", USD: "$", EUR: "€", CAD: "$", AUD: "$",
-             SEK: "kr", PLN: "zł", AED: "AED "};
-  return m[String(cc || "").toUpperCase()] || (cc ? cc + " " : _skSym());
+  // One map, in static/js/money.js. This copy rendered Canadian dollars as "$"
+  // where weekly.js rendered them "C$" -- on a screen showing both markets that
+  // is the difference between a readable figure and a wrong one (Rule 12).
+  return (typeof curSymbol === "function") ? curSymbol(cc, _skSym()) : (cc ? cc + " " : _skSym());
 }
 /* Orbit writes big money as "$141K". Same rule: thousands get a K, and only
    above 10,000 -- "9.4K" hides more than it saves. */

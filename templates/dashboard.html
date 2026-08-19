@@ -186,6 +186,7 @@
       </div>
       <div class="navkids">
         <div class="navitem active" data-sec="listings" onclick="navTo('listings')"><i class="ti ti-list"></i> All listings</div>
+        <div class="navitem" data-sec="catalog" onclick="navTo('catalog')" title="Every product ranked by revenue, with concentration, dead stock and the tail"><i class="ti ti-package-import"></i> Product Catalog</div>
         <div class="navitem" data-sec="variations" onclick="navTo('variations')"><i class="ti ti-binary-tree"></i> Variations</div>
         <div class="navitem" data-sec="generate" onclick="navTo('generate')"><i class="ti ti-upload"></i> Generate &amp; submit</div>
         <div class="navitem" data-sec="sync" onclick="navTo('sync')" title="When the app and Amazon disagree about a listing, compare them side by side and choose which wins"><i class="ti ti-arrows-exchange"></i> Compare with Amazon</div>
@@ -1142,6 +1143,20 @@
       <div id="alr_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- PRODUCT CATALOG (Orbit's ASINs page) -- every product ranked, with the
+         four findings that each change a decision. Reads the app's own sales
+         table and catalogue snapshot; calls Amazon for nothing. -->
+    <div id="sec_catalog" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-package-import"></i> Product Catalog</h2>
+        <div class="sub">Every product you sell, ranked by what it earns &mdash; with how concentrated the revenue is, what your best product is worth, and which products are listed and earning nothing.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="catpLoad()"><i class="ti ti-refresh"></i> Reload</button>
+        </div>
+      </div>
+      <div id="catp_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- KEYWORDS (SQP) -- the only report that shows the SEARCH rather than what
          happened after somebody arrived. Its value is the share: your slice of
          what a query produced across every seller. -->
@@ -1507,6 +1522,9 @@
 
 <!-- FIRST, because everything that draws a product picture calls it. One rule
      about Amazon's image CDN, in one place (CLAUDE.md Rule 12). -->
+<!-- One currency-code to symbol map. Loaded EARLY: four screens had their own
+     and three more were written against a variable that never existed. -->
+<script src="/static/js/money.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/thumbs.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/amazon_errors.js?v={{ ASSET_V }}"></script>
 <!-- One way to ask "is it done yet". BEFORE every screen that polls -- miles,
@@ -1587,6 +1605,8 @@
 <script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
 <!-- Keywords (Search Query Performance): what people typed. -->
 <script src="/static/js/sqp.js?v={{ ASSET_V }}"></script>
+<!-- The Product Catalog: every ASIN, ranked, with the four findings. -->
+<script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
      everybody and explains the order to do things in. -->
 <script src="/static/js/guide.js?v={{ ASSET_V }}"></script>

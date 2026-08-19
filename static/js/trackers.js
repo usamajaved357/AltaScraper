@@ -52,7 +52,7 @@ function trkStatus(s) {
 }
 
 function trkCur() {
-  return (typeof CURRENCY_SYMBOL !== "undefined" && CURRENCY_SYMBOL) ? CURRENCY_SYMBOL : "";
+  return (typeof curSymbol === "function") ? curSymbol("") : "";
 }
 
 function trkTabs() {

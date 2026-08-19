@@ -125,11 +125,19 @@ function _wkEsc(s){
  *
  * Amazon writes the symbol into the cell, so the file already knows. The
  * account is the fallback for when it does not say. */
-const _WK_SYMS = {USD: "$", GBP: "£", EUR: "€", JPY: "¥", CAD: "C$",
-                  AUD: "A$", SEK: "kr", PLN: "zł", AED: "AED "};
+// Was a fourth private copy of the currency map. One now, in money.js (Rule 12).
+//
+// Resolved WHEN CALLED, not at load. Read at module scope this file would
+// capture whatever CUR_SYMBOLS was at the moment weekly.js parsed -- and
+// weekly.js is loaded BEFORE money.js in the page, so it captured nothing and
+// silently dropped every currency symbol on this screen. A lazy lookup cannot
+// be broken by the order the tags happen to sit in.
 function _wkSym(){
   const c = WK.week && WK.week.currency;
-  if(c && _WK_SYMS[c]) return _WK_SYMS[c];
+  if(c && typeof curSymbol === "function"){
+    const s = curSymbol(c);
+    if(s) return s;
+  }
   return (typeof CUR_SYMBOL !== "undefined" && CUR_SYMBOL) ? CUR_SYMBOL : "£";
 }
 function _wkMoney(v){

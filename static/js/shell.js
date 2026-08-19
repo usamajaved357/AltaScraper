@@ -968,7 +968,7 @@ function navTo(sec){
   if(typeof navGroupSyncActive === "function") navGroupSyncActive(sec);
   // listings uses #sec_listings (always block); others are .wspanel
   document.getElementById("sec_listings").style.display = (sec==="listings")?"block":"none";
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1014,6 +1014,8 @@ function navTo(sec){
   // Amazon BUILDS this report on request, roughly one a minute, so opening the
   // screen does not fetch it -- "Get the report" does.
   if(sec==="sqp"){      if(typeof sqpRender==="function")  sqpRender(); }
+  // Reads the app's own sales table and catalogue snapshot -- no Amazon call.
+  if(sec==="catalog"){  if(typeof catpLoad==="function")   catpLoad(); }
   if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
