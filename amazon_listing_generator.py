@@ -3275,8 +3275,19 @@ def _dim_number(raw) -> str:
     float noise -- and it is shown to buyers and to whoever is checking the
     draft. Reported as "some data is put in there which do not make any sense".
 
-    Two decimals, with trailing zeros removed so 35.0 reads as 35. Anything
-    that is not a number is handed back untouched rather than mangled.
+    Two decimals, with pointless trailing zeros removed -- but NEVER below one
+    decimal place, because Amazon rejects a whole number here:
+
+        item_dimensions_fraction  Value '10.' for attribute 'Overall Height
+        Derived' has too few decimal places. It has 0 decimal places but the
+        minimum allowed is '1'.
+
+    That message is off a real listing, and it is why this returns "35.0" and
+    not "35". It also shows what a badly-trimmed number looks like when it
+    reaches Amazon -- "10." is a trailing dot with nothing after it, which is
+    what stripping zeros without then handling the dot produces.
+
+    Anything that is not a number is handed back untouched rather than mangled.
     """
     s = str(raw if raw is not None else "").strip()
     if not s:
@@ -3285,8 +3296,13 @@ def _dim_number(raw) -> str:
         n = float(s)
     except (TypeError, ValueError):
         return s
-    out = ("%.2f" % n).rstrip("0").rstrip(".")
-    return out or "0"
+    out = "%.2f" % n
+    # 9.84 stays; 35.00 becomes 35.0; never 35, and never a bare "35."
+    if out.endswith("0") and not out.endswith(".00"):
+        out = out[:-1]
+    elif out.endswith(".00"):
+        out = out[:-2] + "0"
+    return out
 
 
 # Safety & compliance attribute keys whose values are taken verbatim from the

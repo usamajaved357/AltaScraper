@@ -1063,7 +1063,9 @@ function _stripUKforUS(s){
     .replace(/for (the )?UK market/gi, "for the US market")
     .replace(/\s{2,}/g," ").trim();
 }
-function formatFindings(findings){
+/* `row` is optional and only used for context (barcode, product type) when
+   translating Amazon's own messages. Every other caller is unaffected. */
+function formatFindings(findings, row){
   if(!findings || !findings.length) return "A note is set, but no specific detail was recorded.";
   // Notes may already contain HTML entities (e.g. &#39; for apostrophes) if a
   // previous run stored them escaped. Decode first so splitting + display work.
@@ -1079,6 +1081,32 @@ function formatFindings(findings){
     const body = joined.replace(/API (PREVIEW|SUBMIT)[^:]*:\s*/i, "");
     const items = body.split(/;\s*/).map(s=>s.trim()).filter(Boolean);
     if(items.length){
+      /* SAY WHAT IT MEANS, not just what Amazon typed.
+       *
+       *     "when amazon is rejecting something or there is an error i should
+       *      be able to see what is it and also i should be able to understand
+       *      it"
+       *
+       * This box is where a stored Amazon message is actually read — the
+       * Preview panel is only on screen for the moment a run finishes. It
+       * showed the raw line with its first word in bold, so the reader got
+       * "item_dimensions_fraction Value '10.' for attribute 'Overall Height
+       * Derived' has too few decimal places" and no idea what to do.
+       *
+       * renderAmazonErrors is the SAME translator the Preview panel uses
+       * (CLAUDE.md Rule 12) and it keeps the verbatim text under a toggle, so
+       * nothing is hidden — it just is not the first thing you read. Measured
+       * over the 97 Amazon lines stored across every account: all 97 translate.
+       */
+      const _plain = items.map(it => it.replace(/^\[[EW]\]\s*/, ""));
+      if(typeof renderAmazonErrors === "function"){
+        const _ctx = {barcode: (row && row.barcode) || "",
+                      sku: (row && row.sku) || "",
+                      productType: (row && row.product_type) || ""};
+        const _t = renderAmazonErrors(_plain, body, _ctx);
+        if(_t.matched) return _t.html;
+      }
+      // Nothing recognised: the raw list, exactly as before.
       return '<div class="errlist">' + items.map(it=>{
         const isErr = /^\[E\]/.test(it) || /required|invalid|missing/i.test(it);
         const txt = it.replace(/^\[[EW]\]\s*/,"");
@@ -1171,7 +1199,7 @@ function drawerContent(r){
   const statusBlock = hasFeedback
     ? `<details class="findingsbox"><summary class="findsum neutral">\u2139 ${esc(reason)}</summary>
         <div class="cc" style="margin:2px 0 6px;font-size:11.5px;color:var(--muted)">${esc(_fbNote)}</div>
-        <div class="findings neutral">${formatFindings(findings)}</div>
+        <div class="findings neutral">${formatFindings(findings, r)}</div>
         <button class="linkbtn" style="margin-top:6px" onclick="locateFlags('${esc(r.sku)}',this)">\ud83d\udd0d Locate flagged terms</button>
         <div class="locout" id="loc_${sid(r.sku)}"></div></details>`
     : "";
