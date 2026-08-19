@@ -313,6 +313,20 @@ function _scNum(v){
   const n = Number(v);
   return isFinite(n) ? n : null;
 }
+/* THE BAND AROUND ONE POINT, KEPT INSIDE THE PLOT.
+   Three places drew this band -- the missing-data shading and two hover strips
+   -- and all three clamped the LEFT edge and the WIDTH but never the RIGHT one.
+   For the last point on a chart that means x + width lands past the plot area,
+   and MEASURED in a browser it overshot the SVG by 6px at 1920 and 3px at 1536:
+   a sliver of chart drawn outside its own frame and clipped away.
+   Small, but it is exactly the class of thing reported as "the page cutting my
+   visuals", and three copies of a clamp that was wrong in the same way is what
+   Rule 12 is about. Returns {x, w}. */
+function _scBand(centre, half, padL, iw){
+  const left  = Math.max(padL, centre - half);
+  const right = Math.min(padL + iw, centre + half);
+  return { x: left, w: Math.max(0, right - left) };
+}
 /* A value as it appears in the READOUT -- the hover card, where the exact
    figure is what is wanted. */
 function _scFmt(v, kind){
@@ -630,8 +644,9 @@ function salesChart(points, opts){
   points.forEach(function(p, i){
     if(_scNum(p.value) !== null) return;
     const half = slot / 2;
-    gaps += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
-                   width="${Math.min(half * 2, iw)}" height="${ih}"
+    const _b = _scBand(x(i), half, padL, iw);
+    gaps += `<rect x="${_b.x}" y="${padT}"
+                   width="${_b.w}" height="${ih}"
                    fill="#7b8794" opacity="0.07"/>`;
   });
 
@@ -676,8 +691,9 @@ function salesChart(points, opts){
                  y: (cv === null ? null : y(cv).toFixed(1))});
     }
     const shown = _scRows(rows);
-    hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
-                   width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
+    const _hb = _scBand(x(i), half, padL, iw);
+    hits += `<rect x="${_hb.x}" y="${padT}"
+                   width="${_hb.w}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
                    onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},${
                        v === null ? -1 : y(v).toFixed(1)},'${_scAttr(p.label)}','${_scAttr(shown)}')"
@@ -1188,8 +1204,9 @@ function salesCombo(o){
     // one replaced them, so without it the gesture simply disappeared from the
     // screen -- and it is the only way anyone actually looks closely at an
     // interesting week.
-    hits += `<rect x="${Math.max(padL, x(i) - half)}" y="${padT}"
-                   width="${Math.min(half * 2, iw)}" height="${ih}" fill="transparent"
+    const _hb = _scBand(x(i), half, padL, iw);
+    hits += `<rect x="${_hb.x}" y="${padT}"
+                   width="${_hb.w}" height="${ih}" fill="transparent"
                    style="cursor:crosshair"
                    onmousemove="_scHover('${cid}',${i},${x(i).toFixed(1)},-1,
                        '${_scAttr(c)}','${_scAttr(_scRows(rows))}')"

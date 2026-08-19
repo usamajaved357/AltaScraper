@@ -486,6 +486,36 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
         padding:14px 16px;display:flex;flex-direction:column;gap:10px}
   .card.flag{border-color:#5a2230}
+
+  /* ---- A WIDE TABLE SCROLLS; IT DOES NOT GET CUT OFF ----
+     Reported as "the page cutting my visuals and getting out of the screen
+     where i can not see the text or graphics".
+
+     MEASURED in a real browser rather than guessed at, because a page-width
+     check says nothing here: the PAGE fits perfectly. What was happening is
+     worse than overflow. Our cards are `overflow:hidden` so their corners stay
+     round, and a table wider than its card is therefore CLIPPED -- no
+     scrollbar, no way to reach it, the columns simply gone. At 1280px:
+
+         Weekly KPIs   583px of table invisible
+         Listings       43px, which is the whole Actions column
+
+     Overflow at least leaves the content reachable. This did not.
+
+     The rule already existed -- but only inside mobile.css's phone media query,
+     so every desktop kept clipping. It is a general truth about a wide table in
+     a rounded box, not a phone problem, so it lives here now and mobile.css
+     keeps only the genuinely phone-specific part (the min-width floor that
+     stops a table squashing instead of scrolling).
+
+     `!important` because several of these cards carry the overflow inline. */
+  #workspace .card:has(> table),
+  #workspace .card:has(> .stk-table),
+  .ltwrap, #stk_ledger, #ppc_terms{
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    overscroll-behavior-x:contain;
+  }
   .top{display:flex;align-items:center;gap:8px}
   .badge{font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 9px;
          border-radius:999px;text-transform:uppercase;white-space:nowrap}
