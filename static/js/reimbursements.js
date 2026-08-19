@@ -59,6 +59,15 @@ function rbHtml() {
     : _rbMoney(0, (m.currency || ""));
 
   let h = "";
+  if (typeof uiSource === "function") {
+    h += uiSource([
+      {k: "Source", v: "Amazon Finances, per settled order"},
+      {k: "Checked", v: _rbNum(m.orders_checked || 0) + " settled, "
+                        + _rbNum(m.refunds_checked || 0) + " refunded"},
+      {k: "Rule", v: "Amazon's published refund administration fee"},
+    ], "Only orders Amazon has SETTLED can be checked — a refund it has not "
+     + "finished processing has no fee figures yet.");
+  }
   if (typeof uiStats === "function") {
     h += uiStats([
       {label: "Owed back", value: owedText,

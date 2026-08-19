@@ -352,6 +352,25 @@ function financeRender(){
     body.innerHTML = h; return;
   }
 
+  // WHERE THESE FIGURES CAME FROM, before the figures.
+  //
+  // This screen is on the MONEY basis -- units shipped, dated when the money
+  // moved -- and the Sales screen is on the ORDER basis. They describe the same
+  // trade and they do not agree, which is correct and is the single most asked
+  // question about either. Saying so here costs one line.
+  if(typeof uiSource === "function" && FIN.meta){
+    h += uiSource([
+      {k: "Source", v: "Amazon Finances (listFinancialEvents)"},
+      {k: "Basis", v: "money moved — units shipped"},
+      {k: "Account", v: FIN.meta.account_label},
+      {k: "Marketplace", v: FIN.meta.marketplace},
+      {k: "Dates", v: (FIN.meta.start && FIN.meta.end)
+                      ? (FIN.meta.start + " → " + FIN.meta.end) : ""},
+      {k: "Currency", v: cur},
+    ], "The Sales screen counts units ORDERED, dated when the order was placed. "
+     + "The two will not match, and neither is wrong.");
+  }
+
   // WHAT THE PERIOD CAME TO, before the table.
   //
   // Every one of these was already computed by _finTotals and shown only in the

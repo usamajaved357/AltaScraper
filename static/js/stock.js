@@ -588,6 +588,17 @@ function _skCoverage(){
   const n = c.counts || {};
   const hist = c.history || {};
   let h = "";
+  if(typeof uiSource === "function"){
+    h += uiSource([
+      {k: "Stock from", v: "the live catalogue, recorded on each refresh"},
+      {k: "Sales from", v: "your own orders, by SKU"},
+      {k: "Window", v: (c.start && c.end) ? (c.start + " → " + c.end) : ""},
+      {k: "History", v: hist.days ? (hist.days + " day(s), from " + hist.first)
+                                  : "none yet"},
+    ], "The pace counts only the days a product was IN STOCK. Amazon keeps no "
+     + "stock history for a merchant-fulfilled seller, so this one is ours and "
+     + "starts the day recording started.");
+  }
   if(typeof uiStats === "function"){
     h += uiStats([
       {label: "Out of stock", value: n.out_of_stock || 0,
