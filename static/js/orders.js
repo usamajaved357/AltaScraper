@@ -401,27 +401,49 @@ function ordersRender(){
       +  _oEsc(e.error) + '</div>';
   });
 
+  // WHAT THE PERIOD CAME TO. This was one thin line of 12.5px text above the
+  // table -- the same four facts, in the typography of a caption.
   const cur = Object.keys(s.revenue_by_currency || {});
-  h += '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:baseline;'
-    +  'margin:0 0 10px;font-size:12.5px">'
-    +  '<b>' + (s.orders || 0) + ' order' + ((s.orders===1)?'':'s') + '</b>'
-    +  '<span class="cc">' + (s.units || 0) + ' units</span>'
-    // Per currency, never added together: pounds plus dollars is a number that
-    // is wrong in both.
-    +  cur.map(function(c){
-         return '<span class="cc">' + _oEsc(c) + ' '
-              + Number(s.revenue_by_currency[c]).toFixed(2) + '</span>'; }).join("")
-    // SAID OUT LOUD, because the Sales screen shows a different figure for these
-    // same orders and neither is wrong. This is what the buyers PAID, shipping
-    // included; Total Sales on the Sales screen is ordered product sales, which
-    // excludes it. On three orders of one item they read 102.21 and 89.97, and
-    // an unexplained gap between two of your own screens is worse than either.
-    +  (cur.length ? '<span class="cc" title="Summed from each order&#39;s total, so '
-                   + 'it includes shipping. The Sales screen shows ordered product '
-                   + 'sales, which excludes shipping — that is the figure Amazon '
-                   + 'calls Total Sales.">charged, incl. shipping</span>' : '')
-    +  '<span class="cc">last ' + ORD.days + ' days</span>'
-    +  '</div>';
+  // Per currency, never added together: pounds plus dollars is a number that is
+  // wrong in both. One card per currency, so two currencies read as two figures
+  // rather than one wrong one.
+  const _revCards = cur.map(function(c){
+    return {label: "Charged" + (cur.length > 1 ? " (" + c + ")" : ""),
+            value: _oEsc(c) + " " + Number(s.revenue_by_currency[c]).toFixed(2),
+            // SAID OUT LOUD, because the Sales screen shows a different figure
+            // for these same orders and neither is wrong. This is what buyers
+            // PAID, shipping included; Total Sales on the Sales screen is
+            // ordered product sales, which excludes it. On three orders of one
+            // item they read 102.21 and 89.97, and an unexplained gap between
+            // two of your own screens is worse than either.
+            note: "charged, incl. shipping — the Sales screen excludes it",
+            title: "Summed from each order's total, so it includes shipping. "
+                 + "The Sales screen shows ordered product sales, which excludes "
+                 + "shipping - that is the figure Amazon calls Total Sales."};
+  });
+  // Profit only exists once the second pass has worked out what sold, so it is
+  // shown as unknown until then rather than as zero.
+  let _pf = null, _pfCur = "", _pfKnown = 0, _pfBlank = 0;
+  (ORD.rows || []).forEach(function(r){
+    if(r.profit === null || r.profit === undefined){ _pfBlank++; return; }
+    _pf = (_pf === null ? 0 : _pf) + Number(r.profit);
+    _pfCur = _pfCur || r.currency || "";
+    _pfKnown++;
+  });
+  h += uiStats([
+    {label: "Orders", value: s.orders || 0,
+     note: "last " + ORD.days + " days"},
+    {label: "Units", value: s.units || 0,
+     note: (s.orders ? ((s.units || 0) / s.orders).toFixed(1) : "0")
+           + " per order"},
+  ].concat(_revCards).concat([
+    {label: "Profit", value: (_pf === null ? "" : _oMoney(_pf, _pfCur)),
+     tone: (_pf === null) ? "" : (_pf < 0 ? "bad" : "good"),
+     note: (_pf === null)
+           ? (ORD.profit ? "still working out what sold" : "turn on Work out profit")
+           : (_pfBlank ? _pfKnown + " of " + (_pfKnown + _pfBlank)
+                         + " orders costed" : "across every order here")},
+  ]));
 
   if(!ORD.rows.length){
     h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'

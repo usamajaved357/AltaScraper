@@ -3912,7 +3912,8 @@ def build_app(backend=None):
                                  CONFIG_PATH=CONFIG_PATH)
     import routes.sync_routes as _sync_routes
     _sync_routes.register(app, _cfg=_cfg, _active_account=_active_account,
-                          _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache)
+                          _records=_records, _ws=_ws, _bust_records_cache=_bust_records_cache,
+                          CONFIG_PATH=CONFIG_PATH)
     # Bulk handling-time updates (sheet + live Amazon push).
     import routes.handling_routes as _handling_routes
     _handling_routes.register(app, _cfg=_cfg, _active_account=_active_account,
@@ -3945,7 +3946,8 @@ def build_app(backend=None):
     import routes.dashboard_routes as _dashboard_routes
     _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,
                                STATUS_HEADER=STATUS_HEADER, SKU_HEADER=SKU_HEADER,
-                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS)
+                               _INV_ALERT_COUNTS=_INV_ALERT_COUNTS,
+                               CONFIG_PATH=CONFIG_PATH)
     # ASIN research (read-only Catalog Items lookup; no publish)
     import routes.catalog_routes as _catalog_routes
     _catalog_routes.register(app, _cfg=_cfg, _state=_state, CONFIG_PATH=CONFIG_PATH)

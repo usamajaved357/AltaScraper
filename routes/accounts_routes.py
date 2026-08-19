@@ -22,26 +22,13 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
     def _visible_accounts(accounts):
         """The workspaces the CALLER may open.
 
-        One implementation, so what the home screen lists and what the doorman
-        allows are the same answer. Falls open when there is no user (background
-        work, or the shared-password owner who is the only user) -- that is the
-        same rule auth/guard.py applies, not a shortcut.
+        The rule itself now lives in auth/users.visible_accounts, because this
+        page was not the only place that lists accounts and the other place was
+        not scoped (CLAUDE.md Rule 12). This stays as the local name the routes
+        below already call.
         """
-        try:
-            from flask import session
-            from auth import users
-            uid = session.get("uid")
-            if not uid:
-                return accounts
-            u = users.get_user(CONFIG_PATH, uid)
-            if not u:
-                return accounts
-            return [a for a in accounts
-                    if users.can_access_workspace(u, str(a.get("id") or ""))]
-        except Exception:
-            # A permissions lookup that fails must not empty someone's home
-            # screen; the doorman still refuses anything they may not open.
-            return accounts
+        from auth import users
+        return users.visible_accounts(CONFIG_PATH, accounts)
 
     import re as _re
     _SHEET_ID_RE = _re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
