@@ -1039,7 +1039,11 @@ function navTo(sec){
   // report builds and belong behind the button.
   if(sec==="drppc"){ if(typeof drpOnOpen==="function")   drpOnOpen(); }
   if(sec==="imagelib"){ if(typeof imagelibOnOpen==="function") imagelibOnOpen(); }
-  if(sec==="imagestudio"){ if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
+  // studioPickerOnOpen draws the product picker and then calls
+  // imagestudioOnOpen itself, so the Studio works with nothing chosen -- it no
+  // longer has to be entered from Listings.
+  if(sec==="imagestudio"){ if(typeof studioPickerOnOpen==="function") studioPickerOnOpen();
+                           else if(typeof imagestudioOnOpen==="function") imagestudioOnOpen(); }
     if(sec==="aiusage"){  if(typeof aiUsageOnOpen==="function")  aiUsageOnOpen(); }
     if(sec==="finance"){  if(typeof financeOnOpen==="function")  financeOnOpen(); }
     if(sec==="variations"){ if(typeof variationsOnOpen==="function") variationsOnOpen(); }

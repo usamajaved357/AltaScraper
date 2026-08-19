@@ -96,22 +96,18 @@ async function imgpPick(sku) {
   }
 }
 
-async function imgpLoad() {
+// THE SAME PICKER THE IMAGE STUDIO USES.
+//
+// This page grew its own list first; the Studio then needed the identical
+// thing. Two copies would have drifted the first time either changed how a
+// product is chosen, and the symptom is two screens disagreeing about what this
+// account sells. One component now (CLAUDE.md Rule 12) -- and it fetches once
+// and is shared, so opening both pages is one wait rather than two.
+async function imgpLoad(force) {
   IMGP.loading = true; IMGP.note = ""; imgpRender();
-  try {
-    // The account's own products, from the catalogue the rest of the app uses.
-    const j = await (await fetch("/catalog/products" + _imgpQs())).json();
-    if (j && j.ok) {
-      IMGP.items = (j.rows || []).map(function (r) {
-        return { sku: r.sku || r.asin, asin: r.asin, title: r.title,
-                 img: r.img, live: true };
-      }).filter(function (r) { return r.sku; });
-    } else {
-      IMGP.note = (j && j.error) || "Could not read the product list.";
-    }
-  } catch (e) {
-    IMGP.note = "Could not read the product list: " + e;
-  }
+  await ppLoad(force);
+  IMGP.items = PPICK.items;
+  IMGP.note = PPICK.error || "";
   IMGP.loading = false;
   imgpRender();
 }

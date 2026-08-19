@@ -1301,14 +1301,13 @@
                   title="Back to the listings, to pick a different product"><i class="ti ti-arrow-left"></i> Listings</button>
         </div>
       </div>
-      <div id="studiobody" style="padding:4px 0">
-        <div class="odp-note" style="padding:16px;border:1px dashed var(--line);border-radius:10px">
-          <b>Pick a product first.</b>
-          <div class="cc" style="margin-top:6px">Open <b>Listings</b> and press the
-            photo button on any product &mdash; or tick several and use
-            <b>Generate main images</b> to work through them as a batch.</div>
-        </div>
-      </div>
+      <!-- THE STUDIO PICKS ITS OWN PRODUCT NOW.
+           Its empty state used to say "Open Listings and press the photo
+           button", which IS the round trip being complained about. The picker
+           is the shared one (productpicker.js), so this page and the Image
+           Library cannot disagree about what this account sells. -->
+      <div id="studio_picker"></div>
+      <div id="studiobody" style="padding:4px 0"></div>
     </div>
 
     <!-- AI SPEND: what the AI cost, per account and per feature. Read-only —
@@ -1707,7 +1706,10 @@
 <!-- The Dr PPC console. Built ahead of the Advertising API connection. -->
 <script src="/static/js/drppc.js?v={{ ASSET_V }}"></script>
 <!-- The Image Library as its own page: the SAME library, inline, with a picker. -->
+<!-- One product picker, shared by the Image Library and the Image Studio. -->
+<script src="/static/js/productpicker.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/imagelibrary.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/studiopicker.js?v={{ ASSET_V }}"></script>
 <!-- What Generate would do, shown before you press it. -->
 <script src="/static/js/genplan.js?v={{ ASSET_V }}"></script>
 <!-- Per-page user guides. Not the admin howWorks() layer: this one is for
