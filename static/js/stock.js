@@ -617,8 +617,8 @@ function _skCoverage(){
   // A ZERO WITH NO DENOMINATOR IS NOT AN ANSWER, and neither is a pace with no
   // history behind it. Both notes are shown, always.
   h += '<div class="cc" style="font-size:11.5px;line-height:1.55;max-width:790px;'
-    + 'margin:0 0 12px">' + _skEsc(c.note || "") + " " + _skEsc(c.gap_is_not_a_po || "")
-    + "</div>";
+    + 'margin:0 0 12px">' + _skEsc(c.note || "") + " " + _skEsc(c.estimate_note || "")
+    + " " + _skEsc(c.gap_is_not_a_po || "") + "</div>";
 
   const rows = c.rows || [];
   if(!rows.length){
@@ -626,10 +626,18 @@ function _skCoverage(){
       + 'Stock levels are captured each time the live catalogue refreshes.</div>';
   }
 
+  // MEASURED AND ESTIMATED, MARKED AS SUCH. What a product has and what it did
+  // are counted; what it will do is arithmetic on the assumption that the next
+  // thirty days look like the last. The three forward-looking columns say Est.
+  // so the two are not read with the same confidence.
+  const EST = ' <span class="cc" style="font-weight:400;font-size:9.5px" '
+    + 'title="An estimate: it assumes the next 30 days look like the days '
+    + 'measured">Est.</span>';
   let t = '<div style="overflow-x:auto"><table class="stk-table"><thead><tr>'
     + '<th>Product</th><th>Have</th><th>In stock</th>'
-    + '<th>Pace / day</th><th>Trend</th><th>30-day demand</th>'
-    + '<th>Cover</th><th>Short by</th><th>Status</th></tr></thead><tbody>';
+    + '<th>Pace / day</th><th>Trend</th><th>30-day demand' + EST + '</th>'
+    + '<th>Cover' + EST + '</th><th>Short by' + EST + '</th>'
+    + '<th>Status</th></tr></thead><tbody>';
   const LABEL = {out_of_stock: "Out of stock", needs_attention: "Will run short",
                  unknown: "Not enough history", ok: "Covered"};
   const TONE = {out_of_stock: "off", needs_attention: "warn",

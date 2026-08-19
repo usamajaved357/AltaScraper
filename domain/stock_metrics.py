@@ -162,10 +162,30 @@ def for_account(config_path, workspace_id, marketplace, window=30, today=None):
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
 
+    # WHICH OF THESE ARE MEASUREMENTS AND WHICH ARE ESTIMATES.
+    #
+    #     Ava, on when it is willing to estimate at all:
+    #     "No for financials ... Only labeled estimates are forward-looking
+    #      inventory math: days-of-cover, stockout risk, restock suggestion --
+    #      these ARE estimates by definition. I label them."
+    #
+    # That line is worth keeping. What a product HAS and what it DID are counted;
+    # what it will do is arithmetic on an assumption that tomorrow looks like the
+    # last thirty days. Printing both in the same typeface invites the second to
+    # be trusted like the first.
+    measured = ["on_hand", "available", "days_known", "oos_days",
+                "in_stock_rate", "pace_30d", "pace_7d", "velocity_trend_pct"]
+    estimated = ["forecast_demand_30d", "days_of_cover", "stock_gap_30d"]
+
     return {
         "ok": True, "window": window, "start": start, "end": end,
         "rows": rows, "counts": counts, "skus": len(rows),
         "history": cov,
+        "measured": measured, "estimated": estimated,
+        "estimate_note": ("Cover, thirty-day demand and the gap are ESTIMATES: "
+                          "they assume the next thirty days look like the days "
+                          "measured. What is on hand, what sold and how often "
+                          "it was in stock are counted, not assumed."),
         # Said plainly wherever this is drawn: the pace is only as good as the
         # history behind it, and the history starts when recording started.
         "note": ("Stock levels are recorded each time the live catalogue "

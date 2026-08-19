@@ -369,6 +369,25 @@ function financeRender(){
       {k: "Currency", v: cur},
     ], "The Sales screen counts units ORDERED, dated when the order was placed. "
      + "The two will not match, and neither is wrong.");
+
+    // A PERIOD THAT HAS NOT FINISHED IS NOT A PERIOD.
+    //
+    //     Ava: "This month: 2026-08-01 to 2026-08-19 - partial
+    //           (month_is_partial=true). I always flag partial."
+    //
+    // Comparing a part-month against a whole one and reading the difference as
+    // a fall is the easiest mistake on any money screen, and the window here
+    // defaults to the last thirty days — which always includes today.
+    const _today = new Date().toISOString().slice(0, 10);
+    if(FIN.meta.end && FIN.meta.end >= _today){
+      h += '<div class="cc" style="font-size:11.5px;margin:-6px 0 12px;'
+        + 'padding:7px 10px;border:1px solid #3a3320;background:#241f10;'
+        + 'border-radius:6px;max-width:760px">'
+        + '<i class="ti ti-clock"></i> This period includes <b>today</b>, which '
+        + 'is not over. Amazon also posts fees and refunds for a day after it — '
+        + 'so the last few days here will keep changing, and comparing them with '
+        + 'a finished month reads as a fall that has not happened.</div>';
+    }
   }
 
   // WHAT THE PERIOD CAME TO, before the table.
