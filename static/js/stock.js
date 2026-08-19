@@ -557,6 +557,20 @@ function _skOrderList(){
  * a person who has decided to.
  */
 function _skMoneyBack(){
+  // ONE RENDERER, TWO PLACES. This check has its own page now
+  // (static/js/reimbursements.js) and the tab draws the SAME block, because two
+  // copies of one arithmetic disagree the day either is corrected
+  // (CLAUDE.md Rule 12). The tab keeps its place: money owed is a fact about
+  // stock as much as about money, and it was found here first.
+  if(typeof rbHtml === "function" && typeof rbLoad === "function"){
+    if(!RB.data && !RB.loading && !RB.asked){ RB.asked = true; rbLoad(); }
+    return '<div style="padding:2px 0">'
+         + '<div class="cc" style="font-size:11.5px;margin:0 0 8px">'
+         + 'This also has its own page — <a href="#" onclick="return navGo(event,'
+         + "'reimbursements')" + '">Reimbursements</a>.</div>'
+         + rbHtml() + '</div>';
+  }
+
   const m = STOCK.moneyBack;
   if(!m){
     // Fetched the first time this page is opened rather than with the screen:

@@ -265,6 +265,7 @@
         <!-- Reads the same daily figures as Sales, and answers the question
              Sales cannot: is this a NORMAL amount of movement for this account. -->
         <a class="navitem" data-sec="compliance" href="#" onclick="return navGo(event,'compliance')" title="Scan a live listing for forbidden brands, restricted phrasing and category claims"><i class="ti ti-shield-search"></i> Compliance checker</a>
+        <a class="navitem" data-sec="reimbursements" href="#" onclick="return navGo(event,'reimbursements')" title="Money Amazon owes back, checked against its own published refund rule"><i class="ti ti-cash-banknote"></i> Reimbursements</a>
         <a class="navitem" data-sec="sqp" href="#" onclick="return navGo(event,'sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</a>
         <a class="navitem" data-sec="leading" href="#" onclick="return navGo(event,'leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</a>
         <a class="navitem" data-sec="aiusage" href="#" onclick="return navGo(event,'aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</a>
@@ -1253,6 +1254,23 @@
       <div id="cmp_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- REIMBURSEMENTS -- money Amazon owes back, found by checking its own
+         published rule against what it actually took. The check lived as the
+         fourth tab inside Inventory, which is where you go to think about
+         stock, not about money you are owed. Same engine, same renderer
+         (static/js/reimbursements.js), its own page. Reads only; files
+         nothing. -->
+    <div id="sec_reimbursements" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-cash-banknote"></i> Reimbursements</h2>
+        <div class="sub">Money Amazon owes back, found by checking its own published rule against what it actually took &mdash; and shown with the whole sum, so you can check it rather than believe it. Nothing here is filed for you.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="rbLoad(true)"><i class="ti ti-refresh"></i> Re-check</button>
+        </div>
+      </div>
+      <div id="rb_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- PRODUCT CATALOG (Orbit's ASINs page) -- every product ranked, with the
          four findings that each change a decision. Reads the app's own sales
          table and catalogue snapshot; calls Amazon for nothing. -->
@@ -1721,6 +1739,8 @@
 <script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
 <!-- Scan a LIVE listing against this app's own compliance rules. -->
 <script src="/static/js/compliance.js?v={{ ASSET_V }}"></script>
+<!-- Money Amazon owes back. The renderer is shared with the Inventory tab. -->
+<script src="/static/js/reimbursements.js?v={{ ASSET_V }}"></script>
 <!-- Every account, month by month. The one screen not scoped to one account. -->
 <script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
 <!-- Where this account's products sit in Amazon's category tree. -->

@@ -134,6 +134,10 @@ const SECTION_FEATURE = {
   sellerimport:"sellerimport", miles:"listings",
   imagestudio:"images", imagerefs:"images", imagelib:"images",
   inventory:"inventory", sourcing:"repricer",
+  // Reads /inventory/money-back, which the doorman guards as "inventory", so
+  // the nav item has to hide on exactly the same permission. A link that is
+  // visible and then refused is worse than one that was never shown.
+  reimbursements:"inventory",
   orders:"orders", returns:"returns",
   sales:"sales", overview:"sales", leading:"sales", hourly:"hourly",
   traffic:"traffic", sqp:"traffic", finance:"finance", aiusage:"aiusage",
