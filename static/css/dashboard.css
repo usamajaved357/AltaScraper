@@ -3964,3 +3964,14 @@ table.ordtable tbody tr.orddetail > td{
   .odp-src{ grid-template-columns:auto 1fr; }
   .odp-src .odp-num{ grid-column:2; text-align:right; }
 }
+
+  /* ---- the auto-fix box: movable, and foldable to its title ----------------
+     "when i am running auto fix a tab appears on the screen and it is not
+      minimizable or floatable, it hides the content behind it"
+     It was 620px wide and up to 80vh tall at z-index 9999, and the only
+     control destroyed it -- so the choice was covering the listings you were
+     looking at, or losing sight of the run. Folded, only the title bar is
+     left; the run and its progress carry on untouched underneath. */
+  #autofix_panel .af-head{cursor:move;user-select:none}
+  #autofix_panel.af-min{width:auto!important;min-width:260px;max-height:none}
+  #autofix_panel.af-min > *:not(.af-head){display:none}

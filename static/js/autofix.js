@@ -212,29 +212,122 @@ async function _afAttach(){
 }
 window.addEventListener("DOMContentLoaded", function(){ setTimeout(_afAttach, 900); });
 
-function _afPanel(){
+/* THE BOX AN AUTO-FIX RUN DRAWS INTO -- movable, and foldable to its title.
+ *
+ *     "when i am running auto fix a tab appears on the screen and it is not
+ *      minimizable or floatable, it hides the content behind it"
+ *
+ * It was 620px wide and up to 80% of the screen tall, pinned to the bottom
+ * right at z-index 9999, and the only control was a ✕ that DESTROYED it -- so
+ * the choice was "cover the listings you are trying to look at" or "lose sight
+ * of the run". Now it folds to its title bar and can be dragged anywhere, and
+ * where you put it is remembered.
+ *
+ * Written once and used by all three panels (the job panel, the single-SKU
+ * panel and the batch panel), which were three copies of the same inline style
+ * string (CLAUDE.md Rule 12).
+ */
+const _AF_BOX_KEY = "alta.autofixBox";
+
+function _afBoxState(){
+  try{ return JSON.parse(localStorage.getItem(_AF_BOX_KEY) || "{}") || {}; }
+  catch(e){ return {}; }
+}
+function _afBoxSave(patch){
+  try{
+    localStorage.setItem(_AF_BOX_KEY, JSON.stringify(
+      Object.assign(_afBoxState(), patch || {})));
+  }catch(e){}
+}
+
+/* Create (or replace) the panel element, positioned where it was left. */
+function _afBox(width){
   let el = document.getElementById("autofix_panel");
   if(el) el.remove();
   el = document.createElement("div");
   el.id = "autofix_panel";
-  el.style.cssText = "position:fixed;bottom:20px;right:20px;width:620px;max-height:80vh;"+
+  const s = _afBoxState();
+  // A saved position is only honoured if it is still ON the screen -- a box
+  // dragged to the edge of a wide monitor must not vanish on a laptop.
+  const onScreen = (typeof s.left === "number" && typeof s.top === "number"
+                    && s.left > -40 && s.top > -10
+                    && s.left < window.innerWidth - 120
+                    && s.top < window.innerHeight - 40);
+  el.style.cssText = "position:fixed;width:" + width + "px;max-height:80vh;"+
+    (onScreen ? ("left:" + s.left + "px;top:" + s.top + "px;")
+              : "bottom:20px;right:20px;")+
     "background:#141b2b;border:1px solid #3b4d70;border-radius:10px;padding:12px;"+
     "box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;font-size:12px;color:#e8eaed;"+
     "display:flex;flex-direction:column;gap:8px";
-  el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600">'+
-      '<span id="af_title">✦ Auto-fix</span>'+
+  if(s.min) el.classList.add("af-min");
+  return el;
+}
+
+/* The header: drag handle, the caller's buttons, then fold and close. */
+function _afHead(titleHtml, buttonsHtml){
+  const folded = _afBoxState().min;
+  return '<div class="af-head" onmousedown="_afDragStart(event)" '+
+      'style="display:flex;justify-content:space-between;align-items:center;'+
+      'font-weight:600;gap:10px">'+
+      '<span id="af_title" style="overflow:hidden;text-overflow:ellipsis;'+
+        'white-space:nowrap">' + titleHtml + '</span>'+
       '<div style="display:flex;gap:8px;align-items:center">'+
-        '<button onclick="_afCopyTrace()" style="background:#5b3fb8;color:#fff;border:none;'+
-          'padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">📋 Copy trace</button>'+
-        '<button id="af_stopbtn" onclick="_afStopJob()" style="background:var(--red-line);color:var(--red);'+
-          'border:1px solid #7a3030;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
-          '■ Stop</button>'+
-        '<button onclick="document.getElementById(\'autofix_panel\').remove()" title="Close this box '+
-          '(the run KEEPS going on the server)" style="background:none;color:#e8eaed;border:none;'+
-          'cursor:pointer;font-size:16px">✕</button>'+
+        buttonsHtml +
+        '<button onclick="afBoxFold(event)" id="af_foldbtn" title="Fold this box '+
+          'down to its title — the run keeps going" style="background:none;'+
+          'color:#e8eaed;border:none;cursor:pointer;font-size:15px;line-height:1">'+
+          (folded ? "▣" : "—") + '</button>'+
       '</div>'+
-    '</div>'+
+    '</div>';
+}
+
+function afBoxFold(ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  const el = document.getElementById("autofix_panel");
+  if(!el) return;
+  const folded = el.classList.toggle("af-min");
+  _afBoxSave({min: folded});
+  const b = document.getElementById("af_foldbtn");
+  if(b) b.textContent = folded ? "▣" : "—";
+}
+
+function _afDragStart(ev){
+  // A press on a button is a press on that button, not the start of a drag.
+  if(ev.target && ev.target.closest && ev.target.closest("button")) return;
+  const el = document.getElementById("autofix_panel");
+  if(!el) return;
+  ev.preventDefault();
+  const r = el.getBoundingClientRect();
+  const dx = ev.clientX - r.left, dy = ev.clientY - r.top;
+  // Switch from bottom/right anchoring to left/top so the box follows exactly.
+  el.style.bottom = "auto"; el.style.right = "auto";
+  function move(e){
+    const left = Math.max(0, Math.min(window.innerWidth - 80, e.clientX - dx));
+    const top  = Math.max(0, Math.min(window.innerHeight - 32, e.clientY - dy));
+    el.style.left = left + "px"; el.style.top = top + "px";
+  }
+  function up(e){
+    document.removeEventListener("mousemove", move);
+    document.removeEventListener("mouseup", up);
+    const rr = el.getBoundingClientRect();
+    _afBoxSave({left: Math.round(rr.left), top: Math.round(rr.top)});
+  }
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up);
+}
+
+function _afPanel(){
+  const el = _afBox(620);
+  el.innerHTML =
+    _afHead("✦ Auto-fix",
+      '<button onclick="_afCopyTrace()" style="background:#5b3fb8;color:#fff;border:none;'+
+        'padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">📋 Copy trace</button>'+
+      '<button id="af_stopbtn" onclick="_afStopJob()" style="background:var(--red-line);color:var(--red);'+
+        'border:1px solid #7a3030;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+        '■ Stop</button>'+
+      '<button onclick="document.getElementById(\'autofix_panel\').remove()" title="Close this box '+
+        '(the run KEEPS going on the server)" style="background:none;color:#e8eaed;border:none;'+
+        'cursor:pointer;font-size:16px">✕</button>')+
     '<div id="af_status" style="color:var(--accent2)"></div>'+
     '<div id="af_bar" style="height:6px;background:#22293a;border-radius:4px;overflow:hidden">'+
       '<div id="af_barfill" style="height:100%;width:0%;background:#4a8cff;transition:width .3s"></div>'+
@@ -517,25 +610,15 @@ function _autoFixNullPanel(){
 
 // Floating progress panel with an in-panel trace view + Copy button
 function _autoFixPanel(sku, state){
-  let el = document.getElementById('autofix_panel');
-  if(el){ el.remove(); }
-  el = document.createElement('div');
-  el.id = 'autofix_panel';
-  el.style.cssText = 'position:fixed;bottom:20px;right:20px;width:560px;max-height:80vh;'+
-    'background:#141b2b;border:1px solid #3b4d70;border-radius:10px;padding:12px;'+
-    'box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;font-size:12px;color:#e8eaed;'+
-    'display:flex;flex-direction:column;gap:8px';
+  const el = _afBox(560);          // movable + foldable, see _afBox
   el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600">'+
-      '<span>✦ Auto-fix: '+esc(sku)+'</span>'+
-      '<div style="display:flex;gap:8px;align-items:center">'+
-        '<button id="autofix_copy" onclick="_autoFixCopyTrace()" '+
-          'style="background:#5b3fb8;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
-          '📋 Copy trace</button>'+
-        '<button onclick="if(window.AUTOFIX_STATE)window.AUTOFIX_STATE.cancelled=true;this.parentElement.parentElement.parentElement.remove()" '+
-        'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px">✕</button>'+
-      '</div>'+
-    '</div>'+
+    _afHead("✦ Auto-fix: " + esc(sku),
+      '<button id="autofix_copy" onclick="_autoFixCopyTrace()" '+
+        'style="background:#5b3fb8;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+        '📋 Copy trace</button>'+
+      '<button onclick="if(window.AUTOFIX_STATE)window.AUTOFIX_STATE.cancelled=true;'+
+        'document.getElementById(\'autofix_panel\').remove()" '+
+        'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px">✕</button>')+
     '<div id="autofix_status" style="color:var(--accent2)"></div>'+
     '<div style="display:flex;gap:6px;font-size:10px">'+
       '<button onclick="document.getElementById(\'autofix_traceview\').style.display=\'none\';document.getElementById(\'autofix_log\').style.display=\'block\'" '+
@@ -655,25 +738,18 @@ async function _bulkAutoFixCopyTrace(){
 
 function _bulkAutoFixPanel(batch){
   // Reuse the same slot as single-SKU panel so we never have two on screen
-  let el = document.getElementById('autofix_panel');
-  if(el){ el.remove(); }
-  el = document.createElement('div');
-  el.id = 'autofix_panel';
-  el.style.cssText = 'position:fixed;bottom:20px;right:20px;width:620px;max-height:80vh;'+
-    'background:#141b2b;border:1px solid #3b4d70;border-radius:10px;padding:12px;'+
-    'box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;font-size:12px;color:#e8eaed;'+
-    'display:flex;flex-direction:column;gap:8px';
+  const el = _afBox(620);          // movable + foldable, see _afBox
   el.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;font-weight:600">'+
-      '<span>✦ Batch Auto-fix ('+batch.skus.length+' SKU'+(batch.skus.length===1?'':'s')+')</span>'+
-      '<div style="display:flex;gap:8px;align-items:center">'+
-        '<button onclick="_bulkAutoFixCopyTrace()" '+
-          'style="background:#5b3fb8;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
-          '📋 Copy batch trace</button>'+
-        '<button onclick="if(window.BULK_AUTOFIX)window.BULK_AUTOFIX.cancelled=true;if(window.AUTOFIX_STATE)window.AUTOFIX_STATE.cancelled=true;this.parentElement.parentElement.parentElement.remove()" '+
-          'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px" title="Cancel batch and close">✕</button>'+
-      '</div>'+
-    '</div>'+
+    _afHead("✦ Batch Auto-fix (" + batch.skus.length + " SKU"
+              + (batch.skus.length === 1 ? "" : "s") + ")",
+      '<button onclick="_bulkAutoFixCopyTrace()" '+
+        'style="background:#5b3fb8;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+        '📋 Copy batch trace</button>'+
+      '<button onclick="if(window.BULK_AUTOFIX)window.BULK_AUTOFIX.cancelled=true;'+
+        'if(window.AUTOFIX_STATE)window.AUTOFIX_STATE.cancelled=true;'+
+        'document.getElementById(\'autofix_panel\').remove()" '+
+        'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px" '+
+        'title="Cancel batch and close">✕</button>')+
     '<div id="bulk_autofix_status" style="color:var(--accent2)"></div>'+
     '<div id="bulk_autofix_summary" style="font-size:11px;color:#bfc7d5"></div>'+
     '<div id="bulk_autofix_traceview" style="background:#0d1220;border:1px solid #263145;border-radius:6px;'+
