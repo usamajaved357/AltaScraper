@@ -66,6 +66,25 @@ function _thumbBucket(px) {
 function thumbUrl(url, px) {
   const u = String(url == null ? "" : url);
   if (!u || u.indexOf("data:") === 0) return u;
+
+  /* OUR OWN IMAGES NEED SHRINKING MORE THAN AMAZON'S DO.
+   *
+   * This returned every local /media path untouched, so a generated image --
+   * 4096 x 4096 and about 2 MB -- was downloaded whole to be drawn 88 pixels
+   * wide, hundreds at a time. Measured on Image refs: 194 images, 94 of them
+   * still in flight after eleven seconds, and none of them broken. That is what
+   * "I cannot see the thumbnails" looked like from the outside.
+   *
+   * /media/<path>?w=<size> now returns a cached resize (see media_serve). The
+   * bucket is the same one Amazon's links get, so a picture that appears on two
+   * screens at similar sizes is fetched once.
+   */
+  if (u.indexOf("/media/") === 0) {
+    const size = _thumbBucket(px);
+    if (!size) return u;
+    return u + (u.indexOf("?") >= 0 ? "&" : "?") + "w=" + size;
+  }
+
   if (!_THUMB_HOSTS.test(u)) return u;
   if (_THUMB_SIZED.test(u)) return u;
   const size = _thumbBucket(px);

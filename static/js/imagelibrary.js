@@ -71,7 +71,7 @@ function imgpRender() {
         // The tile SAYS it has no picture rather than showing a grey icon that
         // could equally mean a thumbnail failed to load. Picking the row still
         // works -- that is how you get to generating one.
-        (r.img ? '<img src="' + esc(r.img) + '" loading="lazy" alt="">'
+        (r.img ? '<img src="' + esc(thumbUrl(r.img, 88)) + '" loading="lazy" alt="">'
                : '<span class="imgp-noimg" title="No image for this product yet '
                  + '— pick it to make one"><i class="ti ti-photo-off"></i></span>') +
         '<div class="imgp-meta">' +

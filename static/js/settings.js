@@ -97,7 +97,7 @@ async function loadMediaLibrary(){
       var _short = _words.slice(0,4).join(' ');
       var _more  = _words.length > 4;
       var _pic = f.img
-        ? '<img class="mfpic" src="'+esc(f.img)+'" loading="lazy" alt="">'
+        ? '<img class="mfpic" src="'+esc(typeof thumbUrl==="function"?thumbUrl(f.img,64):f.img)+'" loading="lazy" alt="">'
         : '<span class="mfpic mfnopic"><i class="ti ti-photo-off"></i></span>';
       var _name = _short
         ? '<span class="mfname" title="'+esc(f.title)+'">'+esc(_short)+(_more?'…':'')+'</span>'
@@ -147,7 +147,7 @@ async function loadMediaLibrary(){
           // written into every cell: a folder of twenty images would otherwise
           // carry twenty copies of its own contents in its own markup.
           var _open = 'mediaOpenAt(' + jsArg(f.sku) + ',' + _ix + ')';
-          return '<div class="mediacell"><img src="'+esc(im.url)+'" loading="lazy" '+
+          return '<div class="mediacell"><img src="'+esc(typeof thumbUrl==="function"?thumbUrl(im.url,160):im.url)+'" loading="lazy" '+
             'title="Click to view it full size" style="cursor:zoom-in" '+
             'onclick="'+esc(_open)+'">'+_grp+
             '<button class="mediadel" title="Delete" onclick="delMedia(\''+esc(im.url)+'\')"><i class="ti ti-x"></i></button>'+
