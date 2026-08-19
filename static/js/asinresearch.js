@@ -64,7 +64,23 @@
     if(typeof STUDIO==="undefined" || typeof renderStudio!=="function"){ _toast("Image Studio isn't available here."); return; }
     var main=(LAST.images&&LAST.images[0])||"";
     try{
-      STUDIO={ skus:[LAST.asin], items:[{sku:LAST.asin,title:LAST.title,source_image:main,images:LAST.images||[]}],
+      // THE SPECS TRAVEL WITH IT.
+      //
+      // This handed over the SKU, the title and the pictures and dropped the
+      // attributes on the floor -- and the attributes are the FACTS. A+ modules
+      // and secondary images are built from them: without them the generator
+      // has a layout to fill and nothing true to put in it, which is exactly
+      // how a panel headed "28 ingredients" ended up listing invented ones.
+      //
+      // The research lookup already has them (LAST.attributes) and the studio
+      // already reads item.attributes, so this was a gap between two things
+      // that both worked.
+      STUDIO={ skus:[LAST.asin],
+               items:[{sku:LAST.asin, title:LAST.title, source_image:main,
+                       images:LAST.images||[],
+                       asin:LAST.asin,
+                       product_type:LAST.product_type||"",
+                       attributes:LAST.attributes||{}}],
                brand:(typeof CUR_ACCOUNT!=="undefined"&&CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(typeof CUR_ACCOUNT!=="undefined"&&CUR_ACCOUNT?CUR_ACCOUNT.label:"")),
                manualRef:main, recipes:[], results:{} };
       _studioShow();   // its own screen now, not a modal over Listings
