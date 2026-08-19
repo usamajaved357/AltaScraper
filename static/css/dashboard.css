@@ -1069,6 +1069,45 @@
   /* Per-module choices: how much product this one shows, and whether to make a
      separately composed phone version. Sits under the module's own description
      so the choice reads as belonging to that module and not to the panel. */
+  /* ---- IMAGE LIBRARY PAGE ----
+     A picker beside the library rather than above it, so choosing the next
+     product does not scroll the images off the screen -- which is the round
+     trip this page exists to remove. The two columns stack on a narrow screen,
+     picker first, because you cannot use the right-hand side until you have
+     chosen something on the left. */
+  .imgp-split{display:grid;grid-template-columns:290px minmax(0,1fr);gap:14px;
+              align-items:start}
+  .imgp-left{background:var(--panel);border:1px solid var(--line);
+             border-radius:var(--radius);padding:10px;position:sticky;top:64px;
+             max-height:calc(100vh - 90px);overflow-y:auto}
+  .imgp-right{min-width:0}
+  .imgp-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+            padding:2px 2px 8px}
+  .imgp-list{display:flex;flex-direction:column;gap:3px}
+  .imgp-row{display:flex;gap:8px;align-items:center;padding:6px;border-radius:7px;
+            cursor:pointer;border:1px solid transparent}
+  .imgp-row:hover{background:var(--panel2)}
+  .imgp-row.on{background:var(--accent-bg);border-color:var(--accent)}
+  .imgp-row img, .imgp-noimg{width:34px;height:34px;border-radius:6px;
+                             object-fit:cover;flex:0 0 34px;background:var(--panel2);
+                             border:1px solid var(--line);display:block}
+  .imgp-noimg{display:flex;align-items:center;justify-content:center;
+              color:var(--ink4);font-size:14px}
+  .imgp-meta{min-width:0;flex:1}
+  .imgp-t{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap}
+  @media (max-width:900px){
+    .imgp-split{grid-template-columns:1fr}
+    .imgp-left{position:static;max-height:none}
+  }
+
+  /* ---- DR PPC ----
+     The not-connected state is the one that matters most for now, so it is a
+     numbered list of what to actually do rather than a shrug. */
+  .drp-how{margin:10px 0 0;padding-left:20px;font-size:12px;color:var(--ink2);
+           line-height:1.6;max-width:700px}
+  .drp-how li{margin-bottom:6px}
+
   /* ---- BUSINESS OVERVIEW ----
      One total card per CURRENCY, never one grand total: pounds and dollars are
      not added, so there is no single number to make big.

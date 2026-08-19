@@ -112,19 +112,66 @@ print("\n== IT CANNOT WRITE (Rule 8) ==")
 SRC = open(r"D:\AltaScraper\api\amazon_ads.py", encoding="utf-8-sig").read()
 BODY = re.sub(r'"""[\s\S]*?"""', "", SRC)
 BODY = "\n".join(re.sub(r"#.*$", "", ln) for ln in BODY.split("\n"))
-# The ONE POST is the token exchange, which is how a read authenticates.
-posts = re.findall(r'method="POST"', BODY)
-check("exactly one POST exists, and it is the login", len(posts), 1)
-# The generic poster is fine; what matters is that its ONLY call site is the
-# token exchange. A second call site would be a way to send something.
-calls = re.findall(r"(?<!def )\b_post_form\(([A-Za-z_]+)", BODY)
-check("  its only caller is the token exchange", calls, ["TOKEN_URL"])
-for banned in ("putCampaign", "updateCampaign", "createCampaign", "bid",
-               "budget", "negativeKeyword", 'method="PUT"', 'method="DELETE"',
+
+# THIS CHECK WAS REWRITTEN, AND THE REASON MATTERS.
+#
+# It used to count the POSTs in the file (expecting exactly one, the login) and
+# ban the words "bid" and "budget" anywhere in it. Both were PROXIES for the
+# real guarantee -- that this module cannot change a campaign -- and both broke
+# the moment reporting was added, because Amazon's reporting API needs a POST to
+# ASK for a report and its report columns are literally called
+# campaignBudgetAmount.
+#
+# A proxy that fires on a safe change is worse than no proxy: the temptation is
+# to delete it, and then nothing guards the real rule. So it is replaced with a
+# check of the ACTUAL guarantee -- try to POST to a campaign-write endpoint and
+# assert that it is refused. That is stronger than counting, because it holds
+# however many POSTs exist and whatever they are called.
+from api import amazon_ads as _A  # noqa: E402
+
+_FAKE = {"ads_client_id": "x", "ads_client_secret": "x",
+         "ads_refresh_token": "x", "ads_profile_id": "1"}
+for path in ("/v2/sp/campaigns", "/v2/sp/campaigns/12345", "/v2/sp/keywords",
+             "/v2/sp/adGroups", "/v2/sp/negativeKeywords", "/sp/campaigns",
+             "/v2/sp/productAds", "/v2/hsa/campaigns"):
+    try:
+        _A._post_json(path, _FAKE, "UK", {})
+        check("a POST to %s is REFUSED" % path, False, True)
+    except RuntimeError as _e:
+        # Refused before any request is built -- so it cannot even be attempted
+        # with real credentials.
+        check("a POST to %-26s is refused" % path,
+              "not a reporting path" in str(_e), True)
+    except Exception as _e:                      # pragma: no cover
+        check("a POST to %s is refused" % path, False, True)
+
+# And the whitelist is genuinely narrow: only reporting.
+check("the whitelist is reporting only", _A._POST_ALLOWED, ("/reporting/reports",))
+
+# No verb that changes anything, at all.
+for banned in ("putCampaign", "updateCampaign", "createCampaign",
+               "negativeKeyword", 'method="PUT"', 'method="DELETE"',
                'method="PATCH"'):
     check("no way to change a campaign (%r)" % banned, banned in BODY, False)
-truthy("every advertising call goes through the one read helper",
+truthy("every advertising READ goes through the one read helper",
        re.search(r"def _get\(path, creds", BODY))
+
+print("\n== the field names were written without a live response ==")
+# CLAUDE.md Rule 4: never guess what Amazon returns, read the schema. There is
+# no connection yet, so the schema COULD NOT be read -- every name in MAPPING
+# comes from documentation. That is materially weaker and the module says so,
+# and Rule 4's own prescription (add a diagnostic that prints the raw thing
+# Amazon sends) is wired in from the start rather than added after a wrong
+# number.
+truthy("there is a raw-response diagnostic", hasattr(_A, "raw_sample"))
+truthy("  and one table of every field name", hasattr(_A, "MAPPING"))
+truthy("  with several candidates per field, because v2 and v3 differ",
+       any(len(v) > 1 for v in _A.MAPPING.values()))
+# A field that could not be found must be None, never 0: a campaign whose spend
+# could not be read must not look like one that spent nothing.
+_row = _A._row({"campaignId": 1, "name": "X", "clicks": 3})
+check("a metric Amazon did not send is None, not 0", _row["spend"], None)
+check("  and one it did send is read", _row["clicks"], 3.0)
 
 print("\n== the settings route keeps secrets secret ==")
 RT = open(r"D:\AltaScraper\routes\settings_routes.py", encoding="utf-8-sig").read()

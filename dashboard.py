@@ -3768,6 +3768,13 @@ def build_app(backend=None):
     import routes.category_routes as _category_routes
     _category_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                               _active_account=_active_account, _state=_state)
+    # The Dr PPC console. Built BEFORE the Advertising API is connected, so the
+    # day credentials arrive there is a screen to point at them rather than a
+    # project to start. It recommends and stops -- api/amazon_ads whitelists its
+    # only POST to the reporting paths, so nothing here can write a bid.
+    import routes.drppc_routes as _drppc_routes
+    _drppc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
 
     # Sessions, page views, conversion and buy box -- Orbit's Traffic &
     # Conversions screen, built on figures this app has been storing per ASIN and

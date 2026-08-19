@@ -24,6 +24,9 @@ BASE = "http://127.0.0.1:5055"
 SCREENS = [
     ("overview", "ovw_body", "business overview"),
     ("catalog", "catp_body", "product catalog"),
+    ("categories", "cats_body", "category explorer"),
+    ("drppc", "drp_body", "dr ppc"),
+    ("imagelib", "imgp_picker", "image library page"),
     ("trackers", "trk_body", "trackers"),
     ("alerts", "alr_body", "alerts"),
     ("leading", "ld_body", "leading indicators"),
@@ -136,7 +139,12 @@ with sync_playwright() as pw:
                       ("alerts", "/trackers/alerts"),
                       ("leading", "/leading"),
                       ("notify", "/notify/channels"),
-                      ("compliance", "/compliance/scans")):
+                      ("compliance", "/compliance/scans"),
+                      ("categories", "/categories"),
+                      # Checks the CONNECTION on open, never the reports --
+                      # those are two Amazon report builds behind a button.
+                      ("drppc", "/drppc/status"),
+                      ("imagelib", "/catalog/products")):
         p2 = b.new_page(viewport={"width": 1280, "height": 800})
         seen = []
         p2.on("request", lambda r, s=seen: s.append(r.url))
