@@ -369,6 +369,30 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                         "image_provider": res.get("image_provider"),
                         "width": _w, "height": _h, "bytes": _bytes})
 
+    @app.route("/genimage/story", methods=["GET"])
+    def genimage_story():
+        """The ORDER, and the reason for it.
+
+            "there should be a story or a logic behind every image that why it
+             comes first second and third and so on"
+
+        A buyer does not study a carousel or an A+ page; they move through it in
+        order and stop when convinced or bored. So neither is a pile of pictures
+        -- both are a sequence, and each item answers the question the one
+        before it raises.
+
+        That sequence already existed in two places and was invisible in both:
+        _SECONDARY_ROLES knows what each slot is FOR, and the A+ strategist is
+        told to give every module a role. Neither told the person which came
+        first, or why. This does.
+        """
+        from domain import image_story as _story
+        return jsonify({
+            "ok": True,
+            "secondary": _story.secondary_steps(_SECONDARY_ROLES),
+            "aplus": _story.APLUS_STORY,
+        })
+
     @app.route("/genimage/strategize", methods=["POST"])
     def genimage_strategize():
         """Run the strategist AI: it invents conversion-focused image concepts for the
@@ -413,7 +437,47 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                                              listing=_listing_for(b))
         if not res.get("ok"):
             return jsonify({"ok": False, "error": res.get("error", "strategist failed")}), 400
-        return jsonify({"ok": True, "concepts": res.get("concepts", []), "product_spec": spec})
+
+        # WHICH ONE IS FIRST, AND WHY.
+        #
+        #     "tell the user which is the 1st secondary image which is 2nd and
+        #      which is third ... there should be a story or a logic behind
+        #      every image"
+        #
+        # The strategist returns concepts in whatever order it thought of them.
+        # That is not the order a buyer meets them in, and the order matters
+        # more than any single image: a carousel is swiped in sequence and
+        # abandoned the moment it stops earning attention.
+        #
+        # So each concept is placed in the canonical sequence, numbered 1..n for
+        # the set that was actually asked for, and carries the REASON it sits
+        # there. Numbering 2, 6, 9 would be useless -- the number a person sees
+        # has to be the slot the image will occupy.
+        concepts = res.get("concepts", []) or []
+        try:
+            from domain import image_story as _story
+            if kind == "aplus":
+                for c in concepts:
+                    c.update({("story_" + k if k in ("role",) else k): v
+                              for k, v in _story.aplus_step(c.get("role")).items()})
+            else:
+                ranked = sorted(
+                    range(len(concepts)),
+                    key=lambda i: (
+                        (_SECONDARY_ROLES.get(concepts[i].get("role") or "",
+                                              {}).get("order") or 99),
+                        i))
+                for slot, i in enumerate(ranked, 1):
+                    spec_r = _SECONDARY_ROLES.get(concepts[i].get("role") or "") or {}
+                    concepts[i]["slot"] = slot
+                    concepts[i]["why_here"] = spec_r.get("why", "")
+                    concepts[i]["canonical"] = spec_r.get("order") or 0
+                concepts.sort(key=lambda c: c.get("slot") or 99)
+        except Exception:
+            # The numbering is an explanation, not the work. A failure here must
+            # not cost somebody their concepts.
+            pass
+        return jsonify({"ok": True, "concepts": concepts, "product_spec": spec})
 
     @app.route("/genimage/from_concept", methods=["POST"])
     def genimage_from_concept():

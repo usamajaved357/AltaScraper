@@ -971,16 +971,35 @@ async function studioStrategize(kind, autoGen){
     if(!concepts.length){ if(st) st.innerHTML='<span class="cc">No concepts returned — try again.</span>'; return; }
     STUDIO.concepts=concepts; STUDIO.conceptKind=kind;
     if(st) st.innerHTML='<span style="color:var(--ok)">✓ '+concepts.length+' ideas'+(autoGen?' — generating all now…':' — pick to generate')+'</span>';
-    if(box) box.innerHTML=concepts.map((c,i)=>`
+    // WHICH ONE IS FIRST, AND WHY IT IS FIRST.
+    //
+    //   "tell the user which is the 1st secondary image which is 2nd and which
+    //    is third ... there should be a story or a logic behind every image"
+    //
+    // A carousel is swiped in order and abandoned the moment it stops earning
+    // attention, so the sequence matters more than any single image. The server
+    // places each concept in the canonical order and sends its slot number and
+    // the reason it sits there; this draws both, above the concept, because the
+    // order is the decision being made here.
+    if(box) box.innerHTML=concepts.map((c,i)=>{
+      const slot = c.slot || (kind==="aplus" ? c.n : 0);
+      const label = (kind==="aplus")
+        ? (c.label || c.role || "")
+        : (c.role || "");
+      const why = c.why_here || c.why || "";
+      return `
       <div class="conceptcard">
+        <div class="cstep">${slot ? slot : "·"}</div>
         <div style="flex:1">
-          <div style="font-weight:600;font-size:13px">${esc(c.title||('Idea '+(i+1)))}</div>
+          <div style="font-weight:600;font-size:13px">${esc(c.title||('Idea '+(i+1)))}
+            ${label?`<span class="crole">${esc(label)}</span>`:""}</div>
+          ${why?`<div class="cwhy"><b>Why it is #${slot}:</b> ${esc(why)}</div>`:""}
           <div class="cc" style="font-size:11px;margin:2px 0"><b>Customer insight:</b> ${esc(c.customer_insight||"")}</div>
           <div class="cc" style="font-size:11.5px;margin:2px 0">${esc(c.concept||"")}</div>
           <div class="cc" style="font-size:10.5px;opacity:.8"><b>Art direction:</b> ${esc(c.art_direction||"")}</div>
         </div>
         <button class="ib" onclick="studioGenConcept(${i})"><i class="ti ti-photo"></i> Generate${STUDIO.skus.length>1?(' ×'+STUDIO.skus.length):''}</button>
-      </div>`).join("") +
+      </div>`;}).join("") +
       (concepts.length>1?`<div style="margin-top:8px"><button class="primary" onclick="studioGenAllConcepts()"><i class="ti ti-sparkles"></i> Generate all ${concepts.length} AI ideas${STUDIO.skus.length>1?(' for each of '+STUDIO.skus.length+' products'):''}</button></div>`:"");
     // AUTO-ACCEPT: if the user asked to auto-generate, skip the manual pick and
     // generate every suggested concept right away (across all selected products).
@@ -995,7 +1014,18 @@ function _conceptJobs(concepts){
   STUDIO.skus.forEach(sku=>{
     const it=_itemForSku(sku); const ref=_refImgForItem(it);
     concepts.forEach(c=>{
-      jobs.push({sku:sku, ref:ref, label:(c.title||"idea"), payload:{
+      // THE SLOT NUMBER TRAVELS IN THE LABEL.
+      //
+      // The finished-image card is drawn by a shared renderer that receives a
+      // label and nothing else, and re-plumbing the background runner to carry
+      // two more fields would touch every kind of job for the sake of one.
+      // Putting the number in the label means a saved set still says which
+      // image is first long after the concept list is gone -- which is the
+      // point: "1. Two-Hands Scale Shot" is a filename somebody can act on.
+      const _slot = c.slot || c.n || 0;
+      const _lbl = (_slot ? (_slot + ". ") : "") + (c.title || "idea");
+      jobs.push({sku:sku, ref:ref, label:_lbl, slot:_slot,
+                 why:(c.why_here||c.why||""), role:(c.role||""), payload:{
         product_image:ref, title:(it&&it.title)||"", kind:kind,
         concept:c.concept||"", art_direction:c.art_direction||"",
         fidelity:fid, custom_instructions:ci,
