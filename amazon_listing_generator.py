@@ -5268,6 +5268,51 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                 return ""
         return ""
 
+    # SOMEBODY ELSE'S PHOTOGRAPH IS NOT THIS LISTING'S MAIN IMAGE.
+    #
+    #     "i do not want to send the ebay or amazon competitor image to amazon
+    #      as my own image, i will create my own image and will send that to
+    #      amazon"
+    #
+    # Until now it did. enrich_with_source_data sets
+    # main_product_image_locator to comp_data["images"][0] -- the eBay listing's
+    # or the competitor ASIN's first photo -- and that flowed straight through
+    # to the payload. CLAUDE.md rule 1 says the competitor ASIN is a REFERENCE
+    # used to gather product data; its photographs are somebody's property and
+    # publishing one as your own product image is a different act entirely.
+    #
+    # The borrowed URL stays useful: it is the reference the image studio works
+    # from, and it still fills the other_ slots as a stand-in. What it may not
+    # do is go out as the MAIN image, which is the one Amazon shows in search
+    # results and the one a buyer takes to be a photograph of the thing you are
+    # selling.
+    #
+    # OURS means: served by this app (a generated or uploaded file under
+    # /media/), or a URL on a host the owner configured. A borrowed link is
+    # neither, and is refused with the exact thing to do about it.
+    def _is_ours(u):
+        u = str(u or "").strip()
+        if not u:
+            return False
+        if u.startswith("/media/") or u.startswith("data:"):
+            return True
+        try:
+            from domain import image_urls as _iu
+            _base = str(_iu.base_url(CONFIG_PATH) or "").strip()
+        except Exception:
+            _base = str((config or {}).get("public_base_url") or "").strip()
+        return bool(_base) and u.startswith(_base.rstrip("/"))
+
+    _main_raw = str(pa.get("main_product_image_locator") or "").strip()
+    if _main_raw and not _is_ours(_main_raw):
+        pa.pop("main_product_image_locator", None)
+        console.print(
+            "  [yellow]Main image not sent -- it is the source listing's own "
+            "photograph, not yours. Open the listing's Images panel, upload or "
+            "generate your own picture and set it as the main image, then run "
+            "again. (Borrowed images are still used as a reference for "
+            "generating.)[/yellow]")
+
     _main_img = _fetchable(pa.pop("main_product_image_locator", ""))
     if _main_img and has("main_product_image_locator"):
         A["main_product_image_locator"] = [{"media_location": _main_img,

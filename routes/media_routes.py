@@ -237,6 +237,24 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
                 # walk the SKU folder AND its subfolders (e.g. aplus/basic, aplus/premium,
                 # secondary) so organized A+ content is listed too, tagged by group.
                 for dirpath, dirnames, filenames in os.walk(sd):
+                    # THE RESIZE CACHE IS NOT CONTENT.
+                    #
+                    #     "i see two sections .thumbs and Main / concepts in the
+                    #      image library, and both have same data, same images
+                    #      same buttons, i am confused which button to use"
+                    #
+                    # Exactly that. Serving /media/<file>?w=320 writes the
+                    # shrunken copy into a .thumbs folder beside the original
+                    # (see _cached_resize above), and this walk listed it as an
+                    # ordinary subfolder -- so every cached thumbnail came back
+                    # a second time as its own group, with the same tiles and
+                    # the same buttons, and no way to tell which was the real
+                    # file.
+                    #
+                    # Pruned in place so os.walk does not descend at all. It
+                    # also kept every count wrong: a folder with 11 images and
+                    # 10 cached thumbnails reported 21.
+                    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
                     rel = os.path.relpath(dirpath, sd)
                     group = "" if rel == "." else rel.replace(os.sep, "/")
                     for fn in sorted(filenames, reverse=True):
