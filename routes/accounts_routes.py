@@ -306,17 +306,18 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         _state["active_account_id"] = aid
         _state["active_marketplace"] = b.get("marketplace", "") or _state.get("active_marketplace", "")
         if not aid:
-            # Dropshipping: use the user-assigned default sheet/tab if one was set in
-            # "Dropshipping sheets"; otherwise leave None so _ws() falls back to the
-            # config default (google_spreadsheet_id + OUTPUT_TAB) exactly as before.
-            _c0 = _cfg()
-            _ds_sid = str(_c0.get("dropshipping_output_spreadsheet_id") or "").strip()
-            _state["active_sheet_id"] = _ds_sid or None
-            _state["active_tab"] = (str(_c0.get("dropshipping_output_tab") or "").strip() or None)
-            _state["active_tab_gid"] = str(_c0.get("dropshipping_output_tab_gid") or "").strip()
+            # NO ACCOUNT. This used to read the Dropshipping workspace's own
+            # sheet keys; that workspace has been removed (it described itself
+            # as "eBay -> Amazon arbitrage", which CLAUDE.md rule 1 says this
+            # app does not do) and no dropshipping_* key was ever set anyway.
+            # Left as None so _ws() falls back to the config default exactly as
+            # it did before, which is what actually happened in every run.
+            _state["active_sheet_id"] = None
+            _state["active_tab"] = None
+            _state["active_tab_gid"] = ""
             _state["active_view"] = ""
             _save_active_state()   # persist, so a restart can't silently revert the workspace
-            return jsonify({"ok": True, "scope": "dropshipping"})
+            return jsonify({"ok": True, "scope": "no_account"})
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404
@@ -566,6 +567,22 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         _state["cfg"] = None
         return jsonify({"ok": True, "brands": brands})
 
+
+    # THERE IS NO /accounts/add_brand, DELIBERATELY. The account editor already
+    # has a Brands field that saves through /accounts/save, and that is the one
+    # place an account's trademarks are set (CLAUDE.md rule 12). A second way in
+    # would be a second opinion about which brands an account may use, and this
+    # list is what decides whose brand goes on a listing
+    # (amazon_listing_generator.resolve_account_brand).
+    #
+    # What was actually wrong was that nobody could FIND it:
+    #
+    #     "i tried adding A new brand by going to brand setup but the screen is
+    #      blank"
+    #
+    # Brand setup is a different thing -- it holds the copy voice and tone for a
+    # brand PROFILE. The account's approved trademarks live on the account. Both
+    # screens now say so.
 
     @app.route("/accounts/delete", methods=["POST"])
     def accounts_delete():

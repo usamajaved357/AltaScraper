@@ -68,8 +68,21 @@ function _closeSwitchMenu(){
   _SWITCH_MENU = null;
 }
 
-/* The account list. Every account, plus the cross-account dropshipping
-   workspace and a way to reach the grid where accounts are added. */
+/* The account list. Every account, and a way to reach the grid where accounts
+   are added.
+ *
+ * THE DROPSHIPPING WORKSPACE IS GONE, and it should never have outlived the
+ * business model. It was the app's original no-account mode -- "eBay → Amazon
+ * arbitrage" -- and CLAUDE.md rule 1 is explicit that this app does not do
+ * that: it creates NEW listings under the owner's own brands, and the
+ * competitor ASIN is a reference for product data and nothing else. A workspace
+ * whose subtitle contradicts the first rule in the file is a place for work to
+ * go wrong.
+ *
+ * Removed here and on the home screen. The internal `or "dropshipping"` string
+ * a few routes still fall back to is NOT this: it is the id used when no
+ * account is open at all, and it keeps those routes from dividing by a null
+ * account. Nothing can reach it from the interface any more. */
 function openAccountSwitch(ev){
   if(ev) ev.stopPropagation();
   const anchor = document.getElementById("nav_acctswitch");
@@ -82,13 +95,10 @@ function openAccountSwitch(ev){
             icon: '<i class="ti ti-building-store"></i>',
             note: a.has_creds ? "" : "draft-only"};
   });
-  items.push({kind: "drop", label: "Dropshipping", on: !cur,
-              icon: '<i class="ti ti-shopping-cart"></i>', note: "cross-account"});
   items.push({kind: "manage", label: "Manage accounts…",
               icon: '<i class="ti ti-settings"></i>'});
   _switchMenu(anchor, items, function(it){
     if(it.kind === "acct") enterAccount(it.id);
-    else if(it.kind === "drop") enterDropshipping();
     else goHome();
   });
 }
@@ -147,7 +157,10 @@ function renderSwitchRows(){
   const ml = document.getElementById("nav_mkt_label");
   const mrow = document.getElementById("nav_mktswitch");
   const a = (typeof CUR_ACCOUNT !== "undefined") ? CUR_ACCOUNT : null;
-  if(al) al.textContent = a ? (a.label || a.id) : "Dropshipping";
+  // "No account" rather than the name of the workspace that used to be here.
+  // It is also the more useful thing to read: the screens below behave
+  // differently with nothing open, and this row is where you find that out.
+  if(al) al.textContent = a ? (a.label || a.id) : "No account open";
   const m = (typeof WS_MARKET !== "undefined") ? WS_MARKET : "";
   if(mf) mf.textContent = m ? mktFlag(m) : "🌐";
   if(ml) ml.textContent = m ? mktName(m) : "No marketplace";

@@ -94,7 +94,7 @@ def survey(media_root, known_account_ids=None):
 
     Returns one entry per LOCATION. A location is either an account id (the
     library shows it when that workspace is open) or "" for the shared root
-    (which NO account workspace lists -- only the dropshipping view does). An
+    (which NO account workspace lists -- only the default view does). An
     orphaned location is one holding images that no workspace will ever show.
     """
     known = set(str(a) for a in (known_account_ids or []))

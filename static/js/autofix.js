@@ -948,6 +948,11 @@ const AXIS_FIELD={width:"item_width",depth:"item_depth",height:"item_height",len
 // errors fall through to the phrasing matchers below; only known fields get a
 // precise instruction here. Sub-field errors (e.g. hazmat.aspect) inherit the
 // parent's hint, and the hazmat parent also carries the full instruction.
+// The attribute names that mean "whose product is this". None of them is
+// editable here -- see renderAttr for why. Kept beside SPECIFIC_HINT because
+// both answer the same question: what does this field actually want.
+const BRAND_KEYS=["brand","brand_name","manufacturer"];
+
 const SPECIFIC_HINT={
   hazmat:"Lithium battery item. Aspect = united_nations_regulatory_id, Value = UN3481 (battery packed in equipment).",
   contains_battery_or_cell:"App fills this automatically on Preview (Yes / true to match Amazon's list). You don't need to type here.",
@@ -1343,6 +1348,31 @@ function _fullDataInner(r){
   // maximum_speed, item_dimensions, ...), expand into its real sub-field boxes;
   // each sub-field saves flat as "<field>.<path>".
   const renderAttr=(k,isMissing)=>{
+    // THE BRAND IS SET IN ONE PLACE, AND THIS IS NOT IT.
+    //
+    //     "why do i have 2 places in the listing tab to put a brand name, i
+    //      thought it should be 1"
+    //
+    // Correct, and the second box was worse than redundant: it was a box you
+    // could type into whose value was then DISCARDED. build_api_attributes
+    // takes the brand from the listing's own Brand column, checked against the
+    // account's registered brands (see resolve_account_brand) -- never from an
+    // attribute typed here, because every source this editor draws on belongs
+    // to somebody else and one of them once supplied brand='YL'.
+    //
+    // So this shows where the brand actually comes from instead of pretending
+    // to accept one.
+    if(BRAND_KEYS.indexOf(String(k).toLowerCase()) >= 0){
+      const shown = esc(String(r.brand || r.Brand || "").trim() || "not set");
+      return '<tr><td class="k">' + esc(lbl(k)) + '</td><td class="v">'
+        + '<div class="cc" style="font-size:11.5px;line-height:1.5">'
+        + '<b>' + shown + '</b> — taken from this listing’s <b>Brand</b> '
+        + 'field, not typed here. It must be one of the brands registered on '
+        + 'this account; if it is not, the account’s first brand is sent '
+        + 'instead and the run says so. Add a brand under '
+        + '<b>Manage accounts ▸ Brands</b>.'
+        + '</div></td></tr>';
+    }
     const sf=subsView[k];
     // A field is "required" for star purposes if the schema lists it OR Amazon's
     // preview flagged it (conditionally required, e.g. hazmat on a battery item).

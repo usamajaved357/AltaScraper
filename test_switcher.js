@@ -65,8 +65,7 @@ function sandbox(){
     ],
     CUR_ACCOUNT: null, WS_MARKET: "",
     enterAccount: id => { s._entered = id; return Promise.resolve(); },
-    enterDropshipping: () => { s._entered = "__drop__"; },
-    goHome: () => { s._entered = "__home__"; },
+        goHome: () => { s._entered = "__home__"; },
     switchAccountMarket: m => { s._market = m; },
   };
   s.document.body = body;
@@ -83,7 +82,11 @@ truthy("a menu opened", s.made.length === 1);
 let html = s.made[0].innerHTML;
 truthy("the open account is there", html.indexOf("Jack Reacherd") >= 0);
 truthy("and the others", html.indexOf("Selvora") >= 0);
-truthy("the dropshipping workspace too", html.indexOf("Dropshipping") >= 0);
+// The Dropshipping workspace has been REMOVED. It described itself as
+// "eBay -> Amazon arbitrage", which CLAUDE.md rule 1 says this app does not
+// do -- it creates new listings under the owner's own brands. Asserting its
+// ABSENCE is what stops it coming back with the next refactor.
+check("the dropshipping workspace is gone", html.indexOf("Dropshipping"), -1);
 truthy("and a way to reach the grid that adds accounts",
        html.indexOf("Manage accounts") >= 0);
 // The thing worth knowing BEFORE switching: half the screens do not work on a
@@ -118,7 +121,7 @@ truthy("offering to detect them", s.made[0].innerHTML.indexOf("Detect marketplac
 truthy("  and saying what that does",
        s.made[0].innerHTML.indexOf("asks Amazon which") >= 0);
 
-console.log("\n=== the dropshipping workspace has no marketplace of its own ===");
+console.log("\n=== with no account open there is no marketplace to choose ===");
 s = sandbox();
 vm.runInContext("CUR_ACCOUNT = null; openMarketSwitch(null);", s);
 check("no menu", s.made.length, 0);
@@ -139,7 +142,7 @@ check("the account name", s.els.nav_acct_label.textContent, "Jack Reacherd");
 check("the marketplace name", s.els.nav_mkt_label.textContent, "Germany");
 check("and its flag", s.els.nav_mkt_flag.textContent, "\u{1F1E9}\u{1F1EA}");
 vm.runInContext("CUR_ACCOUNT = null; WS_MARKET = ''; renderSwitchRows();", s);
-check("dropshipping is named", s.els.nav_acct_label.textContent, "Dropshipping");
+check("no account open says so plainly", s.els.nav_acct_label.textContent, "No account open");
 // Dimmed rather than offering a choice that does not exist.
 truthy("and the marketplace row is dimmed", s.els.nav_mktswitch.style.opacity === ".45");
 

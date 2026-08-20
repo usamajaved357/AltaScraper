@@ -351,16 +351,26 @@ def can_edit_feature(user, feature):
 def can_access_workspace(user, workspace_id):
     """May this user open this workspace (Amazon account / brand)?
 
-    An empty workspace id means the built-in Dropshipping workspace, which is
-    named explicitly rather than treated as "no restriction" -- otherwise a
-    scoped user could reach it by sending a blank id.
+    An empty workspace id means NO ACCOUNT is open. It is named explicitly
+    rather than treated as "no restriction" -- otherwise a scoped user could
+    reach whatever the no-account state can see by sending a blank id, which is
+    the whole point of naming it.
+
+    It used to be named after the built-in Dropshipping workspace. That
+    workspace has been removed (CLAUDE.md rule 1: this app creates new listings
+    under the owner's own brands, it does not do arbitrage), and the sentinel is
+    the ABSENCE of a workspace rather than one of them. "dropshipping" is still
+    accepted so an existing user record scoped to it keeps working.
     """
     if not user or not user.get("active", True):
         return False
-    allowed = user.get("workspaces") or []
+    allowed = [str(a) for a in (user.get("workspaces") or [])]
     if ALL_WORKSPACES in allowed:
         return True
-    return (str(workspace_id or "") or "dropshipping") in [str(a) for a in allowed]
+    wid = str(workspace_id or "")
+    if wid:
+        return wid in allowed
+    return "_no_account" in allowed or "dropshipping" in allowed
 
 
 def visible_accounts(config_path, accounts):

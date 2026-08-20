@@ -284,6 +284,21 @@ _PANEL_HTML = r"""
 
   <!-- BRAND SETTINGS -->
   <div id="pane-brand">
+    <!-- TWO DIFFERENT THINGS ARE CALLED "BRAND" AND THIS IS THE OTHER ONE.
+         Reported: "i tried adding A new brand by going to brand setup but the
+         screen is blank" -- the screen renders (measured in a browser: 1,178
+         characters, no errors), but it was the wrong screen for what was
+         wanted. This page holds a brand PROFILE: its voice, tone and language
+         for generated copy. Which trademarks an ACCOUNT may list under is a
+         different list, on the account itself, and that is the one that decides
+         what goes in the brand field. -->
+    <div class="cc" style="font-size:11.5px;line-height:1.55;margin:0 0 12px;max-width:760px;border-left:2px solid var(--line);padding-left:10px">
+      This page sets a brand&rsquo;s <b>voice and tone</b> for generated copy.
+      It does <b>not</b> decide which brands an account may list under &mdash;
+      that is the <b>Trademarks / brands</b> field on the account itself
+      (<b>Manage accounts</b> &rsaquo; edit the account). A listing whose Brand
+      is not on that list is sent under the account&rsquo;s first brand instead.
+    </div>
     <div id="brand_cards" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
     <table class="kv">
       <tr><td class="k">Brand</td><td class="v">

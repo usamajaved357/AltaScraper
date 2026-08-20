@@ -203,22 +203,21 @@ def delete_row(config_path, workspace_id, row_id):
 def sheet_for(account, config):
     """(spreadsheet_id, tab_gid) for a workspace's INPUT sheet.
 
-    Three places one can be configured, in priority order:
-        the account's own          -- a real workspace
-        dropshipping_*             -- the built-in Dropshipping workspace, which
-                                      has no account object and keeps its sheets
-                                      under its own config keys
-        the app-wide default       -- what everything used before accounts
-    Missing the middle one made Import silently read the WRONG sheet for
-    Dropshipping, or refuse when a sheet was plainly configured.
+    Two places one can be configured, in priority order:
+        the account's own       -- a real workspace
+        the app-wide default    -- what everything used before accounts
+
+    There was a third: the built-in Dropshipping workspace kept its sheets
+    under dropshipping_* config keys. That workspace has been removed -- it
+    described itself as "eBay -> Amazon arbitrage", which CLAUDE.md rule 1 says
+    this app does not do -- and no dropshipping_* key was ever present in
+    config.json, so that branch never returned a value in any real run.
     """
     cfg = config or {}
     if account:
         return (str(account.get("input_spreadsheet_id") or "").strip(),
                 str(account.get("input_tab_gid") or "").strip())
-    return (str(cfg.get("dropshipping_input_spreadsheet_id")
-                or cfg.get("input_spreadsheet_id") or "").strip(),
-            str(cfg.get("dropshipping_input_tab_gid") or "").strip())
+    return (str(cfg.get("input_spreadsheet_id") or "").strip(), "")
 
 
 def import_for_workspace(config_path, workspace_id, account, config, client):

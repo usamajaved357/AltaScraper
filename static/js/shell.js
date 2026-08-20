@@ -108,8 +108,13 @@ function _initials(name){
   return ((w[0]||"")[0]||"?").toUpperCase()+((w[1]||"")[0]||"").toUpperCase();
 }
 
+// A saved sheet VIEW with no brand on it. These are the old Google Sheets
+// views, which are a different thing from the workspace card that has been
+// removed -- but they used the same word, and the word is what made the
+// arbitrage model look like part of the product. Grouped and labelled by what
+// they actually are now: a sheet nobody has named.
 function _baseName(v){
-  if(!v.brand) return "__dropshipping__";
+  if(!v.brand) return "__unnamed__";
   return String(v.brand).replace(/\s+(USA?|UK|EU|CA|AU|DE|FR|IT|ES)\b\s*$/i,"").trim() || v.brand;
 }
 function _mktOf(v){
@@ -127,7 +132,7 @@ function workspaceGroups(){
     if(!groups[base]) groups[base]={base, members:[], isDrop:!v.brand};
     groups[base].members.push(v);
   });
-  return Object.values(groups).map(g=>{ g.label=g.isDrop?"Dropshipping":g.base; return g; });
+  return Object.values(groups).map(g=>{ g.label=g.isDrop?"Unnamed sheet":g.base; return g; });
 }
 
 let ACCOUNTS = [];
@@ -176,16 +181,16 @@ async function loadHome(){
   const SVG_PLUG='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12h10v3a5 5 0 0 1-10 0z"/><path d="M9 12V7M15 12V7M12 20v2"/></svg>';
   const SVG_PLUGX='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 12h7v3a5 5 0 0 1-7 4.5"/><path d="M9 12V7M14 12V7"/><path d="M18 6l4 4M22 6l-4 4"/></svg>';
   const SVG_PLUS='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
-  // Dropshipping workspace (not an Amazon account -- the eBay->Amazon arbitrage side)
-  cards += `<div class="wscard" onclick='enterDropshipping()'>
-      <button class="peek" title="Reveal" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
-      <div style="display:flex;align-items:center;gap:11px">
-        <div class="ic" style="background:var(--accent-bg);color:var(--accent2)">${SVG_CART}</div>
-        <div style="flex:1"><div class="nm pii">Dropshipping</div><div class="sub pii">eBay → Amazon arbitrage</div></div>
-        <button class="wsedit" title="Assign input &amp; output sheets" onclick='event.stopPropagation();openDropshippingSheets()'><i class="ti ti-settings"></i></button>
-      </div>
-      <div class="stats"><span class="cc">cross-account</span></div>
-    </div>`;
+  // THE DROPSHIPPING CARD IS GONE. It described itself as "eBay → Amazon
+  // arbitrage", which is the one thing CLAUDE.md rule 1 says this app does not
+  // do: it creates NEW listings under the owner's own brands, and the
+  // competitor ASIN is a reference for product data and nothing else. A
+  // workspace whose own subtitle contradicts the first rule in the file is a
+  // place for work to go wrong, so it is no longer reachable from anywhere.
+  //
+  // Its 13 orphaned listing rows (workspace ids dropship_uk / dropship_us,
+  // which were not in config.json and so could never be opened) were written to
+  // _deleted_dropship_rows.json and removed.
   // each Amazon ACCOUNT is a workspace
   cards += ACCOUNTS.map(a=>{
     const col=_wsColorKey(a.id||a.label);
@@ -239,40 +244,12 @@ async function loadHome(){
   // we cannot reopen anything, and the error on screen is the honest answer.
   if(!_ALTA_ROUTED){ _ALTA_ROUTED = true; altaRouteFromUrl(); }
 }
-async function openDropshippingSheets(){
-  // Reuse the account modal shell to edit the DEFAULT (Dropshipping) sheets.
-  const m=document.getElementById("acctmodal"); if(!m) return; m.classList.add("open");
-  const body=document.getElementById("acctmodalbody");
-  body.innerHTML='<div class="cc" style="padding:12px"><span class="genspin"></span> Loading…</div>';
-  let s; try{ s=await (await fetch("/settings/dropshipping_sheets")).json(); }catch(e){ s={ok:false}; }
-  const S=(s&&s.ok)?s:{output_sheet_url:"",input_sheet_url:"",output_tab:""};
-  body.innerHTML=`
-    <div style="font-weight:600;font-size:14px;margin-bottom:2px"><i class="ti ti-table"></i> Dropshipping default sheets</div>
-    <div class="cc" style="font-size:11.5px;margin-bottom:10px">The built-in Dropshipping workspace (eBay → Amazon) uses these sheets. Paste the <b>full Google Sheets link</b> with the tab open — the app reads the spreadsheet ID and the tab (gid) from the URL. Leave blank to fall back to the app's config defaults.</div>
-    <table class="kv">
-      <tr><td class="k">Output sheet URL <span class="cc">(generated listings)</span></td><td class="v"><input class="ed" id="ds_output_url" value="${esc(S.output_sheet_url||'')}" oninput="_showParsed('ds_output_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ds_output_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
-      <tr><td class="k">Input sheet URL <span class="cc">(source rows)</span></td><td class="v"><input class="ed" id="ds_input_url" value="${esc(S.input_sheet_url||'')}" oninput="_showParsed('ds_input_parsed',this.value)" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…"><div id="ds_input_parsed" class="cc" style="font-size:11px;margin-top:2px"></div></td></tr>
-      ${_importInputRow()}
-    </table>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="primary" onclick="saveDropshippingSheets()">Save sheets</button>
-      <button onclick="closeAccountEditor()">Cancel</button>
-      <span id="ds_status" class="cc"></span>
-    </div>`;
-  refreshInputStatus();
-}
-async function saveDropshippingSheets(){
-  const out=((document.getElementById("ds_output_url")||{}).value||"").trim();
-  const inp=((document.getElementById("ds_input_url")||{}).value||"").trim();
-  const st=document.getElementById("ds_status");
-  if(st) st.textContent="Saving…";
-  try{
-    const j=await (await fetch("/settings/dropshipping_sheets",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({output_sheet_url:out, input_sheet_url:inp})})).json();
-    if(j.ok){ toast("Dropshipping sheets saved"+(j.output_tab?(" · tab: "+j.output_tab):"")); closeAccountEditor(); loadHome(); }
-    else { if(st) st.innerHTML='<span style="color:var(--red)">'+esc(j.error||"failed")+'</span>'; }
-  }catch(e){ if(st) st.innerHTML='<span style="color:var(--red)">'+esc(String(e))+'</span>'; }
-}
+// The two functions that opened and saved the Dropshipping default sheets were
+// here. They edited the sheets that workspace read from, and it no longer
+// exists -- see the note further down where the function that opened it used to
+// be. Every account sets its own sheets from its own card, which is where this
+// belonged anyway.
+
 // ---- importing the input sheet ------------------------------------------
 // The input sheet USED to be read live, every run. It is now imported: press
 // this, the rows land in the app, and nothing reads Google again until you press
@@ -487,44 +464,17 @@ async function enterAccountAt(accountId, marketplace){
   await switchAccountMarket(m);
 }
 
-async function enterDropshipping(){
-  CUR_ACCOUNT=null;
-  WS_SOURCE=null; renderDataSource();   // dropshipping uses the config default sheet
-  // AWAITED. This was fire-and-forget, so loadRows() at the end of this function
-  // could reach the server before the switch did and be answered for whichever
-  // account was open a moment ago.
-  try{ await fetch("/accounts/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:""})}); }catch(e){}
-  ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
-  var _g0=document.getElementById("grid"); if(_g0) _g0.innerHTML="";
-  // Picking an account from the panel closes it. This used to hide a full-screen
-  // home page; that element is gone, and calling .classList on the null it left
-  // behind would have thrown here -- on the one path every account switch takes.
-  closeAccounts();
-  document.getElementById("workspace").classList.add("show");
-  const icEl=document.getElementById("ws_ic");
-  icEl.style.background="var(--accent-bg)"; icEl.style.color="var(--accent2)";
-  icEl.innerHTML='<i class="ti ti-shopping-cart"></i>';
-  document.getElementById("ws_nm").textContent="Dropshipping";
-  document.getElementById("ws_sub").textContent="eBay → Amazon";
-  document.getElementById("ws_title").textContent="Listings";
-  document.getElementById("crumbs").innerHTML='<span class="sep">/</span><span class="here">Dropshipping</span>';
-  document.getElementById("nav_setup").style.display="none";
-  var _hv=document.getElementById("nav_harvest"); if(_hv) _hv.style.display="none";
-  window.WS_FEATURES=[];
-  window.WS_BRAND="";
-  ACTIVE_WS={key:"", label:"Dropshipping"};
-  // The toolbar marketplace strip this used to clear no longer exists; the
-  // sidebar row is repainted below by renderSwitchRows(), which dims it because
-  // the dropshipping workspace has no marketplace of its own. Unguarded, this
-  // line threw the moment the element went, and took the rest of the function
-  // with it -- including navTo and loadRows.
-  var sw=document.getElementById('srcswitch'); if(sw) sw.style.display='none';
-  LIST_SOURCE='drafts'; LIVE_ITEMS=[];
-  if(typeof renderSwitchRows === "function") renderSwitchRows();
-  navTo("listings");
-  altaSyncUrl();
-  loadRows();
-}
+// The function that opened the Dropshipping workspace was here, and has been
+// removed with the workspace itself.
+// It set the header to "Dropshipping / eBay -> Amazon", cleared the
+// account, and pointed the app at the config default sheet -- the app's
+// original no-account mode, from before per-account workspaces existed.
+//
+// CLAUDE.md rule 1 says this app creates NEW listings under the owner's own
+// brands and uses a competitor ASIN only to gather product data. A workspace
+// subtitled "eBay -> Amazon arbitrage" is the business model the rule exists
+// to rule out, so it is gone rather than renamed.
+
 // WHICH MARKETPLACE IS OPEN, AND WHAT IT SPENDS.
 //
 // This used to draw the marketplace strip in the toolbar AS WELL as settle the
@@ -612,7 +562,7 @@ function openCurrentAccountSettings(){
   if(ACTIVE_WS && ACTIVE_WS.account && ACTIVE_WS.key){ openAccountEditor(ACTIVE_WS.key); return; }
   // Built-in Dropshipping workspace has no account object — explain + send to Home.
   if(ACTIVE_WS && !ACTIVE_WS.account){
-    toast("Dropshipping uses the default sheet. To set per-account sheet links, open a real account from All workspaces.");
+    toast("No account is open, so this uses the app default sheet. Open an account to set its own sheet links.");
     return;
   }
   toast("Open an account from All workspaces first, then click Account & sheets.");
@@ -649,7 +599,7 @@ function openAccountEditor(id){
       <tr><td class="k">RP UK address</td><td class="v"><input class="ed" id="ac_rp_address" value="${esc((a.uk_responsible_person||{}).address||'')}" placeholder="Real UK address — no PO boxes"></td></tr>
       <tr><td class="k">RP email</td><td class="v"><input class="ed" id="ac_rp_email" value="${esc((a.uk_responsible_person||{}).email||'')}" placeholder="contact@…"></td></tr>
       <tr><td class="k">RP phone</td><td class="v"><input class="ed" id="ac_rp_phone" value="${esc((a.uk_responsible_person||{}).phone||'')}" placeholder="+44…"></td></tr>
-      <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
+      <tr><td class="k">Trademarks / brands <span class="cc">(comma-separated)</span><div class="cc" style="font-weight:400;font-size:11px;line-height:1.45;margin-top:3px">The brands this account may list under. A listing whose Brand is not on this list is sent under the first one instead, and the run says so. This is NOT the same as <b>Brand setup</b>, which holds a brand\u2019s copy voice.</div></td><td class="v"><input class="ed" id="ac_brands" value="${esc((a.brands||[]).join(', '))}" placeholder="Headbanger Lures, Leech Eyewear"></td></tr>
       <tr><td colspan="2" style="padding-top:10px"><div style="font-weight:600;font-size:13px"><i class="ti ti-receipt-tax"></i> VAT</div><div class="cc" style="font-size:11.5px">Amazon reports this account's order values with VAT <b>already inside them</b>. If this company is VAT registered, that portion belongs to HMRC and is not your revenue — so profit and margin are worked out after it is taken out. Leave unticked if this company is not registered. Each company is separate, so set it per account.</div></td></tr>
       <tr><td class="k">VAT registered</td><td class="v">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
@@ -935,11 +885,11 @@ async function enterWorkspace(key){
   const icEl=document.getElementById("ws_ic");
   icEl.style.background=col.bg; icEl.style.color=col.fg;
   icEl.innerHTML = isDrop ? '<i class="ti ti-shopping-cart"></i>' : _initials(v.brand||v.label);
-  document.getElementById("ws_nm").textContent=v.label||v.brand||"Dropshipping";
+  document.getElementById("ws_nm").textContent=v.label||v.brand||"Unnamed sheet";
   document.getElementById("ws_sub").textContent=v.marketplace||"";
   document.getElementById("ws_title").textContent=(v.label||"Listings");
   document.getElementById("crumbs").innerHTML=
-    `<span class="sep">/</span><span class="here">${esc(v.label||v.brand||"Dropshipping")}</span>`;
+    `<span class="sep">/</span><span class="here">${esc(v.label||v.brand||"Unnamed sheet")}</span>`;
   // brand-only sections
   document.getElementById("nav_setup").style.display = isDrop ? "none" : "flex";
   window.WS_BRAND = isDrop ? "" : (v.brand||"");
@@ -985,7 +935,7 @@ function navTo(sec){
   // Found by opening every section in a real browser and photographing it:
   // Permissions came back as an empty page with no error, which is exactly what
   // a missing entry here looks like.
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions","reimbursements"].forEach(s=>{
+  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions","reimbursements","brief"].forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1060,6 +1010,7 @@ function navTo(sec){
     if(sec==="sellerimport"){ if(typeof sellerImportOnOpen==="function") sellerImportOnOpen(); }
     if(sec==="inventory"){ if(typeof stockOnOpen==="function") stockOnOpen(); }
     if(sec==="reimbursements"){ if(typeof reimbursementsOnOpen==="function") reimbursementsOnOpen(); }
+  if(sec==="brief"){ if(typeof briefOnOpen==="function") briefOnOpen(); }
     _mark();
   }
   altaSyncUrl();
@@ -1132,7 +1083,7 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
                        "compliance","overview","categories","drppc","permissions",
-                       "reimbursements"];
+                       "reimbursements","brief"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //
@@ -1147,7 +1098,7 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
 function altaPathFor(sec){
   if(!ACTIVE_WS || ACTIVE_WS.brand === "new") return "";
   if(ALTA_SECTIONS.indexOf(sec) < 0) return "";
-  const slug = String(ACTIVE_WS.key || "") || "dropshipping";
+  const slug = String(ACTIVE_WS.key || "") || "default";
   return "/w/" + encodeURIComponent(slug) + "/" + sec;
 }
 
@@ -1186,7 +1137,7 @@ function altaCurrentPath(){
   // The blank "New brand" screen is a form being filled in, not a place. Giving
   // it an address would produce a bookmark that reopens an empty form.
   if(ACTIVE_WS.brand === "new") return null;
-  const slug = String(ACTIVE_WS.key || "") || "dropshipping";
+  const slug = String(ACTIVE_WS.key || "") || "default";
   const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "listings";
   let p = "/w/" + encodeURIComponent(slug) + "/" + sec;
   // Drafts is the default so it stays out of the address; Live and All are worth
@@ -1245,9 +1196,9 @@ async function altaRouteFromUrl(){
 
   _ALTA_RESTORING = true;
   try{
-    if(ws === "dropshipping"){
-      enterDropshipping();
-    } else if((ACCOUNTS||[]).some(a => String(a.id) === ws)){
+    // A bookmark to the old Dropshipping workspace falls through to the
+    // "no longer exists" branch below, which is exactly right -- it does not.
+    if((ACCOUNTS||[]).some(a => String(a.id) === ws)){
       await enterAccount(ws);
     } else if((VIEWS||[]).some(v => String(v.key) === ws)){
       await enterWorkspace(ws);

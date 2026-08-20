@@ -5,7 +5,7 @@ The settings-only helper _parse_sheet_url moves in as a nested function. Injecte
 _cfg, CONFIG_PATH, _state, _client. ai_providers is imported inline in the bodies.
 
 Routes: GET/POST /ai/settings, POST /admin/logic_settings, GET /ai/test,
-        GET/POST /settings/dropshipping_sheets, GET/POST /settings/ebay
+        GET/POST /settings/ebay
 """
 import json
 
@@ -108,56 +108,13 @@ def register(app, *, _cfg, CONFIG_PATH, _state, _client):
                         "text_model": ai_providers.select(cfg, "prompt_enhance")})
 
 
-    @app.route("/settings/dropshipping_sheets", methods=["GET", "POST"])
-    def settings_dropshipping_sheets():
-        """View / update the DEFAULT (Dropshipping / no-account) input + output sheets.
-        The built-in Dropshipping workspace has no account object, so it previously
-        always fell back to the hardcoded google_spreadsheet_id + OUTPUT_TAB. This lets
-        a user point it at any sheet/tab from the UI, exactly like a real account.
-        POST accepts full Google Sheets URLs, parses id + gid, resolves the output tab
-        NAME (so api/regen runs -- which open the worksheet by name -- hit the right
-        tab), and saves. Blank clears the override -> back to config defaults."""
-        cfg = _cfg()
-        if request.method == "GET":
-            return jsonify({
-                "ok": True,
-                "output_sheet_url": cfg.get("dropshipping_output_sheet_url", ""),
-                "input_sheet_url":  cfg.get("dropshipping_input_sheet_url", ""),
-                "output_tab":       cfg.get("dropshipping_output_tab", ""),
-            })
-        b = request.get_json(force=True) or {}
-        out_url = str(b.get("output_sheet_url", "") or "").strip()
-        in_url  = str(b.get("input_sheet_url", "") or "").strip()
-        out_id, out_gid = _parse_sheet_url(out_url)
-        in_id,  in_gid  = _parse_sheet_url(in_url)
-        if out_url and not out_id:
-            return jsonify({"ok": False, "error": "couldn't read a sheet ID from the output link"}), 400
-        if in_url and not in_id:
-            return jsonify({"ok": False, "error": "couldn't read a sheet ID from the input link"}), 400
-        # resolve the output tab NAME from its gid (best-effort; run_api opens by name)
-        out_tab = ""
-        if out_id and out_gid.isdigit():
-            try:
-                _wsg = _client().open_by_key(out_id).get_worksheet_by_id(int(out_gid))
-                if _wsg is not None:
-                    out_tab = _wsg.title
-            except Exception:
-                out_tab = ""
-        try:
-            raw = json.load(open(CONFIG_PATH, encoding="utf-8"))
-            raw["dropshipping_output_sheet_url"]      = out_url
-            raw["dropshipping_output_spreadsheet_id"] = out_id
-            raw["dropshipping_output_tab_gid"]        = out_gid
-            raw["dropshipping_output_tab"]            = out_tab
-            raw["dropshipping_input_sheet_url"]       = in_url
-            raw["dropshipping_input_spreadsheet_id"]  = in_id
-            raw["dropshipping_input_tab_gid"]         = in_gid
-            json.dump(raw, open(CONFIG_PATH, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-            _state["cfg"] = None
-            return jsonify({"ok": True, "output_tab": out_tab,
-                            "output_sheet_id": out_id, "input_sheet_id": in_id})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 500
+    # /settings/dropshipping_sheets was here. It edited the default sheets the
+    # built-in Dropshipping workspace read from, and that workspace has been
+    # removed: it described itself as "eBay -> Amazon arbitrage", which
+    # CLAUDE.md rule 1 says this app does not do. No dropshipping_* key was ever
+    # set in config.json, so nothing was migrated -- there was nothing to
+    # migrate. Every account sets its own sheets from its own card.
+
 
 
     def _parse_sheet_url(url: str):
