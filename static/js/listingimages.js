@@ -59,6 +59,30 @@ function _ilEsc(s){
   });
 }
 
+/* WHEN AN IMAGE WAS MADE, in the shortest form that is still unambiguous.
+ *
+ * "3 hours ago" for anything today, because that is how you tell this
+ * morning's attempt from the retry; a real date beyond that, because "14 days
+ * ago" is a worse way of saying 6 August. The full timestamp is on the tooltip
+ * either way, so nothing is lost to the rounding.
+ *
+ * made_at is a unix second from the file's own mtime (routes/media_routes.py).
+ */
+function _ilWhen(secs){
+  const t = Number(secs) * 1000;
+  if(!isFinite(t) || t <= 0) return "";
+  const d = new Date(t), now = new Date();
+  const mins = Math.round((now - d) / 60000);
+  let s;
+  if(mins < 1) s = "just now";
+  else if(mins < 60) s = mins + " min ago";
+  else if(mins < 60 * 24 && d.toDateString() === now.toDateString())
+    s = Math.round(mins / 60) + "h ago";
+  else s = d.toLocaleDateString(undefined, {day: "numeric", month: "short"})
+         + " " + d.toLocaleTimeString(undefined, {hour: "2-digit", minute: "2-digit"});
+  return '<span title="' + _ilEsc(d.toLocaleString()) + '">' + _ilEsc(s) + "</span>";
+}
+
 /* Which image is this listing's main right now? Read from whatever the row
  * already holds, so the panel agrees with what a Submit would actually send. */
 function _ilCurrentMain(sku){
@@ -530,7 +554,12 @@ function _ilDraw(){
                + _ilEsc(f.owner) + '</div>'
              : '')
          + '<div class="cc" style="font-size:10px;opacity:.7">'
-         + (f.width ? (f.width + "×" + f.height) : "") + '</div>'
+         + (f.width ? (f.width + "×" + f.height) : "")
+         // WHEN IT WAS MADE. Asked for directly, and it is the fact that turns
+         // a wall of near-identical images into a history you can read: which
+         // came first, which was the retry, which is the one from this morning.
+         + (f.made_at ? (f.width ? " · " : "") + _ilWhen(f.made_at) : "")
+         + '</div>'
          + (isMain
              ? '<div style="font-size:10.5px;color:var(--ok);font-weight:600;margin-top:4px">✓ main image</div>'
              // jsArg, not JSON.stringify: the latter emits DOUBLE quotes, which

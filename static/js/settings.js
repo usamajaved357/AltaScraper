@@ -123,7 +123,15 @@ async function loadMediaLibrary(){
           var _dim=(im.width&&im.height)?(im.width+'×'+im.height+' px'):'';
           var _sz=(im.bytes)?_fmtBytes(im.bytes):'';
           var _grp=im.group?('<span class="medagroup">'+esc(im.group)+'</span>'):'';
-          var _meta=(_dim||_sz)?('<div class="mediameta">'+esc([_dim,_sz].filter(Boolean).join(' · '))+'</div>'):'';
+          // WHEN IT WAS MADE, asked for directly. It is what turns a wall of
+          // near-identical pictures into a history you can read: which came
+          // first, which was the retry, which is this morning's.
+          var _when=(typeof _ilWhen==="function" && im.made_at)?_ilWhen(im.made_at):'';
+          var _bits=[_dim,_sz].filter(Boolean).join(' · ');
+          var _meta=(_bits||_when)
+            ? ('<div class="mediameta">'+esc(_bits)
+               +((_bits&&_when)?' · ':'')+_when+'</div>')
+            : '';
           // FULL SCREEN, OVER THE APP -- not a new browser tab.
           //
           // "you said i will be able to preview images by clicking on them like

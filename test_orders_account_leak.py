@@ -99,6 +99,16 @@ truthy("the report is quoted beside the code",
 truthy("  and so is what was actually measured",
        "only its own rows, repeatably" in OR)
 
+print("\n== and a foreign row is never painted, whatever put it there ==")
+# The only guard that does not depend on any of the others being right. Measured
+# on this build across four account switches in a real browser: every row
+# already belonged to the open account, so it drops nothing today. It is here so
+# that it keeps dropping nothing tomorrow.
+truthy("the render drops rows from another account", "rid !== _openWs" in JS)
+truthy("  and says so rather than tidying up quietly",
+       "belonging to another account" in JS)
+truthy("  asking for it to be reported", "should not happen" in JS)
+
 print("\n%d failed" % len(fails))
 for f in fails:
     print("  FAILED:", f)

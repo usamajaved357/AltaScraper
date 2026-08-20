@@ -244,8 +244,21 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
                             _fp = os.path.join(dirpath, fn)
                             _w = _h = 0
                             _sz = 0
+                            # WHEN IT WAS MADE. Asked for directly, and it is
+                            # also what lets the studio warn before making a
+                            # thirty-seventh image of a product that already has
+                            # thirty-six.
+                            #
+                            # The file's own mtime, not a timestamp parsed out of
+                            # the name: generated files carry one, uploaded files
+                            # do not, and a column that is right for some images
+                            # and blank for others is worse than one that is
+                            # always right about something slightly duller.
+                            _made = 0
                             try:
-                                _sz = os.path.getsize(_fp)
+                                _st = os.stat(_fp)
+                                _sz = _st.st_size
+                                _made = int(_st.st_mtime)
                                 from PIL import Image as _PImg
                                 with _PImg.open(_fp) as _im:
                                     _w, _h = _im.size
@@ -254,7 +267,7 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
                             _urlpath = f"{base}/{group}/{fn}" if group else f"{base}/{fn}"
                             files.append({"name": fn, "url": f"{url_prefix}/{_urlpath}",
                                           "width": _w, "height": _h, "bytes": _sz,
-                                          "group": group})
+                                          "made_at": _made, "group": group})
                 if files:
                     # sort so root images come first, then grouped (aplus/basic, etc.)
                     files.sort(key=lambda x: (x.get("group", ""), x["name"]), reverse=False)
@@ -300,6 +313,27 @@ def register(app, *, _media_root, _safe_sku, _sku_dir, _state, _active_account,
                 f.setdefault("asin", "")
                 f.setdefault("img", "")
                 f.setdefault("img_source", "")
+
+        # A FOLDER FULL OF PICTURES SHOWING NO PICTURE.
+        #
+        #     "i am still not able to see the thumbnails of the items outside of
+        #      the folder, i see them inside the folder, what is this behavior"
+        #
+        # Exactly that. The folder's thumbnail came from the CATALOGUE -- the
+        # live Amazon product photo -- so a SKU that is still a draft, or that
+        # the catalogue cannot match, had img="" and drew the grey
+        # no-photo icon. Meanwhile the folder sat there holding eleven images of
+        # the thing.
+        #
+        # The catalogue picture stays FIRST when there is one: it is the product
+        # as Amazon shows it, which is what the row is trying to say. But when
+        # there is none, the folder's own first image is a far better answer
+        # than a grey icon, and it is the one thing guaranteed to exist -- the
+        # folder would not be listed at all if it were empty.
+        for f in out:
+            if not f.get("img") and (f.get("files") or []):
+                f["img"] = f["files"][0].get("url") or ""
+                f["img_source"] = "first image in this folder"
         return jsonify({"ok": True, "folders": out})
 
     @app.route("/media/zip")

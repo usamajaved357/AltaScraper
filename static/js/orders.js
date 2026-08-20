@@ -419,8 +419,39 @@ function _ordPct(v, good, ok, title){
 function ordersRender(){
   const body = document.getElementById("ordbody");
   if(!body) return;
+  // THE LAST PLACE IT COULD GO WRONG, GUARDED AT THE POINT OF PAINTING.
+  //
+  // The server is scoped, the request names the account, the reply is checked
+  // and the rows are stamped -- and this is still worth having, because it is
+  // the only guard that does not depend on any of the others being right. A row
+  // belonging to another account is DROPPED here rather than drawn, whatever
+  // put it in the list.
+  //
+  // Measured on this build, across four account switches in a real browser:
+  // every row already belonged to the open account, so this drops nothing
+  // today. It is here so that it keeps dropping nothing tomorrow.
+  const _openWs = (typeof ACTIVE_WS !== "undefined" && ACTIVE_WS && ACTIVE_WS.key)
+    ? String(ACTIVE_WS.key) : "";
+  let _foreign = 0;
+  if(_openWs && (ORD.rows || []).length){
+    const keep = ORD.rows.filter(function(r){
+      const rid = String(r.account_id || "");
+      if(rid && rid !== _openWs){ _foreign++; return false; }
+      return true;
+    });
+    if(_foreign) ORD.rows = keep;
+  }
   const m = ORD.meta || {}, s = ORD.summary || {};
   let h = "";
+  if(_foreign){
+    // Said out loud rather than silently dropped: if this ever fires, it is a
+    // fault worth reporting, not a tidy-up worth hiding.
+    h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
+      +  'border:1px solid #5c2a33;background:#2a1620;border-radius:6px;color:#ffb3b3">'
+      +  '<i class="ti ti-alert-triangle"></i> ' + _foreign + ' order'
+      +  (_foreign === 1 ? "" : "s") + ' belonging to another account '
+      +  'were not shown. Please report this — it should not happen.</div>';
+  }
 
   // Which accounts answered, and which did not. An account whose token expired
   // is a different fact from having no orders, and the difference is invisible

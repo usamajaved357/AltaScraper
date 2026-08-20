@@ -98,18 +98,39 @@ async function skuMedia(sku){
 async function confirmIfExisting(skus, kind){
   const list = (skus || []).filter(Boolean);
   if(!list.length) return true;
-  let hits = [];
+  let hits = [], worst = 0;
   for(const sku of list.slice(0, 12)){
     const m = await skuMedia(sku);
-    const n = (kind === "aplus") ? m.aplus.length : m.images.length;
-    if(n) hits.push(sku + " (" + n + ")");
+    const set = (kind === "aplus") ? m.aplus : m.images;
+    const n = set.length;
+    if(!n) continue;
+    worst = Math.max(worst, n);
+    // WHEN THE LAST ONE WAS MADE. "12 images" and "12 images, the newest an
+    // hour ago" are different situations: the second is somebody generating
+    // repeatedly right now, which is the one that runs to thirty-six.
+    let newest = 0;
+    set.forEach(function(f){ if(f && f.made_at > newest) newest = f.made_at; });
+    let when = "";
+    if(newest){
+      const mins = Math.round((Date.now() - newest * 1000) / 60000);
+      when = mins < 60 ? (", newest " + Math.max(mins, 1) + " min ago")
+           : mins < 60 * 24 ? (", newest " + Math.round(mins / 60) + "h ago")
+           : (", newest " + Math.round(mins / 1440) + " days ago");
+    }
+    hits.push("  " + sku + " — " + n + " already" + when);
   }
   if(!hits.length) return true;
   const what = (kind === "aplus") ? "A+ module image" : "image";
+  // The message leads with the number when it is getting silly. A count in a
+  // sentence is read; a count in a heading is noticed.
+  const head = worst >= 8
+    ? ("This product already has " + worst + " " + what + "s.\n\n")
+    : ("These already have " + what + "s:\n\n");
   return confirm(
-    "These already have " + what + "s:\n\n  " + hits.join("\n  ") + "\n\n"
-    + "Generating again ADDS a new set — it does not replace the old ones, and "
-    + "nothing is deleted. You will have both, and will need to pick which to use.\n\n"
+    head + hits.join("\n") + "\n\n"
+    + "Generating again ADDS a new set — it does not replace the old ones and "
+    + "nothing is deleted. Each image is a paid call, and you will have to pick "
+    + "which of them to use afterwards.\n\n"
     + "Generate anyway?");
 }
 
@@ -525,6 +546,11 @@ async function studioRunSource(){
     }});
   });
   const total=jobs.length;
+  // THIS PATH NEVER ASKED. confirmIfExisting guarded three of the five ways to
+  // start a generation; this was one of the two it did not, which is how one
+  // product ended up with thirty-six images. Asked FIRST, because "you already
+  // have 36 of these" changes the answer to "generate 4 more?" completely.
+  if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   if(total>4 && !confirm("This will generate "+total+" image(s). Each is a paid call. Continue?")) return;
   studioRunBackground("source", jobs, total);
 }
@@ -1036,17 +1062,47 @@ function _conceptJobs(concepts){
   });
   return jobs;
 }
-function studioGenConcept(i){
+async function studioGenConcept(i){
   const c=(STUDIO.concepts||[])[i]; if(!c) return;
+  // Generating ONE at a time is exactly how a product reaches thirty-six of
+  // them -- each click is small, and nothing ever says how many there are.
+  if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   const jobs=_conceptJobs([c]);
   studioRunBackgroundConcept(jobs, jobs.length);
 }
-function studioGenAllConcepts(auto){
+async function studioGenAllConcepts(auto){
   const concepts=STUDIO.concepts||[]; if(!concepts.length) return;
+  // Asked even when auto-invoked: the opt-in below is about PAYING for a batch,
+  // which is a different question from whether you already have a set.
+  if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   const jobs=_conceptJobs(concepts);
-  // when auto-invoked (user clicked "Suggest & auto-generate"), they've already
-  // opted in, so skip the paid-call confirm; otherwise still confirm for >4.
-  if(!auto && jobs.length>4 && !confirm("This will generate "+jobs.length+" image(s). Each is a paid call. Continue?")) return;
+  // A SINGLE CLICK CAN BE TWENTY-FOUR PAID IMAGES, AND IT DID NOT SAY SO.
+  //
+  //     "i suspect there is some issue with the app itself which iss
+  //      generating a large number of images like more than 20 on a single
+  //      click"
+  //
+  // Correct, and here is the arithmetic. _conceptJobs is PRODUCTS × CONCEPTS:
+  // the strategist returns 3 ideas for a main image, 8 for secondary, 5 or 7
+  // for A+. Three products selected with the secondary set is 3 × 8 = 24
+  // images from one press.
+  //
+  // Worse, "Suggest & auto-generate" passed auto=true and skipped the
+  // paid-call confirm entirely, on the reasoning that the user had already
+  // opted in. They opted in to GENERATING. Nobody opts in to a number they
+  // were never shown -- and the multiplication is exactly the part that is
+  // invisible, because the screen shows a list of 8 ideas and says nothing
+  // about the 3 products it will run them against.
+  //
+  // So the number is always shown, the arithmetic is spelled out when there is
+  // any, and auto no longer buys silence.
+  const _nsku=(STUDIO.skus||[]).length;
+  const _sum=(_nsku>1)
+    ? (_nsku+" product"+(_nsku>1?"s":"")+" × "+concepts.length+" idea"
+       +(concepts.length>1?"s":"")+" = "+jobs.length+" images")
+    : (jobs.length+" image"+(jobs.length>1?"s":""));
+  if(jobs.length>4 && !confirm(
+      "This will generate "+_sum+".\n\nEach one is a paid call.\n\nContinue?")) return;
   studioRunBackgroundConcept(jobs, jobs.length);
 }
 function studioRunBackgroundConcept(jobs, total){
