@@ -146,6 +146,17 @@ const SECTION_FEATURE = {
   monitor:"monitor", trackers:"monitor", alerts:"monitor",
   catalog:"listings", categories:"listings", compliance:"listings",
   notify:"accounts", setup:"accounts",
+  // MEASURED: 36 sections in the nav, 34 in this map. The two missing ones were
+  // not harmless. `brief` is the weekly business brief -- revenue, profit, what
+  // moved -- so it belongs with sales, exactly as overview and leading do; it
+  // was visible to a user with sales="none". `permissions` decides what
+  // everyone else may do, so it sits with the account administration it
+  // belongs to.
+  //
+  // A section absent from this map is never hidden, and nothing says so at the
+  // time -- which is why both of these were missed. test_permission_coverage.py
+  // now fails on an unmapped section rather than leaving it to be noticed.
+  brief:"sales", permissions:"accounts",
 };
 
 function featureLevel(feat){
@@ -173,6 +184,37 @@ function featureLevel(feat){
 // Nothing here is a security boundary -- auth/guard refuses the request
 // whatever the browser shows -- this is about not advertising what somebody
 // cannot have.
+/* MAY THIS PERSON OPEN THIS SCREEN AT ALL?
+ *
+ *     "the user with permissions should only be able to view the page for
+ *      which the permission is aloted to him"
+ *
+ * Hiding the nav item was never the whole job, because the nav item is not the
+ * only way in. Every screen has a real address (/w/<workspace>/<section>), and
+ * there is also the bookmark bar, the browser Back button, and any link
+ * somebody was sent. All of those call navTo() directly and none of them look
+ * at the sidebar.
+ *
+ * The data was never exposed by that -- auth/guard.py refuses the requests, so
+ * the screen would open empty or erroring. But "opens and then fails" is a bad
+ * answer to "am I allowed in here": it looks like the app is broken rather than
+ * like the answer is no, and it leaves the person guessing whether to report a
+ * bug. Say no, plainly, at the door.
+ *
+ * Unknown sections are ALLOWED. A section missing from SECTION_FEATURE means
+ * the map is incomplete, not that the user is banned -- failing open here and
+ * failing the coverage test instead keeps a mapping mistake from locking people
+ * out of a working screen.
+ */
+function maySeeSection(sec){
+  try{
+    if(typeof ME === "undefined" || !ME) return true;   // before /users/me lands
+    const feat = SECTION_FEATURE[sec];
+    if(!feat) return true;                              // unmapped -> not a ban
+    return featureLevel(feat) !== "none";
+  }catch(e){ return true; }
+}
+
 function applyPermissionsToUI(){
   if(!ME) return;
 
