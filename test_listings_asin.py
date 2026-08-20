@@ -116,6 +116,18 @@ truthy("the count's exclusion set does too",
 truthy("and the reason is recorded once",
        "can only ever produce a FALSE POSITIVE" in LJ)
 
+print("\n== and the grid's dedupe cannot hide a live listing ==")
+# This set REMOVES cards from the grid. Seeded with competitor ASINs, a match
+# against one of our own catalogue entries would make a genuinely live listing
+# vanish from the screen -- the disappearing-listing version of the same
+# mistake. The SKU set beside it is the one that actually does this job.
+MT = read("static", "js", "miles_template.js")
+truthy("the dedupe set uses _matchableAsin",
+       "const liveAppAsins = new Set(liveRows.map(_mAsin)" in MT)
+falsy("  not the rows' raw asin field",
+      "new Set(liveRows.map(r=>_norm(r.asin))" in MT)
+truthy("  and says what it would have cost", "vanish from the screen" in MT)
+
 print("\n== searching by the source ASIN still works ==")
 # It is genuinely useful to find a draft by the product it was built from.
 truthy("search still looks at the row's asin", "r.asin, r.competitor_asin" in LJ)

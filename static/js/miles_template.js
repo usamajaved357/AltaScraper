@@ -498,7 +498,15 @@ function render(){
   // "Push image to live"), and drop any catalog tile whose SKU/ASIN already
   // appears as a LIVE app row.
   const liveAppSkus = new Set(liveRows.map(r=>_norm(r.sku)));
-  const liveAppAsins = new Set(liveRows.map(r=>_norm(r.asin)).filter(Boolean));
+  // _matchableAsin (listings.js), NOT r.asin. On an app row that field is the
+  // COMPETITOR ASIN out of the SKU -- and this set REMOVES cards from the grid,
+  // so a competitor ASIN that happens to match one of our own catalogue entries
+  // would make a genuinely live listing vanish from the screen entirely. That
+  // is the disappearing-listing version of the mistake fixed across
+  // listings.js; the SKU set above is the one that actually does this job.
+  const _mAsin = (typeof _matchableAsin === "function")
+               ? _matchableAsin : (r => _norm(r && r.asin));
+  const liveAppAsins = new Set(liveRows.map(_mAsin).filter(Boolean));
   const liveCatalog = (LIVE_ITEMS||[]).filter(it=>{
     const s=_norm(it.sku), a=_norm(it.asin);
     if(s && liveAppSkus.has(s)) return false;   // same SKU already shown as app row
