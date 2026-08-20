@@ -134,11 +134,15 @@ async function batchAutoGenerate(kind){
   }catch(e){ toast("Error: "+e); }
 }
 function _asinForSku(sku){
-  // find the ASIN for a SKU from live items or rows
+  // OUR ASIN FOR THIS SKU, or "" -- never the competitor reference.
+  //
+  // This fell back to (ROWS.find(...)).asin, which is the competitor ASIN out
+  // of the SKU (see rowAsin below). Its one caller is batchAutoGenerate, which
+  // stamps this onto every generated image job, so images we made for our own
+  // product were being filed against somebody else's ASIN. "" is the correct
+  // answer for a draft that is not live yet: it has no ASIN of its own.
   const s=String(sku);
-  let it=(LIVE_ITEMS||[]).find(x=>String(x.sku)===s);
-  if(it && it.asin) return String(it.asin);
-  it=(ROWS||[]).find(x=>String(x.sku)===s);
+  const it=(LIVE_ITEMS||[]).find(x=>String(x.sku)===s);
   return (it && it.asin) ? String(it.asin) : "";
 }
 // YOUR OWN live ASIN (the one Amazon assigned to YOUR listing) -- taken ONLY from the live
@@ -151,6 +155,68 @@ function ownLiveAsin(r){
     const it=(LIVE_ITEMS||[]).find(x=>String(x.sku).trim()===s);
     return (it && it.asin) ? String(it.asin).trim() : "";
   }catch(e){ return ""; }
+}
+
+/* ================= WHICH ASIN BELONGS TO THIS ROW ==================
+ *
+ * TWO DIFFERENT ASINS, AND ONLY ONE OF THEM IS OURS.
+ *
+ * Rule 1: this app creates NEW products under our own brands. The ASIN in the
+ * SKU (price_days_ASIN, e.g. 9.89_3Days_B07NT77GT8) is a COMPETITOR REFERENCE
+ * used during generation to pull product data. It is not our listing and never
+ * becomes our listing.
+ *
+ * MEASURED on jack_uk, all 67 rows: every one of the 56 rows carrying an ASIN
+ * carries the COMPETITOR's -- r.asin was identical to the ASIN embedded in the
+ * SKU in 56 cases out of 56, none differing. Where the listing is actually
+ * live, our real ASIN is something else entirely:
+ *
+ *     SKU 9.89_3Days_B07NT77GT8   r.asin B07NT77GT8   ours B0H66Q1XFK
+ *     SKU 7.99_2Days_B07GDBY3YS   r.asin B07GDBY3YS   ours B0H6Y62F96
+ *
+ * ownLiveAsin() above says so in a comment -- "we deliberately never fall back
+ * to r.asin here, which is competitor" -- and then five other functions did
+ * exactly that, each deciding for itself and each deciding wrong. One concept,
+ * no shared helper, five answers (rule 12). This is the shared helper.
+ *
+ * THE SAME FIELD MEANS DIFFERENT THINGS depending on what was passed in, which
+ * is what made this so easy to get wrong. On an APP ROW, r.asin is the
+ * competitor. On a CATALOGUE ITEM straight from Amazon it is OURS. Both are
+ * handed to the same rendering functions. This resolves both: `own` comes from
+ * matching OUR sku against Amazon's catalogue, which is true either way, and
+ * `source` is only reported when it is genuinely a different, non-ours ASIN.
+ */
+function rowAsin(r){
+  const own = ownLiveAsin(r);
+  let src = String((r && r.asin) || "").trim().toUpperCase();
+  // A catalogue item's own ASIN is not a "source" -- it is the same listing.
+  if(src && own && src === String(own).trim().toUpperCase()) src = "";
+  return {own: own, source: src, ours: !!own};
+}
+
+/* Is this row's asin field the competitor reference embedded in its SKU?
+ *
+ * Used by the catalogue-matching functions below. Matching an APP ROW to
+ * Amazon's catalogue by ASIN can only ever produce a FALSE POSITIVE -- a hit
+ * means our catalogue happens to contain the COMPETITOR's ASIN, which would
+ * declare our draft live because somebody else's listing exists. Matching by
+ * SKU is authoritative and is what those functions do first anyway.
+ *
+ * Deliberately not "drop the ASIN leg entirely": a row whose asin is genuinely
+ * ours (a catalogue item, or a row imported another way) should still match on
+ * it. Only the SKU-embedded competitor reference is excluded.
+ */
+function _asinIsCompetitorRef(r){
+  const a = String((r && r.asin) || "").trim().toUpperCase();
+  if(!a) return false;
+  const m = String((r && r.sku) || "").trim().toUpperCase().match(/_([A-Z0-9]{10})$/);
+  return !!(m && m[1] === a);
+}
+
+/* The ASIN a row may be matched to Amazon's catalogue by: "" when the only one
+   it has is a competitor reference. */
+function _matchableAsin(r){
+  return _asinIsCompetitorRef(r) ? "" : String((r && r.asin) || "").trim().toUpperCase();
 }
 // The ONE Amazon domain table. There were four places building these by hand and
 // they disagreed: two sent every non-UK marketplace to amazon.com, two hardcoded
@@ -372,7 +438,27 @@ function toast(m){const t=document.getElementById("toast");t.textContent=m;t.cla
   clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1800);}
 
 function badgeClass(s){return ["APPROVED","NEEDS_REVIEW","IP_HOLD","COMPLIANCE_HOLD","ERROR","API_READY","API_ERROR","LIVE","PARENT"].includes(s)?("b-"+s):"b-none";}
-function isHold(s){return s==="IP_HOLD"||s==="COMPLIANCE_HOLD"||s==="ERROR"||s==="API_ERROR";}
+/* TWO DIFFERENT THINGS STOP A LISTING, and they are not fixed the same way.
+ *
+ *   BLOCKED  -- this app's own IP or compliance check stopped it BEFORE
+ *               anything was sent. Nothing has reached Amazon. You fix it by
+ *               changing a rule or the listing, then re-scanning.
+ *   REFUSED  -- it WAS sent and Amazon rejected it. Amazon has said something
+ *               specific about it, and that message is what you act on.
+ *
+ * The screen already tells them apart in words ("held by a compliance or IP
+ * check" vs "listings Amazon refused") and then sent BOTH counts to the same
+ * filter, which is isHold -- the union. So clicking "3 listings Amazon
+ * refused" showed those 3 plus all 25 compliance holds: a number you click
+ * that does not show you that number, which is the same complaint that got the
+ * live tiles fixed ("clicking only 1 button draws a border on all 3").
+ *
+ * isHold stays as the union, because the "Blocked or errored" tile genuinely
+ * wants both and several callers rely on it. The two halves are now nameable
+ * separately, from one definition each (rule 12). */
+function isRefusedByAmazon(s){ return s==="ERROR"||s==="API_ERROR"; }
+function isBlockedByOurChecks(s){ return s==="IP_HOLD"||s==="COMPLIANCE_HOLD"; }
+function isHold(s){ return isBlockedByOurChecks(s) || isRefusedByAmazon(s); }
 
 // GONE: the sheet-tab filter. A spreadsheet had tabs and this let you look at
 // one of them; the app's own database does not, and there is nothing left for
@@ -485,7 +571,11 @@ function liveItemIs(it, filter){
 function liveItemForRow(r){
   if(typeof LIVE_ITEMS === "undefined" || !LIVE_ITEMS) return null;
   const n = v => String(v == null ? "" : v).trim().toUpperCase();
-  const s = n(r && r.sku), a = n(r && r.asin);
+  // Competitor reference excluded -- see _matchableAsin. This pairs an app row
+  // with Amazon's own entry for it, and the pairing feeds the handling time and
+  // the status tiles, so matching on the competitor's ASIN would attach another
+  // seller's listing data to our row.
+  const s = n(r && r.sku), a = _matchableAsin(r);
   let byAsin = null;
   for(const it of LIVE_ITEMS){
     if(!it) continue;
@@ -500,7 +590,11 @@ function passFilter(r){
   if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
   if(FILTER==="all")return true;
   if(FILTER==="review")return r.status==="NEEDS_REVIEW";
-  if(FILTER==="holds")return isHold(r.status);
+  if(FILTER==="holds")return isHold(r.status);          // both, for the tile
+  // ...and each half on its own, so the two counts that are worded differently
+  // can be clicked separately. See isHold above.
+  if(FILTER==="refused")return isRefusedByAmazon(r.status);
+  if(FILTER==="blocked")return isBlockedByOurChecks(r.status);
   if(FILTER==="approved")return r.status==="APPROVED"||r.status==="API_READY";
   if(FILTER==="live")return r.status==="LIVE";
   // The live-view tiles. An app row is judged by the CATALOGUE item behind it,
@@ -689,7 +783,11 @@ async function delDuplicate(sku, row, tab, btn){
  */
 function isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown){
   const norm = v => String(v||"").trim().toUpperCase();
-  const s=norm(r.sku), a=norm(r.asin);
+  // _matchableAsin, not r.asin: on an app row that field is the COMPETITOR
+  // reference from the SKU, and matching it against our own catalogue can only
+  // produce a false positive -- declaring our draft live because somebody
+  // else's listing exists. The SKU match below is the authoritative one.
+  const s=norm(r.sku), a=_matchableAsin(r);
   const haveAmazon = liveGroupShown
                   || (typeof _liveCatalogLoaded==="function" && _liveCatalogLoaded())
                   || (liveCatSkus && liveCatSkus.size) || (liveCatAsins && liveCatAsins.size);
@@ -738,7 +836,10 @@ function isPublishedRow(r){
   const skus  = new Set((LIVE_ITEMS||[]).map(x=>n(x.sku)).filter(Boolean));
   const asins = new Set((LIVE_ITEMS||[]).map(x=>n(x.asin)).filter(Boolean));
   if(skus.size && skus.has(n(r.sku))) return true;
-  if(asins.size && r.asin && asins.has(n(r.asin))) return true;
+  // Competitor reference excluded -- see _matchableAsin. A draft is not
+  // published just because the product it was researched from is.
+  const a = _matchableAsin(r);
+  if(asins.size && a && asins.has(a)) return true;
   return false;
 }
 
@@ -801,7 +902,10 @@ function summary(){
   // total below came to leave these rows out.
   const _liveAppRows = _tabRows.filter(r=>isActuallyLive(r, sets.skus, sets.asins, sets.liveGroupShown));
   const alreadyCountedSkus  = new Set(_liveAppRows.map(r=>norm(r.sku)).filter(Boolean));
-  const alreadyCountedAsins = new Set(_liveAppRows.map(r=>norm(r.asin)).filter(Boolean));
+  // _matchableAsin, not r.asin: this set EXCLUDES catalogue items from the
+  // count, so seeding it with competitor ASINs risks dropping a genuinely live
+  // listing out of the total -- the undercount version of the same mistake.
+  const alreadyCountedAsins = new Set(_liveAppRows.map(_matchableAsin).filter(Boolean));
   const liveCount = ((LIST_SOURCE==='live'||LIST_SOURCE==='all')
                      ? (LIVE_ITEMS||[]).filter(it=>{
                          const s=norm(it.sku), a=norm(it.asin);
@@ -853,16 +957,18 @@ function summary(){
   // clicked -- so it was a number you could neither understand nor act on.
   // Both now say what they are counting, why those rows are stopped, and take
   // you to them.
+  // EACH COUNT GOES TO ITS OWN LIST. Both of these used to pass 'holds', which
+  // is the UNION -- so clicking a count of 3 showed 28 rows. See isHold.
   if(c.ERROR){
     extras.push(`<button class="linkbtn" style="color:var(--red)"
-        onclick="metricFilter('holds')"
-        title="Amazon refused these. Open one to see what it said.">${c.ERROR}
+        onclick="metricFilter('refused')"
+        title="Sent to Amazon, and Amazon rejected it. Open one to see what Amazon said.">${c.ERROR}
         listing${c.ERROR>1?'s':''} Amazon refused</button>`);
   }
   if(c.HOLD){
     extras.push(`<button class="linkbtn" style="color:var(--red)"
-        onclick="metricFilter('holds')"
-        title="Held by this app's own IP or compliance check before anything was sent to Amazon — open one to see which rule, or re-scan after fixing a rule.">${c.HOLD}
+        onclick="metricFilter('blocked')"
+        title="Held by this app's own IP or compliance check BEFORE anything was sent to Amazon — open one to see which rule, or re-scan after fixing a rule.">${c.HOLD}
         held by a compliance or IP check</button>`);
   }
   // The published rows the Drafts list is deliberately not showing. Said in
@@ -993,7 +1099,12 @@ function _rowImages(r){
 function _liveImageFor(r){
   if(typeof LIVE_ITEMS === "undefined" || !LIVE_ITEMS || !LIVE_ITEMS.length) return "";
   const norm = v => String(v == null ? "" : v).trim().toUpperCase();
-  const s = norm(r && r.sku), a = norm(r && r.asin);
+  // The ASIN leg excludes the competitor reference (see _matchableAsin). A hit
+  // on it would put the COMPETITOR'S photograph on our card as though Amazon
+  // were showing it for our listing -- the exact thing the main-image guard in
+  // the generator exists to prevent, arriving by a different door. The SKU leg
+  // below is the one that normally answers, and it is authoritative.
+  const s = norm(r && r.sku), a = _matchableAsin(r);
   let byAsin = "";
   for(const it of LIVE_ITEMS){
     if(!it) continue;
@@ -1237,7 +1348,17 @@ function isAmazonLive(r){
 // separate A+ Content API -- which is why the card only ever showed the main and
 // secondary images. Returns [] when the account has no A+ content, or none for this ASIN.
 function aplusFor(r){
-  const a = String((r && r.asin) || "").trim().toUpperCase();
+  // KEYED BY OUR ASIN. This read r.asin, which on an app row is the competitor
+  // reference from the SKU -- while APLUS_BY_ASIN is filled by /live/aplus with
+  // OUR OWN A+ content under OUR OWN ASINs. The two could therefore only meet
+  // by coincidence, so the A+ badge never appeared on a draft card that had A+
+  // content; and on the coincidence it would have shown a competitor's A+
+  // modules on our listing.
+  //
+  // Not demonstrable from the current data -- APLUS_BY_ASIN was empty on the
+  // view measured, so there was nothing to match either way -- but the two
+  // sides plainly key on different ASINs.
+  const a = String(ownLiveAsin(r) || "").trim().toUpperCase();
   if(!a || typeof APLUS_BY_ASIN === "undefined") return [];
   return APLUS_BY_ASIN[a] || [];
 }
@@ -1678,8 +1799,12 @@ function rowActions(r, cls, opts){
             onclick="event.stopPropagation();openStudioSingle('${sku}')"><i class="ti ti-photo"></i></button>
     <button class="${cls}" title="This listing's images — upload your own, pick one from the library, or set the main image"
             onclick="event.stopPropagation();openImageLibrary('${sku}', ${live ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
+    ${/* OUR asin, not the competitor reference in the SKU (see rowAsin). The
+        * fetch keys off the SKU so this argument was not doing damage, but
+        * passing a competitor ASIN into a function about OUR live listing is
+        * how the next person to use that argument inherits the bug. */""}
     ${live ? `<button class="${cls}" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)"
-            onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${sku}')"><i class="ti ti-sparkles"></i></button>` : ""}
+            onclick="event.stopPropagation();optimizeLive('${esc(rowAsin(r).own||'')}','${sku}')"><i class="ti ti-sparkles"></i></button>` : ""}
     ${/* THESE TWO EXISTED ONLY IN THE LIVE TABLE ROW. The live TILE and the
         * live TABLE ROW are the same listing seen two ways, and they offered
         * different things to do to it -- exactly the drift that put two card
@@ -1839,11 +1964,28 @@ function tableRow(r){
   //
   // stopPropagation because the row itself opens the editor; without it a
   // click would do both.
-  const asin  = r.asin
-    ? `<a class="asin" href="${esc(_dpUrl(r.asin))}" target="_blank" rel="noopener"
+  // THE LINK MUST BE **OUR** ASIN.
+  //
+  //     "we should be able to open the listing by clicking on the green asin"
+  //
+  // -- meaning HIS listing. This linked r.asin, which on an app row is the
+  // COMPETITOR ASIN out of the SKU, so the green ASIN opened the competitor's
+  // product page while looking exactly like our own. Measured: 56 of 56 rows
+  // with an ASIN carried the competitor's, and where we are live our real ASIN
+  // is a different code entirely (B07NT77GT8 vs B0H66Q1XFK).
+  //
+  // A draft that is not live has no ASIN of its own, and saying so is the
+  // honest answer. The competitor reference is still shown, because it is
+  // genuinely useful -- it is the product this was built from -- but it is
+  // labelled as such and is NOT dressed up as our listing.
+  const _a = rowAsin(r);
+  const asin = _a.own
+    ? `<a class="asin" href="${esc(_dpUrl(_a.own))}" target="_blank" rel="noopener"
           onclick="event.stopPropagation()" style="text-decoration:none"
-          title="Open ${esc(r.asin)} on Amazon">${esc(r.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
-    : `<span class="cc">no ASIN</span>`;
+          title="Open your listing ${esc(_a.own)} on Amazon">${esc(_a.own)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
+    : (_a.source
+        ? `<span class="cc" title="This listing is not live on Amazon yet, so it has no ASIN of its own. ${esc(_a.source)} is the competitor product it was researched from — not your listing.">not live yet <span class="srcasin">· from ${esc(_a.source)}</span></span>`
+        : `<span class="cc">no ASIN</span>`);
   return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}"
               data-sku="${esc(r.sku)}"
               class="${SELECTED.has(String(r.sku)) ? 'rowon' : ''}">

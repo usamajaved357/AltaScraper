@@ -420,11 +420,26 @@
              the sidebar menu rather than being dropped with it. -->
         <select id="statussel" onchange="setFilterVal(this.value)" title="Filter by status"
           style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:13px">
+          <!-- EVERY FILTER THE TILES CAN SET NEEDS AN OPTION HERE.
+               metricFilter() does `sel.value = v` and then applies the filter
+               regardless. When there is no matching <option>, the assignment
+               silently does nothing and the dropdown goes BLANK while the list
+               below it is filtered -- so the control that is supposed to tell
+               you what you are looking at stops saying anything. The four
+               live_* filters and the two hold halves were all missing. -->
           <option value="all">All statuses</option>
           <option value="review">Needs review</option>
-          <option value="holds">Holds</option>
+          <option value="holds">Blocked or refused</option>
+          <option value="blocked">— blocked by our own checks</option>
+          <option value="refused">— refused by Amazon</option>
           <option value="approved">Approved</option>
           <option value="live">Live</option>
+          <optgroup label="Live on Amazon">
+            <option value="live_all">All live listings</option>
+            <option value="live_notshowing">Not showing</option>
+            <option value="live_nocost">No cost set</option>
+            <option value="live_oos">Out of stock</option>
+          </optgroup>
         </select>
         <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
           <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>

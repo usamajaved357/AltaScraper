@@ -1574,6 +1574,10 @@
   .pricehot i{font-size:10px;opacity:0;margin-left:3px;transition:opacity .12s}
   .pricehot:hover{border-bottom-color:var(--gold)}
   .pricehot:hover i{opacity:.75}
+  /* The competitor ASIN a draft was researched from. Deliberately dim and
+     never a link -- it is not our listing, and the whole bug it replaces was
+     it looking like one. */
+  .srcasin{font-family:ui-monospace,Consolas,monospace;opacity:.7}
   .tilesku{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
   /* The two facts every card now states outright: brand and handling time.
      Deliberately quiet -- they are context for the title, not status. */
