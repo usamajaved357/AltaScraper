@@ -41,10 +41,7 @@ function studioPickerSearch(v) {
 function studioPickerChoose(it) {
   if (!it) return;
   try {
-    const brand = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
-      ? ((CUR_ACCOUNT.brands && CUR_ACCOUNT.brands.length)
-         ? CUR_ACCOUNT.brands[0] : (CUR_ACCOUNT.label || ""))
-      : "";
+    const brand = accountBrand();   // brand.js -- one copy of this rule
     STUDIO = {
       skus: [it.sku],
       // The SAME shape Listings builds, including the attributes -- they are

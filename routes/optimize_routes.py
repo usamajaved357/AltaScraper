@@ -282,8 +282,30 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             return jsonify({"ok": False, "error": f"patchListingsItem failed: {str(e)[:240]}"}), 502
         status = (pay or {}).get("status", "") if isinstance(pay, dict) else ""
         issues = (pay or {}).get("issues", []) if isinstance(pay, dict) else []
-        ok = status.upper() in ("ACCEPTED", "VALID") or not issues
+        # WE ONLY SAY "ACCEPTED" WHEN AMAZON SAID IT.
+        #
+        # This used to read:
+        #
+        #     ok = status.upper() in ("ACCEPTED", "VALID") or not issues
+        #
+        # The second half turned "Amazon sent back something we could not read"
+        # into success: an empty status with an empty issues list -- the exact
+        # shape you get if the payload arrives in a form this code did not
+        # expect -- came out ok=True, and the screen printed a green tick
+        # reading "Submitted to Amazon (accepted)", the word "accepted" being
+        # supplied by the browser because the server had sent no status at all.
+        #
+        # A push that silently claims success is worse than one that fails: the
+        # user closes the panel believing a live listing changed. patchListings-
+        # Item always returns a status, so a missing one is an unread reply, not
+        # a yes. It is reported as unknown, with the raw payload, and the user
+        # is told to check with Sync -- which is the one thing that can settle
+        # it, because it reads the listing back from Amazon.
+        _s = str(status or "").upper()
+        ok = _s in ("ACCEPTED", "VALID")
+        unknown = (not _s) and not issues
         return jsonify({"ok": ok, "status": status, "issues": issues,
+                        "unknown": unknown,
                         "pushed_fields": list(changes.keys()), "raw": pay})
 
 

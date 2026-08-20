@@ -176,7 +176,10 @@ function _studioShow(){
 
 async function openStudioSingle(sku){
   const it=_itemForSku(sku);
-  STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: (CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), results:{} };
+  // accountBrand() -- see brand.js. This expression was written out by hand in
+  // six places; one of them disagreeing about the brand is one listing Amazon
+  // rejects.
+  STUDIO={ skus:[String(sku)], items: it?[it]:[], brand: accountBrand(), results:{} };
   _studioShow();
   renderStudio();
   studioLoadModels();
@@ -186,7 +189,7 @@ async function openStudioBatch(){
   const skus=selectedSkus();
   if(!skus.length){ toast("Select some products first (tick the cards)."); return; }
   const items=skus.map(_itemForSku).filter(Boolean);
-  STUDIO={ skus:skus.map(String), items:items, brand:(CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(CUR_ACCOUNT?CUR_ACCOUNT.label:"")), results:{} };
+  STUDIO={ skus:skus.map(String), items:items, brand:accountBrand(), results:{} };
   _studioShow();
   renderStudio();
   studioLoadModels();

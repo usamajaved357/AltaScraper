@@ -1014,6 +1014,142 @@ function _cardImages(r){
 // something actually flags it -- a compliance document demand, an IP risk, a
 // claim risk. Those checks already run; the dot follows them instead of
 // second-guessing with a stale status.
+// ============ THREE FACTS EVERY CARD SHOWS, WRITTEN ONCE ============
+//
+// The tile and the table row are two views of ONE listing, and they had drifted
+// into disagreeing about it: the row showed a handling time and the tile showed
+// none; both showed a brand only when the row happened to carry one; and the
+// price was read-only in both, editable only through a separate button.
+//
+// These three build the price, brand and handling cells for BOTH views, so a
+// listing cannot read differently depending on which button you last pressed.
+
+/* THE PRICE IS THE CONTROL.
+ *
+ *     "make the selling price being able to be changed by just clicking on it
+ *      and then on save"
+ *
+ * Clicking the price opens the price panel (priceedit.js) with the figure
+ * selected and the caret in it -- type, press the button, done.
+ *
+ * WHY THE PANEL AND NOT AN EDITABLE BOX IN THE CARD. That panel is not a
+ * wrapper around "send this number to Amazon". It is the only place that knows
+ * the floor price, that shows what the sale would actually leave once fees are
+ * out, and -- the one that matters -- that names the account and marketplace on
+ * the request. Without that name the server falls back to a process-wide "which
+ * account is open" variable, and the comment above _peScope() records where
+ * that went: a price could be sent to the WRONG SELLER ACCOUNT, a real change on
+ * a real shopfront. An in-card input would be a second, thinner path to the same
+ * endpoint with none of that (rule 12). So the click is the shortcut; the panel
+ * is still the thing that sends.
+ *
+ * Only live listings can be repriced -- a draft has no price on Amazon to
+ * change -- so a draft's price is shown plain. */
+/* liveOverride: a tile built straight from Amazon's catalogue is live by
+   definition and has no app row for isAmazonLive() to read -- the same reason
+   rowActions takes {live:true}. */
+function _priceCell(r, cls, liveOverride){
+  const raw = r && r.price ? String(r.price) : "";
+  const txt = raw ? `${CUR_SYMBOL}${esc(raw.replace(/^[A-Z]{3}\s?/,''))}` : "";
+  const live = liveOverride === undefined ? isAmazonLive(r) : !!liveOverride;
+  if(!txt) return live
+    ? `<span class="${cls} cc" title="No price recorded for this listing">—</span>`
+    : `<span></span>`;
+  if(!live) return `<span class="${cls}" title="This listing is not live on Amazon, so there is no selling price to change yet">${txt}</span>`;
+  const n = Number(raw.replace(/[^0-9.]/g,'')) || 0;
+  return `<span class="${cls} pricehot" title="Click to change this selling price on Amazon"
+      onclick="event.stopPropagation();priceEdit('${esc(r.sku)}',${n},'${esc(r.title||'')}')">${txt}<i class="ti ti-pencil"></i></span>`;
+}
+
+/* THE BRAND, ALWAYS.
+ *
+ *     "some shows the brand name and some do not show the brand name, i want
+ *      the brand name to be displayed in all"
+ *
+ * A blank used to mean "the row does not name a brand", which reads as "this
+ * listing has no brand" -- and no listing this app makes is unbranded. rowBrand()
+ * (brand.js) falls back to the account's own brand, which is what the server
+ * will actually send, and says which of the two it gave us so the card can show
+ * a fallback as a fallback.
+ *
+ * The third case is the one worth seeing: the row names a brand this account is
+ * not registered for. That is not hidden and not silently corrected here -- it
+ * is marked, and the server decides on submit. */
+function _brandCell(r){
+  const b = (typeof rowBrand === "function") ? rowBrand(r) : {name:(r&&r.brand)||"", from:"row", ours:true};
+  if(!b.name) return `<span class="tilefact cc" title="No brand on this row and no brand set on this account. Set one in Account settings — Amazon will not take a listing without it.">no brand</span>`;
+  if(b.from === "account")
+    return `<span class="tilefact brandfact cc" title="This row does not name a brand, so this account's own brand is what will be sent."><i class="ti ti-tag"></i> ${esc(b.name)} <span class="cc">(account default)</span></span>`;
+  if(!b.ours)
+    return `<span class="tilefact brandfact" style="color:var(--warn)" title="This account is not registered for &quot;${esc(b.name)}&quot;. If Amazon has approved it, add it in Account settings — otherwise the account's own brand will be sent instead."><i class="ti ti-tag"></i> ${esc(b.name)} <i class="ti ti-alert-triangle"></i></span>`;
+  return `<span class="tilefact brandfact"><i class="ti ti-tag"></i> ${esc(b.name)}</span>`;
+}
+
+/* THE HANDLING TIME THE BUYER IS ACTUALLY PROMISED.
+ *
+ *     "reflect true handling time in front of the listings"
+ *
+ * Two different numbers have lived in these rows. handling_days is what the app
+ * holds for a draft -- what we INTEND to promise. handling_time comes back from
+ * Amazon on a live listing -- what the shopfront is promising RIGHT NOW. When a
+ * listing is live, Amazon's number is the true one and ours is a plan, so the
+ * live number wins and the card says where it came from. The old code took
+ * whichever was set first (handling_days || handling_time) and labelled neither,
+ * so a stale draft value could sit in front of a live listing looking like fact.
+ */
+function _handCell(r, liveOverride){
+  if(!r) return "";
+  const live  = liveOverride === undefined ? isAmazonLive(r) : !!liveOverride;
+  // WHERE AMAZON'S NUMBER ACTUALLY LIVES.
+  //
+  // Measured on jack_uk: all 47 live rows printed "2d (ours)". The app row
+  // carries handling_days (what we hold) and almost never handling_time --
+  // Amazon's figure arrives on the CATALOGUE item, which is a different object.
+  // So the honest-but-useless answer "ours" was the only one this could ever
+  // give for a draft row, even with Amazon's real number already in memory two
+  // objects away.
+  //
+  // liveItemForRow() is the existing SKU-then-ASIN match between an app row and
+  // its catalogue entry -- the same one the status tiles use, so the handling
+  // time and the live/not-live badge are decided from the same pairing (rule
+  // 12). liveOverride means the caller already IS a catalogue item, so there is
+  // nothing to look up.
+  let fromAmazon = r.handling_time;
+  if(live && (fromAmazon === undefined || fromAmazon === null || fromAmazon === "")
+     && liveOverride === undefined && typeof liveItemForRow === "function"){
+    const _it = liveItemForRow(r);
+    if(_it && _it.handling !== undefined && _it.handling !== null && _it.handling !== "")
+      fromAmazon = _it.handling;
+  }
+  const ours = r.handling_days;
+  const n = live ? (fromAmazon != null && fromAmazon !== "" ? fromAmazon : ours)
+                 : (ours != null && ours !== "" ? ours : fromAmazon);
+  if(n === null || n === undefined || n === "")
+    return `<span class="tilefact cc" title="No handling time recorded. Amazon falls back to the account's default.">no handling time</span>`;
+  const isAmazons = live && fromAmazon != null && fromAmazon !== "";
+  // WHEN THE TWO NUMBERS DISAGREE, SAY SO.
+  //
+  // This is the case worth seeing, and it is real: sampled three live SKUs
+  // through getListingsItem and Amazon held lead_time_to_ship_max_days = 2 on
+  // all three -- including one whose SKU is named 5Days and one named 3Days.
+  // The SKU's day label records what was INTENDED when it was created; it is
+  // not what the shopfront promises, and nothing had ever compared them. A
+  // listing promising buyers two days while the plan says five is a late
+  // dispatch and a metric hit, and it was invisible.
+  const _mine = (ours === null || ours === undefined || ours === "") ? null : Number(ours);
+  const _amz  = isAmazons ? Number(fromAmazon) : null;
+  const clash = _mine !== null && _amz !== null && !isNaN(_mine) && !isNaN(_amz) && _mine !== _amz;
+  if(clash)
+    return `<span class="tilefact" style="color:var(--warn)"
+      title="Amazon is promising buyers ${esc(String(_amz))} day(s) for this listing, but this app holds ${esc(String(_mine))}. Amazon's number is what buyers see and what late-dispatch is measured against. Change it on the listing, or correct it here, so the two agree."
+      ><i class="ti ti-clock"></i> ${esc(String(_amz))}d <i class="ti ti-alert-triangle"></i> <span class="cc">(we hold ${esc(String(_mine))}d)</span></span>`;
+  const tip = isAmazons
+    ? "Amazon's own handling time for this live listing — what buyers are being promised now."
+    : (live ? "This account's recorded handling time. Amazon did not report one for this listing."
+            : "The handling time this draft will be sent with.");
+  return `<span class="tilefact${isAmazons?' handlive':''}" title="${tip}"><i class="ti ti-clock"></i> ${esc(String(n))}d${isAmazons?'':' <span class="cc">(ours)</span>'}</span>`;
+}
+
 function _statusDot(r){
   var s = r.status || "";
   // Amazon's own answer beats the stored word, exactly as the counts do.
@@ -1109,7 +1245,6 @@ function card(r){
     ? `<img src="${esc(thumbUrl(urls[0],120))}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
     : `<i class="ti ti-photo"></i>`;
   const selected = SELECTED.has(String(r.sku));
-  const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
   const skuId=sid(r.sku);
   const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
   const _isDup=(typeof isDuplicate==="function") && isDuplicate(r);   // same SKU on another card/tab
@@ -1130,9 +1265,10 @@ function card(r){
     <div class="tilebody" onclick="openDrawer('${esc(r.sku)}')">
       <div class="tiletitle pii">${esc(r.title)||'<span class="cc">(no title)</span>'}</div>
       <div class="tilemeta">
-        ${priceStr?`<span class="tileprice pii">${priceStr}</span>`:'<span></span>'}
+        ${_priceCell(r, "tileprice pii")}
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
+      <div class="tilefacts">${_brandCell(r)}${_handCell(r)}</div>
       <!-- the "lives on the X tab" badge went with the spreadsheet -->
 
       ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">
@@ -1493,23 +1629,49 @@ function rowActions(r, cls, opts){
   const sku = esc(r.sku);
   const live = opts.live === undefined ? isAmazonLive(r) : !!opts.live;
   return `
-    <button class="${cls}" title="Approve"
-            onclick="event.stopPropagation();setStatus('${sku}','APPROVED',this)"><i class="ti ti-check"></i></button>
+    ${live ? "" : `<button class="${cls}" title="Approve — mark this draft ready to send to Amazon"
+            onclick="event.stopPropagation();setStatus('${sku}','APPROVED',this)"><i class="ti ti-check"></i></button>`}
+    ${/* APPROVE IS FOR DRAFTS. It set the row's status to APPROVED, meaning
+        * "ready to send". On a listing Amazon has already published there is
+        * nothing to approve -- and on a catalogue-only card there is not even a
+        * row to set it on, so the button either did nothing or wrote a status
+        * onto a draft that does not exist. Live cards get Sync and Add variant
+        * in its place, below, which is what you actually do to a live listing.
+        */""}
     <button class="${cls} gen" title="Image Studio (creative ideas, prompt &amp; image AI)"
             onclick="event.stopPropagation();openStudioSingle('${sku}')"><i class="ti ti-photo"></i></button>
     <button class="${cls}" title="This listing's images — upload your own, pick one from the library, or set the main image"
             onclick="event.stopPropagation();openImageLibrary('${sku}', ${live ? "true" : "false"})"><i class="ti ti-library-photo"></i></button>
-    <button class="${cls}" title="Edit / details"
-            onclick="event.stopPropagation();openDrawer('${sku}')"><i class="ti ti-edit"></i></button>
-    <button class="${cls}" title="✦ Auto-fix: Suggest → Apply → Preview loop until zero errors" style="color:#93c5fd"
-            onclick="event.stopPropagation();autoFixLoop('${sku}')"><i class="ti ti-wand"></i></button>
     ${live ? `<button class="${cls}" title="Optimize this live listing's copy — pulls it live from Amazon so you can rewrite &amp; push" style="color:var(--ai)"
             onclick="event.stopPropagation();optimizeLive('${esc(r.asin||'')}','${sku}')"><i class="ti ti-sparkles"></i></button>` : ""}
-    ${live ? `<button class="${cls}" title="Change this listing's selling price on Amazon"
-            onclick="event.stopPropagation();priceEdit('${sku}',${Number(String(r.price||'').replace(/[^0-9.]/g,''))||0},'${esc(r.title||'')}')"><i class="ti ti-tag"></i></button>` : ""}
-    ${live && r.asin ? `<a class="${cls}" href="${esc(_dpUrl(r.asin))}" target="_blank" rel="noopener"
-            title="Open this listing on Amazon" onclick="event.stopPropagation()"
-            style="text-decoration:none"><i class="ti ti-external-link"></i></a>` : ""}
+    ${/* THESE TWO EXISTED ONLY IN THE LIVE TABLE ROW. The live TILE and the
+        * live TABLE ROW are the same listing seen two ways, and they offered
+        * different things to do to it -- exactly the drift that put two card
+        * designs in one grid ("i see two types of cards style dont make them
+        * different"). Both come from here now, so the grid and the list cannot
+        * disagree again. Live-only because there is nothing to compare a draft
+        * against and no live listing to hang a variant off. */""}
+    ${live ? `<button class="${cls}" title="Compare this listing with Amazon's live copy, field by field"
+            onclick="event.stopPropagation();syncForSku('${sku}')"><i class="ti ti-arrows-exchange"></i></button>` : ""}
+    ${live ? `<button class="${cls}" title="Add another colour or size of this product, from an eBay link"
+            onclick="event.stopPropagation();addVariant('${sku}')"><i class="ti ti-binary-tree"></i></button>` : ""}
+    ${/* FOUR BUTTONS REMOVED FROM THE CARD (they all still exist, elsewhere):
+        *
+        *   Edit      -- "we can directly edit the listing by clicking on the
+        *                 product card". The card and the table row both call
+        *                 openDrawer already, and the table row also keeps its
+        *                 Review button.
+        *   Auto-fix  -- "the user can click on the box to select the item and
+        *                 then click on auto fix button from the top. we dont
+        *                 need the autofix button on the product card in both
+        *                 grid and listing view". autoFixLoop is unchanged.
+        *   Price     -- "remove that change the listings selling price button
+        *                 which is already there on the product card". The price
+        *                 is edited by clicking the price itself now (priceEdit
+        *                 is still the one function that does it -- rule 12).
+        *   Open on Amazon -- "we should be able to open the listing by clicking
+        *                 on the green asin". The ASIN is the link now.
+        */""}
     <button class="${cls} more" title="More"
             onclick="event.stopPropagation();tileMenu(event,'${sku}',${r.row||0})"><i class="ti ti-dots"></i></button>`;
 }
@@ -1630,10 +1792,21 @@ function tableRow(r){
   const thumb = urls.length
     ? `<div class="thumb"><img src="${esc(thumbUrl(urls[0],44))}" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
     : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
-  const price = r.price ? `${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}` : "—";
-  const hand  = r.handling_days || r.handling_time || "";
+  // Same three cells the tile uses, for the same reason as the image above.
+  const price = _priceCell(r, "");
+  const hand  = _handCell(r);
+  // THE ASIN IS THE LINK. It always carried an external-link icon and was a
+  // plain <span> -- an icon promising something the element could not do:
+  //
+  //     "no asin in the screenshot opens a product"
+  //     "we should be able to open the listing by clicking on the green asin"
+  //
+  // stopPropagation because the row itself opens the editor; without it a
+  // click would do both.
   const asin  = r.asin
-    ? `<span class="asin">${esc(r.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></span>`
+    ? `<a class="asin" href="${esc(_dpUrl(r.asin))}" target="_blank" rel="noopener"
+          onclick="event.stopPropagation()" style="text-decoration:none"
+          title="Open ${esc(r.asin)} on Amazon">${esc(r.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
     : `<span class="cc">no ASIN</span>`;
   return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}"
               data-sku="${esc(r.sku)}"
@@ -1642,10 +1815,10 @@ function tableRow(r){
     <td class="pii-img">${thumb}</td>
     <td>${asin}<br><span class="sku pii">${esc(r.sku||'')}</span></td>
     <td><span class="ttl pii">${esc(r.title||'(no title)')}</span>
-        ${r.brand?`<span class="brand pii">${esc(r.brand)}</span>`:''}</td>
+        <span class="brand pii">${_brandCell(r)}</span></td>
     <td class="price">${price}</td>
     ${cogsCell(r)}
-    <td>${hand?`<span style="color:var(--accent)">${esc(hand)}d</span>`:'<span class="cc">—</span>'}</td>
+    <td>${hand}</td>
     <td>${_statusPill(_shownStatus(r))}${needsCopy(r)
         ? `<div class="cc" style="font-size:9.5px;margin-top:3px;color:var(--warn)" `
           + `title="No bullets, no description, no product type yet. Select it and `
@@ -1658,14 +1831,19 @@ function tableRow(r){
     </div></td></tr>`;
 }
 
-// Amazon-catalog rows. They are NOT sheet rows -- no SKU to open a drawer with
-// and nothing editable -- so the row does not pretend to be clickable.
+// Amazon-catalog rows: listings Amazon holds that this app has no draft of.
+// They open the live editor rather than the drawer -- see _open below.
 function liveTableRow(it){
   const img = it.image || it.img || "";
   const thumb = img
     ? `<div class="thumb"><img src="${esc(thumbUrl(img,44))}" loading="lazy" decoding="async" onerror="this.parentNode.innerHTML='<i class=&quot;ti ti-photo&quot;></i>'"></div>`
     : `<div class="thumb"><i class="ti ti-photo"></i></div>`;
-  const price = it.price ? `${CUR_SYMBOL}${esc(String(it.price).replace(/^[A-Z]{3}\s?/,''))}` : "—";
+  // Same cells the draft row and both tiles use. A catalogue row is live by
+  // definition, hence the explicit true -- there is no app row to read it from.
+  const _r = {sku: it.sku, asin: it.asin, title: it.title, brand: it.brand,
+              handling_time: it.handling, handling_days: it.handling_days,
+              price: String(it.price || "").replace(/^[A-Z]{3}\s?/, ""), row: 0};
+  const price = _priceCell(_r, "", true);
   const c = it.compliance;
   const comp = (c && (c.risks||[]).length)
     ? `<span class="comp" style="color:${(c.risks||[]).some(x=>x.risk==="HIGH")?"var(--red)":"var(--warn)"}"><i class="ti ti-file-text"></i> ${c.doc_count} docs</span>`
@@ -1682,33 +1860,33 @@ function liveTableRow(it){
   // Empty rather than a checkbox: the bulk bar's actions -- approve, hold, set
   // handling -- are about DRAFTS, and offering them on a listing that is already
   // live would be offering to un-approve something Amazon has published.
-  return `<tr style="cursor:default" title="${esc(it.title||'')}">
+  // THE ROW OPENS THE LISTING, like every other row on this screen.
+  // The old comment above said it "does not pretend to be clickable" because
+  // there is no draft to open a drawer with -- but there IS something to open:
+  // optimizeLive pulls the live listing down from Amazon into the editor. Same
+  // gesture as a draft row, same result.
+  //     "we can directly edit the listing by clicking on the product card"
+  const _open = `optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')`;
+  return `<tr style="cursor:pointer" title="${esc(it.title||'')}" onclick="${_open}">
     <td class="selcol"></td>
     <td class="pii-img">${thumb}</td>
-    <td><span class="asin">${esc(it.asin||'')}</span><br><span class="sku pii">${esc(it.sku||'')}</span></td>
-    <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span></td>
+    <td>${it.asin
+        ? `<a class="asin" href="${esc(_dpUrl(it.asin))}" target="_blank" rel="noopener"
+              onclick="event.stopPropagation()" style="text-decoration:none"
+              title="Open ${esc(it.asin)} on Amazon">${esc(it.asin)} <i class="ti ti-external-link" style="font-size:10px"></i></a>`
+        : `<span class="cc">no ASIN</span>`}<br><span class="sku pii">${esc(it.sku||'')}</span></td>
+    <td><span class="ttl pii">${esc(it.title||'(no title in report)')}</span>
+        <span class="brand pii">${_brandCell(it)}</span></td>
     <td class="price">${price}</td>
     ${cogsCell(it)}
-    <td><span class="cc">—</span></td>
+    <td>${_handCell(_r, true)}</td>
     <td><span class="badge b-LIVE">LIVE</span></td>
     <td>${comp}</td>
-    <td><div class="acts">
-      <button class="dotb" title="Change what this sells for on Amazon"
-              onclick="event.stopPropagation();priceEdit('${esc(it.sku||'')}',${Number(String(it.price||'').replace(/[^0-9.]/g,''))||0},'${esc(it.title||'')}')"><i class="ti ti-currency-pound"></i></button>
-      <button class="dotb" title="Compare this listing with Amazon's live copy, field by field"
-              onclick="event.stopPropagation();syncForSku('${esc(it.sku||'')}')"><i class="ti ti-arrows-exchange"></i></button>
-      <button class="dotb" title="Add another colour or size of this product, from an eBay link"
-              onclick="event.stopPropagation();addVariant('${esc(it.sku||'')}')"><i class="ti ti-binary-tree"></i></button>
-      <button class="dotb" title="Optimize this live listing"
-              onclick="event.stopPropagation();optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')"><i class="ti ti-wand"></i></button>
-      <button class="dotb" title="Generate images for this product"
-              onclick="event.stopPropagation();openStudioSingle('${esc(it.sku||'')}')"><i class="ti ti-photo"></i></button>
-      <button class="dotb" title="This listing's images — choose the main one, upload your own, or push it to Amazon"
-              onclick="event.stopPropagation();openImageLibrary('${esc(it.sku||'')}', true)"><i class="ti ti-library-photo"></i></button>
-      <a class="dotb" title="View on Amazon" target="_blank" rel="noopener"
-         onclick="event.stopPropagation()"
-         href="${esc(_dpUrl(it.asin||''))}"><i class="ti ti-external-link"></i></a>
-    </div></td></tr>`;
+    <!-- ONE ACTION ROW. These seven buttons were written out here by hand, so
+         the live TABLE offered Sync and Add-variant that the live TILE did not,
+         and the two drifted apart the same way the two card designs had.
+         rowActions is the one definition (rule 12). -->
+    <td><div class="acts">${rowActions(_r, "dotb", {live: true})}</div></td></tr>`;
 }
 
 // ---- COMPLIANCE BANNER (detail view) ------------------------------------

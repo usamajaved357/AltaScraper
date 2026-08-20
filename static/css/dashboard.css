@@ -1192,9 +1192,16 @@
      Sits in the filter strip, before the duplicates pill, and stays there when
      that pill is absent -- it is the only way to reach a single product on an
      account with eighty of them, so it must not hide with the thing beside it. */
+  /* THE CAP IS GONE.
+   *     "make that search bar long that it covers the same area that it
+   *      should be, right now it is covering only half"
+   * It had flex:1 AND max-width:420px, so it stopped growing at 420px and left
+   * the rest of the toolbar row empty -- the half he is describing. It is the
+   * only way to reach one product among eighty and it now takes whatever the
+   * row has spare. The min-width still protects it on a narrow window. */
   .lsearch{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
            border:1px solid var(--line);border-radius:8px;padding:3px 9px;
-           min-width:260px;max-width:420px;flex:1}
+           min-width:260px;flex:1 1 420px}
   .lsearch .ti{color:var(--ink4);font-size:15px;flex:0 0 auto}
   .lsearch input{background:none;border:none;outline:none;flex:1;min-width:0;
                  color:var(--ink);font-size:12.5px;padding:4px 0}
@@ -1559,7 +1566,23 @@
      (miles_template.js), so both get it from one place. */
   .tileprice{font-size:12.5px;font-weight:600;color:var(--gold);
              font-variant-numeric:tabular-nums}
+  /* A live price is a control, not a label: it says so on hover and carries a
+     pencil, because an editable thing that looks identical to a read-only one
+     is not discoverable. Drafts keep the plain .tileprice -- there is no price
+     on Amazon to change yet. */
+  .pricehot{cursor:pointer;border-bottom:1px dashed transparent;transition:border-color .12s,color .12s}
+  .pricehot i{font-size:10px;opacity:0;margin-left:3px;transition:opacity .12s}
+  .pricehot:hover{border-bottom-color:var(--gold)}
+  .pricehot:hover i{opacity:.75}
   .tilesku{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+  /* The two facts every card now states outright: brand and handling time.
+     Deliberately quiet -- they are context for the title, not status. */
+  .tilefacts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:5px}
+  .tilefact{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:var(--muted)}
+  .tilefact i{font-size:12px}
+  .brandfact{color:var(--ink2)}
+  /* Amazon's own handling time, as opposed to the one we hold for a draft. */
+  .handlive{color:var(--accent)}
   /* Your OWN live ASIN chip (from the live catalogue, matched by SKU) */
   .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10.5px;
             color:var(--ok);font-family:ui-monospace,Consolas,monospace}

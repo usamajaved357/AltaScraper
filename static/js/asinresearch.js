@@ -81,7 +81,7 @@
                        asin:LAST.asin,
                        product_type:LAST.product_type||"",
                        attributes:LAST.attributes||{}}],
-               brand:(typeof CUR_ACCOUNT!=="undefined"&&CUR_ACCOUNT&&CUR_ACCOUNT.brands&&CUR_ACCOUNT.brands.length?CUR_ACCOUNT.brands[0]:(typeof CUR_ACCOUNT!=="undefined"&&CUR_ACCOUNT?CUR_ACCOUNT.label:"")),
+               brand:accountBrand(),   // brand.js -- one copy of this rule
                manualRef:main, recipes:[], results:{} };
       _studioShow();   // its own screen now, not a modal over Listings
       asinClose();

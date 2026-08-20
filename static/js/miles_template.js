@@ -1433,7 +1433,17 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
     if(hd!==null){
       var shipBy = new Date(Date.now()+hd*864e5);
       var delBy  = new Date(Date.now()+(hd+transit)*864e5);
+      // SAY THE NUMBER, not only the date it implies.
+      //     "reflect true handling time in front of the listings"
+      // This line showed "ships by Tue 25 Aug" and left the reader to work
+      // backwards to the handling time -- and for FBA the 0 days was an
+      // ASSUMPTION this code makes, not something Amazon reported, which the
+      // date hid completely. Both are stated now.
+      var _handTxt = (it.handling!==undefined && it.handling!==null && it.handling!=="" && !isNaN(parseInt(it.handling)))
+        ? `<span class="handlive" title="Amazon's own handling time for this listing — what buyers are promised.">⏱ ${hd}d handling</span> · `
+        : `<span class="cc" title="Amazon did not report a handling time for this listing. FBA usually ships same or next day, so ${hd} days is assumed here — it is not Amazon's figure.">⏱ ~${hd}d handling (assumed)</span> · `;
       shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="fmode ${ftone}">${fmode}</span> `+
+                 _handTxt +
                  `<span title="When it leaves the warehouse if ordered today">📦 ships by ${fmt(shipBy)}</span> · `+
                  `<span title="Estimated arrival for the customer">🚚 delivery ~${fmt(delBy)}</span>`+
                  `${it.ship_group?(' · <span class="cc" title="Shipping template">'+esc(it.ship_group)+'</span>'):''}</div>`;
@@ -1445,10 +1455,24 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
   }
   return `<div class="tile live" title="On Amazon — status: ${esc(st)}">
     <input type="checkbox" class="tilesel" ${SELECTED.has(String(it.sku))?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(it.sku||'')}',this.checked)" title="Select for batch image generation">
-    <div class="tileimg ${it.asin?'':'noimg'}">${imgHtml}</div>
-    <div class="tilebody">
+    <!-- CLICKING THE CARD OPENS THE LISTING.
+         "we can directly edit the listing by clicking on the product card"
+         A draft card opens the drawer. This card has no draft to open -- it is
+         Amazon's own catalogue row -- so it opens the same editor its own
+         Optimize button does, which pulls the live listing from Amazon so it
+         can be rewritten and pushed back. Same gesture, same result, whichever
+         kind of card is under the cursor. -->
+    <div class="tileimg ${it.asin?'':'noimg'}" style="cursor:pointer"
+         onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')">${imgHtml}</div>
+    <div class="tilebody" style="cursor:pointer"
+         onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
-      <div class="tilemeta"><span class="tileprice">${price}</span><span class="tilesku">${esc(it.sku||'')}</span></div>
+      <div class="tilemeta">${_priceCell(
+          {sku: it.sku, title: it.title,
+           price: String(it.price || "").replace(/^[A-Z]{3}\s?/, "")},
+          "tileprice", true)}<span class="tilesku">${esc(it.sku||'')}</span></div>
+      <!-- The brand, on every card, from the one helper the draft cards use. -->
+      <div class="tilefacts">${_brandCell(it)}</div>
       <div class="cc" style="margin-top:4px"><span class="livestatus ${tone}">${esc(st)}</span> <span
         class="livestatus" style="opacity:.75"
         title="Amazon has this listing and this app holds no draft of it. Price, images and optimisation all still work from here; Sync brings the full listing in so it can be edited like the rest."
@@ -1611,7 +1635,7 @@ async function optimizeLive(asin, sku){
     if(!j.ok){ document.getElementById("optbody").innerHTML='<div class="gendiag bad">✗ '+esc(j.error||"failed")+'</div>'; return; }
     OPT_CURRENT=j;
     OPT_EDIT_STATE=null;   // fresh listing -> clear any prior edits
-    OPT_BRAND_HINT = (CUR_ACCOUNT && CUR_ACCOUNT.brands && CUR_ACCOUNT.brands.length) ? CUR_ACCOUNT.brands[0] : (CUR_ACCOUNT?CUR_ACCOUNT.label:"");
+    OPT_BRAND_HINT = accountBrand();   // brand.js -- one copy of this rule
     renderOptEditor(j);
   }catch(e){ document.getElementById("optbody").innerHTML='<div class="gendiag bad">✗ '+esc(String(e))+'</div>'; }
 }
@@ -1905,7 +1929,17 @@ async function optPush(){
       body:JSON.stringify({id:CUR_ACCOUNT?CUR_ACCOUNT.id:"",sku:OPT_CURRENT.sku,marketplace:OPT_CURRENT.marketplace,
         product_type:OPT_CURRENT.product_type,changes:changes,confirmed:true})})).json();
     if(j.ok){
-      document.getElementById("optbody").innerHTML='<div class="gendiag ok">✓ Submitted to Amazon ('+esc(j.status||"accepted")+'). Pushed: '+esc((j.pushed_fields||[]).join(", "))+'.<div class="cc" style="margin-top:6px">Amazon may take time to reflect changes. Use Sync to refresh.</div></div>';
+      // No ||"accepted" fallback. That default was how an EMPTY status printed
+      // the word "accepted" -- the browser inventing Amazon's answer. The
+      // server now only sends ok:true when Amazon actually said ACCEPTED, so
+      // there is always a real status to print here.
+      document.getElementById("optbody").innerHTML='<div class="gendiag ok">✓ Submitted to Amazon ('+esc(j.status)+'). Pushed: '+esc((j.pushed_fields||[]).join(", "))+'.<div class="cc" style="margin-top:6px">Amazon may take time to reflect changes. Use Sync to refresh.</div></div>';
+    } else if(j.unknown){
+      // Sent, but Amazon's reply could not be read. Saying "rejected" would be
+      // as wrong as saying "accepted" -- neither is known. Say what IS known.
+      document.getElementById("optbody").innerHTML='<div class="gendiag">⚠ The change was sent, but Amazon\'s reply could not be read, so this app cannot tell you whether it was applied.'
+        +'<div class="cc" style="margin-top:6px">Press Sync on this listing in a minute — it reads the listing back from Amazon, which is the only way to settle it. Fields sent: '+esc((j.pushed_fields||[]).join(", "))+'.</div></div>'
+        +'<button onclick="renderOptEditor(OPT_CURRENT)" style="margin-top:10px">← Back to edit</button>';
     } else {
       let issues=(j.issues||[]).map(x=>(x.message||JSON.stringify(x))).join("; ");
       document.getElementById("optbody").innerHTML='<div class="gendiag bad">✗ Amazon rejected the change: '+esc(j.error||issues||j.status||"unknown")+'</div><button onclick="renderOptEditor(OPT_CURRENT)" style="margin-top:10px">← Back to edit</button>';
