@@ -195,7 +195,41 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         except Exception:
             cur = ""
 
-        res = _dr.run(camp_rows, term_rows, target=target, currency=cur)
+        # WHAT WAS UNBUYABLE WHILE THE ADS RAN.
+        #
+        # Without this the zero-order rule cannot tell "nobody wanted it" from
+        # "nobody could buy it", and its recommended fix -- a negative keyword
+        # -- is exactly wrong in the second case and cannot be undone by
+        # waiting. The stock history is already recorded here for the coverage
+        # screen (domain/stock_history.py), so this costs one local read.
+        #
+        # A failure to look is NOT a licence to assume everything was in stock:
+        # the empty set means the rule falls back to its old behaviour, and the
+        # note below says the check could not run.
+        oos = []
+        _oos_failed = ""
+        try:
+            from domain import stock_metrics as _sm
+            _cov = _sm.for_account(CONFIG_PATH, aid, mkt, window=30)
+            oos = [r["sku"] for r in (_cov.get("rows") or [])
+                   if (r.get("oos_days") or 0) > 0]
+        except Exception as e:
+            _oos_failed = str(e)[:120]
+
+        res = _dr.run(camp_rows, term_rows, target=target, currency=cur,
+                      oos_skus=oos)
+        if _oos_failed:
+            res.setdefault("notes", []).append(
+                "Could not read the stock history, so a keyword that spent with "
+                "no sales cannot be told apart from one whose product was out "
+                "of stock. Check stock before adding any negative keyword. (%s)"
+                % _oos_failed)
+        elif oos:
+            res.setdefault("notes", []).append(
+                "%d product(s) were out of stock during this window. Any "
+                "keyword advertising one of them is reported but NOT "
+                "recommended for negating — the clicks had nowhere to go."
+                % len(oos))
         out.update(res)
         out["campaigns"] = camp_rows
         out["rows_read"] = {"campaigns": len(camp_rows), "terms": len(term_rows)}
