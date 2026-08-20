@@ -450,9 +450,36 @@ async function enterAccount(accountId){
   if(hasCreds && !window.WS_READONLY && typeof startAutoSync === "function"){
     try{ startAutoSync(); }catch(e){}
   }
-  if(LIST_SOURCE==='all' || LIST_SOURCE==='live'){ loadRows(); loadLiveCatalog(false); }
-  else loadRows();
+  // THE DRAFTS VIEW NEEDS AMAZON'S CATALOGUE TOO -- see the note below.
+  loadRows(); loadLiveCatalog(false);
 }
+
+/* WHY EVERY VIEW LOADS THE LIVE CATALOGUE NOW, not just Live and All.
+ *
+ *     "when i go to live on amazon section i see the asin B0HCVFW53Y and
+ *      B0HCVTDFNW as live and when i go to drafts it showed me the both as
+ *      drafts; ready to send. but when i refreshed the asin the ready to send
+ *      section was zero"
+ *
+ * One listing, two answers, and the app was sure of both.
+ *
+ * MEASURED: on the Drafts view, LIVE_ITEMS was 0 and _liveCatalogLoaded() was
+ * false -- the catalogue was never fetched there. isPublishedRow() decides
+ * whether a row is a draft or something Amazon has already published, and with
+ * no catalogue to consult it can only fall back to the row's stored status
+ * word. A listing Amazon published, whose stored word still says APPROVED,
+ * therefore stayed in "ready to send" indefinitely.
+ *
+ * Visiting "Live on Amazon" loads the catalogue (47 items, measured), and
+ * coming back to Drafts then hides the same row and drops the count -- which is
+ * exactly the "refreshed and it was zero" half of the report. The number was
+ * never really changing; the view was simply the only place that had asked.
+ *
+ * force=false, so this costs NO Amazon call: it is served from the durable
+ * snapshot, and when nothing is saved yet the route returns immediately and
+ * lets the background refresh fill it in. The status word is left alone -- only
+ * Sync writes it -- because Amazon's catalogue is the authority here and the
+ * screen should read it rather than a copy of it that has gone stale. */
 /* Open an account already on a chosen marketplace.
  *
  * enterAccount picks the account's own default; this picks the one that was
@@ -554,7 +581,10 @@ async function switchAccountMarket(m){
         body:JSON.stringify({id:CUR_ACCOUNT?CUR_ACCOUNT.id:"",marketplace:m})}); }catch(e){}
   if(CUR_ACCOUNT) buildAccountMktSwitch(CUR_ACCOUNT);
   if(typeof renderSwitchRows === "function") renderSwitchRows();
-  if(LIST_SOURCE==='live'||LIST_SOURCE==='all'){ loadLiveCatalog(false); } else { loadRows(); }
+  // Both, on every view: changing marketplace changes which listings Amazon has
+  // live, and the Drafts view reads that to tell a draft from something already
+  // published. See the note above enterAccount's loader.
+  loadRows(); loadLiveCatalog(false);
 }
 
 function openCurrentAccountSettings(){

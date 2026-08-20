@@ -654,10 +654,46 @@ async function delDuplicate(sku, row, tab, btn){
 //
 // Must return the SAME answer for render() (grouping) and summary() (counting),
 // or the top bar disagrees with the grid.
+/* Has AMAZON confirmed this row is live?
+ *
+ * THE GATE IS WHETHER WE HAVE AMAZON'S ANSWER, NOT WHICH TAB IS OPEN.
+ *
+ *     "when i go to live on amazon section i see the asin B0HCVFW53Y and
+ *      B0HCVTDFNW as live and when i go to drafts it showed me the both as
+ *      drafts; ready to send"
+ *
+ * This used to read:
+ *
+ *     if(liveGroupShown) return <does Amazon list it?>
+ *     return norm(r.status)==="LIVE"
+ *
+ * -- so on the Drafts view it stopped asking Amazon and answered from the
+ * stored status word instead. The same listing was therefore live on one tab
+ * and a ready-to-send draft on the other, and the app was confident about both.
+ * Two answers to one question, decided by which button you last pressed.
+ *
+ * The gate made sense once, because the catalogue was only ever fetched for the
+ * Live and All views. It is fetched on every view now (see shell.js), so the
+ * honest condition is simply: if Amazon's catalogue is loaded, Amazon decides.
+ * The stored word is the fallback for BEFORE the first sync only -- which is
+ * the one case where the app genuinely has nothing better, and where calling a
+ * row not-live would slander a listing nobody has asked Amazon about yet.
+ *
+ * A row whose stored word says LIVE while the loaded catalogue does not list it
+ * is deliberately NOT live here. That state has its own name and its own
+ * display -- isClaimedLiveOnly(), "not confirmed by Amazon" -- and folding it
+ * into "live" is what hid it.
+ *
+ * liveGroupShown is kept because callers still pass it and one passes an
+ * explicit true; it now forces the catalogue answer rather than selecting it.
+ */
 function isActuallyLive(r, liveCatSkus, liveCatAsins, liveGroupShown){
   const norm = v => String(v||"").trim().toUpperCase();
   const s=norm(r.sku), a=norm(r.asin);
-  if(liveGroupShown) return !!((s && liveCatSkus.has(s)) || (a && liveCatAsins.has(a)));
+  const haveAmazon = liveGroupShown
+                  || (typeof _liveCatalogLoaded==="function" && _liveCatalogLoaded())
+                  || (liveCatSkus && liveCatSkus.size) || (liveCatAsins && liveCatAsins.size);
+  if(haveAmazon) return !!((s && liveCatSkus.has(s)) || (a && liveCatAsins.has(a)));
   return norm(r.status)==="LIVE";
 }
 

@@ -389,7 +389,17 @@
           <button class="mktbtn" data-src="removed" id="srcbtn_removed"
                   title="Listings this app still holds that Amazon no longer has. Nothing is ever deleted automatically."
                   onclick="setListSource('removed')" style="display:none">Removed</button>
-          <button class="mktbtn" title="Sync live listings from Amazon now" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync</button>
+          <!-- WHY THIS EXISTS WHEN THE LABEL BESIDE IT SAYS "synced 4m ago".
+               "why do have that sync button if the listings are already been
+                synced upto some minutes?"
+               Fair question, and the old tooltip ("Sync live listings from
+               Amazon now") answered none of it -- it described the button as a
+               repeat of something the page appears to do already. It is not.
+               Opening the tab shows a SAVED copy and, at most, reuses a report
+               Amazon has already built; it never fetches a listing's contents.
+               These four things happen ONLY when this is pressed, which is why
+               the tooltip now names them instead of saying "sync". -->
+          <button class="mktbtn" onclick="syncLive()" title="Not a repeat of the automatic refresh — four things happen only when you press this:&#10;&#10;• Amazon builds a BRAND NEW listings report. Opening this tab reuses the last one, so the list can be right about which listings exist and still be behind on price, stock and status.&#10;• Each listing's actual CONTENTS are pulled — images, A+, bullets, description, variations, and Amazon's own handling time. Nothing else on this screen ever fetches these.&#10;• Drafts you have submitted are checked against Amazon and marked live where Amazon has published them.&#10;• Listings deleted or deactivated on Amazon are settled against what this app holds.&#10;&#10;It takes a few minutes on a large catalogue. The label beside this button says when Amazon was last actually read."><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
           <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
           <!-- THE SHEET TO FILL IN, before the button that uploads it. There
