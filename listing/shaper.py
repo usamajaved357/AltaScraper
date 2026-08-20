@@ -34,6 +34,21 @@ def _is_empty_shape(s):
     return False
 
 
+def _missing_required(schema, obj):
+    """Sub-keys the schema demands that this shaped object does not have.
+
+    A half-built object is not partial data, it is a guaranteed rejection --
+    Amazon answers "'X' is required but missing" and the listing fails. When a
+    required sub-key could not be filled, the honest move is to drop the whole
+    object: an optional attribute then simply is not sent, and a required one is
+    reported as missing by the caller, which is the truth either way.
+    """
+    req = schema.get("required") or []
+    if not isinstance(req, list):
+        return []
+    return [k for k in req if k not in obj]
+
+
 def shape_by_schema(schema, raw, mid, lang="en_GB"):
     t = schema.get("type")
     if t == "array":
@@ -77,11 +92,27 @@ def shape_by_schema(schema, raw, mid, lang="en_GB"):
                 try: obj[num_key] = float(str(val))
                 except (ValueError, TypeError): obj[num_key] = val
             else:
-                obj[num_key] = val if not isinstance(val, (int, float)) else str(val)
+                # A TEXT leaf that declares an enum is a closed list, exactly
+                # like `unit` below -- and until now only `unit` was checked
+                # against its own. See _snap_enum for the measured case.
+                _ven = props[num_key].get("enum") if isinstance(props.get(num_key), dict) else None
+                _v = val if not isinstance(val, (int, float)) else str(val)
+                if _ven:
+                    # A TEXT leaf that declares an enum is a CLOSED list, just
+                    # like `unit` below -- and until now only `unit` was checked
+                    # against its own. strict: an unmatched value is left out,
+                    # and _missing_required below then drops the whole object
+                    # rather than sending something Amazon will refuse.
+                    _snapped_v = _snap_enum(_ven, _v, strict=True)
+                    if _snapped_v is not None:
+                        obj[num_key] = _snapped_v
+                else:
+                    obj[num_key] = _v
         if "unit" in props and unit not in (None, ""):
             uen = props["unit"].get("enum")
-            obj["unit"] = (next((e for e in uen if str(e).lower() == str(unit).strip().lower()), unit)
-                           if uen else unit)
+            _u = _snap_enum(uen, unit, strict=True) if uen else unit
+            if _u is not None:
+                obj["unit"] = _u
         for pk, pv in props.items():
             if pk in ("marketplace_id", "language_tag", "unit", num_key): continue
             if isinstance(pv, dict) and pv.get("type") in ("array", "object"):
@@ -97,6 +128,12 @@ def shape_by_schema(schema, raw, mid, lang="en_GB"):
                 s = shape_by_schema(pv, sub, mid, lang)
                 if not _is_empty_shape(s):
                     obj[pk] = s
+        # An object missing something the schema REQUIRES is a rejection waiting
+        # to happen, not partial data. Dropping it means an optional attribute
+        # is simply not sent; a required one is reported missing by the caller.
+        # The selectors are excluded because they are added above, not supplied.
+        if _missing_required(schema, obj):
+            return {}
         return obj
     return raw.get("decimal_value", raw.get("value")) if isinstance(raw, dict) else raw
 
@@ -125,11 +162,32 @@ def _norm_tok(s) -> str:
     s = s.replace("metre", "meter").replace("litre", "liter")
     return s[:-1] if s.endswith("s") else s
 
-def _snap_enum(enum_list, raw):
+def _snap_enum(enum_list, raw, strict=False):
     """Snap a raw string to the nearest accepted enum token. Returns raw unchanged
-    if no confident match (so VALIDATION_PREVIEW surfaces it rather than guessing)."""
+    if no confident match (so VALIDATION_PREVIEW surfaces it rather than guessing).
+
+    strict=True returns None instead of the unchanged raw. Use it where the list
+    is genuinely CLOSED and an unmatched value can only be rejected -- there,
+    passing the value through does not surface anything useful, it just fails
+    the listing every time. Measured case:
+
+        [E] unit_count Based on the data from '', the 'count' on the field
+        '"type.value"' for the attribute 'Unit Count' is not a valid value.
+
+    Amazon's raw schema for MACHINE_LUBRICANT says, in as many words:
+
+        unit_count.items.properties.type.properties.value.enum
+            ["gram", "millilitre"]
+
+    and we send "Count". Returning None lets the caller drop the field rather
+    than guess "gram" -- a grease cartridge is not measured in count, and
+    picking the first item off the list because it is first is exactly the
+    guessing CLAUDE.md rule 4 forbids.
+
+    The default stays False so every existing caller behaves as before.
+    """
     if not enum_list:
-        return str(raw)
+        return None if (strict and str(raw).strip() == "") else str(raw)
     r  = str(raw).strip().lower()
     rn = r.replace(" ", "_")
     for e in enum_list:                                   # exact
@@ -146,12 +204,41 @@ def _snap_enum(enum_list, raw):
         el = str(e).strip().lower()
         if rn and (rn in el or el in rn):
             return e
-    return str(raw)
+    return None if strict else str(raw)
 
-def _coerce_value(val_schema: dict, raw):
+def _item_required(field_schema: dict):
+    """The sub-keys Amazon REQUIRES inside this attribute's item object.
+
+    Amazon declares them at items.required for an array attribute and at
+    required for a bare object, and this reads whichever is there. Used to
+    decide whether a half-built object should be sent at all -- see
+    _shape_simple. Selectors are excluded because they are added by us, not
+    supplied by the data.
+    """
+    if not isinstance(field_schema, dict):
+        return []
+    it = field_schema.get("items")
+    src = it if isinstance(it, dict) else field_schema
+    req = src.get("required")
+    if not isinstance(req, list):
+        return []
+    return [k for k in req if k not in ("marketplace_id", "language_tag")]
+
+
+def _sub_req(sub_schema):
+    """A nested sub-schema's own required list, wherever it declares it."""
+    if not isinstance(sub_schema, dict):
+        return []
+    it = sub_schema.get("items")
+    src = it if isinstance(it, dict) else sub_schema
+    req = src.get("required")
+    return req if isinstance(req, list) else []
+
+
+def _coerce_value(val_schema: dict, raw, strict=False):
     enum = val_schema.get("enum")
     if enum:
-        return _snap_enum(enum, raw)
+        return _snap_enum(enum, raw, strict=strict)
     t = val_schema.get("type")
     if t == "boolean":
         return _truthy(raw)
@@ -244,7 +331,12 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                 if isinstance(sub_raw, dict) and _sub_ip:
                     # array-wrapped nested: schema like {type: object, items: {props}}
                     # OR just an object with props -- normalise via _shape_simple.
-                    _synthetic = {"items": {"properties": _sub_ip}}
+                    # Carry the sub-schema's OWN required list into the wrapper.
+                    # Without it the recursion cannot tell a complete object
+                    # from one holding nothing but a language_tag, and Amazon
+                    # answers "'type.value' does not have enough values".
+                    _synthetic = {"items": {"properties": _sub_ip,
+                                            "required": _sub_req(sub_schema)}}
                     _shaped = _shape_simple(_synthetic, sub_raw, mid)
                     if _shaped:
                         _emit(sk, _shaped, sub_schema)
@@ -252,7 +344,12 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                 elif _sub_ip:
                     # Nested schema (props exist) but the user gave a flat value.
                     # Wrap it as {"value": sub_raw}.
-                    _synthetic = {"items": {"properties": _sub_ip}}
+                    # Carry the sub-schema's OWN required list into the wrapper.
+                    # Without it the recursion cannot tell a complete object
+                    # from one holding nothing but a language_tag, and Amazon
+                    # answers "'type.value' does not have enough values".
+                    _synthetic = {"items": {"properties": _sub_ip,
+                                            "required": _sub_req(sub_schema)}}
                     _shaped = _shape_simple(_synthetic, sub_raw, mid)
                     if _shaped:
                         _emit(sk, _shaped, sub_schema)
@@ -272,6 +369,14 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                         obj[sk] = sub_raw
                     _wrote_any = True
             if _wrote_any:
+                # Same rule as at the bottom of this function: if a sub-field
+                # Amazon requires could not be built, the whole attribute goes
+                # rather than arriving incomplete. This is the branch unit_count
+                # takes -- value shaped fine, type could not, and sending
+                # {value} alone earns "'type' is required but missing".
+                _needed = [k for k in _item_required(field_schema) if k not in obj]
+                if _needed:
+                    return []
                 return [obj]
             # else: fall through to legacy paths
 
@@ -307,16 +412,40 @@ def _shape_simple(field_schema: dict, raw, mid: str):
                     up = ip["unit"]
                     obj["unit"] = _snap_enum(up.get("enum"), unit) if up.get("enum") else (unit or up.get("default"))
         else:
-            # DICT PATH: sub-fields (maybe just 'value'?) folded up
-            if isinstance(raw, dict) and (_numk in raw or "value" in raw or "decimal_value" in raw):
-                obj[_numk] = _coerce_value(vp, raw.get(_numk, raw.get("value", raw.get("decimal_value"))))
-            else:
-                obj[_numk] = _coerce_value(vp, raw)
+            # DICT PATH: sub-fields (maybe just 'value'?) folded up.
+            #
+            # STRICT on an enum leaf. This is the leaf that carried "Count" into
+            # unit_count.type.value, where Amazon's raw schema allows only
+            # ["gram", "millilitre"] -- see _snap_enum. Nothing matched means we
+            # do not know the unit, so the key is left out and the object is
+            # dropped below rather than rejected by Amazon on every attempt.
+            _src = (raw.get(_numk, raw.get("value", raw.get("decimal_value")))
+                    if isinstance(raw, dict) and
+                       (_numk in raw or "value" in raw or "decimal_value" in raw)
+                    else raw)
+            _cv = _coerce_value(vp, _src, strict=True)
+            if _cv is not None:
+                obj[_numk] = _cv
     elif ip:
         # item is an object but has no 'value' key we recognise -> best effort
         return []
     else:
         obj = {"value": str(raw)}
+    # A required sub-key we could not fill makes this object a guaranteed
+    # rejection, not partial data -- Amazon answers "'X' is required but
+    # missing". Dropping it means an optional attribute simply is not sent, and
+    # a required one is reported missing by the caller. Either is the truth.
+    if obj and _item_required(field_schema):
+        _missing = [k for k in _item_required(field_schema) if k not in obj]
+        if _missing:
+            return []
+    # An object carrying nothing but the selectors we added ourselves is not a
+    # value -- Amazon reads [{"language_tag":"en_GB"}] as "does not have enough
+    # values". Same rule _is_empty_shape applies on the other path; it belongs
+    # on both, and it is the backstop for any sub-schema that declares no
+    # required list of its own.
+    if isinstance(obj, dict) and obj and all(k in _SELECTOR_KEYS for k in obj):
+        return []
     return [obj] if obj else []
 
 def _shape_dimensions(field_schema: dict, length, width, height, mid: str):

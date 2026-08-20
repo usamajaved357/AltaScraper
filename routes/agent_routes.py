@@ -82,6 +82,28 @@ are counted.
 If a window includes today, say the period is not finished -- comparing a part \
 period against a whole one reads as a fall that has not happened.
 
+BEFORE YOU QUOTE A PROFIT FIGURE
+
+Check how much of the catalogue has a cost recorded. profit_by_product and \
+sales_summary both report it. A profit worked out while some products have no \
+cost is not a small error in one direction -- uncosted units bring revenue and \
+no cost, so the margin can only ever be flattered. If any are missing, say how \
+many before you say the number.
+
+WHEN TWO FIGURES DISAGREE
+
+Say they disagree and say why, rather than picking one quietly. Revenue on the \
+sales screen is what shoppers ORDERED. Money on the finance screen is what \
+Amazon actually PAID after cancellations, returns and fees. Both are true and \
+they answer different questions; a gap between them is usually not an error.
+
+WHICH PERIOD, EXACTLY
+
+"Last month" means the previous calendar month. "The last 30 days" means the \
+last thirty days. They are different periods -- nine days apart in August -- \
+and answering one with the other looks right and is not. Name the grain you \
+used in the answer, every time.
+
 If a list was trimmed, the result says so. Repeat it rather than summarising \
 the visible part as if it were all of it."""
 

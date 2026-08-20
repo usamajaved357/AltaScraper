@@ -123,13 +123,34 @@ def _f(sev, kind, subject, what, why, do, numbers=None):
             "why": why, "do": do, "numbers": numbers or {}}
 
 
-def check_wasted_spend(rows, currency=""):
+def check_wasted_spend(rows, currency="", oos_skus=None):
     """Money spent on terms that have never converted.
 
     THE CLEAREST FINDING THERE IS, and the only one that needs no target: a
     search term with enough clicks and zero sales is spending money for nothing,
     whatever the margin.
+
+    EXCEPT WHEN THERE WAS NOTHING TO BUY.
+
+    Dr PPC, asked for a case where it would be confidently wrong:
+
+        "Confident negate on zero-order spend while PDP/OOS/brand-credit was
+         the real story -- spot via ops checks, other campaigns, and a later
+         re-pull."
+
+    That is the trap this rule walks into on its own. A keyword with forty
+    clicks and no sales looks identical whether shoppers did not want the
+    product or could not buy it, and the recommended fix -- negate the term --
+    is exactly wrong in the second case. The keyword was working. The listing
+    was empty. Negate it and the demand is gone for good, and it will look like
+    the negation worked because the spend stops.
+
+    `oos_skus` is the set of SKUs (or ASINs) that were out of stock during the
+    window, from the stock history this app already records. When a term's
+    product is in it, the finding is still made -- the money was still spent --
+    but it says so and it stops recommending a negative.
     """
+    oos = {str(s).strip().lower() for s in (oos_skus or []) if str(s).strip()}
     out = []
     for r in rows:
         clicks = _n(r.get("clicks")) or 0
@@ -140,6 +161,29 @@ def check_wasted_spend(rows, currency=""):
         if clicks < MIN_CLICKS or sales > 0 or spend <= 0:
             continue
         term = r.get("search_term") or r.get("keyword") or r.get("campaign_name") or "?"
+        # Which product was this term advertising? Either key identifies it.
+        ident = ""
+        for k in ("sku", "asin", "advertised_sku", "advertised_asin"):
+            v = str(r.get(k) or "").strip()
+            if v:
+                ident = v.lower()
+                break
+        was_empty = bool(ident and ident in oos)
+        if was_empty:
+            out.append(_f(
+                WARN, "wasted-spend-oos", term,
+                "%s%.2f spent over %d clicks, no sales -- and it was out of "
+                "stock" % (currency, spend, clicks),
+                "Enough clicks to judge it, and not one of them bought -- but "
+                "the product was unbuyable for part of this window, so the "
+                "clicks had nowhere to go. This does not tell you the keyword "
+                "is bad. It tells you the advertising was running against an "
+                "empty listing.",
+                "Do NOT negate this yet. Get the stock back, let it run a full "
+                "week in stock, and judge it then.",
+                {"spend": spend, "clicks": clicks, "sales": 0,
+                 "out_of_stock": True}))
+            continue
         out.append(_f(
             CRITICAL, "wasted-spend", term,
             "%s%.2f spent over %d clicks, no sales" % (currency, spend, clicks),
@@ -350,16 +394,21 @@ def check_no_impressions(campaigns):
     return out
 
 
-def run(campaign_rows, term_rows, target=None, product_margin=None, currency=""):
+def run(campaign_rows, term_rows, target=None, product_margin=None, currency="",
+        oos_skus=None):
     """The whole console: every finding, worst first, and what was NOT checked.
 
     `target` is an ACOS target if one was given. Without it, and without a cost
     of goods, the ACOS rules produce NOTHING and say so -- see target_for.
+
+    `oos_skus` is what was out of stock during the window. Without it the
+    zero-order rule cannot tell "nobody wanted it" from "nobody could buy it";
+    see check_wasted_spend.
     """
     tgt, why = target_for(product_margin, target)
     findings = []
     findings += check_toxic_stem(term_rows or [], currency)
-    findings += check_wasted_spend(term_rows or [], currency)
+    findings += check_wasted_spend(term_rows or [], currency, oos_skus)
     findings += check_acos(term_rows or [], tgt, currency)
     findings += check_harvest(term_rows or [], tgt, currency)
     findings += check_budget_capped(campaign_rows or [], currency)
@@ -383,6 +432,10 @@ def run(campaign_rows, term_rows, target=None, product_margin=None, currency="")
         "high-acos": 2,         # selling, but costing too much
         "budget-capped": 3,     # working, and being turned off by a cap
         "harvest": 4,           # proven demand, not yet controlled
+        # Below the real waste deliberately. It is money out with nothing back
+        # too, but the fix is a stock fix, and it must not sit at the top of a
+        # list of keywords to negate -- that is the mistake it exists to stop.
+        "wasted-spend-oos": 6,
         "no-impressions": 5,    # not running at all
     }
     findings.sort(key=lambda f: (_KIND_ORDER.get(f["kind"], 9),
@@ -408,6 +461,26 @@ def run(campaign_rows, term_rows, target=None, product_margin=None, currency="")
     if not campaign_rows:
         notes.append("No campaign data was read, so budgets and delivery could "
                      "not be checked at all.")
+    # THE LAST FEW DAYS ARE NOT FINISHED, EVEN WHEN THE DAY IS.
+    #
+    # Dr PPC, asked where attribution makes its figures unreliable:
+    #
+    #     "Unreliable on recent days ... numbers often keep moving ~7-14 days,
+    #      softest in ~last 2-7."
+    #
+    # Amazon keeps attributing conversions to a click for days after the click.
+    # So a term that looks like pure waste today may have sold something on
+    # Tuesday that Amazon has not credited yet -- and the recommended fix for
+    # waste is a NEGATIVE KEYWORD, which cannot be undone by waiting. Said on
+    # every run, because it is true on every run.
+    if term_rows or campaign_rows:
+        notes.append(
+            "Amazon keeps crediting sales to a click for up to 14 days after "
+            "it happens, and the last 2 to 7 days move most. A term that looks "
+            "like waste today can still be credited with a sale from this week. "
+            "Where a finding says to add a negative keyword, that is the one "
+            "action here that cannot be undone by waiting — so on anything from "
+            "the last week, wait.")
 
     spend = sum((_n(r.get("spend")) or 0) for r in (campaign_rows or []))
     sales = sum((_n(r.get("sales")) or 0) for r in (campaign_rows or []))

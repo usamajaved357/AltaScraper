@@ -18,12 +18,23 @@ let FIN = {rows: [], totals: {}, sort: "revenue", desc: true,
 // money screen must be unambiguous about -- which days it is counting -- was
 // the one thing it never said. Picking a preset fills the boxes, and typing in
 // the boxes clears the preset, so the two can never disagree.
+// "LAST MONTH" AND "LAST 30 DAYS" ARE NOT THE SAME PERIOD, and the way to stop
+// them being confused is to offer both by name rather than to pick one.
+//
+//     Ava, on its own most common way of being wrong:
+//     "Mixing time grains ... User asks 'last month' and I answer with 30d
+//      comparison if I don't label grain. Looks right, 9 days off."
+//
+// Nine days off, on a money screen, with nothing on the page saying which was
+// used. "30 days" is plainly rolling; "Last month" is plainly a calendar month;
+// with both present neither can be mistaken for the other.
 const FIN_PRESETS = [
-  {k: "7d",  t: "7 days",       days: 7},
-  {k: "30d", t: "30 days",      days: 30},
-  {k: "90d", t: "90 days",      days: 90},
-  {k: "mtd", t: "This month",   month: true},
-  {k: "qtd", t: "This quarter", quarter: true},
+  {k: "7d",   t: "7 days",       days: 7},
+  {k: "30d",  t: "30 days",      days: 30},
+  {k: "90d",  t: "90 days",      days: 90},
+  {k: "mtd",  t: "This month",   month: true},
+  {k: "lastmonth", t: "Last month", lastMonth: true},
+  {k: "qtd",  t: "This quarter", quarter: true},
 ];
 
 const FIN_FILTERS = [
@@ -42,6 +53,14 @@ function financePreset(k){
     if(p){
       const end = new Date(), start = new Date();
       if(p.month){ start.setDate(1); }
+      else if(p.lastMonth){
+        // The whole of the previous calendar month, first to last. Day 0 of
+        // this month IS the last day of the previous one, which avoids having
+        // to know how long February was.
+        start.setDate(1);
+        start.setMonth(start.getMonth() - 1);
+        end.setDate(0);
+      }
       else if(p.quarter){ start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1); }
       else { start.setDate(start.getDate() - (p.days - 1)); }
       const a = document.getElementById("fin_start"), b = document.getElementById("fin_end");

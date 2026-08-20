@@ -618,7 +618,18 @@ function _skCoverage(){
   // history behind it. Both notes are shown, always.
   h += '<div class="cc" style="font-size:11.5px;line-height:1.55;max-width:790px;'
     + 'margin:0 0 12px">' + _skEsc(c.note || "") + " " + _skEsc(c.estimate_note || "")
-    + " " + _skEsc(c.gap_is_not_a_po || "") + "</div>";
+    + " " + _skEsc(c.gap_is_not_a_po || "")
+    + ((n.stale_pace || 0) ? " " + _skEsc(c.stale_note || "") : "") + "</div>";
+  // HOW TO CATCH THIS SCREEN LYING. Printed rather than kept to ourselves: a
+  // screen that tells you how to audit it is worth more than one that asks to
+  // be believed. Everything here is built on the pace, so that is the number.
+  if(c.how_to_check){
+    h += '<details style="margin:0 0 12px;max-width:790px">'
+      + '<summary class="cc" style="cursor:pointer;font-size:11.5px">'
+      + 'How to check this by hand</summary>'
+      + '<div class="cc" style="font-size:11.5px;line-height:1.55;padding:8px 0">'
+      + _skEsc(c.how_to_check) + '</div></details>';
+  }
 
   const rows = c.rows || [];
   if(!rows.length){
@@ -670,7 +681,22 @@ function _skCoverage(){
                   ? '<span class="cc">—</span>'
                   : '<b style="color:var(--warn)">' + r.stock_gap_30d + '</b>') + '</td>'
       + '<td><span class="ld-pill ' + (TONE[r.status] || "unk") + '">'
-      + _skEsc(LABEL[r.status] || r.status) + '</span></td></tr>';
+      + _skEsc(LABEL[r.status] || r.status) + '</span>'
+      // A SHORTFALL WHOSE PACE HAS GONE QUIET.
+      //
+      // The arithmetic is right and the row stays -- but a product that sold
+      // well for three weeks and nothing since leaves a healthy thirty-day
+      // average behind it, and this column would otherwise read "order more".
+      // That is the one error here that costs money rather than attention, so
+      // it is said on the row and not left to a tooltip.
+      + (r.pace_is_stale
+          ? '<div class="cc" style="font-size:10.5px;margin-top:3px;'
+            + 'color:var(--warn)" title="' + _skEsc(r.stale_why || "") + '">'
+            + (r.quiet_days ? 'no sales in ' + r.quiet_days + ' sellable days'
+                            : 'sales falling sharply')
+            + ' — check before ordering</div>'
+          : '')
+      + '</td></tr>';
   });
   t += '</tbody></table></div>';
 
