@@ -206,6 +206,16 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
             account_id = (request.form.get("account_id") or "").strip()
             if not account_id:
                 return jsonify({"ok": False, "error": "account_id is required so caching is per-workspace"}), 400
+            # This takes the account from the FORM and then reads that account's
+            # FBA inventory and Orders with its own credentials -- so naming any
+            # configured account was enough to pull its stock and sales history.
+            # _state is optional in this module's signature, so the check is
+            # skipped rather than crashing when it was not injected.
+            if _state is not None:
+                from domain import account_scope as _acctscope
+                _open = _state.get("active_account_id")
+                if _acctscope.is_mismatch(account_id, _open):
+                    return jsonify(_acctscope.refusal(account_id, _open, "inventory")), 409
             marketplace = (request.form.get("marketplace") or "US").strip().upper()
 
             try:

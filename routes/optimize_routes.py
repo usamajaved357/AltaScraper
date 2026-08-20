@@ -18,6 +18,36 @@ from flask import request, jsonify
 def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish=lambda acc=None: acc):
     """Attach the /optimize/* routes to the existing Flask app."""
 
+    from domain import account_scope as _acctscope
+
+    def _wrong_account(asked):
+        """None when this request may proceed; a refusal when it may not.
+
+        THE HOLE. Every route in this file takes `id` FROM THE CALLER and then
+        resolves THAT account's own Amazon credentials with it. None checked it
+        against the account that is open, so naming any configured account was
+        enough to act on it -- the same shape as the /orders/items hole, which
+        answered with another company's order lines and buyer postcodes.
+
+        /optimize/push is the one that matters most: it calls patchListingsItem.
+        Naming another account there does not read their data, it EDITS THEIR
+        LIVE LISTINGS on a real shopfront.
+
+        This mattered less while every configured account belonged to one owner
+        -- it was a correctness bug about stale state. Multi-tenant OAuth
+        changes that: other people's selling accounts now sit in the same
+        config, and "any configured account" stops meaning "one of ours".
+
+        Behaviour-neutral for legitimate use: every caller of these routes sends
+        the OPEN account (checked across static/js -- the only senders of a
+        different id are /accounts/* setup routes, which are excluded by design),
+        and a request naming no account is served exactly as before.
+        """
+        open_id = _state.get("active_account_id")
+        if _acctscope.is_mismatch(asked, open_id):
+            return jsonify(_acctscope.refusal(asked, open_id, "listing")), 409
+        return None
+
     @app.route("/optimize/fetch", methods=["POST"])
     def optimize_fetch():
         """Read-only: pull a live listing's CURRENT data from Amazon so the user can
@@ -28,6 +58,9 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         sku = (b.get("sku", "") or "").strip()
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         if not sku:
@@ -101,6 +134,9 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         sku = (b.get("sku", "") or "").strip()
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         if not sku:
@@ -245,6 +281,9 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         except Exception as _e:
             return jsonify({"ok": False, "read_only": True, "error": str(_e)}), 403
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         sku = (b.get("sku", "") or "").strip()
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         ptype = b.get("product_type", "") or ""
@@ -342,6 +381,9 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _build_patches, _require_publish
         product_type = b.get("product_type", "")
         instruction = (b.get("instruction", "") or "").strip()   # user's custom request to the AI
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         if not ebay_url and not amazon_url and not instruction:
             return jsonify({"ok": False, "error": "Provide a product link and/or a custom instruction."}), 400
 

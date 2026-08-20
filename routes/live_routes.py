@@ -17,6 +17,34 @@ _REPORT_REUSE_MAX_AGE = 6 * 3600
 
 
 def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, _cfg, _estimate_profit, _parse_listings_report, _resolve_cogs, _state, _APLUS_CACHE=None, _APLUS_TTL=1800, _MIRROR_CACHE=None, _MIRROR_TTL=6*3600):
+    from domain import account_scope as _acctscope
+
+    def _wrong_account(asked):
+        """None when this request may proceed; a refusal when it may not.
+
+        These routes take `id` FROM THE CALLER and resolve THAT account's own
+        Amazon credentials with it, without ever checking it against the account
+        that is open -- so naming any configured account was enough to pull its
+        entire catalogue, its A+ content and its images. Same shape as the
+        /orders/items hole, which answered with another company's order lines
+        and buyer postcodes.
+
+        It mattered less while every configured account belonged to one owner:
+        it was a correctness bug about stale state. Multi-tenant OAuth changes
+        that -- other people's selling accounts now sit in the same config, and
+        "any configured account" stops meaning "one of ours".
+
+        Behaviour-neutral for legitimate use. Every caller of these routes sends
+        the OPEN account (checked across static/js; the only senders of a
+        different id are the /accounts/* setup routes, which legitimately target
+        an account that is not open and are excluded), and a request naming no
+        account is served exactly as before.
+        """
+        open_id = _state.get("active_account_id")
+        if _acctscope.is_mismatch(asked, open_id):
+            return jsonify(_acctscope.refusal(asked, open_id, "data")), 409
+        return None
+
     # How many SKUs one /live/images call will fetch from Amazon. Each SKU is a
     # separate getListingsItem call and SP-API is rate limited, so this is a real
     # constraint, not a guess. What was WRONG was doing it silently: the reply now
@@ -90,6 +118,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         force = bool(b.get("force"))
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
@@ -193,6 +224,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
         if not skus:
@@ -271,6 +305,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         skus = [s for s in (b.get("skus") or []) if s]
         if not skus:
@@ -517,6 +554,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         force = bool(b.get("force"))
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
@@ -1010,6 +1050,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             return jsonify({"ok": False, "error": str(e)}), 500
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         force = bool(b.get("force"))
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
@@ -1067,6 +1110,9 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         skus:[...]} -> {ok, mirror:{sku:{...}}}. Powers the read-only 'Actual on Amazon' view."""
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
+        _bad = _wrong_account(b.get("id"))
+        if _bad:
+            return _bad
         mkt = (b.get("marketplace", "") or _state.get("active_marketplace") or "").upper()
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
         out = {}
