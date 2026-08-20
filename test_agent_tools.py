@@ -155,6 +155,17 @@ truthy("it is told to name the account and the dates",
        "name the account" in AR.SYSTEM)
 truthy("it is told to carry the measured/estimated split",
        "MEASURED, OR ESTIMATED" in AR.SYSTEM)
+# Ava's own #1 failure: "Profit with missing COGS ... It looks right. It's
+# wrong ... This is the top silent failure across all brands."
+truthy("it is told to check cost coverage before quoting profit",
+       "BEFORE YOU QUOTE A PROFIT FIGURE" in AR.SYSTEM)
+truthy("  and told which way the error runs",
+       "can only ever be flattered" in AR.SYSTEM)
+# Ava #22: ordered vs finance are different questions, not a discrepancy.
+truthy("it is told what to do when two figures disagree",
+       "WHEN TWO FIGURES DISAGREE" in AR.SYSTEM)
+truthy("  and that a gap is usually not an error",
+       "usually not an error" in AR.SYSTEM)
 truthy("the loop has a hard stop", AR.MAX_ROUNDS <= 12)
 
 print("\n== it can read no screen its user could not open ==")
