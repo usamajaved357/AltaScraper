@@ -34,8 +34,8 @@ async function setMainImage(sku, url, opts){
   try{
     const r = await fetch("/edit", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, target:"attr",
-                           key:"main_product_image_locator", value:url})});
+      body:JSON.stringify(acctBody({sku:sku, target:"attr",
+                           key:"main_product_image_locator", value:url}))});
     const j = await r.json();
     if(!j || !j.ok){
       toast("Could not set the main image: " + ((j && j.error) || "unknown"));

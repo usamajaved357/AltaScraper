@@ -729,7 +729,7 @@ async function delDuplicate(sku, row, tab, btn){
   try{
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
     const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({sku:sku, row:row})});
+                body:JSON.stringify(acctBody({sku:sku, row:row}))});
     const j=await res.json();
     if(j.ok){ toast("Duplicate removed from "+tab); loadRows(); }
     else{ toast("Delete failed: "+(j.error||"")); if(btn) btn.disabled=false; }
@@ -1064,11 +1064,11 @@ async function pullLiveRow(sku, btn){
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="genspin"></span> Pulling from Amazon…'; }
   try{
     const j = await (await fetch("/live/pull_row",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku})})).json();
+      body:JSON.stringify(acctBody({sku:sku}))})).json();
     if(!j || !j.ok){ toast("Couldn't pull from Amazon: "+((j&&j.error)||"unknown")); return; }
     toast("Pulled "+j.count+" live image(s) from Amazon");
     try{
-      const r = await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      const r = await (await fetch(acctUrl("/row?sku="+encodeURIComponent(sku)))).json();
       if(r && r.ok && r.row){
         const i = ROWS.findIndex(x=>String(x.sku)===String(sku));
         if(i>=0) ROWS[i] = Object.assign({}, ROWS[i], r.row);
@@ -2340,12 +2340,12 @@ async function applyRewrite(sku, i){
   let val; try{ val=raw.replace(_claimWholeWordRe(h.phrase), h.swap); }catch(e){ val=raw; }
   try{
     const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, target:"col", key:h.col, value:val})})).json();
+      body:JSON.stringify(acctBody({sku:sku, target:"col", key:h.col, value:val}))})).json();
     if(!j.ok){ toast("Save failed: "+(j.error||"")); return; }
     toast("Rewrite applied ✓ — re-screening");
     // pull the fresh row so flags recompute against the new copy
     try{
-      const rr=await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      const rr=await (await fetch(acctUrl("/row?sku="+encodeURIComponent(sku)))).json();
       if(rr&&rr.ok&&rr.row){ const k=ROWS.findIndex(x=>String(x.sku)===String(sku));
         if(k>=0) ROWS[k]=Object.assign({},ROWS[k],rr.row); }
     }catch(e){}

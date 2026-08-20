@@ -1057,7 +1057,7 @@ async function saveEdit(el,sku,target,key){
   const value=el.value; el.classList.remove("saved","err"); el.classList.add("saving");
   try{
     const res=await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku,target,key,value})});
+      body:JSON.stringify(acctBody({sku,target,key,value}))});
     const j=await res.json(); el.classList.remove("saving");
     if(j.ok){ el.classList.add("saved"); toast("Saved ✓"); setTimeout(()=>el.classList.remove("saved"),1000);
       const r=ROWS.find(x=>x.sku===sku);
@@ -1084,7 +1084,7 @@ async function clearField(sku, target, key, refresh){
   if(!confirm("Delete '"+key+"' from this listing?")) return;
   try{
     const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku, target, key, value:""})})).json();
+      body:JSON.stringify(acctBody({sku, target, key, value:""}))})).json();
     if(!j || !j.ok){ toast("Delete failed: "+((j&&j.error)||"unknown")); return; }
     const r=ROWS.find(x=>String(x.sku)===String(sku));
     if(r){ if(target==="attr"){ r.attributes=r.attributes||{}; delete r.attributes[key]; }
@@ -1102,7 +1102,7 @@ async function _saveBullets(sku, bullets){
   const arr=(bullets||[]).slice(0, MAX_BULLETS);
   for(let i=0;i<MAX_BULLETS;i++){
     await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku, target:"col", key:"Bullet "+(i+1), value:(arr[i]||"")})});
+      body:JSON.stringify(acctBody({sku, target:"col", key:"Bullet "+(i+1), value:(arr[i]||"")}))});
   }
   const r=ROWS.find(x=>String(x.sku)===String(sku));
   if(r) r.bullets=arr;

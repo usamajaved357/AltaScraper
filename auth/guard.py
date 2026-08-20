@@ -45,9 +45,14 @@ from auth import users
 # "somebody reads a page" -- it is "somebody gets this app to attach a token to
 # an account of their choosing", and a login wall would not have stopped that
 # on its own. See routes/auth_oauth_routes.py.
+#
+# privacy_page / terms_page are public for the same reason and one more: Amazon
+# checks the privacy policy URL when an app is submitted for publication, and a
+# checker that has to sign in finds a login form instead of a policy.
 PUBLIC_ENDPOINTS = {"_login", "_healthz", "static", "_pubimg",
                     "invite_page", "invite_accept",
-                    "oauth_login", "oauth_callback"}
+                    "oauth_login", "oauth_callback", "oauth_diagnose",
+                    "privacy_page", "terms_page"}
 
 # (prefix, permission). ORDER MATTERS -- first match wins, so anything more
 # specific must come before the broader prefix it sits under.

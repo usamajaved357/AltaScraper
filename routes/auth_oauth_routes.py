@@ -124,6 +124,90 @@ def register(app, *, _cfg, CONFIG_PATH):
         body.update(extra)
         return jsonify(body), code
 
+    # ----------------------------------------------------------- diagnose
+    @app.route("/auth/diagnose")
+    def oauth_diagnose():
+        """Is THIS RUNNING PROCESS configured to do OAuth?
+
+            "/auth/login returns ... ALTA_LWA_CLIENT_ID and
+             ALTA_LWA_CLIENT_SECRET are not both set ... although i have
+             deployed the latest code"
+
+        Deploying code does not set environment variables, and there is no way
+        to tell from the outside whether a variable is missing, misspelt, set on
+        a different service, or set but not picked up because the process was
+        never restarted. Guessing between those costs more than answering it.
+
+        NO VALUES ARE RETURNED, and no lengths -- a length is a small leak and
+        buys nothing. Only whether each name is present and non-empty, plus
+        enough about the host to catch the most likely cause: variables set on
+        one platform while another is serving the domain. This repo contains a
+        render.yaml as well as a Dockerfile, so that confusion is available.
+
+        Public, like the routes it diagnoses: whoever is fixing the deployment
+        needs to read it, and it exposes nothing that is not already implied by
+        /auth/login's own refusal message.
+        """
+        def _set(name):
+            return bool(str(os.environ.get(name) or "").strip())
+
+        required = {
+            "ALTA_LWA_CLIENT_ID": _set("ALTA_LWA_CLIENT_ID"),
+            "ALTA_LWA_CLIENT_SECRET": _set("ALTA_LWA_CLIENT_SECRET"),
+            "ALTA_TOKEN_KEY": _set("ALTA_TOKEN_KEY"),
+        }
+        recommended = {
+            # Not required to start the flow, but the state nonce lives in the
+            # Flask session, which is signed with this. Unset means a new random
+            # key every boot and every worker, so the state check fails
+            # intermittently and confusingly. See the note in dashboard.py.
+            "APP_SECRET_KEY": _set("APP_SECRET_KEY"),
+        }
+        optional = {
+            "ALTA_OAUTH_REDIRECT_URI": _set("ALTA_OAUTH_REDIRECT_URI"),
+        }
+        # Which platform is actually running this. Each injects its own marker.
+        host = "unknown"
+        if os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"):
+            host = "render"
+        elif os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_SERVICE_ID"):
+            host = "railway"
+        elif os.environ.get("WEBSITE_INSTANCE_ID"):
+            host = "azure"
+        elif os.environ.get("DYNO"):
+            host = "heroku"
+
+        ready = all(required.values())
+        notes = []
+        if not ready:
+            missing = [k for k, v in required.items() if not v]
+            notes.append(
+                "Not ready. Missing on the RUNNING process: %s. Setting a "
+                "variable is not the same as deploying code -- add them in the "
+                "dashboard of the platform actually serving this domain, then "
+                "restart or redeploy so the process picks them up."
+                % ", ".join(missing))
+        if host != "unknown":
+            notes.append(
+                "This process is running on %s. If you set the variables "
+                "somewhere else, that is the whole problem." % host)
+        else:
+            notes.append(
+                "Could not tell which platform is running this from its "
+                "environment. This repo carries BOTH a render.yaml and a "
+                "Dockerfile, so check which one actually serves "
+                "app.altascraper.com before adding variables anywhere.")
+        if ready and not recommended["APP_SECRET_KEY"]:
+            notes.append(
+                "APP_SECRET_KEY is not set. OAuth will start, but the state "
+                "check lives in the Flask session and that session is signed "
+                "with a key that is randomly regenerated on every boot and per "
+                "worker when this is unset -- so authorizations will fail "
+                "intermittently with 'this authorization did not start here'.")
+        return jsonify({"ok": True, "ready_for_oauth": ready,
+                        "required": required, "recommended": recommended,
+                        "optional": optional, "host": host, "notes": notes})
+
     # ---------------------------------------------------------------- login
     @app.route("/auth/login")
     def oauth_login():

@@ -21,7 +21,7 @@ async function inv2Run(){
     resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">No workspace/account selected. Pick one from the sidebar first.</div>';
     return;
   }
-  resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model â€” fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)â€¦</div>';
+  resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model — fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)…</div>';
 
   const fd = new FormData();
   fd.append("account_id", acctId);
@@ -43,7 +43,7 @@ async function inv2Run(){
     }
     const s = j.summary || {};
     let html = '<div style="padding:12px;border:1px solid var(--line);border-radius:8px">';
-    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">âœ“ Inventory model complete</div>';
+    html += '<div style="font-weight:600;margin-bottom:8px;color:var(--ok)">✓ Inventory model complete</div>';
 
     // Bucket counts
     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">';
@@ -73,7 +73,7 @@ async function inv2Run(){
       html += '<b>Sample alerts (first 10):</b>';
       html += '<ul style="margin:6px 0 0 18px">';
       j.alerts_sample.forEach(a=>{
-        html += '<li>'+esc(a.sku)+' â€” '+esc(a.alert)+'</li>';
+        html += '<li>'+esc(a.sku)+' — '+esc(a.alert)+'</li>';
       });
       html += '</ul></div>';
     }
@@ -174,7 +174,7 @@ function _rhRender(h){
   // The stack dump is only meaningful while a stuck process still exists.
   document.getElementById("rh_why").style.display = (h.state==="STALLED")?"block":"none";
   if(h.state==="STALLED" && _rhLastState!=="STALLED")
-    toast("Run looks stuck â€” no activity for a while");
+    toast("Run looks stuck — no activity for a while");
   _rhLastState=h.state;
 }
 
@@ -204,7 +204,7 @@ function startRunHealth(){
 async function whyStuck(){
   const log=document.getElementById("log");
   const btn=document.getElementById("rh_why");
-  if(btn){ btn.disabled=true; btn.textContent="Lookingâ€¦"; }
+  if(btn){ btn.disabled=true; btn.textContent="Looking…"; }
   try{
     const r=await fetch("/run/stack",{cache:"no-store"});
     const j=await r.json();
@@ -282,13 +282,13 @@ function runMode(mode, skus){
       runMode._retried=true;
       if(ES){ES.close();ES=null;}
       showStop(false);
-      _logPush(log,"l","[fix] Re-selecting this account and retryingâ€¦");
+      _logPush(log,"l","[fix] Re-selecting this account and retrying…");
       fetch("/accounts/select",{method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({id:(CUR_ACCOUNT&&CUR_ACCOUNT.id)||"",
                              marketplace:(typeof WS_MARKET!=="undefined"?WS_MARKET:"")})})
         .then(()=>{ runMode._inRetry=true; runMode(mode,skus); })
-        .catch(()=>{ toast("Could not reselect the account â€” reload the page."); });
+        .catch(()=>{ toast("Could not reselect the account — reload the page."); });
       return;
     }
     const cls = e.data.startsWith("[start]")?"start":e.data.startsWith("[done]")?"done":"l";

@@ -124,7 +124,7 @@ function _rqFinish(st, P, sku, mode){
 function _rqRefreshRow(sku){
   setTimeout(async ()=>{
     try{
-      const j = await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      const j = await (await fetch(acctUrl("/row?sku="+encodeURIComponent(sku)))).json();
       if(j && j.ok && j.row){
         const idx = ROWS.findIndex(x=>String(x.sku)===String(sku));
         if(idx>=0){ ROWS[idx] = {...ROWS[idx], ...j.row}; }

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — AltaScraper</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#16181d; --ink2:#454b57; --muted:#6b7280;
+    --line:#e4e7ec; --accent:#1b5e9c; --panel:#f7f8fa;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1116; --ink:#e8eaee; --ink2:#b9bec9; --muted:#8b93a1;
+           --line:#252a33; --accent:#6fb0ee; --panel:#161a21; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:48px 22px 90px}
+  h1{font-size:30px;line-height:1.2;margin:0 0 6px}
+  h2{font-size:19px;margin:38px 0 10px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{font-size:16px;margin:22px 0 6px;color:var(--ink)}
+  p,li{color:var(--ink2)}
+  a{color:var(--accent)}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 30px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+       padding:14px 18px;margin:22px 0}
+  .box p{margin:6px 0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--ink);font-weight:600;white-space:nowrap}
+  code{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+       padding:1px 5px;font-size:13.5px}
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Privacy Policy</h1>
+<p class="sub">AltaScraper, operated by {{ owner }}{% if crn %} (company number {{ crn }}){% endif %}, registered in England &amp; Wales.</p>
+
+<div class="box">
+  <p><strong>In short.</strong> AltaScraper is a seller tool. If you connect your
+  Amazon selling account to it, it reads your own listing, order, inventory and
+  settlement data from Amazon so it can show it back to you and help you create
+  and edit listings. It does not sell your data, does not share it with other
+  sellers, and does not use it to train anyone's AI models.</p>
+</div>
+
+<h2>1. Who this applies to</h2>
+<p>This policy covers people who connect an Amazon selling account to AltaScraper
+and use the application at <code>app.altascraper.com</code>. If you are a
+<em>customer</em> of a seller who uses AltaScraper, this application is not the
+seller you bought from — contact that seller directly.</p>
+
+<h2>2. What the application accesses</h2>
+<p>When you authorise AltaScraper, Amazon issues it a token that lets it call
+Amazon's Selling Partner API on your behalf. Using that token it may read:</p>
+<table>
+  <tr><th>Category</th><th>What it includes</th><th>Why</th></tr>
+  <tr>
+    <td>Listings &amp; catalogue</td>
+    <td>Your SKUs, ASINs, titles, bullet points, descriptions, images, product
+        attributes, prices, handling times, and any errors Amazon reports
+        against them</td>
+    <td>To display your catalogue, create new listings, and fix ones Amazon has
+        rejected</td>
+  </tr>
+  <tr>
+    <td>Inventory</td>
+    <td>Quantities on hand and fulfilment settings</td>
+    <td>Stock cover and restock estimates</td>
+  </tr>
+  <tr>
+    <td>Orders</td>
+    <td>Order lines, quantities, item prices, order status, and the buyer's
+        town and postcode where Amazon supplies them</td>
+    <td>Sales reporting and profit calculation</td>
+  </tr>
+  <tr>
+    <td>Finances</td>
+    <td>Settlement and fee data, referral and fulfilment fees, refunds</td>
+    <td>To measure profit from real fees rather than estimates</td>
+  </tr>
+</table>
+<p>Buyer personal data is the most sensitive item in that list. It is used only
+to display and total your own orders back to you. It is never sold, never shared
+with another seller, and never sent to any AI provider.</p>
+
+<h3>Your Amazon credentials</h3>
+<p>The token Amazon issues is stored encrypted at rest, using a key held in the
+hosting platform's environment configuration rather than in the application's
+code or its configuration file. You can revoke it at any time from Seller
+Central (<em>Apps &amp; Services → Manage Your Apps</em>), which immediately and
+permanently ends this application's access without needing our involvement.</p>
+
+<h2>3. Who else receives data</h2>
+<p>AltaScraper is not an advertising business and has no data-broker
+relationships. Data reaches third parties only where the feature requires it:</p>
+<table>
+  <tr><th>Recipient</th><th>What is sent</th><th>Purpose</th></tr>
+  <tr>
+    <td>Amazon (Selling Partner API)</td>
+    <td>Requests for your data, and listing content you choose to publish</td>
+    <td>The data source, and where listings are created</td>
+  </tr>
+  <tr>
+    <td>Anthropic (Claude API)</td>
+    <td>Product information — titles, attributes, source descriptions — when you
+        ask the app to write or optimise listing copy. Order and buyer data is
+        never sent.</td>
+    <td>Generating listing text and images</td>
+  </tr>
+  <tr>
+    <td>Google (Sheets &amp; Drive)</td>
+    <td>Listing data and generated images, for accounts configured to use them</td>
+    <td>Optional import/export and image storage</td>
+  </tr>
+  <tr>
+    <td>Hosting provider</td>
+    <td>Everything the application stores, as its host</td>
+    <td>Running the service</td>
+  </tr>
+</table>
+
+<h2>4. Where data is stored and for how long</h2>
+<p>Data is held in the application's own database on its hosting platform, kept
+for as long as your account is connected, so the application can show history
+and trends over time. When you revoke access or ask for deletion, the stored
+copy of your data and your Amazon token are deleted.</p>
+
+<h2>5. Your rights</h2>
+<p>Under UK GDPR you may ask for a copy of the personal data held about you, ask
+for it to be corrected or deleted, object to processing, or complain to the
+Information Commissioner's Office (<a href="https://ico.org.uk" rel="noopener"
+target="_blank">ico.org.uk</a>). To exercise any of these, contact us using the
+details below. Revoking access in Seller Central stops all future processing
+immediately and does not require our cooperation.</p>
+
+<h2>6. Security</h2>
+<p>Amazon tokens are encrypted at rest. Access to a connected account's data is
+scoped to that account: the application refuses a request that names one account
+while another is open, rather than answering with whatever it has to hand. No
+system is perfectly secure, and this is a small operation rather than a large
+one — connect only accounts you are willing to connect.</p>
+
+<h2>7. Changes</h2>
+<p>If this policy changes materially for connected sellers, the change will be
+reflected here and the date below updated.</p>
+
+<h2>8. Contact</h2>
+<p>{{ owner }}{% if crn %}, company number {{ crn }}{% endif %}, England &amp; Wales.
+{% if email %}Email: <a href="mailto:{{ email }}">{{ email }}</a>.{% else %}
+<em>Contact address to be added.</em>{% endif %}</p>
+
+<footer>
+  Last updated: 21 August 2026 · <a href="/terms">Terms of Use</a>
+</footer>
+
+</div>
+</body>
+</html>

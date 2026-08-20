@@ -127,9 +127,25 @@ truthy("the detail route checks too", "_bad = _refuse_other_account(aid)" in OR)
 # Amazon, not after.
 truthy("  before Amazon is called at all",
        OR.index("_bad = _refuse_other_account(aid)") < OR.index("oc.get_order_items(oid)"))
+# THE WORDING MOVED, THE REFUSAL DID NOT. The comparison and the message now
+# live in domain/account_scope.py -- this rule was written out here AND in
+# listing_routes.py, from the same defect found twice, and a rule about who may
+# see whose data is the worst thing to keep two copies of (rule 12). What is
+# asserted here is that this route still refuses and still explains; what the
+# explanation says is asserted once, where it now lives.
+AS = open(os.path.join(HERE, "domain", "account_scope.py"), encoding="utf-8").read()
 truthy("  and it says why it refused",
-       "is the account that is\n                      \"open." in OR
-       or "but %s is the account that is " in OR)
+       "_scope.refusal(asked, open_id, \"orders\")" in OR)
+truthy("  from the one shared rule", "from domain import account_scope" in OR)
+truthy("  which names both accounts", '"asked_for"' in AS and '"selected"' in AS)
+truthy("  and says nothing was read or changed",
+       "nothing was read or changed" in AS)
+truthy("  and why that is the safe answer",
+       "under another's name" in AS)
+# Silence must not be a mismatch, or adding the guard to a route would break
+# every caller that has not been taught to send an account yet.
+truthy("a caller that names no account is unaffected",
+       "if asked is None:" in AS and "return False" in AS)
 
 print("\n== and the doorman can now see an account named inside a list ==")
 # THE SYSTEMIC ONE. named_workspace read TOP-LEVEL fields only, so a request

@@ -60,19 +60,23 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         Nothing is inferred from the caller's id: an account other than the open
         one is refused outright, never quietly substituted.
+
+        THE COMPARISON ITSELF now lives in domain/account_scope.py. It was
+        written out here and again in listing_routes.py, from the same defect
+        found twice -- and a rule about who may see whose data is the worst
+        thing to keep two copies of, because the next route to need it copies
+        whichever it finds first (rule 12).
+
+        The "" -> None normalisation stays here: this function's callers pass a
+        value that may be empty, and empty has always meant "said nothing"
+        rather than "asked for the account with no name".
         """
-        asked = str(asked or "").strip()
+        from domain import account_scope as _scope
+        asked = str(asked or "").strip() or None
         open_id = _open_account_id()
-        if not asked or not open_id or asked == open_id:
+        if not _scope.is_mismatch(asked, open_id):
             return None
-        return jsonify({
-            "ok": False, "account_mismatch": True,
-            "asked_for": asked, "selected": open_id,
-            "error": ("That order belongs to %s but %s is the account that is "
-                      "open. Nothing is returned rather than risk showing one "
-                      "company's customers under another's name."
-                      % (asked, open_id)),
-        }), 409
+        return jsonify(_scope.refusal(asked, open_id, "orders")), 409
 
     def _accounts_in_scope():
         """Which accounts to ask. THE OPEN ONE, unless every account is asked for.
