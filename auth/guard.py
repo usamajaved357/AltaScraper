@@ -393,6 +393,17 @@ FEATURE_PATHS = [
     # because the question "may this person see turnover" does not become a
     # different question because the screen is new. Ten more checkboxes would be
     # ten more things to set correctly and the same answer either way.
+    # AND THE SAME OMISSION HAPPENED AGAIN, with the screen added after that
+    # note was written. /brief returns the weekly business brief: revenue,
+    # profit, what moved up and down. feature_for("/brief") returned None, so it
+    # was governed by RULES alone -- "any user who may edit" -- and a person
+    # with sales set to `none` could read the whole thing.
+    #
+    # This is the second time a new screen has shipped ungoverned, which says
+    # the default is the problem rather than the author: an unlisted path is
+    # readable, so forgetting is silent. test_permission_coverage.py now fails
+    # when a section has no feature, so the third one cannot ship quietly.
+    ("/brief",                "sales"),      # revenue, profit, weekly movement
     ("/overview",             "sales"),      # it IS revenue, across accounts
     ("/leading",              "sales"),      # yesterday's revenue and units
     ("/catalog/products",     "listings"),   # the product catalogue

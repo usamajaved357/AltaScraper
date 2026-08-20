@@ -941,6 +941,27 @@ async function enterWorkspace(key){
 }
 
 function navTo(sec){
+  // THE DOOR, NOT JUST THE SIGNPOST.
+  //
+  //     "the user with permissions should only be able to view the page for
+  //      which the permission is aloted to him"
+  //
+  // Permissions used to hide the nav ITEM, which is not the only way in: every
+  // screen has a real address (/w/<workspace>/<section>), and there is also the
+  // bookmark bar, the Back button, and any link somebody was sent. All of those
+  // arrive here. The server already refuses the data (auth/guard.py), so this
+  // is not what keeps the numbers safe -- it is what makes the answer legible
+  // instead of letting the screen open and then fail, which reads as a broken
+  // app rather than as "no".
+  //
+  // Guarded on the function existing because users.js is a separate file, and
+  // navigation must not break if it has not loaded.
+  if(typeof maySeeSection === "function" && !maySeeSection(sec)){
+    if(typeof toast === "function"){
+      toast("You do not have access to that page. Ask the account owner if you need it.");
+    }
+    return;
+  }
   // LEAVING THE IMAGE LIBRARY PAGE HANDS THE LIBRARY BACK TO ITS MODAL.
   // Without this, pressing the images button on a Listings row would draw into
   // a container on a page nobody is looking at, and the modal would open empty.

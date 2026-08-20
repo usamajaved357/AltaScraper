@@ -64,14 +64,47 @@ def new_key() -> str:
     return Fernet.generate_key().decode("ascii")
 
 
+def key_status():
+    """('ok'|'missing'|'invalid', explanation). The whole truth about the key.
+
+    WHY THIS IS NOT JUST "IS IT SET". It used to be, and that gap cost a real
+    authorization: a key that was PRESENT but not a valid Fernet key sailed
+    through the pre-flight check in /auth/login, the seller was sent to Amazon,
+    approved the permissions screen, came back -- and only THEN did seal() fail,
+    with the token already exchanged and nothing able to store it.
+
+    The comment above have_key() said refusing after consent is the worse
+    experience, and then this checked the one thing that could not detect the
+    problem. Presence is not readiness.
+    """
+    raw = str(os.environ.get(_ENV_KEY) or "").strip()
+    if not raw:
+        return ("missing",
+                "%s is not set. Generate one with token_crypto.new_key() and "
+                "add it in the hosting dashboard." % _ENV_KEY)
+    try:
+        from cryptography.fernet import Fernet
+        Fernet(raw.encode("ascii"))
+    except Exception as e:
+        return ("invalid",
+                "%s is set but is not a valid key (%s). It must be a 32-byte "
+                "url-safe base64 key -- exactly what token_crypto.new_key() "
+                "prints, pasted with no quotes and no trailing spaces. A "
+                "password or passphrase will not work."
+                % (_ENV_KEY, type(e).__name__))
+    return ("ok", "")
+
+
 def have_key() -> bool:
-    """Is encryption available right now?
+    """Is encryption available AND usable right now?
 
     Callers use this to refuse an OAuth flow BEFORE sending somebody to Amazon,
     rather than after -- being told the connection failed on return, having
     already approved, is a worse experience than being told it is not ready.
+    That promise only holds if this validates the key rather than merely
+    noticing it exists; see key_status().
     """
-    return bool(str(os.environ.get(_ENV_KEY) or "").strip())
+    return key_status()[0] == "ok"
 
 
 def _fernet():

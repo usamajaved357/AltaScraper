@@ -16,3 +16,17 @@ services:
         sync: false          # set manually in the Render dashboard, not committed
       - key: APP_SECRET_KEY
         generateValue: true  # Render generates and persists a random value
+      # ---- multi-tenant Amazon OAuth (routes/auth_oauth_routes.py) ----
+      # Without all three, /auth/login refuses with a 503 and refuses BEFORE
+      # sending a seller to Amazon. Declared here so the platform asks for them
+      # instead of the app failing at runtime with nothing to point at.
+      #
+      # sync: false means "set this in the dashboard, never commit it". These
+      # are the application's own Login-with-Amazon credentials and the key that
+      # encrypts other sellers' refresh tokens -- none of them belong in git.
+      - key: ALTA_LWA_CLIENT_ID
+        sync: false
+      - key: ALTA_LWA_CLIENT_SECRET
+        sync: false
+      - key: ALTA_TOKEN_KEY
+        sync: false

@@ -290,6 +290,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         b = request.get_json(force=True) or {}
         if not b.get("confirmed"):
             return jsonify({"ok": False, "error": "not confirmed"}), 400
+        # A WRITE to a LIVE listing (patchListingsItem). It took `id` from the
+        # caller and used that account's credentials, so naming another account
+        # here would push an image onto their shopfront.
+        _bad = _wrong_account(b.get("id"), "listing")
+        if _bad:
+            return _bad
         # WRITE (patchListingsItem). A workspace that owns its Amazon app passes
         # straight through -- this only stops read-only/borrowing workspaces, which
         # would otherwise patch the LENDER's listing.
