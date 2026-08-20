@@ -3421,6 +3421,61 @@ def _norm_dim_unit(raw: str) -> str:
     return _DIM_UNIT_NORM.get(u, u)
 
 
+def resolve_account_brand(row_brand, config):
+    """(brand_to_send, note) -- THE one place that decides whose brand goes out.
+
+    A listing must go out under THIS ACCOUNT'S OWN TRADEMARK. The Brand column
+    is trusted only when it names one of the account's registered brands
+    (accounts can have several); anything else is a stale or leaked value and
+    the account's primary trademark is used instead. It is NEVER
+    config["brand_name"] when an account is resolved -- that global is exactly
+    how one account's brand once ended up on another's listings.
+
+    A BRAND SWAP IS NEVER SILENT, and that is what this exists for:
+
+        "I am trying to put the brand name as AltaboltaVoo while creating a new
+         listing on Nestwell Goods account, my nestwell goods account has that
+         brand name approved in the seller central ... but the app says
+         'Amazon flagged this - review the value'"
+
+    Measured: nestwell_goods is configured with brands ['Nestwell Goods'].
+    Typing AltaboltaVoo was REPLACED with 'Nestwell Goods' without a word, so
+    the listing went out under a brand nobody chose and the only clue was a
+    generic flag on a field the editor would not let you fix.
+
+    The guard stays -- one account's trademark on another's listing is the worse
+    fault. But the app cannot know which brands Amazon approved for an account;
+    only the owner knows, and the account's Brands list is where they say so. So
+    the swap is ANNOUNCED, with the exact thing to do about it.
+
+    ONE COPY, used by build_api_attributes and by the submit guard (rule 12).
+    They disagreed about nothing, but two copies of "whose brand is this" is one
+    more than a listing can safely have.
+    """
+    brand = str(row_brand or "").strip()
+    acct = [str(x).strip() for x in (config.get("_account_brands") or [])
+            if str(x).strip()]
+    if acct:
+        if brand and brand not in acct:
+            return acct[0], (
+                "Brand: the row says %r, which is not one of this account's "
+                "registered brands (%s). Sending %r instead. If %r really is "
+                "approved for this account in Seller Central, add it to the "
+                "account's Brands list and run again — the app will use it "
+                "then." % (brand, ", ".join(acct), acct[0], brand))
+        return (brand if brand in acct else acct[0]), ""
+    if config.get("_account_brand") is not None:
+        # Account resolved and no trademark set: send no brand at all rather
+        # than borrow one.
+        if brand:
+            return "", (
+                "Brand: the row says %r but this account has no registered "
+                "brand, so no brand is being sent. Add it to the account's "
+                "Brands list." % brand)
+        return "", ""
+    return (brand or config.get("brand_name", "")), ""   # legacy / no account
+
+
 def _dim_number(raw) -> str:
     """A physical measurement, written the way a person writes one.
 
@@ -5135,15 +5190,9 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # multi-brand accounts); otherwise the column holds a stale/leaked value -> use
     # the account's primary trademark. NEVER the global config["brand_name"] -- that
     # leak is exactly how one account's brand ended up on another's listings.
-    brand = g("Brand").strip()
-    _acct_brands = [str(x).strip() for x in (config.get("_account_brands") or []) if str(x).strip()]
-    if _acct_brands:
-        if brand not in _acct_brands:
-            brand = _acct_brands[0]
-    elif config.get("_account_brand") is not None:
-        brand = ""                       # account resolved but NO trademark set -> blank
-    else:
-        brand = brand or config.get("brand_name", "")   # legacy / no-account fallback
+    brand, _brand_note = resolve_account_brand(g("Brand"), config)
+    if _brand_note:
+        console.print("  [yellow]%s[/yellow]" % _brand_note)
     if has("brand") and brand:
         put("brand", _shape_simple(props["brand"], brand, mid))
     if has("condition_type"):
@@ -7048,13 +7097,13 @@ def run_api(config: dict, gc, creds: dict, submit: bool = False,
         # submit (with an actionable message) if the account has no trademark set.
         # Preview is left alone so the user can still validate other fields.
         if submit:
-            _rb = str(row.get("Brand", "") or "").strip()
-            _acct_brands = [str(x).strip() for x in (config.get("_account_brands") or []) if str(x).strip()]
-            if _acct_brands:
-                if _rb not in _acct_brands:
-                    _rb = _acct_brands[0]
-            elif config.get("_account_brand") is not None:
-                _rb = ""
+            # Resolved by the SAME function build_api_attributes uses, so the
+            # brand this gate checks is the brand that would actually be sent
+            # (rule 12). The note is printed here too -- a swap noticed at
+            # submit time is worth more than one noticed afterwards.
+            _rb, _rb_note = resolve_account_brand(row.get("Brand"), config)
+            if _rb_note:
+                console.print("  [yellow]%s[/yellow]" % _rb_note)
             if not _rb:
                 err += 1
                 # Do NOT touch the row's Status. This is an ACCOUNT-level misconfiguration

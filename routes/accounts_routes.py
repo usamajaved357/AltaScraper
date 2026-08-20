@@ -568,6 +568,22 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         return jsonify({"ok": True, "brands": brands})
 
 
+    # THERE IS NO /accounts/add_brand, DELIBERATELY. The account editor already
+    # has a Brands field that saves through /accounts/save, and that is the one
+    # place an account's trademarks are set (CLAUDE.md rule 12). A second way in
+    # would be a second opinion about which brands an account may use, and this
+    # list is what decides whose brand goes on a listing
+    # (amazon_listing_generator.resolve_account_brand).
+    #
+    # What was actually wrong was that nobody could FIND it:
+    #
+    #     "i tried adding A new brand by going to brand setup but the screen is
+    #      blank"
+    #
+    # Brand setup is a different thing -- it holds the copy voice and tone for a
+    # brand PROFILE. The account's approved trademarks live on the account. Both
+    # screens now say so.
+
     @app.route("/accounts/delete", methods=["POST"])
     def accounts_delete():
         try:
