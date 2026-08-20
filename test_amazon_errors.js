@@ -45,6 +45,11 @@ const REAL = {
     "maximum_speed The provided value for \u2018Maximum Speed\u2019 is invalid",
   linked_elsewhere:
     "04545944574867 Your bar code 04545944574867 is already linked to product B0H8SYL36V which seems different to the product you are trying to list. If your bar code is correct, contact Selling Partner Support to raise a dispute.",
+  // The generator's own words when it refuses to send a barcode. Measured on
+  // 9.89_3Days_B012SWL13C, a vacuum flask whose stored barcode is the right
+  // length but fails its own arithmetic.
+  bad_check_digit:
+    "Barcode not sent -- '4545009333931' has the right length but its check digit is wrong -- one digit is mistyped. Amazon would reject it, so check it against the invoice. Claiming GTIN exemption instead.",
   under_review:
     "We are reviewing this listing to determine if any additional information is required. Please allow up to 48 hours for this process to complete. You will be notified here if your action is needed, otherwise the listing will be published.",
   not_enough_values:
@@ -92,6 +97,20 @@ truthy("  it names the barcode", /04545944574867/.test(bc.plain));
 truthy("  and the ASIN it belongs to", /B0H8SYL36V/.test(bc.plain));
 // Rule 1: never invent a barcode.
 truthy("  and says never to invent one", /never invent/i.test(bc.action));
+
+// A mistyped barcode is a DIFFERENT thing from a barcode that belongs to
+// somebody else, and the fix is different too -- read it again vs raise a
+// dispute. They must not collapse into one message.
+const cd = tr(REAL.bad_check_digit, {});
+check("a mistyped barcode", cd.id, "barcode_check_digit");
+truthy("  it explains what a check digit is, without the term",
+       /last digit is worked out from the ones before it/i.test(cd.plain));
+truthy("  it says a typo, not a fabrication", /typo rather than a made-/i.test(cd.plain));
+truthy("  and offers the exemption when no real barcode exists",
+       /GTIN exemption/i.test(cd.action));
+// Rule 1 again: the two barcode faults must stay apart.
+check("  and it is not confused with the linked-elsewhere case",
+      tr(REAL.linked_elsewhere, {}).id, "barcode_linked_elsewhere");
 
 const ur = tr(REAL.under_review, {});
 check("under review", ur.id, "under_review");

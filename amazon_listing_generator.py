@@ -6729,6 +6729,43 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # Said out loud rather than added to the "no such attribute" list above --
     # that list has already been printed by this point, and this is a different
     # reason anyway: the attribute exists, we are choosing not to send it.
+    # 3a) BATTERY CONSEQUENCES WITHOUT A BATTERY.
+    #
+    # Measured on a Telescopic Window Cleaner (SQUEEGEE). Its own row says:
+    #
+    #     batteries_required             False
+    #     batteries_included             False
+    #     non_lithium_battery_packaging  batteries_contained_in_equipment
+    #
+    # The third is a leftover from an earlier auto-fix run -- added back when
+    # the app was still declaring a battery on everything, and never removed
+    # when the flags said no. Sending it declares batteries are contained in the
+    # equipment, so Amazon then demands battery_installation_device_type, and
+    # the row fails on a field that only exists because of a battery that is not
+    # there.
+    #
+    # These attributes are all CONSEQUENCES of having a battery. Without one they
+    # have nothing to describe. batteries_required and batteries_included stay:
+    # they are the honest "no", and Amazon frequently asks for them.
+    if not _has_battery:
+        _batt_consequences = [
+            k for k in list(A.keys())
+            if (k.startswith("battery") or k.startswith("lithium_battery")
+                or k.startswith("number_of_lithium")
+                or k in ("num_batteries", "contains_battery_or_cell",
+                         "non_lithium_battery_packaging",
+                         "lithium_battery_packaging",
+                         "has_multiple_battery_powered_components"))
+            and k not in ("batteries_required", "batteries_included")
+            and k not in (required or [])
+        ]
+        for _k in _batt_consequences:
+            A.pop(_k, None)
+        if _batt_consequences:
+            console.print("  [yellow]Not sent -- nothing indicates this product "
+                          "has a battery, so these have nothing to describe: "
+                          "%s[/yellow]" % ", ".join(sorted(_batt_consequences)))
+
     if "item_dimensions_fraction" in A and "item_dimensions_fraction" not in (required or []):
         A.pop("item_dimensions_fraction", None)
         console.print("  [yellow]Not sent -- item_dimensions_fraction is the "

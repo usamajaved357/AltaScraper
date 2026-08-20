@@ -2590,6 +2590,78 @@ def _marketplace_for_row(row):
     return (row.get("Marketplace", "") or _state.get("active_marketplace") or "UK").upper().replace("US","US")
 
 
+# ---- THE TITLE IS A SOURCE, AND IT OUTRANKS THE OTHERS ---------------------
+#
+# It was not one at all. The chain was eBay, then the competitor ASIN, then the
+# AI -- and the competitor ASIN is A DIFFERENT PRODUCT. It is a reference used
+# to gather specs (CLAUDE.md rule 1), not the thing being sold, so where the two
+# disagree the title is right by definition. Two measured cases, both of them
+# the "filled but does not represent the listing" complaint:
+#
+#   Vacuum Insulated Jug 1.5L      capacity filled 2 litres from eBay
+#   Spin Mop REFILL SET 4 Heads    size filled "148cm" -- the handle length of
+#                                  the full mop, which this listing does not
+#                                  even include
+#
+# Only facts the title states OUTRIGHT are taken. Nothing is inferred: a title
+# silent about capacity contributes nothing about capacity and the chain carries
+# on to eBay exactly as before. Module level so it can be tested and so there is
+# one copy of the rule.
+_TITLE_FACTS = [
+    ("capacity", re.compile(r"(\d+(?:\.\d+)?)\s*(l|litre|liter|ltr|ml|cl)\b", re.I)),
+    ("volume",   re.compile(r"(\d+(?:\.\d+)?)\s*(l|litre|liter|ltr|ml|cl)\b", re.I)),
+    ("weight",   re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|gram|grams|lb|oz)\b", re.I)),
+    ("length",   re.compile(r"(\d+(?:\.\d+)?)\s*(cm|mm|m|in|inch|inches|ft)\b", re.I)),
+]
+
+
+def title_fact(field, title):
+    """A value the TITLE states outright for this field, or (None, None)."""
+    t = str(title or "")
+    if not t:
+        return None, None
+    leaf = str(field).split(".")[-1].lower()
+    base = str(field).split(".")[0].lower()
+    for frag, rx in _TITLE_FACTS:
+        if frag not in base:
+            continue
+        m = rx.search(t)
+        if not m:
+            continue
+        # The unit is lower-cased because Amazon's unit enums are ("liters",
+        # "centimeters"), and a title writes them however it likes -- "1.5L",
+        # "2 Litre", "350MM". Keeping the title's capitalisation would only make
+        # the enum snap downstream work harder for no gain. The NUMBER is left
+        # exactly as written.
+        num, unit = m.group(1), m.group(2).lower()
+        if leaf == "value":
+            return num, "Title"
+        if leaf == "unit":
+            return unit, "Title"
+        return ("%s %s" % (num, unit)), "Title"
+    return None, None
+
+
+def title_disagrees(field, value, title):
+    """A warning when a source value contradicts the title, else ''.
+
+    NOT a veto. The title is often silent and a source is usually right; this
+    only fires when both speak and they differ. Somebody should see that before
+    it is published rather than after.
+    """
+    tv, _ = title_fact(field, title)
+    if not tv or value in (None, ""):
+        return ""
+    try:
+        a, b = float(str(tv).strip()), float(str(value).strip())
+    except (TypeError, ValueError):
+        return ""
+    if abs(a - b) < 1e-9:
+        return ""
+    return ("The title says %s and this source says %s -- the title is the "
+            "product being sold, so check which is right." % (tv, value))
+
+
 def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplace):
     """For each field, pick the highest-priority source that has a value, then ask
     the AI to finalise/validate against the eBay product. Returns list of dicts.
@@ -2720,7 +2792,17 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
         return num, unit
 
     # quick deterministic match: does a source already hold this field (by fuzzy key)?
+    def _from_title(field):
+        return title_fact(field, title)
+
+    def _title_disagrees(field, value):
+        return title_disagrees(field, value, title)
+
     def _from_source(field):
+        # THE TITLE FIRST. See title_fact() for why.
+        _tv, _ts = _from_title(field)
+        if _tv is not None:
+            return _tv, _ts
         # For dot-keys, look up the parent in the source and split
         if "." in field:
             parts  = field.split(".")
@@ -2836,7 +2918,14 @@ def _resolve_fields(cfg, fields, attrs, sources, title, product_type, marketplac
             if ok and snapped:
                 val = snapped
                 src = (src or "source") + " -> Amazon value"
-        prelim.append({"field": field, "value": val or "", "source": src or "", "note": ""})
+        # When a source value contradicts a figure the title states outright,
+        # say so on the suggestion rather than letting it through silently.
+        # _from_title runs first so this only fires for fields the title does
+        # not cover directly -- e.g. a sub-field filled from a competitor whose
+        # parent figure the title disputes.
+        _warn = "" if src == "Title" else _title_disagrees(field, val)
+        prelim.append({"field": field, "value": val or "", "source": src or "",
+                       "note": _warn.strip()})
 
     # CREDIT SAVER: only spend a Claude call when the AI actually has work to do.
     # If the deterministic chain (eBay/competitor source + Amazon enum-snap) already

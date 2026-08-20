@@ -43,6 +43,34 @@
 
   var AMZ_ERROR_PATTERNS = [
     {
+      // The check-digit case. The generator already catches this BEFORE sending
+      // (and falls back to the GTIN exemption), but the same wording reaches
+      // this translator from stored error text, and "check digit" means nothing
+      // to most people. The three patterns further down cover the barcode being
+      // taken, conflicting, or refused for a new ASIN -- this covers the one
+      // where the number itself is mistyped.
+      id: "barcode_check_digit",
+      test: function (t) { return /check digit is wrong|invalid checksum|not a valid (?:EAN|UPC|GTIN)/i.test(t); },
+      build: function (t) {
+        var code = (t.match(/(\d{8,14})/) || [])[1] || "";
+        return {
+          icon: "🔖",
+          title: "That barcode has a typo in it",
+          plain: "A barcode carries its own arithmetic check — the last digit " +
+                 "is worked out from the ones before it, so a single mistyped " +
+                 "digit can be spotted without looking anything up. " +
+                 (code ? "<b>" + E(code) + "</b> fails that check, which means " +
+                         "one digit is wrong." : "This one fails that check.") +
+                 " It is the right length, so it is a typo rather than a made-" +
+                 "up number.",
+          action: "Read it off the supplier's invoice or the product packaging " +
+                  "again, digit by digit. If no real barcode exists for this " +
+                  "product, leave the field empty — the listing goes up under " +
+                  "the GTIN exemption."
+        };
+      }
+    },
+    {
       // "Value '10.' ... has too few decimal places. It has 0 decimal places
       //  but the minimum allowed is '1'."
       //
