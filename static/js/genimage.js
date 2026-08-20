@@ -95,6 +95,34 @@ async function skuMedia(sku){
 // replace anything -- the old files stay, so it is easy to end up with four
 // near-identical images and no idea which is the current one. The warning names
 // what is already there rather than asking a vague "are you sure?".
+/* ONE BUTTON, ONE SET. NOT ONE BUTTON, EVERY PRODUCT.
+ *
+ *     "no 1 button should be creating all 24 or 36 all at once"
+ *
+ * Each of these buttons promises a SECTION's set: 3 hero concepts, 7 secondary
+ * images, 5 or 7 A+ modules. Every one of them then multiplied that by however
+ * many products were selected, which is where 24 and 36 came from -- and it is
+ * not what the button says it does.
+ *
+ * So a press is capped at one product's set. The batch is not gone: select one
+ * product and press again, or use the per-item Generate buttons. What is gone
+ * is a single press committing to a number nobody chose.
+ *
+ * ONE helper, used by all three section buttons (CLAUDE.md rule 12) -- three
+ * copies of this rule would be three chances for one of them to keep the old
+ * behaviour.
+ */
+function tooManyProducts(what, total){
+  const n = (STUDIO.skus || []).length;
+  if(n <= 1) return false;
+  alert("This would generate " + total + " " + what + "s ("
+    + n + " products × " + Math.round(total / n) + " each).\n\n"
+    + "One press of this button makes ONE product's set. You have "
+    + n + " products selected.\n\n"
+    + "Select a single product and press it again.");
+  return true;
+}
+
 async function confirmIfExisting(skus, kind){
   const list = (skus || []).filter(Boolean);
   if(!list.length) return true;
@@ -694,6 +722,7 @@ async function studioRunSecondary(){
     });
   });
   const total=jobs.length;
+  if(tooManyProducts("secondary image", total)) return;
   if(total>4 && !confirm("This will generate "+total+" secondary image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+roles.length+" image(s)).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   studioRunBackground("secondary", jobs, total);
@@ -814,6 +843,7 @@ async function studioRunAplus(){
     });
   });
   const total=jobs.length;
+  if(tooManyProducts("A+ module image", total)) return;
   if(total>4 && !confirm("This will generate "+total+" A+ module image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+mods.length+" module(s)).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "aplus")) return;
   studioRunBackground("aplus", jobs, total);
@@ -964,11 +994,14 @@ async function studioStrategize(kind, autoGen){
   if(st) st.innerHTML='<span class="genspin"></span> The strategist is thinking like a customer & conversion expert…';
   if(box) box.innerHTML="";
   // How many ideas to ask for depends on the section:
-  //  - secondary: Amazon allows up to 8 extra images, so propose 8
+  //  - secondary: 7, asked for directly ("i want 7 secondary images created
+  //    when somebody goes in the secondary image section and hit suggest and
+  //    generate"). Amazon allows up to 8 extra images; the eighth was proposed
+  //    because it was allowed, not because it was wanted.
   //  - aplus: match the chosen tier's module count (basic 5 / premium 7)
   //  - main: 3 hero concepts
   let _n = 3;
-  if(kind==="secondary") _n = 8;
+  if(kind==="secondary") _n = 7;
   else if(kind==="aplus"){
     // read the tier selector that lives in Option A (the strategist's own), so
     // the user can pick Premium for the strategist directly. Fall back to Option
@@ -1108,6 +1141,7 @@ async function studioGenAllConcepts(auto){
     ? (_nsku+" products × "+concepts.length+" idea"
        +(concepts.length>1?"s":"")+" = "+jobs.length+" "+_what+"s")
     : (jobs.length+" "+_what+(jobs.length>1?"s":""));
+  if(tooManyProducts(_what, jobs.length)) return;
   if(jobs.length>4 && !confirm(
       "This will generate "+_sum+".\n\nEach one is a paid call.\n\nContinue?")) return;
   studioRunBackgroundConcept(jobs, jobs.length);
