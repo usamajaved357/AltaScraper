@@ -5544,6 +5544,60 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     def _has_prop(name):
         return isinstance(props.get(name), dict)
 
+    # IS THERE ACTUALLY A BATTERY IN THIS PRODUCT?
+    #
+    # Nothing asked that before. _has_prop was standing in for it -- but that is
+    # True whenever the schema merely DECLARES the field, and almost every
+    # product type declares the battery fields. Measured on two real jack_uk
+    # rows, both product type THERMOS:
+    #
+    #     Vacuum Insulated Stainless Steel Jug 1.5L   8 battery attributes sent
+    #     Vacuum Insulated Thermos Flask 2 Litre      9 battery attributes sent
+    #
+    # and the payload contradicted itself in the same breath:
+    #
+    #     batteries_required        false
+    #     batteries_included        false
+    #     contains_battery_or_cell  "battery"     <- plus 1 lithium-ion cell,
+    #     num_batteries             1                alkaline composition
+    #
+    # A vacuum flask has no battery. That is not merely noise:
+    # contains_battery_or_cell is a REGULATORY declaration that changes how
+    # Amazon ships and handles the item, so answering it "yes" by default is a
+    # false declaration made on the owner's account. It also pulled in
+    # non_lithium_battery_packaging as required, one of the three errors keeping
+    # the row unlistable.
+    #
+    # ONE question, asked once, used by every battery field below (rule 12).
+    def _flagged(_k):
+        """The row's answer to a batteries_* question: True, False, or None."""
+        _v = pa.get(_k)
+        if _v is None or str(_v).strip() == "":
+            return None
+        return str(_v).strip().lower() in ("true", "yes", "y", "1")
+
+    def _battery_evidence():
+        # 1. Real battery data supplied for THIS product outranks everything.
+        _b = pa.get("battery")
+        if isinstance(_b, dict) and any(str(x).strip() for x in _b.values()):
+            return True
+        try:
+            if int(float(str(pa.get("num_batteries") or 0))) > 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+        # 2. An explicit answer on the row -- either way. A stated "no" is
+        #    evidence, and it is the part that was being ignored.
+        for _k in ("batteries_required", "batteries_included",
+                   "are_batteries_included"):
+            _f = _flagged(_k)
+            if _f is not None:
+                return _f
+        # 3. Otherwise the keyword + schema detection, exactly as before.
+        return bool(_is_batt)
+
+    _has_battery = _battery_evidence()
+
     # GLOBAL SAFE-DEFAULTS: neutralise the hazard/regulatory compliance fields to
     # their 'not applicable / none' option from the live schema, so a non-chemical
     # gadget never errors on a compliance dropdown and never trips a cascade like
@@ -5595,7 +5649,12 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                               "marketplace_id": mid}]
 
     # num_batteries -> [{quantity:int, type:enum}]
-    if ("num_batteries" in pa or _has_prop("num_batteries") or _is_batt) and "num_batteries" not in A:
+    # _has_prop dropped for the same reason as `battery` below: it is true for
+    # any type that merely declares the field, so a thermos was told it takes
+    # one nonstandard battery while the very next line said batteries_required
+    # is false.
+    if ("num_batteries" in pa or "num_batteries" in required or _has_battery) \
+            and "num_batteries" not in A:
         _bt_enum = ["12v", "9v", "a", "aa", "aaa", "aaaa", "c", "d", "nonstandard_battery"]
         try:
             _bt_enum = props["num_batteries"]["items"]["properties"]["type"].get("enum") or _bt_enum
@@ -5612,7 +5671,13 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # battery -> [{cell_composition:[{value}], average_life:[{value,unit}]}]
     # Amazon's error names "Battery Cell Composition" -> cell_composition is the
     # part it wants. Include both; rechargeable torch -> lithium_ion.
-    if ("battery" in pa or _has_prop("battery") or _is_batt) and "battery" not in A:
+    # _has_prop("battery") was in this condition and had to come out: it is true
+    # for any product type whose schema merely DECLARES the field, which is most
+    # of them, so every thermos got a full alkaline-cell battery object built for
+    # it. See _battery_evidence below for the measurement. A battery is now built
+    # when the row supplies one, when Amazon requires one, or when there is real
+    # evidence of one -- never because the schema knows the word.
+    if ("battery" in pa or "battery" in required or _has_battery) and "battery" not in A:
         # If _renest folded user-supplied sub-field values into pa["battery"] as
         # a nested dict (e.g. {"capacity":{"value":"2000","unit":"milliamp_hour"}}),
         # capture them so we merge OVER our defaults instead of throwing them
@@ -5718,7 +5783,8 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # full lithium composite block onto a non-keyword product.
     def _schema_wants(_f):
         return (_f in required) or isinstance(props.get(_f), dict)
-    def _cbc_value(_prop):
+
+    def _cbc_value(_prop, _yes=True):
         # contains_battery_or_cell is an ENUM (e.g. "Yes"/"No") for some product
         # types (UNMANNED_AERIAL_VEHICLE) and a BOOLEAN for others. Sending JSON
         # `true` to an enum field fails with "select an approved value from the
@@ -5731,17 +5797,33 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
             _vpp = _itp.get("value", {}) if isinstance(_itp, dict) else {}
             _enum = [str(x) for x in (_vpp.get("enum") or _itp.get("enum")
                                       or _it.get("enum") or _prop.get("enum") or [])]
+        _want = ("yes", "true", "1") if _yes else ("no", "false", "0",
+                                                   "no_battery", "none")
         if _enum:
             for _e in _enum:
-                if str(_e).strip().lower() in ("yes", "true", "1"):
+                if str(_e).strip().lower() in _want:
                     return _e
-            return _enum[0]
-        return True
-    if _schema_wants("contains_battery_or_cell") and "contains_battery_or_cell" not in A:
-        A["contains_battery_or_cell"] = [{"value": _cbc_value(props.get("contains_battery_or_cell", {})),
-                                          "marketplace_id": mid}]
-    if _schema_wants("number_of_lithium_ion_cells") and "number_of_lithium_ion_cells" not in A:
-        A["number_of_lithium_ion_cells"] = [{"value": 1, "marketplace_id": mid}]
+            # Nothing on the list says what we mean. Do NOT fall back to the
+            # first entry -- that is how "battery" ended up on a vacuum flask.
+            return None
+        return bool(_yes)
+
+    # ANSWERED ONLY WHEN AMAZON ACTUALLY REQUIRES IT, and answered HONESTLY.
+    #
+    # Two changes from before. It used to fire on _schema_wants -- which is true
+    # for any type that merely declares the field -- and it only ever knew how to
+    # say yes. Now: a field Amazon does not require is left alone unless this
+    # product really has a battery, and when it is required the answer follows
+    # the evidence rather than defaulting to yes.
+    if (("contains_battery_or_cell" in required) or _has_battery) \
+            and "contains_battery_or_cell" not in A:
+        _cbc = _cbc_value(props.get("contains_battery_or_cell", {}), _has_battery)
+        if _cbc is not None:
+            A["contains_battery_or_cell"] = [{"value": _cbc, "marketplace_id": mid}]
+    if (("number_of_lithium_ion_cells" in required) or _has_battery) \
+            and "number_of_lithium_ion_cells" not in A:
+        A["number_of_lithium_ion_cells"] = [{"value": (1 if _has_battery else 0),
+                                             "marketplace_id": mid}]
 
     _is_lithium = _is_batt and any(w in _hay_sf for w in ["lithium", "li-ion", "li_ion", "rechargeable", "usb"])
     if _is_lithium:
@@ -5783,8 +5865,14 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
         if _ps_val:
             A["power_source_type"] = [{"value": _ps_val, "marketplace_id": mid}]
 
-    # has_multiple_battery_powered_components -> boolean
-    if ("has_multiple_battery_powered_components" in pa or _has_prop("has_multiple_battery_powered_components")) \
+    # has_multiple_battery_powered_components -> boolean. Answering "no" about a
+    # product with no battery at all is not wrong, but it is a battery question
+    # on a vacuum flask -- so it goes with the rest of the group unless Amazon
+    # actually asks. (Line 6113 fills it too, but only when Amazon has named it
+    # as a required field, which is the case where answering IS correct.)
+    if ("has_multiple_battery_powered_components" in pa
+            or "has_multiple_battery_powered_components" in required
+            or _has_battery) \
             and "has_multiple_battery_powered_components" not in A:
         A["has_multiple_battery_powered_components"] = [{"value": False, "marketplace_id": mid}]
 
@@ -6250,7 +6338,17 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     _bidt_default = (config.get("battery_installation_device_type_default")
                      or ("not_installed" if _is_lith else "installed_in_equipment"))
     _bidt_enum = _enum_of_prop(props.get("battery_installation_device_type", {}))
-    if _bidt_enum:
+    # This block had no guard at all, so EVERY listing declared how its battery
+    # is installed -- including a vacuum flask, which was told
+    # "installed_in_equipment" on the same payload that said batteries_required
+    # is false. Where a battery is installed is a battery question; it is asked
+    # only when there is a battery, or when Amazon requires an answer.
+    _want_bidt = ("battery_installation_device_type" in pa
+                  or "battery_installation_device_type" in required
+                  or _has_battery)
+    if not _want_bidt:
+        A.pop("battery_installation_device_type", None)
+    elif _bidt_enum:
         # Pick the chemistry-correct default FIRST (for lithium that's
         # not_installed; installed_in_equipment is rejected for lithium). Only
         # fall back to other tokens if the default isn't an allowed option.
