@@ -78,7 +78,9 @@ console.log("\n== one click can be many images, and it says how many ==");
 truthy("the job builder multiplies products by concepts",
        /STUDIO\.skus\.forEach\([\s\S]{0,200}?concepts\.forEach\(/.test(G));
 truthy("  and the confirm spells the arithmetic out",
-       /product.*× "\+concepts\.length\+" idea/.test(G));
+       /products × "\+concepts\.length\+" idea/.test(G));
+truthy("  naming which section, since each has its own button",
+       /_kindName=\{main:"main", secondary:"secondary", aplus:"A\+ module"\}/.test(G));
 // "Suggest & auto-generate" passed auto=true and skipped the paid-call confirm
 // entirely. The user opted in to GENERATING, not to a number never shown.
 check("auto no longer buys silence",

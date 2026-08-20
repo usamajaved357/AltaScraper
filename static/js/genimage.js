@@ -1097,10 +1097,17 @@ async function studioGenAllConcepts(auto){
   // So the number is always shown, the arithmetic is spelled out when there is
   // any, and auto no longer buys silence.
   const _nsku=(STUDIO.skus||[]).length;
+  // WHICH SECTION, because there is a separate button for each and the number
+  // is different for each: 3 ideas for a main image, 8 for secondary, 5 or 7
+  // for A+. "8 images" is a surprise; "8 secondary images" is the thing you
+  // just asked for.
+  const _kindName={main:"main", secondary:"secondary", aplus:"A+ module"}
+                  [STUDIO.conceptKind||"main"] || "";
+  const _what=(_kindName?(_kindName+" "):"")+"image";
   const _sum=(_nsku>1)
-    ? (_nsku+" product"+(_nsku>1?"s":"")+" × "+concepts.length+" idea"
-       +(concepts.length>1?"s":"")+" = "+jobs.length+" images")
-    : (jobs.length+" image"+(jobs.length>1?"s":""));
+    ? (_nsku+" products × "+concepts.length+" idea"
+       +(concepts.length>1?"s":"")+" = "+jobs.length+" "+_what+"s")
+    : (jobs.length+" "+_what+(jobs.length>1?"s":""));
   if(jobs.length>4 && !confirm(
       "This will generate "+_sum+".\n\nEach one is a paid call.\n\nContinue?")) return;
   studioRunBackgroundConcept(jobs, jobs.length);

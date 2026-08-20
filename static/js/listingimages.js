@@ -425,9 +425,30 @@ async function ilBringHere(fromId){
   _ilLoad();
 }
 
+/* KEEP THE READER WHERE THEY WERE.
+ *
+ *     "everytime i click on send to amazon the full page reloads again, very
+ *      strange behavior it is"
+ *
+ * Nothing reloads -- there is no form on this page and no location call in this
+ * flow. What happens is that a successful send calls openImageLibrary() again,
+ * which rebuilds the entire panel from scratch. Everything flashes, every tile
+ * is replaced, and the view jumps back to the top. From the outside that is
+ * indistinguishable from a page reload, and it happens at the worst moment:
+ * right after an action, when you want to see what changed.
+ *
+ * Rebuilding IS correct -- the slot you just filled is now occupied and every
+ * "has one" label has to change. What was wrong was throwing away the reader's
+ * position along with the markup. */
 function _ilRender(html){
   const b = _ilBody();
-  if(b) b.innerHTML = html;
+  if(!b) return;
+  // The panel scrolls inside itself on some layouts and moves the window on
+  // others, so both are captured and both restored.
+  const top = b.scrollTop, wtop = window.scrollY;
+  b.innerHTML = html;
+  if(top) b.scrollTop = top;
+  if(wtop) window.scrollTo(0, wtop);
 }
 
 function _ilDraw(){
