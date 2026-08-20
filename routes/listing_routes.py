@@ -798,7 +798,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     "product_types": _product_types(),
                     "source": {"store": "database", "from_database": len(db_cards),
                                "from_sheet": 0,
-                               "workspace": str(_aid or "dropshipping"),
+                               "workspace": str(_aid or "_no_account"),
                                "sheets_off": True},
                     "tabs": [{"tab": getattr(db_store, "title", "listings"),
                               "tab_gid": "", "count": len(db_cards), "url": ""}],
@@ -818,7 +818,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         "product_types": _product_types(),
                         "source": {"store": "database", "from_database": len(db_cards),
                                    "from_sheet": 0,
-                                   "workspace": str(_aid or "dropshipping")},
+                                   "workspace": str(_aid or "_no_account")},
                         "tabs": [{"tab": getattr(db_store, "title", "listings"),
                                   "tab_gid": "", "count": len(db_cards), "url": ""}],
                         "rows": db_cards})
@@ -1439,7 +1439,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                         from data import choice as _choice
                         from data import input_import as _ii
                         if _choice.resolve(_cfg(), CONFIG_PATH) == "db":
-                            _wsid = _scope_acct_id or "dropshipping"
+                            _wsid = _scope_acct_id or "_no_account"
                             if not _ii.summary(CONFIG_PATH, _wsid).get("count"):
                                 yield ("data: [input] the queue is empty — "
                                        "reading this account's input sheet…\n\n")
@@ -1515,30 +1515,14 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                                 break
                     if _acc_mkt and "--marketplace" not in extra:
                         extra += ["--marketplace", _acc_mkt]
-                else:
-                    # DROPSHIPPING (no active account): honour the user-assigned default
-                    # sheets from "AI & settings ▸ Dropshipping sheets", if set. Purely
-                    # additive -- when unset, nothing is passed and the generator uses
-                    # its config.json defaults exactly as before (zero regression). We
-                    # pass BOTH the tab name (--tab, for api/regen whose run_api opens
-                    # the worksheet by name) and the gid (--tab-gid, for generate whose
-                    # init_sheets resolves by gid), so either path targets the right tab.
-                    _cfg0 = _cfg()
-                    _ds_out  = str(_cfg0.get("dropshipping_output_spreadsheet_id") or "").strip()
-                    _ds_otab = str(_cfg0.get("dropshipping_output_tab") or "").strip()
-                    _ds_ogid = str(_cfg0.get("dropshipping_output_tab_gid") or "").strip()
-                    _ds_in   = str(_cfg0.get("dropshipping_input_spreadsheet_id") or "").strip()
-                    _ds_igid = str(_cfg0.get("dropshipping_input_tab_gid") or "").strip()
-                    if _ds_out and "--sheet" not in extra:
-                        extra += ["--sheet", _ds_out]
-                    if _ds_otab and "--tab" not in extra:
-                        extra += ["--tab", _ds_otab]
-                    if _ds_ogid and "--tab-gid" not in extra:
-                        extra += ["--tab-gid", _ds_ogid]
-                    if _ds_in and "--input-sheet" not in extra:
-                        extra += ["--input-sheet", _ds_in]
-                    if _ds_igid and "--input-tab-gid" not in extra:
-                        extra += ["--input-tab-gid", _ds_igid]
+                # NO ACTIVE ACCOUNT. This branch used to add the Dropshipping
+                # workspace's own sheet overrides. That workspace has been
+                # removed -- it described itself as "eBay -> Amazon arbitrage",
+                # which CLAUDE.md rule 1 says this app does not do -- and no
+                # dropshipping_* key was ever present in config.json, so this
+                # block never added an argument in any real run. Nothing is
+                # passed now and the generator uses its config.json defaults,
+                # which is exactly what happened before.
                 # If a brand view is active, scope api preview/submit to THAT sheet +
                 # marketplace only -- so it never previews every marketplace/account
                 # at once (which would waste credits), and validates against the

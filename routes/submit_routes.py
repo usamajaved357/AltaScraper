@@ -66,8 +66,8 @@ def register(app, *, _records, _active_account, _state, _cfg):
             return jsonify({"ok": True, "marketplace": mkt,
                             "account_label": cfg.get("us_account_label") or "US account",
                             "seller_id": us.get("seller_id", ""), "block": "us_spapi" if ready else "none",
-                            "view": _state.get("active_view") or "Dropshipping", "ready": ready})
+                            "view": _state.get("active_view") or "Default sheet", "ready": ready})
         return jsonify({"ok": True, "marketplace": mkt,
                         "account_label": cfg.get("uk_account_label") or "UK account",
                         "seller_id": cfg.get("seller_id", ""), "block": "main",
-                        "view": _state.get("active_view") or "Dropshipping", "ready": True})
+                        "view": _state.get("active_view") or "Default sheet", "ready": True})

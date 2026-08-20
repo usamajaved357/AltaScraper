@@ -435,7 +435,7 @@ def _ws():
 
     # An ACCOUNT workspace must never fall back to the shared default sheet/tab:
     # that tab belongs to the first-configured account. Refuse and tell the user
-    # what to set. Dropshipping (no active_account_id) keeps the historic default.
+    # what to set. With no active_account_id it keeps the historic default.
     _aid = _state.get("active_account_id")
     _who = _state.get("active_view") or _aid
     if _aid:
@@ -490,7 +490,7 @@ def _ws():
                 f"Could not open or create tab '{tab}' in sheet {sid} for {_who} ({e}). "
                 f"Check the output sheet link in Account & sheets, and that the service "
                 f"account has edit access. Nothing was read or written.")
-        # last resort (dropshipping only): default sheet/tab, keeps the app alive
+        # last resort (no account only): default sheet/tab, keeps the app alive
         return _client().open_by_key(_cfg()["google_spreadsheet_id"]).worksheet(OUTPUT_TAB)
 
 
@@ -539,7 +539,7 @@ def _sp_creds(marketplace: str = "UK") -> dict:
         except LookupError as e:
             raise AccountScopeError(str(e))
         return creds
-    # No account workspace: the built-in Dropshipping workspace. It has no account
+    # No account selected. This was the built-in Dropshipping workspace,
     # object, so it uses the app-wide credential block. Catalogue scope only -- the
     # seller-scoped routes all go through _seller_creds(), which refuses here.
     c = _cfg()
@@ -1105,11 +1105,11 @@ def _media_root():
 
 def _account_media_root(aid=None):
     """Per-account media folder so each workspace shows only its OWN images.
-    Falls back to the shared root for the dropshipping (no-account) view."""
+    Falls back to the shared root when no account is open."""
     if aid is None:
         aid = _state.get("active_account_id", "") or ""
     if not aid:
-        return _media_root()        # dropshipping / no account -> shared root
+        return _media_root()        # no account -> shared root
     d = os.path.join(_media_root(), "_acct", _safe_sku(aid))
     os.makedirs(d, exist_ok=True)
     return d
@@ -2429,7 +2429,7 @@ from domain import cogs as _cogs_mod
 
 
 def _cogs_from_sku(sku):
-    """Dropshipping SKUs are formatted {source_price}_{N}Days_{ASIN}; the first
+    """Generated SKUs are formatted {source_price}_{N}Days_{ASIN}; the first
     number is the source cost (incl. shipping). Returns float or None."""
     return _cogs_mod.cost_from_sku(sku)
 
@@ -3975,6 +3975,12 @@ def build_app(backend=None):
     import routes.leading_routes as _leading_routes
     _leading_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # The weekly brief -- the only screen NOT scoped to the open account, and
+    # deliberately so: the account with a problem this week is the one nobody
+    # opened. See domain/weekly_brief.py.
+    import routes.brief_routes as _brief_routes
+    _brief_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                           _active_account=_active_account, _state=_state)
     # The assistant that can actually look. It answers a plain-English question
     # by calling the app's OWN read-only screens and reporting what came back --
     # never from memory, and never about an account other than the open one.

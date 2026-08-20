@@ -67,9 +67,14 @@ check("failures show the server's reason",
 console.log("\n=== the server finds the sheet wherever it is configured ===");
 check("an account's own input sheet",
       /account\.get\("input_spreadsheet_id"\)/.test(impl), true);
-check("the Dropshipping workspace's own keys",
-      /dropshipping_input_spreadsheet_id/.test(impl), true);
-check("  including its tab", /dropshipping_input_tab_gid/.test(impl), true);
+// The Dropshipping workspace kept its input sheet under dropshipping_* config
+// keys. It has been removed -- it described itself as "eBay -> Amazon
+// arbitrage", which CLAUDE.md rule 1 says this app does not do -- and no
+// dropshipping_* key was ever present in config.json, so that branch never
+// returned a value in any real run. Asserting its ABSENCE now.
+check("no Dropshipping-only sheet keys are read",
+      /dropshipping_input_spreadsheet_id/.test(impl), false);
+check("  nor its tab", /dropshipping_input_tab_gid/.test(impl), false);
 check("and the app-wide default last",
       /cfg\.get\("input_spreadsheet_id"\)/.test(impl), true);
 check("a missing sheet is a clear refusal, not a crash",

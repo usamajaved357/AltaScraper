@@ -54,41 +54,11 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         start = (datetime.date.fromisoformat(day)
                  - datetime.timedelta(days=window)).isoformat()
         try:
-            from data import db as _db
-            # EVERY DAY IS STORED TWICE: an asin='*' account rollup row AND one
-            # row per real ASIN. Summing the table without choosing between them
-            # gives exactly double on any day that has both -- which is how
-            # 11.60 once appeared as 23.20 in the finance figures
-            # (domain/order_profit.py records that one).
-            #
-            # This screen wants the ACCOUNT total, so it takes the rollup row and
-            # nothing else. That also makes the rate indicators right for free:
-            # the rollup's sessions and units are the account's own, so
-            # conversion is units-per-session for the account rather than a
-            # figure reassembled from whichever ASINs happened to be reported.
-            #
-            # Found by running this against real data: jack_uk has 188 rollup
-            # rows and 154 per-ASIN rows, and they overlap on 2026-07-14 and
-            # after -- so the first version of this query double-counted every
-            # one of those days.
-            rows = _db.get_db(CONFIG_PATH).execute(
-                "SELECT date, asin, sessions, page_views, units, orders, "
-                "       ordered_sales, buy_box_pct "
-                "FROM sales_daily "
-                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                "  AND asin='*' ",
-                (wsid, mkt, start, day)).fetchall()
-            if not rows:
-                # An account whose sync only ever wrote per-ASIN rows has no
-                # rollup to read. Falling back to summing those is correct there
-                # precisely BECAUSE there is no rollup to double it.
-                rows = _db.get_db(CONFIG_PATH).execute(
-                    "SELECT date, asin, sessions, page_views, units, orders, "
-                    "       ordered_sales, buy_box_pct "
-                    "FROM sales_daily "
-                    "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                    "  AND asin<>'*' ",
-                    (wsid, mkt, start, day)).fetchall()
+            # The query moved into domain/leading.rows_for so the weekly brief
+            # reads the same rows by the same rule -- including the rollup-vs-
+            # per-ASIN choice, which is the part that doubles the figures when
+            # it is got wrong. See that function for the measurement.
+            rows = _lead.rows_for(CONFIG_PATH, wsid, mkt, start, day)
         except Exception as e:
             return jsonify({"ok": False,
                             "error": "Could not read the daily figures: %s"
@@ -96,7 +66,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
         # Rows come back per ASIN per day; domain/leading groups them by day and
         # combines them by each indicator's own rule (a rate is recomputed from
         # its parts, never averaged across products).
-        out = _lead.build([dict(r) for r in rows], day=day, window_days=window)
+        out = _lead.build(rows, day=day, window_days=window)
         out["ok"] = True
         out["account"] = wsid
         out["marketplace"] = mkt

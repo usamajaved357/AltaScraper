@@ -157,12 +157,22 @@ check("  the rollup alone is the true figure",
 per_asin_only = [r for r in mixed if r["asin"] != "*"]
 check("  and the per-ASIN rows alone agree with it",
       L.series(per_asin_only, L.INDEX["units"])["2026-08-01"], 10.0)
-# Proven in the route rather than here, because it is a SQL decision:
+# The SQL that makes that choice moved OUT of the route and into this module,
+# so the weekly brief reads the same rows by the same rule (CLAUDE.md rule 12).
+# Two copies of it would be two opinions about what a day's figures are, and the
+# disagreement would be a silent doubling.
+LM = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "domain", "leading.py"), encoding="utf-8").read()
+truthy("one shared reader exists", "def rows_for(" in LM)
+truthy("  it asks for the rollup row first", 'sql % "="' in LM)
+truthy("  and falls back to per-ASIN when there is no rollup",
+       'sql % "<>"' in LM)
 LR = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "routes", "leading_routes.py"), encoding="utf-8").read()
-truthy("the route asks for the rollup row only", "AND asin='*' " in LR)
-truthy("  and falls back to per-ASIN when there is no rollup",
-       "AND asin<>'*' " in LR)
+truthy("and the route calls it rather than keeping its own copy",
+       "_lead.rows_for(" in LR)
+truthy("  with no SQL left behind in the route",
+       "FROM sales_daily" not in LR)
 
 print("\n== the whole screen ==")
 rows = []

@@ -67,10 +67,10 @@ def workspace_of(state):
     """Which workspace the app currently has open.
 
     Mirrors how the sheets backend resolves the active sheet: the selected
-    account first, then the named view. "dropshipping" is the explicit name for
+    account first, then the named view. "_no_account" is the explicit name for
     the built-in cross-account workspace, so its rows cannot collide with a real
     account's just because both resolved to an empty string.
     """
     return (state.get("active_account_id")
             or state.get("active_view")
-            or "dropshipping")
+            or "_no_account")

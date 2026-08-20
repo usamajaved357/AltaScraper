@@ -268,6 +268,10 @@
         <a class="navitem" data-sec="reimbursements" href="#" onclick="return navGo(event,'reimbursements')" title="Money Amazon owes back, checked against its own published refund rule"><i class="ti ti-cash-banknote"></i> Reimbursements</a>
         <a class="navitem" data-sec="sqp" href="#" onclick="return navGo(event,'sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</a>
         <a class="navitem" data-sec="leading" href="#" onclick="return navGo(event,'leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</a>
+        <!-- Every account at once. The only page that ignores which one is
+             open, because the account with a problem this week is the one
+             nobody opened. -->
+        <a class="navitem" data-sec="brief" href="#" onclick="return navGo(event,'brief')" title="Every account at once: what moved, what is off, what runs out, and whether the profit can be trusted"><i class="ti ti-news"></i> Weekly brief</a>
         <a class="navitem" data-sec="aiusage" href="#" onclick="return navGo(event,'aiusage')" title="What the AI cost, per account and per feature"><i class="ti ti-cpu"></i> AI spend</a>
       </div>
     </div>
@@ -1271,6 +1275,23 @@
       <div id="rb_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- THE WEEKLY BRIEF -- the only screen NOT scoped to the open account.
+         Every other page answers for the account you chose, which is right for
+         working and wrong for noticing: the account with a problem this week is
+         the one nobody opened. What could NOT be read is drawn at the top,
+         because a brief with a silent hole in it reads as "nothing to report"
+         for the part it never looked at. See domain/weekly_brief.py. -->
+    <div id="sec_brief" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-news"></i> Weekly brief</h2>
+        <div class="sub">Every account at once &mdash; what moved, what is outside its normal range, what runs out, and whether the profit can be trusted. Seven whole days against the seven before. Nothing is added across currencies.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip" onclick="briefLoad()"><i class="ti ti-refresh"></i> Rebuild</button>
+        </div>
+      </div>
+      <div id="brief_body" style="padding:4px 0"></div>
+    </div>
+
     <!-- PRODUCT CATALOG (Orbit's ASINs page) -- every product ranked, with the
          four findings that each change a decision. Reads the app's own sales
          table and catalogue snapshot; calls Amazon for nothing. -->
@@ -1747,6 +1768,9 @@
      competitor image; this one reads the account's own figures and cannot.
      See static/js/assistant.js and domain/agent_tools.py. -->
 <script src="/static/js/assistant.js?v={{ ASSET_V }}"></script>
+<!-- The weekly brief. Draws /brief and does no arithmetic of its own, so the
+     screen and the data cannot disagree about the same week. -->
+<script src="/static/js/brief.js?v={{ ASSET_V }}"></script>
 <!-- Every account, month by month. The one screen not scoped to one account. -->
 <script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
 <!-- Where this account's products sit in Amazon's category tree. -->

@@ -15,7 +15,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
     """Attach /input/* to the app."""
 
     def _wsid():
-        return str(_state.get("active_account_id", "") or "") or "dropshipping"
+        return str(_state.get("active_account_id", "") or "") or "_no_account"
 
     @app.route("/input/status")
     def input_status():

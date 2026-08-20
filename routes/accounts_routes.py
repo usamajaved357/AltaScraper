@@ -306,17 +306,18 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         _state["active_account_id"] = aid
         _state["active_marketplace"] = b.get("marketplace", "") or _state.get("active_marketplace", "")
         if not aid:
-            # Dropshipping: use the user-assigned default sheet/tab if one was set in
-            # "Dropshipping sheets"; otherwise leave None so _ws() falls back to the
-            # config default (google_spreadsheet_id + OUTPUT_TAB) exactly as before.
-            _c0 = _cfg()
-            _ds_sid = str(_c0.get("dropshipping_output_spreadsheet_id") or "").strip()
-            _state["active_sheet_id"] = _ds_sid or None
-            _state["active_tab"] = (str(_c0.get("dropshipping_output_tab") or "").strip() or None)
-            _state["active_tab_gid"] = str(_c0.get("dropshipping_output_tab_gid") or "").strip()
+            # NO ACCOUNT. This used to read the Dropshipping workspace's own
+            # sheet keys; that workspace has been removed (it described itself
+            # as "eBay -> Amazon arbitrage", which CLAUDE.md rule 1 says this
+            # app does not do) and no dropshipping_* key was ever set anyway.
+            # Left as None so _ws() falls back to the config default exactly as
+            # it did before, which is what actually happened in every run.
+            _state["active_sheet_id"] = None
+            _state["active_tab"] = None
+            _state["active_tab_gid"] = ""
             _state["active_view"] = ""
             _save_active_state()   # persist, so a restart can't silently revert the workspace
-            return jsonify({"ok": True, "scope": "dropshipping"})
+            return jsonify({"ok": True, "scope": "no_account"})
         acc = _acc.get_account(_cfg(), aid, CONFIG_PATH)
         if not acc:
             return jsonify({"ok": False, "error": "account not found"}), 404

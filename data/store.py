@@ -479,7 +479,7 @@ class StoreBook:
         return SheetLikeStore(ListingStore(title, config_path=self.config_path))
 
     def get_worksheet(self, index=0):
-        return self.worksheet(self._known[index] if index < len(self._known) else "dropshipping")
+        return self.worksheet(self._known[index] if index < len(self._known) else "_no_account")
 
     def worksheets(self):
         return [self.worksheet(w) for w in self._known]

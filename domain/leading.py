@@ -260,6 +260,44 @@ def yesterday(today=None):
     return (t - datetime.timedelta(days=1)).isoformat()
 
 
+def rows_for(config_path, workspace_id, marketplace, start, end):
+    """The daily rows this module judges, read once and read the same way.
+
+    EVERY DAY IS STORED TWICE: an asin='*' account rollup row AND one row per
+    real ASIN. Summing the table without choosing between them gives exactly
+    double on any day that has both -- which is how 11.60 once appeared as
+    23.20 in the finance figures (domain/order_profit.py records that one).
+    Measured: jack_uk has 188 rollup rows and 154 per-ASIN rows, overlapping
+    from 2026-07-14 onward.
+
+    So it takes the rollup and nothing else. That also makes the rate
+    indicators right for free: the rollup's sessions and units are the
+    ACCOUNT'S own, so conversion is units-per-session for the account rather
+    than a figure reassembled from whichever ASINs happened to be reported.
+
+    An account whose sync only ever wrote per-ASIN rows has no rollup to read,
+    and falling back to summing those is correct there precisely BECAUSE there
+    is no rollup to double it.
+
+    Lifted out of routes/leading_routes.py so the weekly brief reads the same
+    rows by the same rule (CLAUDE.md rule 12). Two copies of this query would be
+    two opinions about what a day's figures are.
+    """
+    from data import db as _db
+
+    sql = ("SELECT date, asin, sessions, page_views, units, orders, "
+           "       ordered_sales, buy_box_pct "
+           "FROM sales_daily "
+           "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
+           "  AND asin%s'*' ")
+    conn = _db.get_db(config_path)
+    args = (workspace_id, marketplace, start, end)
+    rows = conn.execute(sql % "=", args).fetchall()
+    if not rows:
+        rows = conn.execute(sql % "<>", args).fetchall()
+    return [dict(r) for r in rows]
+
+
 def build(rows, day=None, window_days=WINDOW_DAYS, sigma_alert=SIGMA_ALERT,
           min_days=MIN_DAYS):
     """The whole screen: every indicator judged for one day.

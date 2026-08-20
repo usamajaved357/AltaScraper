@@ -66,7 +66,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             except Exception:
                 acc = None
         wsid = str(aid or (acc or {}).get("id")
-                   or _state.get("active_account_id", "") or "") or "dropshipping"
+                   or _state.get("active_account_id", "") or "") or "_no_account"
         mkt = (request.args.get("marketplace")
                or (request.get_json(silent=True) or {}).get("marketplace")
                or _state.get("active_marketplace") or "").upper()

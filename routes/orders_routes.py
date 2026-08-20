@@ -75,13 +75,33 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # person did not choose.
         if want == "__all__":
             want = ""
+        try:
+            active = str((_active_account() or {}).get("id") or "").strip()
+        except Exception:
+            active = ""
+        # THE BROWSER SAYS WHOSE ORDERS IT IS DRAWING, AND A DISAGREEMENT IS AN
+        # ERROR RATHER THAN A SILENT DECISION.
+        #
+        #     "i see the orders of nestwell goods are shown in the jack reacherd
+        #      account, and i am not able to see the jack reacherds orders"
+        #
+        # Every guard here was already correct -- measured, each account returns
+        # only its own rows, repeatably. The hole was that the browser sent NO
+        # account at all and let the server decide, so if the two ever
+        # disagreed about which workspace was open, the server quietly won and
+        # the screen showed another company's customers under this one's name
+        # with nothing to indicate it.
+        #
+        # A screen cannot be trusted to notice a mistake it is not told about.
+        # So the browser now names the account it believes is open, and a
+        # mismatch is refused outright -- the same guarantee the listings screen
+        # already has (routes/listing_routes.py, "account_mismatch").
+        if want and active and want != active:
+            return {"__mismatch__": {"asked_for": want, "selected": active}}
         if not want:
             # No explicit ask -> the account currently open. Falling back to
             # "all" here is exactly the bug above.
-            try:
-                want = str((_active_account() or {}).get("id") or "").strip()
-            except Exception:
-                want = ""
+            want = active
         # NO ACCOUNT RESOLVED MEANS NONE, NOT ALL. The filter below is skipped
         # when `want` is empty, so an unresolvable account used to fall through
         # to every account -- the same leak by a quieter route. An empty result
@@ -117,8 +137,25 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             days = 30
         since = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)
 
+        scope = _accounts_in_scope()
+        # A DISAGREEMENT ABOUT WHOSE SCREEN THIS IS. Refused rather than
+        # answered, and it names BOTH so the mismatch can be read rather than
+        # guessed at. See _accounts_in_scope for why.
+        if isinstance(scope, dict) and "__mismatch__" in scope:
+            m = scope["__mismatch__"]
+            return jsonify({
+                "ok": False, "account_mismatch": True,
+                "asked_for": m["asked_for"], "selected": m["selected"],
+                "rows": [],
+                "error": ("This screen is showing %s but %s is the account "
+                          "that is open. Nothing is listed rather than risk "
+                          "showing one company's customers under another's "
+                          "name. Reopen the account and try again."
+                          % (m["asked_for"], m["selected"])),
+            }), 409
+
         rows, errors, asked = [], [], []
-        for a in _accounts_in_scope():
+        for a in scope:
             aid = str(a.get("id") or "")
             mkt = _marketplace(a)
             asked.append(aid)
