@@ -418,7 +418,7 @@ function permissionCheckboxes(prefix, checked){
 function workspaceCheckboxes(prefix, checked){
   const accounts = (typeof ACCOUNTS !== "undefined" && ACCOUNTS) ? ACCOUNTS : [];
   const list = [{id:"*", label:"All workspaces (including any added later)"},
-                {id:"dropshipping", label:"Dropshipping"}]
+                {id:"dropshipping", label:"Default sheet"}]
     .concat(accounts.map(function(a){ return {id:a.id, label:a.label}; }));
   return list.map(function(w){
     const on = (checked||[]).indexOf(w.id) >= 0;

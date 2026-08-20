@@ -4,7 +4,7 @@ register(app, ...) injection pattern. _state (mutable, same object) and _cfg are
 injected; CONFIG_PATH / OUTPUT_TAB are passed as values. Bodies moved VERBATIM.
 
 Routes:
-  GET  /view/list -> list the Dropshipping view + every saved brand's sheet/tab
+  GET  /view/list -> the default sheet + every saved brand's sheet/tab
   POST /view/set  -> switch which sheet/tab the dashboard reads
 """
 import json
@@ -19,8 +19,13 @@ def register(app, *, _state, _cfg, CONFIG_PATH, OUTPUT_TAB):
     def view_list():
         """List available views: the default sheet + every saved brand's sheet/tab."""
         import glob, os, re
-        views = [{"key": "", "label": "Dropshipping", "sheet": "", "tab": "",
-                  "brand": "", "marketplace": "UK · US", "count": None}]
+        # The app-default sheet, used when no account is open. It was labelled
+        # "Dropshipping" and marketplace "UK · US", which described the
+        # workspace that has been removed rather than what this row is -- and
+        # CLAUDE.md rule 1 says this app does not do arbitrage. It is the
+        # default sheet; that is all it ever was.
+        views = [{"key": "", "label": "Default sheet", "sheet": "", "tab": "",
+                  "brand": "", "marketplace": "", "count": None}]
         base = os.path.join(os.path.dirname(CONFIG_PATH), "brands")
         for pf in glob.glob(os.path.join(base, "*", "profile.json")):
             try:

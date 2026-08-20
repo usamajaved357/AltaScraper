@@ -22,7 +22,7 @@ async function loadImageRefs(){
         <div><button class="primary" onclick="saveImageRef()">Save reference</button></div>
       </div>`;
   } else {
-    html+=`<div class="reqnote">Dropshipping uses each listing's eBay source image as the AI reference automatically. The media library below holds every image you generate or upload, filed by SKU.</div>`;
+    html+=`<div class="reqnote">The generator uses each listing's eBay source image as the AI reference automatically. The media library below holds every image you generate or upload, filed by SKU.</div>`;
   }
   // media library: folders per SKU
   html+=`<div class="kvsec" style="margin-top:18px"><i class="ti ti-folders"></i> Media library — by SKU</div>

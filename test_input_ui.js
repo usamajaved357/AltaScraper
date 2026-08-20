@@ -17,36 +17,39 @@ const routes = fs.readFileSync("D:/AltaScraper/routes/input_routes.py", "utf8");
 // place. It moved to data/input_import.py and both callers use it (Rule 12).
 const impl = fs.readFileSync("D:/AltaScraper/data/input_import.py", "utf8");
 
-console.log("=== one definition, two editors ===");
+// ONE EDITOR NOW, not two. The Dropshipping sheet editor has gone with the
+// workspace it belonged to -- it described itself as "eBay -> Amazon
+// arbitrage", which CLAUDE.md rule 1 says this app does not do. Every account
+// sets its own sheets from its own card, which is where this always belonged.
+console.log("=== one definition, one editor ===");
 check("the row is built in one place",
       (shell.match(/function _importInputRow\(/g) || []).length, 1);
-check("  and rendered in both sheet editors",
-      (shell.match(/\$\{_importInputRow\(\)\}/g) || []).length, 2);
+check("  and rendered in the account sheet editor",
+      (shell.match(/\$\{_importInputRow\(\)\}/g) || []).length, 1);
 check("the import call is defined once",
       (shell.match(/async function importInputSheet\(/g) || []).length, 1);
 check("the status reader too",
       (shell.match(/async function refreshInputStatus\(/g) || []).length, 1);
 
 console.log("\n=== it sits with the sheets, not somewhere else ===");
-// In the Dropshipping editor it follows the input sheet URL row; in the account
-// editor it sits between the input and output sheet rows.
-const dsInput = shell.indexOf('id="ds_input_url"');
-const dsRow = shell.indexOf("${_importInputRow()}");
-check("Dropshipping: right after the input sheet URL", dsInput < dsRow, true);
+// In the account editor it sits between the input and output sheet rows, so
+// the three things about one sheet are read together.
 const acInput = shell.indexOf('id="ac_input_url"');
-const acRow = shell.indexOf("${_importInputRow()}", dsRow + 1);
+const acRow = shell.indexOf("${_importInputRow()}");
 const acOutput = shell.indexOf('id="ac_output_url"');
 check("Account: between the input and output sheet rows",
       acInput < acRow && acRow < acOutput, true);
+// And nothing is left pointing at the editor that has gone.
+check("no leftover Dropshipping sheet fields",
+      shell.indexOf('id="ds_input_url"'), -1);
+check("  nor its save handler",
+      /saveDropshippingSheets/.test(shell), false);
 
-console.log("\n=== both editors show what is already imported ===");
+console.log("\n=== the editor shows what is already imported ===");
 // \r?\n, not a literal \n: this repo checks out CRLF on Windows, so the literal
 // form passes until git next rewrites the file and then fails with the code
 // completely unchanged.
-check("Dropshipping refreshes the count",
-      /refreshInputStatus\(\);\s*\r?\n\}\s*\r?\nasync function saveDropshippingSheets/
-        .test(shell), true);
-check("the account editor does too",
+check("the account editor refreshes the count",
       /How many products are already imported[\s\S]{0,120}refreshInputStatus\(\);/.test(shell), true);
 check("the status always names the DATE",
       /j\.imported_at \? \(" · "\+j\.imported_at\)/.test(shell), true);

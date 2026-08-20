@@ -83,8 +83,10 @@ truthy("  saying which was asked for and which is selected",
        '"asked_for"' in LR and '"selected"' in LR)
 
 print("\n=== 4. switching accounts empties the previous one's listings ===")
-i = SHELL.find("async function enterAccount")
-j = SHELL.find("function enterDropshipping")
+# Bounded by the NEXT function rather than by enterDropshipping, which has been
+# removed along with the workspace it opened (see section 5).
+i = SHELL.find("async function enterAccount(")
+j = SHELL.find("async function enterAccountAt(")
 enter = SHELL[i:j] if i >= 0 and j > i else ""
 truthy("enterAccount was found", enter)
 truthy("it clears the rows", re.search(r"ROWS\s*=\s*\[\]", enter))
@@ -92,12 +94,26 @@ truthy("  and the grid's HTML, so nothing is left painted",
        re.search(r'getElementById\("grid"\)[^\n]*innerHTML\s*=\s*""', enter))
 truthy("  and the tab list", re.search(r"TABS\s*=\s*\[\]", enter))
 
-print("\n=== 5. the dropshipping workspace waits for its own switch ===")
-k = SHELL.find("function enterDropshipping")
-drop = SHELL[k:k + 1600]
-truthy("it is async so it can wait", "async function enterDropshipping" in SHELL)
-truthy("and the account switch is awaited before anything is read",
-       re.search(r'await fetch\("/accounts/select"', drop))
+print("\n=== 5. the dropshipping workspace is gone ===")
+# It described itself as "eBay -> Amazon arbitrage", which CLAUDE.md rule 1 says
+# this app does not do: it creates NEW listings under the owner's own brands and
+# uses a competitor ASIN only to gather product data. Asserting its ABSENCE is
+# what stops it returning with the next refactor.
+truthy("the function that opened it is gone",
+       "function enterDropshipping" not in SHELL)
+truthy("  and nothing calls it", "enterDropshipping()" not in SHELL)
+truthy("  and its sheet editor went with it",
+       "async function openDropshippingSheets" not in SHELL)
+truthy("  and no menu still offers it as a workspace",
+       'label: "Dropshipping"' not in SHELL and 'label:"Dropshipping"' not in SHELL)
+# The internal fallback id is NOT this. A few routes use "dropshipping" as the
+# workspace id when NO account is open, so they do not divide by a null account.
+# Nothing in the interface can reach it, and removing it would break those
+# routes rather than remove a feature.
+truthy("  while the switcher names that state plainly instead",
+       "No account open" in open(
+           os.path.join(HERE, "static", "js", "switcher.js"),
+           encoding="utf-8").read())
 
 print("\n=== it behaves that way over HTTP ===")
 import dashboard as D
