@@ -151,10 +151,15 @@ def register(app, *, _cfg, CONFIG_PATH):
         def _set(name):
             return bool(str(os.environ.get(name) or "").strip())
 
+        # ALTA_TOKEN_KEY is reported by VALIDITY, not presence. A key that is
+        # set but malformed passes every "is it there" check and then fails at
+        # the only moment that costs something -- after a seller has already
+        # approved the permissions screen and the one-time code has been spent.
+        _kstate, _kwhy = _tc.key_status()
         required = {
             "ALTA_LWA_CLIENT_ID": _set("ALTA_LWA_CLIENT_ID"),
             "ALTA_LWA_CLIENT_SECRET": _set("ALTA_LWA_CLIENT_SECRET"),
-            "ALTA_TOKEN_KEY": _set("ALTA_TOKEN_KEY"),
+            "ALTA_TOKEN_KEY": _kstate == "ok",
         }
         recommended = {
             # Not required to start the flow, but the state nonce lives in the
@@ -179,14 +184,21 @@ def register(app, *, _cfg, CONFIG_PATH):
 
         ready = all(required.values())
         notes = []
+        # A KEY THAT IS SET BUT WRONG is a different problem from one that is
+        # absent, and saying "missing" for it sends somebody to add a variable
+        # that is already there. Reported separately.
+        if _kstate == "invalid":
+            notes.append("ALTA_TOKEN_KEY IS SET BUT UNUSABLE. " + _kwhy)
         if not ready:
-            missing = [k for k, v in required.items() if not v]
-            notes.append(
-                "Not ready. Missing on the RUNNING process: %s. Setting a "
-                "variable is not the same as deploying code -- add them in the "
-                "dashboard of the platform actually serving this domain, then "
-                "restart or redeploy so the process picks them up."
-                % ", ".join(missing))
+            missing = [k for k, v in required.items()
+                       if not v and not (k == "ALTA_TOKEN_KEY" and _kstate == "invalid")]
+            if missing:
+                notes.append(
+                    "Not ready. Missing on the RUNNING process: %s. Setting a "
+                    "variable is not the same as deploying code -- add them in "
+                    "the dashboard of the platform actually serving this "
+                    "domain, then restart or redeploy so the process picks "
+                    "them up." % ", ".join(missing))
         if host != "unknown":
             notes.append(
                 "This process is running on %s. If you set the variables "
@@ -235,14 +247,17 @@ def register(app, *, _cfg, CONFIG_PATH):
                 "yet: ALTA_LWA_CLIENT_ID and ALTA_LWA_CLIENT_SECRET are not "
                 "both set. Add them in the Railway dashboard and redeploy. "
                 "Nothing was sent to Amazon.", 503)
-        if not _tc.have_key():
-            # Refuse here rather than after consent -- see token_crypto's header.
+        # Refuse here rather than after consent -- see token_crypto's header.
+        # key_status(), not have_key()-as-presence: a key that is SET but
+        # malformed used to pass this check, send the seller to Amazon, and fail
+        # only on the way back with the token already exchanged.
+        _kstate, _kwhy = _tc.key_status()
+        if _kstate != "ok":
             return _fail(
                 "This deployment cannot store a seller's Amazon token securely "
-                "yet: ALTA_TOKEN_KEY is not set, and this app will not hold "
-                "somebody else's Amazon token unencrypted. Add the key in the "
-                "Railway dashboard and redeploy. Nothing was sent to Amazon.",
-                503)
+                "yet, and this app will not hold somebody else's Amazon token "
+                "unencrypted. %s Nothing was sent to Amazon." % _kwhy,
+                503, token_key=_kstate)
 
         # CSRF: a nonce we issue, keep in the caller's own session, and require
         # back unchanged. Without it, anyone could hand a seller a crafted
@@ -393,10 +408,31 @@ def register(app, *, _cfg, CONFIG_PATH):
         except _tc.TokenKeyMissing as e:
             return _fail(str(e), 503)
         except Exception as e:
+            # SAY WHAT WENT WRONG, NOT JUST ITS CLASS NAME.
+            #
+            # This reported type(e).__name__ and threw the message away, so a
+            # real failure surfaced as "could not save it (RuntimeError)" --
+            # which names nothing, fixes nothing, and sends somebody to the
+            # hosting platform's logs to find a sentence this process already
+            # had in its hand. That happened, on a live authorization.
+            #
+            # The one RuntimeError reachable here is our own, from
+            # token_crypto._fernet(), and it says exactly what is wrong with the
+            # key. It contains no key material -- it names the variable and the
+            # underlying exception type -- so it is safe to return.
+            #
+            # Anything else is unexpected, so it gets the class name AND its
+            # message, truncated. An error a user cannot act on is a bug in the
+            # error, not just in the thing that failed.
+            _detail = str(e).strip() or type(e).__name__
             return _fail(
-                "The authorization worked but this app could not save it (%s). "
-                "Nothing was stored; ask the seller to connect again once this "
-                "is fixed." % type(e).__name__, 500)
+                "The authorization with Amazon SUCCEEDED, but this app could "
+                "not store the token, so nothing was saved. %s Once that is "
+                "fixed, ask the seller to connect again — the code Amazon sent "
+                "is single-use and has now been spent."
+                % _detail[:400], 500,
+                failed_at="storing the token, after Amazon had already approved",
+                exception=type(e).__name__)
 
         # Deliberately NOT selected as the active account. Connecting a seller
         # and switching the whole app over to them are two different intentions,
