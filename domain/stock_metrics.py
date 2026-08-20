@@ -84,6 +84,28 @@ def _pace(days, in_stock, units_by_day):
     return round(total / len(usable), 3), len(usable)
 
 
+# A run of recent sellable days with no sales at all, at which point the
+# thirty-day average is describing a past that has stopped.
+QUIET_DAYS_FOR_STALE = 10
+
+
+def _quiet_run(days, in_stock, units_by_day):
+    """How many sellable days at the END of the window sold nothing.
+
+    Counted over IN-STOCK days only, for the same reason the pace is: a day the
+    product could not be bought is not a day nobody wanted it.
+    """
+    marks = set(in_stock)
+    run = 0
+    for d in reversed(days):
+        if d not in marks:
+            continue                     # out of stock -- says nothing either way
+        if units_by_day.get(d, 0.0) > 0:
+            break
+        run += 1
+    return run
+
+
 def for_account(config_path, workspace_id, marketplace, window=30, today=None):
     """Every SKU's coverage picture, worst first. Reads only."""
     end = today or _dt.date.today().isoformat()
@@ -127,6 +149,31 @@ def for_account(config_path, workspace_id, marketplace, window=30, today=None):
         trend = (round(100.0 * (pace7 - pace30) / pace30, 1)
                  if (pace7 is not None and pace30) else None)
 
+        # IS THE PACE STILL DESCRIBING THE PRESENT?
+        #
+        # Orbit's inventory agent, asked where its own numbers would be
+        # confidently wrong, named this first and named it precisely:
+        #
+        #     "A SKU being discontinued or replaced by a new ASIN. It will show
+        #      low daysOfSupply and large stockGap30d because forecastDemand30d
+        #      = 30d pace x 30. The dashboard still shows it as 'Order now' even
+        #      if you intend to let it sell out. How to spot: if trend is -97%
+        #      and daily units went 18,16,15... to 0 for the last week, the 30d
+        #      pace is stale."
+        #
+        # That is the expensive direction to be wrong in. Every other error here
+        # makes somebody look twice; this one tells them to BUY. A thirty-day
+        # mean cannot tell a product that is selling from one that stopped
+        # selling three weeks ago -- both leave the same average behind.
+        #
+        # Not a status of its own, and it does not clear the shortfall. The
+        # shortfall is real arithmetic on real days. What is in doubt is whether
+        # those days still describe next month, and only the owner knows whether
+        # this listing is being retired.
+        quiet = _quiet_run(days30, marks["in_stock"], u)
+        stale = (quiet >= QUIET_DAYS_FOR_STALE
+                 or (trend is not None and trend <= -80))
+
         # THE STATUS, and what it is allowed to mean.
         if on_hand is not None and available <= 0:
             status, why = "out_of_stock", "Nothing sellable right now."
@@ -141,6 +188,21 @@ def for_account(config_path, workspace_id, marketplace, window=30, today=None):
         else:
             status, why = "ok", "Covered for the next thirty days at this pace."
 
+        stale_why = ""
+        if stale and status in ("needs_attention", "ok"):
+            if quiet >= QUIET_DAYS_FOR_STALE:
+                stale_why = ("It has been sellable for the last %d days and sold "
+                             "none of them. The thirty-day average is being held "
+                             "up by sales that have stopped, so the shortfall "
+                             "below is probably describing a month that will not "
+                             "repeat." % quiet)
+            else:
+                stale_why = ("Sales are down %.0f%% on the last seven days "
+                             "against the thirty-day average. The shortfall "
+                             "below is worked out from the thirty-day figure, "
+                             "which the recent days no longer support."
+                             % abs(trend))
+
         rows.append({
             "sku": sku, "asin": (by_date and "") or "",
             "on_hand": on_hand, "inbound": inbound, "available": available,
@@ -152,15 +214,27 @@ def for_account(config_path, workspace_id, marketplace, window=30, today=None):
             "days_of_cover": cover,
             "stock_gap_30d": gap,
             "status": status, "why": why,
+            # The shortfall stands; whether it still describes next month does
+            # not. Named separately so a screen can mark the row without the
+            # figures changing underneath it.
+            "pace_is_stale": bool(stale_why),
+            "stale_why": stale_why,
+            "quiet_days": quiet,
         })
 
     order = {"out_of_stock": 0, "needs_attention": 1, "unknown": 2, "ok": 3}
+    # A shortfall whose pace has gone quiet sorts BELOW the live ones. It stays
+    # in the list -- it may well be a real problem -- but it should not sit at
+    # the top of a reorder list looking urgent when the product has not sold
+    # anything for a fortnight.
     rows.sort(key=lambda r: (order.get(r["status"], 9),
+                             1 if r.get("pace_is_stale") else 0,
                              -(r["stock_gap_30d"] or 0)))
 
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
+    counts["stale_pace"] = sum(1 for r in rows if r.get("pace_is_stale"))
 
     # WHICH OF THESE ARE MEASUREMENTS AND WHICH ARE ESTIMATES.
     #
@@ -197,4 +271,23 @@ def for_account(config_path, workspace_id, marketplace, window=30, today=None):
         "gap_is_not_a_po": ("The thirty-day gap is a coverage shortfall, not a "
                             "purchase order. It does not know your minimum "
                             "order quantity, case pack or lead time."),
+        # HOW TO CATCH THIS SCREEN LYING, without taking its word for anything.
+        #
+        # Orbit's inventory agent was asked which single number to check by
+        # hand each week to keep it honest, and the answer was the right one:
+        # the pace, because everything else here is built on it. Repeating that
+        # here rather than keeping it to ourselves -- a screen that tells you
+        # how to audit it is worth more than one that asks to be believed.
+        "how_to_check": ("Pick one SKU. Over the last thirty days count only "
+                         "the days it was in stock, add up the units sold on "
+                         "those days, and divide. That is the pace shown here. "
+                         "If your figure and this one are far apart, either the "
+                         "stock history or the order data is wrong -- and since "
+                         "cover and the gap are both worked out from the pace, "
+                         "everything else on this screen is wrong with it."),
+        "stale_note": ("A pace can go stale: a product that sold well for three "
+                       "weeks and nothing since still leaves a healthy "
+                       "thirty-day average behind it, and would otherwise read "
+                       "as 'order more'. Rows where that has happened are "
+                       "marked and sorted below the live ones."),
     }
