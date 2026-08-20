@@ -11,6 +11,14 @@ import subprocess
 import sys
 
 from routes.stream_pump import pump_lines, spawn
+# NOT named _scope: this module already uses `_scope` as a LOCAL boolean inside
+# two except blocks (`_scope = type(e).__name__ == "SheetScopeError"`). Python
+# treats a name assigned anywhere in a function as local throughout it, so a
+# module-level `_scope` is unreachable in those functions and every call raised
+# UnboundLocalError -- which surfaced as a 500 on /rows_all and an empty
+# listings page. Renaming the import is the small fix; renaming their local
+# would be editing code this change has no business touching.
+from domain import account_scope as _acctscope   # the ONE "is this the open account" rule
 from listing import repo as _repo       # the ONE SKU->row lookup (Rule 12)
 from listing import run_status          # honest run state, independent of the log pipe
 
@@ -124,6 +132,47 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
     _LIVE_IMG_KEY = re.compile(
         r"^(main_product_image_locator|other_product_image_locator_\d+|swatch_image_locator)$")
 
+    def _wrong_account(asked, subject="listing"):
+        """None when this request may proceed; a refusal response when it may not.
+
+        THE ROUTES THIS GUARDS ALL WORK BY SKU. /row, /edit, /delete and
+        /live/pull_row each take a SKU and find it inside whatever workspace the
+        SERVER currently has selected -- they never checked that this is the
+        workspace the browser is looking at. /rows_all has checked since the
+        listings-under-the-wrong-name bug; these four, reached from the same
+        screen, did not. That is the shape of hole that survives a fix.
+
+        MEASURED, so the size of it is not overstated: 282 rows across five
+        accounts, 282 distinct SKUs, none shared between two accounts. A stale
+        account therefore yields "sku not found" today rather than the wrong
+        row. It is a latent hazard, not an active leak -- but two of these four
+        are WRITES, nothing keeps SKUs unique (they are price_days_ASIN, so two
+        accounts sourcing the same product at the same price collide), and the
+        cost of the guard is one comparison.
+
+        Callers that send no account are unaffected, so this could go in ahead
+        of the callers being taught to send one.
+        """
+        _aid = _state.get("active_account_id")
+        if _acctscope.is_mismatch(asked, _aid):
+            return jsonify(_acctscope.refusal(asked, _aid, subject)), 409
+        return None
+
+    def _asked_account():
+        """The account the caller named, or None. Body first, then query string.
+
+        Both shapes are in use across the callers -- POST routes carry JSON,
+        /row is a GET -- and a route should not care which one reached it.
+        """
+        try:
+            if request.method == "POST":
+                b = request.get_json(silent=True) or {}
+                if isinstance(b, dict) and "account" in b:
+                    return b.get("account")
+        except Exception:
+            pass
+        return request.args.get("account")
+
     @app.route("/live/pull_row", methods=["POST"])
     def live_pull_row():
         """Pull a LIVE listing's REAL data from Amazon into the row.
@@ -139,6 +188,10 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         sku = str(b.get("sku", "")).strip()
         if not sku:
             return jsonify({"ok": False, "error": "missing sku"}), 400
+        # A WRITE: it merges Amazon's live images back into the row.
+        _bad = _wrong_account(b.get("account"))
+        if _bad:
+            return _bad
         try:
             import accounts as _acc
         except Exception as e:
@@ -592,6 +645,9 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         sku = (request.args.get("sku") or "").strip()
         if not sku:
             return jsonify({"ok": False, "error": "missing sku"}), 400
+        _bad = _wrong_account(_asked_account())
+        if _bad:
+            return _bad
         try:
             _bust_records_cache()                     # force a truly fresh read
             data = _records(_ws(), _use_cache=False)
@@ -705,18 +761,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             #
             # An absent parameter is NOT treated as a mismatch, so anything
             # calling this without one behaves exactly as before.
+            # The rule itself lives in domain/account_scope.py -- it was written
+            # out here and again in orders_routes.py, and a rule about who may
+            # see whose data is the worst thing to keep two copies of (rule 12).
             _raw_asked = request.args.get("account")
-            if _raw_asked is not None:
-                _asked = _raw_asked.strip()
-                if _asked != str(_aid or ""):
-                    return jsonify({
-                        "ok": False, "account_mismatch": True,
-                        "asked_for": _asked, "selected": str(_aid or ""),
-                        "error": ("These listings were asked for on behalf of a "
-                                  "different account than the one currently "
-                                  "selected, so nothing was read. This is a "
-                                  "safeguard: answering would show one "
-                                  "account's listings under another's name.")}), 200
+            if _acctscope.is_mismatch(_raw_asked, _aid):
+                return jsonify(_acctscope.refusal(_raw_asked, _aid, "listings")), 200
             # WHICH STORE THE LISTINGS ARE ACTUALLY IN.
             #
             # This is the bug behind "I pressed generate an hour ago, the log
@@ -1194,6 +1244,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         value  = b.get("value", "")
         if not sku or not key:
             return jsonify({"ok": False, "error": "missing sku/key"}), 400
+        # A WRITE. Refusing costs a retry; getting it wrong edits another
+        # account's listing.
+        _bad = _wrong_account(b.get("account"))
+        if _bad:
+            return _bad
         try:
             ws    = _ws()
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
@@ -1256,6 +1311,12 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         b   = request.get_json(force=True) or {}
         sku = str(b.get("sku", "")).strip()
         row = b.get("row")
+        # A DELETE, and it can fall back to a row NUMBER below -- which is not
+        # even account-specific. Of the four this is the one where answering for
+        # the wrong workspace destroys something.
+        _bad = _wrong_account(b.get("account"))
+        if _bad:
+            return _bad
         try:
             ws     = _ws()
             target = None

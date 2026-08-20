@@ -78,9 +78,30 @@ print("\n=== 3. the server refuses rather than answering for the wrong account =
 LR = open("routes/listing_routes.py", encoding="utf-8").read()
 truthy("it reads the account the browser asked about",
        'request.args.get("account")' in LR)
-truthy("and refuses on a disagreement", '"account_mismatch": True' in LR)
+# THE RULE MOVED TO ONE PLACE. It was written out inline here AND in
+# orders_routes.py, from the same defect found twice (rule 12). This route still
+# refuses; what the refusal contains is asserted where it now lives.
+AS = open("domain/account_scope.py", encoding="utf-8").read()
+truthy("and refuses on a disagreement", "_acctscope.is_mismatch(_raw_asked, _aid)" in LR)
+truthy("  through the one shared rule", "from domain import account_scope" in LR)
 truthy("  saying which was asked for and which is selected",
-       '"asked_for"' in LR and '"selected"' in LR)
+       '"asked_for"' in AS and '"selected"' in AS)
+truthy("  and flagging it as a mismatch, not a generic failure",
+       '"account_mismatch": True' in AS)
+
+print("\n=== 3b. the by-SKU routes are guarded too ===")
+# /rows_all had this check; /row, /edit, /delete and /live/pull_row are reached
+# from the SAME screen one keystroke later and did not -- the shape of hole that
+# survives a fix. Two of the four are writes, one is a delete that can fall back
+# to a bare row NUMBER.
+truthy("there is one guard for them", "def _wrong_account(" in LR)
+truthy("  reading the account from body or query", "def _asked_account(" in LR)
+truthy("/row is guarded", "_bad = _wrong_account(_asked_account())" in LR)
+truthy("  and so are the three write paths (/edit, /delete, /live/pull_row)",
+       LR.count('_bad = _wrong_account(b.get("account"))') == 3)
+truthy("  and the browser stamps the account on every one",
+       "function acctBody(" in open("static/js/reqscope.js", encoding="utf-8").read())
+truthy("  including the GET", "function acctUrl(" in open("static/js/reqscope.js", encoding="utf-8").read())
 
 print("\n=== 4. switching accounts empties the previous one's listings ===")
 # Bounded by the NEXT function rather than by enterDropshipping, which has been

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Use — AltaScraper</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#16181d; --ink2:#454b57; --muted:#6b7280;
+    --line:#e4e7ec; --accent:#1b5e9c; --panel:#f7f8fa;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1116; --ink:#e8eaee; --ink2:#b9bec9; --muted:#8b93a1;
+           --line:#252a33; --accent:#6fb0ee; --panel:#161a21; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:48px 22px 90px}
+  h1{font-size:30px;line-height:1.2;margin:0 0 6px}
+  h2{font-size:19px;margin:38px 0 10px;padding-top:18px;border-top:1px solid var(--line)}
+  p,li{color:var(--ink2)}
+  a{color:var(--accent)}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 30px}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+       padding:14px 18px;margin:22px 0}
+  .box p{margin:6px 0}
+  code{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+       padding:1px 5px;font-size:13.5px}
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);
+         color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Terms of Use</h1>
+<p class="sub">AltaScraper, operated by {{ owner }}{% if crn %} (company number {{ crn }}){% endif %}, registered in England &amp; Wales.</p>
+
+<div class="box">
+  <p><strong>In short.</strong> AltaScraper helps you create and manage your own
+  Amazon listings. You stay responsible for what gets published under your
+  seller account, and for it complying with Amazon's policies and the law.</p>
+</div>
+
+<h2>1. What the service does</h2>
+<p>AltaScraper reads your Amazon selling data and helps you create, edit and
+publish listings, and review sales, inventory and profit. It acts only on the
+selling account you connect, and only while that authorisation is in place.</p>
+
+<h2>2. What you are responsible for</h2>
+<ul>
+  <li><strong>The listings you publish.</strong> The application can draft copy
+      and images, including with AI assistance, but you decide what is sent to
+      Amazon. Accuracy, product-safety claims, compliance documents and
+      intellectual-property clearance remain yours.</li>
+  <li><strong>Your rights in what you upload.</strong> Do not use product
+      photography, text or trademarks you do not have the right to use.</li>
+  <li><strong>Your Amazon account.</strong> Keep your credentials secure and
+      revoke access if you stop using the service.</li>
+</ul>
+
+<h2>3. AI-generated content</h2>
+<p>Listing text and images may be produced with AI assistance. AI output can be
+wrong, and can state things about a product that are not true. Review it before
+publishing. Content published under your seller account is your content.</p>
+
+<h2>4. Availability</h2>
+<p>The service is provided as it is, without a guaranteed uptime. It depends on
+Amazon's own APIs, which have rate limits and outages outside our control. It
+may change or stop being offered.</p>
+
+<h2>5. Liability</h2>
+<p>To the extent the law allows, {{ owner }} is not liable for lost sales,
+suppressed or removed listings, account suspensions, or other indirect loss
+arising from use of the service. Nothing here limits liability that cannot be
+limited by law.</p>
+
+<h2>6. Ending it</h2>
+<p>You can stop at any time by revoking access in Seller Central
+(<em>Apps &amp; Services → Manage Your Apps</em>). See the
+<a href="/privacy">Privacy Policy</a> for what happens to stored data.</p>
+
+<h2>7. Governing law</h2>
+<p>These terms are governed by the law of England and Wales.</p>
+
+<h2>8. Contact</h2>
+<p>{{ owner }}{% if crn %}, company number {{ crn }}{% endif %}.
+{% if email %}Email: <a href="mailto:{{ email }}">{{ email }}</a>.{% else %}
+<em>Contact address to be added.</em>{% endif %}</p>
+
+<footer>
+  Last updated: 21 August 2026 · <a href="/privacy">Privacy Policy</a>
+</footer>
+
+</div>
+</body>
+</html>

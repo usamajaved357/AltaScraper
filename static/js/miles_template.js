@@ -667,7 +667,7 @@ async function delRow(sku, row, btn){
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
     // so we never delete the same row number on the wrong tab.
     if(typeof ensureCardTab==="function"){ await ensureCardTab(sku); }
-    const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sku:sku,row:row})});
+    const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(acctBody({sku:sku,row:row}))});
     const j=await res.json();
     if(j.ok){ toast("Row deleted"); loadRows(); }
     else{ toast("Delete failed: "+(j.error||"")); btn.disabled=false; }
@@ -709,7 +709,7 @@ async function bulkDelete(){
       // match this card's tab or a row on the wrong tab would be deleted. Sync first.
       if(typeof ensureCardTab==="function"){ await ensureCardTab(it.sku); }
       const res=await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-                  body:JSON.stringify({sku:it.sku, row:it.row})});
+                  body:JSON.stringify(acctBody({sku:it.sku, row:it.row}))});
       const j=await res.json();
       if(j.ok) ok++; else fail++;
     }catch(e){ fail++; }
@@ -733,12 +733,12 @@ async function clearMainImage(sku){
     });
     for(const k of toClear){
       await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:sku, target:"attr", key:k, value:""})});
+        body:JSON.stringify(acctBody({sku:sku, target:"attr", key:k, value:""}))});
     }
     toast("Main image removed — listing can be created without it");
     // refresh this row so the panel updates
     try{
-      const j=await (await fetch("/row?sku="+encodeURIComponent(sku))).json();
+      const j=await (await fetch(acctUrl("/row?sku="+encodeURIComponent(sku)))).json();
       if(j&&j.ok&&j.row){ const i=ROWS.findIndex(x=>String(x.sku)===String(sku)); if(i>=0) ROWS[i]={...ROWS[i],...j.row}; }
     }catch(e){}
     if(DRAWER_SKU===sku) openDrawer(sku); else render();
@@ -879,7 +879,7 @@ async function removeDeletedRows(){
   for(const r of gone){
     try{
       const res = await (await fetch("/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:r.sku, row:r.row})})).json();
+        body:JSON.stringify(acctBody({sku:r.sku, row:r.row}))})).json();
       if(res && res.ok){ done++; delete AMZ_STATE[String(r.sku)]; } else failed++;
     }catch(e){ failed++; }
   }

@@ -3892,6 +3892,10 @@ def build_app(backend=None):
     # who is not us authorize this app. See routes/auth_oauth_routes.py.
     import routes.auth_oauth_routes as _auth_oauth_routes
     _auth_oauth_routes.register(app, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH)
+    # /privacy and /terms. Amazon's Solution Provider Portal requires a
+    # reachable privacy policy URL to publish an app, and this was a 404.
+    import routes.legal_routes as _legal_routes
+    _legal_routes.register(app)
     import routes.ppc_routes as _ppc_routes
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,

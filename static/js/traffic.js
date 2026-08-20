@@ -278,7 +278,7 @@ function trafficRender(){
             + (TRAF_COLOURS[i] || "#8fd694") + '"></span>'
             + '<span class="ri-leg-label" title="' + _tEsc(t.title || t.asin) + '">'
             + _tEsc((t.title || t.asin).slice(0, 34))
-            + ((t.title || "").length > 34 ? "â€¦" : "") + '</span>'
+            + ((t.title || "").length > 34 ? "…" : "") + '</span>'
             + '<span class="ri-leg-val">' + _tEsc(_tNum(t.sessions, "count", cur))
             + '</span></span>';
         }).join("") + '</div></div>';
@@ -294,7 +294,7 @@ function trafficRender(){
         ? _tBars(cvr, cur)
         : '<div class="cc" style="font-size:12px;padding:10px 0">No product has '
           + 'had ' + (d.cvr_min_sessions || 30) + ' sessions in this period yet, '
-          + 'and a conversion rate from fewer than that is noise â€” one session '
+          + 'and a conversion rate from fewer than that is noise — one session '
           + 'that converted reads as 100%.</div>')
     + '</div>';
 
@@ -337,11 +337,11 @@ function _tDonut(ch){
     + '<div class="ri-legend" style="margin-top:8px">'
     + '<div class="ri-leg"><span class="ri-dot" style="background:#3b82f6"></span>'
     + '<span class="ri-leg-label">Browser</span>'
-    + '<span class="ri-leg-pct">' + (ch.browser_pct == null ? "â€”" : ch.browser_pct + "%")
+    + '<span class="ri-leg-pct">' + (ch.browser_pct == null ? "—" : ch.browser_pct + "%")
     + '</span></div>'
     + '<div class="ri-leg"><span class="ri-dot" style="background:#f97316"></span>'
     + '<span class="ri-leg-label">Mobile</span>'
-    + '<span class="ri-leg-pct">' + (ch.mobile_pct == null ? "â€”" : ch.mobile_pct + "%")
+    + '<span class="ri-leg-pct">' + (ch.mobile_pct == null ? "—" : ch.mobile_pct + "%")
     + '</span></div></div></div>';
 }
 
