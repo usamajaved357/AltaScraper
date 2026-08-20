@@ -121,6 +121,24 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 pass                     # fall through to the preset below
         if preset == "ytd":
             return "%d-01-01" % end.year, end.strftime("%Y-%m-%d"), preset
+        # A CALENDAR MONTH IS NOT THIRTY DAYS.
+        #
+        #     Ava, on its own most common way of being wrong:
+        #     "Mixing time grains ... User asks 'last month' and I answer with
+        #      30d comparison if I don't label grain. Looks right, 9 days off."
+        #
+        # Answering "how did last month go" with a rolling thirty days is nine
+        # days wrong in August and three in February, and nothing on the reply
+        # says so. Both grains exist here by name so neither can stand in for
+        # the other -- and the assistant (routes/agent_routes.py) can ask for
+        # the one the question actually meant.
+        if preset == "mtd":
+            return (end.replace(day=1).strftime("%Y-%m-%d"),
+                    end.strftime("%Y-%m-%d"), preset)
+        if preset in ("lastmonth", "last_month"):
+            last_end = end.replace(day=1) - _dt.timedelta(days=1)
+            return (last_end.replace(day=1).strftime("%Y-%m-%d"),
+                    last_end.strftime("%Y-%m-%d"), "lastmonth")
         days = {"7d": 7, "14d": 14, "30d": 30, "60d": 60, "90d": 90}.get(preset, 30)
         start = end - _dt.timedelta(days=days - 1)
         return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), preset

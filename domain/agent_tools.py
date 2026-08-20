@@ -229,9 +229,15 @@ def definitions():
                 props[k] = {"type": "string"}
         if "preset" in props:
             props["preset"]["description"] = (
-                "One of 7d, 14d, 30d, 60d, 90d, ytd. Ignored when start and "
-                "end are both given. Windows end YESTERDAY -- Amazon has no "
-                "figures for today.")
+                "One of 7d, 14d, 30d, 60d, 90d, mtd, lastmonth, ytd. Ignored "
+                "when start and end are both given. Windows end YESTERDAY -- "
+                "Amazon has no figures for today. "
+                "'lastmonth' is the whole of the PREVIOUS CALENDAR MONTH and "
+                "'30d' is the last thirty days: they are different periods and "
+                "answering one with the other is nine days wrong in August. If "
+                "the user says 'last month' use lastmonth; if they say 'the "
+                "last 30 days' use 30d; if it is genuinely unclear, pick one, "
+                "say which you used, and offer the other.")
         out.append({
             "name": t["name"],
             "description": t["description"],

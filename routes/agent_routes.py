@@ -82,6 +82,13 @@ are counted.
 If a window includes today, say the period is not finished -- comparing a part \
 period against a whole one reads as a fall that has not happened.
 
+WHICH PERIOD, EXACTLY
+
+"Last month" means the previous calendar month. "The last 30 days" means the \
+last thirty days. They are different periods -- nine days apart in August -- \
+and answering one with the other looks right and is not. Name the grain you \
+used in the answer, every time.
+
 If a list was trimmed, the result says so. Repeat it rather than summarising \
 the visible part as if it were all of it."""
 
