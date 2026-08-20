@@ -430,6 +430,9 @@ async function enterAccount(accountId){
   window.WS_FEATURES = _feats;
   window.WS_BRAND="";
   ACTIVE_WS={key:a.id, label:a.label, account:true};
+  // Bookmarks are per account: reload them rather than repaint the last
+  // account\u2019s pins.
+  if(typeof bmkRefresh==="function") bmkRefresh();
   // marketplace switcher from the account's (detected) marketplaces
   buildAccountMktSwitch(a);
   // The two sidebar rows say what is open. Updated here, where the account
@@ -1011,6 +1014,9 @@ function navTo(sec){
     if(sec==="inventory"){ if(typeof stockOnOpen==="function") stockOnOpen(); }
     if(sec==="reimbursements"){ if(typeof reimbursementsOnOpen==="function") reimbursementsOnOpen(); }
   if(sec==="brief"){ if(typeof briefOnOpen==="function") briefOnOpen(); }
+  // The bookmark bar marks the page you are on and its star reflects
+  // whether THIS page is pinned, so both follow every navigation.
+  if(typeof bmkRender==="function") bmkRender();
     _mark();
   }
   altaSyncUrl();

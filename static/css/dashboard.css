@@ -3984,3 +3984,37 @@ table.ordtable tbody tr.orddetail > td{
     margin:2px 0 12px;font-size:10.5px;color:var(--muted);line-height:1.6}
   .ui-source-i b{font-weight:600;color:var(--ink3);margin-right:3px}
   .ui-source-n{opacity:.85;max-width:640px}
+
+/* ===== BOOKMARK BAR =============================================
+   "give me a bookmark bar like amazon on the top where i can bookmark the
+    pages i use frequently"
+
+   Forty-odd screens, six of them used. The sidebar has to list all forty; this
+   lists the six. It sits in the top bar beside the breadcrumb, so it is on
+   every screen without taking a row of its own -- a shortcut that costs
+   vertical space is not a shortcut. See static/js/bookmarks.js. */
+.bmkbar{display:flex;align-items:center;gap:5px;margin-left:10px;
+        overflow-x:auto;scrollbar-width:none;max-width:52vw}
+.bmkbar::-webkit-scrollbar{display:none}
+.bmkchip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+         background:transparent;border:1px solid var(--line);color:var(--fg2);
+         border-radius:14px;padding:3px 8px 3px 9px;font-size:11.5px;
+         cursor:pointer;line-height:1.5}
+.bmkchip:hover{border-color:var(--accent);color:var(--fg)}
+/* The page you are on is marked, so the bar doubles as a "where am I". */
+.bmkchip.on{border-color:var(--accent);color:var(--accent);
+            background:var(--accent-bg)}
+.bmkchip i{font-size:13px}
+/* The remove control appears on hover only. A row of permanent × marks reads
+   as a list of things to delete rather than a list of places to go. */
+.bmkchip .bmkx{opacity:0;font-size:12px;margin-left:1px;transition:opacity .12s}
+.bmkchip:hover .bmkx{opacity:.55}
+.bmkchip .bmkx:hover{opacity:1;color:var(--red)}
+.bmkadd{background:transparent;border:0;color:var(--fg2);cursor:pointer;
+        padding:3px 5px;font-size:15px;line-height:1;border-radius:6px}
+.bmkadd:hover{color:var(--accent);background:var(--accent-bg)}
+.bmkadd.on{color:var(--accent)}
+/* Said once, in the empty bar, so an empty bar does not read as a broken one. */
+.bmkhint{font-size:11px;white-space:nowrap;opacity:.75}
+.bmkhint i{font-size:12px;vertical-align:-1px}
+@media (max-width:900px){ .bmkbar{display:none !important} }

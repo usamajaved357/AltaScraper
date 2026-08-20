@@ -416,6 +416,27 @@ function matchesSearch(r){
     if(s.indexOf(q) >= 0) return true;
     if(qDigits.length >= 6 && s.replace(/\D/g, "").indexOf(qDigits) >= 0) return true;
   }
+  // EVERY WORD SOMEWHERE, IN ANY ORDER.
+  //
+  // The title search above is a strict substring, so it finds a product only
+  // if you type the words in the order Amazon happens to have them in. "garden
+  // hose 50ft" finds the hose; "50ft garden hose" finds nothing, and there is
+  // no way to tell from the outside which one you guessed.
+  //
+  // Nobody remembers a title word for word. They remember two or three words
+  // about the thing. So a multi-word search matches when EVERY word appears
+  // somewhere in the listing -- which is strict enough that two words still
+  // narrow 85 listings to one or two, and forgiving enough that the order does
+  // not have to be right.
+  //
+  // Single words are left to the substring pass above, deliberately: it
+  // already matches inside a word ("fol" finds Folding and Foldable), and this
+  // pass would not add anything.
+  const words = q.split(/\s+/).filter(w => w.length > 1);
+  if(words.length > 1){
+    const hay = fields.map(_sq).join(" ");
+    if(words.every(w => hay.indexOf(w) >= 0)) return true;
+  }
   // The attributes blob, so an EAN stored only inside the payload is still
   // findable -- that is where a barcode ends up once a listing is built.
   if(qDigits.length >= 6){
@@ -467,7 +488,13 @@ function renderTabFilter(){
   host.innerHTML =
     `<div class="lsearch">
        <i class="ti ti-search"></i>
-       <input id="lsearch_in" class="ed" placeholder="Find by SKU, ASIN or barcode…"
+       <!-- THE BOX DID THIS ALREADY AND NEVER SAID SO.
+            "i have an option to search listings with identifiers but i do not
+             have an option to find the listings with their name"
+            Measured on jack_uk's 67 listings: "fol" found 10, "camping chair"
+            found 1, "grill" found 2. The name search worked the whole time --
+            the placeholder said "SKU, ASIN or barcode", so nobody tried it. -->
+       <input id="lsearch_in" class="ed" placeholder="Find by name, SKU, ASIN or barcode…"
               value="${esc(SEARCH_Q)}" oninput="setSearch(this.value)">
        ${SEARCH_Q.trim()
           ? `<button class="ib" title="Clear" onclick="setSearch('')"><i class="ti ti-x"></i></button>
