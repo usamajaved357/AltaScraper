@@ -94,6 +94,27 @@ truthy("the secondary path still shows its arithmetic",
        /product\(s\) × "\+roles\.length/.test(G));
 truthy("  and the A\+ path too", /product\(s\) × "\+mods\.length/.test(G));
 
+console.log("\n== one press makes one product's set, never every product's ==");
+//     "no 1 button should be creating all 24 or 36 all at once"
+//
+// Each button promises a SECTION's set. Multiplying that by every selected
+// product is where 24 and 36 came from, and it is not what the button says it
+// does. One helper, used by all three section buttons -- three copies would be
+// three chances for one of them to keep the old behaviour.
+check("the cap is defined once", (G.match(/function tooManyProducts\(/g) || []).length, 1);
+truthy("  the secondary button is capped", /tooManyProducts\("secondary image", total\)/.test(G));
+truthy("  the A\+ button is capped", /tooManyProducts\("A\+ module image", total\)/.test(G));
+truthy("  and the concept button too", /tooManyProducts\(_what, jobs\.length\)/.test(G));
+truthy("  it refuses rather than quietly running", /Select a single product and press it again/.test(G));
+truthy("  showing the arithmetic it refused", /products × " \+ Math\.round\(total \/ n\)/.test(G));
+
+console.log("\n== and each section asks for the number that was asked for ==");
+check("main: 3 hero concepts", /let _n = 3;/.test(G), true);
+check("secondary: 7, not the 8 Amazon merely allows", /kind==="secondary"\) _n = 7;/.test(G), true);
+truthy("  with the reason recorded",
+       /because it was allowed, not because it was wanted/.test(G));
+check("A+: the tier's own module count", /_tier==="premium" \? 7 : 5/.test(G), true);
+
 console.log("\n== the timestamp it relies on is actually served ==");
 const M = fs.readFileSync("D:/AltaScraper/routes/media_routes.py", "utf8");
 truthy("/media/list returns made_at", /"made_at": _made/.test(M));
