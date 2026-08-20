@@ -3896,6 +3896,13 @@ def build_app(backend=None):
     # reachable privacy policy URL to publish an app, and this was a 404.
     import routes.legal_routes as _legal_routes
     _legal_routes.register(app)
+    # Phase 1 of the analytics plan: Keyword Spy, ASIN Insights, Rank Tracker
+    # and Keyword History. A NEW tool -- it reads domain/brand_analytics.py and
+    # stores through domain/keyword_store.py, and changes nothing that exists.
+    # Everything is manual: no scheduler, no background worker, no cron.
+    import routes.keywords_routes as _keywords_routes
+    _keywords_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _state=_state, _active_account=_active_account)
     import routes.ppc_routes as _ppc_routes
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,

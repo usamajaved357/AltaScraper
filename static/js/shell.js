@@ -989,7 +989,18 @@ function navTo(sec){
   // Found by opening every section in a real browser and photographing it:
   // Permissions came back as an empty page with no error, which is exactly what
   // a missing entry here looks like.
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions","reimbursements","brief"].forEach(s=>{
+  // ...AND IT IS NO LONGER A SECOND LIST. It was ALTA_SECTIONS minus
+  // "listings" -- written out by hand, so every new screen had to be added in
+  // two places and the failure of forgetting is invisible: the page loads, the
+  // data arrives, the onOpen runs, and you see nothing. It happened to
+  // `permissions`, and it happened again just now to all four keyword screens,
+  // which registered and rendered and came back 0 pixels tall.
+  //
+  // Derived instead. "listings" is excluded because it is a plain block handled
+  // on the line above, not a .wspanel. ALTA_SECTIONS is declared further down
+  // this file, which is fine: this runs when somebody navigates, long after the
+  // file has finished evaluating (rule 12).
+  ALTA_SECTIONS.filter(s => s !== "listings").forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1016,6 +1027,12 @@ function navTo(sec){
     if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
     if(sec==="traffic"){  if(typeof trafficOnOpen==="function") trafficOnOpen(); }
     if(sec==="hourly"){   if(typeof hourlyOnOpen==="function")  hourlyOnOpen(); }
+  // Phase 1 analytics. Each just draws; only Keyword History reads anything on
+  // open, and it reads the local store rather than calling Amazon.
+  if(sec==="kwspy"){       if(typeof kwSpyOnOpen==="function")  kwSpyOnOpen(); }
+  if(sec==="kwasin"){      if(typeof kwAsinOnOpen==="function") kwAsinOnOpen(); }
+  if(sec==="ranktracker"){ if(typeof krtOnOpen==="function")    krtOnOpen(); }
+  if(sec==="kwhistory"){   if(typeof kwhOnOpen==="function")    kwhOnOpen(); }
     if(sec==="ppc")       ppcOnOpen();
     if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
     if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
@@ -1140,7 +1157,9 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
                        "compliance","overview","categories","drppc","permissions",
-                       "reimbursements","brief"];
+                       "reimbursements","brief",
+                       // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
+                       "kwspy","kwasin","ranktracker","kwhistory"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //

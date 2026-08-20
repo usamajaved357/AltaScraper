@@ -403,6 +403,13 @@ FEATURE_PATHS = [
     # the default is the problem rather than the author: an unlisted path is
     # readable, so forgetting is silent. test_permission_coverage.py now fails
     # when a section has no feature, so the third one cannot ship quietly.
+    # Phase 1 analytics, governed ON ARRIVAL rather than after somebody notices.
+    # Same feature as /sqp: this is search performance, and it is commercially
+    # sensitive in the way turnover is -- what the marketplace searches for, and
+    # what converts on our listings. Listed BEFORE /keywords would be, and the
+    # prefix covers every route in routes/keywords_routes.py including the
+    # rank-tracker POSTs.
+    ("/keywords",             "traffic"),
     ("/brief",                "sales"),      # revenue, profit, weekly movement
     ("/overview",             "sales"),      # it IS revenue, across accounts
     ("/leading",              "sales"),      # yesterday's revenue and units

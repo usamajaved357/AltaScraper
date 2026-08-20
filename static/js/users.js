@@ -157,6 +157,13 @@ const SECTION_FEATURE = {
   // time -- which is why both of these were missed. test_permission_coverage.py
   // now fails on an unmapped section rather than leaving it to be noticed.
   brief:"sales", permissions:"accounts",
+  // Phase 1 analytics. Mapped ON ARRIVAL rather than left to be noticed later:
+  // an unmapped section is never hidden, and that default is what let /brief
+  // show revenue to a user with sales="none". These read Brand Analytics --
+  // what the whole marketplace searches for and what converts on our listings
+  // -- which is commercially sensitive in the same way turnover is, so they sit
+  // with `traffic` (search performance), exactly as /sqp does.
+  kwspy:"traffic", kwasin:"traffic", ranktracker:"traffic", kwhistory:"traffic",
 };
 
 function featureLevel(feat){

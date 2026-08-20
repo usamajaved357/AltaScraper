@@ -291,6 +291,11 @@
         <a class="navitem" data-sec="compliance" href="#" onclick="return navGo(event,'compliance')" title="Scan a live listing for forbidden brands, restricted phrasing and category claims"><i class="ti ti-shield-search"></i> Compliance checker</a>
         <a class="navitem" data-sec="reimbursements" href="#" onclick="return navGo(event,'reimbursements')" title="Money Amazon owes back, checked against its own published refund rule"><i class="ti ti-cash-banknote"></i> Reimbursements</a>
         <a class="navitem" data-sec="sqp" href="#" onclick="return navGo(event,'sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</a>
+        <!-- Phase 1 analytics. All four are manual: nothing runs on a timer. -->
+        <a class="navitem" data-sec="kwspy" href="#" onclick="return navGo(event,'kwspy')" title="The marketplace's top search terms for a week, filtered to your word"><i class="ti ti-radar"></i> Keyword Spy</a>
+        <a class="navitem" data-sec="kwasin" href="#" onclick="return navGo(event,'kwasin')" title="The search queries driving clicks and sales for one of your ASINs"><i class="ti ti-target-arrow"></i> ASIN Insights</a>
+        <a class="navitem" data-sec="ranktracker" href="#" onclick="return navGo(event,'ranktracker')" title="Keywords and ASINs you follow, checked only when you press the button"><i class="ti ti-chart-line"></i> Rank Tracker</a>
+        <a class="navitem" data-sec="kwhistory" href="#" onclick="return navGo(event,'kwhistory')" title="Everything already pulled, week against week. Never calls Amazon"><i class="ti ti-history"></i> Keyword History</a>
         <a class="navitem" data-sec="leading" href="#" onclick="return navGo(event,'leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</a>
         <!-- Every account at once. The only page that ignores which one is
              open, because the account with a problem this week is the one
@@ -1369,6 +1374,58 @@
       <div id="sqp_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- ============ PHASE 1 ANALYTICS: KEYWORDS ============
+         Four new screens, all manual. Nothing here runs on a timer: history
+         accumulates because somebody searched, which is the whole design. They
+         read domain/brand_analytics.py and store through
+         domain/keyword_store.py; no existing tool is touched. -->
+
+    <div id="sec_kwspy" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-radar"></i> Keyword Spy</h2>
+        <div class="sub">The marketplace&rsquo;s top search terms for a week, filtered to your word. Not a search sent to Amazon &mdash; Amazon returns the whole report and this filters it. Every search is saved, so your history builds as you use it.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="kws_q" class="ed" placeholder="A word to look for&hellip;" style="min-width:200px"
+                 onkeydown="if(event.key==='Enter')kwSpySearch()">
+          <label class="cc">Week <input id="kws_start" type="date" class="ed"></label>
+          <label class="cc">to <input id="kws_end" type="date" class="ed"></label>
+          <button class="db-chip" onclick="kwSpySearch()"><i class="ti ti-search"></i> Search</button>
+        </div>
+      </div>
+      <div id="kwspybody" style="padding:4px 0"></div>
+    </div>
+
+    <div id="sec_kwasin" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-target-arrow"></i> ASIN Insights</h2>
+        <div class="sub">The search queries that produced impressions, clicks and purchases for one of <b>your</b> ASINs. Amazon does not share another seller&rsquo;s query performance, so a competitor&rsquo;s ASIN returns nothing.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="kwa_asin" class="ed" placeholder="One of YOUR ASINs&hellip;" style="min-width:170px"
+                 onkeydown="if(event.key==='Enter')kwAsinSearch()">
+          <label class="cc">Week <input id="kwa_start" type="date" class="ed"></label>
+          <label class="cc">to <input id="kwa_end" type="date" class="ed"></label>
+          <button class="db-chip" onclick="kwAsinSearch()"><i class="ti ti-search"></i> Search</button>
+        </div>
+      </div>
+      <div id="kwasinbody" style="padding:4px 0"></div>
+    </div>
+
+    <div id="sec_ranktracker" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-line"></i> Rank Tracker</h2>
+        <div class="sub">Keywords and ASINs you follow, checked <b>only when you press the button</b>. It measures search visibility &mdash; impressions, clicks, purchases &mdash; not organic position, which no source available here can give.</div></div>
+      </div>
+      <div id="ranktrackerbody" style="padding:4px 0"></div>
+    </div>
+
+    <div id="sec_kwhistory" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-history"></i> Keyword History</h2>
+        <div class="sub">Everything the other keyword screens have already pulled, week against week. Never calls Amazon &mdash; it is the record, so it opens instantly and costs nothing.</div></div>
+      </div>
+      <div id="kwhistorybody" style="padding:4px 0"></div>
+    </div>
+
     <!-- NOTIFICATIONS -- where alerts go when nobody has the app open.
          Nothing sends until a channel is added AND switched on, and nothing is
          on a timer: posting into somebody's Slack is outward-facing and cannot
@@ -1725,6 +1782,10 @@
 <!-- One answer to "which brand is this listing", for the six screens that each
      had their own copy of it. Mirrors resolve_account_brand() on the server. -->
 <script src="/static/js/brand.js?v={{ ASSET_V }}"></script>
+<!-- Stamps the open account onto every by-SKU request, so the server can refuse
+     a disagreement instead of answering for whichever account it had selected.
+     Loaded EARLY because the loaders below call it while starting up. -->
+<script src="/static/js/reqscope.js?v={{ ASSET_V }}"></script>
 <!-- The pieces every screen is built from: stat cards, titled panels, toolbars.
      Loaded EARLY because most screens call them while rendering. -->
 <script src="/static/js/pageui.js?v={{ ASSET_V }}"></script>
@@ -1808,6 +1869,11 @@
 <script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
 <!-- Keywords (Search Query Performance): what people typed. -->
 <script src="/static/js/sqp.js?v={{ ASSET_V }}"></script>
+<!-- Phase 1 analytics. Four screens, one per file, all manual. -->
+<script src="/static/js/keywordspy.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/keywordasin.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ranktracker.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/keywordhistory.js?v={{ ASSET_V }}"></script>
 <!-- The Product Catalog: every ASIN, ranked, with the four findings. -->
 <script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
 <!-- Scan a LIVE listing against this app's own compliance rules. -->
