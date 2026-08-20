@@ -55,23 +55,34 @@ def _load_config():
 def _account_creds(config, account_id):
     """Return the SP-API creds for a specific account_id.
 
-    Matches the app's real shape: `accounts` is a LIST of account dicts (each with
-    an 'id' field), NOT a dict keyed by id. The key names on the account itself
-    are `lwa_client_id` / `lwa_client_secret` / `refresh_token` (mirrors
-    accounts.account_creds() so this diagnostic uses the same creds a real run
-    would use)."""
+    `accounts` is a LIST of account dicts (each with an 'id' field), NOT a dict
+    keyed by id.
+
+    IT CALLS accounts.account_creds() RATHER THAN MIRRORING IT. This used to
+    rebuild the same four fields by hand, with a docstring promising it
+    "mirrors accounts.account_creds() so this diagnostic uses the same creds a
+    real run would use" -- a promise that only held while nobody changed the
+    original. Two things have since made it false: OAuth sellers keep their
+    client id and secret in the environment rather than on the record, and
+    refresh tokens are encrypted at rest. A copy would report a perfectly good
+    token as INVALID or REVOKED, and this is the tool people trust when
+    deciding whether to rotate credentials -- so being wrong here sends
+    somebody to replace a working token. One function (rule 12).
+    """
     accts = config.get("accounts", []) or []
     if not isinstance(accts, list):
         return None
     acc = next((a for a in accts if a.get("id") == account_id), None)
     if not acc:
         return None
-    return {
-        "lwa_app_id":        acc.get("lwa_client_id") or acc.get("lwa_app_id") or config.get("sp_api_client_id", ""),
-        "lwa_client_secret": acc.get("lwa_client_secret", ""),
-        "refresh_token":     acc.get("refresh_token", ""),
-        "seller_id":         acc.get("seller_id", ""),
-    }
+    import accounts as _acc_mod
+    creds = _acc_mod.account_creds(acc)
+    # The only local addition: fall back to the app-wide client id when the
+    # account carries none, which the diagnostic wants so it can still test a
+    # half-configured account rather than refusing to run.
+    if not creds.get("lwa_app_id"):
+        creds["lwa_app_id"] = config.get("sp_api_client_id", "")
+    return creds
 
 
 def _list_account_ids(config):

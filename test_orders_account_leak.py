@@ -109,6 +109,58 @@ truthy("  and says so rather than tidying up quietly",
        "belonging to another account" in JS)
 truthy("  asking for it to be reported", "should not happen" in JS)
 
+print("\n== the two routes the first fix missed ==")
+# Found by READING the routes after the browser could not reproduce it.
+# /orders/list was hardened; /orders/items and /orders/detail were reached by
+# the SAME screen one keystroke later and were not. Both took the account from
+# the caller and then used THAT account's own Amazon credentials.
+truthy("there is one authority for whose orders these are",
+       "def _open_account_id():" in OR)
+truthy("  and one refusal, shared", "def _refuse_other_account(" in OR)
+truthy("the items batch checks every row",
+       "_refuse_other_account(w.get(\"account_id\"))" in OR)
+truthy("  before any of them is fetched",
+       OR.index("_refuse_other_account(w.get(\"account_id\"))")
+       < OR.index("items = _items_for(oid, aid,"))
+truthy("the detail route checks too", "_bad = _refuse_other_account(aid)" in OR)
+# It returns the buyer's town and postcode, so it must refuse BEFORE calling
+# Amazon, not after.
+truthy("  before Amazon is called at all",
+       OR.index("_bad = _refuse_other_account(aid)") < OR.index("oc.get_order_items(oid)"))
+truthy("  and it says why it refused",
+       "is the account that is\n                      \"open." in OR
+       or "but %s is the account that is " in OR)
+
+print("\n== and the doorman can now see an account named inside a list ==")
+# THE SYSTEMIC ONE. named_workspace read TOP-LEVEL fields only, so a request
+# that names its account per-row named nothing as far as the guard was
+# concerned and NO workspace check ran -- meaning a user restricted to one
+# account could read another's order contents by posting the batch shape.
+import sys as _sys
+_sys.path.insert(0, HERE)
+from auth import guard as _G
+
+check("a top-level query id is still found",
+      _G.named_workspace("/trackers", {"id": "jack_uk"}, None), "jack_uk")
+check("  and a top-level body id",
+      _G.named_workspace("/x", {}, {"account_id": "jack_uk"}), "jack_uk")
+check("an account nested in a list of rows is found",
+      _G.named_workspace("/orders/items", {},
+                         {"orders": [{"order_id": "1", "account_id": "jack_uk"}]}),
+      "jack_uk")
+check("  wherever in the batch it appears",
+      _G.named_workspace("/orders/items", {},
+                         {"orders": [{"order_id": "1"},
+                                     {"account_id": "nestwell_goods"}]}),
+      "nestwell_goods")
+# And it must not start seeing accounts that are not there.
+check("a batch naming no account still names none",
+      _G.named_workspace("/orders/items", {}, {"orders": [{"order_id": "1"}]}), "")
+check("  a list of plain strings is not an account",
+      _G.named_workspace("/x", {}, {"skus": ["a", "b"]}), "")
+check("  and the exempt paths stay exempt",
+      _G.named_workspace("/users/save", {"id": "someuser"}, None), "")
+
 print("\n%d failed" % len(fails))
 for f in fails:
     print("  FAILED:", f)

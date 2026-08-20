@@ -32,8 +32,22 @@ from flask import jsonify, redirect, request, session, url_for
 from auth import users
 
 # Reachable without being signed in at all.
+#
+# oauth_login / oauth_callback are here because the person using them is a
+# SELLER AUTHORIZING US, who has no account on this app and never will -- that
+# is the entire point of multi-tenant OAuth. Requiring a sign-in would make the
+# flow impossible rather than secure.
+#
+# What protects them instead is the state nonce: /auth/login issues one into
+# the caller's own session and /auth/callback requires it back unchanged and
+# unexpired, so a callback that did not begin here is refused and nothing is
+# stored. That is the control that matters here, because the risk is not
+# "somebody reads a page" -- it is "somebody gets this app to attach a token to
+# an account of their choosing", and a login wall would not have stopped that
+# on its own. See routes/auth_oauth_routes.py.
 PUBLIC_ENDPOINTS = {"_login", "_healthz", "static", "_pubimg",
-                    "invite_page", "invite_accept"}
+                    "invite_page", "invite_accept",
+                    "oauth_login", "oauth_callback"}
 
 # (prefix, permission). ORDER MATTERS -- first match wins, so anything more
 # specific must come before the broader prefix it sits under.
@@ -317,6 +331,36 @@ def named_workspace(path, args, json_body):
             v = None
         if v:
             return str(v).strip()
+    # AND ONE LEVEL INTO A LIST OF ROWS.
+    #
+    # This read TOP-LEVEL fields only, so a request that names its account
+    # per-row named nothing as far as this was concerned and no workspace check
+    # ran at all. Found by reading the routes rather than by a report:
+    #
+    #     POST /orders/items {"orders": [{"order_id": ..,
+    #                                     "account_id": "jack_uk"}, ...]}
+    #
+    # A batch shape like that is the natural way to ask about sixty orders at
+    # once, and it walked straight past the doorman -- a user restricted to
+    # nestwell_goods could read jack_uk's order contents, product titles and
+    # profit by posting that.
+    #
+    # The FIRST account named anywhere in the batch is what is checked. Every
+    # row in a batch should belong to one account; if they do not, checking the
+    # first is what makes the rest refuse, which is the outcome wanted.
+    try:
+        for _v in (json_body or {}).values():
+            if not isinstance(_v, list):
+                continue
+            for _row in _v[:200]:
+                if not isinstance(_row, dict):
+                    continue
+                for field in WORKSPACE_PARAMS:
+                    _rv = _row.get(field)
+                    if _rv:
+                        return str(_rv).strip()
+    except Exception:
+        pass
     return ""
 
 

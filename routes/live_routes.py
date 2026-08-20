@@ -427,6 +427,46 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                         "pending": _pending_out, "failed": _failed,
                         "batch": _IMG_BATCH})
 
+    def _attach_handling(items, aid, mkt):
+        """Put Amazon's OWN handling time on each item, where it is known.
+
+        ATTACHED WHEN SERVED, for the same reason _attach_compliance below is.
+        This list is built from GET_MERCHANT_LISTINGS_ALL_DATA, and THAT REPORT
+        HAS NO HANDLING COLUMN -- the 30 columns Amazon actually sends were
+        dumped and read for jack_uk/UK on 2026-08-20 (rule 4: do not guess a
+        field, read it). The nearest-looking candidate,
+        will-ship-internationally, is a constant 3 on every row including SKUs
+        named 2Days and 5Days, so it is not a disguised handling time.
+
+        Measured consequence: 46 of 47 live listings reached the screen with no
+        handling time at all, and every card fell back to the number this app
+        holds -- which is not what buyers are promised.
+
+        The real figure is attributes.fulfillment_availability[0].
+        lead_time_to_ship_max_days from getListingsItem, which /live/images
+        ALREADY fetches for its own purposes and already stores in _IMG_CACHE.
+        This carries it across. NO EXTRA AMAZON CALL is made here: it reads what
+        the other path has already paid for, rather than becoming a second place
+        that fetches the same field (rule 12).
+
+        Doing it on the way out rather than at fetch time matters, because the
+        catalogue is usually served from the durable snapshot and never rebuilt.
+        Attached at fetch time this would have been dead code on the common path.
+
+        A SKU the image path has not visited keeps no handling, and the card
+        then says whose number it is showing instead of implying Amazon's.
+        """
+        for it in (items or []):
+            try:
+                if it.get("handling") is not None:
+                    continue
+                _cv = _IMG_CACHE.get(f"{aid}::{mkt}::{it.get('sku','')}") or {}
+                if _cv.get("handling") is not None:
+                    it["handling"] = _cv["handling"]
+            except Exception:
+                pass
+        return items
+
     def _attach_compliance(items, mkt):
         """Work out which documents Amazon can demand, for each live listing.
 
@@ -499,7 +539,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         import domain.live_snapshots as _snap
         if not force and ck in _LIVE_CACHE and (_t.time() - _LIVE_CACHE[ck]["ts"] < _LIVE_TTL):
             return jsonify({"ok": True,
-                            "items": _attach_compliance(_LIVE_CACHE[ck]["items"], mkt),
+                            "items": _attach_compliance(
+                                _attach_handling(_LIVE_CACHE[ck]["items"], aid, mkt), mkt),
                             "cached": True})
         # DURABLE SNAPSHOT (second line of defence). _LIVE_CACHE is process memory:
         # a container restart or redeploy empties it, and on Render that happens on
@@ -523,7 +564,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 _LIVE_CACHE[ck] = {"ts": _t.time() - (_age or 0),
                                    "items": _rec.get("items") or []}
                 return jsonify({"ok": True,
-                                "items": _attach_compliance(_rec.get("items") or [], mkt),
+                                "items": _attach_compliance(
+                                    _attach_handling(_rec.get("items") or [], aid, mkt), mkt),
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "synced_at": _rec.get("ts"),
                                 "age_seconds": _age,
@@ -763,6 +805,7 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 warnings.append(f"Inactive/suppressed listings could not be loaded "
                                 f"({type(_ie).__name__}) — this list shows ACTIVE listings only.")
             _attach_compliance(items, mkt)
+            _attach_handling(items, aid, mkt)
             # enrich each item with COGS + profit estimate
             for it in items:
                 cost, csrc = _resolve_cogs(aid, it.get("sku", ""))
@@ -796,7 +839,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 if not items:
                     # Nothing at all came back -- keep the saved copy verbatim.
                     return jsonify({
-                        "ok": True, "items": _attach_compliance(_prev_items, mkt),
+                        "ok": True, "items": _attach_compliance(
+                            _attach_handling(_prev_items, aid, mkt), mkt),
                         "count": len(_prev_items), "cached": True,
                         "from_snapshot": True, "stale": True,
                         "synced_at": _prev.get("ts"), "age_seconds": _age_prev,
@@ -864,7 +908,8 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             if _rec and (_rec.get("items") or []):
                 _age = _snap.age_seconds(_rec)
                 return jsonify({"ok": True,
-                                "items": _attach_compliance(_rec.get("items") or [], mkt),
+                                "items": _attach_compliance(
+                                    _attach_handling(_rec.get("items") or [], aid, mkt), mkt),
                                 "count": _rec.get("count", 0), "cached": True,
                                 "from_snapshot": True, "stale": True,
                                 # Distinct from merely-old data: Amazon actually

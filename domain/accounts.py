@@ -94,12 +94,56 @@ def get_account(cfg: dict, account_id: str, config_path: str = None) -> dict:
     return {}
 
 
+def is_oauth(account: dict) -> bool:
+    """Did this seller connect by authorizing our app, rather than by having
+    their developer credentials typed in?
+
+    The difference matters at exactly one point -- whose LWA application the
+    token belongs to. A seller who authorized us is using OUR app, so the
+    client id and secret are the app's (from the environment) and are the same
+    for every such seller. Storing a per-account copy of them would be storing
+    the same two values N times and calling them the seller's (rule 12).
+    """
+    return str((account or {}).get("auth") or "").strip().lower() == "oauth"
+
+
+def oauth_app_creds():
+    """Our own LWA application's id and secret, from the environment.
+
+    Set in the Railway dashboard as ALTA_LWA_CLIENT_ID / ALTA_LWA_CLIENT_SECRET.
+    Deliberately not in config.json: config.json is per-deployment data, and
+    these identify the APPLICATION -- putting them there invites them into a
+    backup or an export alongside the tokens they protect.
+    """
+    import os
+    return (str(os.environ.get("ALTA_LWA_CLIENT_ID") or "").strip(),
+            str(os.environ.get("ALTA_LWA_CLIENT_SECRET") or "").strip())
+
+
 def account_creds(account: dict) -> dict:
-    """SP-API creds for an account, in the shape the generator expects."""
+    """SP-API creds for an account, in the shape the generator expects.
+
+    THE ONE PLACE A STORED TOKEN BECOMES A USABLE TOKEN. Multi-tenant OAuth
+    encrypts refresh tokens at rest (auth/token_crypto.py -- see its header for
+    why), so something has to decrypt them, and it must be exactly one
+    something. This is it: every SP-API call in the app resolves its
+    credentials through here, so encryption is transparent to all of them and
+    there is no second place that could be missed and end up sending ciphertext
+    to Amazon.
+
+    unseal() passes plain values through untouched, so accounts whose tokens
+    predate encryption keep working with no migration step.
+    """
+    from auth import token_crypto as _tc
+    if is_oauth(account):
+        cid, sec = oauth_app_creds()
+    else:
+        cid = account.get("lwa_client_id", "") or account.get("lwa_app_id", "")
+        sec = account.get("lwa_client_secret", "")
     return {
-        "lwa_app_id": account.get("lwa_client_id", "") or account.get("lwa_app_id", ""),
-        "lwa_client_secret": account.get("lwa_client_secret", ""),
-        "refresh_token": account.get("refresh_token", ""),
+        "lwa_app_id": cid,
+        "lwa_client_secret": sec,
+        "refresh_token": _tc.unseal(account.get("refresh_token", "")),
         "seller_id": account.get("seller_id", ""),
     }
 
@@ -130,12 +174,30 @@ _PLACEHOLDER_PREFIXES = ("PUT_", "ROTATE", "•", "*")
 
 
 def has_own_creds(account: dict) -> bool:
-    """True when this account can authenticate to Amazon AS ITSELF."""
+    """True when this account can authenticate to Amazon AS ITSELF.
+
+    This is the gate in front of every seller-scoped call and every write (see
+    seller_scope_allowed and can_publish below), so what counts as "its own"
+    decides whether a listing can be created or a price changed.
+
+    A SELLER WHO AUTHORIZED US HAS ITS OWN CREDENTIALS. Its refresh token was
+    issued for its own seller account and answers for its own seller id -- which
+    is the whole test. Only the client id and secret are shared, because they
+    identify our application rather than the seller, and asking "is
+    lwa_client_secret set on this record" would have answered no and quietly
+    demoted every OAuth seller to catalogue-only, i.e. connected but unable to
+    do anything.
+    """
     if not account:
         return False
     rt = str(account.get("refresh_token") or "").strip()
     if not rt or rt.startswith(_PLACEHOLDER_PREFIXES):
         return False
+    if is_oauth(account):
+        # Revoked or half-finished authorizations must not pass as usable.
+        if str(account.get("status") or "active").strip().lower() != "active":
+            return False
+        return all(oauth_app_creds())
     return bool(str(account.get("lwa_client_secret") or "").strip())
 
 
@@ -192,7 +254,26 @@ def resolve_catalog_creds(cfg: dict, account: dict, config_path: str = None):
 
 
 def save_account(cfg: dict, config_path: str, account: dict) -> dict:
-    """Add or update an account by id. Returns the saved account."""
+    """Add or update an account by id. Returns the saved account.
+
+    THE TOKEN IS ENCRYPTED ON THE WAY IN, where every caller passes, rather
+    than in each of them. account_creds() decrypts on the way out. Between
+    those two functions the token is ciphertext, including in config.json and
+    in anything that copies it.
+
+    ONLY WHEN A KEY IS CONFIGURED. Without ALTA_TOKEN_KEY this behaves exactly
+    as it always did and stores the value as given -- because this function is
+    also how the ordinary account editor saves your own three accounts, and
+    hard-failing here would break editing an account on a deployment that has
+    not set the key yet. The OAuth routes make the opposite choice and refuse
+    outright, which is right there: an unencrypted token belonging to somebody
+    else is a different thing from one of your own that is already in this file
+    in clear. Existing accounts pick up encryption the next time they are saved.
+    """
+    if account.get("refresh_token"):
+        from auth import token_crypto as _tc
+        if _tc.have_key():
+            account = {**account, "refresh_token": _tc.seal(account["refresh_token"])}
     raw = json.load(open(config_path, encoding="utf-8"))
     accts = raw.get("accounts")
     if not isinstance(accts, list):

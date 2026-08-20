@@ -93,9 +93,7 @@ function pasteToStudio(){
     skus: [sku],
     items: [{ sku:sku, title:title, bullets:bullets, description:desc,
               source_image:img, images:[img], img:img }],
-    brand: (typeof CUR_ACCOUNT!=="undefined" && CUR_ACCOUNT && CUR_ACCOUNT.brands && CUR_ACCOUNT.brands.length
-            ? CUR_ACCOUNT.brands[0]
-            : (typeof CUR_ACCOUNT!=="undefined" && CUR_ACCOUNT ? CUR_ACCOUNT.label : "")),
+    brand: accountBrand(),   // brand.js -- one copy of this rule
     manualRef: img, recipes: [], results: {}
   };
   closePasteListing();

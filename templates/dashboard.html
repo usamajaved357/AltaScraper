@@ -64,13 +64,37 @@
           aria-controls="workspace" aria-label="Open menu" title="Open the menu">
     <i class="ti ti-menu-2"></i>
   </button>
-  <!-- Not clickable any more. It went to the home page, and a logo that opens a
-       dialog is a surprise rather than a shortcut -- switching account is the
-       sidebar row, which says so in words. -->
-  <div class="brandmark" style="cursor:default">
-    <span class="dot">A</span><span>AltaScraper</span>
+  <!-- THE MARK, AND NOTHING ELSE.
+       "change this altascraper bar from the top i dont like it Put a stylish A
+        symbol on the top of it"
+       The wordmark spent 110px of the top bar telling you which app you had
+       open, on the only screen you cannot reach without already knowing. The
+       breadcrumb beside it says where you ARE, which is the part that changes.
+       Still not clickable: a logo that opens a dialog is a surprise rather than
+       a shortcut, and switching account is the sidebar row that says so in
+       words. -->
+  <div class="brandmark" style="cursor:default" title="AltaScraper" aria-label="AltaScraper">
+    <svg class="amark" viewBox="0 0 32 32" role="img" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="amk_g" x1="0" y1="0" x2="1" y2="1">
+          <stop class="g0" offset="0"/><stop class="g1" offset="1"/>
+        </linearGradient>
+      </defs>
+      <rect class="tile" x="1" y="1" width="30" height="30" rx="9"/>
+      <!-- A geometric A: two strokes to the apex, one crossbar. Round joins so
+           it stays sharp at 22px, where a drawn letterform turns to mud. -->
+      <path class="glyph" d="M8.6 24.2 L16 8.2 L23.4 24.2" fill="none"
+            stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path class="glyph" d="M12.1 18.6 H19.9" fill="none"
+            stroke-width="3.0" stroke-linecap="round"/>
+    </svg>
   </div>
   <div class="crumbs" id="crumbs"></div>
+  <!-- BOOKMARKS. This app has forty-odd screens and any one person uses six.
+       The sidebar has to list all forty; this lists the six. Per account and
+       kept in the browser -- a bookmark is a preference about how somebody
+       works, not data about the business. See static/js/bookmarks.js. -->
+  <div class="bmkbar" id="bmkbar" style="display:none"></div>
   <span class="spacer"></span>
   <!-- Orbit keeps the top bar sparse: breadcrumb left, health badge right.
        Research ASIN and AI settings moved into the sidebar (below the nav,
@@ -365,7 +389,17 @@
           <button class="mktbtn" data-src="removed" id="srcbtn_removed"
                   title="Listings this app still holds that Amazon no longer has. Nothing is ever deleted automatically."
                   onclick="setListSource('removed')" style="display:none">Removed</button>
-          <button class="mktbtn" title="Sync live listings from Amazon now" onclick="syncLive()"><i class="ti ti-refresh"></i> Sync</button>
+          <!-- WHY THIS EXISTS WHEN THE LABEL BESIDE IT SAYS "synced 4m ago".
+               "why do have that sync button if the listings are already been
+                synced upto some minutes?"
+               Fair question, and the old tooltip ("Sync live listings from
+               Amazon now") answered none of it -- it described the button as a
+               repeat of something the page appears to do already. It is not.
+               Opening the tab shows a SAVED copy and, at most, reuses a report
+               Amazon has already built; it never fetches a listing's contents.
+               These four things happen ONLY when this is pressed, which is why
+               the tooltip now names them instead of saying "sync". -->
+          <button class="mktbtn" onclick="syncLive()" title="Not a repeat of the automatic refresh — four things happen only when you press this:&#10;&#10;• Amazon builds a BRAND NEW listings report. Opening this tab reuses the last one, so the list can be right about which listings exist and still be behind on price, stock and status.&#10;• Each listing's actual CONTENTS are pulled — images, A+, bullets, description, variations, and Amazon's own handling time. Nothing else on this screen ever fetches these.&#10;• Drafts you have submitted are checked against Amazon and marked live where Amazon has published them.&#10;• Listings deleted or deactivated on Amazon are settled against what this app holds.&#10;&#10;It takes a few minutes on a large catalogue. The label beside this button says when Amazon was last actually read."><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
           <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
           <!-- THE SHEET TO FILL IN, before the button that uploads it. There
@@ -1673,6 +1707,9 @@
 <!-- One currency-code to symbol map. Loaded EARLY: four screens had their own
      and three more were written against a variable that never existed. -->
 <script src="/static/js/money.js?v={{ ASSET_V }}"></script>
+<!-- One answer to "which brand is this listing", for the six screens that each
+     had their own copy of it. Mirrors resolve_account_brand() on the server. -->
+<script src="/static/js/brand.js?v={{ ASSET_V }}"></script>
 <!-- The pieces every screen is built from: stat cards, titled panels, toolbars.
      Loaded EARLY because most screens call them while rendering. -->
 <script src="/static/js/pageui.js?v={{ ASSET_V }}"></script>
@@ -1771,6 +1808,10 @@
 <!-- The weekly brief. Draws /brief and does no arithmetic of its own, so the
      screen and the data cannot disagree about the same week. -->
 <script src="/static/js/brief.js?v={{ ASSET_V }}"></script>
+<!-- The bookmark bar. Adds no screen of its own: every entry is a section that
+     already exists, and the label comes from the nav item so the two cannot
+     drift. Per account, kept in the browser. -->
+<script src="/static/js/bookmarks.js?v={{ ASSET_V }}"></script>
 <!-- Every account, month by month. The one screen not scoped to one account. -->
 <script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
 <!-- Where this account's products sit in Amazon's category tree. -->

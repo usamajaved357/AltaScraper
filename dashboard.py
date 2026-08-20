@@ -2526,6 +2526,15 @@ def _parse_listings_report(text):
     if not lines:
         return []
     header = [h.strip().lower().replace("_", "-") for h in lines[0].split("\t")]
+    # WHAT THIS REPORT DOES NOT CONTAIN (checked, not assumed -- rule 4).
+    # The 30 columns Amazon sends for GET_MERCHANT_LISTINGS_ALL_DATA were dumped
+    # for jack_uk/UK on 2026-08-20 and there is NO handling-time column. The
+    # nearest-looking candidate, will-ship-internationally, reads a constant 3 on
+    # every row -- including SKUs named 2Days and 5Days -- so it is not a
+    # disguised handling time. Do not add a col(r, "handling", ...) here hoping
+    # it turns up; the figure comes from getListingsItem
+    # (attributes.fulfillment_availability[0].lead_time_to_ship_max_days) and is
+    # merged into the catalogue in routes/live_routes.py.
 
     def col(row, *names):
         # exact match first
@@ -3879,6 +3888,10 @@ def build_app(backend=None):
     import routes.optimize_routes as _optimize_routes
     _optimize_routes.register(app, _state=_state, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH,
                               _build_patches=_build_patches, _require_publish=_require_publish)
+    # Multi-tenant Amazon OAuth: /auth/login and /auth/callback. Lets a seller
+    # who is not us authorize this app. See routes/auth_oauth_routes.py.
+    import routes.auth_oauth_routes as _auth_oauth_routes
+    _auth_oauth_routes.register(app, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH)
     import routes.ppc_routes as _ppc_routes
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,

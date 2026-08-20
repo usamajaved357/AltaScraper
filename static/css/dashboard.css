@@ -130,9 +130,26 @@
   .appbar{position:sticky;top:0;z-index:20;background:var(--sidebar);
           border-bottom:1px solid var(--line);padding:11px 18px;display:flex;
           align-items:center;gap:12px}
-  .appbar .brandmark{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;cursor:pointer}
-  /* Dark glyph on the teal tile. White on #2dd4a8 is about 1.8:1 and genuinely
+  .appbar .brandmark{display:flex;align-items:center;cursor:pointer;flex:0 0 auto}
+  /* THE MARK. The wordmark is gone -- it spent 110px of the top bar naming the
+     app on the only screen you cannot reach without already knowing which app
+     you opened. What was left had to earn its place, so it is drawn rather
+     than typed: a letterform in a rounded box goes soft at 22px, and two
+     strokes with round joins do not.
+     Dark glyph on the teal tile. White on #2dd4a8 is about 1.8:1 and genuinely
      hard to read; the dark ink is roughly 9:1. Same rule as primary buttons. */
+  .appbar .brandmark .amark{width:26px;height:26px;display:block;
+        filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .appbar .brandmark .amark .tile{fill:url(#amk_g)}
+  .appbar .brandmark .amark .g0{stop-color:var(--accent)}
+  /* Falls back to the same colour where no second accent is themed, so the
+     tile is flat rather than broken. */
+  .appbar .brandmark .amark .g1{stop-color:var(--accent2,var(--accent))}
+  .appbar .brandmark .amark .glyph{stroke:#0a1628}
+  /* A hair of lift on hover, so it reads as the app's own mark rather than a
+     button. It is deliberately not clickable. */
+  .appbar .brandmark:hover .amark{filter:drop-shadow(0 2px 5px rgba(0,0,0,.45))}
+  /* Kept: other screens (login, the print header) still use the lettered tile. */
   .appbar .brandmark .dot{width:22px;height:22px;border-radius:var(--radius-sm);background:var(--accent);
         display:flex;align-items:center;justify-content:center;color:#0a1628;
         font-size:13px;font-weight:700}
@@ -1175,9 +1192,16 @@
      Sits in the filter strip, before the duplicates pill, and stays there when
      that pill is absent -- it is the only way to reach a single product on an
      account with eighty of them, so it must not hide with the thing beside it. */
+  /* THE CAP IS GONE.
+   *     "make that search bar long that it covers the same area that it
+   *      should be, right now it is covering only half"
+   * It had flex:1 AND max-width:420px, so it stopped growing at 420px and left
+   * the rest of the toolbar row empty -- the half he is describing. It is the
+   * only way to reach one product among eighty and it now takes whatever the
+   * row has spare. The min-width still protects it on a narrow window. */
   .lsearch{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);
            border:1px solid var(--line);border-radius:8px;padding:3px 9px;
-           min-width:260px;max-width:420px;flex:1}
+           min-width:260px;flex:1 1 420px}
   .lsearch .ti{color:var(--ink4);font-size:15px;flex:0 0 auto}
   .lsearch input{background:none;border:none;outline:none;flex:1;min-width:0;
                  color:var(--ink);font-size:12.5px;padding:4px 0}
@@ -1542,7 +1566,23 @@
      (miles_template.js), so both get it from one place. */
   .tileprice{font-size:12.5px;font-weight:600;color:var(--gold);
              font-variant-numeric:tabular-nums}
+  /* A live price is a control, not a label: it says so on hover and carries a
+     pencil, because an editable thing that looks identical to a read-only one
+     is not discoverable. Drafts keep the plain .tileprice -- there is no price
+     on Amazon to change yet. */
+  .pricehot{cursor:pointer;border-bottom:1px dashed transparent;transition:border-color .12s,color .12s}
+  .pricehot i{font-size:10px;opacity:0;margin-left:3px;transition:opacity .12s}
+  .pricehot:hover{border-bottom-color:var(--gold)}
+  .pricehot:hover i{opacity:.75}
   .tilesku{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+  /* The two facts every card now states outright: brand and handling time.
+     Deliberately quiet -- they are context for the title, not status. */
+  .tilefacts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:5px}
+  .tilefact{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:var(--muted)}
+  .tilefact i{font-size:12px}
+  .brandfact{color:var(--ink2)}
+  /* Amazon's own handling time, as opposed to the one we hold for a draft. */
+  .handlive{color:var(--accent)}
   /* Your OWN live ASIN chip (from the live catalogue, matched by SKU) */
   .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10.5px;
             color:var(--ok);font-family:ui-monospace,Consolas,monospace}
@@ -3984,3 +4024,37 @@ table.ordtable tbody tr.orddetail > td{
     margin:2px 0 12px;font-size:10.5px;color:var(--muted);line-height:1.6}
   .ui-source-i b{font-weight:600;color:var(--ink3);margin-right:3px}
   .ui-source-n{opacity:.85;max-width:640px}
+
+/* ===== BOOKMARK BAR =============================================
+   "give me a bookmark bar like amazon on the top where i can bookmark the
+    pages i use frequently"
+
+   Forty-odd screens, six of them used. The sidebar has to list all forty; this
+   lists the six. It sits in the top bar beside the breadcrumb, so it is on
+   every screen without taking a row of its own -- a shortcut that costs
+   vertical space is not a shortcut. See static/js/bookmarks.js. */
+.bmkbar{display:flex;align-items:center;gap:5px;margin-left:10px;
+        overflow-x:auto;scrollbar-width:none;max-width:52vw}
+.bmkbar::-webkit-scrollbar{display:none}
+.bmkchip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+         background:transparent;border:1px solid var(--line);color:var(--fg2);
+         border-radius:14px;padding:3px 8px 3px 9px;font-size:11.5px;
+         cursor:pointer;line-height:1.5}
+.bmkchip:hover{border-color:var(--accent);color:var(--fg)}
+/* The page you are on is marked, so the bar doubles as a "where am I". */
+.bmkchip.on{border-color:var(--accent);color:var(--accent);
+            background:var(--accent-bg)}
+.bmkchip i{font-size:13px}
+/* The remove control appears on hover only. A row of permanent × marks reads
+   as a list of things to delete rather than a list of places to go. */
+.bmkchip .bmkx{opacity:0;font-size:12px;margin-left:1px;transition:opacity .12s}
+.bmkchip:hover .bmkx{opacity:.55}
+.bmkchip .bmkx:hover{opacity:1;color:var(--red)}
+.bmkadd{background:transparent;border:0;color:var(--fg2);cursor:pointer;
+        padding:3px 5px;font-size:15px;line-height:1;border-radius:6px}
+.bmkadd:hover{color:var(--accent);background:var(--accent-bg)}
+.bmkadd.on{color:var(--accent)}
+/* Said once, in the empty bar, so an empty bar does not read as a broken one. */
+.bmkhint{font-size:11px;white-space:nowrap;opacity:.75}
+.bmkhint i{font-size:12px;vertical-align:-1px}
+@media (max-width:900px){ .bmkbar{display:none !important} }

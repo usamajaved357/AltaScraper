@@ -96,6 +96,32 @@ truthy("that the parent goes up first, and nothing follows if it fails",
 truthy("and the reason all of it is checked beforehand",
        G.includes("WITHOUT COMPLAINING"));
 
+// "change this altascraper bar from the top i dont like it Put a stylish A
+//  symbol on the top of it"
+//
+// The wordmark spent 110px of the top bar naming the app on the only screen you
+// cannot reach without already knowing which app you opened. What was left had
+// to earn its place, so it is DRAWN rather than typed: a letterform in a
+// rounded box goes soft at 22px and two strokes with round joins do not.
+console.log("\n=== the top bar carries a mark, not a wordmark ===");
+truthy("the mark is an SVG", H.includes('<svg class="amark"'));
+truthy("  drawn as strokes, so it stays sharp when small",
+       H.includes('stroke-linejoin="round"') && H.includes('class="glyph"'));
+truthy("  with the tile behind it", H.includes('class="tile"'));
+check("the wordmark is gone", H.includes("<span>AltaScraper</span>"), false);
+// It is a mark, not a control -- a logo that opens a dialog is a surprise
+// rather than a shortcut, and switching account is a sidebar row that says so.
+truthy("it is still not clickable", H.includes('class="brandmark" style="cursor:default"'));
+// Screen readers and hover both need the name the picture no longer spells.
+truthy("  but it still says what it is",
+       H.includes('aria-label="AltaScraper"') && H.includes('title="AltaScraper"'));
+truthy("the gradient falls back where no second accent is themed",
+       C.includes("stop-color:var(--accent2,var(--accent))"));
+// The login screens keep their wordmark on purpose: that IS where you need to
+// be told which app you have reached.
+truthy("the lettered tile is kept for the screens that still use it",
+       C.includes(".appbar .brandmark .dot{"));
+
 console.log("\nFAILURES: " + fails.length);
 fails.forEach(f => console.log("   - " + f));
 process.exit(fails.length ? 1 : 0);
