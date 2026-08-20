@@ -130,9 +130,26 @@
   .appbar{position:sticky;top:0;z-index:20;background:var(--sidebar);
           border-bottom:1px solid var(--line);padding:11px 18px;display:flex;
           align-items:center;gap:12px}
-  .appbar .brandmark{display:flex;align-items:center;gap:9px;font-weight:650;font-size:15px;cursor:pointer}
-  /* Dark glyph on the teal tile. White on #2dd4a8 is about 1.8:1 and genuinely
+  .appbar .brandmark{display:flex;align-items:center;cursor:pointer;flex:0 0 auto}
+  /* THE MARK. The wordmark is gone -- it spent 110px of the top bar naming the
+     app on the only screen you cannot reach without already knowing which app
+     you opened. What was left had to earn its place, so it is drawn rather
+     than typed: a letterform in a rounded box goes soft at 22px, and two
+     strokes with round joins do not.
+     Dark glyph on the teal tile. White on #2dd4a8 is about 1.8:1 and genuinely
      hard to read; the dark ink is roughly 9:1. Same rule as primary buttons. */
+  .appbar .brandmark .amark{width:26px;height:26px;display:block;
+        filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .appbar .brandmark .amark .tile{fill:url(#amk_g)}
+  .appbar .brandmark .amark .g0{stop-color:var(--accent)}
+  /* Falls back to the same colour where no second accent is themed, so the
+     tile is flat rather than broken. */
+  .appbar .brandmark .amark .g1{stop-color:var(--accent2,var(--accent))}
+  .appbar .brandmark .amark .glyph{stroke:#0a1628}
+  /* A hair of lift on hover, so it reads as the app's own mark rather than a
+     button. It is deliberately not clickable. */
+  .appbar .brandmark:hover .amark{filter:drop-shadow(0 2px 5px rgba(0,0,0,.45))}
+  /* Kept: other screens (login, the print header) still use the lettered tile. */
   .appbar .brandmark .dot{width:22px;height:22px;border-radius:var(--radius-sm);background:var(--accent);
         display:flex;align-items:center;justify-content:center;color:#0a1628;
         font-size:13px;font-weight:700}
