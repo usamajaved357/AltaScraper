@@ -31,6 +31,49 @@ from domain import orders_view as _ov
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /orders/* to the app."""
 
+    def _open_account_id():
+        """The account that is open. THE authority for every route in this file.
+
+        Lifted out because /orders/list was hardened against answering for
+        another account and the other two routes were not -- so there were three
+        opinions about whose orders these are, and only one of them had been
+        thought about (CLAUDE.md rule 12).
+        """
+        try:
+            return str((_active_account() or {}).get("id") or "").strip()
+        except Exception:
+            return ""
+
+    def _refuse_other_account(asked):
+        """None when `asked` is fine; a (json, 409) refusal when it is not.
+
+        THE HOLE THIS CLOSES. /orders/items took account_id from the POST body
+        and /orders/detail took ?account= from the query string, and BOTH then
+        fetched with that account's own Amazon credentials without ever checking
+        it against the account on screen. Ask for any configured account and
+        they answered: order lines, product titles, profit, and on /orders/detail
+        the buyer's town and postcode.
+
+        /orders/list was already guarded. These two were reached by the SAME
+        screen, one keystroke later, and were not -- which is exactly the shape
+        of hole that survives a fix.
+
+        Nothing is inferred from the caller's id: an account other than the open
+        one is refused outright, never quietly substituted.
+        """
+        asked = str(asked or "").strip()
+        open_id = _open_account_id()
+        if not asked or not open_id or asked == open_id:
+            return None
+        return jsonify({
+            "ok": False, "account_mismatch": True,
+            "asked_for": asked, "selected": open_id,
+            "error": ("That order belongs to %s but %s is the account that is "
+                      "open. Nothing is returned rather than risk showing one "
+                      "company's customers under another's name."
+                      % (asked, open_id)),
+        }), 409
+
     def _accounts_in_scope():
         """Which accounts to ask. THE OPEN ONE, unless every account is asked for.
 
@@ -453,6 +496,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         pics = _pictures()
         _fee_fns = {}
         out, unread = {}, 0
+        # EVERY order in the batch must belong to the account on screen. One
+        # foreign id in a list of sixty is enough to leak that account's
+        # products and profit, and the batch shape is what made it easy to
+        # miss -- the id is per ROW, not per request.
+        for w in want:
+            _bad = _refuse_other_account(w.get("account_id"))
+            if _bad:
+                return _bad
         for w in want:
             oid = str(w.get("order_id") or "").strip()
             aid = str(w.get("account_id") or "").strip()
@@ -491,6 +542,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         aid = (request.args.get("account") or "").strip()
         if not oid:
             return jsonify({"ok": False, "error": "no order id"}), 400
+        # This route returns the buyer's town and postcode along with the
+        # lines, and it took the account from the QUERY STRING and used that
+        # account's own credentials. Refused before Amazon is called at all.
+        _bad = _refuse_other_account(aid)
+        if _bad:
+            return _bad
         cfg = _cfg() if callable(_cfg) else (_cfg or {})
         acc = next((a for a in (cfg.get("accounts") or [])
                     if str(a.get("id") or "") == aid), None)
