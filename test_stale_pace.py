@@ -119,6 +119,36 @@ truthy("  saying what else is wrong if it is wrong",
        "everything else on this screen is wrong with it" in src)
 truthy("and the screen prints it", "How to check this by hand" in ST)
 
+print("\n== and the table can leave the screen ==")
+#     Ava, listing what each of Orbit's pages exports:
+#     "Inventory / Restock: CSV of stock + days-of-cover + restock suggestions."
+#
+# This is the one list somebody works THROUGH -- ordering against it, checking
+# it with a supplier -- and it was the only screen of its kind with no way to
+# get the list out.
+IR = open(os.path.join(HERE, "routes", "inventory_routes.py"),
+          encoding="utf-8").read()
+truthy("there is an export", '"/inventory/coverage.csv"' in IR)
+truthy("  built from the same function as the screen", "_sm.for_account(" in IR)
+truthy("  through the shared CSV writer, not a comma join",
+       "_sheets.to_csv(" in IR)
+falsy("  and it writes no CSV of its own", "csv.writer(" in IR)
+# A spreadsheet loses the screen's estimate markers the moment it is opened: a
+# column called "Cover" in Excel looks exactly as solid as "On hand".
+truthy("the estimated columns say so in their own names",
+       '"30-day demand (ESTIMATE)"' in IR
+       and '"Days of cover (ESTIMATE)"' in IR
+       and '"Short by (ESTIMATE)"' in IR)
+truthy("  and the measured ones do not", '"On hand", "Available"' in IR)
+# A reader who is sent the file and never saw the screen still gets told.
+truthy("the caveats travel with the file",
+       'got.get("estimate_note")' in IR and 'got.get("gap_is_not_a_po")' in IR)
+truthy("  including how to check the pace by hand",
+       'got.get("how_to_check")' in IR)
+truthy("  after a blank row, so a sort cannot mistake them for data",
+       '[""] * len(headers)' in IR)
+truthy("and the screen offers it", "/inventory/coverage.csv" in ST)
+
 print("\n%d failed" % len(fails))
 for f in fails:
     print("  FAILED:", f)

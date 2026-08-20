@@ -620,6 +620,14 @@ function _skCoverage(){
     + 'margin:0 0 12px">' + _skEsc(c.note || "") + " " + _skEsc(c.estimate_note || "")
     + " " + _skEsc(c.gap_is_not_a_po || "")
     + ((n.stale_pace || 0) ? " " + _skEsc(c.stale_note || "") : "") + "</div>";
+  // OUT OF THE SCREEN AND INTO A SPREADSHEET. This is the one list somebody
+  // works THROUGH -- ordering against it, checking it with a supplier -- and it
+  // was the only screen of its kind with no way to get the list out. The file
+  // carries the estimate markers in its own column names, because a column
+  // called "Cover" in Excel looks exactly as solid as one called "On hand".
+  h += '<div style="margin:0 0 12px">'
+    + '<a class="db-chip" href="/inventory/coverage.csv' + _skScopeQs()
+    + '" download><i class="ti ti-download"></i> Download this table</a></div>';
   // HOW TO CATCH THIS SCREEN LYING. Printed rather than kept to ourselves: a
   // screen that tells you how to audit it is worth more than one that asks to
   // be believed. Everything here is built on the pace, so that is the number.

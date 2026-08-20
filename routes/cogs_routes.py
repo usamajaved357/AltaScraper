@@ -43,7 +43,10 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
                                    catalogue=_cat.index(CONFIG_PATH, aid, mkt))
         body = _sheets.to_csv(_cogs.TEMPLATE_HEADERS, rows)
         name = "costs-%s-%s.csv" % (aid or "account", mkt or "")
-        return Response(body, mimetype="text/csv; charset=utf-8",
+        return Response(body, # Flask appends the charset itself; naming it here too produced
+                        # "text/csv; charset=utf-8; charset=utf-8", which a strict parser
+                        # is entitled to reject.
+                        mimetype="text/csv",
                         headers={"Content-Disposition":
                                  'attachment; filename="%s"' % name})
 

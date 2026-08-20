@@ -9,7 +9,7 @@ Routes: POST /inventory/build, GET /inventory/download/<fname>,
 """
 import os
 
-from flask import request, jsonify
+from flask import request, jsonify, Response
 
 
 def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
@@ -415,6 +415,83 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
                             "error": "Could not work out coverage: %s"
                                      % str(e)[:200]}), 500
 
+    @app.route("/inventory/coverage.csv")
+    def inventory_coverage_csv():
+        """The coverage table as a spreadsheet.
+
+            Ava, listing what each of Orbit's pages can export:
+            "Inventory / Restock: CSV of stock + days-of-cover + restock
+             suggestions."
+
+        The one screen that produces a list somebody works THROUGH -- ordering
+        against it, checking it with a supplier -- and it was the one with no
+        way to get the list out.
+
+        THE HEADERS CARRY THE DISTINCTION THE SCREEN MAKES. On screen, cover,
+        thirty-day demand and the gap are marked as estimates and the rest are
+        counted. A spreadsheet loses that the moment it is opened, and a column
+        called "Cover" in Excel looks exactly as solid as one called "On hand".
+        So the estimated columns say so in their own names, and the two notes
+        the screen shows travel with the file as trailing rows -- a reader who
+        gets sent the CSV and never saw the screen still gets told.
+
+        Reads only. Same numbers as the screen, from the same function, so the
+        file and the page cannot disagree (rule 12).
+        """
+        from domain import sheets as _sheets
+        from domain import stock_metrics as _sm
+
+        aid, mkt = _scope()
+        if not aid:
+            return jsonify({"ok": False, "error": "Open an account first."}), 400
+        try:
+            days = int(request.args.get("window") or 30)
+        except (TypeError, ValueError):
+            days = 30
+        days = max(7, min(days, 90))
+        try:
+            got = _sm.for_account(CONFIG_PATH, aid, mkt or "", window=days)
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "Could not work out coverage: %s"
+                                     % str(e)[:200]}), 500
+
+        headers = ["SKU", "On hand", "Available", "Days recorded",
+                   "Days out of stock", "In stock %", "Pace per day (30d)",
+                   "Pace measured over (days)", "Pace per day (7d)",
+                   "Trend %", "30-day demand (ESTIMATE)",
+                   "Days of cover (ESTIMATE)", "Short by (ESTIMATE)",
+                   "Status", "Why", "Pace looks stale", "Stale because"]
+        rows = []
+        for r in (got.get("rows") or []):
+            rows.append([
+                r.get("sku", ""), r.get("on_hand"), r.get("available"),
+                r.get("days_known"), r.get("oos_days"), r.get("in_stock_rate"),
+                r.get("pace_30d"), r.get("pace_30d_days"), r.get("pace_7d"),
+                r.get("velocity_trend_pct"), r.get("forecast_demand_30d"),
+                r.get("days_of_cover"), r.get("stock_gap_30d"),
+                r.get("status", ""), r.get("why", ""),
+                "yes" if r.get("pace_is_stale") else "",
+                r.get("stale_why", ""),
+            ])
+        # The caveats, in the file. Blank row first so they cannot be mistaken
+        # for data by anything that sorts the sheet.
+        rows.append([""] * len(headers))
+        for _note in (got.get("note"), got.get("estimate_note"),
+                      got.get("gap_is_not_a_po"), got.get("stale_note"),
+                      got.get("how_to_check")):
+            if _note:
+                rows.append([_note] + [""] * (len(headers) - 1))
+
+        body = _sheets.to_csv(headers, rows)
+        name = "coverage-%s-%s-%s.csv" % (aid, mkt or "", got.get("end") or "")
+        return Response(body, # Flask appends the charset itself; naming it here too produced
+                        # "text/csv; charset=utf-8; charset=utf-8", which a strict parser
+                        # is entitled to reject.
+                        mimetype="text/csv",
+                        headers={"Content-Disposition":
+                                 'attachment; filename="%s"' % name})
+
     @app.route("/inventory/money-back")
     def inventory_money_back():
         """Money Amazon owes back, found by checking Amazon's own published rule.
@@ -510,11 +587,7 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
         A SUGGESTION IN A FILE, not an order. Nothing about downloading it
         reaches Amazon or a supplier -- see the module docstring and Rule 8.
         """
-        import csv as _csv
-        import io as _io
-
-        from flask import Response
-
+        from domain import sheets as _sheets
         from domain import catalogue as _cat
         from domain import cogs_store as _cs
         from domain import inventory_view as _iv
@@ -536,16 +609,20 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
         cols = ["sku", "asin", "title", "units", "unit_cost", "spend",
                 "order_by", "late", "listed_qty", "velocity", "cover_days",
                 "lead_days", "lead_known", "status", "why"]
-        buf = _io.StringIO()
-        w = _csv.writer(buf)
-        w.writerow(cols)
-        for r in _iv.to_order(rows, horizon_days=horizon):
-            w.writerow(["" if r.get(c) is None else r.get(c) for c in cols])
+        # THE SHARED WRITER, like every other export. This wrote its own CSV
+        # with csv.writer and prepended its own byte-order mark -- a third copy
+        # of the rules domain/sheets.to_csv exists to hold (rule 12), and its
+        # own docstring says the writing moved out "the moment a SECOND
+        # template needed it". Quoting and the BOM are decided once.
+        body = _sheets.to_csv(
+            cols,
+            [["" if r.get(c) is None else r.get(c) for c in cols]
+             for r in _iv.to_order(rows, horizon_days=horizon)])
         name = "to-order-%s-%s.csv" % (aid or "account", mkt or "")
-        # A byte-order mark so Excel reads it as UTF-8 and a pound sign
-        # survives -- the same reason every other export in this app has one.
-        # As the escape, not a literal: see test_encoding.js.
         return Response(
-            "\ufeff" + buf.getvalue(),
-            mimetype="text/csv; charset=utf-8",
+            body,
+            # Flask appends the charset itself; naming it here too produced
+            # "text/csv; charset=utf-8; charset=utf-8", which a strict parser
+            # is entitled to reject.
+            mimetype="text/csv",
             headers={"Content-Disposition": 'attachment; filename="%s"' % name})
