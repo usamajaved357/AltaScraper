@@ -98,9 +98,16 @@ def main():
 
     acc, cfg = load_account(account_id)
     label = acc.get("label", account_id)
-    cid = acc.get("lwa_client_id") or acc.get("lwa_app_id") or cfg.get("sp_api_client_id")
-    csec = acc.get("lwa_client_secret") or cfg.get("sp_api_client_secret")
-    rtok = acc.get("refresh_token") or cfg.get("sp_api_refresh_token")
+    # Through accounts.account_creds(), not by reading the record's fields --
+    # OAuth sellers hold their client id and secret in the environment and
+    # their refresh token encrypted, so a hand-read would print ciphertext and
+    # then report a working token as INVALID. This is the tool people trust
+    # when deciding whether to rotate credentials (rule 12).
+    import accounts as _acc_mod
+    _c = _acc_mod.account_creds(acc)
+    cid = _c.get("lwa_app_id") or cfg.get("sp_api_client_id")
+    csec = _c.get("lwa_client_secret") or cfg.get("sp_api_client_secret")
+    rtok = _c.get("refresh_token") or cfg.get("sp_api_refresh_token")
     dmkt = (acc.get("default_marketplace") or "US").upper()
     mkts = acc.get("marketplaces") or [dmkt]
 

@@ -32,8 +32,22 @@ from flask import jsonify, redirect, request, session, url_for
 from auth import users
 
 # Reachable without being signed in at all.
+#
+# oauth_login / oauth_callback are here because the person using them is a
+# SELLER AUTHORIZING US, who has no account on this app and never will -- that
+# is the entire point of multi-tenant OAuth. Requiring a sign-in would make the
+# flow impossible rather than secure.
+#
+# What protects them instead is the state nonce: /auth/login issues one into
+# the caller's own session and /auth/callback requires it back unchanged and
+# unexpired, so a callback that did not begin here is refused and nothing is
+# stored. That is the control that matters here, because the risk is not
+# "somebody reads a page" -- it is "somebody gets this app to attach a token to
+# an account of their choosing", and a login wall would not have stopped that
+# on its own. See routes/auth_oauth_routes.py.
 PUBLIC_ENDPOINTS = {"_login", "_healthz", "static", "_pubimg",
-                    "invite_page", "invite_accept"}
+                    "invite_page", "invite_accept",
+                    "oauth_login", "oauth_callback"}
 
 # (prefix, permission). ORDER MATTERS -- first match wins, so anything more
 # specific must come before the broader prefix it sits under.

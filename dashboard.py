@@ -3888,6 +3888,10 @@ def build_app(backend=None):
     import routes.optimize_routes as _optimize_routes
     _optimize_routes.register(app, _state=_state, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH,
                               _build_patches=_build_patches, _require_publish=_require_publish)
+    # Multi-tenant Amazon OAuth: /auth/login and /auth/callback. Lets a seller
+    # who is not us authorize this app. See routes/auth_oauth_routes.py.
+    import routes.auth_oauth_routes as _auth_oauth_routes
+    _auth_oauth_routes.register(app, _cfg=_cfg, CONFIG_PATH=CONFIG_PATH)
     import routes.ppc_routes as _ppc_routes
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,
