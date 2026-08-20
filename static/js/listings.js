@@ -453,6 +453,48 @@ function setSearch(v){
   render();
 }
 
+/* WHAT A LIVE TILE MEANS, in one place.
+ *
+ * Read by the tile that COUNTS them and by the filter that HIDES the rest, so
+ * a tile saying 9 cannot then show 40. Takes an item from the Amazon catalogue
+ * (LIVE_ITEMS), which is where status, quantity and cost actually live -- a
+ * draft row does not know whether Amazon is showing the listing. */
+function liveItemIs(it, filter){
+  if(!it) return false;
+  if(filter === "live_all") return true;
+  if(filter === "live_notshowing"){
+    // "inactive" contains "active", so the negative has to be tested for
+    // rather than inferred from the absence of the positive.
+    const s = String(it.status || "").toLowerCase();
+    return s.indexOf("inactive") >= 0 || s.indexOf("suppress") >= 0
+        || s.indexOf("incomplete") >= 0;
+  }
+  if(filter === "live_nocost") return !(it.cogs || (it.profit && it.profit.cogs));
+  if(filter === "live_oos"){
+    const q = it.qty;
+    // Unknown is not zero. A listing whose quantity Amazon did not report is
+    // not out of stock, and counting it as such is how a "9 out of stock"
+    // tile becomes a reorder decision.
+    return q !== undefined && q !== null && q !== "" && Number(q) === 0;
+  }
+  return true;
+}
+
+/* The catalogue item behind an app row, matched by SKU first and only then by
+ * ASIN -- two SKUs can share an ASIN, and there the SKU is the listing. */
+function liveItemForRow(r){
+  if(typeof LIVE_ITEMS === "undefined" || !LIVE_ITEMS) return null;
+  const n = v => String(v == null ? "" : v).trim().toUpperCase();
+  const s = n(r && r.sku), a = n(r && r.asin);
+  let byAsin = null;
+  for(const it of LIVE_ITEMS){
+    if(!it) continue;
+    if(s && n(it.sku) === s) return it;
+    if(a && !byAsin && n(it.asin) === a) byAsin = it;
+  }
+  return byAsin;
+}
+
 function passFilter(r){
   if(!matchesSearch(r)) return false;
   if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
@@ -461,6 +503,16 @@ function passFilter(r){
   if(FILTER==="holds")return isHold(r.status);
   if(FILTER==="approved")return r.status==="APPROVED"||r.status==="API_READY";
   if(FILTER==="live")return r.status==="LIVE";
+  // The live-view tiles. An app row is judged by the CATALOGUE item behind it,
+  // for the same reason the tiles count catalogue items: whether Amazon is
+  // showing a listing, and how many it has, are facts about the listing rather
+  // than about our draft of it. A row with no catalogue item behind it cannot
+  // satisfy a question about the live listing, so it is hidden rather than
+  // shown on the grounds that nothing is known.
+  if(String(FILTER).indexOf("live_") === 0){
+    if(FILTER === "live_all") return true;
+    return liveItemIs(liveItemForRow(r), FILTER);
+  }
   return true;
 }
 
@@ -756,8 +808,27 @@ function summary(){
           title="Show only these">
        <p class="n">${n}</p><p class="l">${label}</p></div>`;
   const extras = [];
-  if(c.ERROR)      extras.push(`<span style="color:var(--red)">${c.ERROR} error</span>`);
-  if(c.HOLD)       extras.push(`<span style="color:var(--red)">${c.HOLD} on hold</span>`);
+  // A COUNT WITH NO NOUN IS NOT A FACT.
+  //
+  //     "i see a text is written 25 on hold, what is this and why is it
+  //      written like this"
+  //
+  // Fair. "25 on hold" named no thing, gave no reason, and could not be
+  // clicked -- so it was a number you could neither understand nor act on.
+  // Both now say what they are counting, why those rows are stopped, and take
+  // you to them.
+  if(c.ERROR){
+    extras.push(`<button class="linkbtn" style="color:var(--red)"
+        onclick="metricFilter('holds')"
+        title="Amazon refused these. Open one to see what it said.">${c.ERROR}
+        listing${c.ERROR>1?'s':''} Amazon refused</button>`);
+  }
+  if(c.HOLD){
+    extras.push(`<button class="linkbtn" style="color:var(--red)"
+        onclick="metricFilter('holds')"
+        title="Held by this app's own IP or compliance check before anything was sent to Amazon — open one to see which rule, or re-scan after fixing a rule.">${c.HOLD}
+        held by a compliance or IP check</button>`);
+  }
   // The published rows the Drafts list is deliberately not showing. Said in
   // words rather than counted into a tile above a list they are not in, and
   // with the way to go and look at them.
@@ -793,21 +864,28 @@ function summary(){
           + tile(c.APPROVED + c.API_READY, "Ready to submit", "approved")
           + tile(c.HOLD + c.ERROR, "Blocked or errored", "holds");
   }else{
+    // THREE OF THESE FOUR TILES USED TO SEND THE SAME FILTER.
+    //
+    //     "when i click on not showing status button a green border appears
+    //      around only this button but when i click on any one of the button
+    //      from no cost set, out of stock or live listings button. clicking
+    //      only 1 button draws a border on all 3"
+    //
+    // Live listings, No cost set and Out of stock all passed "all". The tile
+    // lights up when its filter equals the current one, so pressing any of the
+    // three lit all three -- and since "all" means no filter, none of them
+    // hid anything either. One defect, both symptoms.
+    //
+    // Each has its own filter now, and the COUNT and the FILTER read the same
+    // predicate (liveItemIs), so a tile can never say 9 and then show 40.
     const live = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
-    const _st = it => String((it && it.status) || "").toLowerCase();
-    // "inactive" contains "active", so the negative is tested first.
-    const notShowing = live.filter(it => _st(it).indexOf("inactive") >= 0
-                                      || _st(it).indexOf("suppress") >= 0
-                                      || _st(it).indexOf("incomplete") >= 0).length;
-    const noCost = live.filter(it => !(it && (it.cogs || (it.profit && it.profit.cogs)))).length;
-    const outOfStock = live.filter(it => {
-      const q = it && it.qty;
-      return q !== undefined && q !== null && q !== "" && Number(q) === 0;
-    }).length;
-    tiles = tile(total, "Live listings", "all")
-          + tile(notShowing, "Not showing", "holds")
-          + tile(noCost, "No cost set", "all")
-          + tile(outOfStock, "Out of stock", "all");
+    tiles = tile(total, "Live listings", "live_all")
+          + tile(live.filter(it => liveItemIs(it, "live_notshowing")).length,
+                 "Not showing", "live_notshowing")
+          + tile(live.filter(it => liveItemIs(it, "live_nocost")).length,
+                 "No cost set", "live_nocost")
+          + tile(live.filter(it => liveItemIs(it, "live_oos")).length,
+                 "Out of stock", "live_oos");
   }
 
   _sumHost.innerHTML =

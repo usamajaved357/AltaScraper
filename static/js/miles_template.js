@@ -503,6 +503,13 @@ function render(){
     const s=_norm(it.sku), a=_norm(it.asin);
     if(s && liveAppSkus.has(s)) return false;   // same SKU already shown as app row
     if(a && liveAppAsins.has(a)) return false;  // or same ASIN
+    // AND THE TILE FILTER, which these were never subject to. passFilter only
+    // ever saw app ROWS, so pressing "Out of stock" hid the matching drafts and
+    // left every catalogue-only tile on screen -- which is most of this view.
+    // Same predicate the tiles count with (listings.js liveItemIs), so the
+    // number on the tile and the number of cards below it agree.
+    if(typeof FILTER !== "undefined" && String(FILTER).indexOf("live_") === 0
+       && typeof liveItemIs === "function" && !liveItemIs(it, FILTER)) return false;
     return true;
   });
   // EVERY card in the live group is now confirmed by Amazon: liveRows only survives
