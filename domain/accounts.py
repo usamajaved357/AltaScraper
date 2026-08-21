@@ -94,6 +94,70 @@ def get_account(cfg: dict, account_id: str, config_path: str = None) -> dict:
     return {}
 
 
+def by_seller_id(cfg: dict, seller_id: str, config_path: str = None,
+                 marketplace: str = "") -> dict:
+    """The workspace that already holds this Amazon merchant token, or {}.
+
+    ONE AMAZON SELLER IS ONE WORKSPACE.
+
+    The OAuth callback names a new workspace after the merchant token Amazon
+    returns -- amzn_<token>_<marketplace> -- so that a seller who authorizes
+    again UPDATES their record instead of leaving a stale one behind. That is
+    right as far as it goes, and it only looked at the id.
+
+    It never asked whether some OTHER workspace already had that seller_id. So
+    authorizing an account that had been set up by hand created a SECOND
+    workspace for the same Amazon seller. Seen on the live app, 21 Aug 2026: the
+    account switcher listed "Nestwell Goods LTD" and "Amazon seller ZAAYT4",
+    which are both A8YN8LJZAAYT4 -- the same company, twice.
+
+    That is not a cosmetic duplicate. The new record carries no output sheet, no
+    VAT rate, no COGS mode and no marketplace list, so every screen behaves
+    differently inside it; listings, orders and costs land in whichever of the
+    two happens to be open; and the account guard treats them as two different
+    accounts, because by id they are.
+
+    MATCHED ON THE SELLER ID ALONE, not on the marketplace. A workspace already
+    holds a LIST of marketplaces -- one seller trading in eleven countries is one
+    account here, and that is the model. `marketplace` only breaks a tie if two
+    workspaces somehow share a seller id, which is the state this exists to stop.
+
+    An empty seller_id matches nothing: Headbanger Lures has none, and "" == ""
+    would hand every unconnected workspace to the first seller who authorized.
+    """
+    want = str(seller_id or "").strip().upper()
+    if not want:
+        return {}
+    hits = [a for a in load_accounts(cfg, config_path)
+            if str(a.get("seller_id") or "").strip().upper() == want]
+    if not hits:
+        return {}
+    if len(hits) > 1 and marketplace:
+        mkt = str(marketplace or "").strip().upper()
+        for a in hits:
+            mk = [str(m or "").strip().upper()
+                  for m in (a.get("marketplaces") or [])]
+            if mkt == str(a.get("default_marketplace") or "").strip().upper() \
+               or mkt in mk:
+                return a
+    return hits[0]
+
+
+def duplicate_sellers(cfg: dict, config_path: str = None) -> dict:
+    """{seller_id: [account ids]} for every Amazon seller held twice.
+
+    Reported rather than repaired. Merging two workspaces moves listings, costs
+    and orders between them, and which one survives is the owner's call, not a
+    thing to decide on their behalf while they are looking at something else.
+    """
+    seen = {}
+    for a in load_accounts(cfg, config_path):
+        sid = str(a.get("seller_id") or "").strip().upper()
+        if sid:
+            seen.setdefault(sid, []).append(str(a.get("id") or ""))
+    return {k: v for k, v in seen.items() if len(v) > 1}
+
+
 def is_oauth(account: dict) -> bool:
     """Did this seller connect by authorizing our app, rather than by having
     their developer credentials typed in?

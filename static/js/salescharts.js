@@ -297,6 +297,35 @@ function _scGapJoin(runs, x, y, colour){
   return out;
 }
 
+/* A DAY THAT IS THE WHOLE MEASUREMENT, drawn as one.
+ *
+ * "check the profit lines on the graph of daily sales, that is not how the
+ *  lines are drawn in other places"
+ *
+ * Profit is known only on days where every unit shipped has a cost recorded --
+ * on jack_uk that is five days out of thirty, none of them next to each other.
+ * So EVERY run is a single point, no solid stroke is ever drawn, and the only
+ * blue on the chart is the dashed bridge between them. Measured in the browser:
+ * four #38bdf8 paths, all 1.2px, dash 3,4, opacity 0.55, and not one solid
+ * segment. Beside Sales -- a confident 2px line with a gradient under it -- the
+ * profit series read as something faint and provisional, when those five points
+ * are as measured as any point on the green line.
+ *
+ * The dashes are RIGHT and stay: the app does not know what the profit was on
+ * the days in between, and a solid line would claim it did. What was wrong is
+ * that the measured days looked like nothing. A 2.6px dot in the series colour
+ * sits on a grid of 1px lines and reads as grid.
+ *
+ * So a lone point gets a ring in its own colour. No background colour is
+ * involved -- a halo painted in the panel's grey would be wrong the moment this
+ * chart sat on anything else.
+ */
+function _scLonePoint(px, py, colour){
+  const cx = px.toFixed(1), cy = py.toFixed(1);
+  return `<circle cx="${cx}" cy="${cy}" r="6" fill="${colour}" opacity="0.18"/>`
+       + `<circle cx="${cx}" cy="${cy}" r="3.2" fill="${colour}"/>`;
+}
+
 function _scCurve(pts){
   const n = pts.length;
   if(n === 0) return "";
@@ -657,7 +686,8 @@ function salesChart(points, opts){
 
   runs.forEach(function(r){
     if(r.length === 1){
-      dots += `<circle cx="${x(r[0].i)}" cy="${y(r[0].v)}" r="2.6" fill="${LINE}"/>`;
+      // ONE point is the whole measurement for that day -- see _scLonePoint.
+      dots += _scLonePoint(x(r[0].i), y(r[0].v), LINE);
       return;
     }
     const d = _scCurve(r.map(pt => ({x: x(pt.i), y: y(pt.v)})));
@@ -1150,6 +1180,10 @@ function salesCombo(o){
   // Lines, each broken wherever a day has no figure -- the same refusal to draw
   // through a gap that the single-metric charts make.
   let linesSvg = "";
+  // WHAT EACH SERIES ACTUALLY LOOKED LIKE, so the key below can say it rather
+  // than promise a solid line the chart never draws. See the note over the
+  // legend swatch.
+  const shape = {};
   lines.forEach(function(l){
     const spec = SC_SERIES[l.key] || {color: "#8fd694", width: 2, dash: ""};
     let run = [], runs = [];
@@ -1159,13 +1193,18 @@ function salesCombo(o){
       else run.push({i: i, v: n});
     });
     if(run.length) runs.push(run);
+    shape[l.key] = {
+      points: runs.reduce(function(a, r){ return a + r.length; }, 0),
+      days: (l.values || []).length,
+      solid: runs.some(function(r){ return r.length > 1; }),
+    };
     // The same dashed bridge the single-metric charts use. Profit is the series
     // this is for: it is known only on days where every unit shipped has a cost,
     // so without it the line is a scatter of unconnected dots.
     linesSvg += _scGapJoin(runs, x, yM, spec.color);
     runs.forEach(function(r){
       if(r.length === 1){
-        linesSvg += `<circle cx="${x(r[0].i)}" cy="${yM(r[0].v)}" r="2.6" fill="${spec.color}"/>`;
+        linesSvg += _scLonePoint(x(r[0].i), yM(r[0].v), spec.color);
         return;
       }
       const d = _scCurve(r.map(p => ({x: x(p.i), y: yM(p.v)})));
@@ -1287,13 +1326,41 @@ function salesCombo(o){
     key += item('<span class="sc-key-sq" style="background:#fbbf24"></span>',
                 bars.label || "Orders", "__bars", !!barsOn);
   }
+  // THE SWATCH SHOWS WHAT WAS DRAWN, not what the series is supposed to look
+  // like.
+  //
+  //     "check the profit lines on the graph of daily sales, that is not how
+  //      the lines are drawn in other places"
+  //
+  // Profit is known only on days where every unit shipped has a cost, so on
+  // these accounts every run is ONE day and no solid stroke is ever drawn --
+  // measured in the browser: four #38bdf8 paths, all 1.2px dashed at 0.55
+  // opacity, not one solid segment. The key meanwhile drew a confident solid
+  // 2px line, exactly like Sales's. So the key and the chart disagreed, and the
+  // key was the one that was wrong.
+  //
+  // Where a series has no continuous stretch, its swatch is the bridge and a
+  // point -- which is what is on the chart -- and the label says on how many
+  // days it was actually known. That number is the useful one: "Profit, 5 of
+  // 30 days" answers the question the faint line raises.
   drawable.forEach(function(l){
     const spec = SC_SERIES[l.key] || {label: l.key, color: "#8fd694", width: 2, dash: ""};
-    const mark = '<svg width="16" height="8" aria-hidden="true">'
-               + '<line x1="0" y1="4" x2="16" y2="4" stroke="' + spec.color
-               + '" stroke-width="' + spec.width + '"'
-               + (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : "") + '/></svg>';
-    key += item(mark, spec.label || l.key, l.key, !scSeriesHidden(cid, l.key));
+    const sh = (shape || {})[l.key] || {};
+    const sparse = sh.points > 0 && !sh.solid;
+    const mark = sparse
+      ? '<svg width="16" height="8" aria-hidden="true">'
+        + '<line x1="0" y1="4" x2="16" y2="4" stroke="' + spec.color
+        + '" stroke-width="1.2" stroke-dasharray="3,4" opacity="0.55"/>'
+        + '<circle cx="8" cy="4" r="2.6" fill="' + spec.color + '"/></svg>'
+      : '<svg width="16" height="8" aria-hidden="true">'
+        + '<line x1="0" y1="4" x2="16" y2="4" stroke="' + spec.color
+        + '" stroke-width="' + spec.width + '"'
+        + (spec.dash ? ' stroke-dasharray="' + spec.dash + '"' : "") + '/></svg>';
+    // PLAIN TEXT. item() escapes the label -- markup here would be shown as
+    // markup, which is how a "helpful" span becomes &lt;span&gt; on screen.
+    const label = (spec.label || l.key)
+      + (sparse && sh.days ? ' · ' + sh.points + ' of ' + sh.days + ' days' : '');
+    key += item(mark, label, l.key, !scSeriesHidden(cid, l.key));
   });
   key += '</div>';
 
