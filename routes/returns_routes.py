@@ -1,9 +1,21 @@
 """routes/returns_routes.py -- why things come back, and what it costs.
 
-    GET  /returns/report    pull it from Amazon for the open account
-    POST /returns/upload    parse a returns file you supply
+    GET  /returns/report      pull it from Amazon for the open account
+    POST /returns/upload      parse a returns file you supply
+    POST /returns/quality     add Amazon's Listing Quality export
+    GET  /returns/export.xlsx the whole analysis as a workbook
 
 Reads only. Nothing here changes a listing or an order.
+
+WHY THE LAST TWO NEED A MEMORY. The export has to write the same figures the
+screen is showing, and the screen's figures came from a file the browser
+uploaded or a report that took two minutes to build. Re-pulling would breach
+Amazon's roughly-one-report-a-minute quota and could quietly answer with a
+different window; asking the browser to post eleven thousand rows back is worse.
+So the parsed returns are kept in memory for the workspace that loaded them,
+and the export writes from exactly what the screen was given. If the app has
+restarted since, the export says so and asks for the file again rather than
+silently exporting something older.
 
 TWO WAYS IN, ON PURPOSE. The automatic pull uses the seller-fulfilled returns
 report, which is what these accounts have. The upload accepts EITHER that file
@@ -18,14 +30,42 @@ import csv
 import datetime as _dt
 import io
 
-from flask import request, jsonify
+from flask import request, jsonify, Response
 
+from domain import returns_intel as _ri
 from domain import returns_view as _rv
 from routes import scope as _scope_mod
 
 # Amazon refuses a wider window on this report -- measured: 90 days comes back
 # FATAL, 60 works.
 MAX_DAYS = 60
+
+# The last analysis each workspace loaded, so the export can write exactly what
+# the screen was shown. Keyed by workspace id, and capped.
+#
+# WHAT THIS COSTS, honestly: a big returns file is 11,509 rows, and holding the
+# parsed rows plus the summary for one workspace is on the order of twenty
+# megabytes. Four is the ceiling because this is a desktop app serving one
+# person -- switching between more than four accounts' returns in a single
+# session is not a thing anyone does, and the fifth one simply asks you to load
+# the report again rather than growing without limit.
+_LAST = {}
+_LAST_MAX = 4
+
+
+def _remember(wsid, **fields):
+    """Keep this workspace's analysis, dropping the oldest if we are over."""
+    if not wsid:
+        return
+    cur = _LAST.setdefault(wsid, {})
+    cur.update(fields)
+    while len(_LAST) > _LAST_MAX:
+        for k in list(_LAST):
+            if k != wsid:
+                _LAST.pop(k, None)
+                break
+        else:
+            break
 
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
@@ -63,21 +103,28 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         From the app's own sales data -- already pulled, already per ASIN. A
         count of returns says nothing on its own; twelve is excellent on four
         thousand orders and a catastrophe on twenty.
+
+        THROUGH sales_data.products, NOT ITS OWN QUERY. This used to hold a
+        second hand-written SELECT over sales_daily that did the same job as
+        domain/sales_data.py's -- two places deciding what "units sold in a
+        period" means, which is exactly the shape CLAUDE.md rule 12 exists to
+        stop. The reshape below is all that is left of it.
         """
-        out = {}
         try:
-            from data import db as _db
-            for r in _db.get_db(CONFIG_PATH).execute(
-                    "SELECT asin, SUM(COALESCE(units,0)) units, "
-                    "       SUM(COALESCE(ordered_sales,0)) sales "
-                    "FROM sales_daily WHERE workspace_id=? AND marketplace=? "
-                    "  AND date>=? AND date<=? AND asin<>'*' GROUP BY asin",
-                    (wsid, mkt, start, end)):
-                out[str(r["asin"])] = {"units": int(r["units"] or 0),
-                                       "sales": float(r["sales"] or 0)}
+            from domain import sales_data as _sd
+            return {str(r["asin"]): {"units": int(r.get("units") or 0),
+                                     "sales": float(r.get("revenue") or 0)}
+                    for r in _sd.products(CONFIG_PATH, wsid, mkt, start, end)}
         except Exception:
             return {}
-        return out
+
+    def _families(aid, mkt):
+        """{asin: family name}, from the one place that map is made."""
+        try:
+            from domain import families as _fam
+            return _fam.by_asin(CONFIG_PATH, aid, mkt)
+        except Exception:
+            return {}
 
     def _fetch(acc, mkt, days):
         """The seller-fulfilled returns report. -> (headers, rows, error)."""
@@ -157,7 +204,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
     def _answer(returns, kind, wsid, mkt, start, end, skipped=0, note="",
                 no_report=""):
-        s = _rv.summarise(returns, _sold(wsid, mkt, start, end))
+        sold = _sold(wsid, mkt, start, end)
+        # wsid IS the account id -- the same value routes/variations_routes.py
+        # passes to families.for_account. There is no separate workspace key.
+        fams = _families(wsid, mkt)
+        s = _rv.summarise(returns, sold, fams)
+        # THE SECOND LAYER, built from the first. Everything under "intel" is
+        # derived from the returns that have just been counted above, never
+        # re-counted -- so a parent total here and a product-line total there
+        # are the same arithmetic.
+        quality = (_LAST.get(wsid) or {}).get("quality") or []
+        s["intel"] = _ri.build(returns, s, fams, sold, quality)
+        _remember(wsid, returns=returns, summary=s, kind=kind,
+                  start=start, end=end, marketplace=mkt)
         s.update({
             "ok": True, "source": kind, "workspace": wsid, "marketplace": mkt,
             "start": start, "end": end, "skipped": skipped, "note": note,
@@ -281,3 +340,129 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                             % (len(returns),
                                "FBA" if kind == "fba" else "seller-fulfilled")))
         return jsonify(out)
+
+    # ---- Amazon's own verdict on the listings -------------------------------
+
+    @app.route("/returns/quality", methods=["POST"])
+    def returns_quality():
+        """Take a Listing Quality (Listing Summary) export.
+
+        A SECOND FILE, DELIBERATELY. Three things on this screen can only come
+        from Amazon's own assessment and appear in no returns report and in no
+        API this app has: whether the "frequently returned item" badge is
+        showing on a listing, Amazon's CX Health grade, and the reason Amazon
+        itself puts at the top. Seller Central > Voice of the Customer >
+        Download.
+
+        It is kept against the analysis already loaded and the screen is told to
+        ask for it again -- it does not re-request the returns report, which is
+        rate-limited to about one a minute.
+        """
+        _acc, wsid, _mkt = _scope()
+        f = (request.files or {}).get("file")
+        text = (f.read().decode("utf-8-sig", "replace") if f is not None
+                else str((request.get_json(silent=True) or {}).get("text") or ""))
+        if not text.strip():
+            return jsonify({"ok": False, "error": "no file"}), 400
+        rows = list(csv.DictReader(io.StringIO(text)))
+        # RECOGNISED BY ITS COLUMNS, not its name -- the same rule the returns
+        # upload uses, and for the same reason.
+        cols = {str(k or "").strip().lower() for k in (rows[0].keys() if rows
+                                                       else [])}
+        if not rows or not ({"asin"} & cols) or not any(
+                "return badge" in c or "cx health" in c or "ncx" in c
+                for c in cols):
+            return jsonify({"ok": False, "error": (
+                "That does not look like a Listing Quality export. It needs an "
+                "ASIN column and at least one of NCX rate, CX Health or Return "
+                "Badge Displayed. Found: %s"
+                % ", ".join(sorted(cols)[:10]))}), 400
+        _remember(wsid, quality=rows)
+        risky = _ri.at_risk(rows)
+        counts = {
+            "rows": len(rows),
+            "badge_showing": sum(1 for a in risky
+                                 if a["state"] == "badge showing"),
+            "at_risk_count": sum(1 for a in risky if a["state"] == "at risk"),
+        }
+        # THE WHOLE ANSWER BACK, REBUILT, not just the counts.
+        #
+        # This used to reply with the counts and let the screen call
+        # returnsLoad() to fold them in -- and returnsLoad() pulls from AMAZON.
+        # On an account whose returns had been UPLOADED rather than pulled, that
+        # threw the uploaded file away and left an empty page: adding a file
+        # deleted the data. Measured in a browser: 13 panels before the quality
+        # upload, 12 and no tables after it.
+        #
+        # The returns are already held for this workspace, so the analysis is
+        # simply built again with the quality file in it and sent back whole.
+        # Nothing is re-pulled and nothing is re-uploaded.
+        got = _LAST.get(wsid) or {}
+        if got.get("returns") is not None:
+            out = _answer(got["returns"], got.get("kind") or "", wsid,
+                          got.get("marketplace") or "", got.get("start") or "",
+                          got.get("end") or "",
+                          note=("Read %d listings from your Listing Quality "
+                                "file — %d already carry Amazon's returns badge "
+                                "and %d are at risk of it."
+                                % (counts["rows"], counts["badge_showing"],
+                                   counts["at_risk_count"])))
+            out.update(counts)
+            return jsonify(out)
+        counts.update({
+            "ok": True, "at_risk": risky,
+            "note": ("Read %d listings. Load a returns report and this folds "
+                     "into the tables." % len(rows)),
+        })
+        return jsonify(counts)
+
+    # ---- the whole thing as a workbook --------------------------------------
+
+    @app.route("/returns/export.xlsx")
+    def returns_export():
+        """Every table on this screen, as an eight-sheet workbook.
+
+        Writes from what the screen was last given, not from a fresh pull --
+        see the note at the top of this file. If nothing has been loaded, it
+        says so in plain English rather than sending an empty spreadsheet,
+        which would look like an account with no returns.
+        """
+        acc, wsid, mkt = _scope()
+        got = _LAST.get(wsid) or {}
+        if not got.get("summary"):
+            return jsonify({"ok": False, "error": (
+                "There is nothing to export yet. Load the returns report on "
+                "this screen first — the export writes exactly what you are "
+                "looking at, so it needs you to be looking at something. (If "
+                "the app has restarted since, load it again.)")}), 400
+        s = got["summary"]
+        try:
+            from domain import returns_excel as _rx
+            data = _rx.to_bytes(s, s.get("intel") or {}, {
+                "account": (acc or {}).get("label") or wsid,
+                "start": got.get("start"), "end": got.get("end"),
+                "source_note": ("Built from %s, %s rows, %s to %s."
+                                % ("an FBA Customer Returns report"
+                                   if got.get("kind") == "fba"
+                                   else "a seller-fulfilled returns report",
+                                   "{:,}".format(len(got.get("returns") or [])),
+                                   got.get("start") or "?",
+                                   got.get("end") or "?")),
+            })
+        except ImportError:
+            return jsonify({"ok": False, "error": (
+                "The spreadsheet library (openpyxl) is not installed, so the "
+                "workbook cannot be built. Everything on the screen is "
+                "unaffected.")}), 500
+        name = "returns-analysis-%s-%s.xlsx" % (
+            (wsid or "account"), (got.get("end") or "")[:10] or "latest")
+        return Response(data, mimetype=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"), headers={
+                "Content-Disposition": 'attachment; filename="%s"' % name,
+                "Content-Length": str(len(data)),
+                # NEVER CACHED. The same URL answers with a different workbook
+                # the moment a different report is loaded, and a browser that
+                # kept the first one would hand back last week's figures under
+                # this week's filename.
+                "Cache-Control": "no-store"})

@@ -3492,6 +3492,38 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .ri-insight-action{ font-size:11px; color:var(--accent2); margin-top:6px; font-weight:500; }
 
 .ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
+
+/* A PRODUCT NAME IN A TABLE CELL, kept to two lines.
+   An Amazon footwear title is 180 characters — "Flux Footwear Men's and Women's
+   Adapt Runner Wide Toe-Box Natural Movement Shoes with Breathable Knit Upper &
+   UltraFlex Midsole Lightweight Shoes for Running, Walking & Everyday Wear -
+   White/Gum". In an eleven-column table that column gets about 100px, so one
+   row became twelve lines tall and a table of twenty products was unreadable
+   scrolling. Two lines, an ellipsis, and the full title in the tooltip. */
+   THE WIDTH GOES ON THE CELL, not on the clamped box. An auto-layout table
+   sizes a column from its content, and a -webkit-box with a min-width simply
+   overflowed the cell it was in -- the returns figure ended up printed through
+   the middle of the product name. The td is given the width; the box inside it
+   fills that and clamps. */
+.ri-namecell{ width:230px; min-width:180px; max-width:260px; }
+.ri-name{
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden; text-overflow:ellipsis;
+  max-width:100%; line-height:1.35;
+}
+
+/* COMMENT THEMES. The bar says how many, the quotes underneath say what they
+   actually wrote — a count on its own tells you a problem exists and the
+   sentences tell you what to change. Built out of the existing .ri-hbar parts
+   so a theme row and a reason row look like the same thing, which they are. */
+.ri-theme{ padding:10px 0; border-bottom:1px solid var(--line); }
+.ri-theme:last-child{ border-bottom:0; }
+.ri-quotes{ margin-top:8px; display:flex; flex-direction:column; gap:5px; }
+.ri-quote{
+  font-size:11.5px; line-height:1.55; color:var(--ink2);
+  padding:5px 9px; border-left:2px solid var(--line);
+  background:var(--panel2); border-radius:0 4px 4px 0;
+}
 .ri-tag{
   display:inline-flex; padding:3px 8px; border-radius:4px;
   font-size:10px; font-weight:600; letter-spacing:.02em; white-space:nowrap;
