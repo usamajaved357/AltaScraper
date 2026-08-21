@@ -451,6 +451,19 @@ function _skLedger(){
               + (r.provisional ? ' <span class="cc" title="Its whole sales '
                  + 'history is inside this window, so the daily rate is thin. '
                  + 'Two sales in three days is not 0.67 a day sustained.">new</span>'
+                 : '')
+              // WHICH RATE THIS IS. A day the shelf was empty is not a day
+              // nobody wanted it, so where there is enough stock history the
+              // rate is per day ON SALE. On a SKU that was out for three weeks
+              // of the month the two answers differ threefold, and the reorder
+              // is built on this number.
+              + (r.velocity_basis === "in-stock days" && r.oos_days
+                 ? ' <span class="cc" title="Per day it was actually on sale. '
+                   + 'This product was out of stock on ' + r.oos_days + ' of the '
+                   + r.observed_days + ' days there is a stock record for, and '
+                   + 'those days are left out — counting them as days nobody '
+                   + 'wanted it would understate the demand and under-order it.'
+                   + '">in-stock</span>'
                  : ''))
       + '</td>'
       + '<td class="r stk-num">'
