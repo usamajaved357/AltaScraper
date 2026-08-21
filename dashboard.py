@@ -4285,6 +4285,16 @@ def build_app(backend=None):
         to take on faith."""
         return jsonify({"ok": True, **_refresher.status()})
 
+    # HOW THE BYTES TRAVEL -- compression, and letting the browser keep what it
+    # already has. Nothing about WHAT is sent; see services/http_perf.py for the
+    # measurement (10.7 MB and 176 requests on a cold load, none of it
+    # compressed, none of it cacheable although all of it was versioned).
+    try:
+        from services import http_perf as _http_perf
+        _http_perf.install(app)
+    except Exception as _hp:
+        print(f"  (compression/caching not installed: {_hp})", flush=True)
+
     # CACHE-BUSTING FOR THE BROWSER.
     # Every page loaded 22 scripts and stylesheets as bare /static/... URLs. A
     # browser that has one cached has no reason to ask for it again, so a deploy
