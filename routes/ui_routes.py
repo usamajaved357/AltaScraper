@@ -67,12 +67,59 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
     # the browser-side router in static/js/shell.js reads the address on load and
     # reopens that workspace and section.
     #
-    # Deliberately an explicit list of sections, not a catch-all rule. A
-    # catch-all would answer a mistyped API path with the dashboard's HTML
-    # instead of an honest 404, which turns a one-line typo into an hour of
-    # debugging.
-    _SECTIONS = ("listings", "imagerefs", "setup", "generate", "sales", "traffic",
-                 "hourly", "ppc", "inventory", "sync", "monitor", "miles")
+    # Deliberately not a catch-all rule. A catch-all would answer a mistyped API
+    # path with the dashboard's HTML instead of an honest 404, which turns a
+    # one-line typo into an hour of debugging.
+    #
+    # BUT THE LIST IS READ FROM THE MENU, NOT TYPED HERE.
+    #
+    # It WAS typed here -- twelve sections, written when there were twelve. The
+    # app has forty. The other twenty-eight were never added, so every one of
+    # them answered a refresh, a bookmark or a second tab with a plain-text 404:
+    #
+    #     weekly, daily, orders, returns, variations, sellerimport, sourcing,
+    #     finance, aiusage, imagestudio, imagelib, trackers, alerts, leading,
+    #     notify, sqp, catalog, compliance, categories, drppc, permissions,
+    #     reimbursements, brief, kwspy, kwasin, ranktracker, kwhistory, asinstudio
+    #
+    # Measured 21 Aug 2026 by asking for all forty: 12 served, 28 refused. That
+    # includes Orders, Finance and every screen added since -- and the bookmark
+    # bar exists to make links to exactly these.
+    #
+    # Two lists of "what screens exist" drift, and these did. The menu is the
+    # one definition: data-sec in templates/dashboard.html, which is also what
+    # the Ctrl+K palette reads (rule 12). A section added to the menu is
+    # deep-linkable the same day, and a path that is not in the menu is still an
+    # honest 404.
+    _TPL = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "templates", "dashboard.html")
+    _sec_cache = {"stamp": None, "secs": ()}
+
+    def _sections():
+        """The section ids the menu offers. Re-read when the template changes.
+
+        Cached on the template's modification time: on a server the file never
+        changes after boot, and locally an edit takes effect on the next request
+        without a restart -- the same rule ASSET_V uses.
+        """
+        try:
+            stamp = os.path.getmtime(_TPL)
+        except OSError:
+            return _sec_cache["secs"] or ("listings",)
+        if _sec_cache["stamp"] != stamp:
+            import re as _re
+            try:
+                with open(_TPL, encoding="utf-8") as fh:
+                    html = fh.read()
+                found = tuple(dict.fromkeys(
+                    _re.findall(r'data-sec="([\w-]+)"', html)))
+            except Exception:
+                found = ()
+            # Never end up with nothing: an unreadable template would otherwise
+            # 404 the whole app, including the screen it is trying to serve.
+            _sec_cache["secs"] = found or ("listings",)
+            _sec_cache["stamp"] = stamp
+        return _sec_cache["secs"]
 
     @app.route("/w/<ws>")
     def workspace_root(ws):
@@ -85,10 +132,11 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         here on purpose -- which workspaces exist is answered by /accounts/list,
         and the browser router reports an unknown one to the user rather than
         silently opening someone else's data."""
-        if section not in _SECTIONS:
+        secs = _sections()
+        if section not in secs:
             return Response(
                 "Unknown section '%s'. Valid sections: %s"
-                % (section, ", ".join(_SECTIONS)),
+                % (section, ", ".join(secs)),
                 status=404, mimetype="text/plain")
         return render_template("dashboard.html")
 

@@ -592,8 +592,15 @@ function render(){
   // it, as a small badge, rather than by cutting the list in half. A listing
   // this app holds no draft of is a fact about that listing, not a category of
   // listing.
-  let liveHtml  = (liveRows.length ? listBlock(liveRows) : "")
-                + (liveCatalog.length ? listBlock(liveCatalog, liveTile) : "");
+  // ONE BOX, not one per group. Each listBlock() opens its own bordered card
+  // with its own header row, so this drew two cards with a repeated
+  // Image/ASIN/Title header in the middle of the list and nothing to say why --
+  // reported as "why do i have two separate boxes/borders containing the
+  // listings?", measured at 40 rows in the first and 7 in the second. The
+  // captions between them went when the separation was rejected; the cards did
+  // not. listBlocks() draws the groups under one header.
+  let liveHtml  = listBlocks([{rows: liveRows},
+                              {rows: liveCatalog, fn: liveTile}]);
   const claimedHtml = claimedRows.length
     ? ('<details class="foldgroup"><summary>'
        + '<i class="ti ti-alert-triangle"></i> ' + claimedRows.length

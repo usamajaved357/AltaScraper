@@ -108,7 +108,7 @@ check("no nav section is left ungoverned", unmapped, [])
 
 print("\n== and the screens that show money are on the money features ==")
 # The specific omission that prompted this, plus its neighbours.
-for sec, feat in (("brief", "sales"), ("overview", "sales"), ("leading", "sales"),
+for sec, feat in (("brief", "sales"), ("leading", "sales"),
                   ("orders", "orders"), ("finance", "finance")):
     truthy("  %-9s -> %s" % (sec, feat),
            re.search(r"\b%s\s*:\s*\"%s\"" % (sec, feat), USERS_JS) is not None)
@@ -116,7 +116,7 @@ for sec, feat in (("brief", "sales"), ("overview", "sales"), ("leading", "sales"
 print("\n== the server governs them too, not just the browser ==")
 # feature_for() returning None means RULES alone decides, and RULES defaults to
 # "any user who may edit".
-for path in ("/brief", "/overview", "/leading", "/orders", "/finance",
+for path in ("/brief", "/leading", "/orders", "/finance",
              "/traffic", "/hourly", "/aiusage", "/sourcing", "/variations"):
     got = G.feature_for(path)
     truthy("  %-12s has a feature area (%s)" % (path, got), bool(got))

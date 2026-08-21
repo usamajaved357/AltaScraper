@@ -1429,9 +1429,65 @@ async function salesLoadWeek(){
   // that width changes, or turning a phone sideways letterboxes it.
   SALES._weekDraw = function(){
     wkOpts.width = scChartWidth("sales_week", 665);
-    host.innerHTML = salesChart(pts, wkOpts) + SALES._weekFoot;
+    host.innerHTML = _wkStrip + salesChart(pts, wkOpts) + SALES._weekFoot;
   };
-  host.innerHTML = salesChart(pts, wkOpts);
+  /* THIS WEEK IN NUMBERS, above the chart -- the same strip Live Sales has.
+   *
+   *     "the weekly graph is smaller than the daily graph"
+   *
+   * Measured: the two charts are IDENTICAL, 579x200 with a 559x160 plot area
+   * and seven gridlines each. What differs is the box around them. Live Sales
+   * carries a revenue/orders/units strip, so its chart starts 164px down a
+   * 429px panel and there is 65px under it. Week to Date has no strip, so its
+   * chart starts at 72px and leaves 145px of nothing below -- a smaller-looking
+   * chart floating in an emptier box, side by side with a full one.
+   *
+   * Filled with the figures rather than by stretching the chart, because the
+   * question the card raises -- "how much this week, then?" -- had only a
+   * percentage badge in the corner to answer it. Every number here is summed
+   * from the reply already fetched; nothing new is asked of the server.
+   *
+   * The comparison is like for like: last week's SAME DAYS, not its whole week.
+   * A Tuesday-to-date against a full Monday-to-Sunday would report a fall every
+   * time, which is what "down 40%" would mean on a Tuesday morning.
+   */
+  const _wkSum = function(series, upto){
+    if(!series || !series.cells) return null;
+    let any = false, tot = 0;
+    series.cells.slice(0, upto === undefined ? series.cells.length : upto)
+      .forEach(function(v){
+        if(v === null || v === undefined) return;
+        any = true; tot += Number(v) || 0;
+      });
+    return any ? tot : null;
+  };
+  const _wkPct = function(now_, was_){
+    if(now_ === null || was_ === null || !was_) return null;
+    return ((now_ - was_) / Math.abs(was_)) * 100;
+  };
+  const _wkCur = (now && now.currency) || "";
+  const _wkDays = cols.length;
+  const _wkBit = function(label, key, kind){
+    const a = _wkSum(_sWeekSeries(now, key));
+    // Last week, cut to the same number of days this week has so far.
+    const b = _wkSum(_sWeekSeries(before, key), _wkDays);
+    if(a === null) return "";
+    const p = _wkPct(a, b);
+    const arrow = (p === null) ? ""
+      : ' <span class="' + (p >= 0 ? "good" : "bad") + '">'
+        + (p >= 0 ? "↑" : "↓") + Math.abs(p).toFixed(1) + '%</span>';
+    return '<span class="todaybit"><b>' + _sEsc(_sNum(a, kind, _wkCur)) + '</b>'
+         + arrow + ' <span class="cc">' + _sEsc(label) + '</span></span>';
+  };
+  const _wkStrip = '<div class="todaystrip">'
+    + _wkBit("revenue", wkKey, "money")
+    + _wkBit("orders", "orders", "count")
+    + _wkBit("units", "units", "count")
+    + '<span class="cc todaynote">' + _wkDays + ' day'
+    + (_wkDays === 1 ? "" : "s") + ' so far'
+    + (cmp ? ' · vs the same days last week' : '') + '</span></div>';
+
+  host.innerHTML = _wkStrip + salesChart(pts, wkOpts);
 
   // The key goes in the card's HEADER, which is where Orbit has it -- "This
   // Week", "Last Week", then the change badge, all on the title's own line.

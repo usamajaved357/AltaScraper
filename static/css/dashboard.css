@@ -4150,3 +4150,12 @@ table.ordtable tbody tr.orddetail > td{
 .bvquiet{display:flex;gap:6px;flex-wrap:wrap;padding:0 0 8px}
 .bvchip{font-size:11px;color:var(--ink3);border:1px solid var(--line);
         border-radius:12px;padding:2px 8px}
+
+/* ON AMAZON, BUT THIS APP HOLDS NO DRAFT OF IT. The fact that explains why the
+   row has fewer buttons than the one above it and a dash in the Compliance
+   column -- reported as "two different types on buttons, some have review
+   option some dont". Quieter than LIVE beside it: it qualifies that badge
+   rather than competing with it. */
+.b-NODRAFT{background:transparent;color:var(--ink3);
+           border:1px dashed var(--line2);font-weight:500;
+           text-transform:none;letter-spacing:0;margin-left:5px}

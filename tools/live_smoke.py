@@ -22,7 +22,6 @@ BASE = "http://127.0.0.1:5055"
 
 # section, the element that must have content, and what "drawn" means for it.
 SCREENS = [
-    ("overview", "ovw_body", "business overview"),
     ("catalog", "catp_body", "product catalog"),
     ("categories", "cats_body", "category explorer"),
     ("drppc", "drp_body", "dr ppc"),
@@ -133,8 +132,7 @@ with sync_playwright() as pw:
     # report "endpoint never called" purely because it had already been called.
     # The first version of this test did exactly that and reported seven false
     # failures.
-    for sec, want in (("overview", "/overview"),
-                      ("catalog", "/catalog/products"),
+    for sec, want in (("catalog", "/catalog/products"),
                       ("trackers", "/trackers"),
                       ("alerts", "/trackers/alerts"),
                       ("leading", "/leading"),

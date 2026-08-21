@@ -4050,12 +4050,21 @@ def build_app(backend=None):
     import routes.compliance_routes as _compliance_routes
     _compliance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                                 _active_account=_active_account, _state=_state)
-    # The business overview -- every account and marketplace, month by month.
-    # The ONE route that deliberately ignores the active account, because "how
-    # is the business doing" is not a question about one of them.
-    import routes.overview_routes as _overview_routes
-    _overview_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
-                              _active_account=_active_account, _state=_state)
+    # THE BUSINESS OVERVIEW IS GONE, on request, 21 Aug 2026.
+    #
+    #     "there is a business overview page, why am i watching this in jack
+    #      reacherd? even if that is a page that should not be displayed in any
+    #      account, you should delete that page entirely for now"
+    #
+    # It was the one screen that deliberately ignored the open account and read
+    # every one of them -- six separate limited companies -- from inside a
+    # single company's workspace. Removed whole: the route, its module, the
+    # screen, its script and its place in the permission table. Nothing else
+    # referenced it. Git holds it if it is ever wanted back.
+    #
+    # What it did that is still worth having, "this account across all its
+    # marketplaces", is /brand/marketplaces, which IS scoped to the open
+    # account.
     # Category Explorer -- where this account's products sit in Amazon's
     # category tree. One Catalog call per product, so populating it is a button
     # and nothing here runs on a timer or on page load.
