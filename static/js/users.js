@@ -164,6 +164,10 @@ const SECTION_FEATURE = {
   // -- which is commercially sensitive in the same way turnover is, so they sit
   // with `traffic` (search performance), exactly as /sqp does.
   kwspy:"traffic", kwasin:"traffic", ranktracker:"traffic", kwhistory:"traffic",
+  // ASIN Studio writes listing copy and creates a draft, so it is a
+  // LISTINGS permission -- not traffic. Somebody who may read search data
+  // should not thereby be able to create listings.
+  asinstudio:"listings",
 };
 
 function featureLevel(feat){

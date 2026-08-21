@@ -3900,6 +3900,11 @@ def build_app(backend=None):
     # and Keyword History. A NEW tool -- it reads domain/brand_analytics.py and
     # stores through domain/keyword_store.py, and changes nothing that exists.
     # Everything is manual: no scheduler, no background worker, no cron.
+    # ASIN Studio: generate a branded listing from any ASIN. A NEW tool --
+    # it does not import, call or modify amazon_listing_generator.py.
+    import routes.asin_studio_routes as _asin_studio_routes
+    _asin_studio_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                 _state=_state, _active_account=_active_account)
     import routes.keywords_routes as _keywords_routes
     _keywords_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                               _state=_state, _active_account=_active_account)

@@ -410,6 +410,8 @@ FEATURE_PATHS = [
     # prefix covers every route in routes/keywords_routes.py including the
     # rank-tracker POSTs.
     ("/keywords",             "traffic"),
+    # ASIN Studio writes copy and creates a draft -- a LISTINGS power.
+    ("/asin-studio",          "listings"),
     ("/brief",                "sales"),      # revenue, profit, weekly movement
     ("/overview",             "sales"),      # it IS revenue, across accounts
     ("/leading",              "sales"),      # yesterday's revenue and units

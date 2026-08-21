@@ -1037,6 +1037,7 @@ function navTo(sec){
   if(sec==="kwasin"){      if(typeof kwAsinOnOpen==="function") kwAsinOnOpen(); }
   if(sec==="ranktracker"){ if(typeof krtOnOpen==="function")    krtOnOpen(); }
   if(sec==="kwhistory"){   if(typeof kwhOnOpen==="function")    kwhOnOpen(); }
+  if(sec==="asinstudio"){  if(typeof asStudioOnOpen==="function") asStudioOnOpen(); }
     if(sec==="ppc")       ppcOnOpen();
     if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
     if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
@@ -1163,7 +1164,9 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "compliance","overview","categories","drppc","permissions",
                        "reimbursements","brief",
                        // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
-                       "kwspy","kwasin","ranktracker","kwhistory"];
+                       "kwspy","kwasin","ranktracker","kwhistory",
+                       // ASIN Studio: any ASIN in, a branded draft out.
+                       "asinstudio"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //

@@ -295,6 +295,7 @@
         <a class="navitem" data-sec="kwspy" href="#" onclick="return navGo(event,'kwspy')" title="The marketplace's top search terms for a week, filtered to your word"><i class="ti ti-radar"></i> Keyword Spy</a>
         <a class="navitem" data-sec="kwasin" href="#" onclick="return navGo(event,'kwasin')" title="The search queries driving clicks and sales for one of your ASINs"><i class="ti ti-target-arrow"></i> ASIN Insights</a>
         <a class="navitem" data-sec="ranktracker" href="#" onclick="return navGo(event,'ranktracker')" title="Keywords and ASINs you follow, checked only when you press the button"><i class="ti ti-chart-line"></i> Rank Tracker</a>
+        <a class="navitem" data-sec="asinstudio" href="#" onclick="return navGo(event,'asinstudio')" title="Generate a branded listing from any ASIN, with every compliance and IP check applied"><i class="ti ti-wand"></i> ASIN Studio</a>
         <a class="navitem" data-sec="kwhistory" href="#" onclick="return navGo(event,'kwhistory')" title="Everything already pulled, week against week. Never calls Amazon"><i class="ti ti-history"></i> Keyword History</a>
         <a class="navitem" data-sec="leading" href="#" onclick="return navGo(event,'leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</a>
         <!-- Every account at once. The only page that ignores which one is
@@ -1418,6 +1419,16 @@
       <div id="ranktrackerbody" style="padding:4px 0"></div>
     </div>
 
+    <!-- ASIN STUDIO. Any ASIN in, a branded DRAFT out. The ASIN is a reference
+         for the product facts (CLAUDE.md Rule 1) -- nothing here claims it. -->
+    <div id="sec_asinstudio" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-wand"></i> ASIN Studio</h2>
+        <div class="sub">Put in any ASIN, optionally its competitors, and the brand you want the listing to carry. Out comes a draft in this account &mdash; copy, attributes and images &mdash; with every compliance and IP check still applied. The ASIN is a <b>reference</b>: this creates a new product under your own brand and never joins that listing.</div></div>
+      </div>
+      <div id="asinstudiobody" style="padding:4px 0"></div>
+    </div>
+
     <div id="sec_kwhistory" class="wspanel">
       <div class="wstoolbar bleed">
         <div><h2><i class="ti ti-history"></i> Keyword History</h2>
@@ -1874,6 +1885,8 @@
 <script src="/static/js/keywordasin.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/ranktracker.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/keywordhistory.js?v={{ ASSET_V }}"></script>
+<!-- ASIN Studio: any ASIN in, a branded draft out. -->
+<script src="/static/js/asinstudio.js?v={{ ASSET_V }}"></script>
 <!-- The Product Catalog: every ASIN, ranked, with the four findings. -->
 <script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
 <!-- Scan a LIVE listing against this app's own compliance rules. -->
