@@ -66,8 +66,13 @@ print("== it is wired in, and last ==")
 truthy("the page loads it", "/static/js/palette.js" in H)
 truthy("  versioned like every other asset",
        "palette.js?v={{ ASSET_V }}" in H)
-_after = H.split("palette.js")[1]
-falsy("  nothing else is loaded after it", "/static/js/" in _after)
+# LATE ENOUGH, not last. escape.js loads after it on purpose -- it must see
+# whether the palette already handled Escape before acting. What matters is
+# that palette.js comes after everything it READS: the sidebar markup,
+# maySeeSection and navTo.
+_before = H.split("palette.js")[0]
+for dep in ("shell.js", "users.js", "sidebar.js"):
+    truthy("  %s is loaded before it" % dep, dep in _before)
 truthy("the styles are in the one stylesheet", "#palette" in C)
 # From the RULES, not from the comment above them -- "#palette" appears in the
 # comment first, and slicing on that measured the prose.

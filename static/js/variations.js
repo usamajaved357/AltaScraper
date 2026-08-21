@@ -184,7 +184,10 @@ function _varSteps(now){
     const n = i + 1, on = n === now, done = n < now;
     h += '<span style="display:inline-flex;align-items:center;gap:5px;'
       +  'font-size:11.5px;padding:4px 9px;border-radius:20px;'
-      +  (on ? 'background:var(--accent);color:#fff;font-weight:600'
+      +  // DARK ON TEAL, not white. White on --accent measured 1.89:1 -- the
+      // step you are ON was the least readable thing on the screen.
+      // --accent-bg is the dark teal made for exactly this pairing: 7.7:1.
+      (on ? 'background:var(--accent);color:var(--accent-bg);font-weight:600'
             : done ? 'border:1px solid var(--ok,#8fd694);color:var(--ok,#8fd694)'
                    : 'border:1px solid #26303f;opacity:.6')
       +  '">' + (done ? '✓' : n) + ' ' + _vesc(t) + '</span>';
@@ -239,7 +242,7 @@ function variationsRender(q){
     + 'oninput="variationsFilter(this.value)" style="font-size:12px;padding:5px 8px;min-width:240px">'
     + '<span class="cc" style="font-size:11.5px">'+VARS.picked.length+' picked</span>'
     + (VARS.picked.length>=2
-        ? '<button class="db-chip" style="background:var(--accent);color:#fff;'
+        ? '<button class="db-chip" style="background:var(--accent);color:var(--accent-bg);'
           + 'border-color:var(--accent)" onclick="variationsStep2()">'
           + 'Next: say what makes them different →</button>'
         : '<span class="cc" style="font-size:11px">Tick at least two products that '
@@ -462,8 +465,8 @@ async function variationsStep2(){
     + '“Ceiling fan with light and remote”, not “…, white”.</div>'
     + '<input id="var_title" placeholder="parent title" style="font-size:12px;padding:5px 8px;width:100%;max-width:560px">';
 
-  h += '<div style="margin-top:14px"><button class="db-chip" '
-    + 'style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+  h += '<div style="margin-top:14px">'
+    + '<button class="db-chip btn-primary" '
     + 'onclick="variationsPreview()">Check it →</button></div></div>';
   h += '<div id="varpreview"></div>';
   host.innerHTML = h;
@@ -527,7 +530,7 @@ async function variationsPreview(quiet){
       + '</div>'
       + _varParentAttrs(j)
       + '</div>';
-    h += '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+    h += '<button class="db-chip btn-primary" '
       + 'onclick="variationsApply()">Create the family on Amazon</button>'
       + '<span id="var_applystatus" class="cc" style="margin-left:8px;font-size:11.5px"></span>';
   }

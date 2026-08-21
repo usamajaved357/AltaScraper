@@ -626,7 +626,7 @@ function _ilDraw(){
      + '<div id="il_slotpick"></div>';
   if(IMGLIB.live){
     h += '<div style="margin-top:16px;border-top:1px solid #26303f;padding-top:12px">'
-       + '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+       + '<button class="db-chip btn-primary" '
        + 'onclick="ilPushLive()">Push main image to the live Amazon listing</button>'
        // The status line and the picker host live ABOVE, outside this block, so
        // there is exactly one of each. Two elements sharing an id means
@@ -979,7 +979,7 @@ function _ilTileSlotPicker(idx, f, isMain, ptIndex){
     +  '<div id="il_slotnote_' + idx + '" class="cc" style="font-size:9.5px;'
     +  'margin-top:3px;line-height:1.35"></div>'
     +  '<button class="db-chip" style="margin-top:4px;font-size:10.5px;width:100%;'
-    +  'background:var(--accent);color:#fff;border-color:var(--accent)" '
+    +  'background:var(--accent);color:var(--accent-bg);border-color:var(--accent)" '
     +  'onclick="ilSendTile(' + idx + ',' + jsArg(f.url) + ',' + jsArg(f.group || "") + ')">'
     +  '<i class="ti ti-cloud-upload"></i> Send to Amazon</button>';
   return h;

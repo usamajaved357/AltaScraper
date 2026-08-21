@@ -51,7 +51,7 @@
       '<div class="cc" style="color:var(--muted);margin-top:2px">'+_esc(meta)+'</div>'+
       imgHtml + specHtml +
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+
-        (imgs.length?'<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="asinToStudio()"><i class="ti ti-photo"></i> Open Image Studio</button>':'')+
+        (imgs.length?'<button class="db-chip btn-primary" onclick="asinToStudio()"><i class="ti ti-photo"></i> Open Image Studio</button>':'')+
         '<button class="db-chip" onclick="asinGenerate()"><i class="ti ti-wand"></i> Generate content</button>'+
       '</div>'+
       '<div id="asin_copy" style="margin-top:12px"></div>';
