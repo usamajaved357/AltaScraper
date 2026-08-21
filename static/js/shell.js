@@ -362,6 +362,10 @@ async function enterAccount(accountId){
   // listings are not known yet, and the previous account's are not an
   // approximation of them.
   ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
+  // ...and this account's drafts are not loaded either. Without clearing it, the
+  // previous account's "loaded" would let the new account's empty grid claim
+  // "no listings" before a single row had been asked for.
+  if(typeof ROWS_LOADED !== "undefined") ROWS_LOADED = false;
   if(typeof DUP_INDEX!=="undefined" && DUP_INDEX && DUP_INDEX.clear) DUP_INDEX.clear();
   var _g=document.getElementById("grid"); if(_g) _g.innerHTML="";
   var _sm=document.getElementById("summary"); if(_sm) _sm.innerHTML="";

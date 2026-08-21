@@ -995,16 +995,25 @@ function summary(){
   // It does not, so the live view gets tiles about LIVE listings: how many
   // Amazon is not currently showing, how many have no cost (which is what makes
   // every profit figure wrong), and how many have run out.
+  // A COUNT OF ZERO IS A CLAIM. While the drafts are still in flight, ROWS is
+  // empty and every one of these tiles confidently reports 0 -- four wrong
+  // numbers above a grid that is about to fill. An em-dash says "not yet",
+  // which is the truth for the second it lasts.
+  //
+  //     "selvora dont have zero drafts but why was that error message
+  //      appearing ... why that 1 sec gap is there"
+  const _pending = (typeof _rowsStillComing === "function") && _rowsStillComing();
+  const _n = v => _pending ? "—" : v;
   let tiles;
   if(_draftsView){
-    tiles = tile(total, "Drafts", "all")
-          + tile(c.NEEDS_REVIEW, "Needs review", "review")
+    tiles = tile(_n(total), "Drafts", "all")
+          + tile(_n(c.NEEDS_REVIEW), "Needs review", "review")
           // APPROVED **and** API_READY. The filter has always matched both, but
           // the tile counted only APPROVED -- so a row that had passed Amazon's
           // preview showed as "0 ready to submit", which is the one number that
           // decides whether there is anything to do.
-          + tile(c.APPROVED + c.API_READY, "Ready to submit", "approved")
-          + tile(c.HOLD + c.ERROR, "Blocked or errored", "holds");
+          + tile(_n(c.APPROVED + c.API_READY), "Ready to submit", "approved")
+          + tile(_n(c.HOLD + c.ERROR), "Blocked or errored", "holds");
   }else{
     // THREE OF THESE FOUR TILES USED TO SEND THE SAME FILTER.
     //
