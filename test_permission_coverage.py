@@ -107,11 +107,34 @@ if unmapped:
 check("no nav section is left ungoverned", unmapped, [])
 
 print("\n== and the screens that show money are on the money features ==")
-# The specific omission that prompted this, plus its neighbours.
+# THE RESOLVED FEATURE, not the literal one. Every page now names ITSELF and
+# inherits its area (auth/users.py FEATURE_PARENT), so `brief: "sales"` became
+# `brief: "brief"` with brief's parent being sales. What matters has not
+# changed and is what is asserted: follow the chain and it has to END at the
+# money feature, so a user with sales="none" still cannot open it.
+from auth import users as _AU
+
+
+def _root(sec):
+    """The area a section ultimately answers to, following parents."""
+    m2 = re.search(r'\b%s\s*:\s*"(\w+)"' % sec, USERS_JS)
+    f = m2.group(1) if m2 else None
+    seen = set()
+    while f and f in _AU.FEATURE_PARENT and f not in seen:
+        seen.add(f)
+        f = _AU.FEATURE_PARENT[f]
+    return f
+
+
 for sec, feat in (("brief", "sales"), ("leading", "sales"),
-                  ("orders", "orders"), ("finance", "finance")):
-    truthy("  %-9s -> %s" % (sec, feat),
-           re.search(r"\b%s\s*:\s*\"%s\"" % (sec, feat), USERS_JS) is not None)
+                  ("orders", "sales"), ("finance", "sales")):
+    got = _root(sec)
+    check("  %-9s answers to %s" % (sec, feat), got, feat)
+# And each of them can now be set on its own, which is the point of the change.
+for sec in ("brief", "leading", "orders", "finance", "returns"):
+    m2 = re.search(r'\b%s\s*:\s*"(\w+)"' % sec, USERS_JS)
+    check("  %-9s has a switch of its own" % sec,
+          (m2.group(1) if m2 else None), sec)
 
 print("\n== the server governs them too, not just the browser ==")
 # feature_for() returning None means RULES alone decides, and RULES defaults to

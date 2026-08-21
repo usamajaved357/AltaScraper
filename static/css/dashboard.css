@@ -3498,6 +3498,26 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 
 .ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
 
+/* PERMISSIONS, one group per sidebar group, with a control over each.
+   Forty-two pages is a wall as a flat list; grouped the way the menu groups
+   them, it reads the way the person deciding already thinks. */
+.permgroup{
+  border:1px solid var(--line); border-radius:8px;
+  padding:8px 10px 10px; margin:10px 0;
+}
+.permgrp{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding-bottom:7px; margin-bottom:7px; border-bottom:1px solid var(--line);
+}
+.permgrp-title{
+  font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  font-weight:700; color:var(--ink2);
+}
+.permgrp-n{ font-size:10.5px; }
+.permgrp-set{ display:flex; align-items:center; gap:5px; margin-left:auto; }
+.permgrp-set .cc{ font-size:10.5px; }
+.permgrp-set .db-chip{ padding:2px 8px; font-size:10.5px; }
+
 /* THE ASIN MONITOR, brought onto the app's own surfaces.
    It had its own header trio, its own button shape and eight hardcoded hex
    colours; everything below is tokens, so it follows the theme like every other

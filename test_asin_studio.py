@@ -169,8 +169,13 @@ check("the routes need the listings permission",
       G.feature_for("/asin-studio/generate"), "listings")
 check("  including create-draft", G.feature_for("/asin-studio/create-draft"), "listings")
 U = read("static", "js", "users.js")
-truthy("and the nav item hides on the same permission",
-       'asinstudio:"listings"' in U)
+# The section names ITSELF now and inherits listings, so it can be granted on
+# its own -- and with nothing set it still resolves to listings, exactly as the
+# literal mapping did.
+truthy("and the nav item has a switch of its own", 'asinstudio:"asinstudio"' in U)
+from auth import users as _AU
+check("  which falls back to listings", _AU.FEATURE_PARENT.get("asinstudio"),
+      "listings")
 
 print("\n== the screen is reachable and visible ==")
 S = read("static", "js", "shell.js")
