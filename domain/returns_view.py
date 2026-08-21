@@ -34,7 +34,7 @@ that went back -- so this reports the real figure and says which it is.
 """
 import re
 
-# Amazon's reason codes, grouped into the four things you would actually DO
+# Amazon's reason codes, grouped into the things you would actually DO
 # about them. The classification is the point of the section: fifty reason codes
 # are a list, four causes are a decision.
 #
@@ -60,10 +60,30 @@ NATURE_RULES = (
         # Seen on a live account as AMZ-PG-BAD-DESC. Anything Amazon calls a
         # description problem is a listing problem, whatever it prefixes it with.
         "BAD_DESC", "DESCRIPTION", "WRONG_SIZE_OR_COLOR")),
+    # SIZE IS NOT A PREFERENCE. It was filed under Customer Preference, whose
+    # advice is "nothing went wrong, they changed their mind" -- and that sends
+    # you nowhere. A shoe that did not fit is a fixable listing problem: a size
+    # chart, a "runs small" line, a photo on a foot.
+    #
+    # MEASURED on a real footwear account, 11,509 returns over eight months:
+    # APPAREL_TOO_SMALL 5,388 and APPAREL_TOO_LARGE 1,835 -- 7,223 of them, 63%
+    # of everything that came back, and 92% of it came back SELLABLE, which is
+    # the proof the product was fine. Filed as preference, the biggest single
+    # thing wrong with that business was invisible; filed as sizing, the ratio
+    # (2.9 too-small for every too-large) says which way to move the guidance.
+    #
+    # Before Customer Preference, because POOR_FIT would otherwise be caught by
+    # it -- the most specific cause first, the same rule the shipping codes are
+    # here for.
+    ("Sizing & Fit", (
+        "APPAREL_TOO_SMALL", "APPAREL_TOO_LARGE", "POOR_FIT", "TOO_SMALL",
+        "TOO_LARGE", "SIZE_TOO", "WRONG_SIZE", "DID_NOT_FIT")),
     ("Customer Preference", (
-        "UNWANTED_ITEM", "NO_LONGER_NEEDED", "FOUND_BETTER_PRICE", "POOR_FIT",
-        "APPAREL_TOO_SMALL", "APPAREL_TOO_LARGE", "SWITCHEROO", "CHANGED_MIND",
-        "ACCIDENTAL_ORDER", "BOUGHT_BY_MISTAKE", "NO_REASON_GIVEN")),
+        "UNWANTED_ITEM", "NO_LONGER_NEEDED", "FOUND_BETTER_PRICE",
+        "SWITCHEROO", "CHANGED_MIND", "DID_NOT_LIKE_FABRIC",
+        "DID_NOT_LIKE_COLOR", "APPAREL_STYLE", "STYLE",
+        "ACCIDENTAL_ORDER", "BOUGHT_BY_MISTAKE", "NO_REASON_GIVEN",
+        "UNAUTHORIZED_PURCHASE", "MISORDERED", "EXTRA_ITEM")),
 )
 
 # What each cause tells you to do. Shown beside the count, because a bar chart of
@@ -75,6 +95,11 @@ NATURE_ACTION = {
     "Listing Content": ("Your listing set the wrong expectation. This is the "
                         "cheapest kind to fix: the photos, the title, the "
                         "specifics. Fix it once and the returns stop."),
+    "Sizing & Fit": ("It did not fit. Almost always fixable in the listing "
+                     "rather than the product: a size chart, a line saying "
+                     "which way it runs, a photo worn. Watch the ratio of "
+                     "too-small to too-large: it says which way to move the "
+                     "guidance."),
     "Customer Preference": ("Nothing went wrong — they changed their mind. Some "
                            "of this is the cost of doing business; a lot of it "
                            "means you are attracting the wrong buyer."),
@@ -111,6 +136,50 @@ def nature_of(reason):
             if k in r:
                 return name
     return "Unclassified"
+
+
+def is_sellable(disposition):
+    """Can this returned unit be sold again? -> True / False / None.
+
+    Amazon grades a returned unit when it receives it, and SELLABLE is its own
+    word for "this can go back on the shelf". Everything else it writes there --
+    CUSTOMER_DAMAGED, DEFECTIVE, CARRIER_DAMAGED, DAMAGED -- is stock that
+    cannot be, and the split between the two is the single most useful thing in
+    an FBA returns file: a high return rate that comes back sellable is a
+    listing problem, and the same rate coming back damaged is a product problem.
+
+    None, not False, when there is no grade at all. A seller-fulfilled return
+    was never inspected by Amazon, and counting an ungraded return as unsellable
+    would invent damage that nobody reported.
+
+    ONE definition, because three screens and an export ask the question
+    (CLAUDE.md rule 12), and "not sellable" is easy to write two ways.
+    """
+    s = str(disposition or "").strip().upper()
+    if not s:
+        return None
+    return s == "SELLABLE"
+
+
+def tidy_comment(text):
+    """A customer comment, made readable, with nothing removed.
+
+    Amazon joins the answers to its own return questionnaire with vertical bars:
+
+        Too Small|Width too narrow|No
+        Too Small|Length too short|Nothing inaccurate just wrong size
+
+    On screen that reads like a log line rather than something a person wrote,
+    and this page's whole argument is that these are worth reading. The pipes
+    become middle dots and the whitespace is collapsed. Nothing is dropped, and
+    the text is never truncated here -- where a quote has to be cut short, the
+    place that is doing the cutting does it, so it is visible in that code.
+
+    One definition, because the raw comment list and the theme quotes both show
+    the same sentences and must show them the same way (CLAUDE.md rule 12).
+    """
+    s = re.sub(r"\s*\|\s*", " · ", str(text or ""))
+    return re.sub(r"\s+", " ", s).strip(" ·\t\r\n")
 
 
 def _num(v):
@@ -287,6 +356,7 @@ def summarise(returns, sold_by_asin=None, family_by_asin=None):
     by_asin, comments = {}, []
     units = refunded = 0.0
     have_refunds = False
+    sellable_units = graded_units = 0
 
     for r in returns or []:
         q = int(r.get("qty") or 1)
@@ -304,17 +374,33 @@ def summarise(returns, sold_by_asin=None, family_by_asin=None):
             have_refunds = True
         if r.get("comment"):
             comments.append({"asin": r.get("asin"), "sku": r.get("sku"),
-                             "reason": r.get("reason"), "text": r["comment"]})
+                             "reason": r.get("reason"),
+                             "text": tidy_comment(r["comment"])})
 
         key = r.get("asin") or r.get("sku")
         a = by_asin.setdefault(key, {
             "asin": r.get("asin"), "sku": r.get("sku"), "name": r.get("name"),
-            "returns": 0, "refunded": 0.0, "reasons": {}, "natures": {}})
+            "returns": 0, "refunded": 0.0, "reasons": {}, "natures": {},
+            # THE DISPOSITION, PER PRODUCT, counted in the one pass that is
+            # already counting it for the account as a whole. It was only ever
+            # totalled; a per-product split is what says WHICH product is coming
+            # back damaged, and the account-wide figure cannot. Counted here
+            # rather than in a second walk of the same rows, so a product's
+            # sellable count and the account's can never disagree (rule 12).
+            "sellable": 0, "unsellable": 0})
         a["returns"] += q
         if r.get("refunded") is not None:
             a["refunded"] = round(a["refunded"] + float(r["refunded"]), 2)
         a["reasons"][r["reason"]] = a["reasons"].get(r["reason"], 0) + q
         a["natures"][r["nature"]] = a["natures"].get(r["nature"], 0) + q
+        ok = is_sellable(r.get("disposition"))
+        if ok is True:
+            a["sellable"] += q
+            sellable_units += q
+            graded_units += q
+        elif ok is False:
+            a["unsellable"] += q
+            graded_units += q
         if not a["name"] and r.get("name"):
             a["name"] = r["name"]
 
@@ -391,6 +477,15 @@ def summarise(returns, sold_by_asin=None, family_by_asin=None):
         "reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])),
         "natures": dict(sorted(natures.items(), key=lambda kv: -kv[1])),
         "dispositions": dict(sorted(dispositions.items(), key=lambda kv: -kv[1])),
+        # THE HEADLINE SPLIT, worked out here rather than by whoever is drawing
+        # it. The screen used to derive this with its own regex over the
+        # disposition names and the insight text asked for a key nothing wrote,
+        # so the same figure had two definitions and one of them was missing.
+        # None -- not 0% -- with no FBA report: nothing was graded, which is not
+        # the same as nothing being sellable.
+        "sellable_pct": (round(sellable_units / graded_units * 100, 1)
+                         if graded_units else None),
+        "graded": graded_units,
         "statuses": dict(sorted(statuses.items(), key=lambda kv: -kv[1])),
         "asins": rows,
         "comments": comments,

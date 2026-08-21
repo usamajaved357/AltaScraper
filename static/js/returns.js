@@ -28,6 +28,11 @@ function _rPct(v){
 }
 
 const RET_NATURE_COLOUR = {
+  // SIZING WAS MISSING HERE. domain/returns_view.py grew a "Sizing & Fit" cause
+  // -- the biggest one on a footwear account, 63% of everything -- and with no
+  // colour against its name every chart drew it in the grey reserved for
+  // "Unclassified", which is the one thing it is not.
+  "Sizing & Fit":        "#f0b429",
   "Product Quality":     "#ef5350",
   "Listing Content":     "#f5a623",
   "Customer Preference": "#4f8cff",
@@ -118,6 +123,70 @@ async function returnsUploadFile(input){
     if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
   }finally{ input.value = ""; }
+}
+
+/* ---- Amazon's own verdict, and the workbook -----------------------------
+ *
+ * The Voice of the Customer export is the ONLY place three columns on this page
+ * can come from: whether the "frequently returned item" badge is showing on a
+ * listing, Amazon's CX Health grade, and the reason Amazon itself puts at the
+ * top. None of it is in either returns report, and none of it is in any API
+ * this app has. So it is a third upload rather than something inferred.
+ */
+function returnsQualityOpen(){
+  const i = document.getElementById("ret_quality");
+  if(i) i.click();
+}
+
+async function returnsQualityFile(input){
+  const f = input && input.files && input.files[0];
+  if(!f) return;
+  try{
+    const fd = new FormData();
+    fd.append("file", f);
+    const j = await (await fetch("/returns/quality", {method:"POST", body: fd})).json();
+    if(!j || !j.ok){
+      toast((j && j.error) || "Could not read that file");
+      return;
+    }
+    toast("Read " + j.rows + " listings — " + j.badge_showing + " already badged, "
+          + j.at_risk_count + " at risk.");
+    // THE REPLY IS THE WHOLE ANSWER, rebuilt server-side with the quality file
+    // folded in. It is NOT patched together here -- the at-risk list and the
+    // SKU table's three Amazon columns come from the same analysis the rest of
+    // the page does, so there is one place that decides what "at risk" means.
+    //
+    // AND IT IS NOT returnsLoad(). That pulls from Amazon, which on an account
+    // whose returns were UPLOADED threw the uploaded file away: adding a file
+    // emptied the page.
+    if(j.total_returns !== undefined){ RET.data = j; returnsRender(); }
+  }catch(e){
+    toast(String(e));
+  }finally{ input.value = ""; }
+}
+
+/* The workbook is built from what the screen was LAST GIVEN, server-side, so it
+   cannot disagree with what is on the page. A plain navigation rather than a
+   fetch, so the browser's own download handles it -- and an error comes back as
+   JSON, which is why the reply is sniffed first. */
+async function returnsExport(){
+  try{
+    const r = await fetch("/returns/export.xlsx");
+    const type = r.headers.get("content-type") || "";
+    if(!r.ok || type.indexOf("json") >= 0){
+      const j = await r.json().catch(function(){ return null; });
+      toast((j && j.error) || "Could not build the workbook");
+      return;
+    }
+    const blob = await r.blob();
+    const name = (r.headers.get("content-disposition") || "")
+      .replace(/.*filename="?([^"]+)"?.*/, "$1") || "returns-analysis.xlsx";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }catch(e){ toast(String(e)); }
 }
 
 function _retBars(obj, colourFn, total){
@@ -273,16 +342,15 @@ function returnsRender(){
     : '<span class="ri-badge ' + (rate > 10 ? "red" : rate > 5 ? "amber" : "teal")
       + '">' + (rate > 10 ? "Above avg" : rate > 5 ? "Watch" : "Below avg")
       + '</span>';
-  const sellable = (function(){
-    // "Sellable" is a DISPOSITION, and only an FBA file carries it. Said as
-    // unavailable rather than guessed from the reason codes.
-    const s = (d.dispositions || {});
-    const good = Object.keys(s).filter(function(k){
-      return /sellable|good/i.test(k) && !/un/i.test(k);
-    }).reduce(function(a, k){ return a + s[k]; }, 0);
-    const all = Object.keys(s).reduce(function(a, k){ return a + s[k]; }, 0);
-    return all ? Math.round((good / all) * 100) : null;
-  })();
+  // "Sellable" is a DISPOSITION, and only an FBA file carries it. Said as
+  // unavailable rather than guessed from the reason codes.
+  //
+  // FROM THE SERVER, not worked out here. This used to run its own regex over
+  // the disposition names — a third place deciding what "sellable" means, after
+  // domain/returns_view.is_sellable and the per-product split. One definition,
+  // one figure (rule 12).
+  const sellable = (d.sellable_pct === null || d.sellable_pct === undefined)
+                 ? null : Math.round(Number(d.sellable_pct));
 
   h += '<div class="ri-kpis">'
     + _riKpi("Total returns", noData ? "212" : totalRet,
@@ -418,18 +486,42 @@ function returnsRender(){
     + '</div>';
 
   // ---- the per-product table -----------------------------------------
+  // THREE OF THESE COLUMNS WERE ALWAYS BLANK. The table asked each row for
+  // `title`, `units_sold` and `top_reason`; the server has never sent any of
+  // those three. It sends `name`, `ordered`, and a `reasons` object. So the
+  // Product column, the Sold column and the Top reason column were empty on
+  // every row of every account, and sorting by two of them did nothing --
+  // silently, because a blank cell in a table of real numbers reads as "no
+  // value" rather than as a fault. Found by comparing the keys this file reads
+  // against the keys domain/returns_view.py's summarise() actually writes.
   const asins = d.asins || [];
+  const topReason = function(r){
+    const rs = r.reasons || {};
+    let best = "", n = 0;
+    Object.keys(rs).forEach(function(k){ if(rs[k] > n){ n = rs[k]; best = k; } });
+    return best ? (best.replace(/_/g, " ").toLowerCase() + " (" + n + ")") : "";
+  };
   let table;
   if(asins.length){
-    const cols = [["title", "Product"], ["asin", "ASIN"], ["returns", "Returns"],
-                  ["units_sold", "Sold"], ["rate", "Rate"],
-                  ["refunded", "Refunded"], ["top_reason", "Top reason"]];
+    const cols = [["name", "Product"], ["asin", "ASIN"], ["returns", "Returns"],
+                  ["ordered", "Sold"], ["rate", "Rate"],
+                  ["sellable", "Sellable"], ["refunded", "Refunded"],
+                  ["", "Top reason"]];
     const sorted = asins.slice().sort(function(a, b){
       const k = RET.sort || "returns";
+      // TEXT SORTS AS TEXT. Number("Flux Footwear…") is NaN, so sorting by
+      // Product used to compare NaN with NaN and leave the order untouched.
+      if(k === "name" || k === "asin"){
+        return String(a[k] || "").localeCompare(String(b[k] || ""));
+      }
       return (Number(b[k]) || 0) - (Number(a[k]) || 0);
     });
     table = '<div style="overflow-x:auto"><table class="kv" style="width:100%">'
       + '<thead><tr>' + cols.map(function(c){
+          if(!c[0]){
+            return '<th style="text-align:left;font-size:10.5px;padding:6px 8px;'
+              + 'white-space:nowrap">' + _rEsc(c[1]) + '</th>';
+          }
           return '<th style="text-align:left;font-size:10.5px;padding:6px 8px;'
             + 'cursor:pointer;white-space:nowrap" onclick="returnsSort('
             + jsArg(c[0]) + ')">' + _rEsc(c[1])
@@ -437,14 +529,21 @@ function returnsRender(){
       + '</tr></thead><tbody>'
       + sorted.map(function(r){
           return '<tr>'
-            + '<td style="padding:6px 8px;max-width:260px">' + _rEsc(r.title || "") + '</td>'
+            + '<td class="ri-namecell" style="padding:6px 8px"><div class="ri-name" title="'
+            + _rEsc(r.name || "") + '">' + _rEsc(r.name || "") + '</div></td>'
             + '<td style="padding:6px 8px"><code style="font-size:11px;color:var(--accent2)">'
             + _rEsc(r.asin || "") + '</code></td>'
             + '<td style="padding:6px 8px">' + (r.returns || 0) + '</td>'
-            + '<td style="padding:6px 8px">' + (r.units_sold || "—") + '</td>'
+            + '<td style="padding:6px 8px">'
+            + (r.ordered ? Number(r.ordered).toLocaleString() : "—") + '</td>'
             + '<td style="padding:6px 8px">' + _rPct(r.rate) + '</td>'
+            // Blank, not zero, where nothing was graded: an ungraded return and
+            // a return graded unsellable are different facts.
+            + '<td style="padding:6px 8px">'
+            + ((r.sellable || r.unsellable)
+                ? (r.sellable + ' / ' + (r.sellable + r.unsellable)) : "—") + '</td>'
             + '<td style="padding:6px 8px">' + _rMoney(r.refunded) + '</td>'
-            + '<td style="padding:6px 8px">' + _rEsc(r.top_reason || "") + '</td>'
+            + '<td style="padding:6px 8px">' + _rEsc(topReason(r)) + '</td>'
             + '</tr>'; }).join("")
       + '</tbody></table></div>';
   } else {
@@ -504,7 +603,9 @@ function returnsRender(){
         const rateCls = (L.rate === null || L.rate === undefined) ? ""
           : (L.rate >= 10 ? "red" : L.rate >= 6 ? "amber" : "teal");
         return '<tr' + (lines.length ? "" : ' class="ri-sample"') + '>'
-          + '<td style="padding:6px 8px">' + _rEsc(L.line) + '</td>'
+          + '<td class="ri-namecell" style="padding:6px 8px">'
+          + '<div class="ri-name" title="' + _rEsc(L.line) + '">'
+          + _rEsc(L.line) + '</div></td>'
           + '<td style="padding:6px 8px">' + (L.returns || 0) + '</td>'
           + '<td style="padding:6px 8px">' + (L.ordered ? Number(L.ordered).toLocaleString() : "—") + '</td>'
           + '<td style="padding:6px 8px">'
@@ -537,11 +638,171 @@ function returnsRender(){
                            : (noData ? "sample" : "nothing to group"), lineTable)
     + '</div>';
 
+  // ---- BY PARENT: the same returns, one row per product ----------------
+  //
+  // The Product Line table above answers "which family", and this answers "and
+  // in which DIRECTION". They are the same grouping -- domain/returns_intel.py
+  // keys on the identical line_of() call, so the totals cannot drift -- and
+  // this one carries the three things the other has no room for: how many child
+  // ASINs are inside, how the sizing splits, and whether it is getting worse.
+  const intel = d.intel || {};
+  const parents = intel.parents || [];
+  const months = intel.months || [];
+  const trendChip = function(t){
+    if(t === "increasing") return '<span class="ri-badge red">rising</span>';
+    if(t === "decreasing") return '<span class="ri-badge teal">falling</span>';
+    if(t === "stable")     return '<span class="ri-badge">steady</span>';
+    return '<span class="cc" style="font-size:10.5px">too few months</span>';
+  };
+  if(parents.length){
+    const pTable = '<div style="overflow-x:auto"><table class="kv" style="width:100%">'
+      + '<thead><tr><th>Product</th><th>Returns</th><th>Ordered</th><th>Rate</th>'
+      + '<th>Share</th><th>Children</th><th>Sellable</th><th>Too small</th>'
+      + '<th>Too large</th><th>Ratio</th><th>Trend</th></tr></thead><tbody>'
+      + parents.map(function(p){
+          const rs = p.reasons || {};
+          const small = rs.APPAREL_TOO_SMALL || 0, large = rs.APPAREL_TOO_LARGE || 0;
+          const rateCls = (p.return_rate === null || p.return_rate === undefined) ? ""
+            : (p.return_rate >= 25 ? "red" : p.return_rate >= 15 ? "amber" : "teal");
+          return '<tr>'
+            + '<td class="ri-namecell" style="padding:6px 8px"><div class="ri-name" title="'
+            + _rEsc(p.label) + '">' + _rEsc(p.label) + '</div></td>'
+            + '<td style="padding:6px 8px">' + (p.returns || 0) + '</td>'
+            + '<td style="padding:6px 8px">'
+            + (p.ordered ? Number(p.ordered).toLocaleString() : "—") + '</td>'
+            + '<td style="padding:6px 8px">'
+            + (rateCls ? '<span class="ri-badge ' + rateCls + '">' + _rPct(p.return_rate)
+                         + '</span>' : _rPct(p.return_rate)) + '</td>'
+            + '<td style="padding:6px 8px">' + _rPct(p.share) + '</td>'
+            + '<td style="padding:6px 8px">' + (p.child_count || 0) + '</td>'
+            + '<td style="padding:6px 8px">' + _rPct(p.sellable_pct) + '</td>'
+            + '<td style="padding:6px 8px">' + (small || "—") + '</td>'
+            + '<td style="padding:6px 8px">' + (large || "—") + '</td>'
+            + '<td style="padding:6px 8px">'
+            + (large ? (small / large).toFixed(1) + ":1" : "—") + '</td>'
+            + '<td style="padding:6px 8px">' + trendChip(p.trend) + '</td>'
+            + '</tr>'; }).join("")
+      + '</tbody></table></div>'
+      + '<div class="cc" style="font-size:11px;margin-top:8px;line-height:1.5">'
+      + 'Grouped by ' + _rEsc((parents[0] || {}).grouped_by || "the product name")
+      + '. Trend compares the last three complete months with the first three, '
+      + 'so a quarter either way is noise and anything past that is a direction.'
+      + '</div>';
+    h += '<div style="margin-bottom:24px">'
+      + _riCard("By Parent Product",
+                parents.length + " product line" + (parents.length === 1 ? "" : "s"),
+                pTable)
+      + '</div>';
+
+    // ---- the same rows, month by month ---------------------------------
+    if(months.length > 1){
+      const part = intel.partial_last_month;
+      const mTable = '<div style="overflow-x:auto"><table class="kv" style="width:100%">'
+        + '<thead><tr><th>Product</th>'
+        + months.map(function(m, i){
+            const last = (i === months.length - 1);
+            return '<th' + ((last && part)
+              ? ' title="This month is not finished, so it is left out of the trend"'
+              : '') + '>' + _rEsc(m.slice(2)) + ((last && part) ? "*" : "") + '</th>';
+          }).join("")
+        + '<th>Total</th><th>Trend</th></tr></thead><tbody>'
+        + parents.map(function(p){
+            const mm = p.monthly || {};
+            const peak = months.reduce(function(a, m){
+              return Math.max(a, mm[m] || 0); }, 0) || 1;
+            return '<tr><td class="ri-namecell" style="padding:6px 8px">'
+              + '<div class="ri-name" title="' + _rEsc(p.label) + '">'
+              + _rEsc(p.label) + '</div></td>'
+              // Shaded by size, so the shape of a year is readable without
+              // reading eight numbers per row.
+              + months.map(function(m){
+                  const v = mm[m] || 0;
+                  return '<td style="padding:6px 8px;background:rgba(239,83,80,'
+                    + (v / peak * 0.28).toFixed(3) + ')">' + (v || "") + '</td>';
+                }).join("")
+              + '<td style="padding:6px 8px"><b>' + (p.returns || 0) + '</b></td>'
+              + '<td style="padding:6px 8px">' + trendChip(p.trend) + '</td>'
+              + '</tr>'; }).join("")
+        + '</tbody></table></div>'
+        + (part ? '<div class="cc" style="font-size:11px;margin-top:8px">'
+                  + '* the last month is not finished — it is shown, and left '
+                  + 'out of the trend, because three weeks against a full month '
+                  + 'reads as a collapse that has not happened.</div>' : "");
+      h += '<div style="margin-bottom:24px">'
+        + _riCard("Month by Month", months.length + " months", mTable)
+        + '</div>';
+    }
+  }
+
   h += '<div style="margin-bottom:24px">'
     + _riCard("SKU-Level Returns Detail",
-              asins.length ? "Click any row to expand reasons, comments, and disposition"
+              asins.length ? "Every child ASIN that came back, biggest first"
                            : "sample", table)
     + '</div>';
+
+  // ---- what Amazon itself has flagged ---------------------------------
+  //
+  // NOT OUR THRESHOLD. This is the "frequently returned item" badge -- Amazon's
+  // own warning, shown to shoppers on the listing page. An earlier version
+  // flagged anything over 15% and produced 470 rows out of 552 on a real
+  // account, including ASINs with one order at "100%". A list nobody can act on
+  // is the same as no list.
+  const risky = intel.at_risk || [];
+  if(intel.has_amazon_quality){
+    const showing = risky.filter(function(a){ return a.state === "badge showing"; });
+    const soon = risky.filter(function(a){ return a.state === "at risk"; });
+    const rTable = risky.length
+      ? '<div class="ri-scroll" style="max-height:420px"><table class="kv" style="width:100%">'
+        + '<thead><tr><th>State</th><th>ASIN</th><th>Product</th><th>Rate</th>'
+        + '<th>Orders</th><th>Amazon\'s top reason</th><th>CX health</th>'
+        + '</tr></thead><tbody>'
+        + risky.map(function(a){
+            return '<tr><td style="padding:6px 8px"><span class="ri-badge '
+              + (a.state === "badge showing" ? "red" : "amber") + '">'
+              + (a.state === "badge showing" ? "badged" : "at risk") + '</span></td>'
+              + '<td style="padding:6px 8px"><code style="font-size:11px;'
+              + 'color:var(--accent2)">' + _rEsc(a.asin) + '</code></td>'
+              + '<td class="ri-namecell" style="padding:6px 8px"><div class="ri-name" title="'
+              + _rEsc(a.name || "") + '">' + _rEsc(a.name || "") + '</div></td>'
+              + '<td style="padding:6px 8px">' + _rPct(a.return_rate) + '</td>'
+              + '<td style="padding:6px 8px">' + (a.orders || "—")
+              // Amazon lists a listing once per SKU. The rows are folded into
+              // one, and how many there were is said rather than hidden --
+              // otherwise the totals here and in Amazon's own file disagree
+              // with nothing to explain why.
+              + (a.sku_rows > 1 ? ' <span class="cc" style="font-size:10px" '
+                 + 'title="Amazon listed this ASIN under ' + a.sku_rows
+                 + ' SKUs; this is the one with the most orders. Nothing is '
+                 + 'added up across them.">· ' + a.sku_rows + ' SKUs</span>'
+                 : '') + '</td>'
+              + '<td style="padding:6px 8px">' + _rEsc(a.top_reason || "—") + '</td>'
+              + '<td style="padding:6px 8px">' + _rEsc(a.cx_health || "—") + '</td>'
+              + '</tr>'; }).join("")
+        + '</tbody></table></div>'
+      : '<div class="cc" style="font-size:12px;padding:12px 0">Amazon has '
+        + 'flagged none of your listings. That is the good answer.</div>';
+    h += '<div style="margin-bottom:24px">'
+      + _riCard("Amazon's Returns Badge",
+                showing.length + ' already badged · ' + soon.length + ' at risk',
+                '<div class="cc" style="font-size:11.5px;line-height:1.6;'
+                + 'margin-bottom:10px">A badged listing shows shoppers a '
+                + '"frequently returned item" warning, and it costs conversion '
+                + 'on every visit from then on. "At risk" means it is not '
+                + 'showing yet — the cheaper half of the list.</div>' + rTable)
+      + '</div>';
+  } else {
+    h += '<div style="margin-bottom:24px">'
+      + _riCard("Amazon's Returns Badge", "needs one more file",
+                '<div class="cc" style="font-size:11.5px;line-height:1.7">'
+                + 'Whether Amazon is showing the "frequently returned item" '
+                + 'badge on a listing is not in either returns report and is in '
+                + 'no API this app has. It is only in the Voice of the Customer '
+                + 'export: <b>Seller Central → Brands → Customer Experience → '
+                + 'Voice of the Customer → Download</b>. Press '
+                + '<b>Upload listing quality</b> above and this fills in, along '
+                + 'with three columns of the SKU table.</div>')
+      + '</div>';
+  }
 
   // ---- what customers said, and what to do about it -------------------
   const comments = d.comments || [];
@@ -575,24 +836,27 @@ function returnsRender(){
 
   // The insights are DERIVED, never invented: each one names the figure it
   // came from, so it can be checked rather than believed.
-  const insights = [];
-  if(natureTotal){
-    natureRows.slice(0, 3).forEach(function(r){
-      const pct = Math.round((r.n / natureSum) * 100);
-      const action = (d.nature_actions || {})[r.name];
-      if(pct >= 15 && action){
-        insights.push({sev: pct >= 40 ? "high" : pct >= 25 ? "medium" : "low",
-                       title: r.name + " — " + pct + "% of returns",
-                       body: r.n + " of " + natureSum + " returned units fall here.",
-                       action: action});
-      }
-    });
-  }
+  //
+  // THEY COME FROM THE SERVER NOW. This used to build its own three from the
+  // nature mix, which meant the screen and the Excel export would have derived
+  // their findings separately and could have said different things about the
+  // same account (rule 12). domain/returns_intel.insights() is the one place
+  // that turns figures into findings; the workbook's Action Plan sheet is the
+  // same list with a priority and a timeline against each row.
+  const insights = (intel.insights || []).map(function(i){
+    return {sev: i.severity === "high" ? "high"
+               : i.severity === "medium" ? "medium" : "low",
+            title: i.title, body: i.body, action: i.action, scope: i.scope};
+  });
   const insightHtml = insights.length
     ? insights.map(function(i){
         return '<div class="ri-insight"><div class="ri-insight-head">'
           + '<span class="ri-sev ' + i.sev + '"></span>'
-          + '<span class="ri-insight-title">' + _rEsc(i.title) + '</span></div>'
+          + '<span class="ri-insight-title">' + _rEsc(i.title) + '</span>'
+          + (i.scope && i.scope !== "Whole account"
+              ? '<span class="cc" style="font-size:10.5px;margin-left:auto">'
+                + _rEsc(i.scope.slice(0, 34)) + '</span>' : '')
+          + '</div>'
           + '<div class="ri-insight-body">' + _rEsc(i.body) + '</div>'
           + '<div class="ri-insight-action">→ ' + _rEsc(i.action) + '</div></div>';
       }).join("")
@@ -611,6 +875,47 @@ function returnsRender(){
     + _riCard("Actionable Insights",
               insights.length ? "" : "sample", insightHtml)
     + '</div>';
+
+  // ---- the comments, grouped by what they actually SAY ------------------
+  //
+  // Four thousand comments are unreadable. Seven themes with real quotes under
+  // them are a morning's work. The themes come from the WORDS, not the reason
+  // code, because the two disagree often enough to matter: a return Amazon
+  // filed as UNWANTED_ITEM whose comment says "half a size too short" is a
+  // sizing return, and only the comment says so.
+  const th = intel.themes || {};
+  const themes = th.themes || [];
+  if(themes.length){
+    const tmax = themes[0].count || 1;
+    const themeHtml = themes.map(function(t){
+      return '<div class="ri-theme">'
+        + '<div class="ri-hbar-head"><span class="ri-hbar-name">'
+        + _rEsc(t.theme) + ' <span class="cc" style="font-weight:400">'
+        + _rEsc(t.nature) + '</span></span>'
+        + '<span class="ri-hbar-val">' + t.count
+        + ' <span class="cc" style="font-weight:400">' + _rPct(t.share)
+        + '</span></span></div>'
+        + '<div class="ri-hbar-track"><div class="ri-hbar-fill" style="width:'
+        + Math.round(t.count / tmax * 100) + '%;background:'
+        + (RET_NATURE_COLOUR[t.nature] || "var(--accent2)") + '"></div></div>'
+        + '<div class="ri-quotes">' + (t.quotes || []).map(function(q){
+            return '<div class="ri-quote">“' + _rEsc(q) + '”</div>';
+          }).join("") + '</div></div>';
+    }).join("");
+    h += '<div style="margin-bottom:24px">'
+      + _riCard("What Customers Actually Wrote",
+                th.placed + " of " + th.comments_read + " comments grouped",
+                themeHtml
+                // SAID OUT LOUD. A theme list covering half the comments and
+                // not saying so reads as the whole picture.
+                + '<div class="cc" style="font-size:11px;margin-top:12px;'
+                + 'line-height:1.6">' + th.unplaced + ' comment'
+                + (th.unplaced === 1 ? " says" : "s say")
+                + ' something this app has no rule for, and are not counted '
+                + 'above. They are worth reading raw in the panel above — that '
+                + 'is where a theme nobody has thought of yet shows up.</div>')
+      + '</div>';
+  }
 
   h += '</div>';
   body.innerHTML = h;

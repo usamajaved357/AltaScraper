@@ -1156,6 +1156,16 @@
           <button class="db-chip" onclick="returnsUploadOpen('mfn')"
                   title="Seller Central → Reports → Return Reports → Seller-fulfilled returns"><i class="ti ti-file-upload"></i> Upload seller-fulfilled returns</button>
           <input type="file" id="ret_file" accept=".csv,.tsv,.txt" style="display:none" onchange="returnsUploadFile(this)">
+          <!-- A THIRD FILE, and the only source for three columns on this page.
+               Whether Amazon is showing the "frequently returned item" badge on
+               a listing, its CX Health grade, and the reason Amazon itself puts
+               at the top are in neither returns report and in no API this app
+               has. They are only in the Voice of the Customer export. -->
+          <button class="db-chip" onclick="returnsQualityOpen()"
+                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download"><i class="ti ti-shield-exclamation"></i> Upload listing quality</button>
+          <input type="file" id="ret_quality" accept=".csv,.txt" style="display:none" onchange="returnsQualityFile(this)">
+          <button class="db-chip" onclick="returnsExport()"
+                  title="Every table on this page as an eight-sheet workbook, built from exactly what you are looking at"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
         </div>
       </div>
       <div id="retbody" style="padding:4px 0"></div>

@@ -154,6 +154,53 @@ def build(items):
     }
 
 
+def by_asin(config_path, account_id, marketplace):
+    """{asin: family name} for one account -- the ONE place this map is made.
+
+    WHAT IT IS FOR. Several screens want to talk about a PRODUCT rather than a
+    variation of one: the Returns screen's Product Line table, its Parent
+    table, and the Excel export of both. Each of them needs the same question
+    answered -- which family does this ASIN belong to -- and each of them would
+    otherwise answer it its own way, which is exactly how two tables on one page
+    come to disagree (CLAUDE.md rule 12).
+
+    THE NAME, NOT THE SKU. The parent SKU is what Amazon links by and it is not
+    a name anybody recognises -- "X005858NXT" is not a product line. So the
+    value here is the parent's TITLE where the parent listing is in the
+    snapshot, and the parent SKU only as a last resort when it is not. Callers
+    pass this straight to returns_view.line_of, which prefers it over cutting up
+    a product name.
+
+    EMPTY IS A REAL ANSWER. An account whose catalogue has not been enriched
+    yet knows no families, and gets {} -- callers then fall back to the derived
+    grouping and say on screen that that is what happened. It never raises: a
+    missing snapshot must not take a screen down.
+    """
+    try:
+        rec = _snap.get(config_path, account_id, marketplace) or {}
+    except Exception:
+        return {}
+    items = [it for it in (rec.get("items") or []) if isinstance(it, dict)]
+    by_sku = {_s(it.get("sku")): it for it in items if _s(it.get("sku"))}
+    out = {}
+    for f in (build(items) or {}).get("families") or []:
+        parent = f.get("parent") or by_sku.get(f.get("parent_sku")) or {}
+        label = _s(parent.get("title")) or _s(f.get("parent_sku"))
+        if not label:
+            continue
+        for child in f.get("children") or []:
+            a = _s(child.get("asin"))
+            if a:
+                out[a] = label
+        # The parent's own ASIN too. A parent is not buyable, so it should never
+        # appear in a returns file -- but if one does, it belongs to its own
+        # family rather than to a group of one.
+        pa = _s(parent.get("asin"))
+        if pa:
+            out[pa] = label
+    return out
+
+
 def for_account(config_path, account_id, marketplace):
     """The families in one account+marketplace, from the stored snapshot."""
     rec = _snap.get(config_path, account_id, marketplace) or {}
