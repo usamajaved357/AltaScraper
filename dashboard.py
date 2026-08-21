@@ -2277,15 +2277,46 @@ def _run_img_jobs_bg_inner(jid, jobs, kind, finish=True):
                     try:
                         sku = job.get("sku", "_misc")
                         du = data["data_url"]
-                        # Decide a subfolder so A+ content is organized inside the
-                        # SKU folder: aplus/basic or aplus/premium; secondary images
-                        # go under "secondary". Main/concept stay at the SKU root.
+                        # Decide a subfolder so each kind of image is filed inside
+                        # the SKU folder rather than in one heap:
+                        #
+                        #   (root)          main / concepts
+                        #   secondary       the PT01..PT08 supporting images
+                        #   aplus/basic     A+ modules, standard tier
+                        #   aplus/premium   A+ modules, premium tier
+                        #
+                        # THE KIND COMES FROM THE JOB, NOT THE BATCH. This read the
+                        # batch-level `kind`, and the strategist -- which is how
+                        # most images are actually made -- submits its whole batch
+                        # as kind "concept" with the real kind on each job's
+                        # payload (static/js/genimage.js _conceptJobs, and the bulk
+                        # button in listings.js). So every strategist-made
+                        # secondary and A+ image was filed at the SKU ROOT,
+                        # indistinguishable from a main image.
+                        #
+                        # That is not only untidy. The folder IS the kind -- there
+                        # is no image record anywhere, /media/list re-derives
+                        # `group` from the directory name on every read -- so a
+                        # misfiled image is permanently miscategorised, and the
+                        # two guards that depend on it both stopped working:
+                        # listing/images.py refuse_slot() would let an A+ image be
+                        # sent to Amazon as the MAIN photo, and the "you already
+                        # have N A+ images" warning never fired.
+                        _kind = str(payload.get("kind", "") or kind or "").lower()
                         _sub = ""
-                        if kind == "aplus":
+                        if _kind == "aplus":
                             _tier = str(payload.get("tier", "") or data.get("tier", "") or "basic").lower()
                             _tier = "premium" if "prem" in _tier else "basic"
                             _sub = f"aplus/{_tier}"
-                        elif kind == "secondary":
+                            # PREMIUM A+ IS TWO IMAGES, NOT ONE. Amazon renders
+                            # premium modules at different sizes on desktop and on
+                            # mobile, and a single asset cannot satisfy both -- so
+                            # the tier folder is split again by which one this is.
+                            # Basic A+ has no such split and keeps a flat folder.
+                            _dev = str(payload.get("device", "") or data.get("device", "") or "").lower()
+                            if _tier == "premium" and _dev in ("desktop", "mobile"):
+                                _sub = f"aplus/premium/{_dev}"
+                        elif _kind == "secondary":
                             _sub = "secondary"
                         # Resolve the image to RAW BYTES. The model may return a
                         # data: URL (base64) OR a remote https URL -- the old code

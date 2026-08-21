@@ -734,6 +734,40 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 out.add(g)
         return out
 
+    def _demo_rows(aid, found):
+        """Sample listings, or None. One helper because /rows_all has several
+        return paths and each of them needs the same answer to the same
+        question: is this screen about to be empty with no way to fill itself?
+
+        `found` is what the real read produced. Anything at all in it and this
+        returns None -- see domain/demo_data.maybe(), and the 115 real drafts
+        that an earlier version of this hid.
+        """
+        try:
+            from domain import accounts as _acc_dd
+            from domain import demo_data as _dd
+            acct = _acc_dd.get_account(
+                _cfg() if callable(_cfg) else (_cfg or {}), aid,
+                CONFIG_PATH) if aid else None
+            d = _dd.maybe(acct, "listings", has_data=bool(found),
+                          workspace_id=aid)
+            if not d:
+                return None
+            # THE SAME SHAPE THE REAL ANSWER HAS -- `rows`, a `tabs` manifest
+            # and a `source` -- so the screen needs no second rendering path and
+            # cannot quietly draw a sample differently from the real thing. Only
+            # `demo` and `demo_reason` are added, to be shown.
+            return {"ok": True, "rows": d["rows"], "shipping_group": "",
+                    "product_types": _product_types(),
+                    "tabs": [{"tab": "sample", "tab_gid": "",
+                              "count": d["count"], "url": ""}],
+                    "source": {"store": "sample", "from_database": 0,
+                               "from_sheet": 0,
+                               "workspace": str(aid or "_no_account")},
+                    "demo": True, "demo_reason": d["demo_reason"]}
+        except Exception:
+            return None        # never let the sample path break the real one
+
     @app.route("/rows_all")
     def rows_all():
         """Like /rows, but reads EVERY listing-shaped tab in the ACTIVE workspace's
@@ -773,6 +807,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             _raw_asked = request.args.get("account")
             if _acctscope.is_mismatch(_raw_asked, _aid):
                 return jsonify(_acctscope.refusal(_raw_asked, _aid, "listings")), 200
+
             # WHICH STORE THE LISTINGS ARE ACTUALLY IN.
             #
             # This is the bug behind "I pressed generate an hour ago, the log
@@ -848,6 +883,15 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             except Exception:
                 _read_sheets = True
             if not _read_sheets:
+                # AN EMPTY SCREEN THAT CAN NEVER FILL ITSELF gets samples, so a
+                # reviewer can see what Listings looks like with a business in
+                # it. AFTER the real read and gated on it being empty -- see the
+                # note on demo_data.maybe(): gating on "no Amazon account" alone
+                # put eight invented rows over Headbanger Lures' 115 real
+                # drafts. Sample rows are marked all the way to the screen.
+                _demo = _demo_rows(_aid, db_cards)
+                if _demo:
+                    return jsonify(_demo)
                 return jsonify({
                     "ok": True,
                     "shipping_group": _cfg().get("merchant_shipping_group", ""),

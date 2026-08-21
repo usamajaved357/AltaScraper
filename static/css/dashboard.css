@@ -3493,6 +3493,27 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 
 .ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
 
+/* SAMPLE DATA, MARKED. See static/js/demobanner.js for why this is one shared
+   pair of rules rather than a per-screen decision: a figure nobody can tell is
+   invented is worse than no figure at all.
+
+   The dimming is deliberately strong. It has to survive a screenshot, a glance
+   and a scroll -- somebody scrolled past the bar should still be able to tell
+   at any point on the page that they are looking at samples. */
+.demobar{
+  display:flex; gap:10px; align-items:flex-start;
+  margin:0 0 14px; padding:11px 13px;
+  border:1px solid var(--accent2); border-left-width:3px; border-radius:8px;
+  background:var(--panel2); font-size:12px; line-height:1.6;
+}
+.demobar i{ color:var(--accent2); font-size:16px; margin-top:1px; flex:0 0 auto; }
+.demo-dim{ opacity:.55; font-style:italic; }
+/* ...but never dim a control. A greyed-out button reads as disabled, and the
+   whole point is that a reviewer can click things. */
+.demo-dim button, .demo-dim .db-chip, .demo-dim input, .demo-dim select{
+  opacity:1; font-style:normal;
+}
+
 /* THE DAILY RETURNS CHART. An SVG with real axes, and a drag target.
    The old one was bare percentage-height divs: no dates, no counts, no way to
    look at a period. `user-select:none` is what stops a drag across it selecting

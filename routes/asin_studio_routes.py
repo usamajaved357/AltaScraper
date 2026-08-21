@@ -223,33 +223,111 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None,
             "confidently from the source, e.g. material, colour, size}}"
             % (brand, mkt))
 
+        # THE SHAPE IS ENFORCED BY THE API, NOT HOPED FOR.
+        #
+        # This used to ask for JSON in the prompt, pull the first {...} out of
+        # the reply with a regex and json.loads it -- and roughly one call in
+        # four came back with something that would not parse. Measured:
+        #   "The copywriter's JSON would not parse: Expecting ',' delimiter:
+        #    line 1 column 1287"
+        # from a real run. When it happens the whole thing 502s and the user
+        # gets nothing, having waited half a minute for it.
+        #
+        # output_config makes the model's reply conform to this schema, so
+        # there is no prose to strip, no fence to find and nothing to repair.
+        # The prompt still describes the fields because the model writes better
+        # copy when it knows what each one is for -- but the prompt is no longer
+        # what holds the format together.
+        # TWO THINGS THE API WILL NOT ACCEPT, both measured against it rather
+        # than assumed (CLAUDE.md Rule 4 -- the schema is available, so ask it):
+        #
+        #   "For 'array' type, 'minItems' values other than 0 or 1 are not
+        #    supported (got: [2, 5])"
+        #   "For 'object' type, 'additionalProperties: object' is not supported.
+        #    Please set 'additionalProperties' to false"
+        #
+        # So the five-bullet count stays in the PROMPT, where it always was, and
+        # the attributes come back as a list of pairs rather than an open map --
+        # an array of fixed-shape objects is allowed where a free-form object is
+        # not. It is turned back into a dict below, so nothing downstream sees
+        # the difference.
+        SCHEMA = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "maxLength": 200},
+                "bullets": {"type": "array", "items": {"type": "string"}},
+                "description": {"type": "string"},
+                "search_terms": {"type": "string"},
+                "attributes": {
+                    "type": "array",
+                    "items": {"type": "object",
+                              "properties": {"name": {"type": "string"},
+                                             "value": {"type": "string"}},
+                              "required": ["name", "value"],
+                              "additionalProperties": False},
+                },
+            },
+            "required": ["title", "bullets", "description", "search_terms"],
+            "additionalProperties": False,
+        }
+        copy, text = None, ""
         try:
             import anthropic
             client = anthropic.Anthropic(api_key=key)
-            resp = _ai.call_anthropic(
-                client, CONFIG_PATH, feature="asin_studio", workspace_id=wsid,
-                model="claude-opus-5", max_tokens=4000,
-                thinking={"type": "adaptive"},
-                system=system,
-                messages=[{"role": "user",
-                           "content": json.dumps(payload, ensure_ascii=False)}])
+            kw = dict(model="claude-opus-5", max_tokens=4000,
+                      thinking={"type": "adaptive"},
+                      system=system,
+                      messages=[{"role": "user",
+                                 "content": json.dumps(payload,
+                                                       ensure_ascii=False)}])
+            try:
+                resp = _ai.call_anthropic(
+                    client, CONFIG_PATH, feature="asin_studio",
+                    workspace_id=wsid,
+                    output_config={"format": {"type": "json_schema",
+                                              "schema": SCHEMA}}, **kw)
+            except TypeError:
+                # An older SDK that has never heard of output_config. Fall back
+                # rather than fail: the prompt already asks for JSON, and the
+                # tolerant parse below still handles it.
+                resp = _ai.call_anthropic(
+                    client, CONFIG_PATH, feature="asin_studio",
+                    workspace_id=wsid, **kw)
             text = "".join(getattr(blk, "text", "") for blk in (resp.content or [])
                            if getattr(blk, "type", "") == "text").strip()
         except Exception as e:
             return jsonify({"ok": False,
                             "error": "The copywriter failed: %s" % str(e)[:220]}), 502
 
-        m = re.search(r"\{.*\}", text, re.S)
-        if not m:
-            return jsonify({"ok": False,
-                            "error": "The copywriter did not return usable JSON.",
-                            "raw": text[:600]}), 502
+        # With a schema the whole reply IS the object, so try that first and
+        # only fall back to hunting for braces.
         try:
-            copy = json.loads(m.group(0))
-        except Exception as e:
+            copy = json.loads(text)
+        except Exception:
+            m = re.search(r"\{.*\}", text, re.S)
+            if not m:
+                return jsonify({"ok": False,
+                                "error": "The copywriter did not return usable "
+                                         "JSON.", "raw": text[:600]}), 502
+            try:
+                copy = json.loads(m.group(0))
+            except Exception as e:
+                return jsonify({"ok": False,
+                                "error": "The copywriter's JSON would not parse: %s"
+                                         % str(e)[:160], "raw": text[:600]}), 502
+        if not isinstance(copy, dict):
             return jsonify({"ok": False,
-                            "error": "The copywriter's JSON would not parse: %s"
-                                     % str(e)[:160], "raw": text[:600]}), 502
+                            "error": "The copywriter returned a %s, not a "
+                                     "listing." % type(copy).__name__,
+                            "raw": text[:600]}), 502
+        # Attributes arrive as [{name, value}] under the schema above and as a
+        # plain object on the fallback path. Normalise to the dict every caller
+        # already expects, so the shape the API forced on us stops here.
+        _at = copy.get("attributes")
+        if isinstance(_at, list):
+            copy["attributes"] = {
+                str(p.get("name") or ""): str(p.get("value") or "")
+                for p in _at if isinstance(p, dict) and p.get("name")}
 
         # THE SCRUB IS NOT OPTIONAL. The copy was written from a competitor's
         # words, so their brand can walk into ours. scrub_listing_copy is the
