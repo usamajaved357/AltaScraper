@@ -1050,6 +1050,20 @@ async function salesReload(){
     salesDrawOrgPpc(ser);
     salesDrawGrid(ser);
     salesDrawRange(sum, av);
+    // WHICH PRODUCTS SOLD. This was never called.
+    //
+    // salesLoadBreakdown had exactly one caller: salesBdGroup, the "Each ASIN /
+    // Grouped by parent" toggle -- and those two buttons are drawn INSIDE the
+    // block that only appears once the loader has run. Nothing could ever start
+    // it, so the "By product" section of this screen has been empty since it
+    // was written. Measured on jack_uk: the section 0 rows and 0 bytes on the
+    // page, while /sales/breakdown answers with 47 products; calling it by hand
+    // in the console filled it with all 47 immediately.
+    //
+    // Here rather than at the top with Live Sales: it reads _sQuery(), which
+    // needs the range this function has just settled. Not awaited -- it has its
+    // own fetch and the figures above must not wait for it.
+    salesLoadBreakdown();
     // After the numbers, not before: the options depend on the range, and the
     // grid is what someone is waiting for.
     salesFillAsins();

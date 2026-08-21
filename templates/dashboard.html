@@ -2017,6 +2017,10 @@
      because it reads the sidebar's own markup and asks maySeeSection(), so
      everything it depends on is already defined. -->
 <script src="/static/js/palette.js?v={{ ASSET_V }}"></script>
+<!-- Escape closes whatever is open. Loaded after everything that owns its
+     own Escape handler, so it only acts when none of them did. -->
+<script src="/static/js/escape.js?v={{ ASSET_V }}"></script>
+
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">
