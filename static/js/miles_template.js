@@ -971,12 +971,30 @@ function setListSource(src){
       loadLiveCatalog(false).then(()=>{
         const c = LIVE_STORE[_liveKey()];
         const nothingYet = !c || !(c.items||[]).length;
-        const old = c && c.syncedAt && (Date.now()-c.syncedAt > LIVE_AUTOSYNC_MS);
-        // Fetch in the BACKGROUND when there is nothing saved, or what is saved
-        // has gone stale. Either way the screen is already painted and stays
-        // usable while Amazon is asked.
-        if(nothingYet || old){
-          if(nothingYet) toast("Loading this marketplace in the background — carry on.");
+        // FORCE ONLY WHEN THERE IS NOTHING TO SHOW.
+        //
+        // This used to also force when the saved copy was older than the 10-minute
+        // auto-sync interval -- and that made a page load build two Amazon reports
+        // almost every single time, which is what was tripping the report
+        // rate-limit. The reason it fired almost every time is arithmetic, not bad
+        // luck: this account set has 29 account+marketplace pairs, each sync asks
+        // for TWO reports (active, then suppressed/inactive), and Amazon allows
+        // roughly ONE report a minute per selling account. A ten-minute freshness
+        // target was never reachable, so "older than ten minutes" was true on
+        // practically every load. Measured on the saved snapshots: ages ran from
+        // 1.9 to 7.5 hours, so every one of them qualified as stale.
+        //
+        // It also fired on a PAGE LOAD, not just a click: shell.js restores
+        // ?src=live|all from the address bar, so reopening the Live tab ran this
+        // path with an empty browser cache every time.
+        //
+        // Keeping the catalogue fresh is domain/live_refresher.py's job -- it
+        // already refreshes anything older than ten minutes, staggers the requests
+        // and stands aside when you press Sync. A page load competing with it for
+        // the same per-minute quota made BOTH of them slower. So the load now
+        // paints what is saved, labelled with its age, and asks Amazon for nothing.
+        if(nothingYet){
+          toast("Loading this marketplace in the background — carry on.");
           backgroundSync();
         }
       }).catch(()=>{});
@@ -1004,7 +1022,8 @@ async function loadAplus(force){
   }catch(e){ /* A+ is additive -- never break the grid over it */ }
 }
 
-async function loadLiveCatalog(force){
+async function loadLiveCatalog(force, opts){
+  const auto = !!(opts && opts.auto);
   if(!CUR_ACCOUNT){ toast("Live catalog is per Amazon account — open an account workspace"); return; }
   if(!WS_MARKET){ toast("Pick a marketplace first"); return; }
   // Never refresh the live catalog while a per-listing Preview/Submit is streaming
@@ -1012,7 +1031,7 @@ async function loadLiveCatalog(force){
   // panel (and its live log) mid-run. Defer; the next manual Sync/refresh picks it up.
   if(window.RUN_STREAMING){ return; }
   // "All marketplaces": fetch each marketplace's catalog and merge
-  if(WS_MARKET==="__all__"){ return loadAllMarketplaces(force); }
+  if(WS_MARKET==="__all__"){ return loadAllMarketplaces(force, opts); }
   const key=_liveKey();
   const reqAccount=CUR_ACCOUNT.id, reqMkt=WS_MARKET;   // remember what THIS request is for
   // use in-browser cache unless forced -> returning to the page is instant
@@ -1077,7 +1096,7 @@ async function loadLiveCatalog(force){
   };
   try{
     const resp=await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({id:reqAccount,marketplace:reqMkt,force:!!force}),
+      body:JSON.stringify({id:reqAccount,marketplace:reqMkt,force:!!force,auto:auto}),
       signal: ctl?ctl.signal:undefined});
     const j=await resp.json();
     clearTimeout(tmo);
@@ -1089,10 +1108,18 @@ async function loadLiveCatalog(force){
       syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
       fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
       amazonFailed: !!j.amazon_failed,
-      partial: !!j.partial, warnings: (j.warnings||[]),
+      partial: !!j.partial, warnings: (j.warnings||[]), notes: (j.notes||[]),
       reportSource: j.report_source||"", reportBuiltAt: j.report_built_at||""};
     // A short list caused by a failed half of the fetch must SAY so. Silence here
     // is what made 64 listings look like 16 with nothing to explain it.
+    //
+    // ONLY `warnings` INTERRUPTS. A warning means something is MISSING from what
+    // you are looking at. `notes` is commentary about how the sync went -- "the
+    // suppressed listings came from Amazon's last completed report rather than a
+    // new one" is a note, because those listings are all present. Toasting notes
+    // put a rate-limit message on screen when nothing was actually wrong, which
+    // trained the message to be ignored -- and that is the message that matters
+    // on the day something IS missing. Notes are on the sync label instead.
     if((j.warnings||[]).length){ toast(j.warnings.join(" ")); }
     if(stillHere()){
       LIVE_ITEMS=j.items||[];
@@ -1156,6 +1183,11 @@ function updateSyncLabel(){
   el.className = "cc" + ((c.partial || c.amazonFailed) ? " syncwarn" : "");
   const tips = [];
   if(c.warnings && c.warnings.length) tips.push(...c.warnings);
+  // Notes live here and ONLY here. They are worth being able to read -- "the
+  // suppressed listings came from Amazon's last completed report" explains an
+  // otherwise puzzling timestamp -- but they are not worth interrupting for,
+  // which is what toasting them amounted to.
+  if(c.notes && c.notes.length) tips.push(...c.notes);
   if(c.reportBuiltAt) tips.push("Amazon report built " + c.reportBuiltAt);
   try{ tips.push("Pulled from Amazon: " + new Date(when).toLocaleString()); }catch(e){}
   el.title = tips.join("\n");
@@ -1191,7 +1223,10 @@ async function backgroundSync(){
   if(_BG_SYNCING) return;              // one at a time, per browser tab
   _BG_SYNCING = true;
   try{
-    await loadLiveCatalog(true);
+    // `auto` marks this as a refresh NOBODY ASKED FOR, which lets the server
+    // download a report Amazon has already built instead of commissioning a new
+    // one. Pressing Sync stays a fresh build -- see loadLiveCatalog.
+    await loadLiveCatalog(true, {auto: true});
   }catch(e){
     // Deliberately silent. This runs on a timer that nobody asked for; a toast
     // for a transient Amazon hiccup would be noise, and the label already shows
@@ -1295,7 +1330,8 @@ async function runSpDiagnose(){
     if(box) box.textContent = "Diagnostic failed to start: "+e;
   }
 }
-async function loadAllMarketplaces(force){
+async function loadAllMarketplaces(force, opts){
+  const auto = !!(opts && opts.auto);
   if(window.RUN_STREAMING){ return; }   // don't wipe a streaming drawer panel mid-run
   const mkts=(CUR_ACCOUNT.marketplaces||[]);
   if(!mkts.length){ toast("No marketplaces detected for this account."); return; }
@@ -1334,14 +1370,14 @@ async function loadAllMarketplaces(force){
   if(!_anyCached && grid) grid.innerHTML='<div class="empty"><span class="genspin"></span> Loading your listings… '+(done)+'/'+mkts.length+' ('+esc(mm)+')</div>';
     try{
       const j=await (await fetch("/live/catalog",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({id:reqAccount,marketplace:mm,force:!!force})})).json();
+        body:JSON.stringify({id:reqAccount,marketplace:mm,force:!!force,auto:auto})})).json();
       if(j.ok){
         LIVE_STORE[reqAccount+"::"+mm]={
           items:(j.items||[]), ts:Date.now(),
           syncedAt: j.synced_at ? (j.synced_at*1000) : Date.now(),
           fromSnapshot: !!j.from_snapshot, stale: !!j.stale,
       amazonFailed: !!j.amazon_failed,
-          partial: !!j.partial, warnings:(j.warnings||[])};
+          partial: !!j.partial, warnings:(j.warnings||[]), notes:(j.notes||[])};
         merged=merged.concat((j.items||[]).map(it=>({...it,_mkt:mm})));
         if((j.warnings||[]).length) failed.push(mm+" (partial)");
       } else {

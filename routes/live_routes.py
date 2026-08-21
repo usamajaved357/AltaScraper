@@ -645,7 +645,18 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                                 "age_seconds": _age,
                                 "stale": bool(_age and _age > _LIVE_TTL),
                                 "partial": _rec.get("partial", False),
-                                "warnings": _rec.get("warnings") or [],
+                                # AS NOTES, NOT WARNINGS. These were written when
+                                # the snapshot was taken, possibly hours ago, and
+                                # the browser toasts warnings on arrival -- so
+                                # returning them here meant a message about a
+                                # long-finished Amazon hiccup popped up again on
+                                # every cached page load, with nothing happening at
+                                # the time to justify it. The `partial` flag above
+                                # already carries the part that still matters, and
+                                # it drives the "— partial" label without
+                                # interrupting anyone.
+                                "warnings": [],
+                                "notes": _rec.get("warnings") or [],
                                 "report_source": _rec.get("report_source", "")})
             # NOTHING SAVED YET for this account+marketplace. Return immediately
             # and let the background refresh fill it in.
@@ -745,20 +756,67 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             # Both reach the screen; only `warnings` votes.
             warnings = []
             notes = []
-            # 0) reuse a recently-generated report ONLY when not forcing. When the
-            #    user clicks Sync (force=True), we must generate a FRESH report so
-            #    edits made on Amazon are reflected — reusing the old report would
-            #    show stale data.
+            # 0) reuse a report Amazon has ALREADY BUILT, rather than commissioning
+            #    another one.
             #
-            #    REUSE IS NOW BOUNDED. getReports defaults createdSince to 90 DAYS
+            #    WHO GETS TO REUSE. Not "anyone who did not force" -- that condition
+            #    was unreachable. `if not force:` returned about a hundred lines
+            #    above, at the snapshot path, so nothing with a falsy `force` ever
+            #    reached here and this whole block was dead code. The proof is in
+            #    the saved snapshots: all 29 of them record report_source="new",
+            #    and "reused" has never once been written since the field existed.
+            #    So every sync built a brand-new report, which is what exhausted
+            #    the roughly-one-report-a-minute quota.
+            #
+            #    The real distinction is who asked, not which flag was set:
+            #
+            #      a person pressed Sync   build a fresh report. They pressed it
+            #                              because they just changed something on
+            #                              Amazon and want to see it; handing back
+            #                              a report built before their edit would
+            #                              make the button appear broken.
+            #      an automatic refresh    reuse. The 10-minute timer and
+            #                              domain/live_refresher.py are topping up
+            #                              data nobody is waiting on, so a report
+            #                              Amazon finished a few minutes ago is
+            #                              exactly as useful as one it would spend
+            #                              a minute of quota building now.
+            #
+            #    `_bg` is set by the server-side refresher, `auto` by the browser's
+            #    timer. Both mean "nobody is waiting at a screen for this".
+            #
+            #    REUSE IS BOUNDED. getReports defaults createdSince to 90 DAYS
             #    ago and documents NO sort order, so the old `pageSize=1 -> reps[0]`
             #    could hand back a report Amazon built weeks ago and the UI would
             #    present it as the live catalogue. That is the "it shows old
-            #    listings" bug. We now ask only for reports created since
+            #    listings" bug. We ask only for reports created since
             #    _REPORT_REUSE_MAX_AGE and pick the genuinely newest by createdTime.
-            if not force:
+            #
+            #    AND IT MUST BE NEWER THAN WHAT WE ALREADY HOLD. Reusing "any
+            #    report from the last six hours" would stall the catalogue
+            #    permanently: the refresher would download the same six-hour-old
+            #    report over and over, stamp each copy with a fresh `ts`, and the
+            #    screen would read "synced just now" over data from this morning.
+            #    Staleness would be hidden rather than fixed -- worse than the
+            #    problem being solved.
+            #
+            #    So the window starts at OUR OWN snapshot: only a report Amazon
+            #    built after the last one we ingested counts as reuse. If Amazon
+            #    has nothing newer, there is genuinely nothing to reuse and a
+            #    report is commissioned. That is the rule in one line -- ask for a
+            #    new report only when the copy we have is older than anything
+            #    Amazon can already give us.
+            may_reuse = bool(b.get("_bg") or b.get("auto"))
+            if may_reuse:
                 try:
-                    _since = _dt.datetime.utcnow() - _dt.timedelta(seconds=_REPORT_REUSE_MAX_AGE)
+                    _floor = _dt.datetime.utcnow() - _dt.timedelta(seconds=_REPORT_REUSE_MAX_AGE)
+                    _held = _snap.get(CONFIG_PATH, aid, mkt) or {}
+                    _held_ts = float(_held.get("ts") or 0)
+                    if _held_ts:
+                        _mine = _dt.datetime.utcfromtimestamp(_held_ts)
+                        if _mine > _floor:
+                            _floor = _mine
+                    _since = _floor
                     existing = rc.get_reports(reportTypes=[RT], processingStatuses=["DONE"],
                                               marketplaceIds=[mkt_id] if mkt_id else None,
                                               createdSince=_since.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -854,9 +912,22 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
 
                 _iage = None
                 _icr = None          # set only if a report is actually created
-                if not force:
+                # Same rule as the active report above, and the same bug: this was
+                # `if not force:`, which could never be true this far down. The
+                # inactive report is the SECOND of the two this view asks for in one
+                # breath, so it is the one Amazon usually refuses -- which makes it
+                # the one that most needed to reuse rather than create.
+                if may_reuse:
                     try:
-                        _idoc, _iage = _newest_inactive(_REPORT_REUSE_MAX_AGE)
+                        # Bounded by our own snapshot, for the same reason as the
+                        # active report: a report older than the copy we already
+                        # hold is not fresher data, it is the same data again.
+                        _held2 = _snap.get(CONFIG_PATH, aid, mkt) or {}
+                        _held_age = _snap.age_seconds(_held2)
+                        _win = _REPORT_REUSE_MAX_AGE
+                        if _held_age:
+                            _win = min(_win, int(_held_age))
+                        _idoc, _iage = _newest_inactive(_win or None)
                     except Exception:
                         _idoc = None
                 if not _idoc:
@@ -879,14 +950,33 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                             raise
                         _idoc, _iage = _newest_inactive(None)
                         if _idoc:
-                            warnings.append(
-                                "Amazon is rate-limiting report requests just "
-                                "now, so the suppressed and inactive listings "
-                                "below came from its last completed report"
+                            # A NOTE, NOT A WARNING -- and the distinction is the
+                            # one this function's own comment draws forty lines
+                            # up: `warnings` means a whole category of listing is
+                            # MISSING, `notes` means something happened that says
+                            # nothing about whether the data is complete.
+                            #
+                            # Nothing is missing here. The fallback found a
+                            # completed inactive report and every suppressed
+                            # listing in it is appended below, exactly as if the
+                            # new report had been built. Filing that as a warning
+                            # had two costs: it toasted a rate-limit message at the
+                            # user when nothing was wrong, and -- worse -- it set
+                            # `partial`, which labels the sync "partial", makes
+                            # save() fill gaps from the previous record, and stores
+                            # the message so it can surface again later.
+                            #
+                            # A message that cries wolf on a normal, fully
+                            # successful sync is the message nobody reads on the
+                            # day something really is absent.
+                            notes.append(
+                                "The suppressed and inactive listings came from "
+                                "Amazon's last completed report"
                                 + (" (built %s)" % _iage if _iage else "")
-                                + " rather than a new one. Everything else on "
-                                "this screen is current. Press Sync again in a "
-                                "minute for a fresh one.")
+                                + " rather than a new one, because Amazon allows "
+                                "about one report a minute and this sync asked "
+                                "for two. They are all here; press Sync in a "
+                                "minute if you want them rebuilt.")
                             _icr = None
                         else:
                             raise
@@ -1017,17 +1107,28 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             # handlers above set it. save() then fills those gaps from the
             # previous record rather than refusing the write, so a failed half
             # can neither erase a good catalogue nor freeze it.
+            # ONLY REAL WARNINGS ARE STORED. Notes describe how one particular
+            # sync went; replayed hours later beside a snapshot they are at best
+            # meaningless and at worst wrong -- "Amazon is rate-limiting us just
+            # now" is a lie the moment it is read back from disk. The snapshot
+            # path below returns whatever is stored here, so anything kept must
+            # still be true whenever it is next read.
             _stored = _snap.save(CONFIG_PATH, aid, mkt, items,
                                  report_source=report_source,
                                  partial=bool(warnings),
-                                 warnings=(list(warnings or []) + list(notes or [])))
+                                 warnings=list(warnings or []))
             _carried = int(_stored.get("carried_listings") or 0)
             return jsonify({"ok": True, "items": items, "count": len(items),
                             "cached": False, "columns": hdr,
                             "report_source": report_source,
                             "report_built_at": report_built_at,
                             "partial": bool(warnings),
-                            "warnings": list(warnings or []) + list(notes or []),
+                            # TWO CHANNELS, kept apart all the way to the screen.
+                            # The browser interrupts for `warnings` and shows
+                            # `notes` on the sync label. Merging them here is what
+                            # made every note behave like a warning.
+                            "warnings": list(warnings or []),
+                            "notes": list(notes or []),
                             # How many listings the stored copy kept from the
                             # previous sync because this one could not see them.
                             "carried_listings": _carried,
