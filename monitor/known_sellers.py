@@ -99,29 +99,110 @@ def set_seller(config_path, seller_id, name="", kind="name", marketplace=""):
             return {"ok": False, "error": f"could not read config: {str(e)[:120]}"}
         previous = classify(sid, "", cfg)              # what it was, BEFORE we change anything
         ks = cfg.setdefault("known_sellers", {})
-        for blk in ("names", "me", "authorised"):      # id is GLOBAL -> clear it everywhere first
-            if isinstance(ks.get(blk), dict):
-                ks[blk].pop(sid, None)
-        for mk in list((ks.get("amazon") or {}).keys()):
-            ks["amazon"][mk] = [e for e in ks["amazon"][mk] if _amz_id(e) != sid]
-        if kind == "me":
-            ks.setdefault("me", {})[sid] = name or "My account (you)"
-        elif kind == "authorised":
-            ks.setdefault("authorised", {})[sid] = name or sid
-        elif kind == "amazon":
-            mk = str(marketplace or "").upper() or "UK"     # amazon keeps a marketplace tag for display
-            ks.setdefault("amazon", {}).setdefault(mk, []).append(
-                {"id": sid, "source": "manual", "name": name})
-        elif kind == "unknown":
-            pass                                       # REVERT: left in no block -> flagged again
-        else:                                          # 'name' -> named third party, stays flagged
-            ks.setdefault("names", {})[sid] = name or sid
+        # Through the same helper the CSV import uses, so the rules about which
+        # block a kind belongs in live in exactly one place.
+        _apply_one(ks, sid, name, kind, marketplace)
         try:
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
         except Exception as e:
             return {"ok": False, "error": f"could not write config: {str(e)[:120]}"}
     return {"ok": True, "kind": kind, "previous": previous}
+
+
+def _apply_one(ks, sid, name, kind, marketplace=""):
+    """Put ONE seller into the right block of an already-loaded known_sellers.
+
+    Lifted out of set_seller so the single-seller path and the CSV import share
+    it -- the rules for which block a kind goes in, and for clearing the id out
+    of the others first, are the sort of thing that quietly diverges when it
+    exists twice (CLAUDE.md rule 12).
+    """
+    for blk in ("names", "me", "authorised"):      # id is GLOBAL -> clear it everywhere first
+        if isinstance(ks.get(blk), dict):
+            ks[blk].pop(sid, None)
+    for mk in list((ks.get("amazon") or {}).keys()):
+        ks["amazon"][mk] = [e for e in ks["amazon"][mk] if _amz_id(e) != sid]
+    if kind == "me":
+        ks.setdefault("me", {})[sid] = name or "My account (you)"
+    elif kind == "authorised":
+        ks.setdefault("authorised", {})[sid] = name or sid
+    elif kind == "amazon":
+        mk = str(marketplace or "").upper() or "UK"
+        ks.setdefault("amazon", {}).setdefault(mk, []).append(
+            {"id": sid, "source": "manual", "name": name})
+    elif kind == "unknown":
+        pass                                       # REVERT: in no block -> flagged again
+    else:                                          # 'name' -> named third party, stays flagged
+        ks.setdefault("names", {})[sid] = name or sid
+
+
+def set_sellers_bulk(config_path, rows):
+    """Label MANY sellers in ONE read-modify-write of config.json.
+
+        "i have the names of the sellers which i can put in a csv file to tell
+         the asin monitor that this seller id's person name is this. whether it
+         is amazon, myself, or a third party. right now i have the ability to do
+         it manually one by one"
+
+    `rows` is [{seller_id, name, kind, marketplace}]. Returns
+    {ok, applied, skipped, changes:[{seller_id, name, kind, previous}]}.
+
+    ONE WRITE, NOT ONE PER SELLER. set_seller reloads, edits and rewrites the
+    whole config for each seller; a hundred-row CSV would be a hundred
+    read-modify-writes of a file the running app is also reading, with a hundred
+    chances to interleave badly. This takes the lock once.
+
+    THE MAPPING IS BY SELLER ID AND NOTHING ELSE, which is the point of doing it
+    in bulk at all. The auto-scraped cache in asin_monitor_history.json is keyed
+    "sellerId::marketplace", so the same seller in eight countries is eight
+    entries and naming them by hand is eight jobs. A seller's name is the same
+    everywhere, so one CSV row settles it for every marketplace and every ASIN,
+    past snapshots included.
+    """
+    import json
+    out = {"ok": True, "applied": 0, "skipped": [], "changes": []}
+    rows = list(rows or [])
+    if not rows:
+        return {"ok": False, "error": "nothing to apply"}
+    with _CFG_LOCK:
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception as e:
+            return {"ok": False, "error": "could not read config: %s" % str(e)[:120]}
+        ks = cfg.setdefault("known_sellers", {})
+        seen = set()
+        for r in rows:
+            sid = _norm((r or {}).get("seller_id"))
+            if not sid:
+                out["skipped"].append({"row": r, "why": "no seller id"})
+                continue
+            if sid in seen:
+                # LAST ONE WINS would be silent. A CSV listing the same seller
+                # twice with two different names is a mistake worth naming.
+                out["skipped"].append({"row": r, "why": "seller id repeated in the file"})
+                continue
+            seen.add(sid)
+            kind = str((r or {}).get("kind") or "name").lower()
+            if kind not in ("name", "authorised", "me", "amazon", "unknown"):
+                out["skipped"].append({"row": r, "why": "unknown kind %r" % kind})
+                continue
+            name = str((r or {}).get("name") or "").strip()
+            prev = classify(sid, "", cfg)
+            _apply_one(ks, sid, name, kind, (r or {}).get("marketplace") or "")
+            out["applied"] += 1
+            out["changes"].append({"seller_id": sid, "name": name, "kind": kind,
+                                   "previous": prev})
+        if not out["applied"]:
+            return {"ok": False, "error": "no usable rows",
+                    "skipped": out["skipped"]}
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            return {"ok": False, "error": "could not write config: %s" % str(e)[:120]}
+    return out
 
 
 def current(cfg, seller_id):

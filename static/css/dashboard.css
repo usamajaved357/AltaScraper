@@ -1697,13 +1697,18 @@
   .monasin-block.warn{border-color:var(--warn-line);background:rgba(227,183,104,.05)}
   .monasin-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .monmkt-list{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+  /* A `display` rule beats the hidden ATTRIBUTE -- the browser's own
+     [hidden]{display:none} is the weakest rule there is, so a folded market
+     list stayed fully laid out and the page stayed forty screens tall. Measured
+     after adding the fold: 48,840px, i.e. taller than before. */
+  .monmkt-list[hidden]{display:none}
   .monmkt-row{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
-              padding:3px 0;border-top:1px solid rgba(255,255,255,.04)}
+              padding:3px 0;border-top:1px solid var(--line)}
   .monmkt-ts{white-space:nowrap;margin-left:auto}
   .monmkt-row.skipped{opacity:.5}
   /* NEW-account marker on an unknown seller (0 feedback = classic new-hijacker signature) */
   .newacct{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
-           border-radius:5px;background:#7a1f1f;color:#ffd0d0;vertical-align:middle}
+           border-radius:5px;background:var(--red-bg);color:var(--red);vertical-align:middle}
   .fbnote{font-size:9.5px;color:var(--muted)}
   /* "Third parties on your listings" list */
   .monunk{border:1px solid var(--warn-line);border-radius:12px;background:rgba(227,183,104,.06);padding:10px 12px;margin:0 0 12px}
@@ -1713,9 +1718,9 @@
   .monunk .hirow td{background:rgba(224,105,107,.14)}
   /* HIGH RISK + multi-account badges */
   .hirisk{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
-          border-radius:5px;background:#8a1010;color:#ffdede;vertical-align:middle}
+          border-radius:5px;background:var(--red-bg);color:var(--red);vertical-align:middle}
   .multiacct{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;
-             background:#5a2ea6;color:#e7ddff;vertical-align:middle}
+             background:var(--accent-bg,rgba(79,140,255,.18));color:var(--accent2);vertical-align:middle}
   .monsum-hi{color:var(--red);font-weight:600}
   .monsum-hi b{color:var(--red)}
   /* per-marketplace unknown breakdown (Belgium hotspot) */
@@ -1723,18 +1728,18 @@
   .monsum-bm .hot{color:var(--warn);font-weight:600}
   .monlabelbtn{display:inline-flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;
                padding:3px 9px;border-radius:7px;color:var(--ink2);background:transparent;border:1px solid var(--line);white-space:nowrap}
-  .monlabelbtn:hover{border-color:var(--accent);color:#fff}
+  .monlabelbtn:hover{border-color:var(--accent);color:var(--ink)}
   /* seller chips, coloured by identity (colour reserved for the ONE thing that matters: unknown) */
   .sellerchip{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 8px;
               border-radius:999px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
-  .sellerchip.me  {color:#7fe0c0;border-color:#2c5c4c;background:rgba(18,48,40,.30)}   /* teal = you */
+  .sellerchip.me  {color:var(--ok);border-color:var(--ok-line);background:var(--ok-bg)}   /* teal = you */
   .sellerchip.amz {color:var(--muted);border-color:var(--line)}                        /* neutral = Amazon */
   .sellerchip.auth{color:var(--accent2);border-color:var(--line2)}                                  /* authorised reseller */
-  .sellerchip.unk {color:var(--warn);border-color:#8a5a1e;background:rgba(227,183,104,.12)} /* amber = threat */
+  .sellerchip.unk {color:var(--warn);border-color:var(--warn-line);background:rgba(227,183,104,.12)} /* amber = threat */
   .sellerchip.unk a{color:var(--warn);text-decoration:none}
   .sellerchip.unk a:hover{text-decoration:underline}
   .sellerchip .bbstar{color:var(--warn)}
-  .monchip.warn{color:var(--warn);border-color:#8a5a1e;background:rgba(227,183,104,.12)}
+  .monchip.warn{color:var(--warn);border-color:var(--warn-line);background:rgba(227,183,104,.12)}
   .monchip.ok{color:var(--ok);border-color:var(--ok-line);background:rgba(18,48,33,.22)}
   .monalertbar{display:flex;align-items:center;gap:10px;margin-bottom:4px}
   .monalert{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;margin:6px 0;
@@ -1784,7 +1789,7 @@
   .monrm:hover{background:rgba(255,80,80,.10)}
   .monhist{background:transparent;border:1px solid var(--line);color:var(--ink2);border-radius:7px;
            height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-  .monhist:hover{border-color:var(--accent);color:#fff}
+  .monhist:hover{border-color:var(--accent);color:var(--ink)}
   /* Offer history modal */
   .monhist-mkt{margin:14px 0}
   .monhist-h{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px}
@@ -3492,6 +3497,76 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .ri-insight-action{ font-size:11px; color:var(--accent2); margin-top:6px; font-weight:500; }
 
 .ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
+
+/* PERMISSIONS, one group per sidebar group, with a control over each.
+   Forty-two pages is a wall as a flat list; grouped the way the menu groups
+   them, it reads the way the person deciding already thinks. */
+.permgroup{
+  border:1px solid var(--line); border-radius:8px;
+  padding:8px 10px 10px; margin:10px 0;
+}
+.permgrp{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding-bottom:7px; margin-bottom:7px; border-bottom:1px solid var(--line);
+}
+.permgrp-title{
+  font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  font-weight:700; color:var(--ink2);
+}
+.permgrp-n{ font-size:10.5px; }
+.permgrp-set{ display:flex; align-items:center; gap:5px; margin-left:auto; }
+.permgrp-set .cc{ font-size:10.5px; }
+.permgrp-set .db-chip{ padding:2px 8px; font-size:10.5px; }
+
+/* THE ASIN MONITOR, brought onto the app's own surfaces.
+   It had its own header trio, its own button shape and eight hardcoded hex
+   colours; everything below is tokens, so it follows the theme like every other
+   screen instead of being the one page that does not. */
+
+/* One summary line per ASIN, in place of ten "not listed here" rows. */
+.monasin-sum{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:11.5px; padding:2px 0 6px; line-height:1.6;
+}
+.monsm-dot{ color:var(--ink3); }
+.monsm-hot{ color:var(--warn); font-weight:600; }
+.monsm-on{ color:var(--ink); }
+.monsm-fail{ color:var(--red); }
+.monasin-label{ max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.monasin-head .db-chip{ padding:2px 8px; font-size:11px; }
+.monasin-head .monx{ min-width:88px; justify-content:center; }
+
+/* The by-marketplace chart. Same numbers the run of text carried, with the
+   shape visible -- eleven against one is obvious as bars and invisible as a
+   list. */
+.moncard{
+  border:1px solid var(--line); border-radius:10px; background:var(--panel);
+  padding:12px 14px; margin:10px 0 4px;
+}
+.moncard-head{
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+  font-size:12.5px; margin-bottom:10px;
+}
+.moncard-head .cc{ font-size:11px; }
+.moncard-foot{ font-size:10.5px; margin-top:9px; line-height:1.5; }
+.moncard-clean{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ok); }
+.monbars{ display:flex; flex-direction:column; gap:5px; }
+.monbar-row{ display:flex; align-items:center; gap:9px; font-size:11.5px; }
+.monbar-lbl{ flex:0 0 34px; color:var(--ink2); font-weight:600; }
+.monbar-track{
+  flex:1 1 auto; height:9px; border-radius:5px; background:var(--panel2);
+  border:1px solid var(--line); overflow:hidden;
+}
+.monbar-fill{ display:block; height:100%; background:var(--warn); }
+.monbar-n{ flex:0 0 34px; text-align:right; font-weight:600; color:var(--ink); }
+
+/* THE ASIN MONITOR'S PROGRESS BAR. A nine-minute run used to show the word
+   "checking…" and nothing else, which is indistinguishable from a hung one. */
+.monprog{
+  height:5px; border-radius:3px; background:var(--panel2);
+  border:1px solid var(--line); overflow:hidden; margin-top:5px; max-width:420px;
+}
+.monprog-fill{ height:100%; background:var(--accent2); transition:width .4s ease; }
 
 /* SAMPLE DATA, MARKED. See static/js/demobanner.js for why this is one shared
    pair of rules rather than a per-screen decision: a figure nobody can tell is

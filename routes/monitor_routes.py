@@ -109,6 +109,73 @@ def register(app, *, CONFIG_PATH, _cfg=None, _reload_cfg=None):
                 "kind": res.get("kind"), "previous": res.get("previous"), "by": "operator"})
         return jsonify(res), (200 if res.get("ok") else 400)
 
+    def _seller_file(b):
+        """The uploaded file's bytes, from the same data-URI shape the ASIN
+        importer already posts. -> (bytes, filename, error)."""
+        import base64
+        raw = str(b.get("data") or "")
+        if "," in raw and raw[:5].lower() == "data:":
+            raw = raw.split(",", 1)[1]
+        if not raw:
+            return b"", "", "No file came through."
+        try:
+            return base64.b64decode(raw), str(b.get("filename") or ""), ""
+        except Exception as e:
+            return b"", "", "Could not read that file: %s" % str(e)[:120]
+
+    @app.route("/monitor/sellers_preview", methods=["POST"])
+    def monitor_sellers_preview():
+        """Read a CSV of seller IDs and say what it WOULD change. Writes nothing.
+
+        The counterpart to naming sellers one at a time. Shown before applying
+        because a mapping file gets pasted together from a spreadsheet and the
+        first version usually has a column in the wrong place -- and this writes
+        into config.json, which is not somewhere to find out afterwards.
+        """
+        from monitor import bulk_import as _bulk
+        from monitor import known_sellers as _ks
+        b = request.get_json(force=True) or {}
+        data, fname, err = _seller_file(b)
+        if err:
+            return jsonify({"ok": False, "error": err}), 400
+        got = _bulk.parse_sellers(data, fname)
+        if got.get("error"):
+            return jsonify({"ok": False, "error": got["error"]}), 400
+        cfg = _cfg() if callable(_cfg) else (_cfg or {})
+        rows = []
+        for r in got["rows"]:
+            prev = _ks.classify(r["seller_id"], "", cfg)
+            rows.append(dict(r, previous_kind=(prev or {}).get("kind", "unknown"),
+                             previous_label=(prev or {}).get("label", ""),
+                             changes=((prev or {}).get("kind") != r["kind"]
+                                      or (prev or {}).get("label") != r["name"])))
+        return jsonify({"ok": True, "rows": rows, "invalid": got["invalid"],
+                        "columns": got["columns"], "count": len(rows)})
+
+    @app.route("/monitor/sellers_import", methods=["POST"])
+    def monitor_sellers_import():
+        """Apply the previewed rows. One write of config.json for the lot."""
+        from monitor import known_sellers as _ks
+        import datetime
+        b = request.get_json(force=True) or {}
+        rows = b.get("rows") or []
+        if not rows:
+            return jsonify({"ok": False, "error": "nothing to import"}), 400
+        res = _ks.set_sellers_bulk(CONFIG_PATH, rows)
+        if not res.get("ok"):
+            return jsonify(res), 400
+        if _reload_cfg:
+            _reload_cfg()      # drop the cached config so the overview re-reads
+        # THE SAME AUDIT TRAIL the one-at-a-time path writes. A hundred sellers
+        # renamed silently is exactly the change somebody will want to trace
+        # back in a month.
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        for c in res.get("changes") or []:
+            _chk.log_manual_label(CONFIG_PATH, {
+                "ts": ts, "seller_id": c["seller_id"], "name": c["name"],
+                "kind": c["kind"], "previous": c["previous"], "by": "csv import"})
+        return jsonify(res)
+
     @app.route("/monitor/label_log")
     def monitor_label_log():
         """Audit log of manual classifications (who/what/when/previous)."""

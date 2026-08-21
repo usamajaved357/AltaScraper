@@ -128,7 +128,12 @@ check("uploading only parses, so nor does it",
 # revenue, and a lister still cannot see it.
 check("it is its own page", feature_for("/returns/report"), "returns")
 from auth import users as _U
-check("  falling back to sales until set", _U.FEATURE_PARENT.get("returns"), "sales")
+# RETURNS NOW FOLLOWS ORDERS, which is where the menu puts it -- the Orders
+# group has two tabs, All orders and Returns Intelligence, and setting the group
+# has to move both. Orders itself still follows sales, so the access anyone
+# actually has is unchanged: returns -> orders -> sales.
+check("  falling back to orders", _U.FEATURE_PARENT.get("returns"), "orders")
+check("  which itself falls back to sales", _U.FEATURE_PARENT.get("orders"), "sales")
 check("  so a lister still cannot see it",
       _U.feature_level({"active": True, "role": "lister", "features": {}}, "returns"),
       "none")

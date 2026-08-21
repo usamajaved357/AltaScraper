@@ -129,23 +129,30 @@ function can(perm){
 // because the sidebar is drawn in the browser and the server never sees it --
 // but it is the SERVER that decides: everything below only hides things, and a
 // screen hidden here is still refused there if somebody types its address.
+// EVERY PAGE NAMES ITSELF NOW, not the area it sits in.
+//
+// Five screens used to share "listings", so Product Catalog could not be
+// granted without the Compliance checker as well; three shared "images"; four
+// more shared "traffic". Each has its own feature, and each of those inherits
+// the area it used to name (auth/users.py FEATURE_PARENT), so an account with
+// nothing set behaves exactly as it did before.
 const SECTION_FEATURE = {
-  listings:"listings", generate:"generate", sync:"listings", variations:"variations",
-  sellerimport:"sellerimport", miles:"listings",
-  imagestudio:"images", imagerefs:"images", imagelib:"images",
+  listings:"listings", generate:"generate", sync:"sync", variations:"variations",
+  sellerimport:"sellerimport", miles:"miles",
+  imagestudio:"imagestudio", imagerefs:"imagerefs", imagelib:"imagelib",
   inventory:"inventory", sourcing:"repricer",
   // Reads /inventory/money-back, which the doorman guards as "inventory", so
   // the nav item has to hide on exactly the same permission. A link that is
   // visible and then refused is worse than one that was never shown.
-  reimbursements:"inventory",
+  reimbursements:"reimbursements",
   orders:"orders", returns:"returns",
-  sales:"sales", leading:"sales", hourly:"hourly",
-  traffic:"traffic", sqp:"traffic", finance:"finance", aiusage:"aiusage",
-  weekly:"sales", daily:"sales",
-  ppc:"ppc", drppc:"ppc",
-  monitor:"monitor", trackers:"monitor", alerts:"monitor",
-  catalog:"listings", categories:"listings", compliance:"listings",
-  notify:"accounts", setup:"accounts",
+  sales:"sales", leading:"leading", hourly:"hourly",
+  traffic:"traffic", sqp:"sqp", finance:"finance", aiusage:"aiusage",
+  weekly:"weekly", daily:"daily",
+  ppc:"ppc", drppc:"drppc",
+  monitor:"monitor", trackers:"trackers", alerts:"alerts",
+  catalog:"catalog", categories:"categories", compliance:"compliance",
+  notify:"notify", setup:"setup",
   // MEASURED: 36 sections in the nav, 34 in this map. The two missing ones were
   // not harmless. `brief` is the weekly business brief -- revenue, profit, what
   // moved -- so it belongs with sales, exactly as overview and leading do; it
@@ -156,18 +163,18 @@ const SECTION_FEATURE = {
   // A section absent from this map is never hidden, and nothing says so at the
   // time -- which is why both of these were missed. test_permission_coverage.py
   // now fails on an unmapped section rather than leaving it to be noticed.
-  brief:"sales", permissions:"accounts",
+  brief:"brief", permissions:"permissions",
   // Phase 1 analytics. Mapped ON ARRIVAL rather than left to be noticed later:
   // an unmapped section is never hidden, and that default is what let /brief
   // show revenue to a user with sales="none". These read Brand Analytics --
   // what the whole marketplace searches for and what converts on our listings
   // -- which is commercially sensitive in the same way turnover is, so they sit
   // with `traffic` (search performance), exactly as /sqp does.
-  kwspy:"traffic", kwasin:"traffic", ranktracker:"traffic", kwhistory:"traffic",
+  kwspy:"kwspy", kwasin:"kwasin", ranktracker:"ranktracker", kwhistory:"kwhistory",
   // ASIN Studio writes listing copy and creates a draft, so it is a
   // LISTINGS permission -- not traffic. Somebody who may read search data
   // should not thereby be able to create listings.
-  asinstudio:"listings",
+  asinstudio:"asinstudio",
 };
 
 function featureLevel(feat){
@@ -428,15 +435,57 @@ function featureRows(prefix, current){
   };
 
   if(groups && groups.length){
-    return groups.map(function(g){
-      const rows = (g.features||[]).map(row).join("");
+    return groups.map(function(g, gi){
+      const feats = (g.features || []).filter(function(k){ return !!F[k]; });
+      const rows = feats.map(row).join("");
       if(!rows) return "";
-      return '<div class="cc" style="font-size:10.5px;text-transform:uppercase;'
-        + 'letter-spacing:.06em;margin:8px 0 2px;opacity:.75">'+_uesc(g.title)+'</div>'
-        + rows;
+      // THE WHOLE GROUP IN ONE MOVE.
+      //
+      //   "i should have an option to give permission by clicking the dot in
+      //    front of orders to give the permission for its sub pages all orders
+      //    and return intelligence. and also 2 separate dots in front of both
+      //    these sub pages."
+      //
+      // The per-page controls were already there; what was missing was the one
+      // above them. This sets every page in the group at once -- including the
+      // ones whose parent is somewhere else, like Repricer, which sits under
+      // Inventory in the menu but inherits from Listings. Inheritance alone
+      // could never have covered those, which is why this is an explicit
+      // action and not a cleverer parent table.
+      const gid = prefix + "_g" + gi;
+      const head = '<div class="permgrp">'
+        + '<span class="permgrp-title">' + _uesc(g.title) + '</span>'
+        + '<span class="cc permgrp-n">' + feats.length + ' page'
+        + (feats.length !== 1 ? 's' : '') + '</span>'
+        + '<span class="permgrp-set">'
+        + '<span class="cc">set all:</span>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
+        +   gid + '\',\'none\')">No access</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
+        +   gid + '\',\'view\')">View</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
+        +   gid + '\',\'edit\')">Edit</button>'
+        + '<button type="button" class="db-chip" onclick="permSetGroup(\''
+        +   gid + '\',\'\')" title="Let every page in this group follow its area again">Inherit</button>'
+        + '</span></div>';
+      return '<div class="permgroup" data-gid="' + gid + '">' + head + rows + '</div>';
     }).join("");
   }
   return Object.keys(F).map(row).join("");
+}
+
+/* Set every page in one group at once. "" is Inherit, which is stored as
+   ABSENT -- see _collectFeatures. An area row (one with no parent) has no
+   Inherit option, so it is left alone by the Inherit button rather than being
+   set to an empty value it cannot hold. */
+function permSetGroup(gid, level){
+  const box = document.querySelector('.permgroup[data-gid="' + gid + '"]');
+  if(!box) return;
+  box.querySelectorAll("select[data-feat]").forEach(function(s){
+    if(level === "" && !Array.prototype.some.call(s.options,
+        function(o){ return o.value === ""; })) return;   // an area: no Inherit
+    s.value = level;
+  });
 }
 
 function _collectFeatures(prefix){

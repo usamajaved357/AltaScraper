@@ -115,6 +115,45 @@ FEATURES = {
     "hourly":       "Hourly Sales",
     "finance":      "Finance: contribution per product",
     "aiusage":      "AI spend",
+
+    # ---- one per PAGE, so every screen can be granted on its own -----------
+    #
+    #   "give me the option to give permission for each and every feature in the
+    #    manage permissions page ... i do not have an option for every page
+    #    every feature separately"
+    #
+    # MEASURED: 42 pages in the sidebar against 17 features, and five different
+    # screens all riding on `listings` -- so Product Catalog could not be
+    # granted without also granting the Compliance checker, and Returns
+    # Intelligence rode on `sales` along with everything else about money.
+    #
+    # Every one of these inherits its old area (see FEATURE_PARENT), so nobody's
+    # access changes by adding them. They only start to matter when one is set.
+    "catalog":      "Product Catalog",
+    "categories":   "Category Explorer",
+    "sync":         "Compare with Amazon",
+    "miles":        "Supplier Import",
+    "compliance":   "Compliance checker",
+    "imagelib":     "Image Library",
+    "imagestudio":  "Image Studio",
+    "imagerefs":    "Image refs",
+    "reimbursements": "Reimbursements / money back",
+    "weekly":       "Weekly KPIs",
+    "daily":        "Daily round",
+    "brief":        "Weekly brief",
+    "leading":      "Leading Indicators",
+    "sqp":          "Keywords (SQP)",
+    "kwspy":        "Keyword Spy",
+    "kwasin":       "ASIN Insights",
+    "kwhistory":    "Keyword History",
+    "ranktracker":  "Rank Tracker",
+    "asinstudio":   "ASIN Studio",
+    "drppc":        "Dr PPC",
+    "trackers":     "Trackers",
+    "alerts":       "Alerts",
+    "notify":       "Notifications",
+    "setup":        "Brand setup",
+    "permissions":  "User permissions",
 }
 LEVELS = ("none", "view", "edit")
 
@@ -127,22 +166,85 @@ FEATURE_PARENT = {
     "variations":   "listings",
     "sellerimport": "listings",
     "orders":       "sales",
-    "returns":      "sales",
+    # RETURNS FOLLOWS ORDERS, which is where the menu puts it -- "there are 2
+    # tabs in orders ... all orders and return intelligence". It used to follow
+    # `sales` directly, so setting Orders left Returns Intelligence behind.
+    #
+    # Safe to move because orders itself follows sales: an account with Orders
+    # unset resolves returns -> orders -> sales, which is the same answer it
+    # gave before. It only differs once somebody sets Orders, which is exactly
+    # the moment they meant both tabs.
+    "returns":      "orders",
     "traffic":      "sales",
     "hourly":       "sales",
     "finance":      "sales",
     "aiusage":      "sales",
+
+    # EACH NEW PAGE INHERITS THE AREA IT USED TO RIDE ON. This is the whole
+    # reason twenty-five new switches can be added to a live app without
+    # changing a single person's access: unset means inherit, and every one of
+    # these is unset until somebody sets it. The parent below is exactly what
+    # SECTION_FEATURE in static/js/users.js mapped the page to before.
+    "catalog":        "listings",
+    "categories":     "listings",
+    "sync":           "listings",
+    "miles":          "listings",
+    "compliance":     "listings",
+    "imagelib":       "images",
+    "imagestudio":    "images",
+    "imagerefs":      "images",
+    "reimbursements": "inventory",
+    "weekly":         "sales",
+    "daily":          "sales",
+    "brief":          "sales",
+    "leading":        "sales",
+    "sqp":            "traffic",
+    "kwspy":          "traffic",
+    "kwasin":         "traffic",
+    "kwhistory":      "traffic",
+    "ranktracker":    "traffic",
+    "asinstudio":     "listings",
+    "drppc":          "ppc",
+    "trackers":       "monitor",
+    "alerts":         "monitor",
+    "notify":         "accounts",
+    "setup":          "accounts",
+    "permissions":    "accounts",
 }
 
 # The order the settings screen shows them in, and under which heading. Kept
 # here rather than in the browser so the list cannot drift from the features
 # that actually exist.
+# THE SAME SHAPE AS THE SIDEBAR, group for group.
+#
+#   "for example there are 2 tabs in orders so i should have an option to give
+#    permission by clicking the dot in front of orders to give the permission
+#    for its sub pages all orders and return intelligence. and also 2 separate
+#    dots in front of both these sub pages."
+#
+# The old three headings -- Listings / Money / Operations -- were a grouping
+# invented for this screen, so Orders and Returns Intelligence sat under "Money"
+# beside Traffic and AI spend rather than under Orders where the menu puts them.
+# Somebody deciding what a colleague may see is looking at the menu in their
+# head; this now matches it.
+#
+# The first entry of each group is the AREA it inherits from, and the screen
+# draws it as the group's own control -- set that one and every unset page in
+# the group follows it. "" means the group has no area of its own and the pages
+# under it inherit from elsewhere (their FEATURE_PARENT above says where).
 FEATURE_GROUPS = [
-    ("Listings", ["listings", "generate", "repricer", "variations",
-                  "sellerimport", "images"]),
-    ("Money",    ["sales", "orders", "finance", "returns", "traffic",
-                  "hourly", "aiusage", "ppc"]),
-    ("Operations", ["inventory", "monitor", "accounts"]),
+    ("Manage catalogue", ["listings", "catalog", "categories", "variations",
+                          "generate", "sync", "sellerimport", "miles",
+                          "compliance", "asinstudio"]),
+    ("Images",           ["images", "imagelib", "imagestudio", "imagerefs"]),
+    ("Inventory",        ["inventory", "reimbursements", "repricer"]),
+    ("Orders",           ["orders", "returns"]),
+    ("Reports",          ["sales", "hourly", "traffic", "finance", "daily",
+                          "weekly", "leading", "brief", "sqp", "kwspy",
+                          "kwasin", "kwhistory", "ranktracker", "aiusage"]),
+    ("Advertising",      ["ppc", "drppc"]),
+    ("Monitoring",       ["monitor", "trackers", "alerts", "notify"]),
+    ("Settings",         ["accounts", "permissions", "setup"]),
 ]
 
 # What a role sees by default. Individually editable afterwards.

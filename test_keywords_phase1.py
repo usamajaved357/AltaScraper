@@ -212,8 +212,13 @@ truthy("  and the trap is recorded", "0 pixels tall" in SHELL)
 for s in ("kwspy", "kwasin", "ranktracker", "kwhistory"):
     truthy("  %s is a known section" % s, '"%s"' % s in SHELL)
 U = read("static", "js", "users.js")
+# Each names ITSELF and inherits traffic, so any one of them can be granted
+# alone -- and with nothing set each still resolves to traffic, which is where
+# search data belongs.
+from auth import users as _AU
 for s in ("kwspy", "kwasin", "ranktracker", "kwhistory"):
-    truthy("  %s has a permission" % s, "%s:\"traffic\"" % s in U)
+    truthy("  %s has a permission of its own" % s, '%s:"%s"' % (s, s) in U)
+    check("    falling back to traffic", _AU.FEATURE_PARENT.get(s), "traffic")
 
 print("\n== the analytics work does not reach into the protected tools ==")
 # The brief: "do NOT modify amazon_listing_generator.py, the image generator,
