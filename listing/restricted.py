@@ -20,6 +20,7 @@ TUNING (owner-approved):
    for the KNOWN active marketplace. Unknown marketplace, or a marketplace-specific/threshold
    prohibition we can't confirm, -> WARN, never a hard block.
 """
+import functools
 import json
 import os
 import re
@@ -49,12 +50,21 @@ _TIER3 = _load(_TIER3_FILE)
 _DOCS = _load(_DOCS_FILE)
 
 
+@functools.lru_cache(maxsize=8192)
 def wordish(term):
     """Whole-word (alphanumeric-boundary) matcher for a term.
 
     PUBLIC because listing/sourcing_viability.py matches words the same way. One
     matcher, one place -- two copies would drift and the two layers would start
     disagreeing about what counts as a word.
+
+    KEPT ONCE BUILT. The terms come from fixed rulebooks on disk, so the same
+    few thousand strings are asked for again and again -- and the answer for a
+    given string never changes. Measured on the Listings screen (88 rows,
+    jack_uk): 11,502 calls to re.escape and re.compile per request, all of them
+    rebuilding patterns that had just been built. A compiled pattern is
+    immutable, so handing the same one back is the same answer, not a shared
+    mutable thing.
     """
     return re.compile(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
 
@@ -467,6 +477,25 @@ for _cid, _e in _ENTRIES.items():
     _sfx = _ACCESSORY_SUFFIXES.get(_cid)
     _e["kw_accessory"] = ({kw: accessory_pattern(kw, _sfx)
                            for kw, _pat in _e["kw_strong"]} if _sfx else {})
+    # ONE PASS BEFORE EIGHTEEN. This entry's strong keywords as a single
+    # alternation, with the SAME boundary guards wordish() puts on each one:
+    #
+    #     (?<![A-Za-z0-9])(?:nebulizer|inhaler|...)(?![A-Za-z0-9])
+    #
+    # It matches exactly when at least one of the individual patterns matches --
+    # the engine backtracks between alternatives at each position, so a keyword
+    # that fails its right-hand boundary does not stop another from being tried
+    # there. Equivalent by construction, and checked against the old path over
+    # every listing in the database plus adversarial strings (test_restricted_
+    # screen.py).
+    #
+    # WHY: the Listings screen ran 73,919 regex searches for 88 rows -- 840
+    # patterns per row, against titles that match none of them. Almost every
+    # entry can now be dismissed with one search instead of eighteen.
+    _e["kw_screen"] = (re.compile(
+        r"(?<![A-Za-z0-9])(?:"
+        + "|".join(re.escape(kw) for kw, _p in _e["kw_strong"])
+        + r")(?![A-Za-z0-9])", re.I) if _e["kw_strong"] else None)
 
 
 def _accessory_only(entry, text, hits):
@@ -504,12 +533,31 @@ _CATEGORY_EXCLUDE = {
 }
 
 
-def _category_signal(cid, product_type, category_path, browse_nodes):
+def _category_haystack(product_type, category_path, browse_nodes):
+    """The product's category words, lowercased, as one string.
+
+    Built ONCE PER PRODUCT. It used to be built inside _category_signal, which
+    is called once per category in the rulebook -- so the same three fields were
+    joined and lowercased forty-six times for every single listing on the
+    screen, always giving the same string.
+    """
+    return "  ".join(str(x) for x in (product_type, category_path,
+                     " ".join(browse_nodes or [])) if x).lower()
+
+
+def _category_signal(cid, product_type, category_path, browse_nodes, hay=None):
+    """Does this product look like it is IN category `cid`?
+
+    `hay` is the product's category words, already joined. Passing it in is the
+    only reason this takes it: the caller has forty-six of these to do and the
+    answer to "what are this product's category words" does not change between
+    them. Left optional so every other call site is unaffected.
+    """
     tokens = _CATEGORY_SIGNALS.get(cid)
     if not tokens:
         return False
-    hay = "  ".join(str(x) for x in (product_type, category_path,
-                    " ".join(browse_nodes or [])) if x).lower()
+    if hay is None:
+        hay = _category_haystack(product_type, category_path, browse_nodes)
     for ex in _CATEGORY_EXCLUDE.get(cid, []):
         if _wordish(ex).search(hay):
             return False
@@ -528,14 +576,26 @@ def check_restricted_type(text="", marketplace="UK", product_type="", category_p
     text_hay = str(text or "")
 
     matches = []
+    _hay = _category_haystack(product_type, category_path, browse_nodes)
     for cid, e in _ENTRIES.items():
-        cat_sig = _category_signal(cid, product_type, category_path, browse_nodes)
-        strong_hits = [kw for kw, pat in e["kw_strong"] if pat.search(text_hay)]
-        corrob_hits = [kw for kw, pat in e["kw_corrob"] if pat.search(text_hay)]
+        cat_sig = _category_signal(cid, product_type, category_path, browse_nodes,
+                                   hay=_hay)
+        # The screen first: one search that can only fail if every one of this
+        # entry's strong keywords would have failed. See kw_screen above.
+        _screen = e.get("kw_screen")
+        strong_hits = ([] if (_screen is None or not _screen.search(text_hay))
+                       else [kw for kw, pat in e["kw_strong"]
+                             if pat.search(text_hay)])
         # DEMOTION RULE: a corroborating word only counts WITH a category signal.
         matched = bool(strong_hits) or cat_sig
         if not matched:
             continue
+        # AND ONLY THEN the corroborating words. They are read in exactly one
+        # place -- used_kws below, behind `if cat_sig` -- and they do not decide
+        # `matched`, so computing them without a category signal was work whose
+        # answer was thrown away. Half the searches on this screen were that.
+        corrob_hits = ([kw for kw, pat in e["kw_corrob"] if pat.search(text_hay)]
+                       if cat_sig else [])
         # An ACCESSORY to a restricted product is not the restricted product.
         # Only ever suppresses when no category signal says the product really
         # is in the category.
