@@ -2820,7 +2820,35 @@ async function salesFillAsins(){
   sel.value=SALES.asin||"";
 }
 
+/* "ALL MARKETPLACES" NOW MEANS ALL MARKETPLACES.
+ *
+ * The sidebar has offered it all along and this screen threw it away:
+ * static/js/scopeq.js drops the parameter, so every panel below asked about ONE
+ * marketplace. Measured 21 Aug 2026 with "All marketplaces" showing: the screen
+ * said "United Kingdom Time", drew a week-to-date chart in pounds, and the
+ * Sales Report under it was jack_uk's UK figures. Ten marketplaces, one shown,
+ * under a heading that said all.
+ *
+ * Every panel on this screen is built for one marketplace and one currency --
+ * a chart cannot plot pounds and euros on one axis, and the owner's rule is
+ * "keep grouping by currency, don't sum across them". So instead of pretending,
+ * the single-marketplace panels are put away and a per-marketplace table takes
+ * their place (static/js/brandview.js). Choosing a country brings them back.
+ */
+function salesIsAllMarkets(){
+  return typeof WS_MARKET !== "undefined" && WS_MARKET === "__all__";
+}
+
 function salesOpen(){
+  const all = salesIsAllMarkets();
+  const body = document.getElementById("sales_body");
+  const bv = document.getElementById("brandview");
+  if(body) body.style.display = all ? "none" : "";
+  if(bv) bv.style.display = all ? "" : "none";
+  if(all){
+    if(typeof brandviewLoad === "function") brandviewLoad();
+    return;
+  }
   const s=document.getElementById("sales_start"), e=document.getElementById("sales_end");
   if(s && !s.value) SALES.start="";
   if(e && !e.value) SALES.end="";

@@ -589,6 +589,23 @@ async function switchAccountMarket(m){
   // live, and the Drafts view reads that to tell a draft from something already
   // published. See the note above enterAccount's loader.
   loadRows(); loadLiveCatalog(false);
+  // AND THE SCREEN YOU ARE ACTUALLY LOOKING AT.
+  //
+  // screenForgetAll() above marks every screen as stale, but nothing re-opened
+  // the one on the glass -- so the old marketplace's figures stayed there until
+  // you navigated away and back. Measured 21 Aug 2026: switching from United
+  // Kingdom to "All marketplaces" while on the Sales screen made ZERO requests,
+  // and the screen went on saying "United Kingdom Time" with a chart in pounds
+  // under a heading that said all.
+  //
+  // navTo is the one way in -- it owns the permission gate, the URL and the
+  // active highlight -- and re-running it for the section already open reloads
+  // it because screenNeedsLoad() is now true. Listings is skipped: the two
+  // loaders above are its reload, and calling both would double the work.
+  if(typeof CUR_SEC !== "undefined" && CUR_SEC && CUR_SEC !== "listings"
+     && typeof navTo === "function"){
+    navTo(CUR_SEC);
+  }
 }
 
 function openCurrentAccountSettings(){

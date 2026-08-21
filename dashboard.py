@@ -3955,6 +3955,14 @@ def build_app(backend=None):
     _finance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
 
+    # One account, EVERY marketplace, side by side. The sidebar has offered
+    # "All marketplaces" all along and every screen threw it away -- see the
+    # module docstring for what that showed instead. Reads only what has
+    # already been pulled; asks Amazon for nothing.
+    import routes.brandview_routes as _brandview_routes
+    _brandview_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                               _active_account=_active_account, _state=_state)
+
     # Changing a live selling price by hand. Composes the patch with the SAME
     # builder the repricer uses, which edits the offer Amazon returned rather
     # than inventing a purchasable_offer shape (Rule 4 and Rule 12).

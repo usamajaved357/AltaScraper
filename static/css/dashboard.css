@@ -4124,3 +4124,29 @@ table.ordtable tbody tr.orddetail > td{
                color:var(--ink)}
 .bmkkbd{font-size:9.5px;color:var(--ink4);border:1px solid var(--line);
         border-radius:3px;padding:0 4px;letter-spacing:.02em}
+
+/* ===== EVERY MARKETPLACE AT ONCE (static/js/brandview.js) ===== */
+.bvhead{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.bvcurs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.bvcur{flex:1 1 200px;min-width:190px;background:var(--panel2);
+       border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+.bvcurhd{font-size:11px;color:var(--ink2);letter-spacing:.04em;
+         text-transform:uppercase;margin-bottom:3px}
+.bvcurbig{font-size:19px;font-weight:600;color:var(--gold)}
+.bvcursub{font-size:11px;margin-top:3px}
+.bvnote{font-size:11px;margin:8px 0;line-height:1.5}
+.bvempty{padding:16px;border:1px dashed var(--line2);border-radius:var(--radius);
+         font-size:12px}
+.bvtable{width:100%;min-width:720px;font-size:12px}
+.bvtable th{font-size:11px;color:var(--ink2);font-weight:500;text-align:right;
+            padding:4px 8px;white-space:nowrap}
+.bvtable td{text-align:right;padding:6px 8px;white-space:nowrap}
+.bvflag{font-size:14px}
+.bvdelta{font-size:10px;margin-left:4px}
+.bvdelta.up{color:var(--ok)} .bvdelta.down{color:var(--red)}
+.bvmore{background:none;border:0;color:var(--ink2);cursor:pointer;font-size:11.5px;
+        padding:8px 2px;font-family:inherit}
+.bvmore:hover{color:var(--ink)}
+.bvquiet{display:flex;gap:6px;flex-wrap:wrap;padding:0 0 8px}
+.bvchip{font-size:11px;color:var(--ink3);border:1px solid var(--line);
+        border-radius:12px;padding:2px 8px}
