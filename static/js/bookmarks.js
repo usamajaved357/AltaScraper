@@ -129,6 +129,18 @@ function bmkRender(){
        + '<i class="ti ti-bookmark"></i> on any page.</span>';
   }
 
+  // AND THE WAY TO REACH THE OTHER THIRTY-EIGHT. The bookmark bar is for the
+  // handful of screens you open every day; there are 43, in eight collapsible
+  // groups, and the rest are found by remembering which group somebody filed
+  // them under. Ctrl+K searches them by name (static/js/palette.js) -- said
+  // here because a shortcut nobody is told about is a shortcut nobody uses.
+  if(typeof palOpen === "function"){
+    h += '<button class="bmkgoto" onclick="palOpen()" '
+      +  'title="Search every screen by name (Ctrl+K)">'
+      +  '<i class="ti ti-search"></i><span>Go to</span>'
+      +  '<span class="bmkkbd">Ctrl K</span></button>';
+  }
+
   // The star for the page you are on, at the end, so the bar reads
   // left-to-right as "your pages, then add this one".
   if(canPin){

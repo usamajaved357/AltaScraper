@@ -2016,6 +2016,10 @@
 <script src="/static/js/hourly.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
+<!-- Go to any of the 43 screens by typing its name (Ctrl+K). Loaded LAST
+     because it reads the sidebar's own markup and asks maySeeSection(), so
+     everything it depends on is already defined. -->
+<script src="/static/js/palette.js?v={{ ASSET_V }}"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">
