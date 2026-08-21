@@ -304,7 +304,44 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         b = request.get_json(force=True) or {}
         aid = b.get("id", "")
         _state["active_account_id"] = aid
-        _state["active_marketplace"] = b.get("marketplace", "") or _state.get("active_marketplace", "")
+        # THE SELECTED MARKETPLACE MUST BE ONE THIS ACCOUNT SELLS IN.
+        #
+        # It used to keep whatever was there when the page named none -- and
+        # what was there belonged to the account being switched AWAY from.
+        # active_marketplace is one variable for the whole server and 44 places
+        # across 20 files fall back to it, so one stale value answers for all of
+        # them at once.
+        #
+        # MEASURED 21 Aug 2026, selecting each account in turn: the Finance
+        # screen reported "No finance data has ever been pulled for Sheelady
+        # (USA) on UK". UK is not one of Sheelady's marketplaces -- they are MX,
+        # CA, BR and US. And "no data" reads as "you have no sales", not as "I
+        # looked in the wrong place".
+        #
+        # Cleared rather than corrected, so the account's OWN default is what
+        # every one of those 44 fallbacks reaches next (routes/scope.py resolves
+        # the rest). A marketplace the account does sell in is kept exactly as
+        # before, which is the case that happens when a person switches
+        # marketplace and then switches account.
+        _mkt_asked = str(b.get("marketplace", "") or "").strip()
+        if _mkt_asked:
+            _state["active_marketplace"] = _mkt_asked
+        else:
+            _kept = str(_state.get("active_marketplace", "") or "").strip().upper()
+            _sells = set()
+            try:
+                _a0 = _acc.get_account(_cfg(), aid, CONFIG_PATH) or {}
+                _sells = {str(m or "").strip().upper()
+                          for m in (_a0.get("marketplaces") or []) if str(m or "").strip()}
+                if not _sells and str(_a0.get("default_marketplace") or "").strip():
+                    # It lists none but has named a default: that is still more
+                    # specific than the previous account's choice.
+                    _kept = ""
+            except Exception:
+                _sells = set()
+            if _kept and _sells and _kept not in _sells:
+                _kept = ""
+            _state["active_marketplace"] = _kept
         if not aid:
             # NO ACCOUNT. This used to read the Dropshipping workspace's own
             # sheet keys; that workspace has been removed (it described itself

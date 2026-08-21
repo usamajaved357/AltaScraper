@@ -55,9 +55,48 @@ def marketplace(*, state=None, account=None, asked=None, with_data=None):
     marketplace, used only as the last resort before giving up. It is passed in
     rather than imported so this module stays free of storage concerns and the
     caller decides what "has data" means for its own screen.
+
+    THE SELECTED MARKETPLACE ONLY COUNTS IF THIS ACCOUNT SELLS THERE.
+
+    active_marketplace is one variable for the whole server and it is written
+    when a marketplace is CHOSEN -- on some other account, possibly hours ago.
+    Step 2 handed it to whatever screen asked next, ahead of the account's own
+    default, so a US account was answered about the United Kingdom.
+
+    MEASURED on 21 Aug 2026, opening each account in turn and asking the
+    Finance screen:
+
+        Sheelady (USA)     marketplaces ["MX","CA","BR","US"], default US
+                           -> "No finance data has ever been pulled for
+                               Sheelady (USA) on UK"
+        Miles Lubricants   default US -> "...on UK"
+        Headbanger Lures   no default at all -> "...on UK"
+
+    UK is not one of Sheelady's marketplaces. That answer was not a judgement
+    call about which of several to show; it named a country the account does not
+    sell in, and then reported "no data" -- which reads as "you have no sales",
+    not as "I looked in the wrong place". This file's own docstring says it:
+    "defaulting to 'UK' gives a US account a confident answer about the wrong
+    country". The default was not the only way to arrive there.
+
+    So the selected marketplace is skipped when the account lists its
+    marketplaces and this is not one of them. Nothing else changes: an account
+    that does sell there is answered about it exactly as before, and an account
+    that lists nothing cannot contradict anything, so it is left as it was.
     """
-    for v in (asked, (state or {}).get("active_marketplace"),
-              (account or {}).get("default_marketplace")):
+    acc = account or {}
+    sells_in = {str(m or "").strip().upper()
+                for m in (acc.get("marketplaces") or []) if str(m or "").strip()}
+    selected = str((state or {}).get("active_marketplace") or "").strip().upper()
+    if selected and sells_in and selected not in sells_in:
+        selected = ""
+    # An account that lists no marketplaces but HAS named a default has still
+    # said something about itself, and it is more specific than a global that
+    # belongs to whichever account was open last.
+    if (selected and not sells_in
+            and str(acc.get("default_marketplace") or "").strip()):
+        selected = ""
+    for v in (asked, selected, acc.get("default_marketplace")):
         s = str(v or "").strip().upper()
         if s:
             return s
