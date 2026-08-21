@@ -305,41 +305,180 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
     @app.route("/returns/upload", methods=["POST"])
     def returns_upload():
-        """Parse a returns file the user supplies.
+        """Parse returns files the user supplies, and ADD them to what is loaded.
 
         Accepts the seller-fulfilled report OR an FBA Customer Returns file, and
         works out which by its columns rather than its name -- the same report
         downloaded twice gets two different filenames and neither means
         anything.
+
+        SEVERAL FILES, AND THEY COMBINE. This used to take one file and REPLACE
+        everything, which made the screen unusable for the case it is most
+        needed in:
+
+          - Amazon caps a seller-fulfilled report at 60 days, so year-to-date is
+            four or five separate downloads. Only the last one survived.
+          - An account with both FBA and seller-fulfilled returns has two
+            reports that answer different halves of this page. Uploading the
+            second one threw away the first -- so adding data removed data.
+
+        Files are now merged into whatever is already loaded and de-duplicated
+        on what identifies a return (returns_view.identity), so overlapping
+        windows are safe and re-uploading the same file changes nothing. The
+        reply says how many rows were new, how many were already there, and
+        which report kinds the combined set now holds.
         """
         acc, wsid, mkt = _scope()
-        text = ""
-        f = (request.files or {}).get("file")
-        if f is not None:
-            text = f.read().decode("utf-8", "replace")
-        else:
-            text = str((request.get_json(silent=True) or {}).get("text") or "")
-        if not text.strip():
+
+        # EVERY file on the request, not files["file"] alone. A multi-select
+        # sends them all under the same field name and only the first was read.
+        blobs = []
+        if request.files:
+            for key in request.files:
+                for f in request.files.getlist(key):
+                    if f is not None:
+                        blobs.append((f.filename or "file",
+                                      f.read().decode("utf-8", "replace")))
+        if not blobs:
+            body = request.get_json(silent=True) or {}
+            if body.get("text"):
+                blobs = [("pasted", str(body["text"]))]
+        blobs = [(n, t) for n, t in blobs if str(t or "").strip()]
+        if not blobs:
             return jsonify({"ok": False, "error": "no file"}), 400
 
-        headers, rows, err = _split(text)
-        if err == "__EMPTY__":
-            return jsonify({"ok": False, "error": "that file has no rows"}), 400
-        returns, kind, skipped = _rv.parse_rows(headers, rows)
-        if not kind:
-            return jsonify({"ok": False, "error": (
-                "Those columns were not recognised as an Amazon returns report. "
-                "It needs at least an ASIN or SKU and a reason. Found: %s"
-                % ", ".join(str(h) for h in headers[:12]))}), 400
+        # REPLACE ONLY IF ASKED. The default is to add; "Start again" sets this.
+        replace = str(request.args.get("replace") or "").lower() in ("1", "true")
+        held = [] if replace else list((_LAST.get(wsid) or {}).get("returns") or [])
 
-        dates = sorted(r["date"] for r in returns if r.get("date"))
+        read = []          # per file, so a bad one among four is named
+        rejected = []
+        total_added = total_dupes = total_skipped = 0
+        for name, text in blobs:
+            headers, rows, err = _split(text)
+            if err == "__EMPTY__":
+                rejected.append("%s — no rows in it" % name)
+                continue
+            parsed, kind, skipped = _rv.parse_rows(headers, rows)
+            if not kind:
+                rejected.append(
+                    "%s — those columns are not an Amazon returns report "
+                    "(found: %s)" % (name, ", ".join(str(h) for h in headers[:8])))
+                continue
+            held, added, dupes = _rv.merge(held, parsed)
+            total_added += added
+            total_dupes += dupes
+            total_skipped += skipped
+            read.append({"file": name, "kind": kind, "rows": len(parsed),
+                         "added": added, "already_had": dupes})
+
+        if not held:
+            return jsonify({"ok": False, "error": (
+                "Nothing could be read. " + " ".join(rejected))}), 400
+
+        kinds = sorted({str(r.get("kind") or "") for r in held if r.get("kind")})
+        dates = sorted(r["date"] for r in held if r.get("date"))
         start = dates[0] if dates else ""
         end = dates[-1] if dates else ""
-        out = _answer(returns, kind, wsid, mkt, start, end, skipped,
-                      note=("Read %d rows from your file as %s data."
-                            % (len(returns),
-                               "FBA" if kind == "fba" else "seller-fulfilled")))
+
+        bits = []
+        if total_added:
+            bits.append("Added %s return%s from %d file%s."
+                        % ("{:,}".format(total_added),
+                           "" if total_added == 1 else "s",
+                           len(read), "" if len(read) == 1 else "s"))
+        if total_dupes:
+            bits.append("%s row%s were already loaded and were not counted "
+                        "twice." % ("{:,}".format(total_dupes),
+                                    "" if total_dupes == 1 else "s"))
+        bits.append("Now holding %s returns%s%s."
+                    % ("{:,}".format(len(held)),
+                       (" from " + " and ".join(
+                           "FBA" if k == "fba" else "seller-fulfilled"
+                           for k in kinds)) if kinds else "",
+                       (", %s to %s" % (start, end)) if start else ""))
+        if rejected:
+            bits.append("Not read: " + "; ".join(rejected))
+
+        # The kind reported to the screen is what the COMBINED set can support.
+        # "fba" unlocks the disposition and comment sections, so it may only be
+        # claimed when FBA rows are actually present.
+        combined_kind = "fba" if "fba" in kinds else (kinds[0] if kinds else "")
+        out = _answer(held, combined_kind, wsid, mkt, start, end, total_skipped,
+                      note=" ".join(bits))
+        out["files_read"] = read
+        out["rejected"] = rejected
+        out["kinds"] = kinds
         return jsonify(out)
+
+    @app.route("/returns/view")
+    def returns_view():
+        """Re-answer the loaded returns for a date range. ?from=&to= (ISO days).
+
+        WHY THE SERVER DOES THIS. Dragging a range on the daily chart has to
+        change every figure on the page -- the rate, the causes, the parents,
+        the themes, the findings -- and all of that is computed in
+        domain/returns_view.py and domain/returns_intel.py. Filtering in the
+        browser would mean a second implementation of the same arithmetic living
+        in JavaScript, and the two would disagree the first time either changed
+        (CLAUDE.md rule 12). So the rows are filtered here, by date, and handed
+        to exactly the same two functions a fresh upload goes through.
+
+        It costs nothing: the parsed returns are already in memory for this
+        workspace -- that is what the Excel export writes from -- so no file is
+        re-read and Amazon is not asked for anything.
+        """
+        _acc, wsid, mkt = _scope()
+        got = _LAST.get(wsid) or {}
+        rows = got.get("returns")
+        if not rows:
+            return jsonify({"ok": False, "error": (
+                "There is nothing loaded to filter. Upload a returns report "
+                "first.")}), 400
+        lo = str(request.args.get("from") or "")[:10]
+        hi = str(request.args.get("to") or "")[:10]
+        span = sorted(r["date"] for r in rows if r.get("date"))
+        full_lo = span[0] if span else ""
+        full_hi = span[-1] if span else ""
+        sel = [r for r in rows
+               if (not lo or str(r.get("date") or "") >= lo)
+               and (not hi or str(r.get("date") or "") <= hi)]
+        # AN EMPTY RANGE IS SAID, NOT DRAWN. Answering with zeros would look
+        # like a week in which nothing came back.
+        if not sel:
+            return jsonify({"ok": False, "error": (
+                "No returns between %s and %s. The data runs %s to %s."
+                % (lo or "the start", hi or "the end", full_lo, full_hi))}), 400
+        kinds = sorted({str(r.get("kind") or "") for r in sel if r.get("kind")})
+        out = _answer(sel, "fba" if "fba" in kinds else (kinds[0] if kinds else ""),
+                      wsid, mkt, lo or full_lo, hi or full_hi,
+                      note=("Showing %s of %s returns, %s to %s."
+                            % ("{:,}".format(len(sel)), "{:,}".format(len(rows)),
+                               lo or full_lo, hi or full_hi))
+                      if len(sel) != len(rows) else "")
+        # THE ZOOM MUST NOT EAT THE DATA. _answer re-remembers what it was
+        # given, so without this the filtered subset would become the whole set
+        # and zooming in twice would be a one-way trip. Only `returns` is put
+        # back: `summary` deliberately stays as the zoomed one, because the
+        # Excel export writes what you are looking at, and start/end stay as the
+        # range on screen so the workbook says which period it covers.
+        _remember(wsid, returns=rows)
+        out["zoomed"] = bool(lo or hi)
+        out["full_start"] = full_lo
+        out["full_end"] = full_hi
+        return jsonify(out)
+
+    @app.route("/returns/clear", methods=["POST"])
+    def returns_clear():
+        """Forget the loaded returns for this workspace and start over.
+
+        The counterpart to uploads that ADD: without a way back, a file uploaded
+        against the wrong account could only be got rid of by restarting the app.
+        """
+        _acc, wsid, _mkt = _scope()
+        _LAST.pop(wsid, None)
+        return jsonify({"ok": True, "cleared": True,
+                        "note": "Cleared. Upload a returns report to start again."})
 
     # ---- Amazon's own verdict on the listings -------------------------------
 

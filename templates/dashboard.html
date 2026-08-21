@@ -1151,18 +1151,28 @@
                report, and the panel below says where to find it in Seller
                Central. The file is still identified by its COLUMNS, so
                choosing the wrong button is corrected rather than punished. -->
+          <!-- MULTIPLE FILES, because a year does not come as one. Amazon caps
+               a seller-fulfilled report at 60 days, so year-to-date is four or
+               five downloads, and an account with both FBA and seller-fulfilled
+               returns needs one of each. They ADD to what is loaded and are
+               de-duplicated on the returns themselves, so overlapping windows
+               are safe and the same file twice changes nothing. -->
           <button class="db-chip" onclick="returnsUploadOpen('fba')"
-                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns"><i class="ti ti-file-upload"></i> Upload FBA returns</button>
+                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns. Pick several files at once if you have them."><i class="ti ti-file-upload"></i> Add FBA returns</button>
           <button class="db-chip" onclick="returnsUploadOpen('mfn')"
-                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns"><i class="ti ti-file-upload"></i> Upload seller-fulfilled returns</button>
-          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" style="display:none" onchange="returnsUploadFile(this)">
+                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns. Amazon caps these at 60 days, so pick all of your year-to-date files at once."><i class="ti ti-file-upload"></i> Add seller-fulfilled returns</button>
+          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" multiple style="display:none" onchange="returnsUploadFile(this)">
           <!-- A THIRD FILE, and the only source for three columns on this page.
                Whether Amazon is showing the "frequently returned item" badge on
                a listing, its CX Health grade, and the reason Amazon itself puts
                at the top are in neither returns report and in no API this app
-               has. They are only in the Voice of the Customer export. -->
+               has. They are only in the Voice of the Customer export.
+               NAMED AFTER THE REPORT, not after what it fills in: "Upload
+               listing quality" did not tell anyone which file to go and get. -->
           <button class="db-chip" onclick="returnsQualityOpen()"
-                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download"><i class="ti ti-shield-exclamation"></i> Upload listing quality</button>
+                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download. This is the only report that says whether Amazon is showing the 'frequently returned item' badge."><i class="ti ti-shield-exclamation"></i> Add Voice of the Customer</button>
+          <button class="db-chip" onclick="returnsClear()"
+                  title="Forget every returns file loaded for this account and start again"><i class="ti ti-trash"></i> Start again</button>
           <input type="file" id="ret_quality" accept=".csv,.txt" style="display:none" onchange="returnsQualityFile(this)">
           <button class="db-chip" onclick="returnsExport()"
                   title="Every table on this page as an eight-sheet workbook, built from exactly what you are looking at"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>

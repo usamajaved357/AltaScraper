@@ -3493,6 +3493,19 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 
 .ri-scroll{ max-height:420px; overflow-y:auto; overscroll-behavior:contain; }
 
+/* THE DAILY RETURNS CHART. An SVG with real axes, and a drag target.
+   The old one was bare percentage-height divs: no dates, no counts, no way to
+   look at a period. `user-select:none` is what stops a drag across it selecting
+   the surrounding text instead of drawing a band. */
+.ri-chartwrap{ user-select:none; -webkit-user-select:none; }
+.ri-chartwrap svg{ border-radius:8px; }
+.ri-dbar:hover{ fill:#ff7b78; }
+.ri-charthint{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  margin-top:8px; font-size:11px;
+}
+.ri-charthint .db-chip{ margin-left:auto; }
+
 /* A PRODUCT NAME IN A TABLE CELL, kept to two lines.
    An Amazon footwear title is 180 characters — "Flux Footwear Men's and Women's
    Adapt Runner Wide Toe-Box Natural Movement Shoes with Breathable Knit Upper &

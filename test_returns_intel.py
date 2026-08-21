@@ -78,6 +78,8 @@ from domain import returns_view as rv
 # Read once, near the top, because assertions further down all reach for them.
 J = read("static", "js", "returns.js")
 _rt = read("routes", "returns_routes.py")
+H = read("templates", "dashboard.html")
+_C = read("static", "css", "dashboard.css")
 
 # ---------------------------------------------------------------------------
 # A small account, made by hand, whose every answer can be worked out on paper.
@@ -481,6 +483,107 @@ except ImportError:
 except Exception as e:
     fails.append("a bad row took the whole workbook down")
     print("  FAIL: %s" % str(e)[:200])
+
+print("\n== several files combine instead of replacing each other ==")
+# "when i upload the seller fulfilled returns it stop showing me the data of fba
+#  returns, i want both data combined ... i have 4 reports which combines the
+#  year to date data. i want to upload all 4 but the app is not allowing me"
+_a = R("2026-01-05", "A1", RUN, "APPAREL_TOO_SMALL", "SELLABLE")
+_a["license_plate"] = "LPN1"
+_a["kind"] = "fba"
+_b = dict(_a)                      # the same return, seen again in an overlap
+_c = R("2026-02-05", "A2", RUN, "APPAREL_TOO_LARGE", "SELLABLE")
+_c["license_plate"] = "LPN2"
+_c["kind"] = "fba"
+_m, _add, _dup = rv.merge([_a], [_b, _c])
+check("an overlapping row is not counted twice", len(_m), 2)
+check("  one was new", _add, 1)
+check("  one was already there", _dup, 1)
+# THE KEY IS NOT THE PLATE ALONE. Amazon recycles licence plates: on the real
+# 11,509-row file, 393 plates appear more than once and one is on four
+# different orders months apart. Keying on the plate lost 467 real returns.
+_d = dict(_a, order_id="DIFFERENT-ORDER", date="2026-04-10")
+_m2, _add2, _dup2 = rv.merge([_a], [_d])
+check("the same plate on a different order is a different return", len(_m2), 2)
+check("  and is added", _add2, 1)
+_e = dict(_a, sku="OTHER-SKU")
+check("the same plate on a different SKU is too",
+      len(rv.merge([_a], [_e])[0]), 2)
+# FBA and seller-fulfilled can never be the same event.
+_f = dict(_a, kind="mfn", license_plate="")
+check("an FBA row and an MFN row never collide",
+      len(rv.merge([_a], [_f])[0]), 2)
+# A seller-fulfilled report has no plate, so the order+sku+date+reason stands in.
+_g = R("2026-01-05", "A1", RUN, "APPAREL_TOO_SMALL")
+_g["kind"] = "mfn"
+_g["order_id"] = "111-1"
+_h = dict(_g)
+check("two copies of one seller-fulfilled row collapse",
+      len(rv.merge([_g], [_h])[0]), 1)
+check("  a different day does not",
+      len(rv.merge([_g], [dict(_g, date="2026-01-06")])[0]), 2)
+truthy("the row carries which report it came from", _a.get("kind") == "fba")
+truthy("parse_rows sets it", '"kind": kind,' in read("domain", "returns_view.py"))
+truthy("  and reads the licence plate", '"license_plate": ("license-plate-number",)'
+       in read("domain", "returns_view.py"))
+truthy("the recycled-plate measurement is recorded",
+       "LPNRRJE7736962" in read("domain", "returns_view.py"))
+truthy("  with what it cost", "467 real returns" in read("domain", "returns_view.py"))
+
+print("\n== the routes that combine, filter and reset ==")
+truthy("the upload merges rather than replaces", "_rv.merge(held, parsed)" in _rt)
+truthy("  reading every file on the request", "getlist(key)" in _rt)
+# Scoped to the upload. The Voice of the Customer route below it legitimately
+# takes ONE file and still reads files["file"] -- asserting across the whole
+# module flagged that correct code.
+_up = _rt.split("def returns_upload")[1].split("def returns_clear")[0]
+falsy("  not just the first", '.get("file")' in _up)
+truthy("  and naming any it could not read", "rejected" in _up)
+truthy("the combined kind is what the DATA supports",
+       'combined_kind = "fba" if "fba" in kinds' in _rt)
+truthy("there is a way to start over", "/returns/clear" in _rt)
+truthy("a date range re-answers server-side", "/returns/view" in _rt)
+truthy("  through the same summarise the upload uses", "_answer(sel," in _rt)
+truthy("  and the zoom does not eat the full set", "_remember(wsid, returns=rows)"
+       in _rt)
+truthy("an empty range says so rather than showing zeros",
+       "No returns between" in _rt)
+
+print("\n== the daily chart has axes, and a drag ==")
+truthy("it is an SVG with real coordinates", "_riDailyChart" in J)
+truthy("  with a labelled scale", "text-anchor=\"end\"" in J)
+truthy("  and dated ticks", "days[i].slice(5)" in J)
+truthy("  that do not overlap at the end", "minGap" in J)
+truthy("dragging selects a period", "pointerdown" in J and "pointerup" in J)
+truthy("  which re-asks the server", "returnsSetRange(lo, hi)" in J)
+falsy("  rather than filtering in the browser",
+      "filter(function(r){ return r.date >=" in J)
+truthy("a click is not a drag", "if(lo === hi){ return; }" in J)
+truthy("there is a way back out", "returnsResetRange" in J)
+truthy("  and the page says a period is selected", "Every figure on this page is for"
+       in J)
+
+print("\n== the last answer wins ==")
+# The Amazon pull takes a minute; a file uploaded while waiting for it used to
+# be replaced when it landed. Measured: 13,091 held server-side, "3" on screen.
+truthy("every request takes a ticket", "_retTicket()" in J)
+check("  all four paths take one", J.count("const t = _retTicket();"), 4)
+# Five guards, not four: the Amazon pull checks on both its success and its
+# error path, because a failure landing late must not blank a screen that has
+# since been filled by an upload. Plus the definition itself = 6.
+check("  and every reply is checked before it is drawn",
+      J.count("if(!_retCurrent(t)) return;"), 5)
+truthy("why is written down", "3 returns" in J and "13,091" in J)
+
+print("\n== the buttons say which Amazon report they want ==")
+truthy("the VoC button is named after the report",
+       "Add Voice of the Customer" in H)
+falsy("  not after what it fills in", "Upload listing quality" in H)
+truthy("the returns inputs take several files at once", 'id="ret_file"' in H
+       and "multiple" in H.split('id="ret_file"')[1][:160])
+truthy("  and the buttons say ADD", "Add FBA returns" in H
+       and "Add seller-fulfilled returns" in H)
+truthy("there is a Start again", "returnsClear()" in H)
 
 print("\n== the route ==")
 truthy("there is a download", "/returns/export.xlsx" in _rt)
