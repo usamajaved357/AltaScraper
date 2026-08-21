@@ -39,7 +39,41 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         different id are the /accounts/* setup routes, which legitimately target
         an account that is not open and are excluded), and a request naming no
         account is served exactly as before.
+
+        EXCEPT ONE, AND IT WAS MISSED. "Every caller" was checked across
+        static/js -- and domain/live_refresher.py is not in static/js. The
+        background rotation exists precisely to refresh the accounts NOBODY has
+        open, and it calls these three views in-process with the account named
+        explicitly. So it was refused on every account but whichever one the
+        browser happened to be showing.
+
+        MEASURED in the server log, with jack_uk open:
+
+            [refresher] live refresh jack_uk::IT          -> ok (0 listings)
+            [refresher] live refresh selvora_limited::UK  -> failed: ...different account...
+            [refresher] live refresh nestwell_goods::DE   -> failed: ...different account...
+            [refresher] live refresh sheelady_us::US      -> failed: ...different account...
+
+        Live prices, statuses and stock for five of six accounts therefore never
+        refreshed at all -- and each refusal was written into
+        marketplace_health.json as that pair's `last_transient`, putting this
+        app's own refusal in the place a reader looks for what Amazon said.
+
+        WHY AN ENVIRON KEY AND NOT THE `_bg` FLAG THE BODY ALREADY CARRIES.
+        `_bg` is JSON from the request, so a browser can send it, and a guard a
+        browser can switch off is not a guard -- the whole point of this one is
+        that other people's selling accounts now sit in the same config. A WSGI
+        environ key is set by whoever built the request: Werkzeug maps incoming
+        headers to HTTP_* keys, so no HTTP client can produce "alta.background".
+        Only code holding the app object can, which is exactly the rotation.
+        Proved rather than assumed -- see test_refresher_scope.py, which tries to
+        forge it over a real socket.
         """
+        try:
+            if _acctscope.is_background(request.environ):
+                return None
+        except Exception:
+            pass
         open_id = _state.get("active_account_id")
         if _acctscope.is_mismatch(asked, open_id):
             return jsonify(_acctscope.refusal(asked, open_id, "data")), 409
@@ -793,25 +827,72 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                 # (~2-3 min) on EVERY catalogue view, which is why "Live on Amazon" was slow
                 # every time. Now a plain view downloads an existing report (seconds); only a
                 # forced Sync regenerates it.
+                # THE NEWEST INACTIVE REPORT AMAZON STILL HAS, at any age.
+                #
+                # `max_age` is the window for "fresh enough to use without
+                # asking again". When it finds nothing we ask again -- but if
+                # that ASK is refused, an eight-hour-old inactive list is worth
+                # far more than none, because the alternative is a catalogue
+                # that silently omits every suppressed listing. Same principle
+                # the snapshot above already follows: the last successful pull
+                # stands, labelled with its age, until something fresher lands.
+                def _newest_inactive(max_age=None):
+                    kw = dict(reportTypes=["GET_MERCHANT_LISTINGS_INACTIVE_DATA"],
+                              processingStatuses=["DONE"],
+                              marketplaceIds=[mkt_id] if mkt_id else None,
+                              pageSize=10)
+                    if max_age:
+                        _since = _dt.datetime.utcnow() - _dt.timedelta(seconds=max_age)
+                        kw["createdSince"] = _since.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    _iex = rc.get_reports(**kw)
+                    _iep = _iex.payload if hasattr(_iex, "payload") else _iex
+                    _reps = (_iep or {}).get("reports", []) if isinstance(_iep, dict) else []
+                    _reps = [r for r in _reps if r.get("reportDocumentId")]
+                    _reps.sort(key=lambda r: str(r.get("createdTime") or ""), reverse=True)
+                    return (_reps[0].get("reportDocumentId"),
+                            _reps[0].get("createdTime")) if _reps else (None, None)
+
+                _iage = None
+                _icr = None          # set only if a report is actually created
                 if not force:
                     try:
-                        _isince = _dt.datetime.utcnow() - _dt.timedelta(seconds=_REPORT_REUSE_MAX_AGE)
-                        _iex = rc.get_reports(reportTypes=["GET_MERCHANT_LISTINGS_INACTIVE_DATA"],
-                                              processingStatuses=["DONE"],
-                                              marketplaceIds=[mkt_id] if mkt_id else None,
-                                              createdSince=_isince.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                              pageSize=10)
-                        _iep = _iex.payload if hasattr(_iex, "payload") else _iex
-                        _ireps = (_iep or {}).get("reports", []) if isinstance(_iep, dict) else []
-                        _ireps = [r for r in _ireps if r.get("reportDocumentId")]
-                        _ireps.sort(key=lambda r: str(r.get("createdTime") or ""), reverse=True)
-                        if _ireps:
-                            _idoc = _ireps[0].get("reportDocumentId")
+                        _idoc, _iage = _newest_inactive(_REPORT_REUSE_MAX_AGE)
                     except Exception:
                         _idoc = None
                 if not _idoc:
-                    _icr = rc.create_report(reportType="GET_MERCHANT_LISTINGS_INACTIVE_DATA",
-                                            marketplaceIds=[mkt_id] if mkt_id else None)
+                    try:
+                        _icr = rc.create_report(
+                            reportType="GET_MERCHANT_LISTINGS_INACTIVE_DATA",
+                            marketplaceIds=[mkt_id] if mkt_id else None)
+                    except Exception as _thr:
+                        # THROTTLED IS NOT BROKEN, and it is the normal answer
+                        # on an account that syncs often: Amazon allows roughly
+                        # ONE report request a minute, and this view asks for
+                        # two (active, then inactive) in the same breath. The
+                        # second is the one that gets refused.
+                        #
+                        # Falling back to whatever inactive report Amazon still
+                        # holds turns a dead end into a slightly stale list. It
+                        # is reported as stale rather than passed off as fresh.
+                        if "throttl" not in type(_thr).__name__.lower() \
+                           and "throttl" not in str(_thr).lower():
+                            raise
+                        _idoc, _iage = _newest_inactive(None)
+                        if _idoc:
+                            warnings.append(
+                                "Amazon is rate-limiting report requests just "
+                                "now, so the suppressed and inactive listings "
+                                "below came from its last completed report"
+                                + (" (built %s)" % _iage if _iage else "")
+                                + " rather than a new one. Everything else on "
+                                "this screen is current. Press Sync again in a "
+                                "minute for a fresh one.")
+                            _icr = None
+                        else:
+                            raise
+                # Poll only when a report was actually CREATED. Falling back to
+                # an older one above sets _idoc and leaves nothing to wait for.
+                if not _idoc and _icr is not None:
                     _irid = (_icr.payload or {}).get("reportId") if hasattr(_icr, "payload") else _icr.get("reportId")
                     for _a in range(45):
                         _ist = rc.get_report(_irid)
@@ -842,8 +923,27 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             except Exception as _ie:
                 # never fail the whole catalog because the inactive report misbehaved
                 print(f"[live/catalog] inactive report skipped: {_ie}")
-                warnings.append(f"Inactive/suppressed listings could not be loaded "
-                                f"({type(_ie).__name__}) — this list shows ACTIVE listings only.")
+                # SAY WHAT HAPPENED, NOT ITS JAVA CLASS NAME.
+                #
+                # This printed type(_ie).__name__, so the screen read
+                # "could not be loaded (SellingApiRequestThrottledException)" --
+                # which tells a seller nothing, suggests the app is broken, and
+                # gives no idea whether to wait, retry or report it. Throttling
+                # is the ORDINARY answer here: Amazon allows roughly one report
+                # request a minute and this view asks for two.
+                _nm = type(_ie).__name__
+                if "throttl" in _nm.lower() or "throttl" in str(_ie).lower():
+                    warnings.append(
+                        "Amazon is rate-limiting report requests just now, so "
+                        "suppressed and inactive listings are not included "
+                        "below — the active ones are all here and are current. "
+                        "Amazon allows about one report a minute; wait a minute "
+                        "and press Sync.")
+                else:
+                    warnings.append(
+                        "Suppressed and inactive listings could not be loaded, "
+                        "so this list shows ACTIVE listings only. Amazon said: "
+                        "%s." % (str(_ie)[:160] or _nm))
             _attach_compliance(items, mkt)
             _attach_handling(items, aid, mkt)
             # enrich each item with COGS + profit estimate

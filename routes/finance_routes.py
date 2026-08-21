@@ -144,11 +144,68 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                     "has everything."
                     % (acc.get("label") or wsid, mkt))
 
+        # HOW MUCH OF THE PERIOD HAS ACTUALLY SETTLED.
+        #
+        # This screen reads Amazon's Finances feed -- money that has MOVED --
+        # and Amazon settles days later. So a table headed "contribution per
+        # product" can cover a fraction of the period while looking complete.
+        #
+        # MEASURED 21 Aug 2026, asking for the last 30 days:
+        #     jack_uk           4 products settled, 47 sold; last settled 16 Aug
+        #     nestwell_goods    2 products settled, 40 sold; 5 days of 30
+        #
+        # The empty case has been explained carefully for a while (see above).
+        # The PARTIAL case had nothing at all, and it is the commoner one. Said
+        # in the same list of notes the screen already draws, so there is no
+        # second place for a caveat to hide.
+        notes = _contrib.notes(rows, totals)
+        try:
+            from data import db as _db
+            _c = _db.get_db(CONFIG_PATH)
+            _f = _c.execute(
+                "SELECT COUNT(DISTINCT asin) a, MAX(date) last FROM finance_daily "
+                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=?",
+                (wsid, mkt, start, end)).fetchone()
+            _s = _c.execute(
+                "SELECT COUNT(DISTINCT asin) a FROM sales_daily "
+                "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
+                "  AND asin<>'*'", (wsid, mkt, start, end)).fetchone()
+            settled = int((_f["a"] if _f else 0) or 0)
+            sold = int((_s["a"] if _s else 0) or 0)
+            last = (_f["last"] if _f else None) or ""
+            if rows and sold and settled < sold:
+                notes.append({"level": "warn", "text": (
+                    "Amazon has settled %d of the %d products that sold in this "
+                    "period%s. The rest have been ordered but not paid out yet, "
+                    "so they are not in the table below — this is what has "
+                    "MOVED, not what was sold. The Sales screen shows the "
+                    "ordered figures."
+                    % (settled, sold,
+                       (", and nothing after %s" % last) if last else ""))})
+            elif rows and last and last < end:
+                # ONLY IF SOMETHING WAS SOLD IN THE GAP. A period that ends in
+                # the future, or a quiet tail, has nothing missing -- saying
+                # "the last few days are not in the figures" about days with no
+                # sales is a warning about nothing, and those are the ones that
+                # teach a reader to skip the list.
+                _gap = _c.execute(
+                    "SELECT COALESCE(SUM(ordered_sales),0) s FROM sales_daily "
+                    "WHERE workspace_id=? AND marketplace=? AND asin='*' "
+                    "  AND date>? AND date<=?",
+                    (wsid, mkt, last, end)).fetchone()
+                if float((_gap["s"] if _gap else 0) or 0) > 0:
+                    notes.append({"level": "info", "text": (
+                        "Nothing has settled after %s yet, so the last few days "
+                        "of this period are not in the figures below. Amazon "
+                        "pays out in arrears; those days will fill in." % last)})
+        except Exception:
+            pass
+
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "account_label": acc.get("label") or wsid,
                         "empty_note": empty_note, "have": have,
                         "start": start, "end": end,
                         "rows": rows, "totals": totals,
-                        "notes": _contrib.notes(rows, totals),
+                        "notes": notes,
                         "ads_connected": totals.get("ad_spend") is not None,
                         "currency": totals.get("currency") or ""})

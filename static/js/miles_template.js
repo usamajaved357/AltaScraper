@@ -443,6 +443,20 @@ function isEmptyRow(r){
   const s=x=>String(x==null?"":x).trim();
   return !s(r.sku)&&!s(r.title)&&!s(r.asin)&&!s(r.product_type)&&!s(r.price);
 }
+/* Are the drafts still on their way?
+ *
+ * ROWS_LOADED lives in submit.js beside loadRows, which is the only thing that
+ * can know. Guarded on it existing because the two are separate files and the
+ * grid must not break if this one is evaluated first.
+ *
+ * An ABSENT flag reports "not still coming", so a missing declaration falls
+ * back to the old behaviour rather than pinning a spinner on the screen for
+ * ever. The failure of a lost flag should be the bug we had, not a worse one. */
+function _rowsStillComing(){
+  try{
+    return (typeof ROWS_LOADED === "undefined") ? false : !ROWS_LOADED;
+  }catch(e){ return false; }
+}
 function render(){
   const grid=document.getElementById("grid");
   const list=ROWS.filter(passFilter);
@@ -642,7 +656,13 @@ function render(){
       + ((!draftsHtml)?(empties.length ? "" :
           (_liveHere>0
             ? `<div class="empty">No drafts here — all ${_liveHere} listing${_liveHere>1?'s are':' is'} live on Amazon. Switch to <b>Live on Amazon</b> or <b>All</b> to see them.</div>`
-            : `<div class="empty">No listings in this view.${ROWS.length?'':' Run Generate to create some.'}</div>`)):'');
+            // NOT LOADED IS NOT EMPTY. Telling somebody who has 13 listings to
+            // "Run Generate to create some" because the fetch has not landed
+            // yet is worse than saying nothing: it is a confident wrong answer,
+            // and an instruction to act on it.
+            : (_rowsStillComing()
+                ? `<div class="empty"><span class="genspin"></span> Loading listings…</div>`
+                : `<div class="empty">No listings in this view.${ROWS.length?'':' Run Generate to create some.'}</div>`))):'');
   }
   // Rows arrive in a short cascade rather than as one block. Purely visual,
   // and capped at twenty rows so a long list is not slower to appear -- see

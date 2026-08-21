@@ -660,6 +660,73 @@ def breakdown(config_path, workspace_id, marketplace, start, end, group="asin"):
     return out
 
 
+def breakdown_coverage(config_path, workspace_id, marketplace, start, end):
+    """How much of the period's money the per-product rows actually account for.
+
+    THE NUMBER THIS SCREEN WAS NOT TELLING ANYONE. Measured 21 Aug 2026 over the
+    last thirty days:
+
+        jack_uk           headline GBP 285.66   per-product rows GBP 162.76
+        nestwell_goods    headline GBP 946.67   per-product rows GBP 149.95
+        selvora_limited   headline GBP 4145.60  per-product rows GBP 0.00
+
+    Nestwell's product table showed a sixth of the business. Selvora's showed
+    none of it, under the words "No per-product sales in this period yet -- press
+    Sync to pull them from Amazon", which is wrong twice over: sales HAVE been
+    synced (that is where the 4145.60 comes from) and pressing Sync will not
+    necessarily fix it today.
+
+    WHY, AND IT IS NOT A FAULT. Two feeds fill sales_daily. The ORDER feed
+    (live_reconcile) writes the account total for a day as soon as the orders are
+    known. Amazon's Sales & Traffic REPORT is what carries the per-ASIN block,
+    it has to be asked for one day at a time (see domain/sales_fetch.py), and it
+    is paced against a quota of roughly one report a minute across six accounts
+    and eleven marketplaces. So a day can have a true total and no product
+    detail yet, and every such day measured had report_delivered = False.
+
+    The defect is that the screen did not SAY so. A table headed "which products
+    sold" that silently omits 84% of the money is worse than one that says how
+    much it is covering.
+
+    Returns money in the same currency as the rows, plus the count of days that
+    have a total and no product-level detail yet.
+    """
+    conn = _db.get_db(config_path)
+    r = conn.execute(
+        "SELECT "
+        "  SUM(CASE WHEN asin='*' THEN COALESCE(ordered_sales,0) ELSE 0 END) total, "
+        "  SUM(CASE WHEN asin<>'*' THEN COALESCE(ordered_sales,0) ELSE 0 END) covered, "
+        "  SUM(CASE WHEN asin='*' THEN COALESCE(units,0) ELSE 0 END) total_units, "
+        "  SUM(CASE WHEN asin<>'*' THEN COALESCE(units,0) ELSE 0 END) covered_units "
+        "FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+        "  AND date>=? AND date<=?",
+        (workspace_id, marketplace, start, end)).fetchone()
+    total = round(float((r["total"] if r else 0) or 0), 2)
+    covered = round(float((r["covered"] if r else 0) or 0), 2)
+    # Days with money and no product detail. Counted rather than inferred from
+    # the money, because a day of exactly zero sales is not a gap.
+    gap = conn.execute(
+        "SELECT COUNT(*) n FROM ("
+        "  SELECT date, "
+        "    SUM(CASE WHEN asin='*' THEN COALESCE(ordered_sales,0) ELSE 0 END) t, "
+        "    SUM(CASE WHEN asin<>'*' THEN 1 ELSE 0 END) k "
+        "  FROM sales_daily WHERE workspace_id=? AND marketplace=? "
+        "    AND date>=? AND date<=? GROUP BY date) "
+        "WHERE t > 0 AND k = 0",
+        (workspace_id, marketplace, start, end)).fetchone()
+    return {
+        "total": total,
+        "covered": covered,
+        # Never negative: the report can revise a day upwards after the order
+        # feed wrote it, and "-3.20 unaccounted for" is not a sentence.
+        "uncovered": round(max(0.0, total - covered), 2),
+        "total_units": int((r["total_units"] if r else 0) or 0),
+        "covered_units": int((r["covered_units"] if r else 0) or 0),
+        "days_without_products": int((gap["n"] if gap else 0) or 0),
+        "pct": (round(covered / total * 100, 1) if total else None),
+    }
+
+
 def products(config_path, workspace_id, marketplace, start, end):
     """The ASINs that actually sold in a range, biggest first.
 

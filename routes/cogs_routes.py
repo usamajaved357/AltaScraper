@@ -60,6 +60,13 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         place. The sheet this app hands out is full of such names, so that was
         about to become the normal case. It also could not read a spreadsheet at
         all; this can.
+
+        dry_run READS THE FILE AND WRITES NOTHING, so the confirmation can name
+        real numbers -- how many costs this file would set, how many rows have
+        no cost, how many match nothing on the account -- instead of the
+        browser's own guess at them. A bulk overwrite of what things cost moves
+        every profit figure in the app, and "Set the cost on 412 SKUs?" is only
+        worth asking if the 412 came from the same reader that will do the work.
         """
         from domain import cogs as _cogs
         from domain import source_bulk as _sb
@@ -77,6 +84,15 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         rep = _cogs.apply_sheet(CONFIG_PATH, aid, mkt, headers, rows)
         if not rep.get("ok"):
             return jsonify(rep), 400
+        dry = str(request.form.get("dry_run") or "").lower() in ("1", "true", "yes")
+        if dry:
+            rep.pop("updates", None)
+            rep["dry_run"] = True
+            rep["note"] = ("%d cost%s would be set. %d row%s have no cost filled "
+                           "in and would be left alone."
+                           % (rep["set"], "" if rep["set"] == 1 else "s",
+                              rep["skipped"], "" if rep["skipped"] == 1 else "s"))
+            return jsonify(rep)
         # Written only after the whole file has been read without complaint, so
         # a sheet that fails halfway does not leave half the catalogue changed.
         # Through the store, same as /cogs/set -- one way in, so a cost set by
@@ -116,20 +132,40 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
 
     @app.route("/cogs/upload", methods=["POST"])
     def cogs_upload():
-        """Bulk COGS upload: accepts {rows:[{sku,cost}]} (parsed client-side from CSV)."""
+        """Bulk COGS upload: accepts {rows:[{sku,cost}]}, already parsed.
+
+        THE SCREEN NO LONGER USES THIS -- it posts the file itself to
+        /cogs/upload_sheet, where the one reader lives. This stays for anything
+        that already sends rows, and it now writes THE SAME WAY as every other
+        cost in the app.
+
+        It used to put the value straight into _COGS_OVERRIDE and save the file
+        separately. That is the exact shape of the bug domain/cogs_store.py was
+        written to end -- see the note over /cogs/set: two modules each holding
+        their own dict, and a typed cost that the Sales and Orders screens could
+        not see. It also disagreed about what a cost IS: float("-3") is a fine
+        float, so a negative cost went in here and was refused everywhere else.
+        One way in (Rule 12), and the refusals are the store's.
+
+        Rows that were refused are RETURNED rather than silently dropped, so a
+        file of 400 costs that stored 380 does not report success.
+        """
+        from domain import cogs_store as _cs
         b = request.get_json(force=True) or {}
         aid = b.get("id", "") or _state.get("active_account_id", "")
         rows = b.get("rows", []) or []
         n = 0
+        refused = []
         for r in rows:
             sku = (r.get("sku", "") or "").strip()
             cost = r.get("cost", None)
             if not sku or cost in (None, ""):
                 continue
-            try:
-                _COGS_OVERRIDE[f"{aid}::{sku}"] = float(cost)
+            stored, ok = _cs.set_cost(CONFIG_PATH, aid, sku, cost)
+            if ok and stored is not None:
                 n += 1
-            except Exception:
-                continue
-        _save_cogs_overrides()
-        return jsonify({"ok": True, "count": n})
+            else:
+                refused.append(sku)
+        return jsonify({"ok": True, "count": n, "set": n,
+                        "refused": refused[:50],
+                        "refused_count": len(refused)})

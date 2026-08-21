@@ -3896,6 +3896,18 @@ def build_app(backend=None):
     # reachable privacy policy URL to publish an app, and this was a 404.
     import routes.legal_routes as _legal_routes
     _legal_routes.register(app)
+    # Phase 1 of the analytics plan: Keyword Spy, ASIN Insights, Rank Tracker
+    # and Keyword History. A NEW tool -- it reads domain/brand_analytics.py and
+    # stores through domain/keyword_store.py, and changes nothing that exists.
+    # Everything is manual: no scheduler, no background worker, no cron.
+    # ASIN Studio: generate a branded listing from any ASIN. A NEW tool --
+    # it does not import, call or modify amazon_listing_generator.py.
+    import routes.asin_studio_routes as _asin_studio_routes
+    _asin_studio_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                                 _state=_state, _active_account=_active_account)
+    import routes.keywords_routes as _keywords_routes
+    _keywords_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                              _state=_state, _active_account=_active_account)
     import routes.ppc_routes as _ppc_routes
     _ppc_routes.register(app, _PPC=_PPC, _PPC_IMPORT_ERR=_PPC_IMPORT_ERR,
                          _PPC_OUT_DIR=_PPC_OUT_DIR,
@@ -3942,6 +3954,14 @@ def build_app(backend=None):
     import routes.finance_routes as _finance_routes
     _finance_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+
+    # One account, EVERY marketplace, side by side. The sidebar has offered
+    # "All marketplaces" all along and every screen threw it away -- see the
+    # module docstring for what that showed instead. Reads only what has
+    # already been pulled; asks Amazon for nothing.
+    import routes.brandview_routes as _brandview_routes
+    _brandview_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                               _active_account=_active_account, _state=_state)
 
     # Changing a live selling price by hand. Composes the patch with the SAME
     # builder the repricer uses, which edits the offer Amazon returned rather
@@ -4272,6 +4292,16 @@ def build_app(backend=None):
         Reads real state -- a refresher that cannot be inspected is one you have
         to take on faith."""
         return jsonify({"ok": True, **_refresher.status()})
+
+    # HOW THE BYTES TRAVEL -- compression, and letting the browser keep what it
+    # already has. Nothing about WHAT is sent; see services/http_perf.py for the
+    # measurement (10.7 MB and 176 requests on a cold load, none of it
+    # compressed, none of it cacheable although all of it was versioned).
+    try:
+        from services import http_perf as _http_perf
+        _http_perf.install(app)
+    except Exception as _hp:
+        print(f"  (compression/caching not installed: {_hp})", flush=True)
 
     # CACHE-BUSTING FOR THE BROWSER.
     # Every page loaded 22 scripts and stylesheets as bare /static/... URLs. A

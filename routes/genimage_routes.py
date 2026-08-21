@@ -339,6 +339,25 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
                 pass
         # ordered candidates (local/upload -> cache -> source URL); fall back to the single ref
         _ref = (b.get("product_images") if (ref_img != "__BRAND_REF__" and b.get("product_images")) else ref_img)
+        # NOTHING TO WORK FROM IS NOT A REQUEST WORTH PAYING FOR.
+        #
+        # MEASURED: POSTing an empty body here did not fail -- it ran the whole
+        # two-stage pipeline with brief "", reference "" and title "", took over
+        # forty seconds, and billed a text call and an image call to produce
+        # something nobody could use. Every other AI route in this file checks
+        # its inputs; this one went straight to the provider.
+        #
+        # The pipeline needs SOMETHING to describe: a reference image to work
+        # from, or words to work with. With neither, refusing is both the
+        # correct answer and the cheap one.
+        if not _ref and not str(brief).strip() and not str(title).strip():
+            return jsonify({
+                "ok": False,
+                "error": "Nothing to generate from. This needs a reference "
+                         "image, or a brief, or at least a product title — with "
+                         "none of the three there is nothing for the AI to "
+                         "describe, and the call would be billed for a picture "
+                         "of nothing."}), 400
         res = ai_providers.run_pipeline(
             _cfg(), brief=brief, reference_image=_ref, product_title=title,
             text_provider=tprov, image_provider=iprov)

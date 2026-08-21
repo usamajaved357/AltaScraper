@@ -4,9 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Listing Generator</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css">
+<!-- THE ICON FONT IS OURS NOW, not a CDN's.
+     It used to be fetched TWICE, from jsdelivr and from unpkg -- a fallback
+     that was always paid for whether or not it was ever needed. Measured on a
+     cold load: 2877 ms for one and 2551 ms for the other, both blocking the
+     first paint, both to third parties this app otherwise never talks to.
+     The same file now comes from this server: one request instead of two,
+     gzipped by services/http_perf.py, cached for a year because the URL
+     carries ?v=, and the icons still appear with no internet at all.
+     woff2 only (the woff and ttf fallbacks are for browsers older than 2016),
+     and font-display:swap so the words on the page never wait for the icons. -->
+<link rel="stylesheet" href="/static/vendor/tabler-icons/tabler-icons.min.css?v={{ ASSET_V }}">
+<!-- defer: SheetJS is 269 KB and is used in exactly one place -- reading a
+     spreadsheet the user picks in Miles (static/js/miles.js, which already
+     guards with `typeof XLSX==="undefined"`). It was blocking the parser in
+     <head> for a file nobody had chosen yet. -->
+<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
@@ -291,6 +304,12 @@
         <a class="navitem" data-sec="compliance" href="#" onclick="return navGo(event,'compliance')" title="Scan a live listing for forbidden brands, restricted phrasing and category claims"><i class="ti ti-shield-search"></i> Compliance checker</a>
         <a class="navitem" data-sec="reimbursements" href="#" onclick="return navGo(event,'reimbursements')" title="Money Amazon owes back, checked against its own published refund rule"><i class="ti ti-cash-banknote"></i> Reimbursements</a>
         <a class="navitem" data-sec="sqp" href="#" onclick="return navGo(event,'sqp')" title="What people searched for, and where your funnel breaks for each search"><i class="ti ti-search"></i> Keywords (SQP)</a>
+        <!-- Phase 1 analytics. All four are manual: nothing runs on a timer. -->
+        <a class="navitem" data-sec="kwspy" href="#" onclick="return navGo(event,'kwspy')" title="The marketplace's top search terms for a week, filtered to your word"><i class="ti ti-radar"></i> Keyword Spy</a>
+        <a class="navitem" data-sec="kwasin" href="#" onclick="return navGo(event,'kwasin')" title="The search queries driving clicks and sales for one of your ASINs"><i class="ti ti-target-arrow"></i> ASIN Insights</a>
+        <a class="navitem" data-sec="ranktracker" href="#" onclick="return navGo(event,'ranktracker')" title="Keywords and ASINs you follow, checked only when you press the button"><i class="ti ti-chart-line"></i> Rank Tracker</a>
+        <a class="navitem" data-sec="asinstudio" href="#" onclick="return navGo(event,'asinstudio')" title="Generate a branded listing from any ASIN, with every compliance and IP check applied"><i class="ti ti-wand"></i> ASIN Studio</a>
+        <a class="navitem" data-sec="kwhistory" href="#" onclick="return navGo(event,'kwhistory')" title="Everything already pulled, week against week. Never calls Amazon"><i class="ti ti-history"></i> Keyword History</a>
         <a class="navitem" data-sec="leading" href="#" onclick="return navGo(event,'leading')" title="Yesterday against what this account normally does, measured in standard deviations"><i class="ti ti-activity-heartbeat"></i> Leading Indicators</a>
         <!-- Every account at once. The only page that ignores which one is
              open, because the account with a problem this week is the one
@@ -465,7 +484,10 @@
         <!-- Costs in bulk. The per-row way is to click the COGS cell; this is
              for when a supplier sends a whole price list. -->
         <button onclick="cogsUploadOpen()" title="Upload a CSV of SKU and cost to set what many items cost at once. Overrides what the SKU says, for this account."><i class="ti ti-file-upload"></i> Upload COGS</button>
-        <input type="file" id="cogs_file" accept=".csv,.tsv,.txt" style="display:none" onchange="cogsUploadFile(this)">
+        <!-- Spreadsheets too: the file is read by domain/source_bulk.read_table
+             now, which opens .xlsx as well as CSV. The browser parser that only
+             did CSV is gone -- see static/js/cogs.js. -->
+        <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
@@ -621,6 +643,15 @@
         <div class="panelsub" id="sales_sub">Revenue, orders, units and traffic, straight from Amazon.</div>
       </div>
 
+      <!-- ALL MARKETPLACES AT ONCE lives here, and the single-marketplace
+           panels below are put away while it is showing. Every panel in
+           #sales_body is built for one marketplace and one currency -- a chart
+           cannot plot pounds and euros on one axis -- so instead of pretending,
+           the screen shows a row per marketplace. See static/js/brandview.js
+           for what the sidebar's "All marketplaces" used to do instead. -->
+      <div id="brandview" class="salespanel" style="display:none"></div>
+
+      <div id="sales_body">
       <div class="sales-toprow">
         <div class="salespanel">
           <div class="panelhead">
@@ -754,6 +785,7 @@
         <div id="sales_breakdown"></div>
         <div id="sales_grid"></div>
       </div>
+      </div><!-- /#sales_body -->
     </div>
 
     <!-- PPC section -->
@@ -1369,6 +1401,68 @@
       <div id="sqp_body" style="padding:4px 0"></div>
     </div>
 
+    <!-- ============ PHASE 1 ANALYTICS: KEYWORDS ============
+         Four new screens, all manual. Nothing here runs on a timer: history
+         accumulates because somebody searched, which is the whole design. They
+         read domain/brand_analytics.py and store through
+         domain/keyword_store.py; no existing tool is touched. -->
+
+    <div id="sec_kwspy" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-radar"></i> Keyword Spy</h2>
+        <div class="sub">The marketplace&rsquo;s top search terms for a week, filtered to your word. Not a search sent to Amazon &mdash; Amazon returns the whole report and this filters it. Every search is saved, so your history builds as you use it.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="kws_q" class="ed" placeholder="A word to look for&hellip;" style="min-width:200px"
+                 onkeydown="if(event.key==='Enter')kwSpySearch()">
+          <label class="cc">Week <input id="kws_start" type="date" class="ed"></label>
+          <label class="cc">to <input id="kws_end" type="date" class="ed"></label>
+          <button class="db-chip" onclick="kwSpySearch()"><i class="ti ti-search"></i> Search</button>
+        </div>
+      </div>
+      <div id="kwspybody" style="padding:4px 0"></div>
+    </div>
+
+    <div id="sec_kwasin" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-target-arrow"></i> ASIN Insights</h2>
+        <div class="sub">The search queries that produced impressions, clicks and purchases for one of <b>your</b> ASINs. Amazon does not share another seller&rsquo;s query performance, so a competitor&rsquo;s ASIN returns nothing.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input id="kwa_asin" class="ed" placeholder="One of YOUR ASINs&hellip;" style="min-width:170px"
+                 onkeydown="if(event.key==='Enter')kwAsinSearch()">
+          <label class="cc">Week <input id="kwa_start" type="date" class="ed"></label>
+          <label class="cc">to <input id="kwa_end" type="date" class="ed"></label>
+          <button class="db-chip" onclick="kwAsinSearch()"><i class="ti ti-search"></i> Search</button>
+        </div>
+      </div>
+      <div id="kwasinbody" style="padding:4px 0"></div>
+    </div>
+
+    <div id="sec_ranktracker" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-chart-line"></i> Rank Tracker</h2>
+        <div class="sub">Keywords and ASINs you follow, checked <b>only when you press the button</b>. It measures search visibility &mdash; impressions, clicks, purchases &mdash; not organic position, which no source available here can give.</div></div>
+      </div>
+      <div id="ranktrackerbody" style="padding:4px 0"></div>
+    </div>
+
+    <!-- ASIN STUDIO. Any ASIN in, a branded DRAFT out. The ASIN is a reference
+         for the product facts (CLAUDE.md Rule 1) -- nothing here claims it. -->
+    <div id="sec_asinstudio" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-wand"></i> ASIN Studio</h2>
+        <div class="sub">Put in any ASIN, optionally its competitors, and the brand you want the listing to carry. Out comes a draft in this account &mdash; copy, attributes and images &mdash; with every compliance and IP check still applied. The ASIN is a <b>reference</b>: this creates a new product under your own brand and never joins that listing.</div></div>
+      </div>
+      <div id="asinstudiobody" style="padding:4px 0"></div>
+    </div>
+
+    <div id="sec_kwhistory" class="wspanel">
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-history"></i> Keyword History</h2>
+        <div class="sub">Everything the other keyword screens have already pulled, week against week. Never calls Amazon &mdash; it is the record, so it opens instantly and costs nothing.</div></div>
+      </div>
+      <div id="kwhistorybody" style="padding:4px 0"></div>
+    </div>
+
     <!-- NOTIFICATIONS -- where alerts go when nobody has the app open.
          Nothing sends until a channel is added AND switched on, and nothing is
          on a timer: posting into somebody's Slack is outward-facing and cannot
@@ -1725,6 +1819,10 @@
 <!-- One answer to "which brand is this listing", for the six screens that each
      had their own copy of it. Mirrors resolve_account_brand() on the server. -->
 <script src="/static/js/brand.js?v={{ ASSET_V }}"></script>
+<!-- Stamps the open account onto every by-SKU request, so the server can refuse
+     a disagreement instead of answering for whichever account it had selected.
+     Loaded EARLY because the loaders below call it while starting up. -->
+<script src="/static/js/reqscope.js?v={{ ASSET_V }}"></script>
 <!-- The pieces every screen is built from: stat cards, titled panels, toolbars.
      Loaded EARLY because most screens call them while rendering. -->
 <script src="/static/js/pageui.js?v={{ ASSET_V }}"></script>
@@ -1808,6 +1906,13 @@
 <script src="/static/js/notify.js?v={{ ASSET_V }}"></script>
 <!-- Keywords (Search Query Performance): what people typed. -->
 <script src="/static/js/sqp.js?v={{ ASSET_V }}"></script>
+<!-- Phase 1 analytics. Four screens, one per file, all manual. -->
+<script src="/static/js/keywordspy.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/keywordasin.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/ranktracker.js?v={{ ASSET_V }}"></script>
+<script src="/static/js/keywordhistory.js?v={{ ASSET_V }}"></script>
+<!-- ASIN Studio: any ASIN in, a branded draft out. -->
+<script src="/static/js/asinstudio.js?v={{ ASSET_V }}"></script>
 <!-- The Product Catalog: every ASIN, ranked, with the four findings. -->
 <script src="/static/js/catalogpage.js?v={{ ASSET_V }}"></script>
 <!-- Scan a LIVE listing against this app's own compliance rules. -->
@@ -1919,8 +2024,16 @@
      dependency is real and reads better in the order it runs.) -->
 <script src="/static/js/traffic.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/hourly.js?v={{ ASSET_V }}"></script>
+<!-- One account, EVERY marketplace. Shown by the Sales screen when the sidebar
+     says "All marketplaces" -- which every screen used to accept and throw
+     away. See the file for what it showed instead. -->
+<script src="/static/js/brandview.js?v={{ ASSET_V }}"></script>
 <!-- Deployment self-check. Silent unless something is actually wrong. -->
 <script src="/static/js/diag.js?v={{ ASSET_V }}"></script>
+<!-- Go to any of the 43 screens by typing its name (Ctrl+K). Loaded LAST
+     because it reads the sidebar's own markup and asks maySeeSection(), so
+     everything it depends on is already defined. -->
+<script src="/static/js/palette.js?v={{ ASSET_V }}"></script>
 
 <div id="genpanel" class="modalwrap" style="z-index:115">
   <div class="modal" style="max-width:760px;position:relative">

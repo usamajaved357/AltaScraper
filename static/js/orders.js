@@ -844,7 +844,7 @@ function _ordSourcesHtml(block, forTitle){
  * is still withheld when any line is uncosted (a total that ignores one product
  * is worse than no total), but the panel now says WHICH product and what to do.
  */
-function _ordBreakdownHtml(bd, currency){
+function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
   if(!bd || !bd.lines || !bd.lines.length) return '';
   const t = bd.totals || {};
   const money = function(v){
@@ -918,7 +918,8 @@ function _ordBreakdownHtml(bd, currency){
   if(t.profit === null && t.uncosted_lines){
     notes.push(t.uncosted_lines + ' item' + (t.uncosted_lines === 1 ? '' : 's')
       + ' above have no cost recorded, so the order total is left blank rather '
-      + 'than counting them as free. Set their cost on the Costs sheet.');
+      + 'than counting them as free. Set a cost for THIS order below, or set '
+      + 'the product\'s cost on the Costs sheet to fix it everywhere.');
   }
   if(t.order_total !== null && t.order_total !== undefined
      && Math.abs((t.revenue || 0) - t.order_total) > 0.02){
@@ -942,7 +943,119 @@ function _ordBreakdownHtml(bd, currency){
   notes.forEach(function(n){
     h += '<div class="odp-note">' + _oEsc(n) + '</div>';
   });
+
+  // CORRECT THIS ONE ORDER'S COST, HERE.
+  //
+  //     "my typed cogs win but it should be only for that order not all time
+  //      frames and all orders"
+  //
+  // /cogs/order has done exactly that for a while -- writes onto the order
+  // line, marked 'manual-order' so nothing later overwrites it -- and NOTHING
+  // IN THE BROWSER CALLED IT. A finished endpoint with no way to reach it is a
+  // feature nobody has.
+  //
+  // It belongs here rather than on a settings screen because this is where the
+  // wrong number is visible: the panel has just said which lines have no cost.
+  // Sending somebody to a sheet to fix what they are looking at is how the
+  // note above used to end.
+  //
+  // Blank clears it, putting the order back to "not known" -- which is a real
+  // thing to want, and different from typing 0.
+  //
+  // ONE INPUT PER LINE, CARRYING ITS OWN SKU. set_for_order without a sku
+  // updates EVERY line of the order to the same figure -- correct for the
+  // single-item orders that are most of them, silently wrong for a two-item
+  // order where the products cost different amounts. The sku is always sent.
+  //
+  // PER UNIT, and it says so. order_lines.cogs is the unit cost -- the Cost
+  // column above shows the line (unit x quantity), and putting the line total
+  // into a per-unit field on a 3-unit order overstates the cost threefold.
+  if(orderId){
+    h += '<div class="odp-note">'
+      +  '<div style="margin-bottom:4px">Wrong cost? Correct it for '
+      +  '<b>this order only</b> — per unit, and no other order changes.</div>';
+    bd.lines.forEach(function(l, i){
+      // No sku on a multi-line order means the write could not be aimed at one
+      // line, and set_for_order would set them all. Better no control than one
+      // that quietly corrects the wrong product too.
+      if(!l.sku && bd.lines.length > 1) return;
+      const id = 'ordcogs_' + i;
+      const unit = (l.unit_cost !== null && l.unit_cost !== undefined)
+        ? l.unit_cost
+        : ((l.cogs !== null && l.cogs !== undefined && l.qty)
+            ? (Number(l.cogs) / Number(l.qty)) : null);
+      h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;'
+        +  'margin:3px 0">'
+        +  (bd.lines.length > 1
+            ? '<code class="cc" style="font-size:9.5px;max-width:170px;'
+              + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+              + _oEsc(l.sku) + '</code>' : '')
+        +  '<input id="' + id + '" class="ed" style="width:100px" '
+        +  'placeholder="' + (unit === null ? 'e.g. 15.10'
+              : _oEsc(Number(unit).toFixed(2))) + '">'
+        +  '<button class="ghost" onclick="ordSetOrderCogs('
+        +  jsArg(orderId) + ',' + jsArg(l.sku || '') + ',' + jsArg(id) + ','
+        +  jsArg(accountId || '') + ',' + jsArg(marketplace || '') + ')">Save</button>'
+        +  (l.qty > 1 ? '<span class="cc">x ' + l.qty + ' units</span>' : '')
+        +  '</div>';
+    });
+    h += '<div class="cc">Leave the box empty and press Save to clear a cost '
+      +  'and put that line back to “not known”.</div></div>';
+  }
   return h + '</div>';
+}
+
+/* Write one order line's cost, then redraw from the server's answer.
+ *
+ * Not optimistic: the panel shows what came BACK, because the point of a typed
+ * cost is that it is the figure of record, and showing it before it is stored
+ * would make a failed save look like a success.
+ *
+ * /cogs/order has done exactly this since it was written -- and nothing in the
+ * browser called it. It is reached from here now.
+ *
+ * The account and the marketplace are the ROW'S, passed down, not the open
+ * workspace's. Orders can be listed across every account from the picker, and
+ * writing a cost against whichever account happens to be open would put it on a
+ * different company's order line. */
+async function ordSetOrderCogs(orderId, sku, inputId, accountId, marketplace){
+  const el = document.getElementById(inputId);
+  const raw = ((el && el.value) || "").trim();
+  if(raw !== "" && !isFinite(Number(raw))){
+    if(typeof toast === "function") toast("That cost is not a number.");
+    return;
+  }
+  try{
+    const j = await (await fetch("/cogs/order", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      // account_id is the key request_account.named() reads. "account" is not.
+      body: JSON.stringify({account_id: accountId || "",
+                            marketplace: marketplace || "",
+                            order_id: orderId, sku: sku || "",
+                            cost: raw === "" ? null : raw})
+    })).json();
+    if(!j || !j.ok){
+      if(typeof toast === "function"){
+        toast("Could not save that cost: " + ((j && j.error) || "unknown"));
+      }
+      return;
+    }
+    if(typeof toast === "function"){
+      toast(raw === ""
+        ? "Cost cleared — that line is back to “not known”."
+        : "Saved at " + raw + " per unit. This order only.");
+    }
+    // Redraw from the server. The panel's figures AND the row's profit, margin
+    // and ROI are all worked out from this cost, so the list is reloaded too --
+    // otherwise the row keeps showing the profit it had before the correction.
+    delete ORD.details[orderId];
+    ORD.open = "";
+    ordersRender();
+    if(typeof ordersLoad === "function") await ordersLoad();
+    ordersToggle(orderId, accountId || "");
+  }catch(e){
+    if(typeof toast === "function") toast("Could not save that cost: " + e);
+  }
 }
 
 /* THE ORDER PANEL, IN SECTIONS.
@@ -1020,7 +1133,11 @@ function _ordDetailHtml(r){
   });
 
   // ---- what it earned --------------------------------------------------
-  h += _ordBreakdownHtml(d.breakdown, o.currency);
+  // r.order_id, not o.order_id: `r` is the row this panel belongs to and always
+  // carries the id -- `d.order` is whatever the detail call returned, and its
+  // key name is Amazon's, not ours.
+  h += _ordBreakdownHtml(d.breakdown, o.currency, r.order_id,
+                         r.account_id, r.marketplace);
 
   // ---- delivery --------------------------------------------------------
   h += '<div class="odp-sec">'

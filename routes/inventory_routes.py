@@ -53,7 +53,27 @@ def register(app, *, _INV, _INV_IMPORT_ERR, _INV2, _INV2_IMPORT_ERR,
           cycle_label          (free text for the assumptions sheet)
         """
         if _INV is None:
-            return jsonify({"ok": False, "error": f"inventory_model not available: {_INV_IMPORT_ERR}"}), 500
+            # THIS FEATURE IS GONE, AND SAYING SO BEATS NAMING ITS MISSING FILE.
+            #
+            # inventory_model.py is not in the repo -- v1 of the replenishment
+            # model was replaced by inventory_module.py (v2, /inventory/v2/run)
+            # and its file went with it. The route stayed behind, so the only
+            # answer it can give is a 500 reading "No module named
+            # 'inventory_model'", which describes an installation fault rather
+            # than a decision somebody made.
+            #
+            # 410, not 500: the request is fine and the server is fine; the
+            # thing being asked for no longer exists. Nothing in the app calls
+            # this -- checked across static/js and templates -- so this is for
+            # whoever finds the URL and needs to know where it went.
+            return jsonify({
+                "ok": False, "gone": True,
+                "error": "This is the first version of the replenishment model "
+                         "and it has been replaced. Its module was removed when "
+                         "v2 took over. Use /inventory/v2/run — the Inventory "
+                         "screen already does.",
+                "replaced_by": "/inventory/v2/run",
+                "detail": _INV_IMPORT_ERR}), 410
         try:
             marketplace = (request.form.get("marketplace") or "UK").strip().upper()
             try:

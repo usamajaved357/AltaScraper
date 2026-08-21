@@ -230,7 +230,18 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                 "       SUM(COALESCE(order_items,0))   AS order_items "
                 "FROM sales_daily "
                 "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=? "
-                "  AND asin IS NOT NULL AND asin<>'' "
+                # asin '*' IS THE ACCOUNT TOTAL FOR THE DAY, not a product --
+                # data/db.py says so where the column is defined. Left in, it is
+                # summed alongside the real child ASINs and every headline
+                # figure comes out roughly DOUBLE.
+                #
+                # MEASURED on jack_uk, week of 10 Aug: one ASIN sold 3 units and
+                # the '*' row carried the same 3, so the pack reported 6 units
+                # and 540 sessions against a true 3 and 284. Nine other
+                # per-product queries in this app filter it (contribution.py,
+                # sales_data.py, traffic_view.py, returns_routes.py, ...);
+                # this one did not.
+                "  AND asin IS NOT NULL AND asin<>'' AND asin<>'*' "
                 "GROUP BY asin ORDER BY units DESC",
                 (wsid, mkt, week_start, week_end)).fetchall()
         except Exception:

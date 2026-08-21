@@ -130,6 +130,25 @@ async function financeLoad(){
   const s = (document.getElementById("fin_start")||{}).value;
   const e = (document.getElementById("fin_end")||{}).value;
   if(s && e){ qs.push("start="+encodeURIComponent(s), "end="+encodeURIComponent(e)); }
+  // THIS PAGE SAYS WHOSE MONEY IT IS SHOWING.
+  //
+  // It used to send only the dates, so the server fell back to its own
+  // process-wide active_account_id and active_marketplace -- one pair of
+  // variables for the whole server, written whenever anybody chooses something.
+  // Measured 21 Aug 2026: opening Sheelady (USA), whose marketplaces are MX,
+  // CA, BR and US, this screen reported "No finance data has ever been pulled
+  // for Sheelady (USA) on UK". Not a judgement call between several; a country
+  // the account does not sell in, and then "no data" -- which reads as "you
+  // have no sales" rather than "I looked in the wrong place".
+  //
+  // The page knows both. Every other money screen already says so; this is a
+  // page of money that did not. See routes/scope.py.
+  if(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id){
+    qs.push("id=" + encodeURIComponent(CUR_ACCOUNT.id));
+  }
+  if(typeof WS_MARKET !== "undefined" && WS_MARKET && WS_MARKET !== "__all__"){
+    qs.push("marketplace=" + encodeURIComponent(WS_MARKET));
+  }
   let j;
   try{ j = await (await fetch("/finance/contribution"+(qs.length?"?"+qs.join("&"):""))).json(); }
   catch(err){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_fesc(String(err))+'</div>'; return; }

@@ -397,10 +397,19 @@ except Exception:
     FORBIDDEN_SPEC_CODES = []
 
 
-def _wordish(term: str):
-    """Whole-word pattern with a boundary guard on BOTH ends so a term that is a
-    substring of a longer word never matches ('Esso' in 'compressor' -> no hit)."""
-    return re.compile(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", re.I)
+# WHOLE-WORD MATCHING, FROM THE ONE PLACE THAT DEFINES IT.
+#
+# This file had its own copy: the same expression, character for character, with
+# its own docstring about 'Esso' in 'compressor'. listing/restricted.py has held
+# the public one all along, and listing/sourcing_viability.py already imports it
+# from there. Three modules, one rule about what counts as a word, and two
+# implementations of it -- exactly the thing Rule 12 exists to stop. The day one
+# of them was taught about hyphens, the two layers would have started disagreeing
+# about the same product with nothing on screen to say which was right.
+#
+# The shared one is also memoised, which this copy was not -- the same reason
+# the Listings screen was rebuilding thousands of identical patterns per request.
+from listing.restricted import wordish as _wordish
 
 
 _FORBIDDEN_TERMS = _TIER_A_BARE + _TIER_B_FULL + FORBIDDEN_SPEC_CODES

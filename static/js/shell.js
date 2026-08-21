@@ -362,6 +362,10 @@ async function enterAccount(accountId){
   // listings are not known yet, and the previous account's are not an
   // approximation of them.
   ROWS=[]; if(typeof TABS!=="undefined") TABS=[];
+  // ...and this account's drafts are not loaded either. Without clearing it, the
+  // previous account's "loaded" would let the new account's empty grid claim
+  // "no listings" before a single row had been asked for.
+  if(typeof ROWS_LOADED !== "undefined") ROWS_LOADED = false;
   if(typeof DUP_INDEX!=="undefined" && DUP_INDEX && DUP_INDEX.clear) DUP_INDEX.clear();
   var _g=document.getElementById("grid"); if(_g) _g.innerHTML="";
   var _sm=document.getElementById("summary"); if(_sm) _sm.innerHTML="";
@@ -585,6 +589,23 @@ async function switchAccountMarket(m){
   // live, and the Drafts view reads that to tell a draft from something already
   // published. See the note above enterAccount's loader.
   loadRows(); loadLiveCatalog(false);
+  // AND THE SCREEN YOU ARE ACTUALLY LOOKING AT.
+  //
+  // screenForgetAll() above marks every screen as stale, but nothing re-opened
+  // the one on the glass -- so the old marketplace's figures stayed there until
+  // you navigated away and back. Measured 21 Aug 2026: switching from United
+  // Kingdom to "All marketplaces" while on the Sales screen made ZERO requests,
+  // and the screen went on saying "United Kingdom Time" with a chart in pounds
+  // under a heading that said all.
+  //
+  // navTo is the one way in -- it owns the permission gate, the URL and the
+  // active highlight -- and re-running it for the section already open reloads
+  // it because screenNeedsLoad() is now true. Listings is skipped: the two
+  // loaders above are its reload, and calling both would double the work.
+  if(typeof CUR_SEC !== "undefined" && CUR_SEC && CUR_SEC !== "listings"
+     && typeof navTo === "function"){
+    navTo(CUR_SEC);
+  }
 }
 
 function openCurrentAccountSettings(){
@@ -989,7 +1010,18 @@ function navTo(sec){
   // Found by opening every section in a real browser and photographing it:
   // Permissions came back as an empty page with no error, which is exactly what
   // a missing entry here looks like.
-  ["imagerefs","setup","generate","miles","sales","traffic","hourly","ppc","inventory","sync","monitor","sourcing","orders","returns","daily","weekly","imagestudio","aiusage","finance","variations","sellerimport","trackers","alerts","leading","notify","sqp","catalog","compliance","overview","categories","drppc","imagelib","permissions","reimbursements","brief"].forEach(s=>{
+  // ...AND IT IS NO LONGER A SECOND LIST. It was ALTA_SECTIONS minus
+  // "listings" -- written out by hand, so every new screen had to be added in
+  // two places and the failure of forgetting is invisible: the page loads, the
+  // data arrives, the onOpen runs, and you see nothing. It happened to
+  // `permissions`, and it happened again just now to all four keyword screens,
+  // which registered and rendered and came back 0 pixels tall.
+  //
+  // Derived instead. "listings" is excluded because it is a plain block handled
+  // on the line above, not a .wspanel. ALTA_SECTIONS is declared further down
+  // this file, which is fine: this runs when somebody navigates, long after the
+  // file has finished evaluating (rule 12).
+  ALTA_SECTIONS.filter(s => s !== "listings").forEach(s=>{
     const el=document.getElementById("sec_"+s);
     if(el) el.classList.toggle("show", s===sec);
   });
@@ -1016,6 +1048,13 @@ function navTo(sec){
     if(sec==="sales"){    if(typeof salesOpen==="function") salesOpen(); }
     if(sec==="traffic"){  if(typeof trafficOnOpen==="function") trafficOnOpen(); }
     if(sec==="hourly"){   if(typeof hourlyOnOpen==="function")  hourlyOnOpen(); }
+  // Phase 1 analytics. Each just draws; only Keyword History reads anything on
+  // open, and it reads the local store rather than calling Amazon.
+  if(sec==="kwspy"){       if(typeof kwSpyOnOpen==="function")  kwSpyOnOpen(); }
+  if(sec==="kwasin"){      if(typeof kwAsinOnOpen==="function") kwAsinOnOpen(); }
+  if(sec==="ranktracker"){ if(typeof krtOnOpen==="function")    krtOnOpen(); }
+  if(sec==="kwhistory"){   if(typeof kwhOnOpen==="function")    kwhOnOpen(); }
+  if(sec==="asinstudio"){  if(typeof asStudioOnOpen==="function") asStudioOnOpen(); }
     if(sec==="ppc")       ppcOnOpen();
     if(sec==="sync"){     if(typeof syncOnOpen==="function") syncOnOpen(); }
     if(sec==="monitor"){  if(typeof monitorOnOpen==="function") monitorOnOpen(); }
@@ -1140,7 +1179,11 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
                        "compliance","overview","categories","drppc","permissions",
-                       "reimbursements","brief"];
+                       "reimbursements","brief",
+                       // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
+                       "kwspy","kwasin","ranktracker","kwhistory",
+                       // ASIN Studio: any ASIN in, a branded draft out.
+                       "asinstudio"];
 
 // THE ADDRESS FOR ONE SECTION, so a nav item can be a real <a href>.
 //

@@ -295,7 +295,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 if _ff is None:
                     _ff = _fees_fn(r["account_id"], _mkt_of(r["account_id"]))
                     _fee_fns[r["account_id"]] = _ff
-                d = _ov.profit_detail(items, r.get("total"), cost_of,
+                # PER ORDER: the frozen cost and the tracked price both need
+                # this order's id and date. See _cost_fn_for.
+                _cf = _cost_fn_for(r["account_id"], _mkt_of(r["account_id"]),
+                                   r.get("purchase_date") or r.get("date") or "",
+                                   r.get("order_id") or "")
+                d = _ov.profit_detail(items, r.get("total"), _cf,
                                       fees=_ff(r["order_id"], r.get("total")))
                 r["profit"] = d["profit"]
                 r["margin_pct"] = d["margin_pct"]
@@ -369,6 +374,79 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         from domain import cogs_store as _cs
         return _cogs.lookup(_cs.all_overrides(CONFIG_PATH),
                             str(_state.get("active_account_id", "") or ""))
+
+    def _cost_fn_for(account_id, marketplace, when, order_id=""):
+        """sku -> (cost, source) for ONE order, on the SAME trust order Sales uses.
+
+        TWO SCREENS WERE ANSWERING THE SAME QUESTION FROM DIFFERENT PLACES.
+
+        Sales resolves a line's cost through domain/order_cogs.resolve, which has
+        the full order of trust:
+
+            1. a correction typed against THAT ONE order  -- wins outright
+            2. in tracked mode, the supplier price in force when it arrived
+            3. a cost typed against the product
+            4. the cost built into the SKU
+
+        Orders used _cost_fn, which is domain/cogs.lookup -- steps 3 and 4 only.
+        It has no notion of a per-order correction and no tracked mode, so it is
+        a strictly WEAKER resolver looking at the same order.
+
+        THEY AGREE TODAY ONLY BY COINCIDENCE. Measured 21 Aug 2026: every one of
+        the 24 frozen costs is marked `sku`, no account is on tracked mode, and
+        cogs_overrides.json holds nothing -- so steps 1 and 2 never fire and both
+        resolvers fall to the same answer. The day the repricer yields a real
+        supplier price, or anybody corrects a single order, the same order shows
+        one profit on Orders and a different one inside Sales, with nothing on
+        either screen to say which is right.
+
+        So Orders asks the same resolver. Per order rather than per request,
+        because steps 1 and 2 need the order's id and its date -- that is what
+        made this awkward enough to skip the first time.
+        """
+        from domain import cogs_store as _cs
+        from domain import order_cogs as _oc
+        mode = _oc.mode_for(_cfg, account_id)
+        overrides = _cs.all_overrides(CONFIG_PATH)
+
+        # THE FROZEN COST FIRST, because it is literally the number Sales shows.
+        #
+        # A per-order correction is not held anywhere separate: set_for_order
+        # writes it straight into order_lines.cogs with source 'manual-order',
+        # and the Sales profit card reads that stored value. So the way to make
+        # the two screens agree is not to re-derive the same answer twice -- two
+        # derivations are two things to keep in step -- but to read the one that
+        # was stored.
+        frozen = {}
+        try:
+            if order_id:
+                from data import db as _dbm
+                conn = _dbm.get_db(CONFIG_PATH)
+                for row in conn.execute(
+                        "SELECT sku, cogs, cogs_source FROM order_lines "
+                        "WHERE workspace_id=? AND marketplace=? AND order_id=? "
+                        "  AND cogs IS NOT NULL",
+                        (account_id, marketplace, str(order_id))).fetchall():
+                    frozen[str(row["sku"] or "")] = (row["cogs"], row["cogs_source"])
+        except Exception:
+            frozen = {}
+
+        def _f(sku):
+            hit = frozen.get(str(sku or ""))
+            if hit and hit[0] is not None:
+                return round(float(hit[0]), 4), (hit[1] or "frozen")
+            try:
+                return _oc.resolve(CONFIG_PATH, account_id, marketplace,
+                                   sku, when, mode, overrides=overrides,
+                                   order_override=None)
+            except Exception:
+                # Never lose the whole row over a cost lookup. Falling back to
+                # the older resolver keeps the previous behaviour rather than
+                # reporting "no cost", which would read as a product nobody has
+                # costed -- a different and wrong finding.
+                from domain import cogs as _cogs
+                return _cogs.resolve(overrides, account_id, sku)
+        return _f
 
     def _fees_fn(account_id, marketplace):
         """(order_id, gross) -> what Amazon took. Real figure where it exists.
@@ -521,7 +599,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             if _ff is None:
                 _ff = _fees_fn(aid, _mkt_of(aid))
                 _fee_fns[aid] = _ff
-            d = _ov.profit_detail(items, w.get("total"), cost_of,
+            # _mkt_of(aid), not `mkt` -- this handler never defines one, and it
+            # spans accounts. `purchased` is the key these rows carry (it is
+            # what _items_for is given two lines up); the others are the list
+            # view's names, kept as fallbacks rather than assumed away.
+            _cf = _cost_fn_for(aid, _mkt_of(aid),
+                               w.get("purchased") or w.get("purchase_date")
+                               or w.get("date") or "",
+                               oid)
+            d = _ov.profit_detail(items, w.get("total"), _cf,
                                   fees=_ff(oid, w.get("total")))
             it = _ov.item_summary(items)
             it["img"] = _cat_look(pics, it).get("img") or ""
@@ -589,7 +675,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # which line was missing one.
         cost_of = _cost_fn()
         fees = _fees_fn(aid, mkt)(oid, row.get("total"))
-        bd = _ov.line_breakdown(items, row.get("total"), cost_of, fees=fees)
+        _cf = _cost_fn_for(aid, mkt,
+                           row.get("purchase_date") or row.get("date") or "",
+                           row.get("order_id") or oid)
+        bd = _ov.line_breakdown(items, row.get("total"), _cf, fees=fees)
         row["profit"] = bd["totals"]["profit"]
         row["margin_pct"] = bd["totals"]["margin_pct"]
         row["profit_note"] = bd["totals"]["note"]

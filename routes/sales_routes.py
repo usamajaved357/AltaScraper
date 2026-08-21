@@ -18,6 +18,10 @@ import datetime as _dt
 
 from flask import request, jsonify, Response
 
+# The one place that answers "which account and which marketplace". See its
+# docstring for the twenty-four places that each used to decide for themselves.
+from routes import scope as _scope_mod
+
 
 def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
     """Attach /sales/* to the app."""
@@ -56,6 +60,21 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         marketplace on the line below has always been taken from the request
         first; the account now follows the same rule, and for the same reason.
         See domain/request_account.py.
+
+        AND THE MARKETPLACE STOPPED AT THE GLOBAL. It read the request, then
+        _state["active_marketplace"], then gave up -- one of the fourteen places
+        routes/scope.py's docstring calls out by name: "The first group is a
+        bug, and it is the bug the owner keeps hitting." The account's OWN
+        default was never consulted, so an account whose marketplace had not
+        been chosen this session got "no marketplace selected" on a screen with
+        real sales sitting in the database.
+
+        It went unseen because static/js/sales.js always sends one. Everything
+        that does not -- the daily brief, the weekly pull, any in-process call --
+        was relying on a global that belongs to whichever account was open last.
+
+        One resolver now (rule 12): routes/scope.py, which is the file that
+        exists for this and already holds the order.
         """
         aid, acc = _req_acct.for_read(request, _state, get_account=_account_by_id)
         if acc is None:
@@ -67,9 +86,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 acc = None
         wsid = str(aid or (acc or {}).get("id")
                    or _state.get("active_account_id", "") or "") or "_no_account"
-        mkt = (request.args.get("marketplace")
-               or (request.get_json(silent=True) or {}).get("marketplace")
-               or _state.get("active_marketplace") or "").upper()
+        mkt = _scope_mod.marketplace(
+            state=_state, account=(acc or {}),
+            asked=(request.args.get("marketplace")
+                   or (request.get_json(silent=True) or {}).get("marketplace")))
         return acc, wsid, mkt
 
     def _cogs_overrides():
@@ -386,12 +406,36 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
             got = _cat.look(idx, r.get("k"), r.get("parent_asin"))
             r["img"] = got.get("img") or ""
             r["title"] = got.get("title") or ""
+        # HOW MUCH OF THE PERIOD THIS TABLE IS ACTUALLY SHOWING.
+        #
+        # Measured 21 Aug 2026 over thirty days: Nestwell's headline was
+        # GBP 946.67 and these rows came to GBP 149.95 -- a sixth of the
+        # business -- and Selvora's headline was GBP 4145.60 against no rows at
+        # all, under the words "No per-product sales in this period yet". A
+        # table headed "which products sold" that silently omits most of the
+        # money is worse than one that says how much it is covering.
+        # The FIGURES go back; the sentence is written on the screen, where the
+        # one money formatter lives. A sentence about money built here would be
+        # a second opinion about how to write a currency (rule 12).
+        cov = _sd.breakdown_coverage(CONFIG_PATH, wsid, mkt, start, end)
+        if not rows and cov["total"] > 0:
+            note = ("Amazon has not delivered a product-level report for any of "
+                    "the %d day%s in this period that had sales, so there is "
+                    "nothing to break down yet. The totals above come from the "
+                    "order feed, which does not say which product. Sync fetches "
+                    "these one day at a time, against Amazon's report quota."
+                    % (cov["days_without_products"],
+                       "" if cov["days_without_products"] == 1 else "s"))
+        elif not rows:
+            note = ("No per-product sales in this period yet — press Sync to "
+                    "pull them from Amazon.")
+        else:
+            note = ""
         return jsonify({"ok": True, "start": start, "end": end, "group": group,
                         "rows": rows, "count": len(rows),
-                        "currency": _sd.currency_of(rows),
-                        "note": ("" if rows else
-                                 "No per-product sales in this period yet — press "
-                                 "Sync to pull them from Amazon.")})
+                        "currency": _sd.currency_of(rows) or cov.get("currency", ""),
+                        "coverage": cov,
+                        "note": note})
 
     @app.route("/sales/series")
     def sales_series():

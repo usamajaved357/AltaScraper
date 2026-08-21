@@ -4062,3 +4062,91 @@ table.ordtable tbody tr.orddetail > td{
 .bmkhint{font-size:11px;white-space:nowrap;opacity:.75}
 .bmkhint i{font-size:12px;vertical-align:-1px}
 @media (max-width:900px){ .bmkbar{display:none !important} }
+
+
+/* ===================== GO TO (Ctrl+K) =====================
+   static/js/palette.js. Forty-three screens in eight collapsible groups: the
+   bookmark bar covers the four you open every day, this covers the rest.
+   Built out of the app's own tokens so it cannot drift from the palette. */
+#palette{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.55);
+  display:none;align-items:flex-start;justify-content:center;padding:12vh 16px}
+#palette.show{display:flex}
+#palette .palbox{background:var(--panel);border:1px solid var(--line2);
+  border-radius:var(--radius-lg);width:600px;max-width:100%;
+  box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden;
+  display:flex;flex-direction:column;max-height:70vh}
+#palette .palhead{display:flex;align-items:center;gap:9px;padding:12px 14px;
+  border-bottom:1px solid var(--line)}
+#palette .palhead i{color:var(--ink3);font-size:16px}
+#palette #pal_q{flex:1;background:none;border:0;outline:none;color:var(--ink);
+  font-size:14.5px;font-family:inherit}
+#palette #pal_q::placeholder{color:var(--ink4)}
+#palette .palhint{font-size:10.5px;color:var(--ink4);border:1px solid var(--line2);
+  border-radius:4px;padding:1px 5px}
+/* A BOX THAT CLAIMS THE WHEEL MUST BE ABLE TO USE IT. overscroll-behavior
+   :contain stops a scroll running on to the page behind -- and on an element
+   that cannot itself scroll, it swallows the wheel and does nothing.
+   test_scroll_trap.py caught this one: the height came only from the flex
+   parent's max-height, and without min-height:0 a flex child does not shrink
+   below its content, so the list could overflow the box it was meant to fit
+   inside. Its own max-height and min-height:0 make it real. */
+#palette .pallist{flex:1 1 auto;min-height:0;max-height:56vh;
+  overflow-y:auto;overscroll-behavior:contain;padding:6px}
+#palette .palrow{display:flex;align-items:center;gap:10px;width:100%;
+  padding:8px 10px;border:0;background:none;color:var(--ink);cursor:pointer;
+  border-radius:var(--radius-sm);text-align:left;font-size:13px;
+  font-family:inherit}
+#palette .palrow:hover{background:var(--panel2)}
+#palette .palrow.on{background:var(--panel3)}
+#palette .palrow i{color:var(--ink2);font-size:15px;width:18px;flex:0 0 18px}
+#palette .palrow.on i{color:var(--accent)}
+#palette .pallbl{flex:0 0 auto;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:46%}
+/* The sentence that tells two similarly named screens apart. Plain muted text,
+   not a chip: a border round a whole sentence reads as a tooltip that has got
+   stuck, and there is one on every row. */
+#palette .palnote{flex:1 1 auto;min-width:0;font-size:11px;color:var(--ink4);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#palette .palgrp{flex:0 0 auto;margin-left:auto;font-size:10.5px;
+  color:var(--ink3);background:var(--panel2);border-radius:4px;padding:1px 6px;
+  white-space:nowrap}
+#palette .palempty{padding:18px 14px;color:var(--ink3);font-size:12.5px}
+#palette .palfoot{display:flex;gap:14px;padding:8px 14px;
+  border-top:1px solid var(--line);font-size:10.5px;color:var(--ink4)}
+
+/* "Go to" in the bookmark bar -- the way to reach the 38 screens the bar is not
+   for. Built like a .bmkchip so the strip stays one row of one kind of thing. */
+.bmkgoto{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+         background:transparent;border:1px dashed var(--line2);color:var(--fg2);
+         border-radius:14px;padding:3px 8px 3px 9px;font-size:11.5px;
+         cursor:pointer;line-height:1.5;margin-left:4px;font-family:inherit}
+.bmkgoto:hover{border-style:solid;border-color:var(--accent-line);
+               color:var(--ink)}
+.bmkkbd{font-size:9.5px;color:var(--ink4);border:1px solid var(--line);
+        border-radius:3px;padding:0 4px;letter-spacing:.02em}
+
+/* ===== EVERY MARKETPLACE AT ONCE (static/js/brandview.js) ===== */
+.bvhead{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.bvcurs{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.bvcur{flex:1 1 200px;min-width:190px;background:var(--panel2);
+       border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+.bvcurhd{font-size:11px;color:var(--ink2);letter-spacing:.04em;
+         text-transform:uppercase;margin-bottom:3px}
+.bvcurbig{font-size:19px;font-weight:600;color:var(--gold)}
+.bvcursub{font-size:11px;margin-top:3px}
+.bvnote{font-size:11px;margin:8px 0;line-height:1.5}
+.bvempty{padding:16px;border:1px dashed var(--line2);border-radius:var(--radius);
+         font-size:12px}
+.bvtable{width:100%;min-width:720px;font-size:12px}
+.bvtable th{font-size:11px;color:var(--ink2);font-weight:500;text-align:right;
+            padding:4px 8px;white-space:nowrap}
+.bvtable td{text-align:right;padding:6px 8px;white-space:nowrap}
+.bvflag{font-size:14px}
+.bvdelta{font-size:10px;margin-left:4px}
+.bvdelta.up{color:var(--ok)} .bvdelta.down{color:var(--red)}
+.bvmore{background:none;border:0;color:var(--ink2);cursor:pointer;font-size:11.5px;
+        padding:8px 2px;font-family:inherit}
+.bvmore:hover{color:var(--ink)}
+.bvquiet{display:flex;gap:6px;flex-wrap:wrap;padding:0 0 8px}
+.bvchip{font-size:11px;color:var(--ink3);border:1px solid var(--line);
+        border-radius:12px;padding:2px 8px}

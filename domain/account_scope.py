@@ -31,7 +31,50 @@ always did, so adding this to a route cannot break the callers that have not
 been taught to send it yet. That is deliberate: it lets the guard go in first
 and the callers follow, instead of needing one flag-day change across every
 screen at once.
+
+AND THERE IS ONE CALLER WITH NO SCREEN BEHIND IT
+------------------------------------------------
+domain/live_refresher.py rotates through EVERY account, refreshing the ones
+nobody is looking at -- which is the whole reason it exists. It has no browser,
+so "the account that is open" is not a question that applies to it, and the
+guard refused it on every account but whichever the browser happened to show.
+Measured in the server log with jack_uk open: five of six accounts' live
+catalogues never refreshed at all. And each refusal was written into
+marketplace_health.json as that pair's `last_transient` -- so the diagnostics
+screen showed this app's own refusal in the place a reader looks for what Amazon
+said. (It did NOT rest those marketplaces: looks_permanent() does not match this
+text, so it was not counted towards a rest. The entries that are rested carry
+real Amazon errors.)
+
+It says so with BACKGROUND_ENVIRON_KEY below rather than with a flag in the
+request body. A body flag is JSON a browser can send, and a guard a browser can
+switch off is not a guard. Werkzeug builds the WSGI environ from the incoming
+request and maps headers to HTTP_* keys, so no HTTP client can produce a key
+called "alta.background"; only code holding the app object can.
 """
+
+# Set by in-process callers that ARE the server: app.test_request_context(...,
+# environ_base={BACKGROUND_ENVIRON_KEY: True}). Never settable over HTTP.
+BACKGROUND_ENVIRON_KEY = "alta.background"
+
+
+def is_background(environ) -> bool:
+    """True when this request was built in-process by the app itself."""
+    try:
+        return bool((environ or {}).get(BACKGROUND_ENVIRON_KEY))
+    except Exception:
+        return False
+
+
+def background_context(app, *args, **kwargs):
+    """app.test_request_context(...) marked as the server calling itself.
+
+    One helper so a caller cannot half-remember the key. Every in-process call
+    that legitimately targets an account nobody has open goes through this.
+    """
+    env = dict(kwargs.pop("environ_base", None) or {})
+    env[BACKGROUND_ENVIRON_KEY] = True
+    return app.test_request_context(*args, environ_base=env, **kwargs)
 
 
 def is_mismatch(asked, open_id) -> bool:

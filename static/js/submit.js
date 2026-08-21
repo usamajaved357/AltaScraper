@@ -334,6 +334,34 @@ async function switchView(key){
 // the big account.
 let _ROWS_SEQ = 0;
 
+/* HAVE THE DRAFTS EVER FINISHED LOADING FOR THE ACCOUNT ON SCREEN?
+ *
+ *     "selvora dont have zero drafts but why was that error message appearing
+ *      the drafts showed up the next second automatically but why that 1 sec
+ *      gap is there"
+ *
+ * Because an empty ROWS meant two completely different things and the screen
+ * only knew how to say one of them:
+ *
+ *     "this account has no drafts"        -> a fact
+ *     "the drafts have not arrived yet"   -> not a fact about anything
+ *
+ * render() read ROWS.length === 0 and printed "No listings in this view. Run
+ * Generate to create some." -- an instruction to go and make something, given
+ * to somebody who already had 13 listings that were still in flight.
+ *
+ * WHY IT STARTED SHOWING. loadRows() draws a skeleton while it waits, so the
+ * gap used to be covered. Then the Drafts view began loading the live catalogue
+ * too (to stop one listing appearing as live on one tab and a ready-to-send
+ * draft on the other), and loadLiveCatalog paints immediately on a cache hit --
+ * so its render() landed on top of the skeleton with ROWS still empty. My
+ * change; this is the honest fix rather than putting the race back.
+ *
+ * false again on an account switch, because "loaded" is per account: the
+ * previous account's rows finishing tells you nothing about this one's.
+ */
+let ROWS_LOADED = false;
+
 async function loadRows(){
   // WHOSE LISTINGS THIS REQUEST IS FOR.
   //
@@ -417,6 +445,9 @@ async function loadRows(){
       toast("Sheet error: "+(j.error||"unknown")); return;
     }
     ROWS=j.rows||[]; SHIP=j.shipping_group||""; PTYPES=j.product_types||[];
+    // The answer has arrived. From here an empty ROWS really does mean "this
+    // account has no drafts", and the screen may say so.
+    ROWS_LOADED = true;
     // WHICH STORE THESE CAME FROM. Kept so the screen can say when some of
     // these listings are still only in the spreadsheet, and offer to bring them
     // in -- the app is mid-migration and that is the fact that keeps surfacing

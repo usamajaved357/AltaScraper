@@ -142,18 +142,77 @@ def status_for(cover_days, lead_days):
     return STOCKOUT
 
 
+# A DAY THE SHELF WAS EMPTY IS NOT A DAY NOBODY WANTED IT.
+#
+# Velocity was units divided by the whole window, so a product that was out of
+# stock for twenty of thirty days reported a third of its real rate -- and that
+# rate is what days-of-cover and the reorder quantity are built on. The app was
+# therefore under-ordering exactly the products that keep running out, and doing
+# it more the worse the stockout was.
+#
+# stock_daily records qty per SKU per day, so the days it WAS sellable can be
+# counted rather than assumed. Two rules keep it honest:
+#
+#   MIN_OBSERVED_DAYS   Below this much recorded history the adjustment is not
+#                       made at all. It began recording on 20 Aug 2026, so for
+#                       the first few weeks there is not enough to divide by and
+#                       a thin denominator would INFLATE the rate -- the mirror
+#                       of the bug being fixed.
+#
+#   the same days both   When the adjustment IS made, the units counted are only
+#   sides               those sold on days that were both recorded and in stock.
+#                       Dividing thirty days of sales by ten in-stock days would
+#                       treble the answer. Numerator and denominator describe the
+#                       same days or the figure means nothing.
+#
+# Which basis was used is returned, never hidden: a reorder built on one is not
+# the same promise as a reorder built on the other.
+MIN_OBSERVED_DAYS = 7
+
+
+def _instock_days(conn, workspace_id, marketplace, start, end):
+    """(days recorded at all, {sku: [dates it was in stock]}) for the window."""
+    days_seen = set()
+    per_sku = {}
+    for r in conn.execute(
+            "SELECT date, sku, qty FROM stock_daily "
+            "WHERE workspace_id=? AND marketplace=? AND date>=? AND date<=?",
+            (workspace_id, marketplace, start, end)):
+        d = str(r["date"] or "")
+        if not d:
+            continue
+        days_seen.add(d)
+        try:
+            q = float(r["qty"] or 0)
+        except (TypeError, ValueError):
+            q = 0.0
+        if q > 0:
+            per_sku.setdefault(str(r["sku"] or ""), set()).add(d)
+    return days_seen, per_sku
+
+
 def velocity_map(config_path, workspace_id, marketplace, days=WINDOW_DAYS,
                  today=None):
-    """{sku: {units, velocity, orders, first_order, provisional}} for the window.
+    """{sku: {units, velocity, orders, first_order, provisional, ...}}.
 
     Orbit's definition, quoted: "Average units sold per day over the current
-    30-day window."
+    30-day window." -- and its inventory agent's correction to it, also quoted:
+    "OOS days are excluded from the pace calculation... We do not count an
+    out-of-stock day as a zero-sales day, so it does not understate true
+    demand."
 
-    Divided by the WINDOW, not by the days since the first sale. A SKU that sold
-    twice in its first three days is not selling 0.67 a day -- it has sold twice.
-    Dividing by three would triple every new product's velocity and every reorder
-    built on it. Those rows are flagged `provisional` instead, so the screen can
-    say the figure is thin rather than quietly inflating it.
+    Where there is not enough stock history to exclude anything, this divides by
+    the WINDOW, not by the days since the first sale. A SKU that sold twice in
+    its first three days is not selling 0.67 a day -- it has sold twice.
+    Dividing by three would triple every new product's velocity and every
+    reorder built on it. Those rows are flagged `provisional` instead, so the
+    screen can say the figure is thin rather than quietly inflating it.
+
+    Extra fields, so a reader can see which rate they are looking at:
+        velocity_basis   "in-stock days" or "window"
+        in_stock_days    days recorded AND sellable, when that basis was used
+        observed_days    days of stock history found in the window
+        oos_days         recorded days the shelf was empty
     """
     from data import db as _db
 
@@ -180,22 +239,67 @@ def velocity_map(config_path, workspace_id, marketplace, days=WINDOW_DAYS,
                 "WHERE workspace_id=? AND marketplace=? AND IFNULL(sku,'')<>'' "
                 "GROUP BY sku", (workspace_id, marketplace)):
             ever[str(r["sku"])] = r["f"]
+        # Units by SKU and DAY, needed only to keep both sides of the division
+        # describing the same days.
+        by_day = {}
+        for r in conn.execute(
+                "SELECT sku, substr(purchase_date,1,10) d, SUM(units) u "
+                "FROM order_lines "
+                "WHERE workspace_id=? AND marketplace=? AND IFNULL(sku,'')<>'' "
+                "  AND lower(IFNULL(status,'')) NOT IN ('canceled','cancelled') "
+                "  AND substr(purchase_date,1,10) >= ? "
+                "  AND substr(purchase_date,1,10) <= ? "
+                "GROUP BY sku, d", (workspace_id, marketplace,
+                                    start.isoformat(), end.isoformat())):
+            by_day.setdefault(str(r["sku"]), {})[str(r["d"])] = _i(r["u"]) or 0
     except Exception:
         return out
+
+    # ITS OWN try, DELIBERATELY. A fault reading the stock history must cost the
+    # ADJUSTMENT, not every velocity in the account. Inside the block above, a
+    # missing stock_daily returned {} -- so days-of-cover, the reorder quantity
+    # and the whole Stock screen would have gone blank, silently, on any
+    # deployment where that table had not been created yet. Caught by
+    # test_velocity_oos.py's "no stock table at all is not an error".
+    try:
+        observed, instock = _instock_days(conn, workspace_id, marketplace,
+                                          start.isoformat(), end.isoformat())
+    except Exception:
+        observed, instock = set(), {}
+
+    enough = len(observed) >= MIN_OBSERVED_DAYS
 
     for r in rows:
         sku = str(r["sku"])
         units = _i(r["u"]) or 0
         first_ever = ever.get(sku) or r["first_in_window"]
-        out[sku] = {
+        rec = {
             "units": units,
             "velocity": round(units / float(days), 4) if days else None,
+            "velocity_basis": "window",
             "orders": _i(r["n"]) or 0,
             "first_order": first_ever,
+            "observed_days": len(observed),
+            "in_stock_days": None,
+            "oos_days": None,
             # A product whose whole history is inside this window has not been
             # observed long enough for a daily rate to mean much.
             "provisional": bool(first_ever and first_ever >= start.isoformat()),
         }
+        good = instock.get(sku) or set()
+        if enough:
+            rec["in_stock_days"] = len(good)
+            rec["oos_days"] = len(observed) - len(good)
+            if good:
+                sold_then = sum(v for d, v in (by_day.get(sku) or {}).items()
+                                if d in good)
+                rec["velocity"] = round(sold_then / float(len(good)), 4)
+                rec["velocity_basis"] = "in-stock days"
+            # A SKU recorded as out of stock on EVERY observed day keeps the
+            # window rate. There is no in-stock day to divide by, and reporting
+            # no velocity would read as "nobody wants it" -- the very mistake
+            # this is here to stop.
+        out[sku] = rec
     return out
 
 
@@ -320,6 +424,14 @@ def rows(config_path, workspace_id, marketplace, overrides=None,
             "units_sold": v.get("units"),
             "orders": v.get("orders"),
             "velocity": speed,
+            # WHICH RATE THIS IS. A reorder built on "2 a day while it was on
+            # the shelf" is not the same promise as one built on "0.67 a day
+            # counting the three weeks it was unbuyable", and the difference is
+            # threefold on a badly stocked SKU. See velocity_map.
+            "velocity_basis": v.get("velocity_basis") or "window",
+            "in_stock_days": v.get("in_stock_days"),
+            "oos_days": v.get("oos_days"),
+            "observed_days": v.get("observed_days"),
             "provisional": bool(v.get("provisional")),
             "cover_days": cover,
             "lead_days": lead_days,
