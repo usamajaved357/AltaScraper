@@ -391,6 +391,29 @@ def register(app, *, _cfg, CONFIG_PATH):
             existing = _acc.get_account(cfg, acct_id, CONFIG_PATH) or {}
         except Exception:
             existing = {}
+        # AND IF SOME OTHER WORKSPACE IS ALREADY THIS SELLER, IT IS THAT ONE.
+        #
+        # The id above is derived from the merchant token so that authorizing
+        # twice updates one record. It only ever looked at the id, though, so a
+        # seller who had been set up BY HAND -- with a label, an output sheet, a
+        # VAT rate, a COGS mode and a marketplace list -- got a second, bare
+        # workspace on their first authorization.
+        #
+        # Seen on the live app, 21 Aug 2026: the switcher listed "Nestwell Goods
+        # LTD" and "Amazon seller ZAAYT4". Both are A8YN8LJZAAYT4. The same
+        # company, twice, with listings and costs landing in whichever was open.
+        #
+        # One Amazon seller is one workspace (domain/accounts.by_seller_id).
+        if not existing:
+            try:
+                existing = _acc.by_seller_id(cfg, partner, CONFIG_PATH, mkt) or {}
+            except Exception:
+                existing = {}
+            if existing.get("id"):
+                # Write into the record that is already there, keeping its id,
+                # so nothing that points at it -- sheets, stored listings,
+                # orders, costs -- is orphaned.
+                acct_id = str(existing["id"])
 
         account = {
             **existing,

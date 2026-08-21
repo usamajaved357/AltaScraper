@@ -143,6 +143,34 @@ def check(config_path, in_use=None):
     except Exception as e:
         add("Data store", False, "could not be determined: %s" % e, "")
 
+    # --- one Amazon seller, one workspace ----------------------------------
+    # An account authorized through OAuth used to be created from the merchant
+    # token alone, without asking whether some workspace already WAS that
+    # seller. On the live app that produced "Nestwell Goods LTD" and "Amazon
+    # seller ZAAYT4" side by side in the switcher -- both A8YN8LJZAAYT4.
+    #
+    # The cause is fixed (domain/accounts.by_seller_id), but a duplicate already
+    # created stays until somebody decides which record survives -- and that
+    # decision moves listings, costs and orders, so it is not made here. It is
+    # named here, which is the part that was missing.
+    try:
+        import json as _json
+        from domain import accounts as _acc_mod
+        _cfg_data = _json.load(open(cfg, encoding="utf-8"))
+        dupes = _acc_mod.duplicate_sellers(_cfg_data, cfg)
+        add("One workspace per Amazon seller", not dupes,
+            ("ok" if not dupes else "; ".join(
+                "%s is in %d workspaces (%s)" % (sid, len(ids), ", ".join(ids))
+                for sid, ids in dupes.items())),
+            "Two workspaces for one seller split that seller's listings, costs "
+            "and orders between them depending on which is open, and each "
+            "carries its own sheet, VAT rate and marketplace list. Decide which "
+            "record survives, move anything on the other to it, then delete the "
+            "spare under Manage accounts.")
+    except Exception as e:
+        add("One workspace per Amazon seller", False,
+            "could not be checked: %s" % str(e)[:120], "")
+
     failures = [i for i in items if not i["ok"]]
     return {"ok": not failures, "config_path": cfg, "data_dir": data_dir,
             "problems": len(failures), "checks": items}
