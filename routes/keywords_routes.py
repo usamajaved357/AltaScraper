@@ -113,18 +113,40 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                 "Could not read the account: %s" % str(ex)[:160]}), 500)
 
     def _brand_registry_hint(ex):
-        """Amazon's permission error, translated once.
+        """Amazon's refusal, translated -- including the one it will not explain.
 
-        An account without Brand Registry gets a permission failure, and an
-        account WITH it that had no searches gets an empty report. On a screen
-        those look the same and only one of them is worth doing anything about.
+        MEASURED: asking for search terms on jack_uk returns
+        "Report GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT ended FATAL", which on a
+        screen reads as a broken feature. It is not.
+
+        AMAZON'S HONEST ANSWER IS "I CANNOT TELL YOU WHY". It accepts the
+        request from any account and then ends the report FATAL whether the
+        account lacks Brand Registry or the week genuinely had no searches.
+        There is no field that separates them. So this does not PICK one --
+        picking would send somebody hunting a sales problem that does not exist,
+        or the reverse. Both are named, with the way to tell them apart.
+
+        That reasoning is not mine: routes/sqp_routes.py worked it out first for
+        the same report family, and this says the same thing rather than
+        inventing a third version of the explanation. sqp_routes keeps its own
+        wording -- it is a working screen and rewording it for tidiness would be
+        risk without benefit -- but no NEW screen should add a fourth.
         """
         t = str(ex).lower()
+        if "fatal" in t:
+            return ("Amazon accepted the request for this report and then could "
+                    "not produce it. There are only two reasons for that and "
+                    "Amazon does not say which: either this account is not "
+                    "enrolled in Brand Registry (these are Brand Analytics "
+                    "reports and need it), or there genuinely were no searches "
+                    "in that week. If the account IS brand registered, try a "
+                    "week you know had sales — if that also comes back like "
+                    "this, it is the enrolment.")
         if "access" in t or "unauthor" in t or "forbidden" in t or "403" in t:
-            return ("Amazon refused this report. Brand Analytics needs Brand "
-                    "Registry on this selling account — an account without it "
-                    "cannot pull search terms at all. That is different from a "
-                    "week with no searches.")
+            return ("Amazon refused this report outright. Brand Analytics needs "
+                    "Brand Registry on this selling account — an account "
+                    "without it cannot pull search terms at all. That is "
+                    "different from a week with no searches.")
         return None
 
     # ------------------------------------------------------------ Keyword Spy
