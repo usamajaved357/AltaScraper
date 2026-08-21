@@ -128,7 +128,7 @@ function LOGIC_REGISTRY(){
     // ---------- COGS ----------
     cogs: { title:"How COGS & the profit estimate work", steps:[
       `<b>Two ways to know your cost.</b> <code>_resolve_cogs</code> uses a priority: a <b>manual override</b> you set per SKU wins; otherwise it reads the cost <b>embedded in the dropshipping SKU</b> (the <code>{source_price}_…</code> prefix).`,
-      `<b>Bulk upload.</b> The COGS CSV (<code>/cogs/upload</code>) accepts SKU + cost rows and stores them as per-account overrides, so you can set many at once.`,
+      `<b>Bulk upload.</b> Download the cost sheet, fill in the <code>cost</code> column, upload it back. The file itself is sent to <code>/cogs/upload_sheet</code> and read by <b>one</b> reader on the server — CSV or spreadsheet, quoted product names, currency symbols and all. It tells you what it <i>would</i> set before it sets anything, and names any SKU that is on no listing and no order here — usually a typo, and otherwise silent. A column called just <code>price</code> is <b>not</b> accepted as a cost: on an Amazon listings export that is the selling price.`,
       `<b>Profit is an estimate.</b> <code>_estimate_profit</code> = price − COGS − a <b>15% referral fee</b> (default). It's a quick margin guide, not Amazon's exact fee — real fees vary by category and include other charges.`,
       `<b>Stored locally</b> in your COGS overrides file, keyed by account+SKU.` ]},
     // ---------- PRICING RULE ----------

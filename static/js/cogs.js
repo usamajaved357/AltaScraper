@@ -111,86 +111,109 @@ function cogsEdit(td, sku){
 }
 
 // ---- bulk ---------------------------------------------------------------
-// A sheet of costs, parsed in the browser and posted as rows. CSV because it is
-// what every spreadsheet exports and needs no library; the columns are found by
-// NAME rather than by position, since nobody keeps them in a fixed order.
+// A sheet of costs. The FILE is sent; it is not parsed here.
+//
+// THERE USED TO BE A SECOND PARSER IN THIS FILE, and it read the wrong column.
+// It looked for a cost under any of several names and the last of them was
+// `price` -- which on an Amazon listings export is the SELLING price. Uploading
+// one set every SKU's cost to what it sells for, so every product on the
+// account showed a loss of roughly its own Amazon fee, silently and with no
+// error anywhere. domain/cogs.COST_COLS does not accept a bare `price`, and
+// never did; only the browser copy did.
+//
+// It was also the weaker reader in every other way: no spreadsheets, no
+// currency symbols, no thousands separator, and it could not see whether a SKU
+// matched anything on the account. domain/source_bulk.read_table does all of
+// that and is what /cogs/upload_sheet already used. One reader (Rule 12), and
+// it is the one that was right.
+//
+// TWO PASSES OVER THE SAME FILE. The first writes nothing and comes back with
+// the real counts, so the confirmation quotes the reader that is about to do
+// the work rather than a second opinion about it. The second does it.
 function cogsUploadOpen(){
   const inp = document.getElementById("cogs_file");
   if(inp) inp.click();
 }
 
-function _cgSplit(line){
-  // Handles quoted fields containing commas, which product names invariably do.
-  const out = []; let cur = "", q = false;
-  for(let i = 0; i < line.length; i++){
-    const ch = line[i];
-    if(q){
-      if(ch === '"' && line[i+1] === '"'){ cur += '"'; i++; }
-      else if(ch === '"'){ q = false; }
-      else cur += ch;
-    }else{
-      if(ch === '"') q = true;
-      else if(ch === ',' || ch === '\t') { out.push(cur); cur = ""; }
-      else cur += ch;
-    }
-  }
-  out.push(cur);
-  return out.map(s => s.trim());
+function _cgPost(file, dry){
+  const fd = new FormData();
+  fd.append("file", file);
+  if(typeof acctId === "function" && acctId()) fd.append("id", acctId());
+  if(dry) fd.append("dry_run", "1");
+  return fetch("/cogs/upload_sheet", {method: "POST", body: fd})
+    .then(function(r){ return r.json(); });
+}
+
+/* What the file would do, in the words of the rows it could not use. Shown in
+ * the confirmation, because "412 costs set" and "412 rows matched nothing" look
+ * identical once the dialog is gone. */
+function _cgSummary(rep){
+  const bits = [];
+  if(rep.skipped) bits.push(rep.skipped + " row" + (rep.skipped === 1 ? "" : "s")
+    + " have no cost filled in and will be left alone.");
+  // unmatched is specifically an ASIN-only row whose ASIN is on nothing here --
+  // there is no SKU to write the cost against, so the row cannot be used at all.
+  if(rep.unmatched) bits.push(rep.unmatched + " row" + (rep.unmatched === 1 ? "" : "s")
+    + " give only an ASIN that is on nothing in this account, so there is no "
+    + "SKU to put a cost on.");
+  // unknown_sku is different and much easier to do by accident: the SKU was
+  // typed, so the cost WILL be stored -- against something that has never been
+  // listed or sold here. Usually a typo, and a silent one.
+  if(rep.unknown_sku) bits.push(rep.unknown_sku + " SKU"
+    + (rep.unknown_sku === 1 ? " is" : "s are")
+    + " not on any listing or order in this account. The cost will still be "
+    + "stored, but check for a typo.");
+  const bad = (rep.rows || []).filter(function(r){
+    return r.status === "not a number" || r.status === "refused"; });
+  if(bad.length) bits.push(bad.length + " row" + (bad.length === 1 ? "" : "s")
+    + " have a cost that could not be read: " + bad.slice(0, 3).map(function(r){
+        return r.sku + " (" + r.detail + ")"; }).join("; ")
+    + (bad.length > 3 ? " …" : ""));
+  return bits.join("\n");
 }
 
 async function cogsUploadFile(input){
   const f = input && input.files && input.files[0];
-  if(!f) return;
-  const text = await f.text();
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if(lines.length < 2){ toast("That file has no rows in it."); input.value=""; return; }
-
-  const head = _cgSplit(lines[0]).map(h => h.toLowerCase().replace(/[^a-z]/g, ""));
-  const find = function(names){
-    for(const n of names){ const i = head.indexOf(n); if(i >= 0) return i; }
-    return -1;
-  };
-  // By NAME, and accepting what people actually call these columns.
-  const iSku  = find(["sku", "sellersku", "merchantsku", "msku"]);
-  const iCost = find(["cost", "cogs", "costofgoods", "unitcost", "buyprice",
-                      "sourcecost", "price"]);
-  if(iSku < 0 || iCost < 0){
-    toast("Could not find a SKU column and a cost column. The header row needs "
-          + "something like 'SKU' and 'COGS'. Found: " + head.join(", "));
-    input.value = ""; return;
-  }
-
-  const rows = [], bad = [];
-  lines.slice(1).forEach(function(l){
-    const cells = _cgSplit(l);
-    const sku = (cells[iSku] || "").trim();
-    const raw = (cells[iCost] || "").replace(/[^0-9.\-]/g, "").trim();
-    if(!sku) return;
-    const v = Number(raw);
-    if(raw === "" || !isFinite(v) || v < 0){ bad.push(sku); return; }
-    rows.push({sku: sku, cost: v});
-  });
-
-  if(!rows.length){
-    toast("No usable rows — every cost was blank or not a number."); input.value=""; return;
-  }
-  // Said BEFORE it happens, with the number. A bulk overwrite of what things
-  // cost changes every profit figure in the app.
-  if(!confirm("Set the cost on " + rows.length + " SKU" + (rows.length===1?"":"s") + "?"
-              + (bad.length ? "\n\n" + bad.length + " row(s) had no usable cost and "
-                              + "will be skipped." : "")
-              + "\n\nThis overrides what the SKU says for those items, on this "
-              + "account only. Every profit figure in the app uses it.")){
-    input.value = ""; return;
-  }
+  if(!f){ return; }
   try{
-    const j = await (await fetch("/cogs/upload",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({rows: rows})})).json();
-    if(!j || !j.ok){ toast((j&&j.error)||"Upload failed"); return; }
-    rows.forEach(function(r){ COGS_LOCAL[r.sku] = r.cost; });
-    toast("Set " + (j.updated || j.count || rows.length) + " cost(s)"
-          + (bad.length ? ", skipped " + bad.length : ""));
+    const dry = await _cgPost(f, true);
+    if(!dry || !dry.ok){
+      // The server names the column it could not find, which is the only
+      // useful thing to say about a file it will not read.
+      toast((dry && dry.error) || "That file could not be read.");
+      return;
+    }
+    if(!dry.set){
+      toast("Nothing to set from that file. " + (_cgSummary(dry)
+            || "No row had a cost in it."));
+      return;
+    }
+    const cols = dry.columns || {};
+    // Said BEFORE it happens, with the numbers, and naming which columns were
+    // read -- the way to notice a file whose cost column is not what you think.
+    if(!confirm("Set the cost on " + dry.set + " SKU"
+                + (dry.set === 1 ? "" : "s") + "?\n\n"
+                + "Reading “" + (cols.cost || "cost") + "” as the cost"
+                + (cols.sku ? ", matched on “" + cols.sku + "”" : "")
+                + (cols.asin ? " and “" + cols.asin + "”" : "") + ".\n"
+                + (_cgSummary(dry) ? "\n" + _cgSummary(dry) + "\n" : "")
+                + "\nThis overrides what the SKU says for those items, on this "
+                + "account only. Every profit figure in the app uses it.")){
+      return;
+    }
+    const j = await _cgPost(f, false);
+    if(!j || !j.ok){ toast((j && j.error) || "Upload failed"); return; }
+    // The cells redraw from the server's own report, not from what was sent,
+    // so a row the server refused does not appear on screen as though it stuck.
+    (j.rows || []).forEach(function(r){
+      if(r.status !== "set") return;
+      const v = Number(r.detail);
+      if(!isFinite(v)) return;
+      String(r.sku || "").split(",").forEach(function(s){
+        s = s.trim(); if(s) COGS_LOCAL[s] = v;
+      });
+    });
+    toast(j.note || ("Set " + j.set + " cost(s)"));
     if(typeof loadRows === "function") loadRows();
   }catch(e){ toast(String(e)); }
   finally{ input.value = ""; }

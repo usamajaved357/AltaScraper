@@ -260,7 +260,8 @@ def apply_sheet(config_path, account_id, marketplace, headers, rows):
     i_asin = _sheets.pick(headers, _sb._ASIN_COLS)
     i_cost = _sheets.pick(headers, COST_COLS)
 
-    out = {"ok": True, "set": 0, "skipped": 0, "unmatched": 0, "rows": [],
+    out = {"ok": True, "set": 0, "skipped": 0, "unmatched": 0,
+           "unknown_sku": 0, "rows": [],
            "columns": {"sku": (headers[i_sku] if i_sku >= 0 else ""),
                        "asin": (headers[i_asin] if i_asin >= 0 else ""),
                        "cost": (headers[i_cost] if i_cost >= 0 else "")}}
@@ -279,16 +280,35 @@ def apply_sheet(config_path, account_id, marketplace, headers, rows):
     # ASIN -> SKUs, from the catalogue, so an ASIN row can be used at all. Built
     # once rather than per row.
     by_asin = {}
+    known_skus = set()
     try:
         from domain import live_snapshots as _ls
         rec = _ls.get(config_path, account_id, marketplace) or {}
         for it in (rec.get("items") or []):
             a = str(it.get("asin") or "").strip().upper()
             s = str(it.get("sku") or "").strip()
+            if s:
+                known_skus.add(s)
             if a and s:
                 by_asin.setdefault(a, []).append(s)
     except Exception:
         by_asin = {}
+
+    # ...AND THE SKUS THAT HAVE ACTUALLY SOLD. The catalogue snapshot leaves out
+    # SKUs an account really sells -- an inactive listing, a marketplace whose
+    # snapshot has not been pulled -- so judging a typed SKU on the snapshot
+    # alone would call a real SKU a typo. Order lines are the second half of the
+    # same question and they are already local.
+    try:
+        from data import db as _db
+        for row in _db.get_db(config_path).execute(
+                "SELECT DISTINCT sku FROM order_lines WHERE workspace_id=?",
+                (str(account_id or ""),)):
+            s = str(row[0] or "").strip()
+            if s:
+                known_skus.add(s)
+    except Exception:
+        pass
 
     def cell(r, i):
         return str(r[i]).strip() if (0 <= i < len(r)) else ""
@@ -329,8 +349,20 @@ def apply_sheet(config_path, account_id, marketplace, headers, rows):
             continue
         for s in targets:
             updates[s] = cost
-        out["rows"].append({"row": n, "sku": ", ".join(targets),
-                            "status": "set", "detail": "%.2f" % cost})
+        # A TYPED SKU IS STILL SET, AND STILL NAMED. "a hand-typed SKU is one
+        # that silently matches nothing" -- so a cost against a SKU this account
+        # has never listed and never sold is stored (the snapshot is not the
+        # whole truth, and refusing it would lose a real cost) but counted and
+        # reported, so a file of typos does not look like a file of costs.
+        strange = bool(sku) and known_skus and sku not in known_skus
+        rec_row = {"row": n, "sku": ", ".join(targets),
+                   "status": "set", "detail": "%.2f" % cost}
+        if strange:
+            out["unknown_sku"] = out.get("unknown_sku", 0) + 1
+            rec_row["unknown_sku"] = True
+            rec_row["detail"] += " — no listing or order on this account uses "\
+                                 "that SKU"
+        out["rows"].append(rec_row)
         out["set"] += len(targets)
     out["updates"] = updates
     return out

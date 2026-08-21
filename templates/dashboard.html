@@ -471,7 +471,10 @@
         <!-- Costs in bulk. The per-row way is to click the COGS cell; this is
              for when a supplier sends a whole price list. -->
         <button onclick="cogsUploadOpen()" title="Upload a CSV of SKU and cost to set what many items cost at once. Overrides what the SKU says, for this account."><i class="ti ti-file-upload"></i> Upload COGS</button>
-        <input type="file" id="cogs_file" accept=".csv,.tsv,.txt" style="display:none" onchange="cogsUploadFile(this)">
+        <!-- Spreadsheets too: the file is read by domain/source_bulk.read_table
+             now, which opens .xlsx as well as CSV. The browser parser that only
+             did CSV is gone -- see static/js/cogs.js. -->
+        <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
