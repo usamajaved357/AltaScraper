@@ -39,7 +39,41 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         different id are the /accounts/* setup routes, which legitimately target
         an account that is not open and are excluded), and a request naming no
         account is served exactly as before.
+
+        EXCEPT ONE, AND IT WAS MISSED. "Every caller" was checked across
+        static/js -- and domain/live_refresher.py is not in static/js. The
+        background rotation exists precisely to refresh the accounts NOBODY has
+        open, and it calls these three views in-process with the account named
+        explicitly. So it was refused on every account but whichever one the
+        browser happened to be showing.
+
+        MEASURED in the server log, with jack_uk open:
+
+            [refresher] live refresh jack_uk::IT          -> ok (0 listings)
+            [refresher] live refresh selvora_limited::UK  -> failed: ...different account...
+            [refresher] live refresh nestwell_goods::DE   -> failed: ...different account...
+            [refresher] live refresh sheelady_us::US      -> failed: ...different account...
+
+        Live prices, statuses and stock for five of six accounts therefore never
+        refreshed at all -- and each refusal was written into
+        marketplace_health.json as that pair's `last_transient`, putting this
+        app's own refusal in the place a reader looks for what Amazon said.
+
+        WHY AN ENVIRON KEY AND NOT THE `_bg` FLAG THE BODY ALREADY CARRIES.
+        `_bg` is JSON from the request, so a browser can send it, and a guard a
+        browser can switch off is not a guard -- the whole point of this one is
+        that other people's selling accounts now sit in the same config. A WSGI
+        environ key is set by whoever built the request: Werkzeug maps incoming
+        headers to HTTP_* keys, so no HTTP client can produce "alta.background".
+        Only code holding the app object can, which is exactly the rotation.
+        Proved rather than assumed -- see test_refresher_scope.py, which tries to
+        forge it over a real socket.
         """
+        try:
+            if _acctscope.is_background(request.environ):
+                return None
+        except Exception:
+            pass
         open_id = _state.get("active_account_id")
         if _acctscope.is_mismatch(asked, open_id):
             return jsonify(_acctscope.refusal(asked, open_id, "data")), 409

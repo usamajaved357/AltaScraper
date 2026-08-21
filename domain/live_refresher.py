@@ -32,6 +32,14 @@ with when it was really pulled.
 import threading
 import time
 
+# THIS ROTATION IS THE SERVER, NOT A PERSON. Every call below names an account
+# that nobody has open -- that is the entire job -- so it goes through
+# background_context, which marks the request in a way no HTTP client can. See
+# the note in domain/account_scope.py: without it the account guard refused five
+# of six accounts and the refresher only ever refreshed whichever one the
+# browser happened to be showing.
+from domain import account_scope as _acctscope
+
 _STATE = {
     "thread": None,
     "workers": {},       # account_id -> its worker thread
@@ -235,8 +243,8 @@ def _refresh_one(app, aid, mkt):
         _STATE["current"] = key
         _STATE["last"][key] = time.time()
     try:
-        with app.test_request_context(
-                "/live/catalog", method="POST",
+        with _acctscope.background_context(
+                app, "/live/catalog", method="POST",
                 # _bg marks this as the ROTATION, not a person. Without it the
                 # refresher would register itself as a user sync and then stand
                 # aside for itself -- pausing after every single refresh.
@@ -334,8 +342,8 @@ def _enrich_one(app, config_path, aid, mkt, log=None):
             break                      # a person is syncing this account; stand aside
         chunk = todo[i:i + ENRICH_BATCH]
         try:
-            with app.test_request_context(
-                    "/live/images", method="POST",
+            with _acctscope.background_context(
+                    app, "/live/images", method="POST",
                     json={"id": aid, "marketplace": mkt, "skus": chunk}):
                 resp = fn()
             body = resp[0] if isinstance(resp, tuple) else resp
@@ -390,8 +398,9 @@ def _enrich_one(app, config_path, aid, mkt, log=None):
     afn = app.view_functions.get("live_aplus")
     if afn and not user_busy(aid):
         try:
-            with app.test_request_context("/live/aplus", method="POST",
-                                          json={"id": aid, "marketplace": mkt}):
+            with _acctscope.background_context(
+                app, "/live/aplus", method="POST",
+                json={"id": aid, "marketplace": mkt}):
                 aresp = afn()
             abody = aresp[0] if isinstance(aresp, tuple) else aresp
             adata = getattr(abody, "json", None) or {}
@@ -634,8 +643,8 @@ def _sales_one(app, aid, mkt):
     set of those rules to keep in step.
     """
     try:
-        with app.test_request_context(
-                "/sales/sync", method="POST",
+        with _acctscope.background_context(
+                app, "/sales/sync", method="POST",
                 json={"account_id": aid, "marketplace": mkt,
                       "days": SALES_DAYS_BACK, "budget": SALES_PER_PASS}):
             fn = app.view_functions.get("sales_sync_now")
@@ -680,10 +689,19 @@ def _loop(app, cfg_fn, config_path, account_id, log=None):
                 # rested rather than retried every rotation; a busy or timed-out
                 # Amazon is not held against it. Recorded here rather than inside
                 # _refresh_one so that function stays "do it and describe it".
+                #
+                # A REFUSAL BY THIS APP IS NOT EVIDENCE ABOUT AMAZON. When the
+                # account guard turned the rotation away, the refusal was
+                # written down as that pair's `last_transient` -- so the
+                # diagnostics screen showed this application's own sentence in
+                # the place a reader looks for what Amazon said. It is a fault
+                # in this app, and it belongs in the log, not in a record of how
+                # a marketplace is behaving.
                 try:
                     from domain import marketplace_health as _mh
-                    _mh.record(config_path, target[0], target[1],
-                               ok=note.startswith("ok"), error=note)
+                    if "account_mismatch" not in note and "different account" not in note:
+                        _mh.record(config_path, target[0], target[1],
+                                   ok=note.startswith("ok"), error=note)
                 except Exception:
                     pass
                 if log:
