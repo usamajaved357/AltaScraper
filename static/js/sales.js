@@ -418,6 +418,44 @@ function salesDrawBreakdown(){
     host.innerHTML = h; return;
   }
 
+  // HOW MUCH OF THE PERIOD THIS TABLE IS ACTUALLY SHOWING.
+  //
+  // Measured 21 Aug 2026 over thirty days: Nestwell's headline was £946.67 and
+  // these rows came to £149.95 -- a sixth of the business -- and Selvora's
+  // headline was £4,145.60 against no rows at all. Not a fault: two feeds fill
+  // sales_daily. The ORDER feed writes a day's total as soon as the orders are
+  // known; Amazon's Sales & Traffic REPORT is what carries the per-ASIN block,
+  // and it has to be asked for one day at a time against a quota of roughly one
+  // report a minute across six accounts and eleven marketplaces. So a day can
+  // have a true total and no product detail yet.
+  //
+  // The defect was that the screen did not SAY so. A table headed "By product"
+  // that silently omits most of the money answers "which products sold" with a
+  // number nobody can act on.
+  const cov = m.coverage || {};
+  if(cov.uncovered > 0.01){
+    const mny = function(v){
+      return (typeof curMoney === "function")
+        ? curMoney(v, m.currency || cov.currency || "")
+        : String(v);
+    };
+    const d = cov.days_without_products || 0;
+    h += '<div class="cc" style="padding:8px 10px;margin-bottom:8px;'
+      +  'border:1px solid #3a3120;background:#1a1710;border-radius:6px;'
+      +  'font-size:11.5px;line-height:1.5">'
+      +  '<i class="ti ti-alert-triangle" style="color:#e8c66a"></i> '
+      +  'These products account for <b>' + _sEsc(mny(cov.covered)) + '</b> of the '
+      +  '<b>' + _sEsc(mny(cov.total)) + '</b> sold in this period'
+      +  (cov.pct !== null && cov.pct !== undefined
+          ? ' (' + _sEsc(String(cov.pct)) + '%)' : '') + '. '
+      +  'The other <b>' + _sEsc(mny(cov.uncovered)) + '</b> is on '
+      +  d + ' day' + (d === 1 ? '' : 's')
+      +  ' Amazon has not yet sent a product-level report for, so it cannot be '
+      +  'put against a product. The totals at the top of the screen include it. '
+      +  'Sync fetches those days one at a time, against Amazon’s report quota.'
+      +  '</div>';
+  }
+
   const dir = SALES_BD.desc ? -1 : 1;
   const rows = SALES_BD.rows.slice().sort(function(a,b){
     let x=a[SALES_BD.sort], y=b[SALES_BD.sort];
