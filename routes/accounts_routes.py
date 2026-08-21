@@ -270,6 +270,12 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
                          "output_spreadsheet_id": a.get("output_spreadsheet_id", ""),
                          "input_sheet_url": _sheet_url(a, "input"),
                          "output_sheet_url": _sheet_url(a, "output"),
+                         # WITHOUT THESE THE FIELD SELF-ERASES. The settings form
+                         # is rebuilt from this payload and then saves every box
+                         # it drew -- so a field the payload omits comes back
+                         # blank and is written back as blank on the next save.
+                         "weekly_sheet_url": a.get("weekly_sheet_url", ""),
+                         "weekly_sheet_tab": a.get("weekly_sheet_tab", ""),
                          "drive_folder_url": a.get("drive_folder_url", ""),
                          "uk_responsible_person": a.get("uk_responsible_person", {}),
                          "input_spreadsheet_id": a.get("input_spreadsheet_id", ""),
@@ -447,6 +453,13 @@ def register(app, *, _state, _cfg, CONFIG_PATH, _LIVE_CACHE, live_catalog,
         for k in ("input_sheet_url", "output_sheet_url", "input_spreadsheet_id",
                   "input_tab_gid", "output_tab_gid", "drive_folder_url",
                   "uk_responsible_person", "ebay_app_id",
+                  # WHERE THE WEEKLY KPI GRID GOES, and deliberately NOT the
+                  # output sheet above. That one holds generated listings on a
+                  # tab with its own header row; a KPI grid written over it
+                  # would destroy real work, and "the sheet for this account"
+                  # is exactly the kind of ambiguity that ends in that.
+                  # The tab defaults to "Weekly KPIs" when left blank.
+                  "weekly_sheet_url", "weekly_sheet_tab",
                   # Which connected account lends its Amazon app for CATALOGUE lookups
                   # when this workspace has none of its own. "" = none. Settable here so
                   # a read-only workspace can be configured in the app rather than by

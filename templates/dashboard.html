@@ -1210,10 +1210,22 @@
           <button class="db-chip" onclick="weeklyUploadOpen('campaign')"
                   title="Campaign Manager → the campaign table → Export"><i class="ti ti-file-upload"></i> Upload Campaign export</button>
           <input type="file" id="wk_file" accept=".csv,.tsv,.txt,.xlsx" style="display:none" onchange="weeklyUploadFile(this)">
+          <!-- WHICH ASINs THE FOUR PRODUCT SECTIONS LIST. The reference sheet
+               lists parent ASINs, which is the useful view for a weekly pack --
+               a shoe in 14 sizes is one product. "Each child" is there for the
+               per-variation read. -->
+          <span class="cc" style="font-size:11px">rows</span>
+          <select class="db-chip" id="wk_group" style="width:auto">
+            <option value="parent">By parent ASIN</option>
+            <option value="child">Each child ASIN</option>
+          </select>
           <button class="db-chip" onclick="weeklyExport()"
-                  title="The pack as a CSV, for the client deck"><i class="ti ti-download"></i> Export</button>
+                  title="Every saved week as a column, newest on the left — the layout of the KPI sheet"><i class="ti ti-download"></i> Export CSV</button>
+          <button class="db-chip" onclick="weeklySheetSync()"
+                  title="Write the same grid into this account's weekly Google Sheet. Shows you what it would do before it does it."><i class="ti ti-brand-google-drive"></i> Sync to Google Sheet</button>
         </div>
       </div>
+      <div id="wk_sheetmsg"></div>
       <div id="wk_body" style="padding:4px 0"></div>
     </div>
 
