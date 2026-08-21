@@ -146,7 +146,7 @@ function sellerImportResults(){
     + '<span style="flex:1"></span>'
     + '<button class="db-chip" onclick="sellerScreen(this)">'
     + '<i class="ti ti-shield-check"></i> Check what Amazon allows</button>'
-    + '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+    + '<button class="db-chip btn-primary" '
     + 'onclick="sellerDraft()">Draft the selected</button>'
     + '</div>'
     // Where the count moves while a long check runs. Outside the button, because

@@ -378,7 +378,7 @@ async function renderUsers(){
     +  '<div id="nu_ws" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px">'
     +    workspaceCheckboxes("nu", ["*"])
     +  '</div>'
-    +  '<button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" '
+    +  '<button class="db-chip btn-primary" '
     +    'onclick="userCreate()">Add and make an invite link</button>'
     +  '<div id="nu_result" style="margin-top:10px"></div>'
     +  '</div>';

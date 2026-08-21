@@ -29,7 +29,36 @@
     --input:#2a2f38;
 
     /* Text */
-    --ink:#e8eaed;  --ink2:#9aa3b2;  --ink3:#6b7280;  --ink4:#4b5563;
+    /* THE MUTED TIERS WERE BELOW WHAT A PERSON CAN READ.
+       Measured across all 40 screens with a browser, against every surface
+       token this app paints on (bg, sidebar, panel, panel2, panel3, input):
+
+           --ink3  3.33:1 on --panel   table headers, column labels, captions
+           --ink4  2.13:1 on --panel   SKU codes, timestamps, hints
+
+       WCAG AA asks 4.5:1 for text under 18px, and almost every use of these is
+       10-12px. So the words naming the columns of a table of money were harder
+       to read than the money.
+
+       THERE ARE THREE TIERS, NOT FOUR. The first attempt kept a fourth by
+       leaving ink4 at 3.69 -- below AA for small text, on the grounds that it
+       was "incidental". Then the sweep showed what it actually carries: SKU
+       codes on Image refs, on the Stock screen and on Sourcing, at 10px.
+       A product's own code is content. So the fourth step is gone as a
+       CONTRAST step; the name stays so nothing breaks, and anything that needs
+       to recede can use opacity, which does not make it unreadable.
+
+           --ink   13.4   primary
+           --ink2   6.3   secondary                unchanged
+           --ink3   5.5   labels, captions, code   was 3.33
+           --ink4   5.5   kept as a name           was 2.13
+
+       Hue and saturation are kept; only lightness moved. Every tier clears
+       4.5:1 on all six surface TOKENS -- and on rgb(45,50,66), the card colour
+       measured off Orbit and written out by hand in fourteen places, which is
+       lighter than --panel3 and is where the first pass still fell short at
+       4.35. A surface that is not a token is still a surface. */
+    --ink:#e8eaed;  --ink2:#9aa3b2;  --ink3:#949aa5;  --ink4:#8f9baa;
 
     /* Accent -- teal */
     --accent:#2dd4a8;  --accent2:#5ee8c2;
@@ -52,7 +81,11 @@
     /* Status */
     --ok:#4ade80;    --ok-bg:#0f1f14;    --ok-line:#1a4a28;
     --warn:#f59e0b;  --warn-bg:#241a05;  --warn-line:#4a3510;
-    --red:#ef4444;   --red-bg:#2a0f0f;   --red-line:#4a1a1a;
+    /* RED WAS THE ONE STATUS COLOUR BELOW AA. #ef4444 measured 3.52:1 at its
+       worst surface, and it carries the figures that matter most -- "down 30%",
+       "disabled", "2 HIGH RISK". Lightened until it clears 4.5 everywhere;
+       --warn 6.16, --ok 7.59, --accent 6.99 and --gold 7.10 all already did. */
+    --red:#f27272;   --red-bg:#2a0f0f;   --red-line:#4a1a1a;
 
     /* Radius */
     --radius-sm:6px;  --radius:10px;  --radius-lg:14px;
@@ -1046,7 +1079,7 @@
   .noimgmsg .ti{font-size:22px}
   .studiotabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
   .stab{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13px}
-  .stab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .stab.on{background:var(--accent);color:var(--accent-bg);border-color:var(--accent)}
   .studiopane label{font-size:12px;display:block;margin-bottom:3px}
   .studiogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
   .srescard{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel2)}
@@ -1739,8 +1772,12 @@
   .montable td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
   .monasin{color:var(--accent2);text-decoration:none;font-family:ui-monospace,Consolas,monospace;font-weight:600}
   .monasin:hover{text-decoration:underline}
+  /* --ink, not --muted: the chip sits on ROWS TINTED red or amber by their
+     risk, and on those the muted grey measured 4.09:1 where it clears 5.2 on
+     a plain panel. A marketplace code says which country the seller was found
+     in -- it is not decoration. */
   .monchip{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;
-           background:rgba(255,255,255,.06);color:var(--muted);border:1px solid var(--line)}
+           background:rgba(255,255,255,.06);color:var(--ink);border:1px solid var(--line)}
   .monchip.all{color:var(--ok);border-color:var(--ok-line);background:rgba(18,48,33,.28)}
   .monrm{background:transparent;border:1px solid var(--red-line);color:var(--red);border-radius:7px;
          height:28px;width:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
@@ -2707,11 +2744,14 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   line-height:18px;
   margin-left:2px;
 }
-.pct-badge.up  { color:rgb(16,185,129); }
-.pct-badge.down{ color:rgb(239,68,68); }
-.pct-badge.flat{ color:rgb(156,163,175); }
+/* THROUGH THE TOKENS. These three wrote their own hex, so lightening --red
+   for legibility never reached the badges carrying "down 30%" -- the number
+   on the screen most worth reading. Measured before: 3.39:1. */
+.pct-badge.up  { color:var(--ok); }
+.pct-badge.down{ color:var(--red); }
+.pct-badge.flat{ color:var(--ink3); }
 
-.stat-card.is-empty .stat-number{ color:rgb(107,114,128); }
+.stat-card.is-empty .stat-number{ color:var(--ink3); }
 
 /* THE EXPLANATION, BEHIND A MARK. Orbit's Profit card carries a "More
    information" icon and no prose; ours carried up to 169 characters of it inside
@@ -4159,3 +4199,24 @@ table.ordtable tbody tr.orddetail > td{
 .b-NODRAFT{background:transparent;color:var(--ink3);
            border:1px dashed var(--line2);font-weight:500;
            text-transform:none;letter-spacing:0;margin-left:5px}
+
+/* A LINK WITH NO COLOUR IS THE BROWSER'S #0000EE, ON A DARK PANEL.
+   Measured on the Monitor screen: seller storefront links rendering at
+   1.33:1, 1.36:1 and 1.60:1 -- effectively invisible. Every link in this app
+   was styled by its CONTAINER (.datasrc a, .monhisttable a, .tileasin a and
+   half a dozen more), so a link written anywhere else got no colour at all.
+   One rule, at the lowest specificity there is, so every one of those
+   container rules still wins where it applies. */
+a{color:var(--accent2)}
+a:hover{color:var(--accent)}
+
+/* THE PRIMARY BUTTON, ONCE.
+   It was written inline in eight places -- background:var(--accent);color:#fff --
+   and once more as .stab.on. Measured: 1.89:1. The most important button on
+   each of those screens was the least readable thing on it, because white on a
+   light teal is not a contrast, it is a glare.
+   --accent-bg is the dark teal made for this pairing: 7.73:1. */
+.btn-primary{background:var(--accent);color:var(--accent-bg);
+             border-color:var(--accent);font-weight:600}
+.btn-primary:hover{background:var(--accent2);border-color:var(--accent2);
+                   color:var(--accent-bg)}
