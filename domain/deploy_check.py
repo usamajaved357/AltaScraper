@@ -158,9 +158,39 @@ def check(config_path, in_use=None):
         from domain import accounts as _acc_mod
         _cfg_data = _json.load(open(cfg, encoding="utf-8"))
         dupes = _acc_mod.duplicate_sellers(_cfg_data, cfg)
+
+        def _holds(wsid):
+            """What is stored against this workspace, so 'is the spare empty?'
+            is answered here rather than by opening it and guessing.
+
+            Deleting an account only removes it from config.json -- listings,
+            orders and sales stay in the database keyed to a workspace that no
+            longer exists, where nothing can reach them. Worth knowing BEFORE
+            the delete, not after.
+            """
+            try:
+                from data import db as _db
+                c = _db.get_db(cfg)
+                bits = []
+                for tbl, word in (("listings", "listing"),
+                                  ("order_lines", "order line"),
+                                  ("sales_daily", "day of sales")):
+                    try:
+                        n = c.execute("SELECT COUNT(*) FROM %s WHERE workspace_id=?"
+                                      % tbl, (wsid,)).fetchone()[0]
+                    except Exception:
+                        continue
+                    if n:
+                        bits.append("%d %s%s" % (n, word, "" if n == 1 else "s"))
+                return ", ".join(bits) if bits else "nothing stored"
+            except Exception:
+                return "could not be counted"
+
         add("One workspace per Amazon seller", not dupes,
             ("ok" if not dupes else "; ".join(
-                "%s is in %d workspaces (%s)" % (sid, len(ids), ", ".join(ids))
+                "%s is in %d workspaces (%s)"
+                % (sid, len(ids), ", ".join("%s [%s]" % (i, _holds(i))
+                                            for i in ids))
                 for sid, ids in dupes.items())),
             "Two workspaces for one seller split that seller's listings, costs "
             "and orders between them depending on which is open, and each "
