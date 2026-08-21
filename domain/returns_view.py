@@ -161,6 +161,83 @@ def is_sellable(disposition):
     return s == "SELLABLE"
 
 
+def identity(r):
+    """What makes two rows THE SAME RETURN, so files can be combined.
+
+    A year of returns arrives as several files -- Amazon caps a seller-fulfilled
+    report at 60 days, so year-to-date is four or five downloads -- and their
+    windows overlap at the edges. Concatenating them double-counts the overlap;
+    refusing the second file loses ten months. Both are wrong, so rows are
+    merged and de-duplicated on what actually identifies a return.
+
+    THE BEST KEY EACH REPORT CARRIES:
+
+        FBA   license-plate-number, PLUS the order and the SKU.
+
+              NOT the plate on its own, which is what this first tried.
+              Measured on a real 11,509-row file: 11,042 distinct plates, 393
+              of them used more than once, and one plate (LPNRRJE7736962) on
+              four genuinely different returns -- different orders, different
+              buyers, different reasons, spread from January to April. Keying
+              on the plate alone silently deleted 467 real returns. Amazon
+              evidently recycles them.
+
+              Plate + order + SKU is exactly unique across all 11,509 rows:
+              zero collisions, nothing lost.
+
+        MFN   there is no plate column, so the order, the SKU, the day and the
+              reason together. Quantity is deliberately not in the key: two
+              lines that agree on everything else are the same line seen twice,
+              which is what an overlapping window produces.
+
+              This one is not provably unique -- the same four fields on the FBA
+              file collide 22 times in 11,509 -- so a seller-fulfilled set can
+              in principle merge two returns that were genuinely separate. It is
+              the best the report allows, and it is the safer direction to err
+              in only because the alternative (no key at all) means every
+              overlapping day is double-counted.
+
+    The kind is part of the key. An FBA return and a seller-fulfilled return are
+    never the same event -- Amazon either handled it or you did -- so they can
+    never collide, and a file of each combines cleanly.
+    """
+    d = r or {}
+    lp = str(d.get("license_plate") or "").strip()
+    if lp:
+        return ("lp", lp,
+                str(d.get("order_id") or ""),
+                str(d.get("sku") or "").upper())
+    return ("row",
+            str(d.get("kind") or ""),
+            str(d.get("order_id") or ""),
+            str(d.get("sku") or "").upper(),
+            str(d.get("asin") or "").upper(),
+            str(d.get("date") or ""),
+            str(d.get("reason") or ""))
+
+
+def merge(existing, incoming):
+    """Combine two sets of returns. -> (rows, added, duplicates).
+
+    Order is preserved and the FIRST version of a row wins: re-uploading a
+    corrected file does not silently rewrite history, and the reply says how
+    many were already there so a no-op upload is visible rather than puzzling.
+    """
+    out = list(existing or [])
+    seen = {identity(r) for r in out}
+    added = dupes = 0
+    for r in (incoming or []):
+        k = identity(r)
+        if k in seen:
+            dupes += 1
+            continue
+        seen.add(k)
+        out.append(r)
+        added += 1
+    out.sort(key=lambda x: (str(x.get("date") or ""), str(x.get("order_id") or "")))
+    return out, added, dupes
+
+
 def tidy_comment(text):
     """A customer comment, made readable, with nothing removed.
 
@@ -235,6 +312,11 @@ FBA_COLS = {
     "status": ("status",),
     "disposition": ("detailed-disposition", "disposition"),
     "comment": ("customer-comments", "customer comments"),
+    # Amazon's identifier for the returned UNIT. Not shown anywhere; read
+    # because it is the only thing in either report that identifies a single
+    # return, which is what lets several overlapping files be combined without
+    # counting the overlap twice. See identity().
+    "license_plate": ("license-plate-number",),
 }
 
 
@@ -285,8 +367,15 @@ def parse_rows(headers, rows):
             continue
         reason = get("reason")
         out.append({
+            # WHICH REPORT THIS ROW CAME FROM, carried on the row itself.
+            # Without it a combined set cannot say how much of it is FBA, and
+            # the two kinds cannot be told apart once merged -- which matters,
+            # because only FBA rows can answer the disposition and comment
+            # sections.
+            "kind": kind,
             "date": _date(get("date")),
             "order_id": get("order"),
+            "license_plate": get("license_plate"),
             "asin": asin,
             "sku": sku,
             "name": get("name"),

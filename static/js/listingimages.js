@@ -451,6 +451,58 @@ function _ilRender(html){
   if(wtop) window.scrollTo(0, wtop);
 }
 
+/* THE SHELVES INSIDE A SKU FOLDER, named and explained.
+ *
+ * The folder on disk is the only place an image's KIND is recorded -- there is
+ * no image record anywhere, /media/list re-derives it from the directory name --
+ * so these are the labels for what is genuinely there. The requirements differ
+ * per shelf and getting them wrong is a rejected submission, which is why each
+ * one carries its own line rather than leaving "aplus/premium/mobile" to be
+ * interpreted.
+ *
+ * Amazon's rules, as at August 2026:
+ *   MAIN         pure white background (RGB 255,255,255), product filling
+ *                ~85% of the frame, no text, no props, no logos.
+ *   SECONDARY    PT01-PT08. Text, graphics and lifestyle are all allowed.
+ *   A+ BASIC     one asset per module; it is scaled for both desktop and
+ *                mobile, so there is nothing to supply twice.
+ *   A+ PREMIUM   the modules render at different sizes on desktop and on
+ *                mobile, and one asset cannot serve both.
+ */
+const _IL_SHELF = {
+  "main": {title: "Main / concepts",
+           note: "Pure white background, product about 85% of the frame, no "
+               + "text or props. This is the photo shoppers see in search."},
+  "secondary": {title: "Secondary images (PT01–PT08)",
+                note: "Text, graphics and lifestyle shots are all allowed here. "
+                    + "Up to eight."},
+  "aplus/basic": {title: "A+ content — Basic",
+                  note: "One asset per module. Amazon scales it for desktop and "
+                      + "mobile, so nothing is needed twice."},
+  "aplus/premium": {title: "A+ content — Premium",
+                    note: "Premium modules render at different sizes on desktop "
+                        + "and mobile. Anything left here has not been marked as "
+                        + "either."},
+  "aplus/premium/desktop": {title: "A+ Premium — desktop",
+                            note: "The wide desktop rendering of each premium "
+                                + "module."},
+  "aplus/premium/mobile": {title: "A+ Premium — mobile",
+                           note: "The mobile rendering. A separate asset, not a "
+                               + "crop of the desktop one."},
+};
+
+/* Shelves in the order a listing is built, not alphabetically. Alphabetical put
+   "aplus/basic" above "main", which is the reverse of how anyone works. */
+const _IL_SHELF_ORDER = ["main", "secondary", "aplus/basic", "aplus/premium",
+                         "aplus/premium/desktop", "aplus/premium/mobile"];
+function _ilGroupOrder(keys){
+  const known = _IL_SHELF_ORDER.filter(function(k){ return keys.indexOf(k) >= 0; });
+  // Anything the app does not have a name for still gets drawn, after the
+  // known shelves. A folder made by hand must never make images disappear.
+  const rest = keys.filter(function(k){ return _IL_SHELF_ORDER.indexOf(k) < 0; }).sort();
+  return known.concat(rest);
+}
+
 function _ilDraw(){
   const sku = IMGLIB.sku;
   // Group as the library stores them: the SKU root is main/concept work,
@@ -548,9 +600,20 @@ function _ilDraw(){
   // happened to file an image in. The main image does not consume a PT number.
   let tileNo = 0, ptNo = 0;
 
-  Object.keys(groups).sort().forEach(function(g){
-    h += '<div style="font-size:11.5px;font-weight:600;margin:12px 0 6px;opacity:.85">'
-       + _ilEsc(g === "main" ? "Main / concepts" : g) + '</div>'
+  _ilGroupOrder(Object.keys(groups)).forEach(function(g){
+    const lbl = _IL_SHELF[g] || {};
+    h += '<div style="margin:14px 0 6px">'
+       + '<div style="font-size:11.5px;font-weight:600;opacity:.9">'
+       + _ilEsc(lbl.title || g)
+       + ' <span class="cc" style="font-weight:400">(' + groups[g].length + ')</span>'
+       + '</div>'
+       // WHAT THE SHELF IS FOR, in one line. The folder names alone ("secondary",
+       // "aplus/premium/mobile") say where an image sits, not what Amazon wants
+       // in it -- and premium A+ needing a separate desktop and mobile asset is
+       // exactly the thing nobody knows until a submission is rejected.
+       + (lbl.note ? '<div class="cc" style="font-size:10.5px;margin-top:2px">'
+                     + _ilEsc(lbl.note) + '</div>' : '')
+       + '</div>'
        + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">';
     groups[g].forEach(function(f){
       const isMain = IMGLIB.main && (IMGLIB.main === f.url

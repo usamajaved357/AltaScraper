@@ -403,40 +403,109 @@ function _wkEmpty(){
     + '</div></div>';
 }
 
-/* The pack as a CSV, for the client deck. The WHOLE pack, not the cards drawn:
-   an export that silently leaves something out is worse than none, because
-   nothing on the file says it is short. */
-function weeklyExport(){
-  const w = WK.week;
-  if(!w){ toast("Nothing to export yet."); return; }
-  const k = w.kpis || {};
-  const rows = [["Week", w.week_start + " to " + w.week_end]];
-  Object.keys(k).forEach(function(key){
-    const v = k[key];
-    if(v === null || v === undefined){ rows.push([key, ""]); return; }
-    if(Array.isArray(v)){ rows.push([key, v.join(" | ")]); return; }
-    rows.push([key, v]);
-  });
-  rows.push([]);
-  rows.push(["Child ASIN", "Parent ASIN", "Title", "Units", "Sessions",
-             "Page views", "Conversion", "Units per day", "Sales"]);
-  (w.products || []).forEach(function(p){
-    rows.push([p.child_asin, p.parent_asin, p.title, p.units, p.sessions,
-               p.page_views, p.conversion === null ? "" : p.conversion,
-               p.units_per_day, p.sales]);
-  });
-  const csv = rows.map(r => r.map(function(c){
-    const s = String(c === null || c === undefined ? "" : c);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  }).join(",")).join("\n");
-  // The byte-order mark makes Excel read it as UTF-8 rather than mangling
-  // every pound sign and dash. Written as the ESCAPE, never as the character:
-  // a literal BOM sitting mid-file is invisible and breaks parsers that expect
-  // one only at the start. test_encoding.js catches it, and caught this.
-  const blob = new Blob(["\ufeff" + csv], {type: "text/csv;charset=utf-8"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "weekly-kpis-" + (w.week_start || "week") + ".csv";
-  document.body.appendChild(a); a.click(); a.remove();
-  toast("Exported.");
+/* ---- the export, in the shape of the sheet it feeds -----------------------
+ *
+ *   "The current Export button on Weekly KPIs downloads data in a single-column
+ *    format. It must match the exact layout of this Google Sheet"
+ *
+ * WHAT IT USED TO DO: one week, as a vertical list of key/value pairs, from
+ * whichever week was selected. The sheet it is meant to feed is the opposite
+ * shape in every respect -- metrics down the side, weeks across the top, newest
+ * first, every saved week present -- so you could not paste one into the other
+ * and there was nothing to compare a week against.
+ *
+ * The layout is built SERVER-SIDE, in domain/weekly_grid.py, and this file only
+ * asks for it. The CSV and the Google Sheet are then the same grid by
+ * construction rather than by two implementations agreeing (rule 12) -- which
+ * matters here more than usual, because the two are meant to be
+ * interchangeable: paste the CSV or sync the sheet and get the same thing.
+ */
+function _wkGroup(){
+  const el = document.getElementById("wk_group");
+  return (el && el.value === "child") ? "child" : "parent";
+}
+
+function _wkQuery(){
+  const a = (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT) ? CUR_ACCOUNT.id : "";
+  const m = (typeof WS_MARKET !== "undefined" && WS_MARKET) ? WS_MARKET : "";
+  return "?id=" + encodeURIComponent(a) + "&marketplace=" + encodeURIComponent(m)
+       + "&group=" + encodeURIComponent(_wkGroup());
+}
+
+/* Every saved week, in the sheet's layout. A plain navigation would show a JSON
+   error page when there is nothing to export, so the reply is sniffed first. */
+async function weeklyExport(){
+  try{
+    const r = await fetch("/weekly/export.csv" + _wkQuery());
+    const type = r.headers.get("content-type") || "";
+    if(!r.ok || type.indexOf("json") >= 0){
+      const j = await r.json().catch(function(){ return null; });
+      toast((j && j.error) || "Could not build the export");
+      return;
+    }
+    const blob = await r.blob();
+    const name = (r.headers.get("content-disposition") || "")
+      .replace(/.*filename="?([^"]+)"?.*/, "$1") || "weekly-kpis.csv";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+    toast("Exported every saved week, newest column first.");
+  }catch(e){ toast(String(e)); }
+}
+
+/* Write the same grid into this account's weekly Google Sheet.
+ *
+ * TWO PRESSES, ON PURPOSE. The first is a dry run: the server reports which
+ * sheet, which tab, and how many rows and columns it would write, and writes
+ * nothing. The second does it. Writing over somebody's live sheet cannot be
+ * undone from in here, and a button that does it on the first click is a button
+ * that eventually does it by accident. */
+let _WK_PENDING = null;
+
+async function weeklySheetSync(){
+  const out = document.getElementById("wk_sheetmsg");
+  const say = function(html, cls){
+    if(out) out.innerHTML = '<div class="' + (cls || "cc")
+      + '" style="font-size:11.5px;margin-top:6px">' + html + '</div>';
+  };
+  const confirmNow = !!_WK_PENDING;
+  say('<span class="genspin"></span> ' + (confirmNow ? "Writing\u2026" : "Checking\u2026"));
+  try{
+    const r = await fetch("/weekly/sheet" + _wkQuery(), {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({group: _wkGroup(), confirm: confirmNow})});
+    const j = await r.json();
+    if(!j || !j.ok){
+      _WK_PENDING = null;
+      say(esc((j && j.error) || "Could not write the sheet"), "db-warn-red");
+      return;
+    }
+    if(j.dry_run){
+      _WK_PENDING = true;
+      say('<b>Nothing written yet.</b> ' + esc(j.note || "")
+          + '<div style="margin-top:6px">' + esc(j.br_means || "") + '</div>'
+          + '<div style="margin-top:8px">'
+          + '<button class="db-chip btn-primary" onclick="weeklySheetSync()">'
+          + 'Yes, write it</button> '
+          + '<button class="db-chip" onclick="weeklySheetCancel()">Cancel</button>'
+          + '</div>', "db-warn-amber");
+      return;
+    }
+    _WK_PENDING = null;
+    say('<b>Done.</b> ' + esc(j.note || "")
+        + (j.url ? ' <a href="' + esc(j.url) + '" target="_blank" '
+                   + 'rel="noopener">Open the sheet</a>' : ''), "db-warn-green");
+    toast("Weekly KPIs written to the sheet.");
+  }catch(e){
+    _WK_PENDING = null;
+    say(esc(String(e)), "db-warn-red");
+  }
+}
+
+function weeklySheetCancel(){
+  _WK_PENDING = null;
+  const out = document.getElementById("wk_sheetmsg");
+  if(out) out.innerHTML = "";
 }

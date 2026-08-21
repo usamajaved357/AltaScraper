@@ -421,6 +421,18 @@ async function loadRows(){
     // than answer for the wrong account, so there is nothing to paint: the
     // switch already under way will ask again in a moment.
     if(j && j.account_mismatch) return;
+    // SAMPLE ROWS ARE LABELLED BEFORE THEY ARE DRAWN. A workspace with no
+    // Amazon account gets an invented catalogue so the screen can be judged --
+    // and it says so across the top, and dims what follows. Both come from
+    // demobanner.js so no screen decides for itself how honest to be.
+    try{
+      if(typeof isDemo === "function"){
+        window.ROWS_DEMO = isDemo(j);
+        const _dh = document.getElementById("rows_demo");
+        if(_dh) _dh.innerHTML = (typeof demoBanner === "function") ? demoBanner(j) : "";
+        if(typeof demoMark === "function") demoMark(document.getElementById("grid"), j);
+      }
+    }catch(e){}
     if(!j || j._failed){
       const _g=document.getElementById("grid");
       if(_g) _g.innerHTML='<div class="empty">Could not load listings: '+esc((j&&j.error)||"timed out")

@@ -138,6 +138,194 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                         "brand_terms": _brand_terms(wsid),
                         "marketplace": mkt, "account": wsid})
 
+    # ---- the KPI sheet's own layout ----------------------------------------
+    #
+    # Every saved week as a COLUMN, metrics down the side, newest first -- the
+    # shape of the Google Sheet this replaces. The layout itself lives in
+    # domain/weekly_grid.py so the CSV and the Sheets sync are the same grid and
+    # cannot drift apart (rule 12).
+
+    def _col_letter(n):
+        """1 -> A, 27 -> AA. Needed for the format ranges, and gspread's own
+        helper is not importable from here without dragging the client in."""
+        s = ""
+        while n > 0:
+            n, r = divmod(n - 1, 26)
+            s = chr(65 + r) + s
+        return s or "A"
+
+    def _grid(wsid, mkt, group):
+        from domain import weekly_grid as _wg
+        got = _wk.weeks(CONFIG_PATH, wsid, mkt)
+        label = ""
+        try:
+            acc = (_active_account() or {}) if callable(_active_account) else {}
+            label = str(acc.get("label") or wsid)
+        except Exception:
+            label = wsid
+        return got, _wg.build(got, group=group, account_label=label)
+
+    @app.route("/weekly/grid")
+    def weekly_grid_preview():
+        """The grid as JSON, so the screen can show what will be exported."""
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        group = "child" if request.args.get("group") == "child" else "parent"
+        got, g = _grid(wsid, mkt, group)
+        if not got:
+            return jsonify({"ok": False, "error": (
+                "No weeks have been saved for this account yet. Upload a week "
+                "or press Pull, and it becomes a column here.")}), 400
+        return jsonify({"ok": True, **g})
+
+    @app.route("/weekly/export.csv")
+    def weekly_export_csv():
+        """Every saved week, in the sheet's layout, as a CSV."""
+        from flask import Response
+        from domain import weekly_grid as _wg
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        group = "child" if request.args.get("group") == "child" else "parent"
+        got, g = _grid(wsid, mkt, group)
+        if not got:
+            return jsonify({"ok": False, "error": (
+                "There are no saved weeks to export. Upload a week or press "
+                "Pull first.")}), 400
+        name = "weekly-kpis-%s-%s-%s.csv" % (wsid, mkt,
+                                             (got[0].get("week_start") or "")[:10])
+        return Response(
+            # The byte-order mark makes Excel read this as UTF-8 rather than
+            # mangling every pound sign. Written as the ESCAPE, never as the
+            # character: a literal BOM sitting in source is invisible and gets
+            # copied into the middle of files by the next edit. static/js has a
+            # test for exactly this, and it has caught it before.
+            "\ufeff" + _wg.to_csv(g),
+            # "text/csv" alone: Flask appends the charset itself, and giving it
+            # one produced "text/csv; charset=utf-8; charset=utf-8".
+            mimetype="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="%s"' % name,
+                     "Cache-Control": "no-store"})
+
+    def _sheet_target(wsid):
+        """Which Google Sheet and tab this account's weekly pack belongs in.
+
+        ITS OWN SETTING, not the listing generator's output sheet. That one is
+        where generated listings are written and it has a listings tab with its
+        own header row -- writing a KPI grid over it would destroy real work.
+        Falls back to nothing rather than to that sheet: refusing is the correct
+        answer when nobody has said where to write.
+        """
+        try:
+            from domain import accounts as _acc
+            acc = _acc.get_account(_cfg() if callable(_cfg) else (_cfg or {}),
+                                   wsid, CONFIG_PATH) or {}
+        except Exception:
+            acc = {}
+        url = str(acc.get("weekly_sheet_url") or "").strip()
+        tab = str(acc.get("weekly_sheet_tab") or "").strip() or "Weekly KPIs"
+        sid = ""
+        if url:
+            import re as _re
+            m = _re.search(r"/spreadsheets/d/([A-Za-z0-9_-]+)", url)
+            sid = m.group(1) if m else ""
+        return sid, tab, url
+
+    @app.route("/weekly/sheet", methods=["POST"])
+    def weekly_sheet():
+        """Write the grid to this account's weekly Google Sheet.
+
+        A DRY RUN UNLESS TOLD OTHERWISE. `{"confirm": true}` is what actually
+        writes; without it this reports exactly what it WOULD do -- which sheet,
+        which tab, how many rows and columns, and whether the tab already
+        exists. Writing to somebody's live sheet is not undoable from in here,
+        and a button that does it on the first click is a button that eventually
+        does it by accident.
+
+        THE TAB IS THE APP'S OWN. It writes a whole tab, cleared and rewritten,
+        rather than trying to patch week columns into a hand-maintained sheet:
+        that sheet has formulas, merged headers and a column C that is already a
+        duplicate of column G, and a script that edits it in place would have to
+        understand all of that to avoid destroying it. A separate tab in the
+        same workbook gives the same numbers in the same place with nothing at
+        risk, and it can be referenced from the hand-made tab by formula.
+        """
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        b = request.get_json(silent=True) or {}
+        group = "child" if b.get("group") == "child" else "parent"
+        sid, tab, url = _sheet_target(wsid)
+        if not sid:
+            return jsonify({"ok": False, "error": (
+                "This account has no weekly KPI sheet set. Put the Google "
+                "Sheet URL in Account settings (Weekly KPI sheet) first — it is "
+                "deliberately separate from the listing output sheet, so a KPI "
+                "grid can never be written over your listings.")}), 400
+        got, g = _grid(wsid, mkt, group)
+        if not got:
+            return jsonify({"ok": False, "error": (
+                "There are no saved weeks to write.")}), 400
+
+        plan = {"ok": True, "spreadsheet_id": sid, "tab": tab, "url": url,
+                "rows": len(g["rows"]), "columns": g["meta"]["columns"],
+                "weeks": g["meta"]["weeks"], "products": g["meta"]["products"],
+                "group": group, "br_means": g["meta"]["br_means"]}
+        if not b.get("confirm"):
+            plan["dry_run"] = True
+            plan["note"] = ("Nothing has been written. This would replace the "
+                            "contents of the '%s' tab with %d rows by %d "
+                            "columns — %d weeks, newest on the left. Press it "
+                            "again to confirm." % (tab, len(g["rows"]),
+                                                   g["meta"]["columns"],
+                                                   g["meta"]["weeks"]))
+            return jsonify(plan)
+
+        try:
+            import dashboard as _dash
+            from domain import weekly_grid as _wg
+            from listing import repo as _repo
+            gc = _dash._client()
+            book = gc.open_by_key(sid)
+            # ensure_tab returns (worksheet, created) -- unpacked, because
+            # calling .clear() on the tuple is a TypeError at the one moment
+            # this code runs.
+            ws, _created = _repo.ensure_tab(
+                book, tab, rows=max(200, len(g["rows"]) + 40),
+                cols=max(30, g["meta"]["columns"] + 6))
+            ws.clear()
+            # USER_ENTERED so Sheets reads the numbers as numbers rather than as
+            # text -- a column of strings cannot be charted or summed, which is
+            # the whole reason for exporting into a sheet at all.
+            _repo.write_range(ws, _wg.sheet_rows(g), "A1",
+                              value_input_option="USER_ENTERED")
+            # Money, counts and ratios get their pattern; percentages already
+            # arrived as percentages. Contiguous runs, so this is a handful of
+            # calls rather than one per row.
+            cur = ""
+            for w in got:
+                cur = str(w.get("currency") or "") or cur
+            last_col = _col_letter(g["meta"]["columns"])
+            for a, b2, pat in _wg.sheet_number_formats(g, cur):
+                try:
+                    ws.format("C%d:%s%d" % (a, last_col, b2),
+                              {"numberFormat": {"type": "NUMBER",
+                                                "pattern": pat}})
+                except Exception:
+                    pass      # formatting is presentation; the values are in
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": "Could not write the sheet: %s"
+                                     % str(e)[:240]}), 502
+        plan["dry_run"] = False
+        plan["note"] = ("Written to the '%s' tab: %d weeks, newest on the left."
+                        % (tab, g["meta"]["weeks"]))
+        return jsonify(plan)
+
     @app.route("/weekly/pull", methods=["POST"])
     def weekly_pull():
         """Build the week from a CONNECTED account, with no files at all.

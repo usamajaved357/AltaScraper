@@ -14,14 +14,46 @@
 // lost revenue. The seller-fulfilled report carries the amount actually
 // refunded, so this states the real figure and says which it is.
 
-let RET = {data: null, days: 30, busy: false, sort: "returns"};
+let RET = {data: null, days: 30, busy: false, sort: "returns", range: null};
+
+/* THE LAST ANSWER WINS, and only the last one.
+ *
+ * Four things can put data on this screen -- the Amazon pull, a returns upload,
+ * a Voice of the Customer upload, and a date range -- and they take wildly
+ * different times. The Amazon pull is the slow one: it waits on a report and
+ * can take a minute or more. Open the tab (pull starts), drop a file on it
+ * while you wait, and the pull lands afterwards and REPLACES the file you just
+ * uploaded with whatever the last 30 days held.
+ *
+ * Caught in a browser: after uploading four seller-fulfilled files and then an
+ * FBA file, the page read "3 returns" -- jack_uk's last 30 days from the API --
+ * while the server was correctly holding 13,091.
+ *
+ * Every request takes a ticket; a reply is only drawn if no newer request has
+ * been issued since. Nothing is cancelled, so a slow reply is still allowed to
+ * finish and simply loses. */
+let _RET_SEQ = 0;
+function _retTicket(){ return ++_RET_SEQ; }
+function _retCurrent(t){ return t === _RET_SEQ; }
 
 function _rEsc(s){
   return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+/* Money with thousands separators. "195899.96" in a headline card is a number
+   nobody can read at a glance -- and misreading a refund total by a factor of
+   ten is exactly the mistake the separators exist to prevent.
+
+   NO CURRENCY SYMBOL. The returns report states the amount and not the
+   currency, and these accounts span GBP, EUR and USD marketplaces; printing a
+   "$" over a euro figure would be a confident lie. The marketplace is on the
+   screen already. */
 function _rMoney(v){
-  return (v===null||v===undefined) ? "—" : Number(v).toFixed(2);
+  if(v === null || v === undefined) return "—";
+  const n = Number(v);
+  if(!isFinite(n)) return "—";
+  return n.toLocaleString(undefined, {minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2});
 }
 function _rPct(v){
   return (v===null||v===undefined) ? "—" : Number(v).toFixed(2)+"%";
@@ -47,18 +79,25 @@ async function returnsLoad(){
   const body = document.getElementById("retbody");
   if(!body || RET.busy) return;
   RET.busy = true;
+  const t = _retTicket();
   body.innerHTML = '<div class="cc" style="padding:18px"><span class="genspin"></span> '
     + 'Asking Amazon for the returns report — they build these slowly, so this '
     + 'can take a minute…</div>';
   try{
     const j = await (await fetch("/returns/report?days=" + RET.days)).json();
+    // The slowest request on this screen, and the one most likely to land after
+    // a file you uploaded while waiting for it. If anything newer has been
+    // asked for, this answer is stale on arrival and is dropped.
+    if(!_retCurrent(t)) return;
     if(!j || !j.ok){
       body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _rEsc((j&&j.error)||"Could not load returns") + '</div>';
       return;
     }
+    RET.range = null;
     RET.data = j; returnsRender();
   }catch(e){
+    if(!_retCurrent(t)) return;
     body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
   }finally{ RET.busy = false; }
@@ -94,36 +133,94 @@ function returnsUploadOpen(which){
   if(i) i.click();
 }
 
+/* SEVERAL FILES AT ONCE, AND THEY ADD UP.
+ *
+ * This used to send one file and replace everything on screen, which broke the
+ * two cases it is most needed for: a year of seller-fulfilled returns is four
+ * or five files because Amazon caps that report at 60 days, and an account with
+ * both kinds needs one of each. Uploading the second file deleted the first --
+ * adding data removed data.
+ *
+ * The server merges and de-duplicates on the returns themselves, so overlapping
+ * windows are safe and re-uploading the same file changes nothing. */
 async function returnsUploadFile(input){
-  const f = input && input.files && input.files[0];
-  if(!f) return;
+  const files = input && input.files ? Array.from(input.files) : [];
+  if(!files.length) return;
   const body = document.getElementById("retbody");
+  const t = _retTicket();
   if(body) body.innerHTML = '<div class="cc" style="padding:18px">'
-    + '<span class="genspin"></span> Reading ' + _rEsc(f.name) + '…</div>';
+    + '<span class="genspin"></span> Reading ' + files.length + ' file'
+    + (files.length === 1 ? "" : "s") + ': '
+    + _rEsc(files.map(f => f.name).join(", ")) + '…</div>';
   try{
     const fd = new FormData();
-    fd.append("file", f);
+    files.forEach(f => fd.append("file", f));
     const j = await (await fetch("/returns/upload", {method:"POST", body: fd})).json();
-    // The file is identified by its COLUMNS, not by which button was pressed --
-    // so choosing the wrong one is corrected rather than punished. Said out
-    // loud, because silently reading it as the other kind would leave you
-    // wondering why half the page is still empty.
-    if(j && j.ok && RET_WANT && j.source && j.source !== RET_WANT){
-      const got = RET_REPORTS[j.source];
-      toast("That looks like the " + ((got && got.name) || j.source)
-            + " report — read as that.");
-    }
+    if(!_retCurrent(t)) return;
     if(!j || !j.ok){
       if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
         + _rEsc((j&&j.error)||"Could not read that file") + '</div>';
       return;
     }
+    // The files are identified by their COLUMNS, not by which button was
+    // pressed -- so choosing the wrong one is corrected rather than punished.
+    // Said out loud, because silently reading it as the other kind would leave
+    // you wondering why half the page is still empty.
+    const gotKinds = j.kinds || [];
+    if(RET_WANT && gotKinds.length && gotKinds.indexOf(RET_WANT) < 0){
+      const got = RET_REPORTS[gotKinds[0]];
+      toast("That looks like the " + ((got && got.name) || gotKinds[0])
+            + " report — read as that.");
+    }
+    // A file among several that could not be read must be NAMED. Four files in
+    // and one silently missing is the kind of gap nobody notices for a month.
+    (j.rejected || []).forEach(function(msg){ toast(msg); });
+    RET.range = null;             // a new upload drops any zoom
     RET.data = j; returnsRender();
   }catch(e){
     if(body) body.innerHTML = '<div class="cc" style="padding:18px;color:var(--red)">'
       + _rEsc(String(e)) + '</div>';
   }finally{ input.value = ""; }
 }
+
+async function returnsClear(){
+  if(!confirm("Forget every returns file loaded for this account?\n\n"
+              + "Nothing on Amazon changes — this only clears what this screen "
+              + "is holding, so you can start again with different files."))
+    return;
+  try{
+    const j = await (await fetch("/returns/clear", {method:"POST"})).json();
+    RET.data = null; RET.range = null;
+    const body = document.getElementById("retbody");
+    if(body) body.innerHTML = "";
+    toast((j && j.note) || "Cleared.");
+    returnsLoad();
+  }catch(e){ toast(String(e)); }
+}
+
+/* Re-ask the server for a date range. The filtering happens THERE, through the
+   same summarise()/build() a fresh upload goes through, so the zoomed figures
+   are computed by the one implementation rather than a second copy in JS. */
+async function returnsSetRange(from, to){
+  const body = document.getElementById("retbody");
+  const prev = body ? body.innerHTML : "";
+  const t = _retTicket();
+  try{
+    const q = "?from=" + encodeURIComponent(from || "")
+            + "&to=" + encodeURIComponent(to || "");
+    const j = await (await fetch("/returns/view" + q)).json();
+    if(!_retCurrent(t)) return;
+    if(!j || !j.ok){ toast((j && j.error) || "Could not apply that range."); return; }
+    RET.range = j.zoomed ? {from: j.start, to: j.end,
+                            fullFrom: j.full_start, fullTo: j.full_end} : null;
+    RET.data = j; returnsRender();
+  }catch(e){
+    toast(String(e));
+    if(body && prev) body.innerHTML = prev;
+  }
+}
+
+function returnsResetRange(){ returnsSetRange("", ""); }
 
 /* ---- Amazon's own verdict, and the workbook -----------------------------
  *
@@ -141,10 +238,12 @@ function returnsQualityOpen(){
 async function returnsQualityFile(input){
   const f = input && input.files && input.files[0];
   if(!f) return;
+  const t = _retTicket();
   try{
     const fd = new FormData();
     fd.append("file", f);
     const j = await (await fetch("/returns/quality", {method:"POST", body: fd})).json();
+    if(!_retCurrent(t)) return;
     if(!j || !j.ok){
       toast((j && j.error) || "Could not read that file");
       return;
@@ -275,6 +374,157 @@ function _riHbars(rows, colourFor, total){
   }).join("");
 }
 
+/* ---- the daily chart -------------------------------------------------------
+ *
+ * WHAT IT WAS: bare bars, no axis, no dates, no counts. You could see that some
+ * days were worse than others and nothing else -- not which days, not how many,
+ * and there was no way to look at a period. A tooltip on hover was the only
+ * access to any actual number, one day at a time.
+ *
+ * WHAT IT IS NOW: dated ticks along the bottom, a labelled scale up the left,
+ * and drag across it to select a period. Releasing the drag re-asks the SERVER
+ * for that range, so every figure on the page follows the selection rather than
+ * the chart alone -- see returnsSetRange.
+ *
+ * Drawn as one SVG with real coordinates rather than percentage-height divs,
+ * because a drag needs to map a pixel back to a date and flexed divs cannot.
+ */
+function _riDailyChart(days, daily, dmax){
+  const W = 1000, H = 220, L = 46, R = 10, T = 12, B = 30;
+  const iw = W - L - R, ih = H - T - B;
+  const n = days.length;
+  const bw = Math.max(1, iw / n);
+  const x = i => L + i * bw;
+  const y = v => T + ih - (v / dmax) * ih;
+
+  // A GRID YOU CAN READ A NUMBER OFF. Four lines, each labelled, rounded to
+  // something a person would say out loud rather than dmax/4 to two decimals.
+  const step = (function(m){
+    const raw = m / 4;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+    return Math.max(1, Math.ceil(raw / mag) * mag);
+  })(dmax);
+  let grid = "";
+  for(let v = 0; v <= dmax + step * 0.01; v += step){
+    const yy = y(v);
+    grid += '<line x1="' + L + '" y1="' + yy.toFixed(1) + '" x2="' + (W-R)
+         + '" y2="' + yy.toFixed(1) + '" stroke="var(--line)" stroke-width="1"'
+         + (v ? ' stroke-dasharray="2 4"' : '') + '/>'
+         + '<text x="' + (L-6) + '" y="' + (yy+3.5).toFixed(1) + '" text-anchor="end"'
+         + ' font-size="10" fill="var(--ink3)">' + Number(v).toLocaleString()
+         + '</text>';
+  }
+
+  // DATE TICKS. About eight, evenly spaced, always including the first and last
+  // day -- the two anybody looks for first.
+  const every = Math.max(1, Math.round(n / 8));
+  const want = [];
+  days.forEach(function(k, i){
+    if(i === 0 || i === n - 1 || i % every === 0) want.push(i);
+  });
+  // A REGULAR TICK NEXT TO THE LAST DAY OVERLAPS IT. On 226 days the spacing
+  // put a label at 08-18 and the final one at 08-20, and they printed on top of
+  // each other. The last day always wins -- it is the one people look for.
+  const minGap = iw / 12;
+  for(let a = want.length - 2; a >= 0; a--){
+    if(x(want[a + 1]) - x(want[a]) < minGap) want.splice(a, 1);
+  }
+  let ticks = "";
+  want.forEach(function(i){
+    const xx = x(i) + bw / 2;
+    ticks += '<text x="' + xx.toFixed(1) + '" y="' + (H - 10)
+          + '" text-anchor="middle" font-size="10" fill="var(--ink3)">'
+          + _rEsc(days[i].slice(5)) + '</text>';
+  });
+
+  const bars = days.map(function(k, i){
+    const v = daily[k];
+    const hgt = Math.max(1, (v / dmax) * ih);
+    return '<rect class="ri-dbar" x="' + x(i).toFixed(2) + '" y="' + y(v).toFixed(2)
+      + '" width="' + Math.max(0.6, bw - 0.6).toFixed(2) + '" height="' + hgt.toFixed(2)
+      + '" fill="#ef5350"><title>' + _rEsc(k) + ' — ' + v + ' unit'
+      + (v === 1 ? "" : "s") + '</title></rect>';
+  }).join("");
+
+  const first = days[0], last = days[n-1];
+  const zoom = RET.range;
+  return '<div class="ri-chartwrap">'
+    + '<svg id="ri_daily_svg" viewBox="0 0 ' + W + ' ' + H + '" width="100%"'
+    + ' style="height:auto;display:block;touch-action:none;cursor:crosshair"'
+    + ' data-l="' + L + '" data-r="' + R + '" data-w="' + W + '"'
+    + ' data-days="' + _rEsc(days.join(",")) + '">'
+    + '<rect x="' + L + '" y="' + T + '" width="' + iw + '" height="' + ih
+    + '" fill="#0d1220" stroke="#1e2733"/>'
+    + grid + bars + ticks
+    + '<rect id="ri_drag" x="0" y="' + T + '" width="0" height="' + ih
+    + '" fill="rgba(79,140,255,.22)" stroke="#4f8cff" stroke-width="1"'
+    + ' style="display:none;pointer-events:none"/>'
+    + '</svg>'
+    + '<div class="ri-charthint">'
+    + '<span class="cc">' + _rEsc(first) + ' → ' + _rEsc(last) + ' · '
+    + n + ' day' + (n === 1 ? "" : "s")
+    + ' · peak ' + Number(dmax).toLocaleString() + '</span>'
+    + '<span class="cc">drag across to select a period</span>'
+    + (zoom ? '<button class="db-chip" onclick="returnsResetRange()">'
+              + '<i class="ti ti-zoom-reset"></i> Show all ('
+              + _rEsc(zoom.fullFrom || "") + ' → ' + _rEsc(zoom.fullTo || "")
+              + ')</button>' : '')
+    + '</div></div>';
+}
+
+/* Drag handling, attached AFTER the markup is in the DOM. Bound once per render
+   to the SVG itself, so nothing leaks when the card is redrawn. */
+function _riBindDrag(){
+  const svg = document.getElementById("ri_daily_svg");
+  if(!svg) return;
+  const days = (svg.getAttribute("data-days") || "").split(",").filter(Boolean);
+  if(days.length < 2) return;
+  const L = Number(svg.getAttribute("data-l")), R = Number(svg.getAttribute("data-r"));
+  const W = Number(svg.getAttribute("data-w"));
+  const band = document.getElementById("ri_drag");
+  let from = null;
+
+  // Pixel -> day. The SVG scales to its box, so a client x has to be converted
+  // through the rendered width rather than assumed to be viewBox units.
+  function dayAt(clientX){
+    const box = svg.getBoundingClientRect();
+    const vx = ((clientX - box.left) / box.width) * W;
+    const t = (vx - L) / (W - L - R);
+    const i = Math.round(t * (days.length - 1));
+    return Math.max(0, Math.min(days.length - 1, i));
+  }
+  function vxOf(i){
+    return L + (i / (days.length - 1)) * (W - L - R);
+  }
+  svg.addEventListener("pointerdown", function(ev){
+    from = dayAt(ev.clientX);
+    try{ svg.setPointerCapture(ev.pointerId); }catch(e){}
+    if(band){ band.style.display = ""; band.setAttribute("width", "0"); }
+  });
+  svg.addEventListener("pointermove", function(ev){
+    if(from === null || !band) return;
+    const to = dayAt(ev.clientX);
+    const a = vxOf(Math.min(from, to)), b = vxOf(Math.max(from, to));
+    band.setAttribute("x", a.toFixed(1));
+    band.setAttribute("width", Math.max(1, b - a).toFixed(1));
+  });
+  svg.addEventListener("pointerup", function(ev){
+    if(from === null) return;
+    const to = dayAt(ev.clientX);
+    const lo = days[Math.min(from, to)], hi = days[Math.max(from, to)];
+    from = null;
+    if(band) band.style.display = "none";
+    // A CLICK IS NOT A DRAG. Selecting a single day out of eight months is
+    // almost always a misclick, and it would replace the whole page with one
+    // day's returns.
+    if(lo === hi){ return; }
+    returnsSetRange(lo, hi);
+  });
+  svg.addEventListener("pointercancel", function(){
+    from = null; if(band) band.style.display = "none";
+  });
+}
+
 function returnsRender(){
   const body = document.getElementById("retbody");
   const d = RET.data;
@@ -333,6 +583,18 @@ function returnsRender(){
     h += '<div class="cc" style="font-size:12px;margin:0 0 14px;padding:9px 11px;'
       +  'border:1px solid var(--line);border-radius:6px">'
       +  '<i class="ti ti-info-circle"></i> ' + _rEsc(d.note) + '</div>';
+  }
+  // WHEN A PERIOD IS SELECTED, SAY SO AT THE TOP. Every figure below is for
+  // that period, and a page of numbers that quietly means something narrower
+  // than it did a moment ago is the worst kind of wrong.
+  if(RET.range){
+    h += '<div class="ri-samplebar" style="border-color:var(--accent2);'
+      +  'display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+      +  '<b>Showing ' + _rEsc(RET.range.from) + ' to ' + _rEsc(RET.range.to)
+      +  '.</b> <span class="cc">Every figure on this page is for that period.</span>'
+      +  '<button class="db-chip" onclick="returnsResetRange()" '
+      +  'style="margin-left:auto"><i class="ti ti-zoom-reset"></i> Show all</button>'
+      +  '</div>';
   }
 
   // ---- the six figures across the top --------------------------------
@@ -402,12 +664,7 @@ function returnsRender(){
   const dmax = days.reduce(function(m, k){ return Math.max(m, daily[k]); }, 0) || 1;
   let dailyHtml;
   if(days.length){
-    dailyHtml = '<div class="ri-daily">' + days.map(function(k){
-      return '<div class="ri-daily-bar" style="height:'
-        + Math.max(3, Math.round((daily[k] / dmax) * 100)) + '%">'
-        + '<span class="tip">' + _rEsc(k) + ' — ' + daily[k] + ' unit'
-        + (daily[k] === 1 ? "" : "s") + '</span></div>';
-    }).join("") + '</div>';
+    dailyHtml = _riDailyChart(days, daily, dmax);
   } else {
     // The shape, with a sample series, so the panel is not an empty box.
     dailyHtml = '<div class="ri-daily">' + [4,7,3,9,5,12,6,8,4,11,7,5,9,6,3,8]
@@ -919,6 +1176,9 @@ function returnsRender(){
 
   h += '</div>';
   body.innerHTML = h;
+  // AFTER the markup exists. The chart is redrawn on every render, so the
+  // handlers are attached to the fresh SVG each time rather than kept alive.
+  try{ _riBindDrag(); }catch(e){}
 }
 
 function returnsSort(k){ RET.sort = k; returnsRender(); }

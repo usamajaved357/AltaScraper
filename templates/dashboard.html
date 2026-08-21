@@ -508,7 +508,11 @@
                 onclick="whyStuck()">Why is it stuck?</button>
       </div>
       <pre id="log"></pre>
-      <main id="grid"><div class="empty">Loading listings…</div></main>
+      <!-- Where the "these are samples" bar goes, above the listings rather than
+     inside the grid: the grid is rewritten on every render and filter, and a
+     warning that disappears when you click a filter is worse than none. -->
+<div id="rows_demo"></div>
+<main id="grid"><div class="empty">Loading listings…</div></main>
       <div id="drawerscrim" class="drawerscrim" onclick="closeDrawer()"></div>
       <aside id="drawer" class="drawer"><div id="drawerbody"></div></aside>
     </div>
@@ -1151,18 +1155,28 @@
                report, and the panel below says where to find it in Seller
                Central. The file is still identified by its COLUMNS, so
                choosing the wrong button is corrected rather than punished. -->
+          <!-- MULTIPLE FILES, because a year does not come as one. Amazon caps
+               a seller-fulfilled report at 60 days, so year-to-date is four or
+               five downloads, and an account with both FBA and seller-fulfilled
+               returns needs one of each. They ADD to what is loaded and are
+               de-duplicated on the returns themselves, so overlapping windows
+               are safe and the same file twice changes nothing. -->
           <button class="db-chip" onclick="returnsUploadOpen('fba')"
-                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns"><i class="ti ti-file-upload"></i> Upload FBA returns</button>
+                  title="Seller Central → Reports → Fulfilment → Customer Concessions → FBA Customer Returns. Pick several files at once if you have them."><i class="ti ti-file-upload"></i> Add FBA returns</button>
           <button class="db-chip" onclick="returnsUploadOpen('mfn')"
-                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns"><i class="ti ti-file-upload"></i> Upload seller-fulfilled returns</button>
-          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" style="display:none" onchange="returnsUploadFile(this)">
+                  title="Seller Central → Reports → Return Reports → Seller-fulfilled returns. Amazon caps these at 60 days, so pick all of your year-to-date files at once."><i class="ti ti-file-upload"></i> Add seller-fulfilled returns</button>
+          <input type="file" id="ret_file" accept=".csv,.tsv,.txt" multiple style="display:none" onchange="returnsUploadFile(this)">
           <!-- A THIRD FILE, and the only source for three columns on this page.
                Whether Amazon is showing the "frequently returned item" badge on
                a listing, its CX Health grade, and the reason Amazon itself puts
                at the top are in neither returns report and in no API this app
-               has. They are only in the Voice of the Customer export. -->
+               has. They are only in the Voice of the Customer export.
+               NAMED AFTER THE REPORT, not after what it fills in: "Upload
+               listing quality" did not tell anyone which file to go and get. -->
           <button class="db-chip" onclick="returnsQualityOpen()"
-                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download"><i class="ti ti-shield-exclamation"></i> Upload listing quality</button>
+                  title="Seller Central → Brands → Customer Experience → Voice of the Customer → Download. This is the only report that says whether Amazon is showing the 'frequently returned item' badge."><i class="ti ti-shield-exclamation"></i> Add Voice of the Customer</button>
+          <button class="db-chip" onclick="returnsClear()"
+                  title="Forget every returns file loaded for this account and start again"><i class="ti ti-trash"></i> Start again</button>
           <input type="file" id="ret_quality" accept=".csv,.txt" style="display:none" onchange="returnsQualityFile(this)">
           <button class="db-chip" onclick="returnsExport()"
                   title="Every table on this page as an eight-sheet workbook, built from exactly what you are looking at"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
@@ -1196,10 +1210,22 @@
           <button class="db-chip" onclick="weeklyUploadOpen('campaign')"
                   title="Campaign Manager → the campaign table → Export"><i class="ti ti-file-upload"></i> Upload Campaign export</button>
           <input type="file" id="wk_file" accept=".csv,.tsv,.txt,.xlsx" style="display:none" onchange="weeklyUploadFile(this)">
+          <!-- WHICH ASINs THE FOUR PRODUCT SECTIONS LIST. The reference sheet
+               lists parent ASINs, which is the useful view for a weekly pack --
+               a shoe in 14 sizes is one product. "Each child" is there for the
+               per-variation read. -->
+          <span class="cc" style="font-size:11px">rows</span>
+          <select class="db-chip" id="wk_group" style="width:auto">
+            <option value="parent">By parent ASIN</option>
+            <option value="child">Each child ASIN</option>
+          </select>
           <button class="db-chip" onclick="weeklyExport()"
-                  title="The pack as a CSV, for the client deck"><i class="ti ti-download"></i> Export</button>
+                  title="Every saved week as a column, newest on the left — the layout of the KPI sheet"><i class="ti ti-download"></i> Export CSV</button>
+          <button class="db-chip" onclick="weeklySheetSync()"
+                  title="Write the same grid into this account's weekly Google Sheet. Shows you what it would do before it does it."><i class="ti ti-brand-google-drive"></i> Sync to Google Sheet</button>
         </div>
       </div>
+      <div id="wk_sheetmsg"></div>
       <div id="wk_body" style="padding:4px 0"></div>
     </div>
 
@@ -1949,6 +1975,9 @@
 <!-- Staggered rows, counting numbers, skeletons. Every function is optional:
      not calling one leaves the old behaviour exactly as it was. -->
 <script src="/static/js/motion.js?v={{ ASSET_V }}"></script>
+<!-- How sample data is labelled. Loaded before the screens so every one of
+     them has isDemo/demoBanner available; see static/js/demobanner.js. -->
+<script src="/static/js/demobanner.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/shell.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/settings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/sync.js?v={{ ASSET_V }}"></script>
@@ -1978,11 +2007,22 @@
       <h3>Research an ASIN</h3>
       <button class="db-chip" onclick="asinClose()"><i class="ti ti-x"></i></button>
     </div>
-    <p class="cc" style="margin:2px 0 0">Pull any Amazon product's live data + images with your SP-API access. Read-only — nothing is published. Then send it to the Image Studio or generate copy.</p>
+    <p class="cc" style="margin:2px 0 0">Pull any Amazon product's live data + images with your SP-API access. Read-only — nothing is published. Then send it to the Image Studio, or write copy under your own brand and turn it into a product card.</p>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <input class="rc-in" id="asin_input" style="flex:1;min-width:200px;margin:0" placeholder="Paste an ASIN, e.g. B09BNLQG2Q">
       <select class="rc-in" id="asin_mkt" style="width:auto;margin:0"><option value="UK">UK</option><option value="US">US</option></select>
       <button class="db-chip" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="asinLookup()"><i class="ti ti-search"></i> Look up</button>
+    </div>
+    <!-- THE BRAND THE LISTING GOES OUT UNDER. Typed, not inferred: the copy is
+         written to carry it, and this tool is usable from a workspace that has
+         no brand of its own, where inferring would silently produce nothing.
+         Prefilled from the account's own brand when there is one, and free text
+         so any brand can be entered. This is also what makes the ASIN a SOURCE
+         of product facts rather than a listing to join -- CLAUDE.md Rule 1. -->
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+      <span class="cc" style="font-size:11.5px;min-width:44px">Brand</span>
+      <input class="rc-in" id="asin_brand" style="flex:1;min-width:200px;margin:0" list="asin_brandlist" placeholder="The brand this listing goes out under">
+      <datalist id="asin_brandlist"></datalist>
     </div>
     <div id="asin_res" style="margin-top:14px"></div>
   </div>
