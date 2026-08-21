@@ -1919,6 +1919,42 @@ function listBlock(rows, fn){
   return head + body + `</tbody></table></div>`;
 }
 
+/* SEVERAL GROUPS OF ROWS, ONE BOX.
+ *
+ *     "why do i have two separate boxes/borders containing the listings?"
+ *
+ * The live view is built as listBlock(liveRows) + listBlock(liveCatalog), and
+ * every listBlock opens its own <div class="card ltwrap"> with its own header
+ * row. So the screen drew two bordered cards, one after the other, with a
+ * repeated Image/ASIN/Title/... header in the middle of the list and nothing to
+ * say why. Measured on jack_uk: 40 rows in the first, 7 in the second.
+ *
+ * The intent was already ONE group -- the comment in miles_template.js says so
+ * in capitals, and the captions between them were removed when the owner said
+ * "i dont like that separation". Only the captions went; the two cards stayed.
+ *
+ * The difference between the groups is real and is marked ON THE ROW that has
+ * it, which is what that same note asked for: a listing this app holds no draft
+ * of is a fact about that listing, not a category of listing.
+ */
+function listBlocks(groups){
+  const use = (groups || []).filter(g => g && g.rows && g.rows.length);
+  if(!use.length) return "";
+  // Tiles have no header and no table, so there is nothing to merge -- each
+  // group is already just a run of cards.
+  if(LIST_VIEW !== "table"){
+    return use.map(g => listBlock(g.rows, g.fn)).join("");
+  }
+  // One header, built from every row that will be under it, so "select all"
+  // means all of them and not just the first group's.
+  const all = use.reduce((a, g) => a.concat(g.rows), []);
+  const head = listBlock(all, use[0].fn);
+  const open = head.slice(0, head.indexOf("<tbody>") + 7);
+  const body = use.map(g => (g.rows || []).map(
+                 g.fn === liveTile ? liveTableRow : (g.fn || tableRow)).join("")).join("");
+  return open + body + `</tbody></table></div>`;
+}
+
 // The compliance cell: one icon and two words, from the SAME data the drawer's
 // banner reads, so a row cannot say "clear" while its detail says "prohibited".
 function _compCell(r){
@@ -2067,7 +2103,16 @@ function liveTableRow(it){
     <td class="price">${price}</td>
     ${cogsCell(it)}
     <td>${_handCell(_r, true)}</td>
-    <td><span class="badge b-LIVE">LIVE</span></td>
+    <!-- WHY THIS ROW HAS FEWER BUTTONS THAN THE ONE ABOVE IT.
+         "two different types on buttons, some have review option some dont".
+         Review opens the draft this app holds, and this listing has no draft --
+         it is on Amazon and was never generated here. Same for the compliance
+         column: there is no stored verdict to show, so it reads "—", which
+         looks like a blank rather than an answer.
+         The row says so now. It is one word next to LIVE, and it is the fact
+         that explains every difference a reader can see. -->
+    <td><span class="badge b-LIVE">LIVE</span>
+        <span class="badge b-NODRAFT" title="On Amazon, but this app holds no draft of it — so there is nothing to Review and no compliance check of our own. Press Sync to pull the full listing in; price, images and Optimize work either way.">no draft here</span></td>
     <td>${comp}</td>
     <!-- ONE ACTION ROW. These seven buttons were written out here by hand, so
          the live TABLE offered Sync and Add-variant that the live TILE did not,

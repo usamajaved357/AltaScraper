@@ -287,7 +287,6 @@
         <i class="ti ti-chevron-right chev navchev"></i>
       </div>
       <div class="navkids">
-        <a class="navitem" data-sec="overview" href="#" onclick="return navGo(event,'overview')" title="Every account and marketplace, month by month"><i class="ti ti-building-store"></i> Business overview</a>
         <a class="navitem" data-sec="sales" href="#" onclick="return navGo(event,'sales')"><i class="ti ti-chart-line"></i> Sales</a>
         <!-- Sits next to Sales because it answers the other half of the same
              question: Sales says what was bought, this says how many people
@@ -1311,22 +1310,7 @@
       <div id="cats_body" style="padding:4px 0"></div>
     </div>
 
-    <!-- BUSINESS OVERVIEW (Orbit's Brand Overview) -- every account and
-         marketplace, month by month. The ONE screen that is not scoped to the
-         account you are standing in, because "how is the business doing" is not
-         a question about one account. -->
-    <div id="sec_overview" class="wspanel">
-      <div class="wstoolbar bleed">
-        <div><h2><i class="ti ti-building-store"></i> Business overview</h2>
-        <div class="sub">Every account and marketplace, month by month, in one grid. Totals are grouped by currency &mdash; pounds and dollars are never added together.</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button class="db-chip" onclick="ovwLoad()"><i class="ti ti-refresh"></i> Reload</button>
-        </div>
-      </div>
-      <div id="ovw_body" style="padding:4px 0"></div>
-    </div>
-
-    <!-- COMPLIANCE CHECKER -- runs this app's own rules against what is LIVE on
+        <!-- COMPLIANCE CHECKER -- runs this app's own rules against what is LIVE on
          Amazon, rather than against copy it is about to submit. Reads only. -->
     <div id="sec_compliance" class="wspanel">
       <div class="wstoolbar bleed">
@@ -1933,7 +1917,6 @@
      drift. Per account, kept in the browser. -->
 <script src="/static/js/bookmarks.js?v={{ ASSET_V }}"></script>
 <!-- Every account, month by month. The one screen not scoped to one account. -->
-<script src="/static/js/overview.js?v={{ ASSET_V }}"></script>
 <!-- Where this account's products sit in Amazon's category tree. -->
 <script src="/static/js/categories.js?v={{ ASSET_V }}"></script>
 <!-- The Dr PPC console. Built ahead of the Advertising API connection. -->

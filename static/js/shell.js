@@ -1083,7 +1083,6 @@ function navTo(sec){
   if(sec==="compliance"){ if(typeof cmpLoad==="function") cmpLoad(); }
   // Reads EVERY account, so it is the one screen the account switcher does not
   // narrow. Nothing is fetched from Amazon -- it reads what is already stored.
-  if(sec==="overview"){ if(typeof ovwLoad==="function")   ovwLoad(); }
   // Draws the STORED map. Reading from Amazon is one call per product and is
   // therefore a button, never something that happens on open.
   if(sec==="categories"){ if(typeof catsLoad==="function") catsLoad(); }
@@ -1178,7 +1177,7 @@ const ALTA_SECTIONS = ["listings","imagerefs","setup","generate",
                        "weekly","daily","orders","returns","variations","sellerimport",
                        "sourcing","finance","aiusage","imagestudio","imagelib",
                        "trackers","alerts","leading","notify","sqp","catalog",
-                       "compliance","overview","categories","drppc","permissions",
+                       "compliance","categories","drppc","permissions",
                        "reimbursements","brief",
                        // Phase 1 analytics. Manual only -- see routes/keywords_routes.py.
                        "kwspy","kwasin","ranktracker","kwhistory",

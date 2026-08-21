@@ -413,7 +413,6 @@ FEATURE_PATHS = [
     # ASIN Studio writes copy and creates a draft -- a LISTINGS power.
     ("/asin-studio",          "listings"),
     ("/brief",                "sales"),      # revenue, profit, weekly movement
-    ("/overview",             "sales"),      # it IS revenue, across accounts
     ("/leading",              "sales"),      # yesterday's revenue and units
     ("/catalog/products",     "listings"),   # the product catalogue
     ("/categories",           "listings"),

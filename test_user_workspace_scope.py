@@ -87,7 +87,7 @@ check("  and a request naming no account is untouched",
       guard.check("/trackers", "GET", VA, None, {})[0], True)
 
 print("\n== an owner is unaffected ==")
-for path in ("/trackers", "/catalog/products", "/overview"):
+for path in ("/trackers", "/catalog/products", "/brief"):
     check("owner GET %s?id=jack_uk" % path,
           guard.check(path, "GET", BOSS, None, {"id": "jack_uk"})[0], True)
 
@@ -123,16 +123,28 @@ truthy("  and the check reads them", "named_workspace(p, args, json_body)" in sr
 truthy("  before features or permissions are considered",
        src.index("named_workspace(p, args") < src.index("feat = feature_for(p)"))
 
-print("\n== the one screen that reads EVERY account filters by user ==")
-# /overview deliberately aggregates all accounts, so the doorman cannot help --
-# no account is named for it to refuse.
-ov = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "routes", "overview_routes.py"), encoding="utf-8").read()
-truthy("it filters the account list", "can_access_workspace(_me" in ov)
-truthy("  and says so when it is showing fewer", "access_note" in ov)
-# A failure to establish identity must NARROW access, never widen it.
-truthy("  a failure shows nothing rather than everything",
-       "accts = []" in ov and "Could not establish which accounts" in ov)
+print("\n== NO screen reads every account any more ==")
+# There WAS one: the Business overview aggregated all six limited companies and
+# was reachable from inside any one of them. The doorman could not help it --
+# no account is named for it to refuse -- so it filtered the list itself.
+#
+# It was deleted whole on 21 Aug 2026, on request: "why am i watching this in
+# jack reacherd ... you should delete that page entirely for now". What it did
+# that is still wanted, one account across its own marketplaces, is
+# /brand/marketplaces, which IS scoped and needs no filtering of its own.
+_gone = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "routes", "overview_routes.py")
+check("the cross-account route is gone", os.path.exists(_gone), False)
+check("  and nothing registers it",
+      "_overview_routes.register" in open(os.path.join(
+          os.path.dirname(os.path.abspath(__file__)), "dashboard.py"),
+          encoding="utf-8").read(), False)
+truthy("  the scoped replacement exists",
+       os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "routes", "brandview_routes.py")))
+_bv = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "routes", "brandview_routes.py"), encoding="utf-8").read()
+truthy("  and it resolves ONE account", "_scope_mod.resolve(" in _bv)
 
 print("\n== an empty workspace list is not a wildcard ==")
 # Recorded in auth/users.py as a fail-open that was already fixed once. Guarded

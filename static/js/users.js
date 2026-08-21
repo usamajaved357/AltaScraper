@@ -139,7 +139,7 @@ const SECTION_FEATURE = {
   // visible and then refused is worse than one that was never shown.
   reimbursements:"inventory",
   orders:"orders", returns:"returns",
-  sales:"sales", overview:"sales", leading:"sales", hourly:"hourly",
+  sales:"sales", leading:"sales", hourly:"hourly",
   traffic:"traffic", sqp:"traffic", finance:"finance", aiusage:"aiusage",
   weekly:"sales", daily:"sales",
   ppc:"ppc", drppc:"ppc",
