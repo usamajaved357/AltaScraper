@@ -1587,21 +1587,30 @@
     </div>
 
     <div id="sec_monitor" class="wspanel">
-      <div class="pagehead">
-        <div class="pagetitle"><i class="ti ti-radar"></i> ASIN Monitor</div>
-        <div class="panelsub">Track competitor ASINs and be told the moment a new seller
-          appears &mdash; also seller removed, price change, buy-box change<span
-          class="infodot" title="Read-only surveillance through this account's credentials. It never writes to, or affects, the listings it watches.">i</span></div>
+      <!-- THE SAME HEADER EVERY OTHER SCREEN HAS. This used the one-off
+           .pagehead / .pagetitle / .panelsub trio and .mktbtn buttons, so it
+           was the only page in the app with its own title size, its own
+           spacing and its own button shape -- reported as "the current theme of
+           the page is not alligned with our all other app". .wstoolbar + h2 +
+           .sub + .db-chip is what Listings, Sales, Returns and the rest use. -->
+      <div class="wstoolbar bleed">
+        <div><h2><i class="ti ti-radar"></i> ASIN Monitor</h2>
+        <div class="sub">Who else is selling on the ASINs you watch. Read-only — it never writes to, or affects, the listings it watches.</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="db-chip btn-primary" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
+          <button class="db-chip" id="mon_rescanbtn" onclick="monRescanAll()" title="Check EVERY selected marketplace once, including ones currently skipped as having no offers — use after expanding into a new marketplace"><i class="ti ti-world-search"></i> Re-scan all markets</button>
+          <button class="db-chip" onclick="monSellersPick()" title="Upload a CSV of seller IDs and who they are — names them everywhere at once, instead of one at a time"><i class="ti ti-users"></i> Import seller names</button>
+          <input type="file" id="mon_sellerfile" accept=".csv,.txt,.xlsx" style="display:none" onchange="monSellersUpload(this)">
+          <button class="db-chip" onclick="monDownloadExcel()" title="Download the current results as an Excel file"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
+          <button class="db-chip" onclick="monMarkAllRead()">Mark all read</button>
+        </div>
       </div>
 
       <div class="monalertbar">
-        <button class="mktbtn" id="mon_checkbtn" onclick="monCheckNow()"><i class="ti ti-refresh"></i> Check now</button>
-        <button class="mktbtn" id="mon_rescanbtn" onclick="monRescanAll()" title="Check EVERY selected marketplace once, including ones currently skipped as dead — use after expanding into a new marketplace"><i class="ti ti-world-search"></i> Re-scan all markets</button>
-        <button class="mktbtn" onclick="monDownloadExcel()" title="Download the current results as an Excel file"><i class="ti ti-file-spreadsheet"></i> Download Excel</button>
         <span id="mon_status" class="cc"></span>
-        <span class="spacer" style="flex:1"></span>
-        <button class="linkbtn" onclick="monMarkAllRead()">Mark all read</button>
       </div>
+
+      <div id="mon_chart"></div>
 
       <!-- WHEN THIS RUNS, AND WHETHER IT RUNS AT ALL.
            "i dont want the asin monitor to be working always, give 2 options.

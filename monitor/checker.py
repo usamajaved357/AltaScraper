@@ -504,32 +504,83 @@ def check_all(cfg, config_path, log=print, force_rescan=False):
         # 2) batch through the Pricing API (20 per call), paced + backed-off inside fetch_offers_batch
         t0 = time.monotonic()
         api_calls, new_alerts, fails = 0, 0, 0
-        for i in range(0, len(tocheck), _BATCH_SIZE):
+        total = len(tocheck)
+        batches = (total + _BATCH_SIZE - 1) // _BATCH_SIZE
+        # WHAT THE SCREEN CAN SEE WHILE THIS RUNS. `running` used to be the only
+        # thing set, and it was set once here and not touched again until the
+        # loop had finished -- so a nine-minute run reported nothing but the word
+        # "checking" for nine minutes, and the browser could not tell a working
+        # run from a hung one. Reported as: pressed Check now, waited ten
+        # minutes, nothing changed, reloaded, still nothing.
+        _STATUS.update(started_ts=time.time(), done=0, total=total,
+                       batches_done=0, batches=batches, run_fails=0,
+                       run_alerts=0, phase="checking", error="",
+                       pace=_BATCH_PACING_S)
+        # A fresh gap for each run. Without this a single throttled night leaves
+        # the pace wide for every run after it, for as long as the process lives.
+        _pricing.reset_pace(_BATCH_PACING_S)
+        for i in range(0, total, _BATCH_SIZE):
             chunk = tocheck[i:i + _BATCH_SIZE]
-            results = _pricing.fetch_offers_batch(creds, chunk, log=log)
-            api_calls += 1
-            for req, res in zip(chunk, results):
-                asin, mkt, it = req["asin"], req["marketplace"], req["it"]
-                se = ms.setdefault(_key(asin, mkt), {})
-                se["last_checked"] = _now()
-                se["last_checked_ts"] = time.time()
-                if not res.get("ok"):
-                    fails += 1                    # transient error -> leave prior live/dead state
-                    se["last_error"] = str(res.get("error", ""))[:140]
-                    log(f"[asin-monitor] {asin} {mkt}: {res.get('error')}")
-                    continue
-                se.pop("last_error", None)         # cleared on a successful check
-                has_offers = (res["summary"].get("seller_count") or 0) > 0
-                se["live"] = has_offers           # dead = returned no offers (skip next cycles)
-                if has_offers:
-                    se["last_offers_at"] = _now()
-                new_alerts += _process_result(d, it, mkt, res, cfg, config_path, log)
-            if i + _BATCH_SIZE < len(tocheck):
-                time.sleep(_BATCH_PACING_S)
+            # ONE BAD BATCH COSTS ONE BATCH. This whole loop sat inside a
+            # try/finally with no except, so any raise -- a missing "summary"
+            # key, an odd offer shape, a disk error inside _process_result --
+            # escaped past the single save below and threw away every batch that
+            # had already succeeded. Fifty-five good batches lost to the
+            # fifty-sixth. fetch_offers_batch is already written never to raise;
+            # this is the rest of the body given the same guarantee.
+            try:
+                results = _pricing.fetch_offers_batch(creds, chunk, log=log)
+                api_calls += 1
+                for req, res in zip(chunk, results):
+                    asin, mkt, it = req["asin"], req["marketplace"], req["it"]
+                    se = ms.setdefault(_key(asin, mkt), {})
+                    se["last_checked"] = _now()
+                    se["last_checked_ts"] = time.time()
+                    if not res.get("ok"):
+                        fails += 1                # transient error -> leave prior live/dead state
+                        se["last_error"] = str(res.get("error", ""))[:140]
+                        log(f"[asin-monitor] {asin} {mkt}: {res.get('error')}")
+                        continue
+                    se.pop("last_error", None)     # cleared on a successful check
+                    has_offers = ((res.get("summary") or {}).get("seller_count") or 0) > 0
+                    se["live"] = has_offers       # dead = returned no offers (skip next cycles)
+                    if has_offers:
+                        se["last_offers_at"] = _now()
+                    new_alerts += _process_result(d, it, mkt, res, cfg, config_path, log)
+            except Exception as e:
+                fails += len(chunk)
+                log("[asin-monitor] batch %d of %d failed: %s"
+                    % (i // _BATCH_SIZE + 1, batches, str(e)[:200]))
+
+            # SAVED AS IT GOES, not once at the end.
+            #
+            # This is the fix for "it has been ten minutes and nothing has
+            # updated". Everything accumulated in memory and was written in a
+            # single call AFTER all fifty-six batches, so for the entire run the
+            # file on disk -- which is what /monitor/overview reads -- still held
+            # the PREVIOUS run. The screen was not stuck; it was showing the
+            # truth about a file nothing had written to yet.
+            #
+            # Written after every batch instead, so the page fills in as the run
+            # goes and a crash costs one batch. The file is ~1 MB and a batch is
+            # ~2 seconds apart, which is a rewrite roughly every two seconds --
+            # cheap next to the API call it follows.
+            d["alerts"] = d["alerts"][-1000:]
+            with _LOCK:
+                _save_hist(config_path, d)
+            _STATUS.update(done=min(i + _BATCH_SIZE, total),
+                           batches_done=i // _BATCH_SIZE + 1,
+                           run_fails=fails, run_alerts=new_alerts)
+            if i + _BATCH_SIZE < total:
+                # PACED BY WHAT AMAZON JUST SAID, not by a constant. Every
+                # throttle widens the gap and a run of clean batches narrows it,
+                # so a run settles just under the limit instead of hammering
+                # through it and turning twenty checks at a time into red rows.
+                pace = _pricing.current_pace()
+                _STATUS["pace"] = pace
+                time.sleep(pace)
         dur = round(time.monotonic() - t0, 1)
-        d["alerts"] = d["alerts"][-1000:]
-        with _LOCK:
-            _save_hist(config_path, d)
+        _STATUS["phase"] = "done"
         overload = bool(_SCHED_INTERVAL and dur > _SCHED_INTERVAL * 0.9)
         # None, not "now". With automatic checking off there IS no next run, and
         # time.time() + 0 would draw a countdown that had already expired --
@@ -550,8 +601,22 @@ def check_now_async(cfg, config_path, force_rescan=False):
     force_rescan=True checks EVERY selected marketplace (ignores dead-market skipping) for one cycle."""
     if _STATUS.get("running"):
         return {"ok": False, "error": "a check is already running"}
-    threading.Thread(target=lambda: check_all(cfg, config_path, force_rescan=force_rescan),
-                     daemon=True, name="asin-monitor-now").start()
+
+    def _run():
+        # A DEAD THREAD USED TO LOOK LIKE A FINISHED ONE. The target was a bare
+        # lambda, so anything that escaped check_all printed a traceback to a
+        # terminal nobody is watching and left the screen showing `running:
+        # false` with the previous run's timestamp -- indistinguishable from a
+        # run that worked. The reason is recorded where the screen can read it.
+        try:
+            check_all(cfg, config_path, force_rescan=force_rescan)
+        except Exception as e:
+            _STATUS.update(last_run=_now(), last_run_ok=False, phase="failed",
+                           error="The check stopped early: %s" % str(e)[:200])
+            import traceback
+            traceback.print_exc()
+
+    threading.Thread(target=_run, daemon=True, name="asin-monitor-now").start()
     return {"ok": True, "started": True, "rescan": bool(force_rescan)}
 
 

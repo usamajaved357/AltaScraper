@@ -230,36 +230,170 @@ function renderMonitorOverview(rows, s, unknowns){
   </div>`;
   const bm = s.by_marketplace||{};
   const bmMax = Math.max(0, ...Object.values(bm));
-  const bmText = Object.keys(bm).length
-    ? `<div class="monsum-bm">Unknown sellers by market: ${Object.keys(bm).map(m=>`<span class="${bm[m]===bmMax?'hot':''}">${esc(m)} ${bm[m]}</span>`).join(" · ")}</div>`
-    : "";
+  // The by-market run of text is now the chart above (monChart) -- same numbers,
+  // with the shape visible. Keeping both would be the same figure twice.
+  const bmText = "";
+  monChart(s);
   const c=document.getElementById("mon_count"); if(c) c.textContent=(s.tracked||0)+" ASIN"+((s.tracked||0)!==1?"s":"")+" tracked";
   if(!rows.length){ host.innerHTML = sumBar + bmText + '<div class="cc" style="padding:14px;opacity:.7">No ASINs tracked yet. Add one above (or upload a list) to start watching it.</div>'; return; }
   host.innerHTML = sumBar + bmText + monUnknownsSection(unknowns, s) + rows.map(monAsinBlock).join("");
 }
 
+/* ONE LINE PER ASIN, NOT TEN.
+ *
+ *   "each asin has a too long list of markets telling here is this hijacker
+ *    here the hijacker or seller or offer was not found, summarize the info,
+ *    what is this. this is too messy"
+ *
+ * Measured before this change: 111 ASINs x 10 marketplaces = 1,110 rows on one
+ * page, and the page was 46,293 pixels tall -- about forty screens. Most of
+ * those rows said "skipped — not listed here", which is the app reporting that
+ * nothing happened, ten times per product.
+ *
+ * WHAT A SUMMARY HAS TO KEEP. The whole point of this screen is "is somebody
+ * else on my listing", so the summary leads with that and with WHERE, and the
+ * silent markets collapse into a count. Nothing is thrown away -- the ten rows
+ * are still there behind Details, and an ASIN with an unknown seller opens
+ * expanded, because that one you do want to read.
+ */
+function _monMarketSummary(r){
+  const per = r.per_marketplace || [];
+  const listed = [], quiet = [], failed = [], unchecked = [], hot = [];
+  per.forEach(function(m){
+    if(m.error){ failed.push(m.marketplace); return; }
+    if(m.skipped){ quiet.push(m.marketplace); return; }
+    if(!m.checked){ unchecked.push(m.marketplace); return; }
+    if((m.seller_count||0) > 0){
+      listed.push(m.marketplace);
+      if((m.sellers||[]).some(function(s){ return s.kind === "unknown"; }))
+        hot.push(m.marketplace);
+    } else {
+      quiet.push(m.marketplace);
+    }
+  });
+  return {listed: listed, quiet: quiet, failed: failed, unchecked: unchecked,
+          hot: hot, total: per.length};
+}
+
+/* ---- the one chart worth having on this page -----------------------------
+ *
+ * WHICH CHART. The question this screen exists to answer is "is somebody else
+ * on my listings, and where" -- so the chart is unknown sellers BY MARKETPLACE,
+ * biggest first. That was already on the page as a run of text
+ * ("BE 11 · DE 3 · ES 2 · FR 6 …"), which is a chart drawn badly: the numbers
+ * are there but the shape is not, and the shape is the whole point. Eleven in
+ * Belgium against one in Sweden is obvious as bars and invisible as a list.
+ *
+ * NOT a time series, which is what a monitoring page usually reaches for. The
+ * history holds one snapshot per marketplace per run, and runs are irregular
+ * (this one is manual and had four days between the last two), so a line
+ * against time would be mostly interpolation between two points -- a shape
+ * invented by the drawing rather than measured.
+ */
+function monChart(s){
+  const host = document.getElementById("mon_chart");
+  if(!host) return;
+  const bm = s.by_marketplace || {};
+  const keys = Object.keys(bm).filter(function(k){ return (bm[k] || 0) > 0; })
+                     .sort(function(a, b){ return bm[b] - bm[a]; });
+  if(!keys.length){
+    // A clean account gets a sentence, not an empty chart frame. An axis with
+    // nothing under it reads as "failed to load".
+    host.innerHTML = (s.checked || 0)
+      ? '<div class="moncard moncard-clean"><i class="ti ti-shield-check"></i> '
+        + 'No unknown sellers on any tracked ASIN, in any marketplace.</div>'
+      : '';
+    return;
+  }
+  const max = bm[keys[0]] || 1;
+  const total = keys.reduce(function(a, k){ return a + bm[k]; }, 0);
+  const bars = keys.map(function(k){
+    const n = bm[k];
+    const pct = Math.round(n / max * 100);
+    return '<div class="monbar-row">'
+      + '<span class="monbar-lbl">' + esc(k) + '</span>'
+      + '<span class="monbar-track"><span class="monbar-fill" style="width:'
+      + pct + '%"></span></span>'
+      + '<span class="monbar-n">' + n + '</span></div>';
+  }).join("");
+  host.innerHTML = '<div class="moncard">'
+    + '<div class="moncard-head"><b>Unknown sellers by marketplace</b>'
+    + '<span class="cc">' + total + ' across ' + keys.length + ' market'
+    + (keys.length !== 1 ? 's' : '') + ' · worst is ' + esc(keys[0]) + '</span></div>'
+    + '<div class="monbars">' + bars + '</div>'
+    + '<div class="cc moncard-foot">A seller this app has not been told about. '
+    + 'Name one and it stops counting here — use <b>Import seller names</b> for '
+    + 'a list of them.</div></div>';
+}
+
 function monAsinBlock(r){
   const dp = _dpUrl(r.asin, r.marketplace || r.mkt);   // per-row market, not always UK
+  const sm = _monMarketSummary(r);
   const badge = r.has_unknown ? '<span class="monchip warn">⚠ unknown seller</span>'
               : (r.checked ? '<span class="monchip ok">clean</span>' : '<span class="cc">not checked yet</span>');
+  const id = "monx_" + String(r.asin || "").replace(/[^A-Za-z0-9]/g, "");
+  // An ASIN with somebody else on it opens READ, not folded away.
+  const open = !!r.has_unknown;
   const head = `<div class="monasin-head">
     <a href="${dp}" target="_blank" rel="noopener" class="monasin">${esc(r.asin)}</a>
-    ${r.label?`<span class="cc">${esc(r.label)}</span>`:''} ${badge}
+    ${r.label?`<span class="cc monasin-label">${esc(r.label)}</span>`:''} ${badge}
     <span style="flex:1"></span>
-    <button class="monhist" title="Offer history" onclick="openMonHistory('${esc(r.asin)}','${esc((r.label||'').replace(/'/g,''))}')"><i class="ti ti-history"></i></button>
-    <button class="monrm" title="Stop tracking" onclick="removeMonitorAsin('','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>
+    <button class="db-chip monx" onclick="monToggle('${id}',this)" aria-expanded="${open}">
+      <i class="ti ti-chevron-${open?'up':'down'}"></i> ${sm.total} market${sm.total!==1?'s':''}</button>
+    <button class="db-chip" title="Offer history" onclick="openMonHistory('${esc(r.asin)}','${esc((r.label||'').replace(/'/g,''))}')"><i class="ti ti-history"></i></button>
+    <button class="db-chip" title="Stop tracking" onclick="removeMonitorAsin('','${esc(r.asin)}')"><i class="ti ti-trash"></i></button>
   </div>`;
+
+  // The one line that replaces ten. Ordered by what you would look for first.
+  const bits = [];
+  if(sm.hot.length)
+    bits.push('<span class="monsm-hot"><i class="ti ti-alert-triangle"></i> other sellers in '
+              + sm.hot.map(esc).join(", ") + '</span>');
+  if(sm.listed.length){
+    // DON'T SAY THE SAME MARKETS TWICE. When every market carrying offers also
+    // has an unknown seller, the line above has already named them and this
+    // repeated the list word for word: "other sellers in IT, ES, BE · on sale
+    // in 3 of 10 — IT, ES, BE".
+    const same = sm.hot.length === sm.listed.length
+                 && sm.listed.every(function(m){ return sm.hot.indexOf(m) >= 0; });
+    bits.push('<span class="monsm-on">on sale in ' + sm.listed.length + ' of ' + sm.total
+              + (same ? '' : ' — ' + sm.listed.map(esc).join(", ")) + '</span>');
+  }
+  // The silent markets are a COUNT, not a list of "not listed here" rows. That
+  // is the noise this whole change exists to remove.
+  if(sm.quiet.length)
+    bits.push('<span class="cc">' + sm.quiet.length + ' with no offers</span>');
+  if(sm.unchecked.length)
+    bits.push('<span class="cc">' + sm.unchecked.length + ' not checked yet</span>');
+  if(sm.failed.length)
+    bits.push('<span class="monsm-fail">' + sm.failed.length + ' could not be checked</span>');
+  const summary = '<div class="monasin-sum">' + (bits.join('<span class="monsm-dot">·</span>')
+                  || '<span class="cc">nothing checked yet</span>') + '</div>';
+
   const mkts = (r.per_marketplace||[]).map(m=>{
     const mk = `<span class="monchip">${esc(m.marketplace)}</span>`;
-    if(m.skipped) return `<div class="monmkt-row skipped">${mk} <span class="cc">skipped — not listed here${m.last_checked?(' (checked '+esc(m.last_checked)+')'):''}</span></div>`;
-    if(m.error) return `<div class="monmkt-row">${mk} <span class="cc" style="color:var(--warn)">check failed — ${esc(m.error)}</span></div>`;
+    if(m.skipped) return `<div class="monmkt-row skipped">${mk} <span class="cc">no offers here${m.last_checked?(' · checked '+esc(m.last_checked)):''}</span></div>`;
+    if(m.error) return `<div class="monmkt-row">${mk} <span class="monsm-fail">could not be checked — ${esc(m.error)}</span></div>`;
     if(!m.checked) return `<div class="monmkt-row">${mk} <span class="cc">not checked yet</span></div>`;
     const n = m.seller_count||0;
     const chips = (m.sellers||[]).map(monSellerChip).join(" ");
     const body = n>0 ? `<b>${n}</b> seller${n!==1?'s':''} ${chips}` : `<span class="cc">no offers found</span>`;
     return `<div class="monmkt-row">${mk} ${body}<span class="cc monmkt-ts"> · ${esc(m.ts||'')}</span></div>`;
   }).join("");
-  return `<div class="monasin-block ${r.has_unknown?'warn':''}">${head}<div class="monmkt-list">${mkts}</div></div>`;
+  return `<div class="monasin-block ${r.has_unknown?'warn':''}">${head}${summary}`
+       + `<div class="monmkt-list" id="${id}"${open?'':' hidden'}>${mkts}</div></div>`;
+}
+
+function monToggle(id, btn){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const now = el.hasAttribute("hidden");
+  if(now) el.removeAttribute("hidden"); else el.setAttribute("hidden", "");
+  if(btn){
+    btn.setAttribute("aria-expanded", String(now));
+    const i = btn.querySelector("i");
+    if(i) i.className = "ti ti-chevron-" + (now ? "up" : "down");
+  }
 }
 
 function monSellerChip(s){
@@ -331,7 +465,46 @@ function monAlertCard(a){
 
 function renderMonStatus(st){
   const el = document.getElementById("mon_status"); if(!el) return;
-  if(st.running){ el.innerHTML = '<span class="genspin"></span> checking…'; return; }
+  if(st.running){
+    // WHAT IT IS ACTUALLY DOING. This said "checking…" and nothing else for
+    // the entire run -- nine minutes of a word, with no way to tell a working
+    // check from a hung one. Reported as: pressed Check now, waited ten
+    // minutes, nothing changed, reloaded the page, still nothing.
+    const done = Number(st.done || 0), total = Number(st.total || 0);
+    const pct = total ? Math.round(done / total * 100) : 0;
+    let line = '<span class="genspin"></span> Checking ' + done.toLocaleString()
+             + ' of ' + total.toLocaleString() + ' marketplace checks';
+    if(total) line += ' (' + pct + '%)';
+    if(st.started_ts){
+      const el4 = Math.round((Date.now() / 1000 - st.started_ts));
+      line += ' · ' + (el4 < 90 ? el4 + 's' : Math.round(el4 / 60) + 'm') + ' so far';
+      // An estimate from the rate ACHIEVED, not from a guess about the API.
+      if(done > 0 && total > done){
+        const rem = Math.round(el4 / done * (total - done));
+        line += ' · about ' + (rem < 90 ? rem + 's' : Math.round(rem / 60) + 'm')
+              + ' left';
+      }
+    }
+    if(st.run_alerts) line += ' · <b>' + st.run_alerts + '</b> alert'
+                            + (st.run_alerts !== 1 ? 's' : '') + ' so far';
+    if(st.run_fails) line += ' · <span style="color:var(--warn)">' + st.run_fails
+                           + ' failed</span>';
+    if(total) line += '<div class="monprog"><div class="monprog-fill" style="width:'
+                    + pct + '%"></div></div>';
+    // The results below fill in as it goes now, so say so -- otherwise a
+    // half-filled page during a run looks like a half-broken one.
+    line += '<div class="cc" style="font-size:10.5px;margin-top:3px">'
+          + 'Results below update as each batch finishes — you can leave this '
+          + 'page and come back.</div>';
+    el.innerHTML = line;
+    return;
+  }
+  if(st.phase === "failed" && st.error){
+    el.innerHTML = '<span style="color:var(--red)">' + esc(st.error)
+                 + '</span> <span class="cc">Everything checked before it '
+                 + 'stopped has been saved.</span>';
+    return;
+  }
   if(!st.last_run){ el.textContent = "Not run yet — runs hourly while the app is open."; return; }
   const bits = ["Last check: "+esc(st.last_run)];
   if(st.api_calls!=null) bits.push(st.api_calls+" API call"+(st.api_calls!==1?"s":""));
@@ -483,6 +656,133 @@ async function loadMonitorList(){
     renderMonitorMarketPicker();
     renderMonitorList();
   }catch(e){ if(host) host.innerHTML = '<div class="cc" style="color:var(--red);padding:14px">Error: '+esc(String(e))+'</div>'; }
+}
+
+/* ---- naming sellers from a file, instead of one at a time ----------------
+ *
+ *   "i have the names of the sellers which i can put in a csv file to tell the
+ *    asin monitor that this seller id's person name is this. whether it is
+ *    amazon, myself, or a third party. right now i have the ability to do it
+ *    manually one by one"
+ *
+ * WHY THIS IS WORSE THAN IT SOUNDS TODAY. The auto-scraped cache is keyed
+ * "sellerId::marketplace", so one seller trading in eight countries is eight
+ * separate unnamed entries and naming them by hand is eight trips through the
+ * modal. A seller's name is the same everywhere, so one row here settles it for
+ * every marketplace and every ASIN, past snapshots included.
+ *
+ * SHOWN BEFORE IT IS APPLIED, because this writes into config.json -- which is
+ * not somewhere to discover afterwards that a column was in the wrong place.
+ */
+let MON_SELLER_ROWS = [];
+
+function monSellersPick(){
+  const i = document.getElementById("mon_sellerfile");
+  if(i) i.click();
+}
+
+async function monSellersUpload(input){
+  const f = input && input.files && input.files[0];
+  if(!f) return;
+  try{
+    const data = await new Promise(function(res, rej){
+      const r = new FileReader();
+      r.onload = function(){ res(r.result); };
+      r.onerror = rej;
+      r.readAsDataURL(f);
+    });
+    const j = await (await fetch("/monitor/sellers_preview", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({data: data, filename: f.name})})).json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not read that file"); return; }
+    MON_SELLER_ROWS = j.rows || [];
+    monSellersPreview(j, f.name);
+  }catch(e){ toast(String(e)); }
+  finally{ input.value = ""; }
+}
+
+const _MON_KIND_WORD = {
+  me: "Mine", amazon: "Amazon", authorised: "Authorised reseller",
+  name: "Third party (named)", unknown: "Unknown — stays flagged",
+};
+
+function monSellersPreview(j, filename){
+  const rows = j.rows || [];
+  const changing = rows.filter(function(r){ return r.changes; });
+  const same = rows.length - changing.length;
+  let h = '<div class="modal" style="max-width:760px">'
+    + '<button class="x" onclick="monSellersClose()">×</button>'
+    + '<h3 style="margin:0 0 4px">Import seller names</h3>'
+    + '<div class="cc" style="font-size:11.5px;margin-bottom:10px">'
+    + esc(filename) + ' — <b>' + rows.length + '</b> seller'
+    + (rows.length !== 1 ? 's' : '') + ' read'
+    + (same ? ', ' + same + ' already set the same way' : '')
+    + (j.invalid && j.invalid.length
+        ? ', <span style="color:var(--warn)">' + j.invalid.length
+          + ' line' + (j.invalid.length !== 1 ? 's' : '') + ' skipped</span>' : '')
+    + '. Nothing has been saved yet.</div>';
+  if(!rows.length){
+    h += '<div class="db-warn-red">Nothing usable in that file.</div>';
+  } else {
+    h += '<div class="ri-scroll" style="max-height:380px">'
+      + '<table class="kv" style="width:100%">'
+      + '<thead><tr><th>Seller ID</th><th>Name</th><th>Treated as</th>'
+      + '<th>Was</th></tr></thead><tbody>'
+      + rows.map(function(r){
+          return '<tr' + (r.changes ? '' : ' style="opacity:.5"') + '>'
+            + '<td style="padding:5px 7px"><code style="font-size:11px">' + esc(r.seller_id) + '</code></td>'
+            + '<td style="padding:5px 7px">' + esc(r.name || '—') + '</td>'
+            + '<td style="padding:5px 7px">' + esc(_MON_KIND_WORD[r.kind] || r.kind) + '</td>'
+            + '<td style="padding:5px 7px" class="cc">' + esc(r.previous_label || r.previous_kind || '') + '</td>'
+            + '</tr>';
+        }).join("")
+      + '</tbody></table></div>';
+    // The lines it could not use are NAMED. A file of two hundred with three
+    // silently dropped is three sellers you go on believing are named.
+    if(j.invalid && j.invalid.length){
+      h += '<div class="cc" style="font-size:11px;margin-top:8px">Skipped: '
+         + j.invalid.slice(0, 8).map(function(v){
+             return 'line ' + v.row + ' (' + esc(v.why) + ')'; }).join(", ")
+         + (j.invalid.length > 8 ? ' and ' + (j.invalid.length - 8) + ' more' : '')
+         + '</div>';
+    }
+    h += '<div style="display:flex;gap:8px;margin-top:14px;align-items:center">'
+      + '<button class="db-chip btn-primary" onclick="monSellersApply()">'
+      + 'Apply ' + rows.length + ' seller' + (rows.length !== 1 ? 's' : '') + '</button>'
+      + '<button class="db-chip" onclick="monSellersClose()">Cancel</button>'
+      + '<span class="cc" style="font-size:11px">Applies to every marketplace '
+      + 'and every ASIN, including past results.</span></div>';
+  }
+  h += '</div>';
+  let w = document.getElementById("mon_sellerwrap");
+  if(!w){
+    w = document.createElement("div");
+    w.id = "mon_sellerwrap";
+    w.className = "modalwrap";
+    document.body.appendChild(w);
+  }
+  w.innerHTML = h;
+  w.classList.add("show");
+}
+
+function monSellersClose(){
+  const w = document.getElementById("mon_sellerwrap");
+  if(w) w.classList.remove("show");
+  MON_SELLER_ROWS = [];
+}
+
+async function monSellersApply(){
+  if(!MON_SELLER_ROWS.length){ monSellersClose(); return; }
+  try{
+    const j = await (await fetch("/monitor/sellers_import", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({rows: MON_SELLER_ROWS})})).json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not apply"); return; }
+    toast("Named " + j.applied + " seller" + (j.applied !== 1 ? "s" : "")
+          + " everywhere.");
+    monSellersClose();
+    loadMonitorOverview();     // the flags recompute from the new names
+  }catch(e){ toast(String(e)); }
 }
 
 // The EU marketplace checkboxes on the add form (default: all ticked).

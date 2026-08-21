@@ -38,18 +38,45 @@ def _fetch_name(seller_id, marketplace, timeout):
         return ""
 
 
-def resolve_seller_name(seller_id, marketplace, timeout=15):
-    """Best-effort seller display name. Tries the seller's own marketplace FIRST, then falls back
-    across the other EU domains -- a seller listing on e.g. SE often only has a resolvable profile
-    on another EU domain (UK/DE/...). Returns "" if none resolve. Result is cached one-time upstream."""
+# HOW LONG THIS IS ALLOWED TO TAKE, ALTOGETHER.
+#
+# This walks up to eleven Amazon domains looking for a seller's profile, and it
+# runs INSIDE the checker's main loop. At the old timeout=15 with no overall
+# budget, one seller who resolves nowhere -- which is the common case for the
+# brand-new throwaway accounts this whole feature exists to catch -- blocked the
+# run for up to 11 x 15 = 165 seconds. Ten such sellers is half an hour of a
+# check that is otherwise nine minutes, and it looks exactly like a hang.
+#
+# A name is a nicety. The seller ID, the offer and the alert are the finding,
+# and they are all already in hand before this is called.
+_PER_DOMAIN_TIMEOUT = 6
+_TOTAL_BUDGET_S = 20
+
+
+def resolve_seller_name(seller_id, marketplace, timeout=_PER_DOMAIN_TIMEOUT,
+                        budget=_TOTAL_BUDGET_S):
+    """Best-effort seller display name, under a hard overall time budget.
+
+    Tries the seller's own marketplace FIRST, then falls back across the other
+    EU domains -- a seller listing on e.g. SE often only has a resolvable
+    profile on another EU domain (UK/DE/...). Returns "" if none resolve inside
+    the budget, and "" is cached upstream exactly as a real miss is, so a run
+    never pays for the same unresolvable seller twice.
+    """
     if not seller_id:
         return ""
+    import time as _t
     order, seen = [], set()
     for m in [str(marketplace).upper(), "UK", "DE", "FR", "IT", "ES", "NL", "SE", "PL", "BE", "IE"]:
         if m and m not in seen:
             seen.add(m); order.append(m)
+    deadline = _t.monotonic() + max(1.0, float(budget or 0))
     for m in order:
-        nm = _fetch_name(seller_id, m, timeout)
+        if _t.monotonic() >= deadline:
+            break
+        # Never let one domain overrun what is left of the whole budget.
+        left = max(1.0, min(float(timeout), deadline - _t.monotonic()))
+        nm = _fetch_name(seller_id, m, left)
         if nm:
             return nm
     return ""
