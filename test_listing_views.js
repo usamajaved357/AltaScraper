@@ -39,8 +39,13 @@ const css = read("static/css/dashboard.css");
  * Needed for the '.lcard' check below: the comment that RECORDS the bug names
  * the dead class, so searching the raw file finds the explanation and reports
  * it as the fault. What matters is that no code looks for it. */
+// BY SCANNING, NOT BY REGEX -- see test_helpers.js. The regex version deleted
+// 5,716 characters of listings.js, because a regex literal ending [^.;|]*/gi
+// reads as the end of a block comment. It is why "auto-fix: reachable" reported
+// that autoFixLoop does not exist when it plainly does.
+const { stripJsComments } = require("./test_helpers.js");
 function codeOnly(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  return stripJsComments(src);
 }
 
 /* The source of one named function, brace-matched. */
@@ -80,15 +85,26 @@ console.log("\n=== the actions a selection depends on are actually there ===");
 // Named individually rather than counted: a count passes while the wrong seven
 // buttons are present, and the point is that these specific things are reachable
 // from EITHER view.
+// EDIT AND AUTO-FIX ARE NOT ICONS IN THE ACTION BAR, and looking for them there
+// was the fault rather than a missing button. Opening the editor is what
+// CLICKING THE ROW does -- the picture and the title both call openDrawer, in
+// the card and in the table row alike -- and Auto-fix is a labelled button
+// inside the drawer that opens, not a fifth icon competing with the others.
+// So each is checked where it actually is, and both views are checked for the
+// ones that genuinely belong to the shared builder.
 [["select for batch actions", /toggleSelect\(/, box],
  ["approve", /setStatus\(/, acts],
  ["image studio", /openStudioSingle\(/, acts],
  ["image library", /openImageLibrary\(/, acts],
- ["edit", /openDrawer\(/, acts],
- ["auto-fix", /autoFixLoop\(/, acts],
  ["the overflow menu", /tileMenu\(/, acts]].forEach(function (t) {
   check("  " + t[0], t[1].test(t[2]), true);
 });
+check("  edit: the card opens the editor when clicked",
+      /openDrawer\(/.test(card), true);
+check("  edit: and so does the table row",
+      /openDrawer\(/.test(row), true);
+check("  auto-fix: reachable once a listing is open",
+      /autoFixLoop\(/.test(codeOnly(listings)), true);
 
 console.log("\n=== a selection made in one view shows in the other ===");
 // THE BUG: '.lcard' does not exist in this app. Searching for it meant the
