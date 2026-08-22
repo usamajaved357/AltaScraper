@@ -161,6 +161,48 @@ for rel, want in [("main/a.jpg", True), ("aplus/premium/mobile/x.png", True),
                   ("mainly/a.jpg", False), ("", False)]:
     check("  %-28r" % rel, MK.already_sorted(rel), want)
 
+print("\n=== the extension comes from the BYTES, not the model's label ===")
+# MEASURED on a real generation through the configured image model
+# (bytedance-seed/seedream-4.5 over OpenRouter):
+#
+#     declared mime   image/png
+#     first 4 bytes   ff d8 ff e0        <- JPEG
+#     PIL says        JPEG 2048x2048
+#
+# so the mime map wrote a JPEG into a file called .png. Amazon fetches listing
+# images by URL and rejects one whose bytes do not match its extension: a good
+# image, refused, for a reason nothing on screen explains.
+import io as _io
+from PIL import Image as _Img
+for fmt, want in (("JPEG", "jpg"), ("PNG", "png"), ("WEBP", "webp"), ("GIF", "gif")):
+    _b = _io.BytesIO()
+    _Img.new("RGB", (20, 20), (1, 2, 3)).save(_b, fmt)
+    check("  real %-5s bytes -> .%s" % (fmt, want), MK.sniff_ext(_b.getvalue(), "xx"), want)
+# The label is a claim; the magic number is the fact. A PNG label over JPEG
+# bytes must lose to the bytes.
+_j = _io.BytesIO(); _Img.new("RGB", (8, 8)).save(_j, "JPEG")
+check("  a PNG label over JPEG bytes still gives .jpg",
+      MK.sniff_ext(_j.getvalue(), "png"), "jpg")
+check("  and something unreadable falls back", MK.sniff_ext(b"ab", "jpg"), "jpg")
+
+RT2 = open("routes/genimage_routes.py", encoding="utf-8").read()
+_save = RT2.split("def genimage_save_to_media")[1].split("@app.route")[0]
+truthy("the save route sniffs rather than trusting the mime",
+       "_mk.sniff_ext(" in _save)
+truthy("  using the decoded bytes it is about to write", "_bytes" in _save)
+truthy("  and refuses an image it cannot decode", "unreadable image" in _save)
+# One definition. It used to live in dashboard.py and be injected into two route
+# modules -- and the one that saves generated images was not among them.
+D2 = open("dashboard.py", encoding="utf-8").read()
+# To the end of the function, not a fixed number of characters -- the note
+# explaining why the body moved is longer than the slice used to be.
+_old = D2.split("def _sniff_image_ext")[1]
+_old = _old[:_old.index("\ndef ")] if "\ndef " in _old else _old
+truthy("dashboard's version delegates instead of repeating the table",
+       "_mk.sniff_ext(" in _old)
+check("  so the magic numbers are written down once",
+      D2.count('b"\\x89PNG'), 0)
+
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:
     print("  - " + f)

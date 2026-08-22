@@ -916,7 +916,25 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             mime = (re.search(r"data:([^;]+)", head) or [None, "image/png"])[1]
         else:
             raw, mime = data, "image/png"
-        ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime, "png")
+        # THE EXTENSION COMES FROM THE BYTES, NOT THE LABEL.
+        #
+        # Measured against the configured image model on a real generation:
+        #
+        #     declared mime   image/png
+        #     first 4 bytes   ff d8 ff e0        <- JPEG
+        #     PIL says        JPEG 2048x2048
+        #
+        # so this map turned a JPEG into a file called .png. Amazon fetches
+        # listing images by URL and rejects one whose bytes do not match its
+        # extension -- a good image, refused, for a reason nothing on screen
+        # explains. The label is a claim; the magic number is the fact.
+        try:
+            _bytes = _b64.b64decode(raw)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"unreadable image: {e}"}), 400
+        _claimed = {"image/png": "png", "image/jpeg": "jpg",
+                    "image/webp": "webp"}.get(mime, "png")
+        ext = _mk.sniff_ext(_bytes, _claimed)
         import time as _t
         fname = f"generated_{int(_t.time()*1000)}.{ext}"
 
@@ -926,7 +944,7 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             dest = os.path.join(base, *sub.split("/")) if sub else base
             os.makedirs(dest, exist_ok=True)
             with open(os.path.join(dest, fname), "wb") as f:
-                f.write(_b64.b64decode(raw))
+                f.write(_bytes)
         except Exception as e:
             return jsonify({"ok": False, "error": f"write failed: {e}"}), 500
         _aid = _state.get("active_account_id", "") or ""

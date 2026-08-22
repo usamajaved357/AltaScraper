@@ -172,3 +172,38 @@ def already_sorted(relpath):
 # one somebody uploaded -- both are real, but only the generated ones carry a
 # timestamp that says when.
 GENERATED_RE = re.compile(r"^generated_\d+\.(?:png|jpg|jpeg|webp)$", re.I)
+
+
+def sniff_ext(raw, fallback="jpg"):
+    """The TRUE image extension, read from the file's own first bytes.
+
+    NOT the mime label the model claims, because the label is wrong. Measured
+    against the configured image model (bytedance-seed/seedream-4.5 over
+    OpenRouter) on a real generation:
+
+        declared mime   image/png
+        first 4 bytes   ff d8 ff e0        <- JPEG
+        PIL says        JPEG 2048x2048
+
+    so a file saved from that label is called .png and contains a JPEG. Amazon
+    fetches listing images by URL and rejects one whose bytes do not match its
+    extension, which turns a good image into a rejected listing for a reason
+    nothing on screen explains.
+
+    This lived in dashboard.py and was injected into two route modules; the one
+    that saves generated images was not among them and used the mime map
+    instead. Moved here so there is one definition and anything that writes an
+    image file can reach it (rule 12); dashboard.py's version now calls this.
+    """
+    if not raw or len(raw) < 12:
+        return fallback
+    b = raw[:12]
+    if b[:3] == b"\xff\xd8\xff":                       # JPEG
+        return "jpg"
+    if b[:8] == b"\x89PNG\r\n\x1a\n":                  # PNG
+        return "png"
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":        # WebP
+        return "webp"
+    if b[:6] in (b"GIF87a", b"GIF89a"):                # GIF
+        return "gif"
+    return fallback
