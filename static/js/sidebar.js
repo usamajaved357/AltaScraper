@@ -48,10 +48,23 @@ function setSidebarMini(on, remember){
   ws.classList.toggle("navmini", !!on);
   const btn = document.getElementById("navtoggle");
   if(btn){
-    btn.innerHTML = '<i class="ti ti-layout-sidebar-' + (on ? "right" : "left")
-                  + '-collapse"></i><span>Hide menu</span>';
+    // THE THREE LINES, ALWAYS, and the word underneath them tells you what
+    // pressing it will do.
+    //
+    //     "in the app i see that there is an option to expand or hide that side
+    //      bar but i want it to behave like amazon, a SIDE Bar when clicked on
+    //      3 lines it expands the side bar and when clicked [again it hides]"
+    //
+    // Two things were wrong. The icon was a sidebar-collapse glyph that changed
+    // direction, which nobody reads as "the menu button" -- Amazon, Seller
+    // Central and every app that has one use a hamburger, and it does not
+    // change shape. And the label said "Hide menu" in BOTH states, so once the
+    // menu was hidden the only control on screen still offered to hide it.
+    btn.innerHTML = '<i class="ti ti-menu-2"></i><span>'
+                  + (on ? "Show menu" : "Hide menu") + '</span>';
     btn.title = (on ? "Show the menu" : "Hide the menu") + " (Ctrl+B)";
     btn.setAttribute("aria-expanded", on ? "false" : "true");
+    btn.setAttribute("aria-label", on ? "Show the menu" : "Hide the menu");
   }
   if(remember !== false){
     try{ localStorage.setItem(NAVMINI_KEY, on ? "1" : "0"); }catch(e){}

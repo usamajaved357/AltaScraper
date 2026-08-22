@@ -104,6 +104,41 @@ truthy("  but not while you are typing",
 // Charts measure their container, which just changed width by 156px.
 truthy("charts are told the width changed", /new Event\("resize"\)/.test(SIDE));
 
+/* THE CONTROL IS A HAMBURGER, AND IT SAYS WHAT PRESSING IT WILL DO.
+ *
+ *   "i see that there is an option to expand or hide that side bar but i want it
+ *    to behave like amazon, a SIDE Bar when clicked on 3 lines it expands the
+ *    side bar and when clicked [again it hides]"
+ *
+ * Two separate faults, and the second was the one that actually stranded you.
+ * The icon was `ti-layout-sidebar-left-collapse`, a directional glyph that flips
+ * to point the other way -- nobody reads that as "the menu button", because no
+ * app uses it as one. And the LABEL said "Hide menu" in both states, so once the
+ * menu was folded the only control on screen still offered to fold it. */
+console.log("\n=== the fold control is the three lines, in both states ===");
+const _mini = fnBody(SIDE, "setSidebarMini");
+truthy("the icon is a hamburger", /ti ti-menu-2/.test(_mini));
+truthy("  and it is the SAME glyph folded or not -- no direction to read",
+       (_mini.match(/ti-menu-2/g) || []).length === 1
+       && !/ti-layout-sidebar/.test(_mini));
+truthy("  the markup starts from that icon each time, so the two cannot drift",
+       /btn\.innerHTML = '<i class="ti ti-menu-2"><\/i><span>'/.test(_mini));
+truthy("the word under it changes instead of the picture",
+       /\(on \? "Show menu" : "Hide menu"\)/.test(_mini));
+truthy("  folded, it offers to SHOW -- not to hide what is already hidden",
+       /on \? "Show menu"/.test(_mini));
+truthy("  a screen reader is told the same thing",
+       /setAttribute\("aria-label", on \? "Show the menu"/.test(_mini));
+truthy("  and whether the menu is open is announced, not just drawn",
+       /setAttribute\("aria-expanded", on \? "false" : "true"\)/.test(_mini));
+// The page ships with an icon in the HTML before any JS runs. It was still the
+// old collapse glyph, so the first paint showed one control and the first click
+// showed a different one.
+truthy("the icon the page ships with is that same hamburger",
+       /id="navtoggle"[\s\S]{0,200}?ti-menu-2/.test(HTML));
+truthy("  and no collapse glyph is left anywhere in the shell",
+       !/ti-layout-sidebar/.test(HTML) && !/ti-layout-sidebar/.test(SIDE));
+
 console.log("\n=== the rail does not leak onto a phone ===");
 // This section used to assert the phone turned the sidebar into a horizontal
 // STRIP. That decision was reversed on purpose: Orbit, measured at 390px, parks
@@ -130,29 +165,58 @@ truthy("  and the fold control itself, which a drawer has no use for",
 /* ------------------------------------------------------------------------ *
  * EVERY ADDRESSABLE SCREEN IS ALSO A SCREEN navTo() MAKES VISIBLE.
  *
- * navTo keeps two lists of the same thing: one decides which panel gets .show,
- * ALTA_SECTIONS decides which screens have an address and therefore a nav link
- * and an "open in a new tab". Permissions was added to the second and left out
- * of the first, so it had a link, an address, and an onOpen that ran and drew
- * the whole page into a panel that was never shown. It looked like a blank
- * screen with no error, and only opening it in a real browser found it.
+ * navTo used to keep two lists of the same thing: one deciding which panel got
+ * .show, and ALTA_SECTIONS deciding which screens have an address and therefore
+ * a nav link and an "open in a new tab". `permissions` was added to the second
+ * and left out of the first, so it had a link, an address, and an onOpen that
+ * ran and drew the whole page into a panel that was never shown -- a blank
+ * screen with no error. Then it happened AGAIN to all four keyword screens.
+ *
+ * THE SECOND LIST IS GONE. navTo derives the panels from ALTA_SECTIONS, so the
+ * two can no longer disagree and the assertions that compared them were
+ * checking an arrangement that no longer exists (they had quietly stopped
+ * matching anything at all, which is worse than failing -- a guard that greps
+ * for a shape that has been refactored away passes forever).
+ *
+ * So what is guarded is the derivation itself, plus the one way this can still
+ * break: a name in ALTA_SECTIONS with no panel in the HTML to show.
  *
  * Listings is excluded on purpose: it is the one panel navTo shows with an
  * explicit style.display rather than the .show class, on its own line above.
  * ------------------------------------------------------------------------ */
 console.log("\n== no screen can have an address but no way to be seen ==");
 const _navBody = fnBody(SHELL, "navTo");
-const _showList = (/\[([^\]]*)\]\.forEach\(s=>\{/.exec(_navBody) || [])[1] || "";
-const _shown = _showList.split(",").map(s => s.trim().replace(/^["']|["']$/g, ""))
-                        .filter(Boolean);
+truthy("navTo does not keep a second hand-written list of panels",
+       /ALTA_SECTIONS\.filter\(s => s !== "listings"\)\.forEach/.test(_navBody));
+truthy("  it toggles each derived panel by its id",
+       /getElementById\("sec_"\+s\)/.test(_navBody)
+       && /classList\.toggle\("show", s===sec\)/.test(_navBody));
+
+// Comments live inside this array literal, so strip them before splitting or
+// "// Phase 1 analytics. Manual only" parses as a section name.
 const _addr = ((/const ALTA_SECTIONS\s*=\s*\[([\s\S]*?)\]/.exec(SHELL) || [])[1] || "")
+              .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
               .split(",").map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
-truthy("navTo has a show-list at all", _shown.length > 10);
-truthy("  and an address list", _addr.length > 10);
-check("every addressable section is one navTo can show",
-      _addr.filter(s => s !== "listings" && _shown.indexOf(s) < 0), []);
-check("  and nothing is shown that has no address",
-      _shown.filter(s => _addr.indexOf(s) < 0), []);
+truthy("there is an address list", _addr.length > 10);
+check("  and every name in it is a real section name",
+      _addr.filter(s => !/^[a-z][a-z0-9_]*$/.test(s)), []);
+
+// The panels are built by several templates, not just dashboard.html.
+const _panels = new Set();
+(function walk(dir){
+  for(const e of fs.readdirSync(dir, {withFileTypes: true})){
+    const p = dir + "/" + e.name;
+    if(e.isDirectory()) walk(p);
+    else if(/\.html$/.test(e.name)){
+      const t = fs.readFileSync(p, "utf8");
+      let m; const re = /id="sec_([a-z0-9_]+)"/g;
+      while((m = re.exec(t))) _panels.add(m[1]);
+    }
+  }
+})("D:/AltaScraper/templates");
+truthy("the templates define panels at all", _panels.size > 10);
+check("every addressable section has a panel navTo can show",
+      _addr.filter(s => s !== "listings" && !_panels.has(s)), []);
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

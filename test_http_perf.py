@@ -180,12 +180,16 @@ if os.path.exists(CSS_P):
     missing = sorted(n for n in used if n not in have)
     check("every ti-* the app writes out in full exists", missing, [])
     check("  the scan found the known half-names", sorted(partial),
-          ["chevron-", "layout-sidebar-"])
-    # Both halves of each, read off the source. sidebar.js appends "-collapse"
-    # AFTER the conditional, so the name is layout-sidebar-<side>-collapse --
-    # ti-layout-sidebar-left on its own does not exist in Tabler 3.5.0 at all.
-    built = ["chevron-down", "chevron-right",
-             "layout-sidebar-left-collapse", "layout-sidebar-right-collapse"]
+          ["chevron-"])
+    # Both halves of each, read off the source.
+    #
+    # `layout-sidebar-` used to be here as well: sidebar.js picked a side and
+    # appended "-collapse", giving layout-sidebar-<side>-collapse. That icon is
+    # gone on purpose -- the fold control is now a fixed ti-menu-2 in both
+    # states, because a glyph that flips direction is not read as a menu button
+    # and the label had to carry the meaning instead. A CONSTANT NAME NEEDS NO
+    # ENTRY HERE: the scan above sees it in full and checks it like any other.
+    built = ["chevron-down", "chevron-right"]
     check("  and the names they build exist too",
           sorted(n for n in built if n not in have), [])
     print("     (%d written out, %d built at runtime, %d available)"
