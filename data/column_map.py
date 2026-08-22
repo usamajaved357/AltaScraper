@@ -118,6 +118,12 @@ HEADER_ALIASES = {
     "Bullet Point 5":      "bullet_5",
     "Description":         "description_html",
     "Backend Keywords":    "search_terms",
+    # The Miles sheet's name for the compliance notes column. The app already
+    # treats the two as one thing -- dashboard._card reads
+    # gm("Compliance Notes", "Compliance Report") -- so leaving it unmapped meant
+    # the notes were read for under a name nothing had ever stored, and every
+    # Miles listing showed an empty compliance panel with no error.
+    "Compliance Report":   "compliance_notes",
     # "Column 1", "Column 12", "Column 13" and "Uploaded" are deliberately NOT
     # mapped. They are spreadsheet scaffolding, not listing data, and inventing
     # a home for them would put junk into columns that mean something.
@@ -211,8 +217,45 @@ _MONEY_JUNK = re.compile(r"(?i)\b(?:GBP|USD|EUR|AUD|CAD|JPY|SEK|PLN|MXN|BRL|INR)
                          r"|[£$€¥,%\s]")
 
 
+# A price written with a word attached. These are the ONLY words a money column
+# may carry and still be read as a number.
+#
+# The last resort below used to pull the first run of digits out of ANY string,
+# so a sentence became money:
+#
+#     "Miles NXT POE-LT 320 -- Full Synthetic Polyol Ester..."  -> profit 320.00
+#     "ISO 220"                                                 ->  220.00
+#     "Bullet Point 3"                                          ->    3.00
+#
+# Those are real values that were stored on real rows (see the column-shift
+# repair in data/store.py): a product's VISCOSITY GRADE recorded as its profit in
+# pounds. Nothing warned, because a number is exactly what the caller asked for.
+#
+# A LENGTH LIMIT DOES NOT SEPARATE THESE. "ISO 220" is shorter than the genuine
+# "approx 12.50", so any threshold loose enough to keep the second accepts the
+# first. What actually tells them apart is the WORD: a price is qualified by a
+# small, closed set of them, and "ISO" is not in it. Anything else is prose that
+# happens to contain a digit, and prose is not a price.
+_NUM_QUALIFIERS = {"approx", "approximately", "about", "circa", "ca", "each",
+                   "ea", "per", "unit", "from", "up", "to", "around", "est",
+                   "estimated", "inc", "incl", "exc", "excl", "vat", "rrp", "was",
+                   # Currency CODES belong here, not in _MONEY_JUNK. That regex
+                   # requires a word boundary (\bGBP\b) and the real sheet writes
+                   # "GBP16.00" with no space -- P runs straight into 1, so there
+                   # is no boundary and the code is never stripped. The old
+                   # digit-scrape swallowed it by accident; this has to allow it
+                   # on purpose, or the exact format that cost 53 of 55 prices on
+                   # the first real import goes back to returning nothing.
+                   "gbp", "usd", "eur", "aud", "cad", "jpy", "sek", "pln",
+                   "mxn", "brl", "inr"}
+
+
 def _num(v):
-    """A number, or None. Tolerates 'GBP16.00', '£12.34', '-26.60%', '1,234', ''."""
+    """A number, or None. Tolerates 'GBP16.00', '£12.34', '-26.60%', '1,234', ''.
+
+    A value that is prose which merely CONTAINS a digit returns None -- see
+    _NUM_QUALIFIERS.
+    """
     if v is None:
         return None
     if isinstance(v, (int, float)):
@@ -223,9 +266,26 @@ def _num(v):
     try:
         return float(s)
     except ValueError:
-        # Last resort: pull the first number out of something like "approx 12.50"
-        m = re.search(r"-?\d+(?:\.\d+)?", s)
-        return float(m.group(0)) if m else None
+        pass
+    # Last resort: a number with a recognised qualifier, like "approx 12.50".
+    # Split the ORIGINAL rather than the stripped form -- _MONEY_JUNK removes
+    # spaces, which would run the qualifier into the number.
+    raw = str(v).strip()
+    m = re.fullmatch(r"(?i)\s*((?:[A-Za-z.]+\s*)*?)"
+                     r"([-+]?[£$€¥]?\s*\d[\d,]*(?:\.\d+)?)"
+                     r"\s*%?\s*((?:[A-Za-z.]+\s*)*)", raw)
+    if not m:
+        return None
+    # EVERY word around the number must be a recognised qualifier. Several are
+    # allowed ("9.99 inc VAT"), because each one is still checked -- letting a
+    # second word through unchecked is what the allowlist exists to prevent.
+    words = (m.group(1) + " " + m.group(3)).replace(".", " ").split()
+    if any(w.lower() not in _NUM_QUALIFIERS for w in words):
+        return None
+    try:
+        return float(_MONEY_JUNK.sub("", m.group(2)))
+    except ValueError:
+        return None
 
 
 def verify_column_map(fixed_headers):

@@ -1042,7 +1042,7 @@ def _card(r: dict) -> dict:
         "attributes":   attrs,
         "attrs":        json.dumps(attrs),
         "api_payload":  g("API Payload JSON"),   # exact body sent to Amazon (debug viewer)
-        "_marketplace": _state.get("active_marketplace", "") or attrs.get("marketplace", ""),
+        "_marketplace": _card_marketplace(attrs),
         "row":          g("_row"),
         # WHAT THE STOCK COST, and where that came from, ON THE ROW.
         #
@@ -1059,6 +1059,58 @@ def _card(r: dict) -> dict:
         # not a second reading of the SKU here (Rule 12).
         **_card_cogs(gm("SKU", "Sku")),
     }
+
+
+def _card_marketplace(attrs=None):
+    """Which country's rules this card is judged against. "" only if truly unknown.
+
+    THIS WAS EMPTY ON EVERY CARD, and empty is not a harmless "not sure" here --
+    it silently downgrades the restricted-products verdict.
+
+    listing/restricted.py resolves its tier PER MARKETPLACE and says so in its own
+    docstring: "MARKETPLACE-UNKNOWN = WARN -- hard BLOCK only on a CONFIRMED
+    prohibition for the KNOWN active marketplace." So with no marketplace every
+    tier collapses to the generic RESTRICTED. Measured, passing "" instead of the
+    real country:
+
+        CBD oil                PROHIBITED (US) / CONDITIONAL (UK) -> RESTRICTED
+        disposable vape        PROHIBITED (US)                    -> RESTRICTED
+        upholstered armchair   GATED                              -> RESTRICTED
+
+    And the screen reads the tier back: listings.js only paints the red flag when
+    a match is tier PROHIBITED, and its compliance cell says "gated -- documents
+    required to list" for anything matched that is NOT prohibited. So a product
+    Amazon forbids outright was being shown as a paperwork errand, on every card,
+    in both accounts. That is the reported "the gated checks are not working".
+
+    WHY THE OLD CHAIN COULD NEVER FILL IT.
+      _state["active_marketplace"] is one variable for the whole server and is
+      written only when somebody CHOOSES a marketplace; Listings is not that
+      screen, so it is "" on a normal page load. Measured: "".
+      attrs["marketplace"] was the fallback. Measured across all 174 stored
+      listings in both accounts: absent on 174 of 174.
+
+    NOT the row's own listing_marketplace column either, tempting as it looks. It
+    is 'UK' on every row of every workspace -- including sheelady_us, whose
+    account default is US -- because it is the schema default and nothing has ever
+    written it. Trusting it would judge American listings by British rules with
+    complete confidence. That column is noted as a separate defect rather than
+    quietly relied on here.
+
+    So this goes through routes/scope.marketplace, which is the app's one
+    marketplace resolver (rule 12) and already has the step that was missing: the
+    ACCOUNT'S OWN default. jack_uk and nestwell_goods -> UK, sheelady_us -> US.
+    """
+    try:
+        from routes import scope as _scope
+        mkt = _scope.marketplace(state=_state, account=_active_account() or {})
+    except Exception:
+        mkt = ""
+    if mkt:
+        return mkt
+    # Last resort only, and it is the row's own claim rather than a guess about
+    # the world: a draft that recorded a marketplace in its attributes.
+    return str((attrs or {}).get("marketplace", "") or "").upper()
 
 
 def _card_cogs(sku):
