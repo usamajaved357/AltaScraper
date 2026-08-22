@@ -617,7 +617,10 @@
      Renamed rather than patched at each site: three components were broken,
      and the next one to use the word would have been broken too. The word is
      now free to mean what everyone already assumed it meant. */
-  .okfill{background:var(--green);border-color:var(--green);color:#fff}
+  /* .okfill was the drawer's green Approve button. That button is now one half
+     of the .dwseg status control, which carries the green itself, and nothing
+     in any template or script asks for this class any more -- so the rule went
+     with the markup rather than being left behind to look load-bearing. */
   .hold{background:transparent}
   .empty{color:var(--muted);padding:40px;text-align:center;grid-column:1/-1}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
@@ -1864,6 +1867,60 @@
   .dwactions .srcbtn{background:var(--panel2);border:1px solid var(--line);color:var(--accent);align-self:center}
   .dwactions .prev1{background:#15232e;border:1px solid #2a4257;color:var(--accent2);font-weight:600}
   .dwactions .submit1{background:#1d2a1d;border:1px solid var(--ok-line);color:#86efac;font-weight:600}
+  /* ---- THE DRAWER'S ACTION BAR, ORBIT ----------------------------------
+     Fifteen controls in one flat wrapping row, every one the same size, is a
+     wall rather than a choice. Two groups now: what you DO to a listing on the
+     left, in the order you do it, and the quieter tools on the right.
+
+     Sticky, because the drawer scrolls a long way and Preview/Submit were at
+     the top of a page you had to come back up to. Orbit's own vocabulary --
+     --wspad spacing, 10px radii, the teal accent, one-pixel borders. */
+  .dwbar{position:sticky;top:0;z-index:6;display:flex;gap:10px;align-items:center;
+         flex-wrap:wrap;justify-content:space-between;margin:12px 0 8px;
+         padding:9px 10px;background:var(--panel);border:1px solid var(--line);
+         border-radius:10px}
+  .dwbar-main,.dwbar-side{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+  .dwb{font-size:12.5px;padding:7px 13px;border-radius:8px;cursor:pointer;
+       display:inline-flex;align-items:center;gap:6px;font-weight:600;
+       border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+       transition:filter .15s ease,border-color .15s ease}
+  .dwb:hover{filter:brightness(1.14)}
+  /* THE THREE THAT MATTER, and only these carry colour. When everything is
+     emphasised nothing is. */
+  .dwb-go{background:#15232e;border-color:#2a4257;color:var(--accent2)}
+  .dwb-fix{background:var(--ai-bg);border-color:var(--ai-line);color:var(--ai)}
+  .dwb-send{background:#1d2a1d;border-color:var(--ok-line);color:#86efac}
+  /* The quiet ones stay quiet: same size, no fill. */
+  .dwb-q{background:transparent;color:var(--ink2);font-weight:500}
+  .dwb-q:hover{background:var(--panel2);color:var(--ink)}
+  .dwb-ai{color:var(--ai-strong)}
+  /* ONE SETTING, TWO VALUES, and it shows which is set -- Approve and Hold were
+     two separate buttons, so neither could tell you where the listing already
+     stood. */
+  .dwstatus{margin-left:4px;display:inline-flex;align-items:center}
+  .dwstatus .badge{font-size:11px}
+  .dwseg{display:inline-flex;border:1px solid var(--line);border-radius:8px;
+         overflow:hidden;margin-left:2px}
+  .dwseg-b{font-size:12px;padding:7px 12px;cursor:pointer;border:0;
+           background:transparent;color:var(--ink3);font-weight:500}
+  .dwseg-b + .dwseg-b{border-left:1px solid var(--line)}
+  .dwseg-b:hover{background:var(--panel2);color:var(--ink)}
+  /* THE COLOUR STILL MEANS SOMETHING. Approve was a green button and Hold a
+     plain one; merging them into one control must not flatten that into a
+     single accent, or "which of these two am I on" becomes the only thing the
+     colour says. Green for go, amber for held -- the same two the status pills
+     use. */
+  .dwseg-b.on{font-weight:650}
+  .dwseg-b.on:first-child{background:var(--green);color:#fff}
+  .dwseg-b.on:last-child{background:var(--warn-bg,#2a230f);color:var(--warn)}
+  /* What is left below the bar is a SETTING, not an action. */
+  .dwactions-rest{margin-top:2px}
+  @media (max-width:720px){
+    /* A phone has no room for two groups side by side, and a sticky bar there
+       eats a third of the screen. */
+    .dwbar{position:static;flex-direction:column;align-items:stretch}
+    .dwbar-main,.dwbar-side{justify-content:flex-start}
+  }
   .runpanel{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:12px}
   .runhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
   .runtitle{font-weight:600;font-size:13.5px}

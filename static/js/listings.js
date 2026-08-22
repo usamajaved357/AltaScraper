@@ -1644,31 +1644,81 @@ function drawerContent(r){
         ${priceStr?`<span class="lprice">${priceStr}</span>`:''}
         ${r.profit?`<span class="cc">profit <span class="financial">${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span></span>`:''}
       </div>
-      <div class="dwactions">
-        <button class="suggestbtn" onclick="suggestFields('${esc(r.sku)}')"><i class="ti ti-wand"></i> Suggest missing fields</button>
-        <button class="suggestbtn" onclick="refreshSchemaFor('${esc(r.sku)}')" title="Re-fetch Amazon's allowed values so the dropdowns show the latest options. This does NOT pull your listing's data — use 'Pull live data from Amazon' for that."><i class="ti ti-refresh"></i> Refresh dropdown options</button>
-        ${isAmazonLive(r) ? `<button class="suggestbtn" style="background:#123021;border-color:var(--ok-line);color:var(--ok)" onclick="pullLiveRow('${esc(r.sku)}',this)" title="Fetch this listing's real IMAGES from Amazon — the main image and every secondary image — and replace the generation-time ones on this row. Does not pull A+ content, title, bullets or price."><i class="ti ti-cloud-download"></i> Pull live images from Amazon</button>` : ""}
+      ${/* FIFTEEN CONTROLS IN ONE FLAT ROW, ALL THE SAME SIZE AND WEIGHT.
+          *
+          *     "i want to minimize the buttons, because i believe many tasks are
+          *      already handled by other processes or button already working on
+          *      the backend"
+          *
+          * The same test the row's buttons were put through -- does something
+          * else already do this? -- applied here, and this time several failed
+          * it:
+          *
+          *   Suggest missing fields  GONE. Auto-fix, the button beside it, is
+          *                           Suggest then Apply then Preview: autofix.js
+          *                           calls suggestFields() and then applies.
+          *                           This was step one on its own, sitting next
+          *                           to the button that does all three.
+          *   Refresh dropdowns       DEMOTED. openDrawer already fetches a
+          *                           missing schema and re-renders -- so this
+          *                           only matters when Amazon CHANGES a type,
+          *                           which is maintenance, not a per-listing
+          *                           action. Kept, because it is the only way to
+          *                           clear a stale schema.
+          *   Pull live images        DEMOTED. Sync does it for the whole
+          *                           account, and the live tiles show Amazon's
+          *                           own images either way.
+          *   Push image to live      DEMOTED. The Image Library uploads and
+          *   Upload main image       pushes live; these are those two jobs
+          *                           again, in a second place.
+          *   Approve + Hold          MERGED. One setting with two values, drawn
+          *                           as two competing buttons, neither of which
+          *                           could show which one was already true.
+          *
+          * What is left is what you do to a listing in the order you do it:
+          * look at it, fix it, send it. Nothing was deleted except the first --
+          * the rest is one click away under More.
+          */""}
+      <div class="dwbar">
+        <div class="dwbar-main">
+          <button class="dwb dwb-go" onclick="previewOne('${esc(r.sku)}')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>
+          <button class="dwb dwb-fix" onclick="autoFixLoop('${esc(r.sku)}')" title="Suggest, apply, preview -- repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
+          ${window.WS_READONLY ? `<span class="cc" style="font-size:11.5px;align-self:center"><i class="ti ti-lock"></i> Read-only workspace — cannot publish</span>` : `<button class="dwb dwb-send" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>`}
+          ${/* ONE SETTING, ONE CONTROL, AND IT SHOWS WHICH VALUE IS SET.
+              *
+              * Approve and Hold were two separate buttons, so neither could tell
+              * you where the listing already stood.
+              *
+              * BUT THE TOGGLE CANNOT SPEAK FOR EVERY STATUS, and pretending
+              * otherwise is worse than the two buttons were. Measured across the
+              * 173 stored listings: only 84 are APPROVED or NEEDS_REVIEW. The
+              * other 89 are LIVE, COMPLIANCE_HOLD, API_READY, API_ERROR,
+              * SUBMITTED or PARENT -- Amazon's state or the app's, not a choice
+              * anybody makes here. On those the toggle would light neither half
+              * and quietly say nothing.
+              *
+              * So the REAL status is always shown, in the same pill the card and
+              * the table use, and the toggle sits beside it lighting whichever
+              * half is true. Nothing is hidden and nothing is implied. */""}
+          <span class="dwstatus">${_statusPill(r.status)}</span>
+          <span class="dwseg" role="group" aria-label="Set listing status">
+            <button class="dwseg-b ${String(r.status||'').toUpperCase()==='APPROVED'?'on':''}" onclick="setStatus('${esc(r.sku)}','APPROVED',this)" title="Mark ready to send">Approve</button>
+            <button class="dwseg-b ${String(r.status||'').toUpperCase()==='NEEDS_REVIEW'?'on':''}" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)" title="Hold it back">Hold</button>
+          </span>
+        </div>
+        <div class="dwbar-side">
+          <button class="dwb dwb-q dwb-ai" onclick="openStudioSingle('${esc(r.sku)}')" title="Generate this listing's images"><i class="ti ti-photo"></i> Image Studio</button>
+          ${isAmazonLive(r) ? `<button class="dwb dwb-q dwb-ai" onclick="optimizeLive('${esc(rowAsin(r).own||'')}','${esc(r.sku)}')" title="Rewrite this LIVE listing's copy — pulls it from Amazon first"><i class="ti ti-sparkles"></i> Optimize copy</button>` : ""}
+          <button class="dwb dwb-q" onclick="askAbout('${esc(r.sku)}')" title="Ask about this listing">✦ Ask Claude</button>
+          <button class="dwb dwb-q" onclick="drawerMore(event,'${esc(r.sku)}',${r.row||0},${isAmazonLive(r)?'true':'false'})" title="Everything else"><i class="ti ti-dots"></i> More</button>
+        </div>
+      </div>
+      <div class="dwactions dwactions-rest">
         <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
-        <button class="genmain" onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
-        <button class="pushimg" onclick="pushImageLive('${esc(r.sku)}',this)" title="Send the current main image to the LIVE Amazon listing (updates just the image, no full resubmit)"><i class="ti ti-cloud-upload"></i> Push image to live</button>
-        <label class="pushimg" style="cursor:pointer" title="Upload a clean main image from your computer. It's hosted publicly so Amazon can fetch it, then set as this listing's main image. Preview/Submit sends it."><i class="ti ti-photo-up"></i> Upload main image<input type="file" accept="image/*" style="display:none" onchange="uploadMainImage('${esc(r.sku)}',this)"></label>
-        <button class="okfill" onclick="setStatus('${esc(r.sku)}','APPROVED',this)">Approve</button>
-        <button class="prev1" onclick="previewOne('${esc(r.sku)}')" title="Preview this listing against Amazon (no changes sent)"><i class="ti ti-eye"></i> Preview</button>
-        <button class="prev1" style="background:#fff;color:#111;border-color:#fff" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-loop: Suggest → Apply → Preview. Repeats until zero errors, or stops if progress stalls (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
-        ${window.WS_READONLY ? `<span class="cc" style="font-size:11.5px;align-self:center"><i class="ti ti-lock"></i> Read-only workspace — cannot publish</span>` : `<button class="submit1" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit this</button>`}
-        ${/* OUR asin, not the competitor reference in the SKU -- the same
-            * correction already made on the row's own Optimize button below
-            * (see rowAsin). This second call site was missed: r.asin on a draft
-            * row is the COMPETITOR's, the product the facts were copied from,
-            * never the listing we are about to optimize. The fetch keys off the
-            * SKU so it was not doing damage yet, which is exactly why it needs
-            * fixing now rather than when somebody starts using the argument.
-            */""}
-        ${isAmazonLive(r) ? `<button class="prev1" style="background:#3a2f5c;color:#e9ddff;border-color:#6b5b9a" onclick="optimizeLive('${esc(rowAsin(r).own||'')}','${esc(r.sku)}')" title="Optimize this LIVE listing's copy — pulls it from Amazon so you can rewrite &amp; push the update"><i class="ti ti-sparkles"></i> Optimize copy</button>` : ""}
-        <button class="hold" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)">Hold</button>
-        <button class="askthis" onclick="askAbout('${esc(r.sku)}')">\u2726 Ask Claude</button>
-        ${r.source?`<a class="srcbtn" href="${esc(r.source)}" target="_blank" rel="noopener">source \u2197</a>`:''}
-        <button class="del" onclick="delRow('${esc(r.sku)}',${r.row||0},this)">Delete</button>
+        ${/* Everything that used to sit here has moved: the actions into .dwbar
+            * above, the rest into the More menu (drawerMore). This row keeps
+            * only Minimal mode, which is a SETTING rather than an action -- one
+            * checkbox among twelve buttons was the control nobody could find. */""}
       </div>
       ${aplusHtml}
       <div id="suggestbox_${sid(r.sku)}" class="suggestbox"></div>
@@ -2536,6 +2586,46 @@ function tileMenu(ev, sku, row){
   setTimeout(()=>document.addEventListener("click",closeTileMenu,{once:true}),0);
 }
 function closeTileMenu(){ const m=document.getElementById("tilemenu"); if(m) m.remove(); }
+
+/* THE DRAWER'S OVERFLOW: everything that was demoted off the action bar.
+ *
+ * Same .tilemenu component the card already uses, so this is one menu style in
+ * the app rather than a second one invented for the drawer.
+ *
+ * None of these was deleted. Each failed the "does something else already do
+ * this?" test as a FRONT-ROW control, not as a capability:
+ *
+ *   Refresh dropdowns   openDrawer fetches a missing schema by itself. This is
+ *                       for the rarer case where Amazon CHANGED the type, and it
+ *                       is the only way to clear a stale one.
+ *   Pull live images    Sync does the whole account; this does one row.
+ *   Push image to live  the Image Library does this, and shows you what you are
+ *   Upload main image   pushing first.
+ *   Delete              destructive, and it sat between Ask Claude and the edge.
+ */
+function drawerMore(ev, sku, row, isLive){
+  ev.stopPropagation();
+  closeTileMenu();
+  const m = document.createElement("div");
+  m.className = "tilemenu"; m.id = "tilemenu";
+  m.innerHTML =
+    `<button onclick="refreshSchemaFor('${esc(sku)}');closeTileMenu()" title="Re-fetch Amazon's allowed values for this product type. Use it when a dropdown is missing an option you know exists — it does NOT touch your listing's own data."><i class="ti ti-refresh"></i> Refresh dropdown options</button>`
+    + `<button onclick="openImageLibrary('${esc(sku)}', ${isLive ? "true" : "false"});closeTileMenu()" title="Every image this listing has: upload your own, pick the main one, push one live"><i class="ti ti-library-photo"></i> Image library</button>`
+    + (isLive
+        ? `<button onclick="pullLiveRow('${esc(sku)}',this);closeTileMenu()" title="Fetch this listing's real images from Amazon and replace the generation-time ones. Sync does this for every listing at once."><i class="ti ti-cloud-download"></i> Pull live images</button>`
+        + `<button onclick="pushImageLive('${esc(sku)}',this);closeTileMenu()" title="Send the current main image to the live Amazon listing — the image only, no resubmit"><i class="ti ti-cloud-upload"></i> Push main image live</button>`
+        : "")
+    + `<button class="danger" onclick="delRow('${esc(sku)}',${row||0},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete listing</button>`;
+  document.body.appendChild(m);
+  const btn = ev.target.closest("button");
+  const rect = btn.getBoundingClientRect();
+  m.style.top = (rect.bottom + 4) + "px";
+  // RIGHT-ALIGNED TO THE BUTTON. The drawer is pinned to the right edge, so a
+  // menu laid out leftwards from here would open off the screen.
+  m.style.left = Math.max(8, Math.min(rect.right - 232,
+                                      window.innerWidth - 240)) + "px";
+  setTimeout(() => document.addEventListener("click", closeTileMenu, {once: true}), 0);
+}
 function openGenPanelInDrawer(sku){
   try{
     var sidv=sid(sku);

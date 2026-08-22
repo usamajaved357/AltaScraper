@@ -85,8 +85,14 @@ check("  with the SKU escaped before it is put in the markup",
 check("live rows get one too, from the same builder",
       /openImageLibrary\('\$\{sku\}', \$\{live \? "true" : "false"\}\)/
         .test(fnBody(listings, "rowActions")), true);
-check("  and there is no second copy of that button anywhere",
-      (listings.match(/openImageLibrary\(/g) || []).length, 1);
+// TWO CALL SITES, AND BOTH ARE MEANT. The row's icon, and the drawer's More
+// menu -- the drawer's own Push-image and Upload-image buttons were demoted on
+// the grounds that the Library does both, so the Library had to become reachable
+// from the drawer for that to be true rather than a way of losing them.
+check("  the row and the drawer's More menu, and nowhere else",
+      (listings.match(/openImageLibrary\(/g) || []).length, 2);
+check("    the second one is the More menu",
+      /openImageLibrary\(/.test(listings.slice(listings.indexOf("function drawerMore"))), true);
 // THE CARD, not only the table. It was on the table row and missing from the
 // card, so on a screen showing cards there was no way to reach a listing's
 // images at all -- to upload your own, pick one from another product, or set
