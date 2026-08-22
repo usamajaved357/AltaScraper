@@ -97,6 +97,50 @@ def save(config_path):
         return False
 
 
+def count_for(config_path, account_id):
+    """How many costs are stored for one account. Reads nothing else.
+
+    Separate from clear_account() on purpose: the confirmation has to say a real
+    number BEFORE anything is deleted, and a count produced by the same reader
+    that will do the deleting cannot disagree with it. "Delete 47 costs?" is only
+    worth asking if the 47 is the 47 that will go.
+    """
+    load(config_path)
+    pre = key(account_id, "")
+    with _LOCK:
+        return sum(1 for k in _OVERRIDES if str(k).startswith(pre))
+
+
+def clear_account(config_path, account_id):
+    """Delete every manually-set cost for ONE account. Returns how many went.
+
+    SCOPED TO THE ACCOUNT, and that is the whole care in this function. The keys
+    are "<account>::<SKU>" in one flat dict shared by every workspace, so a
+    careless clear() here would wipe Nestwell's costs while Jack's screen was
+    open. The prefix is built with key(account_id, "") rather than by string
+    concatenation, so it can only ever mean what every other reader means by it.
+
+    An empty account_id would give the prefix "::" and match nothing, which is
+    the safe direction: better to delete none than all. It is refused outright
+    rather than relied on.
+
+    IN PLACE, never rebinding -- see the module docstring. Something registered
+    at startup is holding this dict.
+    """
+    aid = str(account_id or "").strip()
+    if not aid:
+        return 0
+    load(config_path)
+    pre = key(aid, "")
+    with _LOCK:
+        doomed = [k for k in _OVERRIDES if str(k).startswith(pre)]
+        for k in doomed:
+            _OVERRIDES.pop(k, None)
+    if doomed:
+        save(config_path)
+    return len(doomed)
+
+
 def set_cost(config_path, account_id, sku, cost):
     """Set or clear one SKU's cost. `cost` None or "" clears it.
 

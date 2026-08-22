@@ -428,6 +428,13 @@
              title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</a>
           <button class="mktbtn" title="Upload the cost sheet back — or any CSV with a sku (or asin) column and a cost column. Only rows with a cost filled in are applied." onclick="document.getElementById('cogscsv').click()"><i class="ti ti-upload"></i> COGS CSV</button>
           <input type="file" id="cogscsv" accept=".csv" style="display:none" onchange="uploadCogsCsv(this)">
+          <!-- THE WAY BACK OUT. Costs could be set one at a time and by the
+               sheetful, and never removed except one SKU at a time by clearing
+               its box - so a cost sheet uploaded against the wrong account had
+               no undo at all. Kept beside the two buttons that PUT costs in,
+               because that is where somebody looking to take them out will
+               look, and styled as the destructive thing it is. -->
+          <button class="mktbtn cogswipe" title="Delete every cost you have typed or uploaded for this account. Asks first, and says how many. Listings whose SKU carries a price keep showing that price." onclick="cogsClearAll()"><i class="ti ti-eraser"></i> Clear COGS</button>
         </div>
         <!-- The marketplace strip used to sit here as well as in the sidebar.
              Two controls for one setting, and the toolbar one was the wider of

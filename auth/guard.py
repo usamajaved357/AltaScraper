@@ -145,6 +145,13 @@ RULES = [
     ("/delete",                         "approve_delete"),
     ("/clear_empty",                    "approve_delete"),
     ("/miles/clear_history",            "approve_delete"),
+    # Deletes every manually-set cost for the account in one go, and there is no
+    # undo -- cogs_overrides.json is rewritten without them. Setting ONE cost is
+    # ordinary editing and stays under "edit"; wiping all of them moves every
+    # profit, margin and ROI figure on every screen at once, which is the same
+    # weight as a bulk delete. Listed above the broader /cogs entries so the
+    # narrower rule wins.
+    ("/cogs/clear",                     "approve_delete"),
 
     # -- shared, long-running work. These are gated by OWNERSHIP in the route
     #    (domain/job_owner.py) rather than by permission: everyone who may do

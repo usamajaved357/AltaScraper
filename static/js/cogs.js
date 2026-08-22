@@ -218,3 +218,65 @@ async function cogsUploadFile(input){
   }catch(e){ toast(String(e)); }
   finally{ input.value = ""; }
 }
+
+/* ---- TAKING THEM ALL BACK OUT ------------------------------------------
+ *
+ * Costs could be put in one at a time and by the sheetful, and only ever
+ * removed one SKU at a time by emptying its box. So a cost sheet uploaded
+ * against the wrong account -- which is one wrong click on the account
+ * switcher -- had no undo.
+ *
+ * THE NUMBER IN THE WARNING IS THE SERVER'S, not a count of the rows on
+ * screen. The screen shows one view: a filter, a tab, the drafts half. Counting
+ * those would promise to delete forty-one and delete two hundred.
+ */
+async function cogsClearAll(){
+  const id = (typeof acctId === "function" && acctId()) || "";
+  let n = 0;
+  try{
+    const q = await fetch("/cogs/count" + (id ? "?id=" + encodeURIComponent(id) : ""));
+    const j = await q.json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not read the saved costs."); return; }
+    n = Number(j.count) || 0;
+  }catch(e){ toast(String(e)); return; }
+
+  if(!n){
+    // Nothing to delete is not a failure, and a confirmation offering to delete
+    // nothing is a dialog that teaches you to dismiss dialogs.
+    toast("There are no saved costs on this account to delete. Costs read from a "
+          + "SKU's own name are not stored here and are not affected.");
+    return;
+  }
+
+  // WHAT GOES AND WHAT STAYS, both said. The distinction decides whether this
+  // looks like a disaster afterwards: a listing whose SKU is 8.00_3Days_B0G1K5B7QS
+  // still shows 8.00 after this, because that cost is read out of the name and
+  // was never stored here. Only typed and uploaded figures go.
+  if(!confirm("Delete all " + n + " saved cost" + (n === 1 ? "" : "s")
+              + " on this account?\n\n"
+              + "This removes every cost you typed on this screen or brought in "
+              + "from a cost sheet. It cannot be undone.\n\n"
+              + "Listings whose SKU carries a price (like 8.00_3Days_B0G1K5B7QS) "
+              + "keep showing that price -- that figure is read from the name, "
+              + "not stored.\n\n"
+              + "Every profit, margin and ROI figure in the app changes.")){
+    return;
+  }
+
+  try{
+    const r = await fetch("/cogs/clear", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      // The number that was agreed to travels with the request. If the stored
+      // count has moved since the dialog opened -- another tab, a sheet upload
+      // finishing -- the server refuses rather than deleting a different amount
+      // from the one shown.
+      body: JSON.stringify({id: id, expect: n})});
+    const j = await r.json();
+    if(!j || !j.ok){ toast((j && j.error) || "Nothing was deleted."); return; }
+    // Drop the local cache too, or the cells keep drawing costs the server has
+    // just thrown away until the next full reload.
+    Object.keys(COGS_LOCAL).forEach(function(k){ delete COGS_LOCAL[k]; });
+    toast(j.note || (j.deleted + " cost(s) deleted"));
+    if(typeof loadRows === "function") loadRows();
+  }catch(e){ toast(String(e)); }
+}

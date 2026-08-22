@@ -130,6 +130,66 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         return jsonify({"ok": True, "profit": prof, "cost": stored,
                         "cogs_source": ("manual" if stored is not None else "")})
 
+    @app.route("/cogs/count")
+    def cogs_count():
+        """How many costs this account has stored. Reads only; changes nothing.
+
+        Exists so the confirmation can name a real figure before anything is
+        deleted. The browser could count the costs it happens to have drawn, but
+        that is only the rows currently on screen -- a filtered view, or a second
+        page of listings, and it would understate what is about to go.
+        """
+        from domain import cogs_store as _cs
+        aid = str(request.args.get("id") or _state.get("active_account_id") or "")
+        if not aid:
+            return jsonify({"ok": False, "error": "no account is open"}), 400
+        return jsonify({"ok": True, "id": aid,
+                        "count": _cs.count_for(CONFIG_PATH, aid)})
+
+    @app.route("/cogs/clear", methods=["POST"])
+    def cogs_clear():
+        """Delete every manually-set cost for the account that is open.
+
+        WHAT THIS DOES NOT TOUCH, because the difference decides whether this is
+        recoverable: a cost carried in a SKU's own name (8.00_3Days_B0G1K5B7QS)
+        is not stored here and is not affected -- those rows simply go back to
+        reading their cost off the SKU. What goes is every figure TYPED on the
+        listings screen or brought in from a cost sheet, and there is no undo:
+        cogs_overrides.json is rewritten without them.
+
+        Scoped to one account by the store (see cogs_store.clear_account). The
+        keys of every workspace share one file, so this must never become a
+        clear().
+
+        THE COUNT IS RETURNED, not assumed. The browser asks /cogs/count first
+        to word the warning; this answers with what actually went, so a
+        disagreement between the two is visible rather than silent.
+        """
+        from domain import cogs_store as _cs
+        b = request.get_json(force=True) or {}
+        aid = str(b.get("id") or _state.get("active_account_id") or "")
+        if not aid:
+            return jsonify({"ok": False, "error": "no account is open"}), 400
+        # The browser sends back the number it warned about. If the two disagree
+        # the data changed under the dialog -- another tab, or a sheet upload
+        # that finished while it was open -- and deleting a different amount from
+        # the one that was agreed to is exactly the thing not to do.
+        expected = b.get("expect", None)
+        have = _cs.count_for(CONFIG_PATH, aid)
+        if expected is not None and int(expected) != have:
+            return jsonify({"ok": False, "changed": True, "count": have,
+                            "error": ("This account now has %d saved cost%s, not "
+                                      "the %s the warning said. Nothing was "
+                                      "deleted -- close this and try again so "
+                                      "you are agreeing to the right number."
+                                      % (have, "" if have == 1 else "s",
+                                         expected))}), 409
+        gone = _cs.clear_account(CONFIG_PATH, aid)
+        return jsonify({"ok": True, "deleted": gone,
+                        "note": ("%d saved cost%s deleted. Listings whose SKU "
+                                 "carries a price still show that price."
+                                 % (gone, "" if gone == 1 else "s"))})
+
     @app.route("/cogs/upload", methods=["POST"])
     def cogs_upload():
         """Bulk COGS upload: accepts {rows:[{sku,cost}]}, already parsed.
