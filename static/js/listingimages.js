@@ -489,12 +489,21 @@ const _IL_SHELF = {
   "aplus/premium/mobile": {title: "A+ Premium — mobile",
                            note: "The mobile rendering. A separate asset, not a "
                                + "crop of the desktop one."},
+  "source":                {title: "Reference photos",
+                            note: "The supplier or competitor photographs the "
+                                + "images above were generated FROM. Kept so a "
+                                + "result can be checked against what it was "
+                                + "built on. None of these goes to Amazon."},
 };
 
 /* Shelves in the order a listing is built, not alphabetically. Alphabetical put
    "aplus/basic" above "main", which is the reverse of how anyone works. */
 const _IL_SHELF_ORDER = ["main", "secondary", "aplus/basic", "aplus/premium",
-                         "aplus/premium/desktop", "aplus/premium/mobile"];
+                         "aplus/premium/desktop", "aplus/premium/mobile",
+                         // Reference photos come LAST: they are what the images
+                         // were made FROM, not anything that goes to Amazon, and
+                         // putting them above the assets would bury the work.
+                         "source"];
 function _ilGroupOrder(keys){
   const known = _IL_SHELF_ORDER.filter(function(k){ return keys.indexOf(k) >= 0; });
   // Anything the app does not have a name for still gets drawn, after the

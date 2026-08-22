@@ -877,7 +877,15 @@ function _aplusAddResult(job, j, grid){
         <button class="ib" onclick="studioDownload('${cardId}','${esc(job.sku)}')"><i class="ti ti-download"></i></button>
         <button class="ib" onclick="studioToDrive('${cardId}','${esc(job.sku)}')" title="Upload to this account's Drive folder"><i class="ti ti-brand-google-drive"></i> Drive</button>
       </div>`;
-    STUDIO.results[cardId]={data_url:j.data_url, sku:job.sku};
+    // The purpose is carried on the result so Save files it correctly. The
+    // viewport on the RESPONSE is the truth about which one this is: a premium
+    // module is generated twice and the phone version is a different
+    // composition, not the desktop one scaled.
+    STUDIO.results[cardId]={data_url:j.data_url, sku:job.sku,
+                            kind:"aplus",
+                            tier:(job.tier||j.tier||"basic"),
+                            variant:((j&&j.viewport==="mobile")||job.variant==="mobile"
+                                     ? "mobile" : "desktop")};
   } else {
     inner=`<div class="sresfail">✗ ${esc((j&&j.error)||'failed')}</div><div class="srescap">${esc(job.sku)} · ${esc(job.modName)}</div>`;
   }
@@ -896,8 +904,19 @@ function studioTab(t){
 let STUDIO_POLL=null;
 function _studioRenderResult(kind, r, grid){
   // r has .ok,.data_url,.label,.sku and (for aplus) .module,.copy
-  if(kind==="aplus"){ _aplusAddResult({sku:r.sku, modName:(r.module&&r.module.name)||r.label||""}, r, grid); }
-  else { _studioAddResult({sku:r.sku, strategy:r.label}, r, grid); }
+  //
+  // WHAT THE IMAGE IS FOR TRAVELS WITH IT. It is known here -- the section that
+  // was generated from -- and it used to stop here, so save_to_media received a
+  // data URL and a SKU and nothing else, and wrote every image into one flat
+  // folder. Passed on so the file can be filed by purpose (domain/media_kinds).
+  if(kind==="aplus"){
+    _aplusAddResult({sku:r.sku, modName:(r.module&&r.module.name)||r.label||"",
+                     kind:"aplus",
+                     tier:(r.tier||"basic"),
+                     variant:(r.viewport==="mobile" ? "mobile" : "desktop")}, r, grid);
+  } else {
+    _studioAddResult({sku:r.sku, strategy:r.label, kind:kind}, r, grid);
+  }
 }
 async function studioRunBackground(kind, jobs, total){
   // Each section (main / secondary / aplus) has its OWN concept list but they
