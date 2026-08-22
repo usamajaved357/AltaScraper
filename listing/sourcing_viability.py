@@ -134,6 +134,31 @@ def _compile_rule(rc):
         # fact rather than an inference from prose, gets a veto.
         "not_types": {str(t).strip().upper()
                       for t in (rc.get("not_product_types") or []) if t},
+        # PRODUCT TYPES THAT ARE THE ANSWER ON THEIR OWN.
+        #
+        # The veto above was the only thing the product type could do: it could
+        # stop a rule, never start one. So the most authoritative fact available
+        # -- what Amazon itself calls the product -- was ignored whenever the
+        # title happened not to contain a listed word. Measured on the 173 stored
+        # drafts:
+        #
+        #   product_type BATTERY     "6V 4R25 Zinc-Carbon Lantern Batteries"
+        #                            no risk at all: the battery rule looks for
+        #                            "lithium", and these are zinc-carbon
+        #   product_type POWER_STRIP "6 Gang Extension Lead ... 2 Metre Cable"
+        #                            no risk at all: "extension lead" was not a
+        #                            trigger word, though a mains extension lead
+        #                            is among the most enforced things there are
+        #
+        # A title is written by a person and can say anything. A product type is
+        # chosen from Amazon's own taxonomy, so where one exists it is better
+        # evidence than the prose -- and it is exactly what a rule like "this is
+        # a battery" should key on. Treated as a STRONG signal: it fires alone.
+        #
+        # `exclude` and `not_product_types` still apply, so this cannot resurrect
+        # a rule that has been told it does not apply here.
+        "types": {str(t).strip().upper()
+                  for t in (rc.get("product_types") or []) if t},
         # COMPILED ON FIRST USE, NOT AT IMPORT.
         #
         # These three helper patterns exist for every trigger term of every rule
@@ -334,6 +359,15 @@ def check_sourcing_viability(title="", bullets=None, product_type="", category="
         if _pt and _pt in rule.get("not_types", ()):
             continue
         fired, signals = _evaluate(rule, hay)
+        # AMAZON'S OWN CLASSIFICATION, when the words did not settle it. A title
+        # is written by a person; a product type is chosen from Amazon's
+        # taxonomy, so where the two could disagree this is the better evidence.
+        # It fires the rule on its own and says so, so the reason on screen reads
+        # "Amazon lists this as a BATTERY" rather than naming a word that is not
+        # in the title.
+        if not fired and _pt and _pt in rule.get("types", ()):
+            fired = True
+            signals = ["Amazon lists this as %s" % _pt]
         if not fired:
             continue
         docs = _docs_for(rule, mkt if mkt_known else "UK")
