@@ -336,7 +336,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         rows = _bulk.template_rows(CONFIG_PATH, wsid, mkt, enrolled,
                                    catalogue=_cat.index(CONFIG_PATH, wsid, mkt),
                                    sources=sources)
-        body = _bulk.to_csv(_bulk.TEMPLATE_HEADERS, rows)
+        # WIDENED TO FIT THE WIDEST SKU. A fixed ten-column header truncates
+        # nothing on the way out -- the row simply runs wider -- but on the way
+        # back IN, url_columns finds supplier columns by name and nothing names
+        # the eleventh. So exporting a SKU with eleven suppliers, changing
+        # nothing and uploading it again silently lost the eleventh. Measured: a
+        # 15-cell row against a 13-cell header, 10 supplier columns found.
+        body = _bulk.to_csv(_bulk.template_headers(rows), rows)
         name = "supplier-links-%s-%s.csv" % (wsid or "account", mkt or "")
         hdrs = {"Content-Disposition": 'attachment; filename="%s"' % name}
         if dropped:

@@ -41,7 +41,18 @@
           "mains-powered",
           "mains lead",
           "power cord",
-          "corded electric"
+          "corded electric",
+          "extension lead",
+          "extension cable",
+          "power strip",
+          "gang socket",
+          "gang extension",
+          "surge protector",
+          "mains socket",
+          "wall socket",
+          "socket outlet",
+          "plug socket",
+          "trailing socket"
         ],
         "context": [
           "electric",
@@ -113,6 +124,19 @@
       "not_product_types": [
         "DRILL_BITS",
         "HARDWARE_HANDLE"
+      ],
+      "product_types": [
+        "POWER_STRIP",
+        "SURGE_PROTECTOR",
+        "EXTENSION_CORD",
+        "ELECTRIC_FAN",
+        "SPACE_HEATER",
+        "HAIR_DRYER",
+        "ELECTRIC_KETTLE",
+        "TOASTER",
+        "ELECTRIC_BLANKET",
+        "IRON",
+        "HAIR_STYLING_TOOL"
       ]
     },
     {
@@ -171,6 +195,13 @@
         "charger cover",
         "charger organiser",
         "charger organizer"
+      ],
+      "product_types": [
+        "POWER_SUPPLY",
+        "BATTERY_CHARGER",
+        "AC_ADAPTER",
+        "LED_LIGHT_BULB",
+        "STRING_LIGHT"
       ]
     },
     {
@@ -244,6 +275,13 @@
         "toy box",
         "toy chest",
         "cot bumper cover"
+      ],
+      "product_types": [
+        "TOY_FIGURE",
+        "TOY_BUILDING_BLOCK",
+        "BABY_PRODUCT",
+        "INFANT_TOY",
+        "CHILDRENS_COSTUME"
       ]
     },
     {
@@ -396,6 +434,13 @@
         "VACUUM_CLEANER",
         "WATCH",
         "WINDOW_TREATMENT"
+      ],
+      "product_types": [
+        "SKIN_CARE_AGENT",
+        "HAIR_CARE_AGENT",
+        "MAKEUP",
+        "BODY_CLEANSER",
+        "SUNSCREEN"
       ]
     },
     {
@@ -530,6 +575,12 @@
         "PORTABLE_ELECTRONIC_DEVICE_MOUNT",
         "UNMANNED_AERIAL_VEHICLE",
         "MASSAGER"
+      ],
+      "product_types": [
+        "FOOD_BEVERAGE",
+        "SNACK_FOOD",
+        "BEVERAGE",
+        "DIETARY_SUPPLEMENT"
       ]
     },
     {
@@ -605,7 +656,7 @@
     },
     {
       "id": "BATTERY_POWERED",
-      "label": "Product containing lithium cells",
+      "label": "Product containing batteries",
       "risk": "MEDIUM",
       "avoid_if_no_docs": true,
       "reason": "Required for FBA acceptance and requested for MFN listings during compliance sweeps. UN38.3 comes from the cell manufacturer -- if the supplier will not release it, it cannot be created later.",
@@ -641,10 +692,35 @@
           "built in battery",
           "internal battery",
           "battery pack",
-          "power bank"
+          "power bank",
+          "zinc-carbon",
+          "zinc carbon",
+          "alkaline battery",
+          "alkaline batteries",
+          "lantern battery",
+          "lantern batteries",
+          "nimh",
+          "ni-mh",
+          "nicd",
+          "ni-cd",
+          "button cell",
+          "coin cell",
+          "cr2032",
+          "lr44",
+          "aa batteries",
+          "aaa batteries",
+          "9v battery",
+          "d cell",
+          "c cell"
         ],
         "context": [],
-        "corroborating": [],
+        "corroborating": [
+          "rechargeable",
+          "usb-c charging",
+          "usb charging",
+          "charging case",
+          "mah"
+        ],
         "mah_min": 100,
         "wattage_min": 0
       },
@@ -654,6 +730,13 @@
         "battery holder",
         "battery compartment cover",
         "battery tester"
+      ],
+      "product_types": [
+        "BATTERY",
+        "BATTERY_PACK",
+        "RECHARGEABLE_BATTERY",
+        "HEARING_AMPLIFIER",
+        "HEARING_AID"
       ]
     },
     {
@@ -707,6 +790,13 @@
         "costume helmet",
         "goggles case",
         "novelty"
+      ],
+      "product_types": [
+        "SAFETY_GLASSES",
+        "SAFETY_GLOVE",
+        "RESPIRATOR",
+        "HARD_HAT",
+        "SAFETY_HARNESS"
       ]
     },
     {
@@ -1084,7 +1174,27 @@
           "grout cleaner",
           "toilet cleaner",
           "mould remover",
-          "mold remover"
+          "mold remover",
+          "lubricant",
+          "lubricants",
+          "lubricating oil",
+          "lubricating grease",
+          "chain lube",
+          "chain oil",
+          "compressor oil",
+          "refrigeration oil",
+          "hydraulic oil",
+          "gear oil",
+          "engine oil",
+          "machine oil",
+          "machine lubricant",
+          "penetrating oil",
+          "cutting fluid",
+          "grease cartridge",
+          "grease cartridges",
+          "silicone grease",
+          "lithium grease",
+          "white grease"
         ],
         "context": [
           "ml",
@@ -1118,7 +1228,20 @@
         "adhesive hooks",
         "adhesive tape",
         "adhesive pads",
-        "adhesive strips"
+        "adhesive strips",
+        "grease gun",
+        "grease guns",
+        "lube gun",
+        "oil filter",
+        "oil drain",
+        "oil can",
+        "oil pump",
+        "oil dispenser",
+        "lubricant dispenser",
+        "grease nipple",
+        "grease fitting",
+        "oil seal",
+        "oil cooler"
       ],
       "not_product_types": [
         "BROOM",
@@ -1143,7 +1266,23 @@
         "SPONGE",
         "SQUEEGEE",
         "TABLE",
-        "VACUUM_CLEANER"
+        "VACUUM_CLEANER",
+        "TOOL",
+        "HAND_TOOL",
+        "POWER_TOOL",
+        "CRIMPING_PLIERS",
+        "PAINT_ROLLER",
+        "AUTO_ACCESSORY"
+      ],
+      "product_types": [
+        "MACHINE_LUBRICANT",
+        "LUBRICANT",
+        "GREASE",
+        "MOTOR_OIL",
+        "CLEANING_AGENT",
+        "DISINFECTANT",
+        "ADHESIVE",
+        "PAINT"
       ]
     },
     {

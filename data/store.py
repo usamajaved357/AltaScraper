@@ -263,6 +263,43 @@ class SheetLikeStore:
     def __init__(self, store):
         self.store = store
         self.title = "listings"
+        # WHICH COLUMN ORDER A POSITIONAL WRITE IS SPEAKING IN.
+        #
+        # A grid write says "these thirteen values, starting at A2" and nothing
+        # else. Turning that back into named fields needs the layout the CALLER
+        # had in mind, and this shim assumed there was only ever one -- the
+        # standard 49-column order. There is a second: Miles Lubricants writes
+        # its own 13-column sheet (domain/brand_listing.MILES_SHEET_HEADERS),
+        # which starts SKU | Title | Item Highlights where the standard order
+        # starts Competitor ASIN | Source URL | UPC.
+        #
+        # So every Miles row landed one meaning to the left of where it belonged.
+        # Measured on 21 rows of jack_uk, all still in the database:
+        #
+        #     the SKU            was stored as the competitor ASIN
+        #     the TITLE          was stored as the source URL
+        #     Bullet Point 1     was stored as the SKU
+        #     the DESCRIPTION    was stored as the fee source
+        #     "ISO 220"          was stored as a profit of 220.00
+        #
+        # And because title and bullets ended up in columns nothing reads, the
+        # compliance, IP, restricted and claims checks all ran against an EMPTY
+        # listing and passed it. Twenty-one drafts, a quarter of that account,
+        # silently unchecked -- which is the reported "the checks are not
+        # working properly on some ASINs".
+        #
+        # None of that is visible at the write: the row is accepted, the SKU
+        # column has something in it, and the screen shows a row. It only shows
+        # up if you read the values back and ask what they mean.
+        #
+        # So the layout is REMEMBERED when a caller announces it by writing a
+        # header row, and used to read positional writes until told otherwise.
+        # Default None = the standard order, exactly as before.
+        self._layout = None
+
+    def _headers(self):
+        """The column order positional reads and writes are currently in."""
+        return self._layout or ORDERED_HEADERS
 
     # -- reads
     def row_values(self, n):
@@ -374,9 +411,19 @@ class SheetLikeStore:
             if cell:
                 start = cell[0]
         if start <= 1:
-            rows = rows[1:]                      # drop the header row itself
+            # The header row itself -- never a listing, but it DOES say which
+            # layout the rows after it are written in, so it is read for that
+            # before being dropped.
+            self._remember_layout(rows[0])
+            rows = rows[1:]
         written = 0
         for vals in rows:
+            # A header row can arrive anywhere, not only at A1: the Miles writer
+            # appends at the first free row, and on an empty store that is row 2.
+            # Storing it would create a listing whose SKU is a column name.
+            if self._looks_like_header(vals):
+                self._remember_layout(vals)
+                continue
             rec = self._row_to_record(vals)
             if (rec.get("SKU") or "").strip():
                 self.store.upsert_row(rec)
@@ -385,18 +432,22 @@ class SheetLikeStore:
 
     def append_row(self, values, **kw):
         """Add a listing. Upserted by SKU, so an append can never duplicate one."""
-        rec = self._row_to_record(list(values or []))
+        vals = list(values or [])
+        if self._looks_like_header(vals):
+            self._remember_layout(vals)
+            return 0
+        rec = self._row_to_record(vals)
         if not (rec.get("SKU") or "").strip():
-            return 0                             # header row or blank -- nothing to add
+            return 0                             # blank -- nothing to add
         self.store.upsert_row(rec)
         return 1
 
     def insert_row(self, values, index=1, **kw):
         """Insert. Row position carries no meaning in a database, so this is an
-        append -- and a header row inserted at position 1 is ignored, because the
-        schema already defines the columns."""
-        if int(index) <= 1 and self._looks_like_header(values):
-            return 0
+        append -- and a header row is ignored whatever position it claims,
+        because the schema already defines the columns. The position used to be
+        part of the test (index <= 1), which meant a header row inserted anywhere
+        else was stored as a listing."""
         return self.append_row(values)
 
     def update_cell(self, row, col, value):
@@ -444,13 +495,57 @@ class SheetLikeStore:
 
     # -- helpers
     def _row_to_record(self, vals):
-        """Positional row -> dict keyed by SHEET column names."""
-        vals = list(vals) + [""] * (len(ORDERED_HEADERS) - len(vals))
-        return {h: vals[i] for i, h in enumerate(ORDERED_HEADERS)}
+        """Positional row -> dict keyed by SHEET column names.
+
+        Read in whatever layout was last announced -- see _layout in __init__.
+        """
+        hdrs = self._headers()
+        vals = list(vals) + [""] * (len(hdrs) - len(vals))
+        return {h: vals[i] for i, h in enumerate(hdrs)}
+
+    # A row is a HEADER when its cells are column names rather than values. Any
+    # known column name counts, under either spelling, because the whole point is
+    # that the caller may be writing a layout this shim has not seen before --
+    # and MILES_SHEET_HEADERS is exactly that case.
+    #
+    # It used to compare the first three cells against the standard order's first
+    # three and nothing else. The Miles header row therefore failed the test, was
+    # taken for data, and was stored as a listing: one row whose SKU is the
+    # literal text "Bullet Point 1" and whose profit is 1.00, sitting in jack_uk
+    # among real products (row id 304, still there until the repair runs).
+    _HEADERISH = None
+
+    @classmethod
+    def _header_names(cls):
+        if cls._HEADERISH is None:
+            from data.column_map import HEADER_ALIASES
+            names = set(ORDERED_HEADERS) | set(HEADER_ALIASES)
+            # Layout-only columns: real header cells that are not listing data,
+            # so nothing maps them -- but a row containing them is still a header
+            # row and must not be stored as a product.
+            names |= {"Column 1", "Column 12", "Column 13", "Uploaded",
+                      "Compliance Report", "Marketplace"}
+            cls._HEADERISH = {n.strip().lower() for n in names}
+        return cls._HEADERISH
 
     def _looks_like_header(self, values):
-        v = [str(x).strip() for x in (values or [])][:3]
-        return v == [h for h in ORDERED_HEADERS[:3]]
+        v = [str(x).strip() for x in (values or []) if str(x).strip()]
+        if not v:
+            return False
+        known = self._header_names()
+        hits = sum(1 for x in v if x.lower() in known)
+        # Most of the row, not all of it: a layout may carry a column this app
+        # has never heard of, and one unknown name must not make a header row
+        # look like a product.
+        return hits >= max(2, (len(v) * 2) // 3)
+
+    def _remember_layout(self, values):
+        """Record the column order a caller just announced by writing headers."""
+        hdrs = [str(x).strip() for x in (values or [])]
+        while hdrs and not hdrs[-1]:
+            hdrs.pop()
+        self._layout = hdrs or None
+        return self._layout
 
     def _sku_for_row(self, row_n):
         rows = self.store.get_all_rows()

@@ -98,10 +98,16 @@ vm.runInContext(`RET.data = {ok:true, total_returns:212, total_ordered:2438,
   dispositions:{"Sellable":98,"Customer damaged":54},
   statuses:{"Completed":176},
   daily:{"2026-05-14":6,"2026-05-15":18,"2026-05-16":9},
-  asins:[{asin:"B01",title:"Shaker bottle",returns:12,units_sold:300,rate:4.0,
-          refunded:180.0,top_reason:"Item defective"}],
+  asins:[{asin:"B01",name:"Shaker bottle",returns:12,ordered:300,rate:4.0,
+          refunded:180.0,sellable:8,unsellable:4,
+          reasons:{"Item defective":9,"Not as described":3}}],
   comments:[{text:"Stopped working after two weeks",sku:"SKU-1",
-             reason:"Item defective",nature:"Product Quality"}]};
+             reason:"Item defective",nature:"Product Quality"}],
+  intel:{insights:[{severity:"high",
+                    title:"Product Quality — 40% of returns",
+                    body:"84 of the 212 returns are about quality.",
+                    action:"talk to the supplier, or stop selling it",
+                    scope:"Whole account"}]}};
   returnsRender();`, b);
 const full = b.els.retbody.innerHTML || "";
 truthy("the page renders", full.length > 1000);
@@ -121,13 +127,23 @@ console.log("\n  -- and nothing is dimmed as a sample --");
 check("no sample markers at all", (full.match(/ri-sample/g) || []).length, 0);
 falsy("no sample banner", full.indexOf("No returns recorded") >= 0);
 
-console.log("\n=== the insights are derived, not invented ===");
-// Each names the figure it came from, so it can be checked rather than believed.
-truthy("an insight was raised from the nature mix",
-       full.indexOf("Product Quality — 40% of returns") >= 0
-       || /Product Quality — \d+% of returns/.test(full));
-truthy("  and it says what to do", full.indexOf("talk to the supplier") >= 0);
-truthy("  and shows the arithmetic behind it", /\d+ of \d+ returned units/.test(full));
+console.log("\n=== the insights the server derived are the ones drawn ===");
+/* WHERE THE INSIGHTS COME FROM CHANGED, and the assertions had not followed.
+ * They are computed in domain/returns_intel.insights() and arrive on d.intel
+ * now, rather than being worked out in the browser from the nature mix. This
+ * file tests the PAGE, so what it checks is that whatever the server sent is
+ * rendered whole -- title, body and action.
+ *
+ * The invariant those old assertions were really protecting -- that an insight
+ * names the figure it came from, so it can be checked rather than believed --
+ * lives with the code that now owns it: test_returns_intel.py asserts every
+ * insight body contains a digit. Restating it here against a fixture I wrote
+ * myself would only prove that I typed a number into the fixture.
+ */
+truthy("the insight's title is drawn",
+       full.indexOf("Product Quality — 40% of returns") >= 0);
+truthy("  its body too", full.indexOf("84 of the 212 returns") >= 0);
+truthy("  and what to do about it", full.indexOf("talk to the supplier") >= 0);
 
 console.log("\n=== what the seller-fulfilled report cannot give is SAID ===");
 const c = sandbox();
@@ -193,8 +209,10 @@ console.log("\n=== Product Line Performance, the section the report has ===");
   cols.forEach(c2 => truthy("  column: " + c2, js.indexOf(">" + c2 + "<") >= 0));
   truthy("and the report's own subtitle",
          js.indexOf("Return rate and revenue impact by product family") >= 0);
+  // Reworded when the table stopped being expandable rows and became one row
+  // per child ASIN, biggest first.
   truthy("the SKU table carries the report's subtitle too",
-         js.indexOf("Click any row to expand reasons, comments, and disposition") >= 0);
+         js.indexOf("Every child ASIN that came back, biggest first") >= 0);
 
   // THE RULE THAT MATTERS. Sample rows are gated on noData -- the same flag
   // every other panel uses -- not on whether this section happens to be empty.

@@ -62,13 +62,28 @@ check("view-only keeps the screen and loses the buttons",
   /data-readonly/.test(U) && /=== "view"/.test(U));
 
 console.log("== the screens added later are governed at all ==");
-// MEASURED: all ten returned nothing from feature_for() before this.
-[["/overview", "sales"], ["/leading", "sales"], ["/catalog/products", "listings"],
+// MEASURED: all of these returned nothing from feature_for() before this.
+//
+// "/overview" was in this list and has been removed, because the screen it
+// guarded no longer exists: routes/overview_routes.py and static/js/overview.js
+// are both gone, nothing in shell.js or any template mentions it, and
+// auth/users.py has no such feature. The only "overview" left in the app is the
+// ASIN Monitor's own, which is a different screen behind /monitor/overview and
+// is governed by `monitor`.
+//
+// Demanding a permission rule for a deleted route is not a safety check -- it
+// fails forever and there is no fix except deleting the route's guard, which
+// would be the wrong lesson to learn from a red test.
+[["/leading", "sales"], ["/catalog/products", "listings"],
  ["/categories", "listings"], ["/compliance", "listings"], ["/trackers", "monitor"],
  ["/sqp", "traffic"], ["/drppc", "ppc"], ["/notify", "accounts"]].forEach(function (p) {
   check("  " + p[0] + " belongs to " + p[1],
     new RegExp('\\("' + p[0].replace(/\//g, "\\/") + '",\\s*"' + p[1] + '"\\)').test(G));
 });
+// And nothing may quietly reintroduce a rule for it: a guard naming a route the
+// app does not serve is dead weight that reads as protection.
+check("  and no rule survives for the deleted /overview",
+  !/\("\/overview",/.test(G));
 // Mapped onto the EXISTING features rather than given ten new ones: "may this
 // person see turnover" does not become a different question because the screen
 // is new.

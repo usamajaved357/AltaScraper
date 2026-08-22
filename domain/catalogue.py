@@ -174,10 +174,42 @@ def titles(config_path, workspace_id, marketplace):
     """{asin -> title}, for callers that only want the name.
 
     Keyed on ASIN alone, which is what the Traffic table groups by.
+
+    TWO SOURCES, BECAUSE THE SNAPSHOT IS NOT EVERYTHING THAT SELLS. The live
+    catalogue snapshot only holds what the refresher has actually read back from
+    Amazon, and the Traffic table lists everything with a SESSION -- which
+    includes products that have never sold, products added since the last
+    refresh, and marketplaces the refresher has not reached. Those came back
+    with no name at all and the screen printed "(no title recorded)" down the
+    column:
+
+        "i see that in the traffic page Top ASINs by Sessions shows no title"
+
+    Orders are the second source: order_lines carries the ASIN and the title
+    Amazon used at the time, so anything that has ever sold has a name here even
+    when the snapshot has not caught up. The snapshot still wins where both
+    know, because it is the current title rather than the one on an old order.
+
+    NOT the `listings` table, and this is the trap worth naming: the ASIN on a
+    draft row is the COMPETITOR's, the source the product facts were taken from
+    -- not ours. Joining its title onto that ASIN would label our traffic with
+    somebody else's product name.
     """
     out = {}
     for v in index(config_path, workspace_id, marketplace).values():
         a, t = v.get("asin"), v.get("title")
         if a and t:
             out.setdefault(a, t)
+    try:
+        from data import db as _db
+        rows = _db.get_db(config_path).execute(
+            "SELECT asin, title FROM order_lines "
+            "WHERE workspace_id=? AND marketplace=? "
+            "  AND COALESCE(asin,'')<>'' AND COALESCE(title,'')<>'' "
+            "GROUP BY asin",
+            (str(workspace_id or ""), str(marketplace or ""))).fetchall()
+        for r in rows:
+            out.setdefault(str(r["asin"]), str(r["title"]))
+    except Exception:
+        pass          # a missing table must not cost the caller the snapshot
     return out

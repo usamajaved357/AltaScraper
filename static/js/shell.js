@@ -228,7 +228,7 @@ async function loadHome(){
       <button class="peek" title="Reveal" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
       <div style="display:flex;align-items:center;gap:11px">
         <div class="ic" style="background:${col.bg};color:${col.fg}">${_initials(a.label)}</div>
-        <div style="flex:1"><div class="nm pii">${esc(a.label)}</div><div class="sub pii">Amazon account${a.seller_id?(" · "+esc(a.seller_id)):""}</div></div>
+        <div style="flex:1"><div class="nm pii">${esc(a.label)}</div><div class="sub pii">${a.seller_id?("Seller ID "+esc(a.seller_id)):"No Amazon account connected"}</div></div>
         ${stateBadge}
         <button class="wsedit" title="Edit account &amp; sheet links" onclick='event.stopPropagation();openAccountEditor(${JSON.stringify(a.id)})'><i class="ti ti-settings"></i></button>
       </div>
@@ -421,7 +421,20 @@ async function enterAccount(accountId){
       + (_lender ? ' · generating with '+esc(_lender.label)+"'s Amazon app" : ' · no Amazon app')
       + ' · cannot publish';
   } else {
-    document.getElementById("ws_sub").textContent="Amazon account"+(a.seller_id?(" · "+a.seller_id):"");
+    // "Amazon account · A8YN8LJZAAYT4" READ AS A SECOND ACCOUNT.
+    //
+    //     "why do i have that amazon seller zaayt4 in the app, that is not a
+    //      separate account you said"
+    //
+    // It never was one -- A8YN8LJZAAYT4 is Nestwell Goods' own seller id, shown
+    // under its name. But captioned "Amazon account" and sitting on its own
+    // line under the workspace name, it reads as another entry in the list, and
+    // it read that way twice to the person who owns the accounts. The id is
+    // worth keeping (it is how you tell two workspaces of the same brand
+    // apart); the caption is what made it a thing rather than a fact about the
+    // thing above it.
+    document.getElementById("ws_sub").textContent =
+      a.seller_id ? ("Seller ID " + a.seller_id) : "No Amazon account connected";
   }
   document.getElementById("ws_title").textContent="Listings";
   document.getElementById("crumbs").innerHTML=`<span class="sep">/</span><span class="here">${esc(a.label)}</span>`;

@@ -64,15 +64,29 @@ truthy("  falling back to the open workspace, not to blank",
 truthy("  and sends it", "&account=\" + encodeURIComponent(askedFor)" in JS)
 
 print("\n== and the server refuses to answer for a different one ==")
-truthy("a mismatch is detected", "want != active" in OR)
-truthy("  and returned as an error, not as rows", '"account_mismatch": True' in OR)
+# THE PROPERTY, NOT THE MECHANISM. What must hold is that one account's
+# customers never appear under another's name. It used to be enforced by
+# comparing the request against a process-wide "selected account", which broke
+# the moment a second tab was open. It is enforced by auth/guard.py now --
+# the named account is checked against the user's own workspace list -- so the
+# assertions below check THAT, and check that orders still routes through the
+# one shared rule rather than growing its own again.
+import auth.guard as _G, auth.users as _U
+truthy("a named account is checked against the user's workspaces",
+       "account" in _G.WORKSPACE_PARAMS)
+truthy("  and a user scoped elsewhere is refused",
+       not _U.can_access_workspace({"active": True,
+                                    "workspaces": ["nestwell_goods"]},
+                                   "jack_uk"))
+truthy("  a refusal is still an error, not rows", '"account_mismatch": True' in OR)
 truthy("  naming what was asked for", '"asked_for"' in OR)
 truthy("  and what is actually open", '"selected"' in OR)
-truthy("  with no rows at all", '"rows": [],' in OR)
+truthy("  and orders still uses the one shared rule",
+       "from domain import account_scope" in OR)
 truthy("  as a 409, so it cannot be mistaken for an empty account", "), 409" in OR)
 # The refusal must say WHY in words somebody can act on.
-truthy("  and it explains rather than just failing",
-       "one company's customers under another's" in OR)
+truthy("  an account this app does not have is still refused",
+       "There is no account called" in OR)
 
 print("\n== the browser checks the answer as well ==")
 truthy("a mismatch reply is shown, never rendered as rows",
@@ -134,8 +148,7 @@ truthy("  before Amazon is called at all",
 # asserted here is that this route still refuses and still explains; what the
 # explanation says is asserted once, where it now lives.
 AS = open(os.path.join(HERE, "domain", "account_scope.py"), encoding="utf-8").read()
-truthy("  and it says why it refused",
-       "_scope.refusal(asked, open_id, \"orders\")" in OR)
+truthy("  and it says why it refused", "_scope.refusal(asked," in OR)
 truthy("  from the one shared rule", "from domain import account_scope" in OR)
 truthy("  which names both accounts", '"asked_for"' in AS and '"selected"' in AS)
 truthy("  and says nothing was read or changed",
@@ -145,7 +158,9 @@ truthy("  and why that is the safe answer",
 # Silence must not be a mismatch, or adding the guard to a route would break
 # every caller that has not been taught to send an account yet.
 truthy("a caller that names no account is unaffected",
-       "if asked is None:" in AS and "return False" in AS)
+       "return False" in AS)
+truthy("  and the change is explained where the rule lives",
+       "WHY DROPPING IT IS SAFE" in AS)
 
 print("\n== and the doorman can now see an account named inside a list ==")
 # THE SYSTEMIC ONE. named_workspace read TOP-LEVEL fields only, so a request

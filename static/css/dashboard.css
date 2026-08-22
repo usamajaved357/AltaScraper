@@ -1933,6 +1933,28 @@
   .mktbtn{font-size:12px;padding:5px 11px;border-radius:8px;background:var(--panel2);
           border:1px solid var(--line);color:var(--muted);cursor:pointer}
   .mktbtn.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent2);font-weight:600}
+  /* A BUTTON THAT DELETES SHOULD NOT LOOK LIKE THE TWO NEXT TO IT. Clear COGS
+     sits beside Cost sheet and COGS CSV, which add costs; wearing the same grey
+     it is one slip away from either. Quiet until you go near it -- red on hover
+     rather than red always, so a toolbar of eight buttons does not shout. */
+  .mktbtn.cogswipe{color:var(--red)}
+  .mktbtn.cogswipe:hover{background:var(--red-bg);border-color:var(--red-line);
+                         color:var(--red)}
+  /* "How costs work" -- a reading panel, so it is wider than a dialog and
+     scrolls inside itself rather than making the page behind it scroll. */
+  .cogsexpl-back{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;
+                 display:flex;align-items:center;justify-content:center;padding:24px}
+  .cogsexpl{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+            width:min(760px,100%);max-height:86vh;display:flex;flex-direction:column;
+            box-shadow:0 18px 60px rgba(0,0,0,.5)}
+  .cogsexpl-head{display:flex;align-items:center;gap:10px;padding:13px 16px;
+                 border-bottom:1px solid var(--line);font-size:14px}
+  .cogsexpl-head button{margin-left:auto}
+  .cogsexpl-body{padding:14px 18px 20px;overflow-y:auto;font-size:12.5px;
+                 color:var(--text)}
+  .cogsexpl-body code{background:var(--panel2);border-radius:4px;padding:1px 5px;
+                      font-size:11.5px}
+  .cogsexpl-body table{max-width:100%}
   .mktlabel{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .browsemodels{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--accent);
                 text-decoration:none;padding:7px 11px;border:1px solid var(--line2);border-radius:8px}
@@ -3608,7 +3630,8 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    UltraFlex Midsole Lightweight Shoes for Running, Walking & Everyday Wear -
    White/Gum". In an eleven-column table that column gets about 100px, so one
    row became twelve lines tall and a table of twenty products was unreadable
-   scrolling. Two lines, an ellipsis, and the full title in the tooltip. */
+   scrolling. Two lines, an ellipsis, and the full title in the tooltip.
+
    THE WIDTH GOES ON THE CELL, not on the clamped box. An auto-layout table
    sizes a column from its content, and a -webkit-box with a min-width simply
    overflowed the cell it was in -- the returns figure ended up printed through
@@ -4182,6 +4205,27 @@ table.ordtable tbody tr.orddetail > td{
 /* ---- notes under a table --------------------------------------------- */
 .odp-note{ font-size:10.5px; color:var(--ink3); margin-top:5px; line-height:1.5; }
 .odp-note.warn{ color:var(--warn); }
+
+/* ---- the folded supplier block, for screens with many of them ---------
+   The Repricer draws one of these per tracked SKU. At full size that was
+   8,888px of a 19,201px page on 64 SKUs, so folded is the default there and
+   the summary line has to carry the answer on its own. */
+.odp-sec-c{ padding:6px 0 0; border-top:1px solid var(--line); }
+.odp-c-sum{ list-style:none; cursor:pointer; display:flex; align-items:center;
+            gap:7px; flex-wrap:wrap; font-size:11.5px; color:var(--ink2);
+            padding:5px 2px; border-radius:6px; }
+.odp-c-sum::-webkit-details-marker{ display:none; }
+.odp-c-sum:hover{ background:var(--panel2); }
+.odp-c-sum b{ color:var(--text); font-weight:600; }
+.odp-c-sum b.neg{ color:var(--red); }
+.odp-c-dot{ color:var(--ink3); margin:0 1px; }
+.odp-c-warn{ color:var(--warn); }
+.odp-c-bad{ color:var(--ink3); }
+/* The chevron turns instead of the row moving, so a list of sixty does not
+   jump when one is opened. */
+.odp-c-chev{ transition:transform .15s ease; font-size:13px; color:var(--ink3); }
+details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
+.odp-c-body{ padding:2px 0 8px; }
 
 @media (max-width: 720px){
   /* Four columns of supplier do not fit a phone; the price and the profit

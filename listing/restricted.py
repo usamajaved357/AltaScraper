@@ -118,6 +118,13 @@ ACCESSORY_NOUNS = [
     "brackets", "mount", "remote", "thermostat", "replacement", "spare",
     "spares", "part", "parts", "accessory", "accessories", "filter",
     "filters", "wheels", "casters",
+    # THE THING THAT PUTS THE SUBSTANCE ON, which is not the substance. Added
+    # when lubricants were brought under the chemicals rule and "Chain Oil
+    # Applicator" -- a tool -- started asking for a safety data sheet. Same
+    # shape as "Patio Heater Cover": the noun immediately after the trigger
+    # names what is being sold.
+    "applicator", "applicators", "dispenser", "dispensers", "gun", "guns",
+    "nozzle", "nozzles", "pump", "pumps",
 ]
 
 _ACCESSORY_SUFFIXES = {

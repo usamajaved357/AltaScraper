@@ -1586,31 +1586,23 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
 // It also could not read a spreadsheet, and "save it as CSV first" is a step
 // nobody should need. domain/source_bulk.read_table handles both, and it is
 // already the reader the supplier-link upload uses (Rule 12).
-async function uploadCogsCsv(input){
-  const file = input.files && input.files[0];
-  if(!file) return;
-  const fd = new FormData();
-  fd.append("file", file);
-  fd.append("id", (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT)
-                    ? (CUR_ACCOUNT.id || "") : "");
-  toast("Reading " + file.name + "…");
-  try{
-    const j = await (await fetch("/cogs/upload_sheet",
-                                 {method:"POST", body:fd})).json();
-    input.value = "";
-    if(!j.ok){ toast("Upload failed: " + (j.error || "")); return; }
-    // WHAT HAPPENED TO EVERY ROW, not just a total. A bulk import that reports
-    // only a count is how twelve silently-skipped rows become "the costs did
-    // not save".
-    const bad = (j.rows || []).filter(function(r){ return r.status !== "set"; });
-    toast(j.note + (bad.length ? " " + bad.length + " row(s) could not be used."
-                               : ""));
-    if(bad.length){
-      console.warn("cost sheet rows not applied:", bad);
-    }
-    await loadLiveCatalog(true);   // refresh so margins recompute
-  }catch(e){ toast("Error: " + e); input.value = ""; }
-}
+/* uploadCogsCsv WAS HERE, and it was the second of two cost uploads.
+ *
+ * Both posted to /cogs/upload_sheet, so they agreed about how a file is READ
+ * (rule 12 was already applied to the parser). They disagreed about something
+ * more important: this one wrote IMMEDIATELY, while cogs.js dry-runs the file,
+ * shows how many costs it would set and how many rows it cannot use, and asks.
+ *
+ * A bulk overwrite of what things cost moves every profit, margin and ROI figure
+ * in the app, and the button offering it without a confirmation was the one
+ * always visible on the toolbar. Deleted rather than fixed: two ways to do one
+ * thing is the fault, and the surviving one is already the careful version.
+ *
+ *     "uploading the cogs sheet should be in the one place, not scattered
+ *      everywhere"
+ *
+ * static/js/cogs.js -> cogsUploadOpen / cogsUploadFile.
+ */
 let _imgFetchBusy=false;
 async function fetchLiveImages(){
   if(_imgFetchBusy) return;

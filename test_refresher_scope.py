@@ -180,9 +180,18 @@ truthy("and it imports the one module that owns the rule",
 print("\n== the guard still refuses a browser asking for another account ==")
 # The behaviour this whole mechanism must not weaken. Checked against the rule
 # itself rather than a running server, so it holds with nothing else up.
-truthy("a named other account is a mismatch", _as.is_mismatch("selvora", "jack_uk"))
-falsy("  the same account is not", _as.is_mismatch("jack_uk", "jack_uk"))
-falsy("  and silence is not", _as.is_mismatch(None, "jack_uk"))
+# THE RULE CHANGED AND THIS MECHANISM SURVIVES IT. is_mismatch used to refuse
+# any request disagreeing with the server's selected account -- which is what
+# blocked the refresher and is why background_context exists. It returns False
+# for everyone now (see domain/account_scope.is_mismatch: one variable for the
+# whole server, and a second browser tab was refused for asking about the
+# account it was showing). The refresher is therefore doubly unblocked, and the
+# exemption stays because the rule could be put back.
+falsy("a disagreement is no longer a mismatch", _as.is_mismatch("selvora", "jack_uk"))
+falsy("  nor is the same account", _as.is_mismatch("jack_uk", "jack_uk"))
+falsy("  nor silence", _as.is_mismatch(None, "jack_uk"))
+truthy("and the refresher is still exempt in its own right",
+       "background_context" in RF)
 falsy("  nor is an empty ask", _as.is_mismatch("", "jack_uk"))
 falsy("  nor is nothing being open", _as.is_mismatch("selvora", ""))
 _ref = _as.refusal("selvora", "jack_uk", "data")

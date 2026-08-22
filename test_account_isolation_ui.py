@@ -152,10 +152,25 @@ with app.test_client() as c:
         # THE BUG, reproduced: ask as the OTHER account while this one is
         # selected. Before the fix this returned account a's listings.
         j = c.get("/rows_all?account=" + b).get_json() or {}
-        truthy("asking as another account is refused", j.get("account_mismatch"))
-        check("  and it names who asked", j.get("asked_for"), b)
-        check("  and who is actually selected", j.get("selected"), a)
-        truthy("  and returns no rows at all", not j.get("rows"))
+        # WHAT CHANGED. This used to be refused because the SERVER had `a`
+        # selected -- one variable for the whole process, so a second browser
+        # tab was refused for asking about the account it was showing ("i
+        # switched from headbanger lures recently but i am on nestwell goods
+        # but still i am shown this error"). The request is honoured now.
+        #
+        # The isolation this file exists to protect is unchanged and is
+        # asserted directly below: it is auth/guard.py that decides whether
+        # this caller may open `b` at all, against their own workspace list --
+        # which is authorisation, where the old comparison was only agreement
+        # with a global.
+        check("asking as another account is no longer refused for that reason",
+              bool(j.get("account_mismatch")), False)
+        import auth.users as _AU
+        check("  and a user scoped elsewhere still cannot reach it",
+              _AU.can_access_workspace({"active": True, "workspaces": [a]}, b),
+              False)
+        truthy("  while one scoped to it can",
+               _AU.can_access_workspace({"active": True, "workspaces": [b]}, b))
         # And the honest case still works: no refusal for the selected account.
         j2 = c.get("/rows_all?account=" + a).get_json() or {}
         truthy("asking as the selected account is NOT refused",

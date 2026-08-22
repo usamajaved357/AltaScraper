@@ -10,13 +10,68 @@
  */
 const fs = require("fs");
 const vm = require("vm");
+const path = require("path");
+const { execFileSync } = require("child_process");
 
 // Overridable so a regression can be demonstrated against a patched copy --
 // a test nobody has ever seen fail is not yet known to test anything.
 const src = fs.readFileSync(
   process.env.USERS_JS || "D:/AltaScraper/static/js/users.js", "utf8");
-const LIST = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const ME = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+
+/* THE FIXTURES ARE BUILT, NOT STORED.
+ *
+ * These two came from process.argv[2] and [3] -- JSON files a person was
+ * expected to save by hand from a running server and pass in. The suite runs
+ * every test_*.js bare, so both were `undefined`, readFileSync threw
+ * ERR_INVALID_ARG_TYPE, and the file died before its first assertion. A test
+ * that cannot run on its own is not in the suite, whatever the folder says.
+ *
+ * Worse than not running: a saved fixture is a photograph. auth/users.py has
+ * grown from 17 features to 42 since these were written, and a stored copy
+ * would still be describing seventeen -- so the panel could stop rendering
+ * twenty-five of them with every assertion green.
+ *
+ * So the vocabulary is read from auth/users.py itself, which is the same source
+ * routes/users_routes._vocabulary() serves to the browser. Not a second copy of
+ * a rule (rule 12) -- the same constants, read directly, so a feature added
+ * there turns up here without anyone remembering to re-export anything.
+ */
+function _fixtures() {
+  const py = process.env.PYTHON || "python";
+  const out = execFileSync(py, ["-c", [
+    "import json, sys",
+    "sys.path.insert(0, r'" + __dirname + "')",
+    "from auth import users as u",
+    "voc = {'ok': True,",
+    " 'all_permissions': u.PERMISSIONS, 'all_features': u.FEATURES,",
+    " 'levels': list(u.LEVELS), 'role_features': u.ROLE_FEATURES,",
+    " 'feature_parent': u.FEATURE_PARENT,",
+    " 'feature_groups': [{'title': t, 'features': fs} for t, fs in u.FEATURE_GROUPS],",
+    " 'roles': list(getattr(u, 'ROLES', u.ROLE_FEATURES.keys()))}",
+    // One user is enough: every assertion below reads users[0]. Given a real
+    // role so role_features has something to say about it.
+    // permissions is a LIST of the keys this person holds (users.py builds it
+    // with list(user.get('permissions') or [])), and features is a map of
+    // feature -> level. Getting those the wrong way round makes the panel throw
+    // rather than render, which is how this fixture was first written.
+    "voc['users'] = [{'id': 'u_test_1', 'name': 'Test Person',",
+    "                 'email': 'test@example.com', 'role': list(u.ROLE_FEATURES)[-1],",
+    "                 'permissions': list(u.PERMISSIONS)[:1],",
+    "                 'features': {f: 'view' for f in list(u.FEATURES)[:1]}}]",
+    "print(json.dumps(voc))",
+  ].join("\n")], { cwd: __dirname, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  return JSON.parse(out);
+}
+
+const LIST = process.argv[2]
+  ? JSON.parse(fs.readFileSync(process.argv[2], "utf8"))
+  : _fixtures();
+// /users/me is the same vocabulary plus who you are -- that is the whole point
+// of _vocabulary() existing once, and the bug this file was written for was the
+// two endpoints describing the app differently.
+const ME = process.argv[3]
+  ? JSON.parse(fs.readFileSync(process.argv[3], "utf8"))
+  : Object.assign({}, LIST, { user: LIST.users[0] });
 
 function freshSandbox() {
   const s = {

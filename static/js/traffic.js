@@ -403,10 +403,20 @@ function _tTable(d, cur){
     // Orbit truncates: "Flux Footwear Adapt Runners Barefoot Sho...
     // (B0D8JZWSNH)". The whole title is on the hover, and the ASIN is never
     // truncated, because it is the part you would copy.
+    // AND WHEN NOTHING KNOWS THE NAME, show the ASIN rather than the words
+    // "(no title recorded)". An ASIN identifies the product and can be pasted
+    // into Amazon; the sentence identifies nothing, and repeated down a column
+    // it reads as a broken screen rather than as a gap. The row keeps its ASIN
+    // line underneath either way, so nothing is lost by not saying it.
+    //
+    // Most of these now have a name at all -- domain/catalogue.titles reads
+    // orders as well as the live snapshot -- and what is left is genuinely a
+    // product this app has never seen sell or synced.
     h += '<tr><td class="trafname">'
-      + '<span class="trafname-t pii" title="' + _tEsc(r.title || "") + '">'
-      + _tEsc(r.title || "(no title recorded)") + '</span>'
-      + '<code class="cc trafname-a">' + _tEsc(r.asin) + '</code>'
+      + '<span class="trafname-t pii" title="' + _tEsc(r.title || r.asin) + '">'
+      + _tEsc(r.title || r.asin) + '</span>'
+      + (r.title ? ('<code class="cc trafname-a">' + _tEsc(r.asin) + '</code>')
+                 : '<span class="cc trafname-a">not synced yet</span>')
       + (r.children > 1 ? '<span class="cc trafname-a">· ' + r.children
                           + ' variations</span>' : "")
       + '</td>';

@@ -39,8 +39,21 @@ console.log("== nothing became unreachable ==");
 const navSecs = new Set(
   (HTML.match(/data-sec="([a-z]+)"/g) || []).map((m) => m.split('"')[1]));
 // The list navTo iterates to show/hide panels IS the set of real screens.
-const listMatch = SHELL.match(/\["imagerefs"[^\]]*\]/);
-const known = listMatch ? (listMatch[0].match(/"([a-z]+)"/g) || []).map((s) => s.replace(/"/g, "")) : [];
+//
+// It used to be its OWN array, beginning ["imagerefs", ...], which is what this
+// matched. navTo derives the panels from ALTA_SECTIONS now, so that literal is
+// gone -- and a regex that matches nothing yields an empty list, which then
+// passes "every screen has something to click on" vacuously. The assertion was
+// green for the wrong reason before it went red.
+//
+// Comments live inside the ALTA_SECTIONS literal, so they are stripped first;
+// SHELL is already comment-free via codeOnly(), but the entries are read
+// defensively in case that changes.
+const listMatch = SHELL.match(/const ALTA_SECTIONS\s*=\s*\[([\s\S]*?)\]/);
+const known = listMatch
+  ? (listMatch[1].replace(/\/\/[^\n]*/g, "").match(/"([a-z][a-z0-9_]*)"/g) || [])
+      .map((s) => s.replace(/"/g, ""))
+  : [];
 check("navTo's screen list was found", known.length > 10);
 const orphans = known.filter((s) => !navSecs.has(s));
 check("  every screen still has something to click on",

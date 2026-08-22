@@ -65,15 +65,23 @@ truthy("and listings that have run out", /"Out of stock"/.test(L));
 // A blank quantity is not a zero quantity.
 truthy("  an unknown quantity is not counted as zero",
        /q !== undefined && q !== null && q !== "" && Number\(q\) === 0/.test(L));
+// The count is wrapped in _n() now, which formats it for display. Pinning the
+// raw expression meant a formatting change read as a missing tile.
 truthy("the drafts view keeps the tiles that suit it",
-       /tile\(c\.HOLD \+ c\.ERROR, "Blocked or errored", "holds"\)/.test(L));
+       /tile\(_n\(c\.HOLD \+ c\.ERROR\), "Blocked or errored", "holds"\)/.test(L));
 
 console.log("\n=== one group, not two ===");
 truthy("the two sub-captions are gone", !/const _amzSub/.test(M));
 truthy("  including the one that was a paragraph",
        !/Price, images and optimisation still work; Sync brings the full listing in\.<\/div>/.test(M));
-truthy("the list is drawn without them",
-       /let liveHtml  = \(liveRows\.length \? listBlock\(liveRows\) : ""\)/.test(M));
+// ONE BOX, NOT TWO -- and that landed after this assertion was written. Each
+// listBlock() opens its own bordered card with its own header row, so drawing
+// the live rows and the live catalogue as two blocks put a repeated
+// Image/ASIN/Title header in the middle of the list with nothing to explain it.
+// listBlocks() (plural) draws the groups under a single header, which is what
+// the captions being removed had always implied.
+truthy("the list is drawn as ONE group, without them",
+       /let liveHtml\s+= listBlocks\(\[\{rows: liveRows\}/.test(M));
 
 console.log("\n=== the difference is still said, on the row that has it ===");
 truthy("a catalogue-only listing is badged", /&gt;no draft<\/span>|>no draft<\/span>/.test(M));

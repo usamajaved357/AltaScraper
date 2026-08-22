@@ -32,8 +32,14 @@ const L = fs.readFileSync("D:/AltaScraper/static/js/listings.js", "utf8");
 const M = fs.readFileSync("D:/AltaScraper/static/js/miles_template.js", "utf8");
 // Both files explain the change in comments, using the very words these
 // assertions look for. Strip them, or the test passes on the explanation.
-const strip = s => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
-                    .replace(/<!--[\s\S]*?-->/g, "");
+//
+// BY SCANNING, NOT BY REGEX. The regex version this used to carry deleted 5,716
+// characters of live listings.js -- lines 1654 to 1760, including the Preview,
+// Auto-fix, Submit and Optimize buttons -- because a regex literal ending
+// [^.;|]*/gi looks exactly like the end of a block comment. Assertions about
+// those buttons then reported that they did not exist. See test_helpers.js.
+const { stripJsComments } = require("./test_helpers.js");
+const strip = s => stripJsComments(s).replace(/<!--[\s\S]*?-->/g, "");
 const LC = strip(L), MC = strip(M);
 
 console.log("=== one definition of the action row ===");
@@ -79,19 +85,55 @@ const rowCalls = (row.match(/;(\w+)\(/g) || []).map(s => s.slice(1, -1))
   .filter(c => c !== "stopPropagation");
 const dupes = rowCalls.filter((c, i) => rowCalls.indexOf(c) !== i);
 check("no two buttons call the same thing", dupes.join(",") || "none", "none");
+
+/* THREE OF THESE ARE NOT IN THE ACTION BAR, and demanding they be there was the
+ * fault. openDrawer is on the tile image and the tile body, priceEdit is on the
+ * price cell, autoFixLoop is on a button inside the preview -- none of them is
+ * an icon in rowActions, and none ever will be. `row` is sliced to rowActions
+ * alone, so all three counted zero.
+ *
+ * openDrawer also breaks "exactly one" on purpose: the picture and the text
+ * BOTH open the drawer, which is one job reached two ways rather than two
+ * buttons doing the same thing. The invariant that actually protects the card is
+ * the dupes check above -- no two entries in the action bar call the same
+ * function -- plus every action being reachable at all.
+ */
 for (const fn of ["setStatus", "openStudioSingle", "openImageLibrary",
-                  "openDrawer", "autoFixLoop", "optimizeLive", "priceEdit",
-                  "tileMenu"]) {
-  truthy("  " + fn + " has exactly one button", rowCalls.filter(c => c === fn).length === 1);
+                  "optimizeLive", "tileMenu", "syncForSku", "addVariant"]) {
+  truthy("  " + fn + " is one entry in the action bar",
+         rowCalls.filter(c => c === fn).length === 1);
+}
+// Reachable somewhere on the card, wherever that is.
+for (const fn of ["openDrawer", "autoFixLoop", "priceEdit"]) {
+  truthy("  " + fn + " is reachable from the card",
+         (LC.match(new RegExp("\\b" + fn + "\\(", "g")) || []).length > 0);
+}
+// And the action bar has not quietly grown a second home for them.
+for (const fn of ["openDrawer", "autoFixLoop", "priceEdit"]) {
+  truthy("    but not duplicated into the action bar too",
+         rowCalls.indexOf(fn) < 0);
 }
 
 console.log("\n=== the live-only buttons stay live-only ===");
-// Optimize and Price both act on a listing that exists on Amazon. Drawing them
-// on a draft offers something that cannot work.
+// Optimize acts on a listing that exists on Amazon. Drawing it on a draft offers
+// something that cannot work.
 truthy("Optimize is behind the live check", /\$\{live \? `<button[\s\S]{0,200}optimizeLive/.test(row));
-truthy("Price is too", /\$\{live \? `<button[\s\S]{0,200}priceEdit/.test(row));
-truthy("and the Amazon link needs an ASIN as well as live",
-       /\$\{live && r\.asin \?/.test(row));
+// Price moved OUT of the action bar and onto the price cell itself, which is
+// where you would go to change a price. It is guarded there instead.
+truthy("Price is guarded where it now lives, on the price cell",
+       /priceEdit\(/.test(LC) && /isAmazonLive\(r\)|live/.test(
+         LC.slice(Math.max(0, LC.indexOf("priceEdit(") - 400),
+                  LC.indexOf("priceEdit(") + 80)));
+// THE GUARD GOT STRICTER, not looser. It was `live && r.asin`, and r.asin on a
+// draft row is the COMPETITOR's ASIN -- so on a live row that link could open
+// somebody else's product page. It is now ownLiveAsin(r): our own ASIN read back
+// from the live catalogue, which is empty unless Amazon has confirmed the
+// listing. That covers "live" and "has an ASIN" in one fact instead of two.
+truthy("the Amazon link is drawn only from OUR OWN live ASIN",
+       /const ownAsin\s*=\s*ownLiveAsin\(r\)/.test(LC)
+       && /\$\{ownAsin\?/.test(LC));
+truthy("  and no button passes the competitor ASIN to a live action",
+       !/optimizeLive\('\$\{esc\(r\.asin/.test(LC));
 
 console.log("\n" + fails + " failed");
 process.exit(fails ? 1 : 0);

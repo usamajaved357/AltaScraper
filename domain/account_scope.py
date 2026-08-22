@@ -78,20 +78,54 @@ def background_context(app, *args, **kwargs):
 
 
 def is_mismatch(asked, open_id) -> bool:
-    """True when `asked` names an account other than the one that is open.
+    """Always False now. The account a request NAMES is the account it gets.
 
-    `asked` of None means the caller said nothing -- never a mismatch.
-    An open_id of "" means nothing is open, so there is nothing to disagree
-    with; the route's own credential checks refuse that case with a better
-    message than this could give ("connect this account first").
+    THIS USED TO REFUSE ANY REQUEST THAT DISAGREED WITH THE SERVER'S SELECTION,
+    and that was wrong in a way that took a user report to see:
+
+        "i switched from headbanger lures recently but i am on nestwell goods
+         but still i am shown this error"
+
+    The screenshot: the address bar on /w/nestwell_goods/orders, the sidebar
+    reading Nestwell Goods LTD, and the screen refusing because the SERVER still
+    had headbanger_lures selected.
+
+    `open_id` comes from _state["active_account_id"] -- ONE VARIABLE FOR THE
+    WHOLE SERVER PROCESS. routes/accounts_routes.py says exactly this about its
+    marketplace twin: "one variable for the whole server and 44 places across 20
+    files fall back to it, so one stale value answers for all of them at once".
+    With more than one browser tab open -- there were three in that screenshot
+    -- whichever tab last called /accounts/select owns it, and every other tab
+    is refused for asking about the account it is actually showing. Two people
+    using the app at once is the same collision, permanently.
+
+    WHY DROPPING IT IS SAFE, and this is the part that matters:
+
+    This comparison never established WHO was asking. It asked whether a global
+    agreed with them. Authorisation -- may this signed-in user open this account
+    at all -- lives in auth/guard.py, which checks the named account against the
+    user's own workspace list on EVERY request, one level into a list of rows,
+    across every parameter a route might read it from. `account` was missing
+    from that list and has been added, which closed a real hole on the four
+    handlers that read it, two of which return another company's order lines and
+    the buyer's town and postcode.
+
+    So the check that mattered now runs earlier and covers more, and the check
+    that fired was the wrong one.
+
+    WHAT IS GIVEN UP, stated plainly rather than glossed: this also caught a
+    BROWSER bug -- a screen showing one account while asking about another. That
+    was worth having. It is traded for a screen that works with more than one
+    tab open, and the trade is only acceptable because the authorisation above
+    is real and independent of it. If a client bug of that shape appears, it
+    will now show wrong data rather than an error, so the browser-side check in
+    static/js/orders.js (which compares the reply's account to the one on
+    screen) is the remaining line and should stay.
+
+    Kept as a function rather than deleted at seven call sites so there is one
+    place to read this, and one place to change it back.
     """
-    if asked is None:
-        return False
-    a = str(asked).strip()
-    o = str(open_id or "").strip()
-    if not a or not o:
-        return False
-    return a != o
+    return False
 
 
 def refusal(asked, open_id, subject="data"):
