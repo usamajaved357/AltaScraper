@@ -292,7 +292,25 @@ WORKSPACE_SWITCH = {
 # So the account is now checked WHEREVER IT IS NAMED, on every request, which
 # puts the enforcement back at one place and makes it hold for routes nobody
 # has written yet.
-WORKSPACE_PARAMS = ("id", "account_id", "workspace_id", "workspace", "ws")
+WORKSPACE_PARAMS = ("id", "account_id", "workspace_id", "workspace", "ws",
+                    # `account` WAS MISSING, and four handlers read it:
+                    #   routes/orders_routes.py:118   /orders/list?account=
+                    #   routes/orders_routes.py:632   /orders/detail?account=
+                    #   routes/listing_routes.py:174  the rows_all helper
+                    #   routes/listing_routes.py:807  /rows_all?account=
+                    # so a named account went unchecked on exactly the routes
+                    # that carry another company's customers -- order lines,
+                    # buyer town and postcode. The only thing refusing a
+                    # cross-account read there was the "is this the open
+                    # account?" comparison in the route, which is a check about
+                    # a process-wide variable rather than about who is asking.
+                    "account")
+
+# Sentinels that are not workspace ids. `__all__` means "the account that is
+# open" by the time a route reads it (routes/orders_routes.py turns it into ""),
+# and an old bookmark may still carry it -- refusing it as an unknown workspace
+# would show an error for something nobody chose.
+WORKSPACE_SENTINELS = ("__all__", "_no_account", "")
 
 # Paths where an `id` means something else entirely. Checking these against the
 # workspace list would refuse ordinary work -- deleting a media file by id,
@@ -327,14 +345,14 @@ def named_workspace(path, args, json_body):
             v = (args or {}).get(field)
         except Exception:
             v = None
-        if v:
+        if v and str(v).strip() not in WORKSPACE_SENTINELS:
             return str(v).strip()
     for field in WORKSPACE_PARAMS:
         try:
             v = (json_body or {}).get(field)
         except Exception:
             v = None
-        if v:
+        if v and str(v).strip() not in WORKSPACE_SENTINELS:
             return str(v).strip()
     # AND ONE LEVEL INTO A LIST OF ROWS.
     #

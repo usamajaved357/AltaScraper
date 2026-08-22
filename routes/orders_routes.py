@@ -58,25 +58,53 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         screen, one keystroke later, and were not -- which is exactly the shape
         of hole that survives a fix.
 
-        Nothing is inferred from the caller's id: an account other than the open
-        one is refused outright, never quietly substituted.
+        WHAT CHANGED, AND WHY IT IS NOT A LOOSENING. This used to compare the
+        account asked for against the one the SERVER had selected -- a single
+        variable for the whole process. With more than one browser tab open,
+        whichever tab last switched owns it, and every other tab was refused for
+        asking about the account it was actually showing:
 
-        THE COMPARISON ITSELF now lives in domain/account_scope.py. It was
-        written out here and again in listing_routes.py, from the same defect
-        found twice -- and a rule about who may see whose data is the worst
-        thing to keep two copies of, because the next route to need it copies
-        whichever it finds first (rule 12).
+            "i switched from headbanger lures recently but i am on nestwell
+             goods but still i am shown this error"
+
+        That comparison never established WHO was asking, only whether a global
+        agreed with them. Who may ask is settled in auth/guard.py, which checks
+        the named account against the signed-in user's own workspace list on
+        every request -- and `account` is in that list now, which it was not
+        when this was written. The check that matters runs earlier and harder,
+        so this one goes.
+
+        What is still refused: an account this app does not have. That cannot be
+        answered for at all, and saying so beats an empty screen.
 
         The "" -> None normalisation stays here: this function's callers pass a
         value that may be empty, and empty has always meant "said nothing"
         rather than "asked for the account with no name".
         """
         from domain import account_scope as _scope
-        asked = str(asked or "").strip() or None
-        open_id = _open_account_id()
-        if not _scope.is_mismatch(asked, open_id):
-            return None
-        return jsonify(_scope.refusal(asked, open_id, "orders")), 409
+        cfg = _cfg() if callable(_cfg) else (_cfg or {})
+        asked = str(asked or "").strip()
+        if not asked:
+            return None                      # said nothing -> the open account
+        # STILL THROUGH THE ONE SHARED RULE (rule 12). Seven route files ask
+        # this question; if each kept its own comparison there would be seven
+        # chances for them to disagree about who may see whose data. The rule
+        # itself changed -- see domain/account_scope.is_mismatch -- and every
+        # caller changed with it, which is the point of it being shared.
+        if _scope.is_mismatch(asked, _open_account_id()):
+            return jsonify(_scope.refusal(asked, _open_account_id(),
+                                          "orders")), 409
+        # An account this app does not have cannot be answered for at all, and
+        # saying so beats an empty screen that looks like a quiet week.
+        acc = next((a for a in (cfg.get("accounts") or [])
+                    if str(a.get("id") or "") == asked), None)
+        if acc is None:
+            return jsonify({"ok": False, "account_mismatch": True,
+                            "asked_for": asked, "selected": _open_account_id(),
+                            "error": ("There is no account called %r in this "
+                                      "app, so there are no orders to read."
+                                      % asked)}), 409
+        return None
 
     def _accounts_in_scope():
         """Which accounts to ask. THE OPEN ONE, unless every account is asked for.
@@ -143,8 +171,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         # So the browser now names the account it believes is open, and a
         # mismatch is refused outright -- the same guarantee the listings screen
         # already has (routes/listing_routes.py, "account_mismatch").
-        if want and active and want != active:
-            return {"__mismatch__": {"asked_for": want, "selected": active}}
+        # THE REQUEST NAMES THE ACCOUNT, AND THE REQUEST WINS.
+        #
+        #     "i switched from headbanger lures recently but i am on nestwell
+        #      goods but still i am shown this error"
+        #
+        # This used to refuse when `want` disagreed with `active`. Why that was
+        # wrong, and why dropping it is safe, is written out once in
+        # domain/account_scope.is_mismatch -- the shared rule every one of these
+        # routes asks. `active` goes back to being what it should always have
+        # been: the answer for a request that names nothing.
         if not want:
             # No explicit ask -> the account currently open. Falling back to
             # "all" here is exactly the bug above.
@@ -185,22 +221,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
         since = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days)
 
         scope = _accounts_in_scope()
-        # A DISAGREEMENT ABOUT WHOSE SCREEN THIS IS. Refused rather than
-        # answered, and it names BOTH so the mismatch can be read rather than
-        # guessed at. See _accounts_in_scope for why.
-        if isinstance(scope, dict) and "__mismatch__" in scope:
-            m = scope["__mismatch__"]
-            return jsonify({
-                "ok": False, "account_mismatch": True,
-                "asked_for": m["asked_for"], "selected": m["selected"],
-                "rows": [],
-                "error": ("This screen is showing %s but %s is the account "
-                          "that is open. Nothing is listed rather than risk "
-                          "showing one company's customers under another's "
-                          "name. Reopen the account and try again."
-                          % (m["asked_for"], m["selected"])),
-            }), 409
-
+        # The "this screen is showing X but Y is open" refusal used to sit here.
+        # It is gone because nothing can produce it any more -- _accounts_in_scope
+        # honours the account the request names, and who may name it is settled
+        # by auth/guard.py before this runs. Left in place it would be dead code
+        # that reads as live protection, which is worse than none: somebody
+        # would trust it.
         rows, errors, asked = [], [], []
         for a in scope:
             aid = str(a.get("id") or "")

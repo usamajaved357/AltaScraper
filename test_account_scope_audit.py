@@ -146,9 +146,23 @@ for f in ("routes/optimize_routes.py", "routes/live_routes.py",
 print("\n== and silence is still not a mismatch ==")
 # Every one of these guards had to be safe to add ahead of its callers.
 AS = open(os.path.join(HERE, "domain", "account_scope.py"), encoding="utf-8").read()
-truthy("a caller that names no account is served", "if asked is None:" in AS)
-truthy("  and that is deliberate, not incidental",
-       "SILENCE IS NOT A MISMATCH" in AS)
+import domain.account_scope as AS_MOD
+# THE RULE CHANGED, AND ONE PLACE CHANGED IT. is_mismatch used to refuse any
+# request that disagreed with the server's SELECTED account -- a single variable
+# for the whole process, so a second browser tab was refused for asking about
+# the account it was showing ("i switched from headbanger lures recently but i
+# am on nestwell goods but still i am shown this error"). It returns False now.
+#
+# What still protects the data is auth/guard.py: it checks the account a request
+# names against the signed-in user's own workspace list, on every request. That
+# is authorisation; the old comparison was only ever agreement with a global.
+truthy("silence is still not a mismatch", not AS_MOD.is_mismatch(None, "jack_uk"))
+truthy("  and neither is a disagreement any more",
+       not AS_MOD.is_mismatch("nestwell_goods", "headbanger_lures"))
+truthy("  the reason is written where the rule is",
+       "WHOLE SERVER PROCESS" in AS)
+truthy("  including what was given up for it", "WHAT IS GIVEN UP" in AS)
+truthy("  and the report that prompted it", "headbanger lures" in AS)
 
 print("\n%d failed" % len(fails))
 for f in fails:
