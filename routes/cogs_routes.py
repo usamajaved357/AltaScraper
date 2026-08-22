@@ -140,11 +140,38 @@ def register(app, *, _state, _COGS_OVERRIDE, _save_cogs_overrides, _estimate_pro
         page of listings, and it would understate what is about to go.
         """
         from domain import cogs_store as _cs
+        from domain import cogs as _cogs
         aid = str(request.args.get("id") or _state.get("active_account_id") or "")
         if not aid:
             return jsonify({"ok": False, "error": "no account is open"}), 400
-        return jsonify({"ok": True, "id": aid,
-                        "count": _cs.count_for(CONFIG_PATH, aid)})
+        out = {"ok": True, "id": aid, "count": _cs.count_for(CONFIG_PATH, aid)}
+        # WHERE THIS ACCOUNT'S COSTS ACTUALLY COME FROM, so the explainer can
+        # show figures rather than only describing rules. A page that says "a
+        # typed cost beats one read from the SKU" is a rule; the same page saying
+        # "47 read from the SKU, 3 you typed, 12 not known" is something you can
+        # check against what you believe.
+        try:
+            acc = (_active_account() or {}) if callable(_active_account) else {}
+            mkt = str(request.args.get("marketplace")
+                      or acc.get("default_marketplace")
+                      or _state.get("active_marketplace") or "").upper()
+            cov = _cogs.coverage(CONFIG_PATH, aid, mkt,
+                                 _cs.all_overrides(CONFIG_PATH))
+            manual = out["count"]
+            out["breakdown"] = {
+                "marketplace": mkt,
+                "known": cov.get("known", 0),
+                "unknown": cov.get("unknown", 0),
+                "total": cov.get("total", 0),
+                "manual": manual,
+                # Everything with a cost that is not a manual override was read
+                # out of the SKU's own name. Never negative: an override can sit
+                # on a SKU the snapshot has not got, so manual can exceed known.
+                "from_sku": max(0, cov.get("known", 0) - manual),
+            }
+        except Exception:
+            pass                    # the count is the answer; the extra is a bonus
+        return jsonify(out)
 
     @app.route("/cogs/clear", methods=["POST"])
     def cogs_clear():

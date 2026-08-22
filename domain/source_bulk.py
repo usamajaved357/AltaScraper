@@ -276,6 +276,25 @@ TEMPLATE_HEADERS = ["sku", "asin", "product"] + [
     "supplier %d" % i for i in range(1, TEMPLATE_SUPPLIER_COLS + 1)]
 
 
+def template_headers(rows=None):
+    """The header for a sheet, widened to fit the SKU with the most suppliers.
+
+    Ten columns is the normal case and stays the minimum. But a SKU can have
+    more, and a row wider than its header LOSES the extra cells on the way back
+    in -- url_columns finds supplier columns by NAME, and nothing names cell 14.
+    So a person who exported eleven suppliers, changed nothing and uploaded it
+    again would find the eleventh gone, with no error and no mention.
+
+    Widening the header instead of truncating the rows means the round trip
+    cannot lose a supplier, however many there are.
+    """
+    widest = 0
+    for r in (rows or []):
+        widest = max(widest, len(r) - 3)      # sku, asin, product
+    n = max(TEMPLATE_SUPPLIER_COLS, widest)
+    return ["sku", "asin", "product"] + ["supplier %d" % i for i in range(1, n + 1)]
+
+
 def template_rows(config_path, workspace_id, marketplace, enrolled,
                   catalogue=None, sources=None, current=None):
     """The sheet to hand someone, already filled in with what we know.
@@ -348,9 +367,19 @@ def template_rows(config_path, workspace_id, marketplace, enrolled,
                # source_link uses, not a second copy of the pattern (Rule 12).
                got.get("asin") or _link._asin_from_sku(s),
                got.get("title") or ""]
-        # Every link it already has, then empty columns to fill. A SKU with more
-        # suppliers than the template has columns keeps them all: the row simply
-        # runs wider than the header, and read_table pads the header out.
+        # Every link it already has, then empty columns to fill.
+        #
+        # THE HEADER IS NOT PADDED, whatever the note here used to claim. A row
+        # wider than the header keeps its extra cells through read_table -- 15
+        # cells against a 13-cell header, measured -- but url_columns matches
+        # supplier columns BY NAME, and nothing names cell 14. So the eleventh
+        # supplier onward was read into the sheet, written back out, and dropped
+        # in silence on the way in: the exact shape of "uploading suppliers
+        # removed the ones I already had".
+        #
+        # The header is widened instead, by the caller, to cover the SKU with the
+        # most suppliers -- see template_headers(). Here we only make sure the row
+        # is at least the standard width.
         row.extend(have)
         while len(row) < 3 + TEMPLATE_SUPPLIER_COLS:
             row.append("")

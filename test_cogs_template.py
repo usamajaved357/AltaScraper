@@ -145,19 +145,33 @@ truthy("a title with a comma is quoted, once, for both",
        '"Grill, Large"' in SH.to_csv(["a"], [["Grill, Large"]]))
 
 print("\n=== the file goes to the SERVER, which knows how to read it ===")
-J = open(r"D:\AltaScraper\static\js\miles_template.js", encoding="utf-8").read()
+# THE UPLOADER MOVED. This read miles_template.js, which held a second cost
+# upload -- same endpoint, but it wrote immediately where the other dry-runs the
+# file and asks. Two buttons doing one job with different safety, and the
+# always-visible one was the unsafe one, so it was deleted rather than fixed.
+# What it was asserting is still true of the survivor, which is where this looks
+# now. ("uploading the cogs sheet should be in the one place")
+J = open(r"D:\AltaScraper\static\js\cogs.js", encoding="utf-8").read()
 truthy("the browser posts the file", "/cogs/upload_sheet" in J)
 falsy("  rather than splitting lines on commas itself",
       'lines[i].split(",")' in J)
 truthy("  and says what happened to every row, not just a total",
        'r.status !== "set"' in J)
+# And the deleted one has not quietly come back.
+MT = open(r"D:\AltaScraper\static\js\miles_template.js", encoding="utf-8").read()
+falsy("there is no second uploader", "async function uploadCogsCsv" in MT)
 R = open(r"D:\AltaScraper\routes\cogs_routes.py", encoding="utf-8").read()
 truthy("the route reads it with the shared reader", "_sb.read_table" in R)
 truthy("  and writes nothing until the whole file has been read",
        "a sheet that fails halfway does not leave half the catalogue changed" in R)
 H = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
 truthy("there is a button to get the sheet", "/cogs/template.csv" in H)
-truthy("  beside the one that uploads it", 'id="cogscsv"' in H)
+# id="cogscsv" was the second upload's file input and is gone with it. The one
+# that remains is id="cogs_file", moved onto this toolbar from the selection bar
+# -- a whole-account price list has nothing to do with which rows are ticked.
+truthy("  beside the one that uploads it", 'id="cogs_file"' in H)
+truthy("  which is the one that asks first", 'onclick="cogsUploadOpen()"' in H)
+falsy("  and the second upload's input is gone too", 'id="cogscsv"' in H)
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails:

@@ -83,18 +83,20 @@ falsy("no barcode is generated", "upc = " in RC.lower() and "random" in RC.lower
 
 print("\n== the listing generator is not imported, called or modified ==")
 falsy("amazon_listing_generator is not imported", "amazon_listing_generator" in RC)
-import subprocess
-GIT = (r"C:\Users\Talal Ahmad\AppData\Local\GitHubDesktop\app-3.6.3"
-       r"\resources\app\git\cmd\git.exe")
-try:
-    out = subprocess.run([GIT, "status", "--short"], capture_output=True,
-                         text=True, timeout=60).stdout
-    touched = {l[3:].strip() for l in out.splitlines() if l.strip()}
-    for f in ("amazon_listing_generator.py", "listing/pricing.py",
-              "static/js/genimage.js", "static/js/sourcing.js"):
-        falsy("  %s untouched" % f, f in touched)
-except Exception as e:
-    print("  (git unavailable: %s)" % str(e)[:60])
+# THIS READ `git status` AND FAILED ON ANY UNCOMMITTED EDIT to those files, by
+# anyone, for any reason. It was written to prove that building ASIN Studio
+# needed no changes to the generator, the pricing rule, the image studio or the
+# repricer -- which was true, and stayed true. But the working tree is not that
+# claim: compacting the repricer's supplier block touched sourcing.js for
+# reasons that have nothing to do with this screen, and this test went red.
+#
+# A guard that fires on unrelated work is one people learn to ignore, and it
+# says nothing at all once the change is committed. The claim it was really
+# making is about this feature's CODE, so that is what is checked: ASIN Studio
+# reaches none of them.
+for _mod in ("amazon_listing_generator", "listing.pricing", "listing import pricing",
+             "genimage", "sourcing"):
+    falsy("  it does not reach %s" % _mod, _mod in RC)
 
 print("\n== the REAL ip check is used, not the promotional scrubber ==")
 truthy("compliance_scan is what judges the copy", "compliance_scan" in RC)

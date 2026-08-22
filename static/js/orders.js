@@ -721,25 +721,111 @@ const _ORD_SHIP_HELP =
  * ended is a different situation from one source, and hiding the ended ones
  * makes them look the same.
  */
-function _ordSourcesHtml(block, forTitle){
+/* ONE RENDERER, TWO AMOUNTS OF ROOM.
+ *
+ *     "the repricer details are taking too much space and looks cluttered,
+ *      make it look a good ai, taking less space and still displaying all
+ *      information"
+ *
+ * An ORDER panel shows one order, so the full table is right there: four columns,
+ * a sentence under each supplier saying how it ships, and a note explaining what
+ * the two money columns mean.
+ *
+ * The REPRICER draws the same block for every tracked SKU. Measured on jack_uk,
+ * 64 SKUs: the page is 19,201px tall and this section is 8,888px of it -- 46% --
+ * with "Cheapest first — it re-sorts itself..." repeated 55 times and "this
+ * reading is out of date" 57 times. The same two sentences, over and over, are
+ * not information after the first reading.
+ *
+ * So `opts.compact` folds it to ONE line that still carries the answer -- how
+ * many suppliers, the cheapest landed cost, what you keep, how many could not be
+ * read -- and opens to the identical table on click. Nothing is removed; the
+ * default is a summary instead of the whole thing. A second renderer for the
+ * narrow case would have drifted from this one (rule 12), so it is an argument.
+ */
+function _ordSourcesHtml(block, forTitle, view){
   if(!block) return '';
-  const head = '<div class="odp-sec">'
-    + '<h4 class="odp-h"><i class="ti ti-shopping-cart"></i>Where to buy it'
-    + (forTitle ? '<span class="odp-count">· ' + _oEsc(forTitle) + '</span>' : '')
-    + '</h4>';
+  // `view`, not `opts`: `opts` is already this function's list of supplier
+  // options a few lines down, and shadowing it here would have made the compact
+  // summary read the settings object as if it were the suppliers.
+  const _cmp = !!(view && view.compact);
+  // A <details> when folded, so opening it needs no JavaScript and the browser
+  // keeps it open while the row redraws around it.
+  const _open = _cmp ? '<details class="odp-sec odp-sec-c">' : '<div class="odp-sec">';
+  const _shut = _cmp ? '</details>' : '</div>';
+  const head = _open
+    + (_cmp ? '' :
+       '<h4 class="odp-h"><i class="ti ti-shopping-cart"></i>Where to buy it'
+       + (forTitle ? '<span class="odp-count">· ' + _oEsc(forTitle) + '</span>' : '')
+       + '</h4>');
 
+  // Both of these are a fact worth reading at a glance, so folded they are the
+  // summary line itself rather than something to open. _shut, not a literal
+  // '</div>': the wrapper is a <details> when compact.
   if(block.error){
-    return head + '<div class="odp-note warn">Could not read the supplier links: '
-         + _oEsc(block.error) + '</div></div>';
+    return head
+         + (_cmp ? '<summary class="odp-c-sum odp-c-bad">'
+                   + '<i class="ti ti-alert-triangle"></i> Could not read the '
+                   + 'supplier links</summary>' : '')
+         + '<div class="odp-note warn">Could not read the supplier links: '
+         + _oEsc(block.error) + '</div>' + _shut;
   }
   const opts = block.options || [], s = block.summary || {};
   if(!opts.length){
-    return head + '<div class="odp-note">No supplier links are tracked for this '
+    return head
+         + (_cmp ? '<summary class="odp-c-sum odp-c-bad">'
+                   + '<i class="ti ti-plus"></i> No supplier yet</summary>' : '')
+         + '<div class="odp-note">No supplier links are tracked for this '
          + 'SKU. Add one in the Repricer to see where to buy it and what it '
-         + 'would earn.</div></div>';
+         + 'would earn.</div>' + _shut;
   }
 
   let h = head;
+
+  /* THE ONE LINE, when there is no room for the table.
+   *
+   * It has to answer, without opening: can I buy this, for how much, what is
+   * left, and is anything wrong. Those are the four the table is read for.
+   * "Every supplier is out of stock" is still shouted in full below, because it
+   * is the one state where the summary is not enough.
+   */
+  if(_cmp){
+    // The one the table would mark "best", or the first that can be bought at
+    // all. Read off the same flag the rows use, not re-derived by sorting here.
+    const best = opts.filter(function(o){ return o.cheapest; })[0]
+              || opts.filter(function(o){ return o.state !== 'dead'
+                     && o.landed !== null && o.landed !== undefined; })[0];
+    const dead  = opts.filter(function(o){ return o.state === 'dead'; }).length;
+    const unk   = opts.filter(function(o){ return o.state === 'unknown'; }).length;
+    const stale = opts.filter(function(o){ return o.stale; }).length;
+    const parts = [];
+    parts.push('<b>' + opts.length + '</b> supplier' + (opts.length === 1 ? '' : 's'));
+    if(best && best.landed !== null && best.landed !== undefined){
+      parts.push('best <b>' + _oEsc(_oMoney(best.landed, best.currency)) + '</b>'
+                 + (best.label ? ' <span class="cc">'
+                    + _oEsc(String(best.label).slice(0, 26)) + '</span>' : ''));
+      if(best.profit !== null && best.profit !== undefined){
+        parts.push('you keep <b' + (best.profit < 0 ? ' class="neg"' : '') + '>'
+          + _oEsc(_oMoney(best.profit, best.currency)) + '</b>'
+          + (best.roi_pct === null || best.roi_pct === undefined ? ''
+             : ' <span class="cc">' + Number(best.roi_pct).toFixed(0) + '% ROI</span>'));
+      }
+    }
+    // WHAT IS WRONG, counted rather than repeated per row. 57 copies of "this
+    // reading is out of date" said the same thing 57 times; "2 out of date"
+    // says it once and is the number you act on.
+    const warn = [];
+    if(dead)  warn.push(dead + ' ended or out of stock');
+    if(unk)   warn.push(unk + ' could not be read');
+    if(stale) warn.push(stale + ' out of date');
+    if(warn.length) parts.push('<span class="odp-c-warn">' + warn.join(' · ') + '</span>');
+    h += '<summary class="odp-c-sum">'
+      +  '<i class="ti ti-chevron-right odp-c-chev"></i>'
+      +  '<i class="ti ti-shopping-cart"></i> '
+      +  parts.join('<span class="odp-c-dot">·</span>')
+      +  '</summary><div class="odp-c-body">';
+  }
+
   // EVERY LINK GONE. The loudest thing this panel can say, so it goes first: the
   // order has to be fulfilled and there is nowhere to buy it.
   if(s.all_dead){
@@ -816,18 +902,26 @@ function _ordSourcesHtml(block, forTitle){
   h += '</div>';
 
   // WHAT THE PROFIT IS MEASURED AGAINST, and what that delivery line means.
-  h += '<div class="odp-note">'
-    +  '<button class="odp-i" type="button" title="' + _oEsc(_ORD_SHIP_HELP)
-    +  '" aria-label="What the delivery line means">i</button> '
-    +  'Cheapest first — it re-sorts itself when a supplier changes their price. '
-    +  '“You pay” is their price plus their postage. '
-    +  (block.unit_price !== null && block.unit_price !== undefined
-        ? '“You keep” is what is left of the '
-          + _oEsc(_oMoney(block.unit_price, (opts[0] || {}).currency))
-          + ' this buyer actually paid, after Amazon’s fee and that supplier.'
-        : '“You keep” is what is left after Amazon’s fee and that supplier.')
-    +  '</div></div>';
-  return h;
+  //
+  // ONCE PER SCREEN WHEN THERE ARE MANY. This sentence never changes, and the
+  // repricer drew it under all 55 supplier blocks -- the same 180 characters,
+  // 55 times, which is a paragraph of the page spent saying one thing. The
+  // repricer states it once above the list instead; an order panel shows one
+  // order, so it keeps it where it is.
+  if(!_cmp){
+    h += '<div class="odp-note">'
+      +  '<button class="odp-i" type="button" title="' + _oEsc(_ORD_SHIP_HELP)
+      +  '" aria-label="What the delivery line means">i</button> '
+      +  'Cheapest first — it re-sorts itself when a supplier changes their price. '
+      +  '“You pay” is their price plus their postage. '
+      +  (block.unit_price !== null && block.unit_price !== undefined
+          ? '“You keep” is what is left of the '
+            + _oEsc(_oMoney(block.unit_price, (opts[0] || {}).currency))
+            + ' this buyer actually paid, after Amazon’s fee and that supplier.'
+          : '“You keep” is what is left after Amazon’s fee and that supplier.')
+      +  '</div>';
+  }
+  return h + (_cmp ? '</div>' : '') + _shut;
 }
 
 /* WHAT THE ORDER EARNED, AND WHERE IT WENT.

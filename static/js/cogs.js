@@ -219,6 +219,89 @@ async function cogsUploadFile(input){
   finally{ input.value = ""; }
 }
 
+/* ---- WHAT THE APP THINKS THINGS COST, AND WHY ---------------------------
+ *
+ *     "what is the priority of cogs and do they works ... what is the priority
+ *      and how do the calculations works in the both scenarios, the should be
+ *      able to understand this, can you add a button which explains all of it?"
+ *
+ * The explanation already existed, in howworks.js under the key `cogs`. It was
+ * unreachable in practice: rendered into a <details> inside #gridhow, folded
+ * shut, below the grid, and only when window.LOGIC_VISIBLE is on. So the answer
+ * to "how does this work" was present and nobody could find it.
+ *
+ * This opens the SAME registry entry -- one copy of the explanation, rule 12 --
+ * as a modal from a button that says what it does, and adds the thing prose
+ * cannot give: THIS ACCOUNT'S REAL FIGURES. "A cost you typed beats one read
+ * from the SKU" is a rule. "3 you typed, 47 read from the SKU, 12 not known"
+ * is something you can check against what you believe.
+ *
+ * Not gated on LOGIC_VISIBLE. That flag hides implementation detail from a
+ * user; how the owner's own money is worked out is not implementation detail.
+ */
+async function cogsExplain(){
+  const id = (typeof acctId === "function" && acctId()) || "";
+  let b = null;
+  try{
+    const j = await (await fetch("/cogs/count"
+                    + (id ? "?id=" + encodeURIComponent(id) : ""))).json();
+    if(j && j.ok) b = j.breakdown || {manual: j.count};
+  }catch(e){ /* the explanation stands without the figures */ }
+
+  const reg = (typeof LOGIC_REGISTRY === "function") ? LOGIC_REGISTRY() : {};
+  const entry = reg.cogs || {title: "How costs work", steps: []};
+  const rule = reg.pricing_rule;
+
+  let figures = "";
+  if(b){
+    const row = function(n, label, note){
+      return '<tr><td style="padding:4px 12px 4px 0;text-align:right;'
+        + 'font-weight:600;font-size:15px">' + n + '</td>'
+        + '<td style="padding:4px 0">' + label
+        + (note ? '<div class="cc" style="font-size:11px">' + note + '</div>' : '')
+        + '</td></tr>';
+    };
+    figures = '<div style="background:var(--panel2);border:1px solid var(--line);'
+      + 'border-radius:10px;padding:12px 14px;margin-bottom:14px">'
+      + '<div style="font-weight:600;margin-bottom:6px">On this account, right now'
+      + (b.marketplace ? ' <span class="cc">(' + esc(b.marketplace) + ')</span>' : '')
+      + '</div><table style="border-collapse:collapse">'
+      + row(b.manual || 0, "costs <b>you set</b>",
+            "typed here or uploaded on the cost sheet — these win over everything")
+      + row(b.from_sku || 0, "read from the <b>SKU name</b>",
+            "the number before the first underscore, written when the SKU was built")
+      + row(b.unknown || 0, "<b>not known</b>",
+            "no cost anywhere — left out of profit rather than counted as zero")
+      + '</table>'
+      + (b.total ? '<div class="cc" style="margin-top:8px;font-size:11.5px">'
+          + 'That is ' + (b.known || 0) + ' of ' + b.total + ' listings costed'
+          + ((b.total && b.known != null)
+              ? ' (' + Math.round((b.known / b.total) * 100) + '%)' : '')
+          + '. Any profit figure covers those and says so.</div>' : '')
+      + '</div>';
+  }
+
+  const sect = function(e){
+    if(!e) return "";
+    return '<div style="font-weight:650;margin:16px 0 6px">' + esc(e.title) + '</div>'
+      + '<ol style="margin:0;padding-left:18px;line-height:1.55">'
+      + (e.steps || []).map(function(s){
+          return '<li style="margin-bottom:9px">' + s + '</li>'; }).join("")
+      + '</ol>';
+  };
+
+  const host = document.createElement("div");
+  host.className = "cogsexpl-back";
+  host.onclick = function(ev){ if(ev.target === host) host.remove(); };
+  host.innerHTML = '<div class="cogsexpl">'
+    + '<div class="cogsexpl-head"><b>How costs work</b>'
+    + '<button class="ib" onclick="this.closest(\'.cogsexpl-back\').remove()">'
+    + '<i class="ti ti-x"></i></button></div>'
+    + '<div class="cogsexpl-body">' + figures + sect(entry) + sect(rule) + '</div>'
+    + '</div>';
+  document.body.appendChild(host);
+}
+
 /* ---- TAKING THEM ALL BACK OUT ------------------------------------------
  *
  * Costs could be put in one at a time and by the sheetful, and only ever

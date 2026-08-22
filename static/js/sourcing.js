@@ -688,6 +688,19 @@ function sourcingRender(j){
   // past on a screen that already has plenty.
   h += '<div id="srcselbar"></div>';
 
+  // WHAT THE TWO SUPPLIER COLUMNS MEAN, said ONCE.
+  //
+  // It was printed under every supplier block -- the same sentence 55 times on
+  // this account, which is a paragraph of page spent saying one thing. It is
+  // still true and still needed the first time, so it moves here rather than
+  // going away.
+  h += '<div class="cc" style="font-size:11px;margin:2px 0 8px;line-height:1.5">'
+    +  '<i class="ti ti-info-circle"></i> Open any supplier line to see them all. '
+    +  'Cheapest first, and it re-sorts itself when a supplier changes their '
+    +  'price. <b>You pay</b> is their price plus their postage; <b>you keep</b> '
+    +  'is what is left of the selling price after Amazon&rsquo;s fee and that '
+    +  'supplier.</div>';
+
   SRC_ROWS.forEach(function(r, i){ h += sourcingRow(r, i); });
   body.innerHTML = h;
   _srcSelBar();
@@ -1285,10 +1298,16 @@ function sourcingRow(r, i){
   // options_for data. One list, one ranking, one delivery sentence, on both
   // screens (Rule 12). If orders.js has not loaded the row simply keeps the
   // count chip it always had rather than breaking.
+  // FOLDED, because there are sixty-four of these on this screen and one on an
+  // order. Measured on jack_uk: the supplier blocks were 8,888px of a 19,201px
+  // page. The summary line carries the answer -- how many suppliers, the
+  // cheapest landed cost, what you keep, what is wrong -- and opens to exactly
+  // the same table.
   if((r.options || []).length && typeof _ordSourcesHtml === "function"){
     h += _ordSourcesHtml({options: r.options,
                           summary: _srcOptSummary(r.options),
-                          unit_price: (r.current || {}).price});
+                          unit_price: (r.current || {}).price},
+                         "", {compact: true});
   }
 
   // The reason line is the point of the whole screen.

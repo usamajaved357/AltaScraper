@@ -161,8 +161,16 @@ truthy("the local cache is dropped too, or the cells keep drawing stale costs",
 
 HTML = open("templates/dashboard.html", encoding="utf-8").read()
 truthy("the button is on the toolbar", 'onclick="cogsClearAll()"' in HTML)
-truthy("  beside the two that put costs IN",
-       HTML.index('onclick="cogsClearAll()"') - HTML.index("/cogs/template.csv") < 1600)
+# All four cost controls in one group, in order: get the sheet, upload it, learn
+# how it works, clear it. A character-distance check broke the moment two more
+# buttons went between them, which measures the markup rather than the grouping.
+_grp = HTML[HTML.index("/cogs/template.csv"):]
+_grp = _grp[:_grp.index("</div>")]
+for _what, _mark in (("get the sheet", "/cogs/template.csv"),
+                     ("upload it", 'onclick="cogsUploadOpen()"'),
+                     ("explain it", 'onclick="cogsExplain()"'),
+                     ("clear it", 'onclick="cogsClearAll()"')):
+    truthy("  the control to %s is in the same group" % _what, _mark in _grp)
 CSS = open("static/css/dashboard.css", encoding="utf-8").read()
 truthy("  and it does not look like them", ".mktbtn.cogswipe{color:var(--red)}" in CSS)
 

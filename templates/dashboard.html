@@ -426,8 +426,19 @@
                silently matches nothing. -->
           <a class="mktbtn" href="/cogs/template.csv" style="text-decoration:none"
              title="Downloads a sheet listing every SKU on this account, with its ASIN, product name, the cost the app uses now and where that came from. Fill in the 'cost' column for the ones you want to set, and upload it back. Rows you leave blank are not changed."><i class="ti ti-file-download"></i> Cost sheet</a>
-          <button class="mktbtn" title="Upload the cost sheet back — or any CSV with a sku (or asin) column and a cost column. Only rows with a cost filled in are applied." onclick="document.getElementById('cogscsv').click()"><i class="ti ti-upload"></i> COGS CSV</button>
-          <input type="file" id="cogscsv" accept=".csv" style="display:none" onchange="uploadCogsCsv(this)">
+          <!-- ONE UPLOAD, HERE, beside the sheet it takes back.
+               There were two. This one called uploadCogsCsv and wrote
+               IMMEDIATELY, no confirmation; the other lived in the selection bar
+               and dry-ran the file first, showed what it would do and asked. Two
+               buttons doing the same job with different safety is worse than
+               either, and the always-visible one was the unsafe one. Asked as
+               "uploading the cogs sheet should be in the one place, not
+               scattered everywhere".
+               A whole-account cost list also has nothing to do with which rows
+               are ticked, which is why the selection bar was the wrong home. -->
+          <button class="mktbtn" title="Upload the cost sheet back — or any CSV or spreadsheet with a sku (or asin) column and a cost column. Shows what it would change and asks before writing. Only rows with a cost filled in are applied." onclick="cogsUploadOpen()"><i class="ti ti-upload"></i> Upload costs</button>
+          <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
+          <button class="mktbtn" title="Where every cost comes from, which one wins, and how profit is worked out" onclick="cogsExplain()"><i class="ti ti-help-circle"></i> How costs work</button>
           <!-- THE WAY BACK OUT. Costs could be set one at a time and by the
                sheetful, and never removed except one SKU at a time by clearing
                its box - so a cost sheet uploaded against the wrong account had
@@ -487,13 +498,12 @@
           <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
         </span>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
-        <!-- Costs in bulk. The per-row way is to click the COGS cell; this is
-             for when a supplier sends a whole price list. -->
-        <button onclick="cogsUploadOpen()" title="Upload a CSV of SKU and cost to set what many items cost at once. Overrides what the SKU says, for this account."><i class="ti ti-file-upload"></i> Upload COGS</button>
-        <!-- Spreadsheets too: the file is read by domain/source_bulk.read_table
-             now, which opens .xlsx as well as CSV. The browser parser that only
-             did CSV is gone -- see static/js/cogs.js. -->
-        <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
+        <!-- The cost upload used to sit here as well as on the toolbar. A price
+             list covers the whole account, not the rows that happen to be
+             ticked, so a selection bar was never its home -- and having it in
+             two places with two different behaviours is what "scattered
+             everywhere" meant. It is on the toolbar now, beside the Cost sheet
+             it takes back. The per-row way is still to click the COGS cell. -->
         <button onclick="openStudioBatch()" title="Generate main images for all selected products"><i class="ti ti-photo"></i> Generate main images</button>
         <button onclick="batchGenerate('regen')" title="Regenerate the listing copy for the selected SKUs"><i class="ti ti-refresh"></i> Regenerate listings</button>
         <button onclick="batchSecondaryImages()" title="Generate secondary images once and apply to all selected SKUs"><i class="ti ti-photo"></i> Secondary images</button>
