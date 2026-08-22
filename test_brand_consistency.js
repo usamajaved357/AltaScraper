@@ -78,9 +78,34 @@ truthy("Sales uses it rather than an inline style",
        /<div class="pagetitle" id="sales_title">/.test(HTML));
 truthy("  and no longer sets the size by hand",
        !/font-size:28px;font-weight:600;line-height:30\.8px/.test(HTML));
+/* THERE ARE TWO SHARED HEADERS, NOT ONE, AND THAT IS DELIBERATE.
+ *
+ *     .pagehead .pagetitle   28px   4 screens (Sales, generate, sellerimport, sourcing)
+ *     .wstoolbar h2          15px  35 screens (Listings, Orders, Returns, Monitor, ...)
+ *
+ * This block asserted that all four of the named screens use .pagehead. The ASIN
+ * Monitor no longer does, on purpose: it had a third, bespoke header of its own
+ * and was moved onto .wstoolbar to match the thirty-five, after "the current
+ * theme of the page is not alligned with our all other app". Demanding .pagehead
+ * back would undo that.
+ *
+ * So what is guarded is the invariant that actually prevents drift -- a screen's
+ * title comes from a SHARED class and never from a hand-set size. Which of the
+ * two tiers a screen sits in is a design decision, and collapsing 28px and 15px
+ * into one size is a change across thirty-nine screens that nobody has asked
+ * for; it is recorded here rather than made silently.
+ */
 ["generate", "monitor", "sellerimport", "sourcing"].forEach(function(id){
-  truthy("  " + id.padEnd(13) + " is the same size as Sales",
-         /class="pagehead"/.test(section(id)));
+  const s = section(id);
+  truthy("  " + id.padEnd(13) + " takes its title from a shared header",
+         /class="pagehead"/.test(s) || /class="wstoolbar/.test(s));
+  // Only the TITLE element. Scoping this to the whole section caught a hint
+  // caption and a footnote that legitimately set their own size, which is not
+  // what this is about -- a body element choosing 11.5px is not the page name
+  // choosing to look different from every other page name.
+  const title = (s.match(/<(?:h1|h2)[^>]*>/) || s.match(/<div class="pagetitle"[^>]*>/) || [""])[0];
+  truthy("    and the title itself sets no size by hand",
+         !!title && !/font-size/.test(title));
 });
 
 console.log("\n=== the pieces exist ONCE, under one name ===");

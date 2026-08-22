@@ -37,13 +37,31 @@ const _inList = function(src, marker, want){
   const end = src.indexOf("]", i);
   return end > i && src.slice(i, end).indexOf('"' + want + '"') >= 0;
 };
-check("navTo shows/hides it",
-      _inList(shell, '["imagerefs"', "sales"), true);
+// TWO OF THE FOUR LISTS NO LONGER EXIST, and that is the fix rather than a
+// regression: both were second copies of "what screens are there", and both had
+// drifted from the menu.
+//
+//   navTo kept its own array of panels to show and hide, beginning
+//   ["imagerefs", ...]. It now derives them from ALTA_SECTIONS, so the pair
+//   cannot disagree -- they had, and `permissions` plus all four keyword
+//   screens rendered into panels that were never shown.
+//
+//   ui_routes kept a typed _SECTIONS tuple of twelve, written when there were
+//   twelve. The app has forty, so the other twenty-eight answered a refresh or
+//   a bookmark with a plain-text 404. It now reads data-sec straight out of the
+//   template.
+//
+// Greping for either literal is greping for the bug. What is asserted instead
+// is that each list is DERIVED, and that Sales survives the derivation.
+check("navTo shows/hides it via the one section list",
+      /ALTA_SECTIONS\.filter\(s => s !== "listings"\)\.forEach/.test(shell), true);
 check("navTo calls salesOpen", /sec==="sales"[\s\S]{0,60}salesOpen/.test(shell), true);
 check("the URL allow-list (browser) has it",
       _inList(shell, "const ALTA_SECTIONS", "sales"), true);
-check("the URL allow-list (server) has it",
-      /_SECTIONS = \([\s\S]{0,240}"sales"/.test(ui), true);
+check("the server reads its allow-list from the menu, not a typed copy",
+      /data-sec="\(\[\\w-\]\+\)"/.test(ui), true);
+check("  so Sales is deep-linkable because the menu offers it",
+      /data-sec="sales"/.test(tpl), true);
 
 // And the same four places for Traffic, which is the screen most likely to be
 // half-wired: a section that renders but cannot be reached by URL looks fine
@@ -54,13 +72,14 @@ check("the panel exists", /id="sec_traffic"/.test(tpl), true);
 check("the script is loaded", /\/static\/js\/traffic\.js\?v=/.test(tpl), true);
 check("  after sales.js, which it borrows _sNum and salesCombo from",
       tpl.indexOf("/static/js/sales.js") < tpl.indexOf("/static/js/traffic.js"), true);
-check("navTo shows/hides it", _inList(shell, '["imagerefs"', "traffic"), true);
+// Same two corrections as for Sales above: navTo's own panel array and the
+// server's typed _SECTIONS tuple are both gone, replaced by one derivation each.
 check("navTo calls trafficOnOpen",
       /sec==="traffic"[\s\S]{0,60}trafficOnOpen/.test(shell), true);
 check("the URL allow-list (browser) has it",
       _inList(shell, "const ALTA_SECTIONS", "traffic"), true);
-check("the URL allow-list (server) has it",
-      /_SECTIONS = \([\s\S]{0,240}"traffic"/.test(ui), true);
+check("  and the menu offers it, which is what the server reads",
+      /data-sec="traffic"/.test(tpl), true);
 check("and the route is registered on the app",
       /_traffic_routes\.register\(app/.test(
         require("fs").readFileSync("D:/AltaScraper/dashboard.py", "utf8")), true);

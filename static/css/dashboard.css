@@ -3608,7 +3608,8 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    UltraFlex Midsole Lightweight Shoes for Running, Walking & Everyday Wear -
    White/Gum". In an eleven-column table that column gets about 100px, so one
    row became twelve lines tall and a table of twenty products was unreadable
-   scrolling. Two lines, an ellipsis, and the full title in the tooltip. */
+   scrolling. Two lines, an ellipsis, and the full title in the tooltip.
+
    THE WIDTH GOES ON THE CELL, not on the clamped box. An auto-layout table
    sizes a column from its content, and a -webkit-box with a min-width simply
    overflowed the cell it was in -- the returns figure ended up printed through

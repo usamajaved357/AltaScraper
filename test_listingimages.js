@@ -77,8 +77,16 @@ check("draft rows get a library button",
       /openImageLibrary\('\$\{sku\}'/.test(fnBody(listings, "rowActions")), true);
 check("  with the SKU escaped before it is put in the markup",
       /const sku = esc\(r\.sku\)/.test(fnBody(listings, "rowActions")), true);
-check("live rows get one too",
-      /openImageLibrary\('\$\{esc\(it\.sku\|\|''\)\}', true\)/.test(listings), true);
+// ONE FUNCTION SERVES BOTH NOW. There used to be a separate live-row builder
+// with its own openImageLibrary('${esc(it.sku||'')}', true) call, which is what
+// this matched. Draft and live rows are drawn by the same rowActions() with a
+// `live` flag, so the button cannot exist on one and be forgotten on the other
+// -- which is exactly how it went missing from the live TILE before.
+check("live rows get one too, from the same builder",
+      /openImageLibrary\('\$\{sku\}', \$\{live \? "true" : "false"\}\)/
+        .test(fnBody(listings, "rowActions")), true);
+check("  and there is no second copy of that button anywhere",
+      (listings.match(/openImageLibrary\(/g) || []).length, 1);
 // THE CARD, not only the table. It was on the table row and missing from the
 // card, so on a screen showing cards there was no way to reach a listing's
 // images at all -- to upload your own, pick one from another product, or set

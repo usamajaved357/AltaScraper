@@ -18,8 +18,12 @@ function check(label, got, want) {
 function truthy(label, got) { check(label, !!got, true); }
 
 const src = fs.readFileSync(path.join(__dirname, "static/js/cogs.js"), "utf8");
+// `split: _cgSplit` used to be exported here and no longer exists, which made
+// this whole file crash on load rather than fail an assertion -- so every check
+// below it, including the 0.00-means-unknown rule, had silently stopped running.
+// See the "a sheet of costs" section for where that parser went.
 const api = new Function("jsArg", "CUR_SYMBOL", src + `
-  return {cogsOf, cogsCell, split: _cgSplit, LOCAL: COGS_LOCAL};
+  return {cogsOf, cogsCell, LOCAL: COGS_LOCAL};
 `)(s => JSON.stringify(s), "£");
 
 console.log("=== where the cost comes from ===");
@@ -50,19 +54,29 @@ truthy("  and clicking it does not open the row behind it",
        /event\.stopPropagation\(\)/.test(api.cogsCell({sku: "a"})));
 
 console.log("\n=== a sheet of costs ===");
-check("comma separated", api.split("SKU,COGS"), ["SKU", "COGS"]);
-check("tab separated too", api.split("SKU\tCOGS"), ["SKU", "COGS"]);
-// Product names contain commas constantly; splitting naively corrupts the row.
-check("a quoted field keeps its commas",
-      api.split('"Fan, 52cm, white",12.50'), ["Fan, 52cm, white", "12.50"]);
-check("  and an escaped quote survives",
-      api.split('"He said ""hi""",1'), ['He said "hi"', "1"]);
-
-truthy("columns are found by NAME, not position", /head\.indexOf/.test(src));
-truthy("  accepting what people actually call them",
-       /sellersku/.test(src) && /costofgoods/.test(src));
-truthy("a file with no cost column is refused with what it DID find",
-       /Found: /.test(src));
+// THE PARSER IS NOT IN THE BROWSER ANY MORE, and that is the fix rather than a
+// regression. This section used to test _cgSplit, a line splitter that split on
+// commas -- which is not what a CSV is. A product name like "Grill, Large" is
+// quoted and contains one, so every column after it shifted and the cost was
+// read from the wrong place. The sheet this app hands out is full of such names.
+//
+// routes/cogs_routes.cogs_upload_sheet now reads the file server-side through
+// domain/source_bulk.read_table, which uses a real CSV reader and can also open
+// a spreadsheet, which the browser version could not. So what is asserted here
+// is that the browser no longer has an opinion about parsing -- keeping a second
+// splitter alongside the real one is exactly how the two drift (rule 12).
+const PY = fs.readFileSync(path.join(__dirname, "routes/cogs_routes.py"), "utf8");
+truthy("the browser no longer splits the file itself", !/_cgSplit/.test(src));
+truthy("  it hands the file to the server", /\/cogs\/upload_sheet/.test(src)
+       || /\/cogs\/upload/.test(src));
+truthy("the server parses it with a real CSV reader",
+       /read_table/.test(PY));
+truthy("  and says so, so nobody puts a splitter back in the browser",
+       /split each line on commas/.test(PY));
+// The confirmation has to come from the SAME reader that will do the work, or
+// "Set the cost on 412 SKUs?" is the browser's guess at a number it cannot know.
+truthy("the count offered for confirmation is measured, not guessed",
+       /dry_run/.test(PY) && /READS THE FILE AND WRITES NOTHING/.test(PY));
 // A bulk overwrite changes every profit figure in the app.
 truthy("the count is confirmed before anything is written",
        /Set the cost on/.test(src) && /confirm\(/.test(src));
@@ -77,7 +91,10 @@ truthy("a negative cost is refused", /val < 0/.test(src));
 
 console.log("\n=== it is the way IN to the one resolver, not a second one ===");
 truthy("saving goes through /cogs/set", /"\/cogs\/set"/.test(src));
-truthy("bulk goes through /cogs/upload", /"\/cogs\/upload"/.test(src));
+// /cogs/upload_sheet, not /cogs/upload -- the second of the two upload paths was
+// removed when the parsing moved to the server, and this assertion still named
+// the one that went.
+truthy("bulk goes through /cogs/upload_sheet", /"\/cogs\/upload_sheet"/.test(src));
 check("  and nothing here writes to the listings store directly",
       /\/edit"/.test(src), false);
 
