@@ -75,8 +75,12 @@ falsy("  and its icon went with it", /ti-cloud-download/.test(row));
 // KEPT as a function: the drawer still offers it for one chosen listing, which
 // is a different thing from repeating Sync on every row.
 truthy("the function itself is kept", /async function pullLiveRow\(/.test(LC));
+// It moved with the drawer's clear-out: the drawer's flat row of fifteen
+// buttons became an action bar plus a More menu, and this is one of the ones
+// that went into the menu. Anchored to that menu rather than to "suggestbtn",
+// a class the drawer no longer uses.
 truthy("  and is still reachable from the drawer",
-       /pullLiveRow\(/.test(LC.slice(LC.indexOf("suggestbtn"))));
+       /pullLiveRow\(/.test(LC.slice(LC.indexOf("function drawerMore"))));
 
 console.log("\n=== every surviving button does something nothing else does ===");
 // One button per job. If two of these ever call the same function, one of them

@@ -70,6 +70,27 @@ function stripJsComments(src) {
           let depth = 1;
           let k = j + 2;
           while (k < s.length && depth > 0) {
+            // COMMENTS FIRST, and this is the whole of the bug that was here.
+            // The walker skipped strings so that a brace inside one would not be
+            // counted -- but not comments. So an apostrophe inside the very
+            // comment being stripped ("Amazon's own", "nobody could find")
+            // opened a string that ran to the next apostrophe hundreds of
+            // characters away, the brace depth stopped meaning anything, and the
+            // substitution ended in the wrong place: output came back with a
+            // stray "}" on the end and later comments left in place.
+            //
+            // Which is exactly the failure this whole file exists to stop -- a
+            // stripper that quietly returns something other than the code.
+            if (s[k] === "/" && s[k + 1] === "*") {
+              const e = s.indexOf("*/", k + 2);
+              k = e < 0 ? s.length : e + 2;
+              continue;
+            }
+            if (s[k] === "/" && s[k + 1] === "/") {
+              const e = s.indexOf("\n", k);
+              k = e < 0 ? s.length : e;
+              continue;
+            }
             if (s[k] === "{") depth++;
             else if (s[k] === "}") depth--;
             else if (s[k] === '"' || s[k] === "'" || s[k] === "`") {

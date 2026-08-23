@@ -887,7 +887,25 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
 
     @app.route("/genimage/save_to_media", methods=["POST"])
     def genimage_save_to_media():
-        """Save a generated image (data URL) into a SKU's media library."""
+        """Save a generated image (data URL) into a SKU's media library.
+
+        FILED BY WHAT IT IS FOR. Everything used to land in the SKU folder as
+        generated_<timestamp>.jpg, so a main image, a lifestyle shot, a 970x600
+        A+ header and the 600x450 phone version of that header sat side by side
+        and could only be told apart by opening them. Measured on jack_uk:
+        sixteen files in one folder whose names differ by the second they were
+        made in.
+
+        The caller says what the image is (`kind`, and for A+ its `tier` and
+        `variant`) and domain/media_kinds decides the folder -- one place that
+        knows the arrangement, shared with the sorter that tidies older files
+        and with the tests (rule 12).
+
+        AN UNKNOWN KIND IS NOT INVENTED. It writes to the SKU folder as before,
+        because a file in the wrong folder claims its purpose is known when it
+        is not, and that is worse than an unsorted one.
+        """
+        from domain import media_kinds as _mk
         b = request.get_json(force=True) or {}
         sku = b.get("sku", "_misc")
         data = b.get("data_url", "") or b.get("data", "")
@@ -898,17 +916,42 @@ def register(app, *, CONFIG_PATH, _CREATIVE_STRATEGIES, _IMG_JOBS, _IMG_JOBS_LOC
             mime = (re.search(r"data:([^;]+)", head) or [None, "image/png"])[1]
         else:
             raw, mime = data, "image/png"
-        ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(mime, "png")
-        import time as _t
-        fname = f"generated_{int(_t.time())}.{ext}"
+        # THE EXTENSION COMES FROM THE BYTES, NOT THE LABEL.
+        #
+        # Measured against the configured image model on a real generation:
+        #
+        #     declared mime   image/png
+        #     first 4 bytes   ff d8 ff e0        <- JPEG
+        #     PIL says        JPEG 2048x2048
+        #
+        # so this map turned a JPEG into a file called .png. Amazon fetches
+        # listing images by URL and rejects one whose bytes do not match its
+        # extension -- a good image, refused, for a reason nothing on screen
+        # explains. The label is a claim; the magic number is the fact.
         try:
-            with open(os.path.join(_sku_dir(sku), fname), "wb") as f:
-                f.write(_b64.b64decode(raw))
+            _bytes = _b64.b64decode(raw)
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"unreadable image: {e}"}), 400
+        _claimed = {"image/png": "png", "image/jpeg": "jpg",
+                    "image/webp": "webp"}.get(mime, "png")
+        ext = _mk.sniff_ext(_bytes, _claimed)
+        import time as _t
+        fname = f"generated_{int(_t.time()*1000)}.{ext}"
+
+        sub = _mk.folder_for(b.get("kind", ""), b.get("tier", ""), b.get("variant", ""))
+        try:
+            base = _sku_dir(sku)
+            dest = os.path.join(base, *sub.split("/")) if sub else base
+            os.makedirs(dest, exist_ok=True)
+            with open(os.path.join(dest, fname), "wb") as f:
+                f.write(_bytes)
         except Exception as e:
             return jsonify({"ok": False, "error": f"write failed: {e}"}), 500
         _aid = _state.get("active_account_id", "") or ""
         _pfx = f"/media/_acct/{_safe_sku(_aid)}" if _aid else "/media"
-        return jsonify({"ok": True, "url": f"{_pfx}/{_safe_sku(sku)}/{fname}"})
+        _rel = f"{_safe_sku(sku)}/{sub}/{fname}" if sub else f"{_safe_sku(sku)}/{fname}"
+        return jsonify({"ok": True, "url": f"{_pfx}/{_rel}",
+                        "folder": sub, "folder_label": _mk.LABELS.get(sub, "")})
 
     @app.route("/genimage/secondary_v2", methods=["POST"])
     def genimage_secondary_v2():

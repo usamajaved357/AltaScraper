@@ -33,6 +33,7 @@ reads the stylesheet, finds EVERY word used as a compound modifier (`.x.word`),
 and asserts that no bare `.word` rule paints a background. That is the actual
 rule, and it holds for words nobody has invented yet.
 """
+import os
 import re
 import sys
 
@@ -135,16 +136,32 @@ for sel, d in sorted(compound_rules.items()):
 check("no component sets a colour while inheriting a background", at_risk, 0)
 
 print("\n== the button that caused it is renamed, not deleted ==")
-truthy("the filled green button still exists under its own name",
-       re.search(r"\.okfill\s*\{[^}]*background\s*:\s*var\(--green\)",
-                 NO_COMMENTS))
 check("  and no bare .ok rule paints anything any more",
       bool((bare.get("ok") or {}).get("background")), False)
-# A renamed class with no markup pointing at it is a button that lost its style.
 JS = open(r"D:\AltaScraper\static\js\listings.js", encoding="utf-8-sig").read()
-truthy("the Approve button uses the new name", 'class="okfill"' in JS)
 check("  and nothing still asks for the old one",
       bool(re.search(r'class="ok"', JS)), False)
+
+# .okfill WAS the drawer's green Approve button, and it is gone -- Approve and
+# Hold were merged into one segmented control, because two separate buttons for
+# two values of one setting could never show which value was already set.
+#
+# The point of this section survives the merge and is what is checked now: the
+# green still exists, it is still a real background rather than an inherited
+# one, and the class nothing uses was deleted rather than left behind looking
+# load-bearing.
+truthy("the green now lives on the half of the control that means 'go'",
+       re.search(r"\.dwseg-b\.on:first-child\{background:var\(--green\)", NO_COMMENTS))
+truthy("  and held is amber, not the same colour as approved",
+       re.search(r"\.dwseg-b\.on:last-child\{background:var\(--warn", NO_COMMENTS))
+truthy("the orphaned class was removed with its markup",
+       ".okfill{" not in NO_COMMENTS)
+_ALLJS = "".join(
+    open(r"D:\AltaScraper\static\js\%s" % f, encoding="utf-8-sig").read()
+    for f in os.listdir(r"D:\AltaScraper\static\js") if f.endswith(".js"))
+_TPL = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8-sig").read()
+check("  and nothing anywhere still asks for it",
+      ("okfill" in _ALLJS) or ("okfill" in _TPL), False)
 
 print("\n== the states that were showing as green patches ==")
 for sel in (".stk-headline.ok", ".odp-state.ok", ".linkbtn.ok"):

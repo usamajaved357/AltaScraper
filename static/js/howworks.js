@@ -242,7 +242,11 @@ function _studioAddResult(job, j, grid){
         ${canReroll?`<button class="ib" onclick="studioReroll('${cardId}')" title="Generate this one again (e.g. if a detail came out wrong)"><i class="ti ti-refresh"></i> Redo this</button>`:''}
         ${canReroll?`<button class="ib" onclick="studioRefine('${cardId}')" title="Tell the AI a small change to make to THIS image"><i class="ti ti-wand"></i> Refine…</button>`:''}
       </div>`;
-    STUDIO.results[cardId]={data_url:j.data_url, sku:job.sku};
+    // WHAT IT IS FOR, carried to the Save button. Without this every image --
+    // hero, lifestyle, A+ header -- was written into one flat folder as
+    // generated_<timestamp>.jpg and could only be told apart by opening it.
+    STUDIO.results[cardId]={data_url:j.data_url, sku:job.sku,
+                            kind:(job.kind||"main")};
   } else {
     inner=`<div class="sresfail">✗ ${esc((j&&j.error)||'failed')}</div><div class="srescap">${label}</div>`;
   }
@@ -263,11 +267,18 @@ async function studioReroll(cardId){
     const j=await (await fetch(ep,{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(r.payload)})).json();
     if(j&&j.ok&&j.data_url){
-      // auto-save the redo too
+      // auto-save the redo too, filed the same way the first one was: a redo of
+      // an A+ mobile module is still an A+ mobile module.
       try{ await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:r.payload.sku||r.payload.title||"", data_url:j.data_url})}); }catch(e){}
+        body:JSON.stringify({sku:r.payload.sku||r.payload.title||"", data_url:j.data_url,
+                             kind:r.kind||"main",
+                             tier:(r.payload&&r.payload.tier)||"",
+                             variant:((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop")})}); }catch(e){}
       if(card){
-        STUDIO.results[cardId]={data_url:j.data_url, sku:(r.payload.title||"")};
+        STUDIO.results[cardId]={data_url:j.data_url, sku:(r.payload.title||""),
+                                kind:r.kind||"main",
+                                tier:(r.payload&&r.payload.tier)||"",
+                                variant:((r.payload&&r.payload.viewport)==="mobile"?"mobile":"desktop")};
         card.innerHTML=`<img src="${j.data_url}" class="sresimg" onload="imgMetaLabel(this,'${j.data_url}')">
           <div class="srescap">${esc(r.label)} · redone</div>
           <div class="sresacts">
@@ -303,9 +314,15 @@ async function studioRefine(cardId){
                                kind:kind, instruction:instruction,
                                title:(cur.sku||"")});
     if(j&&j.ok&&j.data_url){
+      // A REFINED IMAGE IS THE SAME KIND OF IMAGE. `kind` was already worked
+      // out above to tell the refiner what it is looking at; it decides the
+      // folder too, so an edited A+ phone module is filed with the A+ phone
+      // modules rather than dropped loose in the SKU folder.
       try{ await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:cur.sku||"", data_url:j.data_url})}); }catch(e){}
-      STUDIO.results[cardId]={data_url:j.data_url, sku:cur.sku};
+        body:JSON.stringify({sku:cur.sku||"", data_url:j.data_url, kind:kind,
+                             tier:(cur.tier||""), variant:(cur.variant||"")})}); }catch(e){}
+      STUDIO.results[cardId]={data_url:j.data_url, sku:cur.sku, kind:kind,
+                              tier:(cur.tier||""), variant:(cur.variant||"")};
       // keep refine available so you can iterate (refine the refined image)
       if(j._kind&&j._payload){ STUDIO._reroll[cardId]={kind:j._kind, payload:j._payload, label:(STUDIO._reroll[cardId]?STUDIO._reroll[cardId].label:cur.sku)}; }
       if(card){
@@ -328,8 +345,13 @@ async function studioSave(cardId, sku){
   const r=STUDIO.results[cardId]; if(!r) return;
   try{
     const j=await (await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({sku:sku, data_url:r.data_url})})).json();
-    if(j.ok){ r.savedUrl=j.url; toast("Saved to "+sku+" media library"); }
+      body:JSON.stringify({sku:sku, data_url:r.data_url,
+                           kind:(r.kind||""), tier:(r.tier||""), variant:(r.variant||"")})})).json();
+    // WHERE it went, not just that it went. The folders are the point of this
+    // change, so "Saved to the media library" would leave you opening the
+    // library to find out which one.
+    if(j.ok){ r.savedUrl=j.url;
+              toast("Saved to "+sku+(j.folder_label?" — "+j.folder_label:" media library")); }
     else toast("Save failed: "+(j.error||""));
   }catch(e){ toast("Error: "+e); }
 }
@@ -345,7 +367,8 @@ async function studioToDrive(cardId, sku){
   if(!r.savedUrl){
     try{
       const sj=await (await fetch("/genimage/save_to_media",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:sku, data_url:r.data_url})})).json();
+        body:JSON.stringify({sku:sku, data_url:r.data_url,
+                             kind:(r.kind||""), tier:(r.tier||""), variant:(r.variant||"")})})).json();
       if(sj.ok) r.savedUrl=sj.url; else { toast("Save failed: "+(sj.error||"")); return; }
     }catch(e){ toast("Error: "+e); return; }
   }

@@ -111,8 +111,57 @@ def shape_by_schema(schema, raw, mid, lang="en_GB"):
         if "unit" in props and unit not in (None, ""):
             uen = props["unit"].get("enum")
             _u = _snap_enum(uen, unit, strict=True) if uen else unit
+            if _u is None and isinstance(uen, list) and uen and num_key in obj:
+                # THE UNIT IS REAL, IT IS JUST NOT ONE AMAZON TAKES HERE.
+                #
+                # A strict snap will not match "inches" to "centimeters", and it
+                # is right not to -- they are different units and pretending
+                # otherwise sends 36 where 91.44 belongs. But dropping the whole
+                # object then loses a measurement we actually have, and Amazon
+                # reports it as MISSING, which sends you looking for a value that
+                # was there all along.
+                #
+                # Measured: RAKE "Weed Slasher 27-Inch", item_height "36.0
+                # inches", schema enum ["centimeters"], reply "[E]
+                # item_width_height 'Item Height Unit' is required but missing".
+                #
+                # So convert it instead, and only when the arithmetic is exact.
+                # convert_unit knows length and mass and returns None for
+                # anything else, so an unconvertible unit still falls through to
+                # the old behaviour -- reported missing rather than guessed.
+                for _cand in uen:
+                    _conv = convert_unit(obj.get(num_key), unit, _cand)
+                    if _conv is not None:
+                        obj[num_key] = _conv
+                        _u = _cand
+                        break
             if _u is not None:
                 obj["unit"] = _u
+        elif "unit" in props:
+            # A ONE-VALUE ENUM IS NOT A CHOICE, and leaving it empty fails the
+            # listing over the only answer there is.
+            #
+            # Measured on a real preview. RAKE, Weed Slasher 27-Inch:
+            #
+            #     [E] item_width_height 'Item Height Unit' is required but missing
+            #
+            # and Amazon's own schema for that field says
+            #
+            #     height.unit  enum: ["centimeters"]
+            #
+            # One permitted value. There is nothing for a person to decide and
+            # nothing for the AI to work out -- any answer other than
+            # "centimeters" is invalid, so an empty one is the only way to get it
+            # wrong. It was blocking the preview of an otherwise complete
+            # listing.
+            #
+            # Deliberately ONLY when the list has exactly one entry. Two or more
+            # and the choice is real (centimeters vs inches changes the number
+            # beside it), so it stays missing and is reported, which is what
+            # makes the report worth reading.
+            _uen = props["unit"].get("enum")
+            if isinstance(_uen, list) and len(_uen) == 1 and _uen[0]:
+                obj["unit"] = _uen[0]
         for pk, pv in props.items():
             if pk in ("marketplace_id", "language_tag", "unit", num_key): continue
             if isinstance(pv, dict) and pv.get("type") in ("array", "object"):
@@ -161,6 +210,75 @@ def _norm_tok(s) -> str:
     s = str(s).strip().lower().replace(" ", "").replace("_", "").replace("-", "")
     s = s.replace("metre", "meter").replace("litre", "liter")
     return s[:-1] if s.endswith("s") else s
+
+
+# How many of a base unit each one is. Length in millimetres, mass in grams --
+# the base is arbitrary, only the ratios matter.
+#
+# KEYED ON WHAT _norm_tok ACTUALLY PRODUCES, which is not always the singular.
+# It strips one trailing "s", so "inches" arrives as "inche" and "feet" stays
+# "feet". Writing the tidy singular here and hoping is how "36 inches" silently
+# failed to convert while "1 foot" worked -- so both forms are listed and the
+# test below feeds the real spellings through rather than the neat ones.
+_UNIT_SCALE = {
+    "length": {"millimeter": 1.0, "centimeter": 10.0, "meter": 1000.0,
+               "inch": 25.4, "inche": 25.4,
+               "foot": 304.8, "feet": 304.8, "ft": 304.8,
+               "yard": 914.4, "mm": 1.0, "cm": 10.0, "m": 1000.0, "in": 25.4},
+    "mass":   {"gram": 1.0, "kilogram": 1000.0, "milligram": 0.001,
+               "ounce": 28.349523125, "pound": 453.59237,
+               "g": 1.0, "kg": 1000.0, "mg": 0.001, "oz": 28.349523125,
+               "lb": 453.59237},
+}
+
+
+def _dimension_of(tok):
+    for dim, table in _UNIT_SCALE.items():
+        if tok in table:
+            return dim
+    return None
+
+
+def convert_unit(value, frm, to):
+    """`value` expressed in `to`, or None when the two are not comparable.
+
+    ARITHMETIC, NOT A GUESS, and that is the whole justification for doing it at
+    all: 36 inches IS 91.44 centimetres, and no judgement is involved.
+
+    MEASURED, on a real preview. RAKE, "Weed Slasher 27-Inch":
+
+        the draft held   item_height  "36.0 inches"
+        Amazon's schema  height.unit  enum: ["centimeters"]
+        Amazon replied   [E] item_width_height 'Item Height Unit' is required
+                             but missing
+
+    All three statements were true at once. _snap_enum refuses to match "inches"
+    to "centimeters" -- correctly, because they are different units and saying
+    otherwise would send 36 where 91.44 belongs -- and the object was then
+    dropped for want of a unit. So the listing was blocked by a measurement it
+    HAD, in a unit Amazon would not take, with an error naming the wrong
+    problem.
+
+    Only length and mass. Anything else returns None and the value is left
+    alone: a unit table is a place to be quietly wrong, so it holds what can be
+    checked in a line and nothing else.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    a, b = _norm_tok(frm), _norm_tok(to)
+    if not a or not b:
+        return None
+    if a == b:
+        return v
+    da, db = _dimension_of(a), _dimension_of(b)
+    if not da or da != db:
+        return None
+    out = v * _UNIT_SCALE[da][a] / _UNIT_SCALE[da][b]
+    # Two decimals is what Amazon shows and what every other measurement in this
+    # file carries; more just prints float noise (91.44000000000001).
+    return round(out + 0.0, 2)
 
 def _snap_enum(enum_list, raw, strict=False):
     """Snap a raw string to the nearest accepted enum token. Returns raw unchanged

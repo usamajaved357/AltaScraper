@@ -1369,20 +1369,16 @@ def _sniff_image_ext(raw: bytes, fallback: str = "jpg") -> str:
     """Return the TRUE image extension by reading the file's magic-number bytes,
     not the (often-wrong) mime label the AI model claims. Amazon rejects a file
     whose bytes don't match its extension (e.g. JPEG bytes named .png), so the
-    saved filename must reflect the actual format. Covers the formats image models
-    return: JPEG, PNG, WebP, GIF."""
-    if not raw or len(raw) < 12:
-        return fallback
-    b = raw[:12]
-    if b[:3] == b"\xff\xd8\xff":                      # JPEG
-        return "jpg"
-    if b[:8] == b"\x89PNG\r\n\x1a\n":                  # PNG
-        return "png"
-    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":        # WebP
-        return "webp"
-    if b[:6] in (b"GIF87a", b"GIF89a"):                # GIF
-        return "gif"
-    return fallback
+    saved filename must reflect the actual format.
+
+    THE BODY MOVED to domain/media_kinds.sniff_ext. It was defined here and
+    injected into two route modules -- and the route that saves generated images
+    was not one of them, so that path used the mime label and wrote JPEGs called
+    .png. A helper only the injected callers can reach is a helper the next
+    writer will not use, so it now lives with the rest of the image-file rules
+    and this delegates (rule 12)."""
+    from domain import media_kinds as _mk
+    return _mk.sniff_ext(raw, fallback)
 
 
 def _to_jpeg_bytes(raw: bytes, quality: int = 90) -> bytes:
