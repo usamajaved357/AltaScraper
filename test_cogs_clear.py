@@ -172,7 +172,13 @@ for _what, _mark in (("get the sheet", "/cogs/template.csv"),
                      ("clear it", 'onclick="cogsClearAll()"')):
     truthy("  the control to %s is in the same group" % _what, _mark in _grp)
 CSS = open("static/css/dashboard.css", encoding="utf-8").read()
-truthy("  and it does not look like them", ".mktbtn.cogswipe{color:var(--red)}" in CSS)
+# The rule it lives on, not the exact selector text: the Weekly KPIs page grew
+# the same kind of button and the two now share one declaration, so pinning the
+# literal ".mktbtn.cogswipe{...}" broke on a change that only added a second
+# class beside it.
+truthy("  and it does not look like them",
+       "cogswipe" in CSS and "var(--red)" in
+       CSS[CSS.index("cogswipe"):CSS.index("cogswipe") + 200])
 
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:

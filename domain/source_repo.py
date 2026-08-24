@@ -160,6 +160,79 @@ def remove_source(config_path, source_id):
     conn.commit()
 
 
+def count_sources(config_path, workspace_id, marketplace):
+    """(suppliers, SKUs they are attached to, price readings held).
+
+    All three, because the warning has to say what actually goes. "Delete 55
+    suppliers" understates it: 153 price readings go with them, and those cannot
+    be re-fetched -- a supplier's price on a day nobody was watching is gone for
+    good.
+
+    Separate from clear_sources on purpose: the confirmation names a real number
+    BEFORE anything is deleted, and a count produced by the same reader that
+    will do the deleting cannot disagree with it.
+    """
+    conn = _db.get_db(config_path)
+    wsid, mkt = str(workspace_id or ""), str(marketplace or "").upper()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) n, COUNT(DISTINCT sku) skus FROM sourcing_sources "
+            "WHERE workspace_id=? AND marketplace=?", (wsid, mkt)).fetchone()
+        checks = conn.execute(
+            "SELECT COUNT(*) FROM sourcing_checks WHERE source_id IN ("
+            "  SELECT id FROM sourcing_sources WHERE workspace_id=? AND marketplace=?)",
+            (wsid, mkt)).fetchone()[0]
+        return {"sources": int(row["n"]), "skus": int(row["skus"]),
+                "checks": int(checks)}
+    except Exception:
+        return {"sources": 0, "skus": 0, "checks": 0}
+
+
+def clear_sources(config_path, workspace_id, marketplace):
+    """Delete every supplier link for one account and marketplace.
+
+        "I also want to delete all the suppliers from the repricer ... so i can
+         add new suppliers"
+
+    WHAT GOES: the supplier links, and the price readings recorded against them.
+    Readings are deleted for the same reason remove_source deletes them for a
+    single supplier -- a reading is keyed only by source_id, so once its
+    supplier is gone there is no URL and no label to say whose price it was. An
+    orphaned row is not history, it is a number nobody can attribute.
+
+    WHAT STAYS, and this is the point of the request: the ENROLMENT and the
+    pricing RULES. The SKUs remain tracked and their targets remain set, so a
+    fresh supplier sheet works the moment it is uploaded rather than needing
+    fifty-five SKUs re-enrolled first.
+
+    SCOPED TO ACCOUNT AND MARKETPLACE. Every workspace's suppliers share this
+    table, so a clear that ignored the scope would silently strip another
+    account's repricer. A blank account or marketplace deletes NOTHING rather
+    than everything -- the safe direction, enforced here rather than trusted to
+    each caller.
+
+    Returns what actually went.
+    """
+    wsid = str(workspace_id or "").strip()
+    mkt = str(marketplace or "").strip().upper()
+    if not wsid or not mkt:
+        return {"sources": 0, "checks": 0}
+    conn = _db.get_db(config_path)
+    ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM sourcing_sources WHERE workspace_id=? AND marketplace=?",
+        (wsid, mkt))]
+    if not ids:
+        return {"sources": 0, "checks": 0}
+    marks = ",".join("?" for _ in ids)
+    checks = conn.execute(
+        "SELECT COUNT(*) FROM sourcing_checks WHERE source_id IN (%s)" % marks,
+        ids).fetchone()[0]
+    conn.execute("DELETE FROM sourcing_checks WHERE source_id IN (%s)" % marks, ids)
+    conn.execute("DELETE FROM sourcing_sources WHERE id IN (%s)" % marks, ids)
+    conn.commit()
+    return {"sources": len(ids), "checks": int(checks)}
+
+
 def sources_for(config_path, workspace_id, marketplace, sku):
     conn = _db.get_db(config_path)
     return [dict(r) for r in conn.execute(

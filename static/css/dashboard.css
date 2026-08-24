@@ -1994,9 +1994,15 @@
      sits beside Cost sheet and COGS CSV, which add costs; wearing the same grey
      it is one slip away from either. Quiet until you go near it -- red on hover
      rather than red always, so a toolbar of eight buttons does not shout. */
-  .mktbtn.cogswipe{color:var(--red)}
-  .mktbtn.cogswipe:hover{background:var(--red-bg);border-color:var(--red-line);
-                         color:var(--red)}
+  /* A BUTTON THAT DELETES SHOULD NOT LOOK LIKE THE ONES BESIDE IT. Both of
+     these sit in a row of controls that ADD things -- Cost sheet and COGS CSV,
+     Upload Business Report and Upload Campaign export -- and wearing the same
+     grey they are one slip away from either. Quiet until you go near them: red
+     text always, red ground on hover, so a toolbar does not shout. */
+  .mktbtn.cogswipe,.db-chip.wkwipe,.db-chip.srcwipe{color:var(--red)}
+  .mktbtn.cogswipe:hover,.db-chip.wkwipe:hover,.db-chip.srcwipe:hover{
+                         background:var(--red-bg);
+                         border-color:var(--red-line);color:var(--red)}
   /* "How costs work" -- a reading panel, so it is wider than a dialog and
      scrolls inside itself rather than making the page behind it scroll. */
   .cogsexpl-back{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;

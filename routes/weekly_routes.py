@@ -138,6 +138,67 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                         "brand_terms": _brand_terms(wsid),
                         "marketplace": mkt, "account": wsid})
 
+    @app.route("/weekly/count")
+    def weekly_count():
+        """How many weeks are stored for this account and marketplace.
+
+        Read-only. It exists so the confirmation can name a real figure before
+        anything is deleted -- the browser knows only the weeks it has drawn,
+        and the list is capped, so counting those would understate what is
+        about to go.
+        """
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        return jsonify({"ok": True, "account": wsid, "marketplace": mkt,
+                        "count": _wk.count_weeks(CONFIG_PATH, wsid, mkt)})
+
+    @app.route("/weekly/clear", methods=["POST"])
+    def weekly_clear():
+        """Delete the frozen weeks for this account and marketplace.
+
+            "give me an option to delete or clear all data which is already
+             UPLOADED IN THE weekly kpi's page, i want to upload my new data
+             when the old one is deleted to avoid any confusion"
+
+        `week_start` in the body deletes exactly that one week instead of all of
+        them, which is the ordinary case of replacing a single bad upload.
+
+        SCOPED BY THE STORE, not here. Every workspace's weeks share one table
+        and this page shows one account at a time, so domain/weekly_kpi.clear
+        refuses a blank account or marketplace outright -- deleting none is the
+        safe direction and it is enforced in one place rather than trusted to
+        each caller.
+
+        THE COUNT AGREED TO TRAVELS WITH THE REQUEST. If it has moved since the
+        dialog opened -- another tab, an upload finishing -- deleting a
+        different number from the one shown is exactly the thing not to do.
+        """
+        wsid, mkt = _scope()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        b = request.get_json(silent=True) or {}
+        week = str(b.get("week_start") or "").strip()
+        have = _wk.count_weeks(CONFIG_PATH, wsid, mkt)
+        expected = b.get("expect", None)
+        if not week and expected is not None and int(expected) != have:
+            return jsonify({"ok": False, "changed": True, "count": have,
+                            "error": ("This account now has %d stored week%s, not "
+                                      "the %s the warning said. Nothing was "
+                                      "deleted -- close this and try again so you "
+                                      "are agreeing to the right number."
+                                      % (have, "" if have == 1 else "s",
+                                         expected))}), 409
+        gone = _wk.clear(CONFIG_PATH, wsid, mkt, week_start=week or None)
+        return jsonify({"ok": True, "deleted": gone, "account": wsid,
+                        "marketplace": mkt,
+                        "note": ("Week %s deleted." % week) if week else
+                                ("%d stored week%s deleted for %s %s. Upload the "
+                                 "new reports when you are ready."
+                                 % (gone, "" if gone == 1 else "s", wsid, mkt))})
+
     # ---- the KPI sheet's own layout ----------------------------------------
     #
     # Every saved week as a COLUMN, metrics down the side, newest first -- the
