@@ -499,6 +499,26 @@
           <input id="handlingdays" type="number" min="0" max="30" step="1" placeholder="days" class="handlingdays">
           <button id="handlingbtn" onclick="bulkHandling()">Set handling time</button>
         </span>
+        <!-- STOCK, beside handling time because they are the same Amazon
+             attribute: fulfillment_availability carries the quantity and the
+             lead time together, and Amazon replaces the whole thing on a patch.
+             Seller-fulfilled only — on an FBA listing the stock is whatever is
+             in Amazon's warehouse, which is reported per SKU rather than
+             silently failing. -->
+        <span class="handlingwrap" title="Set the stock quantity on the selected listings and push it live to Amazon. Seller-fulfilled listings only — FBA stock lives in Amazon's warehouse and cannot be typed in here.">
+          <i class="ti ti-package"></i>
+          <input id="stockqty" type="number" min="0" step="1" placeholder="units" class="handlingdays">
+          <button id="stockbtn" onclick="bulkQuantity()">Set stock</button>
+        </span>
+        <!-- PRICE BY PERCENTAGE. A percentage is not a price — it is a
+             different number on every listing — so this shows what each one
+             becomes before anything is sent, and then sends those figures
+             rather than the percentage again. -->
+        <span class="handlingwrap" title="Raise or lower the selling price of every selected listing by a percentage. You see exactly what each listing becomes before anything is sent.">
+          <i class="ti ti-percentage"></i>
+          <input id="pricepct" type="number" step="0.5" placeholder="+10 or -5" class="handlingdays" style="width:92px">
+          <button id="pricepctbtn" onclick="bulkPricePercent()">Change price %</button>
+        </span>
         <button onclick="bulkAutoFix()" title="Run Suggest→Apply→Preview loop on every selected listing. Auto-stops per SKU when clean or stuck." style="border-color:var(--accent);color:var(--accent2)"><i class="ti ti-wand"></i> Auto-fix</button>
         <!-- The cost upload used to sit here as well as on the toolbar. A price
              list covers the whole account, not the rows that happen to be

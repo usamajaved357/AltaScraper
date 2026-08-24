@@ -98,8 +98,8 @@ APLUS_ERROR = "A+ Content API failed: [{'code': 'Unauthorized', "
 const denied = aplusUnknownNote();
 out.deniedSaysUnknown  = /Not known/.test(denied);
 out.deniedSaysNotNone  = /does not mean there is none/.test(denied);
-out.deniedNamesTheRole = /A\+ Content<\/b> role/.test(denied);
-out.deniedNamesWhere   = /Seller Central/.test(denied);
+out.deniedNamesTheRole = /Diagnose SP-API/.test(denied);
+out.deniedNamesWhere   = /which permission|missing/.test(denied);
 out.deniedQuotesAmazon = /Access to requested resource is denied/.test(denied);
 out.deniedEscapes      = !/<script/.test(denied) && /&#39;|&quot;|'/.test(denied);
 
@@ -140,10 +140,19 @@ check("  and still says nothing", g["noteWhenAccountAsked"], "")
 print("\n=== when Amazon refused, the space is not left to speak for itself ===")
 truthy("it says the answer is not known", g["deniedSaysUnknown"])
 truthy("  and that empty does not mean none", g["deniedSaysNotNone"])
-# The fix is a permission in Seller Central, not anything in this app, so the
-# message says so rather than leaving somebody to debug their own listing.
-truthy("  it names the permission that is missing", g["deniedNamesTheRole"])
-truthy("  and where to grant it", g["deniedNamesWhere"])
+# IT POINTS AT THE DIAGNOSTIC RATHER THAN NAMING ONE ROLE.
+#
+# This assertion used to require the words "A+ Content role" and "Seller
+# Central", and it was wrong in the same way the message was: measured on
+# jack_uk/UK the app authenticates fine -- its refresh token works -- and then
+# gets 403 [ROLE] on marketplace participation, catalogue, pricing and product
+# definitions as well. SEVERAL roles are missing, so telling somebody to grant
+# the A+ one sends them to fix a fraction of the problem and conclude the app
+# is broken when it comes back refused. The screen cannot know which are
+# missing; the Diagnose SP-API button checks each in turn and says.
+truthy("  it points at the check that names them", g["deniedNamesTheRole"])
+truthy("  and says that is where the missing ones are listed",
+       g["deniedNamesWhere"])
 truthy("  and quotes what Amazon actually said", g["deniedQuotesAmazon"])
 truthy("  with the message escaped, not injected", g["deniedEscapes"])
 

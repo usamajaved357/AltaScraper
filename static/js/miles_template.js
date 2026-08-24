@@ -1550,8 +1550,18 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
   } else {
     shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="cc">fulfillment loading…</span></div>`;
   }
-  return `<div class="tile live" title="On Amazon — status: ${esc(st)}">
-    <input type="checkbox" class="tilesel" ${SELECTED.has(String(it.sku))?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(it.sku||'')}',this.checked)" title="Select for batch image generation">
+  // data-sku, WHICH THIS TILE ALONE DID NOT CARRY. Two things depend on it and
+  // both were quietly broken for Amazon's catalogue tiles:
+  //   * toggleSelect syncs every element for a SKU by data-sku, so ticking one
+  //     of these never applied the selected styling;
+  //   * "Select all" reads the grid back through it, and these tiles are MOST
+  //     of the Live on Amazon view -- which is why only the two listings that
+  //     also exist as app rows could ever be selected there.
+  // The draft tile and the table row have carried it all along; this is the
+  // copy that drifted. The checkbox itself is rowSelectBox now, for the same
+  // reason its buttons became rowActions: one definition, not three.
+  return `<div class="tile live" data-sku="${esc(it.sku||'')}" title="On Amazon — status: ${esc(st)}">
+    ${rowSelectBox({sku: it.sku||''}, 'tilesel')}
     <!-- CLICKING THE CARD OPENS THE LISTING.
          "we can directly edit the listing by clicking on the product card"
          A draft card opens the drawer. This card has no draft to open -- it is

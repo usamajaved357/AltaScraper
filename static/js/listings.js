@@ -39,9 +39,50 @@ function toggleSelect(sku, on){
     });
   updateSelBar();
 }
+/* WHAT IS ACTUALLY ON SCREEN, asked of the screen.
+ *
+ *     "i am not able to select all the listings by clicking on that white
+ *      button ... only 2 listings are allowed to be selected when i select the
+ *      live on amazon tab"
+ *
+ * Both of those are one bug. selectAllVisible walked ROWS -- the listings this
+ * app holds -- while the Live on Amazon tab draws TWO collections: the app rows
+ * Amazon confirmed, and LIVE_ITEMS, which is Amazon's own catalogue and is most
+ * of that view. On the account this was reported from, two rows were in both
+ * and everything else existed only in the catalogue, so "Select all" ticked
+ * two listings out of a screenful and looked broken.
+ *
+ * Re-deriving the list here is what caused it: render() decides what to draw
+ * from LIST_SOURCE, the filter, the dedupe between the two collections and the
+ * live/claimed/gone split, and any second attempt at that answer is a copy that
+ * can disagree -- and did. So this ASKS THE GRID. Every selectable listing is
+ * drawn with a data-sku, whichever collection it came from, so reading them
+ * back cannot drift from what a person can see.
+ */
+function visibleSelectableSkus(){
+  const out = [], seen = new Set();
+  document.querySelectorAll('#grid [data-sku]').forEach(function(el){
+    // Only things that offer a tick. A container may carry data-sku for the
+    // drawer without being selectable.
+    if(!el.querySelector('input[type=checkbox]')) return;
+    const s = String(el.getAttribute('data-sku') || "").trim();
+    if(s && !seen.has(s)){ seen.add(s); out.push(s); }
+  });
+  return out;
+}
+
 function selectAllVisible(on){
-  ROWS.filter(passFilter).filter(r=>!isEmptyRow(r)).forEach(r=>{
-    if(on) SELECTED.add(String(r.sku)); else SELECTED.delete(String(r.sku));
+  const skus = visibleSelectableSkus();
+  // NOTHING DRAWN YET is not the same as nothing to select, and silently doing
+  // nothing is exactly how this read as a dead button before.
+  if(!skus.length){
+    if(on && typeof toast === "function"){
+      toast("Nothing on screen to select yet — let the list finish loading.");
+    }
+    return;
+  }
+  skus.forEach(function(s){
+    if(on) SELECTED.add(s); else SELECTED.delete(s);
   });
   render(); updateSelBar();
 }
@@ -1400,10 +1441,18 @@ function aplusUnknownNote(){
     + '<div class="odp-note warn" style="padding:10px 12px;line-height:1.6">'
     + '<b>Not known.</b> Amazon would not tell this app what A+ content this '
     + 'listing has, so an empty space here does not mean there is none.'
+    // NAMING ONE ROLE WAS TOO NARROW. This said "grant the A+ Content role",
+    // which sends somebody to fix one permission and find everything still
+    // broken: measured on jack_uk/UK, the app authenticates fine (its refresh
+    // token works) and then gets 403 [ROLE] on marketplace participation,
+    // catalogue, pricing and product definitions as well. Several roles are
+    // missing, and this screen cannot know which. The app already has a
+    // diagnostic that lists them one by one, so it points there instead of
+    // guessing which single permission to blame.
     + (denied
-        ? ' The A+ Content permission is not granted to this app’s Amazon '
-          + 'connection — grant the <b>A+ Content</b> role to the SP-API '
-          + 'application in Seller Central, then press Sync.'
+        ? ' Amazon is refusing this app’s requests for this account. Press '
+          + '<b>Diagnose SP-API</b> at the top of this page — it checks each '
+          + 'permission in turn and names the ones that are missing.'
         : '')
     + '<div class="cc" style="margin-top:6px">Amazon said: '
     + esc(APLUS_ERROR) + '</div></div>';

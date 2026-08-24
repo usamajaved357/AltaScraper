@@ -64,6 +64,62 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
                     pass
         return updated, tabs_touched, had_col
 
+    @app.route("/stock/bulk_update", methods=["POST"])
+    def stock_bulk_update():
+        """Set the stock quantity on many live listings at once.
+
+        Body: {skus:[...], qty:N, test_one:bool=false}.
+
+        NO SHEET WRITE, deliberately. Handling time has a column in the sheet
+        because it is a decision the owner makes and keeps; stock is a fact
+        about the warehouse that Amazon is the authority on, and writing a
+        number here would create a second, immediately-stale copy of it for
+        every other screen to read. The Inventory screen already reads stock
+        from Amazon.
+
+        Same single-SKU test as handling time: the frontend pushes one, shows
+        Amazon's reply, and only then sends the rest.
+        """
+        b = request.get_json(force=True) or {}
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        test_one = bool(b.get("test_one", False))
+        if not skus:
+            return jsonify({"ok": False, "error": "no listings selected"}), 400
+        # Validated up front -- a bad number must never reach Amazon.
+        try:
+            qty = int(b.get("qty"))
+        except Exception:
+            return jsonify({"ok": False, "error": (
+                "Stock must be a whole number of units.")}), 400
+        if qty < 0:
+            return jsonify({"ok": False, "error": (
+                "Stock cannot be negative. Set it to 0 to stop selling.")}), 400
+        # A CEILING, because a typo here is not a small mistake: an extra digit
+        # promises stock that does not exist and the orders arrive anyway.
+        if qty > 100000:
+            return jsonify({"ok": False, "error": (
+                "That is over 100,000 units. If that is really right, set it on "
+                "the listing itself — a bulk change that large is more likely a "
+                "typed extra digit.")}), 400
+
+        acc = _active_account()
+        if not acc:
+            return jsonify({"ok": False, "error": "no active account for the live push"}), 400
+        mkt = (_state.get("active_marketplace") or acc.get("default_marketplace") or "UK")
+
+        if test_one:
+            res = _handling.push_quantity(_cfg(), acc, skus[0], qty, mkt)
+            return jsonify({"ok": bool(res.get("ok")), "test": True, "qty": qty,
+                            "result": res})
+
+        pushed, failed = [], []
+        for sku in skus:
+            r = _handling.push_quantity(_cfg(), acc, sku, qty, mkt)
+            (pushed if r.get("ok") else failed).append(r)
+        return jsonify({"ok": len(failed) == 0, "qty": qty, "count": len(skus),
+                        "pushed_ok": len(pushed), "pushed_fail": len(failed),
+                        "push_results": pushed + failed})
+
     @app.route("/handling/bulk_update", methods=["POST"])
     def handling_bulk_update():
         """Body: {skus:[...], days:N, sheet:bool=true, push:bool=false, test_one:bool=false}.

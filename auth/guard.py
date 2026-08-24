@@ -149,6 +149,7 @@ RULES = [
     ("/listing/image_slots",            None),
     ("/listing/image_push",             "publish"),
     ("/handling/bulk_update",           "publish"),     # writes handling time live
+    ("/stock/bulk_update",              "publish"),     # writes stock live
 
     # -- advertising
     ("/ppc",                            "ppc"),
@@ -207,6 +208,11 @@ RULES = [
     #    pay on a real listing, which is publishing.
     ("/listing/price/preview",          None),
     ("/listing/price/apply",            "publish"),
+    # The percentage pair follows exactly the same split, for the same reason:
+    # working out what +10% comes to on each listing reads Amazon and sends
+    # nothing; applying it changes what buyers pay on many listings at once.
+    ("/listing/price/percent_preview",  None),
+    ("/listing/price/percent_apply",    "publish"),
 
     # -- adding a variant. Planning reads and sends nothing; queueing writes a
     #    product into this workspace's own queue, which is the same act as
