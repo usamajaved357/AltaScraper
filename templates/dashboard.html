@@ -112,7 +112,9 @@
   <!-- Orbit keeps the top bar sparse: breadcrumb left, health badge right.
        Research ASIN and AI settings moved into the sidebar (below the nav,
        above the footer). Privacy stays here but icon-only. -->
-  <span class="hb" id="healthbadge" title="App health"><span class="dot"></span><span id="healthtxt">System healthy</span></span>
+  <!-- Says only what it checks: that this app's own server answered. It does NOT
+       mean Amazon is answering -- see the note in listings.js. -->
+  <span class="hb" id="healthbadge" title="This app's own server is answering. It does not mean Amazon is — a screen that cannot reach Amazon says so on the screen itself."><span class="dot"></span><span id="healthtxt">App running</span></span>
   <button class="barbtn iconbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i></button>
   <!-- Shown only to people who may manage users. Hiding it is a courtesy, not the
        control: the server refuses /users/* to everyone else regardless. -->

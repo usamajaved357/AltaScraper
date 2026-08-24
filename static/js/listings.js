@@ -1819,7 +1819,15 @@ async function pollHealth(){
     const r = await fetch("/healthz", {cache:"no-store"});
     const ok = r.ok;
     el.classList.toggle("bad", !ok);
-    if(t) t.textContent = ok ? "System healthy" : "Server error";
+    // "App running", NOT "System healthy". What this measures is one thing:
+    // /healthz answered, so this Flask process is alive. It says nothing about
+    // whether Amazon is answering -- and on the day this was written Amazon was
+    // refusing both the Orders API and the A+ Content API for jack_uk while the
+    // badge sat in the corner of every screen saying the system was healthy.
+    //
+    // A badge that overstates what it checked is worse than no badge, because
+    // it is consulted exactly when somebody suspects something is wrong.
+    if(t) t.textContent = ok ? "App running" : "Server error";
   }catch(e){
     el.classList.add("bad");
     if(t) t.textContent = "Server unreachable";
