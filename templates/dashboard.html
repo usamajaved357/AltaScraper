@@ -1238,6 +1238,14 @@
           </select>
           <button class="db-chip" onclick="weeklyExport()"
                   title="Every saved week as a column, newest on the left — the layout of the KPI sheet"><i class="ti ti-download"></i> Export CSV</button>
+          <!-- THE WAY BACK OUT. Weeks could be uploaded and re-uploaded but never
+               removed, so a week loaded against the wrong account or from the
+               wrong export stayed in the pack for good and every comparison
+               after it read against a week that should not have been there.
+               Asked for as "delete or clear all data which is already UPLOADED
+               ... to avoid any confusion". Red, because it cannot be undone. -->
+          <button class="db-chip wkwipe" onclick="weeklyClearAll()"
+                  title="Delete the stored weeks for this account and marketplace so you can upload fresh reports. Asks first, and says how many."><i class="ti ti-eraser"></i> Clear stored weeks</button>
           <button class="db-chip" onclick="weeklySheetSync()"
                   title="Write the same grid into this account's weekly Google Sheet. Shows you what it would do before it does it."><i class="ti ti-brand-google-drive"></i> Sync to Google Sheet</button>
         </div>

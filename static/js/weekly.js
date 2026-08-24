@@ -97,6 +97,62 @@ async function weeklyUploadFile(input){
   }catch(e){ toast("Upload failed: " + e); }
 }
 
+/* ---- CLEARING WHAT WAS UPLOADED --------------------------------------------
+ *
+ *     "give me an option to delete or clear all data which is already UPLOADED
+ *      IN THE weekly kpi's page, i want to upload my new data when the old one
+ *      is deleted to avoid any confusion"
+ *
+ * Weeks could be uploaded and re-uploaded but never removed. Re-uploading the
+ * SAME week corrects it -- store() replaces rather than duplicates -- but a week
+ * loaded against the wrong account, or built from the wrong export, stayed in
+ * the pack for good, and every week-on-week comparison after it read against a
+ * week that should not have been there.
+ *
+ * THE NUMBER IN THE WARNING IS THE SERVER'S. The page draws a capped list, so
+ * counting the rows on screen would promise to delete six and delete twenty.
+ */
+async function weeklyClearAll(){
+  let n = 0, where = "";
+  try{
+    const j = await (await fetch("/weekly/count" + _wkQs())).json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not read the stored weeks."); return; }
+    n = Number(j.count) || 0;
+    where = [j.account, j.marketplace].filter(Boolean).join(" · ");
+  }catch(e){ toast(String(e)); return; }
+
+  if(!n){
+    // A confirmation offering to delete nothing is a dialog that teaches people
+    // to dismiss dialogs.
+    toast("There are no stored weeks for " + (where || "this account")
+          + " — nothing to clear. Upload a report to start one.");
+    return;
+  }
+
+  if(!confirm("Delete all " + n + " stored week" + (n === 1 ? "" : "s")
+              + " for " + where + "?\n\n"
+              + "This removes the frozen weekly packs already uploaded or built "
+              + "for this account and marketplace. It cannot be undone — the "
+              + "only way back is uploading the source reports again.\n\n"
+              + "Other accounts and other marketplaces are not touched.\n\n"
+              + "Nothing on Amazon changes.")){
+    return;
+  }
+
+  try{
+    const r = await fetch("/weekly/clear" + _wkQs(), {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      // The number agreed to goes back with the request: if it moved while the
+      // dialog was open, the server refuses rather than deleting a different
+      // amount from the one shown.
+      body: JSON.stringify({expect: n})});
+    const j = await r.json();
+    if(!j || !j.ok){ toast((j && j.error) || "Nothing was deleted."); return; }
+    toast(j.note || (j.deleted + " week(s) deleted"));
+    await weeklyLoad();
+  }catch(e){ toast(String(e)); }
+}
+
 async function weeklyPull(){
   toast("Building the week from what the app already holds…");
   const d = (document.getElementById("wk_week") || {}).value || "";

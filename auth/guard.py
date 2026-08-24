@@ -152,6 +152,12 @@ RULES = [
     # weight as a bulk delete. Listed above the broader /cogs entries so the
     # narrower rule wins.
     ("/cogs/clear",                     "approve_delete"),
+    # Deletes frozen weekly reporting history, and there is no undo -- the row
+    # holds a finished pack, so the only way back is re-uploading the source
+    # files. Uploading a week is ordinary work and stays under "edit"; throwing
+    # a year of it away is a bulk delete whatever it is called. Above the
+    # broader /weekly entry so the narrower rule wins.
+    ("/weekly/clear",                   "approve_delete"),
 
     # -- shared, long-running work. These are gated by OWNERSHIP in the route
     #    (domain/job_owner.py) rather than by permission: everyone who may do

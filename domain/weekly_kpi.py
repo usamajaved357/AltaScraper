@@ -439,6 +439,63 @@ def store(config_path, workspace_id, marketplace, pack, source="upload"):
     return pack
 
 
+def count_weeks(config_path, workspace_id, marketplace):
+    """How many weeks are frozen for one account and marketplace.
+
+    Separate from clear() on purpose: the confirmation has to name a real number
+    BEFORE anything is deleted, and a count produced by the same reader that
+    will do the deleting cannot disagree with it.
+    """
+    from data import db as _db
+    try:
+        return int(_db.get_db(config_path).execute(
+            "SELECT COUNT(*) FROM weekly_kpi WHERE workspace_id=? AND marketplace=?",
+            (workspace_id, str(marketplace or "").upper())).fetchone()[0])
+    except Exception:
+        return 0
+
+
+def clear(config_path, workspace_id, marketplace, week_start=None):
+    """Delete frozen weeks. Returns how many went.
+
+        "give me an option to delete or clear all data which is already
+         UPLOADED IN THE weekly kpi's page, i want to upload my new data when
+         the old one is deleted to avoid any confusion"
+
+    SCOPED TO ONE ACCOUNT AND ONE MARKETPLACE, always. Every workspace's weeks
+    share this table, and the page shows one account at a time -- so a clear
+    that ignored the scope would wipe Nestwell's reporting history while
+    Jack's screen was open, and nothing would say so until a week was missing
+    from a client report.
+
+    `week_start` deletes exactly that one week instead, for the ordinary case of
+    replacing a single bad upload without losing the rest of the year.
+
+    A MISSING account or marketplace DELETES NOTHING rather than everything.
+    That is the safe direction and it is enforced here rather than trusted to
+    every caller.
+
+    There is no undo: the row holds a frozen JSON pack, and re-uploading the
+    source files is the only way back.
+    """
+    wsid = str(workspace_id or "").strip()
+    mkt = str(marketplace or "").strip().upper()
+    if not wsid or not mkt:
+        return 0
+    from data import db as _db
+    conn = _db.get_db(config_path)
+    if week_start:
+        cur = conn.execute(
+            "DELETE FROM weekly_kpi WHERE workspace_id=? AND marketplace=? "
+            "AND week_start=?", (wsid, mkt, str(week_start)))
+    else:
+        cur = conn.execute(
+            "DELETE FROM weekly_kpi WHERE workspace_id=? AND marketplace=?",
+            (wsid, mkt))
+    conn.commit()
+    return int(cur.rowcount or 0)
+
+
 def weeks(config_path, workspace_id, marketplace, limit=26):
     """Every stored week, newest first. Just the headline of each."""
     import json as _json
