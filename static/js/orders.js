@@ -460,7 +460,17 @@ function ordersRender(){
     h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
       +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
       +  '<i class="ti ti-alert-triangle"></i> <b>' + _oEsc(e.account) + '</b> — '
-      +  _oEsc(e.error) + '</div>';
+      +  _oEsc(e.error)
+      // AMAZON'S OWN WORDS, KEPT BUT NOT LEADING. The sentence above is what to
+      // do about it; this is what to search for when the sentence turns out not
+      // to cover the case. Only shown when it says something the sentence does
+      // not already -- an unrecognised error is passed through as-is, and
+      // printing it twice reads as a rendering fault.
+      +  ((e.raw && e.raw !== e.error)
+            ? '<div style="opacity:.7;margin-top:4px;font-size:10.5px">Amazon '
+              + 'said: ' + _oEsc(e.raw) + '</div>'
+            : '')
+      +  '</div>';
   });
 
   // WHAT THE PERIOD CAME TO. This was one thin line of 12.5px text above the
@@ -492,12 +502,36 @@ function ordersRender(){
     _pfCur = _pfCur || r.currency || "";
     _pfKnown++;
   });
+  // NOTHING COUNTED IS NOT NOTHING SOLD.
+  //
+  // The banner above already says an account refused. The cards under it went on
+  // to print "Orders 0 / last 30 days" and the panel said "No orders in the last
+  // 30 days" -- both stated as measurements, in an account where Amazon had
+  // simply declined to answer. MEASURED on jack_uk/UK: the Orders API returns
+  // Unauthorized, and the screen reported nought orders, nought units and no
+  // rows, all of it confident.
+  //
+  // A count is only a count when somebody was actually able to count. When every
+  // account asked came back an error, the figure is UNKNOWN and says so; when
+  // some did, the number stands but is marked as partial, because a total that
+  // is missing an account is not the total.
+  const _asked = (m.accounts_asked || []).length;
+  const _failed = (m.errors || []).length;
+  const _noneAnswered = _failed > 0 && _failed >= Math.max(1, _asked);
+  const _somefailed = _failed > 0 && !_noneAnswered;
+  const _partly = _somefailed
+    ? " · " + _failed + " of " + _asked + " accounts did not answer"
+    : "";
   h += uiStats([
-    {label: "Orders", value: s.orders || 0,
-     note: "last " + ORD.days + " days"},
-    {label: "Units", value: s.units || 0,
-     note: (s.orders ? ((s.units || 0) / s.orders).toFixed(1) : "0")
-           + " per order"},
+    {label: "Orders",
+     value: _noneAnswered ? "—" : (s.orders || 0),
+     note: _noneAnswered ? "not known — Amazon refused"
+                         : ("last " + ORD.days + " days" + _partly)},
+    {label: "Units",
+     value: _noneAnswered ? "—" : (s.units || 0),
+     note: _noneAnswered ? "not known"
+           : ((s.orders ? ((s.units || 0) / s.orders).toFixed(1) : "0")
+              + " per order")},
   ].concat(_revCards).concat([
     {label: "Profit", value: (_pf === null ? "" : _oMoney(_pf, _pfCur)),
      tone: (_pf === null) ? "" : (_pf < 0 ? "bad" : "good"),
@@ -509,10 +543,24 @@ function ordersRender(){
 
   if(!ORD.rows.length){
     h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
-      +  'No orders in the last ' + ORD.days + ' days'
-      +  (ORD.q ? ' matching “' + _oEsc(ORD.q) + '”' : '')
-      +  '. Accounts asked: ' + _oEsc((m.accounts_asked||[]).join(", ") || "none")
-      +  '.</div>';
+      // AN EMPTY LIST BECAUSE NOBODY ANSWERED IS NOT AN EMPTY LIST OF ORDERS.
+      // "No orders in the last 30 days" is a finding; this is the absence of
+      // one, and saying the first when the second is true is how somebody
+      // concludes their account has stopped selling.
+      +  (_noneAnswered
+            ? '<b>Not known.</b> Amazon would not list orders for '
+              + _oEsc((m.accounts_asked || []).join(", ") || "this account")
+              + ', so this is empty because nothing could be read — not because '
+              + 'nothing sold. The reason is in the message above.'
+            : 'No orders in the last ' + ORD.days + ' days'
+              + (ORD.q ? ' matching “' + _oEsc(ORD.q) + '”' : '')
+              + '. Accounts asked: '
+              + _oEsc((m.accounts_asked||[]).join(", ") || "none") + '.'
+              + (_somefailed
+                   ? ' ' + _failed + ' of them did not answer, so orders they '
+                     + 'hold would not be here either way.'
+                   : ''))
+      +  '</div>';
     body.innerHTML = h; return;
   }
 

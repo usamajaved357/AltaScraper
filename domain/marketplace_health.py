@@ -73,6 +73,70 @@ def looks_permanent(error):
     return any(m in e for m in PERMANENT_MARKERS)
 
 
+# What Amazon's refusals mean, said the way CLAUDE.md Rule 5 asks for. Ordered
+# most specific first, because "unauthorized" appears inside several of them.
+_PLAIN = (
+    ("quotaexceeded", "Amazon is rate-limiting this account — it will answer "
+                      "again shortly."),
+    ("throttl",       "Amazon is rate-limiting this account — it will answer "
+                      "again shortly."),
+    ("unauthorized",  "Amazon refused: this app is not authorised for that. "
+                      "The permission is granted in Seller Central, under the "
+                      "app's developer settings."),
+    ("accessdenied",  "Amazon refused: this app is not authorised for that. "
+                      "The permission is granted in Seller Central, under the "
+                      "app's developer settings."),
+    ("forbidden",     "Amazon refused: this app is not authorised for that. "
+                      "The permission is granted in Seller Central, under the "
+                      "app's developer settings."),
+    ("invalidinput",  "Amazon does not recognise that request for this "
+                      "marketplace — usually the account is not registered to "
+                      "sell there."),
+    ("invalid input", "Amazon does not recognise that request for this "
+                      "marketplace — usually the account is not registered to "
+                      "sell there."),
+    ("notfound",      "Amazon has nothing under that reference."),
+    ("not found",     "Amazon has nothing under that reference."),
+    ("timeout",       "Amazon did not answer in time. Nothing is wrong with "
+                      "the account; try again."),
+    ("timed out",     "Amazon did not answer in time. Nothing is wrong with "
+                      "the account; try again."),
+)
+
+
+def explain(error):
+    """Amazon's error, in a sentence a person can act on. "" for no error.
+
+    WHY THIS IS HERE AND NOT SPELLED OUT AT EACH SCREEN
+
+    What the app actually showed on the Orders page was this, verbatim:
+
+        jack_uk - [{'code': 'Unauthorized', 'message': 'Access to requested
+        resource is denied.', 'details': ''}]
+
+    which is a Python list of dictionaries printed at somebody who wants to know
+    why their orders are missing. CLAUDE.md Rule 5 says the plain English comes
+    first, and Rule 12 says it is written once -- this module already decides
+    what these errors MEAN (see looks_permanent and PERMANENT_MARKERS), so the
+    wording belongs beside that judgement rather than in each screen.
+
+    The raw text is never thrown away: callers show this sentence and keep
+    Amazon's own words underneath, because the exact string is what makes a
+    problem searchable when the sentence turns out not to cover it.
+    """
+    raw = str(error or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    for marker, said in _PLAIN:
+        if marker in low:
+            return said
+    # NOT GUESSED AT. An error this does not recognise is handed back as it came
+    # rather than described with a sentence that might be wrong -- a confident
+    # wrong explanation sends somebody to fix the wrong thing.
+    return raw[:300]
+
+
 def record(config_path, account_id, marketplace, ok, error=""):
     """Note how an attempt went. Returns the pair's record after the update."""
     data = _load(config_path)

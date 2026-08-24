@@ -25,6 +25,7 @@ import datetime as _dt
 
 from flask import request, jsonify
 
+from domain import marketplace_health as _mh
 from domain import orders_view as _ov
 
 
@@ -241,8 +242,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 # One account failing must not empty the whole screen -- that is
                 # the difference between "Nestwell's token expired" and "you have
                 # no orders", and only one of them is true.
+                # PLAIN ENGLISH FIRST, Amazon's own words underneath. What this
+                # screen showed was the repr of a list of dicts --
+                # "[{'code': 'Unauthorized', 'message': ...}]" -- at somebody
+                # who wants to know why their orders are missing. The wording
+                # comes from marketplace_health, which already decides what
+                # these errors mean (Rule 12); `raw` is kept because the exact
+                # string is what makes an unrecognised problem searchable.
                 errors.append({"account": aid,
-                               "error": str(e)[:200]})
+                               "error": _mh.explain(e),
+                               "raw": str(e)[:200]})
                 continue
             label = a.get("label") or aid
             for o in got:
