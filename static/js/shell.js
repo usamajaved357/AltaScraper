@@ -351,7 +351,9 @@ async function enterAccount(accountId){
   // enforces it -- this only keeps the UI from offering actions that will be refused.
   window.WS_READONLY = (a.can_publish === false);
   window.WS_CREDS_SOURCE = a.credentials_source_account_id || "";
-  LIVE_ITEMS=[]; APLUS_BY_ASIN={}; AMZ_STATE={};   // never carry one account's data into another
+  // never carry one account's data into another -- INCLUDING the reason A+ was
+  // empty, or one account's permission problem is reported against the next.
+  LIVE_ITEMS=[]; APLUS_BY_ASIN={}; APLUS_ERROR=""; AMZ_STATE={};
   // AND THE DRAFTS. These were left behind when only the live-side caches were
   // cleared, so opening Jack Reacherd painted Green Haven's listings and held
   // them on screen for the whole of the new fetch -- up to a minute on a

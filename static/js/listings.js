@@ -1377,6 +1377,38 @@ function aplusImages(r){
   return out;
 }
 
+/* WHEN THERE IS NO A+ TO SHOW, WHICH OF THE TWO REASONS IS IT?
+ *
+ * "This listing has no A+ content" is a measurement. "Amazon would not tell us"
+ * is not one, and drawing nothing for both says the first when the second is
+ * true. MEASURED on jack_uk/UK: the A+ Content API answers Unauthorized because
+ * that role is not granted to this SP-API application, so the whole index is
+ * empty on every account and every A+ badge in the app has been answering "no"
+ * from a question that was never asked.
+ *
+ * Nothing is drawn in the ordinary case -- an account with no A+ pages does not
+ * need telling on every card. Only the unknown gets a line, and the line says
+ * what to do about it.
+ */
+function aplusUnknownNote(){
+  if(typeof APLUS_ERROR === "undefined" || !APLUS_ERROR) return "";
+  // The one Amazon actually returns here is worth naming, because the fix is a
+  // permission in Seller Central rather than anything in this app.
+  const denied = /unauthor|denied|access/i.test(APLUS_ERROR);
+  return '<div class="kvsec" style="color:var(--ai);margin-top:14px">'
+    + '<i class="ti ti-layout-board"></i> A+ content live on Amazon</div>'
+    + '<div class="odp-note warn" style="padding:10px 12px;line-height:1.6">'
+    + '<b>Not known.</b> Amazon would not tell this app what A+ content this '
+    + 'listing has, so an empty space here does not mean there is none.'
+    + (denied
+        ? ' The A+ Content permission is not granted to this app’s Amazon '
+          + 'connection — grant the <b>A+ Content</b> role to the SP-API '
+          + 'application in Seller Central, then press Sync.'
+        : '')
+    + '<div class="cc" style="margin-top:6px">Amazon said: '
+    + esc(APLUS_ERROR) + '</div></div>';
+}
+
 // "Inactive" chip carrying Amazon's own reason (out of stock, policy issue, no offer).
 // Only rendered once /live/reconcile has actually asked Amazon about this SKU.
 function _inactiveChip(r){
@@ -1628,7 +1660,7 @@ function drawerContent(r){
         <div class="aplusimgs">
           ${(d.images||[]).map(function(im){ return `<a href="${esc(im.url)}" target="_blank" rel="noopener" title="${esc(im.alt||'')} — ${im.w||'?'}x${im.h||'?'} — open full size"><img src="${esc(im.url)}" loading="lazy" alt="${esc(im.alt||'')}" onerror="this.closest('a').style.display='none'"></a>`; }).join("")}
         </div>
-      </div>`; }).join("")}` : '';
+      </div>`; }).join("")}` : aplusUnknownNote();
   return `
     <div class="dwhead">
       <div class="dwtop">
