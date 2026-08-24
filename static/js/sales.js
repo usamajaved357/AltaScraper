@@ -744,6 +744,11 @@ function salesDrawCharts(ser){
         // back into two dates. The week and Today charts deliberately do not
         // name a handler -- their columns are a different set entirely.
         id: "sales_combo", onZoom: "salesZoomTo", columns: dates,
+        // WHAT ONE BAR IS. The granularity picker switches these columns
+        // between days, weeks and months, and the chart's hover line said
+        // "the day's figures" for all three.
+        unit: (SALES.gran === "week") ? "week"
+            : (SALES.gran === "month") ? "month" : "day",
         // Orbit's Sales Report keeps a 320px height at every width -- measured
         // 1365x320 on desktop and 340x320 on a phone. See scChartWidth.
         width: scChartWidth("sales_charts", 1365), height: 320,

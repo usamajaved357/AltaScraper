@@ -848,11 +848,28 @@ function salesChart(points, opts){
   // beside the title (see salesChartKey, which the caller places), and the hover
   // gesture is announced once on the big chart below rather than on all three.
   const compact = !!o.compact;
+
+  // WHAT ONE POINT IS CALLED, and why this is a parameter rather than the word
+  // "day". This chart is drawn over day, week and month buckets -- the Sales
+  // page switches between all three with its granularity picker, and the weekly
+  // KPI trend is twelve weeks -- but the header said "day" in every case. So a
+  // chart of twelve weeks announced "7 days not in from Amazon yet" and offered
+  // "the day's figure" for a point that is a week.
+  const unit = o.unit || "day";
+  const units = o.units || (unit + "s");
+
+  // WHY A POINT IS MISSING is also the caller's to say. "Not in from Amazon
+  // yet" is true of a sales day near the end of a range, and false of a weekly
+  // pack nobody uploaded -- that one is not late, it does not exist. Naming the
+  // wrong reason is worse than naming none, because it tells the reader to wait
+  // for something that is never coming.
+  const why = o.missingNote || "not in from Amazon yet — shaded, not zero";
   const head = compact ? "" :
     ('<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;flex-wrap:wrap">'
      + '<div style="font-size:12.5px;font-weight:600">' + _scEsc(o.title || "") + '</div>'
      + (missing ? '<span class="cc" style="font-size:10.5px">' + missing
-                  + ' day' + (missing===1?'':'s') + ' not in from Amazon yet — shaded, not zero</span>' : '')
+                  + ' ' + _scEsc(missing === 1 ? unit : units) + ' '
+                  + _scEsc(why) + '</span>' : '')
      // Where the hover answer lands. Beside the title, so the eye does not
      // have to leave the chart to read it.
      + '<span id="' + cid + '_read" style="font-size:11.5px;margin-left:auto;'
@@ -869,8 +886,9 @@ function salesChart(points, opts){
      // the AI spend page told you to drag across a chart where dragging moved
      // nothing you could see.
      + '<div class="cc" style="font-size:10px;margin:-2px 0 5px;opacity:.65">'
-     + 'Hover for the day’s figure'
-     + (o.onZoom ? ' · drag across to zoom into those days' : '') + '</div>');
+     + 'Hover for the ' + _scEsc(unit) + '’s figure'
+     + (o.onZoom ? ' · drag across to zoom into those ' + _scEsc(units) : '')
+     + '</div>');
 
   return '<div style="margin-bottom:' + (compact ? "0" : "14px") + '">'
        + head
@@ -1376,7 +1394,10 @@ function salesCombo(o){
        // Says the gesture exists. Nobody discovers drag-to-zoom by accident --
        // and it is only claimed on a chart that named a zoom handler.
        + '<div class="cc" style="font-size:10px;margin:0 0 4px;opacity:.65">'
-       + 'Hover for the day’s figures'
+       // The bucket's name, not always "day" -- the Sales Report is drawn over
+       // days, weeks or months depending on the granularity picked, and this
+       // line said "day" for all three. See the same note in salesChart.
+       + 'Hover for the ' + _scEsc(o.unit || "day") + '’s figures'
        + (o.onZoom ? ' · drag across to zoom' : '')
        + ' · click a name below to hide that line'
        + '<span id="' + cid + '_read" style="margin-left:auto"></span></div>'

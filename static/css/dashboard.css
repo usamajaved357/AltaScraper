@@ -3340,6 +3340,14 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .wk-d.wk-up{ color:var(--ok); }
 .wk-d.wk-down{ color:#fca5a5; }
 
+/* The twelve-week trend's metric chips. Small, because there are nine of them
+   and they sit on the card's own header line rather than taking a row to
+   themselves. The picked one is filled, not merely outlined -- an accent border
+   alone is what made the listings filter buttons look like three were on. */
+.wk-tchip{ padding:3px 9px; font-size:11px; }
+.wk-tchip.on{ background:var(--accent); border-color:var(--accent);
+              color:#04140f; font-weight:700; }
+
 /* ---- parent and child, the way Seller Central draws it ------------------
    "ALSO I WANT MY APP TO SHOW the parents and child relation like we have in
     amazon."
