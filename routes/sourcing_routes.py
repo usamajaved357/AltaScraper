@@ -596,6 +596,67 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         out = _bulk.apply_rows(CONFIG_PATH, wsid, mkt, headers, rows)
         return jsonify(out), (200 if out.get("ok") else 400)
 
+    @app.route("/sourcing/sources/count")
+    def sourcing_sources_count():
+        """How many suppliers, on how many SKUs, holding how many readings.
+
+        Read-only. It exists so the confirmation can name real figures before
+        anything is deleted -- the screen shows one page of rows, so counting
+        those would understate what is about to go.
+        """
+        wsid, mkt = _where()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        out = _repo.count_sources(CONFIG_PATH, wsid, mkt)
+        out.update({"ok": True, "account": wsid, "marketplace": mkt})
+        return jsonify(out)
+
+    @app.route("/sourcing/sources/clear", methods=["POST"])
+    def sourcing_sources_clear():
+        """Delete every supplier link for this account and marketplace.
+
+            "I also want to delete all the suppliers from the repricer ... so i
+             can add new suppliers"
+
+        The SKUs stay enrolled and their pricing rules stay set -- see
+        source_repo.clear_sources -- so uploading a fresh supplier sheet works
+        immediately instead of needing every SKU re-enrolled first.
+
+        THE COUNT AGREED TO TRAVELS WITH THE REQUEST. If it moved since the
+        dialog opened -- a sweep finishing, another tab -- deleting a different
+        number from the one shown is exactly the thing not to do.
+        """
+        wsid, mkt = _where()
+        if not wsid or not mkt:
+            return jsonify({"ok": False, "error": (
+                "Open an account and pick a marketplace first.")}), 400
+        b = _body()
+        have = _repo.count_sources(CONFIG_PATH, wsid, mkt)
+        expected = b.get("expect", None)
+        if expected is not None and int(expected) != int(have.get("sources", 0)):
+            return jsonify({"ok": False, "changed": True,
+                            "count": have.get("sources", 0),
+                            "error": ("This account now has %d supplier link%s, not "
+                                      "the %s the warning said. Nothing was "
+                                      "deleted -- close this and try again so you "
+                                      "are agreeing to the right number."
+                                      % (have.get("sources", 0),
+                                         "" if have.get("sources") == 1 else "s",
+                                         expected))}), 409
+        gone = _repo.clear_sources(CONFIG_PATH, wsid, mkt)
+        return jsonify({"ok": True, "account": wsid, "marketplace": mkt,
+                        "deleted": gone.get("sources", 0),
+                        "checks_deleted": gone.get("checks", 0),
+                        "note": ("%d supplier link%s and %d price reading%s deleted. "
+                                 "The SKUs are still tracked and their targets are "
+                                 "unchanged, so a new supplier sheet works straight "
+                                 "away."
+                                 % (gone.get("sources", 0),
+                                    "" if gone.get("sources") == 1 else "s",
+                                    gone.get("checks", 0),
+                                    "" if gone.get("checks") == 1 else "s"))})
+
     # ---- sources --------------------------------------------------------
     @app.route("/sourcing/source/add", methods=["POST"])
     def sourcing_source_add():

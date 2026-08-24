@@ -502,6 +502,73 @@ let SRC_LASTBULK = null;
 // "the repricer tool give me an option to upload a sheet containing the sku's or
 //  original asins of the item, to add their suppliers through a sheet upload"
 //
+/* ---- TAKING THEM ALL OFF AGAIN ---------------------------------------------
+ *
+ *     "I also want to delete all the suppliers from the repricer ... so i can
+ *      add new suppliers"
+ *
+ * Suppliers could be added one at a time and by the sheetful, and removed only
+ * one at a time from inside an expanded row -- so replacing a whole set meant
+ * opening fifty-five rows and clicking fifty-five times.
+ *
+ * THE WARNING NAMES THREE NUMBERS, not one. "Delete 55 suppliers" understates
+ * it: the price readings recorded against them go too, and those cannot be
+ * fetched again -- a supplier's price on a day nobody was watching is gone. And
+ * it says what SURVIVES, because that is the point of the request: the SKUs
+ * stay tracked and their targets stay set, so a new sheet works immediately.
+ */
+async function sourcingClearSuppliers(){
+  let c = null;
+  try{
+    // No query string, like every other /sourcing call on this page: the
+    // server's _where() resolves the open account and marketplace, and adding a
+    // second way to say it here is how the two come to disagree.
+    c = await (await fetch("/sourcing/sources/count")).json();
+    if(!c || !c.ok){ toast((c && c.error) || "Could not read the suppliers."); return; }
+  }catch(e){ toast(String(e)); return; }
+
+  const n = Number(c.sources) || 0;
+  if(!n){
+    // A confirmation offering to delete nothing teaches people to dismiss
+    // confirmations.
+    toast("There are no supplier links on " + [c.account, c.marketplace].filter(Boolean).join(" · ")
+          + " — nothing to clear. Add some with “Suppliers from a sheet”.");
+    return;
+  }
+
+  // srcConfirm, not the browser's confirm(): this page deliberately has none
+  // left, and a white system dialog in the middle of a dark screen is the one
+  // thing on it that does not look like the app.
+  if(!await srcConfirm({
+      title: "Delete all " + n + " supplier link" + (n === 1 ? "" : "s") + "?",
+      body: "For " + [c.account, c.marketplace].filter(Boolean).join(" · ")
+          + ". They are attached to " + (c.skus || 0) + " SKU"
+          + ((c.skus === 1) ? "" : "s") + ", and " + (c.checks || 0)
+          + " recorded price reading" + ((c.checks === 1) ? "" : "s")
+          + " will go with them — a supplier's price on a day nobody was "
+          + "watching cannot be fetched again.\n\n"
+          + "The SKUs stay tracked and their profit targets stay set, so a new "
+          + "supplier sheet works straight away.\n\n"
+          + "Other accounts and other marketplaces are not touched. Nothing on "
+          + "Amazon changes.",
+      confirm: "Delete them all", risk: true})){
+    return;
+  }
+
+  try{
+    const r = await fetch("/sourcing/sources/clear", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      // The number agreed to goes back with it: if a sweep finished while the
+      // dialog was open, the server refuses rather than deleting a different
+      // amount from the one shown.
+      body: JSON.stringify({expect: n})});
+    const j = await r.json();
+    if(!j || !j.ok){ toast((j && j.error) || "Nothing was deleted."); return; }
+    toast(j.note || (j.deleted + " supplier link(s) deleted"));
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+}
+
 // The report is shown ROW BY ROW, not as a total. A bulk import that says "38
 // attached" and nothing else is how twelve silently-skipped rows become "the
 // repricer is not working" a fortnight later.
@@ -650,6 +717,19 @@ function sourcingRender(j){
     +  'Columns you leave blank are not changed, and a link that is already '
     +  'attached is left alone.">'
     +  '<i class="ti ti-file-download"></i> Get the template</a>'
+    // THE WAY BACK OUT, beside the two controls that put suppliers IN.
+    //
+    //     "I also want to delete all the suppliers from the repricer ... so i
+    //      can add new suppliers"
+    //
+    // Suppliers could be added one at a time and by the sheetful, and removed
+    // only one at a time from inside a row -- so replacing a whole set meant
+    // fifty-five clicks through fifty-five expanded rows.
+    +  '<button class="db-chip srcwipe" onclick="sourcingClearSuppliers()" title="'
+    +  'Delete every supplier link on this account and marketplace so you can '
+    +  'upload a fresh set. The SKUs stay tracked and their targets stay set. '
+    +  'Asks first, and says how many links and price readings will go.">'
+    +  '<i class="ti ti-eraser"></i> Clear all suppliers</button>'
     +  '<button class="db-chip" onclick="sourcingCheckListings()" title="'
     +  'Asks Amazon whether it still has each tracked SKU. Any it no longer has '
     +  'is marked "deleted on Amazon" and its auto-pricing switched off — its '

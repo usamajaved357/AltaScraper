@@ -101,6 +101,19 @@ RULES = [
     # which /sourcing/list shows too. Reading it changes nothing; enrolling from
     # it is a separate call and still needs publish.
     ("/sourcing/candidates",            None),
+    # Counting the supplier links reads and changes nothing, exactly like the
+    # three above.
+    ("/sourcing/sources/count",         None),
+    # STRIPS EVERY SUPPLIER LINK off the repricer, and takes their recorded
+    # price readings with them -- a supplier's price on a day nobody was
+    # watching cannot be fetched again. Adding or removing ONE supplier is
+    # ordinary repricer work and stays under "publish" with the rest; removing
+    # all of them at once is a bulk delete, and that is a different question
+    # from "may this person work the repricer".
+    #
+    # ABOVE the broad /sourcing line, or it never fires -- first match wins, and
+    # everything under /sourcing was resolving to publish.
+    ("/sourcing/sources/clear",         "approve_delete"),
     ("/sourcing",                       "publish"),
 
     # -- importing an eBay seller. Finding and screening send NOTHING anywhere;
