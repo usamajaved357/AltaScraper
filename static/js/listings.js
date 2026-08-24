@@ -39,9 +39,50 @@ function toggleSelect(sku, on){
     });
   updateSelBar();
 }
+/* WHAT IS ACTUALLY ON SCREEN, asked of the screen.
+ *
+ *     "i am not able to select all the listings by clicking on that white
+ *      button ... only 2 listings are allowed to be selected when i select the
+ *      live on amazon tab"
+ *
+ * Both of those are one bug. selectAllVisible walked ROWS -- the listings this
+ * app holds -- while the Live on Amazon tab draws TWO collections: the app rows
+ * Amazon confirmed, and LIVE_ITEMS, which is Amazon's own catalogue and is most
+ * of that view. On the account this was reported from, two rows were in both
+ * and everything else existed only in the catalogue, so "Select all" ticked
+ * two listings out of a screenful and looked broken.
+ *
+ * Re-deriving the list here is what caused it: render() decides what to draw
+ * from LIST_SOURCE, the filter, the dedupe between the two collections and the
+ * live/claimed/gone split, and any second attempt at that answer is a copy that
+ * can disagree -- and did. So this ASKS THE GRID. Every selectable listing is
+ * drawn with a data-sku, whichever collection it came from, so reading them
+ * back cannot drift from what a person can see.
+ */
+function visibleSelectableSkus(){
+  const out = [], seen = new Set();
+  document.querySelectorAll('#grid [data-sku]').forEach(function(el){
+    // Only things that offer a tick. A container may carry data-sku for the
+    // drawer without being selectable.
+    if(!el.querySelector('input[type=checkbox]')) return;
+    const s = String(el.getAttribute('data-sku') || "").trim();
+    if(s && !seen.has(s)){ seen.add(s); out.push(s); }
+  });
+  return out;
+}
+
 function selectAllVisible(on){
-  ROWS.filter(passFilter).filter(r=>!isEmptyRow(r)).forEach(r=>{
-    if(on) SELECTED.add(String(r.sku)); else SELECTED.delete(String(r.sku));
+  const skus = visibleSelectableSkus();
+  // NOTHING DRAWN YET is not the same as nothing to select, and silently doing
+  // nothing is exactly how this read as a dead button before.
+  if(!skus.length){
+    if(on && typeof toast === "function"){
+      toast("Nothing on screen to select yet — let the list finish loading.");
+    }
+    return;
+  }
+  skus.forEach(function(s){
+    if(on) SELECTED.add(s); else SELECTED.delete(s);
   });
   render(); updateSelBar();
 }
@@ -1377,6 +1418,46 @@ function aplusImages(r){
   return out;
 }
 
+/* WHEN THERE IS NO A+ TO SHOW, WHICH OF THE TWO REASONS IS IT?
+ *
+ * "This listing has no A+ content" is a measurement. "Amazon would not tell us"
+ * is not one, and drawing nothing for both says the first when the second is
+ * true. MEASURED on jack_uk/UK: the A+ Content API answers Unauthorized because
+ * that role is not granted to this SP-API application, so the whole index is
+ * empty on every account and every A+ badge in the app has been answering "no"
+ * from a question that was never asked.
+ *
+ * Nothing is drawn in the ordinary case -- an account with no A+ pages does not
+ * need telling on every card. Only the unknown gets a line, and the line says
+ * what to do about it.
+ */
+function aplusUnknownNote(){
+  if(typeof APLUS_ERROR === "undefined" || !APLUS_ERROR) return "";
+  // The one Amazon actually returns here is worth naming, because the fix is a
+  // permission in Seller Central rather than anything in this app.
+  const denied = /unauthor|denied|access/i.test(APLUS_ERROR);
+  return '<div class="kvsec" style="color:var(--ai);margin-top:14px">'
+    + '<i class="ti ti-layout-board"></i> A+ content live on Amazon</div>'
+    + '<div class="odp-note warn" style="padding:10px 12px;line-height:1.6">'
+    + '<b>Not known.</b> Amazon would not tell this app what A+ content this '
+    + 'listing has, so an empty space here does not mean there is none.'
+    // NAMING ONE ROLE WAS TOO NARROW. This said "grant the A+ Content role",
+    // which sends somebody to fix one permission and find everything still
+    // broken: measured on jack_uk/UK, the app authenticates fine (its refresh
+    // token works) and then gets 403 [ROLE] on marketplace participation,
+    // catalogue, pricing and product definitions as well. Several roles are
+    // missing, and this screen cannot know which. The app already has a
+    // diagnostic that lists them one by one, so it points there instead of
+    // guessing which single permission to blame.
+    + (denied
+        ? ' Amazon is refusing this app’s requests for this account. Press '
+          + '<b>Diagnose SP-API</b> at the top of this page — it checks each '
+          + 'permission in turn and names the ones that are missing.'
+        : '')
+    + '<div class="cc" style="margin-top:6px">Amazon said: '
+    + esc(APLUS_ERROR) + '</div></div>';
+}
+
 // "Inactive" chip carrying Amazon's own reason (out of stock, policy issue, no offer).
 // Only rendered once /live/reconcile has actually asked Amazon about this SKU.
 function _inactiveChip(r){
@@ -1628,7 +1709,7 @@ function drawerContent(r){
         <div class="aplusimgs">
           ${(d.images||[]).map(function(im){ return `<a href="${esc(im.url)}" target="_blank" rel="noopener" title="${esc(im.alt||'')} — ${im.w||'?'}x${im.h||'?'} — open full size"><img src="${esc(im.url)}" loading="lazy" alt="${esc(im.alt||'')}" onerror="this.closest('a').style.display='none'"></a>`; }).join("")}
         </div>
-      </div>`; }).join("")}` : '';
+      </div>`; }).join("")}` : aplusUnknownNote();
   return `
     <div class="dwhead">
       <div class="dwtop">
@@ -1787,7 +1868,15 @@ async function pollHealth(){
     const r = await fetch("/healthz", {cache:"no-store"});
     const ok = r.ok;
     el.classList.toggle("bad", !ok);
-    if(t) t.textContent = ok ? "System healthy" : "Server error";
+    // "App running", NOT "System healthy". What this measures is one thing:
+    // /healthz answered, so this Flask process is alive. It says nothing about
+    // whether Amazon is answering -- and on the day this was written Amazon was
+    // refusing both the Orders API and the A+ Content API for jack_uk while the
+    // badge sat in the corner of every screen saying the system was healthy.
+    //
+    // A badge that overstates what it checked is worse than no badge, because
+    // it is consulted exactly when somebody suspects something is wrong.
+    if(t) t.textContent = ok ? "App running" : "Server error";
   }catch(e){
     el.classList.add("bad");
     if(t) t.textContent = "Server unreachable";

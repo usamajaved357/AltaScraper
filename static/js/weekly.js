@@ -19,7 +19,7 @@
 // showing 0.00.
 
 const WK = {week: null, weeks: [], change: {}, loading: false, note: "",
-            want: "business", brandTerms: []};
+            want: "business", brandTerms: [], trendMetric: "total_sales"};
 
 function weeklyOnOpen(){
   const d = document.getElementById("wk_week");
@@ -349,9 +349,215 @@ function weeklyRender(){
     + '</div>';
 
   h += _wkProducts(w);
+  h += _wkTrendCard();
   h += _wkWeeksTable();
   host.innerHTML = h;
+  // AFTER the HTML is in the page, never before: the chart is drawn at the
+  // width of the box it goes into, and a box that does not exist yet measures
+  // zero. Same order salesDrawCharts uses.
+  _wkDrawTrend();
 }
+
+/* ---- the twelve-week trend ------------------------------------------------
+ *
+ * The cards answer "what happened this week" and the table underneath answers
+ * "what were the numbers". Neither answers the question a weekly pack is
+ * actually read for -- IS THIS GOING UP OR DOWN -- which a column of figures
+ * hides and a shape shows at a glance.
+ *
+ * DRAWN WITH salesChart, NOT A FIFTH CHART IMPLEMENTATION (Rule 12). The app
+ * already has one inline-SVG chart, with the axis, gridlines, hover and, most
+ * importantly, the rule that a missing figure is drawn as a BREAK and never as
+ * zero. That rule is the whole reason this is worth having here.
+ *
+ * WHAT COUNTS AS MISSING, AND WHY THERE ARE THREE KINDS OF IT:
+ *
+ *   1. THE WEEK WAS NEVER BUILT. Somebody skipped an upload. The twelve weeks
+ *      are a CALENDAR, built by stepping back seven days from the newest stored
+ *      week -- not a list of the twelve rows that happen to be in the database.
+ *      Charting the stored rows alone would draw a skipped week as if it had
+ *      never existed, closing the gap and putting a smooth line through a hole.
+ *
+ *   2. THE WEEK IS HALF A PACK. A week built from the Business Report alone has
+ *      no ad spend -- it is MISSING, not nought. Plotted as zero it reads as a
+ *      week somebody turned the ads off, which is a different and much more
+ *      alarming story than "nobody uploaded the campaign export".
+ *
+ *   3. THE FIGURE ITSELF IS NULL. TACOS with no sales, RoAS with no spend.
+ *      _rate() in weekly_kpi.py returns None for exactly these and the chart
+ *      keeps them as gaps.
+ *
+ * ONE CHART, NOT NINE. A metric is picked with the chips; the alternative is a
+ * wall of thumbnails too small to read a shape off, which is the fault the
+ * salesChart geometry note already records.
+ */
+const WK_TREND = [
+  {key: "total_sales", label: "Sales",    kind: "money",  needs: "business"},
+  {key: "units",       label: "Units",    kind: "number", needs: "business"},
+  {key: "sessions",    label: "Sessions", kind: "number", needs: "business"},
+  {key: "ad_spend",    label: "Ad spend", kind: "money",  needs: "campaigns"},
+  {key: "ad_sales",    label: "Ad sales", kind: "money",  needs: "campaigns"},
+  {key: "roas",        label: "RoAS",     kind: "number", needs: "campaigns"},
+  {key: "acos",        label: "ACOS",     kind: "pct",    needs: "campaigns"},
+  // TACOS is all spend over ALL sales, so it needs both halves present. It is
+  // the one metric on this list that a half pack cannot produce.
+  {key: "tacos",       label: "TACOS",    kind: "pct",    needs: "both"},
+  {key: "cpc",         label: "CPC",      kind: "money",  needs: "campaigns"}
+];
+
+const WK_TREND_N = 12;
+
+function _wkTrendMetric(){
+  const want = WK.trendMetric || "total_sales";
+  return WK_TREND.filter(function(m){ return m.key === want; })[0] || WK_TREND[0];
+}
+
+function _wkIso(d){
+  const p = function(n){ return (n < 10 ? "0" : "") + n; };
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+
+/* Twelve consecutive weeks ending at the newest stored one, oldest first.
+   A week with no pack is present and empty rather than absent -- see (1). */
+function _wkSpine(){
+  const ws = WK.weeks || [];
+  if(!ws.length) return [];
+  const by = {};
+  ws.forEach(function(w){ by[w.week_start] = w; });
+  // weeks arrive newest first (ORDER BY week_start DESC), so [0] is the end.
+  const d = new Date(ws[0].week_start + "T00:00:00");
+  const out = [];
+  for(let i = 0; i < WK_TREND_N; i++){
+    const iso = _wkIso(d);
+    out.unshift({week_start: iso, week: by[iso] || null});
+    d.setDate(d.getDate() - 7);
+  }
+  return out;
+}
+
+/* One week's value for one metric, or null meaning NOT MEASURED. */
+function _wkTrendVal(m, cell){
+  const w = cell.week;
+  if(!w) return null;                                   // (1) never built
+  if(m.needs === "business"  && !w.has_business)  return null;   // (2)
+  if(m.needs === "campaigns" && !w.has_campaigns) return null;
+  if(m.needs === "both" && !(w.has_business && w.has_campaigns)) return null;
+  const v = (w.kpis || {})[m.key];
+  if(v === null || v === undefined || !isFinite(Number(v))) return null;  // (3)
+  // salesChart's axis prints a percentage as it receives it, and every rate in
+  // the pack is a FRACTION -- 0.3186, not 31.86. Scaling here rather than
+  // teaching the shared chart about this screen's units.
+  return m.kind === "pct" ? Number(v) * 100 : Number(v);
+}
+
+/* The currencies the charted weeks were reported in. More than one means the
+   money metrics cannot share an axis -- see the same rule on the pack itself. */
+function _wkTrendCurrencies(spine){
+  const seen = [];
+  spine.forEach(function(c){
+    const cur = c.week && c.week.currency;
+    if(cur && seen.indexOf(cur) < 0) seen.push(cur);
+  });
+  return seen;
+}
+
+function _wkTrendCard(){
+  const spine = _wkSpine();
+  const built = spine.filter(function(c){ return !!c.week; }).length;
+  // ONE POINT IS NOT A TREND. Said plainly rather than drawing a single dot,
+  // which looks like a broken chart.
+  if(built < 2) return "";
+  const m = _wkTrendMetric();
+  let chips = "";
+  WK_TREND.forEach(function(t){
+    chips += '<button class="db-chip wk-tchip' + (t.key === m.key ? " on" : "")
+      + '" onclick="weeklyTrendPick(\'' + t.key + '\')">' + _wkEsc(t.label)
+      + '</button>';
+  });
+  const missing = WK_TREND_N - built;
+  return '<div class="card" style="padding:0;overflow:hidden;margin:14px 0">'
+    + '<div style="padding:11px 14px;border-bottom:1px solid var(--line);'
+    + 'display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    + '<b style="font-size:12.5px">Twelve-week trend</b>'
+    + '<span class="infodot" title="Twelve consecutive weeks ending at the '
+    + 'newest one stored. A week nobody built, and a figure the reports for '
+    + 'that week could not supply, are drawn as a BREAK in the line — never as '
+    + 'zero. A gap means not measured; a zero would mean it really was nought, '
+    + 'and those are different weeks.">i</span>'
+    + '<div style="margin-left:auto;display:flex;gap:5px;flex-wrap:wrap">'
+    + chips + '</div></div>'
+    + '<div style="padding:12px 14px"><div id="wk_trendchart"></div>'
+    + '<div class="cc" style="font-size:11px;margin-top:8px">'
+    + _wkEsc(String(built)) + ' of ' + WK_TREND_N + ' weeks have a pack'
+    + (missing ? ' · ' + missing + ' not built, shown as gaps' : '')
+    + '</div></div></div>';
+}
+
+function _wkDrawTrend(){
+  const host = document.getElementById("wk_trendchart");
+  if(!host) return;
+  if(typeof salesChart !== "function"){
+    // Said out loud rather than leaving an empty box that reads as a failure to
+    // draw -- the same fault salesDrawCharts records.
+    host.innerHTML = '<div class="cc" style="font-size:12px">The chart script '
+      + 'has not loaded, so the trend cannot be drawn. The figures below are '
+      + 'unaffected.</div>';
+    return;
+  }
+  const m = _wkTrendMetric(), spine = _wkSpine();
+  const curs = _wkTrendCurrencies(spine);
+
+  // TWO CURRENCIES CANNOT SHARE A MONEY AXIS. Twelve weeks of an account that
+  // was reported in dollars and then in pounds would draw one line as though
+  // the number meant the same thing throughout. Units, sessions and the rates
+  // are unaffected -- a ratio of two same-currency amounts compares fine.
+  if(m.kind === "money" && curs.length > 1){
+    host.innerHTML = '<div class="odp-note warn" style="padding:11px 13px">'
+      + '<b>These weeks are not in one currency</b> — ' + _wkEsc(curs.join(", "))
+      + '. Money cannot be charted across them, because the same height would '
+      + 'mean two different amounts. Units, Sessions, RoAS, ACOS and TACOS still '
+      + 'compare fine.</div>';
+    return;
+  }
+
+  const points = spine.map(function(c){
+    return {label: c.week_start, value: _wkTrendVal(m, c)};
+  });
+  host.innerHTML = salesChart(points, {
+    width: (typeof scChartWidth === "function")
+      ? scChartWidth("wk_trendchart", 665) : 665,
+    height: 220,
+    title: m.label,
+    kind: m.kind,
+    currency: (WK.week && WK.week.currency) || "",
+    scale: "band",
+    // A POINT HERE IS A WEEK, and the reason one is absent is different too.
+    // Left at the chart's defaults this card announced "7 days not in from
+    // Amazon yet" over twelve weeks -- wrong noun, and wrong about the cause:
+    // a week with no pack is not late, nobody built it, and telling somebody to
+    // wait for it is telling them to wait for something that is never coming.
+    unit: "week",
+    missingNote: "with no pack — shown as gaps, not zero"
+  });
+}
+
+function weeklyTrendPick(key){
+  WK.trendMetric = key;
+  // Only the card is rebuilt. A full weeklyRender would scroll the page back to
+  // the top on every chip press, which on a long pack loses the reader's place.
+  document.querySelectorAll(".wk-tchip").forEach(function(b){
+    b.classList.toggle("on", (b.getAttribute("onclick") || "")
+      .indexOf("'" + key + "'") >= 0);
+  });
+  _wkDrawTrend();
+}
+
+/* The chart is drawn at the width of its box, so a resized window needs it
+   drawn again or it keeps the old one's shape. */
+window.addEventListener("resize", function(){
+  clearTimeout(window._wkTrendT);
+  window._wkTrendT = setTimeout(_wkDrawTrend, 180);
+});
 
 function _wkSplitRow(label, n, spend, sales, orders, roas){
   return '<tr><td><b>' + label + '</b></td>'

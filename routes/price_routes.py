@@ -93,9 +93,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                     "price could not be read. Nothing is wrong with the listing "
                     "— try again in a minute." % sku)
         if "unauthor" in low or "forbidden" in low or "accessdenied" in low:
-            return ("This account's Amazon app is not authorised to read %s. "
-                    "Re-authorise it in Seller Central with the Product Listing "
-                    "role, then try again." % sku)
+            # ONE ROLE WAS TOO NARROW A DIAGNOSIS. This named the Product
+            # Listing role, which sends somebody to grant one permission and
+            # find the app still refused. MEASURED on jack_uk/UK: the refresh
+            # token works and Amazon then answers 403 [ROLE] to marketplace
+            # participation, catalogue, pricing and product definitions too --
+            # several roles are missing at once, and this endpoint cannot tell
+            # which. The Diagnose SP-API button walks them and names them.
+            return ("Amazon is refusing this app's requests for this account, so "
+                    "%s's price could not be read. Press Diagnose SP-API on the "
+                    "listings page — it checks each permission in turn and says "
+                    "which are missing." % sku)
         if "notfound" in low or "not found" in low or "404" in low:
             return ("Amazon has no listing with the SKU %s on this marketplace, "
                     "so there is no price to change." % sku)
@@ -322,5 +330,171 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         return jsonify({"ok": True, "sku": sku, "was": was, "now": new_price,
                         "submission_id": res.get("submission_id"),
+                        "note": ("Amazon usually shows a new price within a few "
+                                 "minutes.")})
+
+    # ---- many listings, by a percentage --------------------------------------
+    #
+    #     "increasing the seller price should be allowed to be updated by
+    #      percentage. e.g. increase or decrease the selling price by this
+    #      percent."
+    #
+    # A PERCENTAGE IS NOT A PRICE, and that is the whole difficulty. "+10%" means
+    # a different number on every listing, so there is nothing to approve until
+    # each one has been worked out -- which needs Amazon's current price for each
+    # SKU, one read apiece. So this is two endpoints, and the second sends
+    # EXACTLY the numbers the first showed rather than recomputing them:
+    # recomputing at apply time would mean approving "+10%" and sending a figure
+    # nobody had seen, off a price that may have moved in between (the repricer
+    # is running against these same listings).
+    #
+    # The per-SKU rules are not restated here. The floor, the offer builder and
+    # the reasons Amazon gives for refusing a read are the same helpers the
+    # single-listing route above uses (Rule 12) -- a second opinion about what a
+    # safe price is would be the worst possible place to have one.
+
+    def _pct_new_price(now, pct):
+        """The price `pct` percent away from `now`, to the penny."""
+        return round(float(now) * (1.0 + (float(pct) / 100.0)), 2)
+
+    @app.route("/listing/price/percent_preview", methods=["POST"])
+    def listing_price_percent_preview():
+        """What +/-N% would do to each selected listing. Sends nothing."""
+        b = _body()
+        acc, wsid, mkt = _scope()
+        skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not skus:
+            return jsonify({"ok": False, "error": "no listings selected"}), 400
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+        try:
+            pct = float(b.get("percent"))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "that is not a percentage"}), 400
+        if pct == 0:
+            return jsonify({"ok": False, "error": (
+                "0% would change nothing.")}), 400
+        # A CEILING IN BOTH DIRECTIONS. -100% is a free product and +900% is a
+        # typed extra digit; neither is a bulk operation anybody means.
+        if pct <= -90 or pct > 500:
+            return jsonify({"ok": False, "error": (
+                "A change of %g%% across listings is almost certainly a typo. "
+                "Between -90%% and +500%%." % pct)}), 400
+
+        rows, skipped = [], []
+        for sku in skus:
+            live = _live(sku, acc, mkt)
+            if live is None:
+                skipped.append({"sku": sku, "why": _why_no_live(sku)})
+                continue
+            attrs = live.get("attributes") or {}
+            now = _current_price(attrs)
+            # NO CURRENT PRICE, NO PERCENTAGE OF IT. Guessing one would invent
+            # the very number the whole operation is derived from.
+            if now is None or now <= 0:
+                skipped.append({"sku": sku, "why": (
+                    "Amazon returned no current price for this listing, so there "
+                    "is nothing to take a percentage of.")})
+                continue
+            new_price = _pct_new_price(now, pct)
+            if new_price <= 0:
+                skipped.append({"sku": sku, "why": (
+                    "That percentage takes this listing to %.2f, which is not a "
+                    "price." % new_price)})
+                continue
+            floor, why = _floor_for(sku, acc, mkt, new_price)
+            rows.append({"sku": sku, "current": now, "new": new_price,
+                         "change": round(new_price - now, 2),
+                         "floor": floor,
+                         "below_floor": bool(floor is not None and new_price < floor),
+                         "floor_note": why})
+        below = [r for r in rows if r["below_floor"]]
+        return jsonify({"ok": True, "percent": pct, "marketplace": mkt,
+                        "rows": rows, "skipped": skipped,
+                        "count": len(rows), "below_floor": len(below),
+                        "note": ("Nothing has been sent. Applying uses exactly "
+                                 "these figures, not the percentage again.")})
+
+    @app.route("/listing/price/percent_apply", methods=["POST"])
+    def listing_price_percent_apply():
+        """Send the prices the preview showed. Body: {rows:[{sku, new}], ...}."""
+        b = _body()
+        acc, wsid, mkt = _scope()
+        if not b.get("confirmed"):
+            return jsonify({"ok": False, "error": "not confirmed"}), 400
+        if not mkt:
+            return jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400
+
+        from domain import accounts as _acc_mod
+        if not _acc_mod.seller_scope_allowed(acc or {}):
+            return jsonify({"ok": False, "error": (
+                "%s has no Amazon account of its own, so nothing here can change "
+                "a live price." % ((acc or {}).get("label") or wsid))}), 400
+
+        # THE FIGURES FROM THE PREVIEW, not a percentage applied again. Each one
+        # is still validated -- a browser is not a trusted source of prices.
+        wanted = []
+        for r in (b.get("rows") or []):
+            sku = str((r or {}).get("sku") or "").strip()
+            try:
+                p = float((r or {}).get("new"))
+            except (TypeError, ValueError):
+                continue
+            if sku and p > 0:
+                wanted.append((sku, round(p, 2)))
+        if not wanted:
+            return jsonify({"ok": False, "error": (
+                "Nothing to apply — run the preview first.")}), 400
+
+        allow_below = bool(b.get("below_floor_ok"))
+        from api import amazon_listings as _al
+        from domain import source_apply as _apply
+        mkt_id = _acc_mod.marketplace_id(mkt)
+        locale = "en_US" if mkt == "US" else "en_GB"
+        done, failed = [], []
+        for sku, new_price in wanted:
+            # RE-READ EACH LISTING. The offer is deep-copied from what Amazon
+            # holds so the currency, audience and any scheduled pricing survive
+            # -- a copy cached during the preview could be minutes stale.
+            live = _live(sku, acc, mkt)
+            if live is None:
+                failed.append({"sku": sku, "error": _why_no_live(sku)})
+                continue
+            attrs = live.get("attributes") or {}
+            was = _current_price(attrs)
+            floor, _why = _floor_for(sku, acc, mkt, new_price)
+            if floor is not None and new_price < floor and not allow_below:
+                failed.append({"sku": sku, "below_floor": True, "floor": floor,
+                               "error": ("%.2f is below this product's floor of "
+                                         "%.2f, so it was left alone."
+                                         % (new_price, floor))})
+                continue
+            patches, err = _apply.build_patches(attrs, {"price": new_price}, mkt_id)
+            if err:
+                failed.append({"sku": sku, "error": err})
+                continue
+            res = _al.patch(_acc_mod.account_creds(acc or {}), mkt,
+                            str((acc or {}).get("seller_id") or ""), sku, mkt_id,
+                            live.get("productType") or "", patches,
+                            issue_locale=locale)
+            if res["status"] != _al.OK:
+                why = res.get("error") or "Amazon rejected it"
+                if res.get("issues"):
+                    why += " -- " + "; ".join(str(i.get("message") or "")[:140]
+                                              for i in res["issues"][:3])
+                failed.append({"sku": sku, "error": why})
+                continue
+            try:
+                from domain import source_repo as _repo
+                _repo.record_action(CONFIG_PATH, wsid, mkt, sku,
+                                    {"price": new_price,
+                                     "reason": "bulk %+g%% by hand" % float(b.get("percent") or 0)},
+                                    applied=1, error="")
+            except Exception:
+                pass
+            done.append({"sku": sku, "was": was, "now": new_price})
+
+        return jsonify({"ok": not failed, "changed": len(done),
+                        "failed": len(failed), "done": done, "failures": failed,
                         "note": ("Amazon usually shows a new price within a few "
                                  "minutes.")})

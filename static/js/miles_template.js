@@ -788,6 +788,10 @@ let LIVE_STORE = {};          // cache: "accountid::MKT" -> {items, ts}
 // ASIN -> [A+ document, ...] for the OPEN account+marketplace. A+ modules are not part
 // of getListingsItem; they come from Amazon's separate A+ Content API (/live/aplus).
 let APLUS_BY_ASIN = {};
+// WHY the index above is empty, when it is empty for a reason. "" means it was
+// filled successfully (and an account with no A+ pages legitimately has none).
+// See loadAplus.
+let APLUS_ERROR = "";
 
 // SKU -> what Amazon says the listing REALLY is: {state:'live'|'inactive'|'gone'|'unknown',
 // reason, status, qty}. Filled by /live/reconcile for the rows Amazon's catalog didn't
@@ -1013,7 +1017,29 @@ async function loadAplus(force){
       body:JSON.stringify({id:reqAccount, marketplace:reqMkt, force:!!force})})).json();
     // guard: the user may have switched workspace while this was in flight
     if(!(CUR_ACCOUNT && CUR_ACCOUNT.id===reqAccount && WS_MARKET===reqMkt)) return;
-    if(!j || !j.ok){ APLUS_BY_ASIN = {}; return; }
+    // AN EMPTY A+ INDEX HAS TWO CAUSES AND THEY ARE NOT THE SAME FACT.
+    //
+    //   this account has no A+ pages          -> nothing to show, correctly
+    //   Amazon would not let us ask           -> we DO NOT KNOW what it has
+    //
+    // Both used to blank APLUS_BY_ASIN and say nothing, so a listing that
+    // really does carry A+ content on Amazon showed "no A+ content" and read as
+    // a measurement. MEASURED on jack_uk/UK: /live/aplus answers 502 with
+    // "Unauthorized: Access to requested resource is denied" -- the A+ Content
+    // role is not granted to this SP-API application. Every A+ badge and panel
+    // in the app has therefore been answering from an index that was never
+    // filled.
+    //
+    // Swallowing it is still right for the GRID -- A+ is decoration on top of
+    // the catalogue and must not stop the listings drawing -- but the reason is
+    // kept so the places that show A+ can say which of the two this is.
+    if(!j || !j.ok){
+      APLUS_BY_ASIN = {};
+      APLUS_ERROR = String((j && j.error) || "Amazon did not answer");
+      try{ render(); }catch(e){}
+      return;
+    }
+    APLUS_ERROR = "";
     const m = {};
     Object.keys(j.by_asin||{}).forEach(function(k){ m[String(k).trim().toUpperCase()] = j.by_asin[k]; });
     APLUS_BY_ASIN = m;
@@ -1524,8 +1550,18 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
   } else {
     shipHtml = `<div class="cc shipline" style="margin-top:4px"><span class="cc">fulfillment loading…</span></div>`;
   }
-  return `<div class="tile live" title="On Amazon — status: ${esc(st)}">
-    <input type="checkbox" class="tilesel" ${SELECTED.has(String(it.sku))?'checked':''} onclick="event.stopPropagation()" onchange="toggleSelect('${esc(it.sku||'')}',this.checked)" title="Select for batch image generation">
+  // data-sku, WHICH THIS TILE ALONE DID NOT CARRY. Two things depend on it and
+  // both were quietly broken for Amazon's catalogue tiles:
+  //   * toggleSelect syncs every element for a SKU by data-sku, so ticking one
+  //     of these never applied the selected styling;
+  //   * "Select all" reads the grid back through it, and these tiles are MOST
+  //     of the Live on Amazon view -- which is why only the two listings that
+  //     also exist as app rows could ever be selected there.
+  // The draft tile and the table row have carried it all along; this is the
+  // copy that drifted. The checkbox itself is rowSelectBox now, for the same
+  // reason its buttons became rowActions: one definition, not three.
+  return `<div class="tile live" data-sku="${esc(it.sku||'')}" title="On Amazon — status: ${esc(st)}">
+    ${rowSelectBox({sku: it.sku||''}, 'tilesel')}
     <!-- CLICKING THE CARD OPENS THE LISTING.
          "we can directly edit the listing by clicking on the product card"
          A draft card opens the drawer. This card has no draft to open -- it is

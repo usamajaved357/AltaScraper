@@ -1,16 +1,32 @@
-"""listing/handling.py — bulk handling-time (lead_time_to_ship_max_days) updates.
+"""listing/handling.py — what a listing PROMISES THE BUYER: stock, and dispatch speed.
 
-One job: change a LIVE listing's handling time on Amazon, safely.
+Two jobs, and they are one job: change `fulfillment_availability` on a LIVE
+listing, safely.
 
-Handling time on Amazon lives in the `fulfillment_availability` attribute as
-`lead_time_to_ship_max_days`. To change it WITHOUT guessing the attribute's shape
-(Rule 4) we READ the listing's current fulfillment_availability via getListingsItem,
-change ONLY that one number, and PATCH the whole array back. Reading Amazon's own
-current value as the template preserves quantity + fulfillment_channel_code and never
-invents a structure.
+    handling time   lead_time_to_ship_max_days
+    stock           quantity
+
+BOTH OF THOSE ARE FIELDS OF THE SAME AMAZON ATTRIBUTE, which is why quantity is
+here and not in a module of its own. `fulfillment_availability` is one array
+carrying the fulfilment channel, the quantity and the lead time together, and
+Amazon replaces the WHOLE array on a patch. So a second module setting quantity
+its own way would not merely duplicate this one (Rule 12) -- it would overwrite
+the handling time every time somebody changed the stock, and the other way
+about.
+
+To change a field WITHOUT guessing the attribute's shape (Rule 4) we READ the
+listing's current fulfillment_availability via getListingsItem, change ONLY the
+named fields, and PATCH the whole array back. Amazon's own current value is the
+template, so the channel code, and whichever of the two fields is not being
+changed, survive untouched.
 
 Seller-scope only: patch/getListingsItem answer for the token's own seller, so a
 borrowed (read-only) workspace is refused — it must never write into a lender's catalogue.
+
+FBA IS NOT OURS TO SET. On an Amazon-fulfilled listing the quantity is whatever
+is in Amazon's warehouse; the seller does not get to type it, and Amazon rejects
+the attempt. That refusal is reported per SKU rather than hidden, because "I set
+the stock and nothing happened" is worse than being told why.
 """
 
 
@@ -26,7 +42,40 @@ def push_handling_time(cfg, acc, sku, days, marketplace):
     handling time Amazon had (None if it had none); `after` is what we set. Never raises
     — every failure is returned so the caller can report it per-SKU.
     """
-    out = {"ok": False, "sku": sku, "before": None, "after": days,
+    return _patch_fulfillment(cfg, acc, sku, marketplace,
+                              {"lead_time_to_ship_max_days": int(days)},
+                              read_back="lead_time_to_ship_max_days",
+                              default_entry={"fulfillment_channel_code": "DEFAULT",
+                                             "lead_time_to_ship_max_days": int(days)})
+
+
+def push_quantity(cfg, acc, sku, qty, marketplace):
+    """Set the stock `quantity` on ONE live listing.
+
+    Same shape of answer as push_handling_time, so one caller can report either.
+
+    A LISTING WITH NO fulfillment_availability AT ALL is almost always FBA, and
+    inventing an entry for it would be claiming to hold stock we do not have. So
+    unlike handling time -- where adding a minimal merchant entry is a
+    reasonable thing to attempt -- this refuses and says so.
+    """
+    return _patch_fulfillment(cfg, acc, sku, marketplace,
+                              {"quantity": int(qty)},
+                              read_back="quantity",
+                              default_entry=None)
+
+
+def _patch_fulfillment(cfg, acc, sku, marketplace, changes, read_back,
+                       default_entry=None):
+    """Change named fields of fulfillment_availability on ONE listing.
+
+    `changes`      {field: value} to set on every entry of the array.
+    `read_back`    which field's previous value to report as `before`.
+    `default_entry` what to send when the listing has no fulfillment_availability
+                   at all, or None to refuse in that case.
+    """
+    after = changes.get(read_back)
+    out = {"ok": False, "sku": sku, "before": None, "after": after,
            "product_type": "", "error": "", "issues": []}
     try:
         import accounts as _acc
@@ -79,23 +128,34 @@ def push_handling_time(cfg, acc, sku, days, marketplace):
     if not pt:
         out["error"] = "could not determine the listing's product type from Amazon"; return out
 
-    # 2) MODIFY only lead_time_to_ship_max_days, keeping every other field intact.
+    # 2) MODIFY only the named fields, keeping every other field intact -- which
+    #    is the whole reason Amazon's own value is read first. The field NOT
+    #    being changed here is the other of {quantity, lead time}, and it rides
+    #    through untouched.
     fa = attrs.get("fulfillment_availability")
     had_fa = isinstance(fa, list) and len(fa) > 0
     if had_fa:
         try:
-            out["before"] = fa[0].get("lead_time_to_ship_max_days")
+            out["before"] = fa[0].get(read_back)
         except Exception:
             out["before"] = None
         new_fa = []
         for entry in fa:
             e2 = dict(entry) if isinstance(entry, dict) else {}
-            e2["lead_time_to_ship_max_days"] = days
+            e2.update(changes)
             new_fa.append(e2)
     else:
-        # No fulfillment_availability yet (e.g. FBA, or handling never set). Add a minimal
-        # merchant-fulfilled entry. Amazon rejects this for FBA-only listings — reported per-SKU.
-        new_fa = [{"fulfillment_channel_code": "DEFAULT", "lead_time_to_ship_max_days": days}]
+        # No fulfillment_availability at all. For handling time a minimal
+        # merchant entry is a reasonable thing to attempt (Amazon rejects it for
+        # FBA, and that is reported per SKU). For STOCK it is not: inventing an
+        # entry would be claiming to hold units nobody has.
+        if not default_entry:
+            out["error"] = (
+                "Amazon holds no seller-fulfilled stock record for this SKU, so "
+                "there is no quantity here to set. On an FBA listing the stock "
+                "is whatever is in Amazon's warehouse and cannot be typed in.")
+            return out
+        new_fa = [dict(default_entry)]
 
     body = {"productType": pt, "patches": [{
         "op": "replace" if had_fa else "add",

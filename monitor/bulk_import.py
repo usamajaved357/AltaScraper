@@ -33,11 +33,13 @@ def _parse_mkts(cell):
 def _read_grid(data, filename):
     name = (filename or "").lower()
     if name.endswith(".xlsx"):
-        import openpyxl
-        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-        ws = wb.active
+        # Through the shared reader, which counts the rows itself instead of
+        # believing the size the file declares. This used to open the workbook
+        # here and so shared the bug the campaign export exposed: a sheet of 200
+        # ASINs that declares one row imported ONE ASIN, quietly.
+        from domain import report_reader as _rr
         return [[("" if c is None else str(c)) for c in row]
-                for row in ws.iter_rows(values_only=True)]
+                for row in _rr.workbook_grid(data)]
     text = data.decode("utf-8-sig", "replace") if isinstance(data, (bytes, bytearray)) else str(data)
     try:
         dialect = csv.Sniffer().sniff(text[:4096], delimiters=",\t;|")

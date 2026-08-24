@@ -70,6 +70,44 @@ def is_xlsx(data):
     return bool(data) and data[:2] == b"PK"
 
 
+def workbook_grid(data):
+    """Every row of the first sheet of an uploaded .xlsx. Raises on a bad file.
+
+    THE FILE IS NOT ASKED HOW BIG IT IS.
+
+    An .xlsx declares its own extent in a <dimension> element, and in read-only
+    mode openpyxl BELIEVES it -- it iterates that rectangle and stops, without
+    looking at what is in the sheet. Amazon's Campaign Manager export is built
+    server-side and stamps a dimension of one row, so a 26-campaign export read
+    as the header plus ONE campaign. Nothing failed: the header row is real, so
+    the report was still recognised, the pack still built and still rendered,
+    and spend, sales, RoAS and the branded split were computed over one campaign
+    out of twenty-six. A wrong number that arrives quietly is the whole problem
+    this feature exists to fix.
+
+    MEASURED: a 26-row sheet rewritten to declare A1:L1 reads as 1 row; with
+    reset_dimensions() it reads as 26. The honest file reads as 26 either way,
+    so nothing that was already right moves.
+
+    THIS IS THE ONLY PLACE A WORKBOOK IS OPENED FOR ITS ROWS (Rule 12). The
+    supplier-sheet upload and the monitor's bulk import each had their own copy
+    of these four lines and so had the same hole; they call this now. The two
+    places that read Amazon's own flat-file TEMPLATE are a different job -- they
+    address fixed cells by column rather than walking rows -- and are left where
+    they are.
+    """
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True,
+                                data_only=True)
+    try:
+        ws = wb[wb.sheetnames[0]]
+        ws.reset_dimensions()
+        return [[("" if c is None else c) for c in row]
+                for row in ws.iter_rows(values_only=True)]
+    finally:
+        wb.close()
+
+
 def read(data, filename=""):
     """bytes -> {"headers": [...], "rows": [[...]], "format": "csv|tsv|xlsx"}.
 
@@ -81,13 +119,7 @@ def read(data, filename=""):
 
     if is_xlsx(data):
         try:
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True,
-                                        data_only=True)
-            ws = wb[wb.sheetnames[0]]
-            grid = [[("" if c is None else c) for c in row]
-                    for row in ws.iter_rows(values_only=True)]
-            wb.close()
+            grid = workbook_grid(data)
         except Exception as e:
             return {"headers": [], "rows": [], "format": "xlsx",
                     "error": "could not read the spreadsheet: %s" % str(e)[:160]}

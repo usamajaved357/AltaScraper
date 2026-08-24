@@ -109,8 +109,16 @@ truthy("picking an AI-spend window clears it too",
 console.log("\n== the footer only promises what the chart can do ==");
 // It used to print "drag across to zoom into those days" under EVERY chart,
 // including the ones where dragging moved nothing you could see.
+// THE CONDITION, NOT THE NOUN. This used to pin the literal "...into those
+// days", which went red the moment the bucket's name became a parameter --
+// correctly, because these charts are drawn over days, weeks and months and the
+// hint said "days" for all three. What the assertion is actually about is that
+// the promise only appears when a zoom handler was named, so that is what it
+// tests now.
 truthy("the line chart's hint is conditional",
-       /o\.onZoom \? ' · drag across to zoom into those days' : ''/.test(CHARTS));
+       /o\.onZoom \? ' · drag across to zoom into those '/.test(CHARTS));
+truthy("  and names the bucket rather than always saying days",
+       /drag across to zoom into those ' \+ _scEsc\(units\)/.test(CHARTS));
 truthy("the combo chart's hint is conditional",
        /o\.onZoom \? ' · drag across to zoom' : ''/.test(CHARTS));
 
