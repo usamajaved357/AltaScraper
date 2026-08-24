@@ -109,7 +109,18 @@ def build_field_map(template_path: str) -> dict:
     Read row 5 (field IDs) and resolve each logical field name to its 0-based
     column index. Returns {logical_name: col_index, ..., 'TOTAL_COLS': N}.
     """
-    wb = openpyxl.load_workbook(template_path, read_only=True, data_only=True)
+    # NOT read_only. A read-only sheet reports max_column from the extent the
+    # FILE declares, and Seller Central's generated workbooks have been seen to
+    # declare a rectangle far smaller than what is in them -- the same lie that
+    # made the Campaign Manager export read as one row. Here it would understate
+    # the column count and quietly map only the first few fields.
+    #
+    # MEASURED on a 30-column sheet rewritten to declare A1:D1: read_only gives
+    # max_column=4, a full load gives 30, and 30 is what is actually there.
+    # reset_dimensions() is NOT the fix here -- it sets max_column to None, so
+    # the loop below would map nothing at all. A template is a few rows wide and
+    # is read once per export, so the full load costs nothing that matters.
+    wb = openpyxl.load_workbook(template_path, data_only=True)
     ws = wb["Template"] if "Template" in wb.sheetnames else wb[wb.sheetnames[0]]
     total_cols = ws.max_column
     field_ids = []

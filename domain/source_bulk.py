@@ -34,6 +34,7 @@ import csv
 import io
 import re
 
+from domain import report_reader as _rr
 from domain import source_link as _link
 from domain import source_repo as _repo
 
@@ -126,12 +127,13 @@ def read_table(data, filename=""):
     name = str(filename or "").lower()
     if name.endswith((".xlsx", ".xlsm", ".xls")):
         try:
-            import openpyxl
-            wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-            ws = wb[wb.sheetnames[0]]
+            # Through the shared reader, which does not believe the file's own
+            # declared size. This function used to open the workbook itself and
+            # so had the same hole the campaign export exposed: a sheet that
+            # declares one row is READ as one row, and fifty-four suppliers go
+            # missing without a word. See report_reader.workbook_grid.
             rows = [[("" if c is None else str(c)) for c in r]
-                    for r in ws.iter_rows(values_only=True)]
-            wb.close()
+                    for r in _rr.workbook_grid(data)]
         except Exception as e:
             return [], [], ("that spreadsheet could not be read (%s). Save it as "
                             "CSV and try again." % str(e)[:80])

@@ -178,8 +178,25 @@ H = read("templates", "dashboard.html")
 _inp = H.split('id="cogs_file"')[1][:160]
 truthy("spreadsheets are offered", ".xlsx" in _inp)
 truthy("  and CSV still is", ".csv" in _inp)
-truthy("read_table really does open xlsx", "openpyxl" in read("domain",
-                                                             "source_bulk.py"))
+# THE CAPABILITY, NOT THE IMPORT. This used to assert that "openpyxl" appears
+# in source_bulk.py, which stopped being true the moment that file started
+# calling the shared reader instead of opening its own workbook -- a correct
+# change that failed the test. Hand read_table a real spreadsheet instead: it
+# either reads it or it does not.
+import io as _io
+
+import openpyxl as _xl
+
+_wb = _xl.Workbook()
+_wb.active.append(["SKU", "Cost"])
+_wb.active.append(["8.00_3Days_B0G1K5B7QS", "4.25"])
+_buf = _io.BytesIO()
+_wb.save(_buf)
+from domain import source_bulk as _sb
+
+_hdr, _rows, _err = _sb.read_table(_buf.getvalue(), "costs.xlsx")
+check("read_table really does open xlsx", (_err, len(_rows)), ("", 1))
+check("  and reads the cost out of it", str(_rows[0][1]).strip(), "4.25")
 
 print("\n== the renderer still runs ==")
 probe = r"""

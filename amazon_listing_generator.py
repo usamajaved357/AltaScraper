@@ -8533,7 +8533,14 @@ def build_col_attr_map(template_path: str) -> dict:
     """1-based column index -> base attribute key (text before '[' or '#'),
     read from the template's field-ID row (row 5). Used by the schema gate."""
     import openpyxl
-    wb = openpyxl.load_workbook(template_path, read_only=True, keep_vba=True)
+    # NOT read_only -- see the same note in domain/unified_export.build_field_map.
+    # A read-only sheet takes max_column from the extent the FILE declares, and
+    # Amazon's generated workbooks have been measured declaring a rectangle far
+    # smaller than their contents. Understating it here would map only the first
+    # few field IDs, so the schema gate below would stop checking most of the
+    # row. That fails OPEN (an unmapped column is never cleared), which is why
+    # nothing has ever looked wrong.
+    wb = openpyxl.load_workbook(template_path, keep_vba=True)
     ws = wb["Template"] if "Template" in wb.sheetnames else wb[wb.sheetnames[0]]
     out = {}
     for c in range(1, ws.max_column + 1):
