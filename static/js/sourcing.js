@@ -990,7 +990,21 @@ function _priceBreakdown(b, cur){
             Math.round((b.fee_rate||0)*100)+'% of the selling price, not of the cost');
   h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
   h += line('Set aside for ads', b.ads, '');
-  h += line('Profit left over', b.profit, 'what you keep per unit');
+  // THE NUMBER YOU SET A TARGET AGAINST, said beside the profit it comes from.
+  // "profit left over 0.00" was both wrong and unanswerable -- there was no way
+  // to tell from this panel whether the price met the 20% you asked for. It now
+  // shows the return that profit represents, worked out from the same figures
+  // above rather than fetched from anywhere else.
+  const _roi = (b.profit != null && b.cost) ? (b.profit / b.cost) * 100 : null;
+  h += line('Profit left over', b.profit,
+            'what you keep per unit'
+            + (_roi == null ? ''
+               : ' &mdash; ' + _roi.toFixed(1) + '% of the ' + _smoney(b.cost)
+                 + ' you paid'));
+  if(b.min_profit != null && b.min_profit > 0){
+    h += '<div class="cc" style="font-size:11px;padding:0 0 2px 194px">'
+      +  'you asked for at least ' + _smoney(b.min_profit) + ' per unit</div>';
+  }
   h += '<div style="display:flex;gap:8px;font-size:12px;font-weight:600;'
     +  'padding:5px 0 0;margin-top:3px;border-top:1px solid #26303f">'
     +  '<span style="min-width:186px">Price it should sell at</span>'
