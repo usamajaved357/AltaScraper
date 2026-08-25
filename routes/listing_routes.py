@@ -158,6 +158,33 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             return jsonify(_acctscope.refusal(asked, _aid, subject)), 409
         return None
 
+    def _store_for(aid):
+        """The listings store for ONE named workspace, on the database backend.
+
+        "no one account data should be shared with another"
+
+        On the database a workspace IS the unit of storage -- data/store.StoreBook
+        says it plainly, "on the database a tab is a workspace" -- so a store can
+        simply be opened for the account that was asked about. Verified before
+        this was used: ListingStore("jack_uk") holds 87 SKUs,
+        ListingStore("nestwell_goods") 86, and none is shared between them.
+
+        Returns None when there is no account to open or the backend is not the
+        database, so callers keep their existing behaviour rather than losing
+        their rows to a helper that could not help.
+        """
+        aid = str(aid or "").strip()
+        if not aid:
+            return None
+        try:
+            from data import choice as _ch
+            if _ch.resolve(_cfg(), None) != "db":
+                return None
+            from data.store import ListingStore, SheetLikeStore
+            return SheetLikeStore(ListingStore(aid, config_path=CONFIG_PATH))
+        except Exception:
+            return None
+
     def _asked_account():
         """The account the caller named, or None. Body first, then query string.
 
@@ -808,6 +835,39 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             if _acctscope.is_mismatch(_raw_asked, _aid):
                 return jsonify(_acctscope.refusal(_raw_asked, _aid, "listings")), 200
 
+            # THE ACCOUNT THAT WAS ASKED FOR IS THE ACCOUNT THAT IS READ.
+            #
+            #     "no one account data should be shared with another"
+            #     "i asked for jacks listings so jacks listings should appear,
+            #      not another account"
+            #
+            # MEASURED, on the running app:
+            #
+            #     /rows_all?account=jack_uk         -> 86 rows, workspace=nestwell_goods
+            #     /rows_all?account=nestwell_goods  -> 86 rows, workspace=nestwell_goods
+            #
+            # Both answers were Nestwell's, because this route read the workspace
+            # out of _state -- the server's process-wide "currently open account"
+            # -- and ignored the one the request named. The browser does its half
+            # correctly: it sends ?account=, drops a reply that arrives after a
+            # switch, and honours a refusal. It was the server that answered for
+            # whoever happened to be open.
+            #
+            # NOT A REFUSAL. is_mismatch() above is deliberately always False --
+            # refusing on a disagreement was tried and was worse, because the
+            # stale value is the GLOBAL and the browser is the one that is right:
+            # "i switched from headbanger lures recently but i am on nestwell
+            # goods but still i am shown this error". Refusing punished the
+            # correct request. Answering the question actually asked fixes both
+            # the leak and that.
+            #
+            # SAFE ON THE DATABASE because a workspace IS the unit of storage
+            # there -- data/store.StoreBook says it plainly, "on the database a
+            # tab is a workspace". Verified before this was written:
+            # ListingStore("jack_uk") holds 87 SKUs, ListingStore("nestwell_goods")
+            # 86, and NOT ONE is shared between them.
+            _use_aid = str(_raw_asked or "").strip() or _aid
+
             # WHICH STORE THE LISTINGS ARE ACTUALLY IN.
             #
             # This is the bug behind "I pressed generate an hour ago, the log
@@ -851,7 +911,9 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 _backend = "sheets"
             if _backend == "db":
                 try:
-                    db_store = _ws()
+                    # The NAMED workspace, not the open one. _ws() resolves from
+                    # _state and is kept for the no-account case only.
+                    db_store = _store_for(_use_aid) if _use_aid else _ws()
                     for r in _records(db_store):
                         c = _card(r)
                         # One store, so one "tab". The multi-tab manifest exists
@@ -896,9 +958,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     "ok": True,
                     "shipping_group": _cfg().get("merchant_shipping_group", ""),
                     "product_types": _product_types(),
+                    # THE WORKSPACE ACTUALLY READ, not the one the server has
+                    # open. The browser checks this field against the account it
+                    # asked about; reporting _aid made that check agree with
+                    # itself no matter whose rows were in the reply.
                     "source": {"store": "database", "from_database": len(db_cards),
                                "from_sheet": 0,
-                               "workspace": str(_aid or "_no_account"),
+                               "workspace": str(_use_aid or "_no_account"),
                                "sheets_off": True},
                     "tabs": [{"tab": getattr(db_store, "title", "listings"),
                               "tab_gid": "", "count": len(db_cards), "url": ""}],
@@ -1300,7 +1366,21 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         if _bad:
             return _bad
         try:
-            ws    = _ws()
+            # THE NAMED WORKSPACE, NOT THE OPEN ONE.
+            #
+            # This edited whichever workspace the server had selected, and found
+            # the row by SKU inside it. The note on _wrong_account argued that
+            # was a latent hazard rather than a live one, because "282 rows
+            # across five accounts, 282 distinct SKUs, none shared between two
+            # accounts" -- a SKU miss would 404 rather than hit the wrong row.
+            #
+            # THAT MEASUREMENT NO LONGER HOLDS, and the owner is the one who
+            # said so: "i am also doing mee too listings on both accounts ...
+            # maybe i have set the same sku for those asins in both accounts".
+            # A SKU deliberately shared between two accounts turns the 404 into
+            # an edit of the other company's listing. Same fix as /rows_all:
+            # read and write the workspace that was asked for.
+            ws    = _store_for(b.get("account")) or _ws()
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
             if not found.ok:
                 return jsonify({"ok": False, "error": found.error}), 404
@@ -1368,7 +1448,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         if _bad:
             return _bad
         try:
-            ws     = _ws()
+            # THE NAMED WORKSPACE, NOT THE OPEN ONE -- and this one DELETES.
+            # See the note in /edit: the "SKUs are unique across accounts"
+            # measurement that made this safe has been withdrawn by the owner,
+            # who deliberately reuses a SKU across accounts for me-too listings.
+            ws     = _store_for(b.get("account")) or _ws()
             target = None
             if sku:                                   # prefer matching by SKU (stable)
                 # A miss stays silent here on purpose: this route falls back to the
