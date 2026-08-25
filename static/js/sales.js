@@ -1759,9 +1759,20 @@ function _sCardError(el, err, what){
           + 'card fills itself in as soon as Amazon allows, usually within a '
           + 'minute or two.'
         : denied
+        // THE THIRD COPY OF ONE SENTENCE, and the three did not agree.
+        //
+        // This one said "re-authorise it in Seller Central with the role that
+        // covers it" -- singular, and measurably wrong about the size of it:
+        // Diagnose SP-API on jack_uk/UK returns 403 [ROLE] for marketplace
+        // participation, Catalog Items, Product Pricing and Product Definitions
+        // at once. Sending somebody after "the role" has them fix one and meet
+        // the next refusal. The A+ note and marketplace_health.explain() both
+        // point at the diagnostic instead; this now says the same thing, because
+        // one fact should not have three wordings (CLAUDE.md Rule 12).
         ? 'Amazon refused the request: this account\'s Amazon app is not '
-          + 'authorised for the data this card needs. Re-authorise it in Seller '
-          + 'Central with the role that covers it, then reload.'
+          + 'authorised for the data this card needs. Press "Diagnose SP-API" '
+          + 'on the listings page — it checks each Amazon permission in turn '
+          + 'and lists the ones that are missing, which is usually more than one.'
         : 'The request failed.')
     // Amazon's own words are kept for the cases where they help someone act.
     // On a quota refusal they do not: the message is machine noise and the

@@ -125,7 +125,9 @@ console.log(JSON.stringify({
                    WK.weeks = [keep[0]];
                    const h = _wkTrendCard();
                    WK.weeks = keep;
-                   return h === "";
+                   // Was `h === ""`. See the note beside the assertion.
+                   return {noChart: !/id="wk_trendchart"/.test(h),
+                           explains: /Only one week is stored/.test(h)};
                  })(),
   noWeeksNoCrash:(function(){
                    const keep = WK.weeks;
@@ -248,8 +250,18 @@ print("\n=== the card says what it is showing ===")
 truthy("there is somewhere to draw", g["cardHasChart"])
 truthy("  it says how many weeks have a pack", g["cardCounts"])
 truthy("  and that the rest are gaps rather than nothing", g["cardSaysGaps"])
-# ONE POINT IS NOT A TREND. A single dot reads as a chart that failed to draw.
-truthy("one week draws no card at all", g["oneWeekNoCard"])
+# ONE POINT IS NOT A TREND. A single dot reads as a chart that failed to draw,
+# so no chart is still right.
+#
+# THIS USED TO REQUIRE THE CARD TO BE EMPTY, and that was the bug. Measured the
+# day after this shipped: the store holds exactly one week per account, so every
+# account fell into this branch and the twelve-week trend could not be found
+# anywhere in the app. The card now says which of the two it is -- there is no
+# line yet, and why -- which is what the code comment beside it always claimed
+# it did. Drawing no chart and saying nothing are different answers.
+truthy("one week draws no chart", g["oneWeekNoCard"]["noChart"])
+truthy("  but says why, instead of removing itself",
+       g["oneWeekNoCard"]["explains"])
 check("no weeks at all is not a crash", g["noWeeksNoCrash"], True)
 
 

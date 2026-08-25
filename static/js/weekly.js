@@ -19,7 +19,9 @@
 // showing 0.00.
 
 const WK = {week: null, weeks: [], change: {}, loading: false, note: "",
-            want: "business", brandTerms: [], trendMetric: "total_sales"};
+            want: "business", brandTerms: [], trendMetric: "total_sales",
+            // The week asked for, when the one shown is not it -- see _wkPick.
+            fellBack: ""};
 
 function weeklyOnOpen(){
   const d = document.getElementById("wk_week");
@@ -53,14 +55,30 @@ async function weeklyLoad(){
   WK.loading = false; weeklyRender();
 }
 
-/* The week the date box is pointing at, else the newest stored one. */
+/* The week the date box is pointing at, else the newest stored one.
+ *
+ * THE FALLBACK IS RIGHT; BEING SILENT ABOUT IT IS NOT.
+ *
+ * Measured on jack_uk: the date box read 2026-08-18 and the pack on screen was
+ * the week of 2026-08-09, with nothing anywhere saying the app had gone
+ * looking somewhere else. The box defaults to seven days ago, which is usually
+ * a week nobody has built yet, so this is what the screen does MOST of the time
+ * rather than an edge case. A control that says one thing while the page shows
+ * another is how a reader ends up comparing the wrong week to last month.
+ *
+ * WK.fellBack records it so the render can say so. Cleared on every pick, not
+ * only set, or one fallback would caption every later week as a fallback.
+ */
 function _wkPick(){
+  WK.fellBack = "";
   const d = (document.getElementById("wk_week") || {}).value || "";
   if(d){
     const hit = (WK.weeks || []).find(w => w.week_start <= d && d <= w.week_end);
     if(hit) return hit;
   }
-  return (WK.weeks || [])[0] || null;
+  const newest = (WK.weeks || [])[0] || null;
+  if(d && newest) WK.fellBack = d;
+  return newest;
 }
 
 function weeklyUploadOpen(which){
@@ -251,6 +269,19 @@ function weeklyRender(){
 
   const w = WK.week, k = w.kpis || {};
   let h = '';
+
+  // THE DATE BOX AND THE PACK ARE NOT THE SAME WEEK. Said first, because every
+  // figure below it belongs to a different week from the one the control names,
+  // and a reader who does not know that is reading the right numbers under the
+  // wrong heading. See _wkPick.
+  if(WK.fellBack){
+    h += '<div class="odp-note" style="padding:11px 13px;margin-bottom:12px">'
+      + '<b>No pack for the week of ' + _wkEsc(WK.fellBack) + '.</b> '
+      + 'Showing the most recent one instead — the week of '
+      + _wkEsc(w.week_start) + ', below. Nothing is missing; that week was '
+      + 'simply never built. Press Build from connected account, or upload its '
+      + 'reports, to store it.</div>';
+  }
 
   // TWO MARKETPLACES IN ONE PACK. Named rather than averaged away: a Business
   // Report in dollars beside a campaign export in pounds is two different
@@ -464,9 +495,29 @@ function _wkTrendCurrencies(spine){
 function _wkTrendCard(){
   const spine = _wkSpine();
   const built = spine.filter(function(c){ return !!c.week; }).length;
-  // ONE POINT IS NOT A TREND. Said plainly rather than drawing a single dot,
-  // which looks like a broken chart.
-  if(built < 2) return "";
+  // ONE POINT IS NOT A TREND -- and this used to RETURN NOTHING, which is not
+  // the same as saying so.
+  //
+  // Found by opening the screen after shipping it: every account has exactly one
+  // stored week today (jack_uk 2026-08-09, nestwell_goods 2026-08-09), so `built`
+  // was 1 everywhere and the card removed itself on every account, in both
+  // marketplaces, with no trace. The comment above claimed it was "said plainly";
+  // the code said nothing at all. A feature that is announced and then cannot be
+  // found reads as a broken build, and the reason -- there is only one week to
+  // draw -- is both simple and fixable by the reader.
+  //
+  // Nothing is said when there are NO weeks: the pack itself already says the
+  // week is empty, and a second notice about a chart nobody can see yet is noise.
+  if(built < 2){
+    if(!built) return "";
+    return '<div class="card" style="padding:11px 14px;margin:14px 0">'
+      + '<b style="font-size:12.5px">Twelve-week trend</b>'
+      + '<div class="cc" style="font-size:11.5px;margin-top:5px">'
+      + 'Only one week is stored, and one week has no shape — a single point '
+      + 'would look like a broken chart rather than a trend. Store a second '
+      + 'week and this fills in, then keeps the last twelve.'
+      + '</div></div>';
+  }
   const m = _wkTrendMetric();
   let chips = "";
   WK_TREND.forEach(function(t){

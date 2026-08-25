@@ -371,8 +371,13 @@ console.log("\n=== a card that could not load says so ===");
   check("it names the card", el.innerHTML.indexOf("Live Sales") >= 0, true);
   check("  says Amazon refused, not that there were no sales",
         el.innerHTML.indexOf("Amazon refused") >= 0, true);
-  check("  points at where the fix actually is",
-        el.innerHTML.indexOf("Seller Central") >= 0, true);
+  // This required "Seller Central", matching a sentence that told the reader to
+  // re-authorise "with the role that covers it". Singular, and measurably wrong
+  // about the size of it -- Diagnose SP-API on jack_uk/UK returns 403 [ROLE] for
+  // four different APIs at once. All three copies of this sentence now point at
+  // the diagnostic instead, which is the only thing that can list them.
+  check("  points at the check that names what is missing",
+        el.innerHTML.indexOf("Diagnose SP-API") >= 0, true);
   check("  and shows Amazon's own words, which name the missing role",
         el.innerHTML.indexOf("Unauthorized") >= 0, true);
   // A different failure must NOT be described as a permissions problem.

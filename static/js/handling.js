@@ -54,9 +54,31 @@ function _handlingSkus(){
   return vis.map(r=>String(r.sku||"").trim()).filter(Boolean);
 }
 
+/* WHICH ACCOUNT THIS IS ABOUT, sent with every one of the three.
+ *
+ * The server used to decide, from _state["active_account_id"] -- one variable
+ * for the whole process, set by whichever browser tab last switched account.
+ * With several tabs open (there are four in the screenshot this was found from)
+ * a stock or handling push from one tab landed on whatever the other tab had
+ * selected. The price action already named its account; these two did not, so
+ * the same bar had two different ideas of whose listings it was changing.
+ *
+ * Written once here and used by all three, so they cannot drift apart again
+ * (CLAUDE.md Rule 12). The server refuses a marketplace it cannot work out
+ * rather than assuming UK -- see _push_target in routes/handling_routes.py.
+ */
+function _handlingScope(){
+  return {
+    id: (typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT) ? CUR_ACCOUNT.id : "",
+    marketplace: (typeof WS_MARKET !== "undefined" && WS_MARKET !== "__all__")
+                   ? WS_MARKET : ""
+  };
+}
+
 async function _handlingPost(body){
   const res = await fetch("/handling/bulk_update",{method:"POST",
-    headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(Object.assign(_handlingScope(), body))});
   return res.json();
 }
 
@@ -167,7 +189,8 @@ async function bulkQuantity(){
   if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Testing…"; }
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Set stock"; } };
   const post = (body)=> fetch("/stock/bulk_update",{method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)}).then(r=>r.json());
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(Object.assign(_handlingScope(), body))}).then(r=>r.json());
 
   try{
     toast("Testing the stock change on 1 listing…");
@@ -250,8 +273,9 @@ async function bulkPricePercent(){
   const btn = document.getElementById("pricepctbtn");
   if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Working it out…"; }
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Change price %"; } };
-  const body = ()=>({ id: (typeof CUR_ACCOUNT!=="undefined" && CUR_ACCOUNT) ? CUR_ACCOUNT.id : "",
-                      marketplace: (typeof WS_MARKET!=="undefined") ? WS_MARKET : "" });
+  // The same scope the other two now send -- one definition (Rule 12). This was
+  // the copy they were missing; it is no longer a copy.
+  const body = _handlingScope;
 
   try{
     toast(`Reading the current price of ${skus.length} listing(s) from Amazon…`);
