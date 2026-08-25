@@ -583,11 +583,6 @@ function salesChart(points, opts){
   const iw = W - padL - padR, ih = H - padT - padB;
   const vals = points.map(p => _scNum(p.value)).filter(v => v !== null);
 
-  if(!vals.length){
-    return '<div class="cc" style="padding:18px;border:1px dashed #2a3446;border-radius:8px;'
-         + 'font-size:12px">' + _scEsc(o.title || "") + ' — nothing in this period yet.</div>';
-  }
-
   // THE COMPARISON LINE -- what Orbit's charts have that these did not.
   //
   // A single line answers "what happened". It cannot answer "is that good",
@@ -606,6 +601,37 @@ function salesChart(points, opts){
   // the hover code that reads it.
   const _cIsYear = (o.compareKind === "year");
   const cmpVals = cmp ? cmp.map(p => _scNum(p && p.value)).filter(v => v !== null) : [];
+
+  // A CHART IS STILL DRAWN WHEN ONLY THE COMPARISON IS KNOWN.
+  //
+  // This gave up on `!vals.length` alone, before the comparison had even been
+  // read -- so a period whose own days are not in yet lost its whole card, even
+  // with last week sitting there fully measured and ready to draw. That is the
+  // fault the Week to Date card was already reported for, twice:
+  //
+  //     "week to date graph is shown as empty to me on jack reacherd"
+  //     "even i dont have any sales the graph should be displayed"
+  //
+  // and it came back the moment un-fetched days stopped being drawn as zero
+  // (see _drop_padding in domain/sales_data.py). Both series share one scale
+  // already, and the main line is drawn as separate runs between the gaps -- so
+  // with every current value null there is simply no gold line, the dashed
+  // comparison draws, and the axis comes from it. Nothing extra is needed below.
+  //
+  // AND THE SENTENCE DOES NOT SAY "NOTHING" ABOUT DAYS NOBODY MEASURED. There
+  // are two ways to have no line and they are different facts: no days at all
+  // in the range, and days whose figures have not arrived. Saying "nothing in
+  // this period yet" for the second is the same claim as plotting a zero.
+  if(!vals.length && !cmpVals.length){
+    const unknown = points.length > 0;
+    return '<div class="cc" style="padding:18px;border:1px dashed #2a3446;border-radius:8px;'
+         + 'font-size:12px">' + _scEsc(o.title || "")
+         + (unknown
+             ? ' — no figures for these ' + _scEsc((o.units || (o.unit || "day") + "s"))
+               + ' yet. That is not the same as none.'
+             : ' — nothing in this period yet.')
+         + '</div>';
+  }
 
   // BOTH SERIES SHARE ONE SCALE. They have to: two lines on separate scales
   // that cross each other say something that is not true, and the crossing is
