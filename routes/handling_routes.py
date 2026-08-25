@@ -12,9 +12,63 @@ register(app, ...) injection pattern.
 """
 from flask import request, jsonify
 
+from routes import scope as _scope_mod
 
-def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
+
+def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
+             CONFIG_PATH=None):
     from listing import handling as _handling
+
+    def _load_account(aid):
+        """The account record for an id the PAGE named -- credentials included."""
+        try:
+            import accounts as _acc_mod
+            return _acc_mod.get_account(_cfg(), aid, CONFIG_PATH)
+        except Exception:
+            return None
+
+    def _scope():
+        """WHOSE listings these are, and in which country.
+
+        THE PAGE SAYS, NOT THE SERVER'S GLOBAL.
+
+        All three live pushes in this file used to read _active_account() and
+        _state["active_marketplace"], which is one variable for the whole server
+        process, written when an account is CHOSEN. The owner routinely has four
+        browser tabs open (they are in the screenshot this was found from), so
+        whichever tab last switched account owns that variable and every other
+        tab pushes to it. SKUs are price_days_ASIN -- listing_routes already
+        records that "two accounts sourcing the same product at the same price
+        collide" -- so a collision is a stock or handling change landing on the
+        wrong company's live listing.
+
+        The price endpoints next door were already right: the browser names its
+        account and routes/scope.resolve follows it. This is the same call, so
+        there is one answer to the question in the app (CLAUDE.md Rule 12) rather
+        than a second one here that disagrees.
+
+        The marketplace default of "UK" went with it. That is the exact fault
+        routes/scope.py was written to end -- "defaulting to UK gives a US
+        account a confident answer about the wrong country" -- and here it aimed
+        a WRITE: sheelady_us, a US account, would have had its handling time
+        pushed to the United Kingdom. A marketplace that cannot be worked out is
+        now refused, not guessed.
+        """
+        b = request.get_json(silent=True) or {}
+        return _scope_mod.resolve(
+            state=_state, account=_active_account() or {},
+            asked_id=b.get("id") or b.get("account_id"),
+            asked_marketplace=b.get("marketplace"),
+            load_account=_load_account)
+
+    def _push_target():
+        """(account, marketplace, refusal-or-None) for a live push."""
+        acc, _wsid, mkt = _scope()
+        if not acc or not acc.get("id"):
+            return None, "", (jsonify({"ok": False, "error": _scope_mod.NO_ACCOUNT}), 400)
+        if not mkt:
+            return None, "", (jsonify({"ok": False, "error": _scope_mod.NO_MARKETPLACE}), 400)
+        return acc, mkt, None
 
     # Header names we accept for the sheet's handling-time column (standard layout).
     _HANDLING_COLS = ("Handling Days", "Handling Time", "Handling", "Lead Time", "Handling days")
@@ -102,10 +156,9 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
                 "the listing itself — a bulk change that large is more likely a "
                 "typed extra digit.")}), 400
 
-        acc = _active_account()
-        if not acc:
-            return jsonify({"ok": False, "error": "no active account for the live push"}), 400
-        mkt = (_state.get("active_marketplace") or acc.get("default_marketplace") or "UK")
+        acc, mkt, refuse = _push_target()
+        if refuse:
+            return refuse
 
         if test_one:
             res = _handling.push_quantity(_cfg(), acc, skus[0], qty, mkt)
@@ -145,10 +198,9 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
         if test_one:
             if not do_push:
                 return jsonify({"ok": False, "error": "test_one requires push"}), 400
-            acc = _active_account()
-            if not acc:
-                return jsonify({"ok": False, "error": "no active account for the live push"}), 400
-            mkt = (_state.get("active_marketplace") or acc.get("default_marketplace") or "UK")
+            acc, mkt, refuse = _push_target()
+            if refuse:
+                return refuse
             res = _handling.push_handling_time(_cfg(), acc, skus[0], days, mkt)
             return jsonify({"ok": bool(res.get("ok")), "test": True, "days": days, "result": res})
 
@@ -169,10 +221,9 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state):
 
         # --- 2) push to Amazon ---
         if do_push:
-            acc = _active_account()
-            if not acc:
-                return jsonify({"ok": False, "error": "no active account for the live push"}), 400
-            mkt = (_state.get("active_marketplace") or acc.get("default_marketplace") or "UK")
+            acc, mkt, refuse = _push_target()
+            if refuse:
+                return refuse
             pushed, failed = [], []
             for sku in skus:
                 r = _handling.push_handling_time(_cfg(), acc, sku, days, mkt)

@@ -73,6 +73,12 @@ def looks_permanent(error):
     return any(m in e for m in PERMANENT_MARKERS)
 
 
+DENIED = ("Amazon refused: this app is not authorised for that. Press "
+          "\"Diagnose SP-API\" on the listings page — it checks each Amazon "
+          "permission in turn and lists the ones that are missing, which is "
+          "usually more than one.")
+_DENIED = DENIED
+
 # What Amazon's refusals mean, said the way CLAUDE.md Rule 5 asks for. Ordered
 # most specific first, because "unauthorized" appears inside several of them.
 _PLAIN = (
@@ -80,15 +86,20 @@ _PLAIN = (
                       "again shortly."),
     ("throttl",       "Amazon is rate-limiting this account — it will answer "
                       "again shortly."),
-    ("unauthorized",  "Amazon refused: this app is not authorised for that. "
-                      "The permission is granted in Seller Central, under the "
-                      "app's developer settings."),
-    ("accessdenied",  "Amazon refused: this app is not authorised for that. "
-                      "The permission is granted in Seller Central, under the "
-                      "app's developer settings."),
-    ("forbidden",     "Amazon refused: this app is not authorised for that. "
-                      "The permission is granted in Seller Central, under the "
-                      "app's developer settings."),
+    # IT NAMES THE CHECK, NOT ONE PERMISSION.
+    #
+    # This used to end "The permission is granted in Seller Central, under the
+    # app's developer settings" -- singular, and wrong about the size of the
+    # problem. Measured on jack_uk/UK with the app's own Diagnose SP-API: the
+    # refresh token still works, and marketplace participation, Catalog Items,
+    # Product Pricing AND Product Definitions all come back 403 [ROLE]. SEVERAL
+    # roles are missing, so sending somebody to grant "the permission" has them
+    # fix a fraction, come back to another refusal, and conclude the app is
+    # broken. No screen can know which are missing; the diagnostic checks each
+    # in turn and lists them. Same wording as the A+ note, for the same reason.
+    ("unauthorized",  _DENIED),
+    ("accessdenied",  _DENIED),
+    ("forbidden",     _DENIED),
     ("invalidinput",  "Amazon does not recognise that request for this "
                       "marketplace — usually the account is not registered to "
                       "sell there."),

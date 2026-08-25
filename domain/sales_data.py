@@ -380,6 +380,75 @@ def vat_rate_for(config, workspace_id):
     return None
 
 
+# The sales_daily columns that are a MEASUREMENT rather than metadata or a
+# figure derived from the others. A row in which every one of these is absent or
+# nought carries nothing Amazon said.
+_MEASURED = ("units", "units_b2b", "orders", "order_items", "ordered_sales",
+             "ordered_sales_b2b", "sessions", "sessions_mobile",
+             "sessions_browser", "page_views")
+
+
+def _sales_cutoff(conn, workspace_id, marketplace):
+    """The last date the sales feed actually reached, or None if unrecorded."""
+    try:
+        r = conn.execute(
+            "SELECT last_date FROM data_availability WHERE workspace_id=? "
+            "AND marketplace=? AND source='sales'",
+            (workspace_id, marketplace)).fetchone()
+        return (r["last_date"] or None) if r else None
+    except Exception:
+        # NEVER LOSE THE FIGURES OVER THIS. Without a recorded extent nothing is
+        # dropped, so an account this has no record for behaves exactly as before.
+        return None
+
+
+def _drop_padding(sales, cutoff):
+    """Forget the empty rows that sit past what Amazon actually supplied.
+
+    NOTHING COUNTED IS NOT NOTHING SOLD, and this was the last place in the app
+    still saying otherwise.
+
+    MEASURED on 25 Aug 2026. data_availability recorded the sales feed reaching
+    2026-08-20 for jack_uk/UK, and sales_daily held rows through 2026-08-25:
+
+        2026-08-20   37.07   1 unit    <- the last day Amazon answered for
+        2026-08-21   0.0     0
+        2026-08-22   0.0     0
+        2026-08-23   0.0     0         <- Week to Date starts here
+        2026-08-24   0.0     0
+        2026-08-25   0.0     0
+
+    Those five zeros are padding, not measurements, and every screen reading the
+    series believed them. The Week to Date card drew a flat line along the
+    bottom and reported revenue "£0.00 ↓100.0%" -- a collapse to nothing, on
+    days nobody had asked Amazon about. The comparison week was worse: 21 and 22
+    August are padding too, so the -100% was measured against a baseline that
+    was itself part invented. The Sales Report's 30-day window covers four of
+    them as well.
+
+    Checked across the whole store, not on the one account it was noticed on:
+    34 account/marketplace pairs, three of which carry padding (jack_uk/UK 5
+    days, selvora_limited/UK 5, nestwell_goods/UK 2), and NOT ONE padded row
+    anywhere carries a figure. So this cannot hide real data -- it discards a
+    row only when the row is past the fetched range AND has nothing in it. A
+    genuine zero INSIDE the range is untouched and stays a zero, because that is
+    a real answer: 15 and 16 August sold nothing and Amazon said so.
+
+    Dropped rather than zeroed: series() already spans the whole requested
+    window and gives a day with no row nulls, which the charts draw as a gap and
+    _wkSum reports as "not known". That machinery was all there and correct --
+    it was being handed zeros to draw.
+    """
+    if not cutoff:
+        return sales
+    out = {}
+    for d, row in sales.items():
+        if d > cutoff and not any(row.get(k) for k in _MEASURED):
+            continue
+        out[d] = row
+    return out
+
+
 def series(config_path, workspace_id, marketplace, start, end, asin=None,
            vat_rate=None, basis="money", meta=None):
     """Daily rows for a range, sales joined with ads and finance.
@@ -412,10 +481,12 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
     """
     conn = _db.get_db(config_path)
     key = asin or "*"
+    _cut = _sales_cutoff(conn, workspace_id, marketplace)
     sales = {r["date"]: dict(r) for r in conn.execute(
         "SELECT * FROM sales_daily WHERE workspace_id=? AND marketplace=? "
         "AND date>=? AND date<=? AND asin=?",
         (workspace_id, marketplace, start, end, key)).fetchall()}
+    sales = _drop_padding(sales, _cut)
     ads = {r["date"]: dict(r) for r in conn.execute(
         "SELECT * FROM ads_daily WHERE workspace_id=? AND marketplace=? "
         "AND date>=? AND date<=? AND asin=?",
@@ -451,6 +522,11 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
                     "SELECT * FROM sales_daily WHERE workspace_id=? AND marketplace=? "
                     "AND date>=? AND date<=? AND asin=?",
                     (workspace_id, marketplace, start, end, key)).fetchall()}
+                # The re-read needs the same cut. from_lines may legitimately
+                # write a day past the report feed's reach -- order_lines is a
+                # different source -- and _drop_padding keeps any such row,
+                # because it only ever discards a row that is entirely empty.
+                sales = _drop_padding(sales, _cut)
             except Exception:
                 pass
             # EVERY ORDER IN THE WINDOW, settled or not. Amazon settles about

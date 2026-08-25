@@ -4224,7 +4224,8 @@ def build_app(backend=None):
     # Bulk handling-time updates (sheet + live Amazon push).
     import routes.handling_routes as _handling_routes
     _handling_routes.register(app, _cfg=_cfg, _active_account=_active_account,
-                              _ws=_ws, _bust_records_cache=_bust_records_cache, _state=_state)
+                              _ws=_ws, _bust_records_cache=_bust_records_cache, _state=_state,
+                              CONFIG_PATH=CONFIG_PATH)
     # ASIN Monitor — competitor/hijacker tracking + hourly checker (read-only, in-app alerts).
     import routes.monitor_routes as _monitor_routes
     _monitor_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,

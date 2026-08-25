@@ -95,6 +95,49 @@ function updateSelBar(){
 }
 function selectedSkus(){ return Array.from(SELECTED); }
 
+/* WHICH OF THESE HAS A DRAFT HERE, AND WHICH IS ONLY ON AMAZON.
+ *
+ * The Live view mixes two kinds of listing and always has: rows this app holds
+ * a draft of, and rows that exist only in Amazon's catalogue. Until now only
+ * the first kind could be ticked, so the question never came up.
+ *
+ * It comes up the moment both can be ticked. The bulk bar holds two families of
+ * action and they want opposite halves of the selection:
+ *
+ *   about the DRAFT      Approve, Hold, Delete, Auto-fix, Regenerate copy
+ *   about the LISTING    handling time, stock, price -- Amazon is the only place
+ *                        these exist, so an Amazon-only row is a fine target
+ *
+ * Without this split a draft action posts every catalogue SKU to a route that
+ * cannot find it and reports "46 failed" -- which reads as a broken app rather
+ * than as forty-six listings that were never drafts. Nothing is destroyed by it
+ * (/approve and /delete both answer "row not found"), but the message is a lie
+ * about what happened.
+ *
+ * ONE DEFINITION, called by all of them (CLAUDE.md Rule 12). ROWS is the app's
+ * own list, which is exactly what "holds a draft of" means.
+ */
+function splitByDraft(skus){
+  const have = new Set((typeof ROWS !== "undefined" && ROWS ? ROWS : [])
+                       .map(r => String(r.sku || "").trim()).filter(Boolean));
+  const drafts = [], amazonOnly = [];
+  (skus || []).forEach(function(s){
+    (have.has(String(s).trim()) ? drafts : amazonOnly).push(s);
+  });
+  return {drafts: drafts, amazonOnly: amazonOnly};
+}
+
+/* The sentence a draft action shows when part of the selection was not a draft.
+ * Written once so all four say the same thing, and returns "" when there is
+ * nothing to say -- the ordinary all-drafts case stays silent.
+ */
+function _draftOnlyNote(amazonOnly, verb){
+  if(!amazonOnly.length) return "";
+  return `\n\n${amazonOnly.length} of them are on Amazon but have no draft here, `
+       + `so there is nothing to ${verb}. They will be left alone.\n`
+       + `(Press Sync to pull a listing in as a draft first.)`;
+}
+
 async function batchGenerate(kind){
   const skus=selectedSkus();
   if(!skus.length){ toast("Select some listings first"); return; }
@@ -2227,18 +2270,37 @@ function liveTableRow(it){
   // listings section i see that the header and the details under it do not
   // match".
   //
-  // Empty rather than a checkbox: the bulk bar's actions -- approve, hold, set
-  // handling -- are about DRAFTS, and offering them on a listing that is already
-  // live would be offering to un-approve something Amazon has published.
-  // THE ROW OPENS THE LISTING, like every other row on this screen.
-  // The old comment above said it "does not pretend to be clickable" because
-  // there is no draft to open a drawer with -- but there IS something to open:
-  // optimizeLive pulls the live listing down from Amazon into the editor. Same
-  // gesture as a draft row, same result.
+  // THE SELECT CELL WAS DELIBERATELY LEFT EMPTY, AND THAT IS NOW THE BUG.
+  //
+  //     "i am still not able to see the option to select all products on the
+  //      page"  (reported again after the tile view was fixed)
+  //
+  // The reason written here was true when it was written: the bulk bar held
+  // Approve and Hold, which are about DRAFTS, and offering them on a listing
+  // Amazon has already published would be offering to un-approve it.
+  //
+  // The bar has since grown three actions that are the OPPOSITE -- set handling
+  // time, set stock, change price by a percentage. Every one of those is a live
+  // Amazon change, and a listing with no draft here is the purest case of it.
+  // So the cell that was empty for a good reason went on being empty for none,
+  // and on this account that is 46 of the 48 rows in the Live view: "Select all"
+  // ticked two and looked broken, because two was genuinely all the screen
+  // offered.
+  //
+  // A tick is offered here now, as the TILE already does. What must not follow
+  // is a draft action running against a listing that has no draft -- so Approve,
+  // Hold, Delete and Auto-fix split the selection first (splitByDraft) and say
+  // which ones they left alone, rather than reporting them as failures.
+  //
+  // THE ROW STILL OPENS THE LISTING, like every other row on this screen:
+  // optimizeLive pulls the live listing down from Amazon into the editor.
   //     "we can directly edit the listing by clicking on the product card"
   const _open = `optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')`;
-  return `<tr style="cursor:pointer" title="${esc(it.title||'')}" onclick="${_open}">
-    <td class="selcol"></td>
+  return `<tr style="cursor:pointer" title="${esc(it.title||'')}"
+              data-sku="${esc(it.sku||'')}"
+              class="${SELECTED.has(String(it.sku||'')) ? 'rowon' : ''}"
+              onclick="${_open}">
+    <td class="selcol">${rowSelectBox({sku: it.sku||''})}</td>
     <td class="pii-img">${thumb}</td>
     <td>${it.asin
         ? `<a class="asin" href="${esc(_dpUrl(it.asin))}" target="_blank" rel="noopener"

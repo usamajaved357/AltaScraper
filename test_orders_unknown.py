@@ -60,7 +60,15 @@ RAW = ("[{'code': 'Unauthorized', 'message': 'Access to requested resource "
 said = mh.explain(RAW)
 truthy("the repr does not survive into the sentence", "{'code'" not in said)
 truthy("  it says Amazon refused", "refused" in said)
-truthy("  and where the permission is granted", "Seller Central" in said)
+# IT NAMES THE CHECK, NOT ONE PERMISSION. This required the words "Seller
+# Central", which is where the old sentence sent people to grant "the
+# permission" -- singular. Measured on jack_uk/UK: the refresh token works and
+# marketplace participation, Catalog Items, Product Pricing and Product
+# Definitions all return 403 [ROLE]. Naming one has somebody fix a fraction and
+# meet the next refusal. Diagnose SP-API checks each in turn and lists them.
+truthy("  and points at the check that names what is missing",
+       "Diagnose SP-API" in said)
+truthy("  saying there is usually more than one", "more than one" in said)
 # THE CAUSE DECIDES THE ADVICE. Rate limiting is not a permission problem and
 # telling somebody to go and change a setting for it sends them to the wrong
 # place entirely.
@@ -133,11 +141,16 @@ const run = function(meta, rows){
 };
 
 // 1. Every account asked refused.
+// The sentence is a FIXTURE here, not the thing under test -- this file is
+// about "unknown is not zero". It is kept in step with the real one anyway
+// (marketplace_health.DENIED), because a fixture quoting wording the app no
+// longer uses is how a stale copy survives a rename.
 const denied = run({accounts_asked: ["jack_uk"],
   errors: [{account: "jack_uk",
-            error: "Amazon refused: this app is not authorised for that. The "
-                 + "permission is granted in Seller Central, under the app's "
-                 + "developer settings.",
+            error: "Amazon refused: this app is not authorised for that. Press "
+                 + "\"Diagnose SP-API\" on the listings page — it checks each "
+                 + "Amazon permission in turn and lists the ones that are "
+                 + "missing, which is usually more than one.",
             raw: "[{'code': 'Unauthorized'}]"}],
   summary: {orders: 0, units: 0, revenue_by_currency: {}}}, []);
 

@@ -145,9 +145,26 @@ let AF_POLL = null;
 
 function autoFixLoop(sku){ if(sku) _afStart([sku]); }     // per-listing button
 function bulkAutoFix(){                                    // toolbar button (N selected)
-  const skus = (typeof selectedSkus === "function") ? selectedSkus() : [];
-  if(!skus.length){ toast("Select some listings first"); return; }
-  _afStart(skus);
+  const sel = (typeof selectedSkus === "function") ? selectedSkus() : [];
+  if(!sel.length){ toast("Select some listings first"); return; }
+  // AUTO-FIX EDITS A DRAFT: it suggests, applies and previews changes to the
+  // payload this app holds. An Amazon-only row has no payload to edit, so it is
+  // dropped here rather than started and failed forty-six times over.
+  // splitByDraft is the one definition (listings.js, Rule 12).
+  const s = (typeof splitByDraft === "function")
+              ? splitByDraft(sel) : {drafts: sel, amazonOnly: []};
+  if(!s.drafts.length){
+    alert(`Auto-fix works on a draft held in this app, and none of the `
+         +`${sel.length} selected listing(s) is one — they are live on Amazon `
+         +`and were never generated here.\n\nPress Sync to pull one in first.`);
+    return;
+  }
+  if(s.amazonOnly.length){
+    if(!confirm(`Auto-fix ${s.drafts.length} draft(s)?`
+        + (typeof _draftOnlyNote === "function"
+             ? _draftOnlyNote(s.amazonOnly, "fix") : ""))) return;
+  }
+  _afStart(s.drafts);
 }
 
 async function _afStart(skus){
