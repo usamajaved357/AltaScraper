@@ -326,7 +326,12 @@ function _srcTargetLabel(rule){
   const on = [];
   if(rule.target_margin_pct) on.push(rule.target_margin_pct + '% margin');
   if(rule.target_roi_pct) on.push(rule.target_roi_pct + '% ROI');
-  return on.length ? ('Target: ' + on.join(' · ')) : 'Profit target: none';
+  // "Profit target: none" named neither of the two things this sets, so the
+  // toolbar -- the only mention of targets visible without expanding a row --
+  // gave a reader looking for "margin" or "ROI" nothing to find. See the note
+  // beside the per-SKU line in sourcingRow.
+  return on.length ? ('Target: ' + on.join(' · '))
+                   : 'Margin / ROI target: none';
 }
 
 function _srcTargetBox(id, label, value, why, example){
@@ -747,8 +752,10 @@ function sourcingRender(j){
     +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Auto-pricing: ON'
                    : '<i class="ti ti-lock"></i> Auto-pricing: off')+'</button>'
     +  '<button class="db-chip" onclick="sourcingTarget(\'\')" title="'
-    +  'The least profit you will accept, as a percentage. Applies to every '
-    +  'enrolled SKU unless one has its own.">'
+    +  'The least profit you will accept, as a margin % or an ROI % or both. '
+    +  'This is the DEFAULT for every enrolled SKU. To set one for a single '
+    +  'product instead, open that row and use &quot;Set for this SKU&quot; -- '
+    +  'its own target wins over this one.">'
     +  '<i class="ti ti-target"></i> ' + _srcTargetLabel(j.rule || {})
     +  '</button>'
     +  '</div>';
@@ -1499,11 +1506,27 @@ function sourcingRow(r, i){
   // pressing Save would silently overwrite the override.
   SRC_ROW_RULES[r.sku] = rr;
   const anyT = (rr.target_margin_pct != null || rr.target_roi_pct != null);
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Least profit accepted: '
+  // IT NAMES THE TWO THINGS IT SETS, EVEN WHEN NEITHER IS SET.
+  //
+  //     "i am looking at repricer, i dont have an option to set the margin and
+  //      roi target per item"
+  //
+  // It was there and it worked -- measured on this account, 67 per-SKU buttons,
+  // one for every enrolled SKU, each wired to its own rule row. What it never
+  // did was SAY SO. Unset, the line read "Least profit accepted: the flat
+  // minimum only [Set]" and the toolbar read "Profit target: none", so the words
+  // "margin" and "ROI" appeared nowhere on the screen until after a target
+  // existed. Anyone scanning for them concluded the feature was missing, which
+  // is what happened.
+  //
+  // The plain-English phrase is kept -- it is what the setting MEANS, and Rule 5
+  // asks for that first -- with the two names it is known by beside it.
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
+    +  'Least profit accepted <span class="cc">(margin / ROI target)</span>: '
     +  (anyT ? '<b>' + _sesc(_srcTargetLabel(rr).replace(/^Target: /, '')) + '</b>'
-             : '<span class="cc">the flat minimum only</span>')
+             : '<span class="cc">not set — the flat minimum only</span>')
     +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
-    +  (anyT?'Change':'Set')+'</button></div>';
+    +  (anyT?'Change this SKU':'Set for this SKU')+'</button></div>';
 
   /* THE MARKET PRICE, HELD.
    *
