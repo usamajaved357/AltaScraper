@@ -32,9 +32,16 @@ print("=== the table columns line up ===")
 # live view was shifted one place left: pictures under the checkbox, actions
 # under "Compliance". HTML does not complain -- a short row just draws short.
 truthy("the live row has a select cell like every other row",
-       '<td class="selcol"></td>' in L)
-truthy("  empty, because approve/hold are about drafts",
-       "would be offering to un-approve something Amazon has published" in L)
+       '<td class="selcol">' in L)
+# THIS USED TO PIN THE CELL AS EMPTY -- '<td class="selcol"></td>' -- and to
+# require the sentence explaining why. Both were a proxy for the real point,
+# which the heading above states: the columns line up. The cell has since been
+# filled with a checkbox (the bulk bar grew stock/price/handling, which are live
+# Amazon changes and want exactly these rows), and pinning the empty version
+# would have made this test defend the bug. The count is asserted directly in
+# test_live_row_select.py, against the rendered row rather than its source.
+truthy("  and it now offers a tick, like the tile does",
+       "<td class=\"selcol\">${rowSelectBox({sku: it.sku||''})}</td>" in L)
 truthy("and a mismatch is now SHOUTED rather than left to be seen",
        "the columns will not line up" in L)
 truthy("  counted from the header itself, not a hard-coded number",

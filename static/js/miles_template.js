@@ -701,12 +701,26 @@ async function delRow(sku, row, btn){
   }catch(e){ toast("Delete failed"); btn.disabled=false; }
 }
 async function bulkStatus(status){
-  const skus=selectedSkus();
-  if(!skus.length){ toast("Nothing selected"); return; }
+  // APPROVE AND HOLD ARE ABOUT A DRAFT. Now that Amazon-only rows can be ticked
+  // too, the selection is split before anything is sent -- otherwise every
+  // catalogue SKU is posted to /approve, comes back "row not found", and is
+  // counted as a failure. See splitByDraft in listings.js.
+  const _sel=selectedSkus();
+  if(!_sel.length){ toast("Nothing selected"); return; }
+  const _s=splitByDraft(_sel), skus=_s.drafts;
   // normalise: the sheet uses NEEDS_REVIEW for "hold"
   if(status==="HOLD") status="NEEDS_REVIEW";
   const label = status==="APPROVED" ? "Approve" : "Hold";
-  if(!confirm(label+" "+skus.length+" selected listing(s)?")) return;
+  if(!skus.length){
+    alert(`None of the ${_sel.length} selected listing(s) has a draft here, so `
+         +`there is nothing to ${label.toLowerCase()}.\n\n`
+         +`They are live on Amazon and were never generated in this app. Set `
+         +`handling time, stock or price on them instead, or press Sync to pull `
+         +`one in as a draft.`);
+    return;
+  }
+  if(!confirm(label+" "+skus.length+" selected listing(s)?"
+              +_draftOnlyNote(_s.amazonOnly, label.toLowerCase()))) return;
   let ok=0, fail=0;
   toast(label+"ing "+skus.length+"…");
   for(const sku of skus){
@@ -722,9 +736,21 @@ async function bulkStatus(status){
   clearSelection(); loadRows();
 }
 async function bulkDelete(){
-  const skus=selectedSkus();
-  if(!skus.length){ toast("Nothing selected"); return; }
-  if(!confirm("Delete "+skus.length+" selected listing(s) "+storeFrom()+"? This cannot be undone.")) return;
+  // DELETE REMOVES THE DRAFT ROW FROM THE STORE. It does not, and must not,
+  // touch the listing on Amazon -- so a row that exists only on Amazon is not a
+  // thing this button can delete, and is dropped from the selection rather than
+  // sent and reported as a failure.
+  const _sel=selectedSkus();
+  if(!_sel.length){ toast("Nothing selected"); return; }
+  const _s=splitByDraft(_sel), skus=_s.drafts;
+  if(!skus.length){
+    alert(`None of the ${_sel.length} selected listing(s) has a draft here to `
+         +`delete.\n\nThey are live on Amazon. This button never removes a live `
+         +`listing — to end one, close it in Seller Central.`);
+    return;
+  }
+  if(!confirm("Delete "+skus.length+" selected listing(s) "+storeFrom()+"? This cannot be undone."
+              +_draftOnlyNote(_s.amazonOnly, "delete"))) return;
   let ok=0, fail=0;
   toast("Deleting "+skus.length+"…");
   // delete from the BOTTOM up so row numbers don't shift mid-loop
@@ -1560,7 +1586,10 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
   // The draft tile and the table row have carried it all along; this is the
   // copy that drifted. The checkbox itself is rowSelectBox now, for the same
   // reason its buttons became rowActions: one definition, not three.
-  return `<div class="tile live" data-sku="${esc(it.sku||'')}" title="On Amazon — status: ${esc(st)}">
+  // The `sel` class the same way the draft tile does it, so a redraw does not
+  // un-highlight a tile that is still ticked -- toggleSelect sets it live, but
+  // render() rebuilds the HTML from scratch and would drop it.
+  return `<div class="tile live ${SELECTED.has(String(it.sku||'')) ? 'sel' : ''}" data-sku="${esc(it.sku||'')}" title="On Amazon — status: ${esc(st)}">
     ${rowSelectBox({sku: it.sku||''}, 'tilesel')}
     <!-- CLICKING THE CARD OPENS THE LISTING.
          "we can directly edit the listing by clicking on the product card"

@@ -36,6 +36,19 @@ function _handlingSkus(){
   // selected listings, or (if none selected) every real listing in the current view
   let skus = (typeof selectedSkus==="function") ? selectedSkus() : [];
   if(skus.length) return skus;
+  // "EVERY LISTING IN THIS VIEW" IS ASKED OF THE VIEW.
+  //
+  // This re-derived it from ROWS + passFilter, which is the same mistake
+  // selectAllVisible was making: the Live tab draws Amazon's catalogue as well,
+  // and none of that is in ROWS. So "Select all then Set stock" covered 48
+  // listings while "Set stock with nothing selected" quietly covered 2 -- the
+  // same button, the same screen, two different scopes, neither stated.
+  // visibleSelectableSkus (listings.js) reads back what is actually drawn, and
+  // is the one definition of that answer (CLAUDE.md Rule 12).
+  if(typeof visibleSelectableSkus === "function"){
+    const onScreen = visibleSelectableSkus();
+    if(onScreen.length) return onScreen;
+  }
   const vis = (ROWS||[]).filter(r=> (typeof passFilter!=="function"||passFilter(r))
                                   && !(typeof isEmptyRow==="function" && isEmptyRow(r)));
   return vis.map(r=>String(r.sku||"").trim()).filter(Boolean);
