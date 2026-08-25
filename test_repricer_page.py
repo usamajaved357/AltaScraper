@@ -179,12 +179,19 @@ print("\n=== the explainer button ===")
 truthy("it is on the page", "openGuide(" in JS and "repricer" in JS
        and "How this page works" in JS)
 truthy("  and there is a guide behind it", "repricer: {" in G)
+# THE CLAIM, NOT THE SENTENCE. These pinned three exact phrasings, and all
+# three went red when the guide was rewritten into lists -- while every one of
+# the facts they exist to protect was still there, reworded. A test that fails
+# on a synonym is protecting the prose, not the reader, so each now looks for
+# the thing that must be TRUE of the guide.
+_g = G.lower()
 truthy("  leading with the thing that confuses people",
-       "Nothing here changes a live Amazon listing" in G)
-truthy("  explaining what each figure means", "Cheapest source" in G
-       and "over what you paid" in G)
+       "changes nothing on amazon" in _g or "nothing here changes" in _g)
+truthy("  explaining what each figure means",
+       "cheapest source" in _g and "what you paid" in _g
+       and "selling price" in _g)
 truthy("  where the coupon figure comes from",
-       "measured from what buyers were really charged" in G)
+       "measured from what buyers were" in _g and "settled orders" in _g)
 truthy("  and that nothing is added that he did not enter",
        "0.00 unless you set them" in G)
 
