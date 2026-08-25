@@ -250,6 +250,121 @@ async function sourcingHoldPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+/* HOLD WHAT I SELL AT TODAY, ON MANY SKUS AT ONCE.
+ *
+ *     "why do the repricer wants to reduce my selling price to achieve the
+ *      target, it should not happen"
+ *     "If your supplier drops from 15.34 to 9 i want to stay where it is and
+ *      take the extra margin"
+ *
+ * The behaviour he is asking for already existed and already worked -- MEASURED
+ * on his own row, with a 20% target and a hold at 21.99:
+ *
+ *     supplier 15.34 -> 9.00   target alone would allow 12.71, it holds 21.99
+ *     supplier 15.34 -> 24.00  target needs 33.89, it RISES to 33.89
+ *     supplier 24.00 -> 15.34  it comes back to 21.99, not to 21.66
+ *
+ * What did not exist was any way to set it without typing a number into each of
+ * 67 SKUs one at a time. A feature nobody can reach at their own scale is not a
+ * feature, which is why the repricer went on cutting prices while the answer sat
+ * there unused.
+ *
+ * TODAY'S AMAZON PRICE IS THE NUMBER. It needs to be a written-down number
+ * rather than a "don't go down" flag, and that reasoning is not mine -- it is in
+ * test_hold_price.py: a flag has no memory, so once a cost spike carries the
+ * price to 46 there is nothing to come back TO, and every spike becomes
+ * permanent. The current price is the one number that means "where I am now".
+ *
+ * SAFE ON A LISTING THAT IS UNDER WATER, which I wrongly warned it would not be.
+ * A hold is a FLOOR, so it never blocks a rise: measured at 24.99 selling
+ * against a 24.00 cost, the price still goes UP to 33.89. Holding cannot freeze
+ * a loss in place.
+ */
+async function sourcingHoldAtCurrent(){
+  const shown = new Set(SRC_ROWS.map(function(r){ return String(r.sku); }));
+  const picked = [...SRC_SEL].filter(function(s){ return shown.has(s); });
+  if(!picked.length){ toast("Select some listings first"); return; }
+
+  // Only rows Amazon gave a price for. A hold is a price, and there is no
+  // honest number to write for a listing whose price could not be read --
+  // guessing one would be inventing the very figure the hold exists to fix.
+  const rows = SRC_ROWS.filter(function(r){
+    return picked.indexOf(String(r.sku)) >= 0
+        && (r.current || {}).price != null && Number(r.current.price) > 0;
+  });
+  const noPrice = picked.length - rows.length;
+  if(!rows.length){
+    toast("None of the " + picked.length + " selected listing(s) has a price "
+        + "read from Amazon, so there is nothing to hold them at.");
+    return;
+  }
+
+  // What it will actually do, per SKU, before it does it.
+  const already = rows.filter(function(r){ return (r.rule||{}).hold_price != null; });
+  const sample = rows.slice(0, 12).map(function(r){
+    const was = (r.rule||{}).hold_price;
+    return "  " + r.sku + "\n      hold at " + _smoney(r.current.price)
+         + (was != null ? "   (was " + _smoney(was) + ")" : "");
+  }).join("\n");
+
+  let ask = sample
+    + (rows.length > 12 ? "\n  …and " + (rows.length - 12) + " more" : "")
+    + "\n\nThe repricer will never price them BELOW these figures. If a supplier "
+    + "gets cheaper the price stays where it is and you keep the extra margin. "
+    + "If a supplier gets dearer and the price stops covering your target, it "
+    + "still goes UP — a hold is a floor, so it can never hold you at a loss.";
+  if(already.length){
+    ask += "\n\n" + already.length + " of them already have a held price, and it "
+         + "will be REPLACED with today's.";
+  }
+  if(noPrice){
+    ask += "\n\n" + noPrice + " selected listing(s) have no price read from "
+         + "Amazon and will be left alone.";
+  }
+  ask += "\n\nNothing on Amazon changes now — this only sets the floor the "
+       + "repricer works to.";
+  // srcConfirm, not the browser's confirm(): this page deliberately has none.
+  const go = await srcConfirm({
+    title: "Hold " + rows.length + " listing(s) at today's price?",
+    body: ask,
+    confirm: "Hold at today's price",
+  });
+  if(!go) return;
+
+  // THROUGH THE ROUTE THAT ALREADY VALIDATES A HELD PRICE, one SKU at a time,
+  // rather than a second endpoint with a second copy of that validation
+  // (CLAUDE.md Rule 12).
+  let ok = 0;
+  const failed = [];
+  toast("Holding " + rows.length + " listing(s)…");
+  for(const r of rows){
+    try{
+      const j = await (await fetch("/sourcing/rules", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: _srcBody({sku: r.sku,
+                        rule: {hold_price: String(r.current.price)}})})).json();
+      if(j && j.ok) ok++; else failed.push(r.sku + ": " + ((j && j.error) || "refused"));
+    }catch(e){ failed.push(r.sku + ": " + String(e)); }
+  }
+
+  // WHAT HAPPENED, PER SKU WHEN IT WENT WRONG. A count on its own turns a
+  // handful of quietly-refused SKUs into "the hold does not work" a fortnight
+  // later -- the same reason the supplier upload reports row by row.
+  let msg = "Held " + ok + " listing(s) at today's price.";
+  if(noPrice) msg += " " + noPrice + " left alone (no price read from Amazon).";
+  toast(msg);
+  if(failed.length){
+    await srcConfirm({
+      title: failed.length + " could not be held",
+      body: failed.slice(0, 10).join("\n")
+          + (failed.length > 10 ? "\n…and " + (failed.length - 10) + " more" : "")
+          + "\n\nThe rest were held. Nothing on Amazon has changed.",
+      confirm: "OK",
+    });
+  }
+  sourcingLoad();
+}
+
 // A PERCENTAGE PROFIT FLOOR, on top of the flat one.
 //
 // "i want an option in which i can enroll an option to maintain atleast 20
@@ -836,6 +951,14 @@ function _srcSelBar(){
     + '<button class="db-chip" onclick="sourcingSelectAll(true)">Select all '
     + SRC_ROWS.length + '</button>'
     + '<button class="db-chip" onclick="sourcingSelectAll(false)">Clear</button>'
+    // THE ANSWER TO "it should not reduce my selling price", made reachable.
+    // The held price did this all along; typing it into 67 SKUs by hand did not.
+    + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
+    + 'Write today\'s Amazon price in as the floor for each selected listing. '
+    + 'The repricer then never prices below it — a cheaper supplier means more '
+    + 'margin, not a lower price — but a dearer one can still push the price UP, '
+    + 'so it can never hold you at a loss.">'
+    + '<i class="ti ti-lock-dollar"></i> Hold at today\'s price</button>'
     + '<button class="db-chip risk" onclick="sourcingUnenrolSelected()">'
     + '<i class="ti ti-eye-off"></i> Stop tracking ' + picked.length + '</button>'
     + '</div>';
