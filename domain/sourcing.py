@@ -105,11 +105,24 @@ CURRENCY_FOR = {
     "JP": "JPY", "AU": "AUD", "SG": "SGD",
 }
 
+# HOW LONG THE POSTAGE ITSELF TAKES, once it has left. The Royal Mail / Evri
+# service on these listings delivers in two days, and Amazon already counts
+# that separately from the handling time -- so the handling time must NOT
+# include it. See handling_days(). Editable in Settings, because a seller who
+# switches to a next-day courier is making a one-day promise, not a two-day one.
+SHIPPING_POLICY_DAYS = 2
+
 DEFAULT_RULE = {
     "strategy":             "cheapest",   # 'cheapest' | 'fastest' | 'priority'
     "require_in_stock":     1,
     "max_dispatch_days":    None,         # None = no limit
-    "handling_buffer_days": 2,            # promised time is ALWAYS above the source's
+    # EXTRA days on top of the worked-out handling time, for a supplier you do
+    # not trust to dispatch when it says it will. Zero by default: the formula
+    # in handling_days() already turns eBay's promise into Amazon's, and a
+    # padding of 2 applied to every SKU whether or not anyone asked for it was
+    # the same "helpful" default the three pricing allowances were removed for.
+    # Set it per SKU, on the supplier that has actually let you down.
+    "handling_buffer_days": 0,
     "referral_rate":        DEFAULT_REFERRAL_RATE,
     # The three per-unit costs of the user's pricing rule. Defaults come from
     # listing/pricing.py so there is one definition of what a unit costs to sell;
@@ -209,7 +222,19 @@ DEFAULT_RULE = {
     "max_change_pct":       25.0,         # a bigger jump than this waits for a human
     "min_change":           0.20,         # smaller than this is not worth a push
     "stale_after_hours":    24.0,
-    "in_stock_quantity":    5,
+    # HOW MANY UNITS TO SHOW WHILE A SUPPLIER CAN SUPPLY.
+    #
+    #     "make me in stock to 3 units when the supplier is out of stock and if
+    #      i have only 1 unit left in stock but the supplier is still in stock
+    #      restock my qty to 3 maintain it until the supplier is out of stock"
+    #
+    # Three, and MAINTAINED at three rather than set once: decide() treats a
+    # quantity that no longer matches this number as a reason to push, so two
+    # sales off a stock of three put it back to three on the next check. It is
+    # not a forecast of how many can be bought -- nothing is held in a warehouse
+    # -- it is how many Amazon may sell before the next check, and a low number
+    # is the guard against selling more than the supplier can send.
+    "in_stock_quantity":    3,
     # How many readings in a row must say ENDED before we believe it. Price
     # changes have three guards; going out of stock had none, and it only ever
     # took one answer. 1 restores that. See gone_confirmed().
@@ -388,6 +413,96 @@ def usable(source, check, rule, now):
             return False, "dispatches in %d days, limit is %d" % (int(d), int(md))
 
     return True, ""
+
+
+def handling_days(dispatch_days, rule=None, shipping_policy_days=None):
+    """How many days to promise Amazon, from how long the supplier takes.
+
+        "handling = eBay_dispatch_days - 2 + user_buffer"
+
+    THE PROMISE THE BUYER SEES IS HANDLING + SHIPPING, NOT HANDLING ALONE.
+    Amazon shows a delivery date built from two numbers: the handling time we
+    set, and the transit time of the postage service on the listing. The old
+    formula added the supplier's dispatch time to a buffer and called that
+    handling -- which quietly promised the supplier's days TWICE, once as our
+    handling and again as the courier's transit.
+
+    A 3-day eBay supplier used to become 3 + 2 = 5 days handling, plus 2 days
+    of Royal Mail on top: a 7-day promise for something eBay said would be
+    there in 3. That is not caution, it is losing the buy box for a week to
+    describe a three-day product.
+
+    Now the 2 days of postage we already promise are taken OFF, because they
+    are counted by Amazon separately:
+
+        handling = max(0, supplier dispatch - shipping policy) + buffer
+
+    so 3-day dispatch becomes 1 day handling + 2 days shipping = the 3 days
+    eBay actually promised.
+
+    CLAMPED AT ZERO, never negative. A 1-day supplier gives max(0, -1) = 0,
+    which means "posted the same day" -- and the shipping policy still carries
+    the transit. Amazon rejects a negative handling time outright.
+
+    ONE PLACE (CLAUDE.md Rule 12). Three screens worked this out separately --
+    the decision itself, the drift report and the stock cover forecast -- and a
+    change like this one made in two of the three would have shown two
+    different promised dates for the same SKU on the same day.
+
+    Returns None when the supplier's dispatch time is unknown, because a
+    handling time invented from nothing is a delivery date invented from
+    nothing.
+    """
+    if dispatch_days is None:
+        return None
+    r = rule or {}
+    # The setting, if the caller stamped one on the rule (source_run does, from
+    # config.json), then the explicit argument, then the module default. Same
+    # order referral_rate follows, so the two settings behave alike.
+    policy = shipping_policy_days
+    if policy is None:
+        policy = r.get("shipping_policy_days")
+    if policy is None:
+        policy = SHIPPING_POLICY_DAYS
+    try:
+        policy = max(0, int(policy))
+    except (TypeError, ValueError):
+        policy = SHIPPING_POLICY_DAYS
+    try:
+        buf = int(r.get("handling_buffer_days") or 0)
+    except (TypeError, ValueError):
+        buf = 0
+    return max(0, int(dispatch_days) - policy) + buf
+
+
+def handling_sentence(lead, dispatch_days, rule=None,
+                      shipping_policy_days=None):
+    """"handling 1 day -- the supplier dispatches in 3, 2 of which your postage
+    already covers" -- the arithmetic in handling_days(), in words.
+
+    Written once because two of decide()'s reasons quote it, and a formula
+    explained two different ways is read as two different formulas.
+    """
+    if lead is None or dispatch_days is None:
+        return ""
+    r = rule or {}
+    policy = shipping_policy_days
+    if policy is None:
+        policy = r.get("shipping_policy_days")
+    try:
+        policy = max(0, int(policy))
+    except (TypeError, ValueError):
+        policy = SHIPPING_POLICY_DAYS
+    try:
+        buf = int(r.get("handling_buffer_days") or 0)
+    except (TypeError, ValueError):
+        buf = 0
+    s = ("handling %d day%s -- the supplier dispatches in %d, %d of which your "
+         "postage already covers"
+         % (lead, "" if lead == 1 else "s", int(dispatch_days), policy))
+    if buf:
+        s += ", plus %d extra day%s you asked for" % (buf, "" if buf == 1 else "s")
+    return s
 
 
 def _sort_key(pair, strategy):
@@ -833,7 +948,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
             out.pop("held_over", None)
 
     disp = chk.get("dispatch_days")
-    lead = (int(disp) + int(rule["handling_buffer_days"])) if disp is not None else None
+    lead = handling_days(disp, rule)
     qty = int(rule["in_stock_quantity"])
 
     out.update({"price": price, "quantity": qty, "lead_days": lead})
@@ -893,7 +1008,12 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         "sources_usable": len(live) - len(rejections),
         "sources_total": len(live),
         "supplier_dispatch_days": (None if disp is None else int(disp)),
-        "buffer_days": int(rule["handling_buffer_days"]),
+        "buffer_days": int(rule["handling_buffer_days"] or 0),
+        # The postage days already promised separately, taken off the handling
+        # time rather than promised twice. Carried so the screen can show the
+        # subtraction instead of a number that looks two days short.
+        "shipping_policy_days": int(rule.get("shipping_policy_days")
+                                    or SHIPPING_POLICY_DAYS),
         "lead_days": lead,
         # Which floor actually decided the price. Without this the breakdown
         # says "1.00 profit" while the price is really being set by a 20% target,
@@ -931,8 +1051,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
                             src.get("label") or src.get("url"), cost,
                             price, out["held_over"],
                             "" if lead is None else
-                            "; handling %d days (%d + %d buffer)"
-                            % (lead, int(disp), int(rule["handling_buffer_days"]))))
+                            "; " + handling_sentence(lead, disp, rule)))
     else:
         # WRITTEN AS SENTENCES A PERSON READS, not as a formula.
         #
@@ -982,9 +1101,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
                         % (out["hold_capped"]["hold"],
                            out["hold_capped"]["ceiling"]))
         if lead is not None:
-            bits.append("Handling time %d days -- %d for the supplier to dispatch "
-                        "plus %d days' safety." % (lead, int(disp),
-                                                   int(rule["handling_buffer_days"])))
+            bits.append(handling_sentence(lead, disp, rule).capitalize() + ".")
         out["reason"] = " ".join(bits)
 
     # ---- guards against acting on a number that only LOOKS right ----------

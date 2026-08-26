@@ -1270,7 +1270,48 @@ function _driftChip(dr){
 // question it has to answer -- "where did my price come from" -- is answered
 // much better by a list than by a sentence. The sentence is still what gets
 // stored in the log, unchanged; this is only how it is drawn.
-function _priceBreakdown(b, cur){
+// EVERY AMAZON CHARGE, INCLUDING THE ONES YOU ARE NOT PAYING.
+//
+// The line above says "Amazon's cut 3.60". This says what that 3.60 is made
+// of, and -- deliberately -- lists the charges that came to nothing. A fee
+// showing 0.00 next to "not charged -- you post this yourself" answers the
+// question "is the app forgetting FBA?" before it gets asked. Charged lines
+// carry the mockup's fee colours; uncharged ones are dimmed, not hidden.
+//
+// It is folded shut by default. The sum above is the answer most of the time;
+// this is for the times it is not.
+function _allFees(d, cur){
+  const f = (d || {}).fees;
+  if(!f || !(f.lines || []).length) return '';
+  const id = 'fee_' + Math.random().toString(36).slice(2, 9);
+  const COL = {referral: '#e25c5c', closing: '#d4846f', fba: '#8b95a5'};
+  let rows = '';
+  (f.lines || []).forEach(function(l){
+    const on = !!l.charged;
+    rows += '<div style="display:flex;gap:8px;font-size:11.5px;padding:1.5px 0;'
+         +  (on ? '' : 'opacity:.45') + '">'
+         +  '<span style="min-width:178px;padding-left:8px;'
+         +    (on ? 'border-left:2px solid ' + (COL[l.key] || '#5b8fb9')
+                  : 'border-left:2px solid transparent') + '" class="cc">'
+         +    _sesc(l.label) + '</span>'
+         +  '<span style="min-width:62px;text-align:right">'
+         +    _smoney(l.amount) + '</span>'
+         +  '<span class="cc">' + _sesc(l.note || '') + '</span></div>';
+  });
+  return '<div style="padding:0 0 3px 194px">'
+    +  '<a href="#" class="cc" style="font-size:11px;text-decoration:none;'
+    +    'border-bottom:1px dotted currentColor" '
+    +    'onclick="var e=document.getElementById(\'' + id + '\');'
+    +    'var s=e.style.display===\'none\';e.style.display=s?\'\':\'none\';'
+    +    'this.textContent=(s?\'Hide\':\'All\')+\' Amazon fees\';'
+    +    'return false">All Amazon fees</a></div>'
+    +  '<div id="' + id + '" style="display:none;margin:2px 0 5px">'
+    +    rows
+    +    '<div class="cc" style="font-size:11px;padding:3px 0 0 186px">'
+    +      _sesc(f.detail || '') + '</div></div>';
+}
+
+function _priceBreakdown(b, cur, d){
   if(!b || b.price==null) return '';
   const line = function(label, v, note){
     return '<div style="display:flex;gap:8px;font-size:11.5px;padding:1.5px 0">'
@@ -1297,6 +1338,7 @@ function _priceBreakdown(b, cur){
                 : _fb === "estimated"
                 ? ' &mdash; your measured rate, not Amazon\'s quote'
                 : ''));
+  h += _allFees(d, cur);
   h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
   h += line('Set aside for ads', b.ads, '');
   // THE NUMBER YOU SET A TARGET AGAINST, said beside the profit it comes from.
@@ -1745,7 +1787,11 @@ function sourcingRow(r, i){
 
   h += '<div id="'+id+'" style="display:none;margin-top:9px">';
 
-  h += _priceBreakdown(d.breakdown, cur);
+  // d, not just d.breakdown: the fee lines hang off the decision rather than
+  // the sum, because the sum is written to the log for every SKU every four
+  // hours and a nested list of Amazon charges in each row is a log nobody can
+  // read. The panel needs both, so both are passed.
+  h += _priceBreakdown(d.breakdown, cur, d);
 
   // What the target is doing to THIS listing, under the sum it changes. The
   // chip above is the flag; this says what it would take to clear it, which is

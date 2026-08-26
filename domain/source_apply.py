@@ -228,16 +228,21 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
 
 
 def _notify_push(config_path, ws, mkt, sku, decision, current):
-    """One line about a price that has just changed on Amazon.
+    """One line about what has just changed on Amazon: a price, or the stock.
 
     Only a LARGE move reaches Slack -- see the note on _SLACK_WORTHY in
     domain/notify.py. Sixty-seven four-hourly repricings pinging a channel is a
-    channel nobody reads.
+    channel nobody reads. Going out of stock and coming back always do: those
+    are not repricings, they are the listing stopping and starting selling, and
+    they happen a handful of times a month.
     """
     from domain import notify as _n
     from domain import catalogue as _cat
 
-    if decision.get("action") != "update" or decision.get("price") is None:
+    act = decision.get("action")
+    if act not in ("update", "out_of_stock"):
+        return
+    if act == "update" and decision.get("price") is None:
         return
     name = sku
     try:
@@ -246,6 +251,34 @@ def _notify_push(config_path, ws, mkt, sku, decision, current):
         name = str(item.get("title") or "").strip() or sku
     except Exception:
         pass
+
+    # ---- the listing has just STOPPED selling ---------------------------
+    #
+    #     "if every supplier is out of stock, make me out of stock on amazon
+    #      and also notify me"
+    #
+    # Told only AFTER the quantity really reached Amazon, like every other
+    # message here -- a dry run decides identically and must never claim a
+    # listing went out of stock when nothing was pushed. The reason carries
+    # WHICH suppliers failed, because "out of stock" without that is a message
+    # you have to go and investigate before you can act on it.
+    if act == "out_of_stock":
+        _n.went_out_of_stock(config_path, ws, sku, name,
+                             why=decision.get("reason") or "",
+                             marketplace=mkt)
+        return
+
+    # ---- ...or STARTED again -------------------------------------------
+    # A quantity going from nothing to something is the listing coming back,
+    # and it is worth interrupting somebody about for the same reason the stop
+    # was: it changes whether the SKU can sell at all.
+    was_qty = (current or {}).get("quantity")
+    now_qty = decision.get("quantity")
+    if (was_qty is not None and now_qty is not None
+            and int(was_qty) == 0 and int(now_qty) > 0):
+        _n.came_back_in_stock(config_path, ws, sku, name,
+                              int(now_qty), marketplace=mkt)
+
     b = decision.get("breakdown") or {}
     drift = decision.get("cost_was")
     _n.price_move(

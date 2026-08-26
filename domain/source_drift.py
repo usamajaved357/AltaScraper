@@ -135,9 +135,13 @@ def at_a_glance(pairs, current, rule, source_id=None, promo=None):
         out["in_stock"] = chk.get("in_stock")
         if out["dispatch_days"] is not None:
             try:
+                # The same arithmetic decide() promises Amazon, not a second
+                # copy of it (CLAUDE.md Rule 12) -- this report exists to say
+                # what WILL happen, so a formula of its own would eventually
+                # describe a handling time the repricer never sets.
                 rule = _sourcing.rule_with_defaults(rule)
-                out["handling_days"] = (int(out["dispatch_days"])
-                                        + int(rule["handling_buffer_days"]))
+                out["handling_days"] = _sourcing.handling_days(
+                    out["dispatch_days"], rule)
             except Exception:
                 out["handling_days"] = None
 

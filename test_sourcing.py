@@ -309,9 +309,25 @@ d = S.decide(CUR, [(src(1, label="eBay A"), chk(price=8.00, shipping=1.50, dispa
              ALLOW, NOW)
 check("it updates", d["action"], "update")
 check("  8.00 + 1.50 postage = 9.50 landed -> 18.24", d["price"], 18.24)
-check("  handling is the supplier's 3 days plus a 2 day buffer", d["lead_days"], 5)
-check("  never the supplier's promise on its own", d["lead_days"] > 3, True)
-check("  quantity restored", d["quantity"], 5)
+# THE POSTAGE IS NOT PROMISED TWICE.
+#
+#     "handling = eBay_dispatch_days - 2 (shipping policy) + buffer"
+#
+# This used to assert 3 + 2 = 5, and 5 was wrong -- not by a rounding, but by
+# the whole postage. Amazon builds the delivery date from TWO numbers: the
+# handling time we set plus the transit of the postage service on the listing.
+# Setting handling to the supplier's 3 days meant promising 3 days of handling
+# AND 2 days of Royal Mail: a 5-day promise for something eBay said would
+# arrive in 3, losing the buy box for two days to describe a three-day product.
+#
+# Now the 2 days already promised as postage come off: 3 - 2 = 1 day handling,
+# plus 2 days transit = the 3 days eBay actually promised.
+check("  handling is the supplier's 3 days less the 2 we post in", d["lead_days"], 1)
+check("  which with the postage is the supplier's own promise",
+      d["lead_days"] + S.SHIPPING_POLICY_DAYS, 3)
+# Three, not five. The number is "how many Amazon may sell before the next
+# check", and nothing is held in a warehouse.
+check("  quantity restored to the three we maintain", d["quantity"], 3)
 check("  and it names the source it used", d["source_id"], 1)
 
 # THE REASON IS PROSE NOW, NOT A FORMULA.
@@ -331,7 +347,10 @@ truthy("  says what it costs delivered", "9.50 delivered" in d["reason"])
 truthy("  says what it will sell for", "Selling at 18.24" in d["reason"])
 truthy("  says what that leaves", "leaves 1.00 a unit" in d["reason"])
 truthy("  names Amazon's cut", "Amazon's 2.74 fee" in d["reason"])
-truthy("  says how long it takes, in words", "Handling time 5 days" in d["reason"])
+truthy("  says how long it takes, in words",
+       "Handling 1 day" in d["reason"])
+truthy("    and says where the missing days went",
+       "postage already covers" in d["reason"])
 truthy("  and no longer reads as an equation",
        "=" not in d["reason"] and " + " not in d["reason"])
 check("  the sum is still available in full, structured",
@@ -355,7 +374,27 @@ check("no competitor field is even accepted", "competitor" in S.DEFAULT_RULE, Fa
 
 print("  -- a slower supplier stretches the handling time --")
 slow = S.decide(CUR, [(src(1), chk(price=8.00, shipping=1.50, dispatch=8))], ALLOW, NOW)
-check("8 day dispatch -> 10 day handling", slow["lead_days"], 10)
+check("8 day dispatch -> 6 day handling", slow["lead_days"], 6)
+check("  which is still the 8 days the supplier promised",
+      slow["lead_days"] + S.SHIPPING_POLICY_DAYS, 8)
+
+# A SUPPLIER FASTER THAN THE POSTAGE CANNOT PRODUCE A NEGATIVE PROMISE.
+# 1 - 2 = -1, and Amazon refuses a negative handling time outright. Zero means
+# "posted the same day", and the postage still carries the transit.
+fast = S.decide(CUR, [(src(1), chk(price=8.00, shipping=1.50, dispatch=1))], ALLOW, NOW)
+check("1 day dispatch -> 0 day handling, never -1", fast["lead_days"], 0)
+
+# THE BUFFER IS ADDED ON TOP, and it is the ONLY thing that lengthens a promise
+# beyond what the supplier said. Zero by default now: padding every SKU by two
+# days whether or not anyone asked was the same unrequested "help" the three
+# pricing allowances were removed for.
+check("no buffer unless it is asked for", S.DEFAULT_RULE["handling_buffer_days"], 0)
+buf = S.decide(CUR, [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))],
+               dict(ALLOW, handling_buffer_days=2), NOW)
+check("  a 2 day buffer on a 3 day supplier -> 3 days handling",
+      buf["lead_days"], 3)
+truthy("  and the reason says the extra days were asked for",
+       "extra day" in buf["reason"])
 
 
 print("\n=== the guards, and what each one actually catches ===")
@@ -413,11 +452,27 @@ check("held, not guessed", d["action"], "none")
 truthy("  and named", "pricing rule" in d["blocked_by"])
 
 print("  -- and we do not push trivia --")
-d = S.decide({"price": 18.30, "quantity": 5, "lead_days": 5},
+# The listing here already carries what the rule would set -- 3 units and 1 day
+# of handling -- so the only difference left is 6p of price, and that is below
+# min_change. The quantity and handling MUST match for this to be a test about
+# price: a listing showing 5 units when the rule maintains 3 is a listing that
+# needs a push, and it would pass this test for the wrong reason.
+d = S.decide({"price": 18.30, "quantity": 3, "lead_days": 1},
              [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
 check("a 6p difference is left alone", d["action"], "none")
 truthy("  politely", "already within" in d["reason"])
-d = S.decide({"price": 18.30, "quantity": 5, "lead_days": 9},
+
+# STOCK THAT HAS SOLD DOWN IS PUT BACK, on its own, without needing a price
+# move as an excuse. "if i have only 1 unit left in stock but the supplier is
+# still in stock restock my qty to 3 maintain it until the supplier is out of
+# stock" -- two sales off a stock of three leave 1, and the next check restores
+# it even though the right price has not moved a penny.
+low = S.decide({"price": 18.30, "quantity": 1, "lead_days": 1},
+               [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
+check("1 unit left with the supplier in stock -> restock", low["action"], "update")
+check("  back to three", low["quantity"], 3)
+
+d = S.decide({"price": 18.30, "quantity": 3, "lead_days": 9},
              [(src(1), chk(price=8.00, shipping=1.50, dispatch=3))], ALLOW, NOW)
 check("but a wrong handling time is still worth fixing", d["action"], "update")
 

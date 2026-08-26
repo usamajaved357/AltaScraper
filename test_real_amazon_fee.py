@@ -139,8 +139,12 @@ truthy("  and an estimate is not dressed up as one",
        "your measured rate, not Amazon" in JS)
 # It printed a rounded whole number, so 17.5% read as "18%" and 15% and 15.4%
 # looked identical.
-truthy("the rate is shown to the decimal", "toFixed(2)" in
-       JS.split("Amazon's cut")[0][-400:])
+# Asserted on the CODE that formats it rather than on "whatever appears near
+# the words Amazon's cut" -- the old form split on the first occurrence of that
+# phrase, and adding a comment mentioning it elsewhere in the file moved the
+# split point and failed a line that had not changed.
+truthy("the rate is shown to the decimal",
+       '((b.fee_rate || 0) * 100).toFixed(2)' in JS)
 
 print("\n=== asking Amazon is a read, and its own button ===")
 G = open(os.path.join("auth", "guard.py"), encoding="utf-8").read()
@@ -152,8 +156,19 @@ truthy("  and sits ABOVE the broad /sourcing line",
 R = open(os.path.join("routes", "sourcing_routes.py"), encoding="utf-8").read()
 truthy("the route exists", '@app.route("/sourcing/fees"' in R)
 _r = R.split("def sourcing_fees(")[1].split("@app.route")[0]
+# THE GUARD MOVED INTO THE SHARED ASKER, and that is the point of it moving.
+# Four callers now want "ask Amazon about one enrolled SKU" -- the button, the
+# weekly refresh, enrolling one SKU and enrolling in bulk -- and each of them
+# needed the same refusal to invent an ASIN or a price. Four copies of that
+# would have drifted (CLAUDE.md Rule 12), so the route is asserted to DELEGATE
+# and the refusal is asserted where it now lives.
+truthy("  the route asks through the one shared function",
+       "_fees.quote_for_sku(" in _r)
+F = open(os.path.join("domain", "amazon_fees.py"), encoding="utf-8").read()
+_q = F.split("def quote_for_sku(")[1].split("\ndef ")[0]
 truthy("  a SKU with no ASIN or price is skipped, not guessed",
-       "no ASIN in the catalogue snapshot" in _r)
+       "no ASIN in the catalogue snapshot" in _q
+       and "no current price to ask about" in _q)
 truthy("  and what could not be quoted is returned per SKU", "not_quoted" in _r)
 truthy("the button is on the toolbar", "sourcingGetFees(" in JS)
 truthy("  and it reports what Amazon refused", "could not be quoted" in JS)
