@@ -203,15 +203,31 @@ truthy("the page reloads afterwards", "sourcingLoad()" in _fn)
 # The BUTTON, not the bare name -- the name also appears inside the handler's
 # own note, which comes earlier in the file and made this compare the wrong two
 # positions.
+# They are in the same MENU GROUP now, under a "Suppliers" heading: track
+# everything, upload a sheet, get the template, clear them all. Grouped by what
+# they are about rather than by happening to be adjacent on a toolbar, which is
+# a stronger version of the same claim -- adjacency survives a reflow, a heading
+# survives anything.
 truthy("the button is beside the two that add suppliers",
-       'onclick="sourcingClearSuppliers()"' in JS
-       and JS.index('onclick="sourcingClearSuppliers()"')
-           > JS.index("Suppliers from a sheet"))
+       # The MENU ROW, not the function -- the function is defined higher up
+       # the file, so searching for the call finds its own definition and
+       # compares the wrong two positions.
+       "'Clear all suppliers'" in JS
+       and JS.index("'Clear all suppliers'") > JS.index("Suppliers from a sheet")
+       and JS.index('rp-mh">Suppliers<') < JS.index("'Clear all suppliers'")
+       and JS.index("'Clear all suppliers'") < JS.index('rp-mh">Amazon<'))
 truthy("  and after the template it undoes the upload of",
-       JS.index('onclick="sourcingClearSuppliers()"') > JS.index("Get the template"))
-CSS = open("static/css/dashboard.css", encoding="utf-8").read()
-truthy("  and it does not look like them", "srcwipe" in CSS and "var(--red)" in
-       CSS[CSS.index("srcwipe"):CSS.index("srcwipe") + 240])
+       JS.index("'Clear all suppliers'") > JS.index("Get the template"))
+# IT MUST NOT LOOK LIKE THE OTHERS. On the toolbar it was a red .srcwipe
+# button; in a list of otherwise identical rows, "delete every supplier link on
+# this account" would be indistinguishable from "download a spreadsheet". It
+# carries rp-danger now -- red text, a red hover, and a rule above it so it does
+# not sit flush against the row before.
+CSS = open("static/css/repricer.css", encoding="utf-8").read()
+truthy("  and it does not look like them", "rp-danger" in JS)
+_d = CSS[CSS.index(".rp-mi.rp-danger"):CSS.index(".rp-mi.rp-danger") + 320]
+truthy("    it is red", "var(--red)" in _d)
+truthy("    and set apart from the row above", "border-top" in _d)
 
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:

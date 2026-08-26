@@ -27,8 +27,42 @@
  * places is a colour that will be changed in two.
  */
 
+/* ---- the "more" menu -------------------------------------------------- *
+ *
+ * Eight controls that are not everyday controls. On the toolbar they had equal
+ * weight with the switch that decides whether the app touches Amazon; here
+ * they are one click away and grouped by what they are about. */
+.rp-more{position:relative;display:inline-block}
+.rp-menu{display:none;position:absolute;right:0;top:calc(100% + 5px);
+  width:250px;background:var(--panel);border:1px solid var(--line2);
+  border-radius:var(--radius-sm);box-shadow:0 8px 28px rgba(0,0,0,.5);
+  z-index:600;padding:4px;max-height:70vh;overflow-y:auto}
+.rp-menu.rp-open{display:block}
+.rp-mh{font-size:8px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink4);padding:7px 8px 3px}
+.rp-mi{display:flex;align-items:center;gap:8px;width:100%;
+  padding:6px 8px;border:0;border-radius:5px;background:none;color:var(--ink);
+  font-size:11.5px;font-family:inherit;text-align:left;cursor:pointer;
+  text-decoration:none}
+.rp-mi:hover{background:var(--panel2)}
+.rp-mi i{font-size:14px;color:var(--ink3);flex:none}
+.rp-mi span{flex:1;min-width:0}
+/* A setting shows its value on the right, so the row reads "this is set to X"
+ * rather than as something to press. */
+.rp-mi b{font-size:10.5px;color:var(--accent2);font-weight:600;
+  font-variant-numeric:tabular-nums}
+/* THE ONE ROW THAT DESTROYS SOMETHING. It was a red button on the toolbar; in
+ * a list of plain rows it would look exactly like "Get the template", which is
+ * the difference between fetching a file and deleting every supplier link on
+ * the account. Separated by a rule as well as coloured, so it does not sit
+ * flush against the row above it. */
+.rp-mi.rp-danger{color:var(--red);margin-top:3px;padding-top:8px;
+  border-top:1px solid var(--line)}
+.rp-mi.rp-danger i{color:var(--red)}
+.rp-mi.rp-danger:hover{background:var(--red-bg)}
+
 /* ---- the numbers strip ------------------------------------------------ */
-.rp-met{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.rp-met{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
 @media (max-width:900px){.rp-met{grid-template-columns:repeat(2,1fr)}}
 .rp-mc{background:var(--panel);border:1px solid var(--line);
   border-radius:var(--radius-sm);padding:10px 12px;position:relative;
@@ -142,15 +176,30 @@
 .rp-sq{width:8px;height:8px;border-radius:2px;display:inline-block;
   vertical-align:middle;margin-right:4px}
 
-/* ---- the three headline figures inside the panel ---------------------- */
-.rp-met2{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
-.rp-m2{text-align:center;padding:6px 8px;border-radius:var(--radius-sm);
+/* ---- the headline figures inside the panel ---------------------------- *
+ *
+ * The mockup's .met2/.m2 rules, copied value for value -- including the two
+ * tile colours, which are NOT taken from the Orbit palette here.
+ *
+ * That is a deliberate exception to the note at the top of this file. These
+ * fills are 5% alpha over whatever is behind them and their borders are 8%;
+ * at that strength a tile is a tint, not a colour, and the tinted-panel look
+ * is the thing being matched. Substituting --ok-bg and --accent-bg (which are
+ * solid, and darker than the panel) turned four tints into four boxes.
+ *
+ * Green for the money -- profit, ROI, margin. Blue for handling, because it is
+ * a count of days and not an amount, and the eye should not read it as a
+ * fourth figure in the same set. */
+.rp-met2{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.rp-m2{text-align:center;padding:5px 8px;border-radius:var(--radius-sm);
   flex:1;min-width:74px}
-.rp-m2g{background:var(--ok-bg);border:1px solid var(--ok-line)}
-.rp-m2b{background:var(--accent-bg);border:1px solid var(--accent-line)}
-.rp-m2y{background:var(--warn-bg);border:1px solid var(--warn-line)}
+.rp-m2g{background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.08)}
+.rp-m2g .rp-n{color:#22c55e}
+.rp-m2b{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.08)}
+.rp-m2b .rp-n{color:#3b82f6}
 .rp-m2 .rp-n{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
-.rp-m2 .rp-l{font-size:9px;color:var(--ink3);margin-top:2px}
+.rp-m2 .rp-l{font-size:8px;color:var(--ink3);margin-top:2px;
+  text-transform:uppercase;letter-spacing:.04em}
 
 /* ---- suppliers, as rows rather than cards ----------------------------- */
 .rp-sup{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;

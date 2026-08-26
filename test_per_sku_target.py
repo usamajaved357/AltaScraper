@@ -72,10 +72,14 @@ truthy("  each showing its own value or none",
        and JS.count("!= null ? rule.target_margin_pct + '%' : 'none'") == 1)
 truthy("  and an unset one is dimmed rather than hidden", "rp-off" in JS)
 # The account-wide button must not read as the only target there is.
-truthy("the toolbar tip points at the per-SKU one",
-       "Set for this SKU" in JS.split('onclick="sourcingTarget(\\\'\\\')"')[1][:600]
-       if 'onclick="sourcingTarget(\\\'\\\')"' in JS else
-       "its own target wins over this one" in JS)
+# It is a MENU ROW now, under a "Settings" heading and showing its current
+# value on the right -- "Target: 20% ROI is a setting, not a button".
+# It still has to say that a SKU can override it, or somebody sets the
+# account default and wonders why one product ignores it.
+truthy("the account-wide setting points at the per-SKU one",
+       "wins over this one" in JS)
+truthy("  and names where a SKU's own target is set",
+       "Rules pills" in JS)
 
 print("\n=== every enrolled row offers its own, not just the account ===")
 truthy("the row builds a target control for its own sku",

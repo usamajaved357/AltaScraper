@@ -1636,12 +1636,19 @@
           title="When a supplier's price moves, the price it proposes moves with it. When they run out, it would take the listing out of stock. When they slow down, the handling time stretches. Only SKUs enrolled here are ever read, and auto-pricing is a separate switch.">i</span></div>
       </div>
       <div id="srcpick" style="display:none;padding:4px 0"></div>
-      <!-- SKUs with nowhere left to buy from. Above the table on purpose: it is
-           the one thing on this screen that needs acting on today, and a warning
-           below a long table is a warning nobody reads. Filled by
-           sourcingAlerts() in static/js/sourcing.js. -->
-      <div id="srcalerts"></div>
       <div id="srcbody" style="padding:4px 0"></div>
+      <!-- WHICH SKUs cannot be bought from, by name. BELOW the table now, and
+           folded shut.
+             "one compact alert ... Nothing else between the stat cards and the
+              table."
+           It used to sit above everything as two full-width banners listing
+           thirteen SKUs in three columns and then six more -- about 400 pixels
+           of page before the first price, and a table pretending to be a
+           warning: every SKU it named has a row in the real table with a red
+           dot in its state column. The COUNTS are still above the table, in the
+           one alert bar; this is the list, kept for when you want to work
+           through it. Filled by sourcingAlerts() in static/js/sourcing.js. -->
+      <div id="srcalerts" style="padding:8px 0 0"></div>
     </div>
 
     <div id="sec_monitor" class="wspanel">

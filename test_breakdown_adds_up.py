@@ -141,13 +141,24 @@ close("a 30% margin target leaves 30% of the PRICE",
 print("\n=== the screen shows the return beside the profit ===")
 JS = open(os.path.join("static", "js", "sourcing.js"), encoding="utf-8").read()
 truthy = lambda l, g: check(l, bool(g), True)
-truthy("the profit line names what the profit is a return ON",
-       "% of the ' + _smoney(b.cost)" in JS)
+# The labelled price list this asserted is gone -- every line of it is now a
+# segment of the stacked bar or one of the four tiles, so the list was the same
+# figures a second time in words. What must NOT be lost is that a percentage
+# says what it is a percentage OF: "20%" alone is unreadable, and ROI and margin
+# are measured against different things. Both tiles say so on hover.
+truthy("the ROI tile names what the profit is a return ON",
+       "share of the cash you put in" in JS)
+truthy("  and margin is named against a different thing",
+       "share of what the buyer paid" in JS)
 truthy("  worked out from the same two figures above",
        "(b.profit / b.cost) * 100" in JS)
 # "you asked for at least X" is only worth saying when X is actually set.
-truthy("a flat minimum is mentioned only when one is set",
-       "b.min_profit > 0" in JS)
+# The flat minimum is a RULE, so it now sits with the other rules as a pill
+# showing its value -- or the word "none". Better than the old footnote, which
+# appeared only when the minimum happened to be set: a rule you cannot see is a
+# rule you cannot check.
+truthy("a flat minimum is shown as a rule, set or not",
+       "pill('ROI'" in JS and "+ '%' : 'none'" in JS)
 
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:
