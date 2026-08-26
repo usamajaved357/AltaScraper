@@ -29,7 +29,7 @@ def _tri(v):
     return None if v is None else bool(v)
 
 
-# ---- enrolment -------------------------------------------------------------
+# ---- enrollment -------------------------------------------------------------
 
 def enrol(config_path, workspace_id, marketplace, sku, mode="dry_run"):
     """Opt one SKU in. Re-enrolling just updates the mode."""
@@ -66,7 +66,7 @@ def set_listing_state(config_path, workspace_id, marketplace, sku, state):
     caller: a SKU marked gone while still armed is a SKU the pricer will go on
     trying to push, and the whole point of the mark is that it cannot be sold.
 
-    The enrolment row is KEPT. Its sources, its history and its rule are worth
+    The enrollment row is KEPT. Its sources, its history and its rule are worth
     more than the row costs, and deleting them would lose the audit trail for a
     listing that might be relisted tomorrow.
     """

@@ -21,14 +21,14 @@ function _avEsc(s){
 
 async function addVariant(sku){
   if(!sku){ toast("No SKU for that row."); return; }
-  const url = prompt(
+  const url = await uiPrompt(
     "Add a colour or size to\n" + sku
     + "\n\nPaste the eBay link for the NEW one — where you would buy it.\n"
     + "Nothing is queued or sent yet.", "");
   if(url === null) return;
   if(!url.trim()){ toast("No link given."); return; }
 
-  const what = prompt(
+  const what = await uiPrompt(
     "What is different about this one?\n\n"
     + "For example:  colour: Black\n"
     + "          or  size: XL",
@@ -78,7 +78,7 @@ async function addVariant(sku){
   msg += "\nWhat happens next:\n"
        + (p.steps||[]).map((t,i) => "  " + (i+1) + ". " + t).join("\n")
        + "\n\nQueue it?";
-  if(!confirm(msg)) return;
+  if(!await uiConfirm(msg)) return;
 
   try{
     const r = await (await fetch("/variant/queue",{method:"POST",

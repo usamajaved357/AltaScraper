@@ -401,7 +401,7 @@ def quote_for_sku(config_path, cfg, workspace_id, marketplace, sku,
     reason it could not be.
 
     ONE PLACE, because four callers want exactly this: enrolling a SKU, the
-    "Get Amazon's fees" button, the weekly refresh job, and the bulk enrol. Each
+    "Get Amazon's fees" button, the weekly refresh job, and the bulk enroll. Each
     of them needs the account looked up, the current price and OUR ASIN found,
     and the answer stored -- and four copies of that would drift apart on the
     detail that matters, which is that NOTHING is asked about a product without

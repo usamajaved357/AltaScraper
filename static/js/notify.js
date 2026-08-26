@@ -196,7 +196,7 @@ async function ntfTest(id) {
 }
 
 async function ntfRemove(id) {
-  if (!confirm("Remove this channel? Nothing will be sent to it again.")) return;
+  if (!await uiConfirm("Remove this channel? Nothing will be sent to it again.")) return;
   await fetch("/notify/channel?id=" + encodeURIComponent(id), { method: "DELETE" });
   ntfLoad();
 }

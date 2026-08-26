@@ -208,7 +208,7 @@ def check_delisted(ctx):
                   detail="%d enrolled SKU%s no longer answers on Amazon."
                          % (len(gone), "" if len(gone) == 1 else "s"),
                   action="Either the listing was removed or the SKU changed. "
-                         "Un-enrol them or fix the listing.")
+                         "Un-enroll them or fix the listing.")
     return _r("delisted", "SKUs gone from Amazon", G_LISTINGS, OK, value="0")
 
 

@@ -409,7 +409,7 @@ async function ilBringHere(fromId){
   if(!dry.moved){ toast("Nothing to move."); return; }
 
   const label = fromId || "the shared folder";
-  if(!confirm("Move " + dry.moved + " image" + (dry.moved === 1 ? "" : "s") + " from "
+  if(!await uiConfirm("Move " + dry.moved + " image" + (dry.moved === 1 ? "" : "s") + " from "
               + label + " into " + here + "?\n\nNothing is deleted. Any file that would "
               + "clash with one already here is kept under a new name.")) return;
 
@@ -1108,7 +1108,7 @@ async function ilSlotSend(slotKey){
          + "have nowhere to show.";
   }
   msg += "\n\nAmazon fetches the image itself and usually shows it within a few minutes.";
-  if(!confirm(msg)) return;
+  if(!await uiConfirm(msg)) return;
 
   const st = document.getElementById("il_pushstatus");
   if(st) st.innerHTML = '<span class="genspin"></span> sending…';

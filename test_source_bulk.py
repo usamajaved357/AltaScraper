@@ -68,7 +68,7 @@ truthy("  which it says out loud",
        "carries 2 of your SKUs" in out["rows"][1]["note"])
 
 print("\n=== a key that matches nothing is refused, not invented ===")
-# Taking a typed SKU on trust created an enrolment for a listing that does not
+# Taking a typed SKU on trust created an enrollment for a listing that does not
 # exist, which then sat in the repricer for ever saying it could not be read.
 out = B.apply_rows(CFG, WS, MKT, ["sku", "url"],
                    [["NO-SUCH-SKU", "https://www.ebay.co.uk/itm/444444444444"]])

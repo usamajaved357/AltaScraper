@@ -82,7 +82,28 @@ PRICING_RULE_MIN_PROFIT     = 0.00   # £ per unit -- see MIN_ROI_PCT below
 #
 # It is a FLOOR among floors, so it can only ever raise a price. It is visible in
 # the repricer as target_roi_pct and can be changed or switched off there.
-PRICING_RULE_MIN_ROI_PCT    = 20.0   # % of landed cost, the least a sale may return
+#
+# ZERO, BY THE OWNER'S DECISION -- 27 Aug 2026, in writing:
+#
+#     "Don't set a 20% ROI target by default. Default should be 0% -- meaning
+#      the repricer prices at breakeven (no profit, no loss) as the absolute
+#      floor. The user sets their own target."
+#
+# It was 20.0, and it was doing more than the name suggests. Because it is a
+# floor among floors it silently raised every price on every SKU that had no
+# target of its own -- so an account that had deliberately set NO target was
+# still being priced to 20% back, and the screen said "Target: none" while it
+# happened. A default that changes prices is not a default, it is a setting
+# nobody chose.
+#
+# At 0 the floor is cost + Amazon's fee + whatever postage and ads allowance is
+# set: break-even, the price below which a sale is a loss. That is the right
+# ABSOLUTE floor, because pricing under it can only destroy money. Anything
+# above it is a commercial decision, and commercial decisions are the owner's.
+#
+# Setting a real target is one click -- the ROI or Margin pill on any row, or
+# "Default target for new enrollments" in the ⋯ menu for the ones added next.
+PRICING_RULE_MIN_ROI_PCT    = 0.0    # % of landed cost; 0 = break-even floor
 
 
 def _round_up(v):

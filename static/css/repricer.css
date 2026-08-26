@@ -64,9 +64,21 @@
 /* ---- the numbers strip ------------------------------------------------ */
 .rp-met{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
 @media (max-width:900px){.rp-met{grid-template-columns:repeat(2,1fr)}}
+/* A card is a BUTTON: the count and the filter are the same idea asked twice.
+ * "13 out of stock" is only useful if the next thing you do is look at those
+ * thirteen, so the number is the way in. Reset to look like a card, not a
+ * control, until it is hovered or active. */
 .rp-mc{background:var(--panel);border:1px solid var(--line);
   border-radius:var(--radius-sm);padding:10px 12px;position:relative;
-  overflow:hidden}
+  overflow:hidden;display:block;width:100%;text-align:left;cursor:pointer;
+  font-family:inherit;color:inherit;transition:border-color .1s,background .1s}
+.rp-mc:hover{border-color:var(--line2);background:var(--panel2)}
+/* The active filter, unmistakably. A border alone was too quiet next to four
+ * identical cards; the ring plus the brighter ground says "this is why the
+ * table is short". */
+.rp-mc.rp-on{border-color:var(--accent);background:var(--accent-bg);
+  box-shadow:0 0 0 1px var(--accent) inset}
+.rp-mc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .rp-mc-n{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;
   letter-spacing:-.02em;line-height:1}
 .rp-mc-l{font-size:10px;color:var(--ink3);margin-top:4px;font-weight:500}
@@ -85,6 +97,22 @@
   font-size:11.5px;color:var(--warn);display:flex;align-items:center;gap:6px}
 .rp-alert b{cursor:pointer;text-decoration:underline;margin-left:2px}
 
+/* ---- the bulk bar ----------------------------------------------------- *
+ *
+ * STICKY, because the rows it acts on are the reason to scroll. Selecting
+ * thirty SKUs down a sixty-seven row table left the bar somewhere above the
+ * fold, so the last thing you did was scroll back up to find the button for
+ * the thing you had just finished choosing.
+ *
+ * Above the table's own z-index but below the menus, so an open ⋯ menu or a
+ * dialog still covers it. */
+.rp-bulk{position:sticky;top:8px;z-index:20;display:flex;gap:7px;
+  align-items:center;flex-wrap:wrap;padding:9px 11px;margin-bottom:10px;
+  border:1px solid var(--accent-line);background:var(--accent-bg);
+  border-radius:var(--radius-sm);font-size:12.5px;
+  box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.rp-bulk b{font-variant-numeric:tabular-nums}
+
 /* ---- the table -------------------------------------------------------- */
 .rp-card{background:var(--panel);border:1px solid var(--line);
   border-radius:var(--radius-sm);overflow:hidden}
@@ -95,7 +123,17 @@
 .rp-tbl th{font-size:9px;font-weight:600;text-transform:uppercase;
   letter-spacing:.05em;color:var(--ink3);text-align:left;padding:7px 5px;
   border-bottom:1px solid var(--line2);white-space:nowrap}
-.rp-tbl td{padding:5px;border-bottom:1px solid var(--line);font-size:11.5px;
+/* 13px, not 11.5.
+ *
+ *     "Current table text is too small ... Numbers (ITEM, PRICE, PROFIT,
+ *      ROI): 11px -> 13px"
+ *
+ * The reference mockup is 880px wide and this table is 1200; its sizes were
+ * copied faithfully and came out proportionally smaller on a real screen. The
+ * COLUMN HEADERS stay small on purpose -- they are read once and then never
+ * again, so they can afford to recede, and shrinking them is what buys the
+ * numbers their extra two pixels without the row growing. */
+.rp-tbl td{padding:6px 5px;border-bottom:1px solid var(--line);font-size:13px;
   vertical-align:middle}
 .rp-tbl tr.rp-row{cursor:pointer;transition:background .1s}
 .rp-tbl tr.rp-row:hover>td{background:rgba(255,255,255,.03)}
@@ -110,13 +148,16 @@
   overflow:hidden;color:var(--ink4);position:relative}
 .rp-thumb img{width:100%;height:100%;object-fit:cover}
 
-.rp-nm{font-weight:500;font-size:11.5px;max-width:180px;overflow:hidden;
+.rp-nm{font-weight:500;font-size:13px;max-width:210px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
-.rp-asin{font-size:9px;color:var(--accent2);font-weight:500;
+.rp-asin{font-size:10px;color:var(--accent2);font-weight:500;
   text-decoration:none}
 .rp-asin:hover{text-decoration:underline}
-.rp-p{font-weight:600;font-size:11.5px}
-.rp-was{text-decoration:line-through;font-size:9.5px;color:var(--ink3)}
+.rp-p{font-weight:600;font-size:13px}
+/* The old price, struck through. Kept smaller than the new one -- it is what
+ * the number USED to be, and the eye should land on the one that is replacing
+ * it -- but no longer so small it cannot be read. */
+.rp-was{text-decoration:line-through;font-size:11px;color:var(--ink3)}
 
 /* The status dot. Five states, and each one is a different question:
  * green = it can change a live price; teal = it is only watching;
@@ -215,10 +256,32 @@
   text-decoration:none;max-width:190px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;display:inline-block;vertical-align:bottom}
 .rp-sup .rp-snm:hover{text-decoration:underline}
-.rp-tag{font-size:7px;font-weight:700;padding:1px 4px;border-radius:2px;
+/* 11px, not 7.
+ *
+ *     "The 'cost ↑14%' badge next to the ASIN is too small to read ...
+ *      Same for the '2/3' source count."
+ *
+ * These are the marks that say a number elsewhere on the row is WRONG -- the
+ * profit figures still subtract a cost the supplier left behind, or one of the
+ * suppliers cannot be bought from. A warning nobody can read is not a warning.
+ * They were sized to sit inside a supplier-table cell; beside the ASIN they
+ * have the room. */
+.rp-tag{font-size:11px;font-weight:600;padding:1px 5px;border-radius:3px;
+  letter-spacing:.01em;line-height:1.45;white-space:nowrap}
+/* Inside the supplier table they stay small: there they are a column of
+ * two-letter states read down the page, not a warning beside a name. */
+.rp-sup .rp-tag{font-size:8px;font-weight:700;padding:1px 4px;
   letter-spacing:.03em}
 .rp-tgu{background:var(--ok);color:#0a1a14}
 .rp-tgo{background:var(--red-bg);color:var(--red)}
+/* Remove this supplier. Its own class, not the rules pills': it deletes a link
+ * and the price readings recorded against it, where every .rp-rl opens an
+ * editor. Quiet until hovered, then red -- it is destructive, but it is one
+ * link out of several and does not need to shout on every row. */
+.rp-xrm{background:none;border:0;padding:1px 5px;border-radius:3px;
+  color:var(--ink4);font-family:inherit;font-size:13px;line-height:1;
+  cursor:pointer}
+.rp-xrm:hover{background:var(--red-bg);color:var(--red)}
 .rp-supspk{width:50px;height:16px}
 .rp-supspk svg{width:100%;height:100%;display:block}
 

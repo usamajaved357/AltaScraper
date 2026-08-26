@@ -38,7 +38,7 @@ _NOT_SUPPLIERS = ("amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr",
 def classify(url):
     """(kind, why) for a candidate link. kind is 'ebay', 'html', or ''.
 
-    The reason is written for the person reading a bulk-enrol report, who needs
+    The reason is written for the person reading a bulk-enroll report, who needs
     to know whether to go and find a link or whether there was never going to be
     one.
     """

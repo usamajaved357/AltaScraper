@@ -112,10 +112,10 @@ async function skuMedia(sku){
  * copies of this rule would be three chances for one of them to keep the old
  * behaviour.
  */
-function tooManyProducts(what, total){
+async function tooManyProducts(what, total){
   const n = (STUDIO.skus || []).length;
   if(n <= 1) return false;
-  alert("This would generate " + total + " " + what + "s ("
+  await uiAlert("This would generate " + total + " " + what + "s ("
     + n + " products × " + Math.round(total / n) + " each).\n\n"
     + "One press of this button makes ONE product's set. You have "
     + n + " products selected.\n\n"
@@ -154,7 +154,7 @@ async function confirmIfExisting(skus, kind){
   const head = worst >= 8
     ? ("This product already has " + worst + " " + what + "s.\n\n")
     : ("These already have " + what + "s:\n\n");
-  return confirm(
+  return await uiConfirm(
     head + hits.join("\n") + "\n\n"
     + "Generating again ADDS a new set — it does not replace the old ones and "
     + "nothing is deleted. Each image is a paid call, and you will have to pick "
@@ -582,7 +582,7 @@ async function studioRunSource(){
   // product ended up with thirty-six images. Asked FIRST, because "you already
   // have 36 of these" changes the answer to "generate 4 more?" completely.
   if(!await confirmIfExisting(STUDIO.skus, "images")) return;
-  if(total>4 && !confirm("This will generate "+total+" image(s). Each is a paid call. Continue?")) return;
+  if(total>4 && !await uiConfirm("This will generate "+total+" image(s). Each is a paid call. Continue?")) return;
   studioRunBackground("source", jobs, total);
 }
 
@@ -726,7 +726,7 @@ async function studioRunSecondary(){
   });
   const total=jobs.length;
   if(tooManyProducts("secondary image", total)) return;
-  if(total>4 && !confirm("This will generate "+total+" secondary image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+roles.length+" image(s)).\nEach is a paid OpenRouter call. Continue?")) return;
+  if(total>4 && !await uiConfirm("This will generate "+total+" secondary image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+roles.length+" image(s)).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   studioRunBackground("secondary", jobs, total);
 }
@@ -847,7 +847,7 @@ async function studioRunAplus(){
   });
   const total=jobs.length;
   if(tooManyProducts("A+ module image", total)) return;
-  if(total>4 && !confirm("This will generate "+total+" A+ module image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+mods.length+" module(s)).\nEach is a paid OpenRouter call. Continue?")) return;
+  if(total>4 && !await uiConfirm("This will generate "+total+" A+ module image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × "+mods.length+" module(s)).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "aplus")) return;
   studioRunBackground("aplus", jobs, total);
 }
@@ -1164,7 +1164,7 @@ async function studioGenAllConcepts(auto){
        +(concepts.length>1?"s":"")+" = "+jobs.length+" "+_what+"s")
     : (jobs.length+" "+_what+(jobs.length>1?"s":""));
   if(tooManyProducts(_what, jobs.length)) return;
-  if(jobs.length>4 && !confirm(
+  if(jobs.length>4 && !await uiConfirm(
       "This will generate "+_sum+".\n\nEach one is a paid call.\n\nContinue?")) return;
   studioRunBackgroundConcept(jobs, jobs.length);
 }
@@ -1188,7 +1188,7 @@ async function studioRun(mode){
     });
   });
   const total=jobs.length;
-  if(total>4 && !confirm("This will generate "+total+" image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × 3 variations).\nEach is a paid OpenRouter call. Continue?")) return;
+  if(total>4 && !await uiConfirm("This will generate "+total+" image"+(total>1?"s":"")+" ("+STUDIO.skus.length+" product(s) × 3 variations).\nEach is a paid OpenRouter call. Continue?")) return;
   if(!await confirmIfExisting(STUDIO.skus, "images")) return;
   studioRunBackground("creative", jobs, total);
 }

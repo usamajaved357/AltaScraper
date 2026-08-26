@@ -87,12 +87,12 @@ with app.test_client() as c:
         "SELECT sku, mode, enrolled FROM sourcing_enrolment")]
     src = [dict(x) for x in conn.execute(
         "SELECT sku, url, kind FROM sourcing_sources ORDER BY sku")]
-    print("\n  enrolment rows: %d" % len(enr))
+    print("\n  enrollment rows: %d" % len(enr))
     for e in enr: print("     %-40s mode=%s enrolled=%s" % (e["sku"], e["mode"], e["enrolled"]))
     print("  source rows: %d" % len(src))
     for s2 in src: print("     %-40s %s" % (s2["sku"], s2["url"]))
 
-    check("every enrolment is DRY RUN",
+    check("every enrollment is DRY RUN",
           sorted({e["mode"] for e in enr}), ["dry_run"])
     check("the parent was never enrolled",
           any("PARENT" in e["sku"] for e in enr), False)

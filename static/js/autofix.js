@@ -144,7 +144,7 @@ window.AUTOFIX_STATE = null;
 let AF_POLL = null;
 
 function autoFixLoop(sku){ if(sku) _afStart([sku]); }     // per-listing button
-function bulkAutoFix(){                                    // toolbar button (N selected)
+async function bulkAutoFix(){                                    // toolbar button (N selected)
   const sel = (typeof selectedSkus === "function") ? selectedSkus() : [];
   if(!sel.length){ toast("Select some listings first"); return; }
   // AUTO-FIX EDITS A DRAFT: it suggests, applies and previews changes to the
@@ -154,13 +154,13 @@ function bulkAutoFix(){                                    // toolbar button (N 
   const s = (typeof splitByDraft === "function")
               ? splitByDraft(sel) : {drafts: sel, amazonOnly: []};
   if(!s.drafts.length){
-    alert(`Auto-fix works on a draft held in this app, and none of the `
+    await uiAlert(`Auto-fix works on a draft held in this app, and none of the `
          +`${sel.length} selected listing(s) is one — they are live on Amazon `
          +`and were never generated here.\n\nPress Sync to pull one in first.`);
     return;
   }
   if(s.amazonOnly.length){
-    if(!confirm(`Auto-fix ${s.drafts.length} draft(s)?`
+    if(!await uiConfirm(`Auto-fix ${s.drafts.length} draft(s)?`
         + (typeof _draftOnlyNote === "function"
              ? _draftOnlyNote(s.amazonOnly, "fix") : ""))) return;
   }
@@ -612,7 +612,7 @@ async function _autoFixCopyTrace(){
       w.document.body.innerHTML = '<pre style="font:12px ui-monospace,Consolas,monospace;padding:12px;white-space:pre-wrap">'+
         text.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</pre>';
     } else {
-      prompt('Copy the trace below:', text);
+      await uiPrompt('Copy the trace below:', text);
     }
   }
 }
@@ -748,7 +748,7 @@ async function _bulkAutoFixCopyTrace(){
       w.document.body.innerHTML = '<pre style="font:12px ui-monospace,Consolas,monospace;padding:12px;white-space:pre-wrap">'+
         text.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</pre>';
     } else {
-      prompt('Copy the trace below:', text);
+      await uiPrompt('Copy the trace below:', text);
     }
   }
 }
@@ -1098,7 +1098,7 @@ function _rebuildDrawerData(sku){
 // Delete/clear a field. Attributes -> the key is REMOVED; columns/content -> the cell
 // is blanked. `refresh` rebuilds the block so a deleted attribute row disappears.
 async function clearField(sku, target, key, refresh){
-  if(!confirm("Delete '"+key+"' from this listing?")) return;
+  if(!await uiConfirm("Delete '"+key+"' from this listing?")) return;
   try{
     const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(acctBody({sku, target, key, value:""}))})).json();
@@ -1140,7 +1140,7 @@ async function addBullet(sku){
 }
 async function removeBullet(sku, i){
   const r=ROWS.find(x=>String(x.sku)===String(sku)); if(!r||!r.bullets) return;
-  if((r.bullets[i]||"").trim() && !confirm("Delete bullet "+(i+1)+"?")) return;
+  if((r.bullets[i]||"").trim() && !await uiConfirm("Delete bullet "+(i+1)+"?")) return;
   r.bullets.splice(i,1);                         // remove AND compact -> no empty slot
   await _saveBullets(sku, r.bullets);
   _rebuildDrawerData(sku);
@@ -1734,7 +1734,7 @@ function uploadMainImage(sku, inp){
 async function pushImageLive(sku, btn){
   var r=(ROWS||[]).find(x=>String(x.sku)===String(sku));
   if(!r){ toast('Listing not found'); return; }
-  if(!confirm("Send the current main image to the LIVE Amazon listing for "+sku+"?\n\nThis updates ONLY the main image on Amazon (no full resubmit). Amazon must be able to fetch the image, so it will be uploaded to your Drive and made public if it isn't already.")) return;
+  if(!await uiConfirm("Send the current main image to the LIVE Amazon listing for "+sku+"?\n\nThis updates ONLY the main image on Amazon (no full resubmit). Amazon must be able to fetch the image, so it will be uploaded to your Drive and made public if it isn't already.")) return;
   var old = btn?btn.textContent:'';
   if(btn){ btn.disabled=true; btn.textContent='Pushing…'; }
   try{

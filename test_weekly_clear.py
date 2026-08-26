@@ -156,7 +156,13 @@ truthy("the count comes from the server, not the rows on screen",
        '"/weekly/count"' in _fn)
 truthy("  because the page draws a capped list",
        "capped list" in JS.split("CLEARING WHAT WAS UPLOADED")[1][:900])
-truthy("nothing is deleted without a confirm", "confirm(" in _fn)
+# uiConfirm, not confirm. The app draws its own now -- a native dialog
+# blocks the page, arrives titled "This page says:", and is silently
+# dropped if a timer raises a second one. Same contract, same guard: the
+# count is stated and nothing is deleted until somebody says yes.
+truthy("nothing is deleted without a confirm", "uiConfirm(" in _fn)
+truthy("  and it is AWAITED, or the answer is a truthy Promise",
+       "await uiConfirm(" in _fn)
 truthy("  which states the number", 'Delete all " + n + " stored week' in _fn)
 truthy("  and names the account and marketplace", "for \" + where + \"?" in _fn)
 truthy("  says it cannot be undone", "cannot be undone" in _fn)

@@ -84,13 +84,29 @@ console.log("\n=== the sidebar folds to a rail, and stays folded ===");
 truthy("there is a toggle", HTML.indexOf('id="navtoggle"') >= 0);
 truthy("  loaded from its own file", /sidebar\.js\?v=/.test(HTML));
 truthy("folding is a class on the workspace", /classList\.toggle\("navmini"/.test(SIDE));
-truthy("  the rail is narrow", /#workspace\.navmini \.sidebar\{width:54px/.test(CSS));
-// The labels are bare text nodes -- there is no element around "Listings" -- so
-// they cannot be display:none'd. font-size:0 is what collapses a text node.
-truthy("  labels collapse without an element to hide",
-       /#workspace\.navmini \.navitem\{font-size:0/.test(CSS));
-truthy("  and the icon is put back to a readable size",
-       /#workspace\.navmini \.navitem \.ti\{font-size:17px/.test(CSS));
+// FOLDED, IT IS A HAMBURGER AND NOTHING ELSE. Owner's decision, 27 Aug 2026:
+//
+//     "when the sidebar is collapsed, it currently shows a vertical strip of
+//      icons. This takes up space and looks cluttered. Instead: when collapsed,
+//      show ONLY a hamburger menu icon (☰) at the top left -- exactly like
+//      Amazon Seller Central does. The icon strip approach is removed."
+//
+// It folded to a rail of icons before, on the argument that a menu which
+// disappears leaves nothing to navigate WITH. That does not hold: the
+// hamburger stays, which is exactly what there is to navigate with. What the
+// rail cost was 54px of every screen for a column of unlabelled glyphs.
+truthy("  folded, it is barely wider than the hamburger",
+       /#workspace\.navmini \.sidebar\{width:44px/.test(CSS));
+// ONE rule over the sidebar's children, not a display:none per element -- a nav
+// item added next year is then hidden by construction rather than by somebody
+// remembering to come back here.
+truthy("  everything but the toggle is hidden",
+       /#workspace\.navmini \.sidebar>\*:not\(\.navtoggle\)\{display:none\}/.test(CSS));
+truthy("  and the hamburger itself is readable",
+       /#workspace\.navmini \.navtoggle \.ti\{font-size:19px/.test(CSS));
+// The icon rail really is gone, not merely narrowed.
+truthy("  no icon rail survives",
+       !/#workspace\.navmini \.navitem\{font-size:0/.test(CSS));
 truthy("an icon with no label gets a tooltip", /setAttribute\("title", label\)/.test(SIDE));
 truthy("  read from the menu itself, not a hardcoded list",
        /querySelectorAll\("#workspace \.sidebar \.navitem"\)/.test(SIDE));

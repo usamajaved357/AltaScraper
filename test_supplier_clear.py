@@ -57,7 +57,7 @@ with open(CFG, "w", encoding="utf-8") as fh:
 
 
 def seed():
-    """Two accounts, two marketplaces, with enrolment, rules and readings."""
+    """Two accounts, two marketplaces, with enrollment, rules and readings."""
     made = {}
     for wsid, mkt, skus in (("jack_uk", "UK", ["A", "B"]),
                             ("jack_uk", "DE", ["A"]),

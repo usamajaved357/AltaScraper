@@ -667,7 +667,7 @@ async function userToggle(id, active){
 }
 
 async function userDelete(id){
-  if(!confirm("Remove this person's access completely? They will not be able to sign in again.")) return;
+  if(!await uiConfirm("Remove this person's access completely? They will not be able to sign in again.")) return;
   try{
     const j = await (await fetch("/users/delete",{method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:id})})).json();

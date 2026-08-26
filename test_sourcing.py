@@ -86,30 +86,43 @@ check("the postage allowance defaults to nothing", P.PRICING_RULE_SHIPPING_LABEL
 check("  the ads allowance too", P.PRICING_RULE_ADS_MARGIN, 0.00)
 check("  and the flat profit", P.PRICING_RULE_MIN_PROFIT, 0.00)
 
-print("  -- but it will not sell at break-even either --")
-# With all three amounts at zero the flat rule is cost + Amazon's fee exactly,
-# which earns nothing. min_roi_pct is the floor under that, stated as a share of
-# the cash put in so it means the same on a cheap unit and a dear one.
-check("a bare rule still asks for the safety return",
-      S.has_profit_requirement({}), True)
-check("  9.50 at 20% back on the cash", S.floor_price(9.50, {}), 13.42)
-# >= because the floor is rounded UP -- a floor rounded down is not a floor --
-# so it lands a fraction above the target rather than exactly on it.
-check("  and that price really does return at least 20%",
-      P.achieved(S.floor_price(9.50, {}), 9.50, 0.15)["roi_pct"] >= 20.0, True)
+print("  -- break-even IS the floor when nothing else is asked for --")
+#
+#     "Don't set a 20% ROI target by default. Default should be 0% -- meaning
+#      the repricer prices at breakeven (no profit, no loss) as the absolute
+#      floor. The user sets their own target."   (27 Aug 2026)
+#
+# min_roi_pct used to default to 20, and this block asserted that a bare rule
+# still asked for 20% back. It was doing more than the name suggested: because
+# it is a floor among floors it SILENTLY raised the price of every SKU that had
+# never set a target, so an account that had deliberately set none was priced to
+# 20% anyway while the screen read "Target: none". A default that moves prices
+# is not a default; it is a setting nobody chose.
+#
+# What is left is the real absolute limit. Cost plus Amazon's cut is the price
+# below which a sale destroys money, so that is where the floor sits, and
+# everything above it is a commercial decision belonging to the owner.
+check("no hidden percentage is applied", P.PRICING_RULE_MIN_ROI_PCT, 0.00)
+check("a bare rule prices at break-even", S.floor_price(9.50, {}), 11.18)
+check("  which is exactly cost plus Amazon's cut",
+      S.floor_price(9.50, {}), round(9.50 / 0.85 + 0.005, 2))
+# NOT A LOSS, which is the whole point of it being a floor at all.
+check("  so the sale earns nothing rather than losing",
+      P.achieved(S.floor_price(9.50, {}), 9.50, 0.15)["roi_pct"] >= 0.0, True)
 check("  it is NOT one of the two profit targets", S.targets_set({}), [])
 check("  so a screen can still say 'no target set'", S.target_floor(9.50, {}), None)
 
-print("  -- turning the safety floor off means refusing, never break-even --")
-check("nothing asks for any profit now",
-      S.has_profit_requirement({"min_roi_pct": 0}), False)
-check("  so it refuses to price at all",
-      S.floor_price(9.50, {"min_roi_pct": 0}), None)
-check("  and says so in words the owner can act on",
-      "no profit requirement is set" in
-      S.decide({"price": 20.0, "quantity": 5, "lead_days": 3},
-               [(src(1), chk(price=8.00, shipping=1.50))],
-               {"min_roi_pct": 0}, NOW)["reason"], True)
+print("  -- and any target the owner sets raises it --")
+# The floor takes the HIGHEST of all the floors, so setting one can only ever
+# push a price up. That is what makes break-even a safe default: it cannot
+# quietly undercut a target somebody has actually asked for.
+check("20% back on the cash asks for more", S.floor_price(9.50, {"target_roi_pct": 20.0}),
+      13.42)
+check("  and that price really does return at least 20%",
+      P.achieved(S.floor_price(9.50, {"target_roi_pct": 20.0}), 9.50,
+                 0.15)["roi_pct"] >= 20.0, True)
+check("  a flat pound does too",
+      S.floor_price(9.50, {"min_profit": 1.00}) > S.floor_price(9.50, {}), True)
 print("  -- and any one of the five switches it back on --")
 for k, v in (("min_profit", 1.00), ("shipping_label", 3.00),
              ("ads_margin", 2.00), ("target_roi_pct", 20.0),
@@ -677,7 +690,7 @@ conn.execute("INSERT INTO sourcing_actions (workspace_id, marketplace, sku, at, 
              ("jack_uk", "UK", "8.00_3Days_B0G1K5B7QS", "2026-08-14 12:00:00",
               "update", 15.84, "dry run", 0))
 conn.commit()
-check("an enrolment round-trips",
+check("an enrollment round-trips",
       conn.execute("SELECT mode FROM sourcing_enrolment").fetchone()["mode"], "dry_run")
 check("a dry-run action is stored as not applied",
       conn.execute("SELECT applied FROM sourcing_actions").fetchone()["applied"], 0)

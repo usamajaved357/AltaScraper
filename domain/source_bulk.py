@@ -27,7 +27,7 @@ The link itself is judged by domain/source_link.classify -- the same rule that
 refuses an Amazon page as a supplier, so a sheet cannot introduce something the
 automatic path would reject.
 
-Nothing here enrols anything into LIVE pricing. Tracking is not pricing (see
+Nothing here enrolls anything into LIVE pricing. Tracking is not pricing (see
 the Repricer screen): a SKU added by sheet is in dry run like any other.
 """
 import csv
@@ -224,7 +224,7 @@ def skus_for_key(config_path, workspace_id, marketplace, sku="", asin=""):
     sku = str(sku or "").strip()
     if sku:
         # A TYPED SKU IS STILL CHECKED. Taking it on trust meant a typo -- or a
-        # SKU from another account's sheet -- created an enrolment for a listing
+        # SKU from another account's sheet -- created an enrollment for a listing
         # that does not exist, which then sat in the repricer for ever reporting
         # that it could not be read. Caught by the upload test: a row keyed
         # "NO-SUCH-SKU-123" was attached without complaint.

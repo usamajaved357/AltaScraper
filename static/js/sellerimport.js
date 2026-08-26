@@ -331,7 +331,7 @@ async function sellerDraft(){
   if(blocked){
     msg += "\n\n" + blocked + " of these are BLOCKED by Amazon and will be refused.";
   }
-  if(!confirm(msg)) return;
+  if(!await uiConfirm(msg)) return;
   await _siDraft(sel, {});
 }
 
@@ -347,7 +347,7 @@ async function _siDraft(sel, extra){
       // The server counted the expanded families and it is over the ceiling.
       // A real number, asked about once, rather than a silent cap.
       if(j.would_draft){
-        if(confirm(j.error + "\n\nDraft all " + j.would_draft + "?")){
+        if(await uiConfirm(j.error + "\n\nDraft all " + j.would_draft + "?")){
           return _siDraft(sel, Object.assign({}, extra||{},
                                              {max_drafts: j.would_draft}));
         }

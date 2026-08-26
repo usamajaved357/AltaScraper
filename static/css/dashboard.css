@@ -419,32 +419,35 @@
              text-align:left;font-family:inherit}
   .navtoggle:hover{background:var(--panel2);color:var(--ink);border-color:var(--line)}
   .navtoggle .ti{font-size:16px;width:18px;text-align:center;flex-shrink:0}
-  #workspace.navmini .sidebar{width:54px;padding:16px 7px}
-  #workspace.navmini .navtoggle{justify-content:center;padding:7px 0;font-size:0}
-  #workspace.navmini .navtoggle .ti{font-size:16px}
-  #workspace.navmini .slbl{font-size:0;padding:10px 0 4px;text-align:center}
-  /* A section label with no text still has to keep the groups apart, so it
-     becomes the rule it was already implying. */
-  #workspace.navmini .slbl::after{content:"";display:block;height:1px;
-                                  background:var(--line);margin:0 6px}
-  #workspace.navmini .navitem{font-size:0;justify-content:center;padding:9px 0;
-                              border-left-width:0;border-radius:var(--radius-sm)}
-  #workspace.navmini .navitem .ti{font-size:17px;width:auto}
-  #workspace.navmini .navitem span,
-  #workspace.navmini .navitem .chev{display:none}
-  #workspace.navmini .navitem.active{border-left-width:0;background:var(--accent-bg)}
-  /* IN THE RAIL, EVERY GROUP IS OPEN.
-     The rail is icons only, so a master row would be an icon that reveals more
-     icons -- two taps to reach a screen that was one tap away, and no label to
-     say what either does. Collapsing is a full-width idea. The masters are
-     hidden and their children shown flat, which is the same set of destinations
-     the rail had before the grouping existed. */
-  #workspace.navmini .navmaster{display:none}
-  #workspace.navmini .navgroup .navkids{max-height:none;overflow:visible}
-  #workspace.navmini .navgroup .navkids .navitem{padding-left:0;margin-left:0;
-                                                 border-left-width:0;font-size:0}
-  #workspace.navmini .wsident{justify-content:center;margin-bottom:14px}
-  #workspace.navmini .wsident>div:last-child{display:none}
+  /* ---- COLLAPSED IS A HAMBURGER, NOT A RAIL ----
+     Owner's decision, 27 Aug 2026:
+
+         "when the sidebar is collapsed, it currently shows a vertical strip of
+          icons. This takes up space and looks cluttered. Instead: when
+          collapsed, show ONLY a hamburger menu icon (☰) at the top left --
+          exactly like Amazon Seller Central does. The icon strip approach is
+          removed."
+
+     The rail was kept for a reason that turned out not to hold: that a menu
+     which vanishes leaves nothing to switch WITH. It does not vanish -- the
+     hamburger stays, in the corner, which is where every app that does this
+     puts it. What the rail actually cost was 54px of every screen for a column
+     of unlabelled glyphs; measured on the Repricer, the table gained that width
+     back and the ten-column layout stopped needing to scroll sideways at
+     1366px.
+
+     Nothing is deleted. The full sidebar is one click away and comes back
+     exactly as it was, groups and all. */
+  #workspace.navmini .sidebar{width:44px;padding:10px 6px;overflow:hidden}
+  /* The hamburger is the only thing left, and it says what it does on hover. */
+  #workspace.navmini .navtoggle{justify-content:center;padding:9px 0;font-size:0;
+                                margin:0;border-color:var(--line)}
+  #workspace.navmini .navtoggle:hover{background:var(--panel2)}
+  #workspace.navmini .navtoggle .ti{font-size:19px}
+  /* EVERYTHING ELSE GOES. Not display:none on each rule -- one rule over the
+     sidebar's children, so a nav item added later is hidden by construction
+     rather than by somebody remembering to add it here. */
+  #workspace.navmini .sidebar>*:not(.navtoggle){display:none}
   .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
              padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .wstoolbar h2{font-size:15px;margin:0;font-weight:650}

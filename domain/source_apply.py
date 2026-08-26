@@ -7,7 +7,7 @@ declines to act is as confusing as one that silently acts.
 
 THE GATES, IN ORDER
   1. the master switch is off            -- one place to stop everything, instantly
-  2. this SKU is not armed               -- enrolment is per SKU and starts as dry run
+  2. this SKU is not armed               -- enrollment is per SKU and starts as dry run
   3. this SKU has no min_price           -- see below; this one is not negotiable
   4. the decision is held or is a no-op  -- nothing to do
   5. it was pushed too recently          -- cooldown, so a flapping supplier
@@ -64,13 +64,13 @@ def _hours_since(stamp, now):
     return (now - t).total_seconds() / 3600.0
 
 
-def why_not(config_path, cfg, ws, mkt, sku, decision, now=None, enrolment=None):
+def why_not(config_path, cfg, ws, mkt, sku, decision, now=None, enrollment=None):
     """The reason this decision may not be pushed, or "" if it may be."""
     now = now or _dt.datetime.now()
     if not is_enabled(cfg):
         return "the repricer's master switch is off"
 
-    row = enrolment
+    row = enrollment
     if row is None:
         rows = [r for r in _repo.enrolled(config_path, ws, mkt) if r["sku"] == sku]
         row = rows[0] if rows else None

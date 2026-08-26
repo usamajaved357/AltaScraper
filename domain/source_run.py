@@ -147,7 +147,7 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
                                     "handling time and availability are not ours "
                                     "to set. Leaving it alone.")}
 
-    # HAS AMAZON STILL GOT THIS SKU? Read from the enrolment row, which the
+    # HAS AMAZON STILL GOT THIS SKU? Read from the enrollment row, which the
     # listing check writes -- not asked here, because that would be one Amazon
     # call per SKU on every draw of the screen.
     state = ""

@@ -52,7 +52,7 @@ async function migrateCheck(){
   lines.push("");
   lines.push("Bring them in now?");
 
-  if(!confirm(lines.join("\n"))) return;
+  if(!await uiConfirm(lines.join("\n"))) return;
 
   toast("Bringing them in…");
   let r;

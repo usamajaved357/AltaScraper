@@ -427,7 +427,7 @@ def sweep(config_path, cfg=None, workspace_id=None, marketplace=None,
           pause=0.2, log=None, now=None):
     """Check every source of every ENROLLED SKU, and store the readings.
 
-    Enrolment is what bounds this: nothing is checked, and no supplier is even
+    Enrollment is what bounds this: nothing is checked, and no supplier is even
     contacted, for a SKU the user has not opted in. Never raises -- it runs on a
     timer, and one bad source must not stop the sweep for everything behind it.
     """

@@ -384,11 +384,11 @@ check("an empty URL adds nothing",
       SR.ensure_source(_cfgp, "w", "UK", "SKU1", "")[1], False)
 
 _rsrc = _insp.getsource(__import__("routes.seller_routes", fromlist=["x"]).register)
-truthy("enrolment is DRY RUN -- it watches, it does not reprice",
+truthy("enrollment is DRY RUN -- it watches, it does not reprice",
        'mode="dry_run"' in _rsrc)
 truthy("  the parent is never enrolled: nothing supplies it",
        'src.get("role") == "parent"' in _rsrc)
-truthy("  a failed enrolment does not lose the draft that saved",
+truthy("  a failed enrollment does not lose the draft that saved",
        "enrol_errors" in _rsrc)
 truthy("  and a family whose variations cannot be read is skipped, not flattened",
        "left out rather than drafted" in _rsrc)

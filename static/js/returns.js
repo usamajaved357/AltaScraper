@@ -184,7 +184,7 @@ async function returnsUploadFile(input){
 }
 
 async function returnsClear(){
-  if(!confirm("Forget every returns file loaded for this account?\n\n"
+  if(!await uiConfirm("Forget every returns file loaded for this account?\n\n"
               + "Nothing on Amazon changes — this only clears what this screen "
               + "is holding, so you can start again with different files."))
     return;

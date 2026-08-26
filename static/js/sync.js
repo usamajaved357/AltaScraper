@@ -158,7 +158,7 @@ async function syncApplyPull(){
     var r=await fetch('/sync/pull/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     var j=await r.json();
     if(r.status===409 && j.blocked){
-      if(!confirm((j.error||'This row was regenerated but not pushed.')+'\n\nApply anyway and DISCARD the regenerated copy?')){ return; }
+      if(!await uiConfirm((j.error||'This row was regenerated but not pushed.')+'\n\nApply anyway and DISCARD the regenerated copy?')){ return; }
       body.force=true;
       j=await (await fetch('/sync/pull/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
     }
@@ -177,14 +177,14 @@ async function syncRecheck(){
 }
 
 async function syncMarkCause(){
-  var c=prompt('Mark the pull-block cause for the ACTIVE workspace. Type one:\n'
+  var c=await uiPrompt('Mark the pull-block cause for the ACTIVE workspace. Type one:\n'
     +'  deactivated          (temporary suspension -- clears on reinstatement)\n'
     +'  role_gap             (credentials genuinely lack the read role)\n'
     +'  blocked_unconfirmed  (reset -- reason unknown)');
   if(!c) return;
   var st=c.trim();
   if(['deactivated','role_gap','blocked_unconfirmed','untested'].indexOf(st)<0){ _syncToast('invalid status'); return; }
-  var note=prompt('Optional note (e.g. "Section 3 suspension"):')||'';
+  var note=await uiPrompt('Optional note (e.g. "Section 3 suspension"):')||'';
   try{
     var j=await (await fetch('/sync/mark_status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st,note:note})})).json();
     _syncToast(j.ok?'marked':(j.error||'failed')); syncRenderMatrix();

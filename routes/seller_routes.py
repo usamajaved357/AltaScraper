@@ -319,17 +319,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
 
         # ---- and the repricer starts watching them ---------------------------
         # From the moment the draft exists, not from whenever somebody remembers
-        # to enrol it. The eBay item this came from IS the supplier, and its URL
+        # to enroll it. The eBay item this came from IS the supplier, and its URL
         # is already in hand -- the gap between drafting and enrolling is exactly
         # the window where the source's price moves and nobody notices.
         #
-        # DRY RUN, always. A dry-run enrolment watches and records what it WOULD
+        # DRY RUN, always. A dry-run enrollment watches and records what it WOULD
         # do without changing a price or a stock level. Arming it is a separate,
         # deliberate act that needs a floor price per SKU, and an import that
         # armed 104 SKUs with no floor could reprice them to whatever a supplier
         # happened to be charging.
         enrolled, enrol_errors = 0, []
-        if b.get("enrol") is not False:
+        if b.get("enroll") is not False:
             from domain import source_repo as _repo
             for d in saved:
                 src = d.get("_source") or {}
@@ -348,7 +348,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                                         label=(d.get("title") or "")[:120])
                     enrolled += 1
                 except Exception as e:
-                    # A draft that saved is not lost because its enrolment
+                    # A draft that saved is not lost because its enrollment
                     # failed. Reported separately so the two are not confused.
                     enrol_errors.append({"sku": d["sku"], "error": str(e)[:160]})
 

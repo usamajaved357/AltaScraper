@@ -102,12 +102,19 @@ check("the open set is stored", /localStorage\.setItem\(NAVGRP_KEY/.test(NG));
 check("  and read back", /localStorage\.getItem\(NAVGRP_KEY/.test(NG));
 check("  surviving a corrupt value", /catch \(e\)/.test(NG));
 
-console.log("\n== the icon rail is not two taps deep ==");
-// The rail is icons only. A master there would be an icon revealing more icons,
-// with no label to say what either does -- two taps to reach a screen that was
-// one tap away.
-check("masters are hidden in the rail", /navmini \.navmaster\{display:none\}/.test(CSS));
-check("  and the children show flat", /navmini \.navgroup \.navkids\{max-height:none/.test(CSS));
+console.log("\n== folded, there is no rail to be two taps deep ==");
+// THE RAIL IS GONE. Owner's decision, 27 Aug 2026: folded, the sidebar shows
+// ONLY a hamburger, the way Seller Central does. So the question this block was
+// asking -- how do groups behave in a column of icons -- no longer arises;
+// there is no column. What has to hold instead is that folding hides the
+// groups WHOLE, rather than leaving a master or a stray child behind.
+check("nothing but the toggle survives folding",
+      /#workspace\.navmini \.sidebar>\*:not\(\.navtoggle\)\{display:none\}/.test(CSS));
+// Which covers masters and children together, by construction: they are both
+// inside .sidebar, so neither needs a rule of its own and neither can be
+// forgotten when a new one is added.
+check("  so a master cannot be left showing",
+      !/navmini \.navmaster\{display:(?!none)/.test(CSS));
 
 console.log("\n== the nesting reads as nesting ==");
 check("children are indented", /\.navkids \.navitem\{padding-left:30px/.test(CSS));

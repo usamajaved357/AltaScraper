@@ -204,14 +204,29 @@ truthy("  and nothing is deleted by it",
 truthy("  which is said BEFORE the click, not after",
        "are KEPT" in J)
 # Armed SKUs are the ones where this matters most.
-truthy("it warns when some of them are armed", "of them armed" in JS)
+# Shortened to "N armed" now that the bar carries seven controls -- and it
+# gained the one that matters more: how many of the selection have NO
+# floor, which is what stops them being armed at all.
+truthy("it says how many of them are armed", "' armed</span>'" in JS)
+truthy("  and how many cannot be armed yet",
+       "with no floor" in JS)
 
 print("\n=== and the white browser dialogs are gone from this page too ===")
-falsy("no confirm() left in the code", "confirm(" in JS.replace("srcConfirm(", ""))
+# THE CONFIRM MOVED TO ONE PLACE FOR THE WHOLE APP. srcConfirm was written
+# for this screen before there was an app-wide one; two implementations of
+# the same box is what Rule 12 forbids, and they would have drifted on the
+# details that matter -- which key confirms, what a click on the surround
+# does. It is now a four-line call on uiConfirm, keeping the {title, body,
+# confirm, risk} shape eleven call sites here already use.
+falsy("no confirm() left in the code",
+      "confirm(" in JS.replace("srcConfirm(", "").replace("uiConfirm(", ""))
 truthy("  replaced by one in the app's own skin", "function srcConfirm" in JS)
-truthy("  Escape cancels it", '"Escape"' in JS)
+truthy("    which is the app-wide one, not a second copy",
+       "return uiConfirm(" in JS.split("function srcConfirm(")[1][:400])
+DLG = io.open(r"D:\AltaScraper\static\js\dialog.js", encoding="utf-8").read()
+truthy("  Escape cancels it", 'e.key === "Escape"' in DLG)
 truthy("  and it resolves like confirm(), so callers only gained an await",
-       "resolve(v)" in JS)
+       "resolve(value)" in DLG and "cancelValue: false" in DLG)
 
 print("\n=== the explainer button ===")
 # The call sits inside a JS string that becomes an onclick attribute, so in the

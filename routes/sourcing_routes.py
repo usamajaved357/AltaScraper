@@ -1,6 +1,6 @@
 """routes/sourcing_routes.py -- the source repricer's screen.
 
-Holds no decision logic of its own. Enrolment and sources come from
+Holds no decision logic of its own. Enrollment and sources come from
 domain/source_repo.py, readings from domain/source_fetch.py, and every "what
 would happen" answer from domain/source_run.py, which is the same code Phase D
 will act on. That matters: the log this screen shows is not a preview built for
@@ -134,7 +134,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
     # ---- what is enrolled, and what would happen to it -------------------
     @app.route("/sourcing/list")
     def sourcing_list():
-        """Everything the screen draws: enrolment, sources, readings, decisions."""
+        """Everything the screen draws: enrollment, sources, readings, decisions."""
         from domain import catalogue as _cat
         wsid, mkt = _where()
         run = _run.dry_run(CONFIG_PATH, wsid, mkt, record=False)
@@ -233,6 +233,15 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                         "shipping_policy_days": int(
                             _read_config().get("shipping_policy_days")
                             or _sourcing.SHIPPING_POLICY_DAYS),
+                        # Which marketplace these rows are from, so the money
+                        # editors show the right currency symbol rather than
+                        # guessing from whichever screen was opened last.
+                        "marketplace": mkt,
+                        # What a NEWLY tracked SKU starts with. Shown in the
+                        # settings menu; it changes nothing already tracked.
+                        "default_target": (
+                            _read_config().get("sourcing_default_target")
+                            or {"kind": "none", "pct": None}),
                         "defaults": _sourcing.DEFAULT_RULE})
 
     @app.route("/sourcing/check_listings", methods=["POST"])
@@ -251,7 +260,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         six.
 
         A SKU found gone is switched to dry run in the same statement that marks
-        it, so it cannot be pushed to between the two. Its enrolment row, its
+        it, so it cannot be pushed to between the two. Its enrollment row, its
         sources and its history are KEPT: they are worth more than the row costs,
         and it may be relisted tomorrow.
         """
@@ -461,7 +470,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return jsonify({"ok": True, "workspace": wsid, "marketplace": mkt,
                         "count": len(out), "items": out, "note": note})
 
-    # ---- enrolment ------------------------------------------------------
+    # ---- enrollment ------------------------------------------------------
     @app.route("/sourcing/enrol", methods=["POST"])
     def sourcing_enrol():
         b = _body()
@@ -490,7 +499,249 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 _fees.quote_for_sku(CONFIG_PATH, _cfg, wsid, mkt, sku)
             except Exception:
                 pass
+            _apply_default_target(wsid, mkt, sku)
         return jsonify({"ok": True})
+
+    def _apply_default_target(wsid, mkt, sku):
+        """Give a NEWLY tracked SKU the target the owner chose for new ones.
+
+            "Add a setting: 'Default target for new enrollments' ... This
+             applies only to NEW enrollments. Existing SKUs keep their current
+             rules."
+
+        WHY THIS IS NOT JUST A CHANGED DEFAULT. A default is read on every
+        lookup, so changing it would silently re-price every SKU that had never
+        set a target of its own -- which is exactly the complaint that took the
+        hidden 20% floor out of listing/pricing.py. This WRITES the number onto
+        the new SKU's own rule row instead, once, at the moment it is enrolled.
+        Change the setting afterwards and nothing already tracked moves.
+
+        Never raises, and never overwrites: a SKU being re-enrolled after being
+        removed still has its old rule row, and that row is somebody's decision.
+        """
+        try:
+            d = (_read_config().get("sourcing_default_target") or {})
+            kind = str(d.get("kind") or "").lower()
+            pct = d.get("pct")
+            if kind not in ("roi", "margin") or pct in (None, ""):
+                return                      # "none / breakeven", the default
+            existing = _repo.rule_for(CONFIG_PATH, wsid, mkt, sku) or {}
+            if (existing.get("target_roi_pct") is not None
+                    or existing.get("target_margin_pct") is not None):
+                return                      # it already has one; leave it
+            key = ("target_roi_pct" if kind == "roi" else "target_margin_pct")
+            _repo.save_rule(CONFIG_PATH, wsid, mkt, sku, {key: float(pct)})
+        except Exception:
+            pass          # a default that cannot be applied must not stop tracking
+
+    # ---- floors by the sheetful ------------------------------------------
+    #
+    #     "This is the fastest path to going live: download -> fill prices in
+    #      Excel -> upload -> all armed in 2 minutes."
+    #
+    # WHY A SHEET AT ALL, when the floor is one click on a row. Because the
+    # floor is the gate: nothing can be armed without one, and on this account
+    # 66 of 67 SKUs have none. Setting them one at a time is 66 popovers, and
+    # each one asks a question you can only answer by comparing three numbers --
+    # what it sells for, what it costs, and what you would accept. A spreadsheet
+    # puts those three in columns and lets you fill the fourth down the page.
+    @app.route("/sourcing/minprice_template.csv")
+    def sourcing_minprice_template():
+        """Every tracked SKU, with the context needed to choose a floor.
+
+        The only empty column is the one they are here to fill. Read-only
+        context beside it, because "what should this SKU never go below" is
+        unanswerable without knowing what it sells for and what it costs.
+        """
+        import csv as _csv
+        import io as _io
+        from domain import catalogue as _cat
+
+        wsid, mkt = _where()
+        rows_e = _repo.enrolled(CONFIG_PATH, wsid, mkt)
+        # ALL of them, armed or not -- "Include ALL enrolled SKUs, not just
+        # un-armed ones". An armed SKU's floor is still worth revising, and
+        # leaving it out would make the sheet an incomplete picture of what the
+        # repricer is allowed to do.
+        idx = _cat.index(CONFIG_PATH, wsid, mkt, include_drafts=True)
+        run = _run.dry_run(CONFIG_PATH, wsid, mkt, record=False)
+        by_sku = {}
+        for d in (run.get("decisions") or []):
+            by_sku[str(d.get("sku"))] = d
+
+        buf = _io.StringIO()
+        w = _csv.writer(buf)
+        w.writerow(["SKU", "ASIN", "Product Title", "Current Price",
+                    "Supplier Cost", "Current Min Price", "New Min Price"])
+        for e in rows_e:
+            sku = str(e.get("sku") or "")
+            if not sku:
+                continue
+            d = by_sku.get(sku) or {}
+            cur = d.get("current") or {}
+            bd = (d.get("decision") or {}).get("breakdown") or {}
+            item = _cat.look(idx, sku) or {}
+            rule = _sourcing.rule_with_defaults(
+                _repo.rule_for(CONFIG_PATH, wsid, mkt, sku))
+            mp = rule.get("min_price")
+            w.writerow([
+                sku,
+                cur.get("asin") or item.get("asin") or "",
+                (item.get("title") or "")[:120],
+                ("" if cur.get("price") is None else "%.2f" % cur["price"]),
+                ("" if bd.get("cost") is None else "%.2f" % bd["cost"]),
+                ("" if mp is None else "%.2f" % float(mp)),
+                "",                      # New Min Price -- the one to fill in
+            ])
+        out = buf.getvalue()
+        return Response(out, mimetype="text/csv", headers={
+            "Content-Disposition":
+                'attachment; filename="min-prices-%s-%s.csv"' % (wsid, mkt)})
+
+    @app.route("/sourcing/minprice_upload", methods=["POST"])
+    def sourcing_minprice_upload():
+        """Read the filled-in sheet and set the floors.
+
+        Body: {rows: [{sku, asin, min_price}], arm: bool}
+
+        THE BROWSER PARSES THE FILE, not this. The screen already carries a
+        reader for .xlsx and .csv (the supplier sheet uses it), so sending the
+        rows as JSON means one parser for both uploads rather than a second one
+        here that would disagree with it about a stray column (Rule 12).
+
+        NOTHING IS ARMED BY ACCIDENT. `arm` is a tick the person has to set, and
+        even then a SKU is armed only if the floor it just received is real --
+        the same check /sourcing/arm makes, because arming without a floor is
+        the one thing this whole screen refuses to do.
+        """
+        b = _body()
+        wsid, mkt = _where()
+        want_arm = bool(b.get("arm"))
+        rows = b.get("rows") or []
+        if not isinstance(rows, list) or not rows:
+            return jsonify({"ok": False, "error": (
+                "That sheet had no rows the app could read. It needs a SKU or "
+                "ASIN column and a \"New Min Price\" column.")}), 400
+
+        # SKU first, ASIN second. A SKU names one listing; an ASIN can be on
+        # several (the same product listed by two of these accounts), so it is
+        # only used when the SKU is missing, and only when it matches exactly
+        # one tracked SKU. Ambiguity is reported, never guessed at.
+        enrolled = _repo.enrolled(CONFIG_PATH, wsid, mkt)
+        known = {str(e.get("sku")): True for e in enrolled}
+        by_asin = {}
+        for d in (_run.dry_run(CONFIG_PATH, wsid, mkt, record=False)
+                  .get("decisions") or []):
+            a = str(((d.get("current") or {}).get("asin") or "")).upper()
+            if a:
+                by_asin.setdefault(a, []).append(str(d.get("sku")))
+
+        done, armed, skipped, errors = [], [], 0, []
+        for r in rows:
+            raw_sku = str((r or {}).get("sku") or "").strip()
+            raw_asin = str((r or {}).get("asin") or "").strip().upper()
+            raw_val = (r or {}).get("min_price")
+            val = "" if raw_val is None else str(raw_val).strip()
+            if val == "":
+                skipped += 1                       # a blank row is not an error
+                continue
+
+            sku = raw_sku if raw_sku in known else ""
+            if not sku and raw_asin:
+                hits = by_asin.get(raw_asin) or []
+                if len(hits) == 1:
+                    sku = hits[0]
+                elif len(hits) > 1:
+                    errors.append({"row": raw_sku or raw_asin, "why": (
+                        "%s is on %d tracked SKUs, so the app cannot tell which "
+                        "one this row means" % (raw_asin, len(hits)))})
+                    continue
+            if not sku:
+                errors.append({"row": raw_sku or raw_asin or "(blank)",
+                               "why": "not a SKU this account is tracking"})
+                continue
+
+            try:
+                num = float(val.replace("£", "").replace("$", "")
+                            .replace(",", "").strip())
+            except (TypeError, ValueError):
+                errors.append({"row": sku,
+                               "why": "%r is not a number" % val})
+                continue
+            if num <= 0:
+                errors.append({"row": sku,
+                               "why": "a floor has to be above zero"})
+                continue
+
+            _repo.save_rule(CONFIG_PATH, wsid, mkt, sku, {"min_price": num})
+            done.append({"sku": sku, "min_price": round(num, 2)})
+
+            if want_arm:
+                # The same gate /sourcing/arm applies. It cannot fail here --
+                # a floor was just written -- but it is asked rather than
+                # assumed, because "armed" means this SKU can change a live
+                # price and that is never inferred from a spreadsheet.
+                rule = _sourcing.rule_with_defaults(
+                    _repo.rule_for(CONFIG_PATH, wsid, mkt, sku))
+                if rule.get("min_price") is not None:
+                    _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="live")
+                    armed.append(sku)
+
+        note = "%d min price%s updated" % (len(done), "" if len(done) == 1 else "s")
+        if armed:
+            note += ", %d armed" % len(armed)
+        if skipped:
+            note += ", %d left blank" % skipped
+        if errors:
+            note += ", %d could not be read" % len(errors)
+        return jsonify({"ok": True, "updated": len(done), "armed": len(armed),
+                        "skipped": skipped, "errors": errors,
+                        "rows": done, "note": note + "."})
+
+    @app.route("/sourcing/default_target", methods=["GET", "POST"])
+    def sourcing_default_target():
+        """What a newly tracked SKU starts with. Global; changes nothing existing.
+
+        Body: {kind: "roi"|"margin"|"none", pct: 20}
+        """
+        if request.method == "GET":
+            d = (_read_config().get("sourcing_default_target") or {})
+            return jsonify({"ok": True,
+                            "kind": str(d.get("kind") or "none").lower(),
+                            "pct": d.get("pct")})
+        b = _body()
+        kind = str(b.get("kind") or "none").strip().lower()
+        if kind not in ("roi", "margin", "none"):
+            return jsonify({"ok": False, "error": (
+                "that must be roi, margin or none -- got %r" % b.get("kind"))}), 400
+        raw = _read_config()
+        if kind == "none":
+            raw["sourcing_default_target"] = {"kind": "none", "pct": None}
+            _write_config(raw)
+            return jsonify({"ok": True, "kind": "none", "pct": None, "note": (
+                "New SKUs will start with no target -- priced no lower than "
+                "break-even, and no higher until you set one.")})
+        # A MISTYPED PERCENTAGE MUST NOT LOOK LIKE NO PERCENTAGE, the same
+        # argument as every other number box on this screen: stored as text it
+        # would read back as something and be int()ed to nothing at decision
+        # time, leaving somebody believing new SKUs had a target.
+        try:
+            pct = float(str(b.get("pct")).replace("%", "").strip())
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": (
+                "the target must be a number, e.g. 20 -- got %r"
+                % b.get("pct"))}), 400
+        # A margin above 100% is asking for more than the whole price; an ROI
+        # can legitimately be large, but a thousand percent is a typo.
+        if pct < 0 or (kind == "margin" and pct >= 100) or pct > 500:
+            return jsonify({"ok": False, "error": (
+                "a margin target must be under 100%, and any target must be "
+                "between 0 and 500%")}), 400
+        raw["sourcing_default_target"] = {"kind": kind, "pct": pct}
+        _write_config(raw)
+        return jsonify({"ok": True, "kind": kind, "pct": pct, "note": (
+            "New SKUs will start at %g%% %s. Nothing already tracked has "
+            "changed." % (pct, kind.upper() if kind == "roi" else kind))})
 
     @app.route("/sourcing/unenrol_bulk", methods=["POST"])
     def sourcing_unenrol_bulk():
@@ -523,7 +774,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return jsonify({
             "ok": True, "unenrolled": done, "failed": failed,
             "note": ("Stopped tracking %d SKU%s. Their supplier links and price "
-                     "history are kept â€” enrol one again and everything is still "
+                     "history are kept â€” enroll one again and everything is still "
                      "attached." % (done, "" if done == 1 else "s")),
         })
 
@@ -553,7 +804,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             return jsonify({"ok": False, "error": "no SKUs given"}), 400
         if len(skus) > 2000:
             return jsonify({"ok": False, "error": (
-                "%d SKUs at once is more than this was meant for -- enrol in "
+                "%d SKUs at once is more than this was meant for -- enroll in "
                 "batches so a failure part-way is easy to see" % len(skus))}), 400
 
         from domain import source_link as _link
@@ -562,6 +813,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         for sku in skus:
             was = sku in have
             _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            # The same default a single enrolment gets. "Track everything" is
+            # how most SKUs arrive on this screen, so leaving it out here would
+            # mean the setting only applied to the ones added one at a time.
+            if not was:
+                _apply_default_target(wsid, mkt, sku)
             out["already" if was else "enrolled"] += 1
             row = {"sku": sku, "was_enrolled": was, "source": "", "note": ""}
             # Never a SECOND source for a SKU that already has one: this can be
@@ -780,7 +1036,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         for sku in want:
             # ONE PLACE KNOWS HOW TO ASK (Rule 12). quote_for_sku finds the
             # account, our own ASIN and the current price, and stores the
-            # answer -- the weekly job and the enrol route call the same thing.
+            # answer -- the weekly job and the enroll route call the same thing.
             rate, basis, detail, note = _fees.quote_for_sku(
                 CONFIG_PATH, _cfg, wsid, mkt, sku, force=force)
             if note:
