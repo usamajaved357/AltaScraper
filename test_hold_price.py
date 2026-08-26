@@ -149,8 +149,15 @@ truthy("a held price can never force a sale below cost", up["price"] > 35.00)
 check("a rise inside the cap is proposed", up["action"], "update")
 tight = decide({"price": 40.00, "quantity": 5, "lead_days": 3}, 35.00,
                dict(HELD, max_change_pct=10.0))
-check("  a jump past the limit still waits for a human", tight["action"], "none")
-truthy("  and says why", "exceeds the 10.0% limit" in (tight["blocked_by"] or ""))
+# THE CAP NO LONGER HOLDS ANYTHING -- it notifies. Changed on the owner's
+# instruction: "i dont want the app to hold the change if there is more than the
+# max change value, i just want it to send me the notification". A held price is
+# not a safe price; it leaves the listing at the number the supplier's move just
+# made wrong, until somebody happens to look.
+check("  a jump past the limit is still applied", tight["action"], "update")
+truthy("  and flagged as a large move", tight["large_move"])
+truthy("  naming the threshold it passed",
+       "10.0% notify threshold" in (tight["large_move_note"] or ""))
 # With the cap widened, the same decision goes through -- proving the block is the
 # cap and not the hold.
 wide = decide({"price": 40.00, "quantity": 5, "lead_days": 3}, 35.00,

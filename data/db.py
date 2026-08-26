@@ -551,6 +551,35 @@ CREATE INDEX IF NOT EXISTS idx_srcsources_sku  ON sourcing_sources(workspace_id,
 CREATE INDEX IF NOT EXISTS idx_srcchecks_src   ON sourcing_checks(source_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_srcactions_sku  ON sourcing_actions(workspace_id, marketplace, sku, at);
 
+-- THINGS THAT HAPPENED WHICH SOMEBODY SHOULD SEE.
+--
+-- The repricer used to HOLD a price change it thought too large and wait to be
+-- noticed. Asked for the other way round:
+--
+--     "i dont want the app to hold the change if there is more than the max
+--      change value, i just want it to send me the notification"
+--
+-- So the change goes through and a row lands here instead. That only works if
+-- the record is durable: a toast is gone the moment the page is closed, and the
+-- 4-hour run happens when nobody is looking.
+--
+-- READ STATE IS PER ROW, not a global "last seen" marker, so a notification
+-- opened on a phone is still unread nowhere else and nothing is silently
+-- skipped by a clock.
+CREATE TABLE IF NOT EXISTS notifications(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id  TEXT,
+    marketplace   TEXT,
+    type          TEXT,      -- price_change | large_move | out_of_stock
+                             -- | back_in_stock | supplier_ended | error
+    sku           TEXT,
+    title         TEXT,
+    body          TEXT,
+    is_read       INTEGER DEFAULT 0,
+    created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notif_ws ON notifications(workspace_id, is_read, id);
+
 -- WHAT AMAZON SAID IT WOULD TAKE, PER PRODUCT.
 --
 --     "get accurate fees from amazon per item"
