@@ -6919,22 +6919,51 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
     # and type. It unwraps a 14-digit GTIN to the EAN-13 it really is -- sending
     # the padded form as "upc" is what made Amazon reject a perfectly valid
     # barcode over and over, with auto-fix resubmitting the same number forever.
+    # THE EXEMPTION IS OPT-IN. It used to be claimed automatically whenever
+    # there was no usable barcode:
+    #
+    #     "i dont want to use the gtin exemption until the user wants to, he can
+    #      check the button under the box apply for gtin exemption as we have in
+    #      amazon backend, dont apply for exemption automatically"
+    #
+    # CLAUDE.md Rule 1 told it to do that ("ALWAYS: When no real GS1-registered
+    # barcode is available, use the GTIN exemption"). The owner has changed that
+    # instruction in writing and the rule file has been changed with it, so the
+    # two agree -- otherwise the next reader of CLAUDE.md puts this back.
+    #
+    # Claiming an exemption is a DECLARATION TO AMAZON that the product has no
+    # barcode. Making it silently, on his behalf, whenever a box happened to be
+    # empty, is the app answering a regulatory question for him.
     _barcode, _typ, _why = gtin_or_reason(g("UPC"))
+    _exempt_asked = str(g("GTIN Exemption") or "").strip().lower() in (
+        "1", "y", "yes", "true", "on", "x", "exempt")
     if _barcode and has("externally_assigned_product_identifier"):
         A["externally_assigned_product_identifier"] = [
             {"value": _barcode, "type": _typ, "marketplace_id": mid}]
         A.pop("supplier_declared_has_product_identifier_exemption", None)
-    else:
+    elif _exempt_asked:
         # Say so loudly. A barcode is visible in the box but is not being sent,
         # and silently claiming the exemption instead would hide a data-entry
         # error until the listing went live under the wrong identity.
         if _why and gtin_digits(g("UPC")):
             console.print(f"  [yellow]Barcode not sent -- {_why}. "
-                          f"Claiming GTIN exemption instead.[/yellow]")
+                          f"GTIN exemption claimed (you ticked it).[/yellow]")
         A.pop("externally_assigned_product_identifier", None)
         if has("supplier_declared_has_product_identifier_exemption"):
             A["supplier_declared_has_product_identifier_exemption"] = [
                 {"value": True, "marketplace_id": mid}]
+    else:
+        # NEITHER A BARCODE NOR AN EXEMPTION. Nothing is sent and nothing is
+        # claimed. Amazon will refuse the listing for want of an identifier,
+        # which is the correct outcome and a better one than the app deciding
+        # to declare an exemption nobody asked for. The preview says this
+        # before anything is submitted -- see _identifier_problem().
+        A.pop("externally_assigned_product_identifier", None)
+        A.pop("supplier_declared_has_product_identifier_exemption", None)
+        console.print(
+            f"  [yellow]No product identifier: "
+            f"{_why or 'the barcode box is empty'}, and the GTIN exemption is "
+            f"not ticked. Amazon needs one or the other.[/yellow]")
 
     # =====================================================================
     # RULE 1, ENFORCED AT THE LAST POSSIBLE MOMENT

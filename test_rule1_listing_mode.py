@@ -122,10 +122,29 @@ print("\n== no barcode is ever invented ==")
 a = build(dict(BASE, UPC=""))
 check("no barcode -> no identifier is sent",
       "externally_assigned_product_identifier" in a, False)
-check("  and the GTIN exemption is claimed instead",
-      "supplier_declared_has_product_identifier_exemption" in a, True)
+# THE EXEMPTION IS NO LONGER CLAIMED AUTOMATICALLY, and this assertion used to
+# require that it was. The owner changed the rule on 26 Aug 2026:
+#
+#     "i dont want to use the gtin exemption until the user wants to, he can
+#      check the button under the box apply for gtin exemption as we have in
+#      amazon backend, dont apply for exemption automatically"
+#
+# CLAUDE.md said the opposite and has been changed with it. Claiming the
+# exemption is a DECLARATION to Amazon that the product has no barcode, and the
+# app must not make it on his behalf just because a box was empty. So an empty
+# barcode with no tick now sends NEITHER identifier -- Amazon refuses for want
+# of one, which is the correct outcome and is said before the submit.
+check("  and no exemption is claimed either, because it was not ticked",
+      "supplier_declared_has_product_identifier_exemption" in a, False)
+
+# TICKED, it is claimed -- that is the whole point of the tick.
+a_ex = build(dict(BASE, UPC="", **{"GTIN Exemption": "yes"}))
+check("ticking the exemption claims it",
+      "supplier_declared_has_product_identifier_exemption" in a_ex, True)
 truthy("  as a true value",
-       a["supplier_declared_has_product_identifier_exemption"][0].get("value") is True)
+       a_ex["supplier_declared_has_product_identifier_exemption"][0].get("value") is True)
+check("  and still sends no invented barcode",
+      "externally_assigned_product_identifier" in a_ex, False)
 
 # A REAL barcode is sent, and the exemption dropped -- claiming both would be
 # telling Amazon two different things about the same product.
@@ -139,12 +158,18 @@ else:
     check("a barcode that fails validation falls back to the exemption",
           "supplier_declared_has_product_identifier_exemption" in a, True)
 
-# An obviously invented one must not be sent.
+# An obviously invented one must not be sent. The rule that still holds is
+# "never send a fake barcode" -- what changed is that nothing is claimed in its
+# place unless the owner ticked the exemption. See the note above.
 a = build(dict(BASE, UPC="000000000000"))
 check("an all-zero barcode is not sent",
       "externally_assigned_product_identifier" in a, False)
-check("  the exemption is claimed instead",
-      "supplier_declared_has_product_identifier_exemption" in a, True)
+check("  and nothing is claimed in its place unless it was ticked",
+      "supplier_declared_has_product_identifier_exemption" in a, False)
+a = build(dict(BASE, UPC="000000000000", **{"GTIN Exemption": "yes"}))
+check("  ticked, the exemption is claimed and the fake is still not sent",
+      ("supplier_declared_has_product_identifier_exemption" in a
+       and "externally_assigned_product_identifier" not in a), True)
 
 print("\n== the SKU's ASIN is a reference, not the target ==")
 # price_days_ASIN. The ASIN identifies the competitor product the data came

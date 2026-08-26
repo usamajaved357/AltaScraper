@@ -68,6 +68,17 @@ HEADER_TO_COL = {
     "Attributes JSON":        "attributes_json",
     "Item Highlights":        "item_highlights",
     "API Payload JSON":       "api_payload_json",
+    # WHETHER THE OWNER HAS ASKED FOR A GTIN EXEMPTION ON THIS LISTING.
+    #
+    #     "i dont want to use the gtin exemption until the user wants to, he
+    #      can check the button under the box apply for gtin exemption as we
+    #      have in amazon backend, dont apply for exemption automatically"
+    #
+    # It was applied automatically whenever a barcode was missing or unusable,
+    # which CLAUDE.md Rule 1 told it to do. That instruction has been changed by
+    # the owner and the rule file changed with it. Empty or "no" means no
+    # exemption is claimed and a listing with no barcode is refused instead.
+    "GTIN Exemption":         "gtin_exemption",
 }
 
 COL_TO_HEADER = {v: k for k, v in HEADER_TO_COL.items()}

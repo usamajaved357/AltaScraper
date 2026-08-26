@@ -760,6 +760,8 @@ CREATE TABLE IF NOT EXISTS schema_cache (
 # on a machine that has been running longest, which is the worst place to find
 # out. Each entry is (table, column, type); applying one twice is a no-op.
 _ADDED_COLUMNS = [
+    # Opt-in, per listing, for the GTIN exemption. See column_map.py.
+    ("listings", "gtin_exemption", "TEXT"),
     ("sales_daily", "parent_asin", "TEXT"),
     ("finance_daily", "units", "INTEGER"),
     ("finance_daily", "cogs", "REAL"),

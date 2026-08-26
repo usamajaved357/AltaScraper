@@ -3303,7 +3303,11 @@ def _apply_edits_batch(sku, edits):
 
 _EDITABLE_COLS = {"Title", "Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4", "Bullet 5",
                   "Description (HTML)", "Search Terms / KW", "Our Price (GBP)",
-                  "Brand", "UPC", "Handling Days", "Product Type"}
+                  "Brand", "UPC", "Handling Days", "Product Type",
+                  # The owner's own decision on whether to declare to Amazon
+                  # that this product has no barcode. It sits beside the barcode
+                  # box on the drawer, so it has to be editable from there.
+                  "GTIN Exemption"}
 
 
 
