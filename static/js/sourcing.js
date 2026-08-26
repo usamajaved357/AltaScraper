@@ -250,6 +250,121 @@ async function sourcingHoldPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+/* HOLD WHAT I SELL AT TODAY, ON MANY SKUS AT ONCE.
+ *
+ *     "why do the repricer wants to reduce my selling price to achieve the
+ *      target, it should not happen"
+ *     "If your supplier drops from 15.34 to 9 i want to stay where it is and
+ *      take the extra margin"
+ *
+ * The behaviour he is asking for already existed and already worked -- MEASURED
+ * on his own row, with a 20% target and a hold at 21.99:
+ *
+ *     supplier 15.34 -> 9.00   target alone would allow 12.71, it holds 21.99
+ *     supplier 15.34 -> 24.00  target needs 33.89, it RISES to 33.89
+ *     supplier 24.00 -> 15.34  it comes back to 21.99, not to 21.66
+ *
+ * What did not exist was any way to set it without typing a number into each of
+ * 67 SKUs one at a time. A feature nobody can reach at their own scale is not a
+ * feature, which is why the repricer went on cutting prices while the answer sat
+ * there unused.
+ *
+ * TODAY'S AMAZON PRICE IS THE NUMBER. It needs to be a written-down number
+ * rather than a "don't go down" flag, and that reasoning is not mine -- it is in
+ * test_hold_price.py: a flag has no memory, so once a cost spike carries the
+ * price to 46 there is nothing to come back TO, and every spike becomes
+ * permanent. The current price is the one number that means "where I am now".
+ *
+ * SAFE ON A LISTING THAT IS UNDER WATER, which I wrongly warned it would not be.
+ * A hold is a FLOOR, so it never blocks a rise: measured at 24.99 selling
+ * against a 24.00 cost, the price still goes UP to 33.89. Holding cannot freeze
+ * a loss in place.
+ */
+async function sourcingHoldAtCurrent(){
+  const shown = new Set(SRC_ROWS.map(function(r){ return String(r.sku); }));
+  const picked = [...SRC_SEL].filter(function(s){ return shown.has(s); });
+  if(!picked.length){ toast("Select some listings first"); return; }
+
+  // Only rows Amazon gave a price for. A hold is a price, and there is no
+  // honest number to write for a listing whose price could not be read --
+  // guessing one would be inventing the very figure the hold exists to fix.
+  const rows = SRC_ROWS.filter(function(r){
+    return picked.indexOf(String(r.sku)) >= 0
+        && (r.current || {}).price != null && Number(r.current.price) > 0;
+  });
+  const noPrice = picked.length - rows.length;
+  if(!rows.length){
+    toast("None of the " + picked.length + " selected listing(s) has a price "
+        + "read from Amazon, so there is nothing to hold them at.");
+    return;
+  }
+
+  // What it will actually do, per SKU, before it does it.
+  const already = rows.filter(function(r){ return (r.rule||{}).hold_price != null; });
+  const sample = rows.slice(0, 12).map(function(r){
+    const was = (r.rule||{}).hold_price;
+    return "  " + r.sku + "\n      hold at " + _smoney(r.current.price)
+         + (was != null ? "   (was " + _smoney(was) + ")" : "");
+  }).join("\n");
+
+  let ask = sample
+    + (rows.length > 12 ? "\n  …and " + (rows.length - 12) + " more" : "")
+    + "\n\nThe repricer will never price them BELOW these figures. If a supplier "
+    + "gets cheaper the price stays where it is and you keep the extra margin. "
+    + "If a supplier gets dearer and the price stops covering your target, it "
+    + "still goes UP — a hold is a floor, so it can never hold you at a loss.";
+  if(already.length){
+    ask += "\n\n" + already.length + " of them already have a held price, and it "
+         + "will be REPLACED with today's.";
+  }
+  if(noPrice){
+    ask += "\n\n" + noPrice + " selected listing(s) have no price read from "
+         + "Amazon and will be left alone.";
+  }
+  ask += "\n\nNothing on Amazon changes now — this only sets the floor the "
+       + "repricer works to.";
+  // srcConfirm, not the browser's confirm(): this page deliberately has none.
+  const go = await srcConfirm({
+    title: "Hold " + rows.length + " listing(s) at today's price?",
+    body: ask,
+    confirm: "Hold at today's price",
+  });
+  if(!go) return;
+
+  // THROUGH THE ROUTE THAT ALREADY VALIDATES A HELD PRICE, one SKU at a time,
+  // rather than a second endpoint with a second copy of that validation
+  // (CLAUDE.md Rule 12).
+  let ok = 0;
+  const failed = [];
+  toast("Holding " + rows.length + " listing(s)…");
+  for(const r of rows){
+    try{
+      const j = await (await fetch("/sourcing/rules", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: _srcBody({sku: r.sku,
+                        rule: {hold_price: String(r.current.price)}})})).json();
+      if(j && j.ok) ok++; else failed.push(r.sku + ": " + ((j && j.error) || "refused"));
+    }catch(e){ failed.push(r.sku + ": " + String(e)); }
+  }
+
+  // WHAT HAPPENED, PER SKU WHEN IT WENT WRONG. A count on its own turns a
+  // handful of quietly-refused SKUs into "the hold does not work" a fortnight
+  // later -- the same reason the supplier upload reports row by row.
+  let msg = "Held " + ok + " listing(s) at today's price.";
+  if(noPrice) msg += " " + noPrice + " left alone (no price read from Amazon).";
+  toast(msg);
+  if(failed.length){
+    await srcConfirm({
+      title: failed.length + " could not be held",
+      body: failed.slice(0, 10).join("\n")
+          + (failed.length > 10 ? "\n…and " + (failed.length - 10) + " more" : "")
+          + "\n\nThe rest were held. Nothing on Amazon has changed.",
+      confirm: "OK",
+    });
+  }
+  sourcingLoad();
+}
+
 // A PERCENTAGE PROFIT FLOOR, on top of the flat one.
 //
 // "i want an option in which i can enroll an option to maintain atleast 20
@@ -326,7 +441,12 @@ function _srcTargetLabel(rule){
   const on = [];
   if(rule.target_margin_pct) on.push(rule.target_margin_pct + '% margin');
   if(rule.target_roi_pct) on.push(rule.target_roi_pct + '% ROI');
-  return on.length ? ('Target: ' + on.join(' · ')) : 'Profit target: none';
+  // "Profit target: none" named neither of the two things this sets, so the
+  // toolbar -- the only mention of targets visible without expanding a row --
+  // gave a reader looking for "margin" or "ROI" nothing to find. See the note
+  // beside the per-SKU line in sourcingRow.
+  return on.length ? ('Target: ' + on.join(' · '))
+                   : 'Margin / ROI target: none';
 }
 
 function _srcTargetBox(id, label, value, why, example){
@@ -747,8 +867,10 @@ function sourcingRender(j){
     +  (SRC_MASTER ? '<i class="ti ti-lock-open"></i> Auto-pricing: ON'
                    : '<i class="ti ti-lock"></i> Auto-pricing: off')+'</button>'
     +  '<button class="db-chip" onclick="sourcingTarget(\'\')" title="'
-    +  'The least profit you will accept, as a percentage. Applies to every '
-    +  'enrolled SKU unless one has its own.">'
+    +  'The least profit you will accept, as a margin % or an ROI % or both. '
+    +  'This is the DEFAULT for every enrolled SKU. To set one for a single '
+    +  'product instead, open that row and use &quot;Set for this SKU&quot; -- '
+    +  'its own target wins over this one.">'
     +  '<i class="ti ti-target"></i> ' + _srcTargetLabel(j.rule || {})
     +  '</button>'
     +  '</div>';
@@ -829,6 +951,14 @@ function _srcSelBar(){
     + '<button class="db-chip" onclick="sourcingSelectAll(true)">Select all '
     + SRC_ROWS.length + '</button>'
     + '<button class="db-chip" onclick="sourcingSelectAll(false)">Clear</button>'
+    // THE ANSWER TO "it should not reduce my selling price", made reachable.
+    // The held price did this all along; typing it into 67 SKUs by hand did not.
+    + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
+    + 'Write today\'s Amazon price in as the floor for each selected listing. '
+    + 'The repricer then never prices below it — a cheaper supplier means more '
+    + 'margin, not a lower price — but a dearer one can still push the price UP, '
+    + 'so it can never hold you at a loss.">'
+    + '<i class="ti ti-lock-dollar"></i> Hold at today\'s price</button>'
     + '<button class="db-chip risk" onclick="sourcingUnenrolSelected()">'
     + '<i class="ti ti-eye-off"></i> Stop tracking ' + picked.length + '</button>'
     + '</div>';
@@ -983,7 +1113,21 @@ function _priceBreakdown(b, cur){
             Math.round((b.fee_rate||0)*100)+'% of the selling price, not of the cost');
   h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
   h += line('Set aside for ads', b.ads, '');
-  h += line('Profit left over', b.profit, 'what you keep per unit');
+  // THE NUMBER YOU SET A TARGET AGAINST, said beside the profit it comes from.
+  // "profit left over 0.00" was both wrong and unanswerable -- there was no way
+  // to tell from this panel whether the price met the 20% you asked for. It now
+  // shows the return that profit represents, worked out from the same figures
+  // above rather than fetched from anywhere else.
+  const _roi = (b.profit != null && b.cost) ? (b.profit / b.cost) * 100 : null;
+  h += line('Profit left over', b.profit,
+            'what you keep per unit'
+            + (_roi == null ? ''
+               : ' &mdash; ' + _roi.toFixed(1) + '% of the ' + _smoney(b.cost)
+                 + ' you paid'));
+  if(b.min_profit != null && b.min_profit > 0){
+    h += '<div class="cc" style="font-size:11px;padding:0 0 2px 194px">'
+      +  'you asked for at least ' + _smoney(b.min_profit) + ' per unit</div>';
+  }
   h += '<div style="display:flex;gap:8px;font-size:12px;font-weight:600;'
     +  'padding:5px 0 0;margin-top:3px;border-top:1px solid #26303f">'
     +  '<span style="min-width:186px">Price it should sell at</span>'
@@ -1499,11 +1643,27 @@ function sourcingRow(r, i){
   // pressing Save would silently overwrite the override.
   SRC_ROW_RULES[r.sku] = rr;
   const anyT = (rr.target_margin_pct != null || rr.target_roi_pct != null);
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Least profit accepted: '
+  // IT NAMES THE TWO THINGS IT SETS, EVEN WHEN NEITHER IS SET.
+  //
+  //     "i am looking at repricer, i dont have an option to set the margin and
+  //      roi target per item"
+  //
+  // It was there and it worked -- measured on this account, 67 per-SKU buttons,
+  // one for every enrolled SKU, each wired to its own rule row. What it never
+  // did was SAY SO. Unset, the line read "Least profit accepted: the flat
+  // minimum only [Set]" and the toolbar read "Profit target: none", so the words
+  // "margin" and "ROI" appeared nowhere on the screen until after a target
+  // existed. Anyone scanning for them concluded the feature was missing, which
+  // is what happened.
+  //
+  // The plain-English phrase is kept -- it is what the setting MEANS, and Rule 5
+  // asks for that first -- with the two names it is known by beside it.
+  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
+    +  'Least profit accepted <span class="cc">(margin / ROI target)</span>: '
     +  (anyT ? '<b>' + _sesc(_srcTargetLabel(rr).replace(/^Target: /, '')) + '</b>'
-             : '<span class="cc">the flat minimum only</span>')
+             : '<span class="cc">not set — the flat minimum only</span>')
     +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
-    +  (anyT?'Change':'Set')+'</button></div>';
+    +  (anyT?'Change this SKU':'Set for this SKU')+'</button></div>';
 
   /* THE MARKET PRICE, HELD.
    *

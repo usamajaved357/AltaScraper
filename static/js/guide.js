@@ -15,6 +15,39 @@
 // validates a draft against Amazon without creating anything, and Submit is the
 // only step that reaches the live catalogue.
 
+/* A LIST, NOT A PARAGRAPH.
+ *
+ *     "mention everything how it works and what are the rules in a format easy
+ *      to understand and not in paragraphs but in words"
+ *
+ * A guide is read to find ONE rule, not from start to finish, and a rule buried
+ * mid-sentence in a block of prose cannot be found by scanning. One style,
+ * defined once, so every guide that uses it looks the same (CLAUDE.md Rule 12).
+ * Styles are inline because these strings are injected as innerHTML and the
+ * guide has no stylesheet of its own.
+ */
+function _gl(items){
+  return '<ul style="margin:6px 0 0;padding-left:17px">'
+    + (items || []).map(function(t){
+        return '<li style="margin:3px 0;line-height:1.55">' + t + '</li>';
+      }).join("")
+    + '</ul>';
+}
+
+/* Two columns -- a thing and what it means. For "what this word on the row
+   means", where a sentence per item reads as a wall and a table does not. */
+function _gt(rows){
+  return '<table style="margin:7px 0 0;border-collapse:collapse;width:100%">'
+    + (rows || []).map(function(r){
+        return '<tr>'
+          + '<td style="padding:3px 10px 3px 0;vertical-align:top;white-space:nowrap">'
+          + '<b>' + r[0] + '</b></td>'
+          + '<td style="padding:3px 0;vertical-align:top;line-height:1.5">'
+          + r[1] + '</td></tr>';
+      }).join("")
+    + '</table>';
+}
+
 const GUIDES = {
   // PPC ANALYTICS. The thing worth leading with is where the figures come from:
   // this app has no Advertising API connection, so everything is read from a
@@ -147,69 +180,137 @@ const GUIDES = {
   // expecting prices to move and concludes the app is broken when they do not.
   repricer: {
     title: "The repricer — how this page works",
-    lead: "It watches what your suppliers charge and works out what each unit "
-        + "would really earn. Nothing here changes a live Amazon listing unless "
-        + "you turn two separate things on.",
+    lead: "It reads what your suppliers charge and works out what each unit "
+        + "really earns. It changes nothing on Amazon until THREE separate "
+        + "things are on.",
     steps: [
-      {n: "1", h: "Track a SKU",
-       b: "Tracking means the app reads that SKU's supplier links every few "
-        + "hours and writes down what the unit costs, delivered. <b>It changes "
-        + "nothing on Amazon.</b> That is why it is safe to track everything: a "
-        + "supplier price on a day nobody was watching cannot be recovered "
-        + "later, so the history is worth starting before you need it.<br><br>"
-        + "<b>Track everything</b> adds every live listing at once and attaches "
-        + "the supplier link the app recorded when it built each one. "
-        + "<b>Suppliers from a sheet</b> takes a spreadsheet — get the template "
-        + "first, it arrives already filled in with your SKUs."},
+      {n: "1", h: "Track a SKU — changes nothing on Amazon",
+       b: "Tracking = the app reads that SKU's supplier links every 4 hours and "
+        + "writes down what a unit costs, delivered."
+        + _gl([
+            "Safe to track everything — it only starts a cost history",
+            "<b>Track everything</b> — adds every live listing and attaches the "
+            + "supplier link recorded when it was built",
+            "<b>Suppliers from a sheet</b> — get the template first; it arrives "
+            + "filled in with your SKUs",
+            "A supplier price on a day nobody was watching cannot be recovered "
+            + "later — start it before you need it",
+          ])},
       {n: "2", h: "Give each SKU its suppliers",
-       b: "A SKU can have as many as you like. The app reads them all and prices "
-        + "from the <b>cheapest one that can actually be bought</b> — in stock, "
-        + "readable, and with a known postage cost. A supplier whose postage "
-        + "cannot be read is skipped rather than counted as free.<br><br>"
-        + "The template has ten columns, <i>supplier 1</i> to <i>supplier 10</i>. "
-        + "Need more? Add a column headed <i>supplier 11</i>, then 12, and so on "
-        + "— there is no limit."},
-      {n: "3", h: "Set what you will accept",
-       b: "<b>Margin</b> is profit as a share of what the customer pays. "
-        + "<b>ROI</b> is profit as a share of what YOU paid. They are different "
-        + "questions and give very different prices from the same cost, so there "
-        + "are two boxes and both apply — the price takes whichever asks more, "
-        + "so adding a target can raise a price and never lowers one.<br><br>"
-        + "<b>Minimum price</b> is the backstop. It is the only guard that still "
-        + "works if a supplier's page is misread, which is why no SKU can be "
-        + "armed without one. <b>Hold price</b> is different: it means “this is "
-        + "what the market pays”, and keeps a price there even when a target "
-        + "would allow lower — but it can never hold a price below cost."},
-      {n: "4", h: "Arm it, and only then turn auto-pricing on",
-       b: "Two switches, deliberately. <b>Arm</b> is per SKU. <b>Auto-pricing</b> "
-        + "is the master switch for the whole account. A price only moves when "
-        + "both are on.<br><br>"
+       b: "As many as you like. It prices from the <b>cheapest one that can "
+        + "actually be bought</b>."
+        + _gl([
+            "Must be in stock, readable, and with a known postage cost",
+            "Postage that cannot be read = skipped, never counted as free",
+            "Template has <i>supplier 1</i> … <i>supplier 10</i>; add "
+            + "<i>supplier 11</i>, 12 … for more — no limit",
+          ])},
+      {n: "3", h: "How the price is worked out",
+       b: "Forwards from the supplier, never backwards from what you sell at:"
+        + _gl([
+            "what the supplier charges <b>+ their postage to you</b> = your cost",
+            "<b>+ Amazon's fee</b> — your referral %, 15% unless you change it",
+            "<b>+ your postage to the buyer</b> — 0.00 unless you set it",
+            "<b>+ ads allowance</b> — 0.00 unless you set it",
+            "<b>+ profit</b> — the largest of: your flat minimum, the 20% "
+            + "safety floor, your margin target, your ROI target",
+          ])
+        + "<div style=\"margin-top:7px\">The price is the <b>highest</b> of "
+        + "those floors. No readable supplier = no cost = <b>no price, and "
+        + "nothing changes</b>.</div>"},
+      {n: "4", h: "The four numbers you can set",
+       b: _gt([
+            ["Margin target",
+             "profit as a share of what the CUSTOMER pays. Cannot go much above "
+             + "84% — Amazon's cut comes out of the same price."],
+            ["ROI target",
+             "profit as a share of what YOU paid. No ceiling."],
+            ["Never sell below",
+             "the backstop. The only guard that still works if a supplier's page "
+             + "is misread — <b>no SKU can be armed without it</b>."],
+            ["Hold the price at",
+             "“this is what the market pays”. Never priced below it."],
+          ])
+        + "<div style=\"margin-top:7px\">Both targets apply at once; the price "
+        + "takes whichever asks for more. Each can be set for the whole account "
+        + "or for one SKU — the SKU's own wins.</div>"},
+      {n: "5", h: "A target is a FLOOR, so it can lower a price",
+       b: "This surprises people, so it is worth reading twice."
+        + _gl([
+            "The target sets the <b>least</b> price that still earns it",
+            "Selling ABOVE that? It will come <b>down</b> to the floor",
+            "Selling BELOW it? It goes <b>up</b>",
+            "To stop it coming down: <b>Hold the price at</b>",
+          ])
+        + "<div style=\"margin-top:7px\"><b>Hold at today's price</b> — tick the "
+        + "SKUs, press it once, and today's Amazon price becomes the floor for "
+        + "each. Then a cheaper supplier means more margin, not a lower price; a "
+        + "dearer one can still push the price UP, so a hold can never hold you "
+        + "at a loss.</div>"},
+      {n: "6", h: "Three switches before anything moves",
+       b: _gl([
+            "<b>Minimum price</b> set on that SKU — without it, Arm refuses",
+            "<b>Arm</b> — per SKU",
+            "<b>Auto-pricing</b> — the master switch for the account",
+          ])
+        + "<div style=\"margin-top:7px\">All three, or the price stays put. "
         + "Until then every decision is still worked out and written down, so "
-        + "you can read what the app WOULD have done before trusting it. If one "
-        + "looks wrong on this page, it would have been wrong on Amazon."},
+        + "you can read what it WOULD have done. If it looks wrong here, it "
+        + "would have been wrong on Amazon.</div>"},
+      {n: "7", h: "Why a SKU is not being repriced",
+       b: "In the order it is usually one of these — press <b>Why?</b> on the "
+        + "row for that SKU's own answer:"
+        + _gl([
+            "no suppliers set up for it",
+            "no supplier could be read, or all of them are out of stock or ended",
+            "no minimum price, so it could never be armed",
+            "not armed, or auto-pricing is off",
+            "its price is held where it is",
+            "it moved within the last 4 hours",
+            "the change is bigger than the one-step cap",
+          ])},
     ],
     notes: [
-      "<b>What the figures on each row mean.</b> <i>Cheapest source</i> is what "
-      + "one unit costs you delivered — the supplier's price plus their postage. "
-      + "<i>Selling price</i> is what Amazon is charging today. <i>Profit / unit</i> "
-      + "is what is left after the stock and Amazon's fee. <i>Margin</i> is that "
-      + "over the selling price; <i>ROI</i> is that over what you paid.",
-      "<b>The “after coupon” figures</b> appear only on SKUs that have actually "
-      + "been selling at a discount. Amazon does not tell this app which coupons "
-      + "are running, so it is measured from what buyers were really charged on "
-      + "settled orders — not read from a setting in Seller Central.",
-      "<b>Nothing is added that you did not enter.</b> Postage out and an "
-      + "advertising allowance are 0.00 unless you set them. The profit figures "
-      + "are what the buyer paid, less the stock, less what Amazon actually took.",
-      "<b>Handling time</b> is the supplier's own dispatch estimate plus a safety "
-      + "buffer. That total is what would be promised to the buyer, never the "
-      + "supplier's promise on its own.",
-      "A price is never moved more than once every four hours, never by more than "
+      "<b>What each figure on a row means.</b>"
+      + _gt([
+          ["Cheapest source", "what one unit costs you delivered — supplier's "
+           + "price + their postage"],
+          ["Selling price", "what Amazon is charging today"],
+          ["Profit / unit", "what is left after the stock and Amazon's fee"],
+          ["Margin", "that profit over the SELLING PRICE"],
+          ["ROI", "that profit over WHAT YOU PAID"],
+          ["Units at source", "how many the supplier has"],
+          ["Handling", "supplier's dispatch estimate + your safety buffer"],
+        ]),
+      "<b>What the chips mean.</b>"
+      + _gt([
+          ["would change", "it wants to move this price — the new one is shown "
+           + "beside it"],
+          ["cost up / down %", "your supplier's price against the cost on record "
+           + "for that SKU"],
+          ["roi %", "what you would make if an order came in RIGHT NOW"],
+          ["held", "the price is held where it is"],
+          ["would go out of stock", "nothing can be bought to fulfil it"],
+          ["N of M usable", "how many suppliers could actually be read"],
+        ]),
+      "<b>The 15% is a setting, not Amazon's quote.</b> It is applied flat to "
+      + "every SKU. Amazon's real referral fee varies by category — often 15%, "
+      + "sometimes 8%, usually with a minimum per item. Nothing checks it "
+      + "against Amazon for your product, so if it is wrong for a product every "
+      + "price for that product is wrong.",
+      "<b>The 20% safety floor is not a target.</b> It is the line below which "
+      + "the app will not price at all, so a repricer can never sell at "
+      + "break-even. Setting a target of your own is separate.",
+      "<b>Nothing is added that you did not enter.</b> Postage out and the ads "
+      + "allowance are 0.00 unless you set them.",
+      "<b>The “after coupon” figures</b> appear only on SKUs that have really "
+      + "been selling at a discount — measured from what buyers were charged on "
+      + "settled orders, not read from Seller Central.",
+      "A price is never moved more than once every 4 hours, never by more than "
       + "the change cap in one step, and never below your minimum price.",
-      "A SKU Amazon no longer has is marked and disarmed automatically. Its "
+      "A SKU Amazon no longer has is marked and disarmed automatically; its "
       + "suppliers and history are kept in case you relist it.",
-      "Removing a SKU from tracking keeps its links and its price history — "
-      + "enrol it again later and everything is still attached.",
+      "Removing a SKU from tracking keeps its links and its price history.",
     ],
   },
   generate: {

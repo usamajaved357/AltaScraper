@@ -846,7 +846,44 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         "fee_rate": rule["referral_rate"],
         "postage_label": round(float(rule["shipping_label"]), 2),
         "ads": round(float(rule["ads_margin"]), 2),
-        "profit": round(float(rule["min_profit"]), 2),
+        # WHAT IS ACTUALLY LEFT, NOT WHAT WAS ASKED FOR.
+        #
+        #     "profit left over can not be zero in this case because the source
+        #      is 24 and i am selling it on 24.99 so this is not true"
+        #
+        # Right, and worse than it looked. This was rule["min_profit"] -- an
+        # INPUT, the flat amount you insist on ON TOP of everything else -- drawn
+        # on screen under the label "Profit left over / what you keep per unit",
+        # which is an OUTPUT. With min_profit at its default of 0.00 the panel
+        # told you that you keep nothing per unit, on a price built to earn 20%.
+        #
+        # MEASURED on the owner's own row (cost 24.00, referral 15%, min_roi 20%):
+        #
+        #     supplier   24.00
+        #     fee         5.08     <- matches the screen exactly
+        #     postage     0.00
+        #     ads         0.00
+        #     profit      0.00     <- min_profit, and untrue
+        #     price      33.89
+        #
+        #     24.00 + 5.08 + 0 + 0 + 0.00 = 29.08, against a price of 33.89.
+        #     4.81 simply missing from a sum laid out to be added up -- and that
+        #     4.81 IS the profit, exactly 20% of the 24.00 paid.
+        #
+        # The note two fields down already warned about this: "the breakdown says
+        # '1.00 profit' while the price is really being set by a 20% target, and
+        # the sum on screen would not add up to the number beside it". `targets`
+        # was added so the screen COULD explain it; this line kept lying anyway.
+        #
+        # Derived from the price, so the column adds up whichever floor won --
+        # flat minimum, safety floor, a target, or a held price.
+        "profit": round(price - cost - float(rule["shipping_label"])
+                        - float(rule["ads_margin"])
+                        - (price * rule["referral_rate"]), 2),
+        # The input is still carried, separately and under its own name, because
+        # "you asked for at least X" is a real thing to want to show. It is no
+        # longer what the profit line reads.
+        "min_profit": round(float(rule["min_profit"]), 2),
         "price": price,
         "sources_usable": len(live) - len(rejections),
         "sources_total": len(live),
