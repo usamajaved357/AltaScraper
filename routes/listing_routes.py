@@ -99,6 +99,63 @@ def _attach_restricted(c, r):
     return c
 
 
+def _attach_identifier(c, r, config_path, workspace_id):
+    """Can this listing be created at all -- barcode, exemption, or neither?
+
+        "maybe i used the barcode of my another listing, so the app should tell me"
+
+    Amazon needs ONE product identifier. This says which of the three states a
+    listing is in BEFORE it is submitted, because the alternative is what
+    actually happened: submitted, "SUBMITTED" on screen for a fortnight, and
+    Amazon's refusal sitting unread on the listing.
+
+    The clash is the part that had never been checked. MEASURED: EAN
+    4545644574860 was on a LIVE jack_uk listing and on the nestwell_goods one he
+    submitted, and Amazon refused the second because the barcode already named
+    the first one's ASIN. Sixteen barcodes in the store are on more than one
+    listing.
+
+    Read-only, and it never blocks -- it says what will happen. Attached like the
+    restricted and viability checks beside it.
+    """
+    from domain import barcode_clash as _bc
+    from listing.barcode import gtin_or_reason
+
+    raw = str(r.get("UPC") or "").strip()
+    exempt = str(r.get("GTIN Exemption") or "").strip().lower() in (
+        "1", "y", "yes", "true", "on", "x", "exempt")
+    code, _typ, why = gtin_or_reason(raw)
+    clash = []
+    try:
+        if code:
+            clash = _bc.others_with(config_path, code,
+                                    exclude_workspace=workspace_id,
+                                    exclude_sku=str(r.get("SKU") or ""))
+    except Exception:
+        clash = []
+    out = {"barcode": code, "raw": raw, "exemption": exempt,
+           "why_unusable": ("" if code else why),
+           "clash": clash, "clash_note": _bc.sentence(clash, code),
+           "blocking": False, "note": ""}
+    if code and clash and any(x["live"] for x in clash):
+        # The case that already cost him a listing.
+        out["blocking"] = True
+        out["note"] = out["clash_note"]
+    elif not code and not exempt:
+        out["blocking"] = True
+        out["note"] = ((why or "There is no barcode in the box")
+                       + ". Amazon needs a barcode or a GTIN exemption, and the "
+                         "exemption is not ticked, so this listing cannot be "
+                         "created. Enter a barcode, or tick “Apply for GTIN "
+                         "exemption”.")
+    elif not code and exempt:
+        out["note"] = ("No barcode, and you have ticked the GTIN exemption -- "
+                       "so the listing declares to Amazon that this product has "
+                       "no barcode.")
+    c["identifier"] = out
+    return c
+
+
 def _attach_viability(c, r):
     """Attach the SOURCING VIABILITY result (document-demand risk) for the card's
     'Compliance requirements' panel.
@@ -681,9 +738,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
         _bad = _wrong_account(_asked_account())
         if _bad:
             return _bad
+        _who = (str(_asked_account() or "").strip()
+                or _state.get("active_account_id") or "")
         try:
             _bust_records_cache()                     # force a truly fresh read
-            data = _records(_ws(), _use_cache=False)
+            data = _records(_store_for(_who) or _ws(), _use_cache=False)
             for i, r in enumerate(data):
                 if str(r.get("SKU", "")).strip() == sku:
                     c = _card(r)
@@ -691,6 +750,9 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     _attach_claim_flags(c, r)
                     _attach_restricted(c, r)
                     _attach_viability(c, r)
+                    # Can Amazon create this at all -- barcode, exemption, or
+                    # neither, and is the barcode already on another listing.
+                    _attach_identifier(c, r, CONFIG_PATH, _who)
                     return jsonify({"ok": True, "row": c})
             return jsonify({"ok": False, "error": "sku not found"}), 404
         except Exception as e:

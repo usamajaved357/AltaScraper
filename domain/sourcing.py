@@ -677,6 +677,11 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
            # None means "no target set", not "meets it" -- the screen has to be
            # able to tell those apart before it draws a flag.
            "target": None,
+           # How far the price is moving, and whether that is past the notify
+           # threshold. Always present so a caller never has to guess whether a
+           # missing key means "small move" or "not worked out" -- move_pct is
+           # None until there is a current price to measure against.
+           "move_pct": None, "large_move": False, "large_move_note": "",
            "listing_state": listing_state or ""}
 
     # THE LISTING IS NOT THERE ANY MORE. Checked before anything else, because
@@ -985,14 +990,27 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
     # ---- guards against acting on a number that only LOOKS right ----------
     if cur_price is not None and cur_price > 0:
         move = abs(price - cur_price) / cur_price * 100.0
+        out["move_pct"] = round(move, 1)
         if move > rule["max_change_pct"]:
-            # Above the floor and still a huge jump. Most likely a misread page,
-            # occasionally a real supplier move -- either way a person should see
-            # it before the listing does.
-            out["action"] = "none"
-            out["blocked_by"] = ("price move of %.1f%% exceeds the %.1f%% limit"
-                                 % (move, rule["max_change_pct"]))
-            return out
+            # IT NO LONGER STOPS. Asked for plainly:
+            #
+            #     "i dont want the app to hold the change if there is more than
+            #      the max change value, i just want it to send me the
+            #      notification"
+            #
+            # This used to set action="none" and blocked_by, so a big move sat
+            # waiting to be noticed -- and the run that produced it happens every
+            # four hours, usually with nobody watching. A held price is not a
+            # safe price: while it waits, the listing is at the OLD number, which
+            # is the one the supplier's move just made wrong.
+            #
+            # max_change_pct now means "tell me above this", not "stop above
+            # this". The change goes through; the flag below is what the apply
+            # step turns into a notification (domain/source_apply.py).
+            out["large_move"] = True
+            out["large_move_note"] = (
+                "price move of %.1f%% is over your %.1f%% notify threshold"
+                % (move, rule["max_change_pct"]))
 
         same_lead = (lead is None or cur_lead is None or int(lead) == int(cur_lead))
         same_qty = (cur_qty is None or int(cur_qty) == qty)

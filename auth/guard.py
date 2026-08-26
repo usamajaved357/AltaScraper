@@ -114,6 +114,13 @@ RULES = [
     # ABOVE the broad /sourcing line, or it never fires -- first match wins, and
     # everything under /sourcing was resolving to publish.
     ("/sourcing/sources/clear",         "approve_delete"),
+    # ASKING AMAZON WHAT IT CHARGES IS A READ. It sends nothing to a listing and
+    # changes no price -- it fills the fee cache that pricing then reads. Under
+    # the broad line below it would have needed "publish", which would stop
+    # somebody with view rights from finding out that the 15% they are looking
+    # at is not what Amazon actually takes. Above it, for the reason spelled out
+    # on the line above: first match wins.
+    ("/sourcing/fees",                  None),
     ("/sourcing",                       "publish"),
 
     # -- importing an eBay seller. Finding and screening send NOTHING anywhere;

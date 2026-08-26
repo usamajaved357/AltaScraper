@@ -371,11 +371,24 @@ d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
              [(src(1), misread)], dict(ALLOW, max_change_pct=100.0, min_price=12.00), NOW)
 check("with min_price the price cannot go under it", d["price"], 12.0)
 
-print("  -- max_change_pct catches the sudden misparse --")
+print("  -- max_change_pct now NOTIFIES about a big move, it does not hold it --")
+#
+#     "i dont want the app to hold the change if there is more than the max
+#      change value, i just want it to send me the notification"
+#
+# This used to require action="none" and a blocked_by. Holding is not the safe
+# option it looks like: while the change waits to be noticed -- and the run that
+# produced it happens every four hours with nobody watching -- the listing sits
+# at the OLD price, which is the one the supplier's move just made wrong.
+# max_change_pct is now a notify threshold. domain/source_apply sends the
+# message after the push, so a dry run never claims a price changed.
 d = S.decide({"price": 18.24, "quantity": 5, "lead_days": 5},
              [(src(1), misread)], ALLOW, NOW)
-check("a 58% drop is held, not pushed", d["action"], "none")
-truthy("  and says how far out it was", "exceeds" in d["blocked_by"])
+check("a 58% drop is applied, not held", d["action"], "update")
+check("  and nothing blocks it", d["blocked_by"], "")
+truthy("  it is flagged as a large move", d["large_move"])
+truthy("  and says how far out it was", "notify threshold" in d["large_move_note"])
+truthy("  with the move recorded as a number", d["move_pct"] > 25.0)
 check("a move inside the limit goes through",
       S.decide({"price": 15.00, "quantity": 5, "lead_days": 5},
                [(src(1), chk(price=8.00, shipping=1.50))], ALLOW, NOW)["action"], "update")

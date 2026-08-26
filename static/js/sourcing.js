@@ -250,6 +250,160 @@ async function sourcingHoldPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+/* ASK AMAZON WHAT IT CHARGES ON EACH PRODUCT.
+ *
+ * Fills the fee cache. Pricing reads that cache and never calls Amazon itself,
+ * because pricing runs for every enrolled SKU on every page load.
+ *
+ * IT SAYS WHAT IT COULD NOT ANSWER. On an account whose SP-API roles are not
+ * granted Amazon refuses every one of these, and a button that reported "done"
+ * would leave the owner believing his prices were built on Amazon's figures
+ * when they are still built on an average.
+ */
+async function sourcingGetFees(btn){
+  const was = btn ? btn.innerHTML : "";
+  if(btn){ btn.disabled = true; btn.textContent = "Asking Amazon…"; }
+  try{
+    const j = await (await fetch(_srcUrl("/sourcing/fees"), {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: _srcBody({})})).json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not ask Amazon"); return; }
+    toast(j.note || (j.quoted + " quoted"));
+    // The ones Amazon would not answer for are the point of the second dialog:
+    // those SKUs keep pricing from your measured rate, and that is worth
+    // knowing per SKU rather than as a count.
+    const bad = (j.not_quoted || []).concat(j.left_alone || []);
+    if(bad.length){
+      await srcConfirm({
+        title: bad.length + " could not be quoted",
+        body: bad.slice(0, 10).map(function(r){
+                return "  " + r.sku + "\n      " + (r.detail || r.why || "");
+              }).join("\n")
+            + (bad.length > 10 ? "\n…and " + (bad.length - 10) + " more" : "")
+            + "\n\nThese keep pricing from your own measured rate instead of "
+            + "Amazon's quote. Their rows say so.",
+        confirm: "OK",
+      });
+    }
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = was; } }
+}
+
+/* A MINIMUM PRICE ON MANY SKUS AT ONCE.
+ *
+ *     "i am not able to arm a sku"
+ *
+ * A SKU cannot be armed without one, and there was only ever one way to set it:
+ * open the row, find the box, type a number. On an account with nine SKUs below
+ * target and sixty-seven tracked, that is the same wall the held price hit --
+ * the guard exists, and nobody can reach it often enough to use it.
+ *
+ * A SHARE OF TODAY'S SELLING PRICE, not of the cost. That is deliberate and it
+ * is what this particular number is FOR: the minimum price is the guard that
+ * still works when a supplier's page is misread, so deriving it from the
+ * supplier's figure would tie the safety net to the thing it protects against.
+ * Today's Amazon price is independent of that.
+ *
+ * It also works where a cost-based floor could not: 22 of the 67 tracked SKUs
+ * have no readable supplier cost at all, and those are exactly the ones most in
+ * need of a floor.
+ */
+async function sourcingMinPriceBulk(){
+  const shown = new Set(SRC_ROWS.map(function(r){ return String(r.sku); }));
+  const picked = [...SRC_SEL].filter(function(s){ return shown.has(s); });
+  if(!picked.length){ toast("Select some listings first"); return; }
+
+  const rows = SRC_ROWS.filter(function(r){
+    return picked.indexOf(String(r.sku)) >= 0
+        && (r.current || {}).price != null && Number(r.current.price) > 0;
+  });
+  const noPrice = picked.length - rows.length;
+  if(!rows.length){
+    toast("None of the " + picked.length + " selected listing(s) has a price "
+        + "read from Amazon, so there is no figure to work a floor out from.");
+    return;
+  }
+
+  _srcModal(
+    "Never sell below — for " + rows.length + " listing(s)",
+    '<p class="cc" style="font-size:12px;margin:0 0 12px">Set each one\'s floor '
+    + 'as a share of what it sells for on Amazon today. A SKU cannot be armed '
+    + 'until it has one.</p>'
+    + _srcTargetBox('minpct', 'Percent of today\'s price', 80,
+        'Worked out from your Amazon price, NOT from the supplier — this is the '
+      + 'guard that still works when a supplier\'s page is misread, so it must '
+      + 'not depend on one.',
+        'A listing at 19.97 with 80% gets a floor of 15.98')
+    + (noPrice
+        ? '<p class="cc" style="font-size:11.5px;margin:10px 0 0">' + noPrice
+          + ' selected listing(s) have no price read from Amazon and will be '
+          + 'left alone.</p>'
+        : ''),
+    async function(){
+      const el = document.getElementById('minpct');
+      const pct = Number(String((el && el.value) || "").replace("%", "").trim());
+      if(!isFinite(pct) || pct <= 0 || pct > 100){
+        toast("Enter a percentage between 1 and 100");
+        return false;                       // keep the box open
+      }
+      const plan = rows.map(function(r){
+        return {sku: r.sku, now: Number(r.current.price),
+                floor: Math.round(Number(r.current.price) * pct) / 100,
+                was: (r.rule || {}).min_price};
+      });
+      const already = plan.filter(function(p){ return p.was != null; });
+      const sample = plan.slice(0, 12).map(function(p){
+        return "  " + p.sku + "\n      never below " + _smoney(p.floor)
+             + "   (sells at " + _smoney(p.now) + ")"
+             + (p.was != null ? "   was " + _smoney(p.was) : "");
+      }).join("\n");
+
+      const go = await srcConfirm({
+        title: "Set a floor on " + plan.length + " listing(s)?",
+        body: sample
+          + (plan.length > 12 ? "\n  …and " + (plan.length - 12) + " more" : "")
+          + "\n\nThe repricer will never price them below these figures, "
+          + "whatever a supplier's page says. Each one can then be armed."
+          + (already.length
+              ? "\n\n" + already.length + " already have a minimum price, and it "
+                + "will be REPLACED."
+              : "")
+          + "\n\nNothing on Amazon changes now.",
+        confirm: "Set the floors",
+      });
+      if(!go) return false;
+
+      let ok = 0;
+      const failed = [];
+      toast("Setting " + plan.length + " floor(s)…");
+      for(const p of plan){
+        try{
+          const j = await (await fetch("/sourcing/rules", {method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: _srcBody({sku: p.sku,
+                            rule: {min_price: String(p.floor)}})})).json();
+          if(j && j.ok) ok++;
+          else failed.push(p.sku + ": " + ((j && j.error) || "refused"));
+        }catch(e){ failed.push(p.sku + ": " + String(e)); }
+      }
+      let msg = "Minimum price set on " + ok + " listing(s).";
+      if(noPrice) msg += " " + noPrice + " left alone (no price read from Amazon).";
+      toast(msg);
+      if(failed.length){
+        await srcConfirm({
+          title: failed.length + " could not be set",
+          body: failed.slice(0, 10).join("\n")
+              + (failed.length > 10 ? "\n…and " + (failed.length - 10) + " more" : "")
+              + "\n\nThe rest were set. Nothing on Amazon has changed.",
+          confirm: "OK",
+        });
+      }
+      sourcingLoad();
+      return true;
+    });
+}
+
 /* HOLD WHAT I SELL AT TODAY, ON MANY SKUS AT ONCE.
  *
  *     "why do the repricer wants to reduce my selling price to achieve the
@@ -856,6 +1010,20 @@ function sourcingRender(j){
     +  'suppliers and history are kept in case you relist it. One Amazon call per '
     +  'SKU, so it takes a moment.">'
     +  '<i class="ti ti-plug-connected-x"></i> Check they still exist</button>'
+    // ASK AMAZON WHAT IT ACTUALLY CHARGES, per product.
+    //
+    //     "the fees of amazon reflecting in the details should be accurate and
+    //      not estimate of 15 percent like i see right now in the app"
+    //
+    // Its own button rather than part of the supplier re-read, because it is a
+    // different question asked of a different API, it is rate-limited, and the
+    // answer keeps for a week. Pricing never calls Amazon itself -- it reads
+    // what this fills.
+    +  '<button class="db-chip" onclick="sourcingGetFees(this)" title="'
+    +  'Asks Amazon what its referral fee actually is on each tracked product, '
+    +  'and remembers it. Prices are then worked out from Amazon&#39;s own '
+    +  'figure instead of an assumed 15%. Changes no price by itself.">'
+    +  '<i class="ti ti-receipt-tax"></i> Get Amazon&#39;s fees</button>'
     // The switch that actually matters, named for what it does rather than for
     // where it lives. "Master switch: off" did not say off from WHAT.
     +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
@@ -951,6 +1119,13 @@ function _srcSelBar(){
     + '<button class="db-chip" onclick="sourcingSelectAll(true)">Select all '
     + SRC_ROWS.length + '</button>'
     + '<button class="db-chip" onclick="sourcingSelectAll(false)">Clear</button>'
+    // THE FLOOR THAT ARMING REQUIRES, settable for everything at once. Without
+    // this it is one row at a time, which is why nothing was armed.
+    + '<button class="db-chip" onclick="sourcingMinPriceBulk()" title="'
+    + 'Give each selected listing a price it will never sell below, worked out '
+    + 'as a share of what it sells for today. A SKU cannot be armed without '
+    + 'one.">'
+    + '<i class="ti ti-arrow-down-circle"></i> Set minimum price</button>'
     // THE ANSWER TO "it should not reduce my selling price", made reachable.
     // The held price did this all along; typing it into 67 SKUs by hand did not.
     + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
@@ -1109,8 +1284,19 @@ function _priceBreakdown(b, cur){
   if(b.supplier_postage!=null && b.supplier_postage>0)
     h += line('Their postage to you', b.supplier_postage, '');
   h += line('So one unit costs you', b.cost, 'delivered to your door');
+  // WHOSE FIGURE THIS IS. A rate is just a number; whether Amazon quoted it for
+  // this product or it is an average of your own settled orders is the
+  // difference between a figure and a guess, and the panel used to say "15%" in
+  // both cases. `fee_basis` comes from domain/source_run.decide_one.
+  const _fb = (b.fee_basis || "");
+  const _rate = ((b.fee_rate || 0) * 100).toFixed(2).replace(/\.00$/, "");
   h += line("Amazon's cut", b.fee,
-            Math.round((b.fee_rate||0)*100)+'% of the selling price, not of the cost');
+            _rate + '% of the selling price, not of the cost'
+            + (_fb === "quoted"
+                ? ' &mdash; <b>Amazon\'s own figure for this product</b>'
+                : _fb === "estimated"
+                ? ' &mdash; your measured rate, not Amazon\'s quote'
+                : ''));
   h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
   h += line('Set aside for ads', b.ads, '');
   // THE NUMBER YOU SET A TARGET AGAINST, said beside the profit it comes from.
@@ -1483,10 +1669,28 @@ function sourcingRow(r, i){
   // The chip is the same button, so clicking the count opens the list.
   h += _srcCountChip(r, id)
     +  '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
+    // WHY IT CANNOT BE ARMED, ON THE BUTTON.
+    //
+    //     "i am not able to arm a sku"
+    //
+    // It could not be, and the reason was real: no minimum price. But the only
+    // place that was said was the button's TOOLTIP, which you have to hover to
+    // read and which never appears on a phone. So the button looked ordinary,
+    // did nothing anybody could see, and the answer was invisible.
+    //
+    // Now the button names the missing thing and OPENS it, so the fix is one
+    // click from the problem instead of a hunt through the row's detail panel.
     +  (r.mode==="live"
         ? '<button class="db-chip" style="background:#3a1b1b;color:#e88a8a" '
           + 'onclick="sourcingArm('+_sarg(r.sku)+',false)">Armed &mdash; disarm</button>'
-        : '<button class="db-chip" onclick="sourcingArm('+_sarg(r.sku)+',true)">Arm</button>')
+        : ((r.rule||{}).min_price == null
+            ? '<button class="db-chip" style="border-color:var(--warn);'
+              + 'color:var(--warn)" onclick="sourcingMinPrice('+_sarg(r.sku)+')" '
+              + 'title="A SKU cannot be armed until it has a price it will never '
+              + 'sell below. That floor is the one guard that still works if a '
+              + 'supplier&#39;s page is misread. Click to set it.">'
+              + 'Set a minimum price to arm</button>'
+            : '<button class="db-chip" onclick="sourcingArm('+_sarg(r.sku)+',true)">Arm</button>'))
     +  '<button class="db-chip" onclick="sourcingUnenrol('+_sarg(r.sku)+')">Remove</button>'
     +  '</div>';
 

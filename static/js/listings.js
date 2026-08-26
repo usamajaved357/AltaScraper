@@ -1854,6 +1854,7 @@ function drawerContent(r){
     </div>
     ${hero}
     ${needsCopyPanel(r)}
+    ${identifierPanel(r)}
     ${complianceBanner(r)}
     ${liveMirrorPanel(r)}
     ${restrictedPanel(r)}
@@ -2340,6 +2341,88 @@ function liveTableRow(it){
 // because no data arrived would be the worst possible failure here: a green
 // banner asserting a check passed when it never happened. Silence is honest;
 // a false all-clear is not.
+/* THE ONE THING AMAZON WILL NOT CREATE A LISTING WITHOUT.
+ *
+ *     "i submitted a listing on amazon from the app but it shows submitted and
+ *      i dont know if it is live on amazon ... where is the error message"
+ *
+ * It was not live, and Amazon had said why the whole time -- the barcode
+ * already named another of his own listings, so it matched the submission to
+ * that ASIN and refused to create a second product. The app never asked, so the
+ * row sat on SUBMITTED and the reason went unread.
+ *
+ * This says it BEFORE the submit, from what the app already holds. Three
+ * states, and only two of them can become a listing:
+ *
+ *   a usable barcode nobody else is using   -> quiet, nothing drawn
+ *   a barcode another listing already has   -> named, with which listing
+ *   no barcode and no exemption ticked      -> cannot be created
+ *
+ * The tick box is the owner's decision, deliberately:
+ *     "i dont want to use the gtin exemption until the user wants to, he can
+ *      check the button under the box apply for gtin exemption"
+ * Claiming an exemption is a declaration to Amazon that a product has no
+ * barcode. The app used to make it silently whenever the box was empty.
+ */
+function identifierPanel(r){
+  const id = r.identifier;
+  if(!id) return "";
+  const box =
+    '<label class="idexempt" style="display:flex;gap:8px;align-items:flex-start;'
+    + 'margin-top:9px;font-size:12px;cursor:pointer">'
+    + '<input type="checkbox" ' + (id.exemption ? "checked" : "")
+    + ' onchange="setGtinExemption(' + _sarg2(r.sku) + ', this.checked)">'
+    + '<span>Apply for GTIN exemption'
+    + '<span class="cc" style="display:block;font-size:11px;margin-top:2px">'
+    + 'Tells Amazon this product has no barcode. Only tick it if that is true '
+    + '&mdash; it is a declaration, not a workaround.</span></span></label>';
+
+  if(id.blocking){
+    return '<div class="compbanner blocked"><i class="ti ti-barcode-off"></i><div>'
+      + '<b>This cannot be created on Amazon yet</b>'
+      + '<span class="cc">' + esc(id.note) + '</span>'
+      + (id.clash && id.clash.length
+          ? '<span class="cc" style="display:block;margin-top:5px">Also on: '
+            + id.clash.map(function(c){
+                return '<code>' + esc(c.workspace_id) + ' / ' + esc(c.sku)
+                     + '</code>' + (c.live ? ' <b>(live)</b>' : '');
+              }).join(", ") + '</span>'
+          : '')
+      + box + '</div></div>';
+  }
+  if(id.note){
+    return '<div class="compbanner warn"><i class="ti ti-barcode"></i><div>'
+      + '<b>Product identifier</b><span class="cc">' + esc(id.note) + '</span>'
+      + box + '</div></div>';
+  }
+  // A usable barcode nobody else has needs no panel -- but the tick box still
+  // has to be reachable to be UNticked, so it is shown quietly.
+  return '<div class="cc" style="font-size:11.5px;margin:6px 0 2px">'
+    + 'Barcode <code>' + esc(id.barcode) + '</code> &mdash; not used by any '
+    + 'other listing.' + box + '</div>';
+}
+
+// The SKU as a JS string argument. listings.js has no _sarg of its own; the
+// repricer's is in sourcing.js and this file must not depend on that one.
+function _sarg2(s){ return "'" + String(s || "").replace(/'/g, "\\'") + "'"; }
+
+async function setGtinExemption(sku, on){
+  try{
+    const j = await (await fetch("/edit", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sku: sku, target: "col", key: "GTIN Exemption",
+                            value: on ? "yes" : "",
+                            account: (typeof CUR_ACCOUNT !== "undefined"
+                                      && CUR_ACCOUNT) ? CUR_ACCOUNT.id : ""})
+      })).json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not save that"); return; }
+    toast(on ? "GTIN exemption will be claimed for this listing"
+             : "GTIN exemption is off for this listing");
+    if(typeof refreshRow === "function") refreshRow(sku);
+    else if(typeof loadRows === "function") loadRows();
+  }catch(e){ toast(String(e)); }
+}
+
 function complianceBanner(r){
   const rr = r.restricted, v = r.viability, claims = r.claim_flags || [];
   if(!rr && !v && !claims.length) return "";      // nothing ran -- say nothing

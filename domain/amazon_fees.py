@@ -283,6 +283,116 @@ def rate_for(config_path, workspace_id, marketplace, end_date=None):
             % (DEFAULT_REFERRAL_RATE * 100))
 
 
+def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
+                  asin, price, is_fba=False, currency="", max_age_days=7,
+                  force=False, allow_quote=True):
+    """Amazon's OWN referral rate for THIS product. (rate, basis, detail).
+
+        "get accurate fees from amazon per item"
+
+    WHY A RATE AND NOT AN AMOUNT. The fee depends on the price, and the caller
+    asking is usually the repricer, which is computing the price -- so asking
+    for an amount is circular. Amazon's referral fee is a PERCENTAGE by
+    category, so the rate implied by one quote holds at any price. Quote once,
+    derive the rate, and the circle is gone. The generator solves the same
+    problem the other way, by pricing twice to settle; it can afford to,
+    because it is doing one product at a time and not sixty-seven every four
+    hours.
+
+    WHY IT IS CACHED. One call per product per WEEK instead of one per product
+    per cycle. A category's rate does not move; if Amazon changes one, a week is
+    soon enough to catch it, and `force` re-asks immediately.
+
+    FBA IS NOT IN THE RATE, deliberately -- see the note on the fee_quotes
+    table. A per-unit fulfilment fee is not a share of the price.
+
+    IT NEVER SILENTLY DOWNGRADES. If Amazon will not answer -- and on an account
+    whose SP-API roles are not granted it will not -- this falls back to the
+    account's own measured rate and says so in `detail`, with basis ESTIMATED.
+    The caller can then tell a reader which one it got, which is the whole point
+    of `basis` existing.
+    """
+    from data import db as _db
+
+    ws = str(workspace_id or "")
+    mkt = str(marketplace or "").upper()
+    a = str(asin or "").strip().upper()
+    p = _f(price, None) if price is not None else None
+
+    def _fallback(why):
+        rate, basis, detail = rate_for(config_path, ws, mkt)
+        return rate, ESTIMATED, "%s %s" % (detail, why)
+
+    if not a:
+        return _fallback("(no ASIN, so Amazon could not be asked per product).")
+
+    conn = _db.get_db(config_path)
+    if not force:
+        try:
+            row = conn.execute(
+                "SELECT rate, quoted_price, quoted_at FROM fee_quotes "
+                "WHERE workspace_id=? AND marketplace=? AND asin=?",
+                (ws, mkt, a)).fetchone()
+        except Exception:
+            row = None
+        if row and row["rate"] is not None:
+            fresh = True
+            try:
+                import datetime as _dt
+                age = (_dt.datetime.now()
+                       - _dt.datetime.fromisoformat(str(row["quoted_at"]))).days
+                fresh = age <= int(max_age_days)
+            except Exception:
+                age, fresh = None, True
+            if fresh:
+                return (float(row["rate"]), QUOTED,
+                        "%.2f%% -- Amazon's own figure for %s, quoted at %.2f%s"
+                        % (float(row["rate"]) * 100, a,
+                           _f(row["quoted_price"]),
+                           "" if age is None else
+                           (" today" if age == 0 else " %d day(s) ago" % age)))
+
+    # THE PRICING PATH NEVER CALLS AMAZON. decide_one runs for every enrolled
+    # SKU on every page load; quoting there would be 67 live calls before the
+    # screen could draw, on a limit Amazon enforces. So pricing reads the cache
+    # and falls back honestly, and the cache is FILLED by an explicit action --
+    # see routes/sourcing_routes.py /sourcing/fees.
+    if not allow_quote:
+        return _fallback("(Amazon has not been asked about this product yet "
+                         "-- press “Get Amazon's fees”).")
+
+    if p is None or p <= 0:
+        return _fallback("(no current price to ask Amazon about).")
+
+    q = quote(creds, mkt, marketplace_id, a, p, is_fba=is_fba, currency=currency)
+    if q.get("basis") != QUOTED:
+        return _fallback("(Amazon would not quote a fee for %s: %s)"
+                         % (a, q.get("detail") or "no answer"))
+
+    # The share of the price Amazon takes as a CUT. FBA is excluded above.
+    rate = round((_f(q.get("referral")) + _f(q.get("closing"))) / p, 6)
+    if rate <= 0 or rate >= 1:
+        return _fallback("(Amazon quoted a fee that is not a usable rate).")
+    try:
+        import datetime as _dt
+        conn.execute(
+            "INSERT INTO fee_quotes(workspace_id, marketplace, asin, rate, "
+            " referral, closing, quoted_price, currency, quoted_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(workspace_id, marketplace, asin) DO UPDATE SET "
+            " rate=excluded.rate, referral=excluded.referral, "
+            " closing=excluded.closing, quoted_price=excluded.quoted_price, "
+            " currency=excluded.currency, quoted_at=excluded.quoted_at",
+            (ws, mkt, a, rate, _f(q.get("referral")), _f(q.get("closing")),
+             p, q.get("currency") or "", _dt.datetime.now().isoformat(" ", "seconds")))
+        conn.commit()
+    except Exception:
+        pass          # a cache that cannot be written must not lose the answer
+    return (rate, QUOTED,
+            "%.2f%% -- Amazon's own figure for %s, quoted at %.2f"
+            % (rate * 100, a, p))
+
+
 def parts_for_display(fees, currency_symbol=""):
     """[(label, amount, explanation)] -- the rows a breakdown table draws.
 

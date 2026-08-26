@@ -203,8 +203,62 @@ def apply_one(config_path, cfg, creds, marketplace_id, seller_id,
                                  " [pushed, Amazon submission %s]" % res["submission_id"]))
     _repo.record_action(config_path, ws, mkt, sku, out, current=current, applied=1,
                         at=now.strftime("%Y-%m-%d %H:%M:%S"))
+
+    # TOLD, BECAUSE IT IS NO LONGER HELD.
+    #
+    #     "i dont want the app to hold the change if there is more than the max
+    #      change value, i just want it to send me the notification"
+    #
+    # sourcing.decide used to refuse a move past max_change_pct and wait to be
+    # noticed. It now applies it and raises `large_move`, and this is the other
+    # half of that bargain: the moment it is really on Amazon -- after the
+    # patch, not before -- somebody is told. Sent here rather than in decide()
+    # so a dry run, which decides exactly the same way, never claims a price
+    # changed that did not.
+    #
+    # Never in the way of the push: notify() swallows its own failures, and this
+    # is after the action is already recorded, so a Slack outage cannot cost a
+    # price change or its log entry.
+    try:
+        _notify_push(config_path, ws, mkt, sku, out, current)
+    except Exception:
+        pass
     return {"sku": sku, "applied": 1, "blocked_by": "", "decision": out,
             "submission_id": res["submission_id"]}
+
+
+def _notify_push(config_path, ws, mkt, sku, decision, current):
+    """One line about a price that has just changed on Amazon.
+
+    Only a LARGE move reaches Slack -- see the note on _SLACK_WORTHY in
+    domain/notify.py. Sixty-seven four-hourly repricings pinging a channel is a
+    channel nobody reads.
+    """
+    from domain import notify as _n
+    from domain import catalogue as _cat
+
+    if decision.get("action") != "update" or decision.get("price") is None:
+        return
+    name = sku
+    try:
+        idx = _cat.index(config_path, ws, mkt)
+        item = _cat.look(idx, sku) or {}
+        name = str(item.get("title") or "").strip() or sku
+    except Exception:
+        pass
+    b = decision.get("breakdown") or {}
+    drift = decision.get("cost_was")
+    _n.price_move(
+        config_path, ws, sku, name,
+        was=(current or {}).get("price"), now=decision.get("price"),
+        cost_was=drift, cost_now=b.get("cost"),
+        move_pct=decision.get("move_pct") or 0,
+        profit=b.get("profit"),
+        roi=((b.get("profit") / b["cost"] * 100)
+             if b.get("profit") is not None and b.get("cost") else None),
+        marketplace=mkt,
+        large=bool(decision.get("large_move")),
+        sym=("$" if str(mkt).upper() == "US" else "£"))
 
 
 def run_live(config_path, cfg, creds_for, now=None, workspace_id=None,

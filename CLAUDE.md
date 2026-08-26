@@ -24,9 +24,29 @@ product under the owner's own brand.
 
 ### ALWAYS:
 - Use requirements: "LISTING" (create new product)
-- When no real GS1-registered barcode is available, use the GTIN exemption:
-  supplier_declared_has_product_identifier_exemption: true
 - Never send fake, placeholder, or AI-generated UPC/EAN barcodes to Amazon
+- THE GTIN EXEMPTION IS THE OWNER'S DECISION, NEVER THE APP'S.
+  Changed by the owner on 26 Aug 2026, in writing:
+      "i dont want to use the gtin exemption until the user wants to, he can
+       check the button under the box apply for gtin exemption as we have in
+       amazon backend, dont apply for exemption automatically"
+  This file used to say the opposite — "when no real barcode is available, use
+  the GTIN exemption" — and the generator did exactly that, silently, whenever
+  the barcode box was empty or the value unusable.
+  Claiming the exemption is a DECLARATION TO AMAZON that the product has no
+  barcode. The app must never make that declaration on his behalf.
+    * exemption ticked on the listing -> send
+      supplier_declared_has_product_identifier_exemption: true
+    * not ticked and no usable barcode -> send NEITHER, and say so before the
+      submit. Amazon refusing for want of an identifier is the correct outcome.
+  The tick is the "GTIN Exemption" column, shown under the barcode box on the
+  drawer, off by default.
+- A BARCODE ALREADY ON ANOTHER LISTING MUST BE REPORTED, not sent and hoped for.
+  Amazon matches the code to the ASIN that already owns it and refuses to create
+  a second product — measured on his own data, where one EAN was on a live
+  jack_uk listing and on the nestwell_goods one he had just submitted, and
+  sixteen barcodes were on more than one listing. domain/barcode_clash.py is the
+  one place that answers this.
 
 ### To change any of the above:
 The user must write explicitly: "I want to change the listing mode to X."

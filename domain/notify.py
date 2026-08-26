@@ -376,3 +376,195 @@ def test(config_path, channel_id):
                            "result": SENT if ok else FAILED, "detail": detail})
         return {"ok": ok, "detail": detail}
     return {"ok": False, "detail": "No such channel."}
+
+
+# ===========================================================================
+# THE IN-APP HALF: a bell, not just a delivery log
+# ===========================================================================
+#
+# Everything above sends OUTWARD -- Slack, a webhook -- and keeps a log of
+# delivery attempts. That log answers "did it send", which is an operator's
+# question. It does not answer the owner's question, which is "what happened
+# while I was not looking".
+#
+#     "i dont want the app to hold the change if there is more than the max
+#      change value, i just want it to send me the notification"
+#
+# The repricer no longer holds a large price move; it applies it and reports it.
+# That bargain needs a record the owner can come back to, per item, with a read
+# state -- so the notifications table, and a bell in the top bar.
+#
+# IT LIVES HERE, in the module that already owns "tell somebody", rather than in
+# a second module beside it (CLAUDE.md Rule 12). announce() below is the single
+# entry point: it records in-app ALWAYS, and hands the same words to send() for
+# the kinds worth interrupting someone about.
+
+PRICE_CHANGE = "price_change"
+LARGE_MOVE = "large_move"
+OUT_OF_STOCK = "out_of_stock"
+BACK_IN_STOCK = "back_in_stock"
+SUPPLIER_ENDED = "supplier_ended"
+ERROR = "error"
+
+# Which kinds go OUT as well as in. An ordinary reprice is a log entry; a
+# channel pinged by sixty-seven four-hourly repricings is a channel that gets
+# muted, and then the real alert is missed too -- the same reasoning as
+# QUIET_HOURS above, applied to volume instead of repetition.
+OUTBOUND_KINDS = (LARGE_MOVE, OUT_OF_STOCK, BACK_IN_STOCK, SUPPLIER_ENDED, ERROR)
+
+
+def record(config_path, workspace_id, kind, title, body="", sku="",
+           marketplace=""):
+    """Write one in-app notification. Returns its id, or None. Never raises."""
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        cur = conn.execute(
+            "INSERT INTO notifications(workspace_id, marketplace, type, sku, "
+            " title, body) VALUES(?,?,?,?,?,?)",
+            (str(workspace_id or ""), str(marketplace or ""), str(kind or ""),
+             str(sku or ""), str(title or ""), str(body or "")))
+        conn.commit()
+        return cur.lastrowid
+    except Exception:
+        return None
+
+
+def announce(config_path, workspace_id, kind, title, lines=None, sku="",
+             marketplace="", outbound=None, key=""):
+    """Tell somebody something happened: in the app, and out if it warrants it.
+
+    The ONE call other modules make. Recording comes first and cannot be
+    skipped, so a Slack outage loses a message from Slack and never from the
+    app. Returns {"id", "sent", "skipped", "failed"}.
+
+    Never raises: a notification is a side effect of doing something useful, and
+    failing to mention a thing must not undo the thing.
+    """
+    lines = [str(x) for x in (lines or []) if str(x).strip()]
+    body = "\n".join(lines)
+    out = {"id": None, "sent": 0, "skipped": 0, "failed": 0}
+    try:
+        out["id"] = record(config_path, workspace_id, kind, title, body,
+                           sku=sku, marketplace=marketplace)
+    except Exception:
+        pass
+    go = (kind in OUTBOUND_KINDS) if outbound is None else bool(outbound)
+    if go:
+        try:
+            r = send(config_path, title, lines=lines, event=kind,
+                     account=str(workspace_id or ""), key=key)
+            out.update({k: r.get(k, 0) for k in ("sent", "skipped", "failed")})
+        except Exception:
+            pass
+    return out
+
+
+def unread_count(config_path, workspace_id=None):
+    """How many are unread, for the bell's badge. 0 on any failure."""
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        if workspace_id:
+            return conn.execute(
+                "SELECT COUNT(*) FROM notifications WHERE is_read=0 "
+                "AND workspace_id=?", (str(workspace_id),)).fetchone()[0]
+        return conn.execute(
+            "SELECT COUNT(*) FROM notifications WHERE is_read=0").fetchone()[0]
+    except Exception:
+        return 0
+
+
+def recent(config_path, workspace_id=None, limit=30):
+    """The newest notifications, newest first. [] on any failure."""
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        if workspace_id:
+            rows = conn.execute(
+                "SELECT * FROM notifications WHERE workspace_id=? "
+                "ORDER BY id DESC LIMIT ?", (str(workspace_id), int(limit)))
+        else:
+            rows = conn.execute(
+                "SELECT * FROM notifications ORDER BY id DESC LIMIT ?",
+                (int(limit),))
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def mark_read(config_path, ids=None, workspace_id=None):
+    """Mark some, or all of a workspace's, as read. Returns how many changed."""
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        if ids:
+            ids = [int(i) for i in ids]
+            n = conn.execute(
+                "UPDATE notifications SET is_read=1 WHERE id IN (%s)"
+                % ",".join("?" * len(ids)), ids).rowcount
+        elif workspace_id:
+            n = conn.execute(
+                "UPDATE notifications SET is_read=1 WHERE workspace_id=? "
+                "AND is_read=0", (str(workspace_id),)).rowcount
+        else:
+            n = conn.execute(
+                "UPDATE notifications SET is_read=1 WHERE is_read=0").rowcount
+        conn.commit()
+        return n
+    except Exception:
+        return 0
+
+
+# ---- the wording, written once -------------------------------------------
+#
+# The Slack message and the in-app row are the SAME message because they are
+# built here and handed to both. Composed at each call site, the two drift, and
+# a notification whose figures do not match the screen is worse than none.
+
+def _money(v, sym="\u00a3"):
+    try:
+        return "%s%.2f" % (sym, float(v))
+    except (TypeError, ValueError):
+        return "\u2014"
+
+
+def price_move(config_path, workspace_id, sku, name, was, now, cost_was,
+               cost_now, move_pct, profit=None, roi=None, marketplace="",
+               large=False, sym="\u00a3"):
+    """A price the repricer has just changed. `large` decides if Slack hears."""
+    title = ("Price moved %.0f%% on %s" % (abs(float(move_pct or 0)), name or sku)
+             if large else "Price updated on %s" % (name or sku))
+    lines = ["Supplier cost: %s \u2192 %s" % (_money(cost_was, sym), _money(cost_now, sym)),
+             "Price updated: %s \u2192 %s" % (_money(was, sym), _money(now, sym))]
+    if profit is not None:
+        p = "Profit: %s" % _money(profit, sym)
+        if roi is not None:
+            try:
+                p += " (%.0f%% ROI)" % float(roi)
+            except (TypeError, ValueError):
+                pass
+        lines.append(p)
+    return announce(config_path, workspace_id,
+                    LARGE_MOVE if large else PRICE_CHANGE, title, lines,
+                    sku=sku, marketplace=marketplace)
+
+
+def went_out_of_stock(config_path, workspace_id, sku, name, marketplace="",
+                      why=""):
+    return announce(config_path, workspace_id, OUT_OF_STOCK,
+                    "Out of stock: %s" % (name or sku),
+                    [(why or "Every supplier for this SKU is out of stock."),
+                     "The Amazon quantity has been set to 0."],
+                    sku=sku, marketplace=marketplace,
+                    key="oos:%s:%s" % (workspace_id, sku))
+
+
+def came_back_in_stock(config_path, workspace_id, sku, name, qty,
+                       marketplace=""):
+    return announce(config_path, workspace_id, BACK_IN_STOCK,
+                    "Back in stock: %s" % (name or sku),
+                    ["A supplier has it again.",
+                     "The Amazon quantity has been set back to %s." % qty],
+                    sku=sku, marketplace=marketplace,
+                    key="restock:%s:%s" % (workspace_id, sku))

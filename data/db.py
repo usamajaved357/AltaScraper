@@ -551,6 +551,71 @@ CREATE INDEX IF NOT EXISTS idx_srcsources_sku  ON sourcing_sources(workspace_id,
 CREATE INDEX IF NOT EXISTS idx_srcchecks_src   ON sourcing_checks(source_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_srcactions_sku  ON sourcing_actions(workspace_id, marketplace, sku, at);
 
+-- THINGS THAT HAPPENED WHICH SOMEBODY SHOULD SEE.
+--
+-- The repricer used to HOLD a price change it thought too large and wait to be
+-- noticed. Asked for the other way round:
+--
+--     "i dont want the app to hold the change if there is more than the max
+--      change value, i just want it to send me the notification"
+--
+-- So the change goes through and a row lands here instead. That only works if
+-- the record is durable: a toast is gone the moment the page is closed, and the
+-- 4-hour run happens when nobody is looking.
+--
+-- READ STATE IS PER ROW, not a global "last seen" marker, so a notification
+-- opened on a phone is still unread nowhere else and nothing is silently
+-- skipped by a clock.
+CREATE TABLE IF NOT EXISTS notifications(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    workspace_id  TEXT,
+    marketplace   TEXT,
+    type          TEXT,      -- price_change | large_move | out_of_stock
+                             -- | back_in_stock | supplier_ended | error
+    sku           TEXT,
+    title         TEXT,
+    body          TEXT,
+    is_read       INTEGER DEFAULT 0,
+    created_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notif_ws ON notifications(workspace_id, is_read, id);
+
+-- WHAT AMAZON SAID IT WOULD TAKE, PER PRODUCT.
+--
+--     "get accurate fees from amazon per item"
+--
+-- The repricer priced every SKU at a flat 15%. Measured against what Amazon has
+-- actually settled: jack_uk 17.5%, nestwell_goods 18.0%, selvora_limited 18.0%.
+-- Every floor it computed was therefore too low, and a "20% ROI" was really
+-- about 14%.
+--
+-- A RATE, NOT AN AMOUNT, AND THAT IS WHAT MAKES THIS WORKABLE. The fee depends
+-- on the price and the repricer is computing the price, so asking for an amount
+-- is circular. Amazon's referral fee is a PERCENTAGE by category, so the rate
+-- implied by one quote holds at any price -- quote once, derive the rate, and
+-- the circle is gone.
+--
+-- It is also what keeps the API usage sane: one call per product per week
+-- instead of one per product per four-hour cycle. 67 SKUs would otherwise be
+-- 67 calls every cycle against a limit Amazon enforces.
+--
+-- FBA IS DELIBERATELY NOT IN THE RATE. It is a per-unit figure that depends on
+-- the item's size and weight band, not a share of the price, and it is genuinely
+-- zero on a merchant-fulfilled order. Rolling it into a percentage would make
+-- the rate wrong at every price except the one it was quoted at.
+CREATE TABLE IF NOT EXISTS fee_quotes(
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    asin          TEXT NOT NULL,
+    rate          REAL,          -- (referral + closing) / the price it was quoted at
+    referral      REAL,
+    closing       REAL,
+    quoted_price  REAL,          -- kept so a reader can see what it was measured at
+    currency      TEXT,
+    quoted_at     TEXT,
+    PRIMARY KEY (workspace_id, marketplace, asin)
+);
+
 -- Every AI call the app makes, and what it cost.
 --
 -- One row per call, never aggregated on the way in: a total cannot be broken
@@ -724,6 +789,8 @@ CREATE TABLE IF NOT EXISTS schema_cache (
 # on a machine that has been running longest, which is the worst place to find
 # out. Each entry is (table, column, type); applying one twice is a no-op.
 _ADDED_COLUMNS = [
+    # Opt-in, per listing, for the GTIN exemption. See column_map.py.
+    ("listings", "gtin_exemption", "TEXT"),
     ("sales_daily", "parent_asin", "TEXT"),
     ("finance_daily", "units", "INTEGER"),
     ("finance_daily", "cogs", "REAL"),
