@@ -1,0 +1,204 @@
+/* static/css/repricer.css -- the Repricer screen.
+ *
+ * Built from repricer_dashboard_reference.html, which is the layout that was
+ * asked for. Its STRUCTURE and its SIZES are copied faithfully: a real table
+ * with a row per SKU, a 36px product thumbnail, an SVG line sparkline, the
+ * detail opening inline underneath, suppliers as compact table rows and the
+ * rules as pill badges.
+ *
+ * ITS COLOURS ARE NOT. The mockup is its own little dark-blue page (#0f172a,
+ * #1e293b, #334155); this screen sits inside Orbit, next to Sales and Orders,
+ * and a panel that brings its own blues would read as something pasted in from
+ * another app. So every colour here is an Orbit variable, and the layout is
+ * what carries the resemblance.
+ *
+ *     "do the orbit theme sizes if you want but i want to look this alike what
+ *      i have in html"
+ *
+ * FOUR COLOURS ARE COPIED EXACTLY, and deliberately: the stacked bar's cost /
+ * referral / closing / profit segments. The mockup lists them under "DESIGN
+ * DECISIONS (do not change)", they have to stay distinguishable from each other
+ * rather than harmonious with the page, and two of them (the salmon closing fee
+ * sitting between the red and the green) only work as a set.
+ *
+ * NO JS WRITES CSS. Every rule that was inline in the mockup's markup is a
+ * class here, because CLAUDE.md forbids style in Python strings and the same
+ * argument applies to building it in JavaScript: a colour written in three
+ * places is a colour that will be changed in two.
+ */
+
+/* ---- the numbers strip ------------------------------------------------ */
+.rp-met{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+@media (max-width:900px){.rp-met{grid-template-columns:repeat(2,1fr)}}
+.rp-mc{background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-sm);padding:10px 12px;position:relative;
+  overflow:hidden}
+.rp-mc-n{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;line-height:1}
+.rp-mc-l{font-size:10px;color:var(--ink3);margin-top:4px;font-weight:500}
+/* The bar along the bottom is the count as a SHARE of everything tracked --
+ * "5 held" means one thing out of 8 and another out of 80. */
+.rp-mc-bar{position:absolute;bottom:0;left:0;height:2px}
+
+.rp-g{color:var(--ok)}
+.rp-r{color:var(--red)}
+.rp-y{color:var(--gold)}
+.rp-d{color:var(--ink3)}
+
+/* ---- the one-line warning above the table ----------------------------- */
+.rp-alert{background:var(--warn-bg);border:1px solid var(--warn-line);
+  border-radius:var(--radius-sm);padding:7px 11px;margin-bottom:10px;
+  font-size:11.5px;color:var(--warn);display:flex;align-items:center;gap:6px}
+.rp-alert b{cursor:pointer;text-decoration:underline;margin-left:2px}
+
+/* ---- the table -------------------------------------------------------- */
+.rp-card{background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-sm);overflow:hidden}
+/* Wide content scrolls INSIDE its own box. Nine columns on a phone would
+ * otherwise scroll the whole page sideways. */
+.rp-scroll{overflow-x:auto}
+.rp-tbl{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.rp-tbl th{font-size:9px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--ink3);text-align:left;padding:7px 5px;
+  border-bottom:1px solid var(--line2);white-space:nowrap}
+.rp-tbl td{padding:5px;border-bottom:1px solid var(--line);font-size:11.5px;
+  vertical-align:middle}
+.rp-tbl tr.rp-row{cursor:pointer;transition:background .1s}
+.rp-tbl tr.rp-row:hover>td{background:rgba(255,255,255,.03)}
+.rp-tbl tr.rp-held>td{background:var(--warn-bg)}
+.rp-tbl tr.rp-sel>td{background:var(--accent-bg);border-bottom-color:transparent}
+.rp-tbl th:first-child,.rp-tbl td:first-child{padding-left:10px}
+.rp-tbl th:last-child,.rp-tbl td:last-child{padding-right:10px}
+
+.rp-thumb{width:36px;height:36px;border-radius:var(--radius-sm);
+  background:var(--bg);border:1px solid var(--line2);display:flex;
+  align-items:center;justify-content:center;font-size:15px;flex-shrink:0;
+  overflow:hidden;color:var(--ink4);position:relative}
+.rp-thumb img{width:100%;height:100%;object-fit:cover}
+
+.rp-nm{font-weight:500;font-size:11.5px;max-width:180px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.rp-asin{font-size:9px;color:var(--accent2);font-weight:500;
+  text-decoration:none}
+.rp-asin:hover{text-decoration:underline}
+.rp-p{font-weight:600;font-size:11.5px}
+.rp-was{text-decoration:line-through;font-size:9.5px;color:var(--ink3)}
+
+/* The status dot. Five states, and each one is a different question:
+ * green = it can change a live price; teal = it is only watching;
+ * amber = it wants a decision; red = the supplier has gone;
+ * grey = nothing is known yet. */
+.rp-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.rp-dg{background:var(--ok)}
+.rp-dr{background:var(--red)}
+.rp-dy{background:var(--gold)}
+.rp-db{background:var(--accent)}
+.rp-dd{background:var(--ink4)}
+
+/* ---- sparkline -------------------------------------------------------- */
+.rp-spk{cursor:pointer;position:relative;width:70px;height:24px}
+.rp-spk svg{width:100%;height:100%;display:block}
+.rp-spk:hover .rp-stip{display:block}
+.rp-stip{display:none;position:absolute;bottom:28px;left:50%;
+  transform:translateX(-50%);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:5px;padding:3px 7px;
+  font-size:10px;white-space:nowrap;z-index:10;
+  box-shadow:0 3px 10px rgba(0,0,0,.45);font-variant-numeric:tabular-nums;
+  color:var(--ink)}
+
+/* ---- the panel that opens under a row --------------------------------- *
+ *
+ *     "the detail panel must be FLUSH with the table edges ... The detail
+ *      <td colspan> should have padding:0. The inner .det div uses the same
+ *      horizontal padding as the table cells (5px)"
+ *
+ * A cell's own padding would inset the panel from the columns above it, and
+ * the panel would read as a separate box floating inside the row instead of
+ * as that row opened up. */
+.rp-tbl td.rp-detcell{padding:0;border-bottom:2px solid var(--line2)}
+.rp-det{border-top:2px solid var(--line2);background:var(--panel);
+  padding:10px 5px;animation:rpFade .15s ease}
+@keyframes rpFade{from{opacity:0;transform:translateY(-4px)}
+                  to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion:reduce){.rp-det{animation:none}}
+
+/* ---- where the price goes: one bar, no gaps --------------------------- *
+ * The four colours below are the mockup's, unchanged -- see the file note. */
+.rp-sbar{display:flex;height:28px;border-radius:var(--radius-sm);
+  overflow:hidden}
+.rp-sbar div{display:flex;align-items:center;justify-content:center;
+  font-size:9.5px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden}
+.rp-sb-cost{background:#5b8fb9}
+.rp-sb-ref{background:#e25c5c}
+/* The closing fee is usually pennies, so as a share of the price it would be
+ * a sliver too thin to read. It gets a floor width instead of a share. */
+.rp-sb-close{flex:0 0 auto;min-width:40px;background:#d4846f}
+.rp-sb-profit{background:#4ebb82}
+/* A price that does not cover its cost has no profit segment to draw. Saying
+ * so beats a bar that silently stops early. */
+.rp-sb-loss{background:var(--red-bg);color:var(--red);border:1px dashed var(--red-line)}
+.rp-sbleg{display:flex;gap:10px;font-size:10px;color:var(--ink3);
+  margin:5px 0 9px;flex-wrap:wrap}
+.rp-sq{width:8px;height:8px;border-radius:2px;display:inline-block;
+  vertical-align:middle;margin-right:4px}
+
+/* ---- the three headline figures inside the panel ---------------------- */
+.rp-met2{display:flex;gap:6px;margin-bottom:9px;flex-wrap:wrap}
+.rp-m2{text-align:center;padding:6px 8px;border-radius:var(--radius-sm);
+  flex:1;min-width:74px}
+.rp-m2g{background:var(--ok-bg);border:1px solid var(--ok-line)}
+.rp-m2b{background:var(--accent-bg);border:1px solid var(--accent-line)}
+.rp-m2y{background:var(--warn-bg);border:1px solid var(--warn-line)}
+.rp-m2 .rp-n{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.rp-m2 .rp-l{font-size:9px;color:var(--ink3);margin-top:2px}
+
+/* ---- suppliers, as rows rather than cards ----------------------------- */
+.rp-sup{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;
+  margin-bottom:8px}
+.rp-sup th{font-size:8px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--ink3);text-align:left;padding:3px;
+  border-bottom:1px solid var(--line2);white-space:nowrap}
+.rp-sup td{padding:4px 3px;font-size:10.5px;border-bottom:1px solid var(--line)}
+/* Dimmed, not dropped. A supplier you cannot buy from today is information --
+ * it is why the cheapest price on the page is not the one being used. */
+.rp-sup tr.rp-oos td{opacity:.4}
+.rp-sup .rp-snm{color:var(--accent2);font-weight:500;font-size:10.5px;
+  text-decoration:none;max-width:190px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;display:inline-block;vertical-align:bottom}
+.rp-sup .rp-snm:hover{text-decoration:underline}
+.rp-tag{font-size:7px;font-weight:700;padding:1px 4px;border-radius:2px;
+  letter-spacing:.03em}
+.rp-tgu{background:var(--ok);color:#0a1a14}
+.rp-tgo{background:var(--red-bg);color:var(--red)}
+.rp-supspk{width:50px;height:16px}
+.rp-supspk svg{width:100%;height:100%;display:block}
+
+/* ---- the rules, as pills you can click ------------------------------- */
+.rp-rules{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.rp-rl{padding:3px 7px;border-radius:4px;border:1px solid var(--line2);
+  font-size:10px;display:inline-flex;align-items:center;gap:4px;
+  background:transparent;color:var(--ink);cursor:pointer;font-family:inherit}
+.rp-rl:hover{border-color:var(--accent-line);background:var(--panel2)}
+.rp-rl .rp-k{color:var(--ink3)}
+.rp-rl .rp-v{font-weight:600;font-variant-numeric:tabular-nums}
+.rp-rl .rp-v.rp-g{color:var(--ok)}
+.rp-rl .rp-v.rp-off{color:var(--ink4);font-weight:400}
+
+/* ---- the full-size chart a sparkline opens into ---------------------- */
+.rp-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
+  z-index:100;align-items:center;justify-content:center;padding:16px}
+.rp-ov.rp-show{display:flex}
+.rp-box{background:var(--panel);border:1px solid var(--line2);
+  border-radius:var(--radius);padding:14px 18px;width:420px;max-width:100%;
+  max-height:86vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.rp-box h4{font-size:13.5px;font-weight:500;margin:0 0 3px}
+.rp-box .rp-x{float:right;cursor:pointer;color:var(--ink3);font-size:15px;
+  background:none;border:0;line-height:1;padding:0}
+.rp-crow{display:flex;align-items:center;gap:7px;padding:3px 0;font-size:11.5px;
+  font-variant-numeric:tabular-nums}
+.rp-cdate{min-width:74px;color:var(--ink3);font-size:10px}
+.rp-ctrack{flex:1;height:12px;background:var(--line2);border-radius:2px;
+  overflow:hidden}
+.rp-cfill{height:100%;border-radius:2px;opacity:.62}
+.rp-cval{min-width:52px;font-weight:600;font-size:11px;text-align:right}
+.rp-cnote{font-size:9.5px;margin-left:4px;color:var(--red)}

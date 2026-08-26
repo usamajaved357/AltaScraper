@@ -144,7 +144,11 @@ for p, s in srcs.items():
     truthy("%s asks source_link for the name" % p,
            re.search(r"_slink\.display_name\(", s))
 js = open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8-sig").read()
-truthy("the repricer draws the server's name", "s.name || _srcShort" in js)
+# Same name, same fallback -- read off options_for's `label`, which is what
+# display_name() writes into it, rather than off the raw source row. One
+# function still decides what a link is called (CLAUDE.md Rule 12).
+truthy("the repricer draws the server's name",
+       "s.label || _srcShort(s.url)" in js)
 
 print("\n%d failed" % len(fails))
 for f in fails:

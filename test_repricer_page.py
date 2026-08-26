@@ -125,14 +125,34 @@ truthy("the coupon really does reduce the profit",
        withp["profit_promo"] < withp["profit"])
 
 print("\n=== the row draws both, and says which is which ===")
-truthy("the full-price price is labelled plainly", "'selling price'" in JS)
-truthy("  the cheapest source is named as such", "'cheapest source'" in JS)
-truthy("  and the discounted one is labelled", "'after coupon'" in JS)
-truthy("margin and ROI appear for both", JS.count("cell('margin'") == 2
-       and JS.count("cell('ROI'") == 2)
-truthy("the handling time in force is shown", "cell('handling'" in JS)
-truthy("  built from the supplier's dispatch plus the buffer",
-       "plus the safety buffer" in J)
+# THE SCREEN IS A TABLE NOW, so the figures that were a strip of labelled cells
+# on a bordered card are split between COLUMNS -- where a header names each one
+# once instead of sixty-seven times -- and the panel that opens under a row.
+#
+# What is asserted is the same in substance: both prices are shown, both sets of
+# margin and ROI are shown, the handling time is shown, and none of the coupon
+# figures appear on a SKU where no discount was measured.
+truthy("the full-price price is a column of its own",
+       ">Price</th>" in JS or "title=\"What it sells for on Amazon now" in JS)
+truthy("  the cheapest source's two halves are columns too",
+       ">Item</th>" in JS and ">Post</th>" in JS)
+truthy("  and the discounted price is labelled where it appears",
+       "'After coupon'" in JS)
+# TWO STRIPS: the figures at the listed price, then the same figures again with
+# the coupon on. Asserted by splitting on the heading between them rather than
+# by counting the word "Margin" in the whole file -- the rules pills carry an
+# ROI and a Margin pill too, and a count would silently pass or fail on those.
+_full, _sep, _promo = JS.partition("With the coupon on")
+truthy("margin and ROI appear at the listed price",
+       "'Margin'," in _full and "'ROI'," in _full)
+truthy("  and again with the coupon on",
+       bool(_sep) and "'Margin'," in _promo and "'ROI'," in _promo)
+truthy("the handling time in force is shown", "'Handling'," in JS)
+truthy("  and it says the postage is NOT in that number",
+       "counted by Amazon separately" in JS)
+truthy("  because the decision took the postage days off",
+       "postage already covers" in io.open(
+           r"D:\AltaScraper\domain\sourcing.py", encoding="utf-8").read())
 falsy("no coupon columns on a SKU with no measured discount",
       "if(p){" not in JS)
 
@@ -140,16 +160,36 @@ print("\n=== every supplier link is on the row, not behind a button ===")
 truthy("the server ranks them with the ORDER screen's own function",
        "_osrc.options_for(" in R)
 truthy("  and sends them with the row", '"options": _opts' in R)
-truthy("the row draws them with the order panel's renderer",
-       "_ordSourcesHtml({options: r.options" in JS)
+# ONE RANKING, TWO LAYOUTS -- and that is the correct reading of Rule 12.
+#
+# The Repricer used to borrow the order panel's renderer outright. It now draws
+# its own compact TABLE (_supTable), because the two screens are answering
+# different questions: an order has one supplier and you want its full story,
+# while the Repricer has sixty-seven SKUs and you want several suppliers lined
+# up so their prices can be compared down a column.
+#
+# What must NOT be duplicated is the thinking, and it is not: the ranking, the
+# landed cost, the "you keep" figure and the delivery sentence are all computed
+# once in domain/order_sources.options_for and simply drawn twice. Two layouts
+# over one calculation is not two copies of the logic.
+truthy("the row draws them from the SAME ranked options",
+       "function _supTable(" in JS and "r.options || []" in JS)
+truthy("  keyed on the fields options_for actually returns",
+       "s.source_id" in JS and "s.state === 'dead'" in JS
+       and "o.state === 'buyable'" in JS)
+truthy("  and it still uses the shared delivery sentence",
+       "_srcDeliveryLine({" in JS)
 truthy("  which puts the cheapest first and marks it",
        "odp-rank" in io.open(r"D:\AltaScraper\static\js\orders.js",
                              encoding="utf-8").read())
 truthy("  and carries each supplier's delivery estimate",
        "delivery_text" in io.open(r"D:\AltaScraper\domain\order_sources.py",
                                   encoding="utf-8").read())
-truthy("a missing renderer degrades rather than breaking the page",
-       'typeof _ordSourcesHtml === "function"' in JS)
+# A SKU WITH NO SUPPLIER SAYS SO rather than drawing an empty table. It was the
+# guard against orders.js not having loaded; the renderer is local now, so the
+# case that remains is the real one -- a tracked SKU nobody has linked yet.
+truthy("a SKU with no supplier link says so rather than drawing nothing",
+       "No supplier link on this SKU yet" in JS)
 
 print("\n=== select several SKUs and stop tracking them at once ===")
 truthy("each row has a tickbox", 'class="srcsel"' in JS)

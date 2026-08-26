@@ -80,7 +80,12 @@ truthy("and a timeout is never taken as deletion",
        "Amazon would not answer\" is NOT \"the listing is gone" in R)
 
 print("\n--- the screen says so, and offers the check ---")
-truthy("a red chip on the row", "_goneChip" in J and "deleted on Amazon" in J)
+# The chip is a red GONE mark beside the product name now, and a red status
+# dot in the last column -- so a dead listing reads down a column instead of
+# having to be found somewhere along each row.
+truthy("a red flag on the row",
+       '>GONE</span>' in J and "Amazon no longer has this SKU" in J)
+truthy("  and a red dot in the state column", "'rp-dr'" in J)
 truthy("  saying auto-pricing is already off", "auto-pricing switched off" in J)
 truthy("a button to ask Amazon about every tracked SKU",
        "sourcingCheckListings" in J and "/sourcing/check_listings" in R)

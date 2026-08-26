@@ -38,6 +38,43 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
             aid = str(acc.get("id") or (_state or {}).get("active_account_id") or "")
         return aid
 
+    # ---- the bell: what the app has told you, in the app ------------------
+    #
+    # WHY THIS EXISTS SEPARATELY FROM THE CHANNELS ABOVE. Those send outward --
+    # Slack, a webhook -- and only for the handful of things worth interrupting
+    # somebody about. The bell is the DURABLE record: the four-hourly run
+    # happens when this page is closed, so a toast would be gone before anyone
+    # could read it, and the price that changed at 3am would be a change nobody
+    # was ever told about.
+    #
+    # Reading is open to any signed-in user, like the dry run is: being told
+    # what the app did changes nothing.
+    @app.route("/notify/inbox", methods=["GET"])
+    def notify_inbox():
+        """The bell: how many are unread, and the most recent few."""
+        try:
+            limit = max(1, min(50, int(request.args.get("limit") or 12)))
+        except (TypeError, ValueError):
+            limit = 12
+        wsid = _acct()
+        return jsonify({
+            "ok": True,
+            # Scoped to the account being looked at, for the same reason every
+            # other screen is: one account's prices are not another's business.
+            "unread": _n.unread_count(CONFIG_PATH, workspace_id=wsid),
+            "rows": _n.recent(CONFIG_PATH, workspace_id=wsid, limit=limit)})
+
+    @app.route("/notify/read", methods=["POST"])
+    def notify_read():
+        """Mark some, or all of this account's, as read."""
+        b = request.get_json(silent=True) or {}
+        ids = [int(x) for x in (b.get("ids") or []) if str(x).strip().isdigit()]
+        wsid = _acct()
+        n = _n.mark_read(CONFIG_PATH, ids=ids or None,
+                         workspace_id=None if ids else wsid)
+        return jsonify({"ok": True, "marked": n,
+                        "unread": _n.unread_count(CONFIG_PATH, workspace_id=wsid)})
+
     @app.route("/notify/channels", methods=["GET"])
     def notify_channels():
         # include_secret is never passed here: the full webhook URL is a bearer

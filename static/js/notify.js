@@ -211,3 +211,137 @@ async function ntfSendNow() {
   else toast(j.sent + " sent, " + j.skipped + " not repeated, " + j.failed + " failed");
   ntfLoad();
 }
+
+/* ======================================================================
+ * THE BELL.
+ *
+ * The other half of this file sends OUTWARD -- Slack, a webhook -- and only
+ * for the handful of things worth interrupting somebody about. This is the
+ * durable in-app record, and it exists because of when the repricer runs.
+ *
+ * It runs every four hours, and almost always with this page closed. A toast
+ * is gone before anyone could read it; the price that changed at 3am would
+ * otherwise be a change nobody was ever told about. So every announcement is
+ * written to a table first and sent second -- see announce() in
+ * domain/notify.py -- and this reads that table back.
+ *
+ * IT REPORTS, IT DOES NOT ACT. Nothing in this panel changes a price, arms a
+ * SKU or touches Amazon. The only thing it writes is "I have read this".
+ * ====================================================================== */
+let BELL = { open: false, rows: [], unread: 0, timer: null };
+
+function _bellQs() { return (typeof scopeQs === "function") ? scopeQs() : ""; }
+
+/* A quiet bell is a quiet bell: the dot only exists when something is unread. */
+async function notifPoll() {
+  try {
+    const j = await (await fetch("/notify/inbox" + _bellQs())).json();
+    if (!j || !j.ok) return;
+    BELL.rows = j.rows || [];
+    BELL.unread = j.unread || 0;
+  } catch (e) { return; }
+  const dot = document.getElementById("belldot");
+  if (dot) {
+    dot.style.display = BELL.unread ? "block" : "none";
+    dot.textContent = BELL.unread > 99 ? "99+" : String(BELL.unread);
+  }
+  if (BELL.open) notifDraw();
+}
+
+function _bellIcon(t) {
+  const k = String(t || "");
+  if (k === "out_of_stock")   return ["ti-package-off", "var(--red)"];
+  if (k === "back_in_stock")  return ["ti-package",     "var(--ok)"];
+  if (k === "large_move")     return ["ti-trending-up", "var(--gold)"];
+  if (k === "supplier_ended") return ["ti-link-off",    "var(--red)"];
+  if (k === "error")          return ["ti-alert-triangle", "var(--red)"];
+  return ["ti-tag", "var(--ink3)"];
+}
+
+function notifDraw() {
+  const box = document.getElementById("bellpanel");
+  if (!box) return;
+  const rows = BELL.rows || [];
+  let h = '<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;'
+    + 'border-bottom:1px solid var(--line)">'
+    + '<b style="font-size:12.5px;flex:1">What the app has done</b>'
+    + (BELL.unread
+        ? '<button class="db-chip" onclick="notifReadAll()">Mark all read</button>'
+        : '')
+    + '</div>';
+  if (!rows.length) {
+    h += '<div class="cc" style="padding:14px 11px;font-size:11.5px;line-height:1.5">'
+      + 'Nothing yet. Price changes, listings going out of stock and suppliers '
+      + 'ending up here as they happen &mdash; including the ones that happen '
+      + 'while this page is closed.</div>';
+  } else {
+    rows.forEach(function (r) {
+      const ic = _bellIcon(r.type);
+      h += '<div style="display:flex;gap:8px;padding:8px 11px;'
+        + 'border-bottom:1px solid var(--line);'
+        + (r.is_read ? 'opacity:.55' : 'background:var(--accent-bg)') + '">'
+        + '<i class="ti ' + ic[0] + '" style="color:' + ic[1] + ';font-size:14px;'
+        + 'flex:none;margin-top:1px"></i>'
+        + '<div style="min-width:0;flex:1">'
+        + '<div style="font-size:11.5px;font-weight:600">' + esc(r.title || "") + '</div>'
+        + (r.body
+            ? '<div class="cc" style="font-size:11px;line-height:1.45;'
+              + 'white-space:pre-wrap">' + esc(r.body) + '</div>'
+            : '')
+        + '<div class="cc" style="font-size:9.5px;margin-top:2px">'
+        + esc(r.created_at || "") + (r.sku ? " &middot; " + esc(r.sku) : "")
+        + '</div></div></div>';
+    });
+  }
+  box.innerHTML = h;
+}
+
+function notifBell() {
+  let box = document.getElementById("bellpanel");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "bellpanel";
+    box.style.cssText = "position:fixed;top:52px;right:14px;width:340px;"
+      + "max-width:calc(100vw - 20px);max-height:70vh;overflow-y:auto;"
+      + "background:var(--panel);border:1px solid var(--line2);"
+      + "border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,.5);"
+      + "z-index:9500;display:none";
+    document.body.appendChild(box);
+    // Clicking anywhere else closes it. Registered once, on the document, so
+    // opening and closing the panel forty times does not leave forty listeners.
+    document.addEventListener("click", function (e) {
+      if (!BELL.open) return;
+      const b = document.getElementById("bellbtn");
+      if (box.contains(e.target) || (b && b.contains(e.target))) return;
+      BELL.open = false;
+      box.style.display = "none";
+    });
+  }
+  BELL.open = !BELL.open;
+  box.style.display = BELL.open ? "block" : "none";
+  if (BELL.open) { notifDraw(); notifPoll(); }
+}
+
+async function notifReadAll() {
+  try {
+    const j = await (await fetch("/notify/read" + _bellQs(), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    })).json();
+    if (j && j.ok) { BELL.unread = j.unread || 0; await notifPoll(); }
+  } catch (e) { /* a bell that cannot be cleared must not break the page */ }
+}
+
+/* Once on load, then every two minutes. NOT faster: this is a record of things
+ * that happen every four hours, and a chattier poll would be one more request
+ * per screen for no new information. */
+(function () {
+  const go = function () {
+    notifPoll();
+    if (BELL.timer) clearInterval(BELL.timer);
+    BELL.timer = setInterval(notifPoll, 120000);
+  };
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", go);
+  else go();
+})();

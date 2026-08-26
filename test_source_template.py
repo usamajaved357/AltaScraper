@@ -223,16 +223,28 @@ _R2 = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
 truthy("the repricer asks for drafts", "include_drafts=True" in _R2)
 truthy("the row marks a supplier picture",
        "SRC" in J and 'it.img_source === "supplier"' in J)
-truthy("  and says so on hover", "SUPPLIER’s photograph" in J)
+# Now a corner mark on the thumbnail AS WELL as the tooltip -- a tooltip is
+# invisible on a phone, and showing a supplier's photograph as though it
+# were the live listing's is the app telling you what is on your Amazon
+# page when it is nothing of the kind.
+truthy("  and says so on hover", "SUPPLIER's photograph" in J)
+truthy("    and marks it where a tooltip cannot be read", ">SRC</span>" in J)
 truthy("a row with no picture at all says why, rather than showing a blank",
        "Amazon has none for this SKU" in J)
 
 print("\n--- and a picture on every row ---")
-truthy("the row draws the product", "_srcItemCell(" in J)
+truthy("the row draws the product",
+       'class="rp-thumb"' in J and 'class="rp-nm"' in J)
 truthy("  from the shared catalogue, via the row itself", "r.item" in J)
 truthy("  falling back to an icon rather than a broken image",
        "ti ti-photo" in J)
-truthy("  with the SKU as small print under the name", "it.title ? '10px'" in J)
+# The SKU is the code everything else is keyed on, so it cannot go away --
+# but it tells nobody WHICH PRODUCT a row is, which is what a name column
+# has to answer. It is in the tooltip and printed in full in the panel.
+truthy("  with the SKU still reachable from the row",
+       '(it.title || "") + "\\n" + r.sku' in J)
+truthy("    and printed in full once the row is open",
+       "<code>' + _sesc(r.sku) + '</code>" in J)
 R2 = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
 truthy("the server attaches it", '"item": _cat.look(idx, d["sku"])' in R2)
 truthy("  building the index once for the whole list, not per row",
