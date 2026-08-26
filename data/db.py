@@ -551,6 +551,42 @@ CREATE INDEX IF NOT EXISTS idx_srcsources_sku  ON sourcing_sources(workspace_id,
 CREATE INDEX IF NOT EXISTS idx_srcchecks_src   ON sourcing_checks(source_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_srcactions_sku  ON sourcing_actions(workspace_id, marketplace, sku, at);
 
+-- WHAT AMAZON SAID IT WOULD TAKE, PER PRODUCT.
+--
+--     "get accurate fees from amazon per item"
+--
+-- The repricer priced every SKU at a flat 15%. Measured against what Amazon has
+-- actually settled: jack_uk 17.5%, nestwell_goods 18.0%, selvora_limited 18.0%.
+-- Every floor it computed was therefore too low, and a "20% ROI" was really
+-- about 14%.
+--
+-- A RATE, NOT AN AMOUNT, AND THAT IS WHAT MAKES THIS WORKABLE. The fee depends
+-- on the price and the repricer is computing the price, so asking for an amount
+-- is circular. Amazon's referral fee is a PERCENTAGE by category, so the rate
+-- implied by one quote holds at any price -- quote once, derive the rate, and
+-- the circle is gone.
+--
+-- It is also what keeps the API usage sane: one call per product per week
+-- instead of one per product per four-hour cycle. 67 SKUs would otherwise be
+-- 67 calls every cycle against a limit Amazon enforces.
+--
+-- FBA IS DELIBERATELY NOT IN THE RATE. It is a per-unit figure that depends on
+-- the item's size and weight band, not a share of the price, and it is genuinely
+-- zero on a merchant-fulfilled order. Rolling it into a percentage would make
+-- the rate wrong at every price except the one it was quoted at.
+CREATE TABLE IF NOT EXISTS fee_quotes(
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    asin          TEXT NOT NULL,
+    rate          REAL,          -- (referral + closing) / the price it was quoted at
+    referral      REAL,
+    closing       REAL,
+    quoted_price  REAL,          -- kept so a reader can see what it was measured at
+    currency      TEXT,
+    quoted_at     TEXT,
+    PRIMARY KEY (workspace_id, marketplace, asin)
+);
+
 -- Every AI call the app makes, and what it cost.
 --
 -- One row per call, never aggregated on the way in: a total cannot be broken

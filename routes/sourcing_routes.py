@@ -725,6 +725,67 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return jsonify({"ok": True})
 
     # ---- rules ----------------------------------------------------------
+    @app.route("/sourcing/fees", methods=["POST"])
+    def sourcing_fees():
+        """Ask Amazon what it charges on each product, and remember the answer.
+
+            "get accurate fees from amazon per item"
+
+        THE ONLY PLACE THAT CALLS AMAZON ABOUT A FEE. Pricing reads the cache
+        this fills (domain/amazon_fees.rate_for_asin with allow_quote=False),
+        because the pricing path runs for every enrolled SKU on every page load
+        and sixty-seven live calls before a screen can draw is not a page.
+
+        A RATE, NOT AN AMOUNT. Amazon's referral fee is a percentage by
+        category, so one quote gives a rate that holds at any price -- which is
+        what makes it cacheable at all, and what breaks the circle of "the fee
+        depends on the price and we are computing the price".
+
+        Body: {skus:[...]} for some, or {} for every enrolled SKU. force=true
+        re-asks even where a fresh answer is already held.
+        """
+        from domain import amazon_fees as _fees
+        from domain import source_run as _run
+
+        b = _body()
+        wsid, mkt = _where()
+        force = bool(b.get("force"))
+        want = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
+        if not want:
+            want = [str(e.get("sku")) for e in _repo.enrolled(CONFIG_PATH, wsid, mkt)]
+        if not want:
+            return jsonify({"ok": False, "error": "no SKUs are being tracked"}), 400
+
+        creds, mkt_id, _seller = _creds_for(wsid, mkt)
+        done, skipped, failed = [], [], []
+        for sku in want:
+            cur = _run.current_for(CONFIG_PATH, wsid, mkt, sku) or {}
+            asin, price = cur.get("asin"), cur.get("price")
+            # NOTHING IS INVENTED. Amazon is asked about a product at a price;
+            # without either there is no question to put to it, and a made-up
+            # one would be answered confidently about the wrong thing.
+            if not asin or not price:
+                skipped.append({"sku": sku, "why": (
+                    "no ASIN in the catalogue snapshot" if not asin
+                    else "no current price to ask about")})
+                continue
+            rate, basis, detail = _fees.rate_for_asin(
+                CONFIG_PATH, creds, wsid, mkt, mkt_id, asin, price,
+                is_fba=_run._is_fba(cur), force=force, allow_quote=True)
+            row = {"sku": sku, "asin": asin, "rate": rate,
+                   "basis": basis, "detail": detail}
+            (done if basis == _fees.QUOTED else failed).append(row)
+        return jsonify({
+            "ok": True, "quoted": len(done), "skipped": len(skipped),
+            "failed": len(failed), "rows": done, "not_quoted": failed,
+            "left_alone": skipped,
+            # The headline a screen should show. Said here so the route and the
+            # button cannot describe the same run differently.
+            "note": ("Amazon quoted %d of %d. %s"
+                     % (len(done), len(want),
+                        ("The rest fall back to your own measured rate."
+                         if (failed or skipped) else "")).strip())})
+
     @app.route("/sourcing/rules", methods=["POST"])
     def sourcing_rules():
         b = _body()

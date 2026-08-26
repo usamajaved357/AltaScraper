@@ -250,6 +250,46 @@ async function sourcingHoldPrice(sku){
   }catch(e){ toast(String(e)); }
 }
 
+/* ASK AMAZON WHAT IT CHARGES ON EACH PRODUCT.
+ *
+ * Fills the fee cache. Pricing reads that cache and never calls Amazon itself,
+ * because pricing runs for every enrolled SKU on every page load.
+ *
+ * IT SAYS WHAT IT COULD NOT ANSWER. On an account whose SP-API roles are not
+ * granted Amazon refuses every one of these, and a button that reported "done"
+ * would leave the owner believing his prices were built on Amazon's figures
+ * when they are still built on an average.
+ */
+async function sourcingGetFees(btn){
+  const was = btn ? btn.innerHTML : "";
+  if(btn){ btn.disabled = true; btn.textContent = "Asking Amazon…"; }
+  try{
+    const j = await (await fetch(_srcUrl("/sourcing/fees"), {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: _srcBody({})})).json();
+    if(!j || !j.ok){ toast((j && j.error) || "Could not ask Amazon"); return; }
+    toast(j.note || (j.quoted + " quoted"));
+    // The ones Amazon would not answer for are the point of the second dialog:
+    // those SKUs keep pricing from your measured rate, and that is worth
+    // knowing per SKU rather than as a count.
+    const bad = (j.not_quoted || []).concat(j.left_alone || []);
+    if(bad.length){
+      await srcConfirm({
+        title: bad.length + " could not be quoted",
+        body: bad.slice(0, 10).map(function(r){
+                return "  " + r.sku + "\n      " + (r.detail || r.why || "");
+              }).join("\n")
+            + (bad.length > 10 ? "\n…and " + (bad.length - 10) + " more" : "")
+            + "\n\nThese keep pricing from your own measured rate instead of "
+            + "Amazon's quote. Their rows say so.",
+        confirm: "OK",
+      });
+    }
+    sourcingLoad();
+  }catch(e){ toast(String(e)); }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = was; } }
+}
+
 /* A MINIMUM PRICE ON MANY SKUS AT ONCE.
  *
  *     "i am not able to arm a sku"
@@ -970,6 +1010,20 @@ function sourcingRender(j){
     +  'suppliers and history are kept in case you relist it. One Amazon call per '
     +  'SKU, so it takes a moment.">'
     +  '<i class="ti ti-plug-connected-x"></i> Check they still exist</button>'
+    // ASK AMAZON WHAT IT ACTUALLY CHARGES, per product.
+    //
+    //     "the fees of amazon reflecting in the details should be accurate and
+    //      not estimate of 15 percent like i see right now in the app"
+    //
+    // Its own button rather than part of the supplier re-read, because it is a
+    // different question asked of a different API, it is rate-limited, and the
+    // answer keeps for a week. Pricing never calls Amazon itself -- it reads
+    // what this fills.
+    +  '<button class="db-chip" onclick="sourcingGetFees(this)" title="'
+    +  'Asks Amazon what its referral fee actually is on each tracked product, '
+    +  'and remembers it. Prices are then worked out from Amazon&#39;s own '
+    +  'figure instead of an assumed 15%. Changes no price by itself.">'
+    +  '<i class="ti ti-receipt-tax"></i> Get Amazon&#39;s fees</button>'
     // The switch that actually matters, named for what it does rather than for
     // where it lives. "Master switch: off" did not say off from WHAT.
     +  '<button class="db-chip'+(SRC_MASTER?' risk':'')+'" '
@@ -1230,8 +1284,19 @@ function _priceBreakdown(b, cur){
   if(b.supplier_postage!=null && b.supplier_postage>0)
     h += line('Their postage to you', b.supplier_postage, '');
   h += line('So one unit costs you', b.cost, 'delivered to your door');
+  // WHOSE FIGURE THIS IS. A rate is just a number; whether Amazon quoted it for
+  // this product or it is an average of your own settled orders is the
+  // difference between a figure and a guess, and the panel used to say "15%" in
+  // both cases. `fee_basis` comes from domain/source_run.decide_one.
+  const _fb = (b.fee_basis || "");
+  const _rate = ((b.fee_rate || 0) * 100).toFixed(2).replace(/\.00$/, "");
   h += line("Amazon's cut", b.fee,
-            Math.round((b.fee_rate||0)*100)+'% of the selling price, not of the cost');
+            _rate + '% of the selling price, not of the cost'
+            + (_fb === "quoted"
+                ? ' &mdash; <b>Amazon\'s own figure for this product</b>'
+                : _fb === "estimated"
+                ? ' &mdash; your measured rate, not Amazon\'s quote'
+                : ''));
   h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
   h += line('Set aside for ads', b.ads, '');
   // THE NUMBER YOU SET A TARGET AGAINST, said beside the profit it comes from.

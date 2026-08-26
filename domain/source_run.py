@@ -63,6 +63,12 @@ def current_for(config_path, workspace_id, marketplace, sku):
                 "lead_days": _int(it.get("handling")),
                 "fulfillment": str(it.get("fulfillment") or ""),
                 "status": str(it.get("status") or ""),
+                # OUR OWN ASIN, carried through so the fee can be asked about
+                # THIS product. Not the one in the SKU -- that is the COMPETITOR
+                # ASIN the listing was researched from (see rowAsin in
+                # static/js/listings.js), and asking Amazon what IT charges on
+                # someone else's product is a different question.
+                "asin": str(it.get("asin") or ""),
                 "found": True}
     return {}
 
@@ -85,6 +91,38 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     # and a stored copy could be edited into disagreeing with reality.
     rule.setdefault("currency", _sourcing.CURRENCY_FOR.get(
         str(marketplace or "").upper()))
+
+    # WHAT AMAZON ACTUALLY TAKES ON THIS PRODUCT.
+    #
+    #     "the fees of amazon reflecting in the details should be accurate and
+    #      not estimate of 15 percent like i see right now in the app"
+    #
+    # Right, and it was worse than a rounding difference. MEASURED against what
+    # Amazon has settled on these accounts: jack_uk 17.5%, nestwell_goods 18.0%,
+    # selvora_limited 18.0%, against the flat 15% every floor was built on. On a
+    # 24.00 unit that is 33.89 instead of 35.12 -- pricing 1.23 too low, and a
+    # "20% ROI" that is really about 14%.
+    #
+    # SET ONCE, HERE, so every one of the thirteen places decide() reads
+    # rule["referral_rate"] follows without knowing anything about fees. This is
+    # the only spot a rule is assembled before decide runs, so it is the only
+    # spot that has to change (CLAUDE.md Rule 12).
+    #
+    # Cache-only: allow_quote=False. This function runs for every enrolled SKU
+    # on every page load, and a live call apiece would be sixty-seven of them
+    # before the screen could draw. The cache is filled by /sourcing/fees.
+    rule["fee_basis"], rule["fee_detail"] = "", ""
+    try:
+        from domain import amazon_fees as _fees
+        _rate, _basis, _detail = _fees.rate_for_asin(
+            config_path, None, workspace_id, marketplace, None,
+            current.get("asin"), current.get("price"),
+            is_fba=_is_fba(current), allow_quote=False)
+        if _rate:
+            rule["referral_rate"] = _rate
+        rule["fee_basis"], rule["fee_detail"] = _basis, _detail
+    except Exception:
+        pass          # a fee lookup that fails must never stop a price being worked out
 
     if _is_fba(current):
         return current, {"action": "none", "price": None, "quantity": None,
@@ -119,6 +157,18 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
                         reason=(decision["reason"] + " -- held because " + note
                                 + (". Sync the catalogue and it will price normally."
                                    if not current.get("found") else "")))
+
+    # WHICH FEE THIS PRICE WAS BUILT ON, carried to the screen. A rate is a
+    # number; whether it came from Amazon or from an average of your own
+    # settled orders is the difference between a figure and a guess, and a
+    # screen that cannot tell them apart will present one as the other.
+    decision["fee_basis"] = rule.get("fee_basis") or ""
+    decision["fee_detail"] = rule.get("fee_detail") or ""
+    # On the breakdown too, because that is the table the "Amazon's cut" line is
+    # drawn from and it is read on its own (_priceBreakdown in sourcing.js).
+    if isinstance(decision.get("breakdown"), dict):
+        decision["breakdown"]["fee_basis"] = decision["fee_basis"]
+        decision["breakdown"]["fee_detail"] = decision["fee_detail"]
     return current, decision
 
 
