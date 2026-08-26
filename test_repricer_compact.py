@@ -94,13 +94,23 @@ truthy("    and suppliers that could not be read", "could not be read" in _fn)
 
 print("\n=== the sentence that never changes is said once ===")
 truthy("the repeated note is suppressed when folded", "if(!_cmp){" in _fn)
-# STATED ONCE, ABOVE THE TABLE. A table header already names each column
-# once by construction, which is most of the reason this screen is a table;
-# this is the part a header cannot carry, and it is still said exactly once
-# rather than under all 67 rows.
-check("  and the repricer states it once, above the list",
-      SRC.count("<b>Item</b> is what the supplier charges"), 1)
-truthy("  telling you the rows open", "Click any row to open it" in SRC)
+# ON THE COLUMN HEADERS, which is once by construction and is where a
+# column's definition belongs -- attached to the column, there when you
+# wonder, invisible when you do not. The sentence that used to sit above
+# the table went entirely: a row that highlights on hover and carries a
+# pointer already says it can be clicked.
+check("  and each column is defined exactly once, on its header",
+      SRC.count("What the cheapest usable supplier charges for the item"), 1)
+check("    including the postage half",
+      SRC.count("That supplier&#39;s postage to you"), 1)
+# The sentence is gone from what is DRAWN. It survives in a comment quoting the
+# request that removed it, which is why this looks at the code with comments
+# stripped -- otherwise a note explaining a deletion reads as the deletion not
+# having happened.
+_code = "\n".join(l for l in SRC.split("\n")
+                  if not l.strip().startswith(("//", "*", "/*")))
+truthy("  and nothing tells you rows can be clicked",
+       "Click any row to open it" not in _code)
 
 print("\n=== nothing was hidden that cannot be got back ===")
 # The full table is still built in compact mode -- only wrapped.

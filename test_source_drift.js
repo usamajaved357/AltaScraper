@@ -28,6 +28,7 @@ function check(label, got, want){
 function truthy(label, got){ check(label, !!got, true); }
 
 const JS = fs.readFileSync("D:/AltaScraper/static/js/sourcing.js", "utf8");
+const CSS = fs.readFileSync("D:/AltaScraper/static/css/repricer.css", "utf8");
 const PY = fs.readFileSync("D:/AltaScraper/domain/sourcing.py", "utf8");
 const DR = fs.readFileSync("D:/AltaScraper/domain/source_drift.py", "utf8");
 const RT = fs.readFileSync("D:/AltaScraper/routes/sourcing_routes.py", "utf8");
@@ -55,27 +56,50 @@ truthy("  and explains what it means for profit on hover",
        /profit figures are out\s*'?\s*\+?\s*'?\s*by about/.test(JS));
 truthy("a flat cost is not dressed as a warning",
        !/flags \+= .*cost.*unchanged/.test(JS));
-// The sentence itself is still there, in the panel.
-truthy("  and the full sentence is still in the panel",
-       /profit figures for this SKU still subtract the old/i.test(JS));
+// The full explanation is one line and a tooltip now, not a paragraph -- but it
+// still has to name BOTH costs and say which way the profit figures are wrong,
+// because "cost up 9%" on its own does not tell you a number elsewhere is
+// overstated.
+truthy("  and the panel still names both costs",
+       /Cost was <b>' \+ _smoney\(dr\.cogs\)/.test(JS));
+truthy("    and which way the profit figures are out",
+       /dr\.delta > 0 \? 'overstated' : 'understated'/.test(JS));
+truthy("    with the full explanation on hover",
+       /profit figures still subtract the old one/i.test(JS));
 
-console.log("\n=== the price sum is a list, not a sentence ===");
-truthy("there is a breakdown renderer", /function _priceBreakdown/.test(JS));
-// Three arguments now: the sum, what is live on Amazon, and the decision. The
-// third is where the per-fee breakdown hangs -- it is deliberately NOT on the
-// sum, because the sum is written to the log for every SKU every four hours.
-truthy("  drawn in the detail panel", /_priceBreakdown\(d\.breakdown, cur, d\)/.test(JS));
-[["What the supplier charges", "the supplier's price"],
- ["So one unit costs you", "the landed cost"],
- ["Amazon's cut", "the referral fee"],
- ["Your postage to the buyer", "the shipping label"],
- ["Set aside for ads", "the ads allowance"],
- ["Profit left over", "the profit"],
- ["Price it should sell at", "the total"]].forEach(function(p){
-  truthy("  names " + p[1], JS.indexOf(p[0]) > 0);
+console.log("\n=== the price sum is a PICTURE, not a list ===");
+// IT USED TO BE A LIST, and the list was the right answer to the question that
+// was asked of it then: "price 20.33 = 11.28 cost + 3.05 fee + 3.00 postage"
+// is five numbers run together, and a labelled column beat a sentence.
+//
+// The panel now draws the same five numbers as ONE BAR, segments flexed by
+// their own amounts. That answers the question the list answered badly: not
+// "what are the parts" but "what SHARE of the price is left". A profit of 2.02
+// means nothing until you can see it is a seventh of the bar and the supplier
+// is two thirds of it. Keeping the list as well would be the same five figures
+// twice, which is what made the panel long enough to need scrolling.
+truthy("there is a stacked-bar renderer", /function _stackBar/.test(JS));
+truthy("  drawn in the detail panel", /_stackBar\(b\) \+ _metStrip\(r\)/.test(JS));
+[[/class="rp-sb-cost"/, "the supplier's cost"],
+ [/class="rp-sb-ref"/, "the referral fee"],
+ [/class="rp-sb-close"/, "the closing fee"],
+ [/class="rp-sb-profit"/, "the profit"],
+ [/class="rp-sb-loss"/, "a price that does not cover its cost"]].forEach(function(p){
+  truthy("  has a segment for " + p[1], p[0].test(JS));
 });
-truthy("the fee is explained as a cut of the PRICE, not of the cost",
-       /% of the selling price, not of the cost/.test(JS));
+// SEGMENT WIDTHS ARE TRUE TO THE MONEY. A bar whose parts are not proportional
+// is a picture that lies, and it would lie about exactly the thing it is drawn
+// to show.
+truthy("  flexed by the amounts themselves",
+       /style="flex:' \+ cost \+ '"/.test(JS)
+       && /style="flex:' \+ profit \+ '"/.test(JS));
+// ...except the closing fee, which is usually pennies and would be a sliver too
+// thin to read. It gets a floor width instead of a share, and the CSS says so.
+truthy("  except the closing fee, which gets a floor width",
+       /\.rp-sb-close\{flex:0 0 auto;min-width:40px/.test(CSS));
+truthy("the fee is still explained as a cut of the PRICE, not of the cost",
+       /share of the cash you put in/.test(JS)
+       && /share of what the buyer paid/.test(JS));
 
 console.log("\n=== the numbers come from the decision, not from its prose ===");
 // Reading them back out of the reason sentence would be deriving meaning from

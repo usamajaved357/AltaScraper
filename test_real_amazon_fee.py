@@ -132,11 +132,18 @@ truthy("the basis reaches the screen", 'decision["fee_basis"]' in RUN)
 
 print("\n=== the screen says whose figure it is ===")
 JS = open(os.path.join("static", "js", "sourcing.js"), encoding="utf-8").read()
+# The "Amazon's cut" line went with the rest of the price list. The distinction
+# it carried is now on the Amazon fee PILL, which is greened when quoted and
+# prints the word beside the rate -- "17.5% measured" or "15.3% quoted" -- so it
+# reads without hovering, which the old note did not.
 truthy("a quote is named as Amazon's own",
-       "Amazon\\'s own figure for this product" in JS or
-       "Amazon's own figure for this product" in JS)
+       ("Amazon\\'s own figure for this product" in JS
+        or "Amazon's own figure for this product" in JS)
+       and "'quoted' : 'measured'" in JS)
 truthy("  and an estimate is not dressed up as one",
-       "your measured rate, not Amazon" in JS)
+       "your measured rate, not Amazon" in JS.replace("\\'", "'"))
+truthy("    with the quoted one marked green and the estimate not",
+       "quoted ? 'rp-g' : ''" in JS)
 # It printed a rounded whole number, so 17.5% read as "18%" and 15% and 15.4%
 # looked identical.
 # Asserted on the CODE that formats it rather than on "whatever appears near
@@ -144,7 +151,9 @@ truthy("  and an estimate is not dressed up as one",
 # phrase, and adding a comment mentioning it elsewhere in the file moved the
 # split point and failed a line that had not changed.
 truthy("the rate is shown to the decimal",
-       '((b.fee_rate || 0) * 100).toFixed(2)' in JS)
+       "(b.fee_rate * 100).toFixed(2)" in JS)
+truthy("  without a pointless trailing zero",
+       ".replace(/\\.00$/, '')" in JS)
 
 print("\n=== asking Amazon is a read, and its own button ===")
 G = open(os.path.join("auth", "guard.py"), encoding="utf-8").read()

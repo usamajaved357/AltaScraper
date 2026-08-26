@@ -177,6 +177,9 @@ print("\n=== the screen ===")
 J = open(r"D:\AltaScraper\static\js\sourcing.js", encoding="utf-8").read()
 truthy("there is a button to get the template", "/sourcing/template.csv" in J)
 truthy("  next to the one that uploads it back", "sourcingUpload(this)" in J)
+# Now the title on the menu row rather than on a toolbar button -- the
+# template is something you fetch once when setting an account up, not
+# something you press daily.
 truthy("  and it says untouched cells are left alone",
        "Columns you leave blank are not changed" in J)
 # AND IT TELLS HIM HOW TO GO PAST TEN, which he asked for by name.

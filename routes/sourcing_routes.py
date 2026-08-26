@@ -226,6 +226,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                         "master_enabled": _apply.is_enabled(_cfg),
                         "rule": _sourcing.rule_with_defaults(
                             _repo.rule_for(CONFIG_PATH, wsid, mkt, "")),
+                        # How long the postage takes. Sent so the settings menu
+                        # can show the value in force rather than the module
+                        # default, which would read as "2 days" on an account
+                        # that had changed it to 1.
+                        "shipping_policy_days": int(
+                            _read_config().get("shipping_policy_days")
+                            or _sourcing.SHIPPING_POLICY_DAYS),
                         "defaults": _sourcing.DEFAULT_RULE})
 
     @app.route("/sourcing/check_listings", methods=["POST"])
