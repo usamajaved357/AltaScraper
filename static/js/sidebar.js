@@ -2,12 +2,22 @@
 //
 // "also make the sidebar hideable like in amazon"
 //
-// Seller Central folds its menu to a rail of icons rather than hiding it
-// outright, and that is the right shape: a menu that disappears completely
-// leaves nothing to navigate WITH, so getting back to it means hunting for the
-// control that brings it back. Folded, every destination is still one click
-// away -- it just stops spending 210px of a 1500px screen on words you already
-// know.
+// FOLDED, IT IS A HAMBURGER AND NOTHING ELSE. Owner's decision, 27 Aug 2026:
+//
+//     "when the sidebar is collapsed, it currently shows a vertical strip of
+//      icons. This takes up space and looks cluttered. Instead: when collapsed,
+//      show ONLY a hamburger menu icon (☰) at the top left -- exactly like
+//      Amazon Seller Central does. The icon strip approach is removed."
+//
+// It used to fold to a rail of icons, on the argument that a menu which
+// disappears leaves nothing to navigate WITH. That argument does not hold here:
+// the hamburger stays, in the corner, which is where every app that does this
+// puts it -- so there is always something to open the menu with. What the rail
+// actually cost was 54px of every screen for a column of unlabelled glyphs.
+//
+// _navFillTitles is kept even though nothing is now shown to hover: the titles
+// are the accessible names of the items when the menu is OPEN too, and several
+// screens' rows carry a real explanation in that attribute.
 //
 // The state is remembered per browser, because a person who wants the room
 // wants it every time, not once.

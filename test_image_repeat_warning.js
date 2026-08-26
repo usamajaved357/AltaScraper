@@ -85,8 +85,10 @@ truthy("  naming which section, since each has its own button",
 // entirely. The user opted in to GENERATING, not to a number never shown.
 check("auto no longer buys silence",
       /!auto && jobs\.length>4/.test(G), false);
+// uiConfirm, not confirm -- the app draws its own now. AWAITED, because a
+// Promise is truthy and a forgotten await would approve every batch silently.
 truthy("  the count is confirmed however it was started",
-       /if\(jobs\.length>4 && !confirm\(/.test(G));
+       /if\(jobs\.length>4 && !await uiConfirm\(/.test(G));
 truthy("  and the measurement is recorded beside it",
        /more than 20 on a single/.test(G));
 // The other batch paths already showed their arithmetic; they must keep it.

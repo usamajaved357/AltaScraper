@@ -143,7 +143,7 @@ async function batchGenerate(kind){
   if(!skus.length){ toast("Select some listings first"); return; }
   // Batch COPY regeneration runs through the generator with a --skus filter.
   // If your generator build doesn't have --skus yet, it will report that.
-  if(!confirm("Regenerate listing copy for "+skus.length+" selected SKU(s)?\nThis reruns the generator scoped to just these SKUs.")) return;
+  if(!await uiConfirm("Regenerate listing copy for "+skus.length+" selected SKU(s)?\nThis reruns the generator scoped to just these SKUs.")) return;
   navTo("generate");
   const log=document.getElementById("log"); if(log){ log.style.display="block"; log.textContent="Starting regeneration for "+skus.length+" SKU(s)…\n"; }
   try{
@@ -164,7 +164,7 @@ async function batchAutoGenerate(kind){
   if(!skus.length){ toast("Select some listings first"); return; }
   const per=(kind==="aplus")?7:7; // 7 secondary or up to 7 A+ modules
   const n=skus.length;
-  if(!confirm("Auto-generate "+(kind==="aplus"?"A+ modules":"secondary images")+" for "+n+
+  if(!await uiConfirm("Auto-generate "+(kind==="aplus"?"A+ modules":"secondary images")+" for "+n+
               " product"+(n>1?"s":"")+" (~"+(n*per)+" images). The strategist proposes ideas and "+
               "generates them all in the background. You can keep working. Continue?")) return;
 
@@ -338,7 +338,7 @@ async function batchSecondaryImages(){
   if(liveSel){
     (LIVE_ITEMS||[]).forEach(it=>{ if(it.sku && skus.includes(String(it.sku)) && it.img) liveRefs[it.sku]=it.img; });
   }
-  const brief=prompt("Describe the secondary images to generate (one shared set applied to all "+skus.length+" selected SKUs).\nSeparate each image idea with a comma or new line — e.g. 'lifestyle shot in a modern bathroom, infographic of key ingredients, clean packaging shot, how-to-use steps'.\n\nTip: keep text minimal and premium.");
+  const brief=await uiPrompt("Describe the secondary images to generate (one shared set applied to all "+skus.length+" selected SKUs).\nSeparate each image idea with a comma or new line — e.g. 'lifestyle shot in a modern bathroom, infographic of key ingredients, clean packaging shot, how-to-use steps'.\n\nTip: keep text minimal and premium.");
   if(brief===null) return;
   toast("Generating secondary images for "+skus.length+" SKU(s)…");
   try{
@@ -434,7 +434,7 @@ async function rescanFlags(){
   const more = r.changes>40 ? `\n…and ${r.changes-40} more` : "";
   const _kept = r.rows.filter(x=>x.status_owned === false).length;
 
-  const ok = confirm(
+  const ok = await uiConfirm(
     `Re-check flags\n\n`+
     `Scanned ${r.scanned} rows. ${r.changes} would change.\n\n`+
     `${lines}${more}\n\n`+
@@ -807,7 +807,7 @@ function toggleDupOnly(){ DUP_ONLY=!DUP_ONLY; render(); }
 // ensureCardTab syncs the active tab first, so /delete removes the right row on the
 // right tab -- never a same-numbered row on another tab.
 async function delDuplicate(sku, row, tab, btn){
-  if(!confirm("Delete this DUPLICATE copy of "+sku+" from the '"+tab+"' tab?\n\n"
+  if(!await uiConfirm("Delete this DUPLICATE copy of "+sku+" from the '"+tab+"' tab?\n\n"
              +"Only this copy is removed — copies on other tabs stay. This cannot be undone.")) return;
   if(btn) btn.disabled=true;
   try{

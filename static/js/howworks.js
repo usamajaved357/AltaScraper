@@ -297,7 +297,7 @@ async function studioRefine(cardId){
   const cur=(STUDIO.results||{})[cardId];
   const r=(STUDIO._reroll||{})[cardId];
   if(!cur||!cur.data_url){ toast("Nothing to refine here."); return; }
-  const instruction=prompt("What small change should I make to this image?\n(e.g. \"make the background warmer\", \"remove the water droplets\", \"move the product slightly left\", \"make the text bigger\")");
+  const instruction=await uiPrompt("What small change should I make to this image?\n(e.g. \"make the background warmer\", \"remove the water droplets\", \"move the product slightly left\", \"make the text bigger\")");
   if(!instruction||!instruction.trim()) return;
   // figure out the kind from the original payload (main / secondary / aplus)
   let kind="main";

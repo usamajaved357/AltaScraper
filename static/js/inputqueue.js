@@ -179,7 +179,7 @@ async function inputQueueSave(id, el){
 async function inputQueueDelete(id){
   const row = IQ.rows.filter(r => r.id === id)[0] || {};
   const what = row.item_name || row.ebay_url || row.competitor_asin || ("row " + id);
-  if(!confirm("Remove this from the queue?\n\n" + what
+  if(!await uiConfirm("Remove this from the queue?\n\n" + what
               + "\n\nIt is only removed from the list of things to make — nothing "
               + "already generated is touched.")) return;
   try{

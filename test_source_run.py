@@ -173,7 +173,7 @@ before = len(R.recent_actions(CFG, WS, MKT, SKU))
 c.get("/sourcing/list")
 check("no new rows from looking", len(R.recent_actions(CFG, WS, MKT, SKU)), before)
 
-print("  -- enrol / unenrol --")
+print("  -- enroll / unenrol --")
 check("enrolling needs a sku",
       c.post("/sourcing/enrol", json={}).status_code, 400)
 c.post("/sourcing/enrol", json={"sku": "NEW_SKU"})
@@ -246,7 +246,7 @@ truthy("a filter that matches nothing says so, not 'press Sync'",
 
 
 print("\n=== enrolling is a PICK from what is live, not a typed SKU ===")
-# A typed SKU with a typo in it enrols a product that does not exist: the sweep
+# A typed SKU with a typo in it enrolls a product that does not exist: the sweep
 # finds no sources, the row never decides anything, and nothing says it was wrong.
 cand = c.get("/sourcing/candidates").get_json()
 check("it lists this account's live listings", cand["ok"], True)
@@ -305,7 +305,7 @@ check("but they may read the dry run",
       guard.check("/sourcing/list", "GET", lister, None)[0], True)
 owner = {"role": "owner", "permissions": list(guard.users.PERMISSIONS),
          "active": True, "features": {"listings": "edit"}, "workspaces": ["*"]}
-check("an owner may enrol", guard.check("/sourcing/enrol", "POST", owner, {})[0], True)
+check("an owner may enroll", guard.check("/sourcing/enrol", "POST", owner, {})[0], True)
 
 os.environ.pop("ALTASCRAPER_DB", None)
 shutil.rmtree(TMP, ignore_errors=True)

@@ -111,7 +111,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                              "were no searches in that week. If the account IS "
                              "brand registered, try a week you know had sales — "
                              "if that also comes back like this, it is the "
-                             "enrolment.",
+                             "enrollment.",
                     "detail": msg[:200]}), 502
             if status == "CANCELLED":
                 return jsonify({

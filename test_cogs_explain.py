@@ -131,7 +131,23 @@ _p = importlib.import_module("listing.pricing")
 check("the postage allowance really is zero", _p.PRICING_RULE_SHIPPING_LABEL, 0.0)
 check("  the ads allowance too", _p.PRICING_RULE_ADS_MARGIN, 0.0)
 check("  and the flat minimum profit", _p.PRICING_RULE_MIN_PROFIT, 0.0)
-truthy("  replaced by a percentage floor", _p.PRICING_RULE_MIN_ROI_PCT > 0)
+# ZERO NOW, BY THE OWNER'S DECISION (27 Aug 2026): "Default should be 0% --
+# meaning the repricer prices at breakeven (no profit, no loss) as the absolute
+# floor. The user sets their own target."
+#
+# The 20% here was doing more than a default. Because it is a floor among
+# floors it silently raised the price of every SKU that had never set a target,
+# so an account that had deliberately set NONE was still priced to 20% back
+# while the screen said "Target: none". A default that moves prices is not a
+# default; it is a setting nobody chose.
+check("no hidden percentage floor is applied", _p.PRICING_RULE_MIN_ROI_PCT, 0.0)
+# What remains is the ABSOLUTE floor, and it is a real one: cost plus Amazon's
+# cut is the price below which a sale destroys money.
+from domain import sourcing as _s
+_be = _s.floor_price(24.00, None)
+truthy("  but break-even is still enforced", _be is not None and _be > 24.00)
+truthy("  and a target still raises it",
+       _s.floor_price(24.00, {"target_roi_pct": 20.0}) > _be)
 
 _rule = HOW.split("pricing_rule: { title")[1].split("},")[0]
 truthy("the explainer no longer prices in £3 and £2",

@@ -574,7 +574,7 @@ async function variationsApply(){
   const theme = (document.getElementById("var_theme")||{}).value || "";
   const parent = (document.getElementById("var_parent")||{}).value || "";
   const title = (document.getElementById("var_title")||{}).value || "";
-  if(!confirm("Create this family on Amazon?\n\nThe parent listing is created "
+  if(!await uiConfirm("Create this family on Amazon?\n\nThe parent listing is created "
             + "first, then each product is joined to it. Splitting a family up "
             + "again afterwards is fiddly, so it is worth being sure.\n\n"
             + "Amazon publishes variations asynchronously — it usually shows "

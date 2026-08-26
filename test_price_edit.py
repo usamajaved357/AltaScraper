@@ -74,15 +74,23 @@ check("the cost comes out of the SKU", cost, 10.0)
 from domain import sourcing as SRC
 floor = SRC.floor_price(cost, None)
 truthy("a floor is produced", floor and floor > cost)
-# Selling at cost is a loss once Amazon's cut is paid, and selling at cost plus
-# the fee earns nothing at all. The floor has to clear BOTH or it protects
-# nothing -- which is what the never-sell-at-break-even minimum is for.
-truthy("  and it is above break-even, not merely above the cost",
-       floor > cost / (1 - 0.15))
-truthy("  by at least the safety return on the cash",
-       P.achieved(floor, cost, 0.15)["roi_pct"] >= P.PRICING_RULE_MIN_ROI_PCT)
-check("  and the old hardcoded rule would NOT have cleared it",
-      P.floor_from_rate(cost, 0.15) < floor, True)
+# BREAK-EVEN IS THE FLOOR WHEN NOTHING ELSE IS ASKED FOR. Owner's decision,
+# 27 Aug 2026: "Default should be 0% -- meaning the repricer prices at
+# breakeven (no profit, no loss) as the absolute floor."
+#
+# This used to assert the floor was ABOVE break-even, which held while a hidden
+# 20% safety return was applied to every SKU. That default silently raised the
+# price of anything with no target of its own while the screen said "Target:
+# none", so it is gone. What remains is the real absolute limit: cost plus
+# Amazon's cut is the price below which a sale destroys money.
+truthy("  and it clears Amazon's cut, not merely the cost",
+       floor >= round(cost / (1 - 0.15), 2) - 0.01)
+check("  which is exactly break-even with no target set",
+      round(floor, 2), round(P.floor_from_rate(cost, 0.15), 2))
+# A TARGET STILL RAISES IT. The floor is a floor among floors and takes the
+# highest, so setting one can only ever push the price up.
+truthy("  and asking for a return prices it higher",
+       SRC.floor_price(cost, {"target_roi_pct": 20.0}) > floor)
 check("an unknown cost gives no floor rather than a wrong one",
       C.cost_from_sku("0.00_3Days_B0F7X6NPLH"), None)
 

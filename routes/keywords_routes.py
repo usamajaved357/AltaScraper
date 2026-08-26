@@ -141,7 +141,7 @@ def register(app, *, CONFIG_PATH, _cfg=None, _state=None, _active_account=None):
                     "reports and need it), or there genuinely were no searches "
                     "in that week. If the account IS brand registered, try a "
                     "week you know had sales — if that also comes back like "
-                    "this, it is the enrolment.")
+                    "this, it is the enrollment.")
         if "access" in t or "unauthor" in t or "forbidden" in t or "403" in t:
             return ("Amazon refused this report outright. Brand Analytics needs "
                     "Brand Registry on this selling account — an account "

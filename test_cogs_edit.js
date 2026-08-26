@@ -78,8 +78,10 @@ truthy("  and says so, so nobody puts a splitter back in the browser",
 truthy("the count offered for confirmation is measured, not guessed",
        /dry_run/.test(PY) && /READS THE FILE AND WRITES NOTHING/.test(PY));
 // A bulk overwrite changes every profit figure in the app.
+// uiConfirm, not confirm -- the app draws its own now. AWAITED, because a
+// Promise is truthy and a forgotten await would approve every overwrite.
 truthy("the count is confirmed before anything is written",
-       /Set the cost on/.test(src) && /confirm\(/.test(src));
+       /Set the cost on/.test(src) && /await uiConfirm\(/.test(src));
 truthy("  and unusable rows are counted, not silently dropped",
        /skipped \d*/.test(src) || /bad\.length/.test(src));
 

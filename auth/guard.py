@@ -121,6 +121,18 @@ RULES = [
     # at is not what Amazon actually takes. Above it, for the reason spelled out
     # on the line above: first match wins.
     ("/sourcing/fees",                  None),
+    # THE FLOOR SHEET, going out. It lists what each tracked SKU sells for and
+    # costs -- the same figures /sourcing/list already answers with -- and it
+    # sends nothing to Amazon. Downloading it is a read.
+    ("/sourcing/minprice_template.csv", None),
+    # Its way BACK IN is not. It writes a floor onto every row it can match,
+    # and with the arm box ticked it also puts those SKUs live, which is the
+    # single most consequential thing on this screen: a live SKU can change a
+    # real price without anyone watching. Same right as arming one by hand.
+    #
+    # ABOVE the broad /sourcing line for the reason spelled out above: first
+    # match wins, and this must not fall through to anything weaker.
+    ("/sourcing/minprice_upload",       "publish"),
     ("/sourcing",                       "publish"),
 
     # -- importing an eBay seller. Finding and screening send NOTHING anywhere;

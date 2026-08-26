@@ -580,11 +580,25 @@ def floor_price(cost, rule=None):
     if flat is None:
         return tgt
     if tgt is None:
-        # Nothing asks for any profit at all -- every amount and both targets are
-        # zero. Refused rather than priced, because pricing to break-even is
-        # worse than the padding this replaced, and decide() says how to fix it.
-        if not has_profit_requirement(rule):
-            return None
+        # NOTHING ASKS FOR ANY PROFIT AT ALL -- every amount and both targets
+        # are zero. Break-even, and that is now the answer rather than a
+        # refusal. Owner's decision, 27 Aug 2026:
+        #
+        #     "Default should be 0% -- meaning the repricer prices at breakeven
+        #      (no profit, no loss) as the absolute floor. The user sets their
+        #      own target."
+        #
+        # It used to return None here, on the argument that pricing to
+        # break-even is worse than the padding it replaced. That argument was
+        # answerable while min_roi_pct defaulted to 20 and this branch was
+        # unreachable in practice; with the default at 0 it is the ordinary
+        # case, and refusing would mean a fresh account could not price at all.
+        #
+        # Break-even is a real and defensible floor: cost plus Amazon's cut is
+        # the price below which a sale destroys money, so it is the right
+        # ABSOLUTE limit. Everything above it is a commercial decision, and
+        # those belong to the owner -- one click on a row's ROI or Margin pill,
+        # or "New SKUs start at" in the menu.
         return flat
     # The HIGHER of the two, always. A percentage target is a floor being added
     # to the rule, not one replacing it -- so switching it on can raise a price
@@ -775,7 +789,7 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
     EVERY RULE HERE IS PER SKU, NEVER PER ASIN, and that is deliberate: one ASIN
     can carry several of our SKUs -- bought from different suppliers, at
     different costs, with different handling times -- so a decision made for the
-    ASIN would price all of them from one of their costs. The enrolment, the
+    ASIN would price all of them from one of their costs. The enrollment, the
     sources and the rule are all keyed on sku alone; nothing in this module ever
     reads an ASIN.
     """

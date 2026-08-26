@@ -191,7 +191,7 @@ async function cogsUploadFile(input){
     const cols = dry.columns || {};
     // Said BEFORE it happens, with the numbers, and naming which columns were
     // read -- the way to notice a file whose cost column is not what you think.
-    if(!confirm("Set the cost on " + dry.set + " SKU"
+    if(!await uiConfirm("Set the cost on " + dry.set + " SKU"
                 + (dry.set === 1 ? "" : "s") + "?\n\n"
                 + "Reading “" + (cols.cost || "cost") + "” as the cost"
                 + (cols.sku ? ", matched on “" + cols.sku + "”" : "")
@@ -335,7 +335,7 @@ async function cogsClearAll(){
   // looks like a disaster afterwards: a listing whose SKU is 8.00_3Days_B0G1K5B7QS
   // still shows 8.00 after this, because that cost is read out of the name and
   // was never stored here. Only typed and uploaded figures go.
-  if(!confirm("Delete all " + n + " saved cost" + (n === 1 ? "" : "s")
+  if(!await uiConfirm("Delete all " + n + " saved cost" + (n === 1 ? "" : "s")
               + " on this account?\n\n"
               + "This removes every cost you typed on this screen or brought in "
               + "from a cost sheet. It cannot be undone.\n\n"

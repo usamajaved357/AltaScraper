@@ -94,9 +94,15 @@ def parts_add_up(d, label):
     close(label, total, float(b["price"]))
 
 
-print("=== the owner's own row: 24.00 landed, 15% fee, 20% safety floor ===")
+print("=== the owner's own row: 24.00 landed, 15% fee, a 20% target ===")
+# THE TARGET IS ASKED FOR EXPLICITLY NOW. It used to come from min_roi_pct,
+# which defaulted to 20 and so applied to every SKU whether or not anyone had
+# set a target -- silently raising prices while the screen said "Target: none".
+# That default is 0 by the owner's decision (27 Aug 2026), so a rule that wants
+# 20% has to say 20%. The arithmetic below is unchanged; only where the 20 comes
+# from has moved, from a hidden constant to the rule.
 d = S.decide({"price": 24.99, "quantity": 1, "lead_days": 3},
-             [(src(1), chk(price=24.00))], {}, NOW)
+             [(src(1), chk(price=24.00))], {"target_roi_pct": 20.0}, NOW)
 b = d.get("breakdown") or {}
 print("     price=%s cost=%s fee=%s profit=%s"
       % (b.get("price"), b.get("cost"), b.get("fee"), b.get("profit")))
@@ -105,6 +111,18 @@ close("the fee is the 5.08 that was on his screen", b.get("fee"), 5.08)
 close("  profit left over is 4.81, not nought", b.get("profit"), 4.81)
 close("  which is 20% of the 24.00 paid",
       (float(b["profit"]) / float(b["cost"])) * 100, 20.0, tol=0.2)
+
+# AND WITH NO TARGET AT ALL, the parts must still add up -- to break-even.
+# That is the case the default now produces on a fresh account, so it is the one
+# most likely to be looked at, and a sum that does not balance there would be
+# the same defect this file was written for.
+_be = S.decide({"price": 24.99, "quantity": 1, "lead_days": 3},
+               [(src(1), chk(price=24.00))], {}, NOW)
+_bb = _be.get("breakdown") or {}
+close("with no target, the price is break-even", _bb.get("price"), 28.24)
+close("  and the profit left over is nothing, honestly stated",
+      _bb.get("profit"), 0.0, tol=0.02)
+parts_add_up(_be, "  and those parts add up too")
 parts_add_up(d, "  and the parts add up to the price")
 # The input is still available, under its own name, for "you asked for at least".
 check("the flat minimum is still carried separately", b.get("min_profit"), 0.0)

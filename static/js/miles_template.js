@@ -312,7 +312,7 @@ function zeSet(prop,val){
   z[prop]=val; zeDrawBoxes(); zeRenderSide();
 }
 async function saveZones(){
-  if(!ZE_STATE){ alert('Open a template first'); return; }
+  if(!ZE_STATE){ await uiAlert('Open a template first'); return; }
   var btn=event&&event.target;
   if(btn){ btn.disabled=true; btn.textContent='Saving…'; }
   try{
@@ -325,9 +325,9 @@ async function saveZones(){
       if(s){ s.textContent='✓ Saved — every product on this template now uses this layout'; s.style.display='inline'; }
       if(typeof toast==='function') toast('Zones saved');
     } else {
-      alert('Save failed: '+(j.error||'unknown'));
+      await uiAlert('Save failed: '+(j.error||'unknown'));
     }
-  }catch(e){ if(btn){btn.disabled=false; btn.textContent='Save';} alert('Save error: '+e); }
+  }catch(e){ if(btn){btn.disabled=false; btn.textContent='Save';} await uiAlert('Save error: '+e); }
 }
 async function zonePreview(){
   if(!ZE_STATE) return;
@@ -386,7 +386,7 @@ async function refreshMilesDropdowns(){
   });
 }
 async function milesTplDelete(id){
-  if(!confirm('Delete this template?')) return;
+  if(!await uiConfirm('Delete this template?')) return;
   await fetch('/miles_template/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
   MILES_TPLS=null; toast('Deleted'); await refreshMilesDropdowns(); openMilesTplManager();
 }
@@ -402,22 +402,22 @@ async function submitLive(){
     const pc=await (await fetch('/submit/precheck')).json();
     if(pc && pc.ok && pc.count>0){
       const skus=pc.local_image_rows.map(x=>x.sku).join(", ");
-      alert("⚠ "+pc.count+" listing(s) have a LOCAL image that Amazon cannot fetch:\n\n  "+skus+"\n\n"
+      await uiAlert("⚠ "+pc.count+" listing(s) have a LOCAL image that Amazon cannot fetch:\n\n  "+skus+"\n\n"
         +"AI images saved to your media library live on your PC (127.0.0.1), so Amazon's servers can't reach them. "
         +"These rows will FAIL with 'Unable to Retrieve Media Content'.\n\n"
         +"Fix: use a publicly-hosted image URL for the main image (e.g. upload to a host, or use the source image URL), "
         +"then submit again. The other rows can still go through.");
-      if(!confirm("Submit anyway? (the local-image rows above will error)")) return;
+      if(!await uiConfirm("Submit anyway? (the local-image rows above will error)")) return;
     }
   }catch(e){}
   // SAFETY: confirm WHICH Amazon account this will publish to, by name.
   let t;
   try{ t=await (await fetch('/submit/target')).json(); }catch(e){ t=null; }
   if(!t || !t.ok){
-    if(!confirm("Could not determine the target account. Submit anyway to your live account?")) return;
+    if(!await uiConfirm("Could not determine the target account. Submit anyway to your live account?")) return;
   } else {
     if(t.block==='none'){
-      alert("This view is set to the "+t.marketplace+" marketplace, but no credentials are configured for it. Nothing will be submitted. Add the account's SP-API credentials first.");
+      await uiAlert("This view is set to the "+t.marketplace+" marketplace, but no credentials are configured for it. Nothing will be submitted. Add the account's SP-API credentials first.");
       return;
     }
     var _sel = selectedSkus();
@@ -431,7 +431,7 @@ async function submitLive(){
       + "  Workspace:  "+t.view+"\n\n"
       + "This will CREATE or REPLACE live listings for "+_scope+", on the account above.\n"
       + "(Already-live listings are skipped automatically.)\n\nIs this the correct account?";
-    if(!confirm(msg)) return;
+    if(!await uiConfirm(msg)) return;
   }
   // Scope the submit to the user's SELECTION when there is one; otherwise fall back
   // to all approved/ready rows (the server's default).
@@ -688,7 +688,7 @@ function render(){
   }
 }
 async function delRow(sku, row, btn){
-  if(!confirm("Delete this row "+storeFrom()+"? This cannot be undone.")) return;
+  if(!await uiConfirm("Delete this row "+storeFrom()+"? This cannot be undone.")) return;
   btn.disabled=true;
   try{
     // multi-tab: /delete removes BY ROW on the active tab — sync to this card's tab first
@@ -712,14 +712,14 @@ async function bulkStatus(status){
   if(status==="HOLD") status="NEEDS_REVIEW";
   const label = status==="APPROVED" ? "Approve" : "Hold";
   if(!skus.length){
-    alert(`None of the ${_sel.length} selected listing(s) has a draft here, so `
+    await uiAlert(`None of the ${_sel.length} selected listing(s) has a draft here, so `
          +`there is nothing to ${label.toLowerCase()}.\n\n`
          +`They are live on Amazon and were never generated in this app. Set `
          +`handling time, stock or price on them instead, or press Sync to pull `
          +`one in as a draft.`);
     return;
   }
-  if(!confirm(label+" "+skus.length+" selected listing(s)?"
+  if(!await uiConfirm(label+" "+skus.length+" selected listing(s)?"
               +_draftOnlyNote(_s.amazonOnly, label.toLowerCase()))) return;
   let ok=0, fail=0;
   toast(label+"ing "+skus.length+"…");
@@ -744,12 +744,12 @@ async function bulkDelete(){
   if(!_sel.length){ toast("Nothing selected"); return; }
   const _s=splitByDraft(_sel), skus=_s.drafts;
   if(!skus.length){
-    alert(`None of the ${_sel.length} selected listing(s) has a draft here to `
+    await uiAlert(`None of the ${_sel.length} selected listing(s) has a draft here to `
          +`delete.\n\nThey are live on Amazon. This button never removes a live `
          +`listing — to end one, close it in Seller Central.`);
     return;
   }
-  if(!confirm("Delete "+skus.length+" selected listing(s) "+storeFrom()+"? This cannot be undone."
+  if(!await uiConfirm("Delete "+skus.length+" selected listing(s) "+storeFrom()+"? This cannot be undone."
               +_draftOnlyNote(_s.amazonOnly, "delete"))) return;
   let ok=0, fail=0;
   toast("Deleting "+skus.length+"…");
@@ -772,7 +772,7 @@ async function bulkDelete(){
 }
 async function clearMainImage(sku){
   if(!sku) return;
-  if(!confirm("Remove the main image from this listing?\n\nThe listing can then be created WITHOUT an image (add one later in Seller Central). This also clears any additional image URLs that are local files.")) return;
+  if(!await uiConfirm("Remove the main image from this listing?\n\nThe listing can then be created WITHOUT an image (add one later in Seller Central). This also clears any additional image URLs that are local files.")) return;
   try{
     // remove main + any local (non-http) additional image locators
     const r=ROWS.find(x=>String(x.sku)===String(sku));
@@ -798,7 +798,7 @@ async function clearMainImage(sku){
   }catch(e){ toast("Could not remove image: "+e); }
 }
 async function clearEmpty(btn){
-  if(!confirm("Remove all empty rows "+storeFrom()+"?")) return;
+  if(!await uiConfirm("Remove all empty rows "+storeFrom()+"?")) return;
   btn.disabled=true;
   try{
     const res=await fetch("/clear_empty",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
@@ -923,13 +923,13 @@ async function removeDeletedRows(){
   // This is irreversible and it throws away every field of a listing that once
   // sold. Asking afterwards would be asking too late, and putting the two
   // buttons side by side leaves the order to chance.
-  if(confirm("Save these " + gone.length + " listing(s) to a CSV first?\n\n"
+  if(await uiConfirm("Save these " + gone.length + " listing(s) to a CSV first?\n\n"
            + "Removal cannot be undone, and this keeps every field — the copy, "
            + "the bullets, the attributes, the cost.\n\nOK to download the "
            + "backup, Cancel to skip it.")){
     backupDeletedRows();
   }
-  if(!confirm("Delete "+gone.length+" row(s) from this app?\n\n"+
+  if(!await uiConfirm("Delete "+gone.length+" row(s) from this app?\n\n"+
               gone.map(r=>"  • "+r.sku).join("\n")+
               "\n\nThese listings no longer exist on Amazon. This cannot be undone.")) return;
   let done=0, failed=0;
@@ -1739,7 +1739,7 @@ async function fetchLiveImages(){
   _imgFetchBusy=false;
 }
 async function setCogs(sku, price){
-  const cur=prompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − COGS − ~15% Amazon referral) / price.","");
+  const cur=await uiPrompt("Enter your cost (COGS) for SKU "+sku+"\n\nThis is your total cost including shipping. Margin = (price − COGS − ~15% Amazon referral) / price.","");
   if(cur===null) return;
   try{
     const j=await (await fetch("/cogs/set",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -2050,7 +2050,7 @@ async function optPush(){
   }
   const fieldList=Object.keys(changes);
   if(!fieldList.length){ toast("Tick at least one changed field to push."); return; }
-  if(!confirm("PUSH TO LIVE AMAZON\n\nAccount: "+(CUR_ACCOUNT?CUR_ACCOUNT.label:"")+"\nASIN: "+(OPT_CURRENT.asin||"")+"\nSKU: "+OPT_CURRENT.sku+"\nMarketplace: "+OPT_CURRENT.marketplace+"\n\nFields being changed: "+fieldList.join(", ")+"\n\nThis updates the LIVE listing customers see. Proceed?")) return;
+  if(!await uiConfirm("PUSH TO LIVE AMAZON\n\nAccount: "+(CUR_ACCOUNT?CUR_ACCOUNT.label:"")+"\nASIN: "+(OPT_CURRENT.asin||"")+"\nSKU: "+OPT_CURRENT.sku+"\nMarketplace: "+OPT_CURRENT.marketplace+"\n\nFields being changed: "+fieldList.join(", ")+"\n\nThis updates the LIVE listing customers see. Proceed?")) return;
   const btn=document.getElementById("optpushbtn"); if(btn){ btn.disabled=true; btn.textContent="Pushing…"; }
   try{
     const j=await (await fetch("/optimize/push",{method:"POST",headers:{"Content-Type":"application/json"},

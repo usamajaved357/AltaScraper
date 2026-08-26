@@ -146,7 +146,13 @@ truthy("the count comes from the server, not from the rows on screen",
        '"/cogs/count' in _fn)
 truthy("  because the screen only ever shows one view of them",
        "screen" in JS.split("TAKING THEM ALL BACK OUT")[1][:900])
-truthy("nothing is deleted without a confirm", "confirm(" in _fn)
+# uiConfirm, not confirm. The app draws its own now -- a native dialog
+# blocks the page, arrives titled "This page says:", and is silently
+# dropped if a timer raises a second one. Same contract, same guard: the
+# count is stated and nothing is deleted until somebody says yes.
+truthy("nothing is deleted without a confirm", "uiConfirm(" in _fn)
+truthy("  and it is AWAITED, or the answer is a truthy Promise",
+       "await uiConfirm(" in _fn)
 truthy("  which states the number", 'Delete all " + n + " saved cost' in _fn)
 truthy("  and that it cannot be undone", "cannot be undone" in _fn)
 truthy("  and what KEEPS its price afterwards",

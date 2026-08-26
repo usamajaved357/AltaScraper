@@ -846,7 +846,7 @@ async function saveAccount(){
   }catch(e){ toast("Error: "+e); }
 }
 async function deleteAccount(id){
-  if(!confirm("Delete this account from the app? (Your Amazon account is unaffected; this only removes it from the tool.)")) return;
+  if(!await uiConfirm("Delete this account from the app? (Your Amazon account is unaffected; this only removes it from the tool.)")) return;
   try{ await fetch("/accounts/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})});
     toast("Account removed"); closeAccountEditor(); loadHome(); }
   catch(e){ toast("Error: "+e); }

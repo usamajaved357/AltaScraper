@@ -16,6 +16,17 @@ let SRC_RULE = null;
 // THIS SKU's numbers rather than the account's.
 let SRC_ROW_RULES = {};
 let SRC_MASTER = false;     // the master switch, as the SERVER reports it
+// Which marketplace the rows are from, so the money editors show the right
+// currency symbol. Read off the server's answer rather than a global set by
+// whichever screen was opened last.
+let SRC_MKT = "";
+// What a NEWLY enrolled SKU should start with. Set by the owner in the ⋯ menu;
+// it does NOT touch SKUs that are already tracked.
+let SRC_DEFAULT_TARGET = {};
+// Which stat card is filtering the table: "" | armed | update | out_of_stock.
+let SRC_FILTER = "";
+// The last /sourcing/list answer, so a filter can redraw without refetching.
+let SRC_LAST_J = null;
 
 // Every /sourcing call says WHICH account and marketplace it means.
 //
@@ -61,24 +72,78 @@ function _smoney(v){
 
 function sourcingOnOpen(){ sourcingLoad(); }
 
-async function sourcingLoad(){
+/* Load the screen. `quiet` refreshes it WITHOUT blanking it.
+ *
+ *     "keep everything on screen. The expanded row stays open, the table stays
+ *      visible."
+ *
+ * The blank was this function's own first line: it replaced the table with a
+ * spinner, then spent a second fetching sixty-seven decisions before it had
+ * anything to draw. Every save went through here, so setting one number on one
+ * row emptied the page, lost every open panel and jumped the scroll to the top.
+ *
+ * Quiet mode leaves the old table up while the new data is fetched, then puts
+ * back exactly what was open and where you were. Nothing flickers because
+ * nothing is removed until the replacement is ready.
+ *
+ * The loud version is still right for the FIRST load and for the buttons that
+ * change what the list contains -- there, a spinner is honest about the wait.
+ */
+async function sourcingLoad(quiet){
   const body = document.getElementById("srcbody");
   if(!body) return;
-  body.innerHTML = '<div class="cc" style="padding:16px"><span class="genspin"></span> Loading…</div>';
+  // What is open, and where we are, so it can be put back.
+  const open = quiet
+    ? Array.prototype.filter.call(
+        document.querySelectorAll('#srcbody tr[id^="srcrow_"]'),
+        function(tr){ return tr.style.display === "table-row"; })
+        .map(function(tr){ return tr.id; })
+    : [];
+  const scrollY = quiet ? window.scrollY : 0;
+
+  if(!quiet){
+    body.innerHTML = '<div class="cc" style="padding:16px">'
+      + '<span class="genspin"></span> Loading…</div>';
+  }
   let j;
   try{ j = await (await fetch(_srcUrl("/sourcing/list"))).json(); }
-  catch(e){ body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">Could not load: '+_sesc(String(e))+'</div>'; return; }
+  catch(e){
+    // A quiet refresh that fails leaves what is on screen alone and says so in
+    // a toast. Replacing a working table with an error because a background
+    // refresh timed out would be worse than the stale table.
+    if(quiet){ toast("Could not refresh: " + String(e)); return; }
+    body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'
+      + 'Could not load: ' + _sesc(String(e)) + '</div>';
+    return;
+  }
   if(!j || !j.ok){
-    body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'+_sesc((j&&j.error)||"Could not load")+'</div>';
+    if(quiet){ toast((j && j.error) || "Could not refresh"); return; }
+    body.innerHTML = '<div class="cc" style="padding:16px;color:var(--red)">'
+      + _sesc((j && j.error) || "Could not load") + '</div>';
     return;
   }
   SRC_ROWS = j.rows || [];
   SRC_RULE = j.rule || j.defaults || {};
+  SRC_MKT = j.marketplace || SRC_MKT || "";
+  SRC_DEFAULT_TARGET = j.default_target || {};
   // Read from the server, never remembered from the last click: whether the app
   // is currently allowed to change prices is not something to guess at.
   try{ SRC_MASTER = !!(await (await fetch(_srcUrl("/sourcing/master"))).json()).enabled; }
   catch(e){ SRC_MASTER = false; }
   sourcingRender(j);
+  if(quiet){
+    open.forEach(function(id){
+      const tr = document.getElementById(id);
+      if(tr){
+        tr.style.display = "table-row";
+        const row = document.getElementById(id + "_r");
+        if(row) row.classList.add("rp-sel");
+      }
+    });
+    // After the rows are back, or the page is shorter than it was and the
+    // scroll gets clamped to the wrong place.
+    window.scrollTo(0, scrollY);
+  }
   // WHICH SKUS HAVE NOWHERE LEFT TO BUY FROM. Fetched after the table is drawn
   // rather than before it: the alert is important but the table is what the
   // screen is FOR, and one should not wait on the other.
@@ -218,18 +283,82 @@ async function sourcingArm(sku, live){
   }catch(e){ toast(String(e)); }
 }
 
-async function sourcingMinPrice(sku){
-  const v = prompt("Lowest price you will ever sell "+sku+" at.\n\nThis is the one "
-                 + "guard that still works if a supplier's page is misread, so the "
-                 + "app will not arm a SKU without it.");
-  if(v===null) return;
+/* SAVE ONE RULE WITHOUT LOSING THE SCREEN.
+ *
+ *     "Saving a minimum price clears the entire screen and shows 'Minimum
+ *      price saved' on a blank page while it reloads. This is terrible UX."
+ *
+ * It was: every save called sourcingLoad(), which blanks #srcbody to a spinner,
+ * re-fetches sixty-seven decisions, and redraws from nothing. Every open panel
+ * shut, the scroll jumped to the top, and for a second there was a message on
+ * an empty page.
+ *
+ * This is the one place a rule is saved from now (Rule 12). It posts, updates
+ * the row's rule in the model we already hold, and refreshes quietly -- see
+ * sourcingLoad(quiet), which keeps what is on screen until the new HTML is
+ * ready and then puts the open panels and the scroll position back.
+ *
+ * Returns "" on success or the error to show, which is the contract uiInline
+ * wants: a string keeps the editor open with the message under it.
+ */
+async function sourcingSaveRule(sku, rule, okMsg){
   try{
-    const j = await (await fetch("/sourcing/rules",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:_srcBody({sku:sku, rule:{min_price: v===""? null : parseFloat(v)}})})).json();
-    if(!j.ok){ toast(j.error||"failed"); return; }
-    toast("Minimum price saved"); sourcingLoad();
-  }catch(e){ toast(String(e)); }
+    const j = await (await fetch("/sourcing/rules", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: _srcBody({sku: sku, rule: rule})})).json();
+    if(!j.ok) return j.error || "Could not save that.";
+    // The model we are already holding, so the row is right even before the
+    // quiet refresh lands.
+    const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
+    if(row){ row.rule = Object.assign({}, row.rule || {}, rule); }
+    if(SRC_ROW_RULES[sku]) Object.assign(SRC_ROW_RULES[sku], rule);
+    if(okMsg) toast(okMsg);
+    sourcingLoad(true);
+    return "";
+  }catch(e){ return String((e && e.message) || e); }
+}
+
+/* THE FLOOR, EDITED WHERE THE BUTTON IS.
+ *
+ * An amount, so the box is a number field with a currency symbol beside it --
+ * neither of which prompt() could draw. Cancelling is Escape or a click
+ * anywhere else; turning it off is its own button, because an empty box saved
+ * is ambiguous and this is the one setting that gates arming.
+ */
+async function sourcingMinPrice(sku, btn){
+  const cur = (SRC_ROW_RULES[sku] || {}).min_price;
+  await uiInline(btn || (window.event && window.event.target), {
+    title: "Never sell " + sku + " below",
+    prefix: _srcSym(),
+    type: "number",
+    min: 0,
+    step: "0.01",
+    value: (cur == null ? "" : cur),
+    placeholder: "e.g. 14.99",
+    hint: "The one guard that still works if a supplier's page is misread. A "
+        + "SKU cannot be armed without it.",
+    clearable: cur != null,
+    clearLabel: "Remove the floor",
+    onSave: function(v){
+      const t = String(v).trim();
+      if(t !== "" && !(parseFloat(t) > 0))
+        return "That needs to be an amount above zero, e.g. 14.99";
+      return sourcingSaveRule(sku, {min_price: t === "" ? null : parseFloat(t)},
+                              t === "" ? "Floor removed"
+                                       : "Never below " + _smoney(parseFloat(t)));
+    }
+  });
+}
+
+/* Which currency this account sells in. One place, because three of these
+ * editors want the symbol and a wrong one is a wrong number on screen. */
+function _srcSym(){
+  const m = (typeof SRC_MKT === "string" && SRC_MKT)
+          || (window.ACTIVE_MARKETPLACE || "");
+  if(typeof currencySymbol === "function"){
+    try{ return currencySymbol(m) || "£"; }catch(e){ /* fall through */ }
+  }
+  return String(m).toUpperCase() === "US" ? "$" : "£";
 }
 
 /* HOLD THE PRICE AT WHAT THE MARKET PAYS.
@@ -244,29 +373,34 @@ async function sourcingMinPrice(sku){
  * and "never sell below" is exactly the thing that would get them confused, and
  * confusing the two is expensive in both directions.
  */
-async function sourcingHoldPrice(sku){
-  const cur = (SRC_ROW_RULES[sku]||{}).hold_price;
-  const v = prompt(
-    "Hold " + sku + " at this price.\n\n"
-    + "The repricer will never price BELOW it, even when your ROI or margin target "
-    + "would be happy with less. Use it for products where you know what the market "
-    + "pays.\n\n"
-    + "If the supplier gets dearer and this price stops covering your target, the "
-    + "price still goes UP — it is a floor, not a fixed price, so it can never make "
-    + "you sell at a loss. When the supplier gets cheaper again the price comes "
-    + "straight back to this number.\n\n"
-    + "This is NOT the same as 'never sell below', which is there to stop a misread "
-    + "supplier page pricing you into a loss. Leave empty to stop holding the price.",
-    (cur==null ? "" : String(cur)));
-  if(v===null) return;
-  try{
-    const j = await (await fetch("/sourcing/rules",{method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:_srcBody({sku:sku, rule:{hold_price: v.trim()==="" ? null : v.trim()}})})).json();
-    if(!j.ok){ toast(j.error||"failed"); return; }
-    toast(v.trim()==="" ? "No longer holding the price" : "Price held at "+v.trim());
-    sourcingLoad();
-  }catch(e){ toast(String(e)); }
+async function sourcingHoldPrice(sku, btn){
+  const cur = (SRC_ROW_RULES[sku] || {}).hold_price;
+  await uiInline(btn || (window.event && window.event.target), {
+    title: "Hold " + sku + " at",
+    prefix: _srcSym(),
+    type: "number",
+    min: 0,
+    step: "0.01",
+    value: (cur == null ? "" : cur),
+    placeholder: "e.g. 40.00",
+    // THE DIFFERENCE FROM THE FLOOR, in one line rather than four paragraphs.
+    // The old prompt spelled the whole behaviour out because a native dialog
+    // has nowhere else to put it; here the rest is on the button's own tooltip
+    // and in the notice the panel draws when a hold is actually in force.
+    hint: "Never priced below this even when your target would take less. It "
+        + "is a floor, not a fixed price: if the supplier gets dearer the "
+        + "price still goes up, and comes back to this when they get cheaper.",
+    clearable: cur != null,
+    clearLabel: "Stop holding the price",
+    onSave: function(v){
+      const t = String(v).trim();
+      if(t !== "" && !(parseFloat(t) > 0))
+        return "That needs to be an amount above zero, e.g. 40.00";
+      return sourcingSaveRule(sku, {hold_price: t === "" ? null : t},
+                              t === "" ? "No longer holding the price"
+                                       : "Held at " + _smoney(parseFloat(t)));
+    }
+  });
 }
 
 /* ASK AMAZON WHAT IT CHARGES ON EACH PRODUCT.
@@ -640,7 +774,14 @@ function _srcTargetBox(id, label, value, why, example){
 
 // A small modal with an OK that can refuse to close. prompt() cannot show two
 // boxes at once, which is the whole reason this exists.
-function _srcModal(title, bodyHtml, onOk){
+/* `onCancel` matters when the caller is AWAITING an answer.
+ *
+ * Without it, dismissing the box resolved nothing and the promise behind it
+ * never settled -- so cancelling the min-price upload left the whole flow
+ * hanging, with the file already chosen and no way back except a reload.
+ * Called for the Cancel button, a click on the surround, and Escape, because
+ * all three mean the same thing. */
+function _srcModal(title, bodyHtml, onOk, onCancel){
   const old = document.getElementById("srcmodal");
   if(old) old.remove();
   const wrap = document.createElement("div");
@@ -657,12 +798,23 @@ function _srcModal(title, bodyHtml, onOk){
     + '<button class="db-chip" id="srcmodal_ok" style="background:var(--accent);'
     + 'color:#fff;border-color:var(--accent)">Save</button></div></div>';
   document.body.appendChild(wrap);
-  const close = function(){ wrap.remove(); };
-  wrap.querySelector("#srcmodal_cancel").onclick = close;
-  wrap.onclick = function(e){ if(e.target === wrap) close(); };
+  let settled = false;
+  const close = function(cancelled){
+    if(settled) return;
+    settled = true;
+    document.removeEventListener("keydown", key, true);
+    wrap.remove();
+    if(cancelled && typeof onCancel === "function") onCancel();
+  };
+  const key = function(e){
+    if(e.key === "Escape"){ e.preventDefault(); close(true); }
+  };
+  document.addEventListener("keydown", key, true);
+  wrap.querySelector("#srcmodal_cancel").onclick = function(){ close(true); };
+  wrap.onclick = function(e){ if(e.target === wrap) close(true); };
   wrap.querySelector("#srcmodal_ok").onclick = async function(){
     const ok = await onOk();
-    if(ok !== false) close();     // a refusal keeps the boxes and their values
+    if(ok !== false) close(false);   // a refusal keeps the boxes and their values
   };
   const first = wrap.querySelector("input");
   if(first) first.focus();
@@ -684,39 +836,15 @@ function _srcModal(title, bodyHtml, onOk){
  */
 function srcConfirm(o){
   const opt = o || {};
-  return new Promise(function(resolve){
-    const old = document.getElementById("srcconfirm");
-    if(old) old.remove();
-    const wrap = document.createElement("div");
-    wrap.id = "srcconfirm";
-    wrap.className = "modalwrap open";
-    wrap.style.zIndex = "9100";
-    const para = String(opt.body || "").split("\n\n").map(function(p){
-      return '<p style="margin:0 0 9px;font-size:12.5px;line-height:1.6">'
-           + _sesc(p) + '</p>';
-    }).join("");
-    wrap.innerHTML = '<div class="modal" style="max-width:480px">'
-      + '<h3>' + _sesc(opt.title || "Are you sure?") + '</h3>'
-      + '<div class="cc" style="margin:8px 0 0">' + para + '</div>'
-      + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
-      + '<button class="db-chip" id="srcconfirm_no">Cancel</button>'
-      + '<button class="db-chip ' + (opt.risk ? 'risk' : 'go') + '" '
-      + 'id="srcconfirm_yes">' + _sesc(opt.confirm || "Yes") + '</button>'
-      + '</div></div>';
-    document.body.appendChild(wrap);
-    const done = function(v){
-      wrap.remove();
-      document.removeEventListener("keydown", key);
-      resolve(v);
-    };
-    const key = function(ev){
-      if(ev.key === "Escape"){ ev.preventDefault(); done(false); }
-    };
-    document.addEventListener("keydown", key);
-    wrap.onclick = function(e){ if(e.target === wrap) done(false); };
-    wrap.querySelector("#srcconfirm_no").onclick = function(){ done(false); };
-    wrap.querySelector("#srcconfirm_yes").onclick = function(){ done(true); };
-    wrap.querySelector("#srcconfirm_yes").focus();
+  // ONE implementation, in static/js/dialog.js. This keeps the shape eleven
+  // call sites on this screen already use -- {title, body, confirm, risk} --
+  // and hands it to the app-wide one, so there is a single answer to what
+  // Escape does, what a click on the surround does, and which button is
+  // focused (CLAUDE.md Rule 12).
+  return uiConfirm(String(opt.body || ""), {
+    title: opt.title || "Are you sure?",
+    ok: opt.confirm || "Yes",
+    danger: !!opt.risk
   });
 }
 
@@ -751,7 +879,7 @@ async function sourcingTrackAll(btn){
     const j = await (await fetch("/sourcing/enrol_bulk",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:_srcBody({skus: todo})})).json();
-    if(!j.ok){ toast(j.error||"Could not enrol"); return; }
+    if(!j.ok){ toast(j.error||"Could not enroll"); return; }
     // Say what did NOT work as loudly as what did. A bulk action that reports
     // only its successes is how you end up with SKUs quietly tracking nothing.
     let msg = "Now tracking " + j.enrolled + " listing" + (j.enrolled===1?"":"s")
@@ -1246,7 +1374,12 @@ function _supTable(r){
       + '<td style="font-weight:600;color:'
       + (dead || s.profit == null ? 'var(--ink3)' : 'var(--ok)') + '">'
       + (!dead && s.profit != null ? _smoney(s.profit) : '&mdash;') + '</td>'
-      + '<td style="width:18px"><button class="rp-rl" style="padding:1px 5px" '
+      // Its OWN class, not the rules pills'. It sits above them in the panel
+      // and it DELETES a supplier and its price history, where every .rp-rl
+      // opens an editor -- sharing a class made "the first pill in the panel"
+      // mean the × button, which is how a probe for the Floor editor ended up
+      // opening a delete confirmation instead.
+      + '<td style="width:18px"><button class="rp-xrm" '
       + 'onclick="event.stopPropagation();sourcingRemoveSource(' + s.source_id
       + ')" title="Remove this supplier link">&times;</button></td>'
       + '</tr>';
@@ -1289,6 +1422,13 @@ function _supTable(r){
 function _rulePills(r){
   const rule = r.rule || {}, d = r.decision || {}, b = d.breakdown || {};
   const sku = r.sku;
+  // `this` IS PASSED TO EVERY HANDLER, and it has to be.
+  //
+  // The editors these open are INLINE -- a small panel anchored under the
+  // control that opened it, so the row it is about stays visible behind. With
+  // no button to measure, uiInline has nowhere to put itself and returns
+  // without drawing anything: the pill would look dead. Measured in a browser
+  // before this was added, clicking Floor did nothing at all.
   const pill = function(k, v, fn, why, cls){
     return '<button class="rp-rl" title="' + _sesc(why) + '" '
       + 'onclick="event.stopPropagation();' + fn + '">'
@@ -1298,7 +1438,7 @@ function _rulePills(r){
   const S = _sarg(sku);
   let h = '<div class="rp-rules">';
   h += pill('Floor', rule.min_price != null ? _smoney(rule.min_price) : 'not set',
-            'sourcingMinPrice(' + S + ')',
+            'sourcingMinPrice(' + S + ',this)',
             'The price this SKU will never sell below. It is the one guard that '
             + 'still works if a supplier page is misread, and a SKU cannot be '
             + 'armed without it.',
@@ -1322,7 +1462,7 @@ function _rulePills(r){
             + 'notification as well.');
   h += pill('Extra handling',
             '+' + (rule.handling_buffer_days || 0) + 'd',
-            'sourcingBuffer(' + S + ')',
+            'sourcingBuffer(' + S + ',this)',
             'Added on top of the calculated handling time. Use it for a '
             + 'supplier that does not dispatch when it says it will.',
             (rule.handling_buffer_days ? '' : 'rp-off'));
@@ -1374,29 +1514,77 @@ function _statCards(j){
   const total = rows.length || 0;
   const armed = rows.filter(function(r){ return r.mode === 'live'; }).length;
   const pct = function(n){ return total ? Math.round(n / total * 100) : 0; };
-  const card = function(n, label, tone, bar, why){
-    return '<div class="rp-mc" title="' + _sesc(why || '') + '">'
+  // THE CARDS ARE THE FILTER.
+  //
+  //     "Clicking 'Armed' shows only armed SKUs ... Clicking the active filter
+  //      again clears it."
+  //
+  // A count and a filter are the same thing asked twice. "13 out of stock" is
+  // only useful if the next thing you do is look at those thirteen, and on a
+  // 67-row table that meant scrolling and reading dots. The number IS the way
+  // in now, which is also why no separate row of filter buttons was added:
+  // that would be two controls for one idea.
+  const card = function(key, n, label, tone, bar, why){
+    const on = (SRC_FILTER === key);
+    return '<button class="rp-mc' + (on ? ' rp-on' : '') + '" type="button" '
+      + 'onclick="sourcingFilter(' + _sarg(key) + ')" '
+      + 'aria-pressed="' + (on ? 'true' : 'false') + '" title="'
+      + _sesc(why || '') + (n ? (on ? ' — click to show all again.'
+                                    : ' Click to show only these.') : '') + '">'
       + '<div class="rp-mc-n ' + (tone || '') + '">' + n + '</div>'
       + '<div class="rp-mc-l">' + label + '</div>'
       + '<div class="rp-mc-bar" style="width:' + pct(bar) + '%;background:'
       + (tone === 'rp-g' ? '#22c55e' : tone === 'rp-y' ? '#f0b429'
-         : tone === 'rp-r' ? '#ef4444' : 'var(--line2)') + '"></div></div>';
+         : tone === 'rp-r' ? '#ef4444' : 'var(--line2)') + '"></div></button>';
   };
   return '<div class="rp-met">'
-    + card(total, 'Tracked', '', total,
+    // "Tracked" is the whole set, so it is the way OFF a filter rather than a
+    // filter of its own -- clicking it always shows everything.
+    + card('', total, 'Tracked', '', total,
            'SKUs whose supplier costs are being read every four hours.')
-    + card(armed, 'Armed', armed ? 'rp-g' : 'rp-d', armed,
+    + card('armed', armed, 'Armed', armed ? 'rp-g' : 'rp-d', armed,
            'SKUs that can have their price changed on Amazon without anyone '
            + 'watching. Each one was armed on its own.')
-    + card(c.update || 0, 'Would change', (c.update ? 'rp-y' : 'rp-d'),
+    + card('update', c.update || 0, 'Would change', (c.update ? 'rp-y' : 'rp-d'),
            c.update || 0,
            'SKUs whose price, stock or handling time is not what the rules say '
            + 'it should be.')
-    + card(c.out_of_stock || 0, 'Out of stock',
+    + card('out_of_stock', c.out_of_stock || 0, 'Out of stock',
            (c.out_of_stock ? 'rp-r' : 'rp-d'), c.out_of_stock || 0,
            'Every supplier confirmed unable to supply. These go to zero stock '
            + 'on Amazon, and you are told.')
     + '</div>';
+}
+
+/* Turn a filter on, or off if it is already on.
+ *
+ * Re-renders from the rows already held -- no fetch, because the answer is
+ * already on the page and a filter that waits on the network feels broken.
+ * Open panels close, deliberately: a panel belonging to a row that is no longer
+ * shown would be a detail floating under nothing.
+ */
+function sourcingFilter(key){
+  SRC_FILTER = (SRC_FILTER === key) ? "" : String(key || "");
+  // A selection made under one filter would act on rows you can no longer see.
+  // Cleared with the filter, so "12 selected" always means twelve visible rows.
+  SRC_SEL = new Set();
+  sourcingRender(SRC_LAST_J || {});
+  const host = document.getElementById("srcbody");
+  if(host) host.scrollIntoView({block: "start", behavior: "auto"});
+}
+
+/* Which rows a filter admits. One place, so the table and the count that
+ * labels it can never disagree about what "armed" means. */
+function _srcVisible(){
+  const rows = SRC_ROWS || [];
+  if(!SRC_FILTER) return rows;
+  return rows.filter(function(r){
+    const d = r.decision || {};
+    if(SRC_FILTER === "armed") return r.mode === "live";
+    if(SRC_FILTER === "update") return d.action === "update";
+    if(SRC_FILTER === "out_of_stock") return d.action === "out_of_stock";
+    return true;
+  });
 }
 
 /* ONE line, only when there is something to act on.
@@ -1503,6 +1691,28 @@ function _srcMoreMenu(j){
           + 'stay set. Asks first, and says how many links and readings will go.',
           '', true)
 
+    // ---- floors by the sheetful --------------------------------------
+    //
+    //     "This is the fastest path to going live: download -> fill prices in
+    //      Excel -> upload -> all armed in 2 minutes."
+    //
+    // Its own group because it is a WORKFLOW, not two unrelated buttons: the
+    // second one only makes sense after the first, and they read as a pair.
+    + '<div class="rp-mh">Minimum prices</div>'
+    + '<a class="rp-mi" href="/sourcing/minprice_template.csv' + _srcUrl("")
+    + '" onclick="_srcMoreClose()" title="'
+    + 'A sheet of every tracked SKU with what it sells for, what it costs and '
+    + 'the floor it has now — and one empty column to fill in. The floor is '
+    + 'what gates arming, so this is the quickest way to make a whole account '
+    + 'ready to go live.">'
+    + '<i class="ti ti-file-download"></i><span>Download template</span></a>'
+    + '<input type="file" id="src_minup" accept=".csv,.tsv,.xlsx,.xlsm,.xls" '
+    + 'class="visually-hidden" onchange="sourcingMinPriceUpload(this)">'
+    + '<label class="rp-mi" for="src_minup" onclick="_srcMoreClose()" title="'
+    + 'Reads the filled-in sheet and sets each floor. Rows left blank are '
+    + 'skipped, not cleared. Asks before it arms anything.">'
+    + '<i class="ti ti-table-import"></i><span>Upload min prices</span></label>'
+
     + '<div class="rp-mh">Amazon</div>'
     + row('ti-receipt-tax', "Get Amazon's fees", 'sourcingGetFees(this)',
           'Asks Amazon what its referral fee actually is on each tracked '
@@ -1527,6 +1737,20 @@ function _srcMoreMenu(j){
           + 'this separately from the handling time, so the repricer takes it '
           + 'OFF the handling time rather than promising it twice.',
           ((j.shipping_policy_days != null ? j.shipping_policy_days : 2) + 'd'))
+    // WHAT A NEW SKU STARTS WITH -- and only a new one.
+    //
+    //     "This applies only to NEW enrollments. Existing SKUs keep their
+    //      current rules."
+    //
+    // Which is why it is a separate setting from the target above rather than
+    // the same one. That one is the account's fallback, read live; this one is
+    // written onto a SKU once, at the moment it is enrolled. Change it and
+    // nothing already tracked moves.
+    + row('ti-file-plus', 'New SKUs start at', 'sourcingDefaultTarget()',
+          'The target a newly tracked SKU is given. It is written onto that '
+          + 'SKU when it is enrolled, so changing this never re-prices '
+          + 'anything you are already tracking.',
+          _srcDefaultTargetLabel())
 
     + '<div class="rp-mh">Help</div>'
     + row('ti-book', 'How this page works', "openGuide('repricer')",
@@ -1556,6 +1780,278 @@ function _srcMoreToggle(e){
 function _srcMoreClose(){
   const m = document.getElementById("rp_more");
   if(m) m.classList.remove("rp-open");
+}
+
+/* What the "New SKUs start at" row shows on its right. */
+function _srcDefaultTargetLabel(){
+  const d = SRC_DEFAULT_TARGET || {};
+  const kind = String(d.kind || "none").toLowerCase();
+  if(kind === "roi" && d.pct != null) return d.pct + "% ROI";
+  if(kind === "margin" && d.pct != null) return d.pct + "% margin";
+  return "break-even";
+}
+
+/* THE TARGET A NEWLY TRACKED SKU IS GIVEN.
+ *
+ *     "Add a setting in the ⋯ menu: 'Default target for new enrollments'"
+ *
+ * Three choices, and the third is the honest default: nothing. A repricer with
+ * no target prices no lower than break-even and no higher — which is the
+ * absolute floor and nobody's commercial decision. Picking a number here is
+ * saying "and start every new one at this", which is a decision, so it is
+ * asked rather than assumed.
+ */
+async function sourcingDefaultTarget(){
+  let cur = {kind: "none", pct: null};
+  try{
+    const g = await (await fetch("/sourcing/default_target" + _srcUrl(""))).json();
+    if(g && g.ok) cur = g;
+  }catch(e){ /* the shown default stands */ }
+  const k = String(cur.kind || "none").toLowerCase();
+  _srcModal("What a newly tracked SKU starts at",
+    '<div style="font-size:12.5px;line-height:1.6">'
+    + '<p>Applies to SKUs enrolled <b>from now on</b>. Nothing you are already '
+    + 'tracking changes — each of those keeps whatever its own Rules pills '
+    + 'say.</p>'
+    + '<label class="rp-mi" style="cursor:pointer">'
+    + '<input type="radio" name="src_dt" value="none"'
+    + (k === "none" ? " checked" : "") + '><span>None — break-even</span></label>'
+    + '<div class="cc" style="font-size:11px;margin:0 0 8px 30px">Priced no '
+    + 'lower than cost plus Amazon\'s fee, and no higher until you set a '
+    + 'target.</div>'
+    + '<label class="rp-mi" style="cursor:pointer">'
+    + '<input type="radio" name="src_dt" value="roi"'
+    + (k === "roi" ? " checked" : "") + '><span>ROI</span>'
+    + '<input id="src_dt_roi" type="number" min="0" max="500" step="0.5" '
+    + 'style="width:74px" value="'
+    + (k === "roi" && cur.pct != null ? cur.pct : "") + '" placeholder="25">'
+    + '<span class="cc">%</span></label>'
+    + '<div class="cc" style="font-size:11px;margin:0 0 8px 30px">What you keep '
+    + 'as a share of the cash you put in.</div>'
+    + '<label class="rp-mi" style="cursor:pointer">'
+    + '<input type="radio" name="src_dt" value="margin"'
+    + (k === "margin" ? " checked" : "") + '><span>Margin</span>'
+    + '<input id="src_dt_margin" type="number" min="0" max="99" step="0.5" '
+    + 'style="width:74px" value="'
+    + (k === "margin" && cur.pct != null ? cur.pct : "") + '" placeholder="20">'
+    + '<span class="cc">%</span></label>'
+    + '<div class="cc" style="font-size:11px;margin:0 0 0 30px">What you keep '
+    + 'as a share of what the buyer pays. Amazon\'s fee comes out of the same '
+    + 'price, so much over 60% cannot be met.</div>'
+    + '</div>',
+    async function(){
+      const sel = document.querySelector('input[name="src_dt"]:checked');
+      const kind = sel ? sel.value : "none";
+      let pct = null;
+      if(kind !== "none"){
+        const el = document.getElementById("src_dt_" + kind);
+        pct = el ? el.value : "";
+        if(String(pct).trim() === ""){
+          toast("Type the percentage, or choose None");
+          return false;
+        }
+      }
+      const jr = await (await fetch("/sourcing/default_target", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: _srcBody({kind: kind, pct: pct})})).json();
+      if(!jr.ok){ toast(jr.error || "Could not save"); return false; }
+      SRC_DEFAULT_TARGET = {kind: jr.kind, pct: jr.pct};
+      toast(jr.note || "Saved");
+      return true;
+    });
+}
+
+/* ======================================================================
+ * FLOORS BY THE SHEETFUL.
+ *
+ * The floor is the gate -- nothing can be armed without one, and on this
+ * account 66 of 67 SKUs have none. Setting them one at a time is 66 popovers,
+ * and each asks a question you can only answer by comparing three numbers:
+ * what it sells for, what it costs, and what you would accept. A spreadsheet
+ * puts those in columns and lets you fill the fourth down the page.
+ *
+ * The BROWSER parses the file, using the same reader the supplier sheet uses,
+ * so there is one answer to "what does this column mean" rather than a second
+ * parser on the server that would eventually disagree with it (Rule 12).
+ * ====================================================================== */
+async function sourcingMinPriceUpload(input){
+  const f = input && input.files && input.files[0];
+  if(!f) return;
+  input.value = "";                       // so the same file can be re-picked
+  let rows;
+  try{ rows = await _srcReadSheet(f); }
+  catch(e){
+    await uiAlert(String((e && e.message) || e),
+                  {title: "That file could not be read"});
+    return;
+  }
+  const filled = rows.filter(function(r){ return r.min_price !== ""; });
+  if(!filled.length){
+    await uiAlert(
+      "The sheet was read (" + rows.length + " row"
+      + (rows.length === 1 ? "" : "s") + "), but the “New Min Price” "
+      + "column was empty on every one of them.\n\n"
+      + "Fill that column in Excel and upload it again. The other columns are "
+      + "there for context and are not read back.",
+      {title: "Nothing to set"});
+    return;
+  }
+  // ARMING IS OPT-IN, ALWAYS, and it is the same tick the spec asked for. A
+  // sheet that armed by default would be a file turning on live pricing for a
+  // whole account, which is not a thing a file should be able to do quietly.
+  const arm = await _srcAskArm(filled.length);
+  if(arm === null) return;
+
+  let j;
+  try{
+    j = await (await fetch("/sourcing/minprice_upload", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: _srcBody({rows: filled, arm: !!arm})})).json();
+  }catch(e){
+    await uiAlert(String((e && e.message) || e), {title: "Upload failed"});
+    return;
+  }
+  if(!j.ok){
+    await uiAlert(j.error || "Could not set those floors.",
+                  {title: "Upload refused"});
+    return;
+  }
+  toast(j.note || (j.updated + " min prices updated"));
+  // WHICH ROWS DID NOT GO IN, and why -- a summary saying "1 error" with no
+  // way to find out which row is a summary you cannot act on.
+  if((j.errors || []).length){
+    await uiAlert(
+      j.errors.slice(0, 20).map(function(e){
+        return e.row + " — " + e.why; }).join("\n")
+      + ((j.errors.length > 20)
+          ? "\n\n…and " + (j.errors.length - 20) + " more." : ""),
+      {title: j.errors.length + " row"
+              + (j.errors.length === 1 ? "" : "s") + " could not be read"});
+  }
+  // Inline, keeping the table and any open panel exactly as they were.
+  await sourcingLoad(true);
+}
+
+/* Ask whether to arm, and be honest about what that means. */
+function _srcAskArm(n){
+  return new Promise(function(resolve){
+    _srcModal("Set " + n + " minimum price" + (n === 1 ? "" : "s"),
+      '<div style="font-size:12.5px;line-height:1.6">'
+      + '<p>Each row with a value in <b>New Min Price</b> gets that floor. '
+      + 'Rows left blank are skipped, never cleared.</p>'
+      + '<label class="rp-mi" style="cursor:pointer;margin-top:6px">'
+      + '<input type="checkbox" id="src_autoarm">'
+      + '<span>Also arm each SKU that gets a floor</span></label>'
+      + '<div class="cc" style="font-size:11.5px;margin:2px 0 0 30px">'
+      + 'Armed SKUs can have their price, stock and handling time changed on '
+      + 'Amazon without anyone watching — at most one change each every four '
+      + 'hours, and never below the floor this sheet is setting. '
+      + (SRC_MASTER ? '' : 'Auto-pricing is currently OFF, so nothing would be '
+                          + 'pushed until you switch it on.')
+      + '</div></div>',
+      function(){
+        const el = document.getElementById("src_autoarm");
+        resolve(!!(el && el.checked));
+        return true;
+      },
+      function(){ resolve(null); });        // cancelled
+  });
+}
+
+/* Read a .csv/.tsv/.xlsx into [{sku, asin, min_price}].
+ *
+ * Header matching is by MEANING, not by position: a person who reorders the
+ * columns in Excel, or deletes the ones they did not need, has done nothing
+ * wrong and the file should still work. Only the SKU/ASIN and the new floor
+ * are read -- the price and cost columns are context for the reader.
+ */
+function _srcReadSheet(file){
+  return new Promise(function(resolve, reject){
+    const done = function(rowsRaw){
+      if(!rowsRaw || !rowsRaw.length) return reject(new Error("It had no rows."));
+      const head = rowsRaw[0].map(function(c){
+        return String(c == null ? "" : c).trim().toLowerCase(); });
+      const find = function(names){
+        for(let i = 0; i < head.length; i++)
+          if(names.indexOf(head[i]) >= 0) return i;
+        return -1;
+      };
+      const iSku = find(["sku", "seller sku", "seller-sku"]);
+      const iAsin = find(["asin", "asin1"]);
+      const iNew = find(["new min price", "new min", "min price", "minimum price",
+                         "new minimum price", "floor"]);
+      if(iNew < 0)
+        return reject(new Error(
+          'There is no "New Min Price" column. Download the template again '
+          + 'and fill in that column without renaming it.'));
+      if(iSku < 0 && iAsin < 0)
+        return reject(new Error(
+          "There is no SKU or ASIN column, so the app cannot tell which "
+          + "listing each row is about."));
+      const out = [];
+      for(let r = 1; r < rowsRaw.length; r++){
+        const row = rowsRaw[r] || [];
+        const cell = function(i){
+          return i < 0 ? "" : String(row[i] == null ? "" : row[i]).trim(); };
+        const sku = cell(iSku), asin = cell(iAsin), v = cell(iNew);
+        if(!sku && !asin) continue;                 // a blank line in the sheet
+        out.push({sku: sku, asin: asin, min_price: v});
+      }
+      resolve(out);
+    };
+
+    const name = String(file.name || "").toLowerCase();
+    if(/\.xlsx?$|\.xlsm$/.test(name)){
+      if(typeof XLSX === "undefined")
+        return reject(new Error(
+          "The spreadsheet reader did not load. Save the sheet as CSV and "
+          + "upload that instead."));
+      const fr = new FileReader();
+      fr.onerror = function(){ reject(new Error("The file could not be read.")); };
+      fr.onload = function(e){
+        try{
+          const wb = XLSX.read(new Uint8Array(e.target.result), {type: "array"});
+          const sh = wb.Sheets[wb.SheetNames[0]];
+          done(XLSX.utils.sheet_to_json(sh, {header: 1, raw: false, defval: ""}));
+        }catch(err){ reject(err); }
+      };
+      fr.readAsArrayBuffer(file);
+      return;
+    }
+    const fr = new FileReader();
+    fr.onerror = function(){ reject(new Error("The file could not be read.")); };
+    fr.onload = function(e){
+      const text = String(e.target.result || "");
+      // Tab if the first line has more tabs than commas -- a title with a comma
+      // in it is common and must not be read as a column break.
+      const first = text.split(/\r?\n/)[0] || "";
+      const sep = ((first.match(/\t/g) || []).length
+                   > (first.match(/,/g) || []).length) ? "\t" : ",";
+      done(text.split(/\r?\n/).filter(function(l){ return l.trim() !== ""; })
+               .map(function(l){ return _srcCsvLine(l, sep); }));
+    };
+    fr.readAsText(file);
+  });
+}
+
+/* One CSV line into cells, honouring quotes -- product titles contain commas
+ * and a naive split puts half a title in the ASIN column. */
+function _srcCsvLine(line, sep){
+  const out = [];
+  let cur = "", q = false;
+  for(let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if(q){
+      if(ch === '"'){
+        if(line[i + 1] === '"'){ cur += '"'; i++; }   // "" is a literal quote
+        else q = false;
+      } else cur += ch;
+    } else if(ch === '"'){ q = true; }
+    else if(ch === sep){ out.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
 }
 
 /* HOW LONG YOUR POSTAGE TAKES. Global, not per SKU: it describes the courier,
@@ -1599,6 +2095,9 @@ function sourcingRender(j){
   const body = document.getElementById("srcbody");
   const c = j.counts || {};
   let h = "";
+  // Kept so a filter can redraw from what is already here rather than fetching
+  // sixty-seven decisions again to show a subset of the ones on screen.
+  SRC_LAST_J = j;
 
   // ---- the toolbar: three controls, and a menu -------------------------
   //
@@ -1636,7 +2135,7 @@ function sourcingRender(j){
     +  '<button class="db-chip" onclick="sourcingAddPrompt()" title="'
     +  'Start tracking one more of this account&#39;s live listings. Enrolling '
     +  'watches its suppliers; it does not price it.">'
-    +  '<i class="ti ti-plus"></i> Enrol</button>'
+    +  '<i class="ti ti-plus"></i> Enroll</button>'
     +  '<span style="flex:1"></span>'
     +  _srcMoreMenu(j)
     +  '</div>';
@@ -1660,7 +2159,7 @@ function sourcingRender(j){
 
   if(j.note){
     h += '<div class="cc" style="font-size:12px;padding:10px;border:1px dashed #2a3446;border-radius:6px">'
-      +  _sesc(j.note)+' Enrol a SKU above to start watching its suppliers.</div>';
+      +  _sesc(j.note)+' Enroll a SKU above to start watching its suppliers.</div>';
     body.innerHTML = h; return;
   }
 
@@ -1704,8 +2203,22 @@ function sourcingRender(j){
     +  '<th title="What this SKU&#39;s cheapest supplier has been charging">Trend</th>'
     +  '<th style="width:14px"></th>'
     +  '</tr></thead><tbody id="rp_body">';
-  SRC_ROWS.forEach(function(r, i){ h += sourcingRow(r, i); });
+  // Filtered, and the INDEX is the row's real position in SRC_ROWS -- the panel
+  // ids are built from it, and renumbering them under a filter would make
+  // "which row is open" mean two different things on two different views.
+  const shown = _srcVisible();
+  SRC_ROWS.forEach(function(r, i){
+    if(shown.indexOf(r) >= 0) h += sourcingRow(r, i);
+  });
   h += '</tbody></table></div></div>';
+  // A filter that hides everything must say so, or it reads as a table that
+  // failed to load.
+  if(!shown.length && SRC_ROWS.length){
+    h += '<div class="cc" style="font-size:12px;padding:14px 4px">'
+      +  'No SKU is in that state right now. '
+      +  '<button class="db-chip" onclick="sourcingFilter(\'\')">'
+      +  'Show all ' + SRC_ROWS.length + '</button></div>';
+  }
   body.innerHTML = h;
   _srcSelBar();
 }
@@ -1725,52 +2238,210 @@ function sourcingSelect(sku, on){
   _srcSelBar();
 }
 
+/* Tick or untick everything CURRENTLY SHOWN.
+ *
+ * Shown, not tracked. Under a filter the header box has to mean the rows under
+ * it -- ticking "all" while looking at four out-of-stock SKUs and quietly
+ * selecting the other sixty-three is how a bulk action hits the wrong things.
+ */
 function sourcingSelectAll(on){
-  SRC_SEL = on ? new Set(SRC_ROWS.map(function(r){ return String(r.sku); }))
-               : new Set();
+  const shown = _srcVisible().map(function(r){ return String(r.sku); });
+  if(on) shown.forEach(function(s){ SRC_SEL.add(s); });
+  else shown.forEach(function(s){ SRC_SEL.delete(s); });
   document.querySelectorAll(".srcsel").forEach(function(b){ b.checked = !!on; });
+  const all = document.getElementById("rp_all");
+  if(all) all.checked = !!on;
   _srcSelBar();
 }
 
+/* THE BULK BAR.
+ *
+ *     "When checkboxes are ticked, a sticky bar appears above the table:
+ *      X selected | Set min price | Set ROI | Set margin | Arm all |
+ *      Disarm all | Stop tracking"
+ *
+ * STICKY, because the rows it acts on are the reason to scroll. Selecting
+ * thirty SKUs down a sixty-seven row table used to leave the bar somewhere
+ * above the fold, so the last thing you did was scroll back up to find the
+ * button for the thing you had just finished choosing.
+ *
+ * Every action here is the SAME call the single-row version makes -- see
+ * _srcBulkRule, which loops the one-SKU save. Nothing has a bulk endpoint of
+ * its own, so a rule set for forty SKUs cannot be validated differently from
+ * one set for one (CLAUDE.md Rule 12).
+ */
 function _srcSelBar(){
   const el = document.getElementById("srcselbar");
   if(!el) return;
   // Only SKUs still on screen count. A filter change can leave a tick on a row
   // nobody can see, and acting on forty when four are visible is the kind of
   // surprise this bar exists to prevent.
-  const shown = new Set(SRC_ROWS.map(function(r){ return String(r.sku); }));
+  const shown = new Set(_srcVisible().map(function(r){ return String(r.sku); }));
   const picked = [...SRC_SEL].filter(function(s){ return shown.has(s); });
   if(!picked.length){ el.innerHTML = ""; return; }
-  const armed = SRC_ROWS.filter(function(r){
-    return picked.indexOf(String(r.sku)) >= 0 && r.mode === "live"; }).length;
+  const rows = SRC_ROWS.filter(function(r){
+    return picked.indexOf(String(r.sku)) >= 0; });
+  const armed = rows.filter(function(r){ return r.mode === "live"; }).length;
+  // ARMING NEEDS A FLOOR. Said before the button is pressed rather than as
+  // forty identical refusals afterwards.
+  const noFloor = rows.filter(function(r){
+    return (r.rule || {}).min_price == null; }).length;
+
   el.innerHTML =
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;'
-    + 'padding:9px 11px;margin-bottom:10px;border:1px solid var(--accent-line);'
-    + 'background:var(--accent-bg);border-radius:7px;font-size:12.5px">'
+      '<div class="rp-bulk">'
     + '<b>' + picked.length + ' selected</b>'
-    + (armed ? '<span style="color:var(--warn)">' + armed + ' of them armed</span>' : '')
+    + (armed ? '<span class="rp-g">' + armed + ' armed</span>' : '')
+    + (noFloor ? '<span class="rp-y" title="A SKU cannot be armed until it has '
+                 + 'a price it will never sell below.">' + noFloor
+                 + ' with no floor</span>' : '')
     + '<span style="flex:1"></span>'
-    + '<button class="db-chip" onclick="sourcingSelectAll(true)">Select all '
-    + SRC_ROWS.length + '</button>'
     + '<button class="db-chip" onclick="sourcingSelectAll(false)">Clear</button>'
     // THE FLOOR THAT ARMING REQUIRES, settable for everything at once. Without
     // this it is one row at a time, which is why nothing was armed.
-    + '<button class="db-chip" onclick="sourcingMinPriceBulk()" title="'
-    + 'Give each selected listing a price it will never sell below, worked out '
-    + 'as a share of what it sells for today. A SKU cannot be armed without '
-    + 'one.">'
-    + '<i class="ti ti-arrow-down-circle"></i> Set minimum price</button>'
+    + '<button class="db-chip" onclick="sourcingMinPriceBulk(this)" title="'
+    + 'Give each selected listing a price it will never sell below. A SKU '
+    + 'cannot be armed without one.">'
+    + '<i class="ti ti-arrow-down-circle"></i> Set min price</button>'
+    + '<button class="db-chip" onclick="sourcingBulkTarget(\'roi\',this)" title="'
+    + 'The return you want on the cash you put in, for every selected SKU. The '
+    + 'price becomes the least that meets it.">Set ROI</button>'
+    + '<button class="db-chip" onclick="sourcingBulkTarget(\'margin\',this)" '
+    + 'title="The share of the selling price you want to keep, for every '
+    + 'selected SKU.">Set margin</button>'
     // THE ANSWER TO "it should not reduce my selling price", made reachable.
     // The held price did this all along; typing it into 67 SKUs by hand did not.
     + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
-    + 'Write today\'s Amazon price in as the floor for each selected listing. '
-    + 'The repricer then never prices below it — a cheaper supplier means more '
-    + 'margin, not a lower price — but a dearer one can still push the price UP, '
+    + "Write today's Amazon price in as the floor for each selected listing. "
+    // Each claim kept whole rather than split across a concatenation. These
+    // three phrases are what the button PROMISES, and a promise broken over
+    // two string literals cannot be found -- by a reader grepping for it, or
+    // by the test that guards the wording.
+    + 'The repricer then never prices below it — a cheaper supplier means '
+    + 'more margin, not a lower price — '
+    + 'but a dearer one can still push the price UP, '
     + 'so it can never hold you at a loss.">'
-    + '<i class="ti ti-lock-dollar"></i> Hold at today\'s price</button>'
+    + '<i class="ti ti-lock-dollar"></i> Hold at today’s price</button>'
+    + '<button class="db-chip go" onclick="sourcingBulkArm(true)" title="'
+    + 'Let these SKUs change their own price on Amazon, without anyone '
+    + 'watching. Each one still needs a floor first.">'
+    + '<i class="ti ti-bolt"></i> Arm all</button>'
+    + '<button class="db-chip" onclick="sourcingBulkArm(false)" title="'
+    + 'Back to watching only. Costs are still tracked and decisions still '
+    + 'recorded; nothing reaches Amazon.">Disarm all</button>'
     + '<button class="db-chip risk" onclick="sourcingUnenrolSelected()">'
-    + '<i class="ti ti-eye-off"></i> Stop tracking ' + picked.length + '</button>'
+    + '<i class="ti ti-eye-off"></i> Stop tracking</button>'
     + '</div>';
+}
+
+/* The SKUs the bulk bar is about: ticked AND on screen. */
+function _srcPicked(){
+  const shown = new Set(_srcVisible().map(function(r){ return String(r.sku); }));
+  return [...SRC_SEL].filter(function(s){ return shown.has(s); });
+}
+
+/* Save one rule across every selected SKU, one call each.
+ *
+ * One at a time on purpose. Each save goes through /sourcing/rules, which is
+ * the route that validates a percentage and refuses an impossible margin -- a
+ * bulk endpoint would need that logic again and would eventually disagree with
+ * it. Sixty-seven small posts is a second; a second validator is a bug.
+ */
+async function _srcBulkRule(rule, verb){
+  const skus = _srcPicked();
+  if(!skus.length) return;
+  let ok = 0;
+  const bad = [];
+  for(const sku of skus){
+    const err = await sourcingSaveRuleQuiet(sku, rule);
+    if(err) bad.push(sku + ": " + err); else ok++;
+  }
+  toast(verb + " on " + ok + " SKU" + (ok === 1 ? "" : "s")
+        + (bad.length ? " · " + bad.length + " refused" : ""));
+  if(bad.length) await uiAlert(bad.slice(0, 12).join("\n"),
+                               {title: bad.length + " could not be saved"});
+  await sourcingLoad(true);
+}
+
+/* sourcingSaveRule without the toast and without a refresh per SKU. */
+async function sourcingSaveRuleQuiet(sku, rule){
+  try{
+    const j = await (await fetch("/sourcing/rules", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: _srcBody({sku: sku, rule: rule})})).json();
+    if(!j.ok) return j.error || "refused";
+    const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
+    if(row) row.rule = Object.assign({}, row.rule || {}, rule);
+    return "";
+  }catch(e){ return String((e && e.message) || e); }
+}
+
+async function sourcingBulkTarget(kind, btn){
+  const n = _srcPicked().length;
+  if(!n) return;
+  const key = (kind === "roi") ? "target_roi_pct" : "target_margin_pct";
+  await uiInline(btn, {
+    title: (kind === "roi" ? "ROI" : "Margin") + " target on " + n + " SKU"
+           + (n === 1 ? "" : "s"),
+    type: "number", min: 0, step: "0.5", suffix: "%",
+    placeholder: kind === "roi" ? "e.g. 25" : "e.g. 20",
+    hint: kind === "roi"
+      ? "What you keep as a share of the cash you put in. The price becomes "
+        + "the least that meets it."
+      : "What you keep as a share of what the buyer pays. Amazon's fee comes "
+        + "out of the same price, so a margin much over 60% cannot be met.",
+    clearable: true,
+    clearLabel: "Turn this target off",
+    onSave: async function(v){
+      const t = String(v).trim();
+      if(t !== "" && !(parseFloat(t) >= 0))
+        return "That needs to be a number, e.g. 20";
+      const patch = {};
+      patch[key] = (t === "" ? null : parseFloat(t));
+      await _srcBulkRule(patch, t === "" ? "Target cleared"
+                                         : t + "% " + kind + " set");
+      return "";
+    }
+  });
+}
+
+/* Arm or disarm everything selected.
+ *
+ * ARMING IS THE MOST CONSEQUENTIAL THING ON THIS SCREEN -- an armed SKU can
+ * change a real price with nobody watching -- so it asks first, and says how
+ * many and what that means. Disarming does not ask: stopping is always safe.
+ */
+async function sourcingBulkArm(on){
+  const skus = _srcPicked();
+  if(!skus.length) return;
+  if(on){
+    const ok = await uiConfirm(
+      "Arm " + skus.length + " SKU" + (skus.length === 1 ? "" : "s") + "?\n\n"
+      + "Armed SKUs can have their price, stock and handling time changed on "
+      + "Amazon without anyone watching — at most one change each every "
+      + "four hours, and never below the floor you set.\n\n"
+      + (SRC_MASTER ? "" : "Auto-pricing is currently OFF, so nothing will be "
+                           + "pushed until you switch it on."),
+      {title: "Arm " + skus.length + " SKU" + (skus.length === 1 ? "" : "s"),
+       ok: "Arm them", danger: true});
+    if(!ok) return;
+  }
+  let done = 0;
+  const bad = [];
+  for(const sku of skus){
+    try{
+      const j = await (await fetch("/sourcing/arm", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: _srcBody({sku: sku, live: !!on})})).json();
+      if(j.ok) done++; else bad.push(sku + ": " + (j.error || "refused"));
+    }catch(e){ bad.push(sku + ": " + String((e && e.message) || e)); }
+  }
+  toast((on ? "Armed " : "Disarmed ") + done
+        + (bad.length ? " · " + bad.length + " refused" : ""));
+  // WHY EACH REFUSAL HAPPENED, not just how many. Almost always a missing
+  // floor, and that is fixable in one more click from the same bar.
+  if(bad.length) await uiAlert(bad.slice(0, 12).join("\n"),
+                               {title: bad.length + " could not be armed"});
+  await sourcingLoad(true);
 }
 
 async function sourcingUnenrolSelected(){
@@ -1784,7 +2455,7 @@ async function sourcingUnenrolSelected(){
   // part, and a supplier price on a day nobody was watching cannot be recovered.
   const ok = await srcConfirm({
     title: "Stop tracking " + skus.length + " SKU" + (skus.length === 1 ? "" : "s") + "?",
-    body: "Their supplier links and price history are KEPT — enrol one again "
+    body: "Their supplier links and price history are KEPT — enroll one again "
         + "later and everything is still attached. Nothing is deleted and "
         + "nothing on Amazon changes."
         + (armed ? "\n\n" + armed + " of them are armed for auto-pricing. "
@@ -2235,7 +2906,7 @@ function sourcingRow(r, i){
         : ((r.rule || {}).min_price == null
             ? '<button class="db-chip" style="border-color:var(--warn);'
               + 'color:var(--warn)" onclick="event.stopPropagation();'
-              + 'sourcingMinPrice(' + _sarg(r.sku) + ')" '
+              + 'sourcingMinPrice(' + _sarg(r.sku) + ',this)" '
               + 'title="A SKU cannot be armed until it has a price it will never '
               + 'sell below. That floor is the one guard that still works if a '
               + "supplier's page is misread. Click to set it.\">"
@@ -2246,7 +2917,7 @@ function sourcingRow(r, i){
     +  'sourcingAddSourcePrompt(' + _sarg(r.sku) + ')">'
     +  '<i class="ti ti-plus"></i> Add a supplier</button>'
     +  '<button class="db-chip" onclick="event.stopPropagation();'
-    +  'sourcingHoldPrice(' + _sarg(r.sku) + ')" title="'
+    +  'sourcingHoldPrice(' + _sarg(r.sku) + ',this)" title="'
     +  'Use this when you know what a product sells for. The repricer will never '
     +  'price BELOW it, even if your target would be met by less. It is a floor, '
     +  'not a fixed price: if the supplier gets dearer the price still goes UP.">'
@@ -2419,7 +3090,7 @@ function sourcingToggleDetail(id){
  * the supplier's own, so it says what it will cost you before you set it: a
  * longer handling time is a later delivery date on the listing.
  */
-async function sourcingBuffer(sku){
+async function sourcingBuffer(sku, btn){
   const cur = (SRC_ROW_RULES[sku] || {}).handling_buffer_days || 0;
   _srcModal("Extra handling days",
     '<div style="font-size:12.5px;line-height:1.6">'
@@ -2467,7 +3138,7 @@ async function sourcingCheckNow(btn){
 }
 
 // Pick from what is actually on Amazon, rather than typing a SKU from memory.
-// A typed SKU with a typo in it enrols a product that does not exist: the sweep
+// A typed SKU with a typo in it enrolls a product that does not exist: the sweep
 // finds no sources, the screen shows a row that never decides anything, and
 // nothing anywhere says the SKU was wrong.
 async function sourcingAddPrompt(){
@@ -2486,10 +3157,30 @@ async function sourcingPickerLoad(q){
   catch(e){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc(String(e))+'</div>'; return; }
   if(!j || !j.ok){ host.innerHTML = '<div class="cc" style="padding:14px;color:var(--red)">'+_sesc((j&&j.error)||"Could not load")+'</div>'; return; }
 
+  // ONLY THE ONES YOU CAN ACTUALLY ENROLL.
+  //
+  //     "Clicking '+ Enroll' shows ALL items including ones that are already
+  //      enrolled (showing 'enrolled · 3 sources'). Only show items that are
+  //      NOT yet enrolled."
+  //
+  // Right: this is a list you pick FROM, and an entry you cannot pick is not a
+  // choice, it is something to read past. On this account 67 of the live
+  // listings are already tracked, so the picker was mostly rows with a disabled
+  // chip where the button should be.
+  //
+  // The count still says how many were left out, because "3 listings" with no
+  // explanation on an account with seventy of them looks like a broken filter.
+  const all = j.items || [];
+  const items = all.filter(function(it){ return !it.enrolled; });
+  const already = all.length - items.length;
+
   let h = '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin-bottom:12px">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-    + '<b style="font-size:13px">Enrol a listing</b>'
-    + '<span class="cc" style="font-size:11px">'+j.count+' live on this account</span>'
+    + '<b style="font-size:13px">Enroll a listing</b>'
+    + '<span class="cc" style="font-size:11px">'
+    + items.length + ' not yet tracked'
+    + (already ? ' &middot; ' + already + ' already are' : '')
+    + '</span>'
     + '<span style="flex:1"></span>'
     + '<input id="srcpickq" placeholder="filter by SKU or title" value="'+_sesc(q||"")+'" '
     + 'oninput="sourcingPickerFilter(this.value)" style="font-size:12px;padding:4px 8px;min-width:200px">'
@@ -2499,9 +3190,20 @@ async function sourcingPickerLoad(q){
     h += '<div class="cc" style="font-size:12px;padding:8px">'+_sesc(j.note)+'</div></div>';
     host.innerHTML = h; return;
   }
+  // EVERYTHING IS ALREADY TRACKED is a good answer, and it has to be said. An
+  // empty list reads as a filter that matched nothing or a page that failed.
+  if(!items.length){
+    h += '<div class="cc" style="font-size:12px;padding:10px 8px;line-height:1.5">'
+      + (already
+          ? '<i class="ti ti-check"></i> Every live listing that matches is '
+            + 'already tracked' + (q ? ' (' + already + ' of them)' : '') + '.'
+          : 'Nothing matched. Clear the filter to see the full list.')
+      + '</div></div>';
+    host.innerHTML = h; return;
+  }
 
   h += '<div style="max-height:340px;overflow:auto">';
-  (j.items||[]).forEach(function(it){
+  items.forEach(function(it){
     h += '<div style="display:flex;gap:9px;align-items:center;font-size:11.5px;'
       +  'padding:6px 4px;border-top:1px solid #1c2531">'
       // The product, at a glance. A SKU is "10.06_3Days_B0081ZHHTS" and a title
@@ -2520,10 +3222,8 @@ async function sourcingPickerLoad(q){
           ? '<span class="db-chip" style="opacity:.6" title="Amazon holds this stock, so the repricer leaves it alone">FBA</span>'
           : '')
       +  '<span class="cc">'+_smoney(it.price)+'</span>'
-      +  (it.enrolled
-          ? '<span class="db-chip" style="background:#12303a;color:#6ac7e8">enrolled'
-            + (it.sources? ' · '+it.sources+' source'+(it.sources===1?'':'s') : ' · no sources yet')+'</span>'
-          : '<button class="db-chip" onclick="sourcingEnrolPicked('+_sarg(it.sku)+')">Enrol</button>')
+      +  '<button class="db-chip" onclick="sourcingEnrolPicked('
+      +  _sarg(it.sku) + ')">Enroll</button>'
       +  '</div>';
   });
   h += '</div></div>';
@@ -2545,7 +3245,7 @@ async function sourcingEnrolPicked(sku){
     const j = await (await fetch("/sourcing/enrol",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:_srcBody({sku:sku})})).json();
-    if(!j.ok){ toast(j.error||"Could not enrol"); return; }
+    if(!j.ok){ toast(j.error||"Could not enroll"); return; }
     toast("Enrolled in dry run — add a supplier link next");
     await sourcingPickerLoad((document.getElementById("srcpickq")||{}).value||"");
     sourcingLoad();
@@ -2555,7 +3255,7 @@ async function sourcingEnrolPicked(sku){
 async function sourcingUnenrol(sku){
   if(!await srcConfirm({
       title: "Stop tracking " + sku + "?",
-      body: "Its supplier links and price history are kept — enrol it again "
+      body: "Its supplier links and price history are kept — enroll it again "
           + "later and everything is still attached. Nothing on Amazon changes.",
       confirm: "Stop tracking", risk: true})) return;
   try{
@@ -2568,7 +3268,7 @@ async function sourcingUnenrol(sku){
 }
 
 async function sourcingAddSourcePrompt(sku){
-  const url = prompt("Paste the supplier's link for "+sku+".\n\neBay links are read "
+  const url = await uiPrompt("Paste the supplier's link for "+sku+".\n\neBay links are read "
                    + "through eBay's own API. Other sites are read only if they "
                    + "publish structured product data — the app will tell you if "
                    + "it cannot read one rather than guess a price.");

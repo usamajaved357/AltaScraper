@@ -125,7 +125,7 @@ async function cogsModeSet(mode){
     // COSTS ALREADY WORKED OUT ARE LEFT ALONE by design -- that is what stops
     // last month's profit moving. Changing the mode is therefore not enough on
     // its own, so the re-costing is offered rather than done silently.
-    if(confirm("Costing changed to \"" + mode + "\".\n\n"
+    if(await uiConfirm("Costing changed to \"" + mode + "\".\n\n"
              + "Orders already costed keep what they were given, so last "
              + "month's profit does not move on its own.\n\n"
              + "Work the costs out again for the period on screen?")){

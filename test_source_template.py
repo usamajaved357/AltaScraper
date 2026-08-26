@@ -164,9 +164,9 @@ check("  and a single-column sheet still finds its one",
 check("  a sheet with neither is refused, not half-read",
       B.url_columns(["sku", "asin", "product"]), [])
 
-print("\n=== nothing here reaches Amazon or enrols anything ===")
+print("\n=== nothing here reaches Amazon or enrolls anything ===")
 S = open(r"D:\AltaScraper\domain\source_bulk.py", encoding="utf-8").read()
-truthy("the module says so", "Nothing here enrols anything into LIVE pricing" in S)
+truthy("the module says so", "Nothing here enrolls anything into LIVE pricing" in S)
 R = open(r"D:\AltaScraper\routes\sourcing_routes.py", encoding="utf-8").read()
 truthy("the route only reads", "/sourcing/template.csv" in R)
 truthy("  and sends it as a download",

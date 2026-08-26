@@ -171,7 +171,7 @@ async function loadMediaLibrary(){
   }catch(e){ host.innerHTML='<div class="cc">Error: '+esc(String(e))+'</div>'; }
 }
 async function editListingImage(sku, url, idx){
-  const instruction = prompt("What should the AI change about this image?\n\nIt edits ONLY what you ask and keeps everything else the same.\n\nExamples: \"pure white background\", \"add a soft shadow\", \"brighten the product\".");
+  const instruction = await uiPrompt("What should the AI change about this image?\n\nIt edits ONLY what you ask and keeps everything else the same.\n\nExamples: \"pure white background\", \"add a soft shadow\", \"brighten the product\".");
   if(instruction===null) return;
   if(!instruction.trim()){ toast("Tell me what to change."); return; }
   toast("Editing image…");
@@ -186,7 +186,7 @@ async function editListingImage(sku, url, idx){
       body:JSON.stringify({sku:sku, data:res.data_url, kind:"generated"})})).json();
     if(!sv.ok){ toast("Edited, but could not save: "+(sv.error||"")); return; }
     // if this was the MAIN image, offer to set the edited version as the new main
-    if(idx===0 && confirm("Edited image saved. Set it as the MAIN image for this listing?\n(This updates the app copy; use \"Push image to live\" to send it to Amazon.)")){
+    if(idx===0 && await uiConfirm("Edited image saved. Set it as the MAIN image for this listing?\n(This updates the app copy; use \"Push image to live\" to send it to Amazon.)")){
       var useUrl=sv.url||res.data_url;
       // ONE implementation of "make this the main image" (listingimages.js).
       await setMainImage(sku, useUrl,
@@ -197,7 +197,7 @@ async function editListingImage(sku, url, idx){
   }catch(e){ toast("Edit error: "+e); }
 }
 async function editMediaImage(url, sku){
-  const instruction = prompt("What should the AI change about this image?\n\nIt edits ONLY what you ask and keeps everything else the same (same product, same layout, same colours).\n\nExamples: \"make the background pure white\", \"add a soft shadow under the product\", \"remove the text in the corner\".");
+  const instruction = await uiPrompt("What should the AI change about this image?\n\nIt edits ONLY what you ask and keeps everything else the same (same product, same layout, same colours).\n\nExamples: \"make the background pure white\", \"add a soft shadow under the product\", \"remove the text in the corner\".");
   if(instruction===null) return;
   if(!instruction.trim()){ toast("Tell me what to change."); return; }
   toast("Editing image… this takes a moment.");
@@ -219,7 +219,7 @@ async function editMediaImage(url, sku){
   }catch(e){ toast("Edit error: "+e); }
 }
 async function delMedia(url){
-  if(!confirm('Delete this image?')) return;
+  if(!await uiConfirm('Delete this image?')) return;
   try{ await fetch('/media/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})}); loadMediaLibrary(); }
   catch(e){ toast('Could not delete: '+e); }
 }
@@ -572,7 +572,7 @@ async function refreshGenPanel(){
 async function stopThisGeneration(jobId){
   const id = jobId || GEN_ACTIVE_JOB;
   if(!id){ toast("No batch to stop."); return; }
-  if(!confirm("Stop this batch?\n\nImages already being drawn will finish; the "
+  if(!await uiConfirm("Stop this batch?\n\nImages already being drawn will finish; the "
               + "rest are cancelled. Other batches keep running.")) return;
   try{
     const j=await (await fetch("/genimage/stop_job",{method:"POST",
@@ -588,7 +588,7 @@ async function stopAllGenerations(){
   // Scoped to THIS account server-side, and the wording says so -- "ALL" used to
   // mean every batch you had anywhere, including in workspaces you were not
   // looking at.
-  if(!confirm("Stop every image batch running in this account?\n\n"
+  if(!await uiConfirm("Stop every image batch running in this account?\n\n"
               + "Images already being drawn will finish; the rest are cancelled. "
               + "Batches in your other accounts are not touched.")) return;
   try{

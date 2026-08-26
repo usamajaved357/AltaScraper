@@ -199,7 +199,7 @@ async function monSaveSellerLabel(){
     if(ev.feedback_count===0) reasons.push("it has 0 feedback");
     if(kind==="amazon" && name && !/amazon/i.test(name)) reasons.push('its storefront name ("'+name+'") does not match Amazon');
     if(reasons.length){
-      if(!confirm("Hold on — marking "+id+" as "+kind.toUpperCase()+" will STOP it being flagged, but "+reasons.join(" and ")+
+      if(!await uiConfirm("Hold on — marking "+id+" as "+kind.toUpperCase()+" will STOP it being flagged, but "+reasons.join(" and ")+
                   ".\n\nThis looks like it could be a hijacker. Misclassifying a hijacker as safe is the most costly mistake this tool can make — it silences alerts on a real threat.\n\nMark it as "+kind.toUpperCase()+" anyway?")) return;
     }
   }
@@ -956,7 +956,7 @@ async function monBulkImport(){
 }
 
 async function removeMonitorAsin(id, asin){
-  if(!confirm("Stop tracking "+(asin||"this ASIN")+"?")) return;
+  if(!await uiConfirm("Stop tracking "+(asin||"this ASIN")+"?")) return;
   try{
     const j = await (await fetch("/monitor/remove",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({id, asin})})).json();

@@ -64,7 +64,14 @@ truthy("  the test is the absence of a floor, not a guess",
 # row is the control that opens the panel, so a button inside it that did
 # not stop the event would open a panel every time it was pressed.
 truthy("  and pressing it opens the box that fixes it",
-       "sourcingMinPrice(' + _sarg(r.sku) + ')" in JS)
+       "sourcingMinPrice(' + _sarg(r.sku) + ',this)" in JS)
+# `this` IS PASSED, and it has to be. The editor is INLINE -- a small panel
+# anchored under the control that opened it, so the row it is about stays
+# visible behind. With no button to measure, uiInline has nowhere to put itself
+# and returns without drawing: the button would look dead. Measured in a
+# browser, that is exactly what happened before this argument was added.
+truthy("    with the button, so the editor has something to anchor to",
+       "uiInline(btn" in JS)
 truthy("    without also toggling the row it sits in",
        "event.stopPropagation();'\n              + 'sourcingMinPrice" in JS
        or "event.stopPropagation();" in JS)
@@ -81,9 +88,12 @@ truthy("  and an armed one can still be disarmed", "Armed &mdash; disarm" in JS)
 print("\n=== a floor can be set on many at once ===")
 truthy("there is a bulk action", "async function sourcingMinPriceBulk(" in JS)
 _fn = JS.split("async function sourcingMinPriceBulk(")[1].split("\n/* HOLD WHAT")[0]
+# The bar passes the button through now, so the inline editor can anchor
+# itself under the control that opened it rather than covering the rows it
+# is about.
 truthy("  it is on the selection bar",
-       "sourcingMinPriceBulk()" in JS.split("function _srcSelBar(")[1]
-                                     .split("async function")[0])
+       "sourcingMinPriceBulk(this)" in JS.split("function _srcSelBar(")[1]
+                                         .split("\nfunction _srcPicked(")[0])
 truthy("  worked out from today's Amazon price", "r.current.price" in _fn)
 # THE POINT OF THIS NUMBER. A floor derived from the supplier would fail in
 # exactly the case it exists for.

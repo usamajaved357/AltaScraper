@@ -274,7 +274,7 @@ async function submitOne(sku){
     if(pc&&pc.ok&&pc.count>0){
       const hit=(pc.local_image_rows||[]).some(x=>String(x.sku)===String(sku));
       if(hit){
-        if(!confirm("⚠ This listing's main image is a LOCAL file Amazon can't fetch (it lives on your PC). "
+        if(!await uiConfirm("⚠ This listing's main image is a LOCAL file Amazon can't fetch (it lives on your PC). "
           +"It will FAIL with 'Unable to Retrieve Media Content'.\n\nUse a publicly-hosted image URL first, "
           +"or submit anyway to see the error?")) return;
       }
@@ -282,18 +282,18 @@ async function submitOne(sku){
   }catch(e){}
   let t=null; try{ t=await (await fetch('/submit/target')).json(); }catch(e){}
   let who = (t&&t.ok)?(t.account_label+" · "+t.marketplace):"your live account";
-  if(t&&t.ok&&t.block==='none'){ alert("No SP-API credentials for this marketplace. Add them first."); return; }
+  if(t&&t.ok&&t.block==='none'){ await uiAlert("No SP-API credentials for this marketplace. Add them first."); return; }
   // Amazon-side duplicate check: warn if this SKU already exists live on Amazon
   try{
     const dc=await (await fetch("/dup_check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({skus:[sku]})})).json();
     if(dc&&dc.ok&&dc.exists&&dc.exists.length){
       const ex=dc.exists[0];
-      if(!confirm("⚠ This SKU already exists on Amazon ("+who+")"
+      if(!await uiConfirm("⚠ This SKU already exists on Amazon ("+who+")"
         +(ex.title?("\n  Live listing: "+ex.title):"")
         +"\n\nSubmitting will REPLACE the existing live listing. Continue?")) return;
     }
   }catch(e){}
-  if(!confirm("PUBLISH THIS LISTING LIVE\n\n  SKU: "+sku+"\n  Account: "+who
+  if(!await uiConfirm("PUBLISH THIS LISTING LIVE\n\n  SKU: "+sku+"\n  Account: "+who
       +(MINIMAL_MODE_ON?"\n  Mode: MINIMAL (required fields only)":"")
       +"\n\nThis creates/replaces ONLY this listing on the account above. Continue?")) return;
   toast("Submitting "+sku+"…");

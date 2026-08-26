@@ -6,7 +6,7 @@
  costs from the sources"
 
 Two things in that. TRACKING IS NOT PRICING -- enrolling a SKU starts a cost
-history and nothing else, which is why it is safe to enrol the whole catalogue.
+history and nothing else, which is why it is safe to enroll the whole catalogue.
 And the supplier link should not have to be supplied: the app BUILT these
 listings from a source and wrote it down at the time. It is just written in two
 places, so both are asked.

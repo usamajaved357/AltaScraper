@@ -92,7 +92,7 @@ async function bulkHandling(){
   if(!skus.length){ toast("Select some listings first (or use Select all)"); return; }
 
   const usingAll = !((typeof selectedSkus==="function") && selectedSkus().length);
-  if(!confirm(`Set handling time to ${days} day(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
+  if(!await uiConfirm(`Set handling time to ${days} day(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
              +`This saves it here AND pushes the change live to Amazon. I'll test on ONE listing first, then do the rest.`)) return;
 
   const btn = document.getElementById("handlingbtn");
@@ -110,15 +110,15 @@ async function bulkHandling(){
       // to update the sheet + push the ones that ARE live.
       const notLive = /no listing with this sku|not_found/i.test(msg);
       if(notLive){
-        if(!confirm(`The first listing (${skus[0]}) isn't live on Amazon yet, so there was nothing to push there.\n\n`
+        if(!await uiConfirm(`The first listing (${skus[0]}) isn't live on Amazon yet, so there was nothing to push there.\n\n`
                    +`Continue anyway? The sheet handling value will be set on all ${skus.length}, and the push will apply to whichever ARE live.`)){ _done(); return; }
       } else {
-        alert(`Handling-time test failed on ${skus[0]}:\n\n${msg}\n\nNothing was changed in bulk. Fix this, then try again.`);
+        await uiAlert(`Handling-time test failed on ${skus[0]}:\n\n${msg}\n\nNothing was changed in bulk. Fix this, then try again.`);
         _done(); return;
       }
     } else {
       const before = (tr.before===null||tr.before===undefined) ? "(none)" : tr.before;
-      if(!confirm(`Test succeeded on ${skus[0]} (handling ${before} → ${days} day(s) on Amazon).\n\n`
+      if(!await uiConfirm(`Test succeeded on ${skus[0]} (handling ${before} → ${days} day(s) on Amazon).\n\n`
                  +`Apply to the remaining ${skus.length-1} listing(s) and update the sheet?`)){ _done(); return; }
     }
 
@@ -143,7 +143,7 @@ async function bulkHandling(){
                            .slice(0,8).map(r=>`  – ${r.sku}: ${r.error||"error"}`).join("\n");
       msg += `\n\n${lines}`;
     }
-    alert(msg);
+    await uiAlert(msg);
     toast(`Handling time updated (${okN} live, ${sheetN} in sheet)`);
     if(typeof loadRows==="function") loadRows();
   }catch(e){
@@ -178,7 +178,7 @@ async function bulkQuantity(){
   if(!skus.length){ toast("Select some listings first (or use Select all)"); return; }
   const usingAll = !((typeof selectedSkus==="function") && selectedSkus().length);
 
-  if(!confirm(`Set stock to ${qty} unit(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
+  if(!await uiConfirm(`Set stock to ${qty} unit(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
     + (qty===0
         ? `0 units takes them off sale — the listings stay, but nobody can buy them.\n\n`
         : ``)
@@ -202,15 +202,15 @@ async function bulkQuantity(){
       // so it offers to carry on rather than stopping the whole run.
       const skippable = /no seller-fulfilled stock|no listing with this sku|not_found/i.test(msg);
       if(skippable){
-        if(!confirm(`The first listing (${skus[0]}) could not take a stock change:\n\n${msg}\n\n`
+        if(!await uiConfirm(`The first listing (${skus[0]}) could not take a stock change:\n\n${msg}\n\n`
                    +`Continue with the other ${skus.length-1}? Each one is reported separately.`)){ _done(); return; }
       } else {
-        alert(`The stock test failed on ${skus[0]}:\n\n${msg}\n\nNothing was changed in bulk. Fix this, then try again.`);
+        await uiAlert(`The stock test failed on ${skus[0]}:\n\n${msg}\n\nNothing was changed in bulk. Fix this, then try again.`);
         _done(); return;
       }
     } else {
       const before = (tr.before===null||tr.before===undefined) ? "(none)" : tr.before;
-      if(!confirm(`Test succeeded on ${skus[0]} (stock ${before} → ${qty} on Amazon).\n\n`
+      if(!await uiConfirm(`Test succeeded on ${skus[0]} (stock ${before} → ${qty} on Amazon).\n\n`
                  +`Apply to the remaining ${skus.length-1} listing(s)?`)){ _done(); return; }
     }
 
@@ -233,7 +233,7 @@ async function bulkQuantity(){
         .slice(0,8).map(r=>`  – ${r.sku}: ${r.error||"error"}`).join("\n");
       msg += `\n\n${lines}`;
     }
-    alert(msg);
+    await uiAlert(msg);
     toast(`Stock updated on ${okN} listing(s)`);
     if(typeof loadRows==="function") loadRows();
   }catch(e){
@@ -282,11 +282,11 @@ async function bulkPricePercent(){
     const p = await fetch("/listing/price/percent_preview",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify(Object.assign(body(), {skus, percent: pct}))}).then(r=>r.json());
-    if(!p || !p.ok){ alert("Could not work out the new prices:\n\n"+((p&&p.error)||"unknown error")); _done(); return; }
+    if(!p || !p.ok){ await uiAlert("Could not work out the new prices:\n\n"+((p&&p.error)||"unknown error")); _done(); return; }
 
     const rows = p.rows || [], skipped = p.skipped || [];
     if(!rows.length){
-      alert("None of the selected listings could be repriced.\n\n"
+      await uiAlert("None of the selected listings could be repriced.\n\n"
             + skipped.slice(0,10).map(s=>`• ${s.sku}: ${s.why}`).join("\n"));
       _done(); return;
     }
@@ -312,11 +312,11 @@ async function bulkPricePercent(){
            + `still make money. Those will be refused unless you say otherwise.`;
     }
     ask += `\n\nNothing has been sent yet.`;
-    if(!confirm(ask)){ _done(); return; }
+    if(!await uiConfirm(ask)){ _done(); return; }
 
     let allowBelow = false;
     if(below.length){
-      allowBelow = confirm(`Price those ${below.length} listing(s) below their floor anyway?\n\n`
+      allowBelow = await uiConfirm(`Price those ${below.length} listing(s) below their floor anyway?\n\n`
         + `OK  — send them too, knowingly under the profit rule (clearance).\n`
         + `Cancel — send the other ${rows.length-below.length} and leave those alone.`);
     }
@@ -342,7 +342,7 @@ async function bulkPricePercent(){
       }
     }
     msg += `\n\nAmazon usually shows a new price within a few minutes.`;
-    alert(msg);
+    await uiAlert(msg);
     toast(`${(j&&j.changed)||0} price(s) changed`);
     if(typeof loadRows==="function") loadRows();
   }catch(e){

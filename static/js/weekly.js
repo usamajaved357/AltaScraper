@@ -147,7 +147,7 @@ async function weeklyClearAll(){
     return;
   }
 
-  if(!confirm("Delete all " + n + " stored week" + (n === 1 ? "" : "s")
+  if(!await uiConfirm("Delete all " + n + " stored week" + (n === 1 ? "" : "s")
               + " for " + where + "?\n\n"
               + "This removes the frozen weekly packs already uploaded or built "
               + "for this account and marketplace. It cannot be undone — the "

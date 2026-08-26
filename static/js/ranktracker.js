@@ -102,7 +102,7 @@ async function krtCheckNow() {
     + "request and rationed to roughly one a minute, so this can take a while "
     + "the first time for a given week.\n\nNothing runs on a timer — this "
     + "happens only when you press OK.";
-  if (!confirm(msg)) return;
+  if (!await uiConfirm(msg)) return;
 
   KRT.checking = true; KRT.note = ""; krtRender();
   try {

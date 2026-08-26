@@ -142,7 +142,7 @@ def template_rows(config_path, account_id, marketplace, overrides=None,
     # So three sources, unioned:
     #   the catalogue snapshot   what Amazon says is listed
     #   order_lines              what has actually SOLD -- the ones that matter
-    #   the repricer enrolment   what is being tracked, so a cost can be set
+    #   the repricer enrollment   what is being tracked, so a cost can be set
     #                            before the first sale rather than after it
     #
     # `where from` says which, so a SKU appearing that the person does not
