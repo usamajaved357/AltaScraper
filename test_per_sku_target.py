@@ -57,9 +57,20 @@ print("=== the words are on the screen before a target exists ===")
 # find the feature.
 truthy("the toolbar names both when none is set",
        "'Margin / ROI target: none'" in JS)
-truthy("the per-SKU line names both", "(margin / ROI target)" in JS)
-truthy("  and its button says which SKU it is for", "Set for this SKU" in JS)
-truthy("  changing one says so too", "Change this SKU" in JS)
+# IT NAMES THE TWO THINGS IT SETS, EVEN WHEN NEITHER IS SET -- which was the
+# whole point of the original fix ("i dont have an option to set the margin
+# and roi target per item"; it was there, it just never said the words).
+#
+# They are two pills now, one labelled ROI and one labelled Margin, each
+# showing its own value or the word "none". That names both MORE plainly
+# than the old single line did, and it is inside that SKU's own panel, so
+# "which SKU is this for" is answered by where it is rather than by a button
+# caption.
+truthy("the per-SKU panel names both", "pill('ROI'" in JS and "pill('Margin'" in JS)
+truthy("  each showing its own value or none",
+       JS.count("!= null ? rule.target_roi_pct + '%' : 'none'") == 1
+       and JS.count("!= null ? rule.target_margin_pct + '%' : 'none'") == 1)
+truthy("  and an unset one is dimmed rather than hidden", "rp-off" in JS)
 # The account-wide button must not read as the only target there is.
 truthy("the toolbar tip points at the per-SKU one",
        "Set for this SKU" in JS.split('onclick="sourcingTarget(\\\'\\\')"')[1][:600]
@@ -67,8 +78,8 @@ truthy("the toolbar tip points at the per-SKU one",
        "its own target wins over this one" in JS)
 
 print("\n=== every enrolled row offers its own, not just the account ===")
-truthy("the row builds a target button for its own sku",
-       "sourcingTarget('+_sarg(r.sku)+')" in JS)
+truthy("the row builds a target control for its own sku",
+       "sourcingTarget(' + S + ')" in JS and "const S = _sarg(sku)" in JS)
 truthy("  and the account-wide one passes no sku", "sourcingTarget(\\'\\')" in JS
        or "sourcingTarget('')" in JS)
 

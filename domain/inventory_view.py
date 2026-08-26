@@ -310,8 +310,19 @@ def lead_times(config_path, workspace_id, marketplace):
     reading every tracked supplier's dispatch estimate every few hours, and that
     is the number that decides whether a low stock level actually matters.
 
-    The buffer is the repricer's own handling_buffer_days, so the lead time here
-    and the handling time promised to buyers come from one setting (Rule 12).
+    THE TOTAL TIME TO THE BUYER, not the handling time. They are different
+    questions and the difference is the postage. Amazon's promise is split in
+    two -- the handling time we set plus the transit of the postage service --
+    and sourcing.handling_days() returns only the first half, with the postage
+    days deliberately taken off so they are not promised twice. This function is
+    asking the whole question: from "we are out of stock" to "the buyer has it".
+    So it adds the postage back on, from the same setting, rather than working
+    out a lead time of its own (CLAUDE.md Rule 12).
+
+    That also fixes a case the old arithmetic got wrong. A supplier that
+    dispatches in 1 day used to give a 1-day lead time, as though the parcel
+    teleported; it now gives 1 + the postage, because a 1-day dispatch still has
+    to travel.
     """
     from domain import source_repo as _repo
     from domain import sourcing as _sourcing
@@ -334,7 +345,7 @@ def lead_times(config_path, workspace_id, marketplace):
                 _repo.rule_for(config_path, workspace_id, marketplace, sku))
             buffer_days = int(rule.get("handling_buffer_days") or 0)
         except Exception:
-            buffer_days = 0
+            rule, buffer_days = {}, 0
         # THE FASTEST SUPPLIER THAT CAN ACTUALLY BE BOUGHT FROM. Not the
         # cheapest: this is a question about time, and a dead link's dispatch
         # estimate is not a promise anyone can keep.
@@ -352,8 +363,12 @@ def lead_times(config_path, workspace_id, marketplace):
             if best is None or d < best:
                 best = d
         if best is not None:
-            out[sku] = {"days": best + buffer_days, "known": True,
+            hand = _sourcing.handling_days(best, rule)
+            out[sku] = {"days": hand + _sourcing.SHIPPING_POLICY_DAYS,
+                        "known": True,
                         "dispatch_days": best, "buffer_days": buffer_days,
+                        "handling_days": hand,
+                        "shipping_policy_days": _sourcing.SHIPPING_POLICY_DAYS,
                         "source": "supplier"}
     return out
 

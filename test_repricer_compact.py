@@ -56,7 +56,11 @@ print("=== one renderer, asked for less room ===")
 check("there is still exactly one supplier renderer",
       ORD.count("function _ordSourcesHtml"), 1)
 truthy("  and it takes a view option", "function _ordSourcesHtml(block, forTitle, view)" in ORD)
-truthy("  the repricer asks for compact", "{compact: true}" in SRC)
+# The Repricer draws its own compact supplier TABLE now rather than asking
+# the order panel's renderer for a compact variant of its block. The reason
+# is the same reason "compact" was asked for: this screen has 67 SKUs and
+# the order screen has one, so what is wanted here is rows that line up.
+truthy("  the repricer draws its own compact rows", "class=\"rp-sup\"" in SRC)
 # The orders panel shows ONE order, so it keeps the full block.
 _ord_call = ORD.split("_ordSourcesHtml(block, items.length > 1")[1][:120] \
     if "_ordSourcesHtml(block, items.length > 1" in ORD else ""
@@ -90,9 +94,13 @@ truthy("    and suppliers that could not be read", "could not be read" in _fn)
 
 print("\n=== the sentence that never changes is said once ===")
 truthy("the repeated note is suppressed when folded", "if(!_cmp){" in _fn)
+# STATED ONCE, ABOVE THE TABLE. A table header already names each column
+# once by construction, which is most of the reason this screen is a table;
+# this is the part a header cannot carry, and it is still said exactly once
+# rather than under all 67 rows.
 check("  and the repricer states it once, above the list",
-      SRC.count("Cheapest first, and it re-sorts itself"), 1)
-truthy("  telling you the lines open", "Open any supplier line" in SRC)
+      SRC.count("<b>Item</b> is what the supplier charges"), 1)
+truthy("  telling you the rows open", "Click any row to open it" in SRC)
 
 print("\n=== nothing was hidden that cannot be got back ===")
 # The full table is still built in compact mode -- only wrapped.

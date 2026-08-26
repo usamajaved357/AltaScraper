@@ -701,31 +701,6 @@ function srcConfirm(o){
   });
 }
 
-// The chip on a row that is not earning what it is supposed to. Deliberately
-// says how far short, not just that it is short -- 0.4% under is a rounding
-// argument and 12% under is a supplier you should stop buying from.
-function _targetChip(t){
-  if(!t) return '';                       // no target set on this SKU
-  if(t.meets === null) return '';          // not enough to tell; not a failure
-  // WITH BOTH TARGETS ON, the tooltip names them both -- "22% ROI against 30%"
-  // alone does not say whether the margin one passed, and someone reading a red
-  // chip needs to know which of their two floors this SKU is under.
-  const all = (t.parts && t.parts.length ? t.parts : [t])
-    .filter(function(x){ return x.meets !== null; })
-    .map(function(x){
-      return x.kind + ' ' + x.actual_pct + '% against ' + x.target_pct + '%'
-           + (x.meets ? '' : ' — ' + x.short_by + ' short'); })
-    .join('; ');
-  if(t.meets){
-    return '<span class="db-chip" style="background:#12321f;color:#7fd18b" title="'
-      +  _sesc(all) + '">' + t.kind + ' ' + t.actual_pct + '%</span>';
-  }
-  return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a" title="'
-    +  _sesc(all)
-    +  (t.profit != null ? ' (' + _smoney(t.profit) + ' a unit).' : '.')
-    +  '">below ' + t.kind + ' &middot; ' + t.actual_pct + '%</span>';
-}
-
 // Start tracking everything that is not tracked yet.
 //
 // The supplier link is not asked for: the app recorded where each listing came
@@ -890,6 +865,505 @@ function sourcingUploadReport(){
     + '</details>';
 }
 
+/* ======================================================================
+ * THE TABLE.
+ *
+ * Built from repricer_dashboard_reference.html. What changed and why:
+ *
+ * It was sixty-seven bordered <div> cards stacked down the page, each one
+ * repeating its own labels -- "cheapest source", "selling price", "profit /
+ * unit" -- against a single figure. Sixty-seven copies of six labels is four
+ * hundred words of furniture, and the one thing a list of prices is for, which
+ * is running your eye down a column and seeing which number is out of line,
+ * was impossible: nothing lined up with anything.
+ *
+ * A table says each label ONCE, in a header, and puts the numbers underneath
+ * each other. That is the whole reason the reference is a table.
+ *
+ * Every figure that was on a card is still here. The ones you scan (cost,
+ * postage, price, profit, ROI, trend, state) are columns; the ones you read
+ * when a row looks wrong (the sum, the suppliers, the rules, the reason) are
+ * in the panel that opens underneath it.
+ * ====================================================================== */
+
+/* A price history as a line, not bars.
+ *
+ *     "7d trend = SVG LINE GRAPH sparkline, NOT bar ticks"
+ *
+ * A supplier's cost is a continuous thing that moves; bars imply separate
+ * measurements of separate quantities. The line also makes the shape of a
+ * change legible at 70x24 pixels, which is the entire point of drawing it that
+ * small.
+ *
+ * `pts` is [{at, landed, status, in_stock}] oldest-first, which is what
+ * source_drift.price_history returns. Readings that could not be read are
+ * skipped rather than drawn as zero -- a failed fetch is not a free supplier,
+ * and a line diving to the floor says exactly that.
+ */
+function _spark(hist, opts){
+  const o = opts || {};
+  const W = o.w || 70, H = o.h || 24, PAD = 3;
+  const all = (hist || []).filter(function(p){
+    return p && p.landed != null && isFinite(p.landed);
+  });
+  // ONE READING IS NOT A HISTORY. A single point drawn in a trend column reads
+  // as a flat line, which is a claim about how the price has BEHAVED made from
+  // one measurement. Nothing is better than that.
+  if(all.length < 2) return '';
+  // Newest last, and at most the last 12 readings -- older than that is a
+  // different question, answered by the full chart this opens into.
+  const pts = all.slice(-12);
+  const vals = pts.map(function(p){ return +p.landed; });
+  const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  const span = (hi - lo) || 1;
+  // A FLAT LINE IS DRAWN FLAT, down the middle. Scaling a run of identical
+  // readings to fill the box turns rounding noise into a mountain range.
+  const flat = (hi - lo) < 0.005;
+  const x = function(i){
+    return pts.length < 2 ? W / 2
+         : PAD + i * (W - PAD * 2) / (pts.length - 1);
+  };
+  const y = function(v){
+    return flat ? H / 2
+         : (H - PAD) - ((v - lo) / span) * (H - PAD * 2);
+  };
+  // Which way it has gone decides the colour: cheaper is good for us.
+  const first = vals[0], last = vals[vals.length - 1];
+  const move = first ? ((last - first) / first) * 100 : 0;
+  const col = o.color || (move < -1 ? 'var(--ok)'
+                        : move > 1  ? 'var(--gold)'
+                        : 'var(--ink3)');
+  const poly = pts.map(function(p, i){
+    return x(i).toFixed(1) + ',' + y(+p.landed).toFixed(1);
+  }).join(' ');
+  const lastP = pts[pts.length - 1];
+  // The supplier has ENDED: the run to the last point is dashed and red, so a
+  // dead source is visible without reading the row.
+  const dead = String((lastP || {}).status || '') === 'gone';
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">'
+    + '<polyline fill="none" stroke="' + col + '" stroke-width="1.5" '
+    + 'stroke-linecap="round" stroke-linejoin="round" points="' + poly + '"/>'
+    + '<circle cx="' + x(pts.length - 1).toFixed(1) + '" cy="'
+    + y(+lastP.landed).toFixed(1) + '" r="2" fill="'
+    + (dead ? 'var(--red)' : col) + '"/></svg>';
+  if(o.bare) return '<div class="rp-supspk">' + svg + '</div>';
+  const tip = _smoney(last)
+    + (flat ? ' &middot; steady'
+            : ' &middot; ' + (move < 0 ? '&darr;' : '&uarr;')
+              + Math.abs(move).toFixed(0) + '% over ' + pts.length + ' readings');
+  return '<div class="rp-spk" title="Click for the full history" '
+    + 'onclick="event.stopPropagation();srcChart(' + _sarg(o.title || '')
+    + ',' + _sarg(JSON.stringify(pts)) + ')">' + svg
+    + '<div class="rp-stip">' + tip + '</div></div>';
+}
+
+/* The sparkline, opened up. Same readings, with the dates and the amounts. */
+function srcChart(title, json){
+  let pts = [];
+  try { pts = JSON.parse(json) || []; } catch(e){ pts = []; }
+  const vals = pts.map(function(p){ return +p.landed; }).filter(isFinite);
+  if(!vals.length) return;
+  const lo = Math.min.apply(null, vals) * 0.92;
+  const hi = Math.max.apply(null, vals) * 1.04;
+  const span = (hi - lo) || 1;
+  let rows = '';
+  pts.slice().reverse().forEach(function(p){
+    const v = +p.landed;
+    const dead = String(p.status || '') === 'gone';
+    const pct = isFinite(v) ? Math.max(2, ((v - lo) / span) * 100) : 0;
+    rows += '<div class="rp-crow">'
+      + '<span class="rp-cdate">' + _sesc(_srcDay(p.at) || p.at || '') + '</span>'
+      + '<span class="rp-ctrack">'
+      + (isFinite(v)
+          ? '<span class="rp-cfill" style="width:' + pct.toFixed(1) + '%;'
+            + 'background:' + (dead ? 'var(--red)' : 'var(--accent)') + '"></span>'
+          : '')
+      + '</span>'
+      + '<span class="rp-cval"' + (dead ? ' style="color:var(--red)"' : '') + '>'
+      + (isFinite(v) ? _smoney(v) : '&mdash;') + '</span>'
+      + '<span class="rp-cnote">'
+      + (dead ? 'ended' : (p.in_stock === false ? 'out of stock' : '')) + '</span>'
+      + '</div>';
+  });
+  let ov = document.getElementById('rp_ov');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'rp_ov';
+    ov.className = 'rp-ov';
+    ov.onclick = function(){ ov.classList.remove('rp-show'); };
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = '<div class="rp-box" onclick="event.stopPropagation()">'
+    + '<button class="rp-x" onclick="document.getElementById(\'rp_ov\')'
+    + '.classList.remove(\'rp-show\')" aria-label="Close">&times;</button>'
+    + '<h4>' + _sesc(title || 'Supplier cost') + '</h4>'
+    + '<div class="cc" style="font-size:10.5px;margin-bottom:8px">'
+    + 'What this supplier has charged you, delivered. Newest first.</div>'
+    + rows + '</div>';
+  ov.classList.add('rp-show');
+}
+
+/* WHERE THE SELLING PRICE GOES, as one bar.
+ *
+ * The sum is already written out line by line in the panel below this. The bar
+ * is for the question the list answers badly: what SHARE of the price is left
+ * after everyone has been paid. A profit of 5.51 means nothing until you can
+ * see it is a fifth of the bar and the supplier is two thirds of it.
+ *
+ * Segments are flexed by their own amounts, so widths are true to the money.
+ */
+function _stackBar(b){
+  if(!b || b.price == null) return '';
+  const cost = +(b.cost || 0);
+  const fees = (b.fees && b.fees.lines) || null;
+  let ref = +(b.fee || 0), close = 0;
+  if(fees){
+    // Prefer Amazon's own split when it has been quoted, so the bar and the
+    // "All Amazon fees" panel above cannot show different shares.
+    const f = function(k){
+      const l = fees.filter(function(x){ return x.key === k; })[0];
+      return l ? +(l.amount || 0) : 0;
+    };
+    ref = f('referral'); close = f('closing');
+  }
+  const other = +(b.postage_label || 0) + +(b.ads || 0);
+  const profit = +(b.profit || 0);
+  const tot = cost + ref + close + other + Math.max(0, profit);
+  if(!(tot > 0)) return '';
+  let h = '<div class="rp-sbar">'
+    + '<div class="rp-sb-cost" style="flex:' + cost + '" title="What one unit '
+    + 'costs you delivered from the supplier">' + _smoney(cost) + '</div>'
+    + '<div class="rp-sb-ref" style="flex:' + ref + '" title="Amazon\'s '
+    + 'referral fee on this price">' + _smoney(ref) + '</div>';
+  if(close > 0)
+    h += '<div class="rp-sb-close" title="Amazon\'s variable closing fee">'
+      +  _smoney(close) + '</div>';
+  if(other > 0)
+    h += '<div style="flex:' + other + ';background:var(--line2);'
+      +  'color:var(--ink2)" title="Your postage label and the amount set aside '
+      +  'for ads">' + _smoney(other) + '</div>';
+  h += (profit > 0
+        ? '<div class="rp-sb-profit" style="flex:' + profit + '" title="What '
+          + 'you keep per unit">' + _smoney(profit) + '</div>'
+        : '<div class="rp-sb-loss" style="flex:' + Math.max(1, cost * 0.25)
+          + '" title="This price does not cover what the unit costs">'
+          + _smoney(profit) + '</div>');
+  h += '</div><div class="rp-sbleg">'
+    + '<span><span class="rp-sq" style="background:#5b8fb9"></span>Supplier</span>'
+    + '<span><span class="rp-sq" style="background:#e25c5c"></span>Referral</span>'
+    + (close > 0
+        ? '<span><span class="rp-sq" style="background:#d4846f"></span>Closing</span>'
+        : '')
+    + (other > 0
+        ? '<span><span class="rp-sq" style="background:var(--line2)"></span>'
+          + 'Postage &amp; ads</span>'
+        : '')
+    + '<span><span class="rp-sq" style="background:#4ebb82"></span>'
+    + (profit > 0 ? 'Profit' : 'Shortfall') + '</span>'
+    + '</div>';
+  return h;
+}
+
+/* The figures that decide whether a SKU is worth keeping.
+ *
+ * AT THE PRICE THE BAR ABOVE IT SHOWS, not at today's. The strip sits directly
+ * under the stacked bar, which is a picture of the PROPOSED price broken into
+ * its parts -- so reading today's ROI there put two different questions side by
+ * side with nothing to tell them apart. Measured on a real jack_uk SKU: the bar
+ * showed 10.06 + 2.56 + 2.02 = 14.64 and the cards read "69% ROI", which is the
+ * return at the 19.97 it sells for now. Both true, neither wrong, and together
+ * unreadable.
+ *
+ * Today's figures are the ROW's job -- the Profit and ROI columns, which is
+ * where you scan for a SKU that is currently underwater. This is the panel, and
+ * the panel is about the decision.
+ *
+ * It falls back to the glance only when there is no decision to describe, so a
+ * blocked SKU still shows what it is earning rather than four dashes.
+ */
+function _metStrip(r){
+  const g = r.glance || {}, d = r.decision || {}, b = d.breakdown || {};
+  const priced = (b.price != null && b.profit != null);
+  const roi = priced ? (b.cost ? (b.profit / b.cost) * 100 : null)
+            : (g.roi_pct != null ? g.roi_pct : null);
+  const mgn = priced ? (b.price ? (b.profit / b.price) * 100 : null)
+            : (g.margin_pct != null ? g.margin_pct : null);
+  const tgt = ((r.rule || {}).target_roi_pct != null)
+            ? +r.rule.target_roi_pct : null;
+  // Green only when it CLEARS the target you set. Amber when it is short --
+  // the number itself is the same either way, and the colour is the only thing
+  // that says whether it is the number you asked for.
+  const roiTone = (roi == null) ? 'rp-m2b'
+                : (tgt != null && roi < tgt) ? 'rp-m2y' : 'rp-m2g';
+  const cell = function(cls, val, label, why){
+    return '<div class="rp-m2 ' + cls + '" title="' + _sesc(why || '') + '">'
+      + '<div class="rp-n">' + val + '</div>'
+      + '<div class="rp-l">' + label + '</div></div>';
+  };
+  const lead = (d.lead_days != null) ? d.lead_days
+             : ((r.current || {}).lead_days);
+  const pol = (b.shipping_policy_days != null) ? b.shipping_policy_days : 2;
+  // WHICH PRICE THESE ARE ABOUT, said above them. Without this line the strip
+  // is four numbers that could mean either thing.
+  const at = priced ? _smoney(b.price) : ((r.current || {}).price != null
+                                          ? _smoney(r.current.price) : null);
+  let h = '<div class="cc" style="font-size:10px;text-transform:uppercase;'
+    + 'letter-spacing:.05em;margin:2px 0 4px">'
+    + (priced ? 'At the price it would set' : 'At the price it sells for now')
+    + (at ? ' &mdash; ' + at : '') + '</div>'
+    + '<div class="rp-met2">'
+    + cell('rp-m2b', priced ? _smoney(b.profit)
+           : (g.profit != null ? _smoney(g.profit) : '&mdash;'), 'Profit / unit',
+           'What is left per unit after what the stock cost and Amazon\'s fee'
+           + (priced ? ' of ' + _smoney(b.fee)
+              : (g.fee == null ? '' : ' of ' + _smoney(g.fee))))
+    + cell(roiTone, roi == null ? '&mdash;' : roi.toFixed(0) + '%', 'ROI',
+           'What you keep, as a share of the cash you put in'
+           + (tgt != null ? '. You asked for ' + tgt + '%.' : '.'))
+    + cell(mgn == null ? 'rp-m2b' : 'rp-m2g',
+           mgn == null ? '&mdash;' : mgn.toFixed(0) + '%', 'Margin',
+           'What you keep, as a share of what the buyer paid')
+    + cell('rp-m2b', lead == null ? '&mdash;' : lead + 'd', 'Handling',
+           'Days Amazon is told to allow before this posts. The '
+           + pol + ' days the postage takes are counted by Amazon separately, '
+           + 'so they are not in this number.')
+    + '</div>';
+
+  // THE SAME FIGURES AGAIN, WITH THE COUPON ON.
+  //
+  //     "show profit per unit when no promotion like coupon or discounts etc
+  //      are applied and also show the profit when some coupons or promotions
+  //      etc are applied ... also show roi and margin in both cases"
+  //
+  // ONLY when a discount was actually MEASURED off settled orders. A second
+  // identical strip on every row would be four more numbers to read past on the
+  // SKUs that have no coupon, and worse, it would imply the app had checked and
+  // found none -- it cannot check. Amazon does not expose a seller's running
+  // coupons to this app; see domain/promotions.py.
+  const p = g.promo;
+  if(p){
+    const why = 'After the discount this SKU has actually been selling under: '
+              + _smoney(p.amount_per_unit) + ' a unit'
+              + (p.pct == null ? '' : ' (about ' + p.pct.toFixed(0) + '% off)')
+              + '. ' + (g.promo_note || '');
+    h += '<div class="cc" style="font-size:10px;text-transform:uppercase;'
+      +  'letter-spacing:.05em;margin:2px 0 4px">With the coupon on</div>'
+      +  '<div class="rp-met2">'
+      +  cell('rp-m2y', _smoney(g.sell_price_promo), 'After coupon', why)
+      +  cell('rp-m2y', _smoney(g.profit_promo), 'Profit / unit', why)
+      +  cell('rp-m2y', g.roi_pct_promo == null ? '&mdash;'
+              : g.roi_pct_promo.toFixed(0) + '%', 'ROI', why)
+      +  cell('rp-m2y', g.margin_pct_promo == null ? '&mdash;'
+              : g.margin_pct_promo.toFixed(0) + '%', 'Margin', why)
+      +  '</div>';
+  }
+  return h;
+}
+
+/* Suppliers as rows, so several can be compared rather than read one by one.
+ *
+ * The keys are domain/order_sources.options_for's -- source_id, state, profit
+ * -- which is the SAME payload the order screen's supplier list draws from.
+ * The ranking, the landed cost and the "you keep" figure are all worked out
+ * there, once, for both screens (CLAUDE.md Rule 12).
+ *
+ * The seven-day cost line comes from r.sources, which is where the readings
+ * are, matched on source_id.
+ */
+function _supTable(r){
+  const opts = r.options || [];
+  if(!opts.length)
+    return '<div class="cc" style="font-size:11px;padding:4px 0">'
+      + 'No supplier link on this SKU yet, so there is nothing to price from.'
+      + '</div>';
+  const used = (r.decision || {}).source_id;
+  // source_id -> its readings, for the sparkline.
+  const hist = {};
+  (r.sources || []).forEach(function(s){ hist[s.id] = s.history || []; });
+  // Why each one was passed over, in the words decide() used.
+  const why = {};
+  ((r.decision || {}).rejections || []).forEach(function(x){
+    why[x.source_id] = x.reason;
+  });
+  let rows = '';
+  opts.forEach(function(s){
+    const dead = (s.state === 'dead');
+    const unknown = (s.state === 'unknown');
+    const isUsed = (used != null && s.source_id === used);
+    const tag = isUsed
+        ? '<span class="rp-tag rp-tgu">USING</span>'
+        : String(s.status || '') === 'gone'
+        ? '<span class="rp-tag rp-tgo">ENDED</span>'
+        : dead ? '<span class="rp-tag rp-tgo">OOS</span>'
+        : unknown ? '<span class="rp-d" style="font-size:8px">?</span>'
+        : '<span class="rp-d" style="font-size:9px">&mdash;</span>';
+    rows += '<tr' + (dead ? ' class="rp-oos"' : '') + '>'
+      + '<td>' + tag + '</td>'
+      + '<td><a class="rp-snm" href="' + _sesc(s.url || '#') + '" target="_blank" '
+      + 'rel="noopener" onclick="event.stopPropagation()" title="'
+      + _sesc(why[s.source_id] || s.url || '') + '">'
+      + _sesc(s.label || _srcShort(s.url) || '') + '</a>'
+      // Two numbers, apart: "show item cost and shipping separately". A landed
+      // figure hides which half moved, and a supplier who holds their price and
+      // doubles their postage looks identical to one who put the item up.
+      + '</td>'
+      + '<td style="font-weight:600">'
+      + (s.price != null ? _smoney(s.price) : '&mdash;') + '</td>'
+      + '<td class="rp-d">'
+      + (s.shipping == null ? '?' : (s.shipping > 0 ? _smoney(s.shipping) : 'free'))
+      + '</td>'
+      + '<td style="font-weight:600">'
+      + (s.landed != null ? _smoney(s.landed) : '&mdash;') + '</td>'
+      + '<td' + (s.available_qty === 0 ? ' style="color:var(--red)"' : '') + '>'
+      + (s.available_qty != null ? s.available_qty : '&mdash;') + '</td>'
+      + '<td>' + (s.dispatch_days != null ? s.dispatch_days + 'd' : '&mdash;') + '</td>'
+      + '<td>' + _spark(hist[s.source_id], {bare: true, w: 50, h: 16}) + '</td>'
+      + '<td style="font-weight:600;color:'
+      + (dead || s.profit == null ? 'var(--ink3)' : 'var(--ok)') + '">'
+      + (!dead && s.profit != null ? _smoney(s.profit) : '&mdash;') + '</td>'
+      + '<td style="width:18px"><button class="rp-rl" style="padding:1px 5px" '
+      + 'onclick="event.stopPropagation();sourcingRemoveSource(' + s.source_id
+      + ')" title="Remove this supplier link">&times;</button></td>'
+      + '</tr>';
+    // WHEN EBAY SAYS IT WILL ARRIVE, and why it was passed over -- both under
+    // the row they belong to rather than in a column. A date is a sentence, not
+    // a figure, and putting it in a cell would either truncate it or make every
+    // other column narrower to fit it.
+    const line = _srcDeliveryLine({carrier: s.carrier, postage_text: s.postage_text,
+                                   delivery_text: s.delivery_text,
+                                   delivery_postcode: s.delivery_postcode});
+    const rej = why[s.source_id];
+    if(line || rej){
+      rows += '<tr><td></td><td colspan="9" style="padding:0 3px 4px 3px;'
+        + 'border-bottom:1px solid var(--line)">'
+        + (rej ? '<span style="font-size:10px;color:var(--gold)">'
+                 + _sesc(rej) + '</span> ' : '')
+        + (line || '') + '</td></tr>';
+    }
+  });
+  return '<table class="rp-sup"><thead><tr>'
+    + '<th></th><th>Supplier</th>'
+    + '<th title="What the supplier charges for the item">Item</th>'
+    + '<th title="Their postage to you">Post</th>'
+    + '<th title="Item plus postage -- what one unit really costs you">Landed</th>'
+    + '<th title="How many they say they have">Stock</th>'
+    + '<th title="Days they say they take to dispatch">Disp</th>'
+    + '<th title="What this supplier has been charging">Trend</th>'
+    + '<th title="What is left of the selling price after Amazon and this '
+    + 'supplier">You keep</th><th></th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+/* The rules, as pills that open the box that changes them.
+ *
+ * They were a column of labelled inputs, which is a form -- something you fill
+ * in. These are settings that are already set, and mostly correct; what you
+ * want is to SEE them at a glance and change the one that is wrong. A pill
+ * shows the current value and is the button that edits it.
+ */
+function _rulePills(r){
+  const rule = r.rule || {}, d = r.decision || {}, b = d.breakdown || {};
+  const sku = r.sku;
+  const pill = function(k, v, fn, why, cls){
+    return '<button class="rp-rl" title="' + _sesc(why) + '" '
+      + 'onclick="event.stopPropagation();' + fn + '">'
+      + '<span class="rp-k">' + k + '</span>'
+      + '<span class="rp-v ' + (cls || '') + '">' + v + '</span></button>';
+  };
+  const S = _sarg(sku);
+  let h = '<div class="rp-rules">';
+  h += pill('Floor', rule.min_price != null ? _smoney(rule.min_price) : 'not set',
+            'sourcingMinPrice(' + S + ')',
+            'The price this SKU will never sell below. It is the one guard that '
+            + 'still works if a supplier page is misread, and a SKU cannot be '
+            + 'armed without it.',
+            rule.min_price == null ? 'rp-off' : '');
+  h += pill('ROI', rule.target_roi_pct != null ? rule.target_roi_pct + '%' : 'none',
+            'sourcingTarget(' + S + ')',
+            'The return you want on the cash you put in. The price is set to '
+            + 'the least that meets it.',
+            rule.target_roi_pct != null ? 'rp-g' : 'rp-off');
+  h += pill('Margin',
+            rule.target_margin_pct != null ? rule.target_margin_pct + '%' : 'none',
+            'sourcingTarget(' + S + ')',
+            'The share of the selling price you want to keep.',
+            rule.target_margin_pct != null ? 'rp-g' : 'rp-off');
+  // "tell me above this", NOT "hold above this" -- the change goes through and
+  // the notification is what a big move produces.
+  h += pill('Tell me over',
+            (rule.max_change_pct != null ? rule.max_change_pct : 25) + '%',
+            'sourcingTarget(' + S + ')',
+            'A price move bigger than this still happens -- it just sends you a '
+            + 'notification as well.');
+  h += pill('Extra handling',
+            '+' + (rule.handling_buffer_days || 0) + 'd',
+            'sourcingBuffer(' + S + ')',
+            'Added on top of the calculated handling time. Use it for a '
+            + 'supplier that does not dispatch when it says it will.',
+            (rule.handling_buffer_days ? '' : 'rp-off'));
+  // WHOSE FEE FIGURE THIS IS. A rate is just a number until you know whether
+  // Amazon gave it to you or it is an average of your own settled orders.
+  const fr = (b.fee_rate != null) ? (b.fee_rate * 100).toFixed(1) + '%' : '?';
+  h += pill('Amazon fee', fr, 'sourcingGetFees(' + S + ')',
+            d.fee_detail || 'Click to ask Amazon what it charges on this product.',
+            d.fee_basis === 'quoted' ? 'rp-g' : '');
+  h += '</div>';
+  return h;
+}
+
+/* The five counts across the top, each as a share of everything tracked. */
+function _statCards(j){
+  const c = j.counts || {};
+  const rows = SRC_ROWS || [];
+  const total = rows.length || 0;
+  const armed = rows.filter(function(r){ return r.mode === 'live'; }).length;
+  const pct = function(n){ return total ? Math.round(n / total * 100) : 0; };
+  const card = function(n, label, tone, bar, why){
+    return '<div class="rp-mc" title="' + _sesc(why || '') + '">'
+      + '<div class="rp-mc-n ' + (tone || '') + '">' + n + '</div>'
+      + '<div class="rp-mc-l">' + label + '</div>'
+      + '<div class="rp-mc-bar" style="width:' + pct(bar) + '%;background:'
+      + (tone === 'rp-g' ? 'var(--ok)' : tone === 'rp-y' ? 'var(--gold)'
+         : tone === 'rp-r' ? 'var(--red)' : 'var(--line2)') + '"></div></div>';
+  };
+  return '<div class="rp-met">'
+    + card(total, 'Tracked', '', total,
+           'SKUs whose supplier costs are being read every four hours.')
+    + card(armed, 'Armed', armed ? 'rp-g' : 'rp-d', armed,
+           'SKUs that can have their price changed on Amazon without anyone '
+           + 'watching. Each one was armed on its own.')
+    + card(c.update || 0, 'Would change', 'rp-g', c.update || 0,
+           'SKUs whose price, stock or handling time is not what the rules say '
+           + 'it should be.')
+    + card(c.out_of_stock || 0, 'Out of stock',
+           (c.out_of_stock ? 'rp-r' : 'rp-d'), c.out_of_stock || 0,
+           'Every supplier confirmed unable to supply. These go to zero stock '
+           + 'on Amazon, and you are told.')
+    + card(c.blocked || 0, 'Held for review',
+           (c.blocked ? 'rp-y' : 'rp-d'), c.blocked || 0,
+           'Something stopped a decision -- a missing floor, an unreadable '
+           + 'supplier, a listing Amazon no longer has.')
+    + '</div>';
+}
+
+/* ONE line, only when there is something to act on. */
+function _alertBar(j){
+  const c = j.counts || {};
+  const rows = SRC_ROWS || [];
+  const noFloor = rows.filter(function(r){
+    return r.mode !== 'live' && (r.rule || {}).min_price == null;
+  }).length;
+  const bits = [];
+  if(c.out_of_stock)
+    bits.push(c.out_of_stock + ' would go out of stock &mdash; every supplier '
+              + 'confirmed unable to supply');
+  if(noFloor)
+    bits.push(noFloor + ' cannot be armed until they have a minimum price');
+  if(!bits.length) return '';
+  return '<div class="rp-alert"><i class="ti ti-alert-triangle"></i>'
+    + bits.join(' &middot; ') + '</div>';
+}
+
 function sourcingRender(j){
   const body = document.getElementById("srcbody");
   const c = j.counts || {};
@@ -1044,7 +1518,7 @@ function sourcingRender(j){
     +  '</div>';
   // The numbers get cards of their own, under the controls rather than crammed
   // into them.
-  if(SRC_ROWS.length) h += _srcCounts(c);
+  if(SRC_ROWS.length) h += _statCards(j) + _alertBar(j);
   h += sourcingUploadReport();
 
   if(j.note){
@@ -1058,20 +1532,44 @@ function sourcingRender(j){
   // past on a screen that already has plenty.
   h += '<div id="srcselbar"></div>';
 
-  // WHAT THE TWO SUPPLIER COLUMNS MEAN, said ONCE.
+  // WHAT THE COLUMNS MEAN, said ONCE.
   //
   // It was printed under every supplier block -- the same sentence 55 times on
-  // this account, which is a paragraph of page spent saying one thing. It is
-  // still true and still needed the first time, so it moves here rather than
-  // going away.
+  // this account, which is a paragraph of page spent saying one thing. A table
+  // header says each label once by construction, which is most of the reason
+  // this screen is a table now; this is the part a header cannot carry.
   h += '<div class="cc" style="font-size:11px;margin:2px 0 8px;line-height:1.5">'
-    +  '<i class="ti ti-info-circle"></i> Open any supplier line to see them all. '
-    +  'Cheapest first, and it re-sorts itself when a supplier changes their '
-    +  'price. <b>You pay</b> is their price plus their postage; <b>you keep</b> '
-    +  'is what is left of the selling price after Amazon&rsquo;s fee and that '
-    +  'supplier.</div>';
+    +  '<i class="ti ti-info-circle"></i> Click any row to open it: the sum '
+    +  'behind the price, every supplier, and the rules in force. '
+    +  '<b>Item</b> is what the supplier charges, <b>Post</b> their postage to '
+    +  'you; <b>Profit</b> is what is left after Amazon&rsquo;s fee, your '
+    +  'postage label and your ad allowance.</div>';
 
+  // THE TABLE.
+  //
+  //     "8. Click row = detail expands inline below"
+  //
+  // Nine columns, and the last is deliberately narrow: the status dot. It is
+  // there so the state of a listing reads down a column rather than having to
+  // be found in a chip somewhere along each row.
+  h += '<div class="rp-card"><div class="rp-scroll">'
+    +  '<table class="rp-tbl"><thead><tr>'
+    +  '<th style="width:22px"><input type="checkbox" id="rp_all" '
+    +  'onclick="sourcingSelectAll(this.checked)" title="Select every SKU shown" '
+    +  'style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)">'
+    +  '</th>'
+    +  '<th style="width:44px"></th><th>Product</th>'
+    +  '<th title="What the cheapest usable supplier charges for the item">Item</th>'
+    +  '<th title="That supplier&#39;s postage to you">Post</th>'
+    +  '<th title="What it sells for on Amazon now, and what the rules say it '
+    +  'should be">Price</th>'
+    +  '<th title="What is left per unit after Amazon, postage and ads">Profit</th>'
+    +  '<th title="That profit as a share of the cash you put in">ROI</th>'
+    +  '<th title="What this SKU&#39;s cheapest supplier has been charging">Trend</th>'
+    +  '<th style="width:14px"></th>'
+    +  '</tr></thead><tbody id="rp_body">';
   SRC_ROWS.forEach(function(r, i){ h += sourcingRow(r, i); });
+  h += '</tbody></table></div></div>';
   body.innerHTML = h;
   _srcSelBar();
 }
@@ -1212,65 +1710,54 @@ function _srcTidy(text){
   return out + _sesc(s.slice(last));
 }
 
-// The counts, as cards. They were a run of text in the toolbar -- "17 would
-// change · 7 would go out of stock · 31 unchanged · 19 held" -- which is the
-// same information Sales gives five cards to, on a screen where those numbers
-// are the whole point of looking.
-function _srcCounts(c){
-  const cards = [
-    ["would change", c.update || 0, "var(--accent)"],
-    ["would go out of stock", c.out_of_stock || 0, "var(--red)"],
-    ["held for review", c.blocked || 0, "var(--warn)"],
-    ["unchanged", c.none || 0, ""],
-  ];
-  if(c.below_target) cards.push(["below target", c.below_target, "var(--red)"]);
-  return '<div style="display:grid;gap:10px;margin-bottom:14px;'
-    +  'grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">'
-    +  cards.map(function(k){
-         return '<div class="panelcard" style="padding:12px 14px">'
-           +  '<div style="font-size:24px;font-weight:600;line-height:1.15'
-           +  (k[2] ? ';color:' + k[2] : '') + '">' + k[1] + '</div>'
-           +  '<div class="cc" style="font-size:11.5px;margin-top:2px">' + k[0] + '</div>'
-           +  '</div>';
-       }).join("")
-    +  '</div>';
-}
-
-function _actionChip(d){
-  const a = d.action;
-  if(d.blocked_by) return '<span class="db-chip" style="background:#3a2f12;color:#e8c66a">held</span>';
-  if(a==="update") return '<span class="db-chip" style="background:#12303a;color:#6ac7e8">would change</span>';
-  if(a==="out_of_stock") return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a">would go out of stock</span>';
-  return '<span class="db-chip">no change</span>';
-}
-
-// What we thought a unit cost, against what the supplier charges now. Shown on
-// the collapsed row, because a cost that has drifted is not something you would
-// know to go looking for -- it has to be in front of you.
-function _driftChip(dr){
-  if(!dr || dr.delta==null) return '';
-  const worse = dr.delta > 0, flat = dr.delta === 0;
-  const col = flat ? '' : (worse ? 'background:#3a2f12;color:#e8c66a'
-                                 : 'background:#12321f;color:#7fd18b');
-  const sign = dr.delta > 0 ? '+' : '';
-  return '<span class="db-chip" style="'+col+'" title="'
-    +  'This SKU was created when the source cost '+_smoney(dr.cogs)+'. '
-    +  'The supplier now charges '+_smoney(dr.landed)+' delivered to you. '
-    +  (worse ? 'Every profit figure for this SKU still subtracts the old, lower cost, '
-             +  'so profit is overstated by '+_smoney(dr.delta)+' a unit.'
-             : (flat ? 'Unchanged since the listing was created.'
-                     : 'It is cheaper than when the listing was created.'))
-    +  '">cost '+(flat ? 'unchanged' : (worse?'up':'down'))
-    +  (flat ? '' : ' '+sign+dr.pct+'%')+'</span>';
-}
-
 // The sum, laid out. It exists because the one-sentence version of this was
 // accurate and unreadable: "price 20.33 = 11.28 cost + 3.05 fee + 3.00 postage
 // + 2.00 ads + 1.00 profit" is five numbers and a total run together, and the
 // question it has to answer -- "where did my price come from" -- is answered
 // much better by a list than by a sentence. The sentence is still what gets
 // stored in the log, unchanged; this is only how it is drawn.
-function _priceBreakdown(b, cur){
+// EVERY AMAZON CHARGE, INCLUDING THE ONES YOU ARE NOT PAYING.
+//
+// The line above says "Amazon's cut 3.60". This says what that 3.60 is made
+// of, and -- deliberately -- lists the charges that came to nothing. A fee
+// showing 0.00 next to "not charged -- you post this yourself" answers the
+// question "is the app forgetting FBA?" before it gets asked. Charged lines
+// carry the mockup's fee colours; uncharged ones are dimmed, not hidden.
+//
+// It is folded shut by default. The sum above is the answer most of the time;
+// this is for the times it is not.
+function _allFees(d, cur){
+  const f = (d || {}).fees;
+  if(!f || !(f.lines || []).length) return '';
+  const id = 'fee_' + Math.random().toString(36).slice(2, 9);
+  const COL = {referral: '#e25c5c', closing: '#d4846f', fba: '#8b95a5'};
+  let rows = '';
+  (f.lines || []).forEach(function(l){
+    const on = !!l.charged;
+    rows += '<div style="display:flex;gap:8px;font-size:11.5px;padding:1.5px 0;'
+         +  (on ? '' : 'opacity:.45') + '">'
+         +  '<span style="min-width:178px;padding-left:8px;'
+         +    (on ? 'border-left:2px solid ' + (COL[l.key] || '#5b8fb9')
+                  : 'border-left:2px solid transparent') + '" class="cc">'
+         +    _sesc(l.label) + '</span>'
+         +  '<span style="min-width:62px;text-align:right">'
+         +    _smoney(l.amount) + '</span>'
+         +  '<span class="cc">' + _sesc(l.note || '') + '</span></div>';
+  });
+  return '<div style="padding:0 0 3px 194px">'
+    +  '<a href="#" class="cc" style="font-size:11px;text-decoration:none;'
+    +    'border-bottom:1px dotted currentColor" '
+    +    'onclick="var e=document.getElementById(\'' + id + '\');'
+    +    'var s=e.style.display===\'none\';e.style.display=s?\'\':\'none\';'
+    +    'this.textContent=(s?\'Hide\':\'All\')+\' Amazon fees\';'
+    +    'return false">All Amazon fees</a></div>'
+    +  '<div id="' + id + '" style="display:none;margin:2px 0 5px">'
+    +    rows
+    +    '<div class="cc" style="font-size:11px;padding:3px 0 0 186px">'
+    +      _sesc(f.detail || '') + '</div></div>';
+}
+
+function _priceBreakdown(b, cur, d){
   if(!b || b.price==null) return '';
   const line = function(label, v, note){
     return '<div style="display:flex;gap:8px;font-size:11.5px;padding:1.5px 0">'
@@ -1297,6 +1784,7 @@ function _priceBreakdown(b, cur){
                 : _fb === "estimated"
                 ? ' &mdash; your measured rate, not Amazon\'s quote'
                 : ''));
+  h += _allFees(d, cur);
   h += line('Your postage to the buyer', b.postage_label, 'the shipping label');
   h += line('Set aside for ads', b.ads, '');
   // THE NUMBER YOU SET A TARGET AGAINST, said beside the profit it comes from.
@@ -1320,11 +1808,27 @@ function _priceBreakdown(b, cur){
     +  '<span style="min-width:62px;text-align:right">'+_smoney(b.price)+'</span>'
     +  '<span class="cc" style="font-weight:400">'
     +  (cur && cur.price!=null ? 'it is '+_smoney(cur.price)+' now' : '')+'</span></div>';
+  // WHERE THE HANDLING TIME COMES FROM -- and it is the SAME arithmetic the
+  // reason line above states, not a second telling of it.
+  //
+  // This used to read "the supplier says 3 to dispatch, plus 0 spare so a slow
+  // day does not make you late", which described the OLD formula: dispatch plus
+  // a buffer. That promised the postage twice, once as our handling time and
+  // again as the courier's transit, so a 3-day eBay supplier became a 5-day
+  // promise for something eBay said would arrive in 3. See
+  // domain/sourcing.handling_days().
   if(b.lead_days!=null){
+    const pol = (b.shipping_policy_days != null) ? b.shipping_policy_days : 2;
     h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
-      +  'Handling time '+b.lead_days+' days &mdash; the supplier says '
-      +  b.supplier_dispatch_days+' to dispatch, plus '+b.buffer_days
-      +  ' spare so a slow day does not make you late.</div>';
+      +  'Handling time <b>'+b.lead_days+' day'+(b.lead_days===1?'':'s')
+      +  '</b> &mdash; the supplier dispatches in '+b.supplier_dispatch_days
+      +  ', and '+pol+' of those are the days your own postage takes, which '
+      +  'Amazon counts separately'
+      +  (b.buffer_days
+          ? '. Plus the '+b.buffer_days+' extra day'
+            + (b.buffer_days===1?'':'s')+' you asked for on this SKU'
+          : '')
+      +  '. The buyer is shown '+(b.lead_days+pol)+' days in all.</div>';
   }
   if(b.sources_total>1){
     h += '<div class="cc" style="font-size:11.5px;margin-top:3px">'
@@ -1383,179 +1887,6 @@ function _srcDay(iso){
   return days[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + mon[d.getUTCMonth()];
 }
 
-function _sourceHistory(hist){
-  if(!hist || hist.length<2) return '';
-  let h = '<div class="cc" style="font-size:11px;margin:5px 0 2px">'
-        + 'What this supplier has charged</div>';
-  hist.forEach(function(c){
-    h += '<div style="display:flex;gap:8px;font-size:11px;padding:1px 0">'
-      +  '<span class="cc" style="min-width:132px">'+_sesc(c.at||'')+'</span>'
-      +  '<span style="min-width:70px">'
-      +  (c.landed!=null ? _smoney(c.landed) : '<span class="cc">could not read</span>')
-      +  '</span>'
-      +  '<span class="cc">'+(c.status!=='fetched' ? _sesc(c.status||'')
-                              : (c.in_stock===false ? 'out of stock' : ''))+'</span>'
-      +  '</div>';
-  });
-  return h;
-}
-
-// One line of facts under each SKU. Six small labelled figures rather than a
-// sentence, because these are numbers you scan down a column, not read.
-function _glanceRow(g){
-  if(!g) return '';
-  const cell = function(label, value, tone, title){
-    if(value === null || value === undefined || value === "") return '';
-    return '<span title="' + _sesc(title || '') + '" style="display:inline-flex;'
-      + 'flex-direction:column;line-height:1.25;min-width:74px">'
-      + '<span style="font-size:12.5px;font-weight:600'
-      + (tone ? (';color:' + tone) : '') + '">' + value + '</span>'
-      + '<span class="cc" style="font-size:10px">' + label + '</span></span>';
-  };
-  const pct = function(v){ return (v === null || v === undefined) ? null
-                                  : (v.toFixed ? v.toFixed(1) : v) + '%'; };
-  // Margin and ROI answer different questions, so they are coloured against
-  // different thresholds rather than one shared rule of thumb.
-  const mTone = (g.margin_pct === null || g.margin_pct === undefined) ? ''
-              : (g.margin_pct >= 20 ? 'var(--ok)'
-                 : g.margin_pct >= 8 ? 'var(--warn)' : 'var(--red)');
-  const rTone = (g.roi_pct === null || g.roi_pct === undefined) ? ''
-              : (g.roi_pct >= 30 ? 'var(--ok)'
-                 : g.roi_pct >= 12 ? 'var(--warn)' : 'var(--red)');
-  const stockTone = (g.units_available === null || g.units_available === undefined) ? ''
-                  : (g.units_available <= 0 ? 'var(--red)'
-                     : g.units_available <= 3 ? 'var(--warn)' : '');
-  const p = g.promo;
-  const pTone = function(v, hi, mid){
-    return (v === null || v === undefined) ? ''
-         : (v >= hi ? 'var(--ok)' : v >= mid ? 'var(--warn)' : 'var(--red)');
-  };
-  const bits = [
-    cell('cheapest source', _smoney(g.landed),
-         '', 'What one unit costs you delivered from the cheapest usable '
-         + 'supplier: ' + _smoney(g.source_price) + ' + '
-         + _smoney(g.source_postage) + ' postage'),
-    cell('selling price', _smoney(g.sell_price), '',
-         'What Amazon is charging for it right now, before any coupon'),
-    cell('profit / unit', _smoney(g.profit), mTone,
-         'At the full selling price, after what the stock cost and Amazon’s fee'
-         + (g.fee == null ? '' : ' of ' + _smoney(g.fee))),
-    cell('margin', pct(g.margin_pct), mTone, 'Profit as a share of the selling price'),
-    cell('ROI', pct(g.roi_pct), rTone, 'Profit as a share of what you paid for the unit'),
-  ];
-
-  // THE SAME THREE AGAIN, WITH THE COUPON ON.
-  //
-  //     "show profit per unit when no promotion like coupon or discounts etc
-  //      are applied and also show the profit when some coupons or promotions
-  //      etc are applied ... also show roi and margin in both cases"
-  //
-  // Only when a discount was actually measured. Showing an identical pair of
-  // columns on every row would be four more numbers to read past on the SKUs
-  // that have no coupon at all, and would imply the app had checked and found
-  // nothing when in fact it cannot check -- see domain/promotions.py.
-  if(p){
-    const why = 'After the discount this SKU has actually been selling under: '
-              + _smoney(p.amount_per_unit) + ' a unit'
-              + (p.pct == null ? '' : ' (about ' + p.pct.toFixed(0) + '% off)')
-              + '. ' + (g.promo_note || '');
-    bits.push(cell('after coupon', _smoney(g.sell_price_promo), 'var(--warn)', why));
-    bits.push(cell('profit / unit', _smoney(g.profit_promo),
-                   pTone(g.margin_pct_promo, 20, 8), why));
-    bits.push(cell('margin', pct(g.margin_pct_promo),
-                   pTone(g.margin_pct_promo, 20, 8), why));
-    bits.push(cell('ROI', pct(g.roi_pct_promo),
-                   pTone(g.roi_pct_promo, 30, 12), why));
-  }
-
-  bits.push(cell('units at source', g.units_available, stockTone,
-       'How many the supplier says are left. eBay sometimes reports a floor rather than a count.'));
-  // HANDLING TIME AS IT STANDS NOW. "also show ... the handling time set for
-  // each item at that time" -- what is promised to the buyer today, and what it
-  // is built from, rather than only the one the repricer would propose.
-  bits.push(cell('handling', (g.handling_days == null ? null : g.handling_days + 'd'), '',
-       'Supplier dispatch ' + (g.dispatch_days == null ? '?' : g.dispatch_days)
-       + 'd plus the safety buffer — what would be promised to the buyer'));
-
-  const kept = bits.filter(Boolean);
-  if(!kept.length) return '';
-  // The coupon pair is separated by a divider rather than run together with the
-  // full-price figures, because two "profit / unit" labels side by side with
-  // nothing between them is the free-flowing text problem all over again.
-  let h = '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;'
-        + 'padding:8px 10px;background:var(--panel2);border-radius:6px;'
-        + 'align-items:flex-start">' + kept.join("");
-  if(p){
-    h += '<span class="cc" style="width:100%;font-size:10px;margin-top:2px">'
-      +  '<i class="ti ti-tag"></i> The four figures after “after coupon” are '
-      +  'the same sale with the discount applied. ' + _sesc(g.promo_note || '')
-      +  '</span>';
-  }
-  return h + '</div>';
-}
-
-// The picture and the name, with the SKU underneath it as the small print it
-// always should have been. The picture comes from the same catalogue the
-// Listings cards and the Orders rows use, so one product looks the same
-// wherever it appears. An icon rather than a broken image when there is none.
-function _srcItemCell(item, sku){
-  const it = item || {};
-  // WHOSE PICTURE THIS IS. An Amazon one is what is live on the listing; a
-  // supplier one is the source listing's photograph, used because the SKU is a
-  // draft Amazon has never seen. Showing the second as though it were the first
-  // would be the app telling you what is on your listing when it is nothing of
-  // the kind, so it carries a corner mark and says so on hover.
-  const fromSupplier = (it.img_source === "supplier");
-  const why = fromSupplier
-    ? "This is the SUPPLIER’s photograph, from the source listing. Amazon has no "
-      + "image for this SKU — either it is still a draft, or Amazon returned none."
-    : "The image on the live Amazon listing.";
-  const pic = it.img
-    ? '<span style="position:relative;flex:0 0 38px;line-height:0" title="'
-      + _sesc(why) + '">'
-      + '<img src="' + _sesc(thumbUrl(it.img, 38)) + '" loading="lazy" decoding="async" alt="" style="width:38px;'
-      + 'height:38px;object-fit:contain;background:#0d1220;border-radius:6px">'
-      + (fromSupplier
-          ? '<span style="position:absolute;right:-2px;bottom:-2px;'
-            + 'background:#3a2f14;color:#e8c66a;border-radius:3px;font-size:8px;'
-            + 'padding:0 2px;line-height:11px;font-weight:600">SRC</span>'
-          : '')
-      + '</span>'
-    : '<span style="width:38px;height:38px;border-radius:6px;background:#0d1220;'
-      + 'display:inline-flex;align-items:center;justify-content:center;'
-      + 'flex:0 0 38px" title="No picture — Amazon has none for this SKU and the '
-      + 'draft carries none either."><i class="ti ti-photo" style="opacity:.4"></i></span>';
-  return '<span style="display:flex;gap:9px;align-items:center;min-width:0;'
-    + 'max-width:420px">' + pic + '<span style="min-width:0">'
-    + (it.title
-        ? '<span style="display:block;font-size:12px;line-height:1.3;'
-          + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'
-          + _sesc(it.title) + '">' + _sesc(it.title) + '</span>'
-        : '')
-    + '<code style="font-size:' + (it.title ? '10px' : '12px') + ';opacity:'
-    + (it.title ? '.7' : '1') + '">' + _sesc(sku) + '</code>'
-    + '</span></span>';
-}
-
-// THIS OFFER IS GONE FROM AMAZON. Loud, because nothing else on the row can
-// matter: there is no listing to price.
-//
-// "the template and the repricer is saving the skus which i have deleted
-//  already, turn off the auto repricing for that sku and give warning to tell
-//  that this offer is deleted"
-//
-// Auto-pricing is already off by the time this draws -- set_listing_state
-// disarms in the same statement that marks it -- so this says what happened
-// rather than warning about what might.
-function _goneChip(d){
-  if(!d || String(d.listing_state || "") !== "gone") return "";
-  return '<span class="db-chip" style="background:#3a1b1b;color:#e88a8a;'
-    + 'border-color:#5a2a2a" title="Amazon no longer has this SKU, so there is '
-    + 'no offer to price. Auto-pricing has been switched off for it. Its '
-    + 'suppliers and history are kept in case you relist it.">'
-    + '<i class="ti ti-trash-x"></i> deleted on Amazon</span>';
-}
-
 // Ask Amazon which enrolled SKUs it still has. One call per SKU, so it is a
 // button rather than something that runs on every draw.
 async function sourcingCheckListings(){
@@ -1576,176 +1907,290 @@ async function sourcingCheckListings(){
   }catch(e){ toast(String(e)); }
 }
 
-/* HOW MANY SUPPLIER LINKS THIS SKU HAS, and how many can be bought from.
+/* WHICH DOT, and what each one is telling you.
  *
- * Clicking it opens the same panel the "Why?" button does, so the count is both
- * the answer and the way to see the detail behind it.
- *
- * "no supplier" is drawn in amber rather than as a plain zero: a tracked SKU with
- * nothing attached can never be priced, and that is a job to do rather than a
- * neutral fact.
+ * Five states, and they answer five different questions, which is why they are
+ * separate colours rather than shades of one:
+ *   red    the supplier has ended or Amazon has lost the listing -- act
+ *   amber  something is stopping a decision -- decide
+ *   green  armed, and it can change a live price on its own -- watch
+ *   teal   tracked and deciding, but nothing reaches Amazon -- safe
+ *   grey   nothing has been read yet -- wait
  */
-function _srcCountChip(r, id){
-  const list = r.sources || [];
-  const n = list.length;
-  const live = list.filter(function(s){
-    const k = s.check || {};
-    return k.status === "fetched" && k.in_stock !== false;
-  }).length;
-  if(!n){
-    return '<button class="db-chip" style="background:#3a3320;color:#e8c66a" '
-         + 'onclick="sourcingToggleDetail(' + _sarg(id) + ')" '
-         + 'title="Nothing to buy this from, so no price can be worked out. '
-         + 'Add a supplier link.">no supplier</button>';
-  }
-  // "2 of 3 usable" only when they differ -- saying "1 of 1" on every row is
-  // noise that makes the rows that DO differ harder to spot.
-  const label = (live === n)
-    ? (n + ' supplier' + (n === 1 ? '' : 's'))
-    : (live + ' of ' + n + ' usable');
-  return '<button class="db-chip"'
-       + (live < n ? ' style="background:#3a3320;color:#e8c66a"' : '')
-       + ' onclick="sourcingToggleDetail(' + _sarg(id) + ')"'
-       + ' title="' + (live < n
-            ? (n - live) + ' of this SKU\'s links cannot be bought from right now. '
-            : '')
-       + 'Click to see the links, their prices and their delivery.">'
-       + label + '</button>';
+function _rpDot(r){
+  const d = r.decision || {};
+  if(String(d.listing_state || "") === "gone")
+    return ['rp-dr', 'Amazon no longer has this SKU. There is no offer to price.'];
+  if(d.action === "out_of_stock")
+    return ['rp-dr', 'Every supplier confirmed unable to supply. This would go '
+                   + 'to zero stock on Amazon.'];
+  if(d.blocked_by)
+    return ['rp-dy', 'Held: ' + d.blocked_by];
+  if(r.mode === "live")
+    return ['rp-dg', 'Armed. This SKU can have its price, stock and handling '
+                   + 'time changed on Amazon without anyone watching.'];
+  if(d.action === "update" || d.action === "none")
+    return ['rp-db', 'Tracked and deciding. Nothing reaches Amazon until it is '
+                   + 'armed.'];
+  return ['rp-dd', 'Nothing has been read for this SKU yet.'];
 }
 
-/* The same shape domain/order_sources.summary() returns, worked out in the
- * browser from the options the row already carries. Only the two fields the
- * renderer reads are needed; asking the server for the rest would be a second
- * round trip for something already on the page. */
-function _srcOptSummary(opts){
-  const o = opts || [];
-  const buyable = o.filter(function(x){ return x.state === "buyable"; });
-  return {total: o.length, buyable: buyable.length,
-          dead: o.filter(function(x){ return x.state === "dead"; }).length,
-          all_dead: !!(o.length && !buyable.length
-                       && !o.filter(function(x){ return x.state === "unknown"; }).length)};
+/* The cheapest usable supplier's history, for the row's sparkline.
+ * One line per SKU, not one per supplier -- the row is about the SKU, and the
+ * supplier it would actually buy from is the one whose cost decides its price.
+ */
+function _rpRowHist(r){
+  const used = (r.decision || {}).source_id;
+  const srcs = r.sources || [];
+  let pick = srcs.filter(function(s){ return used != null && s.id === used; })[0];
+  if(!pick) pick = srcs.filter(function(s){ return (s.history || []).length > 1; })[0];
+  return (pick || {}).history || [];
 }
 
 function sourcingRow(r, i){
-  const d = r.decision || {}, cur = r.current || {};
+  const d = r.decision || {}, cur = r.current || {}, g = r.glance || {};
+  const b = d.breakdown || {};
   const id = "srcrow_"+i;
-  let h = '<div style="border:1px solid #26303f;border-radius:7px;padding:10px 12px;margin-bottom:9px">';
+  const it = r.item || {};
+  const dot = _rpDot(r);
+  const asin = (cur.asin || it.asin || "");
+  // Held rows get a tint so the ones needing a decision are findable without
+  // reading every reason line.
+  const rowCls = 'rp-row' + (d.blocked_by ? ' rp-held' : '');
 
-  // THE PRODUCT, not just its code. "i want to see the images of the items in
-  // the repricer so it is easy to understand for which product are we talking
-  // about" -- 10.39_3Days_B0F6LQ1S93 is unreadable, and this screen is where
-  // you decide whether to keep selling something.
-  h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
-    // PICK SEVERAL AND ACT ON THEM ONCE. "also allow to select multiple skus at
-    // once and unroll them from tracking" -- removing forty one at a time is
-    // forty confirmations, and forty is the normal case after a bulk import
-    // that pulled in more than was wanted.
-    +  '<input type="checkbox" class="srcsel" data-sku="' + _sesc(r.sku) + '"'
-    +  (SRC_SEL.has(r.sku) ? ' checked' : '')
-    +  ' onclick="event.stopPropagation();sourcingSelect(' + _sarg(r.sku)
-    +  ',this.checked)" title="Select this SKU" '
-    +  'style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);flex:none">'
-    +  _srcItemCell(r.item, r.sku)
-    +  _goneChip(d)
-    +  _actionChip(d)
-    +  _driftChip(r.drift)
-    +  _targetChip(d.target)
-    +  '<span style="flex:1"></span>'
-    +  '<span class="cc" style="font-size:11.5px">now '+_smoney(cur.price)
-    +  (cur.lead_days!=null ? ' &middot; '+cur.lead_days+'d handling' : '')
-    +  '</span>';
-  if(d.action==="update"){
-    h += '<span style="font-size:12px;font-weight:600">&rarr; '+_smoney(d.price)
-      +  (d.lead_days!=null ? ' &middot; '+d.lead_days+'d' : '')+'</span>';
+  // ---- the nine columns ------------------------------------------------
+  //
+  // The whole row is the button that opens the detail. Anything inside it that
+  // is itself clickable -- the tick, the ASIN link, the sparkline -- stops the
+  // event, so selecting a SKU or following a link does not also toggle a panel.
+  let h = '<tr class="' + rowCls + '" id="' + id + '_r" '
+    + 'onclick="sourcingToggleDetail(' + _sarg(id) + ')">';
+
+  // 1. select
+  h += '<td onclick="event.stopPropagation()">'
+    + '<input type="checkbox" class="srcsel" data-sku="' + _sesc(r.sku) + '"'
+    + (SRC_SEL.has(r.sku) ? ' checked' : '')
+    + ' onclick="sourcingSelect(' + _sarg(r.sku) + ',this.checked)" '
+    + 'title="Select this SKU" '
+    + 'style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)">'
+    + '</td>';
+
+  // 2. the picture. WHOSE it is still matters: a supplier photograph shown as
+  // though it were the live listing's would be the app telling you what is on
+  // your Amazon page when it is nothing of the kind.
+  const fromSup = (it.img_source === "supplier");
+  h += '<td><div class="rp-thumb" title="'
+    + _sesc(fromSup
+        ? "The SUPPLIER's photograph, from the source listing. Amazon has no "
+          + "image for this SKU."
+        : (it.img ? "The image on the live Amazon listing."
+                  : "No picture -- Amazon has none for this SKU."))
+    + '">'
+    + (it.img
+        ? '<img src="' + _sesc(thumbUrl(it.img, 72)) + '" loading="lazy" '
+          + 'decoding="async" alt="">'
+          // A CORNER MARK, not just a tooltip. Showing a supplier's photograph
+          // as though it were the live listing's would be the app telling you
+          // what is on your Amazon page when it is nothing of the kind, and a
+          // tooltip is invisible on a phone.
+          + (fromSup
+              ? '<span style="position:absolute;right:0;bottom:0;'
+                + 'background:var(--warn-bg);color:var(--warn);font-size:7px;'
+                + 'font-weight:700;padding:0 2px;line-height:10px;'
+                + 'border-radius:2px 0 0 0">SRC</span>'
+              : '')
+        : '<i class="ti ti-photo"></i>')
+    + '</div></td>';
+
+  // 3. name + ASIN. The ASIN links to Amazon, because when a row looks wrong
+  // the next thing anyone does is go and look at the listing.
+  // THREE THINGS THE COLUMNS CANNOT SAY, kept beside the name because each one
+  // means "the numbers on this row are not what they look like":
+  //   gone      Amazon no longer has the listing, so nothing here is a price
+  //   cost up   the profit figures still subtract a cost the supplier left
+  //             behind, so they are overstated by that much on every sale
+  //   2 of 3    one of this SKU's suppliers cannot be bought from right now,
+  //             which is why the cheapest price on the row is not the one used
+  // They were chips across the old card. As chips they were the loudest thing
+  // on the row; here they are 8px marks that only appear when they are true.
+  const dft = r.drift || {};
+  const nOpt = (r.options || []).length;
+  const nUse = (r.options || []).filter(function(o){
+    return o.state === 'buyable';
+  }).length;
+  let flags = '';
+  if(String(d.listing_state || "") === "gone")
+    flags += '<span class="rp-tag rp-tgo" title="Amazon no longer has this SKU, '
+          +  'so there is no offer to price. Auto-pricing was switched off for '
+          +  'it. Its suppliers and history are kept in case you relist.">GONE</span> ';
+  if(dft.delta != null && dft.delta !== 0)
+    flags += '<span class="rp-tag" style="background:var(--warn-bg);'
+          +  'color:var(--warn)" title="This SKU was created when a unit cost '
+          +  _sesc(_smoney(dft.cogs)) + '. The supplier now charges '
+          +  _sesc(_smoney(dft.landed)) + ' delivered, so profit figures are out '
+          +  'by about ' + _sesc(_smoney(Math.abs(dft.delta))) + ' a unit.">cost '
+          +  (dft.delta > 0 ? '&uarr;' : '&darr;')
+          +  (dft.cogs ? Math.abs(dft.delta / dft.cogs * 100).toFixed(0) + '%' : '')
+          +  '</span> ';
+  if(nOpt && nUse < nOpt)
+    flags += '<span class="rp-tag" style="background:var(--warn-bg);'
+          +  'color:var(--warn)" title="' + (nOpt - nUse) + ' of this SKU\'s '
+          +  'supplier links cannot be bought from right now. Open the row to '
+          +  'see which, and why.">' + nUse + '/' + nOpt + '</span> ';
+
+  // THE SKU IS IN THE TOOLTIP, NOT THE COLUMN. It is the identifier everything
+  // else uses -- the upload template, the arm call, the log -- so it cannot go
+  // away; but 10.39_3Days_B0F6LQ1S93 tells nobody WHICH PRODUCT this is, and
+  // that is what a column three inches wide has to answer. So the name is
+  // shown, the SKU is one hover away, and the panel prints it in full.
+  h += '<td><div class="rp-nm" title="' + _sesc((it.title || "") + "\n" + r.sku) + '">'
+    + _sesc(it.title || r.sku) + '</div>'
+    + '<div style="display:flex;gap:3px;align-items:center;margin-top:1px">'
+    + (asin
+        ? '<a class="rp-asin" href="https://www.amazon.co.uk/dp/' + _sesc(asin)
+          + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" '
+          + 'title="Open this listing on Amazon">' + _sesc(asin) + '</a>'
+        : '<span class="rp-d" style="font-size:9px">' + _sesc(r.sku) + '</span>')
+    + (flags ? '<span style="margin-left:2px">' + flags + '</span>' : '')
+    + '</div></td>';
+
+  // 4+5. the supplier's two numbers, apart.
+  //
+  //     "show item cost and shipping separately"
+  //
+  // They were one landed figure, and a landed figure hides which half moved. A
+  // supplier who holds their price and doubles their postage looks identical to
+  // one who put the item up.
+  const sp = (g.source_price != null) ? g.source_price : b.supplier_price;
+  const sh = (g.source_postage != null) ? g.source_postage : b.supplier_postage;
+  h += '<td class="rp-p">' + (sp != null ? _smoney(sp) : '<span class="rp-d">&mdash;</span>') + '</td>'
+    + '<td class="rp-d" style="font-size:10.5px">'
+    + (sh == null ? '&mdash;' : (sh > 0 ? _smoney(sh) : 'free')) + '</td>';
+
+  // 6. price now, and where it is going.
+  h += '<td>';
+  if(d.action === "update" && d.price != null && cur.price != null
+     && Math.abs(d.price - cur.price) >= 0.01){
+    const up = d.price > cur.price;
+    h += '<span class="rp-was">' + _smoney(cur.price) + '</span> '
+      +  '<span class="rp-p ' + (up ? 'rp-g' : 'rp-y') + '">'
+      +  _smoney(d.price) + '</span>';
+  } else {
+    h += '<span class="rp-p">'
+      +  (cur.price != null ? _smoney(cur.price) : '<span class="rp-d">&mdash;</span>')
+      +  '</span>';
   }
-  // HOW MANY SUPPLIERS THIS SKU HAS, on the row itself.
+  // A COUPON IS RUNNING ON THIS SKU, so the price in this column is not what
+  // buyers have been paying. Marked rather than substituted: the listed price
+  // is what the rules act on, and the discounted one is what the profit really
+  // was. Both are in the panel; this says "there are two".
+  if(g.promo && g.sell_price_promo != null){
+    h += ' <span class="rp-tag" style="background:var(--warn-bg);'
+      +  'color:var(--warn)" title="A discount has been measured on this SKU '
+      +  'from settled orders: buyers have been paying about '
+      +  _sesc(_smoney(g.sell_price_promo)) + '. Open the row for the profit at '
+      +  'that price.">' + _sesc(_smoney(g.sell_price_promo)) + '</span>';
+  }
+  h += '</td>';
+
+  // 7+8. profit and ROI, from the sale that would happen NOW.
+  const pf = (g.profit != null) ? g.profit : b.profit;
+  const roi = (g.roi_pct != null) ? g.roi_pct
+            : (b.profit != null && b.cost ? (b.profit / b.cost) * 100 : null);
+  const tgt = (r.rule || {}).target_roi_pct;
+  const roiTone = (roi == null) ? 'rp-d'
+                : (roi < 0) ? 'rp-r'
+                : (tgt != null && roi < +tgt) ? 'rp-y' : 'rp-g';
+  h += '<td class="rp-p ' + (pf == null ? 'rp-d' : pf < 0 ? 'rp-r' : 'rp-g') + '">'
+    + (pf != null ? _smoney(pf) : '&mdash;') + '</td>'
+    + '<td class="' + roiTone + '" style="font-size:10.5px;font-weight:500" title="'
+    + (tgt != null ? 'You asked for ' + tgt + '% on this SKU' : 'No ROI target set')
+    + '">' + (roi != null ? roi.toFixed(0) + '%' : '&mdash;') + '</td>';
+
+  // 9. the trend, and 10 the dot.
+  h += '<td>' + (_spark(_rpRowHist(r), {title: it.title || r.sku})
+                 || '<span class="rp-d" style="font-size:9px">no history</span>')
+    + '</td>'
+    + '<td><span class="rp-dot ' + dot[0] + '" title="' + _sesc(dot[1])
+    + '"></span></td></tr>';
+
+  // ---- the panel, in a row of its own ----------------------------------
   //
-  // "i am not able to see all the source links in the repricer" -- they were all
-  // there, but only inside a panel opened by a button labelled "Why?", which
-  // sounds like it explains the price rather than lists the suppliers. So the
-  // count was invisible: with one link on every SKU there was no way to tell
-  // whether that was all of them or all the screen was showing.
+  //     "the detail panel must be FLUSH with the table edges ... The detail
+  //      <td colspan> should have padding:0"
   //
-  // The chip is the same button, so clicking the count opens the list.
-  h += _srcCountChip(r, id)
-    +  '<button class="db-chip" onclick="sourcingToggleDetail('+_sarg(id)+')">Why?</button>'
-    // WHY IT CANNOT BE ARMED, ON THE BUTTON.
-    //
-    //     "i am not able to arm a sku"
-    //
-    // It could not be, and the reason was real: no minimum price. But the only
-    // place that was said was the button's TOOLTIP, which you have to hover to
-    // read and which never appears on a phone. So the button looked ordinary,
-    // did nothing anybody could see, and the answer was invisible.
-    //
-    // Now the button names the missing thing and OPENS it, so the fix is one
-    // click from the problem instead of a hunt through the row's detail panel.
-    +  (r.mode==="live"
-        ? '<button class="db-chip" style="background:#3a1b1b;color:#e88a8a" '
-          + 'onclick="sourcingArm('+_sarg(r.sku)+',false)">Armed &mdash; disarm</button>'
-        : ((r.rule||{}).min_price == null
-            ? '<button class="db-chip" style="border-color:var(--warn);'
-              + 'color:var(--warn)" onclick="sourcingMinPrice('+_sarg(r.sku)+')" '
-              + 'title="A SKU cannot be armed until it has a price it will never '
-              + 'sell below. That floor is the one guard that still works if a '
-              + 'supplier&#39;s page is misread. Click to set it.">'
-              + 'Set a minimum price to arm</button>'
-            : '<button class="db-chip" onclick="sourcingArm('+_sarg(r.sku)+',true)">Arm</button>'))
-    +  '<button class="db-chip" onclick="sourcingUnenrol('+_sarg(r.sku)+')">Remove</button>'
+  // Hidden rather than absent, so opening one costs nothing and the browser
+  // keeps the scroll position -- inserting rows on click made the page jump.
+  h += '<tr id="' + id + '" style="display:none"><td colspan="10" class="rp-detcell">'
+    + '<div class="rp-det">';
+
+  // THE SKU IN FULL, once the row is open. It is the code every other part of
+  // the app is keyed on -- the supplier template, the log, the arm call -- so
+  // it has to be copyable from here even though the column shows the name.
+  h += '<div class="cc" style="font-size:10px;margin-bottom:6px">'
+    +  '<code>' + _sesc(r.sku) + '</code>'
+    +  (asin ? ' &middot; ASIN ' + _sesc(asin) : '')
     +  '</div>';
 
-  // THE ROW AT A GLANCE.
-  //
-  // "i want to add some additional info which give me a glance view to be
-  //  displayed on each sku, current source price, current my selling price on
-  //  which the item will be sold if i receive an order and the profit margin and
-  //  the roi i will generate on the sale. source units available, the shipping
-  //  days of the supplier"
-  //
-  // Every figure is about the sale that would happen NOW -- what Amazon is
-  // charging today against what the supplier charges today -- which is a
-  // different question from the price the repricer would LIKE it to be. That one
-  // is already on the line above.
-  //
-  // Blank where unknown. A margin shown as 0% because nothing could be read is a
-  // number somebody would act on.
-  h += _glanceRow(r.glance);
+  // WHAT IT DECIDED AND WHY, first. It is the point of the whole screen, and it
+  // was previously below three blocks of figures.
+  h += '<div style="font-size:11.5px;line-height:1.5;margin-bottom:9px">'
+    +  (d.blocked_by ? '<b style="color:var(--gold)">' + _sesc(d.blocked_by)
+                       + '</b> &mdash; ' : '')
+    +  '<span class="cc">' + _srcTidy(d.reason || "") + '</span></div>';
 
-  // EVERY SUPPLIER LINK, ON THE ROW.
-  //
-  //     "i want to be shown all the available supplier/ source links and
-  //      highlight the cheapest of all of them ... and under it where the
-  //      source links are mentioned show the delivery time of the suppliers"
-  //
-  // They were only ever behind a button labelled "Why?", which sounds like it
-  // explains the price rather than lists the suppliers -- so with one link on
-  // every SKU there was no way to tell whether that was all of them or all the
-  // screen was showing.
-  //
-  // Drawn by _ordSourcesHtml, which is the ORDER panel's renderer, from the same
-  // options_for data. One list, one ranking, one delivery sentence, on both
-  // screens (Rule 12). If orders.js has not loaded the row simply keeps the
-  // count chip it always had rather than breaking.
-  // FOLDED, because there are sixty-four of these on this screen and one on an
-  // order. Measured on jack_uk: the supplier blocks were 8,888px of a 19,201px
-  // page. The summary line carries the answer -- how many suppliers, the
-  // cheapest landed cost, what you keep, what is wrong -- and opens to exactly
-  // the same table.
-  if((r.options || []).length && typeof _ordSourcesHtml === "function"){
-    h += _ordSourcesHtml({options: r.options,
-                          summary: _srcOptSummary(r.options),
-                          unit_price: (r.current || {}).price},
-                         "", {compact: true});
+  // A big move happens and TELLS you, rather than waiting for a human who is
+  // not there at 3am.
+  if(d.large_move && d.large_move_note){
+    h += '<div class="rp-alert" style="margin-bottom:9px">'
+      +  '<i class="ti ti-bell"></i>' + _sesc(d.large_move_note)
+      +  ' &mdash; the change still goes through, and you are told.</div>';
   }
 
-  // The reason line is the point of the whole screen.
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px;line-height:1.5">'
-    +  (d.blocked_by ? '<b style="color:#e8c66a">'+_sesc(d.blocked_by)+'</b> &mdash; ' : '')
-    +  _srcTidy(d.reason||"")+'</div>';
+  // Where the price goes, then the three figures, then the actions.
+  h += _stackBar(b) + _metStrip(r);
 
-  h += '<div id="'+id+'" style="display:none;margin-top:9px">';
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px">'
+    +  (r.mode === "live"
+        ? '<button class="db-chip" style="background:var(--red-bg);'
+          + 'color:var(--red);border-color:var(--red-line)" '
+          + 'onclick="event.stopPropagation();sourcingArm(' + _sarg(r.sku)
+          + ',false)">Armed &mdash; disarm</button>'
+        : ((r.rule || {}).min_price == null
+            ? '<button class="db-chip" style="border-color:var(--warn);'
+              + 'color:var(--warn)" onclick="event.stopPropagation();'
+              + 'sourcingMinPrice(' + _sarg(r.sku) + ')" '
+              + 'title="A SKU cannot be armed until it has a price it will never '
+              + 'sell below. That floor is the one guard that still works if a '
+              + "supplier's page is misread. Click to set it.\">"
+              + 'Set a minimum price to arm</button>'
+            : '<button class="db-chip" onclick="event.stopPropagation();'
+              + 'sourcingArm(' + _sarg(r.sku) + ',true)">Arm</button>'))
+    +  '<button class="db-chip" onclick="event.stopPropagation();'
+    +  'sourcingAddSourcePrompt(' + _sarg(r.sku) + ')">'
+    +  '<i class="ti ti-plus"></i> Add a supplier</button>'
+    +  '<button class="db-chip" onclick="event.stopPropagation();'
+    +  'sourcingHoldPrice(' + _sarg(r.sku) + ')" title="'
+    +  'Use this when you know what a product sells for. The repricer will never '
+    +  'price BELOW it, even if your target would be met by less. It is a floor, '
+    +  'not a fixed price: if the supplier gets dearer the price still goes UP.">'
+    +  'Hold at ' + ((r.rule || {}).hold_price != null
+                     ? _smoney(r.rule.hold_price) : '&hellip;') + '</button>'
+    +  '<button class="db-chip" onclick="event.stopPropagation();'
+    +  'sourcingUnenrol(' + _sarg(r.sku) + ')">Stop tracking</button>'
+    +  '</div>';
 
-  h += _priceBreakdown(d.breakdown, cur);
+  // Remembered so the target boxes open showing what THIS SKU has rather than
+  // the account default -- opening them pre-filled with someone else's numbers
+  // and pressing Save would silently overwrite the override.
+  SRC_ROW_RULES[r.sku] = r.rule || {};
+
+
+  // d, not just d.breakdown: the fee lines hang off the decision rather than
+  // the sum, because the sum is written to the log for every SKU every four
+  // hours and a nested list of Amazon charges in each row is a log nobody can
+  // read. The panel needs both, so both are passed.
+  h += _priceBreakdown(d.breakdown, cur, d);
 
   // What the target is doing to THIS listing, under the sum it changes. The
   // chip above is the flag; this says what it would take to clear it, which is
@@ -1792,109 +2237,6 @@ function sourcingRow(r, i){
       +  '</div>';
   }
 
-  h += '<div class="cc" style="font-size:11px;margin:9px 0 4px">Suppliers</div>';
-  (r.sources||[]).forEach(function(s){
-    const k = s.check || {};
-    const rej = (d.rejections||[]).find(function(x){ return x.source_id===s.id; });
-    const chosen = d.source_id===s.id;
-    h += '<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;'
-      +  'padding:4px 0;border-top:1px solid #1c2531">'
-      +  (chosen ? '<span class="db-chip" style="background:#12303a;color:#6ac7e8">using</span>'
-                 : '<span class="db-chip" style="opacity:.55">—</span>')
-      // The name comes from the server (domain/source_link.display_name), which
-      // knows the seller eBay published and any label typed in the template.
-      // _srcShort is the fallback for an older payload that has no name on it.
-      +  '<a href="'+_sesc(s.url)+'" target="_blank" rel="noopener" title="'+_sesc(s.url)+'" '
-      +  'style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
-      +  _sesc(s.name || _srcShort(s.url))+'</a>'
-      +  '<span class="cc">'+_sesc(s.kind)+'</span>'
-      +  '<span style="flex:1"></span>'
-      +  '<span>'+_smoney(k.price)+' + '+(k.shipping==null?'<b style="color:#e8c66a">postage unknown</b>':_smoney(k.shipping))+'</span>'
-      +  '<span class="cc">'+(k.in_stock===true?'in stock':k.in_stock===false?'out of stock':'stock unknown')+'</span>'
-      +  '<span class="cc">'+(k.dispatch_days==null?'':k.dispatch_days+'d')+'</span>'
-      +  (rej ? '<span class="cc" style="color:#e8c66a">'+_sesc(rej.reason)+'</span>' : '')
-      +  '<button class="db-chip" onclick="sourcingRemoveSource('+s.id+')">×</button>'
-      +  '</div>';
-    // HOW IT GETS HERE AND WHEN. "i want to see this information of the source in
-    // the repricer as well" -- the same facts, and the same wording, as the order
-    // details screen. The line is only drawn when eBay actually said something.
-    h += _srcDeliveryLine(k);
-    h += _sourceHistory(s.history);
-  });
-  if(!(r.sources||[]).length){
-    h += '<div class="cc" style="font-size:11.5px;padding:4px 0">'
-      +  'No suppliers yet &mdash; nothing can be decided until one is added.</div>';
-  }
-  h += '<div style="margin-top:7px"><button class="db-chip" '
-    +  'onclick="sourcingAddSourcePrompt('+_sarg(r.sku)+')">'
-    +  '<i class="ti ti-plus"></i> Add a supplier link</button></div>';
-  // The minimum price is shown whether or not it is set, because its ABSENCE is
-  // the reason a SKU cannot be armed, and that has to be visible at the point of
-  // trying rather than only in the error message afterwards.
-  const mp = (r.rule||{}).min_price;
-  h += '<div class="cc" style="font-size:11.5px;margin-top:7px">Never sell below: '
-    +  (mp==null
-        ? '<b style="color:#e8c66a">not set</b> — required before this SKU can be armed'
-        : '<b>'+_smoney(mp)+'</b>')
-    +  ' <button class="db-chip" onclick="sourcingMinPrice('+_sarg(r.sku)+')">'
-    +  (mp==null?'Set':'Change')+'</button></div>';
-  // The target, per SKU. A cheap fast-moving line and an expensive slow one do
-  // not want the same percentage, so the account-wide setting is a default
-  // rather than a rule.
-  const rr = r.rule || {};
-  // Remembered so the two boxes open showing what THIS SKU has, rather than the
-  // account default -- opening them pre-filled with someone else's numbers and
-  // pressing Save would silently overwrite the override.
-  SRC_ROW_RULES[r.sku] = rr;
-  const anyT = (rr.target_margin_pct != null || rr.target_roi_pct != null);
-  // IT NAMES THE TWO THINGS IT SETS, EVEN WHEN NEITHER IS SET.
-  //
-  //     "i am looking at repricer, i dont have an option to set the margin and
-  //      roi target per item"
-  //
-  // It was there and it worked -- measured on this account, 67 per-SKU buttons,
-  // one for every enrolled SKU, each wired to its own rule row. What it never
-  // did was SAY SO. Unset, the line read "Least profit accepted: the flat
-  // minimum only [Set]" and the toolbar read "Profit target: none", so the words
-  // "margin" and "ROI" appeared nowhere on the screen until after a target
-  // existed. Anyone scanning for them concluded the feature was missing, which
-  // is what happened.
-  //
-  // The plain-English phrase is kept -- it is what the setting MEANS, and Rule 5
-  // asks for that first -- with the two names it is known by beside it.
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">'
-    +  'Least profit accepted <span class="cc">(margin / ROI target)</span>: '
-    +  (anyT ? '<b>' + _sesc(_srcTargetLabel(rr).replace(/^Target: /, '')) + '</b>'
-             : '<span class="cc">not set — the flat minimum only</span>')
-    +  ' <button class="db-chip" onclick="sourcingTarget('+_sarg(r.sku)+')">'
-    +  (anyT?'Change this SKU':'Set for this SKU')+'</button></div>';
-
-  /* THE MARKET PRICE, HELD.
-   *
-   * "i want the repricer to not to change my price if the margin or roi target set
-   *  is less than my selling price ... this rule is for the items where i am sure
-   *  that this is the market price and this product sells on this price point no
-   *  matter the roi or margin"
-   *
-   * Deliberately its OWN box and not the "never sell below" one above. That one is
-   * loss protection; this one is a commercial decision. Sharing a field would mean
-   * dropping the floor for a clearance also let the repricer undercut the market
-   * price -- see hold_price in domain/sourcing.DEFAULT_RULE.
-   */
-  const hp = rr.hold_price;
-  h += '<div class="cc" style="font-size:11.5px;margin-top:5px">Hold the price at: '
-    +  (hp==null
-        ? '<span class="cc">not held — the price follows the supplier and the target</span>'
-        : '<b>'+_smoney(hp)+'</b>')
-    +  ' <button class="db-chip" onclick="sourcingHoldPrice('+_sarg(r.sku)+')">'
-    +  (hp==null?'Set':'Change')+'</button>'
-    +  '<span class="infodot" title="Use this when you know what a product sells '
-    +  'for. The repricer will never price BELOW this, even if your ROI or margin '
-    +  'target would be satisfied by less — so a 40.00 line stays at 40.00 on a '
-    +  '12.00 cost. If the supplier gets dearer and 40.00 no longer covers your '
-    +  'target, the price still goes UP; when they get cheaper again it comes back '
-    +  'to 40.00. It can never hold a price below what the unit costs to sell.">i</span>'
-    +  '</div>';
   // WHAT IT IS DOING RIGHT NOW, said on the row rather than left in the log. A
   // held price with no explanation beside it looks like a repricer that has
   // stopped working.
@@ -1920,13 +2262,75 @@ function sourcingRow(r, i){
     h += '<div class="cc" style="font-size:11px;margin-top:6px">Decided on a reading '
       +  Math.round(d.inputs_age_mins)+' minutes old.</div>';
   }
+  h += '<div class="cc" style="font-size:10px;text-transform:uppercase;'
+    +  'letter-spacing:.05em;margin:11px 0 4px">Suppliers</div>'
+    +  _supTable(r);
+
+  h += '<div class="cc" style="font-size:10px;text-transform:uppercase;'
+    +  'letter-spacing:.05em;margin:11px 0 4px">Rules in force</div>'
+    +  _rulePills(r);
+
   h += '</div></div>';
   return h;
 }
 
+/* Open or close one row's panel.
+ *
+ * "table-row", not "block". The panel is a <tr> now, and a <tr> set to display
+ * block is lifted out of the table's layout: its single cell stops spanning the
+ * columns and the panel collapses to the width of whatever is inside it. This
+ * is the one line that has to know the panel is a table row.
+ *
+ * The row above it is marked open too, so it keeps the highlight while its
+ * panel is showing -- otherwise an open panel appears to belong to nothing.
+ */
 function sourcingToggleDetail(id){
   const el = document.getElementById(id);
-  if(el) el.style.display = (el.style.display==="none") ? "block" : "none";
+  if(!el) return;
+  const open = (el.style.display === "none");
+  el.style.display = open ? "table-row" : "none";
+  const row = document.getElementById(id + "_r");
+  if(row) row.classList.toggle("rp-sel", open);
+}
+
+/* EXTRA HANDLING DAYS, PER SKU.
+ *
+ *     "Label it 'Extra handling days' with a tooltip: 'Added on top of the
+ *      calculated handling time. Use for slow suppliers.'"
+ *
+ * Zero by default. This is the only setting that makes a promise LONGER than
+ * the supplier's own, so it says what it will cost you before you set it: a
+ * longer handling time is a later delivery date on the listing.
+ */
+async function sourcingBuffer(sku){
+  const cur = (SRC_ROW_RULES[sku] || {}).handling_buffer_days || 0;
+  _srcModal("Extra handling days",
+    '<div style="font-size:12.5px;line-height:1.6">'
+    + '<p>Added <b>on top of</b> the handling time the app works out. Use it for '
+    + 'a supplier that does not dispatch when it says it will.</p>'
+    + '<p class="cc" style="font-size:11.5px">The handling time already takes '
+    + 'off the days your postage takes, because Amazon counts those separately. '
+    + 'A supplier that dispatches in 3 days gives 1 day of handling; adding 2 '
+    + 'here makes it 3, and the buyer is shown a date 2 days later than the '
+    + 'supplier promised. That is a real cost to the listing, so leave it at 0 '
+    + 'unless a supplier has actually let you down.</p>'
+    + '<label class="cc" style="font-size:11.5px;display:block;margin-top:8px">'
+    + 'Extra days (0 to 30)</label>'
+    + '<input id="src_buf" type="number" min="0" max="30" step="1" value="'
+    + (+cur) + '" style="width:110px;margin-top:4px">'
+    + '</div>',
+    async function(){
+      const el = document.getElementById("src_buf");
+      const v = el ? String(el.value).trim() : "";
+      const j = await (await fetch("/sourcing/rules", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: _srcBody({sku: sku,
+                        rule: {handling_buffer_days: v === "" ? 0 : v}})})).json();
+      if(!j.ok){ toast(j.error || "Could not save"); return false; }
+      toast("Extra handling: +" + (v === "" ? 0 : v) + " day(s)");
+      await sourcingLoad();
+      return true;
+    });
 }
 
 async function sourcingCheckNow(btn){

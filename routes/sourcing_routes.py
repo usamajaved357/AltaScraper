@@ -21,6 +21,7 @@ from config import settings as _settings
 from domain import order_sources as _osrc
 from domain import source_apply as _apply
 from domain import source_bulk as _bulk
+from domain import amazon_fees as _fees
 from domain import source_drift as _drift
 from domain import source_fetch as _fetch
 from domain import source_link as _slink
@@ -276,7 +277,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 unreadable.append(sku)
         note = ("%d still on Amazon, %d gone" % (len(ok), len(gone)))
         if gone:
-            note += (" — auto-pricing is now off for %s" % ", ".join(gone[:6])
+            note += (" â€” auto-pricing is now off for %s" % ", ".join(gone[:6])
                      + (" and others" if len(gone) > 6 else ""))
         if unreadable:
             note += (". %d could not be read and were left exactly as they were"
@@ -441,12 +442,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         note = ""
         if not out:
             if not wsid:
-                note = "No account is selected — open a workspace first."
+                note = "No account is selected â€” open a workspace first."
             elif not mkt:
                 note = ("No marketplace is selected, so there was nothing to look "
                         "up. Pick one on the Listings screen and come back.")
             elif not rec.get("items"):
-                note = ("No live listings are cached for %s on %s yet — press Sync "
+                note = ("No live listings are cached for %s on %s yet â€” press Sync "
                         "on the Listings screen first." % (wsid, mkt))
             else:
                 note = "No listings match that filter."
@@ -468,6 +469,20 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             # require a min_price first -- the only guard that survives a
             # misread supplier cost.
             _repo.enrol(CONFIG_PATH, wsid, mkt, sku, mode="dry_run")
+            # ASK AMAZON ITS FEE NOW, while somebody is here to see it fail.
+            #
+            # The alternative is that the first price this SKU is ever given
+            # comes off a fallback rate, silently, and is corrected a week later
+            # when the refresh job runs. One call at the moment of enrolling is
+            # the cheapest possible time to make the first price the right one.
+            #
+            # It never blocks enrolling: an account whose SP-API roles are not
+            # granted answers nothing, and that is a reason to price from the
+            # measured rate, not a reason to refuse to track the product.
+            try:
+                _fees.quote_for_sku(CONFIG_PATH, _cfg, wsid, mkt, sku)
+            except Exception:
+                pass
         return jsonify({"ok": True})
 
     @app.route("/sourcing/unenrol_bulk", methods=["POST"])
@@ -501,7 +516,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return jsonify({
             "ok": True, "unenrolled": done, "failed": failed,
             "note": ("Stopped tracking %d SKU%s. Their supplier links and price "
-                     "history are kept — enrol one again and everything is still "
+                     "history are kept â€” enrol one again and everything is still "
                      "attached." % (done, "" if done == 1 else "s")),
         })
 
@@ -744,8 +759,6 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         Body: {skus:[...]} for some, or {} for every enrolled SKU. force=true
         re-asks even where a fresh answer is already held.
         """
-        from domain import amazon_fees as _fees
-        from domain import source_run as _run
 
         b = _body()
         wsid, mkt = _where()
@@ -756,24 +769,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         if not want:
             return jsonify({"ok": False, "error": "no SKUs are being tracked"}), 400
 
-        creds, mkt_id, _seller = _creds_for(wsid, mkt)
         done, skipped, failed = [], [], []
         for sku in want:
-            cur = _run.current_for(CONFIG_PATH, wsid, mkt, sku) or {}
-            asin, price = cur.get("asin"), cur.get("price")
-            # NOTHING IS INVENTED. Amazon is asked about a product at a price;
-            # without either there is no question to put to it, and a made-up
-            # one would be answered confidently about the wrong thing.
-            if not asin or not price:
-                skipped.append({"sku": sku, "why": (
-                    "no ASIN in the catalogue snapshot" if not asin
-                    else "no current price to ask about")})
+            # ONE PLACE KNOWS HOW TO ASK (Rule 12). quote_for_sku finds the
+            # account, our own ASIN and the current price, and stores the
+            # answer -- the weekly job and the enrol route call the same thing.
+            rate, basis, detail, note = _fees.quote_for_sku(
+                CONFIG_PATH, _cfg, wsid, mkt, sku, force=force)
+            if note:
+                skipped.append({"sku": sku, "why": note})
                 continue
-            rate, basis, detail = _fees.rate_for_asin(
-                CONFIG_PATH, creds, wsid, mkt, mkt_id, asin, price,
-                is_fba=_run._is_fba(cur), force=force, allow_quote=True)
-            row = {"sku": sku, "asin": asin, "rate": rate,
-                   "basis": basis, "detail": detail}
+            row = {"sku": sku, "rate": rate, "basis": basis, "detail": detail}
             (done if basis == _fees.QUOTED else failed).append(row)
         return jsonify({
             "ok": True, "quoted": len(done), "skipped": len(skipped),
@@ -823,6 +829,29 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                     "a margin target of %g%% would need the customer to pay more "
                     "than the whole price as profit" % v)}), 400
             vals[key] = v
+
+        # A BUFFER IS A COUNT OF DAYS, and the same argument as the boxes below
+        # applies: "2 days" stored as text would read back as something, be
+        # int()ed to nothing at decision time, and quietly promise a handling
+        # time two days shorter than the one that was asked for.
+        if "handling_buffer_days" in vals:
+            v = vals["handling_buffer_days"]
+            if v in (None, ""):
+                vals["handling_buffer_days"] = 0
+            else:
+                try:
+                    v = int(float(str(v).strip()))
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": (
+                        "extra handling days must be a whole number, e.g. 0 or "
+                        "2 -- got %r" % vals["handling_buffer_days"])}), 400
+                # Negative would take days OFF a handling time the postage
+                # subtraction has already reduced -- promising sooner than the
+                # supplier said, which is the one direction that costs a metric.
+                if v < 0 or v > 30:
+                    return jsonify({"ok": False, "error": (
+                        "extra handling days must be between 0 and 30")}), 400
+                vals["handling_buffer_days"] = v
 
         # A MISTYPED MONEY BOX MUST NOT LOOK LIKE AN EMPTY ONE, for the same
         # reason as the targets above. "40" and "£40" and "40.00" all mean forty;
@@ -947,6 +976,46 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         _write_config(raw)
         return jsonify({"ok": True, "enabled": bool(b.get("enabled"))})
 
+    @app.route("/sourcing/shipping_policy", methods=["GET", "POST"])
+    def sourcing_shipping_policy():
+        """How many days the postage itself takes. Global, not per SKU.
+
+        WHY IT IS A SETTING AT ALL. Amazon builds the delivery date from two
+        numbers -- the handling time we set, and the transit time of the postage
+        service on the listing. The repricer takes the second off the first so
+        the supplier's days are not promised twice (domain/sourcing.handling_days).
+        That subtraction is only right if the number matches the courier
+        actually used, so a seller who moves from a 2-day Royal Mail service to
+        a next-day one has to be able to say so.
+
+        NOT PER SKU. It describes the postage service, not the product. A
+        product that needs longer than the others has handling_buffer_days,
+        which is per SKU and is added rather than subtracted.
+        """
+        if request.method == "GET":
+            raw = _read_config()
+            return jsonify({"ok": True,
+                            "days": int(raw.get("shipping_policy_days")
+                                        or _sourcing.SHIPPING_POLICY_DAYS)})
+        b = _body()
+        try:
+            d = int(str(b.get("days")).strip())
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": (
+                "the postage time must be a whole number of days, e.g. 2 -- "
+                "got %r" % b.get("days"))}), 400
+        # A NEGATIVE POLICY WOULD ADD DAYS instead of taking them off, and an
+        # absurdly long one would set every handling time to the buffer alone.
+        if d < 0 or d > 30:
+            return jsonify({"ok": False, "error": (
+                "the postage time must be between 0 and 30 days")}), 400
+        raw = _read_config()
+        raw["shipping_policy_days"] = d
+        _write_config(raw)
+        return jsonify({"ok": True, "days": d, "note": (
+            "Postage now counted as %d day%s. Handling times are worked out "
+            "again on the next check." % (d, "" if d == 1 else "s"))})
+
     @app.route("/sourcing/apply", methods=["POST"])
     def sourcing_apply():
         """Push now for every armed SKU. Same gates as the timer, no shortcuts."""
@@ -954,3 +1023,4 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         res = _apply.run_live(CONFIG_PATH, _cfg, _creds_for,
                               workspace_id=wsid, marketplace=mkt)
         return jsonify({"ok": True, **res})
+

@@ -88,7 +88,10 @@ R.save_rule(CFG, WS, MKT, "", {"shipping_label": 3.00, "ads_margin": 2.00,
 current, d = RUN.decide_one(CFG, WS, MKT, SKU, NOW)
 check("it would update", d["action"], "update")
 check("  to the price the rule gives (9.50 landed -> 18.24)", d["price"], 18.24)
-check("  handling 3 + 2 buffer", d["lead_days"], 5)
+# 1, not 5. The 2 days our postage takes are already promised to the buyer
+# separately by Amazon, so they come OFF the handling time rather than being
+# counted a second time -- see domain/sourcing.handling_days(). 3 - 2 = 1.
+check("  handling: 3 day supplier, less the 2 we post in", d["lead_days"], 1)
 
 print("  -- and the recorded row IS that decision, not a retelling of it --")
 res = RUN.dry_run(CFG, WS, MKT, now=NOW)
@@ -100,7 +103,7 @@ a = acts[0]
 check("  recorded as NOT applied", a["applied"], 0)
 check("  the price it would set", a["to_price"], 18.24)
 check("  and what it is now", a["from_price"], 20.0)
-check("  the handling it would set", a["to_lead_days"], 5)
+check("  the handling it would set", a["to_lead_days"], 1)
 check("  naming the source used", a["source_id"], sid)
 truthy("  with the arithmetic kept", "postage" in (a["reason"] or ""))
 check("  the action matches what decide() said", a["action"], d["action"])

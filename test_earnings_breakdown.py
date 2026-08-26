@@ -231,12 +231,20 @@ print("\n=== 4. the repricer says how many supplier links a SKU has ===")
 # drawn, but only inside a panel opened by a button labelled "Why?", so the count
 # was invisible.
 sjs = open(os.path.join("static", "js", "sourcing.js"), encoding="utf-8").read()
-truthy("there is a count on the row", "_srcCountChip" in sjs)
-truthy("  it is drawn on every row", "_srcCountChip(r, id)" in sjs)
+# THE COUNT MOVED AND GOT SMALLER. It was a chip reading "2 of 3 usable",
+# on every row whether or not any were unusable. On a table that is 67
+# copies of a sentence that is only news when the two numbers differ -- so
+# it is now an 8px "2/3" mark beside the product name, drawn ONLY then.
+truthy("there is a count on the row", "nUse + '/' + nOpt" in sjs)
+truthy("  drawn when some cannot be bought from", "nOpt && nUse < nOpt" in sjs)
 truthy("  a SKU with none says so in amber", "no supplier" in sjs)
 truthy("  and clicking it opens the list", "sourcingToggleDetail" in sjs)
 # The detail panel must still list EVERY source, not the chosen one.
-truthy("the panel loops over all of them", "(r.sources||[]).forEach" in sjs)
+# The panel lists every supplier as a table row rather than a stacked block,
+# so several can be compared down a column instead of read one at a time.
+truthy("the panel lists every one of them", "opts.forEach(function(s)" in sjs)
+truthy("  from the same ranked options the order screen uses",
+       "const opts = r.options || []" in sjs)
 
 print("\n" + ("FAILURES: %s" % ", ".join(fails) if fails else "FAILURES: 0"))
 sys.exit(1 if fails else 0)

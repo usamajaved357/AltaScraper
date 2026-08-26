@@ -111,6 +111,20 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     # Cache-only: allow_quote=False. This function runs for every enrolled SKU
     # on every page load, and a live call apiece would be sixty-seven of them
     # before the screen could draw. The cache is filled by /sourcing/fees.
+    # HOW LONG THE POSTAGE TAKES, from the one place settings live. Amazon
+    # counts the handling time and the postage transit separately, so the
+    # handling time must not include the postage days -- see
+    # sourcing.handling_days(). Stamped here for the same reason the fee rate
+    # is: this is the only spot a rule is assembled before decide() runs, so it
+    # is the only spot that has to know where a setting is kept.
+    try:
+        from config import settings as _settings
+        _pol = (_settings.read_raw(config_path) or {}).get("shipping_policy_days")
+        if _pol not in (None, ""):
+            rule["shipping_policy_days"] = max(0, int(_pol))
+    except Exception:
+        pass          # the module default stands, and it is the real policy today
+
     rule["fee_basis"], rule["fee_detail"] = "", ""
     try:
         from domain import amazon_fees as _fees
@@ -169,6 +183,21 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     if isinstance(decision.get("breakdown"), dict):
         decision["breakdown"]["fee_basis"] = decision["fee_basis"]
         decision["breakdown"]["fee_detail"] = decision["fee_detail"]
+
+    # EVERY AMAZON CHARGE ON THE PRICE THIS DECISION LANDED ON -- the "All
+    # Amazon fees" panel. Worked out at the DECIDED price rather than the one
+    # live on Amazon, because the panel sits inside a row that is proposing a
+    # change and the reader is asking what Amazon takes out of THAT.
+    try:
+        from domain import amazon_fees as _fees
+        _at = decision.get("price") or current.get("price")
+        if _at:
+            decision["fees"] = _fees.breakdown_for(
+                config_path, workspace_id, marketplace, current.get("asin"),
+                _at, is_fba=_is_fba(current),
+                currency=current.get("currency") or "GBP")
+    except Exception:
+        pass          # a breakdown that cannot be built must not lose the price
     return current, decision
 
 

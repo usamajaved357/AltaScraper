@@ -21,6 +21,10 @@
      <head> for a file nobody had chosen yet. -->
 <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="/static/css/dashboard.css?v={{ ASSET_V }}">
+<!-- The Repricer's table, sparklines and detail panel. Its own file rather than
+     another 200 lines of dashboard.css, because it is one screen's layout and
+     every rule in it is prefixed rp- so it cannot reach anything else. -->
+<link rel="stylesheet" href="/static/css/repricer.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -115,6 +119,13 @@
   <!-- Says only what it checks: that this app's own server answered. It does NOT
        mean Amazon is answering -- see the note in listings.js. -->
   <span class="hb" id="healthbadge" title="This app's own server is answering. It does not mean Amazon is — a screen that cannot reach Amazon says so on the screen itself."><span class="dot"></span><span id="healthtxt">App running</span></span>
+  <!-- WHAT THE APP DID WHILE NOBODY WAS LOOKING.
+       The repricer runs every four hours, usually with this page closed, so a
+       toast is gone before anyone could read it. This is the durable record:
+       prices it changed, listings that went out of stock, ones that came back.
+       Read-only -- it reports, it does not act. The dot only appears when
+       something is unread, so a quiet bell is a quiet bell. -->
+  <button class="barbtn iconbtn" id="bellbtn" onclick="notifBell()" style="position:relative" title="What the repricer has done and found"><i class="ti ti-bell"></i><span id="belldot" style="display:none;position:absolute;top:3px;right:3px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--red);color:#fff;font-size:9px;font-weight:700;line-height:14px"></span></button>
   <button class="barbtn iconbtn" id="privbtn" onclick="togglePrivacy()" title="Privacy mode: blur account names, titles, ASINs and images for screen-sharing"><i class="ti ti-eye-off"></i></button>
   <!-- Shown only to people who may manage users. Hiding it is a courtesy, not the
        control: the server refuses /users/* to everyone else regardless. -->

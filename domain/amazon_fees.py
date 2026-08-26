@@ -393,6 +393,71 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
             % (rate * 100, a, p))
 
 
+def quote_for_sku(config_path, cfg, workspace_id, marketplace, sku,
+                  force=False, allow_quote=True):
+    """Ask Amazon what it charges on ONE enrolled SKU, and remember it.
+
+    (rate, basis, detail, note) -- `note` is "" when Amazon was asked, or the
+    reason it could not be.
+
+    ONE PLACE, because four callers want exactly this: enrolling a SKU, the
+    "Get Amazon's fees" button, the weekly refresh job, and the bulk enrol. Each
+    of them needs the account looked up, the current price and OUR ASIN found,
+    and the answer stored -- and four copies of that would drift apart on the
+    detail that matters, which is that NOTHING is asked about a product without
+    a real ASIN and a real price (CLAUDE.md Rule 12).
+    """
+    from domain import accounts as _acc
+    from domain import source_run as _run
+
+    c = cfg() if callable(cfg) else (cfg or {})
+    acc = next((a for a in (c.get("accounts") or [])
+                if str(a.get("id")) == str(workspace_id)), None)
+    if not acc:
+        return None, "", "", "no account called %s" % workspace_id
+    cur = _run.current_for(config_path, workspace_id, marketplace, sku) or {}
+    asin, price = cur.get("asin"), cur.get("price")
+    # AMAZON IS ASKED ABOUT A PRODUCT AT A PRICE. Without either there is no
+    # question to put to it, and a made-up one would be answered confidently
+    # about the wrong thing.
+    if not asin:
+        return None, "", "", "no ASIN in the catalogue snapshot"
+    if not price:
+        return None, "", "", "no current price to ask about"
+    rate, basis, detail = rate_for_asin(
+        config_path, _acc.account_creds(acc), workspace_id, marketplace,
+        _acc.marketplace_id(marketplace), asin, price,
+        is_fba=_run._is_fba(cur), force=force, allow_quote=allow_quote)
+    return rate, basis, detail, ""
+
+
+# WHAT EACH AMAZON CHARGE IS, IN ONE PLACE.
+#
+# Two screens describe these fees: the P&L, which shows what was taken off a
+# settled order, and the Repricer, which shows what WILL be taken at a price it
+# is about to set. Same charges, same names, so they are written once
+# (CLAUDE.md Rule 12) -- two copies drift, and a reader who sees "Fixed closing
+# fee" on one screen and "Variable closing fee" on the other has to work out
+# whether those are the same thing.
+FEE_WORDS = {
+    "referral": ("Referral fee",
+                 "Amazon's commission on the sale price, including any "
+                 "postage the buyer paid."),
+    "fba": ("FBA fee",
+            "Picking, packing and posting the item from Amazon's warehouse. "
+            "Charged per unit by size and weight."),
+    # Amazon's own name for it in the fee API is VariableClosingFee, so that is
+    # what both screens call it. "Variable" describes the CATEGORY it applies
+    # to, not the amount -- the amount is a flat charge per item.
+    "closing": ("Variable closing fee",
+                "A flat charge Amazon adds on media items -- books, music, "
+                "video, DVD, software and games."),
+    "other": ("Other Amazon charges",
+              "Anything else Amazon took against this order in its own "
+              "settlement, such as a refund administration fee."),
+}
+
+
 def parts_for_display(fees, currency_symbol=""):
     """[(label, amount, explanation)] -- the rows a breakdown table draws.
 
@@ -404,19 +469,117 @@ def parts_for_display(fees, currency_symbol=""):
     f = fees or blank()
     out = []
     if f.get("referral") is not None:
-        out.append(("Referral fee", f["referral"],
-                    "Amazon's commission on the sale price, including any "
-                    "postage the buyer paid."))
-    if _f(f.get("fba")):
-        out.append(("FBA fee", f["fba"],
-                    "Picking, packing and posting the item from Amazon's "
-                    "warehouse. Charged per unit by size and weight."))
-    if _f(f.get("closing")):
-        out.append(("Fixed closing fee", f["closing"],
-                    "A flat charge Amazon adds on media items -- books, music, "
-                    "video, DVD, software and games."))
-    if _f(f.get("other")):
-        out.append(("Other Amazon charges", f["other"],
-                    "Anything else Amazon took against this order in its own "
-                    "settlement, such as a refund administration fee."))
-    return out
+        out.append(FEE_WORDS["referral"][:1] + (f["referral"],)
+                   + FEE_WORDS["referral"][1:])
+    for key in ("fba", "closing", "other"):
+        if _f(f.get(key)):
+            out.append(FEE_WORDS[key][:1] + (f[key],) + FEE_WORDS[key][1:])
+    return [(lab, amt, why) for lab, amt, why in out]
+
+
+def breakdown_for(config_path, workspace_id, marketplace, asin, price,
+                  is_fba=False, currency="GBP"):
+    """Every Amazon charge on ONE product at ONE price -- charged or not.
+
+        "the fees of amazon reflecting in the details should be accurate and
+         not estimate of 15 percent like i see right now in the app"
+
+    WHY IT SHOWS FEES THAT ARE NOT CHARGED. parts_for_display drops the zeros,
+    which is right on a P&L -- an FBA line reading 0.00 next to a merchant
+    order invites the question of whether something was missed. The Repricer is
+    answering a different question: "what does Amazon take out of this price?"
+    There, a fee you are NOT paying is information, so it is listed and dimmed
+    rather than hidden. That is the reference mockup's "All Amazon fees"
+    pattern, and it is why this returns `charged` on every line instead of
+    filtering.
+
+    WHY THE CLOSING FEE DOES NOT SCALE AND THE REFERRAL FEE DOES. The referral
+    fee is a PERCENTAGE of the sale price, so it is worked out again at whatever
+    price is being considered. The variable closing fee is a FLAT amount per
+    item (media categories only), so it stays exactly as Amazon quoted it.
+    Multiplying a stored rate by the price would quietly inflate that flat
+    charge every time the price went up.
+
+    NOTHING IS INVENTED. If Amazon has not been asked about this ASIN, the
+    referral line falls back to the account's own MEASURED rate and says so;
+    the FBA line is 0.00 with the reason, because these listings are shipped by
+    the seller and Amazon does not charge a fulfilment fee on them. An FBA
+    figure is never estimated -- it is a per-unit charge by size and weight,
+    and there is no honest way to guess it.
+    """
+    from data import db as _db
+
+    ws, mkt = str(workspace_id or ""), str(marketplace or "").upper()
+    a = str(asin or "").strip().upper()
+    p = _f(price, 0.0)
+    cur = str(currency or "GBP").upper()
+
+    row = None
+    if a:
+        try:
+            row = _db.get_db(config_path).execute(
+                "SELECT rate, referral, closing, quoted_price, currency, "
+                " quoted_at FROM fee_quotes "
+                "WHERE workspace_id=? AND marketplace=? AND asin=?",
+                (ws, mkt, a)).fetchone()
+        except Exception:
+            row = None
+
+    lines, basis, detail, asked_at = [], ESTIMATED, "", ""
+
+    # ---- referral -------------------------------------------------------
+    if row and row["rate"] is not None and _f(row["quoted_price"]) > 0:
+        basis, asked_at = QUOTED, str(row["quoted_at"] or "")
+        cur = str(row["currency"] or cur).upper()
+        # The referral fee's OWN share, not the stored blended rate -- the
+        # stored one has the flat closing fee folded into it.
+        ref_rate = _f(row["referral"]) / _f(row["quoted_price"])
+        closing = round(_f(row["closing"]), 2)
+        detail = ("Amazon quoted these on %s at %.2f." % (a, _f(row["quoted_price"]))
+                  + ("" if not asked_at else " Asked %s." % asked_at))
+    else:
+        ref_rate, _b, detail = rate_for(config_path, ws, mkt)
+        closing = 0.0
+        detail = ("Amazon has not been asked about this product yet, so the "
+                  "referral fee below is %s Press “Get Amazon's fees” "
+                  "to replace it with Amazon's own figure." % detail)
+
+    referral = round(p * ref_rate, 2)
+    floor = MIN_REFERRAL.get(cur)
+    if floor is not None and p > 0 and referral < floor:
+        referral = floor
+    lab, why = FEE_WORDS["referral"]
+    lines.append({
+        "key": "referral", "label": lab, "amount": referral, "charged": True,
+        "note": "%.2f%% of %.2f%s" % (
+            ref_rate * 100, p,
+            "" if floor is None or referral > floor
+            else " (Amazon's %.2f minimum applies)" % floor),
+        "why": why})
+
+    # ---- variable closing ----------------------------------------------
+    lab, why = FEE_WORDS["closing"]
+    lines.append({
+        "key": "closing", "label": lab, "amount": closing,
+        "charged": closing > 0,
+        "note": ("a flat %.2f per item" % closing if closing > 0
+                 else "not charged -- this is not a media category"),
+        "why": why})
+
+    # ---- FBA ------------------------------------------------------------
+    lab, why = FEE_WORDS["fba"]
+    lines.append({
+        "key": "fba", "label": lab, "amount": 0.0,
+        "charged": bool(is_fba),
+        "note": ("Amazon fulfils this one -- the per-unit fee depends on size "
+                 "and weight and is not in this quote"
+                 if is_fba else
+                 "not charged -- you post this yourself"),
+        "why": why})
+
+    return {
+        "asin": a, "price": round(p, 2), "currency": cur, "basis": basis,
+        "detail": detail, "asked_at": asked_at,
+        "rate": round(ref_rate, 6), "lines": lines,
+        "total": round(sum(l["amount"] for l in lines if l["charged"]), 2),
+    }

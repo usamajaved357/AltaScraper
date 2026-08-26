@@ -333,8 +333,46 @@ def sourcing_apply(workspace_id=None):
     return _sapply.run_live(config_path, cfg, creds_for, workspace_id=workspace_id)
 
 
+def sourcing_fees(workspace_id=None):
+    """Ask Amazon what it charges on each enrolled product, and remember it.
+
+    WEEKLY, NOT FOUR-HOURLY, and that is the whole reason this is a job of its
+    own rather than a step inside sourcing_check. A referral fee is a percentage
+    by CATEGORY: it does not move between Tuesday and Wednesday, and asking
+    Amazon about sixty-seven products every four hours would be four hundred
+    calls a day against a limit Amazon enforces -- to re-learn the same number.
+
+    rate_for_asin only re-asks where the stored answer is older than its
+    max_age_days, so a run that finds everything fresh costs nothing.
+
+    Nothing here changes a price. It fills the cache that pricing reads, and
+    pricing never calls Amazon itself -- see domain/source_run.decide_one.
+    """
+    from domain import amazon_fees as _fees
+    from domain import source_repo as _repo
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+
+    quoted = asked = skipped = 0
+    for e in _repo.enrolled(config_path, workspace_id):
+        # quote_for_sku is the one place that knows how to ask about a SKU --
+        # the account, our ASIN, the current price and the storing. The button
+        # and the enrol route call the same function.
+        _rate, basis, _detail, note = _fees.quote_for_sku(
+            config_path, cfg, e.get("workspace_id"), e.get("marketplace"),
+            e.get("sku"))
+        if note:
+            skipped += 1
+            continue
+        asked += 1
+        if basis == _fees.QUOTED:
+            quoted += 1
+    return {"asked": asked, "quoted": quoted, "skipped": skipped}
+
+
 register_job("sourcing_check", sourcing_check, hours=4,
              description="Re-read supplier prices and stock for enrolled SKUs")
+register_job("sourcing_fees", sourcing_fees, hours=168,
+             description="Refresh Amazon's fee quote for each enrolled SKU (weekly)")
 register_job("sourcing_apply", sourcing_apply, hours=4,
              description="Push repricer changes for armed SKUs (off unless armed)")
 register_job("sales_sync", sales_sync, hours=6,

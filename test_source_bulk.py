@@ -138,7 +138,11 @@ check("  margin is that over what the buyer paid", g["margin_pct"], 18.6)
 check("  and ROI is it over what you paid", g["roi_pct"], 28.0)
 check("how many the supplier has", g["units_available"], 93)
 check("the supplier's dispatch time", g["dispatch_days"], 2)
-check("  plus the buffer, which is what the buyer is promised", g["handling_days"], 4)
+# A 2-day supplier and a 2-day postage service: max(0, 2 - 2) = 0 days of
+# handling, which means "posted the same day". The buyer is still promised 2
+# days, because Amazon adds the postage transit on top of the handling time.
+check("  less the postage, which Amazon promises separately",
+      g["handling_days"], 0)
 
 print("  -- unknown stays unknown --")
 g2 = D.at_a_glance([], {"price": 16.99}, {})

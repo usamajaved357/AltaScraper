@@ -33,16 +33,38 @@ const DR = fs.readFileSync("D:/AltaScraper/domain/source_drift.py", "utf8");
 const RT = fs.readFileSync("D:/AltaScraper/routes/sourcing_routes.py", "utf8");
 
 console.log("=== the drift is visible without expanding anything ===");
-truthy("the collapsed row carries a cost chip", /_driftChip\(r\.drift\)/.test(JS));
-truthy("  which says which way it moved", /cost '\+\(flat \? 'unchanged' : \(worse\?'up':'down'\)\)/.test(JS));
+// THE FLAG MOVED, AND THAT IS THE POINT OF THE REDESIGN.
+//
+// It used to be _driftChip, one of four chips laid across a bordered card. The
+// screen is a table now -- one row per SKU, labels in a header rather than
+// repeated sixty-seven times -- and the chips were the loudest thing on every
+// row whether or not they said anything. So the drift is an 8px mark beside the
+// product name, drawn ONLY when the cost has actually moved, with the full
+// sentence still in the panel underneath.
+//
+// What is asserted is unchanged: the gap is visible WITHOUT expanding anything,
+// it says which way the cost went, and it explains what that does to a profit
+// figure. Only where it is drawn has changed.
+truthy("the collapsed row flags a moved cost",
+       /flags \+= '<span class="rp-tag"/.test(JS));
+truthy("  drawn only when it has actually moved",
+       /if\(dft\.delta != null && dft\.delta !== 0\)/.test(JS));
+truthy("  which says which way it moved",
+       /dft\.delta > 0 \? '&uarr;' : '&darr;'/.test(JS));
 truthy("  and explains what it means for profit on hover",
-       /profit is overstated by/.test(JS));
+       /profit figures are out\s*'?\s*\+?\s*'?\s*by about/.test(JS));
 truthy("a flat cost is not dressed as a warning",
-       /const col = flat \? '' :/.test(JS));
+       !/flags \+= .*cost.*unchanged/.test(JS));
+// The sentence itself is still there, in the panel.
+truthy("  and the full sentence is still in the panel",
+       /profit figures for this SKU still subtract the old/i.test(JS));
 
 console.log("\n=== the price sum is a list, not a sentence ===");
 truthy("there is a breakdown renderer", /function _priceBreakdown/.test(JS));
-truthy("  drawn in the detail panel", /_priceBreakdown\(d\.breakdown, cur\)/.test(JS));
+// Three arguments now: the sum, what is live on Amazon, and the decision. The
+// third is where the per-fee breakdown hangs -- it is deliberately NOT on the
+// sum, because the sum is written to the log for every SKU every four hours.
+truthy("  drawn in the detail panel", /_priceBreakdown\(d\.breakdown, cur, d\)/.test(JS));
 [["What the supplier charges", "the supplier's price"],
  ["So one unit costs you", "the landed cost"],
  ["Amazon's cut", "the referral fee"],
@@ -89,11 +111,24 @@ truthy("  which is optional so the tests can register without it",
 truthy("each source carries its readings", /"history": _drift\.price_history/.test(RT));
 
 console.log("\n=== history shows failures rather than hiding them ===");
-truthy("a reading that could not be read is still listed",
-       /could not read/.test(JS));
+// THE HISTORY IS A LINE NOW, and the two halves of it treat a failed reading
+// differently -- on purpose.
+//
+// The 70x24 sparkline SKIPS an unreadable reading, because there is no honest
+// height to draw it at: plotting it at zero would show a line diving to the
+// floor, which says "the supplier gave it away" when what happened is that
+// nobody could reach the page. A gap in the line is the truth.
+//
+// The full chart, which the sparkline opens into, LISTS it -- with a dash where
+// the amount would be -- because there the date column gives it somewhere to
+// be, and a run of failures is exactly why a price can look unchanged for days.
+truthy("the sparkline never draws a reading it could not read",
+       /p\.landed != null && isFinite\(p\.landed\)/.test(JS));
+truthy("  and the full chart still lists it, with no amount",
+       /isFinite\(v\) \? _smoney\(v\) : '&mdash;'/.test(JS));
 truthy("  because a run of them is why a price looks unchanged",
        /kept rather than filtered out/.test(DR));
-truthy("one reading is not a history", /hist\.length<2/.test(JS));
+truthy("one reading is not a history", /if\(all\.length < 2\) return ''/.test(JS));
 
 console.log("\nFAILURES: " + fails);
 process.exit(fails ? 1 : 0);

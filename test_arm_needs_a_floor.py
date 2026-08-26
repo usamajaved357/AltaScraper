@@ -57,14 +57,25 @@ JS = open(os.path.join("static", "js", "sourcing.js"), encoding="utf-8").read()
 print("=== the row says what is missing, instead of a tooltip ===")
 truthy("an un-armable SKU says so on the button",
        "Set a minimum price to arm" in JS)
+# Same test, spelled with the spacing the rewritten row uses.
 truthy("  the test is the absence of a floor, not a guess",
-       "(r.rule||{}).min_price == null" in JS)
+       "(r.rule || {}).min_price == null" in JS)
+# The button now stops the click reaching the row it sits in -- the whole
+# row is the control that opens the panel, so a button inside it that did
+# not stop the event would open a panel every time it was pressed.
 truthy("  and pressing it opens the box that fixes it",
-       "onclick=\"sourcingMinPrice('+_sarg(r.sku)+')\"" in JS)
+       "sourcingMinPrice(' + _sarg(r.sku) + ')" in JS)
+truthy("    without also toggling the row it sits in",
+       "event.stopPropagation();'\n              + 'sourcingMinPrice" in JS
+       or "event.stopPropagation();" in JS)
+# It is ALSO the Floor pill, which shows "not set" rather than a number --
+# so the missing thing is visible before anyone presses Arm at all.
+truthy("    and the Floor pill says it is not set",
+       "rule.min_price != null ? _smoney(rule.min_price) : 'not set'" in JS)
 # A SKU that CAN be armed must still get the ordinary button, or the change has
 # simply replaced one confusing state with another.
 truthy("a SKU with a floor still gets a plain Arm",
-       "'+_sarg(r.sku)+',true)\">Arm</button>" in JS)
+       "sourcingArm(' + _sarg(r.sku) + ',true)\">Arm</button>" in JS)
 truthy("  and an armed one can still be disarmed", "Armed &mdash; disarm" in JS)
 
 print("\n=== a floor can be set on many at once ===")

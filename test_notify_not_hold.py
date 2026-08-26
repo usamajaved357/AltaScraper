@@ -156,8 +156,19 @@ truthy("  after the patch, not before", "_notify_push(" in _after)
 truthy("  and a failed notify cannot undo the push",
        "except Exception:" in AP.split("_notify_push(config_path")[1][:200])
 _fn = AP.split("def _notify_push(")[1]
-truthy("  a dry run never claims a price changed",
-       'decision.get("action") != "update"' in _fn)
+# The gate now admits out_of_stock as well as update, because going out of
+# stock is also a real change that was really pushed and is worth being told
+# about. What it must still refuse is EVERY other action -- a dry run decides
+# identically to a live run, so "none" reaching this function would announce a
+# price change that never happened.
+truthy("  a dry run never claims anything changed",
+       'act not in ("update", "out_of_stock")' in _fn)
+truthy("    and an update with no price is still refused",
+       'act == "update" and decision.get("price") is None' in _fn)
+truthy("  going out of stock is announced",
+       "went_out_of_stock(" in _fn)
+truthy("    and so is coming back",
+       "came_back_in_stock(" in _fn)
 truthy("  and only a large move is escalated",
        'large=bool(decision.get("large_move"))' in _fn)
 
