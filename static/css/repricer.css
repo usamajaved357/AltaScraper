@@ -95,7 +95,13 @@
 .rp-alert{background:var(--warn-bg);border:1px solid var(--warn-line);
   border-radius:var(--radius-sm);padding:7px 11px;margin-bottom:10px;
   font-size:11.5px;color:var(--warn);display:flex;align-items:center;gap:6px}
-.rp-alert b{cursor:pointer;text-decoration:underline;margin-left:2px}
+.rp-alert b{margin-left:2px}
+/* The loud one: prices that would go DOWN because nothing asks for profit.
+ * Red rather than amber because it is not "look at this when you can" -- it is
+ * money that would be given away the moment these are armed. */
+.rp-alert.rp-alert-bad{background:var(--red-bg);border-color:var(--red-line);
+  color:var(--red)}
+.rp-alert .db-chip{margin-left:4px}
 
 /* ---- the bulk bar ----------------------------------------------------- *
  *
