@@ -13,8 +13,26 @@ function check(label, got, want) {
   console.log("  %s %s", label.padEnd(60),
               ok ? "OK" : `FAIL got=${JSON.stringify(got)} want=${JSON.stringify(want)}`);
 }
-const css = fs.readFileSync("D:/AltaScraper/static/css/dashboard.css", "utf8");
 const tpl = fs.readFileSync("D:/AltaScraper/templates/dashboard.html", "utf8");
+
+// EVERY STYLESHEET THE PAGE ACTUALLY LINKS, in link order.
+//
+// This read dashboard.css alone, from when that was the only one. It is not:
+// dialog.css, datatable.css, repricer.css and mobile.css are all served with
+// it. So when the shared table and card rules were pulled out of dashboard.css
+// into datatable.css -- one definition instead of six -- this test reported
+// them DELETED, because it was looking in the file they left rather than at
+// what the browser receives.
+//
+// Reading the link tags rather than a hardcoded list means a stylesheet added
+// later is checked too, and a rule moving between files is a non-event while a
+// rule genuinely disappearing still fails.
+const sheets = [...tpl.matchAll(/href="\/static\/(css\/[\w.-]+\.css)/g)]
+                 .map((m) => m[1]);
+if (!sheets.length) { console.log("  no stylesheets linked?!"); fails++; }
+const css = sheets
+  .map((p) => fs.readFileSync("D:/AltaScraper/static/" + p, "utf8"))
+  .join("\n");
 
 console.log("=== nothing was mangled ===");
 // A real ellipsis as the canary: if the file is ever written back in the wrong

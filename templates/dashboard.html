@@ -25,9 +25,14 @@
      replaces a prompt anchored to a button. Used by every screen, so it is not
      inside dashboard.css, which is organised by screen. -->
 <link rel="stylesheet" href="/static/css/dialog.css?v={{ ASSET_V }}">
-<!-- The Repricer's table, sparklines and detail panel. Its own file rather than
-     another 200 lines of dashboard.css, because it is one screen's layout and
-     every rule in it is prefixed rp- so it cannot reach anything else. -->
+<!-- ONE look for every table of products and for the cards above it. Shared by
+     Listings, the Product Catalog and the Repricer, which between them carried
+     three table styles and two card styles -- which is why the three screens
+     read as three different products. Loaded AFTER dashboard.css because it
+     supersedes the blocks removed from it in the same commit. -->
+<link rel="stylesheet" href="/static/css/datatable.css?v={{ ASSET_V }}">
+<!-- What is genuinely the Repricer's alone: the sparkline, the stacked bar, the
+     supplier table, the rules pills, the chart and the detail panel. -->
 <link rel="stylesheet" href="/static/css/repricer.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same

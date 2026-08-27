@@ -77,10 +77,20 @@ const _ALTA_LAST_N = {};
 function altaCountMetrics(container){
   const host = container || document;
   let els;
-  try{ els = host.querySelectorAll(".metric .n"); }catch(e){ return; }
+  // .ui-stat-v is the shared stat card's number (pageui.js). It used to be
+  // ".metric .n", which was Listings' own card -- that card is gone and every
+  // screen now draws the one in static/css/datatable.css, so the count-up
+  // follows it rather than being silently lost.
+  try{ els = host.querySelectorAll(".ui-stat-v, .metric .n"); }catch(e){ return; }
   els.forEach(function(el, i){
-    const raw = String(el.textContent || "").replace(/[^0-9.\-]/g, "");
-    if(raw === "") return;
+    const txt = String(el.textContent || "").trim();
+    // ONLY A BARE COUNT. Rewriting the text is how this animates, so anything
+    // carrying a symbol -- "60%", "£1,240", "2.4x", an em-dash for not-yet --
+    // would come back as a naked number and quietly change what the card says.
+    // Listings' tiles were always bare integers; the shared card is not, and
+    // this now runs on the Catalog and everything else that uses it.
+    if(!/^[0-9][0-9,]*$/.test(txt)) return;
+    const raw = txt.replace(/,/g, "");
     const n = Number(raw);
     if(!isFinite(n)) return;
     // Keyed by the tile's own label, so reordering the tiles cannot make one
@@ -88,7 +98,8 @@ function altaCountMetrics(container){
     let key = "";
     try{
       const p = el.parentElement;
-      key = ((p && p.querySelector(".l") && p.querySelector(".l").textContent) || ("#" + i)).trim();
+      const lab = p && (p.querySelector(".ui-stat-k") || p.querySelector(".l"));
+      key = ((lab && lab.textContent) || ("#" + i)).trim();
     }catch(e){ key = "#" + i; }
     if(_ALTA_LAST_N[key] === n) return;         // unchanged: leave it alone
     _ALTA_LAST_N[key] = n;
