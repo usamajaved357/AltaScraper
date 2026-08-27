@@ -143,8 +143,21 @@ truthy("  and the discounted price is labelled where it appears",
 # by counting the word "Margin" in the whole file -- the rules pills carry an
 # ROI and a Margin pill too, and a count would silently pass or fail on those.
 _full, _sep, _promo = JS.partition("With the coupon on")
+# THE LABELS NAME THEIR PRICE NOW, so they are composed rather than literal:
+#
+#     "the cost price is same but profit numbers differ why"
+#
+# The row's Profit and the panel's Profit are about two different selling
+# prices, and with both called plain "Profit" they read as a contradiction. The
+# tiles carry "at £35.87" (or "now" when there is no new price), which makes the
+# label an expression -- so this matches that expression instead of the bare
+# string it used to be.
 truthy("margin and ROI appear at the listed price",
-       "'Margin'," in _full and "'ROI'," in _full)
+       "'Margin' + atLbl," in _full and "'ROI' + atLbl" in _full)
+truthy("  and each says WHICH price it is about",
+       "const atLbl" in JS and "' at ' + at : ' now'" in JS)
+truthy("  while the table's own columns say they are today's",
+       ">Profit now</th>" in JS and ">ROI now</th>" in JS)
 truthy("  and again with the coupon on",
        bool(_sep) and "'Margin'," in _promo and "'ROI'," in _promo)
 truthy("the handling time in force is shown", "'Handling'," in JS)

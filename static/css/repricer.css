@@ -169,6 +169,12 @@
 .rp-m2g .rp-n{color:#22c55e}
 .rp-m2b{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.08)}
 .rp-m2b .rp-n{color:#3b82f6}
+/* No amber tile. A tile that changes colour breaks the set of three greens and
+ * a blue, and the miss against a target is already said twice over: the table's
+ * ROI column goes amber, and the panel carries a red notice with the price that
+ * would clear it. (An .rp-m2y was briefly added here on the mistaken reading
+ * that the ROI tile's green was an accident; the note beside that tile in
+ * sourcing.js explains why it is not.) */
 .rp-m2 .rp-n{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
 .rp-m2 .rp-l{font-size:8px;color:var(--ink3);margin-top:2px;
   text-transform:uppercase;letter-spacing:.04em}

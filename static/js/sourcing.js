@@ -1539,9 +1539,30 @@ function _metStrip(r){
   // NO HEADING ABOVE THE TILES. The bar sits directly above them and is drawn
   // from the same three numbers, so the strip belongs to it visually; a line of
   // uppercase text between the two broke that and cost a row of height on every
-  // open panel. WHICH price they are about is on each tile's own tooltip.
+  // open panel.
+  //
+  // BUT THE PRICE HAS TO BE ON THE TILES THEMSELVES.
+  //
+  //     "the profit in the colors say something else and profit under it at the
+  //      front of the supplier says something else and the profit on the
+  //      product card is something else"
+  //     "the cost price is same but profit numbers differ why"
+  //
+  // Three numbers, all called profit, all correct, about TWO DIFFERENT SELLING
+  // PRICES -- and nothing on screen said so. On his SDS cutter the row read
+  // -2.26 and this strip read 7.21 with the same 24.00 cost: the row is what it
+  // earns TODAY at the 24.99 that is live, the strip is what it would earn at
+  // the 35.87 his 30% target asks for and which is not on Amazon yet.
+  //
+  // It was in the TOOLTIP, which is the one place a number cannot be compared
+  // with the number beside it. The label carries it now -- "Profit at £35.87"
+  // against the table's "Profit now" -- so the two stop looking like a
+  // contradiction and start looking like the before and after they are. That is
+  // the heading's information without the heading, which he had removed.
   const at = priced ? _smoney(b.price) : ((r.current || {}).price != null
                                           ? _smoney(r.current.price) : null);
+  // Every price-dependent tile takes this, so they cannot drift apart.
+  const atLbl = at ? (priced ? ' at ' + at : ' now') : '';
   const when = (priced ? 'At the price the repricer would set'
                        : 'At the price it sells for now')
              + (at ? ' (' + at + '). ' : '. ');
@@ -1552,15 +1573,34 @@ function _metStrip(r){
   // pattern being matched; a tile that changes colour breaks the set.
   let h = '<div class="rp-met2">'
     + cell('rp-m2g', priced ? _smoney(b.profit)
-           : (g.profit != null ? _smoney(g.profit) : '&mdash;'), 'Profit / unit',
+           : (g.profit != null ? _smoney(g.profit) : '&mdash;'),
+           'Profit' + atLbl,
            when + 'What is left per unit after what the stock cost and '
            + 'Amazon\'s fee'
            + (priced ? ' of ' + _smoney(b.fee)
               : (g.fee == null ? '' : ' of ' + _smoney(g.fee))))
-    + cell('rp-m2g', roi == null ? '&mdash;' : roi.toFixed(0) + '%', 'ROI',
+    // THE TARGET IS SAID, NOT ONLY IMPLIED.
+    //
+    //     "the roi target when i set on a listing at bulk, i donot see on the
+    //      listings that how much target is currently set for it"
+    //
+    // It was in the tooltip and nowhere else, so a target set in bulk across
+    // sixty SKUs left no visible trace on any of them -- and a bare "34%" does
+    // not say whether that is the number you asked for or the number you got.
+    // The label carries it now, so the two sit one above the other.
+    //
+    // THE TILE KEEPS ITS GREEN, deliberately -- see the note above the strip.
+    // An earlier pass here swapped in roiTone on the reasoning that a computed
+    // tone was being discarded by accident. It was not: the table's own ROI
+    // column already goes amber against the target, and a miss has its own red
+    // notice carrying the price that would clear it. Three greens and a blue is
+    // the pattern; a tile that changes colour breaks the set.
+    + cell('rp-m2g', roi == null ? '&mdash;' : roi.toFixed(0) + '%',
+           'ROI' + atLbl + (tgt != null ? ' &middot; want ' + tgt + '%' : ''),
            when + 'What you keep, as a share of the cash you put in'
            + (tgt != null ? '. You asked for ' + tgt + '%.' : '.'))
-    + cell('rp-m2g', mgn == null ? '&mdash;' : mgn.toFixed(0) + '%', 'Margin',
+    + cell('rp-m2g', mgn == null ? '&mdash;' : mgn.toFixed(0) + '%',
+           'Margin' + atLbl,
            when + 'What you keep, as a share of what the buyer paid.')
     + cell('rp-m2b', lead == null ? '&mdash;' : lead + 'd', 'Handling',
            'Days Amazon is told to allow before this posts. The '
@@ -2158,6 +2198,24 @@ function _srcMoreMenu(j){
     + '<i class="ti ti-table-import"></i><span>Upload min prices</span></label>'
 
     + '<div class="rp-mh">Amazon</div>'
+    // THE ONLY BUTTON IN THE APP THAT CHANGES A LIVE PRICE.
+    //
+    //     "the set roi should be able to do the job for the prices"
+    //
+    // Before this, nothing did. The engine decided correctly and the decision
+    // went nowhere: /sourcing/apply existed and no button called it, and the
+    // four-hourly job that was meant to was registered in a module the running
+    // app never loads. So a target could be set, the screen could show the
+    // price it wanted, and Amazon would never hear about it.
+    //
+    // It takes no shortcut around the gates -- master switch on, SKU armed,
+    // minimum price set, four hours since that SKU last moved -- it just runs
+    // them now instead of waiting. Same call the timer makes.
+    + row('ti-cloud-upload', 'Push changes now', 'sourcingPushNow(this)',
+          'Sends every armed SKU whose price, stock or handling time is wrong '
+          + 'to Amazon, right now, instead of waiting for the next four-hourly '
+          + 'run. Nothing that is already correct is touched, and nothing that '
+          + 'is not armed is sent.')
     + row('ti-receipt-tax', "Get Amazon's fees", 'sourcingGetFees(this)',
           'Asks Amazon what its referral fee actually is on each tracked '
           + 'product, and remembers it for a week. Prices are then worked out '
@@ -2181,6 +2239,22 @@ function _srcMoreMenu(j){
           + 'this separately from the handling time, so the repricer takes it '
           + 'OFF the handling time rather than promising it twice.',
           ((j.shipping_policy_days != null ? j.shipping_policy_days : 2) + 'd'))
+    // STOCK, kept apart from the two "new SKUs start at" rows below on purpose.
+    //
+    //     "there should be a separate default stock setting which is activated
+    //      along with the auto pricing being on"
+    //
+    // Those two are written onto a SKU at enrolment and never move again,
+    // because they are pricing decisions. This is not a pricing decision, it is
+    // one number saying how much stock you hold, so it is read live and applies
+    // to everything tracked -- except a SKU given its own figure. It sits with
+    // "Postage takes" because both describe how you actually operate, rather
+    // than what a new row should inherit.
+    + row('ti-package', 'Keep stock at', 'sourcingDefaultStock()',
+          'How many units every tracked SKU is set to on Amazon. Applies to '
+          + 'everything you track, not just new SKUs -- a SKU given its own '
+          + 'figure keeps it. It only reaches Amazon while auto-pricing is on.',
+          ((j.default_stock != null ? j.default_stock : 3) + ' units'))
     // WHAT A NEW SKU STARTS WITH -- and only a new one.
     //
     //     "This applies only to NEW enrollments. Existing SKUs keep their
@@ -2509,6 +2583,112 @@ function _srcCsvLine(line, sep){
 /* HOW LONG YOUR POSTAGE TAKES. Global, not per SKU: it describes the courier,
  * not the product. It is the number the handling time is reduced BY, so if it
  * is wrong every promised delivery date is wrong with it. */
+/* Send every armed SKU's changes to Amazon now.
+ *
+ * ASKS FIRST, and names the number. This is the one action on the page that
+ * edits live listings, and "Push changes now" in a menu does not convey how
+ * many prices are about to move. The count comes from the same "would change"
+ * figure the stat cards show, so the question and the screen cannot disagree.
+ */
+async function sourcingPushNow(btn){
+  if(!SRC_MASTER){
+    await uiAlert(
+      "Nothing is sent to Amazon while auto-pricing is off. Turn it on with "
+      + "the switch at the top of this page, then push again.",
+      {title: "Auto-pricing is off"});
+    return;
+  }
+  // r.mode, which is what every other armed-count on this page reads
+  // (sourcingFilter, the stat cards). r.enrollment.mode is not a field.
+  const armed = (SRC_ROWS || []).filter(function(r){
+    return r.mode === "live";
+  }).length;
+  if(!armed){
+    await uiAlert(
+      "Every tracked SKU is still in dry run, so there is nothing to send. "
+      + "Arm a SKU from its panel once you are happy with the price it would "
+      + "set — it needs a minimum price first.",
+      {title: "Nothing is armed"});
+    return;
+  }
+  const ok = await uiConfirm(
+    armed + (armed === 1 ? " SKU is armed" : " SKUs are armed") + ". Any of "
+    + "them whose price, stock or handling time is wrong will be corrected on "
+    + "Amazon now. Anything already correct is left alone, and a SKU changed "
+    + "in the last four hours is skipped.",
+    {title: "Send changes to Amazon?", ok: "Push now"});
+  if(!ok) return;
+  if(btn){ btn.disabled = true; }
+  try{
+    const j = await (await fetch("/sourcing/apply", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: _srcBody({})})).json();
+    if(!j.ok){ toast(j.error || "Could not push"); return; }
+    // SAY WHAT HAPPENED TO ALL OF THEM, not just the ones that worked. A push
+    // that sends two and is refused on three has to read as that, or the three
+    // are never looked into.
+    const bits = [];
+    bits.push((j.pushed || 0) + " sent");
+    if(j.rejected) bits.push(j.rejected + " refused by Amazon");
+    if(j.note) bits.push(j.note);
+    toast(bits.join(" · "));
+    await sourcingLoad(true);
+  }catch(e){ toast("Failed: " + ((e && e.message) || e)); }
+  finally{ if(btn){ btn.disabled = false; } }
+}
+
+/* How many units every tracked SKU is kept at.
+ *
+ *     "there should be a separate default stock setting which is activated
+ *      along with the auto pricing being on"
+ *
+ * SEPARATE FROM THE PRICE, and that is the point of it. A run whose only real
+ * change is putting stock back to three no longer touches the price at all
+ * (domain/source_apply.build_patches), so this setting can do its job on a day
+ * when nothing about the price needs to move.
+ *
+ * The floor of 1 is enforced on the server too, and for a reason worth saying
+ * out loud rather than only validating: 0 is not a stock level, it is a
+ * different decision. Sending 0 tells Amazon the product is unavailable, which
+ * is what the out-of-stock rule does -- having first checked the supplier.
+ * Reaching the same end by typing 0 into a settings box would take every armed
+ * listing down at once, from a control that does not look like it could.
+ */
+async function sourcingDefaultStock(){
+  let cur = 3;
+  try{
+    const g = await (await fetch("/sourcing/default_stock" + _srcUrl(""))).json();
+    if(g && g.ok && g.quantity != null) cur = g.quantity;
+  }catch(e){ /* the default stands */ }
+  _srcModal("Keep stock at",
+    '<div style="font-size:12.5px;line-height:1.6">'
+    + '<p>Every tracked SKU is set to this many units on Amazon, so a listing '
+    + 'that has quietly gone to zero comes back up on the next run.</p>'
+    + '<p class="cc" style="font-size:11.5px">Unlike the two &ldquo;new SKUs '
+    + 'start at&rdquo; settings, this one applies to <b>everything you already '
+    + 'track</b> &mdash; change it and every SKU follows. A SKU you have given '
+    + 'its own figure keeps that figure.</p>'
+    + '<p class="cc" style="font-size:11.5px">It reaches Amazon only while '
+    + 'auto-pricing is on, and only for SKUs you have armed. To take a listing '
+    + 'down, leave that to the out-of-stock rule &mdash; it checks the supplier '
+    + 'first, which is why 1 is the lowest this can be set to.</p>'
+    + '<label class="cc" style="font-size:11.5px;display:block;margin-top:8px">'
+    + 'Units to keep (1 to 999)</label>'
+    + '<input id="src_stk" type="number" min="1" max="999" step="1" value="'
+    + (+cur) + '" style="width:110px;margin-top:4px">'
+    + '</div>',
+    async function(){
+      const el = document.getElementById("src_stk");
+      const jr = await (await fetch("/sourcing/default_stock", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: _srcBody({quantity: el ? el.value : ""})})).json();
+      if(!jr.ok){ toast(jr.error || "Could not save"); return false; }
+      toast(jr.note || "Saved");
+      await sourcingLoad(true);
+      return true;
+    });
+}
+
 async function sourcingShippingPolicy(){
   let cur = 2;
   try{
@@ -2650,8 +2830,19 @@ function sourcingRender(j){
     +  '<th title="That supplier&#39;s postage to you">Post</th>'
     +  '<th title="What it sells for on Amazon now, and what the rules say it '
     +  'should be">Price</th>'
-    +  '<th title="What is left per unit after Amazon, postage and ads">Profit</th>'
-    +  '<th title="That profit as a share of the cash you put in">ROI</th>'
+    // "NOW", because the panel underneath answers the other question.
+    //
+    //     "the cost price is same but profit numbers differ why"
+    //
+    // These two columns are today's sale, at the price that is live on Amazon.
+    // The open panel's tiles are the sale that WOULD happen at the price the
+    // rules ask for. Same cost, different price, so different profit -- and
+    // with both called plain "Profit" the pair read as a contradiction rather
+    // than as a before and an after.
+    +  '<th title="What is left per unit after Amazon, postage and ads, at the '
+    +  'price this SKU sells for TODAY. The tiles in the open panel answer the '
+    +  'same question about the price the rules would set instead.">Profit now</th>'
+    +  '<th title="Today&#39;s profit as a share of the cash you put in">ROI now</th>'
     +  '<th title="What this SKU&#39;s cheapest supplier has been charging">Trend</th>'
     +  '<th style="width:14px"></th>'
     +  '</tr></thead><tbody id="rp_body">';

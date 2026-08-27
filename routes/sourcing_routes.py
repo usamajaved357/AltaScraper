@@ -49,8 +49,38 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return _settings.read_raw(CONFIG_PATH)
 
     def _write_config(raw):
-        _settings.write_raw(raw, CONFIG_PATH)
+        """Save config.json, and REFUSE TO PRETEND when it did not save.
+
+        write_raw returns True or False and never raises, which is the right
+        contract for it and the wrong thing to ignore. Every settings route here
+        called it and then answered "Saved" regardless -- so when a bug in the
+        atomic writer made every write fail (a bare filename has no directory,
+        and os.makedirs("") raises), the master switch, the default target, the
+        default direction and the postage policy all reported success and
+        changed nothing. That went unnoticed precisely because nothing checked.
+
+        Raising makes the route return a 500 the caller can see, which is worse
+        for one request and far better than a settings screen that lies.
+        """
+        if not _settings.write_raw(raw, CONFIG_PATH):
+            raise RuntimeError(
+                "could not write config.json -- the setting was NOT saved")
         _state["cfg"] = None            # drop the cache so the switch takes effect
+
+    def _stock_default():
+        """The stock level a SKU is kept at when it has none of its own.
+
+        The screen and the decision engine must never disagree about this, so
+        the KEY is named in exactly two places and the fallback in one: here,
+        and in domain/source_run.decide_one where the rule is assembled. Read
+        rather than stored, so changing it moves every tracked SKU on the next
+        run (CLAUDE.md Rule 12).
+        """
+        v = (_read_config() or {}).get("sourcing_default_stock")
+        try:
+            return max(1, int(v))
+        except (TypeError, ValueError):
+            return int(_sourcing.DEFAULT_RULE["in_stock_quantity"])
 
     def _creds_for(workspace_id, marketplace):
         """(creds, marketplace_id, seller_id) for one account.
@@ -278,6 +308,11 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                         "default_direction": str(
                             _read_config().get("sourcing_default_direction")
                             or "up_only"),
+                        # How many units every tracked SKU is kept at. Unlike
+                        # the two above this is NOT frozen at enrolment -- it is
+                        # read live at decision time -- so the menu is showing
+                        # the number in force everywhere, not a starting value.
+                        "default_stock": _stock_default(),
                         "defaults": _sourcing.DEFAULT_RULE})
 
     @app.route("/sourcing/check_listings", methods=["POST"])
@@ -987,6 +1022,62 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return jsonify({"ok": True, "kind": kind, "pct": pct, "note": (
             "New SKUs will start at %g%% %s. Nothing already tracked has "
             "changed." % (pct, kind.upper() if kind == "roi" else kind))})
+
+    @app.route("/sourcing/default_stock", methods=["GET", "POST"])
+    def sourcing_default_stock():
+        """How many units every tracked SKU is kept at.
+
+            "there should be a separate default stock setting which is
+             activated along with the auto pricing being on"
+
+        DIFFERENT FROM THE TARGET AND DIRECTION SETTINGS ON PURPOSE. Those two
+        are copied onto a SKU when you enrol it and never move again, because
+        they are pricing decisions and changing your mind later should not
+        silently re-price sixty listings. This is not a pricing decision -- it
+        is one number describing how much stock you hold -- so it is read LIVE
+        at decision time and changing it moves everything that has not been
+        given its own figure.
+
+        A SKU with its own in_stock_quantity keeps it: setting one deliberately
+        on a row is still a decision, and this is only the default beneath it.
+
+        Nothing here reaches Amazon by itself. Stock travels the same road as
+        price -- master switch on, SKU armed, minimum price set -- so this
+        setting takes effect exactly when auto-pricing is on, which is what was
+        asked for.
+        """
+        if request.method == "GET":
+            return jsonify({"ok": True,
+                            "quantity": _stock_default(),
+                            "builtin": _sourcing.DEFAULT_RULE["in_stock_quantity"]})
+        b = _body()
+        raw_v = b.get("quantity")
+        try:
+            q = int(str(raw_v).strip())
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": (
+                "the stock level must be a whole number, e.g. 3 -- got %r"
+                % raw_v)}), 400
+        # ZERO IS NOT A STOCK LEVEL, IT IS A DIFFERENT DECISION. Sending 0 tells
+        # Amazon the product is unavailable, which is what the out-of-stock path
+        # does when a supplier really has run out -- and it does it having
+        # checked. Reaching the same end by typing 0 into a default would take
+        # every armed listing down at once, from a box that does not look like
+        # it could do that.
+        if q < 1:
+            return jsonify({"ok": False, "error": (
+                "that must be at least 1. To take a listing down, let the "
+                "out-of-stock rule do it -- it checks the supplier first.")}), 400
+        if q > 999:
+            return jsonify({"ok": False, "error": (
+                "that must be 999 or fewer")}), 400
+        raw = _read_config()
+        raw["sourcing_default_stock"] = q
+        _write_config(raw)
+        return jsonify({"ok": True, "quantity": q, "note": (
+            "Stock will be kept at %d on every tracked SKU that has no figure "
+            "of its own. It reaches Amazon only while auto-pricing is on."
+            % q)})
 
     @app.route("/sourcing/unenrol_bulk", methods=["POST"])
     def sourcing_unenrol_bulk():
