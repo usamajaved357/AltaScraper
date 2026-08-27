@@ -190,6 +190,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _rule = _sourcing.rule_with_defaults(
                 _repo.rule_for(CONFIG_PATH, d["workspace_id"],
                                d["marketplace"], d["sku"]))
+            # THE FEE RATE THE DECISION ACTUALLY USED, not the module default.
+            #
+            # rule_for reads the stored rule, whose referral_rate is NULL, so
+            # rule_with_defaults fills in 15%. But decide_one resolves the real
+            # rate first -- Amazon's quote for this ASIN, or this account's own
+            # measured average -- and prices with that. Two rates, one panel:
+            # the tiles and the bar were at 17.5% while the supplier table
+            # beneath them was at 15%, so "you keep" disagreed with "profit /
+            # unit" by 0.34 on a 13.42 price and neither said why.
+            #
+            # Taken off the breakdown rather than resolved again here, because
+            # asking a second time could answer differently -- the cache can be
+            # refreshed between the two calls (CLAUDE.md Rule 12).
+            _fr = ((d.get("decision") or {}).get("breakdown") or {}).get("fee_rate")
+            if _fr:
+                _rule["referral_rate"] = _fr
             # THE SUPPLIER LINKS, RANKED, on the row itself.
             #
             #     "i want to be shown all the available supplier/ source links
@@ -202,9 +218,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             # screen cannot disagree about which link is cheapest, what it costs
             # delivered, or when it would arrive (Rule 12).
             try:
+                # AT THE PRICE THE PANEL IS ABOUT.
+                #
+                # This passed the CURRENT price while the tiles and the stacked
+                # bar an inch above are worked out at the DECIDED one. Where
+                # they differ, two profit figures sat side by side meaning
+                # different things -- measured on jack_uk, five panels, one
+                # reading "£0.00 at £13.42" in the tile and "-£3.85" in the
+                # supplier row beneath it, with nothing to say the second was
+                # about a price that is being replaced.
+                #
+                # The decided price is the right one for this column: it is
+                # there to COMPARE suppliers, and comparing them at the price
+                # that is about to be set answers "what would each of these
+                # leave me". Falls back to the current price when nothing is
+                # being changed, which is then the same number anyway.
+                _sell = ((d.get("decision") or {}).get("price")
+                         or (d.get("current") or {}).get("price"))
                 _opts = _osrc.options_for(
                     CONFIG_PATH, d["workspace_id"], d["marketplace"], d["sku"],
-                    sell_price=(d.get("current") or {}).get("price"),
+                    sell_price=_sell,
                     rule=_rule, now=_dt.datetime.now())
             except Exception:
                 _opts = []
@@ -606,7 +639,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             mp = rule.get("min_price")
             w.writerow([
                 sku,
-                cur.get("asin") or item.get("asin") or "",
+                # OUR ASIN, OR BLANK -- never the draft's.
+                #
+                # This fell back to the catalogue item, and for a SKU Amazon
+                # has no record of that item is the DRAFT, whose asin is the
+                # COMPETITOR the listing was researched from (CLAUDE.md Rule 1).
+                # It is worse here than on screen: the upload MATCHES BY ASIN
+                # when a SKU is missing, so a competitor's code in this column
+                # could attach a floor to whichever of the seller's own SKUs
+                # happened to sit on that ASIN.
+                #
+                # Blank is the honest answer. The SKU column identifies the row
+                # on the way back in, and it is always filled.
+                cur.get("asin") or "",
                 (item.get("title") or "")[:120],
                 ("" if cur.get("price") is None else "%.2f" % cur["price"]),
                 ("" if bd.get("cost") is None else "%.2f" % bd["cost"]),

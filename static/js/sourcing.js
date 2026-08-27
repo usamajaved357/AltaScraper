@@ -373,6 +373,23 @@ async function sourcingMinPrice(sku, btn){
 
 /* Which currency this account sells in. One place, because three of these
  * editors want the symbol and a wrong one is a wrong number on screen. */
+/* Which Amazon domain this account's listings live on.
+ *
+ * A UK ASIN opened on amazon.com is either a different product or a 404, and
+ * the link was hardcoded to .co.uk for every account -- including sheelady_us
+ * and miles_lubricants, which sell in dollars. One place, so the row link and
+ * anything added later cannot disagree (CLAUDE.md Rule 12).
+ */
+function _srcAmzHost(){
+  const m = String((typeof SRC_MKT === "string" && SRC_MKT)
+                   || window.ACTIVE_MARKETPLACE || "UK").toUpperCase();
+  return {UK: "co.uk", US: "com", DE: "de", FR: "fr", IT: "it", ES: "es",
+          NL: "nl", SE: "se", PL: "pl", BE: "com.be", IE: "ie", CA: "ca",
+          MX: "com.mx", BR: "com.br", AU: "com.au", JP: "co.jp",
+          IN: "in", AE: "ae", SA: "sa", TR: "com.tr",
+          SG: "sg"}[m] || "co.uk";
+}
+
 function _srcSym(){
   const m = (typeof SRC_MKT === "string" && SRC_MKT)
           || (window.ACTIVE_MARKETPLACE || "");
@@ -1599,6 +1616,10 @@ function _supTable(r){
       + 'No supplier link on this SKU yet, so there is nothing to price from.'
       + '</div>';
   const used = (r.decision || {}).source_id;
+  // The price every "you keep" in this table is worked out at -- the same one
+  // the tiles and the bar above use, so the whole panel speaks about one price.
+  const _at = ((r.decision || {}).price != null)
+            ? r.decision.price : ((r.current || {}).price);
   // source_id -> its readings, for the sparkline.
   const hist = {};
   (r.sources || []).forEach(function(s){ hist[s.id] = s.history || []; });
@@ -1640,8 +1661,13 @@ function _supTable(r){
       + (s.available_qty != null ? s.available_qty : '&mdash;') + '</td>'
       + '<td>' + (s.dispatch_days != null ? s.dispatch_days + 'd' : '&mdash;') + '</td>'
       + '<td>' + _spark(hist[s.source_id], {bare: true, w: 50, h: 16}) + '</td>'
+      // A LOSS IS NOT GREEN. This coloured every readable figure with --ok,
+      // so a supplier that would cost you £3.85 a sale was drawn in the same
+      // green as one that earns you £6, in a column headed "You keep".
+      // Measured on jack_uk: three suppliers were being shown that way.
       + '<td style="font-weight:600;color:'
-      + (dead || s.profit == null ? 'var(--ink3)' : 'var(--ok)') + '">'
+      + (dead || s.profit == null ? 'var(--ink3)'
+         : s.profit < 0 ? 'var(--red)' : 'var(--ok)') + '">'
       + (!dead && s.profit != null ? _smoney(s.profit) : '&mdash;') + '</td>'
       // Its OWN class, not the rules pills'. It sits above them in the panel
       // and it DELETES a supplier and its price history, where every .rp-rl
@@ -1676,8 +1702,16 @@ function _supTable(r){
     + '<th title="How many they say they have">Stock</th>'
     + '<th title="Days they say they take to dispatch">Disp</th>'
     + '<th title="What this supplier has been charging">Trend</th>'
-    + '<th title="What is left of the selling price after Amazon and this '
-    + 'supplier">You keep</th><th></th>'
+    // NAMED WITH THE PRICE IT IS ABOUT. Every other figure in this panel is at
+    // the decided price; this column is too, and saying so is what stops it
+    // being read as a second, contradictory profit.
+    + '<th title="What is left after Amazon and this supplier, at the price '
+    + 'this panel is about' + (_at != null ? ' (' + _sesc(_smoney(_at)) + ')' : '')
+    + '. The same price for every row, so the suppliers can be compared.">'
+    + 'You keep' + (_at != null ? '<br><span style="font-weight:400;'
+                                  + 'text-transform:none;letter-spacing:0">at '
+                                  + _smoney(_at) + '</span>' : '')
+    + '</th><th></th>'
     + '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
@@ -3141,7 +3175,26 @@ function sourcingRow(r, i){
   const id = "srcrow_"+i;
   const it = r.item || {};
   const dot = _rpDot(r);
-  const asin = (cur.asin || it.asin || "");
+  // OUR ASIN, OR NONE -- never the draft's.
+  //
+  // This used to fall back to it.asin when Amazon had no record of the SKU,
+  // and that is the COMPETITOR. The catalogue is asked with include_drafts so
+  // a never-sent SKU still gets a PICTURE; a draft's asin is the product the
+  // listing was researched from, which CLAUDE.md Rule 1 is explicit about --
+  // "the ASIN in the SKU format is a COMPETITOR REFERENCE ... It is not the
+  // target listing."
+  //
+  // Measured on jack_uk: six rows were showing somebody else's ASIN as the
+  // seller's own, each one a link straight to that competitor's page, on a
+  // row headed with the seller's product name. That is the app telling you
+  // you own something you do not.
+  //
+  // So only what Amazon actually answered with is shown. Where there is none,
+  // the row says so -- see the mark below, which is more useful than a wrong
+  // ASIN in any case: it means Amazon has no such SKU, and nothing on that
+  // row can be pushed.
+  const asin = String(cur.asin || "");
+  const draftAsin = (!asin && it.asin) ? String(it.asin) : "";
   // Held rows get a tint so the ones needing a decision are findable without
   // reading every reason line.
   const rowCls = 'rp-row' + (d.blocked_by ? ' rp-held' : '');
@@ -3234,11 +3287,21 @@ function sourcingRow(r, i){
   h += '<td><div class="rp-nm" title="' + _sesc((it.title || "") + "\n" + r.sku) + '">'
     + _sesc(it.title || r.sku) + '</div>'
     + '<div style="display:flex;gap:3px;align-items:center;margin-top:1px">'
+    // THE DOMAIN FOLLOWS THE MARKETPLACE. A UK ASIN opened on amazon.com is
+    // either a different product or a 404, and the link was hardcoded to .co.uk
+    // for every account -- including the two that sell in dollars.
     + (asin
-        ? '<a class="rp-asin" href="https://www.amazon.co.uk/dp/' + _sesc(asin)
+        ? '<a class="rp-asin" href="https://www.amazon.' + _srcAmzHost()
+          + '/dp/' + _sesc(asin)
           + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" '
           + 'title="Open this listing on Amazon">' + _sesc(asin) + '</a>'
-        : '<span class="rp-d" style="font-size:9px">' + _sesc(r.sku) + '</span>')
+        : '<span class="rp-d" style="font-size:9px" title="'
+          + (draftAsin
+              ? 'Amazon has no record of this SKU. It was researched from '
+                + _sesc(draftAsin) + ', which is a COMPETITOR’s product '
+                + 'and not yours -- so it is not shown as an ASIN here.'
+              : 'Amazon has no ASIN for this SKU.')
+          + '">' + _sesc(r.sku) + '</span>')
     + (flags ? '<span style="margin-left:2px">' + flags + '</span>' : '')
     + '</div></td>';
 
@@ -3333,6 +3396,16 @@ function sourcingRow(r, i){
   h += '<div class="cc" style="font-size:10px;margin-bottom:6px">'
     +  '<code>' + _sesc(r.sku) + '</code>'
     +  (asin ? ' &middot; ASIN ' + _sesc(asin) : '')
+    // WHAT WAS RESEARCHED, NAMED AS SUCH. When Amazon has no ASIN for this SKU
+    // the draft still carries the competitor it was modelled on, and that is
+    // worth knowing -- but only if it is labelled as someone else's product.
+    // Shown as plain text, never as a link: a link here reads as "your
+    // listing", which is exactly the mistake this replaced.
+    +  (draftAsin
+        ? ' &middot; <span style="color:var(--warn)">Amazon has no ASIN for '
+          + 'this SKU</span> &middot; researched from ' + _sesc(draftAsin)
+          + ' (a competitor)'
+        : '')
     +  '</div>';
 
   // WHY NOTHING IS HAPPENING -- and ONLY that.
