@@ -133,6 +133,11 @@ RULES = [
     # ABOVE the broad /sourcing line for the reason spelled out above: first
     # match wins, and this must not fall through to anything weaker.
     ("/sourcing/minprice_upload",       "publish"),
+    # SETS A LIVE PRICE ON AMAZON, immediately, by hand. It is the one route on
+    # this screen that does not wait for the four-hourly run -- so it needs the
+    # same right as arming, and for the same reason: it changes what a customer
+    # is charged. Above the broad line below; first match wins.
+    ("/sourcing/manual_price",          "publish"),
     ("/sourcing",                       "publish"),
 
     # -- importing an eBay seller. Finding and screening send NOTHING anywhere;

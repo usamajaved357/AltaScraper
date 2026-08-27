@@ -367,7 +367,12 @@ _RULE_COLS = ("strategy", "require_in_stock", "max_dispatch_days",
               # database means by NULL.
               "shipping_label", "ads_margin", "min_profit",
               # The market price, held against a target that would lower it.
-              "hold_price")
+              "hold_price",
+              # WHICH WAY THE PRICE MAY MOVE: up_only | up_and_down |
+              # match_floor. NULL means up_only, which is the default, so every
+              # SKU tracked before this setting existed gets the protective
+              # one without a back-fill.
+              "direction")
 
 # SETTINGS THAT DELIBERATELY HAVE NO COLUMN, and why. Listed rather than left
 # implicit so the check below can tell "not stored on purpose" apart from

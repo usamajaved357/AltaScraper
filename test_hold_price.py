@@ -73,7 +73,11 @@ def pair(landed_price, shipping=0.0):
 
 
 # His numbers: selling at 40.00, 20% ROI target, and the market price held at 40.
-RULE = {"target_roi_pct": 20.0, "min_price": 5.0, "currency": "GBP"}
+# up_and_down explicitly: these check the ARITHMETIC, and up-only --
+# the default since 27 Aug 2026 -- would pin the price instead of
+# cutting it, which is a different thing and has its own test.
+RULE = {"direction": "up_and_down",
+        "target_roi_pct": 20.0, "min_price": 5.0, "currency": "GBP"}
 HELD = dict(RULE, hold_price=40.0)
 
 

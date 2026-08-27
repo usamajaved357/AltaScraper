@@ -802,6 +802,16 @@ _ADDED_COLUMNS = [
     # this; here so the ones that already exist gain it without being rebuilt.
     ("sourcing_rules", "profit_target_kind", "TEXT"),
     ("sourcing_rules", "profit_target_pct", "REAL"),
+    # WHICH WAY A PRICE IS ALLOWED TO MOVE. 'up_only' | 'up_and_down' |
+    # 'match_floor'; NULL means up_only, which is the default.
+    #
+    #     "Up only (DEFAULT) -- price can only increase. Never decreases even
+    #      if supplier gets cheaper. Protects your market price."
+    #
+    # Left NULL rather than back-filled: rule_with_defaults reads a missing
+    # value as up_only, so every SKU already tracked gets the protective
+    # setting without a write, and a row that has one keeps it.
+    ("sourcing_rules", "direction", "TEXT"),
     # TWO TARGETS, SET INDEPENDENTLY, replacing the kind+pct pair above. Asked
     # for as "give me 2 different boxes for setting the roi or margin target".
     # The old pair is still READ, so an account that set one before this keeps

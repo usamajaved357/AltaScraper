@@ -1729,6 +1729,24 @@ function _rulePills(r){
             'sourcingTarget(' + S + ')',
             'A price move bigger than this still happens -- it just sends you a '
             + 'notification as well.');
+  // WHICH WAY THIS SKU MAY MOVE. First among the pills after the floor,
+  // because it decides whether any of the others can ever LOWER a price.
+  const DIRW = {up_only: ['&uarr; up only', 'rp-g'],
+                up_and_down: ['&udarr; both ways', ''],
+                match_floor: ['= the floor', 'rp-y']};
+  const dcur = String(rule.direction || 'up_only');
+  h += pill('Direction', (DIRW[dcur] || DIRW.up_only)[0],
+            'sourcingDirection(' + S + ',this)',
+            {up_only: 'The price can only ever go UP. A floor below what it '
+                      + 'sells for today is not acted on, so a cheaper '
+                      + 'supplier becomes margin rather than a discount.',
+             up_and_down: 'The price follows the supplier both ways -- a '
+                      + 'cheaper supplier means a cheaper price.',
+             match_floor: 'The price sits exactly on the calculated floor, '
+                      + 'always. This also ignores any held price, because a '
+                      + 'hold is a floor ABOVE the computed one.'}[dcur]
+            || '',
+            (DIRW[dcur] || DIRW.up_only)[1]);
   h += pill('Extra handling',
             '+' + (rule.handling_buffer_days || 0) + 'd',
             'sourcingBuffer(' + S + ',this)',
@@ -1900,6 +1918,23 @@ function _alertBar(j){
         && d.price < cu.price - 0.01
         && ru.target_roi_pct == null && ru.target_margin_pct == null;
   });
+  // HOW MANY CUTS THE UP-ONLY SETTING IS CURRENTLY PREVENTING.
+  //
+  // This is the good-news half of the same fact, and it belongs on screen for
+  // the same reason: without it, "nothing would change" reads as "there is
+  // nothing to think about", when what is really happening is that a setting
+  // is holding 22 prices up that the rules would otherwise cut. If somebody
+  // switches those SKUs to "up and down" they should know what it costs
+  // before they do it, not after.
+  const helds = rows.filter(function(r){
+    return (r.decision || {}).direction_held;
+  });
+  let saved = 0;
+  helds.forEach(function(r){
+    const d = r.decision, cu = r.current || {};
+    if(d.direction_floor != null && cu.price != null)
+      saved += (cu.price - d.direction_floor);
+  });
 
   const bits = [];
   if(c.out_of_stock)
@@ -1958,9 +1993,27 @@ function _alertBar(j){
       +  'floor, it prices AT it: the price follows the supplier and nothing '
       +  'pulls it up. With no target, the floor is cost plus Amazon&#39;s cut '
       +  '-- break-even -- so the sale earns nothing. Set an ROI or margin '
-      +  'target, on the whole account here or on one SKU from its Rules '
-      +  'pills. Nothing is pushed until a SKU is armed and auto-pricing is '
-      +  'on, so no price has moved.">i</span></div>';
+      +  'target, or set these SKUs to move UP ONLY, which refuses a cut '
+      +  'outright. Nothing is pushed until a SKU is armed and auto-pricing '
+      +  'is on, so no price has moved.">i</span>'
+      +  '</div>';
+  }
+  // Only when nothing is actually being cut -- otherwise the red line above
+  // is the news and this would soften it.
+  if(!cuts.length && helds.length){
+    h += '<div class="rp-alert" style="background:var(--ok-bg);'
+      +  'border-color:var(--ok-line);color:var(--ok);margin-bottom:10px">'
+      +  '<i class="ti ti-arrow-up"></i>'
+      +  '<b>' + helds.length + '</b> SKU' + (helds.length === 1 ? '' : 's')
+      +  ' would have been priced down, and ' + (helds.length === 1 ? 'was' : 'were')
+      +  ' not &mdash; they are set to move <b>up only</b>'
+      +  (saved > 0.01 ? ', keeping <b>' + _smoney(saved)
+                         + '</b> a unit in total' : '')
+      +  '<span class="infodot" title="The repricer prices AT its floor, not '
+      +  'towards it, so a SKU whose floor falls below what it sells for today '
+      +  'would be cut. Up only refuses that: a cheaper supplier becomes '
+      +  'margin instead of a discount. Change it per SKU on the Direction '
+      +  'pill, or for everything selected from the bulk bar.">i</span></div>';
   }
   return h;
 }
@@ -2108,6 +2161,14 @@ function _srcMoreMenu(j){
           + 'SKU when it is enrolled, so changing this never re-prices '
           + 'anything you are already tracking.',
           _srcDefaultTargetLabel())
+    + row('ti-arrows-up-down', 'New SKUs may move',
+          'sourcingDefaultDirection()',
+          'Whether a newly tracked SKU may have its price lowered as well as '
+          + 'raised. Written onto the SKU when it is enrolled, so changing '
+          + 'this never affects anything already tracked.',
+          {up_only: '&uarr; up only', up_and_down: 'both ways',
+           match_floor: 'the floor'}[String(j.default_direction || 'up_only')]
+          || '&uarr; up only')
 
     + '<div class="rp-mh">Help</div>'
     + row('ti-book', 'How this page works', "openGuide('repricer')",
@@ -2665,6 +2726,9 @@ function _srcSelBar(){
     + '<button class="db-chip" onclick="sourcingBulkTarget(\'margin\',this)" '
     + 'title="The share of the selling price you want to keep, for every '
     + 'selected SKU.">Set margin</button>'
+    + '<button class="db-chip" onclick="sourcingBulkDirection()" title="'
+    + 'Whether these SKUs may have their price lowered as well as raised.">'
+    + 'Set direction</button>'
     // THE ANSWER TO "it should not reduce my selling price", made reachable.
     // The held price did this all along; typing it into 67 SKUs by hand did not.
     + '<button class="db-chip" onclick="sourcingHoldAtCurrent()" title="'
@@ -2730,6 +2794,39 @@ async function sourcingSaveRuleQuiet(sku, rule){
     if(row) row.rule = Object.assign({}, row.rule || {}, rule);
     return "";
   }catch(e){ return String((e && e.message) || e); }
+}
+
+/* Which way the selected SKUs may move. A modal, not an inline box, because
+ * the three choices need a sentence each -- their names do not say which one
+ * can lose you money. */
+async function sourcingBulkDirection(){
+  const n = _srcPicked().length;
+  if(!n) return;
+  const row = function(v, label, why){
+    return '<label class="rp-mi" style="cursor:pointer;align-items:flex-start">'
+      + '<input type="radio" name="src_bdir" value="' + v + '"'
+      + (v === 'up_only' ? ' checked' : '') + ' style="margin-top:3px">'
+      + '<span><b>' + label + '</b><br><span class="cc" '
+      + 'style="font-size:11px;line-height:1.5">' + why + '</span></span></label>';
+  };
+  _srcModal("Direction for " + n + " SKU" + (n === 1 ? "" : "s"),
+    '<div style="font-size:12.5px">'
+    + row('up_only', 'Up only',
+          'Never lowered. A cheaper supplier becomes margin instead of a '
+          + 'discount. This is the default.')
+    + row('up_and_down', 'Up and down',
+          'Follows the supplier both ways -- cheaper cost, cheaper price.')
+    + row('match_floor', 'Match the floor exactly',
+          'Always on the calculated floor, ignoring any held price.')
+    + '</div>',
+    async function(){
+      const sel = document.querySelector('input[name="src_bdir"]:checked');
+      if(!sel) return false;
+      await _srcBulkRule({direction: sel.value},
+        {up_only: 'Up only', up_and_down: 'Up and down',
+         match_floor: 'Matching the floor'}[sel.value]);
+      return true;
+    });
 }
 
 async function sourcingBulkTarget(kind, btn){
@@ -3171,6 +3268,21 @@ function sourcingRow(r, i){
       +  (cur.price != null ? _smoney(cur.price) : '<span class="rp-d">&mdash;</span>')
       +  '</span>';
   }
+  // SET IT BY HAND, from the row.
+  //
+  //     "add this to the table row -- a small pencil icon next to the PRICE
+  //      column that opens the same inline editor."
+  //
+  // Quiet until the row is hovered: sixty-seven pencils down a column is a
+  // column of pencils. It opens the same editor the panel's button does, so
+  // there is one place a price is typed (CLAUDE.md Rule 12).
+  if(cur.price != null){
+    h += ' <button class="rp-pen" onclick="event.stopPropagation();'
+      +  'sourcingManualPrice(' + _sarg(r.sku) + ',this)" '
+      +  'title="Set this price on Amazon by hand">'
+      +  '<i class="ti ti-pencil"></i></button>';
+  }
+
   // A COUPON IS RUNNING ON THIS SKU, so the price in this column is not what
   // buyers have been paying. Marked rather than substituted: the listed price
   // is what the rules act on, and the discounted one is what the profit really
@@ -3274,6 +3386,20 @@ function sourcingRow(r, i){
               + 'Set a minimum price to arm</button>'
             : '<button class="db-chip" onclick="event.stopPropagation();'
               + 'sourcingArm(' + _sarg(r.sku) + ',true)">Arm</button>'))
+    // SET THE PRICE BY HAND. Beside the arm button because it is the other
+    // way a price changes -- one of them lets the app do it, the other does it
+    // yourself. It pushes to Amazon immediately; the tooltip says so, because
+    // "Edit price" on a screen full of proposals could be read as editing a
+    // proposal.
+    +  (cur.price != null
+        ? '<button class="db-chip" onclick="event.stopPropagation();'
+          + 'sourcingManualPrice(' + _sarg(r.sku) + ',this)" title="'
+          + 'Sets this price on Amazon NOW, without waiting for the next '
+          + 'check. It must be at or above your minimum price. The repricer '
+          + 'then treats it as the current price and only acts again if costs '
+          + 'force it.">'
+          + '<i class="ti ti-pencil"></i> Edit price</button>'
+        : '')
     +  '<button class="db-chip" onclick="event.stopPropagation();'
     +  'sourcingAddSourcePrompt(' + _sarg(r.sku) + ')">'
     +  '<i class="ti ti-plus"></i> Add a supplier</button>'
@@ -3364,6 +3490,21 @@ function sourcingRow(r, i){
       + 'profit figures still subtract the old one.');
   }
 
+  // UP-ONLY STOPPED A CUT. Worth its own line: "unchanged" and "the rules
+  // wanted less and this SKU may not go down" look identical on a screen, and
+  // only the second tells you how much margin the setting is protecting.
+  if(d.direction_held && d.direction_floor != null){
+    const cp = (r.current || {}).price;
+    h += note('ok', 'ti-arrow-up',
+      'Up only &middot; the rules would ask <b>' + _smoney(d.direction_floor)
+      + '</b>, so nothing changed'
+      + (cp != null ? ' &middot; keeping <b>'
+                      + _smoney(cp - d.direction_floor) + '</b> a unit' : ''),
+      'This SKU is set to move up only, so a floor below what it sells for '
+      + 'today is not acted on. A cheaper supplier becomes margin rather than '
+      + 'a discount. Change it on the Direction pill below.');
+  }
+
   if(d.held){
     h += note('ok', 'ti-lock',
       'Held at <b>' + _smoney(d.held_at) + '</b> &middot; rules said '
@@ -3440,6 +3581,150 @@ function sourcingToggleDetail(id){
   el.style.display = open ? "table-row" : "none";
   const row = document.getElementById(id + "_r");
   if(row) row.classList.toggle("rp-sel", open);
+}
+
+/* Which way a NEWLY tracked SKU may move. Global; changes nothing existing. */
+async function sourcingDefaultDirection(){
+  let cur = "up_only";
+  try{
+    const g = await (await fetch("/sourcing/default_direction"
+                                 + _srcUrl(""))).json();
+    if(g && g.ok) cur = g.direction;
+  }catch(e){ /* the shown default stands */ }
+  const row = function(v, label, why){
+    return '<label class="rp-mi" style="cursor:pointer;align-items:flex-start">'
+      + '<input type="radio" name="src_ddir" value="' + v + '"'
+      + (cur === v ? ' checked' : '') + ' style="margin-top:3px">'
+      + '<span><b>' + label + '</b><br><span class="cc" '
+      + 'style="font-size:11px;line-height:1.5">' + why + '</span></span></label>';
+  };
+  _srcModal("Which way a newly tracked SKU may move",
+    '<div style="font-size:12.5px">'
+    + '<p>Applies to SKUs enrolled <b>from now on</b>. Nothing already tracked '
+    + 'changes -- each keeps whatever its own Direction pill says.</p>'
+    + row('up_only', 'Up only',
+          'Never lowered. A cheaper supplier becomes margin instead of a '
+          + 'discount. This is the default, and it is the reason a 0% profit '
+          + 'target is safe: the floor can only ever push a price up.')
+    + row('up_and_down', 'Up and down',
+          'Follows the supplier both ways.')
+    + row('match_floor', 'Match the floor exactly',
+          'Always on the calculated floor, ignoring any held price.')
+    + '</div>',
+    async function(){
+      const sel = document.querySelector('input[name="src_ddir"]:checked');
+      if(!sel) return false;
+      const jr = await (await fetch("/sourcing/default_direction",
+        {method: "POST", headers: {"Content-Type": "application/json"},
+         body: _srcBody({direction: sel.value})})).json();
+      if(!jr.ok){ toast(jr.error || "Could not save"); return false; }
+      toast(jr.note || "Saved");
+      await sourcingLoad(true);
+      return true;
+    });
+}
+
+/* A PRICE SET BY HAND, pushed to Amazon now.
+ *
+ *     "This lets the user adjust prices without leaving the app or going to
+ *      Seller Central. The repricer respects the manual change and only acts
+ *      again if costs force it."
+ *
+ * THE ONE CONTROL ON THIS SCREEN THAT CHANGES A LIVE PRICE ON DEMAND, so it
+ * says so before it is used rather than afterwards: the hint under the box
+ * names Amazon and says it is immediate. Everything else here decides and
+ * waits for the four-hourly run.
+ *
+ * The FLOOR is enforced on the server, not here -- a check that only exists in
+ * the browser is a check anybody can skip. This copy is so the answer arrives
+ * before the round trip, not instead of it.
+ */
+async function sourcingManualPrice(sku, btn){
+  const row = (SRC_ROWS || []).filter(function(r){ return r.sku === sku; })[0];
+  const now = ((row || {}).current || {}).price;
+  const floor = (SRC_ROW_RULES[sku] || (row || {}).rule || {}).min_price;
+  await uiInline(btn, {
+    title: "Set the price on Amazon",
+    prefix: _srcSym(),
+    type: "number", min: 0, step: "0.01",
+    value: (now == null ? "" : now),
+    hint: "Sent to Amazon straight away, without waiting for the next check. "
+        + (floor != null
+            ? "It cannot go below the " + _smoney(floor) + " floor you set. "
+            : "")
+        + "The repricer then treats this as the current price.",
+    onSave: async function(v){
+      const t = String(v).trim();
+      const n = parseFloat(t);
+      if(!(n > 0)) return "That needs to be an amount above zero, e.g. 18.47";
+      if(floor != null && n < +floor - 0.001)
+        return "That is below the " + _smoney(floor) + " floor you set for "
+             + "this SKU. Change the floor first if you mean it.";
+      if(now != null && Math.abs(n - now) < 0.005)
+        return "That is what it already sells for.";
+      try{
+        const j = await (await fetch("/sourcing/manual_price", {method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: _srcBody({sku: sku, price: t})})).json();
+        if(!j.ok) return j.error || "Amazon refused that price.";
+        toast(j.note || ("Set to " + _smoney(n)));
+        await sourcingLoad(true);
+        return "";
+      }catch(e){ return String((e && e.message) || e); }
+    }
+  });
+}
+
+/* WHICH WAY A SKU'S PRICE MAY MOVE.
+ *
+ *     "Clicking the pill cycles through options (or opens a small dropdown)"
+ *
+ * A DROPDOWN, not a cycle. Cycling is fine for two states; with three, getting
+ * from "up only" to "match floor" means passing THROUGH "up and down" -- and
+ * each step here is a saved setting that changes what the repricer will do to
+ * a live price. Passing through a state you did not want, on a control that
+ * writes as it goes, is not a thing to build on a screen that sets prices.
+ *
+ * The three are spelled out with what each one DOES, because the names alone
+ * do not say which of them can lose you money.
+ */
+async function sourcingDirection(sku, btn){
+  const cur = String((SRC_ROW_RULES[sku] || {}).direction || 'up_only');
+  const row = function(v, label, why){
+    return '<label class="rp-mi" style="cursor:pointer;align-items:flex-start">'
+      + '<input type="radio" name="src_dir" value="' + v + '"'
+      + (cur === v ? ' checked' : '') + ' style="margin-top:3px">'
+      + '<span><b>' + label + '</b><br>'
+      + '<span class="cc" style="font-size:11px;line-height:1.5">' + why
+      + '</span></span></label>';
+  };
+  _srcModal("Which way may this price move?",
+    '<div style="font-size:12.5px">'
+    + row('up_only', 'Up only',
+          'Never lowered. If the rules work out a floor below what it sells '
+          + 'for today, nothing is changed -- a cheaper supplier becomes '
+          + 'margin instead of a discount. This is the default.')
+    + row('up_and_down', 'Up and down',
+          'Follows the supplier both ways. A cheaper supplier means a cheaper '
+          + 'price, which wins the buy box more often and earns less on each '
+          + 'sale.')
+    + row('match_floor', 'Match the floor exactly',
+          'Always sits on the calculated floor. This also ignores any held '
+          + 'price you have set, because a hold is a floor ABOVE the computed '
+          + 'one and both cannot be honoured at once.')
+    + '<div class="cc" style="font-size:11px;margin-top:8px;line-height:1.5">'
+    + 'The minimum price still applies whichever you pick: nothing is ever '
+    + 'priced below it.</div></div>',
+    async function(){
+      const sel = document.querySelector('input[name="src_dir"]:checked');
+      if(!sel) return false;
+      const err = await sourcingSaveRule(sku, {direction: sel.value},
+        {up_only: 'This SKU will only ever be priced UP',
+         up_and_down: 'This SKU will follow its supplier both ways',
+         match_floor: 'This SKU will sit exactly on its floor'}[sel.value]);
+      if(err){ toast(err); return false; }
+      return true;
+    });
 }
 
 /* EXTRA HANDLING DAYS, PER SKU.

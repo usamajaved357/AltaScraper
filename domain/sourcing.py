@@ -218,6 +218,26 @@ DEFAULT_RULE = {
     # IT NEVER FORCES A LOSS. It is a floor among floors, so when the cost rises
     # past it the higher floor wins and the price goes UP -- which is the
     # behaviour asked for. It cannot hold a price below what the unit costs.
+    # WHICH WAY THE PRICE MAY MOVE.
+    #
+    #     "Up only (DEFAULT) -- price can only increase. Never decreases even if
+    #      supplier gets cheaper. Protects your market price. Only changes when
+    #      costs force it higher."
+    #
+    # UP_ONLY IS THE DEFAULT, and it is the answer to the thing that made the
+    # 0% floor dangerous. The repricer prices AT its floor, not towards it, so
+    # a SKU with no target would otherwise be cut to break-even the moment it
+    # was armed -- measured on jack_uk, 22 of them, the deepest by 71.5%. With
+    # up_only the floor can only ever push a price UP, which is what a floor is
+    # for; a cheaper supplier becomes margin instead of a discount.
+    #
+    #   up_only      never lower the price. A floor below what it sells for
+    #                today is simply not acted on.
+    #   up_and_down  follow the supplier both ways.
+    #   match_floor  sit exactly on the floor, always -- which also means
+    #                ignoring a held price, since a hold is a floor ABOVE the
+    #                computed one and "exactly the floor" cannot honour both.
+    "direction":            "up_only",
     "hold_price":           None,         # the market price, held against targets
     "max_change_pct":       25.0,         # a bigger jump than this waits for a human
     "min_change":           0.20,         # smaller than this is not worth a push
@@ -923,7 +943,17 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
     # `held` is recorded because the screen has to be able to say WHY the price is
     # 40.00 when the target only asked 18.24. A price with no explanation is a
     # price someone will override by hand.
+    # MATCH FLOOR IGNORES THE HOLD, and it has to. "Always sits at exact
+    # calculated floor" and "never below the price you hold it at" are two
+    # different instructions, and a hold is by construction a floor ABOVE the
+    # computed one -- so honouring both is impossible. The more specific
+    # setting, the one chosen per SKU on the Direction pill, wins.
+    direction = str(rule.get("direction") or "up_only")
+    out["direction"] = direction
+
     hold = _num(rule.get("hold_price"))
+    if direction == "match_floor":
+        hold = None
     out["held"] = False
     if hold is not None and hold > 0:
         if hold > price:
@@ -960,6 +990,28 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
             out["hold_capped"] = {"hold": out.pop("held_at", None),
                                   "ceiling": round(float(rule["max_price"]), 2)}
             out.pop("held_over", None)
+
+    # ---- UP ONLY: a floor below today's price is not acted on -------------
+    #
+    #     "price can only increase. Never decreases even if supplier gets
+    #      cheaper. Protects your market price."
+    #
+    # THE PRICE IS PINNED, NOT THE DECISION. The stock level and the handling
+    # time are decided by the same pass, and neither has anything to do with
+    # which way a price may move -- a supplier who has slowed down still needs
+    # the promise lengthening, and three units still need putting back to
+    # three. So the price is held at what Amazon has, and everything else
+    # carries on. What gets refused is the CUT, not the check.
+    #
+    # Recorded, because a price that did not move for a reason and a price that
+    # did not move because nothing changed look identical on a screen, and only
+    # one of them is worth knowing about.
+    out["direction_held"] = False
+    if (direction == "up_only" and cur_price is not None
+            and price < cur_price - 0.001):
+        out["direction_held"] = True
+        out["direction_floor"] = round(price, 2)   # what the rules asked for
+        price = cur_price
 
     disp = chk.get("dispatch_days")
     lead = handling_days(disp, rule)
@@ -1041,6 +1093,12 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         # way to say that neither of them decided it.
         "hold_price": (None if hold is None else round(hold, 2)),
         "held": bool(out.get("held")),
+        # Which way this SKU is allowed to move, and whether that is what
+        # stopped a cut. The screen needs both: "unchanged" and "would have
+        # been cut but this SKU is up-only" are different facts.
+        "direction": direction,
+        "direction_held": bool(out.get("direction_held")),
+        "direction_floor": out.get("direction_floor"),
         # What the rules on their own would have asked for. This is the number the
         # owner wants to see NOT being used.
         "rules_price": (out.get("held_over") if out.get("held") else price),
@@ -1147,8 +1205,19 @@ def decide(current, pairs, rule=None, now=None, listing_state=None):
         same_qty = (cur_qty is None or int(cur_qty) == qty)
         if abs(price - cur_price) < float(rule["min_change"]) and same_lead and same_qty:
             out["action"] = "none"
-            out["reason"] = ("already within %.2f of the right price"
-                             % float(rule["min_change"]))
+            # WHY IT DID NOT MOVE, and the two reasons are not the same. "The
+            # price is already right" and "the rules wanted less and this SKU
+            # is up-only" look identical on a screen, and only the second is
+            # worth knowing about -- it is money being left on the table on
+            # purpose, and the owner should be able to see how much.
+            if out.get("direction_held"):
+                out["reason"] = (
+                    "up-only: the rules would price this at %.2f, which is "
+                    "below the %.2f it sells for, so nothing was changed"
+                    % (out.get("direction_floor") or price, cur_price))
+            else:
+                out["reason"] = ("already within %.2f of the right price"
+                                 % float(rule["min_change"]))
             return out
 
     out["action"] = "update"
