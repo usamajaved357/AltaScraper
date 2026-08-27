@@ -79,7 +79,19 @@ console.log("\n=== the price sum is a PICTURE, not a list ===");
 // is two thirds of it. Keeping the list as well would be the same five figures
 // twice, which is what made the panel long enough to need scrolling.
 truthy("there is a stacked-bar renderer", /function _stackBar/.test(JS));
-truthy("  drawn in the detail panel", /_stackBar\(b\) \+ _metStrip\(r\)/.test(JS));
+truthy("  drawn in the detail panel", /_stackBar\(b, r\) \+ _metStrip\(r\)/.test(JS));
+// AND IT SAYS WHICH PRICE IT IS DRAWN AT, when that is not today's. The bar has
+// always pictured the PROPOSED price; the caption is the only thing that says
+// so, and it must come from the same test as the row's price cell -- a bar
+// captioned with a move the cell does not show is the same fact told two ways.
+truthy("  captioned with the proposed price when one is proposed",
+       /at proposed price <b>' \+ _smoney\(prop\.price\)/.test(JS));
+truthy("    and silent when nothing is moving",
+       /\+ \(prop\s*\n?\s*\?/.test(JS) || /\(prop$/m.test(JS));
+truthy("    from the one shared test, not a second copy of it",
+       /function _proposedPrice/.test(JS)
+       && (JS.match(/_proposedPrice\(r\)/g) || []).length >= 2
+       && !/d\.action === "update" && d\.price != null/.test(JS));
 [[/class="rp-sb-cost"/, "the supplier's cost"],
  [/class="rp-sb-ref"/, "the referral fee"],
  [/class="rp-sb-close"/, "the closing fee"],
