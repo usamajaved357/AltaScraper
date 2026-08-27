@@ -66,10 +66,31 @@ function _sarg(s){
   return "'" + js.replace(/&/g,"&amp;").replace(/"/g,"&quot;")
                  .replace(/</g,"&lt;").replace(/>/g,"&gt;") + "'";
 }
+/* An amount, WITH the currency it is in.
+ *
+ * It used to return a bare "10.06". On a UK-only screen that is merely terse;
+ * across accounts it is wrong -- sheelady_us and miles_lubricants sell in
+ * dollars, and a bare number beside a pound-denominated cost is a figure the
+ * reader has no way to place. Every money figure on this screen goes through
+ * here, so this is the one place that has to know (CLAUDE.md Rule 12).
+ *
+ * The symbol comes from _srcSym(), which reads the marketplace the ROWS came
+ * from rather than whichever screen happened to be opened last.
+ *
+ * The dash for an unknown amount was mojibake -- three bytes that render as a
+ * capital A with a circumflex followed by two more -- from a cp1252 round
+ * trip. It is a real em dash now.
+ */
 function _smoney(v){
-  return (v==null || v==="") ? "—" : Number(v).toFixed(2);
+  if(v == null || v === "") return "\u2014";
+  const n = Number(v);
+  if(!isFinite(n)) return "\u2014";
+  return _srcSym() + n.toFixed(2);
 }
 
+// LOUD, and it is the one place that should be. Opening the screen from
+// nothing has no stale table to keep, so a spinner is honest about the wait;
+// a blank panel with no explanation is what it would be without one.
 function sourcingOnOpen(){ sourcingLoad(); }
 
 /* Load the screen. `quiet` refreshes it WITHOUT blanking it.
@@ -263,7 +284,7 @@ async function sourcingMaster(on){
       body:_srcBody({enabled:!!on})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
     toast(j.enabled ? "Master switch ON" : "Master switch off — nothing will be pushed");
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -279,7 +300,7 @@ async function sourcingArm(sku, live){
       body:_srcBody({sku:sku, live:!!live})})).json();
     if(!j.ok){ toast(j.error||"Could not arm"); return; }
     toast(j.note || (j.mode==="live" ? "Armed" : "Back to dry run"));
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -552,7 +573,7 @@ async function sourcingMinPriceBulk(){
           confirm: "OK",
         });
       }
-      sourcingLoad();
+      sourcingLoad(true);
       return true;
     });
 }
@@ -669,7 +690,7 @@ async function sourcingHoldAtCurrent(){
       confirm: "OK",
     });
   }
-  sourcingLoad();
+  sourcingLoad(true);
 }
 
 // A PERCENTAGE PROFIT FLOOR, on top of the flat one.
@@ -736,7 +757,7 @@ function sourcingTarget(sku){
         if(rule.target_margin_pct) on.push(rule.target_margin_pct + "% margin");
         if(rule.target_roi_pct) on.push(rule.target_roi_pct + "% ROI");
         toast(on.length ? ("Target: " + on.join(" and ")) : "Profit targets off");
-        sourcingLoad();
+        sourcingLoad(true);
         return true;
       }catch(e){ toast(String(e)); return false; }
     });
@@ -1042,15 +1063,22 @@ function sourcingUploadReport(){
  * change legible at 70x24 pixels, which is the entire point of drawing it that
  * small.
  *
- * `pts` is [{at, landed, status, in_stock}] oldest-first, which is what
- * source_drift.price_history returns. Readings that could not be read are
- * skipped rather than drawn as zero -- a failed fetch is not a free supplier,
- * and a line diving to the floor says exactly that.
+ * `hist` is [{at, landed, status, in_stock}] NEWEST FIRST -- that is what
+ * source_drift.price_history returns, because source_repo.history reads
+ * ORDER BY id DESC. It is REVERSED here, and it has to be: a line drawn
+ * straight from that order runs backwards in time, so a supplier who has put
+ * their price up appears to have dropped it. Measured on jack_uk, every trend
+ * on the screen was mirrored.
+ *
+ * Readings that could not be read are skipped rather than drawn as zero -- a
+ * failed fetch is not a free supplier, and a line diving to the floor says
+ * exactly that.
  */
 function _spark(hist, opts){
   const o = opts || {};
   const W = o.w || 70, H = o.h || 24, PAD = 3;
-  const all = (hist || []).filter(function(p){
+  // OLDEST FIRST, so left-to-right is earlier-to-later. See the note above.
+  const all = (hist || []).slice().reverse().filter(function(p){
     return p && p.landed != null && isFinite(p.landed);
   });
   // ONE READING IS NOT A HISTORY. A single point drawn in a trend column reads
@@ -1104,7 +1132,22 @@ function _spark(hist, opts){
     + '<div class="rp-stip">' + tip + '</div></div>';
 }
 
-/* The sparkline, opened up. Same readings, with the dates and the amounts. */
+/* "08:12" out of a stored "2026-08-17 08:12:46", or "" if there is no time.
+ * Read straight off the string rather than through Date: the value is already
+ * local time as the app recorded it, and parsing it into a Date would shift it
+ * by the browser's offset. */
+function _srcClock(iso){
+  const m = /[ T](\d{2}):(\d{2})/.exec(String(iso || ''));
+  return m ? (m[1] + ':' + m[2]) : '';
+}
+
+/* The sparkline, opened up. Same readings, with the dates and the amounts.
+ *
+ * `json` comes from _spark, which has ALREADY put them oldest-first, so this
+ * reverses once to get newest-first for a list -- which is the right order for
+ * something read top to bottom, and the opposite of the right order for a line
+ * read left to right.
+ */
 function srcChart(title, json){
   let pts = [];
   try { pts = JSON.parse(json) || []; } catch(e){ pts = []; }
@@ -1119,7 +1162,12 @@ function srcChart(title, json){
     const dead = String(p.status || '') === 'gone';
     const pct = isFinite(v) ? Math.max(2, ((v - lo) / span) * 100) : 0;
     rows += '<div class="rp-crow">'
-      + '<span class="rp-cdate">' + _sesc(_srcDay(p.at) || p.at || '') + '</span>'
+      // THE TIME AS WELL AS THE DAY. Suppliers are read every four hours, so
+      // several readings a day is the normal case and a date alone makes three
+      // of them look like one repeated row.
+      + '<span class="rp-cdate">'
+      + _sesc((_srcDay(p.at) || '') + ' ' + _srcClock(p.at)).trim()
+      + '</span>'
       + '<span class="rp-ctrack">'
       + (isFinite(v)
           ? '<span class="rp-cfill" style="width:' + pct.toFixed(1) + '%;'
@@ -1608,6 +1656,30 @@ function _alertBar(j){
   // Held is not the same as "would go out of stock": a held SKU is one the app
   // COULD NOT decide about, so it is sitting at whatever price it had.
   const held = c.blocked || 0;
+
+  // WHAT NO TARGET ACTUALLY MEANS FOR THE PRICE.
+  //
+  // The repricer does not price TOWARDS a floor, it prices AT it -- the price
+  // IS the floor, because the price follows the supplier and nothing pulls it
+  // up. So a SKU with no target is priced at break-even: cost plus Amazon's
+  // cut, and nothing else.
+  //
+  // That is exactly what a 0% default asks for, and it is a correct absolute
+  // limit. But it is not obvious from the words "Target: none", and the
+  // consequence is large: measured on jack_uk the moment the default changed,
+  // 22 SKUs would have been cut, the deepest by 71.5% (16.99 to 4.84), giving
+  // up about £160 a unit of margin in total.
+  //
+  // Nothing can happen without a floor and an arming, so this is a warning
+  // rather than a fault -- but it has to be said BEFORE somebody arms them,
+  // not afterwards in a notification about a price that has already dropped.
+  const cuts = rows.filter(function(r){
+    const d = r.decision || {}, ru = r.rule || {}, cu = r.current || {};
+    return d.action === 'update' && d.price != null && cu.price != null
+        && d.price < cu.price - 0.01
+        && ru.target_roi_pct == null && ru.target_margin_pct == null;
+  });
+
   const bits = [];
   if(c.out_of_stock)
     bits.push('<b>' + c.out_of_stock + '</b> would go out of stock');
@@ -1615,10 +1687,39 @@ function _alertBar(j){
     bits.push('<b>' + held + '</b> held &mdash; open one to see what stopped it');
   if(noFloor)
     bits.push('<b>' + noFloor + '</b> cannot be armed without a minimum price');
-  if(!bits.length) return '';
-  return '<div class="rp-alert" style="margin-bottom:10px">'
-    + '<i class="ti ti-alert-triangle"></i>'
-    + bits.join(' &middot; ') + '</div>';
+
+  let h = '';
+  if(bits.length){
+    h += '<div class="rp-alert" style="margin-bottom:' + (cuts.length ? '6' : '10')
+      +  'px"><i class="ti ti-alert-triangle"></i>'
+      +  bits.join(' &middot; ') + '</div>';
+  }
+  if(cuts.length){
+    // Worst case named, because "22 would be cut" and "one of them by 71%" are
+    // different sizes of problem and only the second makes anyone look.
+    let worst = null, worstPct = 0;
+    cuts.forEach(function(r){
+      const p = (r.current.price - r.decision.price) / r.current.price * 100;
+      if(p > worstPct){ worstPct = p; worst = r; }
+    });
+    h += '<div class="rp-alert rp-alert-bad" style="margin-bottom:10px">'
+      +  '<i class="ti ti-arrow-big-down-lines"></i>'
+      +  '<b>' + cuts.length + '</b> SKU' + (cuts.length === 1 ? '' : 's')
+      +  ' would be priced DOWN to break-even because no profit target is set'
+      +  (worst ? ' &mdash; the biggest cut is <b>' + worstPct.toFixed(0)
+                  + '%</b> (' + _smoney(worst.current.price) + ' &rarr; '
+                  + _smoney(worst.decision.price) + ')' : '')
+      +  '. <button class="db-chip" onclick="sourcingTarget(\'\')">'
+      +  'Set a target</button>'
+      +  '<span class="infodot" title="The repricer does not price TOWARDS a '
+      +  'floor, it prices AT it: the price follows the supplier and nothing '
+      +  'pulls it up. With no target, the floor is cost plus Amazon&#39;s cut '
+      +  '-- break-even -- so the sale earns nothing. Set an ROI or margin '
+      +  'target, on the whole account here or on one SKU from its Rules '
+      +  'pills. Nothing is pushed until a SKU is armed and auto-pricing is '
+      +  'on, so no price has moved.">i</span></div>';
+  }
+  return h;
 }
 
 /* The eight controls that are not everyday controls.
@@ -2086,7 +2187,7 @@ async function sourcingShippingPolicy(){
         body: _srcBody({days: el ? el.value : ""})})).json();
       if(!jr.ok){ toast(jr.error || "Could not save"); return false; }
       toast(jr.note || "Saved");
-      await sourcingLoad();
+      await sourcingLoad(true);
       return true;
     });
 }
@@ -2471,7 +2572,7 @@ async function sourcingUnenrolSelected(){
     if(!j || !j.ok){ toast((j&&j.error)||"Could not stop tracking those"); return; }
     SRC_SEL = new Set();
     toast(j.note || ("Stopped tracking " + (j.unenrolled || 0)));
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -2608,7 +2709,11 @@ function _srcDay(iso){
   // Written out rather than using toLocaleDateString: that follows the browser's
   // locale, so the same date would read differently on two machines looking at
   // the same order.
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  // A DATE **OR** A TIMESTAMP. Readings are stored as "2026-08-17 08:12:46",
+  // and the old pattern anchored to the end of a bare date -- so every supplier
+  // reading failed to match and the chart fell back to printing the raw
+  // "2026-08-17 08:12:46" in a column an inch wide.
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T]|$)/.exec(String(iso || ''));
   if(!m) return '';
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
   if(isNaN(d)) return '';
@@ -3116,7 +3221,7 @@ async function sourcingBuffer(sku, btn){
                         rule: {handling_buffer_days: v === "" ? 0 : v}})})).json();
       if(!j.ok){ toast(j.error || "Could not save"); return false; }
       toast("Extra handling: +" + (v === "" ? 0 : v) + " day(s)");
-      await sourcingLoad();
+      await sourcingLoad(true);
       return true;
     });
 }
@@ -3248,7 +3353,7 @@ async function sourcingEnrolPicked(sku){
     if(!j.ok){ toast(j.error||"Could not enroll"); return; }
     toast("Enrolled in dry run — add a supplier link next");
     await sourcingPickerLoad((document.getElementById("srcpickq")||{}).value||"");
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -3263,7 +3368,7 @@ async function sourcingUnenrol(sku){
       headers:{"Content-Type":"application/json"},
       body:_srcBody({sku:sku, enrolled:false})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -3279,7 +3384,7 @@ async function sourcingAddSourcePrompt(sku){
       body:_srcBody({sku:sku, url:url.trim()})})).json();
     if(!j.ok){ toast(j.error||"Could not add"); return; }
     toast("Supplier added — press “Re-read suppliers now” to check it");
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
 
@@ -3294,6 +3399,6 @@ async function sourcingRemoveSource(sid){
       headers:{"Content-Type":"application/json"},
       body:_srcBody({source_id:sid})})).json();
     if(!j.ok){ toast(j.error||"failed"); return; }
-    sourcingLoad();
+    sourcingLoad(true);
   }catch(e){ toast(String(e)); }
 }
