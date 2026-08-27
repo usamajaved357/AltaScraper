@@ -57,35 +57,46 @@ function catpRender() {
 
   // ---- the four findings --------------------------------------------------
   const f = d.findings || {};
+  // THE BAR UNDER EACH CARD IS THE SAME QUANTITY THE NUMBER STATES, drawn
+  // against its whole -- never a second, different fact smuggled in under the
+  // first. "8" above a bar a fifth of the way across says eight out of forty
+  // without needing the sentence, and the sentence is still there underneath.
   const cards = [];
   if (f.concentration) {
     cards.push({ k: "Revenue concentration", v: f.concentration.n,
-                 s: f.concentration.label, cls: "" });
+                 s: f.concentration.label, cls: "",
+                 // the count IS a share of the catalogue, and that is the share
+                 share: f.concentration.pct_of_catalogue, bar: "var(--accent)" });
   }
   if (f.top) {
     cards.push({ k: "Top performer", v: (f.top.share * 100).toFixed(0) + "%",
                  s: f.top.label + (f.top.title ? " — " + f.top.title.slice(0, 46) : ""),
-                 cls: "" });
+                 cls: "", share: f.top.share, bar: "var(--ok)" });
   }
   if (f.dead) {
     // The only one that names work to do, so it is the one that carries a
     // colour. The others are facts; this is a job.
+    const _prods = Number(d.products) || 0;
     cards.push({ k: "Listed, earning nothing", v: f.dead.n, s: f.dead.label,
-                 cls: "warn" });
+                 cls: "warn", bar: "var(--gold)",
+                 share: _prods > 0 ? (f.dead.n / _prods) : null });
   }
   if (f.losers) {
     cards.push({ k: "The tail", v: catpPct(f.losers.share).replace(/<[^>]*>/g, ""),
-                 s: f.losers.label, cls: "" });
+                 s: f.losers.label, cls: "",
+                 share: f.losers.share, bar: "var(--ink4)" });
   }
+  // Built by the shared uiStat() rather than by hand here (CLAUDE.md Rule 12).
+  // This wrote out .ui-stat markup itself -- the same three divs pageui.js
+  // already emits -- which is how the Catalog's cards ended up label-first
+  // while the Repricer's were number-first, on two screens that both open with
+  // four numbers above a table of products. One builder, one look, and
+  // anything that changes about the card now changes on every screen at once.
   if (cards.length) {
-    html += '<div class="ui-stats">';
-    cards.forEach(function (c) {
-      html += '<div class="ui-stat ' + c.cls + '">' +
-        '<div class="ui-stat-k">' + esc(c.k) + "</div>" +
-        '<div class="ui-stat-v">' + esc(String(c.v)) + "</div>" +
-        '<div class="ui-note">' + esc(c.s) + "</div></div>";
-    });
-    html += "</div>";
+    html += uiStats(cards.map(function (c) {
+      return { label: c.k, value: esc(String(c.v)), note: c.s,
+               tone: c.cls, share: c.share, barColor: c.bar };
+    }));
   }
 
   // ---- counters -----------------------------------------------------------

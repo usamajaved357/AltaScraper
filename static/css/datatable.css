@@ -1,0 +1,200 @@
+/* static/css/datatable.css -- one look for every table of products, and one
+ * for the cards above it.
+ *
+ *     "the sizing and the theme of the repricer page is nice, i want this to
+ *      be applied on all listings page and the catalog page"
+ *
+ * WHY THIS FILE EXISTS RATHER THAN A THIRD COPY OF THE RULES. The app had
+ * FIVE definitions of two ideas:
+ *
+ *     tables    .lt (Listings)   .stk-table (Catalog, Stock, PPC)   .rp-tbl
+ *     cards     .ui-stat (most screens)                             .rp-mc
+ *
+ * and that is exactly why the three screens looked like three products. The
+ * Listings header was 11px and the Catalog's 10px uppercase; rows were 10px
+ * padded on one and 9px on the other; the Repricer's cards had a bar along
+ * the bottom and nobody else's did. Nothing was WRONG in any of them -- there
+ * were simply three answers to "how big is a table row", and a fourth would
+ * have been added the next time a screen needed one.
+ *
+ * So the look is defined ONCE, here, and every existing class name is listed
+ * on the rule (CLAUDE.md Rule 12). Nothing had to be renamed in the JavaScript,
+ * which matters: listings.js alone is 160KB and a rename across it is a change
+ * with no upside and a lot of surface. The superseded blocks were removed from
+ * dashboard.css in the same commit, so this really is the only definition and
+ * not merely the last one to load.
+ *
+ * WHAT THE LOOK IS, and why each part of it:
+ *   - 9px uppercase headers. They are read once and then never again, so they
+ *     can afford to recede -- and shrinking them is what buys the NUMBERS
+ *     their size without the row growing.
+ *   - 13px cells, tabular figures. A column of prices is scanned vertically;
+ *     proportional digits make the decimal points wander.
+ *   - 6px vertical padding. The Listings row was 80px tall, which is five rows
+ *     a screen; this is nine, and nothing was removed to get there.
+ *   - one line per row, ellipsised. A wrapping title makes its row twice the
+ *     height of its neighbours and the eye loses the column.
+ */
+
+/* ---- the wrapper --------------------------------------------------- */
+/* Wide content scrolls INSIDE its own box. Ten columns on a laptop would
+ * otherwise scroll the whole page sideways, which is how the Repricer's "More"
+ * button ended up off the edge of somebody's screen. */
+.rp-card, .dt-card{background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-sm);overflow:hidden}
+.rp-scroll, .dt-scroll{overflow-x:auto}
+
+/* ---- the table ------------------------------------------------------ */
+.rp-tbl, table.lt, .stk-table, .dt-tbl{
+  width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+
+.rp-tbl th, .lt th, .stk-table th, .dt-tbl th{
+  text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--ink3);padding:7px 5px;
+  border-bottom:1px solid var(--line2);white-space:nowrap;
+  background:var(--panel);position:sticky;top:0;z-index:1}
+/* A sortable header says so by being hoverable. The Catalog's already were;
+ * this keeps that and gives it to the others for free. */
+.stk-table th:hover, .dt-tbl th[onclick]:hover{color:var(--ink)}
+.stk-table th .dir{opacity:.55;font-size:9px;margin-left:3px}
+
+.rp-tbl td, .lt td, .stk-table td, .dt-tbl td{
+  padding:6px 5px;border-bottom:1px solid var(--line);vertical-align:middle;
+  font-size:13px}
+.lt tr:last-child td, .dt-tbl tr:last-child td{border-bottom:none}
+
+.rp-tbl tr.rp-row, .lt tbody tr, .stk-table tbody tr, .dt-tbl tbody tr{
+  cursor:pointer;transition:background-color .1s}
+.rp-tbl tr.rp-row:hover>td, .lt tbody tr:hover td,
+.stk-table tbody tr:hover td, .dt-tbl tbody tr:hover td{
+  background:rgba(255,255,255,.03)}
+
+/* Right-aligned numeric columns, which the Catalog already used. */
+.stk-table th.r, .stk-table td.r, .dt-tbl th.r, .dt-tbl td.r{text-align:right}
+
+/* The first and last cells breathe against the card edge. */
+.rp-tbl th:first-child, .rp-tbl td:first-child,
+.lt th:first-child, .lt td:first-child,
+.stk-table th:first-child, .stk-table td:first-child,
+.dt-tbl th:first-child, .dt-tbl td:first-child{padding-left:10px}
+.rp-tbl th:last-child, .rp-tbl td:last-child,
+.lt th:last-child, .lt td:last-child,
+.stk-table th:last-child, .stk-table td:last-child,
+.dt-tbl th:last-child, .dt-tbl td:last-child{padding-right:10px}
+
+/* ---- the product cell ----------------------------------------------- */
+/* 36px, square, on the page's own ground so a transparent PNG does not float.
+ * Three sizes existed: 34, 38 and 36. */
+.rp-thumb, .dt-thumb, .stk-thumb, .lt .thumb, .catp-img, .pii-img{
+  width:36px;height:36px;border-radius:var(--radius-sm);
+  background:var(--bg);border:1px solid var(--line2);flex:none;
+  object-fit:contain;overflow:hidden;position:relative}
+.rp-thumb, .dt-thumb{display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:var(--ink4)}
+.rp-thumb img, .dt-thumb img{width:100%;height:100%;object-fit:cover}
+
+.stk-prod, .dt-prod{display:flex;gap:9px;align-items:center;min-width:0}
+
+/* ONE LINE, ELLIPSISED. A wrapping title makes its row twice the height of
+ * its neighbours, and a column whose rows are different heights cannot be
+ * scanned down. */
+.rp-nm, .dt-nm, .stk-pname{font-weight:500;font-size:13px;max-width:260px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.rp-asin, .dt-asin{font-size:10px;color:var(--accent2);font-weight:500;
+  text-decoration:none}
+.rp-asin:hover, .dt-asin:hover{text-decoration:underline}
+/* Money and other figures that carry weight in a row. */
+.rp-p, .dt-p{font-weight:600;font-size:13px}
+.stk-num, .dt-num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---- the small marks ------------------------------------------------ */
+/* 11px, not 7. These say a number elsewhere on the row is WRONG, and a
+ * warning nobody can read is not a warning. */
+.rp-tag, .dt-tag{font-size:11px;font-weight:600;padding:1px 5px;
+  border-radius:3px;letter-spacing:.01em;line-height:1.45;white-space:nowrap}
+/* Inside a nested table they stay small: there they are a column of two-letter
+ * states read down the page, not a warning beside a name. */
+.rp-sup .rp-tag{font-size:8px;font-weight:700;padding:1px 4px;
+  letter-spacing:.03em}
+
+/* One dot, five states, so the state of a row reads down a column instead of
+ * having to be found somewhere along it. */
+.rp-dot, .dt-dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.rp-dg, .dt-dg{background:var(--ok)}
+.rp-dr, .dt-dr{background:var(--red)}
+.rp-dy, .dt-dy{background:var(--gold)}
+.rp-db, .dt-db{background:var(--accent)}
+.rp-dd, .dt-dd{background:var(--ink4)}
+
+.rp-g, .dt-g{color:var(--ok)}
+.rp-r, .dt-r{color:var(--red)}
+.rp-y, .dt-y{color:var(--gold)}
+.rp-d, .dt-d{color:var(--ink3)}
+
+/* ---- the cards above the table -------------------------------------- */
+/* Four across, not "as many as fit". auto-fit gave the Catalog four wide
+ * cards and the Keywords screen six narrow ones on the same monitor, so the
+ * same number meant a different size on each screen. */
+.rp-met, .ui-stats, .dt-met{display:grid;
+  grid-template-columns:repeat(4,1fr);gap:8px;margin:0 0 12px}
+
+/* FOUR IS THE CAP, NOT THE ASSUMPTION. Orders draws three cards and the
+ * Repricer four; a flat repeat(4) left Orders with a quarter of the row empty
+ * -- a hole where a fourth card would be, which reads as a card that failed to
+ * load rather than as a screen that has three things to say.
+ * Ordered widest-first so the LAST matching rule wins: three cards match only
+ * the first of these, two match the first two, one matches all three. */
+.rp-met:not(:has(> :nth-child(4))),
+.ui-stats:not(:has(> :nth-child(4))),
+.dt-met:not(:has(> :nth-child(4))){grid-template-columns:repeat(3,1fr)}
+.rp-met:not(:has(> :nth-child(3))),
+.ui-stats:not(:has(> :nth-child(3))),
+.dt-met:not(:has(> :nth-child(3))){grid-template-columns:repeat(2,1fr)}
+.rp-met:not(:has(> :nth-child(2))),
+.ui-stats:not(:has(> :nth-child(2))),
+.dt-met:not(:has(> :nth-child(2))){grid-template-columns:1fr}
+
+@media (max-width:900px){
+  .rp-met, .ui-stats, .dt-met{grid-template-columns:repeat(2,1fr)}
+  /* one card still gets the full width on a phone */
+  .rp-met:not(:has(> :nth-child(2))),
+  .ui-stats:not(:has(> :nth-child(2))),
+  .dt-met:not(:has(> :nth-child(2))){grid-template-columns:1fr}
+}
+.rp-mc, .ui-stat, .dt-mc{background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-sm);padding:10px 12px;position:relative;
+  overflow:hidden;display:block;width:100%;text-align:left;
+  font-family:inherit;color:inherit;min-width:0;
+  transition:border-color .1s,background .1s}
+/* A card that filters is a control, and has to look like one. */
+.rp-mc, .ui-stat[onclick], .dt-mc[onclick]{cursor:pointer}
+.rp-mc:hover, .ui-stat[onclick]:hover, .dt-mc[onclick]:hover{
+  border-color:var(--line2);background:var(--panel2)}
+.rp-mc.rp-on, .ui-stat.on, .dt-mc.dt-on{border-color:var(--accent);
+  background:var(--accent-bg);box-shadow:0 0 0 1px var(--accent) inset}
+.rp-mc:focus-visible, .ui-stat:focus-visible, .dt-mc:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+
+/* THE NUMBER FIRST, THE LABEL UNDER IT. .ui-stat had them the other way round
+ * -- label above value -- so a row of cards read as a row of words with
+ * numbers attached rather than a row of numbers. */
+.rp-mc-n, .ui-stat-v, .dt-mc-n{font-size:24px;font-weight:600;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1;
+  color:var(--ink)}
+.rp-mc-l, .ui-stat-k, .dt-mc-l{font-size:10px;color:var(--ink3);margin-top:4px;
+  font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ui-note, .dt-mc-note{font-size:10.5px;color:var(--ink3);line-height:1.45;
+  margin-top:3px}
+
+/* The bar along the bottom is the count as a SHARE of the whole. "5 held"
+ * means one thing out of 8 and another out of 80, and a bare number cannot
+ * say which. */
+.rp-mc-bar, .dt-mc-bar, .ui-stat-bar{position:absolute;bottom:0;left:0;height:2px}
+
+/* A card that IS the finding keeps its colour, but as a tint rather than a
+ * different card -- these sat on solid backgrounds that made them look like a
+ * different component. */
+.ui-stat.warn, .dt-mc.warn{border-color:var(--warn-line);
+  background:var(--warn-bg)}
+.ui-stat.bad, .dt-mc.bad{border-color:var(--red-line);background:var(--red-bg)}
+.ui-stat.good, .dt-mc.good{border-color:var(--ok-line);background:var(--ok-bg)}

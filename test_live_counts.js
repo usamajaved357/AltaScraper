@@ -67,8 +67,15 @@ truthy("  an unknown quantity is not counted as zero",
        /q !== undefined && q !== null && q !== "" && Number\(q\) === 0/.test(L));
 // The count is wrapped in _n() now, which formats it for display. Pinning the
 // raw expression meant a formatting change read as a missing tile.
+//
+// AND THEN IT HAPPENED AGAIN. The tiles gained a fourth argument -- the colour
+// of the share bar along the bottom -- and the call wrapped onto two lines, so
+// a regex that ran to the closing bracket said the tile had been deleted when
+// it had only been given one more thing to say. What is being asserted is that
+// the drafts view still counts blocked and errored drafts together, so that is
+// all this matches now: the count and the label, not the punctuation after it.
 truthy("the drafts view keeps the tiles that suit it",
-       /tile\(_n\(c\.HOLD \+ c\.ERROR\), "Blocked or errored", "holds"\)/.test(L));
+       /tile\(_n\(c\.HOLD \+ c\.ERROR\), "Blocked or errored"/.test(L));
 
 console.log("\n=== one group, not two ===");
 truthy("the two sub-captions are gone", !/const _amzSub/.test(M));

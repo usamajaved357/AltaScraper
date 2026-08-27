@@ -713,21 +713,14 @@
        width:100%;border:none;background:transparent;padding:0;
        font:inherit;font-size:13px;color:var(--ink);outline:none}
 
-  /* ---- Orbit metric tile ---------------------------------------------
-     Number and label centred, the label small and quiet so the number carries
-     the emphasis. */
-  .metric{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-          padding:14px 16px;text-align:center;transition:border-color .12s}
-  .metric:hover{border-color:var(--accent)}
-  .metric .n{font-size:22px;font-weight:600;line-height:1.15;margin:0;
-             font-variant-numeric:tabular-nums}
-  .metric .l{font-size:10px;font-weight:600;text-transform:uppercase;
-             letter-spacing:.06em;color:var(--ink4);margin:4px 0 0}
-  .metricgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));
-              gap:10px;margin-bottom:14px}
-  .metric{cursor:pointer}
-  .metric.on{border-color:var(--accent)}
-  .metric.on .n{color:var(--accent)}
+  /* ---- Orbit metric tile: RETIRED ------------------------------------
+     Listings was the only screen drawing .metric, and it now calls the shared
+     uiStat() like the Catalog and the rest, so the card is defined once in
+     static/css/datatable.css. It was centred at 22px here, left at 24px on the
+     Repricer and left at 24px again but label-first on .ui-stat -- three
+     answers to "what does a number above a table look like".
+     (sales.js's .metricpick-* is a column chooser, not a card, and is
+     untouched -- see further down this file.) */
 
   /* ---- LISTINGS TABLE (.lt) ------------------------------------------
      Copied from full_app_orbit.html, with the prototype's token names mapped
@@ -740,15 +733,11 @@
      parts of the app that have nothing to do with the table. */
   main#grid.tableview{display:block;grid-template-columns:none}
   .ltwrap{padding:0;overflow:hidden;margin-bottom:14px}
-  table.lt{width:100%;border-collapse:collapse}
-  .lt th{text-align:left;font-size:11px;font-weight:600;color:var(--ink3);
-         letter-spacing:.03em;padding:10px 8px;border-bottom:1px solid var(--line);
-         white-space:nowrap;background:var(--panel);position:sticky;top:0;z-index:1}
-  .lt td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle;
-         font-size:13px}
-  .lt tr:last-child td{border-bottom:none}
-  .lt tbody tr{cursor:pointer;transition:background-color .12s}
-  .lt tbody tr:hover td{background:var(--panel2)}
+  /* The .lt table's look now comes from static/css/datatable.css, which
+     defines ONE table for Listings, the Catalog and the Repricer. It was an
+     11px header and 10px padding here, 10px uppercase and 9px there, and 9px
+     uppercase and 6px on the third -- three answers to "how big is a table
+     row", which is why the three screens looked like three products. */
   /* THE SELECTION COLUMN. The list view had no checkbox at all, so nothing
      could be selected in it and every batch action on the screen was
      unreachable unless you switched to the cards first. */
@@ -1143,16 +1132,14 @@
      The difference was a VOCABULARY that only those pages had. These are the
      same measurements, reachable by any page (see static/js/pageui.js). Nothing
      here is new design; it is the existing design made available. */
-  .ui-stats{display:grid;
-            grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
-            gap:10px;margin:0 0 12px}
-  .ui-stat{background:rgb(45,50,66);border:1px solid rgb(55,65,81);
-           border-radius:8px;padding:12px 14px;min-width:0}
-  .ui-stat-k{font-size:11.5px;color:rgb(156,163,175);line-height:17px;
-             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ui-stat-v{font-size:24px;font-weight:650;line-height:33px;
-             color:rgb(243,244,246);letter-spacing:-.2px}
-  .ui-note{font-size:11px;color:rgb(156,163,175);line-height:16px}
+  /* The grid is in datatable.css, and is four across rather than auto-fit:
+     auto-fit gave the Catalog four wide cards and Keywords six narrow ones on
+     the same monitor, so the same number meant a different size per screen. */
+  /* The .ui-stat cards now come from static/css/datatable.css, which gives
+     them the Repricer's shape: the number first at 24px, the label under it
+     at 10px, and room for the share bar along the bottom. They were built the
+     other way round -- label above value -- so a row of them read as a row of
+     words with numbers attached. */
   /* Signed so POSITIVE IS BETTER, decided by the caller -- for ACOS and cost
      down is the good direction, and an arrow alone reads backwards on half the
      rows. */
@@ -1162,15 +1149,12 @@
   .ui-delta.flat{color:rgb(156,163,175)}
   /* A card that is itself the finding, not just a number. Used sparingly --
      if everything is coloured, nothing is. */
-  .ui-stat.warn{border-color:#55492a;background:#241f10}
-  .ui-stat.bad{border-color:#5c2f2f;background:#2b1a1a}
-  .ui-stat.good{border-color:#2c5840;background:#16291d}
+  /* .warn / .bad / .good are in datatable.css, as Orbit tints rather than
+     the hardcoded slabs they were. */
   /* Some of these cards ARE the filter -- Keywords uses them to narrow the
      table to the queries that break at that step, which is the actual next
      action. A card you can press has to look like one. */
-  .ui-stat[onclick]{cursor:pointer;transition:border-color .12s,background .12s}
-  .ui-stat[onclick]:hover{border-color:var(--accent)}
-  .ui-stat.on{border-color:var(--accent);background:var(--accent-bg)}
+  /* Pressable and active states: datatable.css. */
 
   .ui-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
               background:rgb(37,41,55);border:1px solid rgb(55,65,81);
@@ -2411,7 +2395,9 @@
   /* ---- grids: one or two columns, never a squeezed three ---- */
   .wsgrid{ grid-template-columns:1fr; gap:10px; }
   .stat-row{ grid-template-columns:repeat(auto-fit,minmax(128px,1fr)); gap:8px; }
-  .db-metrics, .metricgrid{ grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); }
+  .db-metrics{ grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); }
+  /* .metricgrid was here. Listings now draws .ui-stats like every other
+     screen, and its narrow-screen columns come from datatable.css. */
   .mediagrid{ grid-template-columns:repeat(auto-fill,minmax(88px,1fr)); }
   main#grid{ grid-template-columns:1fr !important; }
 
@@ -2690,8 +2676,13 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    Small, fast, and only on things that are actually clickable. The table
    row is the fastest of them because rows are SCANNED -- anything slower
    than .12s smears as the pointer travels down a list. */
-.metric{ transition:transform .2s ease, box-shadow .2s ease, border-color .15s ease; }
-.metric:hover{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
+/* The hover lift now belongs to the shared card. Kept: a card that filters is
+   a control, and a control that does not answer the pointer does not read as
+   one. */
+.ui-stat[onclick]{ transition:transform .2s ease, box-shadow .2s ease,
+                   border-color .15s ease, background .15s ease; }
+.ui-stat[onclick]:hover{ transform:translateY(-2px);
+                         box-shadow:0 4px 12px rgba(0,0,0,.3); }
 .mktbtn.on, .db-chip{ transition:transform .15s ease, box-shadow .2s ease,
                                  border-color .15s ease, background .15s ease; }
 .mktbtn.on:hover, .db-chip:hover{ transform:translateY(-1px);
@@ -2740,7 +2731,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 /* -- 9. NUMBERS ---------------------------------------------------------
    Counting numbers must not reflow the layout as their width changes,
    which is what makes a count-up look broken rather than alive. */
-.metric .n, .statnum, .countup{ font-variant-numeric:tabular-nums; }
+.statnum, .countup{ font-variant-numeric:tabular-nums; }
 
 /* -- 10. REDUCED MOTION -------------------------------------------------
    An operating-system preference, and it is not a suggestion. Everything
@@ -4072,28 +4063,9 @@ table.ordtable tbody tr.orddetail > td{
 .stk-fbtn .n{ opacity:.6; margin-left:5px; font-variant-numeric:tabular-nums; }
 
 /* ---- the ledger -------------------------------------------------------- */
-.stk-table{ width:100%; border-collapse:collapse; font-size:12px; }
-.stk-table th{
-  text-align:left; font-size:10px; font-weight:800; letter-spacing:.6px;
-  text-transform:uppercase; color:var(--ink3); padding:8px 9px;
-  border-bottom:1px solid var(--line); white-space:nowrap;
-  background:var(--panel); position:sticky; top:0; z-index:1; cursor:pointer;
-  user-select:none;
-}
-.stk-table th:hover{ color:var(--ink); }
-.stk-table th.r, .stk-table td.r{ text-align:right; }
-.stk-table th .dir{ opacity:.55; font-size:9px; margin-left:3px; }
-.stk-table td{
-  padding:9px; border-bottom:1px solid var(--line); vertical-align:middle;
-}
-.stk-table tbody tr{ transition:background-color .15s ease; }
-.stk-table tbody tr:hover td{ background:var(--panel2); }
-.stk-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
-.stk-prod{ display:flex; gap:9px; align-items:center; min-width:0; }
-.stk-thumb{
-  width:34px; height:34px; border-radius:6px; flex:none; object-fit:cover;
-  background:var(--panel2); border:1px solid var(--line);
-}
+/* .stk-table's look now comes from static/css/datatable.css -- see the note
+   there. Its sortable headers keep the hover they always had. */
+.stk-table th{cursor:pointer;user-select:none}
 .stk-pname{ min-width:0; }
 .stk-pname b{
   display:block; font-weight:500; font-size:12px; color:var(--ink);

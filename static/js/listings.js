@@ -1027,10 +1027,36 @@ function summary(){
   // quiet line: they matter, but not enough to spend one of four tiles on, and
   // dropping them would lose information the old summary gave you.
   const _cur = (typeof FILTER !== "undefined") ? FILTER : "all";
-  const tile = (n, label, filter) =>
-    `<div class="metric${_cur===filter?' on':''}" onclick="metricFilter('${filter}')"
-          title="Show only these">
-       <p class="n">${n}</p><p class="l">${label}</p></div>`;
+  // ONE CARD, DEFINED ONCE (CLAUDE.md Rule 12).
+  //
+  //     "the sizing and the theme of the repricer page is nice, i want this to
+  //      be applied on all listings page and the catalog page"
+  //
+  // This used to build its own .metric -- centred, 22px, no bar -- while the
+  // Catalog built .ui-stat and the Repricer built .rp-mc. Three cards, three
+  // sizes, three alignments, on three screens that do the same job. It now
+  // calls the shared uiStat() in pageui.js, and the look lives in
+  // static/css/datatable.css. Nothing about WHAT the tiles count has changed.
+  //
+  // `share` draws the bar along the bottom: the count as a fraction of the
+  // total beside it. "12 blocked" reads differently out of 20 than out of 400,
+  // and the number alone cannot say which. Passed only for the subsets -- the
+  // total is the whole, and a permanently full bar states nothing.
+  const tile = (n, label, filter, tone) => {
+    const whole = Number(total) || 0;
+    const cnt = Number(n);
+    const sub = tone !== undefined;
+    return uiStat({
+      value: n,
+      label: label,
+      on: _cur === filter,
+      onclick: "metricFilter('" + filter + "')",
+      title: "Show only these",
+      share: (sub && !_pending && whole > 0 && isFinite(cnt))
+        ? Math.min(1, cnt / whole) : null,
+      barColor: tone,
+    });
+  };
   const extras = [];
   // A COUNT WITH NO NOUN IS NOT A FACT.
   //
@@ -1091,13 +1117,15 @@ function summary(){
   let tiles;
   if(_draftsView){
     tiles = tile(_n(total), "Drafts", "all")
-          + tile(_n(c.NEEDS_REVIEW), "Needs review", "review")
+          + tile(_n(c.NEEDS_REVIEW), "Needs review", "review", "var(--gold)")
           // APPROVED **and** API_READY. The filter has always matched both, but
           // the tile counted only APPROVED -- so a row that had passed Amazon's
           // preview showed as "0 ready to submit", which is the one number that
           // decides whether there is anything to do.
-          + tile(_n(c.APPROVED + c.API_READY), "Ready to submit", "approved")
-          + tile(_n(c.HOLD + c.ERROR), "Blocked or errored", "holds");
+          + tile(_n(c.APPROVED + c.API_READY), "Ready to submit", "approved",
+                 "var(--ok)")
+          + tile(_n(c.HOLD + c.ERROR), "Blocked or errored", "holds",
+                 "var(--red)");
   }else{
     // THREE OF THESE FOUR TILES USED TO SEND THE SAME FILTER.
     //
@@ -1116,15 +1144,15 @@ function summary(){
     const live = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS) ? LIVE_ITEMS : [];
     tiles = tile(total, "Live listings", "live_all")
           + tile(live.filter(it => liveItemIs(it, "live_notshowing")).length,
-                 "Not showing", "live_notshowing")
+                 "Not showing", "live_notshowing", "var(--red)")
           + tile(live.filter(it => liveItemIs(it, "live_nocost")).length,
-                 "No cost set", "live_nocost")
+                 "No cost set", "live_nocost", "var(--gold)")
           + tile(live.filter(it => liveItemIs(it, "live_oos")).length,
-                 "Out of stock", "live_oos");
+                 "Out of stock", "live_oos", "var(--red)");
   }
 
   _sumHost.innerHTML =
-    `<div class="metricgrid">` + tiles + `</div>`
+    `<div class="ui-stats">` + tiles + `</div>`
     + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
   // STILL ON THE SPREADSHEET. Said here, where the listings are, rather than on
   // a settings page nobody visits -- and it disappears by itself once the

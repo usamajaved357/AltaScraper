@@ -35,10 +35,39 @@ function uiStat(o) {
   } else if (o.note) {
     d = '<div class="ui-note">' + esc(o.note) + "</div>";
   }
-  return '<div class="ui-stat' + (o.tone ? " " + o.tone : "") + '"' +
+  // THE NUMBER FIRST, THE LABEL UNDER IT.
+  //
+  //     "the sizing and the theme of the repricer page is nice, i want this to
+  //      be applied on all listings page and the catalog page"
+  //
+  // This built label-then-value, so a row of cards read as a row of WORDS with
+  // numbers attached rather than a row of numbers. The Repricer's read the
+  // other way round and that is the half of the difference that is structural
+  // rather than a size -- the rest is in static/css/datatable.css.
+  //
+  // Changed here, once, so every screen that opens with four numbers gets it
+  // (CLAUDE.md Rule 12): Listings, the Catalog, Keywords, Stock, PPC and the
+  // rest all call this.
+  //
+  // `share` is optional, 0..1: the bar along the bottom that says what the
+  // count is a share OF. "5 held" means one thing out of 8 and another out of
+  // 80, and a bare number cannot say which. Drawn only when the caller knows
+  // the whole -- an invented denominator would be worse than no bar.
+  let bar = "";
+  if (o.share !== null && o.share !== undefined && o.share !== "") {
+    const pc = Math.max(0, Math.min(100, Number(o.share) * 100));
+    if (isFinite(pc)) {
+      bar = '<div class="ui-stat-bar" style="width:' + pc.toFixed(1) + "%;" +
+        "background:" + (o.barColor || "var(--line2)") + '"></div>';
+    }
+  }
+  return '<div class="ui-stat' + (o.tone ? " " + o.tone : "") +
+    (o.on ? " on" : "") + '"' +
+    (o.onclick ? ' onclick="' + o.onclick + '"' : "") +
     (o.title ? ' title="' + esc(o.title) + '"' : "") + ">" +
+    '<div class="ui-stat-v">' + v + "</div>" +
     '<div class="ui-stat-k">' + esc(o.label || "") + "</div>" +
-    '<div class="ui-stat-v">' + v + "</div>" + d + "</div>";
+    d + bar + "</div>";
 }
 
 // A row of them. Wraps and reflows on its own; the caller never sets a width.

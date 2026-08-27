@@ -254,7 +254,9 @@
   .wsgrid, main#grid, .grid{ grid-template-columns:1fr !important; gap:10px; }
   .stk-grid{ grid-template-columns:1fr; gap:9px; }
   .stat-row{ grid-template-columns:repeat(auto-fit, minmax(128px, 1fr)); gap:8px; }
-  .db-metrics, .metricgrid{ grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); }
+  .db-metrics{ grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); }
+  /* .metricgrid dropped: nothing draws it. The shared cards go two across
+     on a narrow screen, which is defined once in datatable.css. */
   .mediagrid{ grid-template-columns:repeat(auto-fill, minmax(88px, 1fr)); }
   .studiogrid{ grid-template-columns:1fr; }
   .srcalert-skus{ grid-template-columns:1fr; }   /* one SKU per line */
