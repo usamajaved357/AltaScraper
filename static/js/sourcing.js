@@ -1436,6 +1436,24 @@ function srcChart(title, json, anchor){
   ov.onclick = function(e){ if(e.target === ov) close(); };
 }
 
+/* IS A PRICE CHANGE BEING PROPOSED, and to what.
+ *
+ * ONE PLACE ANSWERS THIS. The row's price cell and the stacked bar's caption
+ * both hang on it, and the two must never disagree: a bar captioned "at
+ * proposed price 20.16" while the cell shows no move is the same fact told two
+ * ways. The test is not "is there a decision" -- an 'update' whose price is a
+ * penny off today's is a rounding artefact, not a move, so it is held to the
+ * same 0.01 the cell has always used.
+ *
+ * Returns null when nothing is proposed, or {price, from, up}.
+ */
+function _proposedPrice(r){
+  const d = (r || {}).decision || {}, cur = (r || {}).current || {};
+  if(d.action !== 'update' || d.price == null || cur.price == null) return null;
+  if(Math.abs(d.price - cur.price) < 0.01) return null;
+  return {price: d.price, from: cur.price, up: d.price > cur.price};
+}
+
 /* WHERE THE SELLING PRICE GOES, as one bar.
  *
  * The sum is already written out line by line in the panel below this. The bar
@@ -1445,7 +1463,7 @@ function srcChart(title, json, anchor){
  *
  * Segments are flexed by their own amounts, so widths are true to the money.
  */
-function _stackBar(b){
+function _stackBar(b, r){
   if(!b || b.price == null) return '';
   const cost = +(b.cost || 0);
   const fees = (b.fees && b.fees.lines) || null;
@@ -1459,6 +1477,7 @@ function _stackBar(b){
     };
     ref = f('referral'); close = f('closing');
   }
+  const prop = _proposedPrice(r);
   const other = +(b.postage_label || 0) + +(b.ads || 0);
   const profit = +(b.profit || 0);
   const tot = cost + ref + close + other + Math.max(0, profit);
@@ -1493,6 +1512,18 @@ function _stackBar(b){
         : '')
     + '<span><span class="rp-sq" style="background:#4ebb82"></span>'
     + (profit > 0 ? 'Profit' : 'Shortfall') + '</span>'
+    // WHICH PRICE THIS BAR IS DRAWN AT.
+    //
+    // The bar is a picture of the PROPOSED price, not today's, and nothing on
+    // it said so. When the repricer is holding still the two are the same
+    // number and the question never comes up -- but the moment a move is
+    // proposed, a reader has the row's price in their eye and a bar of
+    // different figures under it, with no line joining them. The caption is
+    // that line, and it only exists when there is something to join.
+    + (prop
+        ? '<span class="rp-sbprop">' + (prop.up ? '&#8599;' : '&#8600;')
+          + ' at proposed price <b>' + _smoney(prop.price) + '</b></span>'
+        : '')
     + '</div>';
   return h;
 }
@@ -1987,9 +2018,12 @@ function _alertBar(j){
   // rather than a fault -- but it has to be said BEFORE somebody arms them,
   // not afterwards in a notification about a price that has already dropped.
   const cuts = rows.filter(function(r){
-    const d = r.decision || {}, ru = r.rule || {}, cu = r.current || {};
-    return d.action === 'update' && d.price != null && cu.price != null
-        && d.price < cu.price - 0.01
+    // Same "is a move proposed" test as the row and the bar -- _proposedPrice
+    // -- narrowed to the downward ones. The threshold stays > 0.01 rather than
+    // the helper's >= : a penny is not a cut worth warning about, and this
+    // count is the one that gets read as "22 SKUs would be cut".
+    const p = _proposedPrice(r), ru = r.rule || {};
+    return p && (p.from - p.price) > 0.01
         && ru.target_roi_pct == null && ru.target_margin_pct == null;
   });
   // HOW MANY CUTS THE UP-ONLY SETTING IS CURRENTLY PREVENTING.
@@ -3511,12 +3545,11 @@ function sourcingRow(r, i){
 
   // 6. price now, and where it is going.
   h += '<td>';
-  if(d.action === "update" && d.price != null && cur.price != null
-     && Math.abs(d.price - cur.price) >= 0.01){
-    const up = d.price > cur.price;
-    h += '<span class="rp-was">' + _smoney(cur.price) + '</span> '
-      +  '<span class="rp-p ' + (up ? 'rp-g' : 'rp-y') + '">'
-      +  _smoney(d.price) + '</span>';
+  const prop = _proposedPrice(r);
+  if(prop){
+    h += '<span class="rp-was">' + _smoney(prop.from) + '</span> '
+      +  '<span class="rp-p ' + (prop.up ? 'rp-g' : 'rp-y') + '">'
+      +  _smoney(prop.price) + '</span>';
   } else {
     h += '<span class="rp-p">'
       +  (cur.price != null ? _smoney(cur.price) : '<span class="rp-d">&mdash;</span>')
@@ -3632,7 +3665,7 @@ function sourcingRow(r, i){
   }
 
   // Where the price goes, then the three figures, then the actions.
-  h += _stackBar(b) + _metStrip(r);
+  h += _stackBar(b, r) + _metStrip(r);
 
   h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px">'
     +  (r.mode === "live"

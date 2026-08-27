@@ -147,6 +147,17 @@
   margin:5px 0 9px;flex-wrap:wrap}
 .rp-sq{width:8px;height:8px;border-radius:2px;display:inline-block;
   vertical-align:middle;margin-right:4px}
+/* WHICH PRICE THE BAR IS DRAWN AT, on the right of the same legend row.
+ *
+ * margin-left:auto rather than a second row: the legend is already a flex line
+ * with room to spare at 9px, and a row of its own would push the tiles down on
+ * every open panel to say something that is only true on some of them.
+ *
+ * --ink2/--ink are this app's names for the mockup's --text-secondary and
+ * --text-primary; the two hex values are the same. The figure is the part
+ * being pointed at, so it carries the primary tier and the weight. */
+.rp-sbprop{margin-left:auto;font-size:9px;color:var(--ink2);white-space:nowrap}
+.rp-sbprop b{color:var(--ink);font-weight:600}
 
 /* ---- the headline figures inside the panel ---------------------------- *
  *
