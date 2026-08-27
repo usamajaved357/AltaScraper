@@ -1557,7 +1557,21 @@ function _metStrip(r){
            + 'Amazon\'s fee'
            + (priced ? ' of ' + _smoney(b.fee)
               : (g.fee == null ? '' : ' of ' + _smoney(g.fee))))
-    + cell('rp-m2g', roi == null ? '&mdash;' : roi.toFixed(0) + '%', 'ROI',
+    // THE TARGET IS SAID, NOT ONLY IMPLIED.
+    //
+    //     "the roi target when i set on a listing at bulk, i donot see on the
+    //      listings that how much target is currently set for it"
+    //
+    // It was in the tooltip and nowhere else, so a target set in bulk across
+    // sixty SKUs left no visible trace on any of them -- and a bare "34%" does
+    // not say whether that is the number you asked for or the number you got.
+    // The label carries it now, so the two sit one above the other.
+    //
+    // roiTone was ALSO already worked out, on the line above, and then thrown
+    // away by a hardcoded green: every ROI was drawn as if it cleared, whether
+    // it did or not. Amber when it is short is the whole point of having asked.
+    + cell(roiTone, roi == null ? '&mdash;' : roi.toFixed(0) + '%',
+           tgt != null ? 'ROI &middot; want ' + tgt + '%' : 'ROI',
            when + 'What you keep, as a share of the cash you put in'
            + (tgt != null ? '. You asked for ' + tgt + '%.' : '.'))
     + cell('rp-m2g', mgn == null ? '&mdash;' : mgn.toFixed(0) + '%', 'Margin',
