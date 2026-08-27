@@ -84,11 +84,35 @@
 
 /* ---- the product cell ----------------------------------------------- */
 /* 36px, square, on the page's own ground so a transparent PNG does not float.
- * Three sizes existed: 34, 38 and 36. */
-.rp-thumb, .dt-thumb, .stk-thumb, .lt .thumb, .catp-img, .pii-img{
+ * Three sizes existed: 34, 38 and 36.
+ *
+ * .pii-img IS NOT IN THIS LIST, and must never be added to it.
+ *
+ *     "what is this where are the pictures"
+ *
+ * It reads like a thumbnail class and it is not: it is the PRIVACY-BLUR
+ * MARKER, whose only rule is `body.privacy-on .pii-img img{filter:blur(12px)}`.
+ * It is put on anything holding a customer-identifying picture -- including the
+ * card view's 180px photo area (listings.js:1571 `class="tileimg pii-img"`) and
+ * the table's image cell. Sizing it 36px square shrank every draft card's
+ * photo to a badge in the corner and left the rest of the card empty, while
+ * the live cards beside them -- same grid, same row, but no pii-img on their
+ * slot -- kept their pictures. Two kinds of card, one broken, which is what
+ * made it look like the pictures had gone missing rather than been resized.
+ *
+ * The rule for what belongs here: a class that MEANS "this is a 36px
+ * thumbnail". Not one that means "blur this", "this is a product image", or
+ * anything else a thumbnail merely happens also to be. */
+/* cover, not contain: .stk-thumb and .catp-img are the <img> itself, and both
+ * used cover before. At 36px a crop costs nothing and a fit costs a lot -- an
+ * Amazon photo is a product on white, so contain floats a small white
+ * rectangle in a dark box with bars either side, which is smaller and dimmer
+ * than what was there. The crop only bites on a tall or wide photo, and at
+ * this size the middle of the product is the whole of what can be seen anyway. */
+.rp-thumb, .dt-thumb, .stk-thumb, .lt .thumb, .catp-img{
   width:36px;height:36px;border-radius:var(--radius-sm);
   background:var(--bg);border:1px solid var(--line2);flex:none;
-  object-fit:contain;overflow:hidden;position:relative}
+  object-fit:cover;overflow:hidden;position:relative}
 .rp-thumb, .dt-thumb{display:flex;align-items:center;justify-content:center;
   font-size:15px;color:var(--ink4)}
 .rp-thumb img, .dt-thumb img{width:100%;height:100%;object-fit:cover}

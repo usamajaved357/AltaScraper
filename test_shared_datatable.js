@@ -85,6 +85,25 @@ check("  its dead grid is gone from dashboard.css", /\.metricgrid\{/.test(dash),
 // exists to prevent exactly this being re-added.
 check("  and from mobile.css", /\.metricgrid\s*[{,]/.test(mob), false);
 
+console.log("\n=== the thumbnail rule sizes thumbnails and nothing else ===");
+//     "what is this where are the pictures"
+//
+// .pii-img reads like a thumbnail class and is not: it is the privacy-blur
+// marker, put on anything holding a customer-identifying picture -- including
+// the card view's 180px photo area. Sizing it 36px square shrank every draft
+// card's photo to a badge in the corner while the live cards beside them, in
+// the same grid row, kept theirs. Its only legitimate rule is the blur.
+check(".pii-img is not sized as a thumbnail",
+      /\.pii-img[^{}]*\{[^}]*width:36px/.test(shared), false);
+check("  its blur rule is untouched in dashboard.css",
+      /body\.privacy-on \.pii-img img/.test(dash), true);
+// The card's photo area must stay the size it was. Nothing in the shared sheet
+// may reach it.
+check("nothing in the shared sheet sizes .tileimg",
+      /\.tileimg[^{}]*\{/.test(shared), false);
+check("  and dashboard.css still gives it its height",
+      /\.tileimg\{[^}]*height:180px/.test(dash), true);
+
 console.log("\n=== the number comes before the label ===");
 // This is the half of the difference that is structural rather than a size: a
 // row of cards should read as a row of NUMBERS, not a row of words.
