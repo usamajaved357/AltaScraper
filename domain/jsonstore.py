@@ -44,7 +44,19 @@ def write_json_atomic(path, data, indent=None):
     themselves whether a failure is fatal.
     """
     try:
-        d = os.path.dirname(path)
+        # A BARE FILENAME HAS NO DIRECTORY, AND "" IS NOT THE CURRENT ONE.
+        #
+        # os.path.dirname("config.json") is "", and os.makedirs("") raises
+        # FileNotFoundError -- which this function then swallowed into a False
+        # that nobody checks. dashboard.py defaults CONFIG_PATH to the relative
+        # "config.json", so the effect was that EVERY settings write in the app
+        # silently did nothing: the repricer's master switch, the default ROI
+        # target and direction, the postage policy, the ASIN monitor's
+        # schedule. Each one answered "Saved", and none of them had.
+        #
+        # Found while wiring the stock setting: it saved, said so, and was 3
+        # again on the next read. The setting was fine; this line was not.
+        d = os.path.dirname(path) or "."
         os.makedirs(d, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=".jsonstore.", suffix=".tmp", dir=d)
         try:

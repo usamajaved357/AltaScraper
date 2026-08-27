@@ -36,6 +36,16 @@ urllib3>=2.0.0                     # imported directly in miles_import.py
 # --- Console output ---
 rich>=13.0.0
 
+# --- Background timers (data/scheduler.py) ---
+# The repricer's four-hourly "check suppliers" and "push armed changes" jobs,
+# plus the sales/catalog/inventory syncs. WITHOUT THIS the app still runs and
+# every job can be triggered by hand (the Repricer's "Push changes now", or
+# /jobs/run/<job_type>) -- register_jobs() reports that timers are unavailable
+# rather than pretending they are queued. It was missing from this file while
+# data/scheduler.py had been importing it for a long time, which is why nothing
+# was ever pushed to Amazon on a timer.
+apscheduler>=3.10.0
+
 # --- Retained from the original file; NOT imported anywhere in the
 #     Python code (the only "pd." hits are JavaScript inside an HTML
 #     string). Kept to avoid surprising a regression; safe to delete.

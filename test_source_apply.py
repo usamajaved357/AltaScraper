@@ -9,7 +9,7 @@ which this is, is to try every route to Amazon and check it is shut.
 Nothing here touches the network: api/amazon_listings.py is stubbed, and the
 stub records exactly what would have been sent.
 """
-import os, sys, json, tempfile, shutil, datetime as dt
+import os, sys, json, copy, tempfile, shutil, datetime as dt
 sys.path.insert(0, r"D:\AltaScraper")
 
 fails = []
@@ -136,15 +136,33 @@ check("a no-op is not pushed",
 
 
 print("\n=== the patch is built by EDITING what Amazon returned ===")
+# ONLY WHAT DIFFERS IS SENT.
+#
+#     "if the prices dont need to be changed i think repricer should not change
+#      anything, if a price change is required yes we should do it. the stock
+#      update is requured, yes do it"
+#
+# ATTRS is a listing already at quantity 5 and 5 days, and DEC asks for 5 and 5
+# -- so the availability patch has nothing to say and is not sent. This used to
+# assert two operations, from when the price was rewritten on every push
+# whether or not it had moved. See test_push_only_changes.py for the full set.
 patches, err = AP.build_patches(ATTRS, DEC, "A1F83G8C2ARO7P")
 check("no error", err, "")
-check("two operations", len(patches), 2)
+check("the price moved, the stock did not: one operation", len(patches), 1)
 po = [p for p in patches if p["path"].endswith("purchasable_offer")][0]
 check("  the price went into the schedule Amazon gave us",
       po["value"][0]["our_price"][0]["schedule"][0]["value_with_tax"], 18.24)
 check("  and the rest of the offer is untouched",
       (po["value"][0]["currency"], po["value"][0]["audience"]), ("GBP", "ALL"))
-fa = [p for p in patches if p["path"].endswith("fulfillment_availability")][0]
+
+# The same decision against a listing Amazon has let run out. Now BOTH go, and
+# the availability shape is still built by editing what Amazon returned.
+_oos = copy.deepcopy(ATTRS)
+_oos["fulfillment_availability"][0]["quantity"] = 0
+_oos["fulfillment_availability"][0]["lead_time_to_ship_max_days"] = 2
+patches2, err2 = AP.build_patches(_oos, DEC, "A1F83G8C2ARO7P")
+check("stock is wrong too: two operations", len(patches2), 2)
+fa = [p for p in patches2 if p["path"].endswith("fulfillment_availability")][0]
 check("  quantity set", fa["value"][0]["quantity"], 5)
 check("  handling set", fa["value"][0]["lead_time_to_ship_max_days"], 5)
 check("  the channel code is left alone",

@@ -125,6 +125,34 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     except Exception:
         pass          # the module default stands, and it is the real policy today
 
+    # HOW MANY UNITS TO KEEP THE LISTING AT.
+    #
+    #     "there should be a separate default stock setting which is activated
+    #      along with the auto pricing being on"
+    #
+    # Read LIVE, here, for the same reason the fee rate and the postage policy
+    # are: this is the only spot a rule is assembled before decide() runs, so it
+    # is the only spot that has to know where a setting is kept (Rule 12).
+    #
+    # Live, and NOT copied onto the SKU at enrolment the way the ROI target and
+    # the direction are. Those two are pricing decisions, and changing your mind
+    # later must not silently re-price sixty listings. This is one number saying
+    # how much stock you hold, so changing it should move everything -- except a
+    # SKU somebody has given its own figure, which is a decision and survives.
+    #
+    # `_repo.rule_for` returns only what was STORED, before defaults are filled
+    # in, so an absent key really does mean "never set on this SKU" rather than
+    # "set to the built-in 3".
+    if rule.get("in_stock_quantity") in (None, ""):
+        try:
+            from config import settings as _settings
+            _stk = (_settings.read_raw(config_path) or {}).get(
+                "sourcing_default_stock")
+            if _stk not in (None, ""):
+                rule["in_stock_quantity"] = max(1, int(_stk))
+        except Exception:
+            pass      # the module default stands, and it is 3
+
     rule["fee_basis"], rule["fee_detail"] = "", ""
     try:
         from domain import amazon_fees as _fees

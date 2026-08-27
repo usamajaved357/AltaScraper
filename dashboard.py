@@ -4254,6 +4254,41 @@ def build_app(backend=None):
             interval=int(os.environ.get("MONITOR_INTERVAL_S") or 0))
     except Exception as _mon_e:
         print("[asin-monitor] scheduler not started:", str(_mon_e)[:200])
+
+    # THE BACKGROUND JOBS, INCLUDING THE ONE THAT PUSHES PRICES.
+    #
+    #     "the set roi should be able to do the job for the prices"
+    #     "i set up a 30 percent roi on the tool but the prices didn't changed
+    #      right away or after 60 seconds"
+    #
+    # They never would have. data/scheduler.py registers sourcing_apply on a
+    # four-hour timer and has done for a long time, but register_jobs() was only
+    # ever called from dashboard_beta.py -- a separate app on a separate port
+    # that nobody runs. So the repricer decided correctly every time and the
+    # decision went nowhere, silently, for ever. Wired here, into the app that
+    # actually serves the screen.
+    #
+    # This starts NO push by itself. sourcing_apply calls domain/source_apply.py
+    # which refuses unless the master switch is on AND the SKU is armed AND it
+    # has a minimum price AND four hours have passed since it last moved -- so
+    # with auto-pricing off, which is the default, the timer runs and does
+    # nothing, exactly as it should. "activated along with the auto pricing
+    # being on" is the master switch, and it is the same switch as before.
+    #
+    # Failure is not fatal and is SAID. Without APScheduler the app is entirely
+    # usable and every job can still be run by hand -- from the Repricer's own
+    # "Push changes now", or /jobs/run/<job_type> -- and a line on the console
+    # is better than a timer everyone assumes is running.
+    try:
+        from data import scheduler as _sched
+        _sched_res = _sched.register_jobs(app, config_path=CONFIG_PATH, cfg=_cfg)
+        if not _sched_res.get("ok"):
+            print("[jobs] timers not started:", _sched_res.get("error"))
+        else:
+            print("[jobs] %d job(s) scheduled" % _sched_res.get("jobs", 0))
+    except Exception as _sched_e:
+        print("[jobs] scheduler not started:", str(_sched_e)[:200])
+
     # Opt-in UI redesign (Stage 1) -- additive read-only endpoints for the new dashboard.
     import routes.dashboard_routes as _dashboard_routes
     _dashboard_routes.register(app, _cfg=_cfg, _client=_client, _state=_state,

@@ -108,26 +108,55 @@ def build_patches(attributes, decision, marketplace_id):
     attrs = attributes or {}
     patches = []
 
+    # ONLY WHAT ACTUALLY DIFFERS GETS SENT.
+    #
+    #     "if the prices dont need to be changed i think repricer should not
+    #      change anything, if a price change is required yes we should do it.
+    #      the stock update is requured, yes do it"
+    #
+    # This used to patch the price on EVERY push, because the decision always
+    # carries one -- so a run whose only real change was putting stock back to
+    # three also rewrote the price to the number it already was. Harmless
+    # arithmetically and not harmless otherwise: it is an edit to a live offer,
+    # it shows in Amazon's own change history, and it makes "the repricer
+    # changed my price" true on a day when it changed nothing.
+    #
+    # The two halves are now independent, which is exactly what he asked for:
+    # the price goes only when the price moves, the stock goes whenever the
+    # stock is wrong, and neither waits for the other.
+
     if decision.get("price") is not None:
         offers = copy.deepcopy(attrs.get("purchasable_offer") or [])
         if not offers:
             return [], ("this listing has no purchasable_offer to edit, so there is "
                         "no price field to patch")
-        touched = False
+        found = False       # the shape exists and we know where the number goes
+        differs = False     # ...and the number we would write is not the one there
         for off in offers:
             for entry in (off.get("our_price") or []):
                 for sched in (entry.get("schedule") or []):
-                    if "value_with_tax" in sched:
-                        sched["value_with_tax"] = decision["price"]
-                        touched = True
-                    elif "value" in sched:
-                        sched["value"] = decision["price"]
-                        touched = True
-        if not touched:
+                    key = ("value_with_tax" if "value_with_tax" in sched
+                           else ("value" if "value" in sched else None))
+                    if key is None:
+                        continue
+                    found = True
+                    # Compared as money, to the penny. A float read back from
+                    # Amazon can be 15.629999999999999 where ours is 15.63, and
+                    # a bare != would call those two different prices for ever.
+                    try:
+                        same = (abs(float(sched[key])
+                                    - float(decision["price"])) < 0.005)
+                    except (TypeError, ValueError):
+                        same = False    # unreadable: treat as needing the write
+                    if not same:
+                        differs = True
+                    sched[key] = decision["price"]
+        if not found:
             return [], ("purchasable_offer carries no our_price schedule, so the "
                         "price could not be set without inventing a shape")
-        patches.append({"op": "replace", "path": "/attributes/purchasable_offer",
-                        "value": offers})
+        if differs:
+            patches.append({"op": "replace", "path": "/attributes/purchasable_offer",
+                            "value": offers})
 
     want_qty = decision.get("quantity")
     want_lead = decision.get("lead_days")
@@ -136,15 +165,28 @@ def build_patches(attributes, decision, marketplace_id):
         if not avail:
             return [], ("this listing has no fulfillment_availability to edit, so "
                         "stock and handling time cannot be patched")
+        differs = False
         for a in avail:
             if want_qty is not None:
+                try:
+                    if int(a.get("quantity")) != int(want_qty):
+                        differs = True
+                except (TypeError, ValueError):
+                    differs = True      # absent or unreadable: set it
                 a["quantity"] = int(want_qty)
             # Only set a handling time where one already exists: writing it onto a
             # channel that never carried it is a guess about Amazon's schema.
             if want_lead is not None and "lead_time_to_ship_max_days" in a:
+                try:
+                    if int(a["lead_time_to_ship_max_days"]) != int(want_lead):
+                        differs = True
+                except (TypeError, ValueError):
+                    differs = True
                 a["lead_time_to_ship_max_days"] = int(want_lead)
-        patches.append({"op": "replace", "path": "/attributes/fulfillment_availability",
-                        "value": avail})
+        if differs:
+            patches.append({"op": "replace",
+                            "path": "/attributes/fulfillment_availability",
+                            "value": avail})
 
     if not patches:
         return [], "there is nothing to change"
