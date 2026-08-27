@@ -148,8 +148,17 @@ console.log("\n=== history shows failures rather than hiding them ===");
 // be, and a run of failures is exactly why a price can look unchanged for days.
 truthy("the sparkline never draws a reading it could not read",
        /p\.landed != null && isFinite\(p\.landed\)/.test(JS));
-truthy("  and the full chart still lists it, with no amount",
-       /isFinite\(v\) \? _smoney\(v\) : '&mdash;'/.test(JS));
+// THE FULL CHART IS A LINE NOW, not a list of rows, so there is no row to
+// print a dash into -- a curve cannot pass through a point that has no height.
+// What must NOT happen is the failures vanishing: a week of them and a week of
+// a genuinely steady price would then be the same picture. They are counted
+// under the header, in amber, with the reason on hover.
+truthy("  and the full chart still reports what it could not read",
+       /const unread = pts\.length - usable\.length/.test(JS));
+truthy("    saying so where the header is read",
+       /could not be read<\/span>/.test(JS));
+truthy("    and never plotting one as if it were a price",
+       /p\.landed != null && isFinite\(p\.landed\)/.test(JS));
 truthy("  because a run of them is why a price looks unchanged",
        /kept rather than filtered out/.test(DR));
 truthy("one reading is not a history", /if\(all\.length < 2\) return ''/.test(JS));

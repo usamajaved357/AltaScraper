@@ -279,6 +279,18 @@ def _notify_push(config_path, ws, mkt, sku, decision, current):
         _n.came_back_in_stock(config_path, ws, sku, name,
                               int(now_qty), marketplace=mkt)
 
+    # A PRICE THAT DID NOT MOVE IS NOT A PRICE MOVE.
+    #
+    # An up-only SKU whose stock or handling time needed fixing produces
+    # action="update" with the price pinned to what Amazon already has -- the
+    # push is real and the log entry is right, but announcing "10.06 -> 10.06"
+    # is a notification that says nothing. The stock and handling change is
+    # still recorded; it just does not ring a bell.
+    _was = (current or {}).get("price")
+    if (_was is not None and decision.get("price") is not None
+            and abs(float(_was) - float(decision["price"])) < 0.005):
+        return
+
     b = decision.get("breakdown") or {}
     drift = decision.get("cost_was")
     _n.price_move(

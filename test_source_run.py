@@ -82,7 +82,8 @@ reading(sid)
 # owner asked for them to go, so a test that still wants that price says so.
 # min_roi_pct 0 switches off the never-sell-at-break-even floor, which is a
 # second floor and would otherwise ask 19.30 here.
-R.save_rule(CFG, WS, MKT, "", {"shipping_label": 3.00, "ads_margin": 2.00,
+R.save_rule(CFG, WS, MKT, "", {"direction": "up_and_down",
+                               "shipping_label": 3.00, "ads_margin": 2.00,
                                "min_profit": 1.00, "min_roi_pct": 0})
 
 current, d = RUN.decide_one(CFG, WS, MKT, SKU, NOW)

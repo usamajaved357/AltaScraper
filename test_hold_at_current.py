@@ -71,7 +71,11 @@ def decide(sell, cost, rule):
 
 
 print("=== his rule, in his own numbers: 20% ROI, held at what he sells at ===")
-RULE = {"target_roi_pct": 20.0, "hold_price": 21.99}
+# up_and_down explicitly: these check the ARITHMETIC, and up-only --
+# the default since 27 Aug 2026 -- would pin the price instead of
+# cutting it, which is a different thing and has its own test.
+RULE = {"direction": "up_and_down",
+        "target_roi_pct": 20.0, "hold_price": 21.99}
 
 # 1. THE COMPLAINT. The target alone would cut 21.99 to 21.66.
 check("without a hold, the target cuts the price",

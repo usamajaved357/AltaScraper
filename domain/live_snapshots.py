@@ -326,6 +326,48 @@ def get(config_path, account_id, marketplace):
     return rec if isinstance(rec, dict) else None
 
 
+def set_price(config_path, account_id, marketplace, sku, price):
+    """Record that ONE SKU now sells for `price`. True if it was found.
+
+    WHY THIS EXISTS. The snapshot is what every screen means by "what it sells
+    for now", and it is refreshed by a full pull from Amazon. A price set by
+    hand through the app is real the moment Amazon accepts it, but the next
+    pull may be hours away -- and until then the Repricer would compare the
+    supplier's cost against the OLD price. A hand RAISE would immediately read
+    as "too dear, cut it back", which is the exact opposite of "the repricer
+    respects the manual change and only acts again if costs force it".
+
+    So the one field that is now known to be wrong is corrected in place. Only
+    that field: everything else in the record still came from Amazon, and
+    inventing more than we were told would make the snapshot a guess.
+
+    Never raises. A snapshot that cannot be updated must not lose a price
+    change that Amazon has already accepted.
+    """
+    try:
+        p = round(float(price), 2)
+    except (TypeError, ValueError):
+        return False
+    k = key(account_id, marketplace)
+    with _LOCK:
+        data = _read_all(config_path)
+        rec = data.get(k)
+        if not isinstance(rec, dict):
+            return False
+        hit = False
+        for it in (rec.get("items") or []):
+            if str(it.get("sku") or "") == str(sku):
+                it["price"] = p
+                # Stamped, so a reader can tell this field apart from the ones
+                # the last pull brought back.
+                it["price_set_by_hand_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                hit = True
+        if hit:
+            _MEM["data"] = data
+            _write_all(config_path, data)
+        return hit
+
+
 def age_seconds(rec):
     """How old a record is, or None when there is no usable timestamp."""
     try:

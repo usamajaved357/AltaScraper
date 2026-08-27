@@ -65,7 +65,12 @@ def chk(price):
             "error": None, "gone_streak": 0}
 
 
-RULE = {"target_roi_pct": 20.0, "max_change_pct": 25.0, "min_price": 1.0}
+# up_and_down explicitly: these check the ARITHMETIC, and up-only --
+# the default since 27 Aug 2026 -- would pin the price instead of
+# cutting it, which is a different thing and has its own test.
+RULE = {"direction": "up_and_down",
+        "target_roi_pct": 20.0, "max_change_pct": 25.0,
+        "min_price": 1.0}
 
 print("=== a move past the threshold is APPLIED ===")
 d = S.decide({"price": 24.99, "quantity": 5, "lead_days": 3},

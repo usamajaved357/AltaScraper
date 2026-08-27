@@ -190,6 +190,22 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _rule = _sourcing.rule_with_defaults(
                 _repo.rule_for(CONFIG_PATH, d["workspace_id"],
                                d["marketplace"], d["sku"]))
+            # THE FEE RATE THE DECISION ACTUALLY USED, not the module default.
+            #
+            # rule_for reads the stored rule, whose referral_rate is NULL, so
+            # rule_with_defaults fills in 15%. But decide_one resolves the real
+            # rate first -- Amazon's quote for this ASIN, or this account's own
+            # measured average -- and prices with that. Two rates, one panel:
+            # the tiles and the bar were at 17.5% while the supplier table
+            # beneath them was at 15%, so "you keep" disagreed with "profit /
+            # unit" by 0.34 on a 13.42 price and neither said why.
+            #
+            # Taken off the breakdown rather than resolved again here, because
+            # asking a second time could answer differently -- the cache can be
+            # refreshed between the two calls (CLAUDE.md Rule 12).
+            _fr = ((d.get("decision") or {}).get("breakdown") or {}).get("fee_rate")
+            if _fr:
+                _rule["referral_rate"] = _fr
             # THE SUPPLIER LINKS, RANKED, on the row itself.
             #
             #     "i want to be shown all the available supplier/ source links
@@ -202,9 +218,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             # screen cannot disagree about which link is cheapest, what it costs
             # delivered, or when it would arrive (Rule 12).
             try:
+                # AT THE PRICE THE PANEL IS ABOUT.
+                #
+                # This passed the CURRENT price while the tiles and the stacked
+                # bar an inch above are worked out at the DECIDED one. Where
+                # they differ, two profit figures sat side by side meaning
+                # different things -- measured on jack_uk, five panels, one
+                # reading "£0.00 at £13.42" in the tile and "-£3.85" in the
+                # supplier row beneath it, with nothing to say the second was
+                # about a price that is being replaced.
+                #
+                # The decided price is the right one for this column: it is
+                # there to COMPARE suppliers, and comparing them at the price
+                # that is about to be set answers "what would each of these
+                # leave me". Falls back to the current price when nothing is
+                # being changed, which is then the same number anyway.
+                _sell = ((d.get("decision") or {}).get("price")
+                         or (d.get("current") or {}).get("price"))
                 _opts = _osrc.options_for(
                     CONFIG_PATH, d["workspace_id"], d["marketplace"], d["sku"],
-                    sell_price=(d.get("current") or {}).get("price"),
+                    sell_price=_sell,
                     rule=_rule, now=_dt.datetime.now())
             except Exception:
                 _opts = []
@@ -242,6 +275,9 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                         "default_target": (
                             _read_config().get("sourcing_default_target")
                             or {"kind": "none", "pct": None}),
+                        "default_direction": str(
+                            _read_config().get("sourcing_default_direction")
+                            or "up_only"),
                         "defaults": _sourcing.DEFAULT_RULE})
 
     @app.route("/sourcing/check_listings", methods=["POST"])
@@ -533,6 +569,19 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             _repo.save_rule(CONFIG_PATH, wsid, mkt, sku, {key: float(pct)})
         except Exception:
             pass          # a default that cannot be applied must not stop tracking
+        # AND WHICH WAY IT MAY MOVE. Written the same way and for the same
+        # reason: a stored value on the SKU, so changing the setting later
+        # never re-prices anything already being tracked.
+        try:
+            d = str((_read_config().get("sourcing_default_direction")
+                     or "up_only")).lower()
+            if d in ("up_only", "up_and_down", "match_floor"):
+                existing = _repo.rule_for(CONFIG_PATH, wsid, mkt, sku) or {}
+                if not existing.get("direction"):
+                    _repo.save_rule(CONFIG_PATH, wsid, mkt, sku,
+                                    {"direction": d})
+        except Exception:
+            pass
 
     # ---- floors by the sheetful ------------------------------------------
     #
@@ -571,8 +620,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
 
         buf = _io.StringIO()
         w = _csv.writer(buf)
+        # "Direction" comes back filled in and is read on upload, so the sheet
+        # can set both in one pass -- which is the point of it: the floor and
+        # the direction together are what make a SKU safe to arm.
         w.writerow(["SKU", "ASIN", "Product Title", "Current Price",
-                    "Supplier Cost", "Current Min Price", "New Min Price"])
+                    "Supplier Cost", "Current Min Price", "New Min Price",
+                    "Direction"])
         for e in rows_e:
             sku = str(e.get("sku") or "")
             if not sku:
@@ -586,12 +639,25 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
             mp = rule.get("min_price")
             w.writerow([
                 sku,
-                cur.get("asin") or item.get("asin") or "",
+                # OUR ASIN, OR BLANK -- never the draft's.
+                #
+                # This fell back to the catalogue item, and for a SKU Amazon
+                # has no record of that item is the DRAFT, whose asin is the
+                # COMPETITOR the listing was researched from (CLAUDE.md Rule 1).
+                # It is worse here than on screen: the upload MATCHES BY ASIN
+                # when a SKU is missing, so a competitor's code in this column
+                # could attach a floor to whichever of the seller's own SKUs
+                # happened to sit on that ASIN.
+                #
+                # Blank is the honest answer. The SKU column identifies the row
+                # on the way back in, and it is always filled.
+                cur.get("asin") or "",
                 (item.get("title") or "")[:120],
                 ("" if cur.get("price") is None else "%.2f" % cur["price"]),
                 ("" if bd.get("cost") is None else "%.2f" % bd["cost"]),
                 ("" if mp is None else "%.2f" % float(mp)),
                 "",                      # New Min Price -- the one to fill in
+                str(rule.get("direction") or "up_only"),
             ])
         out = buf.getvalue()
         return Response(out, mimetype="text/csv", headers={
@@ -637,12 +703,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                 by_asin.setdefault(a, []).append(str(d.get("sku")))
 
         done, armed, skipped, errors = [], [], 0, []
+        dirs = 0
         for r in rows:
             raw_sku = str((r or {}).get("sku") or "").strip()
             raw_asin = str((r or {}).get("asin") or "").strip().upper()
             raw_val = (r or {}).get("min_price")
+            raw_dir = str((r or {}).get("direction") or "").strip().lower()
             val = "" if raw_val is None else str(raw_val).strip()
-            if val == "":
+            # A ROW MAY CARRY EITHER, OR BOTH. Somebody revising directions
+            # across the account without touching floors should not have to
+            # retype every price to be allowed to do it.
+            if val == "" and not raw_dir:
                 skipped += 1                       # a blank row is not an error
                 continue
 
@@ -661,20 +732,48 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                                "why": "not a SKU this account is tracking"})
                 continue
 
-            try:
-                num = float(val.replace("£", "").replace("$", "")
-                            .replace(",", "").strip())
-            except (TypeError, ValueError):
-                errors.append({"row": sku,
-                               "why": "%r is not a number" % val})
-                continue
-            if num <= 0:
-                errors.append({"row": sku,
-                               "why": "a floor has to be above zero"})
-                continue
+            # WHICH WAY IT MAY MOVE. Written first and on its own, so a row
+            # that carries only a direction still does something -- and so a
+            # bad floor further down cannot undo a direction that was fine.
+            patch = {}
+            if raw_dir:
+                d = raw_dir.replace(" ", "_").replace("-", "_")
+                # The words somebody would actually type into a spreadsheet,
+                # not only the stored keys.
+                d = {"up": "up_only", "uponly": "up_only", "up_only": "up_only",
+                     "up_and_down": "up_and_down", "updown": "up_and_down",
+                     "both": "up_and_down", "up_down": "up_and_down",
+                     "match_floor": "match_floor", "floor": "match_floor",
+                     "match": "match_floor"}.get(d, "")
+                if not d:
+                    errors.append({"row": sku, "why": (
+                        "%r is not a direction -- use up_only, up_and_down or "
+                        "match_floor" % raw_dir)})
+                    continue
+                patch["direction"] = d
 
-            _repo.save_rule(CONFIG_PATH, wsid, mkt, sku, {"min_price": num})
-            done.append({"sku": sku, "min_price": round(num, 2)})
+            if val != "":
+                try:
+                    num = float(val.replace("£", "").replace("$", "")
+                                .replace(",", "").strip())
+                except (TypeError, ValueError):
+                    errors.append({"row": sku,
+                                   "why": "%r is not a number" % val})
+                    continue
+                if num <= 0:
+                    errors.append({"row": sku,
+                                   "why": "a floor has to be above zero"})
+                    continue
+                patch["min_price"] = num
+
+            _repo.save_rule(CONFIG_PATH, wsid, mkt, sku, patch)
+            if "direction" in patch:
+                dirs += 1
+            if "min_price" in patch:
+                done.append({"sku": sku,
+                             "min_price": round(patch["min_price"], 2)})
+            elif want_arm:
+                continue          # a direction alone does not arm anything
 
             if want_arm:
                 # The same gate /sourcing/arm applies. It cannot fail here --
@@ -688,6 +787,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                     armed.append(sku)
 
         note = "%d min price%s updated" % (len(done), "" if len(done) == 1 else "s")
+        if dirs:
+            note += ", %d direction%s set" % (dirs, "" if dirs == 1 else "s")
         if armed:
             note += ", %d armed" % len(armed)
         if skipped:
@@ -695,8 +796,152 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         if errors:
             note += ", %d could not be read" % len(errors)
         return jsonify({"ok": True, "updated": len(done), "armed": len(armed),
+                        "directions": dirs,
                         "skipped": skipped, "errors": errors,
                         "rows": done, "note": note + "."})
+
+    @app.route("/sourcing/default_direction", methods=["GET", "POST"])
+    def sourcing_default_direction():
+        """Which way a NEWLY tracked SKU may move its price. Global.
+
+        Like the default target beside it, this is WRITTEN onto a SKU when it
+        is enrolled rather than read live, so changing it never re-prices
+        anything already being tracked.
+        """
+        if request.method == "GET":
+            return jsonify({"ok": True, "direction": str(
+                _read_config().get("sourcing_default_direction") or "up_only")})
+        b = _body()
+        d = str(b.get("direction") or "").strip().lower()
+        if d not in ("up_only", "up_and_down", "match_floor"):
+            return jsonify({"ok": False, "error": (
+                "the direction must be up_only, up_and_down or match_floor "
+                "-- got %r" % b.get("direction"))}), 400
+        raw = _read_config()
+        raw["sourcing_default_direction"] = d
+        _write_config(raw)
+        return jsonify({"ok": True, "direction": d, "note": (
+            {"up_only": "New SKUs will only ever have their price raised.",
+             "up_and_down": "New SKUs will follow their supplier both ways.",
+             "match_floor": "New SKUs will sit exactly on their floor."}[d]
+            + " Nothing already tracked has changed.")})
+
+    # ---- a price set by hand ----------------------------------------------
+    #
+    #     "This lets the user adjust prices without leaving the app or going to
+    #      Seller Central. The repricer respects the manual change and only
+    #      acts again if costs force it."
+    #
+    # THIS IS THE ONE ROUTE ON THIS SCREEN THAT CHANGES A LIVE PRICE ON DEMAND.
+    # Everything else decides and waits for the four-hourly run; this pushes
+    # the moment it is asked. So it is deliberately NOT gated by the master
+    # switch or by whether the SKU is armed -- those exist to control what the
+    # app does UNWATCHED, and somebody typing a price into a box is watching.
+    #
+    # It IS gated by the floor, because that guard is not about supervision: it
+    # is the number that says "never below this whatever happens", and a typo
+    # in a price box is exactly the accident it was put there for.
+    @app.route("/sourcing/manual_price", methods=["POST"])
+    def sourcing_manual_price():
+        b = _body()
+        acc, wsid, mkt = _where_acc()
+        sku = (b.get("sku") or "").strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "no sku"}), 400
+        try:
+            price = float(str(b.get("price")).replace("£", "").replace("$", "")
+                          .replace(",", "").strip())
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": (
+                "that must be an amount, e.g. 18.47 -- got %r"
+                % b.get("price"))}), 400
+        if price <= 0:
+            return jsonify({"ok": False, "error": (
+                "a price has to be above zero")}), 400
+
+        rule = _sourcing.rule_with_defaults(
+            _repo.rule_for(CONFIG_PATH, wsid, mkt, sku))
+        floor = rule.get("min_price")
+        if floor is not None and price < float(floor) - 0.001:
+            return jsonify({"ok": False, "error": (
+                "%.2f is below the %.2f you set as this SKU's floor. Change "
+                "the floor first if you really mean to sell lower."
+                % (price, float(floor)))}), 400
+
+        cur = _run.current_for(CONFIG_PATH, wsid, mkt, sku) or {}
+        was = cur.get("price")
+
+        # PUSHED THROUGH THE SAME CODE THE REPRICER USES. build_patches edits
+        # the attribute structure Amazon returned rather than composing one, so
+        # a hand-set price cannot take a different shape to an automatic one --
+        # and Rule 1 holds for both (CLAUDE.md Rule 12).
+        from api import amazon_listings as _al
+        from domain import accounts as _acc
+        creds = _acc.account_creds(acc)
+        mkt_id = _acc.marketplace_id(mkt)
+        seller = str(acc.get("seller_id") or "")
+        got = _al.get_item(creds, mkt, seller, sku, mkt_id)
+        if got.get("status") != _al.OK:
+            return jsonify({"ok": False, "error": (
+                "Amazon does not have this SKU"
+                if got.get("status") == _al.GONE else
+                "could not read the listing from Amazon: %s"
+                % got.get("error"))}), 400
+
+        # ONLY THE PRICE. No quantity and no handling time: this is a price
+        # box, and silently pushing the repricer's idea of the stock level
+        # alongside it would be changing something nobody asked to change.
+        patches, err = _apply.build_patches(
+            got["attributes"], {"price": round(price, 2)}, mkt_id)
+        if err:
+            return jsonify({"ok": False, "error": err}), 400
+        res = _al.patch(creds, mkt, seller, sku, mkt_id, got["product_type"],
+                        patches,
+                        issue_locale=("en_US" if str(mkt).upper() == "US"
+                                      else "en_GB"))
+        if res.get("status") != _al.OK:
+            why = res.get("error") or "Amazon rejected the change"
+            if res.get("issues"):
+                why += " -- " + "; ".join(
+                    str(i.get("message") or "")[:120]
+                    for i in res["issues"][:3])
+            return jsonify({"ok": False, "error": why}), 400
+
+        # RECORDED AS A MANUAL OVERRIDE, in the same log the automatic changes
+        # go to. A price that moved with no entry beside it is a price nobody
+        # can account for later, and "who changed this" is the first question
+        # asked when one looks wrong.
+        who = ""
+        try:
+            from flask import session as _sess
+            who = str(_sess.get("user") or "")
+        except Exception:
+            who = ""
+        decision = {
+            "action": "update", "price": round(price, 2),
+            "quantity": None, "lead_days": None, "source_id": None,
+            "manual": True, "manual_by": who,
+            "reason": ("Manual: %s%s set by %s"
+                       % (("%.2f -> " % float(was)) if was is not None else "",
+                          "%.2f" % price, who or "hand")),
+            "blocked_by": "", "rejections": [], "inputs_age_mins": None,
+        }
+        _repo.record_action(CONFIG_PATH, wsid, mkt, sku, decision,
+                            current=cur, applied=1,
+                            at=_dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        # AND THE APP'S OWN RECORD OF WHAT IT IS SELLING FOR. Without this the
+        # next decision compares the supplier against the OLD price, so a hand
+        # raise would immediately read as "too dear, cut it" -- which is the
+        # opposite of "the repricer respects the manual change".
+        try:
+            from domain import live_snapshots as _ls
+            _ls.set_price(CONFIG_PATH, wsid, mkt, sku, round(price, 2))
+        except Exception:
+            pass
+        return jsonify({"ok": True, "price": round(price, 2), "was": was,
+                        "submission_id": res.get("submission_id"),
+                        "note": ("Amazon has it as %.2f. It can take a few "
+                                 "minutes to show on the listing." % price)})
 
     @app.route("/sourcing/default_target", methods=["GET", "POST"])
     def sourcing_default_target():
@@ -1092,6 +1337,18 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                     "a margin target of %g%% would need the customer to pay more "
                     "than the whole price as profit" % v)}), 400
             vals[key] = v
+
+        # WHICH WAY THE PRICE MAY MOVE. Three named values and nothing else --
+        # an unrecognised one stored here would be read back by decide() as
+        # "not up_only", quietly turning the protective default off on that
+        # SKU, which is the one direction a typo must not be able to go.
+        if "direction" in vals:
+            d = str(vals["direction"] or "").strip().lower()
+            if d not in ("up_only", "up_and_down", "match_floor"):
+                return jsonify({"ok": False, "error": (
+                    "the direction must be up_only, up_and_down or "
+                    "match_floor -- got %r" % vals["direction"])}), 400
+            vals["direction"] = d
 
         # A BUFFER IS A COUNT OF DAYS, and the same argument as the boxes below
         # applies: "2 days" stored as text would read back as something, be

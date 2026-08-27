@@ -70,7 +70,11 @@ from listing import pricing as P
 # these numbers were written, and it is a SECOND floor -- with it on, 9.50 asks
 # 19.30 rather than 18.24. Switched off here so this block still tests the flat
 # rule on its own. The safety floor gets its own tests below.
-ALLOW = {"shipping_label": 3.00, "ads_margin": 2.00, "min_profit": 1.00,
+# up_and_down explicitly: these check the ARITHMETIC, and up-only --
+# the default since 27 Aug 2026 -- would pin the price instead of
+# cutting it, which is a different thing and has its own test.
+ALLOW = {"direction": "up_and_down",
+         "shipping_label": 3.00, "ads_margin": 2.00, "min_profit": 1.00,
          "min_roi_pct": 0}
 
 # cost + 15% fee + 3.00 postage label + 2.00 ads + 1.00 profit, solved for price:
