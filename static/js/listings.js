@@ -914,18 +914,17 @@ function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
 //
 // Published means the store says LIVE, or a Sync has loaded Amazon's catalogue
 // and Amazon itself lists the SKU or ASIN.
-function isPublishedRow(r){
-  const n = v => String(v||"").trim().toUpperCase();
-  if(n(r.status) === "LIVE") return true;
-  const skus  = new Set((LIVE_ITEMS||[]).map(x=>n(x.sku)).filter(Boolean));
-  const asins = new Set((LIVE_ITEMS||[]).map(x=>n(x.asin)).filter(Boolean));
-  if(skus.size && skus.has(n(r.sku))) return true;
-  // Competitor reference excluded -- see _matchableAsin. A draft is not
-  // published just because the product it was researched from is.
-  const a = _matchableAsin(r);
-  if(asins.size && a && asins.has(a)) return true;
-  return false;
-}
+//
+// THE BODY NOW LIVES IN static/js/liststatus.js (CLAUDE.md Rule 12). It was one of
+// THREE separate answers to "is this published" -- this one counting only LIVE,
+// miles_template.js's _PUBLISHED_STATES counting LIVE and SUBMITTED, and
+// barcode_clash.py counting LIVE, SUBMITTED and ACTIVE. A row Amazon had accepted
+// was therefore "published" to one of them and "a draft" to another, which is how
+// a submitted listing came to sit in Drafts reading as if it had never been sent.
+// The name stays here because everything on this screen calls it; the rule it
+// applies is defined once, next to the two questions it had been confused with
+// (lsWasSentToAmazon vs lsIsPublished).
+function isPublishedRow(r){ return lsIsPublished(r); }
 
 // Build the SKU/ASIN sets once per render -- reused by summary()
 function _liveCatSetsForCurrentView(){

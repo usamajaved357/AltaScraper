@@ -90,7 +90,11 @@ function _streamRunPanel(url, sku, mode){
       else if(low.indexOf("not live")>=0 || low.indexOf("api call failed")>=0 || low.indexOf("api_error")>=0){ verdict={kind:"error", n:0, raw:d}; }
       else if(low.indexOf("missing")>=0 && low.indexOf("skip")>=0){ verdict={kind:"missing", raw:d}; }
       else if(low.indexOf("api_ready")>=0 || low.indexOf("preview clean")>=0){ verdict={kind:"ok_preview", raw:d}; }
-      else if(low.indexOf("live")>=0 || low.indexOf("submitted")>=0){ verdict={kind:"ok_submit", raw:d}; }
+      // "submitted" BEFORE "live" -- the accepted line reads "SUBMITTED --
+      // accepted by Amazon (live shortly)" and contains both. Same order, same
+      // reason, as _rqParseLine in runqueue.js.
+      else if(low.indexOf("submitted")>=0){ verdict={kind:"ok_submit_pending", raw:d}; }
+      else if(low.indexOf("live")>=0){ verdict={kind:"ok_live", raw:d}; }
       const wm=d.match(/warnings?:\s*(.+)$/i); if(wm) warnings=wm[1];
     }
     if(d.toLowerCase().indexOf("no seller_id")>=0) verdict={kind:"nocreds", raw:d};
@@ -202,9 +206,13 @@ function _streamRunPanel(url, sku, mode){
         +(warnings?('<div class="rwarn">Non-blocking warnings: '+esc(warnings)+'</div>'):'<div class="rmsg">No extra boxes need filling. It\u2019s ready to submit.</div>');
       return;
     }
-    if(verdict.kind==="ok_submit"){
-      P.verdict.innerHTML='<div class="rgood">\u2713 Published live to Amazon.</div>'
-        +(warnings?('<div class="rwarn">Warnings: '+esc(warnings)+'</div>'):'<div class="rmsg">The listing is now live on your account.</div>');
+    // Same wording as the queued path, from the same place (liststatus.js).
+    // NOTE: _streamRunPanel has no callers left -- previewOne/submitOne both go
+    // through rqEnqueue in runqueue.js -- but it is kept in step rather than left
+    // holding the sentence that caused the bug, in case anything reaches it again.
+    if(verdict.kind==="ok_live"){ P.verdict.innerHTML=lsVerdictHtml("ok_live", warnings); return; }
+    if(verdict.kind==="ok_submit_pending" || verdict.kind==="ok_submit"){
+      P.verdict.innerHTML=lsVerdictHtml("ok_submit_pending", warnings);
       return;
     }
   }

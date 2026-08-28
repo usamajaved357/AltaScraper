@@ -474,6 +474,12 @@ function render(){
   const _liveGroupShown = sets.liveGroupShown;
   const _isActuallyLive = r => isActuallyLive(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
   const _isClaimedOnly  = r => isClaimedLiveOnly(r, _liveCatSkus, _liveCatAsins, _liveGroupShown);
+  // SENT TO AMAZON, NOT LIVE YET. Its own state, so its own group -- filed under
+  // Drafts it read as "never sent", which is what made an accepted submit look
+  // like a failed one. Defined in liststatus.js so this and the tab filter cannot
+  // disagree about it. Guarded on the helper existing so a load-order accident
+  // degrades to the old grouping rather than breaking the grid.
+  const _isWaiting = r => (typeof lsIsWaitingOnAmazon === "function") ? lsIsWaitingOnAmazon(r) : false;
   // Listings we published that Amazon no longer has. Hidden from the grid entirely --
   // they are not drafts and they are not live. Never auto-deleted from the sheet.
   const goneRows = realAll.filter(isDeletedOnAmazon);
@@ -505,7 +511,13 @@ function render(){
   // listBlock() draws either the tile grid or the Orbit table, depending on the
   // saved view preference. Every group goes through it, so a new view can never
   // support "drafts" but silently forget "claimed" or "live".
-  let draftHtml = listBlock(real);
+  // The submitted-and-waiting rows come OUT of the drafts group here too, so the
+  // All view groups them exactly as the Drafts view does. One rule, both screens.
+  const _waitingAll = real.filter(_isWaiting);
+  const _draftsAll  = real.filter(r => !_isWaiting(r));
+  let draftHtml = listBlock(_draftsAll);
+  const waitingAllHtml = (typeof submittedGroupHtml === "function")
+                       ? submittedGroupHtml(_waitingAll) : "";
   // DEDUPE: the same SKU can exist BOTH as an app row marked LIVE and as an
   // Amazon-catalog tile (fetched from Seller Central). Showing both makes one
   // real listing appear twice. Prefer the app row (it has the edit controls +
@@ -641,10 +653,11 @@ function render(){
       + claimedHtml;   // already its own folded block -- no heading needed
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
+      + waitingAllHtml
       + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
       + (liveHtml?('<div class="srcgroup">Live on Amazon</div>'+liveHtml):'')
       + claimedHtml
-      + ((!draftHtml&&!liveHtml&&!claimedHtml)?'<div class="empty">Nothing to show yet.</div>':'');
+      + ((!draftHtml&&!liveHtml&&!claimedHtml&&!waitingAllHtml)?'<div class="empty">Nothing to show yet.</div>':'');
   } else {
     // DRAFTS = ONLY listings that are NOT live/published on Amazon. A row is "published"
     // if the sheet marks it LIVE, OR (when a Sync has loaded Amazon's catalog) Amazon
@@ -655,12 +668,24 @@ function render(){
     // list itself cannot disagree about what a draft is. It was written out here
     // and NOT there, which is exactly how the tiles came to count 86 listings
     // over a list showing 74.
-    const draftsOnly = realAll.filter(r=>!isPublishedRow(r));
-    const draftsHtml = listBlock(draftsOnly);
-    const _liveHere = realAll.length - draftsOnly.length;   // published rows hidden from Drafts
+    const notPublished = realAll.filter(r=>!isPublishedRow(r));
+    // AND THE ONES ALREADY SENT COME OUT OF "DRAFTS".
+    //
+    // A row Amazon has ACCEPTED is not a draft -- it is waiting on Amazon, which
+    // takes 5-30 minutes. It was being filed under "Drafts (not yet live on
+    // Amazon)", a heading that is technically true and reads as "you still have
+    // to send this" -- so an accepted submit looked like a failed one, while the
+    // drawer above it claimed the listing was already live.
+    const waitingRows = notPublished.filter(_isWaiting);
+    const draftsOnly  = notPublished.filter(r=>!_isWaiting(r));
+    const draftsHtml  = listBlock(draftsOnly);
+    const waitingHtml = (typeof submittedGroupHtml === "function")
+                      ? submittedGroupHtml(waitingRows) : "";
+    const _liveHere = realAll.length - notPublished.length;   // published rows hidden from Drafts
     grid.innerHTML = note
+      + waitingHtml
       + (draftsHtml?('<div class="srcgroup">Drafts (not yet live on Amazon)</div>'+draftsHtml):'')
-      + ((!draftsHtml)?(empties.length ? "" :
+      + ((!draftsHtml && !waitingHtml)?(empties.length ? "" :
           (_liveHere>0
             ? `<div class="empty">No drafts here — all ${_liveHere} listing${_liveHere>1?'s are':' is'} live on Amazon. Switch to <b>Live on Amazon</b> or <b>All</b> to see them.</div>`
             // NOT LOADED IS NOT EMPTY. Telling somebody who has 13 listings to
@@ -828,9 +853,13 @@ let AMZ_STATE = {};
 // deleted listing from one that never existed -- getListingsItem answers NOT_FOUND for
 // both (verified on the live account). Only the sheet knows which it was, so ONLY these
 // rows may be treated as deleted when Amazon says NOT_FOUND. Everything else is a draft.
-const _PUBLISHED_STATES = new Set(["LIVE", "SUBMITTED"]);
+// The set itself now lives in static/js/liststatus.js as LS_SENT_STATES, because
+// this was one of three copies of it and the three disagreed (CLAUDE.md Rule 12).
+// Note this asks a DIFFERENT question from the Drafts filter: "did we send it"
+// (LIVE or SUBMITTED), not "is it live now". Conflating those two is the whole of
+// the submitted-stays-in-Drafts bug, so they are named apart and defined once.
 function amzState(r){ return AMZ_STATE[String((r&&r.sku)||"")] || {}; }
-function wasPublished(r){ return _PUBLISHED_STATES.has(String((r&&r.status)||"").trim().toUpperCase()); }
+function wasPublished(r){ return lsWasSentToAmazon(r); }
 // Published by us, and Amazon no longer has it -> deleted on Amazon.
 function isDeletedOnAmazon(r){ return wasPublished(r) && amzState(r).state === "gone"; }
 
