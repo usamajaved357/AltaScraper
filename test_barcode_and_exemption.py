@@ -143,8 +143,21 @@ truthy("  and it is attached to the drawer's row",
        "_attach_identifier(c, r, CONFIG_PATH" in R)
 JS = open(os.path.join("static", "js", "listings.js"), encoding="utf-8").read()
 truthy("the drawer draws it", "function identifierPanel(" in JS)
+# The drawer was rebuilt to the listing-editor-lighter design on 29 Aug 2026
+# and no longer interpolates these two straight into one template literal --
+# it assigns them, then puts them in the always-on block above the hero. So
+# the check moved to _dwShell, and it now asserts the thing that actually
+# matters rather than a spelling: the panel is above the compliance banner AND
+# it is NOT one of the folds. A barcode already on another listing has to be
+# REPORTED (CLAUDE.md Rule 1), and a report behind a collapsed summary has not
+# been made.
+_shell = JS.split("function _dwShell(")[1].split("\nfunction ")[0]
 truthy("  above the compliance banner",
-       JS.index("${identifierPanel(r)}") < JS.index("${complianceBanner(r)}"))
+       _shell.index("identifierPanel(r)") < _shell.index("complianceBanner(r)"))
+truthy("  drawn open at the top, never folded away",
+       "dw2-alwayson" in _shell
+       and _shell.index("${alwaysOn}") < _shell.index("${heroBlock}")
+       and "dwFold" not in _shell)
 truthy("  with the tick box", "Apply for GTIN exemption" in JS)
 truthy("  saying what ticking it declares", "it is a declaration" in JS)
 truthy("  and the tick saves", "function setGtinExemption(" in JS)

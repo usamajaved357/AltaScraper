@@ -139,6 +139,12 @@ truthy("Edit is still in the More menu",   "Edit details" in LJ)
 truthy("Edit is still the whole card",     "class=\"tilebody\" onclick=\"openDrawer(" in LJ)
 truthy("the price panel is still what sends a price", "priceEdit('" in LJ)
 truthy("and the table row keeps its Review button",   ">Review</button>" in LJ)
+# The way IN to Amazon is the ASIN itself -- "we should be able to open the
+# listing by clicking on the green asin". The card lost its button; the drawer
+# header's ASIN is a link. Asserted so the button's removal can never quietly
+# take the last route with it.
+truthy("and the drawer header's ASIN opens Amazon",
+       'class="dw2-asin" href="https://www.amazon.' in LJ)
 
 print("\n== the green ASIN is the link the icon always promised ==")
 # It carried a ti-external-link icon inside a plain <span>: an icon promising

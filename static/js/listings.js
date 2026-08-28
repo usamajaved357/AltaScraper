@@ -1830,8 +1830,13 @@ function _dwShell(r, urls, priceStr, risks){
   // the SKU is labelled as a source and never presented as this listing's
   // ASIN -- see rowAsin(); this app creates new products, it does not add
   // offers to somebody else's.
+  // The ASIN IS the link -- "we should be able to open the listing by clicking
+  // on the green asin". Deliberately NOT titled "Open this listing on Amazon":
+  // that exact wording belongs to the card button that was removed, and
+  // test_product_card.py guards it. This says which ASIN it opens, which is
+  // the thing worth saying here anyway.
   const asinBit = ownAsin
-    ? `<a class="dw2-asin" href="https://www.amazon.${_dwTld(r)}/dp/${esc(ownAsin)}" target="_blank" rel="noopener" title="Open this listing on Amazon">${esc(ownAsin)}</a>`
+    ? `<a class="dw2-asin" href="https://www.amazon.${_dwTld(r)}/dp/${esc(ownAsin)}" target="_blank" rel="noopener" title="Open ${esc(ownAsin)} on Amazon in a new tab">${esc(ownAsin)}</a>`
     : (srcAsin ? `<span class="dw2-asin src" title="The competitor ASIN in the SKU \u2014 the reference this listing was built from, NOT our listing">ref ${esc(srcAsin)}</span>` : "");
   const bar = `<div class="dw2-bar">
       <span class="badge ${badgeClass(r.status)}">${esc(r.status||'\u2014')}</span>
