@@ -1,0 +1,464 @@
+/* ============================================================================
+   THE LISTING DETAIL DRAWER — "listing-editor-lighter" redesign
+   ============================================================================
+
+   This file is the drawer's ONLY styling. It is deliberately a separate
+   stylesheet (CLAUDE.md Rule 7: new work gets its own file from day one)
+   rather than another 400 lines bolted onto the 250KB dashboard.css.
+
+   IT MUST LOAD AFTER dashboard.css. The first block below overrides
+   `.drawer` so the panel becomes a three-part flex column — fixed header,
+   scrolling middle, fixed footer — instead of one long scrolling box. That
+   is what makes the header and the footer sticky, and it cannot work while
+   `.drawer` still carries `overflow:auto` and its own padding.
+
+   COLOURS ARE THE DESIGN FILE'S OWN, NOT ORBIT TOKENS. Chosen deliberately
+   (asked and answered, 29 Aug 2026): the drawer is drawn in the palette of
+   listing-editor-lighter.html — #1e1e24 panels, #3a3a45 rules, the #3b7dd4
+   blue accent — not the app's teal --accent. So every value here is a
+   literal hex on purpose. Do not "fix" them into var(--panel) etc. without
+   asking first; that is a different decision from the one that was made.
+
+   EVERY CLASS IS PREFIXED dw2-. dashboard.css already defines .badge, .sec,
+   .metric, .bullet, .claim, .fr, .req, .note and .ib, and the design file
+   uses those bare names. Prefixing is the only way to be certain a drawer
+   rule cannot reach out and repaint the table behind it.
+   ========================================================================= */
+
+/* ---- 1. THE SHELL ------------------------------------------------------
+   Three rows: header, body, footer. Only the middle one scrolls.
+   `min-height:0` on the flex children is what actually lets the body
+   scroll — without it a flex item refuses to shrink below its content and
+   the footer is pushed off the bottom of the screen. */
+.drawer{
+  padding:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  background:#1e1e24;
+  border-left:1px solid #3a3a45;
+}
+#drawerbody{ flex:1; min-height:0; display:flex; flex-direction:column; }
+.dw2{
+  flex:1; min-height:0;
+  display:flex; flex-direction:column;
+  font-size:12px; color:#c8c7cc;
+  line-height:1.45;
+}
+
+/* ---- 2. STICKY HEADER --------------------------------------------------
+   Status, ASIN, then the actions as icons. The same seven things the
+   footer and the More menu do — these are the compact form, always in
+   reach however far down the drawer you have scrolled. */
+.dw2-bar{
+  display:flex; align-items:center; gap:5px;
+  padding:7px 12px;
+  border-bottom:1px solid #3a3a45;
+  background:#262630;
+  flex-shrink:0;
+}
+.dw2-spacer{ flex:1; }
+.dw2-asin{
+  font-size:10px; font-family:'Courier New',monospace;
+  color:#7a7984; letter-spacing:.3px; text-decoration:none;
+}
+.dw2-asin:hover{ color:#85B7EB; }
+.dw2-asin.src{ color:#6a6974; font-style:italic; }
+.dw2-ib{
+  width:26px; height:26px; border-radius:5px;
+  border:1px solid #3a3a45; background:transparent;
+  display:inline-flex; align-items:center; justify-content:center;
+  color:#8a8992; cursor:pointer; font-size:14px; flex-shrink:0;
+  transition:border-color .15s,color .15s;
+}
+.dw2-ib:hover{ border-color:#6a6974; color:#aaa; }
+.dw2-ib.accent{ background:#3b7dd4; color:#eef4ff; border-color:transparent; }
+.dw2-ib.success{ background:#1a8c6e; color:#e0fff0; border-color:transparent; }
+/* WHICH VALUE IS ALREADY SET. Approve and Hold are one setting with two
+   values; as two plain icons neither could tell you where the listing
+   already stood. The set one is filled, in the same two colours the status
+   pills use — green for go, amber for held. */
+.dw2-ib.on-approve{ background:#08504125; border-color:#0F6E56; color:#5DCAA5; }
+.dw2-ib.on-hold{ background:#41240225; border-color:#7a5a1a; color:#EF9F27; }
+.dw2-ib.bare{ border:none; }
+.dw2-ib[disabled]{ opacity:.4; cursor:default; }
+
+/* ---- 3. SCROLLING BODY ------------------------------------------------ */
+.dw2-body{ flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+.dw2-body::-webkit-scrollbar{ width:4px; }
+.dw2-body::-webkit-scrollbar-track{ background:transparent; }
+.dw2-body::-webkit-scrollbar-thumb{ background:#3a3a45; border-radius:2px; }
+
+/* ---- 4. HERO ----------------------------------------------------------
+   Picture, title, SKU, money. The title is editable in place; it also
+   carries the claim-risk <mark>s, and the save reads textContent so the
+   highlight markup can never end up in the saved copy. */
+.dw2-hero{ display:flex; gap:12px; padding:14px 16px; border-bottom:1px solid #3a3a45; }
+.dw2-heroimg{
+  width:68px; height:68px; border-radius:6px; background:#2a2a35;
+  border:1px solid #3a3a45; flex-shrink:0; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+  color:#555560; font-size:18px;
+}
+/* The placeholder icon sits UNDER the photo, so an image Amazon or the
+   browser cannot fetch falls back to it by simply removing itself. */
+.dw2-heroimg{ position:relative; }
+.dw2-heroimg img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.dw2-heroinfo{ min-width:0; flex:1; }
+.dw2-h3{
+  font-size:13px; font-weight:500; color:#eeedf0; line-height:1.35;
+  margin-bottom:4px; outline:none; border-radius:4px;
+  padding:1px 3px; margin-left:-3px;
+}
+.dw2-h3:hover{ background:#262630; }
+.dw2-h3:focus{ background:#262630; box-shadow:inset 0 0 0 1px #2a6cb5; }
+.dw2-sku{ font-size:10px; color:#6a6974; margin-bottom:5px; word-break:break-all; }
+.dw2-prices{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+.dw2-prices .big{ font-size:18px; font-weight:500; color:#eeedf0; }
+.dw2-prices .muted{ font-size:10px; color:#7a7984; }
+.dw2-prices .green{ font-size:11px; color:#5DCAA5; font-weight:500; }
+.dw2-prices .red{ font-size:11px; color:#F09595; font-weight:500; }
+
+/* ---- 5. METRICS -------------------------------------------------------
+   Three numbers, and every one of them is MEASURED from this listing —
+   flags actually raised, bullet bytes Amazon actually indexes, the stored
+   profit. There is no invented "quality score" here; a number nothing
+   computes is worse than no number. */
+.dw2-metrics{ display:grid; grid-template-columns:1fr 1fr 1fr; border-bottom:1px solid #3a3a45; }
+.dw2-metric{ padding:10px 12px; text-align:center; border-right:1px solid #3a3a45; }
+.dw2-metric:last-child{ border-right:none; }
+.dw2-mv{ font-size:17px; font-weight:500; color:#eeedf0; }
+.dw2-mv.green{ color:#5DCAA5; }
+.dw2-mv.amber{ color:#EF9F27; }
+.dw2-mv.red{ color:#F09595; }
+.dw2-ml{ font-size:8px; color:#7a7984; text-transform:uppercase; letter-spacing:.5px; margin-top:2px; }
+
+/* ---- 6. SECTIONS ------------------------------------------------------ */
+.dw2-sec{ padding:14px 16px; border-bottom:1px solid #3a3a45; }
+.dw2-sechead{
+  font-size:10px; font-weight:500; color:#7a7984;
+  text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px;
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
+}
+.dw2-secright{
+  display:flex; align-items:center; gap:6px;
+  text-transform:none; letter-spacing:0; flex-shrink:0;
+}
+.dw2-count{ font-size:10px; color:#7a7984; }
+.dw2-count.warn{ color:#EF9F27; }
+.dw2-count.over{ color:#F09595; }
+.dw2-tag{ font-size:9px; padding:2px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
+.dw2-tag.ok{ background:#08504120; color:#5DCAA5; }
+.dw2-tag.warn{ background:#41240220; color:#EF9F27; }
+.dw2-tag.danger{ background:#50131320; color:#F09595; }
+.dw2-tag.info{ background:#042C5320; color:#85B7EB; }
+.dw2-note{ font-size:10px; color:#6a6974; line-height:1.4; margin-top:6px; }
+
+/* ---- 7. EDITABLE TEXT BLOCK -------------------------------------------
+   Highlights, backend search terms, description. contenteditable, saved on
+   blur through the SAME saveEdit() every other field in the app uses. */
+.dw2-edit{
+  font-size:12px; color:#c8c7cc; line-height:1.6;
+  padding:10px 12px; background:#262630; border-radius:6px;
+  border:1px solid #3a3a45; cursor:text; min-height:36px;
+  outline:none; transition:border-color .15s;
+  white-space:pre-wrap; word-break:break-word;
+}
+.dw2-edit:hover{ border-color:#555560; }
+.dw2-edit:focus{ border-color:#2a6cb5; color:#eeedf0; }
+.dw2-edit.sm{ font-size:11px; padding:8px 10px; line-height:1.5; }
+.dw2-edit.empty:empty::before{ content:attr(data-ph); color:#555560; font-style:italic; }
+
+/* ---- 8. BYTE BUDGET ---------------------------------------------------
+   Amazon indexes only the first ~1,000 BYTES across all five bullets
+   COMBINED, not per bullet. One segment per bullet, sized by its share of
+   the total, and the red line is where the 1,000 bytes run out. Everything
+   right of that line is shown to shoppers but not searched. */
+.dw2-bb{ margin-bottom:10px; }
+.dw2-bb-wrap{ position:relative; }
+.dw2-bb-bar{
+  display:flex; height:6px; border-radius:3px; overflow:hidden;
+  background:#2a2a35; border:1px solid #3a3a45;
+}
+.dw2-bb-seg{ transition:width .2s; }
+.dw2-bb-seg:not(:last-child){ border-right:1px solid #141413; }
+.dw2-bb-limit{ position:absolute; top:-2px; bottom:-2px; width:2px; background:#F09595; z-index:2; border-radius:1px; }
+.dw2-bb-legend{ display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.dw2-bl{ display:flex; align-items:center; gap:3px; font-size:9px; color:#8a8992; }
+.dw2-bl-dot{ width:6px; height:6px; border-radius:1px; flex-shrink:0; }
+.dw2-bl .x{ color:#F09595; }
+
+/* ---- 9. BULLET CARDS --------------------------------------------------
+   Collapsed: number, one line of preview, byte count, indexed dot.
+   Expanded: the textarea, with move/delete beside a live status line. */
+.dw2-bul{
+  background:#262630; border:1px solid #3a3a45; border-radius:6px;
+  margin-bottom:6px; overflow:hidden; transition:border-color .15s;
+}
+.dw2-bul:hover{ border-color:#555560; }
+.dw2-bul.expanded{ border-color:#2a6cb5; }
+.dw2-brow{ display:flex; align-items:center; gap:8px; padding:8px 10px; cursor:pointer; }
+.dw2-bnum{ font-size:10px; font-weight:500; color:#3b7dd4; width:12px; flex-shrink:0; }
+.dw2-bprev{
+  flex:1; min-width:0; font-size:11px; color:#9e9da6;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.3;
+}
+.dw2-bul.expanded .dw2-bprev{ display:none; }
+.dw2-bchars{ font-size:9px; color:#6a6974; flex-shrink:0; }
+.dw2-bdot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.dw2-bdot.ix{ background:#5DCAA5; }
+.dw2-bdot.nix{ background:#F09595; }
+.dw2-bedit{ display:none; padding:0 10px 10px; }
+.dw2-bul.expanded .dw2-bedit{ display:block; }
+.dw2-bedit textarea{
+  width:100%; font-size:11px; padding:8px 10px; border-radius:5px;
+  border:1px solid #3a3a45; background:#1e1e24; color:#eeedf0;
+  font-family:inherit; resize:vertical; line-height:1.6; min-height:72px; outline:none;
+}
+.dw2-bedit textarea:focus{ border-color:#2a6cb5; }
+.dw2-bfoot{ display:flex; justify-content:space-between; align-items:center; margin-top:6px; gap:8px; }
+.dw2-bfl{ display:flex; gap:3px; }
+.dw2-bfoot button{
+  font-size:9px; padding:3px 7px; border-radius:4px;
+  border:1px solid #3a3a45; background:transparent; color:#8a8992;
+  cursor:pointer; display:flex; align-items:center; gap:3px;
+}
+.dw2-bfoot button:hover{ border-color:#6a6974; color:#aaa; }
+.dw2-bfoot button[disabled]{ opacity:.35; cursor:default; }
+.dw2-bfoot button.del{ color:#F09595; }
+.dw2-bstat{ font-size:9px; color:#5DCAA5; text-align:right; }
+.dw2-bstat.nix{ color:#F09595; }
+.dw2-addbul{
+  font-size:10px; padding:5px 10px; border-radius:5px; margin-top:2px;
+  border:1px dashed #3a3a45; background:transparent; color:#7a7984; cursor:pointer;
+}
+.dw2-addbul:hover{ border-color:#6a6974; color:#aaa; }
+
+/* ---- 10. FIELD ROWS (identity and offer) ----------------------------- */
+.dw2-fr{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:5px 0; font-size:11px; border-bottom:1px solid #2e2e38; gap:8px;
+}
+.dw2-fr:last-child{ border-bottom:none; }
+.dw2-fl{ color:#7a7984; white-space:nowrap; flex-shrink:0; display:flex; align-items:center; gap:3px; }
+.dw2-fv{
+  color:#c8c7cc; font-weight:500; text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;
+}
+.dw2-fv.dim{ color:#555560; }
+.dw2-fv.green{ color:#5DCAA5; }
+.dw2-frv{ display:flex; align-items:center; gap:4px; justify-content:flex-end; min-width:0; }
+/* The inputs and selects the existing editCell() writes, wearing this
+   drawer's clothes. Scoped to .dw2 so the same .ed class keeps its normal
+   appearance everywhere else in the app. */
+.dw2 .dw2-frv .ed,
+.dw2 .dw2-cv .ed{
+  font-size:11px; padding:3px 6px; border-radius:4px;
+  border:1px solid #3a3a45; background:#262630; color:#eeedf0;
+  font-family:inherit; outline:none; max-width:100%;
+}
+.dw2 .dw2-frv input.ed{ text-align:right; width:150px; }
+.dw2 .dw2-frv select.ed{ width:100%; max-width:210px; }
+.dw2 .dw2-cv .ed{ width:100%; }
+.dw2 .ed:focus{ border-color:#2a6cb5; }
+.dw2 .ed.saving{ border-color:#EF9F27; }
+.dw2 .ed.saved{ border-color:#5DCAA5; }
+.dw2 .ed.err{ border-color:#F09595; }
+.dw2-curlbl{ font-size:10px; color:#7a7984; margin-right:3px; }
+
+/* ---- 11. ATTRIBUTE GRID ----------------------------------------------
+   Two columns of small cells. A nested Amazon field (battery, hazmat,
+   item_dimensions) takes the full width and puts its own sub-fields in a
+   second grid inside it, so the structure stays visible. */
+.dw2-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:1px;
+  background:#3a3a45; border-radius:6px; overflow:hidden; border:1px solid #3a3a45;
+}
+.dw2-cell{ background:#1e1e24; padding:7px 9px; min-width:0; }
+.dw2-cell.full{ grid-column:1/-1; }
+.dw2-cell.flagged{ background:#2a1a1a; }
+.dw2-cl{
+  font-size:9px; color:#6a6974; margin-bottom:2px;
+  display:flex; align-items:center; gap:3px; flex-wrap:wrap;
+}
+.dw2-cv{ font-size:11px; color:#c8c7cc; cursor:text; outline:none; word-break:break-word; }
+.dw2-cv:hover{ color:#eeedf0; }
+.dw2-cv:focus{ color:#eeedf0; box-shadow:inset 0 0 0 1px #2a6cb5; border-radius:3px; }
+.dw2-cv.ro{ cursor:default; }
+.dw2-cv.empty:empty::before{ content:'—'; color:#555560; font-style:italic; }
+.dw2-srcdot{ width:5px; height:5px; border-radius:50%; flex-shrink:0; display:inline-block; }
+.dw2-srcdot.amz{ background:#5DCAA5; }
+.dw2-srcdot.ai{ background:#85B7EB; }
+.dw2-req{ color:#F09595; font-size:10px; }
+.dw2-reqsoft{ color:#7a7984; font-size:9px; }
+.dw2-hint{ color:#EF9F27; font-size:9px; }
+.dw2-celldel{
+  margin-left:auto; background:none; border:none; color:#555560;
+  cursor:pointer; font-size:10px; padding:0 2px; line-height:1;
+}
+.dw2-celldel:hover{ color:#F09595; }
+.dw2-celldel[disabled]{ opacity:.3; cursor:default; }
+.dw2-nesthead{ font-size:10px; color:#c8c7cc; font-weight:500; margin-bottom:5px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.dw2-subgrid{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:#3a3a45; border-radius:5px; overflow:hidden; }
+.dw2-subgrid .dw2-cell{ background:#232330; }
+.dw2-more,.dw2-remember{
+  font-size:10px; cursor:pointer; display:flex; align-items:center;
+  gap:4px; margin-top:8px; background:none; border:none; padding:0; font-family:inherit;
+}
+.dw2-more{ color:#3b7dd4; }
+.dw2-more:hover{ color:#85B7EB; }
+.dw2-remember{ color:#EF9F27; }
+.dw2-remember:hover{ color:#f5b95a; }
+
+/* ---- 12. FOLDED PANELS -----------------------------------------------
+   Everything the design file does not show — A+ content, the Amazon
+   mirror, restricted products, compliance requirements, the run log, the
+   image generator, raw JSON — is kept in full and starts CLOSED. Chosen
+   deliberately: the drawer opens looking like the design, and nothing that
+   works today has been removed to get there.
+
+   BLOCKING WARNINGS ARE NEVER FOLDED. A barcode that already belongs to
+   another listing, or a prohibited product, is shown open above these.
+   CLAUDE.md Rule 1 requires a clash to be reported, and a report you have
+   to click to find is not a report. */
+.dw2-fold{ border-bottom:1px solid #3a3a45; }
+.dw2-fold > summary{
+  list-style:none; cursor:pointer; padding:11px 16px;
+  display:flex; align-items:center; gap:7px;
+  font-size:10px; font-weight:500; color:#7a7984;
+  text-transform:uppercase; letter-spacing:.6px;
+}
+.dw2-fold > summary::-webkit-details-marker{ display:none; }
+.dw2-fold > summary:hover{ color:#aaa; background:#232330; }
+.dw2-fold > summary .chev{ font-size:12px; transition:transform .15s; color:#555560; }
+.dw2-fold[open] > summary .chev{ transform:rotate(90deg); }
+.dw2-fold > summary .grow{ flex:1; }
+.dw2-foldbody{ padding:0 16px 14px; }
+/* The existing panels keep their own markup and their own colours; they
+   only need to sit inside this box without fighting its type scale. */
+.dw2-foldbody .kvsec{ margin-top:10px; }
+
+/* ---- 13. STICKY FOOTER ----------------------------------------------- */
+.dw2-foot{
+  display:flex; gap:6px; padding:10px 12px;
+  border-top:1px solid #3a3a45; flex-shrink:0; background:#262630;
+}
+.dw2-foot button{
+  flex:1; font-size:11px; font-weight:500; padding:8px 0;
+  border-radius:6px; border:1px solid #3a3a45; background:transparent;
+  color:#aaa; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:4px;
+}
+.dw2-foot button:hover{ border-color:#6a6974; color:#eeedf0; }
+.dw2-foot button.primary{ background:#3b7dd4; color:#eef4ff; border-color:transparent; }
+.dw2-foot button.success{ background:#1a8c6e; color:#e0fff0; border-color:transparent; }
+.dw2-foot .ro{ flex:1; font-size:10px; color:#7a7984; display:flex; align-items:center; justify-content:center; gap:4px; }
+
+/* ---- 14. BANNERS THAT STAY VISIBLE ----------------------------------- */
+.dw2-banner{
+  margin:12px 16px 0; font-size:10.5px; padding:8px 10px; border-radius:5px;
+  line-height:1.45; display:flex; align-items:flex-start; gap:6px;
+}
+.dw2-banner i{ font-size:13px; flex-shrink:0; margin-top:1px; }
+.dw2-banner.amber{ background:#41240210; border:1px solid #41240240; color:#EF9F27; }
+.dw2-banner.blue{ background:#042C5310; border:1px solid #042C5340; color:#85B7EB; }
+.dw2-banner.red{ background:#50131315; border:1px solid #50131350; color:#F09595; }
+/* The banners that are never folded: "the copy has not been written yet",
+   the product-identifier panel (barcode clash + the GTIN exemption tick) and
+   the compliance verdict. They keep their own components and their own
+   colours; this only gives them the gutter the sections have. */
+.dw2-alwayson{ padding:12px 16px 0; }
+.dw2-alwayson > * + *{ margin-top:8px; }
+.dw2-alwayson .compbanner,
+.dw2-alwayson .restclear{ font-size:11px; line-height:1.45; }
+.dw2-alwayson .idexempt{ font-size:11px; }
+
+/* ---- 15. MINIMAL MODE + FOOT NOTE ------------------------------------ */
+.dw2-setting{
+  display:flex; align-items:flex-start; gap:7px; padding:10px 16px;
+  border-bottom:1px solid #3a3a45; font-size:10.5px; color:#8a8992; cursor:pointer;
+}
+.dw2-setting input{ margin-top:1px; flex-shrink:0; }
+.dw2-ask{ padding:12px 16px; text-align:center; }
+.dw2-ask button{
+  font-size:10px; padding:5px 12px; border-radius:5px;
+  border:1px solid #3a3a45; background:transparent; color:#7a7984;
+  cursor:pointer; display:inline-flex; align-items:center; gap:4px;
+}
+.dw2-ask button:hover{ border-color:#6a6974; color:#aaa; }
+
+/* ---- 16. THE APP'S OWN COMPONENTS, INSIDE THIS DRAWER ----------------
+   These classes belong to dashboard.css and are used all over the app. The
+   rules here are SCOPED to .dw2 so they change nothing outside the drawer:
+   they only stop a 13px component from towering over an 11px one. */
+
+/* The inline (contenteditable) value produced by editCell(..., inline). */
+.dw2 .dw2-cv-in{
+  display:block; outline:none; min-height:15px; cursor:text;
+  border-radius:3px; padding:1px 3px; margin:-1px -3px;
+  word-break:break-word;
+}
+/* In an identity row the value column is right-aligned, so an inline cell
+   there has to be too -- otherwise Brand hangs off to the left of every
+   other value in the section. */
+.dw2 .dw2-frv .dw2-cv-in{ text-align:right; min-width:120px; color:#eeedf0; font-weight:500; }
+.dw2 .dw2-cv-in:hover{ background:#262630; }
+.dw2 .dw2-cv-in:focus{ background:#262630; box-shadow:inset 0 0 0 1px #2a6cb5; color:#eeedf0; }
+.dw2 .dw2-cv-in.empty:empty::before{ content:'—'; color:#555560; }
+.dw2 .dw2-cv-in.saving{ box-shadow:inset 0 0 0 1px #EF9F27; }
+.dw2 .dw2-cv-in.saved{ box-shadow:inset 0 0 0 1px #5DCAA5; }
+.dw2 .dw2-cv-in.err{ box-shadow:inset 0 0 0 1px #F09595; }
+
+/* The required / schema-listed / hint markers the attribute rows already
+   carried. Same meanings, same tooltips -- just sized for a 9px label. */
+.dw2 .reqstar{ color:#F09595; font-size:10px; margin-left:3px; }
+.dw2 .reqsoft{ color:#7a7984; font-size:9px; margin-left:3px; }
+.dw2 .nesthint{ color:#7a7984; font-size:9px; margin-left:4px; }
+.dw2 .fixhint{ color:#EF9F27; font-size:9px; margin-left:4px; }
+.dw2 .cc{ font-size:10px; color:#7a7984; }
+.dw2 .hint{ font-size:10px; color:#7a7984; }
+.dw2 .cwarn{ font-size:10px; color:#EF9F27; margin-top:4px; line-height:1.4; }
+.dw2 .curlbl{ font-size:10px; color:#7a7984; margin-right:3px; }
+
+/* Image thumbnails (the existing .imgrow component). */
+.dw2 .imgrow{ display:flex; gap:5px; overflow-x:auto; padding-bottom:6px; }
+.dw2 .imgrow::-webkit-scrollbar{ height:3px; }
+.dw2 .imgrow::-webkit-scrollbar-thumb{ background:#3a3a45; border-radius:2px; }
+.dw2 .thumbwrap{ position:relative; flex-shrink:0; }
+.dw2 .thumb{ width:52px; height:52px; border-radius:5px; border:1px solid #3a3a45; object-fit:cover; display:block; background:#2a2a35; }
+.dw2 .thumbwrap:first-child .thumb{ border-color:#2a6cb5; }
+.dw2 .thumbcap{ position:absolute; bottom:1px; right:3px; font-size:7px; color:#c8c7cc; text-shadow:0 0 3px #000; }
+.dw2 .thumbedit{ position:absolute; top:1px; right:1px; width:16px; height:16px; border-radius:3px;
+                 border:none; background:rgba(0,0,0,.55); color:#c8c7cc; font-size:9px; cursor:pointer;
+                 display:flex; align-items:center; justify-content:center; }
+.dw2 .thumbedit:hover{ background:#3b7dd4; color:#eef4ff; }
+
+/* The optional-field picker and the read-only key/value tables in the folds. */
+.dw2 .addfield{ margin-top:8px; }
+.dw2 .addfield select{ width:100%; font-size:10px; padding:5px 7px; border-radius:5px;
+                       border:1px solid #3a3a45; background:#262630; color:#8a8992; }
+.dw2 .kv{ width:100%; border-collapse:collapse; font-size:11px; }
+.dw2 .kv td{ padding:4px 6px; border-bottom:1px solid #2e2e38; vertical-align:top; }
+.dw2 .kv td.k{ color:#7a7984; width:44%; }
+.dw2 .kv td.v{ color:#c8c7cc; word-break:break-word; }
+.dw2 .raw{ font-size:9px; font-family:'Courier New',monospace; color:#7a7984; background:#262630;
+           border:1px solid #3a3a45; border-radius:6px; padding:10px; max-height:220px; overflow:auto;
+           display:none; margin-top:6px; line-height:1.5; white-space:pre-wrap; word-break:break-all; }
+.dw2 .rawtoggle{ font-size:10px; color:#3b7dd4; cursor:pointer; display:inline-flex; align-items:center; gap:4px; margin-top:8px; }
+.dw2 .rawtoggle:hover{ color:#85B7EB; }
+.dw2 .reqnote,.dw2 .payloadnote,.dw2 .amzprose{ font-size:10px; color:#8a8992; line-height:1.45; margin-top:8px; }
+
+/* Panels that sit directly in the scrolling body need the section gutter. */
+.dw2-body > .suggestbox:not(:empty),
+.dw2-body > .runpanel{ margin:12px 16px; }
+
+/* ---- 17. NARROW SCREENS ----------------------------------------------
+   One column for the grids; a two-up grid of 9px labels at 380px wide is
+   unreadable. The header and footer stay put — on a phone they matter
+   more, not less, because the body is a much longer scroll. */
+@media (max-width:560px){
+  .dw2-grid,.dw2-subgrid{ grid-template-columns:1fr; }
+  .dw2-fv{ max-width:130px; }
+  .dw2 .dw2-frv input.ed{ width:110px; }
+  .dw2-metric{ padding:8px 6px; }
+}

@@ -34,6 +34,11 @@
 <!-- What is genuinely the Repricer's alone: the sparkline, the stacked bar, the
      supplier table, the rules pills, the chart and the detail panel. -->
 <link rel="stylesheet" href="/static/css/repricer.css?v={{ ASSET_V }}">
+<!-- The listing detail drawer, in full. Must load AFTER dashboard.css: it
+     overrides `.drawer` from a single scrolling box into a fixed header, a
+     scrolling middle and a fixed footer, and the later file is the one that
+     wins. Everything in it is prefixed dw2- and scoped to the drawer. -->
+<link rel="stylesheet" href="/static/css/drawer.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -1942,6 +1947,11 @@
 <!-- What the stock cost: click a cell to set one, upload a sheet to set many.
      Before listings.js, which calls cogsCell() while drawing every row. -->
 <script src="/static/js/cogs.js?v={{ ASSET_V }}"></script>
+<!-- The listing drawer's markup builders: sections, folds, bullet cards, the
+     byte-budget bar and the inline (contenteditable) cells. Presentation only
+     -- it decides nothing and calls no API. Loaded before the two files that
+     use it so the order on the page matches the order of dependence. -->
+<script src="/static/js/drawer.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/listings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>

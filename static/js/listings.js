@@ -1714,6 +1714,20 @@ function liveMirrorPanel(r){
 }
 
 function drawerContent(r){
+  const risks = [];
+  if(r.ip_risk==="HIGH") risks.push('<span class="risk hi">IP: HIGH</span>');
+  return _dwShell(r, _rowImages(r),
+                  r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'',
+                  risks);
+}
+
+/* AMAZON'S OWN MESSAGES ABOUT THIS ROW, and our IP note.
+ *
+ * Pulled out of drawerContent into its own function so that the fold which
+ * shows it (_dwVerdictFolds) can be rebuilt with the data block after an
+ * edit. The text, the reasons and the wording are exactly as they were.
+ */
+function _dwStatusBlock(r){
   const findings = [];
   if(r.notes && r.notes.trim()) findings.push(r.notes);
   if(r.comp_notes && r.comp_notes.trim()) findings.push(r.comp_notes);
@@ -1721,8 +1735,6 @@ function drawerContent(r){
   // chips came from the legacy category matcher and cried wolf on clean products -- the
   // Restricted products check panel now carries real compliance, so those are dropped.
   const hasFeedback = findings.length>0;
-  const risks = [];
-  if(r.ip_risk==="HIGH") risks.push('<span class="risk hi">IP: HIGH</span>');
   // This panel shows AMAZON'S OWN post-submit messages (attribute conflicts, catalogue
   // mismatches) + our IP note -- NOT a restricted-products / docs verdict. That lives in the
   // separate "Restricted products check" panel. Label it honestly so it never masquerades
@@ -1762,11 +1774,14 @@ function drawerContent(r){
         <button class="linkbtn" style="margin-top:6px" onclick="locateFlags('${esc(r.sku)}',this)">\ud83d\udd0d Locate flagged terms</button>
         <div class="locout" id="loc_${sid(r.sku)}"></div></details>`
     : "";
-  const urls=_rowImages(r);
-  const priceStr = r.price?`${CUR_SYMBOL}${esc(String(r.price).replace(/^[A-Z]{3}/,''))}`:'';
-  const hero = (urls&&urls.length)?`<div class="heroimg"><img src="${esc(urls[0])}" loading="lazy" onerror="this.parentNode.style.display='none'"></div>`:'';
-  // A+ content that is LIVE on Amazon for this ASIN, straight from the A+ Content API.
-  // Grouped per document, because one ASIN can carry more than one.
+  return statusBlock;
+}
+
+/* A+ CONTENT LIVE ON AMAZON for this ASIN, straight from the A+ Content API.
+ * Grouped per document, because one ASIN can carry more than one. Unchanged
+ * except that it is now its own function, for the same reason as
+ * _dwStatusBlock above. */
+function _dwAplus(r){
   const aplusDocs = aplusFor(r);
   const aplusHtml = aplusDocs.length ? `
     <div class="kvsec" style="color:var(--ai);margin-top:14px"><i class="ti ti-layout-board"></i> A+ content live on Amazon</div>
@@ -1781,116 +1796,269 @@ function drawerContent(r){
           ${(d.images||[]).map(function(im){ return `<a href="${esc(im.url)}" target="_blank" rel="noopener" title="${esc(im.alt||'')} — ${im.w||'?'}x${im.h||'?'} — open full size"><img src="${esc(im.url)}" loading="lazy" alt="${esc(im.alt||'')}" onerror="this.closest('a').style.display='none'"></a>`; }).join("")}
         </div>
       </div>`; }).join("")}` : aplusUnknownNote();
-  return `
-    <div class="dwhead">
-      <div class="dwtop">
-        <span class="badge ${badgeClass(r.status)}">${esc(r.status||'\u2014')}</span>
-        ${risks.join("")}
-        <span class="spacer"></span>
-        <button class="ib" onclick="closeDrawer()" title="Close"><i class="ti ti-x"></i></button>
-      </div>
-      <div class="dwtitle">${claimMarkField(r,'title',r.title)||'<span class="cc">(no title)</span>'}</div>
-      ${r.item_highlights?`<div class="dwhl"><span class="dwhl-lbl">Highlights</span> ${claimMarkField(r,'item_highlights',r.item_highlights)}</div>`:''}
-      <div class="lmeta">
-        <span class="lsku">${esc(r.sku)||'\u2014'}</span>
-        ${priceStr?`<span class="lprice">${priceStr}</span>`:''}
-        ${r.profit?`<span class="cc">profit <span class="financial">${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span></span>`:''}
-      </div>
-      ${/* FIFTEEN CONTROLS IN ONE FLAT ROW, ALL THE SAME SIZE AND WEIGHT.
-          *
-          *     "i want to minimize the buttons, because i believe many tasks are
-          *      already handled by other processes or button already working on
-          *      the backend"
-          *
-          * The same test the row's buttons were put through -- does something
-          * else already do this? -- applied here, and this time several failed
-          * it:
-          *
-          *   Suggest missing fields  GONE. Auto-fix, the button beside it, is
-          *                           Suggest then Apply then Preview: autofix.js
-          *                           calls suggestFields() and then applies.
-          *                           This was step one on its own, sitting next
-          *                           to the button that does all three.
-          *   Refresh dropdowns       DEMOTED. openDrawer already fetches a
-          *                           missing schema and re-renders -- so this
-          *                           only matters when Amazon CHANGES a type,
-          *                           which is maintenance, not a per-listing
-          *                           action. Kept, because it is the only way to
-          *                           clear a stale schema.
-          *   Pull live images        DEMOTED. Sync does it for the whole
-          *                           account, and the live tiles show Amazon's
-          *                           own images either way.
-          *   Push image to live      DEMOTED. The Image Library uploads and
-          *   Upload main image       pushes live; these are those two jobs
-          *                           again, in a second place.
-          *   Approve + Hold          MERGED. One setting with two values, drawn
-          *                           as two competing buttons, neither of which
-          *                           could show which one was already true.
-          *
-          * What is left is what you do to a listing in the order you do it:
-          * look at it, fix it, send it. Nothing was deleted except the first --
-          * the rest is one click away under More.
-          */""}
-      <div class="dwbar">
-        <div class="dwbar-main">
-          <button class="dwb dwb-go" onclick="previewOne('${esc(r.sku)}')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>
-          <button class="dwb dwb-fix" onclick="autoFixLoop('${esc(r.sku)}')" title="Suggest, apply, preview -- repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
-          ${window.WS_READONLY ? `<span class="cc" style="font-size:11.5px;align-self:center"><i class="ti ti-lock"></i> Read-only workspace — cannot publish</span>` : `<button class="dwb dwb-send" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>`}
-          ${/* ONE SETTING, ONE CONTROL, AND IT SHOWS WHICH VALUE IS SET.
-              *
-              * Approve and Hold were two separate buttons, so neither could tell
-              * you where the listing already stood.
-              *
-              * BUT THE TOGGLE CANNOT SPEAK FOR EVERY STATUS, and pretending
-              * otherwise is worse than the two buttons were. Measured across the
-              * 173 stored listings: only 84 are APPROVED or NEEDS_REVIEW. The
-              * other 89 are LIVE, COMPLIANCE_HOLD, API_READY, API_ERROR,
-              * SUBMITTED or PARENT -- Amazon's state or the app's, not a choice
-              * anybody makes here. On those the toggle would light neither half
-              * and quietly say nothing.
-              *
-              * So the REAL status is always shown, in the same pill the card and
-              * the table use, and the toggle sits beside it lighting whichever
-              * half is true. Nothing is hidden and nothing is implied. */""}
-          <span class="dwstatus">${_statusPill(r.status)}</span>
-          <span class="dwseg" role="group" aria-label="Set listing status">
-            <button class="dwseg-b ${String(r.status||'').toUpperCase()==='APPROVED'?'on':''}" onclick="setStatus('${esc(r.sku)}','APPROVED',this)" title="Mark ready to send">Approve</button>
-            <button class="dwseg-b ${String(r.status||'').toUpperCase()==='NEEDS_REVIEW'?'on':''}" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)" title="Hold it back">Hold</button>
-          </span>
-        </div>
-        <div class="dwbar-side">
-          <button class="dwb dwb-q dwb-ai" onclick="openStudioSingle('${esc(r.sku)}')" title="Generate this listing's images"><i class="ti ti-photo"></i> Image Studio</button>
-          ${isAmazonLive(r) ? `<button class="dwb dwb-q dwb-ai" onclick="optimizeLive('${esc(rowAsin(r).own||'')}','${esc(r.sku)}')" title="Rewrite this LIVE listing's copy — pulls it from Amazon first"><i class="ti ti-sparkles"></i> Optimize copy</button>` : ""}
-          <button class="dwb dwb-q" onclick="askAbout('${esc(r.sku)}')" title="Ask about this listing">✦ Ask Claude</button>
-          <button class="dwb dwb-q" onclick="drawerMore(event,'${esc(r.sku)}',${r.row||0},${isAmazonLive(r)?'true':'false'})" title="Everything else"><i class="ti ti-dots"></i> More</button>
+  return aplusHtml;
+}
+
+/* ============================================================================
+   THE DRAWER, AS THE DESIGN DRAWS IT
+   ============================================================================
+   Three fixed parts: a header that never scrolls away, a body that does, and
+   a footer holding the three things you actually do to a listing.
+
+   NOTHING BELOW DECIDES ANYTHING. Every button calls the function it called
+   before -- previewOne, autoFixLoop, submitOne, setStatus, drawerMore,
+   openStudioSingle, askAbout -- and every value is read off the same row. The
+   panels that the design file does not draw are all still here; they are
+   folded (dwFold) with their verdict on the closed summary, so a compliance
+   flag or a document demand is still readable without opening anything.
+
+   THE EXCEPTION, DELIBERATELY: a BLOCKING banner is never folded. A barcode
+   that already belongs to another listing, or a prohibited product, is drawn
+   open, above everything. CLAUDE.md Rule 1 requires a clash to be reported,
+   and a report you have to go looking for has not been made.
+   ========================================================================= */
+function _dwShell(r, urls, priceStr, risks){
+  const sv = sid(r.sku);
+  const live = isAmazonLive(r);
+  const st = String(r.status||"").toUpperCase();
+  const ownAsin = (rowAsin(r)||{}).own || "";
+  const srcAsin = (rowAsin(r)||{}).source || "";
+  const ro = !!window.WS_READONLY;
+
+  // ---- header ---------------------------------------------------------
+  // The ASIN shown is OURS when we have one. The competitor reference from
+  // the SKU is labelled as a source and never presented as this listing's
+  // ASIN -- see rowAsin(); this app creates new products, it does not add
+  // offers to somebody else's.
+  const asinBit = ownAsin
+    ? `<a class="dw2-asin" href="https://www.amazon.${_dwTld(r)}/dp/${esc(ownAsin)}" target="_blank" rel="noopener" title="Open this listing on Amazon">${esc(ownAsin)}</a>`
+    : (srcAsin ? `<span class="dw2-asin src" title="The competitor ASIN in the SKU \u2014 the reference this listing was built from, NOT our listing">ref ${esc(srcAsin)}</span>` : "");
+  const bar = `<div class="dw2-bar">
+      <span class="badge ${badgeClass(r.status)}">${esc(r.status||'\u2014')}</span>
+      ${risks.join("")}
+      ${asinBit}
+      <span class="dw2-spacer"></span>
+      <button class="dw2-ib" onclick="previewOne('${esc(r.sku)}')" title="Preview \u2014 check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i></button>
+      <button class="dw2-ib accent" onclick="autoFixLoop('${esc(r.sku)}')" title="Auto-fix \u2014 suggest, apply, preview, repeatedly, until there are no errors left (max 8 rounds)"><i class="ti ti-wand"></i></button>
+      ${ro ? `<button class="dw2-ib" disabled title="Read-only workspace \u2014 cannot publish"><i class="ti ti-lock"></i></button>`
+           : `<button class="dw2-ib success" onclick="submitOne('${esc(r.sku)}')" title="Submit \u2014 publish ONLY this listing live"><i class="ti ti-upload"></i></button>`}
+      <button class="dw2-ib ${st==='APPROVED'?'on-approve':''}" onclick="setStatus('${esc(r.sku)}','APPROVED',this)" title="${st==='APPROVED'?'Already approved':'Approve \u2014 mark ready to send'}"><i class="ti ti-check"></i></button>
+      <button class="dw2-ib ${st==='NEEDS_REVIEW'?'on-hold':''}" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)" title="${st==='NEEDS_REVIEW'?'Already held':'Hold \u2014 keep it back'}"><i class="ti ti-hand-stop"></i></button>
+      <button class="dw2-ib" onclick="drawerMore(event,'${esc(r.sku)}',${r.row||0},${live?'true':'false'})" title="Everything else"><i class="ti ti-dots"></i></button>
+      <button class="dw2-ib bare" onclick="closeDrawer()" title="Close"><i class="ti ti-x" style="font-size:16px"></i></button>
+    </div>`;
+
+  // ---- hero -----------------------------------------------------------
+  // The title is edited HERE and nowhere else. It keeps its claim-risk
+  // highlights, and saveEdit reads textContent, so the <mark> markup can
+  // never reach Amazon. Its counter and the 27 Jul 2026 cap warning sit
+  // under it -- the same TITLE_OPTS every other title check uses.
+  const tcid = "dwtitlec_" + sv;
+  const tval = String(r.title || "");
+  const tn = tval.length;
+  const tover = tn > TITLE_OPTS.limit, twarn = tn > TITLE_OPTS.warnAt && !tover;
+  const heroImg = (urls && urls.length)
+    ? `<div class="dw2-heroimg"><i class="ti ti-photo"></i><img src="${esc(urls[0])}" loading="lazy" onerror="this.remove()"></div>`
+    : `<div class="dw2-heroimg"><i class="ti ti-photo"></i></div>`;
+  const cost = _dwCost(r);
+  const heroBlock = `<div class="dw2-hero">
+      ${heroImg}
+      <div class="dw2-heroinfo">
+        <div class="dw2-h3" contenteditable="true" spellcheck="false"
+             data-orig="${esc(tval)}"
+             oninput="dwCount(this,'${tcid}',${TITLE_OPTS.limit},0,${TITLE_OPTS.warnAt})"
+             onpaste="dwPastePlain(event)"
+             onblur="dwBlurSave(this,'${esc(r.sku)}','col','Title')"
+             >${claimMarkField(r,'title',r.title)||''}</div>
+        <div class="dw2-sku">${esc(r.sku)||'\u2014'}${r.brand?(' \u00b7 '+esc(r.brand)):''}</div>
+        <div class="dw2-prices">
+          ${priceStr?`<span class="big">${priceStr}</span>`:''}
+          ${cost?`<span class="muted">cost ${esc(cost)}</span>`:''}
+          ${r.profit?`<span class="green">${CUR_SYMBOL}${esc(String(r.profit).replace(/^[A-Z]{3}/,''))}</span>`:''}
         </div>
       </div>
-      <div class="dwactions dwactions-rest">
-        <label class="minlbl" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields."><input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}> Minimal mode (required fields only)</label>
-        ${/* Everything that used to sit here has moved: the actions into .dwbar
-            * above, the rest into the More menu (drawerMore). This row keeps
-            * only Minimal mode, which is a SETTING rather than an action -- one
-            * checkbox among twelve buttons was the control nobody could find. */""}
-      </div>
-      ${aplusHtml}
-      <div id="suggestbox_${sid(r.sku)}" class="suggestbox"></div>
-      <div id="runpanel_${sid(r.sku)}" class="runpanel" style="display:none">
-        <div class="runhead"><span class="runtitle"></span><button class="runclose" onclick="window.RUN_STREAMING=false;this.closest('.runpanel').style.display='none'">✕</button></div>
+    </div>
+    <div class="dw2-sec" style="padding-top:9px;padding-bottom:9px">
+      <div class="dw2-sechead" style="margin-bottom:0"><span>Title</span><span class="dw2-secright">
+        <span class="dw2-count${tover?' over':(twarn?' warn':'')}" id="${tcid}">${tn} / ${TITLE_OPTS.limit}</span>
+        <span class="dw2-tag info" title="${esc(TITLE_OPTS.indexTip)}">${esc(TITLE_OPTS.indexNote)}</span>
+      </span></div>
+      ${(twarn||tover)?`<div class="dw2-note" style="color:#EF9F27">\u26a0 ${esc(TITLE_OPTS.warnMsg)}</div>`:''}
+    </div>`;
+
+  // ---- metrics --------------------------------------------------------
+  const m = _dwMetrics(r);
+  const metrics = `<div class="dw2-metrics">
+      <div class="dw2-metric" title="${esc(m.flagTip)}"><div class="dw2-mv ${m.flagCls}">${m.flags}</div><div class="dw2-ml">Flags</div></div>
+      <div class="dw2-metric" title="${esc(m.idxTip)}"><div class="dw2-mv ${m.idxCls}">${m.idx}</div><div class="dw2-ml">Indexed</div></div>
+      <div class="dw2-metric" title="Profit stored for this listing."><div class="dw2-mv ${m.profit?'green':''}">${m.profit||'\u2014'}</div><div class="dw2-ml">Profit</div></div>
+    </div>`;
+
+  // ---- what stays open, and what folds ---------------------------------
+  // identifierPanel and complianceBanner already return "" when there is
+  // nothing to say, and a BLOCKED one is the loudest thing in the drawer.
+  // Those two are never folded (see the note at the top of this function).
+  const idPanel = identifierPanel(r);
+  const compBan = complianceBanner(r);
+  // Wrapped, because these three carry their own inline margins from when
+  // they sat inside a padded drawer. The drawer has no padding now -- each
+  // section supplies its own -- so without this they would run edge to edge.
+  const _on = needsCopyPanel(r) + idPanel + compBan;
+  const alwaysOn = _on ? `<div class="dw2-alwayson">${_on}</div>` : "";
+
+  const footer = `<div class="dw2-foot">
+      <button onclick="previewOne('${esc(r.sku)}')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>
+      <button class="primary" onclick="autoFixLoop('${esc(r.sku)}')" title="Suggest, apply, preview -- repeatedly, until there are no errors left or it stops making progress (max 8 rounds)."><i class="ti ti-wand"></i> Auto-fix</button>
+      ${ro ? `<span class="ro"><i class="ti ti-lock"></i> Read-only workspace</span>`
+           : `<button class="success" onclick="submitOne('${esc(r.sku)}')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>`}
+    </div>`;
+
+  return `<div class="dw2">
+    ${bar}
+    <div class="dw2-body">
+      ${alwaysOn}
+      ${heroBlock}
+      ${metrics}
+      <label class="dw2-setting" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields.">
+        <input type="checkbox" onchange="toggleMinimal(this)" ${MINIMAL_MODE_ON?'checked':''}>
+        <span>Minimal mode \u2014 send only the fields Amazon strictly requires</span>
+      </label>
+      <div id="suggestbox_${sv}" class="suggestbox"></div>
+      <div id="runpanel_${sv}" class="runpanel" style="display:none">
+        <div class="runhead"><span class="runtitle"></span><button class="runclose" onclick="window.RUN_STREAMING=false;this.closest('.runpanel').style.display='none'">\u2715</button></div>
         <div class="runverdict"></div>
         <details class="runlogwrap"><summary>Show the full Amazon response log</summary><pre class="runlog"></pre></details>
       </div>
+      <div id="fulldata_${sv}">${fullData(r)}</div>
+      <div class="dw2-ask">
+        <button onclick="openStudioSingle('${esc(r.sku)}')"><i class="ti ti-photo"></i> Image Studio</button>
+        ${live ? `<button onclick="optimizeLive('${esc(ownAsin)}','${esc(r.sku)}')"><i class="ti ti-sparkles"></i> Optimize live copy</button>` : ""}
+        <button onclick="askAbout('${esc(r.sku)}')"><i class="ti ti-message-circle"></i> Ask Claude about this listing</button>
+      </div>
     </div>
-    ${hero}
-    ${needsCopyPanel(r)}
-    ${identifierPanel(r)}
-    ${complianceBanner(r)}
-    ${liveMirrorPanel(r)}
-    ${restrictedPanel(r)}
-    ${viabilityPanel(r)}
-    ${claimBox(r)}
-    ${statusBlock}
-    <div id="fulldata_${sid(r.sku)}">${fullData(r)}</div>`;
+    ${footer}
+  </div>`;
 }
+
+// Amazon domain for the row's marketplace, so the ASIN in the header opens the
+// right storefront rather than always amazon.co.uk.
+function _dwTld(r){
+  const m = (typeof rowMkt === "function") ? rowMkt(r) : "UK";
+  return ({UK:"co.uk", US:"com", DE:"de", FR:"fr", IT:"it", ES:"es", NL:"nl",
+           CA:"ca", MX:"com.mx", AU:"com.au", SE:"se", PL:"pl", TR:"com.tr",
+           AE:"ae", SA:"sa", IN:"in", JP:"co.jp", BR:"com.br"})[m] || "co.uk";
+}
+
+/* WHAT THE STOCK COST, IF WE ACTUALLY KNOW.
+ * The SKU carries it in the price_days_ASIN form (8.00_3Days_B0...), and the
+ * row may carry a typed COGS that overrides it. Returns "" when neither is
+ * there -- a made-up cost would make the profit beside it a lie. */
+function _dwCost(r){
+  const typed = String(r.cogs == null ? "" : r.cogs).replace(/[^0-9.]/g, "");
+  if(typed) return CUR_SYMBOL + typed;
+  const m = /^([0-9]+(?:\.[0-9]+)?)_/.exec(String(r.sku || ""));
+  return m ? (CUR_SYMBOL + m[1]) : "";
+}
+
+/* THE THREE NUMBERS AT THE TOP, AND WHERE EACH ONE COMES FROM.
+ *
+ * There is no invented "listing quality score" here. The design file shows
+ * one; this app computes no such thing, and a number with nothing behind it
+ * is worse than an empty space, because it will be trusted.
+ *
+ * Flags    every warning already raised against this listing -- claim risks,
+ *          restricted-product matches, document demands. Counted, not judged.
+ * Indexed  how much of the bullet copy Amazon actually searches: the
+ *          1,000-byte cap over the real byte length of all five bullets.
+ * Profit   the stored figure, untouched.
+ */
+function _dwMetrics(r){
+  const claims = (r.claim_flags || []).length;
+  const rest = (r.restricted && r.restricted.matched && (r.restricted.matches || []).length) || 0;
+  const docs = (r.viability && r.viability.matched && (r.viability.risks || []).length) || 0;
+  const flags = claims + rest + docs;
+  const bytes = (r.bullets || []).reduce(function(n, b){ return n + byteLen(b || ""); }, 0);
+  const pct = bytes ? Math.min(100, Math.round(1000 / bytes * 100)) : 0;
+  const pnum = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
+  return {
+    flags: flags,
+    flagCls: flags === 0 ? "green" : (rest || claims ? "amber" : "amber"),
+    flagTip: flags === 0
+      ? "No claim risks, no restricted-product match and no document demand. Keyword checks \u2014 not a clearance."
+      : claims + " claim risk(s), " + rest + " restricted match(es), " + docs + " document demand(s). None of these blocks publishing.",
+    idx: bytes ? (pct + "%") : "\u2014",
+    idxCls: !bytes ? "" : (pct >= 100 ? "green" : (pct >= 60 ? "amber" : "red")),
+    idxTip: bytes
+      ? bytes + " bytes of bullet copy; Amazon indexes the first 1,000 across all five combined, so " + pct + "% of it is searchable."
+      : "No bullet copy yet.",
+    profit: pnum ? (CUR_SYMBOL + pnum) : ""
+  };
+}
+
+/* THE SIX VERDICT PANELS, FOLDED, IN THE ORDER THEY MATTER.
+ *
+ * They sit between the attributes and the reference material (raw JSON, the
+ * exact payload) rather than after it, because "is there a restriction on
+ * this product" is a question about the listing and "what JSON did we send"
+ * is a question about the app.
+ *
+ * CALLED FROM _fullDataInner, not from _dwShell, and that is deliberate:
+ * three other places rebuild ONLY the fulldata block after an edit
+ * (_rebuildDrawerData, reloadSchemaNow, and the run queue). If these were
+ * rendered by the shell instead, a rebuild would silently drop every
+ * compliance verdict from the drawer until it was closed and reopened.
+ *
+ * Each one returns "" when it has nothing to say, and dwFold drops an empty
+ * body -- so a listing with no flags shows no fold rather than six empty ones.
+ */
+function _dwVerdictFolds(r){
+  const statusBlock = (typeof _dwStatusBlock === "function") ? _dwStatusBlock(r) : "";
+  return dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
+    + dwFold("Compliance requirements", _dwVerdictTag(r.viability && r.viability.matched, "no demand"), viabilityPanel(r))
+    + dwFold("Claim risks", (r.claim_flags||[]).length ? `<span class="dw2-tag warn">${(r.claim_flags||[]).length}</span>` : "", claimBox(r))
+    + dwFold("Amazon feedback", statusBlock ? '<span class="dw2-tag warn">see inside</span>' : "", statusBlock)
+    + dwFold("Actual on Amazon", '<span class="dw2-tag info">read-only mirror</span>', liveMirrorPanel(r))
+    + dwFold("A+ content", '<span class="dw2-tag info">live on Amazon</span>', _dwAplus(r));
+}
+
+// A closed fold has to say enough that you can decide not to open it.
+function _dwVerdictTag(matched, clearWord){
+  return matched
+    ? '<span class="dw2-tag warn"><i class="ti ti-alert-triangle"></i> attention</span>'
+    : '<span class="dw2-tag ok"><i class="ti ti-check"></i> ' + esc(clearWord) + "</span>";
+}
+
+/* WHERE THE OLD DRAWER HEADER WENT.
+ *
+ * The .dwhead / .dwbar / .dwseg / .dwactions block that used to be built here
+ * has been replaced by _dwShell above. Nothing it offered was removed -- it
+ * was redistributed:
+ *
+ *   Preview, Auto-fix, Submit   the sticky FOOTER, and the first three icons
+ *                               in the sticky header.
+ *   Approve / Hold              two header icons that LIGHT UP to show which
+ *                               value is already set. The old segmented
+ *                               control existed for the same reason and said
+ *                               the same thing; the status pill it sat beside
+ *                               is now the badge at the far left of the bar,
+ *                               so the real status is still always on screen
+ *                               even when it is one of the 89 rows that is
+ *                               neither APPROVED nor NEEDS_REVIEW.
+ *   More                        unchanged, still opens drawerMore().
+ *   Image Studio, Optimize,     the foot of the scrolling body -- they are
+ *   Ask Claude                  things you go and do, not things you reach
+ *                               for mid-edit.
+ *   Minimal mode                its own labelled setting row under the
+ *                               metrics. It is a SETTING, and it was the one
+ *                               control nobody could find among the buttons.
+ *   A+ content, the Amazon      folded, each with its verdict on the closed
+ *   mirror, restricted, docs,   summary (see dwFold).
+ *   claims, Amazon feedback
+ *   The blocking banners        NOT folded. identifierPanel() and
+ *                               complianceBanner() are drawn open, above the
+ *                               hero -- a barcode clash has to be reported
+ *                               (CLAUDE.md Rule 1), not filed.
+ */
 
 // Clicking a metric tile filters the list. It also moves the status dropdown to
 // match: two controls driving one filter that disagree about its value is worse
@@ -2741,7 +2909,10 @@ function openDrawer(sku, jumpGen){
   body.innerHTML=drawerContent(r);
   dw.classList.add("open");
   document.getElementById("drawerscrim").classList.add("open");
-  dw.scrollTop=0;
+  // THE DRAWER ITSELF NO LONGER SCROLLS -- its middle section does, so that the
+  // header and the footer can stay put. dwScroller() is the one place that
+  // answers "which element scrolls", so this and the jump below cannot drift.
+  { const s=dwScroller(); if(s) s.scrollTop=0; }
   // Re-attach to any BACKGROUND Preview/Submit job for this SKU: replays its log into
   // the run panel and resumes polling if still running. This is what makes progress
   // survive navigating away and coming back (and a full page refresh).
@@ -2761,12 +2932,29 @@ function openDrawer(sku, jumpGen){
   // connection check, once the drawer is in place
   var sidv=sid(sku);
   setTimeout(function(){ initGenPanel(sidv); if(typeof initMilesPanel==='function') initMilesPanel(sidv); if(typeof bulletMeter==='function') bulletMeter(); }, 120);
-  if(jumpGen){
-    setTimeout(function(){
-      var anchor=document.getElementById('genimg_'+sidv);
-      if(anchor && dw){ dw.scrollTo({top: anchor.offsetTop - 12, behavior:'smooth'}); }
-    }, 280);
+  if(jumpGen){ setTimeout(function(){ _dwJumpToGen(sidv); }, 280); }
+}
+
+/* SCROLL TO THE IMAGE GENERATOR, OPENING ITS FOLD FIRST.
+ *
+ * The generator now lives inside a collapsed <details>. A closed details has
+ * no laid-out height, so offsetTop reads 0 and the drawer scrolls to the top
+ * instead of to the panel -- which looks exactly like the button doing
+ * nothing. Open it, then measure.
+ *
+ * Written once because two callers want it: openDrawer(sku, jumpGen) and
+ * openGenPanelInDrawer(). */
+function _dwJumpToGen(sidv){
+  var anchor=document.getElementById('genimg_'+sidv);
+  if(!anchor) return false;
+  var fold=anchor.closest('details');
+  if(fold && !fold.open) fold.open=true;
+  var sc=dwScroller();
+  if(sc){
+    var top=anchor.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
+    sc.scrollTo({top: Math.max(0, top - 12), behavior:'smooth'});
   }
+  return true;
 }
 // Shared OpenRouter connection tester: NEVER hangs (12s timeout) and writes a
 // clear, specific status into the given diag element so the user knows exactly
@@ -2891,10 +3079,7 @@ function drawerMore(ev, sku, row, isLive){
 function openGenPanelInDrawer(sku){
   try{
     var sidv=sid(sku);
-    var dw=document.getElementById("drawer");
-    var anchor=document.getElementById('genimg_'+sidv);
-    if(!anchor){ toast("Image panel not found \u2014 try reopening the drawer"); return; }
-    if(dw){ dw.scrollTo({top: anchor.offsetTop - 12, behavior:'smooth'}); }
+    if(!_dwJumpToGen(sidv)){ toast("Image panel not found \u2014 try reopening the drawer"); return; }
     initGenPanel(sidv);
   }catch(e){ toast("Could not open image panel: "+e); }
 }
