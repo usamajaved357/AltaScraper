@@ -800,6 +800,16 @@ function _bulkAutoFixPanel(batch){
   };
 }
 
+/* SUPERSEDED BY THE DRAWER REDESIGN — roCell, edRowReq, wideRow, contentRow
+   and bulletControls below have NO CALLERS LEFT. The drawer that used them
+   now builds its rows with dwFieldRow / dwRo / dwCell / dwEditBlock /
+   dwBulletCards (static/js/drawer.js).
+
+   They are left in place rather than deleted because deleting five functions
+   is a different change from redrawing a panel, and this one was approved as
+   the second. If nothing has called them by the next tidy-up, delete them --
+   but check first: a dead function that still LOOKS live is where the next
+   bug fix goes to be ignored. */
 function roCell(v){ return `<span class="ro">${esc(v==null?"":String(v))}</span>`; }
 // Suggested Amazon browse-node IDs per product type (mirrors the generator's
 // PT_DEFAULT_NODE). Used only to offer a sensible default; the field stays optional.
@@ -849,7 +859,19 @@ function onProductTypeChange(sel, sku, amazonPT){
   // refresh the schema for the newly chosen type so the fields update
   if(typeof loadSchemas==="function"){ var _r=ROWS.find(x=>String(x.sku)===String(sku)); loadSchemas([chosen], true, _r?rowMkt(_r):WS_MARKET).then(()=>{ if(DRAWER_SKU===sku) openDrawer(sku); }); }
 }
-function editCell(sku,target,key,value,opts,multiline){
+/* THE ONE PLACE A FIELD CONTROL IS BUILT.
+ *
+ * `inline` is the drawer redesign's fourth shape: click the value itself and
+ * type, with no box drawn around it (contenteditable). It is a shape, not a
+ * second implementation -- the control it returns still calls saveEdit(), so
+ * an inline attribute cell and a boxed one save through the same path.
+ *
+ * AN ENUM IS NEVER INLINE. When Amazon publishes a list of allowed values for
+ * a field, typing into it freehand is how you get a rejection that says
+ * "value is invalid" with no clue which values are valid. The picker wins over
+ * the styling, every time.
+ */
+function editCell(sku,target,key,value,opts,multiline,inline){
   const cur=(value==null?"":String(value));
   // recommended_browse_nodes is a single Amazon category NODE ID (a number), not a
   // pick-list — Amazon never ships the full node tree as an enum. Force a free-text
@@ -867,6 +889,15 @@ function editCell(sku,target,key,value,opts,multiline){
     if(cur&&!opts.includes(cur)) h+=`<option value="${esc(cur)}" selected>${esc(cur)} (current)</option>`;
     opts.forEach(o=>{h+=`<option value="${esc(o)}"${o===cur?" selected":""}>${esc(o)}</option>`;});
     return h+`</select>`;
+  }
+  if(inline){
+    // Click-anywhere-and-type. `empty` draws the em dash placeholder when
+    // there is nothing in it, so a blank cell still reads as a field rather
+    // than as a gap. dwBlurSave only writes when the text actually changed.
+    return `<span class="dw2-cv-in${cur.trim()?"":" empty"}" contenteditable="true" spellcheck="false"`
+         + ` data-orig="${esc(cur)}"`
+         + ` onpaste="dwPastePlain(event)" onkeydown="dwEnterBlur(event)"`
+         + ` onblur="dwBlurSave(this,'${esc(sku)}','${target}','${esc(key)}')">${esc(cur)}</span>`;
   }
   if(multiline) return `<textarea class="ed" rows="3" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">${esc(cur)}</textarea>`;
   return `<input class="ed" value="${esc(cur)}" onchange="saveEdit(this,'${esc(sku)}','${target}','${esc(key)}')">`;
@@ -886,22 +917,16 @@ function ccount(el, cid, limit){
   c.classList.toggle('over', !!over);
   c.classList.toggle('warn', !!warn);
 }
-// Combined indexing meter: Amazon indexes only the FIRST ~1,000 BYTES across ALL
-// 5 bullets COMBINED (not per bullet). Show how much of that budget is used.
-function bulletMeter(){
-  const meter=document.getElementById('bulletIdxMeter'); if(!meter) return;
-  let total=0;
-  for(let i=1;i<=5;i++){
-    const ta=document.querySelector('textarea[data-bkt="bullet'+i+'"]');
-    if(ta){ try{ total+=new Blob([ta.value]).size; }catch(e){ total+=ta.value.length; } }
-  }
-  const cap=1000;
-  const pct=Math.min(100, Math.round(total/cap*100));
-  const over=total>cap;
-  meter.innerHTML='<div class="idxbar"><div class="idxfill'+(over?' over':'')+'" style="width:'+pct+'%"></div></div>'
-    +'<span class="idxlbl'+(over?' over':'')+'">'+total+' / '+cap+' bytes indexed across all 5 bullets'
-    +(over?' — content past 1,000 bytes is NOT indexed (still shown to shoppers)':'')+'</span>';
-}
+// The combined bullet indexing meter LIVES IN static/js/drawer.js now.
+//
+// It used to be here and drew a single progress bar. The drawer redesign needs
+// the same measurement to drive four things at once -- the segmented budget
+// bar, each card's byte count, each card's indexed dot and the section
+// header's verdict -- and the way to do that is ONE function that writes all
+// four (Rule 12), not a second meter beside this one.
+//
+// The name and every caller are unchanged: bulletMeter() is still what you
+// call after touching a bullet.
 // byte length (UTF-8) — Amazon counts backend search terms + bullet indexing in BYTES, not chars
 function byteLen(s){ try{ return new Blob([String(s==null?"":s)]).size; }catch(e){ return String(s==null?"":s).length; } }
 // Approx file size of a data: URL (base64 -> bytes) as a human string.
@@ -1071,7 +1096,23 @@ function updateLocalCol(r,key,value){
   const m=key.match(/^Bullet (\d)$/); if(m){ r.bullets=r.bullets||[]; r.bullets[+m[1]-1]=value; }
 }
 async function saveEdit(el,sku,target,key){
-  const value=el.value; el.classList.remove("saved","err"); el.classList.add("saving");
+  // ONE SAVE PATH, TWO KINDS OF CONTROL.
+  //
+  // The drawer redesign edits several fields in place (contenteditable) rather
+  // than in a box: the title in the hero, the highlights, the search terms,
+  // the description, and every free-text attribute cell. A contenteditable has
+  // no `.value` -- it has text. Reading whichever one this element actually
+  // has is the whole change; it is done HERE so there is still exactly one
+  // function that writes a field, rather than a second saver for the new
+  // controls that would drift away from this one (Rule 12).
+  //
+  // textContent, deliberately, not innerHTML: the title carries claim-risk
+  // <mark> highlights, and what goes to Amazon must be the words, never the
+  // markup around them.
+  const isCE = (el.isContentEditable === true)
+            || (el.getAttribute && el.getAttribute("contenteditable") === "true");
+  const value = isCE ? (el.textContent == null ? "" : el.textContent) : el.value;
+  el.classList.remove("saved","err"); el.classList.add("saving");
   try{
     const res=await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify(acctBody({sku,target,key,value}))});
@@ -1233,6 +1274,22 @@ function fullData(r){
       </div></details>`;
   }
 }
+/* THE TITLE'S LIMITS, IN ONE PLACE.
+ *
+ * Amazon's 200-character system maximum, and the 75-character HARD CAP that
+ * lands on 27 Jul 2026 for every category except media. Mobile truncates at
+ * about 70, which is why the advice is to front-load.
+ *
+ * It is a file-level constant because the title is now edited in the drawer's
+ * hero (listings.js) while the rest of the content limits are applied here.
+ * Two copies of a date-stamped Amazon rule is exactly the kind of pair that
+ * gets updated once and then disagrees. */
+const TITLE_OPTS = {
+  limit: 200, warnAt: 75,
+  warnMsg: "Amazon's 75-char hard cap applies from 27 Jul 2026 (all categories except media). Front-load the first ~70 chars — mobile truncates there.",
+  indexNote: "fully indexed · highest weight",
+  indexTip: "Title carries the most A10 search weight. Mobile shows ~70-80 chars, so put the most important words first."
+};
 function _fullDataInner(r){
   const sku=r.sku;
   const sc=SCHEMAS[r.product_type]||{opts:{},req:[],attrs:[],subs:{},titles:{}};
@@ -1240,14 +1297,18 @@ function _fullDataInner(r){
   const titles=sc.titles||{};
   // Amazon's REAL field label (matches Seller Central) -> falls back to prettified key
   const lbl=(k)=> titles[k] || _cleanLabel(String(k));
+  // IDENTITY AND OFFER. Same thirteen facts, same controls, same order as the
+  // table this replaced -- drawn as the design's label-left / value-right rows
+  // instead of a <table class="kv">. dwFieldRow/dwRo are presentation only
+  // (static/js/drawer.js); every editable one still comes out of editCell().
   const idRows=[
-    edRow("Product type", productTypeCell(sku, r), "Amazon-assigned from the catalogue. Changing it can cause rejection."),
-    edRow("SKU", roCell(r.sku)),
-    edRow("Brand", editCell(sku,"col","Brand",r.brand), null, (rowProvenance(r)||{}).brand),
-    edRow("Condition", roCell("New")),
-    edRow("Category", roCell((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
-    edRow("Browse node(s)", roCell((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"—")),
-    edRow("Barcode / GTIN", editCell(sku,"col","UPC",r.barcode)),
+    dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Amazon-assigned from the catalogue. Changing it can cause rejection."}),
+    dwFieldRow("SKU", dwRo(r.sku)),
+    dwFieldRow("Brand", editCell(sku,"col","Brand",r.brand,null,false,true), {prov:(rowProvenance(r)||{}).brand}),
+    dwFieldRow("Condition", dwRo("New")),
+    dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
+    dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
+    dwFieldRow("Barcode / GTIN", editCell(sku,"col","UPC",r.barcode)),
     (function(){
        // Currency follows the ACTIVE workspace marketplace (reliable), with a
        // per-row override if the row itself carries a marketplace.
@@ -1257,20 +1318,20 @@ function _fullDataInner(r){
                : (mkt==="EU"||["DE","FR","IT","ES","NL"].indexOf(mkt)>=0) ? "\u20ac" : "\u00a3";
        var raw=String(r.price==null?"":r.price);
        var num=raw.replace(/[^0-9.\-]/g,"");            // strip any currency -> number only
-       return edRow("Price ("+cur+")", '<span class="curlbl">'+cur+'</span>'+editCell(sku,"col","Our Price (GBP)",num));
+       return dwFieldRow("Price ("+cur+")", '<span class="dw2-curlbl">'+cur+'</span>'+editCell(sku,"col","Our Price (GBP)",num));
     })(),
-    edRow("List price", roCell((function(){var lp=(r.attributes||{}).list_price; return lp?String(lp).replace(/[^0-9.\-]/g,"")||"—":"—";})())),
-    edRow("Quantity — blank = default 10", editCell(sku,"attr","fulfillment_quantity",(r.attributes||{}).fulfillment_quantity||"")),
+    dwFieldRow("List price", dwRo((function(){var lp=(r.attributes||{}).list_price; return lp?String(lp).replace(/[^0-9.\-]/g,""):"";})())),
+    dwFieldRow("Quantity — blank = default 10", editCell(sku,"attr","fulfillment_quantity",(r.attributes||{}).fulfillment_quantity||"")),
     (function(){
        var rowMkt = String(r._marketplace||(r.attributes||{}).marketplace||"").toUpperCase();
        var mkt = rowMkt || String(WS_MARKET||"").toUpperCase() || "UK";
        var cur = (mkt==="US"||mkt==="CA"||mkt==="MX") ? "$"
                : (mkt==="EU"||["DE","FR","IT","ES","NL"].indexOf(mkt)>=0) ? "\u20ac" : "\u00a3";
        var pnum=String(r.profit==null?"":r.profit).replace(/[^0-9.\-]/g,"");
-       return edRow("Profit ("+cur+")", roCell(pnum?(cur+pnum):"—"));
+       return dwFieldRow("Profit ("+cur+")", dwRo(pnum?(cur+pnum):"", "green"));
     })(),
-    edRow("Handling days", editCell(sku,"col","Handling Days",r.handling_days)),
-    edRow("Shipping group", roCell(SHIP)),
+    dwFieldRow("Handling days", editCell(sku,"col","Handling Days",r.handling_days)),
+    dwFieldRow("Shipping group", dwRo(SHIP)),
   ].join("");
   const a=r.attributes||{};
   const IMGRE=/^(main_product_image_locator|other_product_image_locator_\d+)$/;
@@ -1381,14 +1442,12 @@ function _fullDataInner(r){
     // to accept one.
     if(BRAND_KEYS.indexOf(String(k).toLowerCase()) >= 0){
       const shown = esc(String(r.brand || r.Brand || "").trim() || "not set");
-      return '<tr><td class="k">' + esc(lbl(k)) + '</td><td class="v">'
-        + '<div class="cc" style="font-size:11.5px;line-height:1.5">'
-        + '<b>' + shown + '</b> — taken from this listing’s <b>Brand</b> '
-        + 'field, not typed here. It must be one of the brands registered on '
-        + 'this account; if it is not, the account’s first brand is sent '
-        + 'instead and the run says so. Add a brand under '
-        + '<b>Manage accounts ▸ Brands</b>.'
-        + '</div></td></tr>';
+      return dwCell({label: lbl(k), full: true, ctrl:
+          '<b>' + shown + '</b> <span style="color:#7a7984">— taken from this '
+        + 'listing’s <b>Brand</b> field above, not typed here. It must be one of '
+        + 'the brands registered on this account; if it is not, the account’s '
+        + 'first brand is sent instead and the run says so. Add a brand under '
+        + '<b>Manage accounts ▸ Brands</b>.</span>'});
     }
     const sf=subsView[k];
     // A field is "required" for star purposes if the schema lists it OR Amazon's
@@ -1421,8 +1480,7 @@ function _fullDataInner(r){
       const nestNote = isReqParent
         ? ""   // already required -> the star + headHint already say to fill it
         : `<span class="nesthint" title="This field is optional. But if you enter a value here, Amazon will require ALL its sub-fields below to be filled too — otherwise it errors. Leave the whole group blank if you don't need it.">\u2139 optional — but filling this makes its sub-fields required</span>`;
-      const head=`<tr class="subhead${isMissing?' flaggedrow':''}"><td class="k" colspan="2"><b>${esc(lbl(k))}</b>${reqMark}${headHint?` <span class="fixhint">\u26a0 ${esc(headHint)}</span>`:''}${nestNote}</td></tr>`;
-      const rows=sf.map(s=>{
+      const cells=sf.map(s=>{
         const full=k+"."+s.path;                 // flat dot-key in Attributes JSON
         const val=(full in a)?a[full]:"";
         const sHasEnum=!!(s.enum&&s.enum.length);
@@ -1430,9 +1488,16 @@ function _fullDataInner(r){
         const subKey=(k+"."+s.path).toLowerCase();
         let sHint = isMissing ? (sHasEnum?"choose an allowed value":"type the value Amazon expects") : null;
         if(isMissing && SUBFIELD_HINT[subKey]) sHint = SUBFIELD_HINT[subKey];
-        return edRow(titles[full]||s.label, editCell(sku,"attr",full,val,(sHasEnum?s.enum:null)), sHint, _prov&&_prov[full], true);
+        // A sub-field Amazon publishes allowed values for stays a picker; free
+        // text becomes an inline cell. Same editCell, same saveEdit.
+        return dwCell({label: titles[full]||s.label,
+                       ctrl: editCell(sku,"attr",full,val,(sHasEnum?s.enum:null),false,!sHasEnum),
+                       hint: sHint, prov: _prov&&_prov[full], flagged: !!isMissing});
       }).join("");
-      return head+rows;
+      // reqMark and nestNote are passed through as-is: they are the existing
+      // spans with the existing tooltips, not re-worded here.
+      return dwNestCell({label: lbl(k), reqMark: reqMark, hint: headHint,
+                         note: nestNote, cells: cells});
     }
     const isReq = ((reqList||[]).indexOf(k)>=0) || !!isMissing;
     // same honesty rule as the nested head: a schema-required field that a clean
@@ -1448,9 +1513,24 @@ function _fullDataInner(r){
       ? (baseHint || "choose an allowed value")
       : (/required/i.test(baseHint) ? "required — type the value Amazon expects"
                                     : "type the value Amazon expects (free text)");
-    return isMissing
-      ? edRowReq(lbl(k), editCell(sku,"attr",k,"",enums[k]||null), missHint)
-      : edRow(lbl(k), editCell(sku,"attr",k,a[k],enums[k]||null), flagged[k], _prov&&_prov[k], false, isReq, _flatSchemaOnly, {sku:sku, target:"attr", key:k, locked:isReq});
+    // ONE CELL, EITHER WAY. The old code had two row builders -- edRowReq for a
+    // field Amazon asked for and edRow for one it didn't -- which is why the
+    // "needs value" case quietly lost the provenance dot and the delete
+    // control. It is one cell with a flagged flag now, so a difference between
+    // the two states has to be written down on purpose.
+    //
+    // An enum keeps its <select>; free text becomes an inline cell.
+    const hasList = !!(enums[k] && enums[k].length);
+    return dwCell({
+      label: lbl(k),
+      ctrl: editCell(sku,"attr",k,(isMissing?"":a[k]),enums[k]||null,false,!hasList),
+      hint: isMissing ? missHint : flagged[k],
+      prov: _prov && _prov[k],
+      req: isMissing || (isReq && !_flatSchemaOnly),
+      softReq: _flatSchemaOnly,
+      flagged: !!isMissing,
+      del: {sku:sku, target:"attr", key:k, locked:isReq}
+    });
   };
   // skip flat dot-keys that belong to a nested group (rendered under their head)
   const isSubKey=k=>k.includes(".")&&subsView[k.split(".")[0]];
@@ -1458,6 +1538,9 @@ function _fullDataInner(r){
   const filledParents=[...new Set(aKeys.filter(isSubKey).map(k=>k.split(".")[0]))]
       .filter(p=>!aKeys.includes(p)&&!missing.includes(p));
   const presentTop=aKeys.filter(k=>!_AHIDE.has(k)&&!isSubKey(k));
+  // SAME THREE GROUPS, SAME ORDER: what the listing has, nested parents whose
+  // sub-values are filled, then what Amazon is still asking for. Only the
+  // container changed -- a two-column grid instead of a two-column table.
   const attrRows=presentTop.map(k=>renderAttr(k,false)).join("")
     + filledParents.map(k=>renderAttr(k,false)).join("")
     + missing.map(k=>renderAttr(k,true)).join("");
@@ -1465,12 +1548,12 @@ function _fullDataInner(r){
   const addable=allAttrs.filter(k=>!(k in a) && !missing.includes(k) && !EXCLUDE_REQ.has(k) && !k.endsWith("_image_locator")).sort();
   const sidv=sid(sku);
   const addCtrl = addable.length ? `<div class="addfield">
-      <select onchange="addField('${esc(sku)}','${esc(r.product_type)}',this)">
-        <option value="">+ add another field (${addable.length} optional available)…</option>
+      <select class="ed" onchange="addField('${esc(sku)}','${esc(r.product_type)}',this)">
+        <option value="">+ Show ${addable.length} more field(s) / add optional…</option>
         ${addable.map(k=>`<option value="${esc(k)}">${esc(lbl(k))}</option>`).join("")}
       </select>
       <table class="kv" id="added_${sidv}"></table>
-      <div class="hint">Pick any field to add and fill — saves automatically.</div>
+      <div class="dw2-note">Pick any field to add and fill — saves automatically.</div>
     </div>` : "";
   // ---- CONTENT FIELDS with 2026 limits + indexing depth indicators ----------
   // Title: 200 system max, but a 75-char HARD CAP lands Jul 27 2026 (all cats
@@ -1480,47 +1563,65 @@ function _fullDataInner(r){
   // Description: 2,000 incl HTML, indexed but LOWEST weight of visible fields.
   // Item Highlights: 125, new structured field, own A10 weight.
   // Backend search terms: 249 BYTES (not chars); one byte over de-indexes ALL.
-  const titleOpts={ warnAt:75, warnMsg:"Amazon's 75-char hard cap applies from 27 Jul 2026 (all categories except media). Front-load the first ~70 chars — mobile truncates there.", indexNote:"fully indexed · highest weight", indexTip:"Title carries the most A10 search weight. Mobile shows ~70-80 chars, so put the most important words first." };
-  const bulletOptsFor=(i)=>({ bucket:"bullet"+i, indexNote:(i===1?"first 1,000 bytes (all 5 combined) indexed":""), indexTip:"Amazon indexes only the first ~1,000 bytes across ALL five bullets combined — not per bullet. See the meter above." });
+  // TITLE_OPTS is declared at the top of this file rather than here, because
+  // the title's editor moved to the drawer's hero and its 27 Jul 2026 cap
+  // warning has to travel with it. One object, read from both places.
   const descOpts={ indexNote:"indexed · lowest weight", indexTip:"The description is indexed but weighted lowest of the visible fields. Won't save past 2,000 chars (HTML included)." };
   const highlightOpts={ target:"attr", indexNote:"indexed · own weight", indexTip:"Item Highlights is a structured field shown with the title in search and on the PDP. Carries its own A10 weight (2026)." };
   const backendOpts={ bytes:true, warnAt:249, warnMsg:"Backend search terms are measured in BYTES. One byte over 249 silently de-indexes the ENTIRE field — keep it at or under 249.", indexNote:"249-byte cap · de-index risk", indexTip:"Counted in bytes, not characters. Going one byte over 249 removes the whole field from search." };
-  const bulletMeterRow = `<tr><td colspan="2" class="wcell"><div id="bulletIdxMeter" class="bulletmeter"></div></td></tr>`;
-  const itemHi = (r.attributes||{}).item_type_keyword===undefined ? "" : "";
   const _highlightVal = (function(){ try{ return (r.attributes||{}).item_highlights || r.item_highlights || ""; }catch(e){ return ""; } })();
   // ✕ delete control for a content field (blanks the cell; bullets get their own controls)
   const cDel=(target,key)=>`<button class="cdel" title="Delete this field" onclick="clearField('${esc(sku)}','${target}','${esc(key)}')">✕</button>`;
-  const cRows=[
-      contentRow("Backend search terms", sku, "Search Terms / KW", r.search_terms, 249, Object.assign({}, backendOpts, {controls:cDel("col","Search Terms / KW")})),
-      contentRow("Title", sku, "Title", r.title, 200, titleOpts),
-      contentRow("Item Highlights", sku, "item_highlights", _highlightVal, 125, Object.assign({}, highlightOpts, {controls:cDel("attr","item_highlights")}))
-    ]
-    .concat([bulletMeterRow])
-    .concat((function(){
-        var bl=(r.bullets||[]); var total=bl.length;
-        var rows=bl.map(function(b,i){
-          return contentRow("Bullet "+(i+1), sku, "Bullet "+(i+1), b, 500,
-                            Object.assign({}, bulletOptsFor(i+1), {controls: bulletControls(sku,i,total)}));
-        });
-        if(total<MAX_BULLETS){
-          rows.push('<tr><td colspan="2" class="wcell"><button class="addbulletbtn" onclick="addBullet(\''+esc(sku)+'\')">+ Add bullet ('+total+'/5)</button></td></tr>');
-        }
-        return rows;
-      })())
-    .concat([contentRow("Description", sku, "Description (HTML)", r.description, 2000, descOpts)]).join("");
+  /* THE COPY, AS FOUR SECTIONS INSTEAD OF ONE TABLE.
+   *
+   * The limits, the byte-vs-character distinction and every warning above are
+   * unchanged -- they are the same titleOpts/backendOpts/descOpts objects, and
+   * the values still save through saveEdit() to the same columns. What changed
+   * is the shape: an editable block per field with its counter in the section
+   * header, and the bullets as cards over a shared byte budget.
+   *
+   * THE TITLE IS NOT HERE. It is the hero at the top of the drawer, editable
+   * in place, with its counter and its 27 Jul 2026 cap warning beneath it (see
+   * drawerContent in listings.js). Two editors for one field, both saving to
+   * the same cell, is how they end up disagreeing about what you typed.
+   */
+  const _idxTag=(o)=> o.indexNote
+      ? '<span class="dw2-tag info" title="'+esc(o.indexTip||"")+'">'+esc(o.indexNote)+'</span>' : "";
+  const secHighlights = dwEditBlock({
+      label:"Highlights", sku:sku, target:"attr", key:"item_highlights",
+      value:_highlightVal, limit:125,
+      tag:_idxTag(highlightOpts)+cDel("attr","item_highlights"),
+      placeholder:"no highlights yet"});
+  const secSearch = dwEditBlock({
+      label:"Backend search terms", sku:sku, target:"col", key:"Search Terms / KW",
+      value:r.search_terms, limit:249, bytes:true, warnAt:backendOpts.warnAt,
+      warnMsg:backendOpts.warnMsg, sm:true,
+      tag:_idxTag(backendOpts)+cDel("col","Search Terms / KW"),
+      placeholder:"no search terms yet"});
+  const secDesc = dwEditBlock({
+      label:"Description", sku:sku, target:"col", key:"Description (HTML)",
+      value:r.description, limit:2000, sm:true,
+      tag:_idxTag(descOpts),
+      placeholder:"no description yet"});
+  // The header's own tag is filled in by bulletMeter() as soon as the cards are
+  // in the DOM, so the count can never be written in two places.
+  const secBullets = dwSection("Bullets",
+      '<span class="dw2-tag ok" id="bulletBudgetTag"></span>',
+      dwBulletCards(sku, r.bullets));
   const rid="raw_"+Math.random().toString(36).slice(2,8);
   const nEnum=Object.keys(enums).length;
   const hasAttrs=aKeys.length||missing.length;
   const nFix=missing.length + Object.keys(flagged).filter(k=>k in a).length;
-  const attrHdr=nFix?` — ${nFix} field(s) flagged by Amazon — fix the highlighted ones`:(hasAttrs?'':' — none yet');
+  // nFix used to be spelled into the "Attributes" heading; it is now the tag
+  // on the section header (see secAttrs below), so the count is still on
+  // screen without opening anything.
   const st=(r.status||"").toUpperCase();
   const reqNote = missing.length
     ? `<div class="reqnote">Amazon reveals required fields in <b>stages</b> — fill the highlighted box(es) above, then click <b>Preview (API)</b> again. More required fields may appear after each Preview; repeat until Preview reports no errors.</div>`
     : (["API_READY","API_ERROR","LIVE"].includes(st) ? ""
         : `<div class="reqnote">Required fields are revealed by Amazon's validation, not upfront. Click <b>Preview (API)</b> to check this row — any required fields will appear here as highlighted boxes.</div>`);
-  const rememberBtn = (aKeys.length||missing.length)
-    ? `<button class="rememberbtn" onclick="saveDefault('${esc(sku)}','${esc(r.product_type)}',this)">★ Remember these as defaults for all ${esc(r.product_type||"this type")} listings</button>`
-    : "";
+  // "Remember these as defaults" is built inline in secAttrs now, as the
+  // design's quiet amber link rather than a filled button. Same saveDefault().
   const isBrandRow = !r.asin || (r.sku && /^[A-Za-z]/.test(String(r.sku)) && !/_\d+Days_/.test(String(r.sku)));
   const imgLabel = isBrandRow ? "Images — from brand catalogue" : "Images — from competitor (eBay priority)";
   const _mainIsLocal = imgUrls.length && !/^https?:\/\//i.test(String(imgUrls[0]||""));
@@ -1532,11 +1633,19 @@ function _fullDataInner(r){
          <button class="suggestbtn" style="background:#2a1414;border-color:var(--red-line);color:var(--red)" onclick="clearMainImage('${esc(sku)}')" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
        </div>`
     : "";
-  const imgBlock = (imgUrls.length
-    ? `<div class="kvsec">${imgLabel}</div><div class="imgrow">${imgUrls.map((u,i)=>`<div class="thumbwrap"><a href="${esc(u)}" target="_blank" title="${i===0?'MAIN image':'additional #'+i}"><img class="thumb" src="${esc(u)}" loading="lazy"><span class="thumbcap">${i===0?'main':'#'+i}</span></a><button class="thumbedit" title="Edit this image (AI changes only what you ask)" onclick="editListingImage('${esc(sku)}','${esc(u)}',${i})"><i class="ti ti-wand"></i></button></div>`).join("")}</div>${_imgWarn}${_imgActions}`
-    : `<div class="kvsec">Images</div><div class="hint">No image captured for this row.</div>`)
-    + `<div class="genimg" id="genimg_${sidv}">
-        <div class="kvsec" style="color:var(--ai);margin-top:12px"><i class="ti ti-sparkles"></i> AI image generation</div>
+  // THE STRIP, AND THE GENERATOR BEHIND A FOLD. Two different jobs: what this
+  // listing's pictures ARE (always on screen) and how to make another one (a
+  // panel with four controls and a model picker, which does not need to be
+  // between you and the copy every time the drawer opens).
+  const secImages = dwSection("Images",
+      (isBrandRow
+        ? '<span class="dw2-tag info">brand catalogue</span>'
+        : '<span class="dw2-tag warn"><i class="ti ti-alert-triangle"></i> competitor source</span>')
+      + '<span class="dw2-count">' + imgUrls.length + '</span>',
+      (imgUrls.length
+        ? `<div class="imgrow">${imgUrls.map((u,i)=>`<div class="thumbwrap"><a href="${esc(u)}" target="_blank" title="${i===0?'MAIN image':'additional #'+i}"><img class="thumb" src="${esc(u)}" loading="lazy"><span class="thumbcap">${i===0?'main':'#'+i}</span></a><button class="thumbedit" title="Edit this image (AI changes only what you ask)" onclick="editListingImage('${esc(sku)}','${esc(u)}',${i})"><i class="ti ti-wand"></i></button></div>`).join("")}</div>${_imgWarn}${_imgActions}`
+        : `<div class="dw2-note">No image captured for this row. (${esc(imgLabel)})</div>`));
+  const genBlock = `<div class="genimg" id="genimg_${sidv}">
         <div class="genpanel" id="genpanel_${sidv}" style="display:block">
           <div class="gendiag" id="gendiag_${sidv}">Checking OpenRouter connection…</div>
           <div class="genrow">
@@ -1566,19 +1675,16 @@ function _fullDataInner(r){
           <details id="genpromptwrap_${sidv}" style="display:none"><summary class="cc">view detailed prompt the AI wrote</summary><pre class="genprompt" id="genprompt_${sidv}"></pre></details>
           <div id="genresult_${sidv}"></div>
         </div>
-      </div>`
-      + ((window.WS_FEATURES&&window.WS_FEATURES.indexOf('harvest')>=0)
-         ? milesTemplatePanel(sku, sidv) : "");
+      </div>`;
+  const milesBlock = (window.WS_FEATURES&&window.WS_FEATURES.indexOf('harvest')>=0)
+         ? milesTemplatePanel(sku, sidv) : "";
   // COMPLETE submission view: every attribute key, no exclusions, read-only,
   // so the user sees everything that will be sent to Amazon (browse nodes,
   // dimensions, compliance flags, image locators, prices -- the lot).
   const allSubKeys=Object.keys(a).filter(k=>k!=="_provenance"&&k!=="provenance").sort();
   const fmtVal=v=>{ if(v==null) return ""; if(typeof v==="object") return esc(JSON.stringify(v)); return esc(String(v)); };
   const fullSubRows=allSubKeys.map(k=>`<tr><td class="k">${esc(k.replace(/_/g," "))}</td><td class="v"><span class="ro">${fmtVal(a[k])}</span></td></tr>`).join("");
-  const fullSubBlock=allSubKeys.length
-    ? `<details class="suball"><summary class="kvsec" style="cursor:pointer">Complete submission data — everything sent to Amazon (${allSubKeys.length} fields, read-only)</summary>
-        <table class="kv">${fullSubRows}</table></details>`
-    : "";
+  const fullSubBlock=allSubKeys.length ? `<table class="kv">${fullSubRows}</table>` : "";
   // Amazon messages that don't name a real schema attribute (catalogue-conflict prose,
   // "The Listing data...", "Your offer...") -> shown as plain text, NEVER as input fields.
   const plainNoteBlock=(_plainNotes&&_plainNotes.length)
@@ -1586,22 +1692,56 @@ function _fullDataInner(r){
          <b>Amazon message</b> <span class="cc">(not an editable field — no attribute to fix here)</span><br>
          ${_plainNotes.map(esc).join("<br>")}</div>`
     : "";
-  return `<details open><summary>Full listing data — click any value to edit; saves automatically${nEnum?'. Dropdowns = Amazon allowed values':''}</summary>
-    ${imgBlock}
-    <div class="kvsec">Identity &amp; offer</div><table class="kv">${idRows}</table>
-    <div class="kvsec">Attributes${attrHdr}</div>${schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)}${(typeof howWorks==="function")?howWorks('required_fields'):""}${hasAttrs?`<table class="kv">${attrRows}</table>`:''}${plainNoteBlock}${reqNote}${addCtrl}${rememberBtn}
-    <div class="kvsec">Content</div>${(typeof howWorks==="function")?howWorks('content_index'):""}<table class="kv">${cRows}</table>
-    ${fullSubBlock}
-    <span class="rawtoggle" onclick="var e=document.getElementById('${rid}');e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>
-    <pre class="raw" id="${rid}">${esc(JSON.stringify(a,null,2))}</pre>
-    ${ (window.SHOW_PAYLOAD_VIEWER===true && r.api_payload && String(r.api_payload).trim())
-       ? `<details class="payloadbox"><summary class="kvsec" style="cursor:pointer">\ud83d\udce6 Exact payload sent to Amazon (literal API body from last Preview/Submit, read-only)</summary>
-            <div class="payloadnote">This is the verbatim JSON the app sent to Amazon on the last Preview or Submit for this SKU — every word, exactly as transmitted. It does not affect anything; it is for visibility only. You can hide this section in Settings.</div>
+  /* WHAT THE DRAWER SHOWS, AND IN WHAT ORDER.
+   *
+   * The copy first, because that is what somebody opens a listing to work on.
+   * Then the pictures, then the offer, then the sixty-nine attributes. Then
+   * everything that is reference rather than work -- the generator, the Miles
+   * template, the complete submission view, the raw JSON, the exact payload --
+   * kept in full and CLOSED, each one labelled with enough to decide whether
+   * it is worth opening.
+   *
+   * Nothing was dropped to get here. Every block below existed before; the
+   * only ones that changed shape are the ones the design draws differently.
+   */
+  const secIdentity = dwSection("Identity and offer",
+      (r.product_type
+        ? '<span class="dw2-tag info" title="Amazon assigned this product type from its catalogue. Changing it can cause rejection.">'+esc(r.product_type)+'</span>'
+        : '<span class="dw2-tag warn">no product type</span>'),
+      idRows);
+  const secAttrs = dwSection("Attributes",
+      (nFix ? '<span class="dw2-tag danger"><i class="ti ti-alert-triangle"></i> '+nFix+' flagged by Amazon</span>' : "")
+      + '<span class="dw2-count">'+(aKeys.length+missing.length)+' field(s)</span>',
+        schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)
+      + ((typeof howWorks==="function")?howWorks('required_fields'):"")
+      + (hasAttrs ? dwGrid(attrRows) : '<div class="dw2-note">No attributes yet.</div>')
+      + plainNoteBlock + reqNote + addCtrl
+      + ((aKeys.length||missing.length)
+          ? `<button class="dw2-remember" onclick="saveDefault('${esc(sku)}','${esc(r.product_type)}',this)"><i class="ti ti-star"></i> Remember these as defaults for all ${esc(r.product_type||"this type")} listings</button>`
+          : ""));
+  return secHighlights + secBullets + secSearch + secDesc + secImages
+    + secIdentity + secAttrs
+    // The compliance verdicts, Amazon's own messages, the live mirror and A+
+    // content -- folded, each labelled with its verdict. They are rendered
+    // HERE rather than by the drawer shell so that _rebuildDrawerData(),
+    // reloadSchemaNow() and the run queue, all of which replace only this
+    // block, cannot quietly drop them.
+    + ((typeof _dwVerdictFolds === "function") ? _dwVerdictFolds(r) : "")
+    + dwFold("AI image generation",
+        '<span class="dw2-tag info"><i class="ti ti-sparkles"></i> generate</span>', genBlock)
+    + (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
+    + dwFold("Submission data",
+        '<span class="dw2-count">'+allSubKeys.length+' fields · read-only</span>',
+        fullSubBlock
+        + `<span class="rawtoggle" onclick="var e=document.getElementById('${rid}');e.style.display=(e.style.display==='block'?'none':'block')">show / hide raw JSON</span>`
+        + `<pre class="raw" id="${rid}">${esc(JSON.stringify(a,null,2))}</pre>`)
+    + ( (window.SHOW_PAYLOAD_VIEWER===true && r.api_payload && String(r.api_payload).trim())
+       ? dwFold("Exact payload sent to Amazon",
+            '<span class="dw2-count">literal API body \u00b7 read-only</span>',
+            `<div class="payloadnote">This is the verbatim JSON the app sent to Amazon on the last Preview or Submit for this SKU — every word, exactly as transmitted. It does not affect anything; it is for visibility only. You can hide this section in Settings.</div>
             <pre class="raw payloadraw" id="pl_${sidv}">${esc(String(r.api_payload))}</pre>
-            <button class="linkbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('pl_${sidv}').textContent);toast&&toast('Payload copied')">Copy payload</button>
-          </details>`
-       : "" }
-  </details>`;
+            <button class="linkbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('pl_${sidv}').textContent);toast&&toast('Payload copied')">Copy payload</button>`)
+       : "" );
 }
 var AISET=null;
 async function loadAISettings(){
