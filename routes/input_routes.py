@@ -98,16 +98,21 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
     def input_add():
         """Queue one product typed into the app."""
         from data import input_import as _ii
+        from data import input_row as _ir
         b = request.get_json(silent=True) or {}
         p = _product(b)
         # SOMETHING has to identify the product. A row with neither a source
         # link nor an ASIN nor a name cannot be generated from and would sit in
         # the queue looking like work.
-        if not (p["ebay_url"] or p["amazon_url"] or p["competitor_asin"]
-                or p["item_name"]):
-            return jsonify({"ok": False, "error": (
-                "Give at least a source link, an Amazon link or ASIN, or a "
-                "product name — otherwise there is nothing to generate from.")}), 400
+        #
+        # THE TEST AND ITS WORDING BOTH LIVE IN data/input_row.py NOW, because
+        # the file upload has to apply the same rule to every row of a
+        # spreadsheet. Written out twice, the two would have drifted the first
+        # time either was relaxed -- and the failure mode is silent: a row the
+        # form accepts but an upload drops, or the reverse, with no message
+        # anywhere saying the two disagree (CLAUDE.md Rule 12).
+        if not _ir.is_generatable(p):
+            return jsonify({"ok": False, "error": _ir.WHY_NOT}), 400
         wsid = _wsid()
         rid = _ii.add_row(CONFIG_PATH, wsid, p)
         return jsonify({"ok": True, "id": rid, "workspace": wsid,
