@@ -23,16 +23,40 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
 
         Age is the whole point: a queue with no date on it is indistinguishable
         from a fresh one, which is how you end up generating last month's list.
+
+        Counted from the LISTINGS STORE now -- rows with status=QUEUED -- rather
+        than from the old input_products table.
         """
-        from data import input_import as _ii
+        from data import queued_store as _qs
         wsid = _wsid()
-        s = _ii.summary(CONFIG_PATH, wsid)
-        return jsonify({"ok": True, "workspace": wsid, **s})
+        return jsonify({"ok": True, "workspace": wsid,
+                        **_qs.queued_count(CONFIG_PATH, wsid)})
 
     @app.route("/input/rows")
     def input_rows():
-        from data import input_import as _ii
-        return jsonify({"ok": True, "rows": _ii.rows(CONFIG_PATH, _wsid())})
+        """The queued products, from the listings store.
+
+        Returned under the names the queue UI already uses, so the screen did
+        not have to change with the storage: a listing's Source URL is the
+        eBay link the person pasted, and its Title is the name they gave it.
+        """
+        from data import queued_store as _qs
+        out = []
+        for r in _qs.queued_rows(CONFIG_PATH, _wsid()):
+            out.append({
+                "id": r.get("sku"),          # the SKU is the row's identity now
+                "sku": r.get("sku"),
+                "ebay_url": r.get("source_url") or "",
+                "amazon_url": "",
+                "competitor_asin": r.get("competitor_asin") or "",
+                "item_name": r.get("title") or "",
+                "source_cost": "",
+                "selling_price": r.get("our_price") or "",
+                "handling_time": r.get("handling_time") or r.get("handling_days") or "",
+                "upc": r.get("upc") or "",
+                "source": "queued",
+            })
+        return jsonify({"ok": True, "rows": out})
 
     # ---- REPLACED BY /input/upload (CSV/Excel) ------------------------------
     #
@@ -92,7 +116,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
     def _product(b):
         """A posted row, reduced to the columns the queue actually has."""
         from data import input_import as _ii
-        return {k: str((b or {}).get(k, "") or "").strip() for k in _ii.COLUMNS}
+        return {k: str((b or {}).get(k, "") or "").strip() for k in _EDITABLE}
 
     @app.route("/input/add", methods=["POST"])
     def input_add():
@@ -114,42 +138,75 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
         if not _ir.is_generatable(p):
             return jsonify({"ok": False, "error": _ir.WHY_NOT}), 400
         wsid = _wsid()
-        rid = _ii.add_row(CONFIG_PATH, wsid, p)
-        return jsonify({"ok": True, "id": rid, "workspace": wsid,
-                        **_ii.summary(CONFIG_PATH, wsid)})
+        # Into the LISTINGS STORE as QUEUED, exactly as an upload does -- same
+        # function, so a typed product and an uploaded one are the same row.
+        from data import queued_store as _qs
+        extras = _qs.add_queued(CONFIG_PATH, wsid, p)
+        return jsonify({"ok": True, "id": extras["sku"], "sku": extras["sku"],
+                        "workspace": wsid,
+                        **_qs.queued_count(CONFIG_PATH, wsid)})
+
+    # The queue's columns, kept so an edit can still be filtered to real fields.
+    _EDITABLE = ("ebay_url", "amazon_url", "competitor_asin", "item_name",
+                 "source_cost", "selling_price", "handling_time", "upc")
+
+    # Queue field -> the listings column it is stored in. amazon_url and
+    # source_cost are absent on purpose: neither has a column on `listings`
+    # (the ASIN is what an Amazon link is kept for, and the cost lives in the
+    # COGS store), so neither can be edited here.
+    _EDIT_TO_HEADER = {
+        "ebay_url": "Source URL",
+        "competitor_asin": "Competitor ASIN",
+        "item_name": "Title",
+        "selling_price": "Our Price (GBP)",
+        "handling_time": "Handling Time",
+        "upc": "UPC",
+    }
 
     @app.route("/input/update", methods=["POST"])
     def input_update():
-        """Change one queued product in place."""
-        from data import input_import as _ii
+        """Change one queued product in place. `id` is its SKU."""
+        from data.store import ListingStore
+        from data import queued_store as _qs
         b = request.get_json(silent=True) or {}
-        rid = b.get("id")
-        if not rid:
+        sku = str(b.get("id") or b.get("sku") or "").strip()
+        if not sku:
             return jsonify({"ok": False, "error": "no row id"}), 400
-        fields = {k: v for k, v in (b or {}).items() if k in _ii.COLUMNS}
-        n = _ii.update_row(CONFIG_PATH, _wsid(), rid, fields)
-        if not n:
+        wsid = _wsid()
+        # ONLY QUEUED ROWS. This endpoint could once only reach the queue table
+        # and so could never touch a real listing; now that queued rows sit
+        # beside live ones, that has to be enforced rather than assumed.
+        if not any(r.get("sku") == sku for r in _qs.queued_rows(CONFIG_PATH, wsid)):
             return jsonify({"ok": False, "error": (
-                "That row is not in this workspace's queue.")}), 404
+                "That row is not queued in this workspace.")}), 404
+        fields = {_EDIT_TO_HEADER[k]: v for k, v in (b or {}).items()
+                  if k in _EDIT_TO_HEADER}
+        if not fields:
+            return jsonify({"ok": False, "error": "nothing to change"}), 400
+        n = ListingStore(wsid, config_path=CONFIG_PATH).update_fields(sku, fields)
         return jsonify({"ok": True, "updated": n})
 
     @app.route("/input/delete", methods=["POST"])
     def input_delete():
-        """Remove one queued product."""
-        from data import input_import as _ii
+        """Remove one queued product. Refuses anything not QUEUED."""
+        from data import queued_store as _qs
         b = request.get_json(silent=True) or {}
-        rid = b.get("id")
-        if not rid:
+        sku = str(b.get("id") or b.get("sku") or "").strip()
+        if not sku:
             return jsonify({"ok": False, "error": "no row id"}), 400
-        n = _ii.delete_row(CONFIG_PATH, _wsid(), rid)
+        wsid = _wsid()
+        n = _qs.delete_queued(CONFIG_PATH, wsid, sku)
         return jsonify({"ok": bool(n), "removed": n,
-                        **_ii.summary(CONFIG_PATH, _wsid())})
+                        **_qs.queued_count(CONFIG_PATH, wsid)})
 
     @app.route("/input/clear", methods=["POST"])
     def input_clear():
-        """Empty the queue for this workspace. Deliberately explicit -- an import
-        never deletes, so this is the only way work leaves the queue."""
-        from data import input_import as _ii
+        """Empty this workspace's QUEUED rows.
+
+        QUEUED ONLY. Generated, submitted and live listings live in the same
+        table now, and this must never be the thing that empties a catalogue.
+        """
+        from data import queued_store as _qs
         wsid = _wsid()
         return jsonify({"ok": True, "workspace": wsid,
-                        "removed": _ii.clear(CONFIG_PATH, wsid)})
+                        "removed": _qs.clear_queued(CONFIG_PATH, wsid)})

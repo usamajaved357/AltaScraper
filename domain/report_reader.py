@@ -53,15 +53,26 @@ def _decode(data):
 
 
 def _sniff(text):
-    """Tab or comma? Decided on the header line, where it matters.
+    """Tab, semicolon or comma? Decided on the header line, where it matters.
 
     Amazon ships the same report as .csv and as tab-separated .txt, and a
     tab-separated file read as CSV becomes one enormous column -- which then
     fails detection with "this is not the right report", sending someone back to
     Seller Central for a file that was already correct.
+
+    THE SEMICOLON IS FOR THE FILES PEOPLE MAKE THEMSELVES. Amazon's reports are
+    never semicolon-separated, but this module now also reads the product lists
+    uploaded on the Generate screen, and Excel writes semicolons wherever the
+    system list separator is one -- most of continental Europe. Such a file read
+    as CSV is the same single enormous column, and the uploader would report
+    "none of that file's columns were recognised" about a perfectly good file.
+    Amazon's own headers contain no semicolons, so adding it cannot change how
+    any report is read.
     """
     first = (text.splitlines() or [""])[0]
-    return "\t" if first.count("\t") > first.count(",") else ","
+    counts = {"\t": first.count("\t"), ";": first.count(";"), ",": first.count(",")}
+    best = max(counts, key=lambda d: counts[d])
+    return best if counts[best] else ","
 
 
 def is_xlsx(data):

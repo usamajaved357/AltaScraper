@@ -93,10 +93,21 @@ truthy("nothing is drawn on the database backend",
        'if(window.DATA_BACKEND === "db"){\n    el.innerHTML = "";' in shell)
 truthy("  no Import-from chip", "_srcChip(\"Import from\"" not in shell)
 truthy("  no gid caption", "only read when you press Import" not in shell)
-# The FEATURE stays -- it just lives where the importing happens.
+# THE FEATURE NO LONGER STAYS. This used to assert that importing from a sheet
+# was still offered inside the queue -- the header had stopped advertising a
+# spreadsheet, but the button had simply moved to where the importing happened.
+#
+# The input does not come from Google at all now. Products reach the queue two
+# ways, the "Add a product" form and a CSV/Excel upload, so a button that reads
+# a spreadsheet would be the only thing left on the screen implying otherwise.
+# /input/import and the auto-import inside /run/generate are commented out; see
+# test_input_upload.py, which checks the removal by looking for a LIVE
+# @app.route rather than for text that is still present in the commented code.
 tpl = open(r"D:\AltaScraper\templates\dashboard.html", encoding="utf-8").read()
-truthy("importing from a sheet is still offered in the queue",
-       "inputQueueImport(" in tpl)
+truthy("the sheet-import button is gone from the queue",
+       "inputQueueImport(" not in tpl)
+truthy("  and the file upload stands where it stood",
+       'id="inputupload"' in tpl)
 
 print("\nFAILURES: %d" % len(fails))
 for f in fails:

@@ -733,6 +733,21 @@ function passFilter(r){
   if(FILTER==="blocked")return isBlockedByOurChecks(r.status);
   if(FILTER==="approved")return r.status==="APPROVED"||r.status==="API_READY";
   if(FILTER==="live")return r.status==="LIVE";
+  // THE FOUR STATUSES. Asked of liststatus.js, not tested here, so the tile
+  // that COUNTS them and the filter that HIDES the rest cannot disagree.
+  if(FILTER==="queued")return (typeof lsIsQueued==="function") && lsIsQueued(r);
+  if(FILTER==="submitted")return (typeof lsSaysSubmitted==="function")
+                                 && lsSaysSubmitted(r);
+  if(FILTER==="generated"){
+    // The old statuses count as generated too, so an unmigrated database still
+    // shows its rows under the tile that claims to be counting them.
+    if((typeof lsIsGenerated==="function") && lsIsGenerated(r)) return true;
+    return ["NEEDS_REVIEW","APPROVED","API_READY","IP_HOLD","COMPLIANCE_HOLD",
+            "ERROR","API_ERROR"].indexOf(String(r.status||"").toUpperCase()) >= 0;
+  }
+  // Listings carrying at least one warning, whatever their status.
+  if(FILTER==="warned")return (typeof lsWarnings==="function")
+                              && lsWarnings(r).n > 0;
   // The live-view tiles. An app row is judged by the CATALOGUE item behind it,
   // for the same reason the tiles count catalogue items: whether Amazon is
   // showing a listing, and how many it has, are facts about the listing rather
@@ -990,7 +1005,8 @@ function _liveCatSetsForCurrentView(){
 
 function summary(){
   renderTabFilter();                             // keep the tab filter row in sync
-  const c={APPROVED:0,API_READY:0,NEEDS_REVIEW:0,HOLD:0,ERROR:0,LIVE:0};
+  const c={QUEUED:0,GENERATED:0,SUBMITTED:0,
+           APPROVED:0,API_READY:0,NEEDS_REVIEW:0,HOLD:0,ERROR:0,LIVE:0};
   const sets = _liveCatSetsForCurrentView();
   // Counts reflect the ACTIVE tab filter: "All tabs" counts everything, a specific
   // tab counts only that tab's rows. Blank placeholder rows are excluded so the
@@ -1021,7 +1037,14 @@ function summary(){
       c.LIVE++;
       return;
     }
-    if(r.status==="APPROVED")c.APPROVED++;
+    // THE FOUR STATUSES. QUEUED and GENERATED are what the flow uses now; the
+    // rest are kept because a database that has not been migrated yet still
+    // holds them, and a row counted into nothing disappears off the screen
+    // without saying so.
+    if(r.status==="QUEUED")c.QUEUED++;
+    else if(r.status==="GENERATED")c.GENERATED++;
+    else if(r.status==="SUBMITTED")c.SUBMITTED++;
+    else if(r.status==="APPROVED")c.APPROVED++;
     else if(r.status==="API_READY")c.API_READY++;
     else if(r.status==="LIVE")c.LIVE++;
     else if(r.status==="NEEDS_REVIEW")c.NEEDS_REVIEW++;
@@ -1167,16 +1190,24 @@ function summary(){
   const _n = v => _pending ? "—" : v;
   let tiles;
   if(_draftsView){
-    tiles = tile(_n(total), "Drafts", "all")
-          + tile(_n(c.NEEDS_REVIEW), "Needs review", "review", "var(--gold)")
-          // APPROVED **and** API_READY. The filter has always matched both, but
-          // the tile counted only APPROVED -- so a row that had passed Amazon's
-          // preview showed as "0 ready to submit", which is the one number that
-          // decides whether there is anything to do.
-          + tile(_n(c.APPROVED + c.API_READY), "Ready to submit", "approved",
-                 "var(--ok)")
-          + tile(_n(c.HOLD + c.ERROR), "Blocked or errored", "holds",
-                 "var(--red)");
+    // THE FOUR STATUSES, in the order a listing passes through them.
+    //
+    // "Needs review", "Ready to submit" and "Blocked or errored" are gone with
+    // the statuses behind them. There is no blocked tile any more BECAUSE
+    // NOTHING BLOCKS: what used to stop a listing is a warning on it now, and
+    // that is counted separately below rather than as a status, because a
+    // listing with a warning is not in a different state -- it is generated,
+    // and someone should look at it.
+    //
+    // APPROVED, API_READY and NEEDS_REVIEW are folded into Generated so a
+    // database that has not been migrated yet still shows its rows somewhere
+    // rather than counting them into nothing.
+    const _gen = c.GENERATED + c.NEEDS_REVIEW + c.APPROVED + c.API_READY
+               + c.HOLD + c.ERROR;
+    tiles = tile(_n(c.QUEUED), "Queued", "queued", "var(--ink3)")
+          + tile(_n(_gen), "Generated", "generated", "var(--gold)")
+          + tile(_n(c.SUBMITTED), "Submitted", "submitted", "var(--ok)")
+          + tile(_n(c.LIVE), "Live", "live", "var(--ok)");
   }else{
     // THREE OF THESE FOUR TILES USED TO SEND THE SAME FILTER.
     //
@@ -1466,6 +1497,36 @@ function _handCell(r, liveOverride){
   return `<span class="tilefact${isAmazons?' handlive':''}" title="${tip}"><i class="ti ti-clock"></i> ${esc(String(n))}d${isAmazons?'':' <span class="cc">(ours)</span>'}</span>`;
 }
 
+/* HOW MANY WARNINGS, on the card, so you can see which listings want attention
+ * without opening every drawer.
+ *
+ * Coloured by the worst one it carries: a listing with four low warnings is
+ * not the one to look at first, and a single "this barcode is already live on
+ * Amazon" is.
+ */
+function _warnChip(r){
+  if(typeof lsWarnings !== "function") return "";
+  const w = lsWarnings(r);
+  if(!w.n) return "";
+  const tone = w.high ? "var(--red)" : (w.medium ? "var(--warn)" : "var(--ink3)");
+  const worst = w.high ? "high" : (w.medium ? "medium" : "low");
+  const tip = w.list.slice(0, 4).map(function(x){
+    return "• " + String((x && x.message) || "");
+  }).join("\n");
+  return `<span class="tilefact" style="color:${tone}" title="${esc(tip)}">`
+       + `<i class="ti ti-alert-triangle"></i> ${w.n} warning`
+       + `${w.n === 1 ? "" : "s"}<span class="cc"> (${worst})</span></span>`;
+}
+
+/* WAITING TO GENERATE. A queued row has a SKU and almost nothing else -- no
+ * title yet, no bullets, no images -- so it needs to say why it looks empty. */
+function _queuedChip(r){
+  if(typeof lsIsQueued !== "function" || !lsIsQueued(r)) return "";
+  return '<span class="tilefact cc" title="Uploaded or added by hand. Press '
+       + 'Generate to fill it in."><i class="ti ti-clock"></i> '
+       + 'Waiting to generate</span>';
+}
+
 function _statusDot(r){
   var s = r.status || "";
   // Amazon's own answer beats the stored word, exactly as the counts do.
@@ -1626,6 +1687,8 @@ function card(r){
       ${needsCopyBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
+      ${_queuedChip(r)}
+      ${_warnChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
     <div class="tilebody" onclick="openDrawer('${esc(r.sku)}')">
@@ -2064,9 +2127,66 @@ function _dwMetrics(r){
  * Each one returns "" when it has nothing to say, and dwFold drops an empty
  * body -- so a listing with no flags shows no fold rather than six empty ones.
  */
+/* WHAT IS WRONG WITH THIS LISTING — first, and open when it matters.
+ *
+ * These used to be statuses that STOPPED the listing: IP_HOLD and
+ * COMPLIANCE_HOLD sat on the row and there was nothing to press until somebody
+ * cleared them. They are warnings now and Submit is always available, so this
+ * panel is the whole of what replaced the block. If it is not read, nothing is.
+ *
+ * Open by default when anything high-severity is in it, closed otherwise: a
+ * duplicate barcode is worth interrupting for, "no barcode provided" on a
+ * listing you already know has none is not.
+ */
+function _dwWarnings(r){
+  const w = (typeof lsWarnings === "function") ? lsWarnings(r) : {n: 0, list: []};
+  if(!w.n) return "";
+  const tone = function(s){
+    s = String(s || "low").toLowerCase();
+    return s === "high" ? "red" : (s === "medium" ? "warn" : "info");
+  };
+  const rows = w.list.map(function(x, i){
+    const sev = String((x && x.severity) || "low").toLowerCase();
+    const det = (x && x.details) || {};
+    const bits = Object.keys(det).filter(function(k){
+      return det[k] !== null && det[k] !== undefined && det[k] !== "";
+    });
+    // The "why", folded away. Every check records what it matched on, and that
+    // is the difference between "change the barcode" and "which barcode".
+    const why = bits.length
+      ? '<div class="dw2-why" id="dww' + i + '" style="display:none">'
+        + bits.map(function(k){
+            return '<div><span class="cc">' + esc(k.replace(/_/g, " "))
+                 + ':</span> ' + esc(String(det[k])) + '</div>';
+          }).join("")
+        + '</div>'
+      : "";
+    return '<div class="dw2-warn ' + tone(sev) + '">'
+      + '<div><span class="dw2-tag ' + tone(sev) + '">' + esc(sev) + '</span> '
+      + esc(String((x && x.message) || "")) + '</div>'
+      + (bits.length
+          ? '<button class="linkbtn" style="font-size:11px" onclick="'
+            + "var e=document.getElementById('dww" + i + "');"
+            + "e.style.display=e.style.display==='none'?'block':'none';"
+            + '">why</button>'
+          : "")
+      + why + '</div>';
+  }).join("");
+
+  const tag = '<span class="dw2-tag ' + (w.high ? "red" : (w.medium ? "warn" : "info"))
+            + '">' + w.n + (w.high ? " — " + w.high + " high" : "") + '</span>';
+  return dwFold("Warnings", tag,
+    '<div class="dw2-warns">' + rows
+    + '<div class="cc" style="margin-top:7px;font-size:11px">These do not stop '
+    + 'anything. Submit is available whether you fix them or not — they are '
+    + 'here so the decision is yours.</div></div>',
+    !!w.high);
+}
+
 function _dwVerdictFolds(r){
   const statusBlock = (typeof _dwStatusBlock === "function") ? _dwStatusBlock(r) : "";
-  return dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
+  return _dwWarnings(r)
+    + dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
     + dwFold("Compliance requirements", _dwVerdictTag(r.viability && r.viability.matched, "no demand"), viabilityPanel(r))
     + dwFold("Claim risks", (r.claim_flags||[]).length ? `<span class="dw2-tag warn">${(r.claim_flags||[]).length}</span>` : "", claimBox(r))
     + dwFold("Amazon feedback", statusBlock ? '<span class="dw2-tag warn">see inside</span>' : "", statusBlock)

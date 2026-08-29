@@ -206,8 +206,17 @@ truthy("it is scoped to one account", "account" in AV and "avAccountId" in AV)
 # --------------------------------------------------------------- the group
 print("\n== submitted listings are shown as submitted, not as drafts ==")
 truthy("there is a group for them", 'Submitted — waiting on Amazon' in AV)
-truthy("the Drafts view splits them out", "notPublished.filter(_isWaiting)" in MT)
-truthy("  and the All view splits them the same way", "real.filter(_isWaiting)" in MT)
+# Both views split waiting rows out of the generated ones, and QUEUED rows out
+# of both. The filters gained the _isQueued term when the queue moved into the
+# listings store, so the shape of the test is the same and the predicate is not.
+truthy("the Drafts view splits them out",
+       "notPublished.filter(r=>!_isQueued(r) && _isWaiting(r))" in MT)
+truthy("  and the All view splits them the same way",
+       "real.filter(r => !_isQueued(r) && _isWaiting(r))" in MT)
+truthy("  with queued rows in a group of their own",
+       "real.filter(_isQueued)" in MT and "notPublished.filter(_isQueued)" in MT)
+truthy("  asked of the shared rule, not tested inline",
+       "lsIsQueued(r)" in MT)
 truthy("both render the group", MT.count("submittedGroupHtml(") >= 2)
 # IT NO LONGER SAYS "Nothing here needs doing". That was true of a listing
 # submitted two minutes ago and false of one submitted yesterday that Amazon is
@@ -238,7 +247,7 @@ truthy("the listings load actually triggers it", "avCheckStaleOnLoad()" in SB)
 # An empty Drafts list must not claim there is nothing here when the waiting group
 # is full -- that is the old "no listings in this view" wrong answer, moved.
 truthy("an empty drafts list accounts for them",
-       "(!draftsHtml && !waitingHtml)" in MT)
+       "(!draftsHtml && !waitingHtml && !queuedHere)" in MT)
 
 
 # ------------------------------------------------------------- load order

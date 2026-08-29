@@ -106,11 +106,19 @@ truthy("no account -> the app's one sentence for that",
        "_scope_mod.NO_ACCOUNT" in _pt)
 truthy("no marketplace -> the app's one sentence for that",
        "_scope_mod.NO_MARKETPLACE" in _pt)
-# THREE PUSH SITES, ONE HELPER. Stock, the handling-time test, and the full
-# handling-time run. The last fix to this file had them written out three times.
+# TWO PUSH SITES, ONE HELPER. Stock, and the handling-time run.
+#
+# There were three. The middle one was the single-SKU "test" push that ran
+# before a bulk change and asked a second time before sending the rest; it was
+# removed on request, and it was never the safety net it looked like -- the test
+# was a real push, so the value was already on Amazon by the time the second
+# dialog appeared. What this file guards is unchanged: every site that reaches
+# Amazon resolves its account and marketplace through the one helper, rather
+# than writing that resolution out again.
+#
 # Again the call form: "def _push_target():" contains "_push_target()" too.
-check("all three push sites go through it",
-      RT.count("refuse = _push_target()"), 3)
+check("both push sites go through it",
+      RT.count("refuse = _push_target()"), 2)
 
 print("\n=== the browser names its account on all three actions ===")
 truthy("there is one scope builder", "function _handlingScope(" in JS)

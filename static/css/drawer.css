@@ -152,6 +152,36 @@
 .dw2-tag.warn{ background:#41240220; color:#EF9F27; }
 .dw2-tag.danger{ background:#50131320; color:#F09595; }
 .dw2-tag.info{ background:#042C5320; color:#85B7EB; }
+/* `red` is the name the warning panel uses for its worst tone. It is the same
+   fill as .danger rather than a new colour: two names for one severity would be
+   two things to keep in step. */
+.dw2-tag.red{ background:#50131320; color:#F09595; }
+
+/* ---- warnings, at the top of the drawer -------------------------------- *
+ *
+ * These replaced the IP_HOLD and COMPLIANCE_HOLD statuses, which stopped a
+ * listing outright. Nothing stops now, so this panel is the whole of what a
+ * person gets instead -- it is styled to be read, not to be dismissed.
+ *
+ * The left border carries the severity: scanning six warnings, the colour down
+ * the edge is what separates "already live on Amazon under another ASIN" from
+ * "no barcode provided". */
+.dw2-warns{ display:flex; flex-direction:column; gap:7px; }
+.dw2-warn{
+  border-left:3px solid var(--line2,#363b45);
+  padding:6px 9px; border-radius:0 6px 6px 0;
+  background:rgba(255,255,255,.02);
+  font-size:12px; line-height:1.55;
+}
+.dw2-warn.red { border-left-color:#F09595; }
+.dw2-warn.warn{ border-left-color:#EF9F27; }
+.dw2-warn.info{ border-left-color:#85B7EB; }
+/* The evidence behind a warning: what it matched on, which SKU it clashed
+   with, which rule fired. Folded away because it is the second question. */
+.dw2-why{
+  margin-top:5px; padding:5px 7px; border-radius:5px;
+  background:rgba(0,0,0,.18); font-size:11px; line-height:1.6;
+}
 .dw2-note{ font-size:10px; color:#6a6974; line-height:1.4; margin-top:6px; }
 
 /* ---- 7. EDITABLE TEXT BLOCK -------------------------------------------

@@ -74,8 +74,21 @@ truthy("  an unknown quantity is not counted as zero",
 // it had only been given one more thing to say. What is being asserted is that
 // the drafts view still counts blocked and errored drafts together, so that is
 // all this matches now: the count and the label, not the punctuation after it.
-truthy("the drafts view keeps the tiles that suit it",
-       /tile\(_n\(c\.HOLD \+ c\.ERROR\), "Blocked or errored"/.test(L));
+// AND THEN THE TILE ITSELF WENT. "Blocked or errored" counted IP_HOLD +
+// COMPLIANCE_HOLD + ERROR, and nothing blocks any more: those statuses were
+// folded into GENERATED and what they were protecting against is a warning on
+// the row (listing/warnings.py). The tile would read 0 for ever.
+//
+// What this file is really guarding is that the drafts view has its OWN tiles,
+// counted from app rows, distinct from the live view's -- so that is what is
+// asserted, against the four statuses that replaced them. HOLD and ERROR are
+// still counted, folded into Generated, so an unmigrated database still shows
+// its rows somewhere rather than into nothing.
+truthy("the drafts view keeps tiles of its own",
+       /tile\(_n\(c\.QUEUED\), "Queued"/.test(L)
+       && /tile\(_n\(_gen\), "Generated"/.test(L));
+truthy("  and the old statuses are still counted somewhere",
+       /c\.HOLD \+ c\.ERROR/.test(L));
 
 console.log("\n=== one group, not two ===");
 truthy("the two sub-captions are gone", !/const _amzSub/.test(M));

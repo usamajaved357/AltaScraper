@@ -125,7 +125,10 @@ csv_bytes = (
 ).encode("utf-8")
 rows, err = up.rows_of(csv_bytes, "supplier.csv")
 check("it reads without error", err, "")
-check("  every line, header included", len(rows), 5)
+# FOUR, not five: domain/report_reader drops wholly blank lines before the
+# uploader sees them. That is the shared reader doing its job -- the uploader
+# used to strip them itself, which was one of four things it was duplicating.
+check("  every line that carries anything, header included", len(rows), 4)
 mapping, matched, ignored = ir.map_headers(rows[0])
 check("the byte-order mark did not eat the first header",
       mapping.get(0), "ebay_url")
@@ -136,14 +139,17 @@ check("  and it says what it ignored", ignored, ["Warehouse Bin"])
 
 products = [ir.row_to_product(r, mapping) for r in rows[1:]]
 usable = [p for p in products if ir.is_generatable(p)]
-check("four data rows", len(products), 4)
+check("three data rows survive the shared reader", len(products), 3)
 # THREE, NOT TWO. A totals row carrying the word TOTAL in the name column has a
 # name, and a name makes a row generatable. The app cannot tell it from a
 # product called TOTAL, and a heuristic that guessed would drop real
 # single-word products. It is queued, and shown in the upload preview, for a
 # person to delete.
-check("  three are usable: two products and the TOTAL line", len(usable), 3)
-check("  the fully blank row is dropped", len(products) - len(usable), 1)
+check("  all three are usable: two products and the TOTAL line", len(usable), 3)
+# The blank line never reaches the uploader at all now -- report_reader drops
+# it. Asserted from the other side: nothing empty got through.
+check("  and none of them is an empty row",
+      sum(1 for p in products if not ir.is_generatable(p)), 0)
 check("values land in the right columns", usable[0]["source_cost"], "4.20")
 check("  including the barcode", usable[0]["upc"], "5012345678900")
 check("  and the empty cell stays empty", usable[1]["upc"], "")
@@ -225,9 +231,23 @@ truthy("  that block is kept, commented, too",
 
 # THE QUEUE ITSELF IS UNTOUCHED. It is the same table, written through the same
 # function, whichever of the two ways in put the row there.
-truthy("the upload writes through the queue's own add_row",
-       "_ii.add_row(" in _upload)
-truthy("  marking where the row came from", 'source="upload"' in _upload)
+# THE UPLOAD WRITES INTO THE LISTINGS STORE, not a queue table. There is no
+# separate queue any more: a queued product is a listings row with
+# status=QUEUED, and the generator reads those from the same table it writes
+# its results back to.
+truthy("the upload writes into the listings store",
+       "_qs.add_queued(" in _upload)
+truthy("  through the one function the form uses too",
+       "add_queued(" in _routes)
+_qstore = read("data", "queued_store.py")
+truthy("  which writes the row as QUEUED", '"Status": "QUEUED"' in
+       read("data", "input_row.py"))
+# The SKU is real from the start -- see data/input_row.to_listing_row for why a
+# temporary id would have had to be renamed later, and why the store cannot.
+truthy("the SKU is built by the generator's own build_sku",
+       "from amazon_listing_generator import build_sku" in read("data", "input_row.py"))
+truthy("  and collisions are held off with the taken-SKU set",
+       "taken_skus(" in _qstore and "taken=taken" in _upload)
 truthy("the hand-add route is still live",
        re.search(r'^[ \t]*@app\.route\("/input/add", methods=\["POST"\]\)',
                  _routes, re.M))

@@ -495,7 +495,15 @@
                you what you are looking at stops saying anything. The four
                live_* filters and the two hold halves were all missing. -->
           <option value="all">All statuses</option>
-          <option value="review">Needs review</option>
+          <!-- THE FOUR STATUSES. Every filter a tile can set needs an option
+               here or the dropdown goes blank while the list below it is
+               filtered -- see the note below. "warned" is not a status: it is
+               "carries at least one warning", which cuts across all four. -->
+          <option value="queued">Queued</option>
+          <option value="generated">Generated</option>
+          <option value="submitted">Submitted</option>
+          <option value="warned">— with warnings</option>
+          <option value="review">Needs review (old)</option>
           <option value="holds">Blocked or refused</option>
           <option value="blocked">— blocked by our own checks</option>
           <option value="refused">— refused by Amazon</option>

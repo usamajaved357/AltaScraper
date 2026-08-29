@@ -306,6 +306,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_avail_key
 -- (ebay_link vs ebay_url, delivery_time vs handling_time) and the normalised
 -- columns below are a best reading of them -- keeping the original means a
 -- mis-read column can be diagnosed later instead of being lost on import.
+-- ---- RETIRED, BUT STILL CREATED. -----------------------------------------
+--
+-- Nothing writes here any more. A product waiting to be generated is a row in
+-- `listings` with status=QUEUED, written by data/queued_store.add_queued from
+-- either of the two ways in (the CSV upload, or the "Add a product" form). One
+-- table, one source of truth: queued, generated and live are the same kind of
+-- thing at different stages, and the generator reads QUEUED rows from the same
+-- place it writes its results back to.
+--
+-- THE TABLE IS STILL CREATED, DELIBERATELY, and the brief asked for the
+-- opposite. Commenting this out was tried and is wrong, for one reason:
+-- scripts/migrate_statuses.py does not DELETE a migrated queue row, it marks it
+-- source="migrated:<original>" so a move that turns out wrong can still be
+-- read. That promise cannot be kept on a database where the table does not
+-- exist -- and on a fresh database every reader of it raises "no such table"
+-- instead of finding it empty.
+--
+-- What actually retires a table is nothing writing to it, which is now true.
+-- An empty table costs a few bytes; a missing one costs the ability to look at
+-- what was moved.
 CREATE TABLE IF NOT EXISTS input_products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL,

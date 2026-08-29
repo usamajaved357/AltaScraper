@@ -3955,10 +3955,28 @@ async def process_row(row: dict, client, ws_out,
         handling_days = "3"
 
     # --- Build SKU in the new format: {price}_{N}Days_{ASIN} -----------------
+    #
+    # UNLESS THE ROW ALREADY HAS ONE. A QUEUED row was written into the listings
+    # store by the upload or the "Add a product" form, with a real SKU built by
+    # this same build_sku, and generating it means FILLING THAT ROW IN -- not
+    # making a second one beside it.
+    #
+    # Both checks below would otherwise do exactly that, because the queued row
+    # is already in the store the generator loads its state from:
+    #
+    #   seen_asins  already holds the queued row's own competitor ASIN, so
+    #               skip_existing would skip every queued row as "already
+    #               processed" and nothing would ever generate.
+    #   taken_skus  already holds the queued row's own SKU, so build_sku would
+    #               see a collision and append _2 -- the finished listing would
+    #               land on a NEW row and the queued one would sit there for
+    #               ever, still QUEUED.
+    _queued_sku = str(row.get("sku") or "").strip()
+
     # Already processed this competitor ASIN (previous run, or a duplicate input
     # row)? In generate mode, skip it entirely -- don't regenerate or create a _2
     # row. ('retry' passes skip_existing=False so held/errored rows can rebuild.)
-    if skip_existing and comp_asin and comp_asin in seen_asins:
+    if not _queued_sku and skip_existing and comp_asin and comp_asin in seen_asins:
         console.print(f"\n[{idx}/{total}] {item_name or comp_asin}")
         console.print(f"  [yellow]SKIP -- ASIN {comp_asin} is already in the sheet "
                       f"(already processed). Delete its row or use 'retry' to rebuild.[/yellow]")
@@ -3968,7 +3986,10 @@ async def process_row(row: dict, client, ws_out,
     if source_cost <= 0:
         notes_parts.append("Missing source price -- SKU price part defaulted to 0.00.")
 
-    sku, was_dup_sku = build_sku(source_cost, handling_days, comp_asin, taken_skus)
+    if _queued_sku:
+        sku, was_dup_sku = _queued_sku, False
+    else:
+        sku, was_dup_sku = build_sku(source_cost, handling_days, comp_asin, taken_skus)
     if was_dup_sku and "Duplicate competitor ASIN" not in " ".join(notes_parts):
         notes_parts.append("SKU collision with existing/queued row -- uniqueness suffix appended.")
 
@@ -8446,11 +8467,30 @@ async def main():
     else:
         console.print("Brand for this run: [bold]<auto-pick per product>[/bold]")
 
-    console.print("Reading input sheet...", end=" ")
-    products = read_input_sheet(ws_in)
-    if not products:
-        console.print("[red]No products found in input sheet.[/red]")
-        return
+    # WHERE THE PRODUCTS COME FROM.
+    #
+    # --input-json is the default path now: the dashboard writes this run's
+    # QUEUED rows out of the listings store and passes the file. read_input_sheet
+    # is kept, and still runs when no file is given, so a Google input sheet can
+    # still be generated from -- it is just no longer how this normally works.
+    #
+    # The reading itself lives in listing/queued_input.py rather than here; this
+    # is a choice of source, not another job for this module (Rule 7).
+    _input_json = (_early_argval("--input-json") or "").strip()
+    if _input_json:
+        from listing import queued_input as _qin
+        console.print("Reading queued products...", end=" ")
+        products = _qin.read_products(_input_json)
+        if not products:
+            console.print("[red]Nothing is queued. Add products on the Generate "
+                          "screen -- upload a file, or use Add a product.[/red]")
+            return
+    else:
+        console.print("Reading input sheet...", end=" ")
+        products = read_input_sheet(ws_in)
+        if not products:
+            console.print("[red]No products found in input sheet.[/red]")
+            return
     console.print(f"[green]OK[/green] {len(products)} product(s)")
 
     # --- Row selection: generate only the chosen row(s) ----------------------

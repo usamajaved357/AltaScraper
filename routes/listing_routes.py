@@ -1792,6 +1792,32 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 #         # whatever is already queued, and the generator says so.
                 #         yield "data: [input] could not import: %s\n\n" % str(_e)[:200]
 
+                # THE RUN'S PRODUCTS, OUT OF THE LISTINGS STORE.
+                #
+                # Every row with status=QUEUED, written to a temp JSON file and
+                # handed over as --input-json. The generator is a subprocess, so
+                # this mirrors how the sheet was passed -- a location to read --
+                # rather than restructuring its input format (Rule 10).
+                #
+                # Only for generate and retry. A preview or a submit works on
+                # rows that already exist and has no input to read.
+                _queued_file = ""
+                if mode in ("generate", "retry"):
+                    try:
+                        from listing import queued_input as _qin
+                        _wsid = _scope_acct_id or "_no_account"
+                        _prods = _qin.products_for(CONFIG_PATH, _wsid)
+                        if _prods:
+                            _queued_file = _qin.write_temp_input(_prods)
+                            yield ("data: [input] %d product(s) queued for this "
+                                   "run\n\n" % len(_prods))
+                        else:
+                            yield ("data: [input] nothing is queued — upload a "
+                                   "file or add a product on this screen\n\n")
+                    except Exception as _qe:
+                        yield ("data: [input] could not read the queue: %s\n\n"
+                               % str(_qe)[:200])
+
                 # -u = unbuffered child stdout so progress streams live
                 extra = ([] if mode == "generate"
                          else ["api", "submit"] if mode == "api_submit"
@@ -1901,6 +1927,13 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 if mode == "generate" and _req_select:
                     extra += ["--select", _req_select]
                     extra += ["--select-type", _req_select_type or "auto"]
+                # Added last, so nothing above can drop it. WITHOUT this file the
+                # generator falls back to read_input_sheet -- the old Google
+                # path -- and would quietly generate a different set of products
+                # from the ones queued on screen. This argument is what decides
+                # where a run's input comes from.
+                if _queued_file:
+                    extra += ["--input-json", _queued_file]
                 args = [sys.executable, "-u", SCRIPT] + extra
                 yield f"data: [start] {' '.join(args)}\n\n"
                 p = spawn(args, stdin=subprocess.PIPE)
@@ -1931,6 +1964,34 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                     if clean.strip():
                         yield f"data: {clean}\n\n"
                 p.wait()
+
+                # WORK OUT THE WARNINGS, now the rows exist.
+                #
+                # Over the whole workspace, not just what this run touched: five
+                # of the checks are about how rows relate to EACH OTHER (a
+                # duplicate barcode is not a property of one row), and
+                # generating one listing can create a clash on an older one that
+                # would otherwise never be told about it.
+                #
+                # Never fatal. A run that produced listings has succeeded even if
+                # the warnings could not be worked out afterwards.
+                if mode in ("generate", "retry"):
+                    try:
+                        from listing import warnings as _warn
+                        _n, _f = _warn.recompute_workspace(
+                            CONFIG_PATH, _scope_acct_id or "_no_account")
+                        yield ("data: [warnings] checked %d listing(s) — %d "
+                               "carry a warning\n\n" % (_n, _f))
+                    except Exception as _we:
+                        yield ("data: [warnings] could not work them out: %s\n\n"
+                               % str(_we)[:200])
+                    try:
+                        if _queued_file:
+                            import os as _os
+                            _os.remove(_queued_file)   # it has served its purpose
+                    except Exception:
+                        pass
+
                 yield f"data: [done] finished (exit code {p.returncode})\n\n"
                 yield "event: end\ndata: end\n\n"
             finally:

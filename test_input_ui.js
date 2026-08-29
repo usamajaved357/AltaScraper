@@ -114,10 +114,16 @@ check("  that block is kept, commented, too",
 // The queue itself is untouched: it is the same table, written through the
 // same functions, whichever of the two ways in put the row there.
 const upload = fs.readFileSync("D:/AltaScraper/routes/input_upload_routes.py", "utf8");
-check("the upload writes through the queue's own add_row",
-      /_ii\.add_row\(/.test(upload), true);
-check("  marking where the row came from",
-      /source="upload"/.test(upload), true);
+// THE QUEUE TABLE IS GONE TOO. A product waiting to be generated is a row in
+// the LISTINGS store with status=QUEUED, so both ways in write to one table and
+// the generator reads from the same place it writes back to.
+check("the upload writes into the listings store",
+      /_qs\.add_queued\(/.test(upload), true);
+check("  and so does the hand-add form",
+      /add_queued\(/.test(routes), true);
+check("  the row is written as QUEUED",
+      /"Status": "QUEUED"/.test(
+        fs.readFileSync("D:/AltaScraper/data/input_row.py", "utf8")), true);
 check("the hand-add route is untouched and still live",
       /^[ \t]*@app\.route\("\/input\/add", methods=\["POST"\]\)/m.test(routes), true);
 check("  as are status and rows",
