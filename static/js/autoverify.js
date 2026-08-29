@@ -33,6 +33,39 @@ const AV_WARN_AT = 15 * 60 * 1000;                    // still not live -> say s
 const AV_TICK    = 30 * 1000;                         // how often we look at the clock
 const AV_KEY     = "autoverify_pending";
 
+// ---- and then it stopped asking, for ever -----------------------------------
+//
+//     "i see that the listings submitted yesterday are still sitting in the
+//      draft page and not in live if that was accepted or rejected i should
+//      know the reason"
+//
+// The schedule above is the whole of what this file used to do, and it runs out.
+// Two checks inside the first ten minutes, one warning at fifteen, and then
+// nothing -- not the next hour, not the next day, not on a reload. A listing
+// submitted yesterday was asked about twice while it was minutes old and has
+// been sitting untouched ever since, which is exactly what was reported.
+//
+// The 5/10/15 schedule is right for a listing you just submitted and are
+// watching. It is not an answer for one that is a day old, because by then the
+// question has changed: not "has it appeared yet" but "what happened to it".
+//
+// So opening the listings screen re-asks about every SUBMITTED listing that
+// Amazon has not confirmed, however old. That is bounded three ways, because it
+// is the only automatic thing here that is not tied to an action you took:
+//   * a per-SKU cooldown, so returning to the screen twice in a minute asks once
+//   * a cap per load, so an account with fifty pending listings does not open
+//     fifty streams
+//   * the same run lock as everything else, so it never fights a Preview/Submit
+//
+// WHY THIS SURFACES A REASON. The verify run already records Amazon's own words
+// -- amazon_listing_generator.py writes "RE-VERIFIED -- not yet confirmed live;
+// Amazon still shows N issue(s): ..." into the row's Notes. That text existed
+// all along and nothing was ever running to produce it. Once it does, the
+// Submitted group prints it (see avWaitedFor).
+const AV_STALE_COOLDOWN = 10 * 60 * 1000;   // don't re-ask the same SKU sooner
+const AV_STALE_MAX      = 15;               // most to check on one screen open
+const AV_SEEN_KEY       = "autoverify_lastcheck";
+
 let AV_TIMER = null;
 let AV_BUSY  = false;
 
@@ -182,6 +215,81 @@ async function avTick(){
 
 function _avRepaint(){ try{ if(typeof render === "function") render(); }catch(e){} }
 
+// ---- the ones the schedule has already given up on -------------------------
+
+// When each SKU was last asked about, so returning to the screen does not re-ask
+// immediately. Keyed by account so two accounts' SKUs cannot collide.
+function avSeenLoad(){
+  try{
+    const raw = localStorage.getItem(AV_SEEN_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return (o && typeof o === "object") ? o : {};
+  }catch(e){ return {}; }
+}
+function avSeenSave(o){
+  try{ localStorage.setItem(AV_SEEN_KEY, JSON.stringify(o || {})); }catch(e){}
+}
+function avSeenKey(sku){ return avAccountId() + "::" + String(sku || ""); }
+function avAskedRecently(sku){
+  const t = Number(avSeenLoad()[avSeenKey(sku)] || 0);
+  return t > 0 && (Date.now() - t) < AV_STALE_COOLDOWN;
+}
+function avMarkAsked(sku){
+  const o = avSeenLoad();
+  o[avSeenKey(sku)] = Date.now();
+  avSeenSave(o);
+}
+
+/* Every row we sent to Amazon that Amazon has not confirmed.
+ *
+ * lsIsWaitingOnAmazon (liststatus.js) is the one definition of that state --
+ * SUBMITTED, and not in the catalogue Amazon returned. Asking it here rather
+ * than testing r.status is what keeps this agreeing with the group heading and
+ * the tab filter (CLAUDE.md Rule 12).
+ */
+function avWaitingRows(){
+  if(typeof ROWS === "undefined" || !ROWS || !ROWS.filter) return [];
+  if(typeof lsIsWaitingOnAmazon !== "function") return [];
+  return ROWS.filter(r => r && r.sku && lsIsWaitingOnAmazon(r));
+}
+
+let AV_STALE_RUNNING = false;
+
+/* Ask Amazon again about the listings the schedule has stopped chasing.
+ *
+ * Called when the listings finish loading. Serial on purpose: these run through
+ * the same single run lock as a Preview, so firing them together would mean
+ * every one after the first bailing out.
+ */
+async function avCheckStaleOnLoad(){
+  if(AV_STALE_RUNNING) return;
+  if(!avAccountId()) return;
+  const due = avWaitingRows()
+    .filter(r => !avAskedRecently(r.sku))
+    .slice(0, AV_STALE_MAX);
+  if(!due.length) return;
+  AV_STALE_RUNNING = true;
+  let flippedAny = false;
+  try{
+    for(const r of due){
+      // Marked BEFORE the call, exactly as the scheduled path does: a check that
+      // throws must not re-fire on the next load for ever.
+      avMarkAsked(r.sku);
+      const flipped = await avRunVerify(r.sku);
+      if(flipped === null) continue;         // a run was in progress; leave it
+      if(flipped) flippedAny = true;
+    }
+    // One reload for the whole batch, not one per listing.
+    if(typeof loadRows === "function"){ try{ await loadRows(); }catch(_){} }
+    if(flippedAny && typeof toast === "function"){
+      toast("Amazon confirmed listings that were waiting — moved to Live");
+    }
+    _avRepaint();
+  } finally {
+    AV_STALE_RUNNING = false;
+  }
+}
+
 function avStart(){
   if(AV_TIMER) return;
   AV_TIMER = setInterval(function(){
@@ -197,9 +305,52 @@ function avStop(){ if(AV_TIMER){ clearInterval(AV_TIMER); AV_TIMER = null; } }
 // "Submitted — waiting on Amazon": the listings that HAVE been sent and are not
 // live yet. Filed under Drafts they read as never-sent, which is the confusion
 // this group removes.
+/* WHAT AMAZON ACTUALLY SAID ABOUT THIS SKU, if anything.
+ *
+ * The verify run writes its answer into the row's Notes -- "RE-VERIFIED -- not
+ * yet confirmed live; Amazon still shows 2 issue(s): ...". That sentence has
+ * been written for as long as the verify mode has existed and has never been
+ * shown anywhere: the group printed "sent 4 min ago" and nothing else, so a
+ * listing Amazon was refusing looked exactly like one still in the queue.
+ *
+ * Returns "" when there is no recorded answer, which is the honest state before
+ * the first re-check comes back.
+ */
+function avAmazonSaid(sku){
+  let r = null;
+  try{
+    r = (typeof ROWS !== "undefined" && ROWS.find)
+      ? ROWS.find(x => String(x && x.sku) === String(sku)) : null;
+  }catch(e){ r = null; }
+  const note = String((r && r.notes) || "");
+  if(!/RE-VERIFI/i.test(note)) return "";
+  // The part after the marker is Amazon's own reason; the marker itself is
+  // bookkeeping and says nothing to a reader.
+  const said = note.replace(/^.*?RE-VERIFIED\s*--\s*/i, "").trim();
+  return said || "";
+}
+
 function avWaitedFor(sku){
+  const _esc = (typeof esc === "function") ? esc : (x => String(x == null ? "" : x));
+  const said = avAmazonSaid(sku);
   const e = avEntryFor(sku);
-  if(!e) return "";
+
+  // AMAZON'S OWN WORDS WIN. Whatever the clock says, a recorded answer is the
+  // thing that was actually asked for -- "if that was accepted or rejected i
+  // should know the reason".
+  if(said){
+    const bad = /issue|error|refus|reject|fail/i.test(said);
+    return '<span style="color:' + (bad ? 'var(--red)' : 'var(--ink2)') + '" '
+         + 'title="Amazon\'s own answer, recorded by the last check">'
+         + (bad ? 'Amazon: ' : 'Amazon: ') + _esc(said) + '</span>';
+  }
+
+  if(!e){
+    // Sent, nothing recorded back yet, and no live clock -- typically a listing
+    // from a previous day, which the on-load check is about to ask about.
+    return '<span class="cc">sent — waiting on Amazon’s answer; '
+         + 'this app is re-checking.</span>';
+  }
   const mins = Math.max(0, Math.round((Date.now() - Number(e.at || 0)) / 60000));
   if(e.warned){
     return '<span style="color:var(--red)">Amazon hasn’t published yet — this is '
@@ -224,16 +375,40 @@ function submittedGroupHtml(rows){
     + '<div class="cc" style="margin:-4px 0 12px;font-size:12px;line-height:1.6">'
     + n + ' listing' + (n > 1 ? 's have' : ' has') + ' been <b>accepted by Amazon</b> and '
     + (n > 1 ? 'are' : 'is') + ' not live yet. Amazon publishes in its own time, usually '
-    + 'within 5–30 minutes. This app re-checks automatically at 5 and 10 minutes and moves '
+    + 'within 5–30 minutes. This app re-checks just after submitting, and again '
+    + 'every time you open this screen, moving '
     + (n > 1 ? 'them' : 'it') + ' to <b>Live on Amazon</b> as soon as Amazon confirms. '
-    + 'Nothing here needs doing.'
+    + 'Whatever Amazon says is shown beside each one below.'
     + lines
+    // ALWAYS OFFERED, not only after the 15-minute warning. The button was
+    // hidden behind a flag that a listing older than one session never has, so
+    // the listings most in need of a manual check were the ones that could not
+    // be checked.
+    + '<div style="margin-top:8px"><button class="mktbtn" onclick="avCheckStaleNow()">'
+    + '<i class="ti ti-refresh"></i> Ask Amazon now</button>'
     + (anyWarned
-        ? '<div style="margin-top:8px"><button class="mktbtn" onclick="syncLive()">'
-          + '<i class="ti ti-refresh"></i> Check Amazon now</button></div>'
+        ? '<span class="cc" style="margin-left:8px">Amazon is taking longer than '
+          + 'usual — Seller Central will have the detail.</span>'
         : "")
     + '</div>'
+    + '</div>'
     + block;
+}
+
+/* The button's version of the same check: ignore the cooldown, ask now. */
+function avCheckStaleNow(){
+  const rows = avWaitingRows();
+  if(!rows.length){
+    if(typeof toast === "function") toast("Nothing is waiting on Amazon");
+    return;
+  }
+  const o = avSeenLoad();
+  rows.forEach(r => { delete o[avSeenKey(r.sku)]; });
+  avSeenSave(o);
+  if(typeof toast === "function"){
+    toast("Asking Amazon about " + rows.length + " listing(s)…");
+  }
+  avCheckStaleOnLoad();
 }
 
 // Pick the schedule back up after a page refresh.

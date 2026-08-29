@@ -490,6 +490,18 @@ async function loadRows(){
       if(typeof renderDataSource==="function") renderDataSource();
     }
     render();
+    // ASK ABOUT ANYTHING STILL WAITING ON AMAZON, after the screen is drawn.
+    //
+    // Not awaited, for the same reason the schemas below are not: this makes one
+    // read per unconfirmed listing and the grid has already drawn without them.
+    // It re-enters loadRows() when it finishes, which is safe -- avCheckStaleOnLoad
+    // holds a running flag for exactly that.
+    //
+    // This is what stops a SUBMITTED listing sitting for a day with nobody
+    // asking. See the note at the top of static/js/autoverify.js.
+    if(typeof avCheckStaleOnLoad === "function"){
+      setTimeout(function(){ try{ avCheckStaleOnLoad(); }catch(_){} }, 1200);
+    }
     // THE SCHEMAS COME AFTER THE SCREEN, AND DO NOT HOLD IT UP.
     //
     // This asks Amazon for the field definitions of every distinct product

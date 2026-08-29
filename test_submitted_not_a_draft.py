@@ -209,7 +209,32 @@ truthy("there is a group for them", 'Submitted — waiting on Amazon' in AV)
 truthy("the Drafts view splits them out", "notPublished.filter(_isWaiting)" in MT)
 truthy("  and the All view splits them the same way", "real.filter(_isWaiting)" in MT)
 truthy("both render the group", MT.count("submittedGroupHtml(") >= 2)
-truthy("the group says nothing needs doing", "Nothing here needs doing" in AV)
+# IT NO LONGER SAYS "Nothing here needs doing". That was true of a listing
+# submitted two minutes ago and false of one submitted yesterday that Amazon is
+# refusing -- and the group could not tell them apart, because it never showed
+# what Amazon said. It does now, so the group reports the answer instead of
+# promising there isn't one.
+truthy("the group shows Amazon's own answer per listing", "avAmazonSaid(" in AV)
+truthy("  read from the note the verify run records", "RE-VERIFI" in AV)
+truthy("  and a refusal is not styled as a quiet aside",
+       "var(--red)" in AV)
+truthy("there is always a way to ask Amazon now",
+       "avCheckStaleNow(" in AV and "Ask Amazon now" in AV)
+
+# --------------------------------------------- it keeps asking after 15 minutes
+print("\n== a listing submitted yesterday is still chased ==")
+# The 5/10/15 schedule ran out and nothing ever asked again, so a SUBMITTED row
+# sat untouched indefinitely -- the reported defect.
+truthy("opening the screen re-checks what is still waiting",
+       "async function avCheckStaleOnLoad(" in AV)
+truthy("  it asks the shared rule which rows those are",
+       "lsIsWaitingOnAmazon(r)" in AV)
+truthy("  bounded by a per-SKU cooldown", "AV_STALE_COOLDOWN" in AV)
+truthy("  and a cap per screen open", "AV_STALE_MAX" in AV)
+truthy("  and it reuses the existing verify run, not a new call",
+       "avRunVerify(" in AV)
+SB = open("static/js/submit.js", encoding="utf-8").read()
+truthy("the listings load actually triggers it", "avCheckStaleOnLoad()" in SB)
 # An empty Drafts list must not claim there is nothing here when the waiting group
 # is full -- that is the old "no listings in this view" wrong answer, moved.
 truthy("an empty drafts list accounts for them",
