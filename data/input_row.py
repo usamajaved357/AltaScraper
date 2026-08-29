@@ -42,9 +42,25 @@ def norm_header(h):
 # Canonical column -> the header spellings that mean it.
 #
 # The first group of each list is what read_input_sheet accepts; the rest are
-# what people actually type. "price" is deliberately ABSENT: on a supplier
-# export it means the cost and on an Amazon export it means the sale price, and
-# guessing wrong prices the listing. Say which one.
+# what people actually type.
+#
+# A BARE "price" IS AMBIGUOUS, AND IS READ AS THE COST.
+#
+# On a supplier or eBay export "price" is what you pay; on an Amazon export it
+# is what it sells for. Nothing in the file says which, so this has to choose,
+# and the two ways of being wrong are not equally bad:
+#
+#   read as cost, actually a sale price  -> selling_price stays empty, the app
+#                                           prices from an inflated cost, and
+#                                           the listing goes UP.
+#   read as sale price, actually a cost  -> the listing is priced AT what you
+#                                           paid for it, and every sale loses
+#                                           the fees.
+#
+# So it maps to source_cost: the wrong guess is then visible as a bad margin
+# rather than as units going out at cost. The upload result names every column
+# it matched, so a file whose "price" really was the sale price shows "Cost"
+# in the matched tags and can be corrected before anything is generated.
 ALIASES = {
     "ebay_url": ["ebay_link", "ebay_url",
                  "source", "source_link", "source_url", "supplier_link",
@@ -58,10 +74,10 @@ ALIASES = {
                   "description"],
     "source_cost": ["ebay_price", "ebay_cost", "source_cost",
                     "cost", "buy_price", "supplier_cost", "supplier_price",
-                    "unit_cost", "cost_price"],
+                    "unit_cost", "cost_price", "price"],
     "selling_price": ["amazon_price", "selling_price",
                       "sell_price", "sell_at", "sale_price", "list_price",
-                      "retail", "retail_price"],
+                      "retail", "retail_price", "rrp"],
     "handling_time": ["delivery_time", "handling_time",
                       "handling", "handling_days", "dispatch",
                       "dispatch_time", "lead_time", "days"],

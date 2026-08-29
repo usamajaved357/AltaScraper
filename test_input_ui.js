@@ -79,15 +79,50 @@ check("and the app-wide default last",
       /cfg\.get\("input_spreadsheet_id"\)/.test(impl), true);
 check("a missing sheet is a clear refusal, not a crash",
       /has no input sheet configured/.test(impl), true);
-// The point of moving it: Generate no longer tells you to press Import, it
-// imports. Both paths call the same function.
-check("the import route calls the shared one",
-      /import_for_workspace\(/.test(routes), true);
+// ---- THE GOOGLE SHEET IS NO LONGER AN INPUT --------------------------------
+//
+// These three used to assert that /input/import existed and that Generate
+// auto-imported when the queue was empty. Products now reach the queue two
+// ways -- the "Add a product" form and a CSV/Excel upload -- and both of those
+// paths are gone.
+//
+// ASSERTED BY LOOKING FOR A LIVE DECORATOR, NOT FOR THE TEXT. The old code is
+// commented out rather than deleted so it can be restored, which means the
+// string "import_for_workspace(" is still in both files. A test searching for
+// that string passes just as happily on a commented-out block as on a live
+// one -- it would have gone green over exactly the behaviour it was meant to
+// be watching. What distinguishes them is whether the line is commented, so
+// that is what these read.
+const LIVE_IMPORT_ROUTE = /^[ \t]*@app\.route\("\/input\/import"/m;
+check("the /input/import route is not live",
+      LIVE_IMPORT_ROUTE.test(routes), false);
+check("  but it is kept, commented, so it can be restored",
+      /#\s*@app\.route\("\/input\/import"/.test(routes), true);
+check("  and it says what replaced it",
+      /REPLACED BY \/input\/upload/.test(routes), true);
+
 const listing = fs.readFileSync("D:/AltaScraper/routes/listing_routes.py", "utf8");
-check("  and so does Generate, when the queue is empty",
-      /import_for_workspace\(/.test(listing), true);
-check("  saying so in the run log rather than silently",
-      /the queue is empty/.test(listing), true);
+// The one that actually mattered: with the button gone, this was the last way
+// a spreadsheet could put products into a run, and nothing on screen would
+// have said so.
+const LIVE_AUTO_IMPORT = /^[ \t]*_a, _u, _t, _err = _ii\.import_for_workspace\(/m;
+check("Generate no longer reads a sheet when the queue is empty",
+      LIVE_AUTO_IMPORT.test(listing), false);
+check("  that block is kept, commented, too",
+      /#\s*_a, _u, _t, _err = _ii\.import_for_workspace\(/.test(listing), true);
+
+// The queue itself is untouched: it is the same table, written through the
+// same functions, whichever of the two ways in put the row there.
+const upload = fs.readFileSync("D:/AltaScraper/routes/input_upload_routes.py", "utf8");
+check("the upload writes through the queue's own add_row",
+      /_ii\.add_row\(/.test(upload), true);
+check("  marking where the row came from",
+      /source="upload"/.test(upload), true);
+check("the hand-add route is untouched and still live",
+      /^[ \t]*@app\.route\("\/input\/add", methods=\["POST"\]\)/m.test(routes), true);
+check("  as are status and rows",
+      /^[ \t]*@app\.route\("\/input\/status"\)/m.test(routes)
+      && /^[ \t]*@app\.route\("\/input\/rows"\)/m.test(routes), true);
 // "Import failed" on an account with several sheets configured sends you
 // looking through all of them.
 check("a failed read names WHICH sheet",
