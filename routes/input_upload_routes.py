@@ -56,70 +56,42 @@ PREVIEW_ROWS = 5
 # in this shape of code are usually found by a user rather than a test.
 
 
-def read_csv_rows(data, filename=""):
-    """Rows out of a CSV or TSV file, as lists of strings.
-
-    utf-8-sig, because a CSV exported from Excel begins with a byte-order mark
-    and the first header would otherwise be "﻿sku", matching nothing. The
-    delimiter is sniffed rather than assumed: a European Excel writes
-    semicolons, and every row arriving as a single column is the usual sign that
-    the separator was guessed wrong.
-    """
-    try:
-        text = data.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        # A spreadsheet saved as "CSV (Windows)" is cp1252. Falling back beats
-        # refusing a file over one curly apostrophe.
-        text = data.decode("cp1252", errors="replace")
-    name = (filename or "").lower()
-    delim = "\t"
-    if not name.endswith(".tsv"):
-        try:
-            delim = csv.Sniffer().sniff(text[:8000], delimiters=",;\t|").delimiter
-        except Exception:
-            delim = ","
-    return [list(r) for r in csv.reader(io.StringIO(text), delimiter=delim)]
-
-
-def read_xlsx_rows(data):
-    """Rows out of the first worksheet of an .xlsx.
-
-    read_only and values_only: this is a product list, not a document, and
-    loading formatting for thousands of rows is the difference between a moment
-    and a minute. Dates and numbers arrive as their Python types and become text
-    in row_to_product.
-    """
-    import openpyxl
-    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-    try:
-        return [list(r) for r in wb[wb.sheetnames[0]].iter_rows(values_only=True)]
-    finally:
-        try:
-            wb.close()
-        except Exception:
-            pass
+ACCEPTED = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm")
 
 
 def rows_of(data, filename):
     """(rows, error). Never raises -- a broken file is an answer, not a 500.
 
-    .xlsm IS read: it is a normal xlsx with macros attached, openpyxl opens it,
-    and the macros are never executed because nothing here runs the workbook.
+    THE READING ITSELF IS domain/report_reader's, not this module's.
 
-    .xls IS NOT, and cannot be. The brief asked for it alongside .xlsx and
-    .xlsm "via openpyxl", but .xls is the pre-2007 BIFF format, a different
-    file format entirely, and openpyxl states it does not support it -- passing
-    one in raises rather than returning rows. Reading it would mean adding xlrd
-    as a dependency for a format Excel has not written by default since 2007.
-    So it gets the one thing better than a silent failure: a refusal that says
-    exactly what to do about it.
+    This file first grew its own decode, its own delimiter sniff and its own
+    openpyxl call -- a fourth copy of the job that module was written to hold,
+    and its own header says a third copy "is exactly what CLAUDE.md Rule 12
+    forbids".
+
+    That was not a tidiness problem. The copy used openpyxl's read_only mode,
+    and report_reader.workbook_grid exists precisely because an .xlsx DECLARES
+    ITS OWN EXTENT in a <dimension> element which read-only openpyxl believes
+    without looking at the sheet. Amazon's Campaign Manager export stamps a
+    dimension of one row; a 26-row export read back as the header plus ONE row,
+    and nothing failed. A 200-product upload could have imported as 1 product
+    and reported success.
+
+    .xlsm is read: a macro-enabled workbook is an xlsx with a macro part, and
+    nothing here runs the workbook.
+
+    .xls is NOT, and cannot be. The brief asked for it "via openpyxl", but .xls
+    is the pre-2007 BIFF format -- a different format, which openpyxl does not
+    support and raises on. Reading it would mean taking on xlrd for something
+    Excel has not written by default since 2007, so it gets the one thing
+    better than a silent failure: a refusal saying what to do instead.
     """
+    from domain import report_reader as _rr
+
     name = (filename or "").lower()
-    try:
-        if name.endswith((".xlsx", ".xlsm")):
-            return read_xlsx_rows(data), ""
-        if name.endswith((".csv", ".tsv", ".txt")):
-            return read_csv_rows(data, name), ""
+    # The extension is checked BEFORE the bytes, so a .pdf gets told what this
+    # wanted rather than being decoded into nonsense rows.
+    if not name.endswith(ACCEPTED):
         if name.endswith(".xls"):
             return [], ("That is an old-format .xls file, which this cannot "
                         "read. Open it in Excel and use Save As to make a "
@@ -127,8 +99,31 @@ def rows_of(data, filename):
         return [], ("Give a .csv, .tsv, .xlsx or .xlsm file — that one is "
                     "%s." % (name.rsplit(".", 1)[-1] if "." in name
                              else "of no recognisable type"))
+    # A FILE NAMED .xlsx THAT IS NOT ONE IS A REFUSAL, not text.
+    #
+    # report_reader decides xlsx by the bytes (a zip starts "PK") and falls back
+    # to reading anything else as text -- right for its own callers, who hand it
+    # a report of unknown type. Here the name has already promised a workbook,
+    # so decoding the bytes as text produces a screenful of mojibake rows and a
+    # cheerful "0 products added" instead of saying the file is damaged.
+    if name.endswith((".xlsx", ".xlsm")) and not _rr.is_xlsx(data):
+        return [], ("That file is named like a spreadsheet but is not one — it "
+                    "may be damaged, or renamed from something else. Open it "
+                    "and use Save As to make a real .xlsx or .csv.")
+    try:
+        res = _rr.read(data, filename) or {}
     except Exception as e:
         return [], "That file could not be read: %s" % str(e)[:200]
+    if res.get("error"):
+        return [], "That file could not be read: %s" % str(res["error"])[:200]
+
+    headers = list(res.get("headers") or [])
+    body = [list(r) for r in (res.get("rows") or [])]
+    if not headers and not body:
+        return [], ""
+    # This module works in whole rows with the header first, which is what the
+    # column matcher and the row loop below both expect.
+    return ([headers] + body if headers else body), ""
 
 
 def register(app, *, CONFIG_PATH, _state):
