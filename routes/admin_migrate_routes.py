@@ -35,10 +35,23 @@ WHAT IT RUNS, AND IN WHICH ORDER
 
   1. scripts/clear_sheet_queue.py    old source="sheet" rows out of the queue
   2. scripts/migrate_statuses.py     statuses -> the four, queue rows -> QUEUED
+  3. scripts/recompute_warnings.py   every listing's warnings, every workspace
 
-That order is load-bearing. migrate_statuses MOVES leftover queue rows into the
-listings store as QUEUED; run it first and the stale sheet imports -- products
-generated months ago -- become queued listings presented as things to make.
+That order is load-bearing, twice over.
+
+migrate_statuses MOVES leftover queue rows into the listings store as QUEUED, so
+running it before the clear would turn stale sheet imports -- products generated
+months ago -- into queued listings presented as things still to make.
+
+And recompute_warnings must come LAST. It needs the statuses already folded into
+the four and the warnings/ebay_item_id columns already added, both of which
+migrate_statuses does. Run earlier it would either fail on a missing column or
+compute duplicate warnings against statuses about to change underneath it.
+
+Step 3 is also the only one that can find the duplicates at all: a duplicate
+barcode, eBay item or competitor ASIN is a fact about how rows relate to EACH
+OTHER, so it cannot be worked out while migrating one row. Existing listings
+have no such warnings until this runs.
 
 Both scripts are imported and their own main() is called, so this route runs
 exactly the code that would run in a shell, with the same dry-run default and
@@ -59,6 +72,7 @@ DEFAULT_KEY = "run_migration_2026"
 SCRIPTS = (
     ("clear_sheet_queue", "scripts/clear_sheet_queue.py"),
     ("migrate_statuses", "scripts/migrate_statuses.py"),
+    ("recompute_warnings", "scripts/recompute_warnings.py"),
 )
 
 
