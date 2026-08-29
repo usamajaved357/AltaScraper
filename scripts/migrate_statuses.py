@@ -53,7 +53,18 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-CONFIG_PATH = "config.json"
+# THE SAME CONFIG THE APP READS, resolved the same way dashboard.py resolves it.
+#
+# A bare "config.json" is right on a developer machine and wrong in the deployed
+# container, where the code is at /app and the config on the persistent volume
+# at /data/config.json. Hardcoding the relative name there would resolve to
+# /app/config.json, which does not exist -- so db_path() would hand back
+# /app/altascraper.db, an empty database this script would migrate happily and
+# report "nothing to do" about, while production sat untouched.
+#
+# That is the same class of mistake as clearing the wrong workspace: not a
+# crash, an answer about the wrong thing.
+CONFIG_PATH = os.environ.get("CONFIG_PATH", "config.json")
 
 # ---- the map ---------------------------------------------------------------
 
@@ -167,11 +178,28 @@ def has_warnings_column(conn):
     return "warnings" in [r[1] for r in conn.execute("PRAGMA table_info(listings)")]
 
 
+def backup_dir():
+    """_backups NEXT TO THE DATABASE, not next to the code.
+
+    On this machine those are the same folder and it never mattered. In the
+    deployed container they are not: the code lives at /app and the database on
+    the persistent volume at /data, and /app is rebuilt on every deploy. A
+    backup written beside the code would be destroyed by the next redeploy --
+    which is to say, exactly when someone came looking for it.
+
+    Following the database means the backup lands wherever the database really
+    is, on any host, without this script knowing which host it is on.
+    """
+    d = os.path.join(os.path.dirname(os.path.abspath(db_file())), "_backups")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
 def backup_db():
     src = db_file()
-    os.makedirs("_backups", exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    dst = os.path.join("_backups", "altascraper.before-status-migration-%s.db" % stamp)
+    dst = os.path.join(backup_dir(),
+                       "altascraper.before-status-migration-%s.db" % stamp)
     shutil.copy2(src, dst)
     return dst
 

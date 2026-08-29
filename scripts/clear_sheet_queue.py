@@ -49,7 +49,13 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-CONFIG_PATH = "config.json"
+# THE SAME CONFIG THE APP READS, resolved the way dashboard.py resolves it.
+# A bare "config.json" is right locally and wrong in the container, where the
+# code is at /app and the config on the persistent volume at /data/config.json.
+# Getting this wrong does not crash -- it reads an empty database at
+# /app/altascraper.db and reports "nothing to clear" while the real queue is
+# untouched.
+CONFIG_PATH = os.environ.get("CONFIG_PATH", "config.json")
 TARGET_SOURCE = "sheet"
 
 
@@ -114,14 +120,21 @@ def main():
         return 0
 
     # ---- two backups, because this cannot be undone -------------------------
+    #
+    # BESIDE THE DATABASE, not beside the code. On a developer machine those are
+    # the same folder; in the deployed container the code is at /app, which is
+    # rebuilt on every deploy, and the database is on the persistent volume at
+    # /data. A backup written next to the code would be destroyed by the next
+    # redeploy -- precisely when someone went looking for it.
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    os.makedirs("_backups", exist_ok=True)
+    bdir = os.path.join(os.path.dirname(os.path.abspath(db_file())), "_backups")
+    os.makedirs(bdir, exist_ok=True)
 
-    dbdst = os.path.join("_backups", "altascraper.before-queue-clear-%s.db" % stamp)
+    dbdst = os.path.join(bdir, "altascraper.before-queue-clear-%s.db" % stamp)
     shutil.copy2(db_file(), dbdst)
     print("\nbackup 1 : %s" % dbdst)
 
-    jsdst = os.path.join("_backups", "input_queue_sheet_rows_%s.json" % stamp)
+    jsdst = os.path.join(bdir, "input_queue_sheet_rows_%s.json" % stamp)
     with open(jsdst, "w", encoding="utf-8") as fh:
         json.dump({"deleted_at": stamp, "source": TARGET_SOURCE,
                    "count": len(doomed), "rows": doomed}, fh,
