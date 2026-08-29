@@ -34,33 +34,54 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _client=None):
         from data import input_import as _ii
         return jsonify({"ok": True, "rows": _ii.rows(CONFIG_PATH, _wsid())})
 
-    @app.route("/input/import", methods=["POST"])
-    def input_import():
-        """Read the workspace's input sheet ONCE and store it.
-
-        Additive and idempotent per row: pressing this twice is harmless, and a
-        sheet that fails to load halfway through cannot empty your queue. Rows
-        deleted from the sheet stay here until cleared explicitly -- silently
-        dropping work because a spreadsheet changed is not a behaviour worth
-        having.
-        """
-        from data import input_import as _ii
-        wsid = _wsid()
-        acc = None
-        try:
-            acc = _active_account()
-        except Exception:
-            acc = None
-        # The one copy, shared with the generate path -- see
-        # data/input_import.import_for_workspace.
-        added, updated, total, err = _ii.import_for_workspace(
-            CONFIG_PATH, wsid, acc, _cfg() or {}, _client)
-        if err:
-            return jsonify({"ok": False, "error": err}), 502
-
-        return jsonify({"ok": True, "workspace": wsid, "added": added,
-                        "updated": updated, "read": total,
-                        **_ii.summary(CONFIG_PATH, wsid)})
+    # ---- REPLACED BY /input/upload (CSV/Excel) ------------------------------
+    #
+    # Kept, commented, rather than deleted, so it can be put back by removing
+    # the comment markers and nothing else.
+    #
+    # The INPUT no longer comes from Google. Products reach the queue two ways
+    # now -- the "Add a product" form (/input/add, below) and a CSV or Excel
+    # file (/input/upload, routes/input_upload_routes.py) -- and neither needs
+    # a spreadsheet to be configured, reachable, or still named what it was.
+    #
+    # The queue itself is unchanged: data/input_import.py stays, add_row and
+    # import_rows are still what everything writes through, and the Google
+    # client stays too because the OUTPUT store still uses it. Only this way IN
+    # is gone.
+    #
+    # Two things went with it, for the same reason: the "Import from sheet"
+    # button on the Generate screen, and the auto-import inside /run/generate
+    # (routes/listing_routes.py) that read the sheet whenever the queue was
+    # empty. That second one is the important one -- leaving it would have kept
+    # the sheet dependency alive with no button in sight to explain it.
+    #
+    # @app.route("/input/import", methods=["POST"])
+    # def input_import():
+    #     """Read the workspace's input sheet ONCE and store it.
+    #
+    #     Additive and idempotent per row: pressing this twice is harmless, and a
+    #     sheet that fails to load halfway through cannot empty your queue. Rows
+    #     deleted from the sheet stay here until cleared explicitly -- silently
+    #     dropping work because a spreadsheet changed is not a behaviour worth
+    #     having.
+    #     """
+    #     from data import input_import as _ii
+    #     wsid = _wsid()
+    #     acc = None
+    #     try:
+    #         acc = _active_account()
+    #     except Exception:
+    #         acc = None
+    #     # The one copy, shared with the generate path -- see
+    #     # data/input_import.import_for_workspace.
+    #     added, updated, total, err = _ii.import_for_workspace(
+    #         CONFIG_PATH, wsid, acc, _cfg() or {}, _client)
+    #     if err:
+    #         return jsonify({"ok": False, "error": err}), 502
+    #
+    #     return jsonify({"ok": True, "workspace": wsid, "added": added,
+    #                     "updated": updated, "read": total,
+    #                     **_ii.summary(CONFIG_PATH, wsid)})
 
     # ---- adding products WITHOUT a spreadsheet ---------------------------
     # The queue is the same queue an import fills, so a workspace can be fed

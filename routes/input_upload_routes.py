@@ -96,17 +96,30 @@ def read_xlsx_rows(data):
 
 
 def rows_of(data, filename):
-    """(rows, error). Never raises -- a broken file is an answer, not a 500."""
+    """(rows, error). Never raises -- a broken file is an answer, not a 500.
+
+    .xlsm IS read: it is a normal xlsx with macros attached, openpyxl opens it,
+    and the macros are never executed because nothing here runs the workbook.
+
+    .xls IS NOT, and cannot be. The brief asked for it alongside .xlsx and
+    .xlsm "via openpyxl", but .xls is the pre-2007 BIFF format, a different
+    file format entirely, and openpyxl states it does not support it -- passing
+    one in raises rather than returning rows. Reading it would mean adding xlrd
+    as a dependency for a format Excel has not written by default since 2007.
+    So it gets the one thing better than a silent failure: a refusal that says
+    exactly what to do about it.
+    """
     name = (filename or "").lower()
     try:
-        if name.endswith(".xlsx"):
+        if name.endswith((".xlsx", ".xlsm")):
             return read_xlsx_rows(data), ""
         if name.endswith((".csv", ".tsv", ".txt")):
             return read_csv_rows(data, name), ""
         if name.endswith(".xls"):
             return [], ("That is an old-format .xls file, which this cannot "
-                        "read. Open it and save as .xlsx or .csv.")
-        return [], ("Give a .csv, .tsv or .xlsx file — that one is "
+                        "read. Open it in Excel and use Save As to make a "
+                        ".xlsx or .csv, then upload that.")
+        return [], ("Give a .csv, .tsv, .xlsx or .xlsm file — that one is "
                     "%s." % (name.rsplit(".", 1)[-1] if "." in name
                              else "of no recognisable type"))
     except Exception as e:
@@ -151,6 +164,13 @@ def register(app, *, CONFIG_PATH, _state):
 
         headers = [("" if h is None else str(h)) for h in rows[0]]
         mapping, matched, ignored = _ir.map_headers(headers)
+        # THEIR HEADER -> OUR COLUMN, in their spelling. A list of our column
+        # names answers "what did it understand"; this answers "what did it
+        # think MY column meant", which is the question someone has when the
+        # cost landed somewhere unexpected -- see the note on a bare "price" in
+        # data/input_row.py.
+        mapped_columns = {headers[i]: col for i, col in mapping.items()
+                          if i < len(headers)}
         if not mapping:
             # SAY WHAT WAS IN THE FILE. "No columns matched" with nothing else
             # leaves the reader guessing at spelling; the headers we DID find
@@ -200,8 +220,12 @@ def register(app, *, CONFIG_PATH, _state):
             "added": added,
             "skipped": skipped,
             "errors": errors,
-            "mapped_columns": matched,
-            "ignored_columns": ignored,
+            # {their header: our column} -- see above.
+            "mapped_columns": mapped_columns,
+            # Our column names, in COLUMNS order, for anything that wants the
+            # canonical list rather than the file's wording.
+            "matched": matched,
+            "unmatched_columns": ignored,
             "preview": preview,
             **_ii.summary(CONFIG_PATH, wsid),
         })
@@ -210,32 +234,36 @@ def register(app, *, CONFIG_PATH, _state):
 
     @app.route("/input/upload/template")
     def input_upload_template():
-        """A CSV with the headers this understands and one example row.
+        """A blank CSV with the headers this understands, and two rows to delete.
 
-        The note goes in a column rather than a comment line: a leading "#" row
-        is a row to every spreadsheet program, and the file has to survive being
-        opened in Excel, saved, and uploaded back.
+        Headers in the order a person fills them in -- where you buy it, what it
+        is, what it costs -- rather than the storage order of COLUMNS.
+
+        The instruction is a ROW rather than a leading "#" comment line, because
+        a "#" line is just a row to every spreadsheet program and would become
+        the header the moment the file was opened and saved. Both rows say to
+        delete themselves, and neither is harmless if left: each has a link or a
+        name, so each would queue.
         """
-        from data.input_import import COLUMNS
-
+        headers = ["ebay_url", "amazon_url", "item_name", "source_cost",
+                   "selling_price", "upc", "handling_time"]
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(list(COLUMNS) + ["notes"])
+        w.writerow(headers)
         w.writerow([
-            "https://www.amazon.co.uk/dp/B0EXAMPLE1",   # amazon_url
-            "",                                          # competitor_asin
-            "https://www.ebay.co.uk/itm/1234567890",     # ebay_url
-            "Stainless Steel Garlic Press",              # item_name
-            "4.20",                                      # source_cost
-            "12.99",                                     # selling_price
-            "3",                                         # handling_time
-            "",                                          # upc
-            "EXAMPLE ROW — DELETE IT. Fill in a source link OR an Amazon "
-            "link; you do not need both. This 'notes' column is ignored on "
-            "upload, but the row itself is not: leave it in and you will queue "
-            "a garlic press.",
+            "https://www.ebay.co.uk/itm/1234567890",
+            "https://www.amazon.co.uk/dp/B0EXAMPLE1",
+            "Stainless Steel Garlic Press",
+            "4.20", "12.99", "5012345678900", "3",
         ])
-        w.writerow([""] * (len(COLUMNS) + 1))
+        w.writerow([
+            "", "",
+            "DELETE BOTH EXAMPLE ROWS. Only ebay_url OR amazon_url is "
+            "required, not both. Leave selling_price empty and the app prices "
+            "it from the cost and Amazon's fees.",
+            "", "", "", "",
+        ])
+        w.writerow([""] * len(headers))
         return Response(
             buf.getvalue(),
             mimetype="text/csv",

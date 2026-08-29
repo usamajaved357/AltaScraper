@@ -191,17 +191,27 @@ async function inputQueueDelete(id){
   }catch(e){ toast(String(e)); }
 }
 
-async function inputQueueImport(btn){
-  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> importing…'; }
-  try{
-    const j = await (await fetch("/input/import",{method:"POST",
-      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
-    if(!j.ok){ toast(j.error||"Could not import"); return; }
-    toast("Imported "+(j.read||0)+" rows — "+(j.added||0)+" new, "+(j.updated||0)+" updated");
-    inputQueueLoad();
-  }catch(e){ toast(String(e)); }
-  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-table-import"></i> Import from sheet'; } }
-}
+// ---- REPLACED BY /input/upload (CSV/Excel) ---------------------------------
+//
+// Kept, commented, rather than deleted, so it can be restored by removing the
+// comment markers. Its button is gone from the toolbar above the queue and its
+// endpoint is commented out in routes/input_routes.py, so left live it would be
+// a function calling a route that answers 404.
+//
+// Products reach this queue two ways now: the form below, and a CSV or Excel
+// file dropped on the zone above it (static/js/inputupload.js).
+//
+// async function inputQueueImport(btn){
+//   if(btn){ btn.disabled = true; btn.innerHTML = '<span class="genspin"></span> importing…'; }
+//   try{
+//     const j = await (await fetch("/input/import",{method:"POST",
+//       headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+//     if(!j.ok){ toast(j.error||"Could not import"); return; }
+//     toast("Imported "+(j.read||0)+" rows — "+(j.added||0)+" new, "+(j.updated||0)+" updated");
+//     inputQueueLoad();
+//   }catch(e){ toast(String(e)); }
+//   finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-table-import"></i> Import from sheet'; } }
+// }
 
 function filterInputSheet(){
   const q = ((document.getElementById("inputsheet_filter")||{}).value||"")

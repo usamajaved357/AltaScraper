@@ -53,7 +53,7 @@ function inputUploadPanel(){
   +   '<div class="iup-zone" id="iup_zone"'
   +     ' ondragover="iupDragOver(event)" ondragleave="iupDragLeave(event)"'
   +     ' ondrop="iupDrop(event)" onclick="iupBrowse()">'
-  +     '<input type="file" id="iup_file" accept=".csv,.tsv,.txt,.xlsx"'
+  +     '<input type="file" id="iup_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm"'
   +       ' style="display:none" onchange="iupPicked(this)">'
   +     '<div class="iup-ico"><i class="ti ti-file-spreadsheet"></i></div>'
   +     '<div class="iup-big">Drop a spreadsheet here</div>'
@@ -140,10 +140,21 @@ async function iupUpload(file){
 }
 
 function _iupTags(j){
-  const ok = (j.mapped_columns || []).map(function(c){
-    return '<span class="iup-tag iup-tag-on">' + _iupEsc(_iupLabel(c)) + '</span>';
+  // THE TAG SHOWS THEIR WORDING AND OURS. mapped_columns is {their header:
+  // our column}, so a tag reads "Buy Price → Cost". A tag saying only "Cost"
+  // cannot answer the question people actually have, which is not "did it find
+  // a cost" but "which of my three price columns did it take".
+  const m = j.mapped_columns || {};
+  const ok = Object.keys(m).map(function(h){
+    const mine = _iupLabel(m[h]);
+    const same = String(h).trim().toLowerCase() === mine.toLowerCase();
+    return '<span class="iup-tag iup-tag-on" title="Your column &quot;'
+      + _iupEsc(h) + '&quot; was stored as ' + _iupEsc(mine) + '">'
+      + _iupEsc(h) + (same ? "" : ' <span class="iup-arrow">→</span> '
+                              + _iupEsc(mine))
+      + '</span>';
   }).join("");
-  const no = (j.ignored_columns || []).map(function(c){
+  const no = (j.unmatched_columns || []).map(function(c){
     return '<span class="iup-tag iup-tag-off" title="This column was not '
          + 'recognised, so its values were not stored">' + _iupEsc(c) + '</span>';
   }).join("");
@@ -159,7 +170,9 @@ function _iupTags(j){
 function _iupPreview(j){
   const rows = j.preview || [];
   if(!rows.length) return "";
-  const cols = (j.mapped_columns || []).slice(0, 5);
+  // `matched` is our own column names in a stable order; mapped_columns is
+  // keyed by the file's wording and is for the tags above.
+  const cols = (j.matched || []).slice(0, 5);
   if(!cols.length) return "";
   let h = '<div class="iup-prev"><div class="iup-dim" style="margin-bottom:5px">'
         + 'First ' + rows.length + ' of what was added:</div>'

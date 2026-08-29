@@ -1059,6 +1059,12 @@ function navTo(sec){
     if(sec==="setup")     loadBrandPanel();
     if(sec==="imagerefs") loadImageRefs();
     if(sec==="generate"){ loadTargetAccount(); loadInputSheet();
+      // The drop zone above the queue. Drawn once per open, before the queue
+      // loads, so the screen never shows a list with no way to add to it.
+      if(typeof inputUploadPanel === "function"){
+        const _iu = document.getElementById("inputupload");
+        if(_iu && !_iu.innerHTML.trim()) _iu.innerHTML = inputUploadPanel();
+      }
       // What a run WOULD do, before it does it. Costs nothing -- it asks
       // the generator's own duplicate rule and reports the answer.
       if(typeof genplanLoad==="function") genplanLoad(); }

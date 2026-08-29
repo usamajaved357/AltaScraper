@@ -34,6 +34,10 @@
 <!-- What is genuinely the Repricer's alone: the sparkline, the stacked bar, the
      supplier table, the rules pills, the chart and the detail panel. -->
 <link rel="stylesheet" href="/static/css/repricer.css?v={{ ASSET_V }}">
+<!-- The drop zone on the Generate screen and its result cards. Uses only the
+     --ok/--warn/--red tokens dashboard.css already defines, so it loads after
+     it and introduces no colours of its own. -->
+<link rel="stylesheet" href="/static/css/inputupload.css?v={{ ASSET_V }}">
 <!-- The listing detail drawer, in full. Must load AFTER dashboard.css: it
      overrides `.drawer` from a single scrolling box into a fixed header, a
      scrolling middle and a fixed footer, and the later file is the one that
@@ -671,12 +675,20 @@
       <div class="reqnote">Runs here only touch <b id="gen_scope">this workspace's</b> sheet/marketplace — nothing else is affected.</div>
       <div id="targetacct" class="acctbanner">Resolving destination account…</div>
 
+      <!-- TWO WAYS IN, AND NEITHER IS A SPREADSHEET WE READ FOR YOU.
+           A file dropped here, or the form inside the queue below. The Google
+           input sheet was a third, and is gone: /input/import is commented out
+           in routes/input_routes.py, as is the auto-import that used to read it
+           inside /run/generate. The queue itself is unchanged -- both ways
+           still write through data/input_import.add_row.
+           Upload zone first, then the queue with its "add a product" form. -->
+      <div id="inputupload" style="margin-top:18px"></div>
+
       <!-- THE PRODUCT QUEUE: what Generate will make, added and edited here.
            This was a read-only view of the Google sheet, so changing anything
            meant leaving the app. The queue already lived in the database; only
-           the way IN was still a spreadsheet. Importing a sheet still works and
-           fills the SAME queue. -->
-      <div id="inputsheetwrap" style="margin-top:18px;border:1px solid var(--line,#2a2f3a);border-radius:10px;overflow:hidden">
+           the way IN was still a spreadsheet. -->
+      <div id="inputsheetwrap" style="margin-top:14px;border:1px solid var(--line,#2a2f3a);border-radius:10px;overflow:hidden">
         <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel2,rgba(255,255,255,.02));flex-wrap:wrap">
           <b style="font-size:14px"><i class="ti ti-list-check"></i> Products to generate</b>
           <span class="cc" id="inputsheet_meta" style="font-size:12px;opacity:.7"></span>
@@ -684,8 +696,9 @@
           <input id="inputsheet_filter" placeholder="Filter…" oninput="filterInputSheet()"
                  style="padding:6px 9px;border:1px solid var(--line,#2a2f3a);border-radius:7px;background:var(--bg,#0e1116);color:inherit;font-size:12px;min-width:150px">
           <button class="ib" onclick="inputQueueLoad()"><i class="ti ti-refresh"></i> Refresh</button>
-          <button class="ib" onclick="inputQueueImport(this)" title="Bring in an input spreadsheet. Adds to this queue; never deletes from it."><i class="ti ti-table-import"></i> Import from sheet</button>
-          <a class="ib" id="inputsheet_open" href="#" target="_blank" rel="noopener" style="display:none"><i class="ti ti-external-link"></i> Open in Google Sheets</a>
+          <!-- "Import from sheet" and "Open in Google Sheets" stood here. The
+               input no longer comes from Google, so a button that reads a
+               spreadsheet would be the only thing left implying it does. -->
         </div>
         <div id="inputsheet_body" style="max-height:560px;overflow:auto">
           <div class="cc" style="padding:16px;opacity:.6">Loading…</div>
@@ -1990,6 +2003,10 @@
 <!-- The product queue, which owns loadInputSheet/filterInputSheet outright --
      shell.js no longer defines them, so load order cannot decide behaviour. -->
 <script src="/static/js/inputqueue.js?v={{ ASSET_V }}"></script>
+<!-- The other way into that queue: a CSV or Excel file. Loaded after
+     inputqueue.js because it calls inputQueueLoad() to refresh the list once an
+     upload lands. -->
+<script src="/static/js/inputupload.js?v={{ ASSET_V }}"></script>
 <!-- Changing a live selling price: preview, then send exactly that. -->
 <script src="/static/js/priceedit.js?v={{ ASSET_V }}"></script>
 <!-- Adding a colour or size to a product that is already listed. -->

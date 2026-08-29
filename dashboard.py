@@ -4205,11 +4205,19 @@ def build_app(backend=None):
                               # than re-deriving one from the SKU (Rule 12).
                               _COGS_OVERRIDE=_COGS_OVERRIDE)
 
-    # The generator's INPUT, imported on demand instead of read live from Google.
+    # The generator's INPUT queue: adding one product at a time, editing and
+    # clearing. It no longer reads Google -- /input/import is commented out in
+    # that file, and the two ways in are the form there and the file upload
+    # below.
     import routes.input_routes as _input_routes
     _input_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                            _active_account=_active_account, _state=_state,
                            _client=_client)
+
+    # A CSV or Excel file straight into that same queue. Needs neither the
+    # Google client nor an account's sheet settings, which is the point of it.
+    import routes.input_upload_routes as _input_upload_routes
+    _input_upload_routes.register(app, CONFIG_PATH=CONFIG_PATH, _state=_state)
 
     import routes.misc_routes as _misc_routes
     _misc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _active_account=_active_account,
