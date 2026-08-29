@@ -1518,6 +1518,29 @@ function _warnChip(r){
        + `${w.n === 1 ? "" : "s"}<span class="cc"> (${worst})</span></span>`;
 }
 
+/* THE SAME COUNT, IN THE TABLE.
+ *
+ * The badge was only on the tile, and the table is the DEFAULT view -- so on the
+ * screen almost everyone actually looks at, nothing showed which listings had
+ * warnings, and the only way to find out was to open all of them. Which is the
+ * problem the badge exists to solve.
+ *
+ * Sits under the status pill because that is the cell about the listing's state,
+ * and a warning is part of that state.
+ */
+function _warnCell(r){
+  if(typeof lsWarnings !== "function") return "";
+  const w = lsWarnings(r);
+  if(!w.n) return "";
+  const tone = w.high ? "var(--red)" : (w.medium ? "var(--warn)" : "var(--ink3)");
+  const tip = w.list.slice(0, 5).map(function(x){
+    return "• " + String((x && x.message) || "");
+  }).join("\n");
+  return `<div style="font-size:9.5px;margin-top:3px;color:${tone}" `
+       + `title="${esc(tip)}"><i class="ti ti-alert-triangle"></i> `
+       + `${w.n} warning${w.n === 1 ? "" : "s"}</div>`;
+}
+
 /* WAITING TO GENERATE. A queued row has a SKU and almost nothing else -- no
  * title yet, no bullets, no images -- so it needs to say why it looks empty. */
 function _queuedChip(r){
@@ -2033,6 +2056,7 @@ function _dwShell(r, urls, priceStr, risks){
     ${bar}
     <div class="dw2-body">
       ${alwaysOn}
+      ${_dwWarnings(r)}
       ${heroBlock}
       ${metrics}
       <label class="dw2-setting" title="Send only the fields Amazon strictly requires (plus price/title/etc.). Create the listing now, add the rest in Seller Central. Note: lithium-battery products still require their safety fields.">
@@ -2138,8 +2162,28 @@ function _dwMetrics(r){
  * duplicate barcode is worth interrupting for, "no barcode provided" on a
  * listing you already know has none is not.
  */
+// WHAT EACH KIND OF WARNING LOOKS LIKE. An icon carries the kind at a glance so
+// six warnings do not read as six identical paragraphs; the colour carries the
+// severity, which is a different question. Anything unlisted falls back to a
+// plain alert triangle rather than rendering nothing.
+const WARN_ICONS = {
+  duplicate_barcode: "ti-barcode",
+  barcode_live_on_amazon: "ti-barcode",
+  no_barcode: "ti-barcode-off",
+  duplicate_ebay_item: "ti-copy",
+  duplicate_competitor_asin: "ti-copy",
+  ip_risk: "ti-gavel",
+  compliance_risk: "ti-file-certificate",
+  amazon_rejected: "ti-ban",
+  stale_catalogue: "ti-clock-exclamation",
+  placeholder_sku: "ti-tag",
+};
+function _warnIcon(t){ return WARN_ICONS[String(t || "")] || "ti-alert-triangle"; }
+
 function _dwWarnings(r){
   const w = (typeof lsWarnings === "function") ? lsWarnings(r) : {n: 0, list: []};
+  // NO WARNINGS, NO SECTION. An empty "Warnings" heading on a clean listing is
+  // a thing to read and dismiss on every single one of them.
   if(!w.n) return "";
   const tone = function(s){
     s = String(s || "low").toLowerCase();
@@ -2162,7 +2206,8 @@ function _dwWarnings(r){
         + '</div>'
       : "";
     return '<div class="dw2-warn ' + tone(sev) + '">'
-      + '<div><span class="dw2-tag ' + tone(sev) + '">' + esc(sev) + '</span> '
+      + '<div><i class="ti ' + _warnIcon(x && x.type) + '"></i> '
+      + '<span class="dw2-tag ' + tone(sev) + '">' + esc(sev) + '</span> '
       + esc(String((x && x.message) || "")) + '</div>'
       + (bits.length
           ? '<button class="linkbtn" style="font-size:11px" onclick="'
@@ -2184,9 +2229,18 @@ function _dwWarnings(r){
 }
 
 function _dwVerdictFolds(r){
+  // WARNINGS ARE NOT IN HERE ANY MORE, deliberately.
+  //
+  // They were, and it put them in the wrong place. This block is rendered by
+  // autofix.js as part of the drawer's DATA section, which comes after the
+  // highlights, bullets, search terms, description, images, identity and
+  // attributes -- so "at the top of the drawer" was, in practice, most of a
+  // drawer's scrolling later. A panel nobody scrolls to is not a panel.
+  //
+  // _dwShell renders them now, first thing in the body, above the title. See
+  // _dwWarnings.
   const statusBlock = (typeof _dwStatusBlock === "function") ? _dwStatusBlock(r) : "";
-  return _dwWarnings(r)
-    + dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
+  return dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
     + dwFold("Compliance requirements", _dwVerdictTag(r.viability && r.viability.matched, "no demand"), viabilityPanel(r))
     + dwFold("Claim risks", (r.claim_flags||[]).length ? `<span class="dw2-tag warn">${(r.claim_flags||[]).length}</span>` : "", claimBox(r))
     + dwFold("Amazon feedback", statusBlock ? '<span class="dw2-tag warn">see inside</span>' : "", statusBlock)
@@ -2622,7 +2676,7 @@ function tableRow(r){
         ? `<div class="cc" style="font-size:9.5px;margin-top:3px;color:var(--warn)" `
           + `title="No bullets, no description, no product type yet. Select it and `
           + `press Regenerate copy, or open it and press Write it now.">no copy yet</div>`
-        : ''}</td>
+        : ''}${_warnCell(r)}</td>
     <td>${_compCell(r)}</td>
     <td><div class="acts">
       <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
