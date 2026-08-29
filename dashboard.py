@@ -4250,12 +4250,6 @@ def build_app(backend=None):
     import routes.input_upload_routes as _input_upload_routes
     _input_upload_routes.register(app, CONFIG_PATH=CONFIG_PATH, _state=_state)
 
-    # TEMPORARY -- DELETE THESE THREE LINES AND routes/admin_migrate_routes.py
-    # once the one-off migration has been run. It exists only because this host
-    # offers no shell to run the scripts in. It is not a feature.
-    import routes.admin_migrate_routes as _admin_migrate_routes
-    _admin_migrate_routes.register(app, CONFIG_PATH=CONFIG_PATH, _state=_state)
-
     import routes.misc_routes as _misc_routes
     _misc_routes.register(app, CONFIG_PATH=CONFIG_PATH, _active_account=_active_account,
                           _state=_state)
