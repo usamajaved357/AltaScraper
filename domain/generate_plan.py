@@ -90,8 +90,11 @@ def verdict(c):
     regenerating the lot.
     """
     if not c["queued"]:
-        return ("Nothing is queued. Import from the sheet, or add products by "
-                "hand, before generating.")
+        # The sheet import is gone; there are two ways in now, and naming the
+        # one that no longer exists sends someone looking for a button that was
+        # removed.
+        return ("Nothing is queued. Upload a CSV or Excel file, or add a "
+                "product by hand, before generating.")
     if not c["already_made"]:
         return ("Nothing is on record as already generated. If this account HAS "
                 "made listings before, the duplicate check is not seeing them "
@@ -143,14 +146,59 @@ def for_workspace(config_path, workspace_id, config=None):
     except Exception as e:
         err = "Could not read what has already been generated: %s" % str(e)[:180]
 
+    # WHAT IS WAITING TO BE GENERATED, from the listings store.
+    #
+    # This read the old input_products table. A product waiting to be generated
+    # is now a row in `listings` with status=QUEUED, written by the CSV upload
+    # or the "Add a product" form -- one table, one source of truth -- so this
+    # panel was describing a queue nothing fills any more and would have said
+    # "nothing is queued" over a screenful of queued products.
     rows, imported_at = [], ""
     try:
-        from data import input_import as _ii
-        rows = _ii.rows(config_path, workspace_id) or []
-        imported_at = (_ii.summary(config_path, workspace_id) or {}).get("imported_at") or ""
+        from data import queued_store as _qs
+        rows = _qs.queued_rows(config_path, workspace_id) or []
+        imported_at = (_qs.queued_count(config_path, workspace_id)
+                       or {}).get("imported_at") or ""
     except Exception as e:
         err = (err + " | " if err else "") + \
-              "Could not read the input queue: %s" % str(e)[:150]
+              "Could not read the queued listings: %s" % str(e)[:150]
+
+    # A QUEUED ROW MUST NOT COUNT AS A DUPLICATE OF ITSELF.
+    #
+    # `seen` comes from load_existing_skus_and_asins, which counts any row
+    # carrying both a Competitor ASIN and a SKU. A queued row has both -- the SKU
+    # is real from the moment the row exists (see data/input_row) -- and queued
+    # rows now live in the SAME table. So every queued product matched itself,
+    # and the panel read "0 to generate, N already made, N queued" for ever,
+    # whatever had just been uploaded.
+    #
+    # ONLY THE SELF-MATCH IS REMOVED. Subtracting every queued ASIN would be the
+    # easy version and the wrong one: it would switch the duplicate check off for
+    # exactly the rows it exists to judge, so uploading a product that HAS
+    # already been generated would report it as new and a run would remake it at
+    # full AI spend. An ASIN is dropped from "already made" only when the queued
+    # rows are the sole thing putting it there.
+    #
+    # The generator resolves the same collision the same way -- process_row keeps
+    # the identity a queued row arrived with rather than treating it as a
+    # duplicate of itself. This is that rule, on the screen that predicts it.
+    _queued_asins = {a for a in (asin_of(r) for r in rows) if a}
+    if _queued_asins:
+        try:
+            from data import db as _db
+            _conn = _db.get_db(config_path)
+            _made_elsewhere = {
+                str(r[0] or "").strip().upper() for r in _conn.execute(
+                    "SELECT competitor_asin FROM listings WHERE workspace_id=? "
+                    "AND status<>'QUEUED' AND competitor_asin IS NOT NULL "
+                    "AND competitor_asin<>'' AND sku IS NOT NULL AND sku<>''",
+                    (workspace_id,))}
+            seen = set(seen) - (_queued_asins - _made_elsewhere)
+        except Exception:
+            # If that cannot be read, leave `seen` alone. Over-reporting
+            # "already made" is the safe direction: it makes a run do less, not
+            # more.
+            pass
 
     out = plan(rows, seen, taken)
     out["workspace"] = workspace_id
