@@ -462,7 +462,10 @@ async function loadRows(){
         const s=document.getElementById("summary"); if(s) s.innerHTML="";
         return;
       }
-      toast("Sheet error: "+(j.error||"unknown")); return;
+      // Named for what the reader was doing, not for where the rows happen to
+      // be kept: "Sheet error" described the store rather than the failure, and
+      // said it even when the rows came from the database.
+      toast("Couldn't load listings: "+(j.error||"unknown")); return;
     }
     ROWS=j.rows||[]; SHIP=j.shipping_group||""; PTYPES=j.product_types||[];
     // The answer has arrived. From here an empty ROWS really does mean "this

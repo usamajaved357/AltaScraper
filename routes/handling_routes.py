@@ -1,12 +1,20 @@
 """routes/handling_routes.py — bulk handling-time (lead_time_to_ship_max_days) updates.
 
-One endpoint: set a handling time on many listings at once. It can (a) write the value
-into the sheet's handling column wherever that column exists (across every tab of the
-active sheet), and (b) push it live to Amazon per SKU via listing/handling.py.
+One endpoint: set a handling time on many listings at once. It can (a) record the value
+in the handling column wherever that column exists, and (b) push it live to Amazon per
+SKU via listing/handling.py.
 
-The frontend does the first live push as a single-SKU TEST (test_one), shows Amazon's
-reply, and only then pushes the rest — honouring the "test one listing before a bulk
-live write" rule. Nothing here writes to Amazon unless push=true is sent.
+EVERY SELECTED LISTING GOES IN ONE RUN. There used to be a test_one mode: the frontend
+pushed the FIRST selected SKU on its own, showed Amazon's reply, and asked a second time
+before sending the rest. It was removed on request ("Remove the test-then-apply pattern.
+One confirmation only"), and the mode went with it because nothing called it any more.
+
+It is worth saying why it was not a safety net. The "test" was a real push, so by the
+time the second dialog appeared the change was already on Amazon; stopping there left
+the catalogue half-changed, with the first selected SKU changed and the rest not. The
+protection that actually holds is below and unchanged: each SKU is pushed and reported
+separately, so one refusal never stops the others. Nothing here writes to Amazon unless
+push=true is sent.
 
 register(app, ...) injection pattern.
 """
@@ -122,21 +130,21 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
     def stock_bulk_update():
         """Set the stock quantity on many live listings at once.
 
-        Body: {skus:[...], qty:N, test_one:bool=false}.
+        Body: {skus:[...], qty:N}.
 
-        NO SHEET WRITE, deliberately. Handling time has a column in the sheet
-        because it is a decision the owner makes and keeps; stock is a fact
-        about the warehouse that Amazon is the authority on, and writing a
+        NOTHING IS RECORDED HERE, deliberately. Handling time has a column of
+        its own because it is a decision the owner makes and keeps; stock is a
+        fact about the warehouse that Amazon is the authority on, and writing a
         number here would create a second, immediately-stale copy of it for
         every other screen to read. The Inventory screen already reads stock
         from Amazon.
 
-        Same single-SKU test as handling time: the frontend pushes one, shows
-        Amazon's reply, and only then sends the rest.
+        Every selected listing goes in one run, each reported separately. See
+        the note at the top of this file for why the single-SKU test that used
+        to precede it was not the safety net it appeared to be.
         """
         b = request.get_json(force=True) or {}
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
-        test_one = bool(b.get("test_one", False))
         if not skus:
             return jsonify({"ok": False, "error": "no listings selected"}), 400
         # Validated up front -- a bad number must never reach Amazon.
@@ -160,11 +168,6 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
         if refuse:
             return refuse
 
-        if test_one:
-            res = _handling.push_quantity(_cfg(), acc, skus[0], qty, mkt)
-            return jsonify({"ok": bool(res.get("ok")), "test": True, "qty": qty,
-                            "result": res})
-
         pushed, failed = [], []
         for sku in skus:
             r = _handling.push_quantity(_cfg(), acc, sku, qty, mkt)
@@ -175,18 +178,16 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
 
     @app.route("/handling/bulk_update", methods=["POST"])
     def handling_bulk_update():
-        """Body: {skus:[...], days:N, sheet:bool=true, push:bool=false, test_one:bool=false}.
-        - sheet: write the value into the handling column wherever it exists.
-        - push : patch lead_time_to_ship_max_days on each live listing on Amazon.
-        - test_one: push ONLY the first SKU (the single-listing safety test), no sheet write."""
+        """Body: {skus:[...], days:N, sheet:bool=true, push:bool=false}.
+        - sheet: record the value in the handling column wherever it exists.
+        - push : patch lead_time_to_ship_max_days on each live listing on Amazon."""
         b = request.get_json(force=True) or {}
         skus = [str(s).strip() for s in (b.get("skus") or []) if str(s).strip()]
         do_sheet = bool(b.get("sheet", True))
         do_push  = bool(b.get("push", False))
-        test_one = bool(b.get("test_one", False))
         if not skus:
             return jsonify({"ok": False, "error": "no listings selected"}), 400
-        # validate the handling value up front — a bad number must never reach the sheet or Amazon
+        # validate the handling value up front — a bad number must never be recorded or sent
         try:
             days = int(b.get("days"))
         except Exception:
@@ -194,19 +195,9 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
         if days < 0 or days > 30:
             return jsonify({"ok": False, "error": "handling time must be between 0 and 30 days"}), 400
 
-        # --- single-listing safety test: push ONE SKU, return Amazon's reply, no sheet write ---
-        if test_one:
-            if not do_push:
-                return jsonify({"ok": False, "error": "test_one requires push"}), 400
-            acc, mkt, refuse = _push_target()
-            if refuse:
-                return refuse
-            res = _handling.push_handling_time(_cfg(), acc, skus[0], days, mkt)
-            return jsonify({"ok": bool(res.get("ok")), "test": True, "days": days, "result": res})
-
         out = {"ok": True, "days": days, "count": len(skus)}
 
-        # --- 1) sheet ---
+        # --- 1) record it here ---
         if do_sheet:
             skus_set = set(skus)
             updated, tabs_touched, had_col = _sheet_write_handling(skus_set, days)
@@ -216,8 +207,8 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
             out["sheet_tabs"] = tabs_touched
             out["sheet_has_column"] = had_col
             out["sheet_note"] = ("" if had_col else
-                                 "No handling-time column exists on these tabs, so nothing was "
-                                 "written to the sheet (the Amazon push still applies).")
+                                 "There is no handling-time column on these listings, so nothing "
+                                 "was recorded here (the Amazon push still applies).")
 
         # --- 2) push to Amazon ---
         if do_push:
