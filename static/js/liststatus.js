@@ -37,6 +37,20 @@
 // state -- not a draft, not yet live. See amazon_listing_generator.py:7261-7291.
 const LS_LIVE      = "LIVE";
 const LS_SUBMITTED = "SUBMITTED";
+// FOUR STATUSES, and these are the two new ones.
+//
+// QUEUED    uploaded or typed in, waiting to be generated. The row exists in
+//           the listings store with a real SKU and almost nothing else on it.
+// GENERATED the generator has filled it in. It replaced NEEDS_REVIEW, APPROVED,
+//           API_READY, IP_HOLD and COMPLIANCE_HOLD -- see
+//           scripts/migrate_statuses.py.
+//
+// NOTHING BLOCKS ANY MORE. The two _HOLD statuses used to stop a listing being
+// submitted; what they were protecting against is now a WARNING on the row
+// (listing/warnings.py) and Submit is always available. A listing with five
+// warnings and one with none are both GENERATED.
+const LS_QUEUED    = "QUEUED";
+const LS_GENERATED = "GENERATED";
 
 // Statuses meaning "this app handed this listing to Amazon". Amazon cannot tell a
 // deleted listing from one that never existed -- getListingsItem answers NOT_FOUND
@@ -54,6 +68,30 @@ function lsSaysLive(r){ return lsStatusOf(r) === LS_LIVE; }
 
 // Is the stored word SUBMITTED? (accepted by Amazon, publication pending)
 function lsSaysSubmitted(r){ return lsStatusOf(r) === LS_SUBMITTED; }
+
+// Waiting to be generated: uploaded or typed in, nothing made from it yet.
+function lsIsQueued(r){ return lsStatusOf(r) === LS_QUEUED; }
+
+// The generator has filled it in. Ready to submit whenever you decide -- there
+// is no separate "approved" step and no hold that can stop it.
+function lsIsGenerated(r){ return lsStatusOf(r) === LS_GENERATED; }
+
+/* HOW MANY THINGS ARE WRONG WITH THIS LISTING, and how badly.
+ *
+ * The warnings live on the row as a list of {type, severity, message, details};
+ * dashboard._card parses whatever was stored into a list, so a screen never has
+ * to. Returns {n, high, medium, low} -- counts only, because the card wants a
+ * number and the drawer wants the messages.
+ */
+function lsWarnings(r){
+  const list = (r && Array.isArray(r.warnings)) ? r.warnings : [];
+  const out = {n: list.length, high: 0, medium: 0, low: 0, list: list};
+  list.forEach(function(w){
+    const s = String((w && w.severity) || "low").toLowerCase();
+    if(out[s] === undefined) out.low++; else out[s]++;
+  });
+  return out;
+}
 
 // Does AMAZON'S OWN fetched catalogue list this row?
 //

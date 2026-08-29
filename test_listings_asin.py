@@ -155,9 +155,21 @@ truthy("the filter understands each half",
        'FILTER==="refused"' in LJ and 'FILTER==="blocked"' in LJ)
 truthy("Amazon's refusals go to their own list", "metricFilter('refused')" in LJ)
 truthy("  and our own checks to theirs", "metricFilter('blocked')" in LJ)
-# The tile that genuinely wants both keeps the union.
-truthy("the combined tile still asks for both",
-       '"Blocked or errored", "holds"' in LJ)
+# THE COMBINED TILE IS GONE, AND SO IS WHAT IT COUNTED.
+#
+# "Blocked or errored" counted IP_HOLD + COMPLIANCE_HOLD + ERROR. Nothing blocks
+# any more: those statuses were folded into GENERATED and what they were
+# protecting against is a warning on the row instead
+# (listing/warnings.py). A tile counting blocked listings would always read 0.
+#
+# The two halves it united are still reachable on their own -- the metricFilter
+# links above still send 'refused' and 'blocked' -- so the distinction this file
+# exists to protect is intact; only the union tile went.
+truthy("there is no 'blocked' tile, because nothing blocks",
+       '"Blocked or errored", "holds"' not in LJ)
+truthy("  the four statuses are what the tiles count now",
+       '"Queued", "queued"' in LJ and '"Generated", "generated"' in LJ
+       and '"Submitted", "submitted"' in LJ)
 truthy("and the difference is explained where it is decided",
        "Nothing has reached Amazon" in LJ)
 

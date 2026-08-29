@@ -513,8 +513,25 @@ function render(){
   // support "drafts" but silently forget "claimed" or "live".
   // The submitted-and-waiting rows come OUT of the drafts group here too, so the
   // All view groups them exactly as the Drafts view does. One rule, both screens.
-  const _waitingAll = real.filter(_isWaiting);
-  const _draftsAll  = real.filter(r => !_isWaiting(r));
+  // QUEUED COMES OUT FIRST, and is asked of liststatus.js like every other
+  // status question, so this group and the tile that counts it cannot drift.
+  //
+  // A queued row has a real SKU and almost nothing else -- no title, no
+  // bullets, no images, because nothing has been generated from it yet. Left in
+  // with the generated listings it reads as a broken one; in its own group,
+  // with its own line saying what it is waiting for, it reads as what it is.
+  const _isQueued = r => (typeof lsIsQueued === "function") ? lsIsQueued(r) : false;
+  const _queuedAll  = real.filter(_isQueued);
+  const _waitingAll = real.filter(r => !_isQueued(r) && _isWaiting(r));
+  const _draftsAll  = real.filter(r => !_isQueued(r) && !_isWaiting(r));
+  const queuedHtml = _queuedAll.length
+    ? '<div class="srcgroup">Queued — waiting to generate</div>'
+      + '<div class="cc" style="margin:-4px 0 12px;font-size:12px;line-height:1.6">'
+      + _queuedAll.length + ' product' + (_queuedAll.length > 1 ? 's have' : ' has')
+      + ' been added and not generated yet. They carry only what was uploaded or '
+      + 'typed in — press <b>Generate</b> above to fill them in.'
+      + '</div>' + listBlock(_queuedAll)
+    : "";
   let draftHtml = listBlock(_draftsAll);
   const waitingAllHtml = (typeof submittedGroupHtml === "function")
                        ? submittedGroupHtml(_waitingAll) : "";
@@ -653,11 +670,12 @@ function render(){
       + claimedHtml;   // already its own folded block -- no heading needed
   } else if(LIST_SOURCE==="all"){
     grid.innerHTML = note
+      + queuedHtml
       + waitingAllHtml
-      + (draftHtml?('<div class="srcgroup">Drafts (in this app)</div>'+draftHtml):'')
+      + (draftHtml?('<div class="srcgroup">Generated (in this app)</div>'+draftHtml):'')
       + (liveHtml?('<div class="srcgroup">Live on Amazon</div>'+liveHtml):'')
       + claimedHtml
-      + ((!draftHtml&&!liveHtml&&!claimedHtml&&!waitingAllHtml)?'<div class="empty">Nothing to show yet.</div>':'');
+      + ((!draftHtml&&!liveHtml&&!claimedHtml&&!waitingAllHtml&&!queuedHtml)?'<div class="empty">Nothing to show yet.</div>':'');
   } else {
     // DRAFTS = ONLY listings that are NOT live/published on Amazon. A row is "published"
     // if the sheet marks it LIVE, OR (when a Sync has loaded Amazon's catalog) Amazon
@@ -676,16 +694,29 @@ function render(){
     // Amazon)", a heading that is technically true and reads as "you still have
     // to send this" -- so an accepted submit looked like a failed one, while the
     // drawer above it claimed the listing was already live.
-    const waitingRows = notPublished.filter(_isWaiting);
-    const draftsOnly  = notPublished.filter(r=>!_isWaiting(r));
+    // AND THE ONES NOT YET GENERATED COME OUT TOO, for the same reason: a
+    // queued row has a SKU and nothing else, and among generated listings it
+    // reads as one that failed rather than one that has not started.
+    const queuedRows  = notPublished.filter(_isQueued);
+    const waitingRows = notPublished.filter(r=>!_isQueued(r) && _isWaiting(r));
+    const draftsOnly  = notPublished.filter(r=>!_isQueued(r) && !_isWaiting(r));
     const draftsHtml  = listBlock(draftsOnly);
+    const queuedHere  = queuedRows.length
+      ? '<div class="srcgroup">Queued — waiting to generate</div>'
+        + '<div class="cc" style="margin:-4px 0 12px;font-size:12px;line-height:1.6">'
+        + queuedRows.length + ' product' + (queuedRows.length > 1 ? 's have' : ' has')
+        + ' been added and not generated yet. They carry only what was uploaded '
+        + 'or typed in — press <b>Generate</b> above to fill them in.'
+        + '</div>' + listBlock(queuedRows)
+      : "";
     const waitingHtml = (typeof submittedGroupHtml === "function")
                       ? submittedGroupHtml(waitingRows) : "";
     const _liveHere = realAll.length - notPublished.length;   // published rows hidden from Drafts
     grid.innerHTML = note
+      + queuedHere
       + waitingHtml
-      + (draftsHtml?('<div class="srcgroup">Drafts (not yet live on Amazon)</div>'+draftsHtml):'')
-      + ((!draftsHtml && !waitingHtml)?(empties.length ? "" :
+      + (draftsHtml?('<div class="srcgroup">Generated (not yet live on Amazon)</div>'+draftsHtml):'')
+      + ((!draftsHtml && !waitingHtml && !queuedHere)?(empties.length ? "" :
           (_liveHere>0
             ? `<div class="empty">No drafts here — all ${_liveHere} listing${_liveHere>1?'s are':' is'} live on Amazon. Switch to <b>Live on Amazon</b> or <b>All</b> to see them.</div>`
             // NOT LOADED IS NOT EMPTY. Telling somebody who has 13 listings to

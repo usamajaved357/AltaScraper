@@ -3,11 +3,16 @@
     POST /input/upload            a file in, queued products out
     GET  /input/upload/template   a blank CSV with the right headers
 
-THE THIRD WAY IN, and the first that does not need Google or typing. The queue
-could already be filled from a Google input sheet (/input/import) or a row at a
-time by hand (/input/add). Both fill the SAME table, so this one does too: it
-calls input_import.add_row, exactly as the hand-add route does, and the
-generator neither knows nor cares which of the three put a row there.
+ONE OF THE TWO WAYS IN, the other being the "Add a product" form. Both write
+into the LISTINGS STORE with status=QUEUED, through data/queued_store.add_queued,
+and the generator picks those rows up. There is no separate queue table any
+more: one table, one source of truth, and a row that was uploaded is the same
+kind of thing as a row that was typed or generated.
+
+THE SKU IS REAL FROM THE MOMENT THE ROW EXISTS -- built by the generator's own
+build_sku, in the generator's own format. See data/input_row.to_listing_row for
+why a temporary id would have had to be renamed later, and why that rename is
+not something the store can do.
 
 WHAT IT WILL NOT DO
   * Replace the queue. Every upload ADDS. A second file adds to the first, and
@@ -136,8 +141,8 @@ def register(app, *, CONFIG_PATH, _state):
 
     @app.route("/input/upload", methods=["POST"])
     def input_upload():
-        from data import input_import as _ii
         from data import input_row as _ir
+        from data import queued_store as _qs
 
         f = request.files.get("file")
         if f is None or not (f.filename or "").strip():
@@ -188,6 +193,16 @@ def register(app, *, CONFIG_PATH, _state):
         errors, preview = [], []
         stopped = False
 
+        # ROWS GO STRAIGHT INTO THE LISTINGS STORE AS status=QUEUED. There is no
+        # separate queue table any more: one table, one source of truth, and the
+        # generator picks QUEUED rows up from it.
+        #
+        # The SKU set is read ONCE and grows as rows are added, so two rows in
+        # one file that would build the same SKU get _2 rather than the second
+        # quietly overwriting the first -- (workspace, sku) is UNIQUE and an
+        # upsert would treat the repeat as an update.
+        taken = _qs.taken_skus(CONFIG_PATH, wsid)
+
         for n, row in enumerate(rows[1:], start=2):     # 2 = first row after headers
             if len(errors) >= MAX_ERRORS:
                 stopped = True
@@ -202,10 +217,10 @@ def register(app, *, CONFIG_PATH, _state):
                 if not _ir.is_generatable(product):
                     skipped += 1
                     continue
-                _ii.add_row(CONFIG_PATH, wsid, product, source="upload")
+                extras = _qs.add_queued(CONFIG_PATH, wsid, product, taken=taken)
                 added += 1
                 if len(preview) < PREVIEW_ROWS:
-                    preview.append(product)
+                    preview.append(dict(product, sku=extras["sku"]))
             except Exception as e:
                 errors.append("Row %d: %s" % (n, str(e)[:160]))
 
@@ -227,7 +242,7 @@ def register(app, *, CONFIG_PATH, _state):
             "matched": matched,
             "unmatched_columns": ignored,
             "preview": preview,
-            **_ii.summary(CONFIG_PATH, wsid),
+            **_qs.queued_count(CONFIG_PATH, wsid),
         })
 
     # ---- the blank file to fill in ------------------------------------------

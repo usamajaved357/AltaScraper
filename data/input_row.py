@@ -143,6 +143,158 @@ def is_generatable(product):
     return any(str(p.get(k, "") or "").strip() for k in IDENTIFYING)
 
 
+# ===========================================================================
+# FROM AN UPLOADED PRODUCT TO A ROW IN THE LISTINGS STORE
+# ===========================================================================
+#
+# The queue table is gone. An upload, or the "Add a product" form, now writes
+# straight into the listings store with status=QUEUED, and the generator picks
+# those rows up and fills the rest in. One table, one source of truth.
+#
+# THE SKU IS REAL FROM THE START, not a temporary id renamed later. The store is
+# keyed by (workspace, sku) -- upsert_row, update_fields and delete_row all take
+# it -- so a temp id would have to be RENAMED during generation, which upsert
+# cannot do (it would insert a second row). And the SKU format carries meaning
+# here: roughly sixty places parse or match on it, and a "Q-1724934567-001"
+# satisfies none of them.
+#
+# So it is built at upload time by the generator's OWN build_sku, with the
+# generator's own collision suffixes (_2, _3). Same function, same format, so a
+# row queued by an upload is indistinguishable from one the generator made.
+
+# The SKU's price part is the SOURCE COST, not the selling price. build_sku
+# names the parameter source_cost, and the generator writes "Missing source
+# price -- SKU price part defaulted to 0.00" when it is absent. Filling that
+# slot with the selling price would produce a SKU the generator would not have
+# built, which is exactly the rename this design exists to avoid.
+SKU_PRICE_FIELDS = ("source_cost", "selling_price")
+
+DEFAULT_DAYS = "3"
+NO_ASIN = "NOASIN"
+
+
+def _first_number(product, fields):
+    """The first of `fields` that parses as a number, else 0.0."""
+    import re as _re
+    for f in fields:
+        raw = str((product or {}).get(f, "") or "")
+        m = _re.search(r"\d+(?:\.\d+)?", raw.replace(",", ""))
+        if m:
+            try:
+                return float(m.group(0))
+            except ValueError:
+                continue
+    return 0.0
+
+
+def ebay_ids(url):
+    """(listing_id, variation_id) out of an eBay URL. Either may be "".
+
+    BOTH, because the /itm/ number does not identify a product on a variation
+    listing. api/ebay.py records the measurement: on a live 104-child listing
+    all 104 children share ONE /itm/ id and are told apart only by ?var=, with
+    prices genuinely ranging from 9.99 to 23.49 across that one listing.
+
+    Matching duplicates on the /itm/ id alone would therefore report every child
+    of a variation listing as a duplicate of its 103 siblings -- noise that
+    would bury the real duplicates the warning exists to surface.
+
+    api.ebay owns both regexes; there are three other copies of this extraction
+    in the generator that disagree about how many digits an id has (\\d{6,} vs
+    \\d{9,15}), and this deliberately is not a fourth (CLAUDE.md Rule 12).
+    """
+    try:
+        from api import ebay as _ebay
+        return (_ebay.item_id_from_url(url or ""),
+                _ebay.variation_id_from_url(url or ""))
+    except Exception:
+        return "", ""
+
+
+def build_queued_sku(product, taken_skus):
+    """The real SKU for a product being queued. (sku, was_duplicate).
+
+    Falls back the way the brief asked: no cost -> 0.00 (a shape that already
+    exists in the data, e.g. 0.00_2Days_B0FFH5P2VY), no days -> 3, no ASIN ->
+    NOASIN.
+    """
+    from amazon_listing_generator import build_sku      # lazy: it is a big module
+    cost = _first_number(product, SKU_PRICE_FIELDS)
+    days = str((product or {}).get("handling_time", "") or "").strip()
+    import re as _re
+    m = _re.search(r"\d+", days)
+    days = m.group(0) if m else DEFAULT_DAYS
+    asin = str((product or {}).get("competitor_asin", "") or "").strip().upper()
+    if not asin:
+        # The eBay item id is what the seller-import path already puts in this
+        # slot (see SKUs like 23.99_3Days_336475288886v54595), so it is a better
+        # answer than NOASIN when there is one.
+        lid, vid = ebay_ids((product or {}).get("ebay_url", ""))
+        asin = (lid + ("v" + vid if vid else "")) if lid else NO_ASIN
+    return build_sku(cost, days, asin, set(taken_skus or ()))
+
+
+def placeholder_warning(product, sku):
+    """A warning when the SKU could not be built from anything real, else None."""
+    has_cost = _first_number(product, SKU_PRICE_FIELDS) > 0
+    has_asin = NO_ASIN not in str(sku)
+    if has_cost or has_asin:
+        return None
+    return {
+        "type": "placeholder_sku",
+        "severity": "low",
+        "message": ("No price or ASIN — the SKU is a placeholder and will be "
+                    "updated during generation."),
+        "details": {"sku": sku},
+    }
+
+
+def to_listing_row(product, taken_skus):
+    """An uploaded/typed product -> (row for the listings store, extras).
+
+    `row` uses the store's own SHEET header names, because that is what
+    upsert_row accepts. `extras` carries what the listings table has no column
+    for: the source cost (which lives in the COGS store) and the eBay ids and
+    warnings (written straight to their columns).
+
+    Sparse on purpose. Title, bullets, images, fees and the rest are the
+    generator's job; this records only what was actually supplied.
+    """
+    p = product or {}
+    sku, was_dup = build_queued_sku(p, taken_skus)
+    lid, vid = ebay_ids(p.get("ebay_url", ""))
+
+    row = {
+        "SKU": sku,
+        "Status": "QUEUED",
+        "Source URL": str(p.get("ebay_url", "") or "").strip(),
+        "Competitor ASIN": str(p.get("competitor_asin", "") or "").strip().upper(),
+        "Title": str(p.get("item_name", "") or "").strip(),
+        "UPC": str(p.get("upc", "") or "").strip(),
+    }
+    price = str(p.get("selling_price", "") or "").strip()
+    if price:
+        row["Our Price (GBP)"] = price
+    days = str(p.get("handling_time", "") or "").strip()
+    if days:
+        row["Handling Time"] = days
+        row["Handling Days"] = days
+
+    extras = {
+        "sku": sku,
+        "was_duplicate_sku": was_dup,
+        "ebay_item_id": lid,
+        "ebay_variation_id": vid,
+        # No column on `listings` holds the supplier cost -- it lives in the
+        # COGS store, keyed by (account, sku). Recorded there rather than
+        # dropped, so the margin figures have something to work from.
+        "source_cost": _first_number(p, ("source_cost",)),
+        "amazon_url": str(p.get("amazon_url", "") or "").strip(),
+        "warnings": [w for w in (placeholder_warning(p, sku),) if w],
+    }
+    return row, extras
+
+
 def row_to_product(row, mapping):
     """One file row + the header mapping -> a queue product dict.
 

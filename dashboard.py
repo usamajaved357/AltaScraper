@@ -997,6 +997,25 @@ def _product_types() -> list:
     return sorted(k for k in _valid_values().keys() if k != "_meta")
 
 
+def _card_warnings(r: dict) -> list:
+    """The row's warnings, as a list, however they were stored.
+
+    Tolerates the three shapes this can arrive in -- absent, a JSON array, or
+    an object with a "warnings" key -- because a screen that has to guess is a
+    screen that renders nothing and says nothing about why.
+    """
+    raw = r.get("warnings") or r.get("Warnings") or ""
+    if isinstance(raw, list):
+        return raw
+    try:
+        parsed = json.loads(str(raw) or "[]")
+    except Exception:
+        return []
+    if isinstance(parsed, dict):
+        parsed = parsed.get("warnings") or []
+    return parsed if isinstance(parsed, list) else []
+
+
 def _card(r: dict) -> dict:
     g = lambda k: r.get(k, "")
     # Some rows use the Miles 12-column layout with different header names than
@@ -1042,6 +1061,18 @@ def _card(r: dict) -> dict:
         "attributes":   attrs,
         "attrs":        json.dumps(attrs),
         "api_payload":  g("API Payload JSON"),   # exact body sent to Amazon (debug viewer)
+        # WHAT IS WRONG WITH THIS LISTING, said rather than enforced.
+        #
+        # A list of {type, severity, message, details} worked out by
+        # listing/warnings.py after a generate. Read here from the raw row
+        # because `warnings` is deliberately NOT in data/column_map: that map
+        # describes the SHEET's columns and verify_column_map checks it both
+        # ways, so adding an app-only column would have broken that contract.
+        #
+        # Parsed here rather than in the browser so every screen gets a list and
+        # none of them has to know it was stored as text.
+        "warnings":     _card_warnings(r),
+        "ebay_item_id": g("ebay_item_id"),
         "_marketplace": _card_marketplace(attrs),
         "row":          g("_row"),
         # WHAT THE STOCK COST, and where that came from, ON THE ROW.
