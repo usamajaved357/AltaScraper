@@ -217,8 +217,13 @@ truthy("  it refuses a negative", "cannot be negative" in _st)
 truthy("  it refuses a fractional unit", "whole number of units" in _st)
 # AN EXTRA DIGIT PROMISES STOCK THAT DOES NOT EXIST, and the orders arrive anyway.
 truthy("  and caps a runaway number", "100,000 units" in _st)
-truthy("  it offers the same single-listing test as handling time",
-       "test_one" in _st)
+# THE SINGLE-LISTING TEST IS GONE, on request, and this asserts its absence so
+# it cannot come back by accident. It was never the safety net it looked like:
+# the "test" was a real push, so the change was already on Amazon by the time
+# the second dialog appeared, and stopping there left the first selected SKU
+# changed and the rest not.
+truthy("  it does not push one listing ahead of the others",
+       "test_one" not in _st)
 truthy("  and writes no local copy of the stock",
        "sheet" not in _st.split('"""')[2] if _st.count('"""') > 2 else True)
 truthy("  saying why it does not", "Amazon is the authority" in _st)
@@ -280,9 +285,17 @@ truthy("they sit beside handling time", 'id="handlingdays"' in _bar)
 JS = read("static", "js", "handling.js")
 truthy("both handlers exist",
        "async function bulkQuantity(" in JS and "async function bulkPricePercent(" in JS)
-truthy("stock tests one listing before the rest", "test_one:true" in JS)
+# ONE CONFIRMATION, NOT TWO. Both bulk actions used to push the first selected
+# SKU on its own and ask again before the rest; that was removed on request.
+truthy("stock asks once and sends them all", "test_one" not in JS)
+truthy("  with no second confirmation after a trial push",
+       "Apply to the remaining" not in JS)
 truthy("  and reports FBA separately from a real failure",
        "warehouse, not ours to set" in JS)
+# The protection that DID survive: each listing is reported on its own, so one
+# refusal never stops the others.
+truthy("  a refusal on one is reported without stopping the rest",
+       "reported on its own; the rest still go" in JS)
 truthy("the price flow shows what each listing becomes before sending",
        "Nothing has been sent yet" in JS)
 truthy("  and sends the previewed figures", "rows.map(r=>({sku:r.sku, new:r.new}))" in JS)

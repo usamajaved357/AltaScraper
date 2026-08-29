@@ -107,10 +107,19 @@ falsy("  not by the row's asin", 'String((r && r.asin) || "")' in _a)
 truthy("  and the limit of the evidence is stated", "Not demonstrable" in _a)
 
 print("\n== catalogue matching cannot fire on a competitor's ASIN ==")
-for fn in ("isActuallyLive", "isPublishedRow", "_liveImageFor", "liveItemForRow"):
-    body = LJ.split("function %s(" % fn)[1].split("\nfunction ")[0]
+# isPublishedRow's BODY moved to static/js/liststatus.js (lsInLiveCatalogue) when
+# the three disagreeing definitions of "is this published" were consolidated into
+# one (CLAUDE.md Rule 12). The guarantee is unchanged and still pinned -- it is
+# just pinned where the code now lives. isPublishedRow itself must therefore be a
+# delegator and hold no matching logic of its own.
+LS = read("static", "js", "liststatus.js")
+for fn, src in (("isActuallyLive", LJ), ("lsInLiveCatalogue", LS),
+                ("_liveImageFor", LJ), ("liveItemForRow", LJ)):
+    body = src.split("function %s(" % fn)[1].split("\nfunction ")[0]
     truthy("%s uses _matchableAsin" % fn, "_matchableAsin(r)" in body)
     falsy("  and not the raw field" if fn else "", 'norm(r && r.asin)' in body)
+truthy("isPublishedRow is a delegator, with no rule of its own",
+       "function isPublishedRow(r){ return lsIsPublished(r); }" in LJ)
 truthy("the count's exclusion set does too",
        "new Set(_liveAppRows.map(_matchableAsin)" in LJ)
 truthy("and the reason is recorded once",

@@ -128,7 +128,6 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
                 out.append(row)
                 continue
             try:
-                from routes import migrate_routes as _mig   # tab resolution lives there
                 tab, err = _resolve_tab_via(sid, a)
                 if err:
                     row.update({"error": err})
@@ -182,24 +181,19 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         return jsonify({"ok": True, "accounts": out})
 
     def _resolve_tab_via(sid, acc):
-        """Which tab is this account's own. Same rule the importer uses.
+        """Which tab is this account's own. THE importer's rule, not a copy of it.
 
-        Written once there and reached from here rather than reimplemented: two
-        copies of "which tab belongs to this account" is exactly how five
-        accounts sharing one workbook end up reading each other's rows.
+        The docstring here used to say it was "written once there and reached
+        from here rather than reimplemented". It was not: this was a second
+        implementation, and the two had already drifted. Where a gid or tab name
+        IS recorded but is not in the workbook, the importer refuses -- because
+        the tab it would otherwise fall back to belongs to another account --
+        while this one carried on to the single-tab case and returned that tab.
+        On a one-tab workbook with a stale gid, the two answered differently.
+
+        Two copies of "which tab belongs to this account" is exactly how five
+        accounts sharing one workbook end up reading each other's rows, so this
+        now calls the one definition (CLAUDE.md Rule 12).
         """
-        gid = str(acc.get("output_tab_gid") or "").strip()
-        name = str(acc.get("output_tab") or "").strip()
-        try:
-            sheets = _client().open_by_key(sid).worksheets()
-        except Exception as e:
-            return None, "could not open that spreadsheet: %s" % str(e)[:160]
-        by_gid = {str(w.id): w.title for w in sheets}
-        if gid and gid in by_gid:
-            return by_gid[gid], ""
-        if name and name in [w.title for w in sheets]:
-            return name, ""
-        if len(sheets) == 1:
-            return sheets[0].title, ""
-        return None, ("this account has no output tab recorded and that "
-                      "spreadsheet has %d tabs" % len(sheets))
+        from domain import sheet_migration as _mig
+        return _mig.resolve_tab(_client(), sid, acc)

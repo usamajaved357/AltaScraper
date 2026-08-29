@@ -8,9 +8,7 @@
 //      percentage. e.g. increase or decrease the selling price by this percent."
 //
 // Three bulk actions live in this file because they share one shape and one set
-// of rules: take the selected listings, test the change on ONE first, show
-// Amazon's own reply, and only then send the rest. That shape is not decoration
-// -- it is what stops a wrong number reaching a whole catalogue.
+// of rules: take the selected listings, ask ONCE, and send them all.
 //
 //   handling time   fulfillment_availability.lead_time_to_ship_max_days
 //   stock           fulfillment_availability.quantity      <- same attribute
@@ -20,17 +18,39 @@
 // one module on the server too: Amazon replaces the whole array on a patch, so
 // two independent writers would each undo the other's field.
 //
-// PRICE IS DIFFERENT IN ONE IMPORTANT WAY and does not use the test-one shape.
+// ONE CONFIRMATION, NOT TWO.
+//
+//     "Remove the test-then-apply pattern. One confirmation only ... All
+//      selected updated at once. No 'test on one first' dialog. No second
+//      confirmation. If Amazon rejects one, show the error for that one and
+//      continue with the rest."
+//
+// Handling time and stock each used to push the FIRST selected listing for
+// real, show Amazon's reply, and ask again before sending the other n-1. The
+// stated reason was that it stopped a wrong number reaching a whole catalogue.
+// It did not: the number was already on Amazon by the time the second dialog
+// appeared, so the "test" was the first write of the run, not a rehearsal of
+// it. What it actually bought was one listing's worth of warning in exchange
+// for two dialogs on every bulk action -- and it made the first selected SKU
+// special, so a run that stopped there left the catalogue half-changed with no
+// record of which half.
+//
+// The protection that matters is the one that survived: the server sends each
+// SKU separately and reports each separately, so one Amazon refusal never
+// stops the rest. Those per-listing errors are still shown, which is the thing
+// the test-one dialog was really for.
+//
+// PRICE IS DIFFERENT IN ONE IMPORTANT WAY and never had the test-one shape.
 // A percentage is not a price -- it is a different number on every listing --
 // so there is nothing to approve until each one has been worked out. It previews
 // every listing, shows the table, and then sends THOSE FIGURES rather than the
-// percentage again.
+// percentage again. That preview IS its single confirmation, so it is unchanged.
 
-// ---- Bulk handling-time update (sheet + live Amazon push) --------------------
+// ---- Bulk handling-time update (saved here + live Amazon push) ---------------
 // Set lead_time_to_ship_max_days on many listings at once. Works on the SELECTED
-// listings (use "Select all" for everything in view). Updates the sheet's handling
-// column where it exists AND pushes the value live to Amazon per SKU. The first live
-// push is done as a single-SKU TEST so you see Amazon's reply before the rest go.
+// listings (use "Select all" for everything in view). Saves the handling value
+// here AND pushes it live to Amazon per SKU. Every selected listing goes in one
+// run; each one's result is reported separately.
 
 function _handlingSkus(){
   // selected listings, or (if none selected) every real listing in the current view
@@ -93,50 +113,28 @@ async function bulkHandling(){
 
   const usingAll = !((typeof selectedSkus==="function") && selectedSkus().length);
   if(!await uiConfirm(`Set handling time to ${days} day(s) on ${skus.length} ${usingAll?'listing(s) in this view':'selected listing(s)'}?\n\n`
-             +`This saves it here AND pushes the change live to Amazon. I'll test on ONE listing first, then do the rest.`)) return;
+             +`This saves it here AND pushes the change live to Amazon. Any listing Amazon refuses is reported on its own; the rest still go.`)) return;
 
   const btn = document.getElementById("handlingbtn");
-  if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Testing…"; }
+  if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Updating…"; }
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Set handling time"; } };
 
   try{
-    // --- 1) single-listing safety test (real push of the first SKU) ---
-    toast("Testing handling-time push on 1 listing…");
-    const t = await _handlingPost({skus:[skus[0]], days, push:true, test_one:true});
-    const tr = (t && t.result) || {};
-    if(!t || !t.ok){
-      const msg = (tr.error || (t && t.error) || "unknown error");
-      // NOT_FOUND on the test SKU just means that one isn't live yet — let the user proceed
-      // to update the sheet + push the ones that ARE live.
-      const notLive = /no listing with this sku|not_found/i.test(msg);
-      if(notLive){
-        if(!await uiConfirm(`The first listing (${skus[0]}) isn't live on Amazon yet, so there was nothing to push there.\n\n`
-                   +`Continue anyway? The sheet handling value will be set on all ${skus.length}, and the push will apply to whichever ARE live.`)){ _done(); return; }
-      } else {
-        await uiAlert(`Handling-time test failed on ${skus[0]}:\n\n${msg}\n\nNothing was changed in bulk. Fix this, then try again.`);
-        _done(); return;
-      }
-    } else {
-      const before = (tr.before===null||tr.before===undefined) ? "(none)" : tr.before;
-      if(!await uiConfirm(`Test succeeded on ${skus[0]} (handling ${before} → ${days} day(s) on Amazon).\n\n`
-                 +`Apply to the remaining ${skus.length-1} listing(s) and update the sheet?`)){ _done(); return; }
-    }
-
-    // --- 2) full run: sheet + push for all selected ---
-    if(btn) btn.textContent="Updating…";
     toast(`Updating handling time on ${skus.length} listing(s)…`);
     const j = await _handlingPost({skus, days, push:true, sheet:true});
     if(!j || j.ok===false && !j.push_results){ toast("Update failed: "+((j&&j.error)||"unknown")); _done(); return; }
 
-    const sheetN = (j.sheet_updated||[]).length;
-    const okN = j.pushed_ok||0, failArr = (j.push_results||[]).filter(r=>!r.ok);
+    const savedSkus = j.sheet_updated||[];
+    const savedN = savedSkus.length;
+    const results = j.push_results||[];
+    const okN = j.pushed_ok||0, failArr = results.filter(r=>!r.ok);
     const notLive = failArr.filter(r=>/no listing with this sku|not_found/i.test(r.error||"")).length;
     const realFail = failArr.length - notLive;
     let msg = `Handling time set to ${days} day(s).`;
-    msg += `\n• Sheet updated: ${sheetN}`;
-    if(j.sheet_has_column===false) msg += " (no handling column on these tabs — sheet skipped)";
+    msg += `\n• Saved: ${savedN}`;
+    if(j.sheet_has_column===false) msg += " (nowhere to record it on these listings — saving skipped)";
     msg += `\n• Pushed live to Amazon: ${okN}`;
-    if(notLive) msg += `\n• Not live yet (draft — will apply on submit): ${notLive}`;
+    if(notLive) msg += `\n• Not live yet (will apply on submit): ${notLive}`;
     if(realFail) msg += `\n• Failed: ${realFail} (see details below)`;
     if(realFail){
       const lines = failArr.filter(r=>!/no listing with this sku|not_found/i.test(r.error||""))
@@ -144,8 +142,16 @@ async function bulkHandling(){
       msg += `\n\n${lines}`;
     }
     await uiAlert(msg);
-    toast(`Handling time updated (${okN} live, ${sheetN} in sheet)`);
-    if(typeof loadRows==="function") loadRows();
+    toast(`Handling time updated (${okN} live, ${savedN} saved)`);
+    // THE COLUMN SHOWS THE NEW NUMBER NOW, and shows it for exactly the
+    // listings that got it. What we RECORD and what AMAZON holds are two
+    // different fields on the row (see _handlingCell) and they are written
+    // from two different answers here -- the save list and the push results --
+    // so a listing that saved but was refused by Amazon still draws the
+    // "we hold 2d, Amazon promises 5d" warning it should.
+    applyPushedLocally(savedSkus.length ? savedSkus : skus, {handling_days: days}, null);
+    applyPushedLocally(results.filter(r=>r.ok).map(r=>r.sku),
+                       {handling_time: days}, {handling: days});
   }catch(e){
     toast("Handling update failed: "+e);
   }finally{
@@ -156,10 +162,13 @@ async function bulkHandling(){
 
 // ---- Bulk stock quantity ----------------------------------------------------
 //
-// Same shape as handling time, and deliberately so: one listing is pushed first
-// and Amazon's answer shown before the rest go. Stock is the one of the three
-// where a wrong number has a customer consequence rather than a reporting one --
-// promise units you do not have and the orders still arrive.
+// Same shape as handling time, and deliberately so: one confirmation, then
+// every selected listing, each reported on its own. Stock is the one of the
+// three where a wrong number has a customer consequence rather than a
+// reporting one -- promise units you do not have and the orders still arrive --
+// so the confirmation still spells out what 0 units does and that FBA listings
+// will be refused. That warning is BEFORE anything is sent, which is where a
+// warning is worth having.
 //
 // NOT WRITTEN ANYWHERE LOCALLY. Handling time has a column in the sheet because
 // it is a decision the owner keeps; stock is a fact about the warehouse that
@@ -182,43 +191,22 @@ async function bulkQuantity(){
     + (qty===0
         ? `0 units takes them off sale — the listings stay, but nobody can buy them.\n\n`
         : ``)
-    + `This pushes the change live to Amazon. I'll test on ONE listing first, then do the rest.\n\n`
+    + `This pushes the change live to Amazon. Any listing Amazon refuses is reported on its own; the rest still go.\n\n`
     + `FBA listings will be refused: their stock is whatever is in Amazon's warehouse.`)) return;
 
   const btn = document.getElementById("stockbtn");
-  if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Testing…"; }
+  if(btn){ btn.disabled=true; btn.dataset._t=btn.textContent; btn.textContent="Updating…"; }
   const _done=()=>{ if(btn){ btn.disabled=false; btn.textContent=btn.dataset._t||"Set stock"; } };
   const post = (body)=> fetch("/stock/bulk_update",{method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify(Object.assign(_handlingScope(), body))}).then(r=>r.json());
 
   try{
-    toast("Testing the stock change on 1 listing…");
-    const t = await post({skus:[skus[0]], qty, test_one:true});
-    const tr = (t && t.result) || {};
-    if(!t || !t.ok){
-      const msg = (tr.error || (t && t.error) || "unknown error");
-      // A SKU that is FBA, or not live yet, says nothing about the others --
-      // so it offers to carry on rather than stopping the whole run.
-      const skippable = /no seller-fulfilled stock|no listing with this sku|not_found/i.test(msg);
-      if(skippable){
-        if(!await uiConfirm(`The first listing (${skus[0]}) could not take a stock change:\n\n${msg}\n\n`
-                   +`Continue with the other ${skus.length-1}? Each one is reported separately.`)){ _done(); return; }
-      } else {
-        await uiAlert(`The stock test failed on ${skus[0]}:\n\n${msg}\n\nNothing was changed in bulk. Fix this, then try again.`);
-        _done(); return;
-      }
-    } else {
-      const before = (tr.before===null||tr.before===undefined) ? "(none)" : tr.before;
-      if(!await uiConfirm(`Test succeeded on ${skus[0]} (stock ${before} → ${qty} on Amazon).\n\n`
-                 +`Apply to the remaining ${skus.length-1} listing(s)?`)){ _done(); return; }
-    }
-
-    if(btn) btn.textContent="Updating…";
     toast(`Setting stock on ${skus.length} listing(s)…`);
     const j = await post({skus, qty});
     const okN = (j && j.pushed_ok) || 0;
-    const failArr = ((j && j.push_results)||[]).filter(r=>!r.ok);
+    const results = ((j && j.push_results)||[]);
+    const failArr = results.filter(r=>!r.ok);
     const fba = failArr.filter(r=>/no seller-fulfilled stock/i.test(r.error||"")).length;
     const notLive = failArr.filter(r=>/no listing with this sku|not_found/i.test(r.error||"")).length;
     const realFail = failArr.length - fba - notLive;
@@ -235,7 +223,11 @@ async function bulkQuantity(){
     }
     await uiAlert(msg);
     toast(`Stock updated on ${okN} listing(s)`);
-    if(typeof loadRows==="function") loadRows();
+    // Only the ones Amazon actually took. Stock is not recorded here at all --
+    // Amazon is the authority on it (see the note above this function) -- so
+    // there is nothing to write on the app row, only on the catalogue item the
+    // "Out of stock" tile and its filter both read.
+    applyPushedLocally(results.filter(r=>r.ok).map(r=>r.sku), null, {qty: qty});
   }catch(e){
     toast("Stock update failed: "+e);
   }finally{

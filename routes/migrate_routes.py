@@ -42,40 +42,6 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         except Exception:
             return (_cfg() or {}).get("accounts") or []
 
-    def _resolve_tab(sid, acc):
-        """The account's OWN tab name in that workbook -> (name, error).
-
-        Accounts share a workbook and each owns one tab, identified by gid. A
-        name is only trusted if the workbook actually has it; a gid that is not
-        in the workbook is refused rather than quietly falling back to the first
-        tab, because the first tab belongs to somebody else.
-        """
-        gid = str(acc.get("output_tab_gid") or "").strip()
-        name = str(acc.get("output_tab") or "").strip()
-        try:
-            book = _client().open_by_key(sid)
-            sheets = book.worksheets()
-        except Exception as e:
-            return None, "Could not open that spreadsheet: %s" % str(e)[:180]
-        by_gid = {str(w.id): w.title for w in sheets}
-        by_name = {w.title: w.title for w in sheets}
-        if gid and gid in by_gid:
-            return by_gid[gid], ""
-        if name and name in by_name:
-            return name, ""
-        if gid or name:
-            return None, ("This account's own tab (%s) is not in that "
-                          "spreadsheet, so nothing was read. Set the output "
-                          "sheet and tab on the account first -- importing the "
-                          "workbook's first tab would copy in another account's "
-                          "listings." % (gid or name))
-        # Only one listing-shaped tab and no gid recorded: unambiguous.
-        if len(sheets) == 1:
-            return sheets[0].title, ""
-        return None, ("This account has no output tab recorded, and that "
-                      "spreadsheet has %d tabs. Set the account's output tab "
-                      "first so the right one is read." % len(sheets))
-
     def _counts(aid):
         """(rows in the database, error) for one workspace."""
         try:
@@ -134,41 +100,11 @@ def register(app, *, CONFIG_PATH, _cfg, _client, _state):
         if not acc:
             return jsonify({"ok": False, "error": "unknown account: %s" % aid}), 404
 
-        sid = str(acc.get("output_spreadsheet_id") or "").strip()
-        if not sid:
-            return jsonify({"ok": False,
-                            "error": ("%s has no output spreadsheet configured, so "
-                                      "there is nothing to import from. If its "
-                                      "listings are already in the app, there is "
-                                      "nothing to do." % (acc.get("label") or aid))}), 200
-
-        # WHICH TAB. This is the whole ball game on a SHARED workbook: five of
-        # these accounts live in ONE spreadsheet, each owning a different tab,
-        # and the tab is identified by its gid rather than its name.
-        #
-        # Taking the first tab -- which is what import_from_sheet does when
-        # given no name -- read a 3-row scratch tab for five of six accounts on
-        # a dry run here. It would have "succeeded", reported three rows, and
-        # left every real listing behind.
-        tab, tab_err = _resolve_tab(sid, acc)
-        if tab_err:
-            return jsonify({"ok": False, "error": tab_err}), 200
-        try:
-            from data.store import ListingStore
-            store = ListingStore(aid, config_path=CONFIG_PATH)
-            before = store.row_count()
-            res = store.import_from_sheet(_client(), sid, tab=tab, dry_run=dry)
-            after = store.row_count()
-        except Exception as e:
-            return jsonify({"ok": False,
-                            "error": "Could not read that sheet: %s" % str(e)[:200]}), 200
-        res["tab"] = tab
-
-        res.update({"ok": True, "account": aid,
-                    "label": acc.get("label") or aid,
-                    "before": before, "after": after, "dry_run": dry,
-                    # Said every time, because the whole safety of this rests on
-                    # it and it should never be something the reader assumes.
-                    "note": "The spreadsheet was only read. Nothing was written "
-                            "to it and nothing in it was changed."})
-        return jsonify(res)
+        # THE COPY ITSELF LIVES IN domain/sheet_migration.py, because the
+        # listings read now does it too, on its own, when it finds rows that are
+        # still only in the spreadsheet. Two copies of the tab rule would be two
+        # ways to read the wrong account's listings.
+        from domain import sheet_migration as _mig
+        res = _mig.import_account(acc, client=_client(),
+                                  config_path=CONFIG_PATH, dry_run=dry)
+        return jsonify(res), 200

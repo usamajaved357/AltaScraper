@@ -1,7 +1,7 @@
 // ---- Paste a listing -> Image Studio -----------------------------------------
 // Enter a listing's copy (title, bullet points, description) by hand and give a main
 // image (paste a URL or upload a file), then hand it straight to Image Studio to
-// generate secondary images and A+ content. No sheet row is created — this is a
+// generate secondary images and A+ content. No listing is created — this is a
 // scratch item, exactly like the ASIN-research handoff. Reuses /media/upload to host
 // an uploaded image and the existing STUDIO object the studio already understands.
 
@@ -15,7 +15,7 @@ function openPasteListing(){
   dlg.innerHTML = `<div class="modal" style="max-width:660px;position:relative">
     <button class="x" onclick="closePasteListing()">×</button>
     <h3><i class="ti ti-clipboard-text"></i> Paste a listing → Image Studio</h3>
-    <div class="cc" style="margin:2px 0 12px">Paste the copy and give a main image, then open Image Studio to generate secondary images and A+ content. This does not create a sheet row — it's a one-off item just for the studio.</div>
+    <div class="cc" style="margin:2px 0 12px">Paste the copy and give a main image, then open Image Studio to generate secondary images and A+ content. This does not create a listing — it's a one-off item just for the studio.</div>
     <div class="pl-grid">
       <label class="pl-lbl">Product name / SKU <span class="cc">(optional — used to file the generated images)</span></label>
       <input id="pl_sku" class="pl-in" placeholder="e.g. my-product-01" autocomplete="off">

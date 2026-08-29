@@ -1952,6 +1952,9 @@
      -- it decides nothing and calls no API. Loaded before the two files that
      use it so the order on the page matches the order of dependence. -->
 <script src="/static/js/drawer.js?v={{ ASSET_V }}"></script>
+<!-- ONE definition of what a listing's status word means (LIVE / SUBMITTED) and of
+     the sentence that describes it. Must load BEFORE listings.js, which calls it. -->
+<script src="/static/js/liststatus.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/listings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
@@ -1968,6 +1971,10 @@
 <script src="/static/js/ppcview.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/submit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/runqueue.js?v={{ ASSET_V }}"></script>
+<!-- After a submit, re-check Amazon at 5 and 10 minutes and warn at 15, instead of
+     waiting for the user to press Sync at the right moment. Drives the generator's
+     existing verify mode; adds no new call to Amazon of its own. -->
+<script src="/static/js/autoverify.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/handling.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/pastelisting.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/monitor.js?v={{ ASSET_V }}"></script>

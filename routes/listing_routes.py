@@ -1151,6 +1151,11 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             # new runs land -- but a SKU that exists only in the spreadsheet is
             # still shown, which is the whole point of doing this rather than
             # choosing one store.
+            # The sheet's own answer, kept as it was. The merge below rebinds
+            # `cards` and `tabs` to the merged result, and the auto-import
+            # further down has to redo that merge against fresh database rows --
+            # which it can only do from the un-merged sheet lists.
+            sheet_cards, sheet_tabs = cards, list(tabs)
             sheet_only = cards
             if db_cards:
                 seen = {str(c.get("sku") or "").strip().upper()
@@ -1162,6 +1167,73 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
                 cards = db_cards + sheet_only
                 tabs = ([{"tab": getattr(db_store, "title", "listings"),
                           "tab_gid": "", "count": len(db_cards), "url": ""}] + tabs)
+
+            # ANYTHING STILL ONLY IN THE SPREADSHEET IS BROUGHT IN, HERE, NOW.
+            #
+            #     "Bring in whatever is left automatically right now, then
+            #      remove this banner entirely. It should never appear again.
+            #      ... We are fully on the database now."
+            #
+            # This screen used to draw a notice saying "N of these listings are
+            # still only in the Google Sheet" with a button to check what would
+            # be brought in. The notice was accurate and useless: it stated a
+            # condition only the app could fix, in a place where the only
+            # sensible answer was yes, and until somebody pressed it those rows
+            # kept appearing and disappearing as the app changed where it read
+            # from.
+            #
+            # So the read does the move. The rows are still MERGED and returned
+            # below either way -- if the import fails, or is skipped because it
+            # has already been attempted this process, the screen shows exactly
+            # what it showed before, just without a notice about it. Nothing on
+            # this path can lose a listing: the spreadsheet is only read (see
+            # domain/sheet_migration.py) and the merge still shows sheet-only
+            # rows whether or not the copy worked.
+            if sheet_only and _use_aid:
+                try:
+                    from domain import sheet_migration as _mig
+                    from domain import accounts as _acc_mig
+                    _acct = _acc_mig.get_account(_cfg(), _use_aid, CONFIG_PATH)
+                    _res = (_mig.auto_import_once(_acct, client=_client(),
+                                                  config_path=CONFIG_PATH)
+                            if _acct else None)
+                    # Re-read the database so THIS reply already reflects the
+                    # move, rather than showing the sheet copies once more and
+                    # only settling on the next load.
+                    _dbs = db_store or _store_for(_use_aid)
+                    if _res and _res.get("ok") and _res.get("imported") and _dbs:
+                        # PAST THE READ CACHE, or this re-read returns the rows
+                        # from BEFORE the import. _records holds a 12-second
+                        # cache to survive a refresh-plus-sync burst, and the
+                        # database was read a moment ago in this same request --
+                        # so the cached copy is guaranteed to be the stale one.
+                        _bust_records_cache()
+                        _fresh = []
+                        for r in _records(_dbs, _use_cache=False):
+                            c = _card(r)
+                            c["tab"] = getattr(_dbs, "title", "listings")
+                            c["tab_gid"] = ""
+                            c["store"] = "database"
+                            _attach_claim_flags(c, r)
+                            _attach_restricted(c, r)
+                            _attach_viability(c, r)
+                            _fresh.append(c)
+                        if _fresh:
+                            db_store = _dbs
+                            db_cards = _fresh
+                            seen = {str(c.get("sku") or "").strip().upper()
+                                    for c in db_cards
+                                    if str(c.get("sku") or "").strip()}
+                            sheet_only = [c for c in sheet_cards
+                                          if str(c.get("sku") or "").strip().upper() not in seen
+                                          or not str(c.get("sku") or "").strip()]
+                            cards = db_cards + sheet_only
+                            tabs = ([{"tab": getattr(_dbs, "title", "listings"),
+                                      "tab_gid": "", "count": len(db_cards),
+                                      "url": ""}] + sheet_tabs)
+                except Exception:
+                    # An import that cannot run is not a reason to fail the read.
+                    pass
 
             src = {"sheet_id": sid, "tab_count": len(tabs),
                    "from_database": len(db_cards), "from_sheet": len(sheet_only),

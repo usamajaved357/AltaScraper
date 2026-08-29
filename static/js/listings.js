@@ -669,6 +669,58 @@ function liveItemForRow(r){
   return byAsin;
 }
 
+/* SHOW A CHANGE THAT HAS ALREADY HAPPENED, without refetching the list.
+ *
+ *     "After any bulk action completes, optimistically update the affected
+ *      rows immediately. If handling time was set to 2d, the column shows 2d
+ *      right away -- no manual refresh needed."
+ *
+ * The bulk actions used to end with loadRows(), which re-reads every listing in
+ * the account plus Amazon's catalogue -- seconds of skeletons to redraw a
+ * column that already knew its own answer, and on a slow account it looked
+ * like the change had not been made.
+ *
+ * THIS IS NOT A GUESS AT WHAT THE SERVER WILL SAY. Callers pass only the SKUs
+ * the server reported as done, so what is written here is what already
+ * happened, not what was requested. A refresh or a Sync still refetches and
+ * still wins -- see loadRows -- so if any of this is ever wrong, it is wrong
+ * until the next read and no further.
+ *
+ * The two patches are separate because the row and the catalogue item are
+ * separate objects holding separate facts: the row is what WE record, the item
+ * is what AMAZON holds. _handlingCell compares them and warns when they
+ * disagree, which only works if a caller can write one without the other.
+ */
+function applyPushedLocally(skus, rowPatch, itemPatch){
+  const n = v => String(v == null ? "" : v).trim().toUpperCase();
+  const want = new Set((skus||[]).map(n).filter(Boolean));
+  if(!want.size) return;
+  if(rowPatch && typeof ROWS !== "undefined" && ROWS)
+    ROWS.forEach(r => { if(r && want.has(n(r.sku))) Object.assign(r, rowPatch); });
+  if(itemPatch && typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS)
+    LIVE_ITEMS.forEach(it => { if(it && want.has(n(it.sku))) Object.assign(it, itemPatch); });
+  if(typeof render === "function") render();
+}
+
+/* WHICH OF THE TWO TILE SETS IS ON SCREEN, and what "no filter" means in it.
+ *
+ * Written out twice before -- once in summary() to choose the tiles, and
+ * nowhere at all in metricFilter(), which is how the toggle below came to have
+ * no idea what to fall back TO. The Drafts view's "show everything" is "all";
+ * the Live view's is "live_all", because passFilter treats any FILTER starting
+ * "live_" as a question about the catalogue item behind the row. Using "all"
+ * there would clear the highlight off the Live tile as well, which is not what
+ * clearing a sub-filter means.
+ *
+ * One definition, both callers (CLAUDE.md Rule 12).
+ */
+function draftsView(){
+  return (LIST_SOURCE !== "live" && LIST_SOURCE !== "all");
+}
+function neutralFilter(){
+  return draftsView() ? "all" : "live_all";
+}
+
 function passFilter(r){
   if(!matchesSearch(r)) return false;
   if(DUP_ONLY && !isDuplicate(r)) return false; // "Duplicates only" toggle
@@ -914,18 +966,17 @@ function isClaimedLiveOnly(r, liveCatSkus, liveCatAsins, liveGroupShown){
 //
 // Published means the store says LIVE, or a Sync has loaded Amazon's catalogue
 // and Amazon itself lists the SKU or ASIN.
-function isPublishedRow(r){
-  const n = v => String(v||"").trim().toUpperCase();
-  if(n(r.status) === "LIVE") return true;
-  const skus  = new Set((LIVE_ITEMS||[]).map(x=>n(x.sku)).filter(Boolean));
-  const asins = new Set((LIVE_ITEMS||[]).map(x=>n(x.asin)).filter(Boolean));
-  if(skus.size && skus.has(n(r.sku))) return true;
-  // Competitor reference excluded -- see _matchableAsin. A draft is not
-  // published just because the product it was researched from is.
-  const a = _matchableAsin(r);
-  if(asins.size && a && asins.has(a)) return true;
-  return false;
-}
+//
+// THE BODY NOW LIVES IN static/js/liststatus.js (CLAUDE.md Rule 12). It was one of
+// THREE separate answers to "is this published" -- this one counting only LIVE,
+// miles_template.js's _PUBLISHED_STATES counting LIVE and SUBMITTED, and
+// barcode_clash.py counting LIVE, SUBMITTED and ACTIVE. A row Amazon had accepted
+// was therefore "published" to one of them and "a draft" to another, which is how
+// a submitted listing came to sit in Drafts reading as if it had never been sent.
+// The name stays here because everything on this screen calls it; the rule it
+// applies is defined once, next to the two questions it had been confused with
+// (lsWasSentToAmazon vs lsIsPublished).
+function isPublishedRow(r){ return lsIsPublished(r); }
 
 // Build the SKU/ASIN sets once per render -- reused by summary()
 function _liveCatSetsForCurrentView(){
@@ -956,7 +1007,7 @@ function summary(){
   //
   // The published rows are not forgotten: they are named underneath, with a way
   // to go and see them.
-  const _draftsView = (LIST_SOURCE !== "live" && LIST_SOURCE !== "all");
+  const _draftsView = draftsView();
   const _hiddenLive = _draftsView ? _allTabRows.filter(isPublishedRow) : [];
   const _tabRows = _draftsView
                  ? _allTabRows.filter(r=>!isPublishedRow(r))
@@ -1154,22 +1205,19 @@ function summary(){
   _sumHost.innerHTML =
     `<div class="ui-stats">` + tiles + `</div>`
     + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
-  // STILL ON THE SPREADSHEET. Said here, where the listings are, rather than on
-  // a settings page nobody visits -- and it disappears by itself once the
-  // account is migrated, which is the only kind of notice worth adding.
-  const _fromSheet = Number(ROWS_SOURCE.from_sheet || 0);
-  if(_fromSheet > 0){
-    _sumHost.insertAdjacentHTML("beforeend",
-      '<div style="border:1px solid #3d3520;background:#221d10;border-radius:8px;'
-      + 'padding:9px 12px;margin:0 0 12px;font-size:12px;line-height:1.6">'
-      + '<b>' + _fromSheet + ' of these listings are still only in the Google Sheet.</b> '
-      + 'They are shown here, but they live outside the app, which is why they can '
-      + 'appear and disappear when the app changes where it reads from. '
-      + 'Bringing them in copies them into the app; the sheet is only read and is '
-      + 'not changed.'
-      + '<div style="margin-top:7px"><button class="db-chip" onclick="migrateCheck()">'
-      + 'Check what would be brought in</button></div></div>');
-  }
+  // NO MIGRATION NOTICE HERE, AND NEVER AGAIN.
+  //
+  //     "Bring in whatever is left automatically right now, then remove this
+  //      banner entirely. It should never appear again. ... We are fully on the
+  //      database now."
+  //
+  // A notice used to sit here whenever ROWS_SOURCE.from_sheet was above zero:
+  // "N of these listings are still only in the Google Sheet", with a button to
+  // check what would be brought in. The listings read now performs that import
+  // itself when it finds such rows -- see the auto-import in /rows_all and
+  // domain/sheet_migration.py -- so by the time this screen draws, there is
+  // nothing left for a person to authorise.
+  //
   // Numbers count into place, but only the ones that actually changed --
   // see altaCountMetrics. This runs on every render, including a filter click,
   // and animating an unchanged figure would say "this just moved" about
@@ -2069,9 +2117,25 @@ function _dwVerdictTag(matched, clearWord){
 // match: two controls driving one filter that disagree about its value is worse
 // than having only one of them.
 function metricFilter(v){
+  // CLICKING THE LIT TILE PUTS IT OUT.
+  //
+  //     "Clicking an active filter should deselect it and show all items.
+  //      Currently clicking a filter works but clicking it again doesn't
+  //      clear it."
+  //
+  // It only ever SET the filter, so pressing the tile you were already on
+  // re-set the same value: the list did not change and the border stayed on,
+  // leaving the dropdown as the only way back to everything. A tile that
+  // lights up is reporting a state, and a control that reports a state has to
+  // be able to leave it.
+  //
+  // Pressing a DIFFERENT tile still just switches, which is why this tests the
+  // clicked value against the current one rather than toggling blindly.
+  const cur = (typeof FILTER !== "undefined") ? FILTER : "all";
+  const next = (String(v) === String(cur)) ? neutralFilter() : v;
   const sel = document.getElementById("statussel");
-  if(sel) sel.value = v;
-  if(typeof setFilterVal === "function") setFilterVal(v);
+  if(sel) sel.value = next;
+  if(typeof setFilterVal === "function") setFilterVal(next);
 }
 
 // ===================== TABLE VIEW =====================================

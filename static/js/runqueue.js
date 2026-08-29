@@ -31,7 +31,16 @@ function _rqParseLine(st, d, sku){
     else if(low.indexOf("not live")>=0 || low.indexOf("api call failed")>=0 || low.indexOf("api_error")>=0){ st.verdict={kind:"error", n:0, raw:d}; }
     else if(low.indexOf("missing")>=0 && low.indexOf("skip")>=0){ st.verdict={kind:"missing", raw:d}; }
     else if(low.indexOf("api_ready")>=0 || low.indexOf("preview clean")>=0){ st.verdict={kind:"ok_preview", raw:d}; }
-    else if(low.indexOf("live")>=0 || low.indexOf("submitted")>=0){ st.verdict={kind:"ok_submit", raw:d}; }
+    // ACCEPTED IS NOT PUBLISHED, AND THE ORDER OF THESE TWO IS THE WHOLE POINT.
+    //
+    // The generator's success line is "SUBMITTED -- accepted by Amazon (live
+    // shortly)". It contains the word "live", so a single test for "live" matched
+    // it and the drawer printed "Published live to Amazon" over a row whose status
+    // said SUBMITTED -- the app contradicting itself on one screen. "submitted" is
+    // therefore tested FIRST, and only the verify run's "now LIVE (BUYABLE)" line
+    // reaches ok_live.
+    else if(low.indexOf("submitted")>=0){ st.verdict={kind:"ok_submit_pending", raw:d}; }
+    else if(low.indexOf("live")>=0){ st.verdict={kind:"ok_live", raw:d}; }
     const wm=d.match(/warnings?:\s*(.+)$/i); if(wm) st.warnings=wm[1];
   }
   if(d.toLowerCase().indexOf("no seller_id")>=0) st.verdict={kind:"nocreds", raw:d};
@@ -113,9 +122,12 @@ function _rqFinish(st, P, sku, mode){
       +(warnings?('<div class="rwarn">Non-blocking warnings: '+esc(warnings)+'</div>'):'<div class="rmsg">No extra boxes need filling. It’s ready to submit.</div>');
     return;
   }
-  if(verdict.kind==="ok_submit"){
-    P.verdict.innerHTML='<div class="rgood">✓ Published live to Amazon.</div>'
-      +(warnings?('<div class="rwarn">Warnings: '+esc(warnings)+'</div>'):'<div class="rmsg">The listing is now live on your account.</div>');
+  // The wording comes from liststatus.js, beside the status vocabulary it
+  // describes, so the sentence can never again say "live" about a row the rest of
+  // the app files as SUBMITTED. "ok_submit" is still accepted as the old name.
+  if(verdict.kind==="ok_live"){ P.verdict.innerHTML=lsVerdictHtml("ok_live", warnings); return; }
+  if(verdict.kind==="ok_submit_pending" || verdict.kind==="ok_submit"){
+    P.verdict.innerHTML=lsVerdictHtml("ok_submit_pending", warnings);
     return;
   }
 }
@@ -196,6 +208,18 @@ function rqWatch(sku, jobId){
     if(P){
       if(j.status==="cancelled" && !st.sawStart){ P.verdict.innerHTML='<span class="rwarn">Cancelled before it ran.</span>'; }
       else { _rqFinish(st, P, sku, mode); }
+    }
+    // AMAZON ACCEPTED IT -- START THE CLOCK.
+    //
+    // Amazon publishes 5-30 minutes after accepting, and until now the ONLY thing
+    // that noticed was the user pressing Sync at the right moment. autoverify.js
+    // re-asks Amazon at 5 and 10 minutes and warns at 15, driving the generator's
+    // existing verify mode. Started from the JOB's terminal state (not the panel)
+    // so it runs whether or not the drawer is still open.
+    if(mode==="submit" && st.verdict
+       && (st.verdict.kind==="ok_submit_pending" || st.verdict.kind==="ok_submit")
+       && typeof avSubmitted==="function"){
+      try{ avSubmitted(sku); }catch(e){}
     }
     window.RUN_STREAMING=false;   // the watched run is done -> let the views refresh again
     _rqRefreshRow(sku);
