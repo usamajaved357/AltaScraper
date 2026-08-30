@@ -1517,7 +1517,22 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             ws    = _store_for(b.get("account")) or _ws()
             found = _repo.locate(ws, sku, sku_headers=(SKU_HEADER,))
             if not found.ok:
-                return jsonify({"ok": False, "error": found.error}), 404
+                # SAY WHICH WORKSPACE, AND FLAG THE CASE THE CALLER CAN EXPLAIN.
+                #
+                # The Image Library lists what the account SELLS -- read from the
+                # Amazon catalogue and the order history -- while this looks in
+                # what the app has MADE. Those are different sets: a listing
+                # created outside the app, or one whose row was deleted, appears
+                # in the picker and has no row here. "Use as main" then failed
+                # with a bare "sku not found", which reads as a bug in the button
+                # rather than a fact about the listing.
+                #
+                # no_row lets the caller say that plainly instead of guessing.
+                _wsid = str(b.get("account") or
+                            _state.get("active_account_id") or "") or "this workspace"
+                return jsonify({"ok": False, "error": found.error,
+                                "no_row": True, "sku": sku,
+                                "workspace": _wsid}), 404
             trow, headers = found.row, found.headers
             if target == "col":
                 if key not in _EDITABLE_COLS or key not in headers:

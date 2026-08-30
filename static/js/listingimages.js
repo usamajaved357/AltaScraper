@@ -38,6 +38,22 @@ async function setMainImage(sku, url, opts){
                            key:"main_product_image_locator", value:url}))});
     const j = await r.json();
     if(!j || !j.ok){
+      // THE LISTING IS NOT IN THIS APP, which is a different thing from the
+      // button being broken -- and it is the common case here, because the
+      // Image Library lists what the account SELLS (Amazon's catalogue and the
+      // order history) while the main image is written to what the app has
+      // MADE. A listing created outside the app, or one whose row was deleted,
+      // is in the first list and not the second.
+      //
+      // The old message was "sku not found in sheet", which named a spreadsheet
+      // that is not involved on this backend and sent people to look in it.
+      if(j && j.no_row){
+        toast("This listing is not held in " + (j.workspace || "this workspace")
+              + " — the app has no row for " + (j.sku || "it")
+              + ", so there is nothing to set the image on. It is on Amazon, but "
+              + "this app did not make it.");
+        return false;
+      }
       toast("Could not set the main image: " + ((j && j.error) || "unknown"));
       return false;
     }
