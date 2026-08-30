@@ -46,6 +46,10 @@
      scrolling middle and a fixed footer, and the later file is the one that
      wins. Everything in it is prefixed dw2- and scoped to the drawer. -->
 <link rel="stylesheet" href="/static/css/drawer.css?v={{ ASSET_V }}">
+<!-- The live-from-Amazon markers inside the drawer's attribute grid. AFTER
+     drawer.css: everything in it sits inside .dw2-cell and borrows its
+     spacing, and it reuses that file's literal palette on purpose. -->
+<link rel="stylesheet" href="/static/css/drawer_attributes.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -1981,6 +1985,12 @@
      -- it decides nothing and calls no API. Loaded before the two files that
      use it so the order on the page matches the order of dependence. -->
 <script src="/static/js/drawer.js?v={{ ASSET_V }}"></script>
+<!-- What Amazon currently holds for a SKU, fetched once per drawer open and
+     shown beside this app's own values. Must load BEFORE autofix.js and
+     listings.js, which call lvKeys/lvTag/lvBelow/lvBanner and lvEnsure --
+     each of those calls is typeof-guarded, so a load failure here degrades to
+     the drawer exactly as it was rather than breaking it. -->
+<script src="/static/js/drawer_attributes.js?v={{ ASSET_V }}"></script>
 <!-- ONE definition of what a listing's status word means (LIVE / SUBMITTED) and of
      the sentence that describes it. Must load BEFORE listings.js, which calls it. -->
 <script src="/static/js/liststatus.js?v={{ ASSET_V }}"></script>

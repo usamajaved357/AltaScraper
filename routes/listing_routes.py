@@ -257,6 +257,95 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             pass
         return request.args.get("account")
 
+    @app.route("/listing/live_attributes")
+    def listing_live_attributes():
+        """What Amazon currently holds for this SKU, as the app's own dot-keys.
+
+        READ ONLY. Nothing is written -- not to Amazon, not to the row. The
+        drawer puts these beside our own values so a field the app never filled
+        can be seen, and copied over deliberately if the user wants it.
+
+        WHY IT CALLS api/amazon_listings AND NOT sp_api DIRECTLY
+
+        "fetch a live listing" was already written seven times in this codebase
+        (this file at /live/pull_row, optimize_routes twice, variations_routes,
+        listing/sync, listing/handling, and the generator). An eighth inline
+        ListingsItemsV20210801 here is exactly what CLAUDE.md Rule 12 forbids,
+        and the shared one already carries things a fresh copy would miss --
+        productTypes in includedData (without it product_type came back empty
+        for every live listing on the account), 404-means-GONE, and never
+        raising.
+
+        NOT ON AMAZON IS AN ANSWER, NOT AN ERROR. A SKU Amazon does not have
+        returns 200 with on_amazon:false, because the drawer has something true
+        to say about it ("this listing is not on Amazon yet") and a 404 would
+        make it show a failure instead.
+
+        The SKU is a query parameter rather than a path segment on purpose:
+        SKUs are price_days_ASIN, so they contain dots, and a path converter
+        that swallows them is a bug waiting for the first SKU with a slash.
+        """
+        sku = str(request.args.get("sku", "")).strip()
+        if not sku:
+            return jsonify({"ok": False, "error": "missing sku"}), 400
+        _bad = _wrong_account(_asked_account())
+        if _bad:
+            return _bad
+        acc = _active_account()
+        if not acc:
+            return jsonify({"ok": False,
+                            "error": "open an Amazon account workspace first"}), 400
+        rt = str(acc.get("refresh_token", ""))
+        if not rt or rt.startswith(("PUT_", "ROTATE")):
+            return jsonify({"ok": False,
+                            "error": "this account is not connected to Amazon"}), 400
+        try:
+            import accounts as _acc
+            from api import amazon_listings as _al
+            from listing import live_attributes as _la
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+        # The LISTING's marketplace, passed by the caller, exactly as /schema
+        # takes ?mkt= -- a US row must not be read with UK credentials just
+        # because the workspace's default says UK.
+        mkt = (request.args.get("mkt") or acc.get("default_marketplace")
+               or "UK").strip().upper()
+        got = _al.get_item(_acc.account_creds(acc), mkt,
+                           str(acc.get("seller_id") or ""), sku,
+                           _acc.marketplace_id(mkt) or "")
+        if got["status"] == _al.GONE:
+            return jsonify({"ok": True, "on_amazon": False, "sku": sku,
+                            "marketplace": mkt,
+                            "reason": "Amazon has no listing with this SKU on "
+                                      "this account."})
+        if got["status"] != _al.OK:
+            return jsonify({"ok": False, "sku": sku,
+                            "error": got.get("error") or "Amazon did not answer",
+                            "http_code": got.get("http_code")}), 502
+
+        flat = _la.flatten(got.get("attributes") or {})
+        # Amazon's own complaints about the listing, same three fields
+        # optimize_routes parses them into, so the drawer can say WHY a live
+        # listing is unhappy without a second call.
+        issues = [{"code": str(i.get("code") or ""),
+                   "message": str(i.get("message") or ""),
+                   "severity": str(i.get("severity") or ""),
+                   "attributes": ([i.get("attributeNames")]
+                                  if isinstance(i.get("attributeNames"), str)
+                                  else list(i.get("attributeNames") or []))}
+                  for i in (got.get("issues") or []) if isinstance(i, dict)]
+        _sum = (got.get("summaries") or [{}])[0]
+        _st = _sum.get("status") if isinstance(_sum, dict) else []
+        return jsonify({"ok": True, "on_amazon": True, "sku": sku,
+                        "marketplace": mkt,
+                        "product_type": got.get("product_type") or "",
+                        "values": flat["values"], "content": flat["content"],
+                        "multi": flat["multi"], "skipped": flat["skipped"],
+                        "issues": issues,
+                        "amazon_status": (", ".join(_st) if isinstance(_st, list)
+                                          else str(_st or ""))})
+
     @app.route("/live/pull_row", methods=["POST"])
     def live_pull_row():
         """Pull a LIVE listing's REAL data from Amazon into the row.

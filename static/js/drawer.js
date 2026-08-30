@@ -323,7 +323,13 @@ function dwRo(v, cls){
    the delete control (disabled, with the reason, when Amazon requires the
    field).
 
-   o = {label, ctrl, prov, req, softReq, hint, full, flagged, del} */
+   `tag` and `below` arrive as READY-MADE HTML, for the same reason dwNestCell
+   takes reqMark that way: they are drawer_attributes.js's live-vs-app markers,
+   tooltips and all, and rebuilding them here from a flag would be a second,
+   poorer copy of sentences that were written once (Rule 12). Both are empty
+   strings when that file has not loaded, so the cell is exactly what it was.
+
+   o = {label, ctrl, prov, req, softReq, hint, full, flagged, del, tag, below} */
 function dwCell(o){
   o = o || {};
   const del = !o.del ? ""
@@ -337,9 +343,11 @@ function dwCell(o){
     +   (o.softReq ? '<span class="dw2-reqsoft" title="The schema lists this as required, but Amazon’s last Preview accepted the listing WITHOUT it. Fill it only if a later Preview flags it.">☆</span>' : "")
     +   dwSrcDot(o.prov)
     +   (o.hint ? '<span class="dw2-hint" title="' + esc(o.hint) + '">⚠</span>' : "")
+    +   (o.tag || "")
     +   del
     + "</div>"
-    + '<div class="dw2-cv">' + (o.ctrl || "") + "</div></div>";
+    + '<div class="dw2-cv">' + (o.ctrl || "") + "</div>"
+    + (o.below || "") + "</div>";
 }
 
 // A nested Amazon field (battery, hazmat, item_dimensions) takes the full
