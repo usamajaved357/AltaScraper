@@ -1700,7 +1700,7 @@ function card(r){
   const _isDup=(typeof isDuplicate==="function") && isDuplicate(r);   // same SKU on another card/tab
   const _dupOther=_isDup?dupOtherTabs(r):[];
   return `<div class="tile ${selected?'sel':''} ${_isDup?'dup':''} ${flagRed?'flag':(realIssue?'flagamber':'')}" data-sku="${esc(r.sku)}">
-    <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openDrawer('${esc(r.sku)}')">
+    <div class="tileimg pii-img ${(urls&&urls.length)?'':'noimg'}" onclick="openListing('${esc(r.sku)}')">
       ${thumb}
       <span class="tiledot" style="background:${_statusDot(r)}" title="${esc(r.status||'')}"></span>
       ${rowSelectBox(r, "tilesel")}
@@ -1714,7 +1714,7 @@ function card(r){
       ${_warnChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
-    <div class="tilebody" onclick="openDrawer('${esc(r.sku)}')">
+    <div class="tilebody" onclick="openListing('${esc(r.sku)}')">
       <div class="tiletitle pii">${esc(r.title)||'<span class="cc">(no title)</span>'}</div>
       <div class="tilemeta">
         ${_priceCell(r, "tileprice pii")}
@@ -1984,6 +1984,7 @@ function _dwShell(r, urls, priceStr, risks){
       <button class="dw2-ib ${st==='APPROVED'?'on-approve':''}" onclick="setStatus('${esc(r.sku)}','APPROVED',this)" title="${st==='APPROVED'?'Already approved':'Approve \u2014 mark ready to send'}"><i class="ti ti-check"></i></button>
       <button class="dw2-ib ${st==='NEEDS_REVIEW'?'on-hold':''}" onclick="setStatus('${esc(r.sku)}','NEEDS_REVIEW',this)" title="${st==='NEEDS_REVIEW'?'Already held':'Hold \u2014 keep it back'}"><i class="ti ti-hand-stop"></i></button>
       <button class="dw2-ib" onclick="drawerMore(event,'${esc(r.sku)}',${r.row||0},${live?'true':'false'})" title="Everything else"><i class="ti ti-dots"></i></button>
+      <button class="dw2-ib" onclick="pdpOpen('${esc(r.sku)}')" title="Open full screen — the same listing with room for the description, the bullets and every attribute side by side"><i class="ti ti-arrows-diagonal"></i></button>
       <button class="dw2-ib bare" onclick="closeDrawer()" title="Close"><i class="ti ti-x" style="font-size:16px"></i></button>
     </div>`;
 
@@ -1992,10 +1993,10 @@ function _dwShell(r, urls, priceStr, risks){
   // highlights, and saveEdit reads textContent, so the <mark> markup can
   // never reach Amazon. Its counter and the 27 Jul 2026 cap warning sit
   // under it -- the same TITLE_OPTS every other title check uses.
-  const tcid = "dwtitlec_" + sv;
-  const tval = String(r.title || "");
-  const tn = tval.length;
-  const tover = tn > TITLE_OPTS.limit, twarn = tn > TITLE_OPTS.warnAt && !tover;
+  // dwTitleParts (drawer.js) builds the editor, its counter and its cap
+  // warning. The full-screen product page uses the same one -- see the note on
+  // that function for why a second title box is never the answer.
+  const tp = dwTitleParts(r, "dwtitlec_" + sv);
   const heroImg = (urls && urls.length)
     ? `<div class="dw2-heroimg"><i class="ti ti-photo"></i><img src="${esc(urls[0])}" loading="lazy" onerror="this.remove()"></div>`
     : `<div class="dw2-heroimg"><i class="ti ti-photo"></i></div>`;
@@ -2003,12 +2004,7 @@ function _dwShell(r, urls, priceStr, risks){
   const heroBlock = `<div class="dw2-hero">
       ${heroImg}
       <div class="dw2-heroinfo">
-        <div class="dw2-h3" contenteditable="true" spellcheck="false"
-             data-orig="${esc(tval)}"
-             oninput="dwCount(this,'${tcid}',${TITLE_OPTS.limit},0,${TITLE_OPTS.warnAt})"
-             onpaste="dwPastePlain(event)"
-             onblur="dwBlurSave(this,'${esc(r.sku)}','col','Title')"
-             >${claimMarkField(r,'title',r.title)||''}</div>
+        ${tp.editor}
         <div class="dw2-sku">${esc(r.sku)||'\u2014'}${r.brand?(' \u00b7 '+esc(r.brand)):''}</div>
         <div class="dw2-prices">
           ${priceStr?`<span class="big">${priceStr}</span>`:''}
@@ -2019,10 +2015,10 @@ function _dwShell(r, urls, priceStr, risks){
     </div>
     <div class="dw2-sec" style="padding-top:9px;padding-bottom:9px">
       <div class="dw2-sechead" style="margin-bottom:0"><span>Title</span><span class="dw2-secright">
-        <span class="dw2-count${tover?' over':(twarn?' warn':'')}" id="${tcid}">${tn} / ${TITLE_OPTS.limit}</span>
-        <span class="dw2-tag info" title="${esc(TITLE_OPTS.indexTip)}">${esc(TITLE_OPTS.indexNote)}</span>
+        ${tp.count}
+        ${tp.indexTag}
       </span></div>
-      ${(twarn||tover)?`<div class="dw2-note" style="color:#EF9F27">\u26a0 ${esc(TITLE_OPTS.warnMsg)}</div>`:''}
+      ${tp.warnNote}
     </div>`;
 
   // ---- metrics --------------------------------------------------------
@@ -2661,7 +2657,7 @@ function tableRow(r){
     : (_a.source
         ? `<span class="cc" title="This listing is not live on Amazon yet, so it has no ASIN of its own. ${esc(_a.source)} is the competitor product it was researched from — not your listing.">not live yet <span class="srcasin">· from ${esc(_a.source)}</span></span>`
         : `<span class="cc">no ASIN</span>`);
-  return `<tr onclick="openDrawer('${esc(r.sku)}')" title="${esc(r.title||'')}"
+  return `<tr onclick="openListing('${esc(r.sku)}')" title="${esc(r.title||'')}"
               data-sku="${esc(r.sku)}"
               class="${SELECTED.has(String(r.sku)) ? 'rowon' : ''}">
     <td class="selcol">${rowSelectBox(r)}</td>
@@ -2679,7 +2675,7 @@ function tableRow(r){
         : ''}${_warnCell(r)}</td>
     <td>${_compCell(r)}</td>
     <td><div class="acts">
-      <button class="btn primary" onclick="event.stopPropagation();openDrawer('${esc(r.sku)}')">Review</button>
+      <button class="btn primary" onclick="event.stopPropagation();openListing('${esc(r.sku)}')">Review</button>
       ${rowActions(r, "dotb")}
     </div></td></tr>`;
 }
@@ -3137,6 +3133,30 @@ async function applyRewrite(sku, i){
     try{ render(); }catch(e){}
     if(typeof DRAWER_SKU!=="undefined" && String(DRAWER_SKU)===String(sku)){ try{ openDrawer(sku); }catch(e){} }
   }catch(e){ toast("Apply failed: "+((e&&e.message)||e)); }
+}
+
+/* CLICKING A LISTING OPENS IT. Which view that is, is decided here and nowhere
+ * else -- the tile image, the tile body, the table row and the Review button
+ * all come through this one function, so they can never disagree.
+ *
+ * The full-screen page is the answer for a click on the listing itself: it is
+ * where the editing work happens. The DRAWER IS NOT RETIRED -- it stays the
+ * quick look, and everything that opens it directly still does:
+ *
+ *     the tile menu's "Edit details"        listings.js
+ *     the compliance / claim / copy badges  listings.js -- straight to the
+ *                                           panel that explains the badge
+ *     the run queue re-attaching to a job   runqueue.js
+ *     auto-fix and the Miles template       autofix.js, miles_template.js
+ *                                           re-rendering an open drawer
+ *
+ * and the product page carries an expand control back the other way.
+ *
+ * Falls back to the drawer if pdp.js has not loaded, so a failure to fetch one
+ * file cannot make the listings grid unclickable. */
+function openListing(sku){
+  if(typeof pdpOpen === "function"){ pdpOpen(sku); return; }
+  openDrawer(sku);
 }
 
 function openDrawer(sku, jumpGen){

@@ -1260,6 +1260,14 @@ function altaCurrentPath(){
   // The blank "New brand" screen is a form being filled in, not a place. Giving
   // it an address would produce a bookmark that reopens an empty form.
   if(ACTIVE_WS.brand === "new") return null;
+  // ONE LISTING, OPEN FULL SCREEN, is a place -- and the most linkable one in
+  // the app: /w/<workspace>/listing/<sku>. pdpPath() owns the shape because the
+  // sku half of it is that page's business, not this file's. It returns "" when
+  // the page is closed, which is every other case below.
+  if(typeof pdpPath === "function"){
+    const pp = pdpPath();
+    if(pp) return pp;
+  }
   const slug = String(ACTIVE_WS.key || "") || "default";
   const sec  = (ALTA_SECTIONS.indexOf(CUR_SEC) >= 0) ? CUR_SEC : "listings";
   let p = "/w/" + encodeURIComponent(slug) + "/" + sec;
@@ -1284,7 +1292,27 @@ function altaSyncUrl(){
 // loadHome(), because opening a workspace before ACCOUNTS and VIEWS are known
 // could only guess at which one was meant.
 async function altaRouteFromUrl(){
-  const m = /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
+  // TWO SHAPES OF ADDRESS.
+  //
+  //     /w/<ws>                     the workspace, on its listings
+  //     /w/<ws>/<section>           one screen
+  //     /w/<ws>/listing/<sku>       one listing, open full screen
+  //
+  // The third is matched first and separately rather than by making the section
+  // group greedier: a SKU is price_days_ASIN, so it contains dots and could
+  // contain anything else, and letting it fall through the section branch would
+  // silently land on Listings for a link that named a real row.
+  const lm = /^\/w\/([^\/]+)\/listing\/(.+?)\/?$/.exec(location.pathname || "");
+  // BACK OUT OF THE PRODUCT PAGE IS IMMEDIATE. Done here, before any of the
+  // workspace work below, because pressing Back from a listing usually means
+  // going back to the grid in the SAME workspace -- and making that wait on
+  // enterAccount() would put a spinner in front of a screen that is already
+  // rendered and only hidden.
+  if(!lm && typeof pdpIsOpen === "function" && pdpIsOpen()){
+    try{ pdpClose(); }catch(e){}
+  }
+  const m = lm ? [lm[0], lm[1], "listings"]
+              : /^\/w\/([^\/]+)(?:\/([^\/]+))?\/?$/.exec(location.pathname || "");
   if(!m){
     // NO ADDRESS -- so land on the account that was open last, not on a grid of
     // cards. Orbit has no landing page at all: you arrive on a working screen
@@ -1336,6 +1364,23 @@ async function altaRouteFromUrl(){
     if(sec === "listings" && (src === "live" || src === "all")
        && typeof setListSource === "function"){
       setListSource(src);
+    }
+    // A LINK STRAIGHT TO ONE LISTING. The rows arrive asynchronously after the
+    // workspace opens, so the SKU is usually not in ROWS yet at this point --
+    // waiting for it is the difference between a deep link that works and one
+    // that lands on the grid and looks like it was ignored. It gives up after a
+    // few seconds and SAYS SO, rather than spinning forever on a SKU that has
+    // been renamed or belongs to another account.
+    if(lm && typeof pdpOpenFromUrl === "function"){
+      const wantSku = decodeURIComponent(lm[2] || "");
+      let opened = false;
+      for(let i = 0; i < 40 && !opened; i++){
+        opened = pdpOpenFromUrl(wantSku);
+        if(!opened) await new Promise(res => setTimeout(res, 200));
+      }
+      if(!opened && typeof toast === "function"){
+        toast("That listing is not in this workspace — showing the list.");
+      }
     }
   }catch(e){
     // Reopening failed. Leave the user on whatever did load rather than

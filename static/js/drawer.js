@@ -82,6 +82,51 @@ function dwBlurSave(el, sku, target, key){
   saveEdit(el, sku, target, key);
 }
 
+/* THE TITLE EDITOR, WRITTEN ONCE.
+ *
+ * The drawer puts it in the hero beside the image; the full-screen product page
+ * (pdp.js) puts it at the top of its content card. It is the same editor in
+ * both, because everything attached to it is load-bearing and none of it is
+ * obvious from looking at a box with words in it:
+ *
+ *   claimMarkField   the <mark> highlights over risky claims
+ *   dwBlurSave       saves to the Title COLUMN, only when the text changed
+ *   textContent      so the <mark> markup can never reach Amazon
+ *   TITLE_OPTS       200 system max, the 75-char hard cap landing 27 Jul 2026
+ *
+ * A second title box saving to the same cell is how two editors end up
+ * disagreeing about what you typed -- which is the exact reason the attribute
+ * grid does not draw a Brand box (see renderAttr in autofix.js). Same rule.
+ *
+ * Returns the pieces rather than one blob so each screen can place the counter
+ * and the cap warning where its own layout wants them.
+ */
+function dwTitleParts(r, cid){
+  const tval = String(r.title || "");
+  const n = tval.length;
+  const over = n > TITLE_OPTS.limit;
+  const warn = n > TITLE_OPTS.warnAt && !over;
+  return {
+    cid: cid,
+    editor:
+        '<div class="dw2-h3" contenteditable="true" spellcheck="false"'
+      + ' data-orig="' + esc(tval) + '"'
+      + ' oninput="dwCount(this,\'' + cid + '\',' + TITLE_OPTS.limit + ',0,' + TITLE_OPTS.warnAt + ')"'
+      + ' onpaste="dwPastePlain(event)"'
+      + ' onblur="dwBlurSave(this,\'' + esc(r.sku) + '\',\'col\',\'Title\')"'
+      + '>' + (claimMarkField(r, 'title', r.title) || '') + '</div>',
+    count:
+        '<span class="dw2-count' + (over ? ' over' : (warn ? ' warn' : '')) + '" id="' + cid + '">'
+      + n + ' / ' + TITLE_OPTS.limit + '</span>',
+    indexTag:
+        '<span class="dw2-tag info" title="' + esc(TITLE_OPTS.indexTip) + '">'
+      + esc(TITLE_OPTS.indexNote) + '</span>',
+    warnNote: (warn || over)
+      ? '<div class="dw2-note" style="color:#EF9F27">⚠ ' + esc(TITLE_OPTS.warnMsg) + '</div>'
+      : ""
+  };
+}
+
 /* ---- counters ---------------------------------------------------------
    The contenteditable twin of ccount(). Same rules, same classes: `over`
    past the hard limit, `warn` past a soft threshold. */

@@ -136,7 +136,10 @@ print("\n== but every one of those actions still has a way in ==")
 # Removing the last route to a feature is not a cleanup, it is a deletion.
 truthy("Auto-fix is still in the drawer",  "onclick=\"autoFixLoop(" in LJ)
 truthy("Edit is still in the More menu",   "Edit details" in LJ)
-truthy("Edit is still the whole card",     "class=\"tilebody\" onclick=\"openDrawer(" in LJ)
+# Where the click LANDS moved to the full-screen product page (openListing ->
+# pdp.js). That the WHOLE CARD is still the way in is what this pins, and that
+# has not changed -- which is the property the section above is about.
+truthy("Edit is still the whole card",     "class=\"tilebody\" onclick=\"openListing(" in LJ)
 truthy("the price panel is still what sends a price", "priceEdit('" in LJ)
 truthy("and the table row keeps its Review button",   ">Review</button>" in LJ)
 # The way IN to Amazon is the ASIN itself -- "we should be able to open the

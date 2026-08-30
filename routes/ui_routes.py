@@ -126,6 +126,29 @@ def register(app, *, CONFIG_PATH, _kill_proc, _records, _run_lock, _running, _ws
         """A workspace with no section named opens on its listings."""
         return redirect("/w/" + quote(ws, safe="") + "/listings")
 
+    @app.route("/w/<ws>/listing/<path:sku>")
+    def workspace_listing(ws, sku):
+        """One listing, open full screen: /w/<workspace>/listing/<sku>.
+
+        Serves the same dashboard; the browser router (shell.js
+        altaRouteFromUrl) reads the address and opens that listing's page once
+        the workspace and its rows are loaded.
+
+        <path:sku> rather than the default converter because a SKU is
+        price_days_ASIN -- it contains dots, and the default converter would
+        also refuse one containing a slash. Nothing about the SKU is checked
+        here: which listings exist is answered by /rows for the open account,
+        and the router reports one it cannot find to the user. Checking here
+        would mean a second, different answer to that question, from a route
+        that does not know which workspace the browser has open.
+
+        DECLARED ABOVE /w/<ws>/<section> ON PURPOSE. Flask's routing is not
+        order-dependent -- it ranks by specificity -- but a reader's is, and
+        "listing" would otherwise look like a section name that is missing from
+        the template.
+        """
+        return render_template("dashboard.html")
+
     @app.route("/w/<ws>/<section>")
     def workspace_page(ws, section):
         """Serve the dashboard for a deep link. The workspace name is not checked
