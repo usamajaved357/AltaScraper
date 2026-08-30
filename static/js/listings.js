@@ -3171,6 +3171,13 @@ function openDrawer(sku, jumpGen){
         setTimeout(function(){ if(typeof bulletMeter==='function') bulletMeter(); }, 60); }
     }).catch(()=>{});
   }
+  // ASK AMAZON WHAT IT HOLDS FOR THIS SKU, for a listing that is actually on
+  // Amazon. One call, cached per SKU for the life of the page, so reopening the
+  // same drawer costs nothing; drawer_attributes.js redraws the attribute block
+  // itself when the answer lands (and only if this drawer is still open).
+  // Deliberately NOT awaited: the drawer is already on screen, and a slow
+  // SP-API call must never be what the person is waiting for.
+  if(typeof lvEnsure==="function") lvEnsure(r);
   // populate the (always-visible) image panel's model dropdowns + run the
   // connection check, once the drawer is in place
   var sidv=sid(sku);

@@ -31,6 +31,9 @@
      read as three different products. Loaded AFTER dashboard.css because it
      supersedes the blocks removed from it in the same commit. -->
 <link rel="stylesheet" href="/static/css/datatable.css?v={{ ASSET_V }}">
+<!-- The generator progress panel. Loads after dashboard.css because every
+     colour in it is one of that file's tokens. -->
+<link rel="stylesheet" href="/static/css/genui.css?v={{ ASSET_V }}">
 <!-- What is genuinely the Repricer's alone: the sparkline, the stacked bar, the
      supplier table, the rules pills, the chart and the detail panel. -->
 <link rel="stylesheet" href="/static/css/repricer.css?v={{ ASSET_V }}">
@@ -43,6 +46,10 @@
      scrolling middle and a fixed footer, and the later file is the one that
      wins. Everything in it is prefixed dw2- and scoped to the drawer. -->
 <link rel="stylesheet" href="/static/css/drawer.css?v={{ ASSET_V }}">
+<!-- The live-from-Amazon markers inside the drawer's attribute grid. AFTER
+     drawer.css: everything in it sits inside .dw2-cell and borrows its
+     spacing, and it reuses that file's literal palette on purpose. -->
+<link rel="stylesheet" href="/static/css/drawer_attributes.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -583,7 +590,12 @@
         <button id="rh_why" class="rh_why" style="display:none"
                 onclick="whyStuck()">Why is it stuck?</button>
       </div>
-      <pre id="log"></pre>
+      <!-- The generator's progress, rendered. genui.js fills this while a run
+         streams; the <pre> below is the old raw terminal, kept as the fallback
+         for when genui.js has not loaded (it is hidden while the panel is in
+         use, and the raw text is still available folded inside the panel). -->
+    <div id="genui"></div>
+    <pre id="log"></pre>
       <!-- Where the "these are samples" bar goes, above the listings rather than
      inside the grid: the grid is rewritten on every render and filter, and a
      warning that disappears when you click a filter is worse than none. -->
@@ -1973,6 +1985,12 @@
      -- it decides nothing and calls no API. Loaded before the two files that
      use it so the order on the page matches the order of dependence. -->
 <script src="/static/js/drawer.js?v={{ ASSET_V }}"></script>
+<!-- What Amazon currently holds for a SKU, fetched once per drawer open and
+     shown beside this app's own values. Must load BEFORE autofix.js and
+     listings.js, which call lvKeys/lvTag/lvBelow/lvBanner and lvEnsure --
+     each of those calls is typeof-guarded, so a load failure here degrades to
+     the drawer exactly as it was rather than breaking it. -->
+<script src="/static/js/drawer_attributes.js?v={{ ASSET_V }}"></script>
 <!-- ONE definition of what a listing's status word means (LIVE / SUBMITTED) and of
      the sentence that describes it. Must load BEFORE listings.js, which calls it. -->
 <script src="/static/js/liststatus.js?v={{ ASSET_V }}"></script>
@@ -1990,6 +2008,10 @@
 <!-- PPC analytics. Its own file: ppc.js is the campaign builder and the agent,
      and shares no code with it (CLAUDE.md Rule 7). -->
 <script src="/static/js/ppcview.js?v={{ ASSET_V }}"></script>
+<!-- The generator progress panel. BEFORE submit.js, which calls genuiStart /
+     genuiLine / genuiEnd from its EventSource handler and falls back to the raw
+     <pre> if this file has not defined them. -->
+<script src="/static/js/genui.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/submit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/runqueue.js?v={{ ASSET_V }}"></script>
 <!-- After a submit, re-check Amazon at 5 and 10 minutes and warn at 15, instead of

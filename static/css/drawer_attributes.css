@@ -1,0 +1,116 @@
+/* ============================================================================
+   LIVE-FROM-AMAZON MARKERS IN THE DRAWER
+   ============================================================================
+
+   Styling for static/js/drawer_attributes.js only: the strip above the
+   attribute grid, the small tag on a cell's label line, and the line under a
+   cell showing Amazon's own value.
+
+   IT MUST LOAD AFTER drawer.css. Everything here sits inside .dw2-cell and
+   borrows its spacing.
+
+   THE COLOURS ARE drawer.css's, AS LITERAL HEX, ON PURPOSE. That file records
+   the decision (asked and answered, 29 Aug 2026): the drawer is drawn in the
+   listing-editor-lighter palette — #1e1e24 panels, #3a3a45 rules, the #3b7dd4
+   blue — and NOT in the app's teal --accent tokens. Writing var(--panel) here
+   would quietly opt this one panel back into the palette the rest of the
+   drawer was deliberately taken out of. Same reason, same hexes:
+
+       #1e1e24  panel        #3a3a45  rule          #6a6974  label
+       #232330  sub-panel    #c8c7cc  value         #555560  dim
+       #5DCAA5  agrees       #EF9F27  disagrees     #85B7EB  live-only
+       #F09595  error        #3b7dd4  accent
+
+   EVERY CLASS IS PREFIXED lv-, for the reason drawer.css prefixes dw2-:
+   dashboard.css already owns short names like .tag, .val, .dot and .issue, and
+   a bare name here would repaint the table behind the drawer.
+   ========================================================================= */
+
+/* ---- 1. THE STRIP ABOVE THE GRID -------------------------------------- */
+.lv-bar{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:10px; color:#c8c7cc;
+  background:#232330; border:1px solid #3a3a45; border-radius:6px;
+  padding:6px 9px; margin:0 0 8px;
+}
+.lv-bar b{ font-weight:600; color:#eeedf0; }
+.lv-bar.loading{ color:#6a6974; }
+.lv-bar.gone{ color:#7a7984; }
+.lv-bar.err{ color:#F09595; border-color:#5a2a2a; background:#2a1a1a; }
+
+.lv-dot{
+  width:6px; height:6px; border-radius:50%; background:#5DCAA5;
+  flex:none; display:inline-block;
+}
+
+/* The spinner is CSS, not a GIF: one element, no request, and it cannot be
+   left spinning by a failed image load. */
+.lv-spin{
+  width:10px; height:10px; flex:none; border-radius:50%;
+  border:1.5px solid #3a3a45; border-top-color:#85B7EB;
+  animation:lv-turn .8s linear infinite;
+}
+@keyframes lv-turn{ to{ transform:rotate(360deg); } }
+
+.lv-status{
+  font-size:9px; color:#5DCAA5; background:#16281f;
+  border-radius:3px; padding:1px 5px;
+}
+.lv-cnt{ font-size:9px; color:#7a7984; }
+.lv-cnt.ok{ color:#5DCAA5; }
+.lv-cnt.diff{ color:#EF9F27; }
+.lv-cnt.live{ color:#85B7EB; }
+
+.lv-fill,.lv-refresh{
+  margin-left:auto; background:none; border:1px solid #3a3a45; border-radius:4px;
+  color:#c8c7cc; font-family:inherit; font-size:9.5px; padding:2px 7px;
+  cursor:pointer; line-height:1.5;
+}
+.lv-fill{ margin-left:auto; border-color:#2a6cb5; color:#85B7EB; }
+.lv-fill + .lv-refresh{ margin-left:0; }
+.lv-fill:hover{ background:#1b2a3d; }
+.lv-refresh:hover{ background:#2a2a35; color:#eeedf0; }
+
+/* ---- 2. AMAZON'S OWN COMPLAINTS --------------------------------------- */
+.lv-issues{
+  font-size:10px; color:#F09595; background:#2a1a1a;
+  border:1px solid #5a2a2a; border-radius:6px; padding:6px 9px; margin:0 0 8px;
+}
+.lv-issues b{ display:block; margin-bottom:3px; font-weight:600; }
+.lv-issue{ margin:2px 0; line-height:1.45; }
+.lv-issf{ color:#7a7984; }
+.lv-note{ font-size:9.5px; color:#6a6974; margin:0 0 8px; line-height:1.5; }
+
+/* ---- 3. THE TAG ON A CELL'S LABEL LINE --------------------------------
+   Sized to sit in .dw2-cl, which is 9px and already a wrapping flex row, so
+   these fall onto a second line rather than pushing the delete control off. */
+.lv-tag{
+  font-size:8px; letter-spacing:.02em; border-radius:3px;
+  padding:0 4px; line-height:1.6; white-space:nowrap; cursor:help;
+}
+.lv-tag.lv-ok{    color:#5DCAA5; background:#16281f; }
+.lv-tag.lv-diff{  color:#EF9F27; background:#2b2115; }
+.lv-tag.lv-live{  color:#85B7EB; background:#1b2635; }
+.lv-tag.lv-app{   color:#7a7984; background:#26262f; }
+.lv-tag.lv-multi{ color:#C9A3E8; background:#251d2e; }
+
+/* ---- 4. AMAZON'S VALUE, UNDER THE CONTROL ------------------------------
+   Deliberately BELOW the editable value rather than replacing it: the box
+   still holds this app's value, which is what a submit would send. Showing
+   Amazon's in the box would make the drawer lie about what is about to go. */
+.lv-below{
+  display:flex; align-items:baseline; gap:5px;
+  margin-top:3px; padding-top:3px; border-top:1px dashed #3a3a45;
+  font-size:9.5px; color:#85B7EB; min-width:0;
+}
+.lv-below .lv-dot{ background:#85B7EB; align-self:center; }
+.lv-val{
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  min-width:0; flex:1 1 auto;
+}
+.lv-use{
+  flex:none; background:none; border:1px solid #2a6cb5; border-radius:3px;
+  color:#85B7EB; font-family:inherit; font-size:8.5px; padding:0 5px;
+  cursor:pointer; line-height:1.7;
+}
+.lv-use:hover{ background:#1b2a3d; color:#eeedf0; }

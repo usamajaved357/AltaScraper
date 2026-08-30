@@ -1342,7 +1342,28 @@ function _fullDataInner(r){
   // separate editor fields -- two barcode boxes that can silently diverge is exactly what
   // confused the user ("External Product ID" showing a stale/leftover value).
   const _BARCODE_HANDLED=new Set(["externally_assigned_product_identifier","standard_product_id","merchant_suggested_asin","sku","supplier_declared_has_product_identifier_exemption"]);
-  const _AHIDE=new Set(["_provenance","provenance"]); const aKeys=Object.keys(a).filter(k=>!HIDEKEYS.has(k) && !_BARCODE_HANDLED.has(String(k).split(".")[0]));
+  const _AHIDE=new Set(["_provenance","provenance"]);
+  // WHAT AMAZON HOLDS, FOLDED INTO THE SAME KEY LIST.
+  //
+  // The grid has always been driven by Object.keys(r.attributes) -- what THIS
+  // APP wrote when it generated the listing. A listing created as "me too" or
+  // outside the app has none, which is why its drawer looked empty even though
+  // Amazon had the data. Live keys join the same list here, so they go through
+  // the same hide rules, the same nested-group detection and the same cells;
+  // a live-only key simply renders with an empty box and a "use this" beside
+  // Amazon's value. There is no second grid (Rule 12).
+  //
+  // The VALUE still comes from `a`, never from Amazon. What is in the box is
+  // what a submit would send, and that must stay true.
+  const _liveKeys=(typeof lvKeys==="function") ? lvKeys(sku) : [];
+  const _lvT=(k,v)=>(typeof lvTag==="function")?lvTag(sku,k,v):"";
+  const _lvB=(k,v)=>(typeof lvBelow==="function")?lvBelow(sku,k,v):"";
+  // IMGRE as well as HIDEKEYS: HIDEKEYS was built from the image keys present
+  // in `a`, so a live-only main_product_image_locator would have slipped past
+  // it and drawn a raw URL cell next to the drawer's own image panel.
+  const aKeys=[...new Set([...Object.keys(a), ..._liveKeys])]
+      .filter(k=>!HIDEKEYS.has(k) && !IMGRE.test(k)
+                 && !_BARCODE_HANDLED.has(String(k).split(".")[0]));
   // fields the script fills itself (structural / identity / dimensions) -- never shown as needs-value
   const EXCLUDE_REQ=new Set(["item_name","bullet_point","product_description","generic_keyword","purchasable_offer","fulfillment_availability","brand","condition_type","merchant_shipping_group","supplier_declared_has_product_identifier_exemption","externally_assigned_product_identifier","list_price","manufacturer","model_number","part_number","item_dimensions","item_package_dimensions","item_depth_width_height","item_length_width_height","website_shipping_weight","recommended_browse_nodes","browse_node","browse_nodes"]);
   // required-but-missing = schema top-level required UNION the fields Amazon's last preview flagged
@@ -1492,7 +1513,8 @@ function _fullDataInner(r){
         // text becomes an inline cell. Same editCell, same saveEdit.
         return dwCell({label: titles[full]||s.label,
                        ctrl: editCell(sku,"attr",full,val,(sHasEnum?s.enum:null),false,!sHasEnum),
-                       hint: sHint, prov: _prov&&_prov[full], flagged: !!isMissing});
+                       hint: sHint, prov: _prov&&_prov[full], flagged: !!isMissing,
+                       tag: _lvT(full,val), below: _lvB(full,val)});
       }).join("");
       // reqMark and nestNote are passed through as-is: they are the existing
       // spans with the existing tooltips, not re-worded here.
@@ -1529,6 +1551,7 @@ function _fullDataInner(r){
       req: isMissing || (isReq && !_flatSchemaOnly),
       softReq: _flatSchemaOnly,
       flagged: !!isMissing,
+      tag: _lvT(k, isMissing?"":a[k]), below: _lvB(k, isMissing?"":a[k]),
       del: {sku:sku, target:"attr", key:k, locked:isReq}
     });
   };
@@ -1714,6 +1737,11 @@ function _fullDataInner(r){
       + '<span class="dw2-count">'+(aKeys.length+missing.length)+' field(s)</span>',
         schemaDiag(r.product_type, nEnum, allAttrs.length, Object.keys(subs).length, missing, flagged, a)
       + ((typeof howWorks==="function")?howWorks('required_fields'):"")
+      // Where these values stand against Amazon's own, for a listing that IS on
+      // Amazon. Above the grid so "8 differ" is read before the fields, not
+      // discovered after scrolling through them. Empty for a listing that has
+      // never been submitted -- there is nothing live to compare it to.
+      + ((typeof lvBanner==="function") ? lvBanner(r) : "")
       + (hasAttrs ? dwGrid(attrRows) : '<div class="dw2-note">No attributes yet.</div>')
       + plainNoteBlock + reqNote + addCtrl
       + ((aKeys.length||missing.length)

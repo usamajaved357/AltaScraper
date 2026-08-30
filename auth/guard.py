@@ -288,15 +288,6 @@ RULES = [
     ("/input/delete",                   "approve_delete"),
     ("/input/clear",                    "approve_delete"),
 
-    # TEMPORARY -- goes with routes/admin_migrate_routes.py.
-    #
-    # Listed explicitly because the default for an unlisted GET is None, i.e.
-    # any signed-in user. This route rewrites every listing's status and deletes
-    # queue rows, so it takes the same permission /input/clear does. The query
-    # key on the route is a second factor, not the gate: it travels in the URL
-    # and therefore into logs and browser history.
-    ("/admin/migrate",                  "approve_delete"),
-
     # -- sales. The feature gate above already decides who may SEE any of it;
     #    pulling from Amazon is work, so it needs "edit" like other mutations.
     ("/sales/sync",                     "edit"),

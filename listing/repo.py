@@ -218,7 +218,20 @@ def locate(ws, sku, sku_headers=DEFAULT_SKU_HEADERS, headers=None):
         if norm(v) == target:
             return Located(row=i, headers=hdrs, sku_col=kcol)
 
-    return Located(headers=hdrs, sku_col=kcol, error="sku not found in sheet")
+    # NOT "not found in sheet". On the database backend -- which is every
+    # deployment now -- data/backend.make swaps _ws() for a SheetLikeStore over
+    # the listings table, so no spreadsheet is involved in this lookup at all.
+    #
+    # The old wording sent people to go and check a Google Sheet for a row that
+    # was never going to be there. It surfaced most visibly on the Image
+    # Library's "Use as main": that screen lists what the account SELLS (from
+    # the catalogue and orders), which is a different set from what this app has
+    # MADE, so picking a listing the app does not hold produced "sku not found
+    # in sheet" and an afternoon spent looking in the wrong place.
+    #
+    # Says what is true instead: this workspace has no listing with that SKU.
+    return Located(headers=hdrs, sku_col=kcol,
+                   error="no listing with this SKU in this workspace")
 
 
 # ---------------------------------------------------------------------------
