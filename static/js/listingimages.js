@@ -47,12 +47,19 @@ async function setMainImage(sku, url, opts){
       //
       // The old message was "sku not found in sheet", which named a spreadsheet
       // that is not involved on this backend and sent people to look in it.
+      // NO ROW IS NOT A FAILURE. It means the listing exists on Amazon and this
+      // app never made it -- so there is no draft to stage the image on, and
+      // the only place the change can go is Amazon itself. /listing/push_image
+      // needs no row: given an explicit image_url it patches
+      // main_product_image_locator on the live listing and touches no database.
+      //
+      // ASKED FIRST, BECAUSE THIS IS A DIFFERENT ACT. On a draft, "use as main"
+      // stages an image and sends nothing. Here it publishes, immediately, to a
+      // live shopfront. Those deserve different answers even behind one button,
+      // and a staging button that silently writes to Amazon is exactly the kind
+      // of surprise this app has been bitten by before.
       if(j && j.no_row){
-        toast("This listing is not held in " + (j.workspace || "this workspace")
-              + " — the app has no row for " + (j.sku || "it")
-              + ", so there is nothing to set the image on. It is on Amazon, but "
-              + "this app did not make it.");
-        return false;
+        return await _setMainOnAmazonOnly(sku, url, opts);
       }
       toast("Could not set the main image: " + ((j && j.error) || "unknown"));
       return false;
@@ -62,6 +69,62 @@ async function setMainImage(sku, url, opts){
     return true;
   }catch(e){
     toast("Could not set the main image: " + ((e && e.message) || e));
+    return false;
+  }
+}
+
+/* SET THE MAIN IMAGE ON A LISTING THIS APP DOES NOT HOLD.
+ *
+ * The Image Library lists what the account SELLS -- read from Amazon's
+ * catalogue and the order history -- while a draft's main image is a field on a
+ * row this app made. Those are different sets, and a listing created outside
+ * the app, or one whose row was deleted, is in the first and not the second.
+ *
+ * For those there is nothing to stage and nothing to adopt: the listing lives
+ * on Amazon, so the change goes to Amazon. /listing/push_image patches
+ * main_product_image_locator via patchListingsItem, and given an explicit
+ * image_url it reads no row and writes to no database -- one API call.
+ *
+ * The permission is Amazon's own gate plus the app's: the route requires
+ * `publish`, so a Lister who may stage images still cannot publish one.
+ */
+async function _setMainOnAmazonOnly(sku, url, opts){
+  opts = opts || {};
+  const mkt = (typeof WS_MARKET !== "undefined" && WS_MARKET !== "__all__")
+                ? WS_MARKET : "";
+  const ok = await uiConfirm(
+      "This listing is not held in this app — it is on Amazon and was made "
+    + "elsewhere.\n\nThere is no draft to update, so this sets the main image "
+    + "on the LIVE Amazon listing " + sku + " straight away.\n\n"
+    + "Amazon usually shows a new image within a few minutes.");
+  if(!ok) return false;
+  try{
+    const j = await (await fetch("/listing/push_image", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({confirmed:true, sku:sku, image_url:url,
+        marketplace:mkt,
+        id:(typeof CUR_ACCOUNT !== "undefined" && CUR_ACCOUNT && CUR_ACCOUNT.id) || ""})
+    })).json();
+    if(j && j.ok){
+      if(opts.quiet !== true){
+        toast("Sent to Amazon (" + (j.status || "accepted")
+              + ") — it is not stored here, because this app has no row for it.");
+      }
+      return true;
+    }
+    // Amazon's own words, not a generic failure. A refused patch usually says
+    // exactly what is wrong with the image or the listing.
+    const why = (j && j.issues && j.issues.length)
+      ? j.issues.map(function(i){ return i.message || i.code || ""; }).join("; ")
+      : ((j && j.error) || "unknown");
+    if(j && j.read_only){
+      toast("This workspace may not publish, so the image was not sent.");
+    }else{
+      toast("Amazon did not accept the image: " + why);
+    }
+    return false;
+  }catch(e){
+    toast("Could not send the image to Amazon: " + ((e && e.message) || e));
     return false;
   }
 }
