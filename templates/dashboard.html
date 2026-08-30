@@ -50,6 +50,10 @@
      drawer.css: everything in it sits inside .dw2-cell and borrows its
      spacing, and it reuses that file's literal palette on purpose. -->
 <link rel="stylesheet" href="/static/css/drawer_attributes.css?v={{ ASSET_V }}">
+<!-- The full-screen product page. AFTER drawer.css: it re-arranges that
+     file's own .dw2-* blocks and restyles .dw2-sec as the mockup's cards, so
+     the later file has to be the one that wins. -->
+<link rel="stylesheet" href="/static/css/pdp.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -604,6 +608,15 @@
       <div id="drawerscrim" class="drawerscrim" onclick="closeDrawer()"></div>
       <aside id="drawer" class="drawer"><div id="drawerbody"></div></aside>
     </div>
+
+    <!-- THE FULL-SCREEN PRODUCT PAGE.
+         A sibling of the sections, not an overlay: pdp.css hides the grid and
+         the .wspanel screens while body.pdp-on, so the sidebar keeps working
+         and nothing has to compute where it ends. It is deliberately NOT one
+         of the .wspanel sections -- those are switched by navTo and have an
+         address of the form /w/<ws>/<section>, and this one needs a SKU in its
+         address (/w/<ws>/listing/<sku>). pdp.js fills it. -->
+    <div id="pdp"></div>
 
     <!-- IMAGE REFS section -->
     <div id="sec_imagerefs" class="wspanel">
@@ -1996,6 +2009,11 @@
 <script src="/static/js/liststatus.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/listings.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/autofix.js?v={{ ASSET_V }}"></script>
+<!-- The full-screen product page. It arranges blocks the two files above
+     build (_fullDataParts, dwTitleParts, _dwWarnings) and defines none of its
+     own, so it loads after them -- the order on the page matching the order of
+     dependence, as with drawer.js. -->
+<script src="/static/js/pdp.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/genimage.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/howworks.js?v={{ ASSET_V }}"></script>

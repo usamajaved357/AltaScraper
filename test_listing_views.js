@@ -99,10 +99,15 @@ console.log("\n=== the actions a selection depends on are actually there ===");
  ["the overflow menu", /tileMenu\(/, acts]].forEach(function (t) {
   check("  " + t[0], t[1].test(t[2]), true);
 });
+// WHAT CHANGED, AND WHAT DID NOT. Clicking a card or a row still opens the
+// listing for editing -- that is what this pins, and it is unchanged. WHERE it
+// opens moved: openListing() sends it to the full-screen product page
+// (static/js/pdp.js), falling back to the drawer when that file has not loaded.
+// Both views are built from the same editors; see _fullDataParts in autofix.js.
 check("  edit: the card opens the editor when clicked",
-      /openDrawer\(/.test(card), true);
+      /openListing\(/.test(card), true);
 check("  edit: and so does the table row",
-      /openDrawer\(/.test(row), true);
+      /openListing\(/.test(row), true);
 check("  auto-fix: reachable once a listing is open",
       /autoFixLoop\(/.test(codeOnly(listings)), true);
 

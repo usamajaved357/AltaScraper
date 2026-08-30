@@ -76,11 +76,13 @@ function lvEnsure(r){
     LIVE_ATTRS[sku] = {state:"error", values:{}, multi:{}, content:{}, issues:[],
                        error: String((e && e.message) || e)};
   }).then(() => {
-    // Only redraw if this drawer is still the one on screen. Redrawing a
-    // drawer the user has already closed and reopened on another row would
-    // put one listing's values under another listing's name.
-    if(typeof DRAWER_SKU !== "undefined" && String(DRAWER_SKU) === sku
-       && typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);
+    // Only redraw if this SKU is still the one on screen -- in EITHER view.
+    // Redrawing one the user has already left would put one listing's values
+    // under another listing's name.
+    const onDrawer = (typeof DRAWER_SKU !== "undefined") && String(DRAWER_SKU) === sku;
+    const onPdp    = (typeof PDP_SKU !== "undefined") && String(PDP_SKU) === sku;
+    if(onDrawer && typeof _rebuildDrawerData === "function") _rebuildDrawerData(sku);
+    else if(onPdp && typeof pdpRebuild === "function") pdpRebuild(sku);
   });
 }
 

@@ -1135,6 +1135,13 @@ function _rebuildDrawerData(sku){
   const r=ROWS.find(x=>String(x.sku)===String(sku));
   const host=document.getElementById("fulldata_"+sid(sku));
   if(host && r){ host.innerHTML=fullData(r); setTimeout(()=>{ if(typeof bulletMeter==='function') bulletMeter(); }, 40); }
+  // THE SAME LISTING MAY BE OPEN FULL SCREEN INSTEAD. Every caller of this
+  // function -- deleting a field, adding an optional one, changing the product
+  // type, copying a value in from Amazon -- means "this listing's view is now
+  // stale", and that is true of whichever view is showing it. Routed through
+  // here rather than by teaching each of those callers about a second screen,
+  // which is how one of them gets forgotten (Rule 12).
+  if(typeof pdpRebuild === "function") pdpRebuild(sku);
 }
 // Delete/clear a field. Attributes -> the key is REMOVED; columns/content -> the cell
 // is blanked. `refresh` rebuilds the block so a deleted attribute row disappears.
@@ -1290,7 +1297,10 @@ const TITLE_OPTS = {
   indexNote: "fully indexed · highest weight",
   indexTip: "Title carries the most A10 search weight. Mobile shows ~70-80 chars, so put the most important words first."
 };
-function _fullDataInner(r){
+/* EVERY BLOCK THE DRAWER AND THE PRODUCT PAGE ARE BUILT FROM, computed once.
+ * Returns them by name; see the note above its return for why. The body is
+ * exactly what _fullDataInner's was -- this is a move, not a rewrite. */
+function _fullDataParts(r){
   const sku=r.sku;
   const sc=SCHEMAS[r.product_type]||{opts:{},req:[],attrs:[],subs:{},titles:{}};
   const enums=sc.opts||{}, reqList=sc.req||[], allAttrs=sc.attrs||[];
@@ -1747,14 +1757,32 @@ function _fullDataInner(r){
       + ((aKeys.length||missing.length)
           ? `<button class="dw2-remember" onclick="saveDefault('${esc(sku)}','${esc(r.product_type)}',this)"><i class="ti ti-star"></i> Remember these as defaults for all ${esc(r.product_type||"this type")} listings</button>`
           : ""));
-  return secHighlights + secBullets + secSearch + secDesc + secImages
-    + secIdentity + secAttrs
-    // The compliance verdicts, Amazon's own messages, the live mirror and A+
-    // content -- folded, each labelled with its verdict. They are rendered
-    // HERE rather than by the drawer shell so that _rebuildDrawerData(),
-    // reloadSchemaNow() and the run queue, all of which replace only this
-    // block, cannot quietly drop them.
-    + ((typeof _dwVerdictFolds === "function") ? _dwVerdictFolds(r) : "")
+  /* THE BLOCKS, NAMED -- AND THE DRAWER'S ORDER AS ONE ARRANGEMENT OF THEM.
+   *
+   * This used to be a single `return a + b + c + ...`, which was right while the
+   * drawer was the only thing that wanted them. The full-screen product page
+   * (static/js/pdp.js) wants the SAME blocks in a different arrangement: the
+   * copy in a left column, the context in a right one, the attributes full
+   * width underneath.
+   *
+   * The one thing that must not happen is a second set of builders. Every block
+   * here carries real behaviour -- the byte budget that de-indexes a listing one
+   * byte over 249, the title's 27 Jul 2026 cap, the required stars, the nested
+   * sub-field boxes, the live-vs-Amazon tags, saveEdit's single write path. A
+   * copy of those on a second screen would be a copy that drifts, and the drift
+   * would be invisible until one screen let something through that the other
+   * stopped (CLAUDE.md Rule 12).
+   *
+   * So NOTHING above this line changed. The blocks are handed back by name, and
+   * each screen decides only where to put them.
+   */
+  const folds =
+      // The compliance verdicts, Amazon's own messages, the live mirror and A+
+      // content -- folded, each labelled with its verdict. They are rendered
+      // HERE rather than by the drawer shell so that _rebuildDrawerData(),
+      // reloadSchemaNow() and the run queue, all of which replace only this
+      // block, cannot quietly drop them.
+      ((typeof _dwVerdictFolds === "function") ? _dwVerdictFolds(r) : "")
     + dwFold("AI image generation",
         '<span class="dw2-tag info"><i class="ti ti-sparkles"></i> generate</span>', genBlock)
     + (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
@@ -1770,6 +1798,17 @@ function _fullDataInner(r){
             <pre class="raw payloadraw" id="pl_${sidv}">${esc(String(r.api_payload))}</pre>
             <button class="linkbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('pl_${sidv}').textContent);toast&&toast('Payload copied')">Copy payload</button>`)
        : "" );
+  return {highlights: secHighlights, bullets: secBullets, search: secSearch,
+          desc: secDesc, images: secImages, identity: secIdentity,
+          attrs: secAttrs, folds: folds};
+}
+
+/* The drawer's arrangement: one column, in the order it has always been in.
+ * The same string _fullDataInner returned before the split, block for block. */
+function _fullDataInner(r){
+  const p = _fullDataParts(r);
+  return p.highlights + p.bullets + p.search + p.desc + p.images
+       + p.identity + p.attrs + p.folds;
 }
 var AISET=null;
 async function loadAISettings(){
