@@ -31,6 +31,9 @@
      read as three different products. Loaded AFTER dashboard.css because it
      supersedes the blocks removed from it in the same commit. -->
 <link rel="stylesheet" href="/static/css/datatable.css?v={{ ASSET_V }}">
+<!-- The generator progress panel. Loads after dashboard.css because every
+     colour in it is one of that file's tokens. -->
+<link rel="stylesheet" href="/static/css/genui.css?v={{ ASSET_V }}">
 <!-- What is genuinely the Repricer's alone: the sparkline, the stacked bar, the
      supplier table, the rules pills, the chart and the detail panel. -->
 <link rel="stylesheet" href="/static/css/repricer.css?v={{ ASSET_V }}">
@@ -583,7 +586,12 @@
         <button id="rh_why" class="rh_why" style="display:none"
                 onclick="whyStuck()">Why is it stuck?</button>
       </div>
-      <pre id="log"></pre>
+      <!-- The generator's progress, rendered. genui.js fills this while a run
+         streams; the <pre> below is the old raw terminal, kept as the fallback
+         for when genui.js has not loaded (it is hidden while the panel is in
+         use, and the raw text is still available folded inside the panel). -->
+    <div id="genui"></div>
+    <pre id="log"></pre>
       <!-- Where the "these are samples" bar goes, above the listings rather than
      inside the grid: the grid is rewritten on every render and filter, and a
      warning that disappears when you click a filter is worse than none. -->
@@ -1990,6 +1998,10 @@
 <!-- PPC analytics. Its own file: ppc.js is the campaign builder and the agent,
      and shares no code with it (CLAUDE.md Rule 7). -->
 <script src="/static/js/ppcview.js?v={{ ASSET_V }}"></script>
+<!-- The generator progress panel. BEFORE submit.js, which calls genuiStart /
+     genuiLine / genuiEnd from its EventSource handler and falls back to the raw
+     <pre> if this file has not defined them. -->
+<script src="/static/js/genui.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/submit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/runqueue.js?v={{ ASSET_V }}"></script>
 <!-- After a submit, re-check Amazon at 5 and 10 minutes and warn at 15, instead of

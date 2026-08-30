@@ -1,17 +1,37 @@
 // ---- Per-listing Preview / Submit ----
 function _streamRun(url, doneMsg){
   if(ES){toast("A run is already streaming");return;}
+  // THE CONNECTION STAYS HERE. Only the rendering moved to genui.js, so there
+  // is still exactly one place in the app that opens a run stream (Rule 12).
+  //
+  // The old <pre> of raw stdout is gone. genuiLine() parses each line into the
+  // count, the current product, its step badges and the finished list; the raw
+  // text is still kept, folded away inside that panel, because a generator
+  // failing in an unforeseen way prints something no parser expects and the
+  // failure mode of dropping it is silence.
+  const hasUI = (typeof genuiStart === "function")
+             && !!document.getElementById("genui");
   let log=document.getElementById("log");
-  if(log){ log.style.display="block"; log.textContent=""; }
+  if(hasUI){
+    if(log) log.style.display="none";          // the terminal panel steps aside
+    genuiStart();
+  }else if(log){
+    log.style.display="block"; log.textContent="";
+  }
   ES=new EventSource(url);
   ES.onmessage=e=>{
+    if(hasUI){ genuiLine(e.data); return; }
     if(!log) return;
     const cls=e.data.startsWith("[start]")?"start":e.data.startsWith("[done]")?"done":"l";
     const div=document.createElement("div"); div.className=cls; div.textContent=e.data;
     log.appendChild(div); log.scrollTop=log.scrollHeight;
   };
-  ES.addEventListener("end",()=>{ES.close();ES=null;loadRows();toast(doneMsg||"Done");});
-  ES.onerror=()=>{if(ES){ES.close();ES=null;loadRows();}};
+  ES.addEventListener("end",()=>{ES.close();ES=null;
+    if(hasUI && typeof genuiEnd==="function") genuiEnd();
+    loadRows();toast(doneMsg||"Done");});
+  ES.onerror=()=>{if(ES){ES.close();ES=null;
+    if(hasUI && typeof genuiEnd==="function") genuiEnd();
+    loadRows();}};
 }
 function _runPanel(sku){
   const p=document.getElementById("runpanel_"+sid(sku));
