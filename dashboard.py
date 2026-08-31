@@ -4413,6 +4413,12 @@ def build_app(backend=None):
                           _parse_listings_report=_parse_listings_report,
                           _resolve_cogs=_resolve_cogs, _state=_state,
                           _APLUS_CACHE=_APLUS_CACHE, _APLUS_TTL=_APLUS_TTL)
+    # The figures beside a listing in the detailed view. Reads the local tables
+    # on every request and only calls Amazon for the two things they do not
+    # hold -- see routes/metrics_routes.py.
+    import routes.metrics_routes as _metrics_routes
+    _metrics_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state)
     import routes.dash_auth_routes as _dash_auth_routes
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes
