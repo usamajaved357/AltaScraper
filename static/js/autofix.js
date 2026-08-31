@@ -1311,6 +1311,9 @@ function _fullDataParts(r){
   // table this replaced -- drawn as the design's label-left / value-right rows
   // instead of a <table class="kv">. dwFieldRow/dwRo are presentation only
   // (static/js/drawer.js); every editable one still comes out of editCell().
+  // SPLIT IN TWO, because the product page has an Identity tab and an Offer
+  // tab. Same thirteen rows, same controls, same order -- the join below is
+  // what the drawer shows, and it is the identical string it was.
   const idRows=[
     dwFieldRow("Product type", productTypeCell(sku, r), {hint:"Amazon-assigned from the catalogue. Changing it can cause rejection."}),
     dwFieldRow("SKU", dwRo(r.sku)),
@@ -1319,6 +1322,8 @@ function _fullDataParts(r){
     dwFieldRow("Category", dwRo((r.category||r.amazon_category||"")+(r.subcategory?(" › "+r.subcategory):""))),
     dwFieldRow("Browse node(s)", dwRo((r.attributes||{}).recommended_browse_nodes||(r.attributes||{}).browse_node||"")),
     dwFieldRow("Barcode / GTIN", editCell(sku,"col","UPC",r.barcode)),
+  ].join("");
+  const offerRows=[
     (function(){
        // Currency follows the ACTIVE workspace marketplace (reliable), with a
        // per-row override if the row itself carries a marketplace.
@@ -1737,11 +1742,15 @@ function _fullDataParts(r){
    * Nothing was dropped to get here. Every block below existed before; the
    * only ones that changed shape are the ones the design draws differently.
    */
-  const secIdentity = dwSection("Identity and offer",
-      (r.product_type
+  const _ptTag = r.product_type
         ? '<span class="dw2-tag info" title="Amazon assigned this product type from its catalogue. Changing it can cause rejection.">'+esc(r.product_type)+'</span>'
-        : '<span class="dw2-tag warn">no product type</span>'),
-      idRows);
+        : '<span class="dw2-tag warn">no product type</span>';
+  // The drawer keeps ONE "Identity and offer" section, exactly as before. The
+  // product page shows the two halves as separate tabs, so they are also
+  // handed back apart -- built once either way.
+  const secIdentity = dwSection("Identity and offer", _ptTag, idRows + offerRows);
+  const secIdentityOnly = dwSection("Identity", _ptTag, idRows);
+  const secOfferOnly = dwSection("Offer", "", offerRows);
   const secAttrs = dwSection("Attributes",
       (nFix ? '<span class="dw2-tag danger"><i class="ti ti-alert-triangle"></i> '+nFix+' flagged by Amazon</span>' : "")
       + '<span class="dw2-count">'+(aKeys.length+missing.length)+' field(s)</span>',
@@ -1776,13 +1785,20 @@ function _fullDataParts(r){
    * So NOTHING above this line changed. The blocks are handed back by name, and
    * each screen decides only where to put them.
    */
-  const folds =
-      // The compliance verdicts, Amazon's own messages, the live mirror and A+
-      // content -- folded, each labelled with its verdict. They are rendered
-      // HERE rather than by the drawer shell so that _rebuildDrawerData(),
-      // reloadSchemaNow() and the run queue, all of which replace only this
-      // block, cannot quietly drop them.
-      ((typeof _dwVerdictFolds === "function") ? _dwVerdictFolds(r) : "")
+  // The compliance verdicts, Amazon's own messages, the live mirror and A+
+  // content -- folded, each labelled with its verdict. They are rendered HERE
+  // rather than by the drawer shell so that _rebuildDrawerData(),
+  // reloadSchemaNow() and the run queue, all of which replace only this block,
+  // cannot quietly drop them.
+  //
+  // Split into the two groups _dwVerdictFoldParts makes, because the product
+  // page has a Compliance tab and the live mirror is not a compliance verdict.
+  // The drawer joins them straight back together, in the order it had.
+  const _vf = (typeof _dwVerdictFoldParts === "function")
+    ? _dwVerdictFoldParts(r)
+    : {compliance: ((typeof _dwVerdictFolds === "function") ? _dwVerdictFolds(r) : ""), mirror: ""};
+  const toolFolds =
+      _vf.mirror
     + dwFold("AI image generation",
         '<span class="dw2-tag info"><i class="ti ti-sparkles"></i> generate</span>', genBlock)
     + (milesBlock ? dwFold("Miles template", "", milesBlock) : "")
@@ -1798,9 +1814,34 @@ function _fullDataParts(r){
             <pre class="raw payloadraw" id="pl_${sidv}">${esc(String(r.api_payload))}</pre>
             <button class="linkbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('pl_${sidv}').textContent);toast&&toast('Payload copied')">Copy payload</button>`)
        : "" );
+  const folds = _vf.compliance + toolFolds;
   return {highlights: secHighlights, bullets: secBullets, search: secSearch,
           desc: secDesc, images: secImages, identity: secIdentity,
-          attrs: secAttrs, folds: folds};
+          attrs: secAttrs, folds: folds,
+          compliance: _vf.compliance, tools: toolFolds,
+          // The same two halves of "Identity and offer", apart, for the product
+          // page's tabs. Not extra content -- the same rows, grouped.
+          identityOnly: secIdentityOnly, offerOnly: secOfferOnly,
+          // The "+ Show N more field(s) / add optional…" picker, on its own so
+          // the product page's Attributes tab can put it under the table. It is
+          // the same control the drawer's grid carries, built once.
+          addCtrl: addCtrl,
+          // THE ATTRIBUTE DECISIONS, HANDED OUT RATHER THAN RE-DERIVED.
+          //
+          // Which keys to show, which Amazon requires, which its last Preview
+          // flagged, what its allowed values are, which are nested and where a
+          // value came from -- all of that is worked out above, and it is the
+          // hard part. The product page draws the same attributes as a Seller
+          // Central style table (yours beside Amazon's) instead of a grid of
+          // cells. That is a second PRESENTER, not a second set of decisions:
+          // it reads this model and calls the same editCell() and the same
+          // lvVerdict(), so a field the drawer marks required cannot be
+          // unmarked here, and neither view can drift from the other about
+          // what Amazon is asking for (CLAUDE.md Rule 12).
+          attrModel: {sku: sku, a: a, aKeys: aKeys, missing: missing,
+                      enums: enums, reqList: reqList, allAttrs: allAttrs,
+                      titles: titles, flagged: flagged, subs: subsView,
+                      prov: _prov, addable: addable, productType: r.product_type}};
 }
 
 /* The drawer's arrangement: one column, in the order it has always been in.
