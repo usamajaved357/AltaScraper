@@ -59,12 +59,26 @@
 }
 
 /* ---- 1. THE OVERLAY ----------------------------------------------------
-   Fixed, over everything, with its own scroll. The listings grid stays in the
-   DOM underneath -- untouched, not re-rendered -- which is what makes going
-   back free. `left:0` rather than starting after the sidebar: this is the
-   full-screen surface the brief asks for, and the way out is the back link.
 
-   Slides in from the right, like the drawer, at 100% instead of 30%. */
+   IT LAYERS OVER THE LISTINGS PAGE. IT DOES NOT REPLACE IT.
+
+       "a separate page should not be opened like it is opened right now, a
+        page should appear on the same screen while the all listing page is
+        shown to me under it."
+
+   It was a solid, edge-to-edge surface, which is indistinguishable from having
+   navigated away -- nothing of the list you came from was left on screen. Now
+   #pdp is a translucent BACKDROP over the whole viewport and .pdp is a panel
+   inset within it, so the listings page stays visible around and behind it and
+   the overlay reads as something on top of that page rather than instead of it.
+
+   The grid underneath was never re-rendered or unmounted before and still is
+   not -- that is what makes going back free. What changed is only that you can
+   now SEE it is still there.
+
+   Clicking the backdrop closes the panel, the way every other layer in this app
+   behaves; pdp.js wires that, and only for a click that lands on the backdrop
+   itself rather than inside the panel. */
 /* THE z-index IS 78, AND IT IS CHOSEN, NOT PICKED.
  *
  * The app's layers, read off the stylesheets:
@@ -88,21 +102,54 @@
 #pdp{
   display:none;
   position:fixed; inset:0; z-index:78;
-  background:var(--pdp-bg); color:var(--pdp-ink2);
+  background:rgba(10,10,14,.62);        /* the page below shows through this */
+  color:var(--pdp-ink2);
   overflow-y:auto; overflow-x:hidden;
-  transform:translateX(2.5%); opacity:0;
-  transition:transform .16s ease-out, opacity .16s ease-out;
+  /* The gap at the top is where the listings page stays visible. It is also
+     the click target that closes the panel. */
+  padding:38px 0 0;
+  opacity:0; transition:opacity .16s ease-out;
 }
-#pdp.in{ transform:none; opacity:1; }
+#pdp.in{ opacity:1; }
 
-/* Nothing behind it should scroll while it is open. */
+/* THE PANEL. Inset from the backdrop so the page behind is visible around it,
+   and tall enough that it is still the thing you are working in. */
+.pdp{
+  font-size:13px;
+  width:min(1240px, 94vw);
+  margin:0 auto;
+  min-height:calc(100vh - 38px);
+  background:var(--pdp-bg);
+  border:1px solid var(--pdp-line);
+  border-bottom:0;
+  border-radius:12px 12px 0 0;
+  box-shadow:0 -10px 48px rgba(0,0,0,.55);
+  transform:translateY(10px);
+  transition:transform .16s ease-out;
+}
+#pdp.in .pdp{ transform:none; }
+
+/* The sticky bars sit at the panel's rounded top, so they have to match it or
+   the corners show a square edge over a round one. */
+.pdp-top{ border-radius:11px 11px 0 0; }
+
+/* Nothing behind it should scroll while it is open -- the panel has its own. */
 body.pdp-on{ overflow:hidden; }
 
 @media (prefers-reduced-motion:reduce){
-  #pdp{ transition:none; transform:none; }
+  #pdp, .pdp{ transition:none; }
+  .pdp{ transform:none; }
 }
 
-.pdp{ font-size:13px; min-height:100%; }
+/* On a phone there is no room to show the page behind, and a 94vw panel with a
+   38px gap is just a worse full screen. It takes the lot. */
+@media (max-width:700px){
+  #pdp{ padding:0; background:var(--pdp-bg); }
+  .pdp{
+    width:100%; min-height:100vh; border:0; border-radius:0; box-shadow:none;
+  }
+  .pdp-top{ border-radius:0; }
+}
 
 /* ---- 2. TOP BAR -------------------------------------------------------- */
 .pdp-top{
@@ -138,26 +185,20 @@ body.pdp-on{ overflow:hidden; }
 .pdp-hero{
   background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line); padding:24px 0;
 }
-/* THE WIDTHS ARE THE OVERLAY'S, NOT THE MOCKUP'S.
+/* THE MOCKUP'S OWN WIDTHS. Kept, deliberately.
  *
- * The mockup centred everything in 900/1100/720px columns, which is right for a
- * page in a browser window and wrong here: this is a full-screen overlay, so on
- * a normal monitor those caps left most of the screen empty either side and the
- * editors cramped in the middle --
+ * These were briefly widened to fill the screen, which was the wrong reading of
+ * the complaint -- the empty space came from the panel being full-bleed, not
+ * from the columns being narrow:
  *
- *     "The PDP overlay has too much empty space. The content column is too
- *      narrow -- it's not using the full width of the overlay."
+ *     "you have stretched the pdp page, i dont wanted it to be stretched, the
+ *      previous format was alright"
  *
- * So the hero, the tabs and the content fill the overlay, held off the edges by
- * padding rather than by a centring cap. --pdp-max is a single ceiling for the
- * three of them, generous enough to fill any ordinary screen and present only
- * so that a 34-inch ultrawide does not stretch a line of description to two
- * thousand pixels, which is its own kind of unreadable. */
-#pdp{ --pdp-max:1900px; --pdp-pad:24px; }
-
+ * So the hero, the layout and the content are the mockup's 900 / 1100 / 720
+ * again, centred. Do not widen them without asking. */
 .pdp-hero-in{
-  max-width:var(--pdp-max); margin:0 auto; display:flex; gap:24px;
-  align-items:flex-start; padding:0 var(--pdp-pad);
+  max-width:900px; margin:0 auto; display:flex; gap:24px;
+  align-items:flex-start; padding:0 24px;
 }
 .pdp-heroimg{
   width:120px; height:120px; border-radius:8px; background:#2a2a35;
@@ -209,19 +250,12 @@ body.pdp-on{ overflow:hidden; }
 .pdp-tab.active{ color:var(--pdp-ink); border-bottom-color:var(--pdp-accent); }
 
 /* ---- 5. LAYOUT --------------------------------------------------------- */
-.pdp-layout{
-  display:flex; max-width:var(--pdp-max); margin:0 auto; gap:0;
-  align-items:flex-start; padding:0 var(--pdp-pad);
-}
-/* Narrower than the mockup's 180px and with less padding: it holds four short
-   check chips and three links, so the space it was taking was space the
-   editors wanted. */
+.pdp-layout{ display:flex; max-width:1100px; margin:0 auto; gap:0; align-items:flex-start; }
 .pdp-side{
-  width:164px; flex-shrink:0; padding:20px 14px 20px 0;
+  width:180px; flex-shrink:0; padding:20px 16px;
   border-right:1px solid var(--pdp-line2);
 }
-/* No cap. This is the column the work happens in, and it takes what is left. */
-.pdp-content{ flex:1; min-width:0; padding:24px 0 24px 28px; }
+.pdp-content{ flex:1; min-width:0; padding:24px 32px; max-width:720px; }
 
 .pdp-sbsec{ margin-bottom:20px; }
 .pdp-sblabel{
@@ -254,8 +288,7 @@ body.pdp-on{ overflow:hidden; }
 /* One column under 1000px: a rail beside a table leaves the table narrower than
    the values in it. The rail's items stay reachable as a wrapping row. */
 @media (max-width:1000px){
-  #pdp{ --pdp-pad:14px; }
-  .pdp-layout{ flex-direction:column; padding:0; }
+  .pdp-layout{ flex-direction:column; }
   .pdp-side{
     width:auto; border-right:0; border-bottom:1px solid var(--pdp-line2);
     display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 16px;
@@ -263,7 +296,7 @@ body.pdp-on{ overflow:hidden; }
   .pdp-sbsec{ margin-bottom:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .pdp-sblabel{ margin-bottom:0; }
   .pdp-sbbtn{ width:auto; margin-bottom:0; }
-  .pdp-content{ padding:16px; width:100%; }
+  .pdp-content{ padding:16px; max-width:none; width:100%; }
 }
 
 /* ---- 6. FIELDS --------------------------------------------------------- */
@@ -314,7 +347,7 @@ body.pdp-on{ overflow:hidden; }
 }
 .pdp-err b{ color:var(--pdp-danger); }
 .pdp-errmsg{ font-size:12px; color:#ffb3b3; margin:6px 0 8px; }
-.pdp-body{ max-width:var(--pdp-max); margin:0 auto; }
+.pdp-body{ max-width:900px; margin:0 auto; }
 
 /* ---- 7. THE ATTRIBUTES TABLE ------------------------------------------- */
 .pdp-asum{
@@ -349,18 +382,13 @@ body.pdp-on{ overflow:hidden; }
 .pdp-at tr.flagged td{ background:#2a1a1a; }
 .pdp-c1{ width:24px; text-align:center; }
 .pdp-c5{ width:44px; }
-/* Sized for the full-width column. These were 160/220/140px when the content
-   column was capped at 720px; at that size a material list or a warranty
-   string was ellipsised with half the screen empty beside it. The field name
-   stays narrow (they are short), and the two VALUE columns take the room --
-   they are what you came to read. */
 .pdp-aname{
-  color:var(--pdp-ink3); width:22%; max-width:260px; overflow:hidden;
+  color:var(--pdp-ink3); max-width:160px; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;
 }
-.pdp-aval{ color:var(--pdp-ink2); font-weight:500; min-width:140px; }
+.pdp-aval{ color:var(--pdp-ink2); font-weight:500; min-width:120px; max-width:220px; }
 .pdp-aamz{
-  color:var(--pdp-dim); max-width:32%; overflow:hidden;
+  color:var(--pdp-dim); max-width:140px; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap; font-style:italic;
 }
 .pdp-ai{ font-weight:600; font-size:11px; }
