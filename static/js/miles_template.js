@@ -1653,15 +1653,15 @@ Margin = profit ÷ price · ROI = profit ÷ cost"><span title="Share of the sale
     ${rowSelectBox({sku: it.sku||''}, 'tilesel')}
     <!-- CLICKING THE CARD OPENS THE LISTING.
          "we can directly edit the listing by clicking on the product card"
-         A draft card opens the drawer. This card has no draft to open -- it is
-         Amazon's own catalogue row -- so it opens the same editor its own
-         Optimize button does, which pulls the live listing from Amazon so it
-         can be rewritten and pushed back. Same gesture, same result, whichever
+         openLiveListing (listings.js) decides where: the full-screen product
+         page when this app holds a row for the SKU, exactly as a draft card
+         does, and optimizeLive when it does not -- some catalogue rows were
+         never made here and have nothing local to open. Same gesture, whichever
          kind of card is under the cursor. -->
     <div class="tileimg ${it.asin?'':'noimg'}" style="cursor:pointer"
-         onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')">${imgHtml}</div>
+         onclick="openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')">${imgHtml}</div>
     <div class="tilebody" style="cursor:pointer"
-         onclick="optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')">
+         onclick="openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')">
       <div class="tiletitle">${esc(it.title)||'<span class="cc">(no title in report)</span>'}</div>
       <div class="tilemeta">${_priceCell(
           {sku: it.sku, title: it.title,

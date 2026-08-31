@@ -413,6 +413,74 @@ ctx.pdpRebuild(SKU);
 truthy("its own rebuild redraws", el("pdp").innerHTML.indexOf("<TITLE-EDITOR>") >= 0);
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+console.log("\na LIVE listing opens the product page, not the old modal");
+// ---------------------------------------------------------------------------
+truthy("openLiveListing decides where a live row goes",
+       /function openLiveListing\(asin, sku\)/.test(LISTINGS));
+truthy("  and both live row builders call it",
+       /openLiveListing\('\$\{esc\(it\.asin/.test(LISTINGS));
+const MILES = fs.readFileSync("static/js/miles_template.js", "utf8");
+check("  including the live TILE, in miles_template.js",
+      (MILES.match(/openLiveListing\('/g) || []).length, 2);
+// No ROW handler may still go straight to the modal. Row handlers are the ones
+// built from a live catalogue item (`it.`); the BUTTONS that offer the modal on
+// purpose -- the drawer's "Optimize live copy" and the product page's sidebar --
+// are built from `r`/ownAsin and must survive, because the brief keeps them:
+// "The old modal can stay as an option inside the PDP".
+check("no live ROW opens optimizeLive directly",
+      /onclick="optimizeLive\('\$\{esc\(it\./.test(LISTINGS + MILES), false);
+truthy("but the deliberate button still does",
+       /onclick="optimizeLive\('\$\{esc\(ownAsin\)/.test(LISTINGS));
+truthy("a SKU this app has a row for goes to the product page",
+       /known && typeof pdpOpen === "function"[\s\S]{0,40}pdpOpen\(s\)/.test(LISTINGS));
+truthy("  and one it does not still opens optimizeLive, so nothing is lost",
+       /if\(typeof optimizeLive === "function"\)[\s\S]{0,60}optimizeLive\(asin/.test(LISTINGS));
+truthy("optimizeLive is still reachable from inside the product page",
+       /optimizeLive\(/.test(PDPJS));
+
+// Exercised, not just grepped.
+let wentTo = "";
+globalThis.optimizeLive = (a, s) => { wentTo = "modal:" + s; };
+vm.runInContext(
+  "function openLiveListing(asin, sku){"
+  + "  const s = String(sku || '');"
+  + "  const known = s && typeof ROWS !== 'undefined' && ROWS.some(r => String(r.sku) === s);"
+  + "  if(known && typeof pdpOpen === 'function'){ pdpOpen(s); return; }"
+  + "  if(typeof optimizeLive === 'function'){ optimizeLive(asin || '', s); return; }"
+  + "}", ctx);
+globalThis.ROWS = [ROW];
+ctx.openLiveListing("B0H8VHDX8B", SKU);
+check("a known SKU opened the product page", ctx.pdpIsOpen(), true);
+check("  and not the modal", wentTo, "");
+ctx.pdpClose();
+ctx.openLiveListing("B0OTHER", "A_SKU_WITH_NO_ROW");
+check("an unknown SKU fell through to the modal", wentTo, "modal:A_SKU_WITH_NO_ROW");
+check("  and did not open an empty product page", ctx.pdpIsOpen(), false);
+
+// ---------------------------------------------------------------------------
+console.log("\nthe overlay fills its width instead of a narrow centred column");
+// ---------------------------------------------------------------------------
+const capOf = re => { const m = re.exec(PDPCSS); return m ? m[1] : null; };
+truthy("one ceiling is declared for the three columns",
+       /--pdp-max:\s*\d+px/.test(PDPCSS));
+check("the content column has no width cap of its own",
+      /\.pdp-content\{[^}]*max-width:\s*\d+px/.test(PDPCSS), false);
+check("the hero uses the shared ceiling",
+      capOf(/\.pdp-hero-in\{[^}]*max-width:\s*([^;]+);/), "var(--pdp-max)");
+check("so does the layout",
+      capOf(/\.pdp-layout\{[^}]*max-width:\s*([^;]+);/), "var(--pdp-max)");
+// The mockup's three narrow caps must be gone.
+[["720px", "the content column"], ["1100px", "the layout"], ["900px", "the hero"]]
+  .forEach(function(t){
+    check("  no " + t[0] + " cap left (" + t[1] + ")",
+          PDPCSS.indexOf("max-width:" + t[0]) >= 0, false);
+  });
+truthy("the rail is narrower than it was", /\.pdp-side\{[^}]*width:164px/.test(PDPCSS));
+truthy("and the attribute columns take the extra room",
+       /\.pdp-aval\{[^}]*min-width:140px/.test(PDPCSS)
+       && !/\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS));
+
 console.log("\nthe rebuild path reaches both views");
 // ---------------------------------------------------------------------------
 truthy("_rebuildDrawerData also refreshes the product page",

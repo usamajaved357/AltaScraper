@@ -2786,10 +2786,12 @@ function liveTableRow(it){
   // Hold, Delete and Auto-fix split the selection first (splitByDraft) and say
   // which ones they left alone, rather than reporting them as failures.
   //
-  // THE ROW STILL OPENS THE LISTING, like every other row on this screen:
-  // optimizeLive pulls the live listing down from Amazon into the editor.
+  // THE ROW STILL OPENS THE LISTING, like every other row on this screen.
   //     "we can directly edit the listing by clicking on the product card"
-  const _open = `optimizeLive('${esc(it.asin||'')}','${esc(it.sku||'')}')`;
+  // openLiveListing sends it to the full-screen product page when this app has
+  // a row for the SKU, and to optimizeLive when it does not -- see that
+  // function for why both are needed.
+  const _open = `openLiveListing('${esc(it.asin||'')}','${esc(it.sku||'')}')`;
   return `<tr style="cursor:pointer" title="${esc(it.title||'')}"
               data-sku="${esc(it.sku||'')}"
               class="${SELECTED.has(String(it.sku||'')) ? 'rowon' : ''}"
@@ -3215,6 +3217,39 @@ async function applyRewrite(sku, i){
 function openListing(sku){
   if(typeof pdpOpen === "function"){ pdpOpen(sku); return; }
   openDrawer(sku);
+}
+
+/* CLICKING A ROW IN THE LIVE VIEW.
+ *
+ * A live listing opens the full-screen product page, the same as a draft --
+ * asked for directly:
+ *
+ *     "When I click a LIVE listing row, it should open the same full-screen
+ *      PDP overlay that drafts use."
+ *
+ * WITH ONE FALLBACK THAT IS NOT OPTIONAL. The live view is the account's
+ * catalogue as Amazon holds it, and some of those listings have no row in this
+ * app at all -- they were made in Seller Central, or by another tool, or their
+ * draft was deleted. The product page is built from a row: pdpOpen() looks the
+ * SKU up in ROWS and refuses when it is not there. Sending every live click
+ * straight to it would leave those listings unopenable, which is worse than
+ * what they had.
+ *
+ * So: a listing this app knows opens the product page; one it does not still
+ * opens optimizeLive(), which exists precisely to pull a listing down from
+ * Amazon when there is nothing local to show. Nothing is taken away.
+ *
+ * optimizeLive stays reachable from inside the product page as well -- it is
+ * the "Optimize live copy" action in the sidebar -- because the Custom AI
+ * Rewrite and Diagnose features live there and are worth keeping.
+ */
+function openLiveListing(asin, sku){
+  const s = String(sku || "");
+  const known = s && typeof ROWS !== "undefined"
+                && ROWS.some(r => String(r.sku) === s);
+  if(known && typeof pdpOpen === "function"){ pdpOpen(s); return; }
+  if(typeof optimizeLive === "function"){ optimizeLive(asin || "", s); return; }
+  if(s) openListing(s);
 }
 
 function openDrawer(sku, jumpGen){
