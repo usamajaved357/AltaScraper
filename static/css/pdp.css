@@ -138,9 +138,26 @@ body.pdp-on{ overflow:hidden; }
 .pdp-hero{
   background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line); padding:24px 0;
 }
+/* THE WIDTHS ARE THE OVERLAY'S, NOT THE MOCKUP'S.
+ *
+ * The mockup centred everything in 900/1100/720px columns, which is right for a
+ * page in a browser window and wrong here: this is a full-screen overlay, so on
+ * a normal monitor those caps left most of the screen empty either side and the
+ * editors cramped in the middle --
+ *
+ *     "The PDP overlay has too much empty space. The content column is too
+ *      narrow -- it's not using the full width of the overlay."
+ *
+ * So the hero, the tabs and the content fill the overlay, held off the edges by
+ * padding rather than by a centring cap. --pdp-max is a single ceiling for the
+ * three of them, generous enough to fill any ordinary screen and present only
+ * so that a 34-inch ultrawide does not stretch a line of description to two
+ * thousand pixels, which is its own kind of unreadable. */
+#pdp{ --pdp-max:1900px; --pdp-pad:24px; }
+
 .pdp-hero-in{
-  max-width:900px; margin:0 auto; display:flex; gap:24px;
-  align-items:flex-start; padding:0 24px;
+  max-width:var(--pdp-max); margin:0 auto; display:flex; gap:24px;
+  align-items:flex-start; padding:0 var(--pdp-pad);
 }
 .pdp-heroimg{
   width:120px; height:120px; border-radius:8px; background:#2a2a35;
@@ -192,12 +209,19 @@ body.pdp-on{ overflow:hidden; }
 .pdp-tab.active{ color:var(--pdp-ink); border-bottom-color:var(--pdp-accent); }
 
 /* ---- 5. LAYOUT --------------------------------------------------------- */
-.pdp-layout{ display:flex; max-width:1100px; margin:0 auto; gap:0; align-items:flex-start; }
+.pdp-layout{
+  display:flex; max-width:var(--pdp-max); margin:0 auto; gap:0;
+  align-items:flex-start; padding:0 var(--pdp-pad);
+}
+/* Narrower than the mockup's 180px and with less padding: it holds four short
+   check chips and three links, so the space it was taking was space the
+   editors wanted. */
 .pdp-side{
-  width:180px; flex-shrink:0; padding:20px 16px;
+  width:164px; flex-shrink:0; padding:20px 14px 20px 0;
   border-right:1px solid var(--pdp-line2);
 }
-.pdp-content{ flex:1; min-width:0; padding:24px 32px; max-width:720px; }
+/* No cap. This is the column the work happens in, and it takes what is left. */
+.pdp-content{ flex:1; min-width:0; padding:24px 0 24px 28px; }
 
 .pdp-sbsec{ margin-bottom:20px; }
 .pdp-sblabel{
@@ -227,10 +251,11 @@ body.pdp-on{ overflow:hidden; }
 .pdp-ck:hover{ filter:brightness(1.12); }
 .pdp-ck i{ font-size:12px; }
 
-/* One column under 1000px: a 180px rail beside a table is narrower than the
-   values in it. The rail's items stay reachable as a wrapping row. */
+/* One column under 1000px: a rail beside a table leaves the table narrower than
+   the values in it. The rail's items stay reachable as a wrapping row. */
 @media (max-width:1000px){
-  .pdp-layout{ flex-direction:column; }
+  #pdp{ --pdp-pad:14px; }
+  .pdp-layout{ flex-direction:column; padding:0; }
   .pdp-side{
     width:auto; border-right:0; border-bottom:1px solid var(--pdp-line2);
     display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 16px;
@@ -238,7 +263,7 @@ body.pdp-on{ overflow:hidden; }
   .pdp-sbsec{ margin-bottom:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .pdp-sblabel{ margin-bottom:0; }
   .pdp-sbbtn{ width:auto; margin-bottom:0; }
-  .pdp-content{ padding:16px; max-width:none; width:100%; }
+  .pdp-content{ padding:16px; width:100%; }
 }
 
 /* ---- 6. FIELDS --------------------------------------------------------- */
@@ -289,7 +314,7 @@ body.pdp-on{ overflow:hidden; }
 }
 .pdp-err b{ color:var(--pdp-danger); }
 .pdp-errmsg{ font-size:12px; color:#ffb3b3; margin:6px 0 8px; }
-.pdp-body{ max-width:900px; margin:0 auto; }
+.pdp-body{ max-width:var(--pdp-max); margin:0 auto; }
 
 /* ---- 7. THE ATTRIBUTES TABLE ------------------------------------------- */
 .pdp-asum{
@@ -324,13 +349,18 @@ body.pdp-on{ overflow:hidden; }
 .pdp-at tr.flagged td{ background:#2a1a1a; }
 .pdp-c1{ width:24px; text-align:center; }
 .pdp-c5{ width:44px; }
+/* Sized for the full-width column. These were 160/220/140px when the content
+   column was capped at 720px; at that size a material list or a warranty
+   string was ellipsised with half the screen empty beside it. The field name
+   stays narrow (they are short), and the two VALUE columns take the room --
+   they are what you came to read. */
 .pdp-aname{
-  color:var(--pdp-ink3); max-width:160px; overflow:hidden;
+  color:var(--pdp-ink3); width:22%; max-width:260px; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap;
 }
-.pdp-aval{ color:var(--pdp-ink2); font-weight:500; min-width:120px; max-width:220px; }
+.pdp-aval{ color:var(--pdp-ink2); font-weight:500; min-width:140px; }
 .pdp-aamz{
-  color:var(--pdp-dim); max-width:140px; overflow:hidden;
+  color:var(--pdp-dim); max-width:32%; overflow:hidden;
   text-overflow:ellipsis; white-space:nowrap; font-style:italic;
 }
 .pdp-ai{ font-weight:600; font-size:11px; }

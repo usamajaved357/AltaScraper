@@ -159,9 +159,15 @@ truthy("  it stops the row's own click",
 truthy("  and the live tile linked it already", "_dpUrl(it.asin)" in MT)
 
 print("\n== clicking a card opens the listing, whichever kind of card ==")
-truthy("a live tile opens the live editor", "onclick=\"optimizeLive(" in MT)
+# WHERE IT OPENS MOVED; THAT IT OPENS DID NOT. A live row now goes through
+# openLiveListing (listings.js), which sends it to the full-screen product page
+# when this app holds a row for the SKU and to optimizeLive when it does not --
+# some catalogue rows were never made here and have nothing local to show.
+truthy("a live tile opens the listing", "onclick=\"openLiveListing(" in MT)
 truthy("a live table row does too",
-       "const _open = `optimizeLive(" in LJ)
+       "const _open = `openLiveListing(" in LJ)
+truthy("  and the live editor is still the fallback for a row we do not have",
+       "optimizeLive(asin || \"\", s)" in LJ)
 falsy("  and no longer renders itself un-clickable",
       '<tr style="cursor:default"' in LJ)
 
