@@ -99,9 +99,11 @@ check("four dashes in Performance", (perf.match(/lr-dash/g) || []).length, 4);
 check("  and no zeros",             /">0</.test(perf), false);
 
 console.log("\n  ...and once filled, the values appear");
+// The field names are the ones /listing/live_metrics really returns -- see
+// domain/listing_metrics.py and routes/metrics_routes.py.
 LM()[LIVE.sku] = {sales:342, units:14, views:89, rank:24810,
                   on_hand:3, available:3, inbound:0, reserved:0,
-                  buybox:true, lowest_price:"23.99"};
+                  buybox_pct:100, buy_box_price:"23.99", offer_count:4};
 const perf2 = ctx.lrPerf(LIVE);
 truthy("sales",  perf2.indexOf("£342") >= 0);
 truthy("units",  perf2.indexOf(">14<") >= 0);
@@ -111,20 +113,27 @@ const inv2 = ctx.lrInv(LIVE);
 truthy("on-hand", inv2.indexOf(">3<") >= 0);
 truthy("a real zero inbound is shown as 0", inv2.indexOf(">0<") >= 0);
 const pr2 = ctx.lrPricing(LIVE);
-truthy("the buy box when we hold it", pr2.indexOf("Featured offer") >= 0);
-truthy("the lowest price when known", pr2.indexOf("£23.99") >= 0);
+truthy("the buy box when we held it all window", pr2.indexOf("Featured offer") >= 0);
+truthy("the market price when known", pr2.indexOf("£23.99") >= 0);
+truthy("and how many offers there are", pr2.indexOf(">4<") >= 0);
 
 console.log("\n  ...zero stock is called out in red");
 LM()[LIVE.sku].on_hand = 0; LM()[LIVE.sku].available = 0;
 const inv3 = ctx.lrInv(LIVE);
 check("on-hand 0 is red", (inv3.match(/lr-data-val red/g) || []).length, 2);
 
-console.log("\n  ...and losing the buy box is stated, not left blank");
-LM()[LIVE.sku].buybox = false;
-truthy("not winning", ctx.lrPricing(LIVE).indexOf("Not winning") >= 0);
-LM()[LIVE.sku].buybox = undefined;
-check("but an UNKNOWN buy box says nothing at all — it is not 'not winning'",
-      /Not winning|Featured offer/.test(ctx.lrPricing(LIVE)), false);
+console.log("\n  ...the buy box is a SHARE of the window, and is not dressed as a live yes/no");
+LM()[LIVE.sku].buybox_pct = 0;
+truthy("never held -> not winning", ctx.lrPricing(LIVE).indexOf("Not winning") >= 0);
+LM()[LIVE.sku].buybox_pct = 52.73;
+const partial = ctx.lrPricing(LIVE);
+check("held for part of it is NOT reported as winning",
+      partial.indexOf("Featured offer") >= 0, false);
+check("  nor as losing", partial.indexOf("Not winning") >= 0, false);
+truthy("  it says what the share actually was", partial.indexOf("53% of views") >= 0);
+LM()[LIVE.sku].buybox_pct = undefined;
+check("and an UNKNOWN buy box says nothing at all — it is not 'not winning'",
+      /Not winning|Featured|% of views/.test(ctx.lrPricing(LIVE)), false);
 delete LM()[LIVE.sku];
 
 // ---------------------------------------------------------------------------
@@ -213,6 +222,49 @@ truthy("the detailed stylesheet is loaded", TPL.indexOf("listrow_detailed.css") 
 truthy("and the renderer",                  TPL.indexOf("listrow_detailed.js") >= 0);
 truthy("the card grid's layout is switched off for it",
        /detailedview|view === "detailed"/.test(LISTINGS));
+
+// ---------------------------------------------------------------------------
+console.log("\nthe view says where its numbers came from and how fresh they are");
+// ---------------------------------------------------------------------------
+check("nothing ever fetched -> no age claim at all", ctx.lrAgo(0), "");
+check("seconds ago",  ctx.lrAgo(Date.now()/1000 - 10), "just now");
+check("minutes ago",  ctx.lrAgo(Date.now()/1000 - 600), "10 minutes ago");
+check("one hour is singular", ctx.lrAgo(Date.now()/1000 - 3700), "1 hour ago");
+check("hours ago",    ctx.lrAgo(Date.now()/1000 - 7200), "2 hours ago");
+check("days ago",     ctx.lrAgo(Date.now()/1000 - 3*86400), "3 days ago");
+
+vm.runInContext("LR_COVERAGE = {days:30, sales_days:30, sales_last:'2026-08-30',"
+                + " stock_last:'2026-08-23'};"
+                + "LR_LAST_FETCH = " + (Date.now()/1000 - 7200) + "; LR_ERRORS = {};", ctx);
+const bar = ctx.lrMetricsBar();
+truthy("the window it covers",        bar.indexOf("30 days") >= 0);
+truthy("when the stock was counted",  bar.indexOf("2026-08-23") >= 0);
+truthy("when Amazon was last asked",  bar.indexOf("2 hours ago") >= 0);
+truthy("and a way to ask again",      bar.indexOf("lrRefreshMetrics()") >= 0);
+
+console.log("\n  ...a PARTLY reported window is not passed off as a full one");
+vm.runInContext("LR_COVERAGE = {days:30, sales_days:4, sales_last:'2026-08-30'};", ctx);
+const partBar = ctx.lrMetricsBar();
+truthy("it says how many days it really had", partBar.indexOf("4 of 30 days") >= 0);
+truthy("and marks it",                        partBar.indexOf("lr-mb-part") >= 0);
+
+console.log("\n  ...Amazon refusing is REPORTED, never shown as 'there is none'");
+vm.runInContext("LR_ERRORS = {rank:'403 Forbidden — role not granted'};", ctx);
+const errBar = ctx.lrMetricsBar();
+truthy("the group that failed",  errBar.indexOf("rank") >= 0);
+truthy("the reason",             errBar.indexOf("403 Forbidden") >= 0);
+truthy("and that the rest is still this app's own record",
+       errBar.indexOf("this app’s own records") >= 0);
+vm.runInContext("LR_ERRORS = {};", ctx);
+
+console.log("\n  ...a page render never calls Amazon; only Refresh does");
+truthy("the loader defaults to the local-only form",
+       /if\(force\) url \+= "&fetch=1"/.test(SRC));
+check("  and detailedBlock does not force a fetch",
+      /lrLoadMetrics\(rows\)/.test(SRC), true);
+truthy("  while the refresh button does",  /lrLoadMetrics\(rows, true\)/.test(SRC));
+truthy("the same SKU set is not asked for twice",
+       /key === LR_ASKED/.test(SRC));
 
 console.log("\n%d failed", fails);
 process.exit(fails ? 1 : 0);

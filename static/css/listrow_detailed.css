@@ -125,6 +125,34 @@
 .lr-buybox i{ font-size:12px; }
 .lr-buybox.win{ color:var(--ok); }
 .lr-buybox.lose{ color:var(--red); }
+/* Held the featured slot for SOME of the window -- neither a win nor a loss,
+   and drawn as neither. */
+.lr-buybox.part{ color:var(--warn); }
+
+/* ---- 5. WHERE THE NUMBERS CAME FROM, AND HOW FRESH -------------------- */
+.lr-mbar{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:10.5px; color:var(--ink3); margin:0 0 8px; padding:0 2px;
+}
+.lr-mb-bits{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.lr-mb-dot{ color:var(--line2); }
+.lr-mb-load{ color:var(--accent2); }
+/* A window Amazon only partly reported. Marked, because a "30 day" total built
+   from four days looks identical to a real one. */
+.lr-mb-part{ color:var(--warn); cursor:help; }
+.lr-mb-btn{
+  margin-left:auto; background:none; border:1px solid var(--line2);
+  border-radius:5px; color:var(--ink2); font-family:inherit; font-size:10.5px;
+  padding:3px 9px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;
+}
+.lr-mb-btn:hover{ background:var(--panel2); color:var(--ink); }
+.lr-mb-btn i{ font-size:12px; }
+.lr-mb-err{
+  font-size:10.5px; color:var(--warn); background:var(--warn-bg);
+  border:1px solid var(--warn-line); border-radius:6px;
+  padding:6px 10px; margin:0 0 8px; line-height:1.5;
+}
+.lr-mb-err i{ font-size:12px; }
 
 /* ---- 5. THE ROW MENU ---------------------------------------------------
    rowActions() renders the app's existing .acts markup; it is compacted here

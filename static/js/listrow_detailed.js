@@ -30,12 +30,119 @@
  * does not have and so does this -- a dash is honest, a zero is a claim.
  */
 
-/* sku -> {sales, units, views, rank, rank_category, on_hand, available,
- *         inbound, reserved, buybox, lowest_price, fetched_at}
- * Filled in Phase 2. Every field is optional; anything absent draws as "--". */
+/* sku -> whatever /listing/live_metrics knew about it. Every field is optional;
+ * anything absent draws as "--". */
 let LISTING_METRICS = {};
+let LR_COVERAGE = {};        // how many days the window could actually speak for
+let LR_LAST_FETCH = 0;       // epoch seconds of the newest cached SP-API answer
+let LR_ERRORS = {};          // {group: why} when Amazon refused
+let LR_LOADING = false;
+let LR_ASKED = "";           // the SKU set already requested, so we ask once
 
 function lrMetrics(sku){ return LISTING_METRICS[String(sku)] || null; }
+
+/* ASK FOR THE NUMBERS, ONCE PER SET OF ROWS.
+ *
+ * Called from the renderer, so the view fetches only when it is actually being
+ * looked at -- switching to the table or the cards costs nothing.
+ *
+ * WITHOUT fetch=1 by default. That form reads this app's own database and never
+ * calls Amazon, so it is fast and free and works with SP-API down. `force`
+ * adds fetch=1 and is what the Refresh button sends; a page render must never
+ * spend a catalogue call per listing.
+ */
+async function lrLoadMetrics(rows, force){
+  const skus = (rows || []).map(r => String(r.sku)).filter(Boolean);
+  if(!skus.length) return;
+  const key = skus.slice().sort().join(",");
+  if(!force && (LR_LOADING || key === LR_ASKED)) return;
+  LR_ASKED = key; LR_LOADING = true;
+  try{
+    // A cap matching the route's own, so the URL cannot grow past what a
+    // server will accept on a large catalogue.
+    const ask = skus.slice(0, 400);
+    let url = "/listing/live_metrics?skus=" + encodeURIComponent(ask.join(","));
+    if(force) url += "&fetch=1";
+    const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
+    if(j && j.ok){
+      LISTING_METRICS = j.metrics || {};
+      LR_COVERAGE = j.coverage || {};
+      LR_LAST_FETCH = j.last_updated || 0;
+      LR_ERRORS = j.errors || {};
+    } else {
+      LR_ERRORS = {all: (j && j.error) || "could not read the metrics"};
+    }
+  }catch(e){
+    LR_ERRORS = {all: String((e && e.message) || e)};
+  }finally{
+    LR_LOADING = false;
+    if(typeof render === "function") render();
+  }
+}
+
+/* The Refresh button: throw the cached Amazon answers away and ask again. */
+async function lrRefreshMetrics(){
+  if(typeof toast === "function") toast("Refreshing metrics from Amazon…");
+  try{
+    await fetch("/listing/metrics_forget", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify((typeof acctBody === "function") ? acctBody({}) : {})});
+  }catch(e){}
+  const rows = (typeof ROWS !== "undefined") ? ROWS : [];
+  await lrLoadMetrics(rows, true);
+  const bad = Object.keys(LR_ERRORS || {});
+  if(typeof toast === "function"){
+    toast(bad.length ? ("Amazon refused: " + LR_ERRORS[bad[0]]) : "Metrics updated");
+  }
+}
+
+/* "2 hours ago", or "" when nothing has ever been fetched. */
+function lrAgo(epochSeconds){
+  const t = Number(epochSeconds || 0);
+  if(!t) return "";
+  const s = Math.max(0, Math.floor(Date.now()/1000 - t));
+  if(s < 90) return "just now";
+  const m = Math.floor(s/60);
+  if(m < 60) return m + " minute" + (m === 1 ? "" : "s") + " ago";
+  const h = Math.floor(m/60);
+  if(h < 48) return h + " hour" + (h === 1 ? "" : "s") + " ago";
+  return Math.floor(h/24) + " days ago";
+}
+
+/* The line above the rows: where these numbers came from and how fresh.
+ *
+ * It says what the window ACTUALLY covered, not what was asked for -- a "last
+ * 30 days" total built from four days of data is not one, and there is no way
+ * to tell by looking at it. */
+function lrMetricsBar(){
+  const cov = LR_COVERAGE || {};
+  const bits = [];
+  if(LR_LOADING) bits.push('<span class="lr-mb-load">reading…</span>');
+  if(cov.sales_days != null && cov.days){
+    bits.push(cov.sales_days >= cov.days
+      ? ('sales &amp; traffic: ' + cov.days + ' days')
+      : ('<span class="lr-mb-part" title="Amazon has only reported ' + cov.sales_days
+         + ' of the last ' + cov.days + ' days. The totals cover what exists, not the full window.">'
+         + 'sales &amp; traffic: ' + cov.sales_days + ' of ' + cov.days + ' days</span>'));
+  }
+  if(cov.stock_last) bits.push('stock as of ' + esc(cov.stock_last));
+  const ago = lrAgo(LR_LAST_FETCH);
+  if(ago) bits.push('Amazon figures: ' + esc(ago));
+
+  const errs = Object.keys(LR_ERRORS || {});
+  const errHtml = errs.length
+    ? '<div class="lr-mb-err"><i class="ti ti-alert-triangle"></i> Amazon did not answer for '
+      + errs.map(esc).join(", ") + ' — <span class="lr-dim">'
+      + esc(String(LR_ERRORS[errs[0]]).slice(0, 160)) + '</span>. The figures below are '
+      + 'this app’s own records; the missing ones show as dashes.</div>'
+    : "";
+
+  return '<div class="lr-mbar">'
+    + '<span class="lr-mb-bits">' + bits.join(' <span class="lr-mb-dot">·</span> ') + '</span>'
+    + '<button class="lr-mb-btn" onclick="lrRefreshMetrics()" title="Ask Amazon again for sales rank, competitive price and FBA stock. The rest is read from this app’s own database and is always current.">'
+    + '<i class="ti ti-refresh"></i> Refresh metrics</button>'
+    + '</div>' + errHtml;
+}
 
 /* A number, or the dash Amazon uses when it has none. NEVER a zero standing in
  * for "unknown" -- "0 units sold" and "we have not looked" are different facts
@@ -160,6 +267,27 @@ function lrInv(r){
 
 /* Pricing. Price, cost and profit come off the row and are known NOW; the buy
  * box and the lowest price come from Amazon and wait for Phase 2. */
+/* DID WE WIN THE BUY BOX?
+ *
+ * buy_box_pct is Amazon's own figure: the share of page views over the window
+ * during which our offer held the featured slot. It is NOT "are we winning
+ * right now", and the two must not be dressed as the same thing -- 52% over a
+ * month says something quite different from a live yes.
+ *
+ * So: a full 100% is reported as holding it, a flat 0% as not, and anything in
+ * between is shown as the percentage it actually is. Absent stays absent.
+ */
+function lrBuyBox(m){
+  const p = (m || {}).buybox_pct;
+  if(p === null || p === undefined) return "";
+  if(p >= 99.5)
+    return '<div class="lr-buybox win" title="Amazon reported our offer in the featured slot for effectively all of the window."><i class="ti ti-circle-check"></i> Featured offer</div>';
+  if(p <= 0.5)
+    return '<div class="lr-buybox lose" title="Amazon reported our offer was never in the featured slot over the window."><i class="ti ti-circle-x"></i> Not winning</div>';
+  return '<div class="lr-buybox part" title="The share of page views over the window during which our offer held the featured slot. Not a live reading.">'
+       + '<i class="ti ti-circle-half-2"></i> Featured ' + Math.round(p) + '% of views</div>';
+}
+
 function lrPricing(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
@@ -168,17 +296,18 @@ function lrPricing(r){
   const pnum  = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
-  let box = "";
-  if(m.buybox === true)  box = '<div class="lr-buybox win"><i class="ti ti-circle-check"></i> Featured offer</div>';
-  else if(m.buybox === false) box = '<div class="lr-buybox lose"><i class="ti ti-circle-x"></i> Not winning</div>';
-
   return '<span class="lr-pricing">'
     + lrDataRow("Price",  price ? esc(cur + price) : lrVal(null))
     + lrDataRow("Cost",   cost ? esc(cost) : lrVal(null))
     + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
-    + box
-    + (m.lowest_price != null
-        ? lrDataRow("Lowest", esc(cur + m.lowest_price)) : "")
+    + lrBuyBox(m)
+    // What the market charges NOW, from getCompetitivePricing -- a different
+    // question from listings.buy_box_price, which is the competitor's price
+    // captured when the listing was generated and may be months old.
+    + (m.buy_box_price != null
+        ? lrDataRow("Market", esc(cur + m.buy_box_price)) : "")
+    + (m.offer_count != null
+        ? lrDataRow("Offers", lrVal(m.offer_count)) : "")
     + '</span>';
 }
 
@@ -222,6 +351,12 @@ function detailedHead(rows){
 /* A block of listings in this view: one header, then the rows. */
 function detailedBlock(rows){
   if(!rows || !rows.length) return "";
-  return '<div class="card lrwrap">' + detailedHead(rows)
+  // Ask for the numbers the first time this view draws a given set of rows.
+  // Not awaited: the rows are drawn now with whatever is known, and the fetch
+  // re-renders when it lands. A local read is quick, but the screen should not
+  // wait on it either way.
+  lrLoadMetrics(rows);
+  return lrMetricsBar()
+       + '<div class="card lrwrap">' + detailedHead(rows)
        + rows.map(detailedRow).join("") + '</div>';
 }
