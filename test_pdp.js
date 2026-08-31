@@ -459,27 +459,48 @@ check("an unknown SKU fell through to the modal", wentTo, "modal:A_SKU_WITH_NO_R
 check("  and did not open an empty product page", ctx.pdpIsOpen(), false);
 
 // ---------------------------------------------------------------------------
-console.log("\nthe overlay fills its width instead of a narrow centred column");
+console.log("\nit LAYERS OVER the listings page rather than replacing it");
 // ---------------------------------------------------------------------------
-const capOf = re => { const m = re.exec(PDPCSS); return m ? m[1] : null; };
-truthy("one ceiling is declared for the three columns",
-       /--pdp-max:\s*\d+px/.test(PDPCSS));
-check("the content column has no width cap of its own",
-      /\.pdp-content\{[^}]*max-width:\s*\d+px/.test(PDPCSS), false);
-check("the hero uses the shared ceiling",
-      capOf(/\.pdp-hero-in\{[^}]*max-width:\s*([^;]+);/), "var(--pdp-max)");
-check("so does the layout",
-      capOf(/\.pdp-layout\{[^}]*max-width:\s*([^;]+);/), "var(--pdp-max)");
-// The mockup's three narrow caps must be gone.
-[["720px", "the content column"], ["1100px", "the layout"], ["900px", "the hero"]]
-  .forEach(function(t){
-    check("  no " + t[0] + " cap left (" + t[1] + ")",
-          PDPCSS.indexOf("max-width:" + t[0]) >= 0, false);
-  });
-truthy("the rail is narrower than it was", /\.pdp-side\{[^}]*width:164px/.test(PDPCSS));
-truthy("and the attribute columns take the extra room",
-       /\.pdp-aval\{[^}]*min-width:140px/.test(PDPCSS)
-       && !/\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS));
+//     "a separate page should not be opened like it is opened right now, a page
+//      should appear on the same screen while the all listing page is shown to
+//      me under it."
+//
+// The distinguishing property is that the page below is still VISIBLE: a solid
+// edge-to-edge surface is indistinguishable from having navigated away.
+const capOf = re => { const m = re.exec(PDPCSS); return m ? m[1].trim() : null; };
+// The rule that DECLARES the layer -- not the `#pdp{ --pdp-*: ... }` block at
+// the top of the file, which only defines colour tokens and matches first.
+const pdpRule = capOf(/#pdp\{([^}]*position:fixed[^}]*)\}/);
+truthy("the backdrop covers the viewport", /position:fixed;\s*inset:0/.test(pdpRule));
+truthy("  but is TRANSLUCENT, so the page below shows through",
+       /background:\s*rgba\([^)]*?,\s*\.?\d/.test(pdpRule));
+check("  and is not a solid fill", /background:var\(--pdp-bg\)/.test(pdpRule), false);
+truthy("  with a gap at the top where that page stays visible",
+       /padding:\s*38px/.test(pdpRule));
+
+const panel = capOf(/\n\.pdp\{([\s\S]*?)\}/);
+truthy("the panel is inset from the backdrop, not edge to edge",
+       /width:min\(/.test(panel));
+truthy("  and reads as a layer: rounded, bordered, raised",
+       /border-radius/.test(panel) && /box-shadow/.test(panel));
+truthy("clicking the page behind closes it", /host\.onclick = function/.test(PDPJS));
+truthy("  but only a click on the backdrop itself, not inside the panel",
+       /ev\.target === host/.test(PDPJS));
+truthy("  and the handler is cleared on close, so reopening cannot stack one",
+       /host\.onclick = null/.test(PDPJS));
+truthy("a phone still gets the whole screen — there is no room to show a page behind",
+       /@media \(max-width:700px\)[\s\S]{0,200}#pdp\{[^}]*padding:0/.test(PDPCSS));
+
+console.log("\n  ...and the column widths are the mockup's, NOT stretched");
+//     "you have stretched the pdp page, i dont wanted it to be stretched, the
+//      previous format was alright"
+check("the hero is 900",    capOf(/\.pdp-hero-in\{[^}]*max-width:\s*([^;]+);/), "900px");
+check("the layout is 1100", capOf(/\.pdp-layout\{[^}]*max-width:\s*([^;]+);/), "1100px");
+check("the content is 720", capOf(/\.pdp-content\{[^}]*max-width:\s*([^;]+);/), "720px");
+check("the rail is back to 180", /\.pdp-side\{[^}]*width:180px/.test(PDPCSS), true);
+check("no full-bleed ceiling variable is left", /--pdp-max/.test(PDPCSS), false);
+check("the attribute columns are the mockup's again",
+      /\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS), true);
 
 console.log("\nthe rebuild path reaches both views");
 // ---------------------------------------------------------------------------

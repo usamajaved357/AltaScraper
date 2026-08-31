@@ -69,7 +69,16 @@ function pdpOpen(sku){
   if(typeof closeDrawer === "function"){ try{ closeDrawer(); }catch(e){} }
 
   const host = document.getElementById("pdp");
-  if(host) host.style.display = "block";
+  if(host){
+    host.style.display = "block";
+    // CLICKING THE PAGE BEHIND CLOSES THE PANEL, which is how every other
+    // layer in this app behaves and the reason the listings page is left
+    // visible at all. Only a click that lands on the BACKDROP itself counts --
+    // ev.target === host -- so a click anywhere inside the panel, including on
+    // its own padding, does nothing. Assigned rather than added, so re-opening
+    // cannot stack a second listener.
+    host.onclick = function(ev){ if(ev.target === host) pdpClose(); };
+  }
   document.body.classList.add("pdp-on");
   pdpRender();
   // The slide-in is a class added on the next frame, so the browser has a
@@ -104,6 +113,7 @@ function pdpClose(){
     host.classList.remove("in");
     host.style.display = "none";
     host.innerHTML = "";
+    host.onclick = null;
   }
   document.body.classList.remove("pdp-on");
   if(typeof altaSyncUrl === "function") altaSyncUrl();
