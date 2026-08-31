@@ -1,168 +1,385 @@
 /* ============================================================================
-   THE FULL-SCREEN PRODUCT DETAIL PAGE
+   THE FULL-SCREEN LISTING EDITOR (overlay)
    ============================================================================
 
-   Layout is pdp-mockup.html's: a top bar, then ~60/40 columns (copy left,
-   context right), then the attributes full width underneath.
+   Layout is docspdp-seller-central-layout.html's: top bar, product hero, tab
+   row, then a 180px left rail beside a ~720px content column.
 
-   IT MUST LOAD AFTER drawer.css. Almost everything on this page is a drawer
-   block -- .dw2-sec, .dw2-grid, .dw2-cell, .dw2-fold, .dw2-edit -- rendered by
-   the same builders the drawer uses. This file only re-arranges them.
+   IT MUST LOAD AFTER drawer.css. Most of what appears inside the tabs is a
+   drawer block -- .dw2-sec, .dw2-grid, .dw2-edit, .dw2-fold -- rendered by the
+   same builders the drawer uses. This file re-arranges them and restyles their
+   containers.
 
-   WHY THE MOCKUP'S TOKENS ARE NOT USED, AND WHAT THEY BECAME
+   ── COLOURS ARE TOKENS, DEFINED ONCE, HERE ──────────────────────────────────
 
-   The mockup names --surface-0/1/2, --border, --radius, --text-secondary /
-   -muted / -accent / -success / -danger / -warning, --bg-success / -warning /
-   -danger, --fill-accent, --on-accent, --border-accent and --font-mono. This
-   app has none of them. It could not simply borrow dashboard.css's tokens
-   either: the drawer was deliberately taken OUT of the app's teal palette (the
-   decision is recorded at the top of drawer.css, 29 Aug 2026) and drawn in
-   listing-editor-lighter's literal hexes. Since this page is made of those
-   blocks, it has to be in their palette or the cards and their contents would
-   disagree. So the mockup's tokens map onto drawer.css's own values:
+   The brief asks for the app's CSS variables rather than hardcoded colours.
+   Taken literally that would mean dashboard.css's tokens -- and those would
+   repaint this page in the app's TEAL accent (--accent:#2dd4a8), which is not
+   what the mockup draws and not what the rest of this listing editor is in:
+   the drawer was deliberately taken out of that palette on 29 Aug 2026 (the
+   decision is recorded at the top of drawer.css) and drawn in
+   listing-editor-lighter's blues. This page is made of drawer blocks, so
+   borrowing the app's teal would leave every card disagreeing with its own
+   contents.
 
-       --surface-0   #17171b    --text-secondary  #c8c7cc
-       --surface-1   #232330    --text-muted      #6a6974
-       --surface-2   #1e1e24    --text-accent     #85B7EB
-       --border      #3a3a45    --text-success    #5DCAA5  bg #16281f
-       --radius      6px        --text-warning    #EF9F27  bg #2b2115
-       card radius   12px       --text-danger     #F09595  bg #2a1a1a
-       --fill-accent #3b7dd4    --on-accent       #eeedf0
+   So the intent is honoured rather than the letter: the mockup's colours are
+   declared ONCE as --pdp-* tokens below and referenced by var() everywhere
+   else, so there is a single place to retheme and nothing is scattered. The
+   values are the mockup's own, which are drawer.css's family.
 
-   EVERY CLASS IS PREFIXED pdp-, for the reason drawer.css prefixes dw2-.
+   EVERY CLASS IS PREFIXED pdp-, for the reason drawer.css prefixes dw2-:
+   dashboard.css already owns short names like .tab, .field, .content, .side,
+   .hero and .checks, and a bare name here would repaint the app behind it.
    ========================================================================= */
 
-/* ---- 1. THE PAGE ------------------------------------------------------
-   Not a fixed overlay. It is a sibling of the section panels inside the same
-   content column, so the sidebar keeps working and none of this has to
-   re-derive where the sidebar ends. The grid is hidden rather than unmounted,
-   which is what makes going back free -- see PDP_BACK_SCROLL in pdp.js for the
-   one piece of state that hiding does destroy. */
-#pdp{ display:none; }
-body.pdp-on #sec_listings{ display:none !important; }
-body.pdp-on .wspanel{ display:none !important; }
+#pdp{
+  /* surfaces */
+  --pdp-bg:#1a1a20;          /* the page under everything */
+  --pdp-panel:#222230;       /* top bar, hero, tab row */
+  --pdp-raise:#262630;       /* inputs, bullet cards, image tiles */
+  --pdp-line:#33333d;        /* borders */
+  --pdp-line2:#2a2a35;       /* quieter rules */
+  --pdp-edge:#3a3a48;        /* control borders */
+  /* text */
+  --pdp-ink:#eeedf0;         /* headings, values in focus */
+  --pdp-ink2:#c8c7cc;        /* body */
+  --pdp-ink3:#8a8992;        /* labels */
+  --pdp-dim:#6a6974;         /* captions */
+  --pdp-faint:#555560;       /* placeholders */
+  /* accents */
+  --pdp-accent:#3b7dd4;      /* the blue that marks the active thing */
+  --pdp-link:#6ea8ff;        /* links and "use" affordances */
+  --pdp-ok:#5DCAA5;          /* agrees / passed */
+  --pdp-okbg:#08504120;
+  --pdp-warn:#EF9F27;        /* disagrees / attention */
+  --pdp-warnbg:#41240220;
+  --pdp-danger:#F09595;      /* required, failing, over a cap */
+  --pdp-dangerbg:#50131320;
+  --pdp-green:#1a8c6e;       /* submit, LIVE */
+}
 
-.pdp{ color:#c8c7cc; font-size:13px; }
+/* ---- 1. THE OVERLAY ----------------------------------------------------
+   Fixed, over everything, with its own scroll. The listings grid stays in the
+   DOM underneath -- untouched, not re-rendered -- which is what makes going
+   back free. `left:0` rather than starting after the sidebar: this is the
+   full-screen surface the brief asks for, and the way out is the back link.
 
-/* ---- 2. TOP BAR ------------------------------------------------------- */
+   Slides in from the right, like the drawer, at 100% instead of 30%. */
+/* THE z-index IS 78, AND IT IS CHOSEN, NOT PICKED.
+ *
+ * The app's layers, read off the stylesheets:
+ *
+ *     10-40   page chrome -- app bar, sticky toolbars
+ *     60-65   the chat FAB, the mobile sheet
+ *     70-75   the drawer scrim and the drawer
+ *  -> 78      THIS: over the page and over the drawer
+ *     80      the toast -- "Saved ✓" after every edit on this page
+ *     85      the tile menu -- what the More button opens
+ *     90-200  the image library, Image Studio, the palette
+ *     1200    the run queue panel -- Preview/Submit progress
+ *     9550+   uiConfirm and the inline dialogs
+ *
+ * A big round number like 1400 would have put this OVER all of those, and the
+ * things it covered are precisely the ones that must appear on top of it: the
+ * save confirmation for every field, the More menu, the Image Library it
+ * opens, and the confirm dialog that guards "fill from Amazon". Sitting at 78
+ * means every one of them still floats above, and dashboard.css needs no
+ * change at all. */
+#pdp{
+  display:none;
+  position:fixed; inset:0; z-index:78;
+  background:var(--pdp-bg); color:var(--pdp-ink2);
+  overflow-y:auto; overflow-x:hidden;
+  transform:translateX(2.5%); opacity:0;
+  transition:transform .16s ease-out, opacity .16s ease-out;
+}
+#pdp.in{ transform:none; opacity:1; }
+
+/* Nothing behind it should scroll while it is open. */
+body.pdp-on{ overflow:hidden; }
+
+@media (prefers-reduced-motion:reduce){
+  #pdp{ transition:none; transform:none; }
+}
+
+.pdp{ font-size:13px; min-height:100%; }
+
+/* ---- 2. TOP BAR -------------------------------------------------------- */
 .pdp-top{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:12px; flex-wrap:wrap;
-  padding:12px 0; border-bottom:1px solid #3a3a45; margin:0 0 16px;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:8px 24px; background:var(--pdp-panel);
+  border-bottom:1px solid var(--pdp-line);
+  position:sticky; top:0; z-index:3;
 }
-.pdp-topl,.pdp-topr{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-
+.pdp-spacer{ flex:1; }
 .pdp-back{
-  display:inline-flex; align-items:center; gap:6px;
-  font-family:inherit; font-size:13px; color:#c8c7cc; cursor:pointer;
-  background:none; border:1px solid #3a3a45; padding:6px 14px; border-radius:6px;
+  font-size:12px; color:var(--pdp-link); cursor:pointer;
+  display:flex; align-items:center; gap:4px; text-decoration:none;
 }
-.pdp-back:hover{ background:#232330; color:#eeedf0; }
+.pdp-back:hover{ text-decoration:underline; }
+.pdp-back i{ font-size:14px; }
 
-.pdp-badge{
-  font-size:11px; padding:3px 10px; border-radius:6px; font-weight:500;
-  letter-spacing:.02em;
+.pdp-tb{
+  font-size:11px; font-weight:500; padding:7px 16px; border-radius:6px;
+  border:1px solid var(--pdp-edge); background:transparent; color:var(--pdp-ink2);
+  cursor:pointer; display:flex; align-items:center; gap:5px; font-family:inherit;
 }
-.pdp-badge.live{   background:#16281f; color:#5DCAA5; }
-.pdp-badge.sent{   background:#2b2115; color:#EF9F27; }
-.pdp-badge.gen{    background:#1b2635; color:#85B7EB; }
-.pdp-badge.queued{ background:#26262f; color:#7a7984; }
-.pdp-badge.other{  background:#26262f; color:#7a7984; }
-
-.pdp-asin{ font-size:12px; color:#85B7EB; }
-.pdp-sku{
-  font-size:11px; color:#6a6974;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-}
-
-.pdp-topr button{
-  display:inline-flex; align-items:center; gap:6px;
-  font-family:inherit; font-size:13px; padding:6px 16px; border-radius:6px;
-  border:1px solid #3a3a45; background:#232330; color:#c8c7cc; cursor:pointer;
-}
-.pdp-topr button:hover{ background:#2a2a35; color:#eeedf0; }
-.pdp-topr button.primary{ border-color:transparent; background:#3b7dd4; color:#eeedf0; }
-.pdp-topr button.primary:hover{ background:#4a8ce0; }
-.pdp-ro{ font-size:12px; color:#7a7984; display:inline-flex; align-items:center; gap:5px; }
-
-/* ---- 3. THE TWO COLUMNS -----------------------------------------------
-   minmax(0,...) on both tracks, not 1.4fr/1fr alone: a grid track's default
-   min-width is auto, so one long unbroken word in a description or a wide
-   attribute table would push the column past its share and shove the right
-   column off screen. This is the fix for that, and it is why the mockup's own
-   minmax() is kept rather than simplified. */
-.pdp-cols{
-  display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);
-  gap:20px; margin:0 0 20px; align-items:start;
-}
-.pdp-col{ min-width:0; }
-
-/* One column under 1100px. Two 40%-wide columns of attribute cells are
-   narrower than the values in them. */
-@media (max-width:1100px){
-  .pdp-cols{ grid-template-columns:minmax(0,1fr); }
+.pdp-tb:hover{ border-color:#555; color:var(--pdp-ink); }
+.pdp-tb i{ font-size:14px; }
+.pdp-tb.accent{ background:var(--pdp-accent); color:#fff; border-color:transparent; }
+.pdp-tb.success{ background:var(--pdp-green); color:#fff; border-color:transparent; }
+.pdp-tb.accent:hover{ background:#4a8ce0; }
+.pdp-tb.success:hover{ background:#1fa080; }
+.pdp-rolock{
+  font-size:11px; color:var(--pdp-dim); display:flex; align-items:center; gap:5px;
 }
 
-/* ---- 4. CARDS ---------------------------------------------------------
-   Every drawer section becomes one of the mockup's cards. Done by styling
-   .dw2-sec inside .pdp rather than by wrapping each one, so the sections stay
-   exactly what _fullDataParts returns. */
-.pdp .dw2-sec,
-.pdp .dw2-fold,
-.pdp-card{
-  background:#1e1e24; border:1px solid #3a3a45; border-radius:12px;
-  padding:14px 18px; margin:0 0 14px;
+/* ---- 3. PRODUCT HERO --------------------------------------------------- */
+.pdp-hero{
+  background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line); padding:24px 0;
 }
-.pdp .dw2-fold{ padding:10px 18px; }
-.pdp .dw2-fold[open]{ padding-bottom:14px; }
-
-.pdp-cardhead,
-.pdp .dw2-sechead{
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
-  font-size:12px; font-weight:500; color:#c8c7cc;
-  text-transform:uppercase; letter-spacing:.5px; margin:0 0 10px;
+.pdp-hero-in{
+  max-width:900px; margin:0 auto; display:flex; gap:24px;
+  align-items:flex-start; padding:0 24px;
 }
-.pdp-cardright{ display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; }
-
-/* A GROUP CARD holds several drawer sections as one card, the way the mockup
-   draws title + images + bullets together. The inner sections keep their
-   headers (they are the sub-labels) and lose their own card chrome, so there
-   is never a card inside a card. */
-.pdp-group .dw2-sec,
-.pdp-group .dw2-fold{
-  background:none; border:0; border-radius:0; padding:0; margin:14px 0 0;
+.pdp-heroimg{
+  width:120px; height:120px; border-radius:8px; background:#2a2a35;
+  border:1px solid var(--pdp-edge); flex-shrink:0; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--pdp-faint); font-size:32px;
 }
-.pdp-group .dw2-sec:first-of-type{ margin-top:10px; }
-.pdp-group .dw2-sechead{
-  font-size:10px; color:#6a6974; text-transform:uppercase; letter-spacing:.5px;
+.pdp-heroimg img{ width:100%; height:100%; object-fit:cover; }
+.pdp-heroinfo{ flex:1; min-width:0; }
+.pdp-ptitle{
+  font-size:16px; font-weight:500; color:var(--pdp-ink);
+  line-height:1.4; margin-bottom:8px;
+}
+.pdp-meta{ font-size:12px; color:var(--pdp-ink3); line-height:1.8; }
+.pdp-meta b{ color:var(--pdp-ink2); font-weight:500; }
+.pdp-mlabel{ color:var(--pdp-dim); display:inline-block; width:64px; }
+.pdp-dim{ color:var(--pdp-dim); }
+
+.pdp-badges{ display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+.pdp-hb{
+  font-size:10px; padding:3px 10px; border-radius:4px; font-weight:500;
+  display:inline-flex; align-items:center; gap:4px;
+}
+.pdp-hb.live{   background:var(--pdp-green); color:#e0fff0; }
+.pdp-hb.sent{   background:var(--pdp-warnbg); color:var(--pdp-warn); border:1px solid #41240235; }
+.pdp-hb.gen{    background:#1b2635; color:var(--pdp-link); border:1px solid #24334a; }
+.pdp-hb.queued,
+.pdp-hb.other{  background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
+.pdp-hb.profit{ background:var(--pdp-raise); color:var(--pdp-ok); border:1px solid var(--pdp-line); }
+.pdp-hb.cost{   background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
+.pdp-hb.warn{
+  background:var(--pdp-warnbg); color:var(--pdp-warn);
+  border:1px solid #41240235; cursor:pointer;
+}
+.pdp-hb.warn:hover{ filter:brightness(1.15); }
+
+/* ---- 4. TABS ----------------------------------------------------------- */
+.pdp-tabs{
+  background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line);
+  display:flex; justify-content:center; gap:0; flex-wrap:wrap;
+  position:sticky; top:41px; z-index:2;
+}
+.pdp-tab{
+  font-size:12px; font-weight:500; color:var(--pdp-ink3);
+  padding:12px 24px; cursor:pointer;
+  border-bottom:3px solid transparent; transition:color .15s, background .15s;
+}
+.pdp-tab:hover{ color:var(--pdp-ink2); background:#2a2a35; }
+.pdp-tab.active{ color:var(--pdp-ink); border-bottom-color:var(--pdp-accent); }
+
+/* ---- 5. LAYOUT --------------------------------------------------------- */
+.pdp-layout{ display:flex; max-width:1100px; margin:0 auto; gap:0; align-items:flex-start; }
+.pdp-side{
+  width:180px; flex-shrink:0; padding:20px 16px;
+  border-right:1px solid var(--pdp-line2);
+}
+.pdp-content{ flex:1; min-width:0; padding:24px 32px; max-width:720px; }
+
+.pdp-sbsec{ margin-bottom:20px; }
+.pdp-sblabel{
+  font-size:9px; font-weight:600; color:var(--pdp-dim);
+  text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px;
+}
+.pdp-sbitem{
+  font-size:11px; color:var(--pdp-ink3); padding:5px 8px; border-radius:4px;
+  cursor:pointer; display:flex; align-items:center; gap:6px; margin-bottom:2px;
+}
+.pdp-sbitem:hover{ background:var(--pdp-raise); color:var(--pdp-ink2); }
+.pdp-sbitem i{ font-size:14px; }
+.pdp-sbbtn{
+  font-size:10px; font-weight:500; padding:6px 12px; border-radius:5px;
+  border:1px solid var(--pdp-accent); background:transparent; color:var(--pdp-link);
+  cursor:pointer; display:flex; align-items:center; gap:4px; width:100%;
+  font-family:inherit; margin-bottom:20px;
+}
+.pdp-sbbtn:hover{ background:#3b7dd420; }
+.pdp-ck{
+  font-size:10px; padding:5px 10px; border-radius:5px; margin-bottom:4px;
+  display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:500;
+}
+.pdp-ck.ok{   background:var(--pdp-okbg);     color:var(--pdp-ok);     border:1px solid #08504130; }
+.pdp-ck.warn{ background:var(--pdp-warnbg);   color:var(--pdp-warn);   border:1px solid #41240230; }
+.pdp-ck.info{ background:#042C5318;           color:var(--pdp-link);   border:1px solid #042C5330; }
+.pdp-ck:hover{ filter:brightness(1.12); }
+.pdp-ck i{ font-size:12px; }
+
+/* One column under 1000px: a 180px rail beside a table is narrower than the
+   values in it. The rail's items stay reachable as a wrapping row. */
+@media (max-width:1000px){
+  .pdp-layout{ flex-direction:column; }
+  .pdp-side{
+    width:auto; border-right:0; border-bottom:1px solid var(--pdp-line2);
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 16px;
+  }
+  .pdp-sbsec{ margin-bottom:0; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .pdp-sblabel{ margin-bottom:0; }
+  .pdp-sbbtn{ width:auto; margin-bottom:0; }
+  .pdp-content{ padding:16px; max-width:none; width:100%; }
 }
 
-/* ---- 5. THE TITLE, at the top of the content card ---------------------- */
-.pdp .dw2-h3{
-  font-size:15px; font-weight:500; line-height:1.45; color:#eeedf0;
-  border:1px solid #3a3a45; border-radius:6px; padding:8px 12px;
-  background:#232330; outline:none; margin:0 0 4px;
+/* ---- 6. FIELDS --------------------------------------------------------- */
+.pdp-field{ margin-bottom:24px; }
+.pdp-flabel{
+  font-size:11px; font-weight:600; color:var(--pdp-ink3);
+  margin-bottom:6px; display:flex; align-items:center; gap:6px;
 }
-.pdp .dw2-h3:focus{ box-shadow:inset 0 0 0 1px #2a6cb5; }
-
-/* ---- 6. THE ATTRIBUTES, FULL WIDTH ------------------------------------
-   Two columns is the mockup's grid and also the drawer's, so .dw2-grid needs
-   no override at this width -- but its cells were sized for a 520px drawer and
-   have room to breathe here. */
-.pdp-wide .dw2-cell{ padding:9px 12px; }
-.pdp-wide .dw2-cl{ font-size:10px; }
-.pdp-wide .dw2-cv{ font-size:13px; }
-
-/* Four columns on a wide screen. The mockup's two are right for its width;
-   at 1600px two columns leave half the row empty on a 32-field listing. */
-@media (min-width:1600px){
-  .pdp-wide .dw2-grid{ grid-template-columns:1fr 1fr 1fr 1fr; }
-  .pdp-wide .dw2-subgrid{ grid-template-columns:1fr 1fr 1fr; }
+.pdp-fmeta{
+  margin-left:auto; font-weight:400; font-size:10px; color:var(--pdp-dim);
+  display:flex; align-items:center; gap:6px;
 }
 
-/* ---- 7. WARNINGS, first in the right column ---------------------------
-   _dwWarnings returns a dwFold that opens itself when anything is HIGH, which
-   is the mockup's loud case. Medium and low stay folded with the count on the
-   summary -- the drawer's existing, deliberate behaviour, not softened here. */
-.pdp-col.right .dw2-fold > summary{ font-size:12px; }
-.pdp-col.right .dw2-warn{ line-height:1.5; }
+/* The drawer's own sections, as this page's field blocks: no card chrome, the
+   section header becomes the field label. The editors inside are untouched. */
+.pdp-content .dw2-sec{
+  background:none; border:0; border-radius:0; padding:0; margin:0 0 24px;
+}
+.pdp-content .dw2-sechead{
+  font-size:11px; font-weight:600; color:var(--pdp-ink3);
+  text-transform:none; letter-spacing:0; margin-bottom:6px;
+}
+.pdp-content .dw2-edit{
+  background:var(--pdp-raise); border:1px solid var(--pdp-edge); border-radius:6px;
+  padding:10px 12px; font-size:13px; line-height:1.5; color:var(--pdp-ink);
+}
+.pdp-content .dw2-edit:focus{
+  border-color:var(--pdp-accent); box-shadow:0 0 0 2px rgba(59,125,212,.15);
+}
+.pdp-content .dw2-h3{
+  font-size:15px; font-weight:500; line-height:1.45; color:var(--pdp-ink);
+  border:1px solid var(--pdp-edge); border-radius:6px; padding:10px 12px;
+  background:var(--pdp-raise); outline:none;
+}
+.pdp-content .dw2-h3:focus{
+  border-color:var(--pdp-accent); box-shadow:0 0 0 2px rgba(59,125,212,.15);
+}
+.pdp-content .dw2-fold{
+  background:var(--pdp-panel); border:1px solid var(--pdp-line);
+  border-radius:8px; padding:10px 14px; margin:0 0 8px;
+}
+.pdp-content .dw2-fold[open]{ padding-bottom:14px; }
+
+.pdp-note{ font-size:12px; color:var(--pdp-dim); padding:10px 0; }
+.pdp-err{
+  background:var(--pdp-dangerbg); border:1px solid #6b2222;
+  border-radius:8px; padding:14px 16px; margin:20px 24px;
+}
+.pdp-err b{ color:var(--pdp-danger); }
+.pdp-errmsg{ font-size:12px; color:#ffb3b3; margin:6px 0 8px; }
+.pdp-body{ max-width:900px; margin:0 auto; }
+
+/* ---- 7. THE ATTRIBUTES TABLE ------------------------------------------- */
+.pdp-asum{
+  display:flex; gap:12px; margin-bottom:8px; font-size:10px;
+  font-weight:500; flex-wrap:wrap; align-items:center;
+}
+.pdp-afrow{ display:flex; gap:3px; margin-bottom:8px; flex-wrap:wrap; }
+.pdp-af{
+  font-size:10px; padding:4px 10px; border-radius:4px;
+  border:1px solid var(--pdp-edge); background:transparent; color:var(--pdp-ink3);
+  cursor:pointer; font-weight:500; font-family:inherit;
+}
+.pdp-af:hover{ border-color:#555; color:var(--pdp-ink2); }
+.pdp-af.active{ background:#3b7dd420; color:var(--pdp-link); border-color:#3b7dd450; }
+.pdp-af b{ font-weight:600; }
+
+/* The table scrolls INSIDE its own box rather than widening the page. */
+.pdp-atwrap{
+  border:1px solid var(--pdp-line); border-radius:6px; overflow-x:auto;
+}
+.pdp-at{ width:100%; border-collapse:collapse; font-size:11px; }
+.pdp-at th{
+  font-size:9px; font-weight:600; color:var(--pdp-dim);
+  text-transform:uppercase; letter-spacing:.3px; text-align:left;
+  padding:6px 8px; border-bottom:2px solid var(--pdp-line);
+  background:var(--pdp-bg); position:sticky; top:0; z-index:1;
+}
+.pdp-at td{
+  padding:5px 8px; border-bottom:1px solid var(--pdp-line2); vertical-align:middle;
+}
+.pdp-at tr:hover td{ background:var(--pdp-panel); }
+.pdp-at tr.flagged td{ background:#2a1a1a; }
+.pdp-c1{ width:24px; text-align:center; }
+.pdp-c5{ width:44px; }
+.pdp-aname{
+  color:var(--pdp-ink3); max-width:160px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;
+}
+.pdp-aval{ color:var(--pdp-ink2); font-weight:500; min-width:120px; max-width:220px; }
+.pdp-aamz{
+  color:var(--pdp-dim); max-width:140px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; font-style:italic;
+}
+.pdp-ai{ font-weight:600; font-size:11px; }
+.pdp-ai.match{   color:var(--pdp-ok); }
+.pdp-ai.differ{  color:var(--pdp-warn); }
+.pdp-ai.onlyamz{ color:var(--pdp-link); }
+.pdp-ai.onlyus{  color:var(--pdp-ink3); }
+.pdp-ause{
+  font-size:8px; padding:2px 6px; border-radius:3px;
+  border:1px solid var(--pdp-edge); background:transparent; color:var(--pdp-link);
+  cursor:pointer; font-weight:500; font-family:inherit;
+}
+.pdp-ause:hover{ background:#3b7dd420; border-color:var(--pdp-accent); }
+.pdp-req{ color:var(--pdp-danger); font-size:10px; margin-left:3px; }
+.pdp-reqsoft{ color:var(--pdp-dim); font-size:10px; margin-left:3px; }
+.pdp-ro{ color:var(--pdp-ink3); }
+
+/* The editors inside the table's "Yours" column: same controls, sized for a
+   table row instead of a card. */
+.pdp-at .ed{
+  width:100%; font-size:11px; padding:3px 6px; border-radius:4px;
+  border:1px solid var(--pdp-edge); background:var(--pdp-raise); color:var(--pdp-ink);
+  font-family:inherit;
+}
+.pdp-at .ed:focus{ border-color:var(--pdp-accent); outline:none; }
+.pdp-at .dw2-cv-in{
+  display:block; font-size:11px; color:var(--pdp-ink2);
+  padding:3px 6px; border-radius:4px; outline:none; word-break:break-word;
+}
+.pdp-at .dw2-cv-in:hover{ background:var(--pdp-raise); }
+.pdp-at .dw2-cv-in:focus{
+  background:var(--pdp-raise); box-shadow:inset 0 0 0 1px var(--pdp-accent);
+}
+.pdp-at .dw2-cv-in.empty:empty::before{
+  content:'—'; color:var(--pdp-faint); font-style:italic;
+}
+
+.pdp-more{
+  font-size:10px; color:var(--pdp-link); cursor:pointer;
+  display:flex; align-items:center; gap:4px; margin-top:8px; font-weight:500;
+}
+.pdp-more:hover{ text-decoration:underline; }
+.pdp-more.amber{ color:var(--pdp-warn); }
+.pdp-more i{ font-size:12px; }
+
+/* The "add an optional field" picker, under the table. */
+.pdp-content .addfield{ margin-top:12px; }
+.pdp-content .addfield .ed{
+  font-size:11px; padding:5px 8px; border-radius:5px;
+  border:1px solid var(--pdp-edge); background:var(--pdp-raise);
+  color:var(--pdp-ink2); font-family:inherit;
+}

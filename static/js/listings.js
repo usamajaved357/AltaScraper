@@ -2235,13 +2235,30 @@ function _dwVerdictFolds(r){
   //
   // _dwShell renders them now, first thing in the body, above the title. See
   // _dwWarnings.
+  const p = _dwVerdictFoldParts(r);
+  return p.compliance + p.mirror;
+}
+
+/* THE SAME SIX FOLDS, IN TWO GROUPS.
+ *
+ * The drawer shows them as one run, which is what _dwVerdictFolds joins them
+ * into above. The product page has a Compliance tab, and "what Amazon is
+ * serving right now" is not a compliance verdict -- the live mirror and A+
+ * content are a different question from restricted products, document demands
+ * and claim risks. Split here rather than in the page, so both views agree
+ * about which fold is which (Rule 12). Every fold below is unchanged. */
+function _dwVerdictFoldParts(r){
   const statusBlock = (typeof _dwStatusBlock === "function") ? _dwStatusBlock(r) : "";
-  return dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
-    + dwFold("Compliance requirements", _dwVerdictTag(r.viability && r.viability.matched, "no demand"), viabilityPanel(r))
-    + dwFold("Claim risks", (r.claim_flags||[]).length ? `<span class="dw2-tag warn">${(r.claim_flags||[]).length}</span>` : "", claimBox(r))
-    + dwFold("Amazon feedback", statusBlock ? '<span class="dw2-tag warn">see inside</span>' : "", statusBlock)
-    + dwFold("Actual on Amazon", '<span class="dw2-tag info">read-only mirror</span>', liveMirrorPanel(r))
-    + dwFold("A+ content", '<span class="dw2-tag info">live on Amazon</span>', _dwAplus(r));
+  return {
+    compliance:
+        dwFold("Restricted products check", _dwVerdictTag(r.restricted && r.restricted.matched, "checked"), restrictedPanel(r))
+      + dwFold("Compliance requirements", _dwVerdictTag(r.viability && r.viability.matched, "no demand"), viabilityPanel(r))
+      + dwFold("Claim risks", (r.claim_flags||[]).length ? `<span class="dw2-tag warn">${(r.claim_flags||[]).length}</span>` : "", claimBox(r))
+      + dwFold("Amazon feedback", statusBlock ? '<span class="dw2-tag warn">see inside</span>' : "", statusBlock),
+    mirror:
+        dwFold("Actual on Amazon", '<span class="dw2-tag info">read-only mirror</span>', liveMirrorPanel(r))
+      + dwFold("A+ content", '<span class="dw2-tag info">live on Amazon</span>', _dwAplus(r))
+  };
 }
 
 // A closed fold has to say enough that you can decide not to open it.
