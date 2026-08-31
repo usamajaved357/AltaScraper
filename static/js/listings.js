@@ -2335,19 +2335,49 @@ function metricFilter(v){
 let LIST_VIEW = "table";
 try{ LIST_VIEW = localStorage.getItem("alta_list_view") || "table"; }catch(e){}
 
+/* WHICH VIEW IS ACTUALLY DRAWABLE RIGHT NOW.
+ *
+ * "detailed" needs listrow_detailed.js, which is a separate file. Checked HERE,
+ * at render time, rather than where LIST_VIEW is read on load: that runs while
+ * listings.js is still evaluating and the other file has not been parsed yet,
+ * so a load-time check would downgrade every session to the table view.
+ *
+ * The stored preference is left alone -- a failed script load should not also
+ * erase what the person chose. */
+function listViewNow(){
+  if(LIST_VIEW === "detailed" && typeof detailedBlock !== "function") return "table";
+  return LIST_VIEW;
+}
+
 // Sync the DOM to whatever LIST_VIEW currently is. Separate from setListView()
 // so it can run on page load without triggering a render before there are any
 // rows to draw.
 function applyListView(){
+  const view = listViewNow();
   document.querySelectorAll("#viewtoggle button").forEach(function(b){
-    b.classList.toggle("on", b.dataset.view === LIST_VIEW);
+    b.classList.toggle("on", b.dataset.view === view);
   });
   const g = document.getElementById("grid");
-  if(g) g.classList.toggle("tableview", LIST_VIEW === "table");
+  // `tableview` is the card grid's OFF switch, so the detailed view -- which is
+  // also not a grid of cards -- needs it too. Without this the detailed rows
+  // would be laid out by the tile grid's CSS and stack into columns.
+  if(g){
+    g.classList.toggle("tableview", view === "table" || view === "detailed");
+    g.classList.toggle("detailedview", view === "detailed");
+  }
 }
 
+// THREE VIEWS NOW. "detailed" is the Amazon Manage-All-Inventory row
+// (static/js/listrow_detailed.js) -- an ADDITIONAL view, not a replacement:
+// table stays the default and the card grid is untouched.
+//
+// An unknown value falls back to "table" rather than being stored, so a
+// localStorage entry left by an older build (or a typo in a link) cannot
+// strand somebody on a view that does not draw.
 function setListView(v){
-  LIST_VIEW = (v === "grid") ? "grid" : "table";
+  LIST_VIEW = (v === "grid") ? "grid"
+            : (v === "detailed" && typeof detailedBlock === "function") ? "detailed"
+            : "table";
   try{ localStorage.setItem("alta_list_view", LIST_VIEW); }catch(e){}
   applyListView();
   if(typeof render === "function") render();
@@ -2524,7 +2554,11 @@ function rowActions(r, cls, opts){
 function listBlock(rows, fn){
   fn = fn || card;
   if(!rows || !rows.length) return "";
-  if(LIST_VIEW !== "table") return rows.map(fn).join("");
+  const view = listViewNow();
+  // The detailed view brings its own header and its own row builder, so it
+  // does not go through the table's <th>/<td> path at all.
+  if(view === "detailed") return detailedBlock(rows);
+  if(view !== "table") return rows.map(fn).join("");
   const rowFn = (fn === (typeof liveTile === "function" ? liveTile : null))
                 ? liveTableRow : tableRow;
   // COGS gets its own column, and it is EDITABLE. What a thing cost is the one
@@ -2583,9 +2617,16 @@ function listBlock(rows, fn){
 function listBlocks(groups){
   const use = (groups || []).filter(g => g && g.rows && g.rows.length);
   if(!use.length) return "";
+  const view = listViewNow();
+  // ONE header over every group, for the same reason the table has one: two
+  // bordered cards with a repeated header in the middle is what the owner
+  // objected to. Every row goes into a single detailed block.
+  if(view === "detailed"){
+    return detailedBlock(use.reduce((a, g) => a.concat(g.rows), []));
+  }
   // Tiles have no header and no table, so there is nothing to merge -- each
   // group is already just a run of cards.
-  if(LIST_VIEW !== "table"){
+  if(view !== "table"){
     return use.map(g => listBlock(g.rows, g.fn)).join("");
   }
   // One header, built from every row that will be under it, so "select all"

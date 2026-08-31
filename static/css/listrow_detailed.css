@@ -1,0 +1,143 @@
+/* ============================================================================
+   THE DETAILED LISTING ROW — Amazon "Manage All Inventory" layout
+   ============================================================================
+
+   A third view beside the table and the card grid. Layout is
+   docslistings-row-mockup.html's: a fixed-width status column, a flexible
+   product column, then three fixed data blocks and a row menu.
+
+   MUST LOAD AFTER dashboard.css: .card, .lr and the row menu share names and
+   specificity with rules there, and the later file wins.
+
+   ── COLOURS ─────────────────────────────────────────────────────────────────
+
+   This view lives INSIDE the listings page, beside the existing table and
+   cards, so unlike the drawer and the product page it uses the APP's tokens --
+   --panel, --line, --ink, --accent and the rest from dashboard.css. A row that
+   sat in the app's grid wearing the drawer's blue palette would be the only
+   thing on the screen in a different colour scheme.
+
+   The mockup's own names map onto them:
+
+       --surface-0 / -1 -> --bg / --panel2      --text-primary   -> --ink
+       --border         -> --line               --text-secondary -> --ink2
+       --radius         -> 6px                  --text-muted     -> --ink3
+       --fill-accent    -> --accent             --text-accent    -> --accent2
+       --bg-success     -> --ok-bg              --text-success   -> --ok
+       --bg-danger      -> --red-bg             --text-danger    -> --red
+       --bg-warning     -> --warn-bg            --text-warning   -> --warn
+
+   EVERY CLASS IS PREFIXED lr-, because dashboard.css already owns .row,
+   .status, .title, .meta, .data, .img and .actions.
+   ========================================================================= */
+
+.lrwrap{ padding:0; overflow-x:auto; }
+
+/* ---- 1. THE HEADER AND THE ROW SHARE ONE SET OF WIDTHS ------------------
+   Written once as a variable per column so the header can never drift out of
+   line with the rows underneath it -- which is the failure the table view
+   guards against by counting <th> against <td> at runtime. Here the two are
+   the same numbers by construction. */
+.lr-head, .lr{
+  --lr-cb:26px; --lr-status:92px; --lr-perf:120px;
+  --lr-inv:104px; --lr-price:132px; --lr-act:30px;
+  display:flex; align-items:flex-start; gap:8px;
+  padding:10px 12px; border-bottom:1px solid var(--line);
+  min-width:840px;              /* below this the blocks stop being readable */
+}
+.lr-head{
+  font-size:11px; color:var(--ink3); font-weight:600;
+  letter-spacing:.02em; border-bottom:2px solid var(--line2);
+  position:sticky; top:0; background:var(--panel); z-index:1;
+}
+.lr-head .lr-sub{ font-weight:400; color:var(--ink3); font-size:10px; }
+
+.lr{ font-size:12px; cursor:pointer; }
+.lr:hover{ background:var(--panel2); }
+.lr.sel{ background:var(--accent-bg); }
+.lr:last-child{ border-bottom:0; }
+
+.lr-cb{ width:var(--lr-cb); flex:none; padding-top:2px; }
+.lr-status{ width:var(--lr-status); flex:none; }
+.lr-product{ flex:1; min-width:0; display:flex; gap:10px; }
+.lr-perf{ width:var(--lr-perf); flex:none; }
+.lr-inv{ width:var(--lr-inv); flex:none; }
+.lr-pricing{ width:var(--lr-price); flex:none; }
+.lr-actions{ width:var(--lr-act); flex:none; text-align:right; }
+
+/* ---- 2. STATUS ---------------------------------------------------------
+   The app's own four statuses, coloured the way the mockup colours its
+   Amazon equivalents. PARENT gets its own quiet colour -- it is a container,
+   not a state of health. */
+.lr-status-badge{
+  font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px;
+  display:inline-block; margin:0 0 3px; letter-spacing:.02em;
+}
+.lr-status-badge.live{   background:var(--ok-bg);     color:var(--ok); }
+.lr-status-badge.sent{   background:var(--warn-bg);   color:var(--warn); }
+.lr-status-badge.gen{    background:var(--accent-bg); color:var(--accent2); }
+.lr-status-badge.queued,
+.lr-status-badge.other{  background:var(--panel3);    color:var(--ink3); }
+.lr-status-badge.parent{ background:var(--panel3);    color:var(--ink2); }
+.lr-status-date{
+  font-size:10.5px; color:var(--ink3); line-height:1.4; display:block;
+}
+
+/* ---- 3. PRODUCT -------------------------------------------------------- */
+.lr-img{
+  width:56px; height:56px; border-radius:6px; background:var(--bg);
+  border:1px solid var(--line); flex:none; overflow:hidden;
+  display:flex; align-items:center; justify-content:center;
+}
+.lr-img img{ width:100%; height:100%; object-fit:cover; }
+.lr-img i{ font-size:20px; color:var(--ink3); }
+.lr-details{ flex:1; min-width:0; }
+.lr-title{
+  font-size:12.5px; color:var(--ink); font-weight:500; line-height:1.35;
+  margin:0 0 3px;
+  /* Two lines, then ellipsis -- the mockup's clamp. */
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.lr-meta{ font-size:10.5px; color:var(--ink3); line-height:1.65; }
+.lr-meta strong{ color:var(--ink2); font-weight:500; }
+.lr-asin{ color:var(--accent2); font-weight:500; text-decoration:none; }
+.lr-asin:hover{ text-decoration:underline; }
+.lr-dim{ color:var(--ink3); }
+.lr-warn{ color:var(--warn); cursor:pointer; }
+.lr-warn:hover{ text-decoration:underline; }
+.lr-warn i{ font-size:11px; }
+
+/* ---- 4. THE THREE DATA BLOCKS -----------------------------------------
+   Amazon's density: small, muted labels in a fixed-width column so the values
+   line up down the block, values a shade brighter and slightly bolder. */
+.lr-data{ font-size:10.5px; line-height:1.7; white-space:nowrap; }
+.lr-data-label{ color:var(--ink3); display:inline-block; width:56px; }
+.lr-data-val{ color:var(--ink2); font-weight:500; }
+.lr-data-val.green{ color:var(--ok); }
+.lr-data-val.red{ color:var(--red); }
+/* A dash is a FACT -- "we have not got this" -- so it is quiet but not
+   invisible, and never mistaken for a zero. */
+.lr-dash{ color:var(--ink4); }
+.lr-none{ font-size:10.5px; color:var(--ink3); font-style:italic; line-height:1.7; }
+
+.lr-buybox{ display:flex; align-items:center; gap:3px; font-size:10.5px; margin-top:2px; }
+.lr-buybox i{ font-size:12px; }
+.lr-buybox.win{ color:var(--ok); }
+.lr-buybox.lose{ color:var(--red); }
+
+/* ---- 5. THE ROW MENU ---------------------------------------------------
+   rowActions() renders the app's existing .acts markup; it is compacted here
+   rather than restyled, so the buttons inside stay the ones the other views
+   use. */
+.lr-actions .acts{ display:flex; justify-content:flex-end; }
+.lr-actions .acts .btn{ padding:2px 6px; font-size:11px; }
+
+/* ---- 6. NARROW SCREENS -------------------------------------------------
+   The row has a min-width and the wrapper scrolls, rather than the blocks
+   collapsing on top of each other. Four numbers in a 60px column is not a
+   denser view, it is an unreadable one. */
+@media (max-width:900px){
+  .lr-head, .lr{ gap:6px; padding:9px 10px; }
+  .lr-title{ font-size:12px; }
+}

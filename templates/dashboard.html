@@ -54,6 +54,10 @@
      file's own .dw2-* blocks and restyles .dw2-sec as the mockup's cards, so
      the later file has to be the one that wins. -->
 <link rel="stylesheet" href="/static/css/pdp.css?v={{ ASSET_V }}">
+<!-- The detailed listing row (Amazon's Manage All Inventory layout). Unlike
+     the drawer and the product page, this one sits INSIDE the listings grid,
+     so it uses dashboard.css's own tokens and must load after it. -->
+<link rel="stylesheet" href="/static/css/listrow_detailed.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -529,6 +533,7 @@
         </select>
         <span class="viewtoggle" id="viewtoggle" title="Table or card view — remembered on this browser">
           <button data-view="table" class="on" onclick="setListView('table')" title="Table view"><i class="ti ti-list"></i></button>
+          <button data-view="detailed" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
           <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
         </span>
         <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
@@ -2014,6 +2019,11 @@
      own, so it loads after them -- the order on the page matching the order of
      dependence, as with drawer.js. -->
 <script src="/static/js/pdp.js?v={{ ASSET_V }}"></script>
+<!-- The detailed row renderer. It uses listings.js helpers (rowAsin, _dwCost,
+     rowSelectBox, rowActions) at DRAW time, not load time, so it may load
+     after them; listings.js checks for it at render time rather than on load,
+     which is what makes the order here safe either way. -->
+<script src="/static/js/listrow_detailed.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/genimage.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/howworks.js?v={{ ASSET_V }}"></script>
