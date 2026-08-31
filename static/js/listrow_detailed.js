@@ -315,9 +315,10 @@ function lrPricing(r){
  *
  * Clicking it opens the listing exactly as the card and the table row do --
  * through openListing(), the one function that decides which view that is. */
-function detailedRow(r){
+function detailedRow(r, isChild){
   const sel = (typeof SELECTED !== "undefined") && SELECTED.has(String(r.sku));
-  return '<div class="lr' + (sel ? " sel" : "") + '" data-sku="' + esc(r.sku) + '"'
+  return '<div class="lr' + (sel ? " sel" : "") + (isChild ? " lr-child" : "")
+    + '" data-sku="' + esc(r.sku) + '"'
     + ' onclick="openListing(\'' + esc(r.sku) + '\')">'
     + '<span class="lr-cb" onclick="event.stopPropagation()">'
     +   ((typeof rowSelectBox === "function") ? rowSelectBox(r) : "") + '</span>'
@@ -348,15 +349,181 @@ function detailedHead(rows){
     + '</div>';
 }
 
+/* ═══ VARIATION FAMILIES ══════════════════════════════════════════════════
+ *
+ * Amazon groups a variation family under one parent that is not itself
+ * buyable, with the children carrying the colour, the size, the price and the
+ * stock. This view shows the same shape: a "Variations (N)" row you expand.
+ *
+ * THE GROUPING IS NOT WORKED OUT HERE. domain/families.py already answers it,
+ * from Amazon's own `relationships` block, and it is careful in ways worth not
+ * repeating: it reads BOTH directions (a child naming its parent and a parent
+ * naming its children), because either half can be missing when a SKU has not
+ * been enriched or Amazon throttled one call; and it keeps orphans -- a child
+ * whose parent is not in this account -- as their own group rather than
+ * dropping them. /variations/families serves it from the stored snapshot, so
+ * this costs nothing and needs no new route (Rule 12).
+ *
+ * NOTHING IS GUESSED. A listing whose family is unknown is drawn as a flat row,
+ * which is what the brief asks for and what honesty requires: SKUs that merely
+ * look alike are not a family, and an invented parent would be a claim about
+ * Amazon's catalogue that nobody made.
+ *
+ * MEASURED, 31 Aug 2026: there are currently NO families on any of the three
+ * connected accounts -- 89 listings, all singles, with relationships known for
+ * 85 of them. So every row is flat today by fact, not by failure, and this code
+ * is what makes the day a family appears show up correctly.
+ */
+
+let LR_FAMILIES = null;      // {parentSku: {parent, children:[sku], theme}} or null
+let LR_FAM_ASKED = false;
+let LR_OPEN_FAMS = {};       // parentSku -> true when expanded
+
+async function lrLoadFamilies(){
+  if(LR_FAM_ASKED) return;
+  LR_FAM_ASKED = true;
+  try{
+    const url = "/variations/families";
+    const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
+    if(!j || !j.ok){ LR_FAMILIES = {}; return; }
+    const map = {};
+    (j.families || []).forEach(function(f){
+      const ps = String(f.parent_sku || "");
+      if(!ps) return;
+      map[ps] = {
+        parent: f.parent || null,
+        theme: String(f.theme || ""),
+        children: (f.children || []).map(c => String((c && c.sku) || c)).filter(Boolean),
+      };
+    });
+    LR_FAMILIES = map;
+  }catch(e){
+    // A families lookup that fails leaves every row flat, which is the correct
+    // fallback: it is what the screen showed before, and it never invents a
+    // grouping it could not confirm.
+    LR_FAMILIES = {};
+  }finally{
+    if(typeof render === "function") render();
+  }
+}
+
+/* Split rows into families and singles, preserving the incoming order.
+ *
+ * A family only forms when its children are actually ON THIS SCREEN -- the
+ * listings page filters, and a family whose children were filtered out must not
+ * appear as an empty group claiming "Variations (4)". */
+function lrGroupRows(rows){
+  const fams = LR_FAMILIES;
+  if(!fams || !Object.keys(fams).length) return {groups: [], flat: rows || []};
+  const bySku = {};
+  (rows || []).forEach(r => { bySku[String(r.sku)] = r; });
+
+  const claimed = new Set();
+  const groups = [];
+  Object.keys(fams).forEach(function(ps){
+    const f = fams[ps];
+    const kids = (f.children || []).map(s => bySku[s]).filter(Boolean);
+    if(!kids.length) return;                       // nothing of it is on screen
+    const parentRow = bySku[ps] || null;
+    kids.forEach(k => claimed.add(String(k.sku)));
+    if(parentRow) claimed.add(ps);
+    groups.push({parent_sku: ps, parent: f.parent, parentRow: parentRow,
+                 theme: f.theme, children: kids});
+  });
+  const flat = (rows || []).filter(r => !claimed.has(String(r.sku)));
+  return {groups: groups, flat: flat};
+}
+
+/* The parent row: the family, its count, and NO performance or pricing.
+ *
+ * Deliberately bare. A parent is not buyable -- it has no price, no stock and
+ * no sales of its own -- so a block of dashes across it would read as missing
+ * data rather than as "this is a container". Amazon shows it the same way. */
+function lrFamilyRow(g){
+  const open = !!LR_OPEN_FAMS[g.parent_sku];
+  const p = g.parent || {};
+  const title = String(p.title || (g.parentRow && g.parentRow.title) || "");
+  const asin = String(p.asin || (g.parentRow && g.parentRow.asin) || "");
+  const img = (g.parentRow && typeof _rowImages === "function")
+              ? (_rowImages(g.parentRow) || [])[0] : "";
+  return '<div class="lr-var' + (open ? " open" : "") + '"'
+    + ' onclick="lrToggleFamily(\'' + esc(g.parent_sku) + '\')">'
+    + '<span class="lr-cb" onclick="event.stopPropagation()"></span>'
+    + '<span class="lr-var-toggle"><i class="ti ti-chevron-right"></i></span>'
+    + '<span class="lr-var-count">Variations (' + g.children.length + ')</span>'
+    + '<span class="lr-img">'
+    +   (img ? '<img src="' + esc(img) + '" loading="lazy" onerror="this.remove()">'
+            : '<i class="ti ti-photo"></i>')
+    + '</span>'
+    + '<span class="lr-var-info">'
+    +   '<span class="lr-var-family">'
+    +     (esc(title) || '<span class="lr-dim">(variation family)</span>') + '</span>'
+    +   '<span class="lr-var-parent">'
+    +     (asin ? 'Parent ASIN ' + esc(asin) + ' · ' : '')
+    +     'Parent SKU ' + esc(g.parent_sku)
+    +     (g.theme ? ' · varies by ' + esc(String(g.theme).replace(/_/g, " ").toLowerCase()) : '')
+    +   '</span>'
+    + '</span></div>';
+}
+
+function lrToggleFamily(parentSku){
+  const k = String(parentSku);
+  if(LR_OPEN_FAMS[k]) delete LR_OPEN_FAMS[k]; else LR_OPEN_FAMS[k] = true;
+  if(typeof render === "function") render();
+}
+
+function lrExpandAll(open){
+  LR_OPEN_FAMS = {};
+  if(open){
+    const g = lrGroupRows((typeof ROWS !== "undefined") ? ROWS : []);
+    g.groups.forEach(x => { LR_OPEN_FAMS[x.parent_sku] = true; });
+  }
+  if(typeof render === "function") render();
+}
+
 /* A block of listings in this view: one header, then the rows. */
 function detailedBlock(rows){
   if(!rows || !rows.length) return "";
-  // Ask for the numbers the first time this view draws a given set of rows.
-  // Not awaited: the rows are drawn now with whatever is known, and the fetch
-  // re-renders when it lands. A local read is quick, but the screen should not
-  // wait on it either way.
+  // Ask for the numbers and the families the first time this view draws. Not
+  // awaited: the rows are drawn now with whatever is known, and each re-renders
+  // when it lands. A local read is quick, but the screen should not wait on it.
   lrLoadMetrics(rows);
+  lrLoadFamilies();
+
+  const g = lrGroupRows(rows);
+  // Families first, then everything that belongs to none -- the way Amazon
+  // orders them, and it keeps the groups from being lost among 200 flat rows.
+  const body = g.groups.map(function(fam){
+      return lrFamilyRow(fam)
+        + (LR_OPEN_FAMS[fam.parent_sku]
+            ? fam.children.map(c => detailedRow(c, true)).join("")
+            : "");
+    }).join("")
+    + g.flat.map(r => detailedRow(r)).join("");
+
   return lrMetricsBar()
-       + '<div class="card lrwrap">' + detailedHead(rows)
-       + rows.map(detailedRow).join("") + '</div>';
+       + (g.groups.length ? lrFamilyControls(g.groups) : "")
+       + '<div class="card lrwrap">' + detailedHead(rows) + body + '</div>';
+}
+
+/* Expand all / collapse all, shown only when there is something to expand. */
+function lrFamilyControls(groups){
+  const openN = groups.filter(g => LR_OPEN_FAMS[g.parent_sku]).length;
+  const willOpen = openN < groups.length;
+  // BOTH ICON NAMES ARE WRITTEN OUT IN FULL, not built by concatenation.
+  // test_http_perf.py scans every icon class the app asks for and checks it
+  // exists in the subset font, because a missing one renders as an empty box
+  // with no error anywhere. A class assembled at runtime from a prefix plus a
+  // direction is invisible to that scan, so both are spelled out -- the check
+  // stays able to do its job rather than being handed an exception.
+  // (The comment avoids writing such a prefix literally, because the scan reads
+  // comments too and would record it as another half-name.)
+  const btn = willOpen
+    ? '<i class="ti ti-chevrons-down"></i> Expand all'
+    : '<i class="ti ti-chevrons-up"></i> Collapse all';
+  return '<div class="lr-famctl">'
+    + '<span class="lr-dim">' + groups.length + ' variation famil'
+    + (groups.length === 1 ? 'y' : 'ies') + '</span>'
+    + '<button class="lr-mb-btn" onclick="lrExpandAll(' + willOpen + ')">'
+    + btn + '</button></div>';
 }

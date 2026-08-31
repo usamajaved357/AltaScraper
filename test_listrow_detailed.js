@@ -266,5 +266,90 @@ truthy("  while the refresh button does",  /lrLoadMetrics\(rows, true\)/.test(SR
 truthy("the same SKU set is not asked for twice",
        /key === LR_ASKED/.test(SRC));
 
+// ---------------------------------------------------------------------------
+console.log("\nvariation families: grouped when known, flat when not");
+// ---------------------------------------------------------------------------
+// The grouping is domain/families.py's answer, served by /variations/families.
+// Nothing here works it out, so the fixture is that route's shape.
+const P = "PARENT-HOSE", C1 = "6.99_3Days_B09MQ46LGJ", C2 = "6.99_3Days_B09MQ46ABC";
+const kid = (sku, colour) => ({sku:sku, status:"LIVE", title:"Garden Hose, " + colour,
+                               price:"24.99", cogs:"6.99", profit:"8.57", warnings:[],
+                               _asin:{own:"B0" + colour, source:""}, _imgs:[]});
+const parentRow = {sku:P, status:"PARENT", title:"Expandable Garden Hose 50ft",
+                   warnings:[], _asin:{own:"B0H8K1LXXT", source:""}, _imgs:[]};
+const ROWSET = [kid(C1, "Green"), kid(C2, "Blue"), LIVE, parentRow];
+globalThis.ROWS = ROWSET;
+
+console.log("\n  ...with no family data, everything is flat");
+vm.runInContext("LR_FAMILIES = null;", ctx);
+let g = ctx.lrGroupRows(ROWSET);
+check("no groups",             g.groups.length, 0);
+check("every row stays flat",  g.flat.length, 4);
+vm.runInContext("LR_FAMILIES = {};", ctx);
+check("an EMPTY answer is also flat — not an error, just no families",
+      ctx.lrGroupRows(ROWSET).groups.length, 0);
+
+console.log("\n  ...with a family, the children group under a parent");
+vm.runInContext("LR_FAMILIES = {'" + P + "': {parent:{title:'Expandable Garden Hose 50ft',"
+  + " asin:'B0H8K1LXXT'}, theme:'COLOR', children:['" + C1 + "','" + C2 + "']}};", ctx);
+g = ctx.lrGroupRows(ROWSET);
+check("one family",                 g.groups.length, 1);
+check("  with both children",       g.groups[0].children.length, 2);
+check("the parent row is claimed, not left loose", g.flat.map(r => r.sku), [LIVE.sku]);
+
+const famRow = ctx.lrFamilyRow(g.groups[0]);
+truthy("the row counts the variations", famRow.indexOf("Variations (2)") >= 0);
+truthy("names the family",              famRow.indexOf("Expandable Garden Hose 50ft") >= 0);
+truthy("names the parent ASIN",         famRow.indexOf("B0H8K1LXXT") >= 0);
+truthy("names the parent SKU",          famRow.indexOf(P) >= 0);
+truthy("and says what varies",          famRow.indexOf("varies by color") >= 0);
+// A parent is not buyable, so it must carry no price/stock/performance block.
+check("the parent row has NO pricing block",   /lr-pricing/.test(famRow), false);
+check("  no inventory block",                  /lr-inv/.test(famRow), false);
+check("  and no performance block",            /lr-perf/.test(famRow), false);
+
+console.log("\n  ...collapsed by default, like Amazon");
+vm.runInContext("LR_OPEN_FAMS = {};", ctx);
+let famBlock = ctx.detailedBlock(ROWSET);
+check("the children are not drawn",  famBlock.indexOf(C1) >= 0, false);
+truthy("but the family row is",      famBlock.indexOf("Variations (2)") >= 0);
+truthy("and the single listing is",  famBlock.indexOf(LIVE.sku) >= 0);
+truthy("with an expand-all control", famBlock.indexOf("lrExpandAll(") >= 0);
+truthy("  that says Expand all",     famBlock.indexOf("Expand all") >= 0);
+
+console.log("\n  ...expanding shows the children, indented, with their full data");
+ctx.lrToggleFamily(P);
+famBlock = ctx.detailedBlock(ROWSET);
+truthy("child one",  famBlock.indexOf(C1) >= 0);
+truthy("child two",  famBlock.indexOf(C2) >= 0);
+check("both are marked as children", (famBlock.match(/lr lr-child/g) || []).length, 2);
+truthy("a child keeps its pricing block", famBlock.indexOf("£24.99") >= 0);
+truthy("and the control now offers Collapse all", famBlock.indexOf("Collapse all") >= 0);
+ctx.lrToggleFamily(P);
+check("toggling again collapses it",
+      ctx.detailedBlock(ROWSET).indexOf(C1) >= 0, false);
+
+console.log("\n  ...expand all / collapse all");
+ctx.lrExpandAll(true);
+truthy("expand all opens it", ctx.detailedBlock(ROWSET).indexOf(C1) >= 0);
+ctx.lrExpandAll(false);
+check("collapse all closes it", ctx.detailedBlock(ROWSET).indexOf(C1) >= 0, false);
+
+console.log("\n  ...a family whose children are FILTERED OFF SCREEN does not appear");
+// The listings page filters. A group claiming "Variations (2)" with nothing
+// under it would be a lie about what is on this screen.
+check("no children shown -> no group", ctx.lrGroupRows([LIVE]).groups.length, 0);
+check("  and the single row is untouched", ctx.lrGroupRows([LIVE]).flat.length, 1);
+check("one child shown -> the group counts ONE",
+      ctx.lrGroupRows([kid(C1, "Green"), LIVE]).groups[0].children.length, 1);
+
+console.log("\n  ...nothing is grouped that Amazon did not say was a family");
+truthy("the grouping comes from /variations/families",
+       /\/variations\/families/.test(SRC));
+check("  nothing infers a family from the SKU or the title",
+      /startsWith|commonPrefix|title\.slice/.test(SRC), false);
+truthy("  and a failed lookup leaves every row flat",
+       /LR_FAMILIES = \{\};[\s\S]{0,200}finally/.test(SRC));
+
 console.log("\n%d failed", fails);
 process.exit(fails ? 1 : 0);

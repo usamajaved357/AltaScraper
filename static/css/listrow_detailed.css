@@ -154,6 +154,43 @@
 }
 .lr-mb-err i{ font-size:12px; }
 
+/* ---- 6. VARIATION FAMILIES -------------------------------------------
+   The parent row is a container, not a listing: it carries the family, the
+   count and the theme, and NO performance or pricing -- a parent is not
+   buyable, so a block of dashes across it would read as missing data rather
+   than as "this is a group". Amazon draws it the same way. */
+.lr-famctl{
+  display:flex; align-items:center; gap:8px;
+  font-size:10.5px; margin:0 0 6px; padding:0 2px;
+}
+.lr-famctl .lr-mb-btn{ margin-left:0; }
+
+.lr-var{
+  display:flex; align-items:center; gap:8px;
+  padding:9px 12px; border-bottom:1px solid var(--line);
+  cursor:pointer; font-size:12px; background:var(--panel2); min-width:840px;
+}
+.lr-var:hover{ background:var(--panel3); }
+.lr-var .lr-cb{ width:26px; flex:none; }
+.lr-var-toggle{
+  width:20px; flex:none; color:var(--ink3); font-size:14px;
+  transition:transform .15s; display:flex; align-items:center;
+}
+.lr-var.open .lr-var-toggle{ transform:rotate(90deg); }
+.lr-var-count{ font-size:11.5px; color:var(--ink2); font-weight:600; width:92px; flex:none; }
+.lr-var-info{ flex:1; min-width:0; font-size:12px; }
+.lr-var-family{
+  color:var(--accent2); font-weight:500; display:block;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.lr-var-parent{ color:var(--ink3); font-size:10.5px; display:block; }
+
+/* A child sits under its parent, indented and on a quieter ground so the
+   nesting is visible without a second border. */
+.lr.lr-child{ padding-left:44px; background:var(--bg); }
+.lr.lr-child:hover{ background:var(--panel2); }
+.lr.lr-child.sel{ background:var(--accent-bg); }
+
 /* ---- 5. THE ROW MENU ---------------------------------------------------
    rowActions() renders the app's existing .acts markup; it is compacted here
    rather than restyled, so the buttons inside stay the ones the other views
