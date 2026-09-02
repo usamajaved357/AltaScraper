@@ -1,4 +1,4 @@
-"""The repricer prices from what Amazon actually charges, per product.
+﻿"""The repricer prices from what Amazon actually charges, per product.
 
     "the fees of amazon reflecting in the details should be accurate and not
      estimate of 15 percent like i see right now in the app"
@@ -181,6 +181,117 @@ truthy("  a SKU with no ASIN or price is skipped, not guessed",
 truthy("  and what could not be quoted is returned per SKU", "not_quoted" in _r)
 truthy("the button is on the toolbar", "sourcingGetFees(" in JS)
 truthy("  and it reports what Amazon refused", "could not be quoted" in JS)
+
+print("\n=== the settled tier: what Amazon really took on THIS product ===")
+# THE BUG THIS TIER FIXES, in the owner's words: "The Sourcing page shows ROI
+# 30% and the Orders page shows ROI 22.5% for the same product ... sourcing uses
+# estimated fees, orders uses actual fees." Orders reads Amazon's settlement.
+# Sourcing multiplied by a percentage and never looked at the settlement at all,
+# even for a product with a shelf of them behind it.
+import sqlite3
+
+# `F` was rebound to the FILE TEXT further up (the section that asserts on the
+# source), so the module is imported again under its own name rather than
+# reading like the two are the same thing.
+from domain import amazon_fees as AF
+from data import db as _db
+
+_conn = sqlite3.connect("file:%s?mode=ro" % _db.db_path("config.json").replace("\\", "/"),
+                        uri=True)
+_conn.row_factory = sqlite3.Row
+_sold = _conn.execute(
+    "SELECT workspace_id ws, marketplace mkt, sku, COUNT(DISTINCT order_id) n "
+    "  FROM order_lines WHERE IFNULL(sku,'')<>'' "
+    " GROUP BY workspace_id, marketplace, sku HAVING n >= 2 "
+    " ORDER BY n DESC LIMIT 1").fetchone()
+truthy("there is a SKU with settled sales to measure", _sold is not None)
+if _sold:
+    _r, _b, _d = AF.rate_from_orders("config.json", _sold["ws"], _sold["mkt"],
+                                    _sold["sku"])
+    print("     %s / %s -> %s" % (_sold["ws"], _sold["sku"],
+                                  ("%.2f%%" % (_r * 100)) if _r else _d))
+    check("  a sold product's own rate is ACTUAL, not an estimate", _b, AF.ACTUAL)
+    truthy("    and it is a believable rate", 0.05 < _r < 0.35)
+    truthy("    and it says how many orders it was measured from",
+           "settled order" in _d)
+    # THE WHOLE POINT: it outranks the quote and the average.
+    _r2, _b2, _d2 = AF.rate_for_listing("config.json", None, _sold["ws"],
+                                       _sold["mkt"], None, _sold["sku"],
+                                       "B0TESTASIN", 30.00, allow_quote=False)
+    check("  and the resolver prefers it over Amazon's quote", _b2, AF.ACTUAL)
+    check("    answering with the same number", round(_r2, 6), round(_r, 6))
+
+# A PRODUCT THAT HAS NEVER SOLD FALLS THROUGH, which is the case the owner
+# named: "This fixes the fee for new products that haven't sold yet."
+_r3, _b3, _d3 = AF.rate_for_listing("config.json", None, "jack_uk", "UK", None,
+                                   "NO-SUCH-SKU-EVER", "B0TESTASIN", 30.00,
+                                   allow_quote=False)
+truthy("a product with no sales falls through to the next tier",
+       _b3 in (AF.QUOTED, AF.ESTIMATED))
+truthy("  and says the settled tier had nothing to measure",
+       "no settled sales" in _d3)
+truthy("  without inventing a rate", 0.05 < _r3 < 0.35)
+
+# ONE SALE IS NOT A RATE.
+_F2 = AF.rate_from_orders("config.json", "jack_uk", "UK", "NO-SUCH-SKU-EVER",
+                         min_orders=99)
+check("a SKU cannot clear a threshold it has no orders for", _F2[0], None)
+
+FEE = open(os.path.join("domain", "amazon_fees.py"), encoding="utf-8").read()
+_fo = FEE.split("def rate_from_orders(")[1].split("\ndef ")[0]
+# THE VAT TRAP. Amazon takes its cut on what the BUYER paid; `principal` is the
+# ex-VAT figure. Measured on jack_uk order 204-6325754-5123507: 4.50 taken on a
+# 29.99 sale whose principal is 24.99 -- 15.0% of the one and 18.0% of the
+# other, and only the first can be multiplied by a shelf price. Dividing by the
+# principal would have overstated every VAT-registered account's fee by a fifth.
+truthy("the rate is measured against what the buyer paid, not the ex-VAT figure",
+       "l.sku_rev" in _fo and "SUM(revenue)" in _fo)
+truthy("  and principal is deliberately not the divisor",
+       "principal" not in _fo.split("SELECT f.order_id")[1].split("fetchall")[0])
+truthy("  with the reason written down", "INC-VAT" in _fo)
+truthy("a discounted order is left out of the rate", 'r["promos"]' in _fo)
+truthy("  and so is a refunded one", 'r["refunds"]' in _fo)
+truthy("  and a cancelled line", "cancelled" in _fo)
+truthy("a multi-line order is shared by revenue, not counted whole",
+       "sku_rev / tot_rev" in _fo)
+truthy("a database that cannot be read does not stop a price",
+       "must not stop a price" in _fo)
+
+print("\n=== the quote is cached per ASIN and price, for a day ===")
+truthy("the age limit is 24 hours", AF.QUOTE_MAX_AGE_HOURS == 24)
+truthy("  and a price move makes a quote stale too",
+       AF.QUOTE_PRICE_TOLERANCE > 0)
+_ra = FEE.split("def rate_for_asin(")[1].split("\ndef ")[0]
+truthy("staleness is measured in hours, not days", "max_age_hours" in _ra)
+truthy("  and against the price it was quoted at", "moved = (" in _ra)
+# A STALE QUOTE IS STILL AMAZON'S FIGURE. Dropping it for an average of every
+# other product this account sells would be a downgrade dressed as caution.
+truthy("a stale quote is still returned rather than dropped to an average",
+       "def _held(" in _ra and "due a refresh" in _ra)
+SCH = open(os.path.join("data", "scheduler.py"), encoding="utf-8").read()
+truthy("the refresh job runs daily, matching the age limit",
+       'register_job("sourcing_fees", sourcing_fees, hours=24' in SCH)
+# One line of it, because the sentence wraps and matching across the break
+# finds a newline rather than the words.
+truthy("  and a price change is picked up by it on its own",
+       "therefore picked up here on its own" in SCH)
+
+print("\n=== one rate, and every part of the panel follows it ===")
+RUN = open(os.path.join("domain", "source_run.py"), encoding="utf-8").read()
+truthy("pricing resolves through the three tiers", "_fees.rate_for_listing(" in RUN)
+truthy("  and still never calls Amazon on a page load", "allow_quote=False" in RUN)
+truthy("the fee panel is handed the rate the price was built on",
+       'rate=rule.get("referral_rate")' in RUN)
+_bd = FEE.split("def breakdown_for(")[1].split("\ndef ")[0]
+truthy("  and uses it instead of looking the rate up again",
+       "given_rate and given_basis == ACTUAL" in _bd)
+truthy("    without charging the closing fee twice",
+       "already inside the measured rate above" in _bd)
+JS = open(os.path.join("static", "js", "sourcing.js"), encoding="utf-8").read()
+truthy("the screen names the settled figure as its own kind",
+       "d.fee_basis === 'actual'" in JS and "from your sales" in JS)
+truthy("  and says it is the number the Orders page reports",
+       "same fee the Orders page reports" in JS)
 
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:

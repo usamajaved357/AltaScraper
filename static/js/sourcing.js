@@ -1867,17 +1867,27 @@ function _rulePills(r){
   const fr = (b.fee_rate != null) ? (b.fee_rate * 100).toFixed(2)
              .replace(/\.00$/, '').replace(/(\.\d)0$/, '$1') + '%' : '?';
   const quoted = (d.fee_basis === 'quoted');
+  // A THIRD KIND OF FIGURE, AND IT OUTRANKS THE OTHER TWO. 'settled' is what
+  // Amazon really took on THIS product, measured off its own orders -- not a
+  // quote about what it would take, and not an average across everything the
+  // account sells. It is the same number the Orders page reports, which is the
+  // point: the two screens were disagreeing about one product.
+  const settled = (d.fee_basis === 'actual');
   h += pill('Amazon fee',
             fr + ' <span style="font-weight:400;opacity:.7">'
-               + (quoted ? 'quoted' : 'measured') + '</span>',
+               + (settled ? 'from your sales'
+                          : (quoted ? 'quoted' : 'measured')) + '</span>',
             'sourcingGetFees(' + S + ')',
             (d.fee_detail
               || 'Amazon has not been asked about this product yet.')
-            + (quoted
-                ? " -- Amazon's own figure for this product."
-                : ' -- your measured rate, not Amazon\'s quote. Click to ask '
-                  + 'Amazon.'),
-            quoted ? 'rp-g' : '');
+            + (settled
+                ? ' -- what Amazon actually took on this product, so it is the '
+                  + 'same fee the Orders page reports.'
+                : (quoted
+                    ? " -- Amazon's own figure for this product."
+                    : ' -- your measured rate, not Amazon\'s quote. Click to ask '
+                      + 'Amazon.')),
+            settled ? 'rp-g' : (quoted ? 'rp-g' : ''));
   h += '</div>';
   return h;
 }

@@ -336,14 +336,23 @@ def sourcing_apply(workspace_id=None):
 def sourcing_fees(workspace_id=None):
     """Ask Amazon what it charges on each enrolled product, and remember it.
 
-    WEEKLY, NOT FOUR-HOURLY, and that is the whole reason this is a job of its
+    DAILY, NOT FOUR-HOURLY, and that is the whole reason this is a job of its
     own rather than a step inside sourcing_check. A referral fee is a percentage
-    by CATEGORY: it does not move between Tuesday and Wednesday, and asking
-    Amazon about sixty-seven products every four hours would be four hundred
-    calls a day against a limit Amazon enforces -- to re-learn the same number.
+    by CATEGORY: it does not move between one four-hour cycle and the next, and
+    asking Amazon about sixty-seven products every four hours would be four
+    hundred calls a day against a limit Amazon enforces -- to re-learn the same
+    number. Once a day is sixty-seven.
 
-    rate_for_asin only re-asks where the stored answer is older than its
-    max_age_days, so a run that finds everything fresh costs nothing.
+    IT WAS WEEKLY, and a quote is now trusted for a day
+    (amazon_fees.QUOTE_MAX_AGE_HOURS), so weekly would have left six days in
+    seven where every product was due a refresh nothing was going to give it.
+    The cadence and the age limit are the same decision and have to agree.
+
+    rate_for_asin only re-asks where the stored answer is stale -- older than
+    QUOTE_MAX_AGE_HOURS, or taken at a price the listing has since moved off --
+    so a run that finds everything current costs nothing. A price change is
+    therefore picked up here on its own, without anything having to tell this
+    job that a price changed.
 
     Nothing here changes a price. It fills the cache that pricing reads, and
     pricing never calls Amazon itself -- see domain/source_run.decide_one.
@@ -371,8 +380,8 @@ def sourcing_fees(workspace_id=None):
 
 register_job("sourcing_check", sourcing_check, hours=4,
              description="Re-read supplier prices and stock for enrolled SKUs")
-register_job("sourcing_fees", sourcing_fees, hours=168,
-             description="Refresh Amazon's fee quote for each enrolled SKU (weekly)")
+register_job("sourcing_fees", sourcing_fees, hours=24,
+             description="Refresh Amazon's fee quote for each enrolled SKU (daily)")
 register_job("sourcing_apply", sourcing_apply, hours=4,
              description="Push repricer changes for armed SKUs (off unless armed)")
 register_job("sales_sync", sales_sync, hours=6,
