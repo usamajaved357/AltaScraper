@@ -415,6 +415,14 @@ def parent_attributes(children, theme, title="", marketplace_id="", extra=None,
     SKU -- its wrappers untouched, so what goes back up is the shape that came
     down (Rule 4: the schema, not our idea of it).
 
+    `required` MUST COME FROM THE PARENT'S OWN SCHEMA -- getDefinitionsProductType
+    with parentageLevel=PARENT. It is a different list from the standalone one:
+    measured on SQUEEGEE, the standalone schema requires 6 attributes and the
+    parent schema requires those 6 plus variation_theme and
+    child_parent_sku_relationship. Passing the standalone list here means
+    borrowing against a list that never mentions the two the parent cannot go up
+    without.
+
     Returns {attributes, inherited, differ, images_from} where `differ` names the
     attributes the children disagreed on. Those are reported, never averaged and
     never taken from whichever child happened to be first.
@@ -441,14 +449,56 @@ def parent_attributes(children, theme, title="", marketplace_id="", extra=None,
         else:
             differ.append(k)
 
-    # The three that make it a parent rather than a listing.
+    # The ones that make it a parent rather than a listing.
     attrs["parentage_level"] = [{"value": PARENT}]
     attrs["variation_theme"] = [{"name": theme}]
-    # No barcode of its own -- the exemption, per CLAUDE.md Rule 1, never an
-    # invented one.
-    attrs.setdefault("supplier_declared_has_product_identifier_exemption",
-                     [{"value": True, "marketplace_id": marketplace_id}]
-                     if marketplace_id else [{"value": True}])
+
+    # THE GTIN EXEMPTION USED TO BE CLAIMED HERE, and it is gone.
+    #
+    # This line read:
+    #
+    #     # No barcode of its own -- the exemption, per CLAUDE.md Rule 1, never
+    #     # an invented one.
+    #     attrs.setdefault("supplier_declared_has_product_identifier_exemption",
+    #                      [{"value": True, ...}])
+    #
+    # It cited a version of Rule 1 that the owner replaced in writing on 26 Aug
+    # 2026 -- "dont apply for exemption automatically" -- which is exactly the
+    # way a rule change gets undone by a comment nobody re-read.
+    #
+    # But it is not a judgement call either way, because ASKED FOR THE PARENT'S
+    # OWN SCHEMA, AMAZON DOES NOT HAVE THE FIELD. Measured on the live UK
+    # account, SQUEEGEE and WINDING_REEL, 2 Sep 2026, getDefinitionsProductType
+    # with parentageLevel=PARENT:
+    #
+    #     externally_assigned_product_identifier                absent
+    #     supplier_declared_has_product_identifier_exemption    absent
+    #     merchant_suggested_asin                               absent
+    #
+    # Absent from `properties`, and named in none of the conditionals they
+    # appear in on the standalone schema (5, 8 and 5 places). A variation parent
+    # has no product identifier in Amazon's model, so the exemption is not a
+    # declaration the parent declines to make -- it is not an attribute of the
+    # object at all. Sending nothing is what a flat-file upload has always done.
+    #
+    # WHAT THE PARENT SCHEMA DOES DEMAND, and the standalone one never mentioned:
+    # variation_theme (set above) and child_parent_sku_relationship. Set from
+    # `required` rather than always, so the day Amazon stops asking, this stops
+    # sending -- and in the shape the PARENT schema gives, which is NOT the
+    # child's shape:
+    #
+    #     items.required      ["child_relationship_type"]
+    #     child_relationship_type  enum ["variation"]
+    #     additionalProperties     false
+    #
+    # No parent_sku property exists on the parent's version. The child names its
+    # parent; the parent only says what kind of relationship it heads.
+    if "child_parent_sku_relationship" in (required or []):
+        attrs["child_parent_sku_relationship"] = [
+            {"child_relationship_type": "variation",
+             "marketplace_id": marketplace_id} if marketplace_id
+            else {"child_relationship_type": "variation"}]
+
     if title:
         attrs["item_name"] = ([{"value": title, "language_tag": "en_GB",
                                 "marketplace_id": marketplace_id}]
