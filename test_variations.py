@@ -31,6 +31,33 @@ SCHEMA = {"properties": {"variation_theme": {
 }}}
 NO_VAR_SCHEMA = {"properties": {"item_name": {"type": "array"}}}
 
+# THE PARENT'S OWN SCHEMA, as Amazon returns it for parentageLevel=PARENT.
+# Shaped from the real answer measured on the live UK account (SQUEEGEE,
+# 2 Sep 2026): the identifier attributes are absent entirely, and `required`
+# carries two the standalone schema never mentions.
+# `required` is kept to what these fixtures' children can actually satisfy --
+# the point being asserted is the TWO the parent schema adds and the standalone
+# one never mentions, not the borrowing, which has its own tests below.
+PARENT_SCHEMA = {
+    "properties": {"variation_theme": SCHEMA["properties"]["variation_theme"]},
+    "attribute_names": ["brand", "item_name", "variation_theme",
+                        "child_parent_sku_relationship", "parentage_level"],
+    "required": ["brand", "variation_theme", "child_parent_sku_relationship"],
+}
+STANDALONE_SCHEMA = SCHEMA
+
+
+def _schema_for(pt, mkt, parentage=""):
+    """The injected fetcher, now aware of parentage like the real one.
+
+    Two different schemas, because that is the whole point: the theme checker
+    must keep seeing the full one (the parent schema has no colour or size to
+    check a theme against) and the parent builder must see the parent's.
+    """
+    if str(parentage or "").upper() == "PARENT":
+        return PARENT_SCHEMA
+    return STANDALONE_SCHEMA
+
 def kid(sku, **attrs):
     # brand and item_type_keyword are now part of what a family must share, so a
     # fixture without them is a fixture that cannot form one -- which is the
@@ -190,7 +217,7 @@ vr.register(app, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
             _active_account=lambda: {"id": WS, "seller_id": "S1"},
             _state={"active_account_id": WS, "active_marketplace": MKT},
             _sp_creds=lambda m="UK": {},
-            _schema_for=lambda pt, mkt: SCHEMA)
+            _schema_for=_schema_for)
 cl = app.test_client()
 
 cand = cl.get("/variations/candidates").get_json()
@@ -216,6 +243,71 @@ check("  the preview carries the real payload",
       p["payload"]["parent"]["attributes"]["variation_theme"], [{"name": "SIZE"}])
 check("  which the parent has no price in",
       "purchasable_offer" in p["payload"]["parent"]["attributes"], False)
+
+print("  -- the parent is built against the PARENT schema --")
+# Amazon's parentageLevel=PARENT resolves the schema down to what a variation
+# container is. MEASURED on the live UK account (SQUEEGEE, 2 Sep 2026): the
+# standalone schema requires 6 attributes and carries 112 properties; the parent
+# schema requires 8 and carries 83, and the three identifier attributes are
+# ABSENT from it -- not required, not optional, not named in any of the
+# conditionals they appear in on the standalone one.
+_pattrs = p["payload"]["parent"]["attributes"]
+check("the parent is built from the parent's own schema",
+      p["parent_schema"], "parent")
+truthy("  which asks for what the standalone schema never mentioned",
+       "child_parent_sku_relationship" in p["parent_required"]
+       and "variation_theme" in p["parent_required"])
+
+# THE EXEMPTION IS GONE, and not because a rule says so -- because the field
+# does not exist at this parentage level. Amazon has no product identifier on a
+# parent, so there is nothing to exempt and nothing to declare.
+check("no GTIN exemption is claimed on the parent",
+      "supplier_declared_has_product_identifier_exemption" in _pattrs, False)
+check("  and no identifier is sent either",
+      "externally_assigned_product_identifier" in _pattrs, False)
+check("  and never merchant_suggested_asin (Rule 1)",
+      "merchant_suggested_asin" in _pattrs, False)
+
+# WHAT THE PARENT SCHEMA DOES DEMAND, in ITS shape rather than the child's:
+# items.required is ["child_relationship_type"], the enum is ["variation"], and
+# additionalProperties is false -- there is no parent_sku property on a parent.
+_rel = _pattrs.get("child_parent_sku_relationship")
+truthy("the relationship the parent schema requires is sent", _rel)
+check("  as one entry", len(_rel or []), 1)
+check("  saying only what kind of relationship it heads",
+      (_rel or [{}])[0].get("child_relationship_type"), "variation")
+check("  and NOT naming a parent SKU, which the parent's schema has no room for",
+      "parent_sku" in (_rel or [{}])[0], False)
+# The child's version is the other way round and must not have changed.
+_kid0 = p["payload"]["children"][0]["attributes"]["child_parent_sku_relationship"][0]
+check("a CHILD still names its parent", _kid0.get("parent_sku"), "SH-RED-PARENT")
+
+# THE THEME CHECKER MUST NOT READ THE PARENT SCHEMA. It drops colour, size and
+# every other varying attribute -- 29 of SQUEEGEE's 112 -- so asked of it, every
+# theme on every product type names an axis the type "does not have".
+check("themes still come from the full schema, not the parent's",
+      prev(["SH-RED-S", "SH-RED-M"], "SIZE")["can_apply"], True)
+_th = cl.get("/variations/themes?product_type=SHIRT").get_json()
+check("  and the theme list is unchanged by any of this", _th["themes"],
+      ["SIZE", "COLOR", "SIZE/COLOR", "COLOR/VOLTAGE/WATTAGE"])
+
+# A FETCHER THAT CANNOT ANSWER FOR THE PARENT SAYS SO. Falling back to the
+# standalone list is defensible; pretending it was the parent's is not.
+import flask as _flask_mod
+_app2 = _flask_mod.Flask(__name__); _app2.secret_key = "t"
+vr.register(_app2, CONFIG_PATH=CFG, _cfg=lambda: json.load(open(CFG)),
+            _active_account=lambda: {"id": WS, "seller_id": "S1"},
+            _state={"active_account_id": WS, "active_marketplace": MKT},
+            _sp_creds=lambda m="UK": {},
+            _schema_for=lambda pt, mkt: SCHEMA)      # the old two-argument shape
+_old = _app2.test_client().post(
+    "/variations/preview",
+    json={"skus": ["SH-RED-S", "SH-RED-M"], "theme": "SIZE"}).get_json()
+truthy("an older fetcher falls back and the preview says which schema it used",
+       _old["parent_schema"].startswith("standalone"))
+check("  and still claims no exemption",
+      "supplier_declared_has_product_identifier_exemption"
+      in _old["payload"]["parent"]["attributes"], False)
 
 bad = prev(["SH-RED-M", "SH-DUP"], "SIZE")
 check("two products of the same size cannot apply", bad["can_apply"], False)

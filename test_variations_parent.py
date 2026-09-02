@@ -177,9 +177,30 @@ for k, why in (("purchasable_offer", "a parent cannot be bought"),
                 "a container has no barcode of its own"),
                ("merchant_suggested_asin", "CLAUDE.md Rule 1, from anywhere")):
     check("no %s — %s" % (k, why), at.get(k), None)
-check("it goes up under the GTIN exemption instead",
-      at.get("supplier_declared_has_product_identifier_exemption"),
-      [{"value": True, "marketplace_id": MKT}])
+# IT USED TO GO UP UNDER THE GTIN EXEMPTION, and this line asserted that:
+#
+#     check("it goes up under the GTIN exemption instead",
+#           at.get("supplier_declared_has_product_identifier_exemption"),
+#           [{"value": True, "marketplace_id": MKT}])
+#
+# Then Amazon was asked what a parent's schema actually contains --
+# getDefinitionsProductType with parentageLevel=PARENT, measured on the live UK
+# account (SQUEEGEE and WINDING_REEL, 2 Sep 2026):
+#
+#     externally_assigned_product_identifier                absent
+#     supplier_declared_has_product_identifier_exemption    absent
+#     merchant_suggested_asin                               absent
+#
+# Absent from `properties`, and named in none of the conditionals they appear in
+# on the standalone schema (5, 8 and 5 places). A variation parent has no
+# product identifier in Amazon's model, so the exemption is not a declaration
+# the parent declines to make -- there is nothing there to exempt. Sending
+# nothing is also what a flat-file upload has always done.
+#
+# So it is now on the list above with the rest of what a parent never carries,
+# and this asserts the absence rather than the claim.
+check("no GTIN exemption either — the parent schema has no such field",
+      at.get("supplier_declared_has_product_identifier_exemption"), None)
 
 print("\n--- what makes it a parent ---")
 check("parentage", at.get("parentage_level"), [{"value": "parent"}])
@@ -229,8 +250,23 @@ print("\n=== preview and apply cannot disagree ===")
 R = open(r"D:\AltaScraper\routes\variations_routes.py", encoding="utf-8").read()
 check("both build the parent with the same function",
       R.count("_var.parent_attributes("), 2)
-truthy("both pass the schema's required list",
-       R.count("required=_var.required_from_schema(") == 2)
+# BOTH PASS THE PARENT'S OWN REQUIRED LIST, through the one helper that fetches
+# it. They used to call required_from_schema(_schema(...)) inline -- the
+# STANDALONE list, which on SQUEEGEE is six attributes where the parent schema
+# asks for eight. One helper, called twice, so preview and apply cannot end up
+# built against different schemas.
+truthy("both pass the parent's required list",
+       R.count("required=_req") == 2)
+truthy("  fetched once, in one place, for both",
+       R.count("_req, _req_is_parent = _parent_required(") == 2
+       and "def _parent_required(" in R)
+truthy("  from Amazon's parentageLevel=PARENT",
+       '_schema_for(pt, mkt, "PARENT")' in R)
+# THE THEME CHECKER MUST NOT SHARE IT. The parent schema drops colour, size and
+# every other varying attribute -- 29 of SQUEEGEE's 112 -- so a theme checked
+# against it names an axis the type "does not have", for every theme and type.
+truthy("  while the theme checker keeps the full schema",
+       "THE FULL SCHEMA, DELIBERATELY" in R)
 truthy("apply refuses rather than sending an incomplete parent",
        'error": (\n                "The parent listing still needs' in R
        or "still needs %s and neither product" in R)

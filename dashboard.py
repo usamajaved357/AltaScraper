@@ -876,8 +876,34 @@ def _schema_attrs(pt: str) -> list:
     return _load_schema(pt)["attrs"]
 
 
-def _variation_schema(product_type: str, marketplace: str = "") -> dict:
+def _variation_schema(product_type: str, marketplace: str = "",
+                      parentage: str = "") -> dict:
     """The parts of a product type's schema the screens actually read.
+
+    `parentage` is Amazon's own parentageLevel parameter -- "" (the whole
+    schema, with every condition still in it), "PARENT" or "CHILD". Amazon
+    resolves the conditional logic for the level asked about and hands back a
+    smaller schema describing only that kind of listing.
+
+    MEASURED on the live UK account, SQUEEGEE, 2 Sep 2026:
+
+        no parentageLevel   6 required, 112 properties
+        PARENT              8 required,  83 properties
+        CHILD              16 required, 112 properties
+
+    and the PARENT schema does not contain externally_assigned_product_identifier,
+    supplier_declared_has_product_identifier_exemption or
+    merchant_suggested_asin AT ALL -- not required, not optional, not named in
+    any of the conditionals they appear in on the standalone schema (5, 8 and 5
+    places respectively). A variation parent has no product identifier in
+    Amazon's model, so there is nothing there to exempt.
+
+    THE PARENT SCHEMA IS NOT A SUBSTITUTE FOR THE STANDALONE ONE. It also drops
+    colour, size, material, pattern, style and every other attribute that varies
+    between children -- 29 of them on SQUEEGEE. Anything asking "does this
+    product type HAVE a colour attribute", which is what the variation theme
+    checker asks, must keep using the full schema; ask the parent schema and
+    every theme on every type comes back unusable.
 
     Returns None when the schema could not be loaded at all -- which the caller
     reports as "could not check" instead of quietly treating as "nothing
@@ -908,7 +934,13 @@ def _variation_schema(product_type: str, marketplace: str = "") -> dict:
     # the live UK account, SPACE_HEATER lists 76 themes of which 47 are dead and
     # TOOLS 122 of which 111 are. Offering a dead one is offering something
     # Amazon will not accept.
-    _ck = "vt::%s::%s" % (product_type, marketplace or _state.get("active_marketplace") or "UK")
+    # The parentage level is part of the cache key: the same product type has a
+    # different schema at each level, and one overwriting the other is how the
+    # theme checker would end up reading the parent's 83 properties.
+    _ck = "vt::%s::%s::%s" % (
+        product_type,
+        marketplace or _state.get("active_marketplace") or "UK",
+        (parentage or "").upper())
     cached = _state.setdefault("variation_themes", {}).get(_ck)
     if cached is not None:
         return cached
@@ -921,9 +953,15 @@ def _variation_schema(product_type: str, marketplace: str = "") -> dict:
                                                             Marketplaces.UK)
         ptd = ProductTypeDefinitions(credentials=_sp_creds(mkt),
                                      marketplace=enum_, timeout=30)
+        _kw = {}
+        if parentage:
+            # Passed straight through to Amazon's query string. The SDK forwards
+            # **kwargs as parameters, so no SDK change is needed for a parameter
+            # its docstring does not list.
+            _kw["parentageLevel"] = str(parentage).upper()
         d = ptd.get_definitions_product_type(
             productType=product_type, requirements="LISTING",
-            locale=("en_US" if mkt == "US" else "en_GB"))
+            locale=("en_US" if mkt == "US" else "en_GB"), **_kw)
         pay = d.payload if hasattr(d, "payload") else d
         link = ((pay.get("schema") or {}).get("link") or {}).get("resource", "")
         if not link:

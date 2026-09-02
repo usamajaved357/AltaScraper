@@ -147,6 +147,13 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         None means we could not fetch it -- which is reported as "could not
         check" rather than silently skipping the check, because a theme the type
         does not allow is accepted by Amazon and then ignored.
+
+        THE FULL SCHEMA, DELIBERATELY. The parent schema below is smaller and
+        wrong for this job: Amazon drops colour, size, material, pattern and
+        every other varying attribute from it -- 29 of SQUEEGEE's 112. The theme
+        checker asks "does this product type HAVE a colour attribute", and asked
+        of the parent schema the answer is no, for every axis, so every theme on
+        every type would come back unusable.
         """
         if not _schema_for:
             return None
@@ -154,6 +161,44 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
             return _schema_for(pt, mkt)
         except Exception:
             return None
+
+    def _parent_schema(pt, mkt):
+        """The schema for the PARENT listing specifically, or None.
+
+        Amazon's parentageLevel=PARENT resolves the conditional logic down to
+        what a variation container actually is. Two things come out of it that
+        the standalone schema cannot answer:
+
+          what the parent MUST carry   its own `required` list -- SQUEEGEE's is
+                                       the standalone six plus variation_theme
+                                       and child_parent_sku_relationship
+          what a parent cannot have    no product identifier and no exemption
+                                       field, so neither is sent
+
+        None when it could not be fetched, and the caller then falls back to the
+        standalone list rather than guessing -- the same "could not check"
+        honesty as _schema above. It never silently substitutes one for the
+        other: they are different lists and using the wrong one is the bug this
+        whole change is about.
+        """
+        if not _schema_for:
+            return None
+        try:
+            return _schema_for(pt, mkt, "PARENT")
+        except TypeError:
+            # A fetcher injected before parentage existed. Asking it for the
+            # parent schema and being handed the standalone one back would be
+            # worse than not asking, so this says so instead.
+            return None
+        except Exception:
+            return None
+
+    def _parent_required(pt, mkt):
+        """(required list, whether it is the parent's own). Never raises."""
+        ps = _parent_schema(pt, mkt)
+        if ps is not None:
+            return _var.required_from_schema(ps), True
+        return _var.required_from_schema(_schema(pt, mkt)), False
 
     @app.route("/variations/families")
     def variations_families():
@@ -541,11 +586,16 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         # parent_attributes(), so the preview IS what gets sent.
         from domain import accounts as _acc_mod
         mkt_id = _acc_mod.marketplace_id(mkt)
+        # FROM THE PARENT'S OWN SCHEMA. Built against the standalone list, the
+        # parent was borrowing towards six attributes when Amazon's parent
+        # schema asks for eight -- and claiming a GTIN exemption on a field that
+        # does not exist at this parentage level.
+        _req, _req_is_parent = _parent_required(pt, mkt)
         pa = _var.parent_attributes(children, theme,
                                     title=(b.get("parent_title") or ""),
                                     marketplace_id=mkt_id,
                                     extra=(b.get("parent_attributes") or {}),
-                                    required=_var.required_from_schema(_schema(pt, mkt)))
+                                    required=_req)
         payload = _var.build(parent_sku, children, theme, pt,
                              parent_attributes=pa["attributes"])
         if pa["unresolved"]:
@@ -557,6 +607,14 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         return jsonify({"ok": True, "can_apply": not problems,
                         "problems": problems, "payload": payload,
                         "parent_sku": parent_sku, "product_type": pt,
+                        # WHICH SCHEMA THE PARENT WAS BUILT AGAINST. A preview
+                        # that cannot say whether it read the parent's own
+                        # requirements or fell back to the standalone ones is a
+                        # preview of something the reader cannot check.
+                        "parent_schema": ("parent" if _req_is_parent
+                                          else "standalone (parent schema "
+                                               "could not be fetched)"),
+                        "parent_required": _req,
                         "parent_inherited": pa["inherited"],
                         "parent_differ": pa["differ"],
                         "parent_borrowed": pa["borrowed"],
@@ -613,14 +671,17 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         seller = str((acc or {}).get("seller_id") or "")
         locale = "en_US" if mkt == "US" else "en_GB"
 
-        # The SAME builder the preview used, so what was shown is what is sent.
-        # The GTIN exemption and the title are inside it, along with everything
-        # the children agree on -- brand, country of origin, dangerous goods,
-        # batteries -- without which Amazon rejected every parent ever built.
+        # The SAME builder the preview used, against the SAME schema, so what
+        # was shown is what is sent. The title is inside it, along with
+        # everything the children agree on -- brand, country of origin,
+        # dangerous goods, batteries -- without which Amazon rejected every
+        # parent ever built. No GTIN exemption: the parent schema has no such
+        # field (see listing/variations.parent_attributes).
+        _req, _req_is_parent = _parent_required(pt, mkt)
         pa = _var.parent_attributes(children, theme, title=title,
                                     marketplace_id=mkt_id,
                                     extra=(b.get("parent_attributes") or {}),
-                                    required=_var.required_from_schema(_schema(pt, mkt)))
+                                    required=_req)
         if pa["unresolved"]:
             return jsonify({"ok": False, "stage": "parent", "error": (
                 "The parent listing still needs %s and neither product has a "

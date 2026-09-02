@@ -54,9 +54,22 @@ def normalize_gtin(raw):
     """Return (value, type) ready to send to Amazon.
 
     type is "ean", "upc", or "" when the value is not a usable retail barcode.
-    A caller that gets ("", "") has NO barcode and must claim the GTIN
-    exemption rather than send anything (CLAUDE.md §1 -- never send a fake,
-    placeholder or reshaped-until-it-fits barcode).
+
+    A caller that gets ("", "") has NO barcode and must send NOTHING -- not a
+    reshaped one, not a placeholder, and NOT the GTIN exemption either. This
+    docstring used to say "must claim the GTIN exemption rather than send
+    anything", which was CLAUDE.md Rule 1 until the owner changed it in writing
+    on 26 Aug 2026:
+
+        "i dont want to use the gtin exemption until the user wants to, he can
+         check the button under the box apply for gtin exemption as we have in
+         amazon backend, dont apply for exemption automatically"
+
+    The generator was changed to match; this sentence was not, and an
+    instruction to claim an exemption sitting in the one file everybody reads
+    before touching a barcode is how it gets put back. Claiming it is a
+    DECLARATION TO AMAZON that the product has no barcode, and it is the
+    owner's to make -- the tick box on the drawer, off by default.
 
         >>> normalize_gtin("04545944574867")   # 14-digit padded form
         ('4545944574867', 'ean')
