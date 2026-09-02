@@ -112,6 +112,45 @@ QUOTE_MAX_AGE_HOURS = 24
 # wrong. Pennies of movement are not a price change; this is the threshold.
 QUOTE_PRICE_TOLERANCE = 0.01
 
+# ---- the automatic quote, and the three things that stop it running away ----
+#
+#     "When the app needs a fee rate for a product and tier 1 (settled orders)
+#      has no data, it should automatically call getMyFeesEstimate for that
+#      ASIN+price if there's no cached quote ... If the API call fails
+#      (timeout, rate limit), fall through to tier 3 silently -- don't block
+#      the page."
+#
+# The pricing path used to be forbidden from calling Amazon at all, because it
+# runs for every enrolled SKU on every draw of the screen and 67 live calls
+# before a page appears is not a page. That is still true. What changed is that
+# waiting for a button press meant a brand new listing was priced off a
+# percentage until somebody remembered to press it.
+#
+# So it asks, but it cannot ask sixty-seven times:
+#
+#   A BUDGET   at most AUTO_QUOTE_MAX calls in a rolling window, across the
+#              whole process. The first few new products on a screen are quoted
+#              and cached; the rest fall through to tier 3 for now and are
+#              picked up on the next draw or by the daily job. A cold cache
+#              therefore fills over a few page loads instead of holding one
+#              page hostage for two minutes.
+#   A MEMO     an account that answers "Unauthorized" is not asked again for
+#              ACCOUNT_REFUSAL_MEMO_SECONDS, and an ASIN Amazon will not quote
+#              is left alone for ASIN_REFUSAL_MEMO_SECONDS. MEASURED: jack_uk
+#              and selvora_limited have no Product Fees role, so every one of
+#              their 67 SKUs would spend 2-6 seconds being refused, on every
+#              page load, forever. The memo turns that into one refusal.
+#   A TIMEOUT  shorter than the batch one. A page cannot wait 30 seconds for a
+#              fee it has a fallback for.
+#
+# None of this applies to the button or the daily job: those are deliberate
+# batch operations and are allowed to take as long as they take.
+AUTO_QUOTE_MAX = 4
+AUTO_QUOTE_WINDOW_SECONDS = 60
+AUTO_QUOTE_TIMEOUT_SECONDS = 10
+ACCOUNT_REFUSAL_MEMO_SECONDS = 600
+ASIN_REFUSAL_MEMO_SECONDS = 900
+
 # HOW MANY SETTLED ORDERS BEFORE A SKU'S OWN RATE IS BELIEVED.
 #
 # One order is an anecdote. It might have carried a refund administration fee,
@@ -126,6 +165,76 @@ def _f(v, default=0.0):
         return float(v)
     except (TypeError, ValueError):
         return default
+
+
+# The budget and the memo, in module state. Per PROCESS, not per request: the
+# limit being protected is Amazon's, and Amazon counts calls from the whole
+# application rather than from whichever page happened to make them.
+import threading as _threading
+import time as _time
+
+_auto_lock = _threading.Lock()
+_auto_calls = []                 # timestamps of automatic quotes, newest last
+_refused = {}                    # key -> (expires_at, why)
+
+
+def _refusal(key):
+    """The live refusal against this key, or "" -- expired ones are dropped."""
+    with _auto_lock:
+        got = _refused.get(key)
+        if not got:
+            return ""
+        until, why = got
+        if _time.time() >= until:
+            _refused.pop(key, None)
+            return ""
+        return why
+
+
+def _remember_refusal(key, seconds, why):
+    with _auto_lock:
+        _refused[key] = (_time.time() + float(seconds), why)
+
+
+def _auto_slot():
+    """Take one of the automatic quote slots, or False when they are all gone.
+
+    Consumed BEFORE the call rather than after it, so a slow or hanging call
+    still occupies its slot and a screen cannot start five at once.
+    """
+    now = _time.time()
+    with _auto_lock:
+        while _auto_calls and now - _auto_calls[0] > AUTO_QUOTE_WINDOW_SECONDS:
+            _auto_calls.pop(0)
+        if len(_auto_calls) >= AUTO_QUOTE_MAX:
+            return False
+        _auto_calls.append(now)
+        return True
+
+
+def _creds_for(config_path, workspace_id, marketplace, cfg=None):
+    """(creds, marketplace_id, why_not) for asking Amazon about an account.
+
+    ONE PLACE THAT KNOWS HOW TO GET THEM. Both callers that quote need this --
+    the button, which is handed a config, and the pricing path, which is not
+    and must read one. Two copies of "find the account, build its credentials"
+    is how one of them ends up asking with the wrong account's token
+    (CLAUDE.md Rule 12).
+    """
+    try:
+        from domain import accounts as _acc
+        c = cfg() if callable(cfg) else cfg
+        if not c:
+            from config import settings as _settings
+            c = _settings.read_raw(config_path) or {}
+        acc = _acc.get_account(c, str(workspace_id or "")) or {}
+        if not acc:
+            return None, None, "no account called %s" % workspace_id
+        return (_acc.account_creds(acc), _acc.marketplace_id(marketplace), "")
+    except Exception as e:
+        # Credentials that cannot be assembled are a reason not to ask, never a
+        # reason for a price not to be worked out.
+        return None, None, "%s: %s" % (type(e).__name__, str(e)[:80])
 
 
 def blank():
@@ -231,7 +340,7 @@ def for_order(config_path, workspace_id, marketplace, order_id, gross,
 
 
 def quote(creds, marketplace, marketplace_id, asin, price, is_fba=False,
-          currency=""):
+          currency="", timeout=30):
     """Amazon's OWN figure for this ASIN at this price -- the `quoted` tier.
 
     getMyFeesEstimateForASIN. Unlike estimate(), nothing here is a percentage of
@@ -266,7 +375,10 @@ def quote(creds, marketplace, marketplace_id, asin, price, is_fba=False,
         from sp_api.api import ProductFees
         from sp_api.base import Marketplaces
         mkt = getattr(Marketplaces, str(marketplace).upper(), None) or Marketplaces.UK
-        api = ProductFees(credentials=creds, marketplace=mkt, timeout=30)
+        # THE TIMEOUT IS THE CALLER'S TO SET. A batch refresh can afford to
+        # wait; a page that is drawing sixty rows and has a fallback cannot.
+        api = ProductFees(credentials=creds, marketplace=mkt,
+                          timeout=int(timeout or 30))
         res = api.get_product_fees_estimate_for_asin(
             asin=asin, price=p, currency=cur, is_fba=bool(is_fba),
             marketplace_id=marketplace_id)
@@ -452,7 +564,7 @@ def rate_from_orders(config_path, workspace_id, marketplace, sku,
 def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
                   asin, price, is_fba=False, currency="",
                   max_age_hours=QUOTE_MAX_AGE_HOURS,
-                  force=False, allow_quote=True):
+                  force=False, allow_quote=True, auto=False):
     """Amazon's OWN referral rate for THIS product. (rate, basis, detail).
 
         "get accurate fees from amazon per item"
@@ -491,6 +603,16 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
     account's own measured rate and says so in `detail`, with basis ESTIMATED.
     The caller can then tell a reader which one it got, which is the whole point
     of `basis` existing.
+
+    `auto` MARKS THE CALL AS ONE A PAGE IS WAITING ON. It still asks Amazon --
+    that is the point of it -- but under the budget, the refusal memo and the
+    short timeout described at the top of this module, so a screen with sixty
+    uncached products cannot turn into sixty live calls. A batch caller (the
+    button, the daily job) leaves it False and is not limited.
+
+    `creds` MAY BE None ON THE AUTOMATIC PATH. The pricing path has no account
+    to hand, so this resolves one from the config rather than making every
+    caller learn how (Rule 12).
     """
     from data import db as _db
 
@@ -563,11 +685,8 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
                    ("The price has moved since, so it is due a refresh."
                     if moved else "It is due a refresh.")))
 
-    # THE PRICING PATH NEVER CALLS AMAZON. decide_one runs for every enrolled
-    # SKU on every page load; quoting there would be 67 live calls before the
-    # screen could draw, on a limit Amazon enforces. So pricing reads the cache
-    # and falls back honestly, and the cache is FILLED by an explicit action --
-    # see routes/sourcing_routes.py /sourcing/fees -- or by the daily job.
+    # A CALLER THAT IS NOT ALLOWED TO ASK. The batch refresher passes
+    # allow_quote=False when it only wants to know what is already held.
     if not allow_quote:
         return _held("(Amazon has not been asked about this product yet "
                      "-- press “Get Amazon's fees”).")
@@ -575,10 +694,49 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
     if p is None or p <= 0:
         return _held("(no current price to ask Amazon about).")
 
-    q = quote(creds, mkt, marketplace_id, a, p, is_fba=is_fba, currency=currency)
+    # ---- the guards on the automatic path ---------------------------------
+    #
+    # Each of these ends in _held, which is the same silent fall-through a
+    # failed call gets: the screen shows the next best rate and says why. None
+    # of them is an error and none of them stops a price being worked out.
+    if auto:
+        why = _refusal(("account", ws, mkt)) or _refusal(("asin", ws, mkt, a))
+        if why:
+            return _held("(%s)" % why)
+        if not _auto_slot():
+            return _held("(Amazon has not been asked about this one yet -- "
+                         "several other products were asked about just now, so "
+                         "this one waits for the next look or the daily refresh)")
+
+    if not creds:
+        creds, _mid, _why = _creds_for(config_path, ws, mkt)
+        marketplace_id = marketplace_id or _mid
+        if not creds:
+            return _held("(Amazon could not be asked: %s)"
+                         % (_why or "no credentials for this account"))
+
+    q = quote(creds, mkt, marketplace_id, a, p, is_fba=is_fba, currency=currency,
+              timeout=(AUTO_QUOTE_TIMEOUT_SECONDS if auto else 30))
     if q.get("basis") != QUOTED:
+        # WHY IT WAS REFUSED DECIDES HOW LONG TO LEAVE IT. A missing Product
+        # Fees role is an account-wide fact that will not change this
+        # afternoon, and re-asking about all 67 SKUs would cost minutes per
+        # page load to learn it again. Anything else is treated as this one
+        # product's problem, briefly.
+        d = str(q.get("detail") or "")
+        if auto:
+            if "Unauthorized" in d or "Forbidden" in d or "AccessDenied" in d:
+                _remember_refusal(
+                    ("account", ws, mkt), ACCOUNT_REFUSAL_MEMO_SECONDS,
+                    "Amazon will not answer fee questions for this account -- "
+                    "its SP-API Product Fees role is not granted. Run Diagnose "
+                    "SP-API")
+            else:
+                _remember_refusal(
+                    ("asin", ws, mkt, a), ASIN_REFUSAL_MEMO_SECONDS,
+                    "Amazon would not quote a fee for %s: %s" % (a, d[:120]))
         return _held("(Amazon would not quote a fee for %s: %s)"
-                     % (a, q.get("detail") or "no answer"))
+                     % (a, d or "no answer"))
 
     # The share of the price Amazon takes as a CUT. FBA is excluded above.
     rate = round((_f(q.get("referral")) + _f(q.get("closing"))) / p, 6)
@@ -606,7 +764,7 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
 
 def rate_for_listing(config_path, creds, workspace_id, marketplace,
                      marketplace_id, sku, asin, price, is_fba=False,
-                     currency="", force=False, allow_quote=True):
+                     currency="", force=False, allow_quote=True, auto=False):
     """The fee rate for one listing, best answer first. (rate, basis, detail).
 
     THE ONE FUNCTION A SCREEN OR A PRICE SHOULD CALL. Three tiers, in this
@@ -614,11 +772,15 @@ def rate_for_listing(config_path, creds, workspace_id, marketplace,
 
       1. actual     what Amazon has really taken on THIS product, measured from
                     its own settled orders. Not a forecast -- a record.
-      2. quoted     Amazon's getMyFeesEstimate for this ASIN at this price, from
-                    the cache. This is what answers for a product that has never
-                    sold, which is exactly where a flat 15% did most damage:
-                    a brand new listing had no history to measure and got the
-                    guess, then was priced off it.
+      2. quoted     Amazon's getMyFeesEstimate for this ASIN at this price --
+                    from the cache, and ASKED FOR ON THE SPOT when nothing is
+                    cached and `auto` is set. This is what answers for a product
+                    that has never sold, which is exactly where a flat 15% did
+                    most damage: a brand new listing had no history to measure
+                    and got the guess, then was priced off it. Waiting for a
+                    button press meant it kept the guess until somebody
+                    remembered; now the first draw of the screen fetches it and
+                    every draw after that reads the cache.
       3. estimated  this account's own measured average, then Amazon's usual 15%
                     if even that cannot be worked out.
 
@@ -640,7 +802,7 @@ def rate_for_listing(config_path, creds, workspace_id, marketplace,
     rate, basis, detail = rate_for_asin(
         config_path, creds, workspace_id, marketplace, marketplace_id,
         asin, price, is_fba=is_fba, currency=currency, force=force,
-        allow_quote=allow_quote)
+        allow_quote=allow_quote, auto=auto)
     # WHY THE TRUER ANSWER WAS NOT AVAILABLE, carried along. Without it a
     # reader is told what the rate IS and never that a better one exists as
     # soon as the product sells twice.
@@ -663,14 +825,14 @@ def quote_for_sku(config_path, cfg, workspace_id, marketplace, sku,
     detail that matters, which is that NOTHING is asked about a product without
     a real ASIN and a real price (CLAUDE.md Rule 12).
     """
-    from domain import accounts as _acc
     from domain import source_run as _run
 
-    c = cfg() if callable(cfg) else (cfg or {})
-    acc = next((a for a in (c.get("accounts") or [])
-                if str(a.get("id")) == str(workspace_id)), None)
-    if not acc:
-        return None, "", "", "no account called %s" % workspace_id
+    # Through the shared resolver, which the automatic path also uses -- the
+    # account lookup and the credential building were written out again here
+    # and the two could have disagreed about which account was being asked.
+    creds, mid, why = _creds_for(config_path, workspace_id, marketplace, cfg)
+    if not creds:
+        return None, "", "", (why or "no account called %s" % workspace_id)
     cur = _run.current_for(config_path, workspace_id, marketplace, sku) or {}
     asin, price = cur.get("asin"), cur.get("price")
     # AMAZON IS ASKED ABOUT A PRODUCT AT A PRICE. Without either there is no
@@ -680,9 +842,9 @@ def quote_for_sku(config_path, cfg, workspace_id, marketplace, sku,
         return None, "", "", "no ASIN in the catalogue snapshot"
     if not price:
         return None, "", "", "no current price to ask about"
+    # auto is left False: this IS the batch path, and it is not rationed.
     rate, basis, detail = rate_for_asin(
-        config_path, _acc.account_creds(acc), workspace_id, marketplace,
-        _acc.marketplace_id(marketplace), asin, price,
+        config_path, creds, workspace_id, marketplace, mid, asin, price,
         is_fba=_run._is_fba(cur), force=force, allow_quote=allow_quote)
     return rate, basis, detail, ""
 

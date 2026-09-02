@@ -119,7 +119,12 @@ print("\n=== one place sets it, so every use follows ===")
 RUN = open(os.path.join("domain", "source_run.py"), encoding="utf-8").read()
 truthy("decide_one resolves the rate before decide runs",
        'rule["referral_rate"] = _rate' in RUN)
-truthy("  from the cache only", "allow_quote=False" in RUN)
+# IT USED TO BE FORBIDDEN FROM ASKING AT ALL (allow_quote=False), because 67
+# live calls before a screen can draw is not a screen. It asks now -- "don't
+# wait for the scheduler or a manual button press" -- and what makes that safe
+# is `auto`, which rations the calls rather than banning them. Asserted below.
+truthy("  and it may ask Amazon itself when nothing is cached",
+       "allow_quote=True, auto=True" in RUN)
 truthy("  and a failure never stops a price being worked out",
        "must never stop a price" in RUN)
 # OUR ASIN, not the competitor's in the SKU.
@@ -276,10 +281,66 @@ truthy("the refresh job runs daily, matching the age limit",
 truthy("  and a price change is picked up by it on its own",
        "therefore picked up here on its own" in SCH)
 
+print("\n=== the quote fetches itself, without holding the page hostage ===")
+# "First time a new product appears on the sourcing page -> automatic API call
+#  -> real fee shown immediately. Second time -> reads from cache, no API call."
+# The danger is the OTHER case: sixty-seven uncached products on one draw, on
+# two accounts whose SP-API role is not granted, each refusal costing seconds.
+truthy("there is a ration on automatic calls", AF.AUTO_QUOTE_MAX > 0)
+truthy("  measured over a window, not for all time",
+       AF.AUTO_QUOTE_WINDOW_SECONDS > 0)
+truthy("  and a page waits less for one than a batch job does",
+       AF.AUTO_QUOTE_TIMEOUT_SECONDS < 30)
+truthy("an account Amazon refuses is remembered, not asked 67 times",
+       AF.ACCOUNT_REFUSAL_MEMO_SECONDS >= 60)
+truthy("  and so is an ASIN it will not quote",
+       AF.ASIN_REFUSAL_MEMO_SECONDS >= 60)
+
+# THE RATION ACTUALLY RATIONS. Taken directly rather than by making Amazon
+# calls: the slot is consumed before the call, which is the property that stops
+# a screen starting five at once.
+_before = list(AF._auto_calls)
+try:
+    AF._auto_calls[:] = []
+    _got = [AF._auto_slot() for _ in range(AF.AUTO_QUOTE_MAX + 3)]
+    check("the first calls get a slot", _got[:AF.AUTO_QUOTE_MAX],
+          [True] * AF.AUTO_QUOTE_MAX)
+    check("  and the ones past the ration do not",
+          _got[AF.AUTO_QUOTE_MAX:], [False] * 3)
+finally:
+    AF._auto_calls[:] = _before
+
+# THE MEMO REMEMBERS, AND FORGETS. A refusal that never expired would mean one
+# bad afternoon disabled the fee lookup until the app was restarted.
+AF._remember_refusal(("account", "test_ws", "UK"), 60, "not allowed")
+truthy("a remembered refusal is found", AF._refusal(("account", "test_ws", "UK")))
+AF._remember_refusal(("account", "test_ws", "UK"), -1, "expired")
+falsy("  and an expired one is dropped", AF._refusal(("account", "test_ws", "UK")))
+
+_ra2 = FEE.split("def rate_for_asin(")[1].split("\ndef ")[0]
+truthy("the ration is taken before the call, not after", "_auto_slot()" in _ra2)
+truthy("  a refused account is checked first", '_refusal(("account"' in _ra2)
+truthy("  a 403 is remembered account-wide, not per product",
+       '"Unauthorized" in d' in _ra2 and "ACCOUNT_REFUSAL_MEMO" in _ra2)
+truthy("  and every guard ends in the same silent fall-through",
+       _ra2.count("return _held(") >= 6)
+# THE PRICING PATH HAS NO ACCOUNT TO HAND, so the module finds one rather than
+# every caller learning how.
+truthy("credentials are resolved when the caller has none",
+       "if not creds:" in _ra2 and "_creds_for(" in _ra2)
+_qs = FEE.split("def quote_for_sku(")[1].split("\ndef ")[0]
+truthy("  and the button resolves them the same way, not its own way",
+       "_creds_for(" in _qs)
+falsy("    with the old duplicate lookup gone",
+      'a.get("id")) == str(workspace_id)' in _qs)
+truthy("the batch path is not rationed", "auto is left False" in _qs)
+
 print("\n=== one rate, and every part of the panel follows it ===")
 RUN = open(os.path.join("domain", "source_run.py"), encoding="utf-8").read()
 truthy("pricing resolves through the three tiers", "_fees.rate_for_listing(" in RUN)
-truthy("  and still never calls Amazon on a page load", "allow_quote=False" in RUN)
+truthy("  asking Amazon itself, under the ration", "auto=True" in RUN)
+truthy("  and a fee that cannot be fetched never delays a price",
+       "never delays or breaks a price" in RUN)
 truthy("the fee panel is handed the rate the price was built on",
        'rate=rule.get("referral_rate")' in RUN)
 _bd = FEE.split("def breakdown_for(")[1].split("\ndef ")[0]

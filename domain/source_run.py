@@ -115,10 +115,21 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     # ROI than the Orders page for the same product on the same day, because
     # Orders reads the statement and this did not. Same question, one answer.
     #
-    # Cache-only: allow_quote=False. This function runs for every enrolled SKU
-    # on every page load, and a live call apiece would be sixty-seven of them
-    # before the screen could draw. The cache is filled by /sourcing/fees and by
-    # the daily sourcing_fees job.
+    # AND IT ASKS AMAZON ITSELF WHEN NOTHING IS CACHED (auto=True):
+    #
+    #     "When the app needs a fee rate for a product and tier 1 (settled
+    #      orders) has no data, it should automatically call getMyFeesEstimate
+    #      for that ASIN+price if there's no cached quote ... don't wait for the
+    #      scheduler or a manual button press."
+    #
+    # This function runs for every enrolled SKU on every page load, so an
+    # unrationed call apiece would be sixty-seven of them before the screen
+    # could draw. `auto` is what makes it safe: amazon_fees rations these calls,
+    # remembers an account Amazon refuses rather than asking 67 times, and uses
+    # a short timeout -- and every one of those limits ends in the same silent
+    # fall-through to the account's measured rate. A fee that cannot be fetched
+    # never delays or breaks a price; it is simply not the best answer yet, and
+    # the next draw or the daily job picks it up.
     # HOW LONG THE POSTAGE TAKES, from the one place settings live. Amazon
     # counts the handling time and the postage transit separately, so the
     # handling time must not include the postage days -- see
@@ -167,7 +178,7 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
         _rate, _basis, _detail = _fees.rate_for_listing(
             config_path, None, workspace_id, marketplace, None,
             sku, current.get("asin"), current.get("price"),
-            is_fba=_is_fba(current), allow_quote=False)
+            is_fba=_is_fba(current), allow_quote=True, auto=True)
         if _rate:
             rule["referral_rate"] = _rate
         rule["fee_basis"], rule["fee_detail"] = _basis, _detail
