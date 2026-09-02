@@ -108,9 +108,28 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     # the only spot a rule is assembled before decide runs, so it is the only
     # spot that has to change (CLAUDE.md Rule 12).
     #
-    # Cache-only: allow_quote=False. This function runs for every enrolled SKU
-    # on every page load, and a live call apiece would be sixty-seven of them
-    # before the screen could draw. The cache is filled by /sourcing/fees.
+    # THROUGH rate_for_listing, WHICH ASKS THE SETTLED ORDERS FIRST. This used
+    # to go straight to rate_for_asin -- Amazon's quote, or an average, or 15%
+    # -- and so a product with a shelf of real Amazon statements behind it was
+    # still priced off a percentage. The Sourcing page then reported a higher
+    # ROI than the Orders page for the same product on the same day, because
+    # Orders reads the statement and this did not. Same question, one answer.
+    #
+    # AND IT ASKS AMAZON ITSELF WHEN NOTHING IS CACHED (auto=True):
+    #
+    #     "When the app needs a fee rate for a product and tier 1 (settled
+    #      orders) has no data, it should automatically call getMyFeesEstimate
+    #      for that ASIN+price if there's no cached quote ... don't wait for the
+    #      scheduler or a manual button press."
+    #
+    # This function runs for every enrolled SKU on every page load, so an
+    # unrationed call apiece would be sixty-seven of them before the screen
+    # could draw. `auto` is what makes it safe: amazon_fees rations these calls,
+    # remembers an account Amazon refuses rather than asking 67 times, and uses
+    # a short timeout -- and every one of those limits ends in the same silent
+    # fall-through to the account's measured rate. A fee that cannot be fetched
+    # never delays or breaks a price; it is simply not the best answer yet, and
+    # the next draw or the daily job picks it up.
     # HOW LONG THE POSTAGE TAKES, from the one place settings live. Amazon
     # counts the handling time and the postage transit separately, so the
     # handling time must not include the postage days -- see
@@ -156,10 +175,10 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     rule["fee_basis"], rule["fee_detail"] = "", ""
     try:
         from domain import amazon_fees as _fees
-        _rate, _basis, _detail = _fees.rate_for_asin(
+        _rate, _basis, _detail = _fees.rate_for_listing(
             config_path, None, workspace_id, marketplace, None,
-            current.get("asin"), current.get("price"),
-            is_fba=_is_fba(current), allow_quote=False)
+            sku, current.get("asin"), current.get("price"),
+            is_fba=_is_fba(current), allow_quote=True, auto=True)
         if _rate:
             rule["referral_rate"] = _rate
         rule["fee_basis"], rule["fee_detail"] = _basis, _detail
@@ -220,10 +239,17 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
         from domain import amazon_fees as _fees
         _at = decision.get("price") or current.get("price")
         if _at:
+            # THE RATE THIS DECISION WAS PRICED WITH, handed over rather than
+            # looked up again. The panel sits directly under the price it
+            # explains, and a second lookup could answer differently -- the
+            # settled tier above outranks the quote this panel would find on
+            # its own (CLAUDE.md Rule 12).
             decision["fees"] = _fees.breakdown_for(
                 config_path, workspace_id, marketplace, current.get("asin"),
                 _at, is_fba=_is_fba(current),
-                currency=current.get("currency") or "GBP")
+                currency=current.get("currency") or "GBP",
+                rate=rule.get("referral_rate"), basis=rule.get("fee_basis") or "",
+                detail=rule.get("fee_detail") or "")
     except Exception:
         pass          # a breakdown that cannot be built must not lose the price
     return current, decision

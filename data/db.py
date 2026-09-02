@@ -636,6 +636,41 @@ CREATE TABLE IF NOT EXISTS fee_quotes(
     PRIMARY KEY (workspace_id, marketplace, asin)
 );
 
+-- THE GAP BETWEEN WHAT AMAZON QUOTES AND WHAT AMAZON TAKES, PER ACCOUNT.
+--
+-- The quote above answers with the referral and closing fee. That is not the
+-- whole of what leaves the account. MEASURED on the same ASIN at the same
+-- 34.99 price: Amazon quoted 5.25 and took 5.25 on jack_uk, and quoted 5.25
+-- and took 6.30 on nestwell_goods -- more, on all eight of its settled orders.
+-- Amazon charges VAT on its own fees to an account it has no VAT number for,
+-- and a quote is the figure before that.
+--
+-- NOTHING HERE KNOWS THAT. The multiplier is actual / quoted, measured across
+-- the products that have both, so it captures whatever Amazon adds -- fee VAT,
+-- digital services tax, a per-order charge, a fee type invented next year. The
+-- app never has to learn what those charges are called, and a constant written
+-- into the code would have been a guess about a tax position that changes the
+-- day a VAT number is registered.
+--
+-- STORED, NOT DERIVED ON EVERY READ, because the pricing path asks per SKU on
+-- every draw of the screen. `orders_seen` and `quotes_seen` are what make it
+-- self-correcting: they are the counts the figure was measured from, so one
+-- more settled order or one more quote makes the stored answer no longer match
+-- the data, and it is worked out again. No timer, no manual refresh, nothing
+-- to remember to press.
+CREATE TABLE IF NOT EXISTS fee_multipliers(
+    workspace_id  TEXT NOT NULL,
+    marketplace   TEXT NOT NULL,
+    multiplier    REAL,          -- actual fees / what the quotes predicted
+    samples       INTEGER,       -- products behind it (quote AND settled sales)
+    actual_fees   REAL,          -- the money that actually left
+    quoted_fees   REAL,          -- what the quotes said it would be
+    orders_seen   INTEGER,       -- settled orders at the time of measuring
+    quotes_seen   INTEGER,       -- quotes held at the time of measuring
+    measured_at   TEXT,
+    PRIMARY KEY (workspace_id, marketplace)
+);
+
 -- Every AI call the app makes, and what it cost.
 --
 -- One row per call, never aggregated on the way in: a total cannot be broken
