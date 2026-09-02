@@ -5077,6 +5077,14 @@ def _skus_across_all_tabs(ws_out) -> set:
 # for every internal caller and any external importer.
 from listing.shaper import shape_by_schema
 
+# What apply_compliance_safe_defaults set on the last run, per SKU. Declared
+# here because it was not declared anywhere: build_api_attributes wrote it via
+# `globals().setdefault(...)` and then subscripted the bare name, which works at
+# runtime but reads as an undefined name to every checker. One real "undefined
+# name" in a lint run is how the NEXT one goes unnoticed.
+_LAST_COMPLIANCE_NOTES = {}
+
+
 def build_api_attributes(row: dict, pt: str, props: dict, required: set, config: dict) -> dict:
     """Assemble the SP-API 'attributes' object for one listing, gated to `props`
     (the live schema for this product type) so nothing inapplicable is sent."""
@@ -5729,7 +5737,6 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
             console.print(f"    [dim]\u2022 {_cf} = \"{_cv}\"  ({_cr})[/dim]")
         # stash for any downstream reporter (dashboard reads the run log)
         try:
-            globals().setdefault("_LAST_COMPLIANCE_NOTES", {})
             _LAST_COMPLIANCE_NOTES[row.get("SKU", "") or row.get("Sku", "")] = _compliance_notes
         except Exception:
             pass
@@ -6697,15 +6704,37 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                         or next((e for e in _senum if "not_applic" in e.lower() or "no_haz" in e.lower()), None)
                         or _senum[0])
                 _hz_obj[_sk] = _val
-            elif _sk == "value":
+            elif _sk == "value" and _hz_has_batt:
                 # FREE-TEXT required value. For a battery-in-equipment the correct
-                # UN id is UN3481. (Only reached when hazmat is being built, which
-                # is itself gated on a battery being present.)
+                # UN id is UN3481.
+                #
+                # THE GATE THAT WAS MISSING. The comment here used to read "Only
+                # reached when hazmat is being built, which is itself gated on a
+                # battery being present" -- and there was no such gate.
+                # `_hz_has_batt` was worked out six lines above, under the comment
+                # "hazmat is only meaningful then", and then never read. So every
+                # product whose schema declares a hazmat field was told to Amazon
+                # as UN3481 -- "lithium-ion batteries contained in equipment" --
+                # whether or not it had a battery in it.
+                #
+                # That is a dangerous-goods DECLARATION made on the owner's behalf
+                # about a product he never said was hazardous, which is the same
+                # thing CLAUDE.md Rule 1 forbids for the GTIN exemption. This file
+                # already refuses to do it elsewhere: the GHS block above would
+                # rather flip the DG regulation away from "ghs" than "mislabel the
+                # product with a real hazard class". The branch below, for when the
+                # schema fails to load, gates on exactly this and always did.
                 _hz_obj[_sk] = "UN3481"
 
         # If aspect resolved to the UN regulatory id but value somehow didn't get
-        # set (schema variation), guarantee the UN number is present.
-        if str(_hz_obj.get("aspect", "")).lower() == "united_nations_regulatory_id" and not _hz_obj.get("value"):
+        # set (schema variation), guarantee the UN number is present -- for a
+        # product that actually carries one. Without a battery this line put the
+        # UN number back after the gate above had left it out, because an `aspect`
+        # enum offering no not-applicable option falls through to _senum[0], which
+        # on these product types IS united_nations_regulatory_id.
+        if (_hz_has_batt
+                and str(_hz_obj.get("aspect", "")).lower() == "united_nations_regulatory_id"
+                and not _hz_obj.get("value")):
             _hz_obj["value"] = "UN3481"
 
         # Decide whether the existing value is already valid (so we don't churn).
@@ -6732,6 +6761,19 @@ def build_api_attributes(row: dict, pt: str, props: dict, required: set, config:
                 # Couldn't build a valid hazmat object -> drop it rather than ship
                 # an invalid shape. hazmat is conditionally-required and the lithium
                 # info is also carried by the dangerous-goods regulation field.
+                #
+                # A PRODUCT WITH NO BATTERY LANDS HERE, and that is the right
+                # outcome: nothing is declared. If Amazon does require hazmat for
+                # this product type it will say so, and a person can answer it --
+                # the same way an absent barcode is left for Amazon to refuse
+                # rather than answered with an exemption nobody asked for.
+                if not _hz_has_batt and isinstance(A.get("hazmat"), (list, dict)):
+                    try:
+                        console.print("  [dim]hazmat dropped -- no battery evidence "
+                                      "on this product, so there is no dangerous "
+                                      "goods declaration to make[/dim]")
+                    except Exception:
+                        pass
                 A.pop("hazmat", None)
     else:
         # SCHEMA DIDN'T LOAD for hazmat (props empty / value lists failed). We
