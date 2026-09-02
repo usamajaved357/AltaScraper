@@ -151,6 +151,15 @@ AUTO_QUOTE_TIMEOUT_SECONDS = 10
 ACCOUNT_REFUSAL_MEMO_SECONDS = 600
 ASIN_REFUSAL_MEMO_SECONDS = 900
 
+# WHEN A MEASURED MULTIPLIER IS TOO STRANGE TO BE A MEASUREMENT.
+#
+# Not a fee figure and not a tax rate -- a sanity bound. Amazon taking half of
+# what it quoted, or twice, means the two sides were measured on different
+# things rather than that a new charge appeared. The measurement is then
+# reported and NOT used, the same way a per-product rate outside 0-100% is.
+MULTIPLIER_SANE_LOW = 0.5
+MULTIPLIER_SANE_HIGH = 2.0
+
 # HOW MANY SETTLED ORDERS BEFORE A SKU'S OWN RATE IS BELIEVED.
 #
 # One order is an anecdote. It might have carried a refund administration fee,
@@ -429,6 +438,73 @@ def rate_for(config_path, workspace_id, marketplace, end_date=None):
             % (DEFAULT_REFERRAL_RATE * 100))
 
 
+def _settled_for(config_path, workspace_id, marketplace, sku=None, asin=None):
+    """What Amazon took, and what buyers paid, on ONE product's settled orders.
+
+    {fee, revenue, orders, single_line, last, discounted, refunded, rows_seen}
+    or None when the database cannot be read.
+
+    BY SKU OR BY ASIN, one query either way. The per-product rate is asked for
+    by SKU, because that is what a listing is; the multiplier is asked for by
+    ASIN, because that is what Amazon quotes against. Writing that out twice
+    would have meant two versions of "which orders count", and the exclusions
+    below are the whole substance of the answer (CLAUDE.md Rule 12).
+    """
+    ws, mkt = str(workspace_id or ""), str(marketplace or "").upper()
+    key, val = ("sku", str(sku or "")) if sku else ("asin", str(asin or ""))
+    if not val:
+        return None
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        rows = conn.execute(
+            "SELECT f.order_id, f.ref, f.fba, f.oth, f.promos, f.refunds, "
+            "       f.returned, l.mine_rev, l.tot_rev, l.nlines, l.last_at "
+            "  FROM (SELECT order_id, SUM(referral_fees) ref, SUM(fba_fees) fba, "
+            "               SUM(other_fees) oth, SUM(promos) promos, "
+            "               SUM(refunds) refunds, "
+            "               SUM(refund_fees_returned) returned "
+            "          FROM order_fees "
+            "         WHERE workspace_id=? AND marketplace=? "
+            "         GROUP BY order_id) f "
+            "  JOIN (SELECT order_id, "
+            "               SUM(CASE WHEN %s=? THEN revenue ELSE 0 END) mine_rev, "
+            "               SUM(revenue) tot_rev, COUNT(*) nlines, "
+            "               MAX(purchase_date) last_at "
+            "          FROM order_lines "
+            "         WHERE workspace_id=? AND marketplace=? "
+            "           AND lower(IFNULL(status,'')) "
+            "               NOT IN ('canceled','cancelled') "
+            "         GROUP BY order_id) l ON l.order_id = f.order_id "
+            " WHERE l.mine_rev > 0" % key,
+            (ws, mkt, val, ws, mkt)).fetchall()
+    except Exception:
+        return None
+
+    out = {"fee": 0.0, "revenue": 0.0, "orders": 0, "single_line": 0,
+           "last": "", "discounted": 0, "refunded": 0, "rows_seen": len(rows)}
+    for r in rows:
+        if _f(r["promos"]) > 0:
+            out["discounted"] += 1
+            continue
+        if _f(r["refunds"]) > 0 or _f(r["returned"]) > 0:
+            out["refunded"] += 1
+            continue
+        took = _f(r["ref"]) + _f(r["fba"]) + _f(r["oth"])
+        mine, tot = _f(r["mine_rev"]), _f(r["tot_rev"])
+        if took <= 0 or mine <= 0 or tot <= 0:
+            continue                      # settled with nothing taken: not a rate
+        one_line = int(r["nlines"] or 1) == 1
+        out["fee"] += took if one_line else took * (mine / tot)
+        out["revenue"] += mine
+        out["orders"] += 1
+        out["single_line"] += 1 if one_line else 0
+        at = str(r["last_at"] or "")[:10]
+        if at > out["last"]:
+            out["last"] = at
+    return out
+
+
 def rate_from_orders(config_path, workspace_id, marketplace, sku,
                      min_orders=MIN_SETTLED_ORDERS):
     """What Amazon has ACTUALLY taken on this SKU, as a rate. (rate, basis, why).
@@ -473,63 +549,18 @@ def rate_from_orders(config_path, workspace_id, marketplace, sku,
     line is reported, because a rate built entirely from unambiguous orders and
     one built from shared ones are not equally solid.
     """
-    ws, mkt = str(workspace_id or ""), str(marketplace or "").upper()
-    s = str(sku or "")
-    if not s:
+    if not str(sku or ""):
         return None, "", "no SKU, so this product's own sales could not be found"
-    try:
-        from data import db as _db
-        conn = _db.get_db(config_path)
-        rows = conn.execute(
-            "SELECT f.order_id, f.ref, f.fba, f.oth, f.promos, f.refunds, "
-            "       f.returned, l.sku_rev, l.tot_rev, l.nlines, l.last_at "
-            "  FROM (SELECT order_id, SUM(referral_fees) ref, SUM(fba_fees) fba, "
-            "               SUM(other_fees) oth, SUM(promos) promos, "
-            "               SUM(refunds) refunds, "
-            "               SUM(refund_fees_returned) returned "
-            "          FROM order_fees "
-            "         WHERE workspace_id=? AND marketplace=? "
-            "         GROUP BY order_id) f "
-            "  JOIN (SELECT order_id, "
-            "               SUM(CASE WHEN sku=? THEN revenue ELSE 0 END) sku_rev, "
-            "               SUM(revenue) tot_rev, COUNT(*) nlines, "
-            "               MAX(purchase_date) last_at "
-            "          FROM order_lines "
-            "         WHERE workspace_id=? AND marketplace=? "
-            "           AND lower(IFNULL(status,'')) "
-            "               NOT IN ('canceled','cancelled') "
-            "         GROUP BY order_id) l ON l.order_id = f.order_id "
-            " WHERE l.sku_rev > 0",
-            (ws, mkt, s, ws, mkt)).fetchall()
-    except Exception:
+    got = _settled_for(config_path, workspace_id, marketplace, sku=sku)
+    if got is None:
         # A database that cannot be read must not stop a price being worked out.
         # The caller falls through to Amazon's quote, which is the next best
         # answer and does not depend on this table.
         return None, "", "this product's settled orders could not be read"
-
-    fee = rev = 0.0
-    n = single = 0
-    discounted = refunded = 0
-    last = ""
-    for r in rows:
-        if _f(r["promos"]) > 0:
-            discounted += 1
-            continue
-        if _f(r["refunds"]) > 0 or _f(r["returned"]) > 0:
-            refunded += 1
-            continue
-        took = _f(r["ref"]) + _f(r["fba"]) + _f(r["oth"])
-        sku_rev, tot_rev = _f(r["sku_rev"]), _f(r["tot_rev"])
-        if took <= 0 or sku_rev <= 0 or tot_rev <= 0:
-            continue                      # settled with nothing taken: not a rate
-        one_line = int(r["nlines"] or 1) == 1
-        fee += took if one_line else took * (sku_rev / tot_rev)
-        rev += sku_rev
-        n += 1
-        single += 1 if one_line else 0
-        at = str(r["last_at"] or "")[:10]
-        if at > last:
-            last = at
+    fee, rev = got["fee"], got["revenue"]
+    n, single, last = got["orders"], got["single_line"], got["last"]
+    discounted, refunded, rows = (got["discounted"], got["refunded"],
+                                  got["rows_seen"])
 
     if n < int(min_orders) or rev <= 0 or fee <= 0:
         why = ("this product has no settled sales to measure yet"
@@ -559,6 +590,205 @@ def rate_from_orders(config_path, workspace_id, marketplace, sku,
                  % (n - single),
                  "" if not last else ", most recent %s" % last))
     return rate, ACTUAL, detail
+
+
+def _measure_key(config_path, workspace_id, marketplace):
+    """(settled orders, quotes held) -- what makes a stored multiplier stale.
+
+    BOTH SIDES OF THE RATIO ARE COUNTED, because either can bring in something
+    new: an order settling adds an actual, and a quote arriving adds a
+    prediction to compare against. Counting is cheap and exact. A timer would
+    either re-measure a figure that has not moved or leave a stale one standing
+    after the sale that would have corrected it; these counts change precisely
+    when there is something new to learn from.
+
+    (-1, -1) when the database cannot be read, which never equals a stored key,
+    so a broken read re-measures rather than trusting an old figure.
+    """
+    ws, mkt = str(workspace_id or ""), str(marketplace or "").upper()
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        orders = int(conn.execute(
+            "SELECT COUNT(DISTINCT order_id) FROM order_fees "
+            " WHERE workspace_id=? AND marketplace=?", (ws, mkt)
+        ).fetchone()[0] or 0)
+        quotes = int(conn.execute(
+            "SELECT COUNT(*) FROM fee_quotes "
+            " WHERE workspace_id=? AND marketplace=? AND rate IS NOT NULL",
+            (ws, mkt)).fetchone()[0] or 0)
+        return orders, quotes
+    except Exception:
+        return -1, -1
+
+
+def measure_multiplier(config_path, workspace_id, marketplace):
+    """Measure actual/quoted across this account's products. The slow path.
+
+    Returns the dict stored in `fee_multipliers`, or None when there is nothing
+    to measure from. Called by multiplier_for(); nothing else should call it,
+    because it walks every quote this account holds.
+    """
+    ws, mkt = str(workspace_id or ""), str(marketplace or "").upper()
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        quotes = conn.execute(
+            "SELECT asin, rate FROM fee_quotes "
+            " WHERE workspace_id=? AND marketplace=? AND rate IS NOT NULL",
+            (ws, mkt)).fetchall()
+    except Exception:
+        return None
+
+    actual = quoted = 0.0
+    samples, products = 0, []
+    for q in quotes:
+        got = _settled_for(config_path, ws, mkt, asin=q["asin"])
+        if not got or got["orders"] < MIN_SETTLED_ORDERS:
+            continue
+        rev, took = got["revenue"], got["fee"]
+        if rev <= 0 or took <= 0:
+            continue
+        # WHAT THE QUOTE WOULD HAVE PREDICTED ON THE SAME SALES, so the two
+        # sides are the same shape and the ratio means something. Comparing a
+        # rate with an amount, or two rates measured on different revenue,
+        # would give a number that moves when the sales mix does.
+        predicted = _f(q["rate"]) * rev
+        if predicted <= 0:
+            continue
+        actual += took
+        quoted += predicted
+        samples += 1
+        products.append((str(q["asin"]), took / predicted))
+
+    if not samples or quoted <= 0:
+        return None
+    mult = round(actual / quoted, 6)
+    return {"workspace_id": ws, "marketplace": mkt, "multiplier": mult,
+            "samples": samples, "actual_fees": round(actual, 2),
+            "quoted_fees": round(quoted, 2), "products": products}
+
+
+def multiplier_for(config_path, workspace_id, marketplace):
+    """(multiplier, detail) -- what a quote for this account has to be scaled by.
+
+        "Remove the hardcoded 1.2 VAT multiplier. Replace it with a measured
+         multiplier per account, calculated automatically from real data. No
+         hardcoded values anywhere. No config dependency. Fully automatic."
+
+    Amazon's quote is the referral and closing fee. It is not everything that
+    leaves the account, and how much else leaves differs BY ACCOUNT: measured
+    on the same ASIN at the same 34.99 price, Amazon quoted 5.25 and took 5.25
+    on jack_uk, and quoted 5.25 and took 6.30 on nestwell_goods.
+
+    So the gap is measured rather than explained. Across every product that has
+    both a quote and settled sales, the money Amazon actually took is divided by
+    the money the quotes predicted. That ratio captures fee VAT, digital
+    services tax, a per-order charge, a fee type Amazon invents next year --
+    without this file ever learning what any of them are called. A hardcoded
+    1.2 would have been a guess about a tax position that changes the day a VAT
+    number is registered.
+
+    (1.0, why) WHEN THERE IS NOTHING TO MEASURE FROM, which is the honest
+    answer for an account that has never sold: the quote stands as it is,
+    because it is the best figure available. The multiplier appears by itself
+    once the first sales settle.
+
+    SELF-CORRECTING, WITHOUT A TIMER. The stored figure records how many settled
+    orders it was measured from; when that count moves, it is measured again. A
+    VAT registration, a fee change, an account moving to a different fee tier --
+    each shows up as new settlements, and each shifts the multiplier on its own.
+    """
+    ws, mkt = str(workspace_id or ""), str(marketplace or "").upper()
+    orders, quotes = _measure_key(config_path, ws, mkt)
+
+    conn, row = None, None
+    try:
+        from data import db as _db
+        conn = _db.get_db(config_path)
+        row = conn.execute(
+            "SELECT multiplier, samples, actual_fees, quoted_fees, orders_seen, "
+            "       quotes_seen, measured_at FROM fee_multipliers "
+            " WHERE workspace_id=? AND marketplace=?", (ws, mkt)).fetchone()
+    except Exception:
+        conn, row = None, None
+
+    if (row is not None and int(row["orders_seen"] or -1) == orders
+            and int(row["quotes_seen"] or -1) == quotes):
+        if not int(row["samples"] or 0):
+            return 1.0, _NOTHING_TO_MEASURE
+        return _multiplier_words(row["multiplier"], row["samples"],
+                                 row["actual_fees"], row["quoted_fees"])
+
+    got = measure_multiplier(config_path, ws, mkt)
+
+    # THE "NOTHING TO MEASURE" ANSWER IS STORED TOO, with samples 0.
+    #
+    # Without that, an account with no overlap between its quotes and its sales
+    # re-walked every quote it holds, for every SKU, on every draw of the
+    # screen -- the one case where the work is largest and the answer never
+    # changes. It is invalidated by the same counts as any other answer, so the
+    # first settlement that creates an overlap is picked up at once.
+    keep = got or {"multiplier": 1.0, "samples": 0, "actual_fees": 0.0,
+                   "quoted_fees": 0.0}
+    if conn is not None:
+        try:
+            import datetime as _dt
+            conn.execute(
+                "INSERT INTO fee_multipliers(workspace_id, marketplace, "
+                " multiplier, samples, actual_fees, quoted_fees, orders_seen, "
+                " quotes_seen, measured_at) VALUES(?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(workspace_id, marketplace) DO UPDATE SET "
+                " multiplier=excluded.multiplier, samples=excluded.samples, "
+                " actual_fees=excluded.actual_fees, "
+                " quoted_fees=excluded.quoted_fees, "
+                " orders_seen=excluded.orders_seen, "
+                " quotes_seen=excluded.quotes_seen, "
+                " measured_at=excluded.measured_at",
+                (ws, mkt, keep["multiplier"], keep["samples"],
+                 keep["actual_fees"], keep["quoted_fees"], orders, quotes,
+                 _dt.datetime.now().isoformat(" ", "seconds")))
+            conn.commit()
+        except Exception:
+            pass      # a store that fails must not lose the measurement
+    if not got:
+        return 1.0, _NOTHING_TO_MEASURE
+    return _multiplier_words(got["multiplier"], got["samples"],
+                             got["actual_fees"], got["quoted_fees"])
+
+
+# Said in one place because two paths reach it -- the stored "nothing yet" and
+# a fresh measurement that found nothing -- and they are the same fact.
+_NOTHING_TO_MEASURE = (
+    "no product on this account has both an Amazon quote and settled sales "
+    "yet, so the quote is used exactly as Amazon gave it")
+
+
+def _multiplier_words(mult, samples, actual, quoted):
+    """(multiplier, sentence) -- and the refusal of a figure that cannot be real.
+
+    A ratio far from 1 is not a discovery, it is a sign that the two sides were
+    measured on different things -- one product's quote against another's sales,
+    or a revenue figure that is not what the quote was priced against. Using it
+    would move every price on the account. It is refused and said out loud
+    instead, which is the same rule the per-product rate follows.
+    """
+    m = _f(mult, 0.0)
+    if m <= 0 or m < MULTIPLIER_SANE_LOW or m > MULTIPLIER_SANE_HIGH:
+        return 1.0, ("the settled orders and Amazon's quotes disagree by a "
+                     "factor of %.2f on this account, which cannot be right, so "
+                     "the quote is used unscaled" % m)
+    if abs(m - 1.0) < 0.005:
+        return m, ("Amazon takes what it quotes on this account -- measured "
+                   "across %d product%s (%.2f taken against %.2f quoted)"
+                   % (samples, "" if samples == 1 else "s", _f(actual),
+                      _f(quoted)))
+    return m, ("Amazon takes %.0f%% %s than it quotes on this account, measured "
+               "across %d product%s (%.2f taken against %.2f quoted). Amazon's "
+               "quote covers the referral and closing fee; this is what the "
+               "settlements show on top of it."
+               % (abs(m - 1.0) * 100, "more" if m > 1 else "less", samples,
+                  "" if samples == 1 else "s", _f(actual), _f(quoted)))
 
 
 def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
@@ -625,6 +855,23 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
         rate, basis, detail = rate_for(config_path, ws, mkt)
         return rate, ESTIMATED, "%s %s" % (detail, why)
 
+    # WHAT AMAZON QUOTES IS NOT ALL AMAZON TAKES, and how much more is a fact
+    # about this account measured from its own settlements. Applied in ONE
+    # place, on the way out, so a cached quote and a freshly fetched one cannot
+    # be scaled differently -- and so the raw figure Amazon gave is what stays
+    # in fee_quotes. A multiplier that changes then moves every stored quote
+    # with it, instead of leaving the cache holding pre-scaled numbers that
+    # would have to be rewritten.
+    def _quoted(raw_rate, said):
+        mult, why = multiplier_for(config_path, ws, mkt)
+        raw = _f(raw_rate)
+        if abs(mult - 1.0) < 0.005:
+            return round(raw, 6), QUOTED, "%.2f%% -- %s" % (raw * 100, said)
+        scaled = round(raw * mult, 6)
+        return scaled, QUOTED, (
+            "%.2f%% -- %s. Amazon quoted %.2f%%; %s"
+            % (scaled * 100, said.rstrip(". "), raw * 100, why))
+
     if not a:
         return _fallback("(no ASIN, so Amazon could not be asked per product).")
 
@@ -663,9 +910,9 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
                and (hours is None or hours <= float(max_age_hours) * 1.0))
 
     if row is not None and current and not force:
-        return (float(row["rate"]), QUOTED,
-                "%.2f%% -- Amazon's own figure for %s, quoted at %.2f%s"
-                % (float(row["rate"]) * 100, a, _f(row["quoted_price"]), when))
+        return _quoted(row["rate"],
+                       "Amazon's own figure for %s, quoted at %.2f%s"
+                       % (a, _f(row["quoted_price"]), when))
 
     def _held(why):
         """The stored quote when there is one, the account's average when not.
@@ -679,11 +926,11 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
         """
         if row is None:
             return _fallback(why)
-        return (float(row["rate"]), QUOTED,
-                "%.2f%% -- Amazon's own figure for %s, quoted at %.2f%s. %s"
-                % (float(row["rate"]) * 100, a, _f(row["quoted_price"]), when,
-                   ("The price has moved since, so it is due a refresh."
-                    if moved else "It is due a refresh.")))
+        return _quoted(row["rate"],
+                       "Amazon's own figure for %s, quoted at %.2f%s. %s"
+                       % (a, _f(row["quoted_price"]), when,
+                          ("The price has moved since, so it is due a refresh."
+                           if moved else "It is due a refresh.")))
 
     # A CALLER THAT IS NOT ALLOWED TO ASK. The batch refresher passes
     # allow_quote=False when it only wants to know what is already held.
@@ -757,9 +1004,9 @@ def rate_for_asin(config_path, creds, workspace_id, marketplace, marketplace_id,
         conn.commit()
     except Exception:
         pass          # a cache that cannot be written must not lose the answer
-    return (rate, QUOTED,
-            "%.2f%% -- Amazon's own figure for %s, quoted at %.2f"
-            % (rate * 100, a, p))
+    # THE RAW FIGURE IS WHAT IS STORED, above; the scaling happens on the way
+    # out, so the cache holds what Amazon said and nothing else.
+    return _quoted(rate, "Amazon's own figure for %s, quoted at %.2f" % (a, p))
 
 
 def rate_for_listing(config_path, creds, workspace_id, marketplace,
@@ -953,12 +1200,18 @@ def breakdown_for(config_path, workspace_id, marketplace, asin, price,
     lines, basis, detail, asked_at = [], ESTIMATED, "", ""
 
     # ---- referral -------------------------------------------------------
-    if given_rate and given_basis == ACTUAL:
-        # MEASURED FROM THIS PRODUCT'S OWN SETTLED ORDERS, and that figure is
-        # everything Amazon took -- referral, and whatever else it charged
-        # against those sales. So it goes on the referral line whole, and the
-        # closing line stays at zero rather than being added a second time.
-        basis, ref_rate, closing = ACTUAL, float(given_rate), 0.0
+    if given_rate and given_basis in (ACTUAL, QUOTED):
+        # THE RATE THE PRICE WAS BUILT ON, whichever tier it came from, and it
+        # is a rate for EVERYTHING Amazon takes -- the settled tier measures the
+        # lot, and a quoted one has been scaled by what this account's
+        # settlements show on top of a quote. So it goes on the referral line
+        # whole and the closing line stays at zero rather than being counted a
+        # second time.
+        #
+        # It used to accept only the settled tier, which left the panel
+        # recomputing a QUOTED rate from the raw stored quote -- 15.00% under a
+        # row that had been priced at 18.00%, with nothing to say why.
+        basis, ref_rate, closing = given_basis, float(given_rate), 0.0
         detail = given_detail or (
             "Measured from what Amazon actually took on this product's settled "
             "orders.")
@@ -992,7 +1245,9 @@ def breakdown_for(config_path, workspace_id, marketplace, asin, price,
             # WHERE THAT PERCENTAGE CAME FROM, on the line itself. The panel is
             # read on its own, away from the tooltip that carries `detail`.
             ", measured on this product's own settled orders"
-            if basis == ACTUAL else ""),
+            if basis == ACTUAL else
+            (", Amazon's quote for this product scaled by what its settlements "
+             "show" if (given_rate and basis == QUOTED) else "")),
         "why": why})
 
     # ---- variable closing ----------------------------------------------
@@ -1001,8 +1256,8 @@ def breakdown_for(config_path, workspace_id, marketplace, asin, price,
         "key": "closing", "label": lab, "amount": closing,
         "charged": closing > 0,
         "note": ("a flat %.2f per item" % closing if closing > 0
-                 else ("already inside the measured rate above"
-                       if basis == ACTUAL
+                 else ("already inside the rate above"
+                       if given_rate and basis in (ACTUAL, QUOTED)
                        else "not charged -- this is not a media category")),
         "why": why})
 

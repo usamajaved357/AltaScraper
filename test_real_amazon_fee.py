@@ -243,24 +243,31 @@ _F2 = AF.rate_from_orders("config.json", "jack_uk", "UK", "NO-SUCH-SKU-EVER",
 check("a SKU cannot clear a threshold it has no orders for", _F2[0], None)
 
 FEE = open(os.path.join("domain", "amazon_fees.py"), encoding="utf-8").read()
-_fo = FEE.split("def rate_from_orders(")[1].split("\ndef ")[0]
+# THE READING OF SETTLED ORDERS LIVES IN ONE FUNCTION, asked by SKU for a
+# product's own rate and by ASIN for the account multiplier. The exclusions
+# below are the substance of the answer, and two copies of them would drift.
+_fo = FEE.split("def _settled_for(")[1].split("\ndef ")[0]
+truthy("one reader serves both the per-product rate and the multiplier",
+       "sku=None, asin=None" in _fo)
 # THE VAT TRAP. Amazon takes its cut on what the BUYER paid; `principal` is the
 # ex-VAT figure. Measured on jack_uk order 204-6325754-5123507: 4.50 taken on a
 # 29.99 sale whose principal is 24.99 -- 15.0% of the one and 18.0% of the
 # other, and only the first can be multiplied by a shelf price. Dividing by the
 # principal would have overstated every VAT-registered account's fee by a fifth.
 truthy("the rate is measured against what the buyer paid, not the ex-VAT figure",
-       "l.sku_rev" in _fo and "SUM(revenue)" in _fo)
+       "l.mine_rev" in _fo and "SUM(revenue)" in _fo)
 truthy("  and principal is deliberately not the divisor",
        "principal" not in _fo.split("SELECT f.order_id")[1].split("fetchall")[0])
-truthy("  with the reason written down", "INC-VAT" in _fo)
+truthy("  with the reason written down",
+       "INC-VAT" in FEE.split("def rate_from_orders(")[1].split("\ndef ")[0])
 truthy("a discounted order is left out of the rate", 'r["promos"]' in _fo)
 truthy("  and so is a refunded one", 'r["refunds"]' in _fo)
 truthy("  and a cancelled line", "cancelled" in _fo)
 truthy("a multi-line order is shared by revenue, not counted whole",
-       "sku_rev / tot_rev" in _fo)
+       "mine / tot" in _fo)
 truthy("a database that cannot be read does not stop a price",
-       "must not stop a price" in _fo)
+       "must not stop a price"
+       in FEE.split("def rate_from_orders(")[1].split("\ndef ")[0])
 
 print("\n=== the quote is cached per ASIN and price, for a day ===")
 truthy("the age limit is 24 hours", AF.QUOTE_MAX_AGE_HOURS == 24)
@@ -280,6 +287,96 @@ truthy("the refresh job runs daily, matching the age limit",
 # finds a newline rather than the words.
 truthy("  and a price change is picked up by it on its own",
        "therefore picked up here on its own" in SCH)
+
+print("\n=== the gap between what Amazon quotes and what it takes ===")
+# "Remove the hardcoded 1.2 VAT multiplier. Replace it with a measured
+#  multiplier per account, calculated automatically from real data. No
+#  hardcoded values anywhere. No config dependency. Fully automatic."
+#
+# MEASURED, on the same ASIN at the same 34.99 price: Amazon quoted 5.25 and
+# took 5.25 on jack_uk; quoted 5.25 and took 6.30 on nestwell_goods.
+# No code ever multiplies by a literal. The two mentions of 1.2 in the module
+# are prose: the instruction being carried out, and why a constant was refused.
+truthy("nothing multiplies a fee by a hardcoded number",
+       "* 1.2" not in FEE and "1.2 *" not in FEE and "= 1.2" not in FEE)
+truthy("  and the fee path reads no VAT setting at all",
+       "vat_rate" not in FEE and "fee_vat_rate" not in FEE)
+
+_ws_with = None
+for _ws in ("jack_uk", "nestwell_goods", "selvora_limited"):
+    if AF.measure_multiplier("config.json", _ws, "UK"):
+        _ws_with = _ws
+        break
+truthy("an account with both quotes and settled sales can be measured",
+       _ws_with is not None)
+if _ws_with:
+    _m = AF.measure_multiplier("config.json", _ws_with, "UK")
+    _mult, _why = AF.multiplier_for("config.json", _ws_with, "UK")
+    print("     %s -> x%.4f from %d product(s) (%.2f taken / %.2f quoted)"
+          % (_ws_with, _mult, _m["samples"], _m["actual_fees"],
+             _m["quoted_fees"]))
+    check("  the multiplier is actual over quoted", round(_mult, 4),
+          round(_m["actual_fees"] / _m["quoted_fees"], 4))
+    truthy("  and it says what it was measured from", "measured across" in _why)
+    # THE PROOF IT IS RIGHT: a product with no sales of its own, priced off the
+    # scaled quote, lands on the same rate the account's settled orders show.
+    _r, _b, _d = AF.rate_for_listing("config.json", None, _ws_with, "UK", None,
+                                     "NEVER-SOLD-SKU-FOR-TEST",
+                                     _m["products"][0][0], 34.99,
+                                     allow_quote=False)
+    check("  a never-sold product is priced on the scaled quote", _b, AF.QUOTED)
+    truthy("    and the tooltip shows both the quote and the scaling",
+           "Amazon quoted" in _d and "measured across" in _d)
+
+# AN ACCOUNT WITH NOTHING TO COMPARE USES THE QUOTE AS IT IS.
+_m0, _w0 = AF.multiplier_for("config.json", "no-such-account", "UK")
+check("an account with no data multiplies by one", _m0, 1.0)
+truthy("  and says so rather than implying a measurement", "no product" in _w0)
+
+# SELF-CORRECTING, WITHOUT A TIMER: the stored figure carries the counts it was
+# measured from, so one more settled order or one more quote re-measures it.
+if _ws_with:
+    from data import db as _db2
+    _c = _db2.get_db("config.json")
+    _before = dict(_c.execute(
+        "SELECT * FROM fee_multipliers WHERE workspace_id=? AND marketplace=?",
+        (_ws_with, "UK")).fetchone())
+    truthy("the measurement is stored", _before.get("samples") is not None)
+    _c.execute("UPDATE fee_multipliers SET orders_seen=orders_seen-1 "
+               " WHERE workspace_id=? AND marketplace=?", (_ws_with, "UK"))
+    _c.commit()
+    AF.multiplier_for("config.json", _ws_with, "UK")
+    _after = dict(_c.execute(
+        "SELECT * FROM fee_multipliers WHERE workspace_id=? AND marketplace=?",
+        (_ws_with, "UK")).fetchone())
+    check("  an order settling re-measures it on its own",
+          _after["orders_seen"], _before["orders_seen"])
+    check("    and lands on the same figure while the data is the same",
+          round(_after["multiplier"], 6), round(_before["multiplier"], 6))
+
+# A RATIO FAR FROM 1 IS A BROKEN MEASUREMENT, NOT A DISCOVERY.
+check("an impossible multiplier is refused", AF._multiplier_words(4.0, 3, 9, 2)[0],
+      1.0)
+truthy("  and says why rather than silently using 1",
+       "cannot be right" in AF._multiplier_words(4.0, 3, 9, 2)[1])
+check("  and so is a negative one", AF._multiplier_words(-1, 1, 1, 1)[0], 1.0)
+
+FEEMOD = FEE.split("def measure_multiplier(")[1].split("\ndef ")[0]
+truthy("both sides are compared on the same sales",
+       "_f(q[\"rate\"]) * rev" in FEEMOD)
+truthy("  and a product needs real settled orders behind it",
+       "MIN_SETTLED_ORDERS" in FEEMOD)
+_mf = FEE.split("def multiplier_for(")[1].split("\ndef ")[0]
+truthy("the counts of BOTH orders and quotes invalidate it",
+       "orders_seen" in _mf and "quotes_seen" in _mf)
+truthy("  and 'nothing to measure' is stored too, so it is not re-walked",
+       "samples 0" in _mf)
+_rl = FEE.split("def rate_for_asin(")[1].split("\ndef ")[0]
+truthy("the scaling happens in one place on the way out", "def _quoted(" in _rl)
+truthy("  and fee_quotes keeps the raw figure Amazon gave",
+       "the scaling happens on the way\n    # out" in _rl)
+truthy("the cached quote and a fresh one are scaled the same way",
+       _rl.count("_quoted(") >= 4)
 
 print("\n=== the quote fetches itself, without holding the page hostage ===")
 # "First time a new product appears on the sourcing page -> automatic API call
@@ -345,9 +442,11 @@ truthy("the fee panel is handed the rate the price was built on",
        'rate=rule.get("referral_rate")' in RUN)
 _bd = FEE.split("def breakdown_for(")[1].split("\ndef ")[0]
 truthy("  and uses it instead of looking the rate up again",
-       "given_rate and given_basis == ACTUAL" in _bd)
+       "given_basis in (ACTUAL, QUOTED)" in _bd)
+truthy("    for a scaled quote as well as a settled rate, so the panel and the "
+       "row agree", "recomputing a QUOTED rate" in _bd)
 truthy("    without charging the closing fee twice",
-       "already inside the measured rate above" in _bd)
+       "already inside the rate above" in _bd)
 JS = open(os.path.join("static", "js", "sourcing.js"), encoding="utf-8").read()
 truthy("the screen names the settled figure as its own kind",
        "d.fee_basis === 'actual'" in JS and "from your sales" in JS)
