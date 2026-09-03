@@ -40,6 +40,11 @@ let LR_COVERAGE = {};        // how many days the window could actually speak fo
 let LR_LAST_FETCH = 0;       // epoch seconds of the newest cached SP-API answer
 let LR_ERRORS = {};          // {group: why} when Amazon refused
 let LR_LOADING = false;
+// The server has answered at least once, so LR_LAST_FETCH means something.
+// Without this, "nobody has ever fetched" (0) and "we have not asked yet" (0)
+// are the same value, and lrAutoRefresh has to tell them apart: the first is
+// the stalest state there is and the second must not act at all.
+let LR_ANSWERED = false;
 // The SKUs already asked about. A SET, not the last key -- see lrLoadMetrics.
 let LR_ASKED = new Set();
 
@@ -103,6 +108,7 @@ async function lrLoadMetrics(rows, force){
       LR_COVERAGE = j.coverage || {};
       LR_LAST_FETCH = j.last_updated || 0;
       LR_ERRORS = j.errors || {};
+      LR_ANSWERED = true;
     } else {
       LR_ERRORS = {all: (j && j.error) || "could not read the metrics"};
     }
@@ -114,9 +120,15 @@ async function lrLoadMetrics(rows, force){
   }
 }
 
-/* The Refresh button: throw the cached Amazon answers away and ask again. */
-async function lrRefreshMetrics(){
-  if(typeof toast === "function") toast("Refreshing metrics from Amazon…");
+/* The Refresh button: throw the cached Amazon answers away and ask again.
+ *
+ * `quiet` suppresses the two toasts, and nothing else. The automatic refresh
+ * below calls THIS function rather than carrying a copy of it (CLAUDE.md
+ * Rule 12) -- a second "ask Amazon again" that drifted from this one is how a
+ * screen ends up with two refreshes that disagree about what they cleared. */
+async function lrRefreshMetrics(quiet){
+  const say = function(m){ if(!quiet && typeof toast === "function") toast(m); };
+  say("Refreshing metrics from Amazon…");
   try{
     await fetch("/listing/metrics_forget", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -125,9 +137,73 @@ async function lrRefreshMetrics(){
   const rows = (typeof ROWS !== "undefined") ? ROWS : [];
   await lrLoadMetrics(rows, true);
   const bad = Object.keys(LR_ERRORS || {});
-  if(typeof toast === "function"){
-    toast(bad.length ? ("Amazon refused: " + LR_ERRORS[bad[0]]) : "Metrics updated");
+  say(bad.length ? ("Amazon refused: " + LR_ERRORS[bad[0]]) : "Metrics updated");
+}
+
+/* ═══ THE REFRESH THAT NOBODY HAS TO PRESS ════════════════════════════════
+ *
+ *     "Instead of adding a visible button, auto-refresh in the background."
+ *
+ * The button exists (lrMetricsBar) but its bar is display:none from the density
+ * pass, so as things stood there was NO way to ask Amazon again -- the rank,
+ * competitive price and FBA stock on this screen could only ever be as fresh as
+ * the last time something else happened to fetch them.
+ *
+ * WHAT IT DOES NOT DO: it does not forget the cache. lrRefreshMetrics(true)
+ * would, and that is right for a person who does not believe what is on screen,
+ * but wrong for a timer -- forgetting makes every group stale by definition, so
+ * a 20-hourly forget would re-fetch rank, pricing and stock for the whole
+ * catalogue every time. This sends fetch=1 and lets the server's own TTLs
+ * (data/metrics_cache.py: 4h pricing, 4h FBA, 24h rank) decide what is actually
+ * due. Usually that is nothing, and the call costs one local read.
+ *
+ * TWO CLOCKS, AND BOTH MUST AGREE:
+ *
+ *   - the SERVER's, LR_LAST_FETCH -- when Amazon was really last asked. This is
+ *     the one that says whether the figures are old, and it is shared by every
+ *     browser and machine looking at this account.
+ *   - this BROWSER's, in localStorage -- a cooldown, so a tab reopened twenty
+ *     times in an afternoon does not fire twenty refreshes while Amazon is
+ *     refusing and the server clock consequently never moves.
+ *
+ * NO CLAIM IS MADE ABOUT THROTTLING. Every SP-API call counts against a rate
+ * limit; there is no free one. The reason this is cheap is the TTL check above,
+ * not a property of the endpoint.
+ */
+const LR_AUTO_HOURS = 20;
+let LR_AUTO_TRIED = false;          // once per page load, whatever else happens
+
+function _lrAutoKey(){
+  const id = (typeof acctId === "function" && acctId()) || "";
+  return "alta_lr_auto_refresh:" + id;
+}
+
+/* Ask Amazon again if it has been LR_AUTO_HOURS since anyone did.
+ * Returns true if a refresh was started -- for the test, and for the caller
+ * that wants to know whether the screen is about to change under it. */
+function lrAutoRefresh(){
+  if(LR_AUTO_TRIED) return false;
+  // Nothing has come back from the server yet, so the server clock is unknown.
+  // Wait for the next draw rather than guessing that "unknown" means "old".
+  if(LR_LOADING || !LR_ANSWERED) return false;
+  LR_AUTO_TRIED = true;
+
+  const gapMs = LR_AUTO_HOURS * 60 * 60 * 1000;
+  // LR_LAST_FETCH === 0 is "Amazon has never been asked about this account",
+  // which is stale by any reading, so it falls through to the fetch.
+  if(LR_LAST_FETCH && Date.now() - Number(LR_LAST_FETCH) * 1000 < gapMs){
+    return false;
   }
+
+  let mine = 0;
+  try{ mine = parseInt(localStorage.getItem(_lrAutoKey()) || "0", 10) || 0; }
+  catch(e){}                          // private mode, or storage turned off
+  if(Date.now() - mine < gapMs) return false;
+  try{ localStorage.setItem(_lrAutoKey(), String(Date.now())); }catch(e){}
+
+  const rows = (typeof ROWS !== "undefined") ? ROWS : [];
+  lrLoadMetrics(rows, true);
+  return true;
 }
 
 /* "2 hours ago", or "" when nothing has ever been fetched. */
@@ -969,6 +1045,11 @@ function detailedBlock(rows){
   // when it lands. A local read is quick, but the screen should not wait on it.
   lrLoadMetrics(rows);
   lrLoadFamilies();
+  // And, at most once a page load and once every 20 hours, ask Amazon again for
+  // the figures only Amazon has. Cheap and silent when nothing is due; see
+  // lrAutoRefresh for why it is not lrRefreshMetrics(). It runs AFTER the local
+  // read above so the server's own "when did anyone last ask" is known.
+  lrAutoRefresh();
 
   const g = lrGroupRows(rows);
   // Families first, then everything that belongs to none -- the way Amazon

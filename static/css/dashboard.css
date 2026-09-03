@@ -515,7 +515,7 @@
   /* SIDE PADDING. 20-32px of nothing down both edges of every screen; 10px is
    the gap the mockup keeps. Only the containers that set the page's left/right
    gutter change -- no font size and no button padding among them. */
-#summary{padding:6px 10px;color:var(--muted);border-bottom:1px solid var(--line);
+#summary{padding:5px 10px;color:var(--muted);border-bottom:1px solid var(--line);
            background:var(--panel);font-size:13px}
   /* Run health badge -- sits directly above the log panel. Colour is the state,
      so a frozen run is visibly different from a working one at a glance. */
@@ -4509,3 +4509,38 @@ a:hover{color:var(--accent)}
 }
 .appbar .acct-switch-chip:hover{ border-color:var(--accent); }
 .appbar .acct-switch-chip .ti{ font-size:13px; color:var(--ink2); }
+
+
+/* ===== MOCKUP MATCH PASS ===========================================
+   The density pass above missed the grid itself, and its own test could not
+   see that it had.
+
+   `main#grid` is written TWICE in this file: line ~543 sets `padding:8px 10px`
+   and the Orbit block at line ~2072 sets `padding:18px var(--wspad,32px)`.
+   Equal specificity, so the LATER one wins -- and --wspad is 32px on a desktop
+   (the 10px override lives inside two `@media` blocks, so it only applies to a
+   phone). The listings table has therefore been sitting 32px in from each edge
+   and 18px below the stat cards, which is items 2, 3 and 4 of the follow-up:
+
+       "The table still has padding/margin between it and the left/right screen
+        edges ... There's visible whitespace between the bottom of the stat
+        cards and the '1 - 36 of 36' line."
+
+   test_layout_density.py asserted the 10px and passed, because its rule()
+   helper takes the FIRST match of a selector and the first of the two is the
+   one that loses. That helper now has a rules() beside it that returns every
+   match -- a check that reads a rule the browser never applies is worse than
+   no check.
+
+   Scoped with #sec_listings so it beats the Orbit rule on specificity without
+   editing it (it is shared with the Orbit layout's own spacing decisions), and
+   so no other screen's grid moves. The bottom 10px stays: nothing was reported
+   about the foot of the list, and without it the last row touches the viewport.
+   =================================================================== */
+#sec_listings main#grid{ padding:0 10px 10px; }
+
+/* The stat cards sit flush against the count row under them.
+   .ui-stats carries `margin:0 0 12px` from datatable.css and is shared with the
+   Catalog, SQP, Orders and the Repricer -- so this is scoped to the Listings
+   header rather than changed there, exactly like the grid above. */
+#summary .ui-stats{ margin-bottom:0; }

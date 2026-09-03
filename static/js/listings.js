@@ -1235,7 +1235,12 @@ function summary(){
 
   _sumHost.innerHTML =
     `<div class="ui-stats">` + tiles + `</div>`
-    + (extras.length ? `<div class="cc" style="margin:-6px 0 12px">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
+    // margin:0. It was `-6px 0 12px`: a negative top to close the gap under the
+    // cards, and 12px below. The cards' own 12px bottom margin is gone now
+    // (#summary .ui-stats in dashboard.css), so the negative would pull this
+    // line ON TOP of them and the 12px would put back the gap that was just
+    // removed. A small top margin keeps it off the cards without reopening it.
+    + (extras.length ? `<div class="cc" style="margin:4px 0 0">${extras.join(" &nbsp;·&nbsp; ")}</div>` : "");
   // NO MIGRATION NOTICE HERE, AND NEVER AGAIN.
   //
   //     "Bring in whatever is left automatically right now, then remove this

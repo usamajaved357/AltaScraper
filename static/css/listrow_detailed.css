@@ -33,9 +33,24 @@
  *     #555     meta            -> var(--ink2)
  */
 
+/* FLUSH, NOT A CARD. This carries `class="card lrwrap"`, and .card is
+   `border:1px solid; border-radius; display:flex; gap:10px`. The padding was
+   already zeroed here, but the BORDER, the RADIUS and -- the one that actually
+   showed -- the 10px FLEX GAP were not:
+
+       "There's visible whitespace between '1 - 36 of 36 / Sort by' and the
+        table column headers. In the mockup they're flush."
+
+   That whitespace was .card's gap, spent between the sort bar and the <table>
+   (and again above it, between the family controls and the sort bar). It is not
+   a margin on either element, which is why zeroing margins would not have found
+   it. The rounded border is dropped for the same reason the padding was: a
+   table that is meant to reach the edges cannot sit inside a rounded box that
+   does not. */
 .lrwrap{
   background:var(--panel);
   padding:0; overflow:hidden;
+  border:0; border-radius:0; gap:0;
   color:var(--ink); font-size:13px; line-height:1.4;
 }
 
@@ -62,13 +77,34 @@
 .inv-head{ background:var(--panel2); border-bottom:2px solid var(--line2); }
 /* No border-right: Amazon's inventory table has no vertical rules and neither
    does its header. */
+/* TWO LINES, SENTENCE CASE, AND THEY DO NOT WRAP.
+ *
+ *     "'LISTING STATUS / AND WHAT / AMAZON SAID' renders as 4 lines in the app.
+ *      The mockup shows it as 2 lines."
+ *
+ * Two separate causes, and only one of them was here:
+ *
+ *   1. THE CAPS came from dashboard.css, not from this file. `table th
+ *      {text-transform:uppercase}` is an app-wide rule, and detailedHead() has
+ *      always written "Listing status" in sentence case -- the browser was
+ *      shouting it. Overridden rather than removed there: every other table in
+ *      the app is built around that header style, and changing it globally to
+ *      fix one screen is the kind of blast radius Rule 12 exists to stop.
+ *
+ *   2. THE FOUR LINES came from wrapping. "and what Amazon said" is ~106px at
+ *      11px and .col-status asks for 100px, so it broke in two -- and the caps
+ *      made the first line break as well. nowrap makes each header its own
+ *      minimum width; only Listing status grows by it (~100px -> ~122px), which
+ *      the flexible product column absorbs. No new horizontal scroll: every
+ *      other sub-label is shorter than the width its column already claims. */
 .inv-head th{
   padding:7px 8px; text-align:left; font-weight:500; font-size:12px;
   color:var(--ink2); vertical-align:top;
+  text-transform:none; letter-spacing:0; white-space:nowrap;
 }
 .inv-head .th-sub{
   font-size:11px; color:var(--ink4); font-weight:400; display:block;
-  margin-top:1px;
+  margin-top:1px; text-transform:none; letter-spacing:0;
 }
 
 /* THE PRODUCT COLUMN TAKES WHAT IS LEFT, AND NOTHING ELSE DOES.
@@ -312,7 +348,14 @@
  *
  * WORTH KNOWING: with this hidden there is now no visible control that asks
  * Amazon for the sales rank and the FBA figures. They arrive on the next
- * fetch=1 call and stay cached; nothing on this screen triggers one any more. */
+ * fetch=1 call and stay cached; nothing on this screen triggers one any more.
+ *
+ * SINCE ANSWERED, and by a timer rather than by putting the button back:
+ *
+ *     "Instead of adding a visible button, auto-refresh in the background."
+ *
+ * lrAutoRefresh() in listrow_detailed.js now sends that fetch=1 when the view
+ * draws and Amazon has not been asked for 20 hours. This bar stays hidden. */
 .lr-metricsbar{
   display:none !important;
   background:var(--panel2); border-bottom:1px solid var(--line);

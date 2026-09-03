@@ -116,13 +116,28 @@ S = read("static", "js", "sidebar.js")
 truthy("sidebar.js still owns Ctrl+B", '"b"' in S)
 falsy("  and palette.js does not touch B", '=== "b"' in CODE)
 
-print("\n== the bookmark bar says how to reach the rest ==")
-truthy("there is a Go to button", 'class="bmkgoto"' in B)
-truthy("  which opens the palette", "onclick=\"palOpen()\"" in B)
-truthy("  guarded, so the bar still draws without it",
-       'typeof palOpen === "function"' in B)
-truthy("  and it shows the shortcut", "Ctrl K" in B)
-truthy("the button has a style", ".bmkgoto" in C)
+print("\n== the bookmark bar no longer advertises the palette ==")
+# REWRITTEN, NOT DELETED. This section used to assert the opposite -- that the
+# bookmark bar carries a "Go to / Ctrl K" button into the palette -- and that
+# button was removed from the header on request, along with the pin hint beside
+# it, to match altascraper-listings-mockup.html:
+#
+#     "The app header shows [the pin hint] and 'Go to Ctrl K' taking up space.
+#      The mockup doesn't have these."
+#
+# WHAT THIS FILE STILL HAS TO PROVE is that the palette itself did not go with
+# it. The button was the only VISIBLE way in; the keyboard way, the function and
+# the styling are all still here, so putting it back is one line rather than a
+# rebuild.
+falsy("the Go to button is gone from the bar", 'class="bmkgoto"' in B)
+falsy("  and its keyboard chip with it", "bmkkbd" in B)
+truthy("but the palette is still openable by name", "function palOpen" in CODE)
+truthy("  and still bound to the keyboard", "ctrlKey || ev.metaKey" in CODE)
+# The style is kept deliberately: the claim in bookmarks.js is that one line
+# restores the button, and that is only true while .bmkgoto still has a look.
+truthy("the button's style is kept so it can come back", ".bmkgoto" in C)
+truthy("  and bookmarks.js says what removing it cost",
+       "only VISIBLE way into the palette" in B)
 
 print("\n== the ranking is predictable ==")
 probe = r"""
