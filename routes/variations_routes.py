@@ -325,13 +325,27 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
         if not sku:
             return jsonify({"ok": False, "error": "no sku"}), 400
 
+        # A DRAFT HAS SLOTS TOO, AND IT IS THE ONE BEING FILLED IN.
+        #
+        # This read the live listing and answered 502 when Amazon did not have
+        # the SKU -- which is every listing that has not been submitted yet, and
+        # those are exactly the ones somebody is choosing images for. The
+        # product type is enough to answer "which slots does Amazon allow",
+        # because that question is about the TYPE and not about the listing:
+        # slots_from_schema reads the schema and nothing else.
+        #
+        # So the live read is still made and still preferred -- what is IN a
+        # slot on a live listing can only come from Amazon -- and its absence is
+        # reported as `live: false` rather than as a failure. The caller passes
+        # the row's product type for the draft case.
+        asked_pt = (request.args.get("product_type") or "").strip()
         live = _live_attributes(sku, wsid, mkt)
-        if live is None:
+        if live is None and not asked_pt:
             return jsonify({"ok": False, "error": (
-                "Amazon would not return %s, so its image slots could not be "
-                "read." % sku)}), 502
+                "Amazon would not return %s and no product type was given, so "
+                "its image slots could not be worked out." % sku)}), 502
 
-        pt = live.get("product_type") or ""
+        pt = (live or {}).get("product_type") or asked_pt
         sch = _schema(pt, mkt)
         if sch is None:
             return jsonify({"ok": True, "sku": sku, "product_type": pt,
@@ -340,24 +354,29 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state, _sp_creds,
                                      "so its image slots are unknown. Amazon "
                                      "rejects a slot a type does not have.")})
 
-        attrs = live.get("attributes") or {}
+        attrs = (live or {}).get("attributes") or {}
         slots = []
         for s in _img.slots_from_schema(sch):
             cur = attrs.get(s["key"]) or ""
             slots.append({**s, "current": cur, "occupied": bool(cur)})
         return jsonify({"ok": True, "sku": sku, "product_type": pt,
                         "slots": slots, "checked": True,
+                        # WHETHER `current` MEANS ANYTHING. On a draft there is
+                        # no live listing to read, so every slot comes back
+                        # empty -- which is not the same as Amazon holding
+                        # nothing, and the screen must not say it is.
+                        "live": live is not None,
                         # WHAT A SHOPPER ACTUALLY SEES, which is a different
                         # question from what is in a slot. Amazon re-hosts and
                         # re-renders the main image, so this URL never matches
                         # the one that was submitted even when it is the same
                         # photograph -- and the app has no business claiming a
                         # slot value IS the product page picture.
-                        "shopper_image": live.get("shopper_image") or "",
+                        "shopper_image": (live or {}).get("shopper_image") or "",
                         # An image Amazon accepted and then rejected shows up
                         # here and nowhere else.
-                        "issues": live.get("issues") or [],
-                        "is_variation_child": bool(live.get("parent_sku")),
+                        "issues": (live or {}).get("issues") or [],
+                        "is_variation_child": bool((live or {}).get("parent_sku")),
                         "note": ("" if slots else
                                  "This product type defines no image slots at "
                                  "all, which would be unusual — check the "

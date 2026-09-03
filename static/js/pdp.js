@@ -231,9 +231,61 @@ function pdpSidebar(r){
     return '<div class="pdp-ck ' + cls + '" onclick="pdpTab(\'' + tab + '\')">'
          + '<i class="ti ' + icon + '"></i> ' + esc(label) + '</div>';
   };
-  const restricted = r.restricted && r.restricted.matched;
-  const viability  = r.viability && r.viability.matched;
-  const claims     = (r.claim_flags || []).length;
+
+  /* THE RAIL AND THE COMPLIANCE TAB READ THE SAME WARNINGS NOW.
+   *
+   *     "The left sidebar shows Restricted, Compliance, and Claim risks all as
+   *      GREEN — but Compliance tab shows 2 HIGH warnings. The indicators are
+   *      lying."
+   *
+   * They were. The rail read three row fields of its own -- r.restricted.matched,
+   * r.viability.matched, r.claim_flags -- and the tab read r.warnings, so a
+   * warning could exist in one and not the other and nothing reconciled them.
+   * Both go through liststatus.js now (Rule 12): lsWarnTypes counts r.warnings
+   * by type, lsCheckTone turns a type into a colour.
+   *
+   * high -> red, medium -> amber, none or low -> green.
+   */
+  const wt = (typeof lsWarnTypes === "function") ? lsWarnTypes(r) : {};
+  const tone = (typeof lsCheckTone === "function")
+             ? lsCheckTone : function(){ return "ok"; };
+  const wcount = (typeof lsCheckCount === "function")
+               ? lsCheckCount : function(){ return 0; };
+  // Which warning types belong under which light. Named here rather than
+  // guessed at in three places.
+  const T_RESTRICTED = ["restricted", "restricted_product", "prohibited"];
+  const T_COMPLIANCE = ["compliance_risk", "hazmat", "documents_required"];
+  const T_CLAIMS     = ["ip_risk", "claim_risk", "unsupported_claim"];
+  // The row's OWN verdicts still count, because they are not all mirrored into
+  // warnings: listing/restricted.py writes r.restricted and never a warning
+  // row, so ignoring it would swap one lie for another.
+  const restrictedHit = !!(r.restricted && r.restricted.matched
+                           && r.restricted.matched.length);
+  const viabilityHit  = !!(r.viability && r.viability.matched
+                           && r.viability.matched.length);
+  const claimHit      = ((r.claim_flags || []).length > 0);
+  const restrictedTone = restrictedHit ? "bad" : tone(wt, T_RESTRICTED);
+  // A verdict on the row is a warning nobody wrote down: it colours amber, and
+  // an actual HIGH warning of that type still overrides it to red.
+  const complianceTone = (function(){
+    const t = tone(wt, T_COMPLIANCE);
+    return (t === "ok" && viabilityHit) ? "warn" : t;
+  })();
+  const claimsTone = (function(){
+    const t = tone(wt, T_CLAIMS);
+    return (t === "ok" && claimHit) ? "warn" : t;
+  })();
+  const nRestricted = wcount(wt, T_RESTRICTED);
+  const nCompliance = wcount(wt, T_COMPLIANCE);
+  const nClaims     = wcount(wt, T_CLAIMS) || claimHit ? (wcount(wt, T_CLAIMS)
+                      || (r.claim_flags || []).length) : 0;
+  const label = function(base, n, tone_){
+    if(tone_ === "ok") return base;
+    return n ? (base + " — " + n) : (base + " — see why");
+  };
+  const icon = function(tone_, okIcon){
+    return tone_ === "ok" ? okIcon : "ti-alert-triangle";
+  };
   return '<div class="pdp-side">'
     + (live && ownAsin
         ? '<button class="pdp-sbbtn" onclick="optimizeLive(\'' + esc(ownAsin) + '\',\'' + esc(sku) + '\')">'
@@ -245,12 +297,16 @@ function pdpSidebar(r){
     +   '<div class="pdp-sbitem" onclick="pdpTab(\'compliance\')"><i class="ti ti-code"></i> Raw data</div>'
     + '</div>'
     + '<div class="pdp-sbsec"><div class="pdp-sblabel">Checks</div>'
-    +   chk(restricted ? "warn" : "ok", restricted ? "ti-alert-triangle" : "ti-shield-check",
-            restricted ? "Restricted — see why" : "Restricted", "compliance")
-    +   chk(viability ? "warn" : "ok", viability ? "ti-alert-triangle" : "ti-file-check",
-            viability ? "Docs may be demanded" : "Compliance", "compliance")
-    +   chk(claims ? "warn" : "ok", claims ? "ti-alert-triangle" : "ti-circle-check",
-            claims ? (claims + " claim risk" + (claims === 1 ? "" : "s")) : "Claim risks", "compliance")
+    +   chk(restrictedTone, icon(restrictedTone, "ti-shield-check"),
+            label("Restricted", nRestricted, restrictedTone), "compliance")
+    +   chk(complianceTone, icon(complianceTone, "ti-file-check"),
+            (complianceTone === "ok" ? "Compliance"
+             : (nCompliance ? "Compliance — " + nCompliance
+                            : "Docs may be demanded")), "compliance")
+    +   chk(claimsTone, icon(claimsTone, "ti-circle-check"),
+            (claimsTone === "ok" ? "Claim risks"
+             : (nClaims + " claim risk" + (nClaims === 1 ? "" : "s"))),
+            "compliance")
     +   chk("info", "ti-message-dots", "Amazon feedback", "compliance")
     + '</div></div>';
 }
@@ -392,9 +448,14 @@ function pdpRender(){
     return;
   }
 
+  // [← Back] [Preview] [Auto-fix] [Submit] ................ [...]
+  //
+  // The three actions sit NEXT TO the back link rather than across the bar. The
+  // spacer moved from in front of them to behind, so the only thing pushed to
+  // the far right is the overflow menu. They stay in the banner either way --
+  // moving them under the title was asked for and then asked against.
   const top = '<div class="pdp-top">'
     + '<a class="pdp-back" onclick="pdpClose()"><i class="ti ti-arrow-left"></i> Back to listings</a>'
-    + '<span class="pdp-spacer"></span>'
     // THE SAME THREE ACTIONS THE DRAWER'S FOOTER RUNS, calling the same
     // functions. Nothing here is reimplemented.
     + '<button class="pdp-tb" onclick="previewOne(\'' + esc(sku) + '\')" title="Check this listing against Amazon. Nothing is sent."><i class="ti ti-eye"></i> Preview</button>'
@@ -402,6 +463,7 @@ function pdpRender(){
     + (ro
       ? '<span class="pdp-rolock"><i class="ti ti-lock"></i> Read-only workspace</span>'
       : '<button class="pdp-tb success" onclick="submitOne(\'' + esc(sku) + '\')" title="Publish ONLY this listing live"><i class="ti ti-upload"></i> Submit</button>')
+    + '<span class="pdp-spacer"></span>'
     + '<button class="pdp-tb" onclick="drawerMore(event,\'' + esc(sku) + '\',' + (r.row||0) + ','
       + ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? 'true' : 'false')
       + ')" title="Everything else"><i class="ti ti-dots"></i></button>'
@@ -423,7 +485,11 @@ function pdpRender(){
         + '</div>'
         + p.highlights + p.bullets + p.desc + p.search;
   } else if(PDP_TAB === "images"){
-    tab = p.images;
+    // The four-section slot editor, which lives in its own file (Rule 7). The
+    // old strip of source thumbnails is kept underneath it: it carries the AI
+    // generation panel and the per-image edit buttons, which are a different
+    // job from deciding what goes in which slot.
+    tab = ((typeof pdpImagesTab === "function") ? pdpImagesTab(r) : "") + p.images;
   } else if(PDP_TAB === "attributes"){
     tab = pdpAttrTable(p.attrModel) + (p.addCtrl || "");
   } else if(PDP_TAB === "offer"){

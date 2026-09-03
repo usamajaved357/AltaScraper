@@ -1,0 +1,121 @@
+/* static/css/pdp_images.css -- the product page's Images tab.
+ *
+ * Its own file for the same reason its JavaScript is (CLAUDE.md Rule 7). It
+ * borrows pdp.css's variables rather than restating any colour, so the tab
+ * cannot end up a slightly different shade of the same theme.
+ */
+
+.pdpi{ display:flex; flex-direction:column; gap:22px; }
+
+/* ---- a section -------------------------------------------------------- */
+
+.pdpi-sec{
+  border:1px solid var(--pdp-line2); border-radius:9px;
+  background:var(--pdp-panel2, var(--pdp-panel)); padding:14px 16px 16px;
+}
+.pdpi-sechead{
+  display:flex; align-items:baseline; gap:8px; margin-bottom:12px;
+  flex-wrap:wrap;
+}
+.pdpi-secn{
+  width:18px; height:18px; border-radius:50%; flex-shrink:0;
+  background:var(--pdp-line2); color:var(--pdp-ink3);
+  font-size:10px; font-weight:700; display:inline-flex;
+  align-items:center; justify-content:center;
+}
+.pdpi-sect{ font-size:13px; font-weight:600; color:var(--pdp-ink); }
+.pdpi-secsub{ font-size:11px; color:var(--pdp-dim); }
+
+.pdpi-note{
+  font-size:11px; color:var(--pdp-dim); line-height:1.5;
+  padding:8px 10px; border-radius:6px; background:var(--pdp-line2);
+}
+.pdpi-note.bad{ color:var(--pdp-warn); background:var(--pdp-warnbg); }
+
+/* ---- section 1: the slots --------------------------------------------- */
+/* A grid rather than a row: the slots are a fixed set with names, and reading
+   "which of these is empty" down a wrapped grid is the whole job of the
+   section. Auto-fill so a type with three slots does not stretch them across
+   the screen. */
+.pdpi-slots{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(104px, 1fr));
+  gap:10px;
+}
+.pdpi-slot{
+  position:relative; border:1px dashed var(--pdp-line2); border-radius:8px;
+  padding:8px 6px 6px; text-align:center; background:transparent;
+  transition:border-color .12s, background .12s;
+}
+/* A filled slot is solid; an empty one keeps the dashes, so "what is left to
+   do" is legible without reading a single word. */
+.pdpi-slot.filled{ border-style:solid; background:var(--pdp-line2); }
+.pdpi-slot.over{ border-color:var(--pdp-link); background:#042C5322; }
+.pdpi-slotimg{
+  height:76px; display:flex; align-items:center; justify-content:center;
+  overflow:hidden; border-radius:5px; margin-bottom:6px;
+}
+.pdpi-slotimg img{ max-width:100%; max-height:76px; object-fit:contain; }
+.pdpi-slotimg i{ font-size:22px; color:var(--pdp-dim); }
+.pdpi-slotname{
+  font-size:10px; font-weight:600; letter-spacing:.04em;
+  color:var(--pdp-ink3); text-transform:uppercase;
+}
+.pdpi-slotlive{ font-size:9px; color:var(--pdp-dim); margin-top:2px; }
+.pdpi-slotx{
+  position:absolute; top:4px; right:4px; width:18px; height:18px;
+  border-radius:50%; border:none; cursor:pointer; padding:0;
+  background:#0009; color:#fff; font-size:11px; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+}
+.pdpi-slotx:hover{ background:#c0392b; }
+
+/* ---- sections 2 and 3: pictures to choose from ------------------------ */
+
+.pdpi-row{ display:flex; flex-wrap:wrap; gap:10px; }
+.pdpi-thumb{
+  position:relative; width:118px; border:1px solid var(--pdp-line2);
+  border-radius:8px; padding:6px; cursor:grab; background:transparent;
+}
+.pdpi-thumb:active{ cursor:grabbing; }
+.pdpi-thumbimg{
+  height:78px; display:flex; align-items:center; justify-content:center;
+  overflow:hidden; border-radius:5px; margin-bottom:5px;
+}
+.pdpi-thumbimg img{ max-width:100%; max-height:78px; object-fit:contain; }
+.pdpi-thumbimg i{ font-size:20px; color:var(--pdp-dim); }
+.pdpi-thumbcap{
+  font-size:9px; color:var(--pdp-dim); margin-bottom:5px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pdpi-pick{
+  width:100%; font-size:10px; padding:3px 4px; border-radius:5px;
+  background:var(--pdp-panel); color:var(--pdp-ink3);
+  border:1px solid var(--pdp-line2); cursor:pointer;
+}
+.pdpi-del{
+  position:absolute; top:4px; right:4px; width:18px; height:18px;
+  border-radius:50%; border:none; cursor:pointer; padding:0;
+  background:#0009; color:#fff; font-size:10px; line-height:1;
+  display:none; align-items:center; justify-content:center;
+}
+.pdpi-thumb:hover .pdpi-del{ display:flex; }
+.pdpi-del:hover{ background:#c0392b; }
+
+/* ---- section 4: upload ------------------------------------------------ */
+
+.pdpi-drop{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; padding:22px; cursor:pointer;
+  border:1px dashed var(--pdp-line2); border-radius:8px;
+  color:var(--pdp-dim); font-size:11px; text-align:center;
+  transition:border-color .12s, background .12s;
+}
+.pdpi-drop:hover, .pdpi-drop.over{
+  border-color:var(--pdp-link); background:#042C5316; color:var(--pdp-ink3);
+}
+.pdpi-drop i{ font-size:22px; }
+
+@media (max-width:720px){
+  .pdpi-slots{ grid-template-columns:repeat(auto-fill, minmax(88px, 1fr)); }
+  .pdpi-thumb{ width:104px; }
+}

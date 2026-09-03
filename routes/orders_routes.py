@@ -255,7 +255,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 continue
             label = a.get("label") or aid
             for o in got:
-                rows.append(_ov.to_row(o, account_id=aid, account_label=label))
+                # `mkt` is the one this account's orders were just fetched with,
+                # so the row cannot disagree with where it came from.
+                rows.append(_ov.to_row(o, account_id=aid, account_label=label,
+                                       marketplace=mkt))
             if truncated:
                 errors.append({"account": aid, "error": (
                     "more orders exist than were fetched — narrow the days or "
@@ -695,7 +698,8 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 "Amazon would not return that order: %s" % str(e)[:200])}), 502
 
         row = _ov.to_row(head or {}, account_id=aid,
-                         account_label=acc.get("label") or aid)
+                         account_label=acc.get("label") or aid,
+                         marketplace=_mkt_of(aid))
         # Free here: the lines are already in hand, so what the order earned
         # costs nothing more to work out.
         # WHAT EACH LINE EARNED, not just the order's bottom line.

@@ -331,47 +331,26 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         six.
 
         A SKU found gone is switched to dry run in the same statement that marks
-        it, so it cannot be pushed to between the two. Its enrollment row, its
-        sources and its history are KEPT: they are worth more than the row costs,
-        and it may be relisted tomorrow.
+        it, so it cannot be pushed to between the two, and then unenrolled so it
+        leaves the repricer. Its enrollment row, its sources, its history and its
+        rule are KEPT: they are worth more than the row costs, and it may be
+        relisted tomorrow, at which point re-enrolling restores all of it.
+
+        THE CHECK ITSELF LIVES IN domain/source_run.check_listings, because this
+        button is no longer the only caller -- the daily sourcing_listings job
+        runs the same function. Two copies would drift, and the difference would
+        show up as "the automatic one removes things the button does not"
+        (CLAUDE.md Rule 12).
         """
-        from api import amazon_listings as _al
-        from domain import accounts as _acc_mod
+        from domain import source_run as _run
         acc, wsid, mkt = _where_acc()
-        rows = _repo.enrolled(CONFIG_PATH, wsid, mkt)
-        creds = _acc_mod.account_creds(acc or {})
-        mid = _acc_mod.marketplace_id(mkt)
-        seller = str((acc or {}).get("seller_id") or "")
-        if not (seller and mid):
-            return jsonify({"ok": False, "error": (
-                "this account has no seller id or marketplace, so Amazon cannot "
-                "be asked about its listings")}), 400
-        gone, ok, unreadable = [], [], []
-        for r in rows:
-            sku = str(r.get("sku") or "")
-            if not sku:
-                continue
-            got = _al.get_item(creds, mkt, seller, sku, mid)
-            if got["status"] == _al.GONE:
-                _repo.set_listing_state(CONFIG_PATH, wsid, mkt, sku, _repo.GONE)
-                gone.append(sku)
-            elif got["status"] == _al.OK:
-                _repo.set_listing_state(CONFIG_PATH, wsid, mkt, sku, _repo.LIVE_OK)
-                ok.append(sku)
-            else:
-                # "Amazon would not answer" is NOT "the listing is gone". Marking
-                # it gone on a timeout would disarm a perfectly good SKU.
-                unreadable.append(sku)
-        note = ("%d still on Amazon, %d gone" % (len(ok), len(gone)))
-        if gone:
-            note += (" â€” auto-pricing is now off for %s" % ", ".join(gone[:6])
-                     + (" and others" if len(gone) > 6 else ""))
-        if unreadable:
-            note += (". %d could not be read and were left exactly as they were"
-                     % len(unreadable))
-        return jsonify({"ok": True, "checked": len(rows), "gone": gone,
-                        "still_there": len(ok), "unreadable": unreadable,
-                        "note": note})
+        got = _run.check_listings(CONFIG_PATH, acc, wsid, mkt)
+        if got["error"]:
+            return jsonify({"ok": False, "error": got["error"]}), 400
+        return jsonify({"ok": True, "checked": got["checked"],
+                        "gone": got["gone"], "removed": got["removed"],
+                        "still_there": got["still_there"],
+                        "unreadable": got["unreadable"], "note": got["note"]})
 
     @app.route("/sourcing/template.csv")
     def sourcing_template():

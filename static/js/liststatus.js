@@ -93,6 +93,63 @@ function lsWarnings(r){
   return out;
 }
 
+/* The same warnings, counted by TYPE as well as severity.
+ *
+ * WHY THIS EXISTS. The product page's Checks rail showed Restricted, Compliance
+ * and Claim risks as three green ticks while the Compliance tab listed two HIGH
+ * warnings underneath them -- "the indicators are lying". The rail was reading
+ * three different row fields (r.restricted.matched, r.viability.matched,
+ * r.claim_flags) and the tab was reading r.warnings, so the two could not agree
+ * and nothing made them.
+ *
+ * One reader now, beside lsWarnings and sharing its parse, because a second
+ * copy of "what counts as a compliance warning" is how they drifted apart in
+ * the first place (CLAUDE.md Rule 12).
+ *
+ * Returns {type: {n, high, medium, low, worst}} where `worst` is "high",
+ * "medium", "low" or "" -- "" meaning this type has no warnings at all, which
+ * is the only state that earns a green tick.
+ */
+function lsWarnTypes(r){
+  const out = {};
+  ((r && Array.isArray(r.warnings)) ? r.warnings : []).forEach(function(w){
+    const t = String((w && w.type) || "other").toLowerCase();
+    let s = String((w && w.severity) || "low").toLowerCase();
+    if(s !== "high" && s !== "medium") s = "low";
+    const e = out[t] || (out[t] = {n: 0, high: 0, medium: 0, low: 0, worst: ""});
+    e.n++; e[s]++;
+    // Worst wins: one HIGH among five lows is a red light, not an amber one.
+    if(e.worst !== "high") e.worst = (s === "high") ? "high"
+                                   : (e.worst === "medium" ? "medium" : s);
+  });
+  return out;
+}
+
+/* The colour one check should be, from any number of warning types.
+ *
+ * high -> red, medium -> amber, low or none -> green. Low is deliberately GREEN
+ * and not amber: "no barcode provided" is a low warning on nearly every draft,
+ * and a rail that is permanently amber tells you nothing on the day something
+ * real appears.
+ */
+function lsCheckTone(types, keys){
+  let worst = "";
+  (keys || []).forEach(function(k){
+    const e = (types || {})[k];
+    if(!e) return;
+    if(e.worst === "high") worst = "high";
+    else if(e.worst === "medium" && worst !== "high") worst = "medium";
+  });
+  return worst === "high" ? "bad" : (worst === "medium" ? "warn" : "ok");
+}
+
+/* How many warnings these types account for, for the label. */
+function lsCheckCount(types, keys){
+  let n = 0;
+  (keys || []).forEach(function(k){ n += (((types || {})[k]) || {}).n || 0; });
+  return n;
+}
+
 // Does AMAZON'S OWN fetched catalogue list this row?
 //
 // Uses _matchableAsin (listings.js), never r.asin: on an app row that field is the

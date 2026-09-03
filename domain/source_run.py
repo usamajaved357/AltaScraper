@@ -255,6 +255,100 @@ def decide_one(config_path, workspace_id, marketplace, sku, now=None):
     return current, decision
 
 
+def check_listings(config_path, account, workspace_id, marketplace,
+                   remove_gone=True):
+    """Ask Amazon which enrolled SKUs it still has, and drop the ones it does not.
+
+        "if the listing is deleted from my sellercentral i think the app knows
+         it, so lets remove the deleted items from repricer automatically"
+
+    It did know -- but only when somebody pressed the button. This is the same
+    check, in one place, called BOTH by that button and by the daily job, so the
+    automatic pass and the manual one cannot come to different conclusions
+    (CLAUDE.md Rule 12).
+
+    WHAT COUNTS AS DELETED, AND WHAT DOES NOT. Only HTTP 404 from
+    getListingsItem -- api/amazon_listings maps that alone to GONE, and
+    everything else, a timeout or a 403 from an account whose SP-API roles are
+    not granted, to FAILED. A SKU Amazon would not talk about is left EXACTLY as
+    it was. Measured on jack_uk, whose Product Fees role is missing: every one
+    of its SKUs answers 403, and not one of them may be treated as deleted.
+
+    WHAT "REMOVE" DOES, AND WHAT IT KEEPS. The SKU is unenrolled, so it leaves
+    the repricer -- `enrolled()` returns only enrolled=1, so it is gone from the
+    list, from every pricing pass and from the supplier template. Nothing is
+    deleted: the enrolment row, its supplier links, its price history and its
+    rule all stay exactly where they are. If the listing comes back it reappears
+    on the Add screen, and re-enrolling it restores everything it had.
+
+    That is why this can be automatic at all. Marking a live SKU deleted by
+    mistake would cost a few minutes; deleting its suppliers and its 20% ROI
+    target would cost an afternoon and could not be undone.
+    """
+    from api import amazon_listings as _al
+    from domain import accounts as _acc_mod
+
+    acc = account or {}
+    rows = _repo.enrolled(config_path, workspace_id, marketplace)
+    creds = _acc_mod.account_creds(acc)
+    mid = _acc_mod.marketplace_id(marketplace)
+    seller = str(acc.get("seller_id") or "")
+    out = {"checked": len(rows), "gone": [], "removed": [], "still_there": 0,
+           "unreadable": [], "note": "", "error": ""}
+    if not (seller and mid):
+        out["error"] = ("this account has no seller id or marketplace, so "
+                        "Amazon cannot be asked about its listings")
+        return out
+
+    for r in rows:
+        sku = str(r.get("sku") or "")
+        if not sku:
+            continue
+        try:
+            got = _al.get_item(creds, marketplace, seller, sku, mid)
+        except Exception:
+            # Never raises: this runs on a timer, and one odd SKU must not stop
+            # the rest being checked.
+            out["unreadable"].append(sku)
+            continue
+        if got["status"] == _al.GONE:
+            # Marked and disarmed in one statement, then taken out of the
+            # repricer. In that order: a SKU that is unenrolled but still armed
+            # would be one nothing is watching and something could still push.
+            _repo.set_listing_state(config_path, workspace_id, marketplace,
+                                    sku, _repo.GONE)
+            out["gone"].append(sku)
+            if remove_gone:
+                _repo.unenrol(config_path, workspace_id, marketplace, sku)
+                out["removed"].append(sku)
+        elif got["status"] == _al.OK:
+            _repo.set_listing_state(config_path, workspace_id, marketplace,
+                                    sku, _repo.LIVE_OK)
+            out["still_there"] += 1
+        else:
+            # "Amazon would not answer" is NOT "the listing is gone". Marking it
+            # gone on a timeout would disarm a perfectly good SKU.
+            out["unreadable"].append(sku)
+
+    note = "%d still on Amazon, %d gone" % (out["still_there"], len(out["gone"]))
+    if out["removed"]:
+        note += (" — %s %s taken out of the repricer. Nothing was deleted: "
+                 "their suppliers, history and rules are kept, and re-enrolling "
+                 "brings them back"
+                 % (", ".join(out["removed"][:6]),
+                    "was" if len(out["removed"]) == 1 else "were"))
+        if len(out["removed"]) > 6:
+            note += " (and %d more)" % (len(out["removed"]) - 6)
+    elif out["gone"]:
+        note += (" — auto-pricing is now off for %s" % ", ".join(out["gone"][:6])
+                 + (" and others" if len(out["gone"]) > 6 else ""))
+    if out["unreadable"]:
+        note += (". %d could not be read and were left exactly as they were"
+                 % len(out["unreadable"]))
+    out["note"] = note
+    return out
+
+
 def dry_run(config_path, workspace_id=None, marketplace=None, now=None,
             record=True, log=None):
     """Decide for every enrolled SKU. Writes to the log, changes nothing live.

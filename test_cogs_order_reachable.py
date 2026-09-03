@@ -102,6 +102,44 @@ truthy("the panel passes the row's own account down",
 truthy("  and the row's own order id, not the detail payload's",
        "_ordBreakdownHtml(d.breakdown, o.currency, r.order_id," in CODE)
 
+# AND THE ROW HAS TO CARRY ONE. This was asserted from the browser's side only
+# -- that it SENDS r.marketplace -- and the row did not have the field, so it
+# sent "". The route then fell back to the global active_marketplace, which the
+# Orders page never sets, and every save answered "need an account, marketplace
+# and order" while the account and the order had both been sent.
+#
+# Reported as: "i enter the cost and then hit save button it gives me an error
+# saying could not save that cost, NEED AN ACCount, marketplace and order".
+from domain import orders_view as _OV
+_r = _OV.to_row({"AmazonOrderId": "203-1", "OrderTotal": {"Amount": "10.00"}},
+                account_id="nestwell_goods", account_label="Nestwell",
+                marketplace="UK")
+check("the row carries the marketplace the browser reads off it",
+      _r.get("marketplace"), "UK")
+check("  and still carries the account", _r.get("account_id"), "nestwell_goods")
+# Both list and detail build rows, and a cost typed on one has to work on the
+# other. One of them omitting it is the same bug in half the screen.
+_OR = open(os.path.join(HERE, "routes", "orders_routes.py"), encoding="utf-8").read()
+check("every row builder passes a marketplace",
+      _OR.count("_ov.to_row("), _OR.count("marketplace=mkt")
+      + _OR.count("marketplace=_mkt_of(aid)"))
+truthy("  the list passes the one it fetched with", "marketplace=mkt" in _OR)
+truthy("  and the detail passes the account's own",
+       "marketplace=_mkt_of(aid)" in _OR)
+
+# THE REFUSAL SAYS WHICH ONE IS MISSING. It named all three whichever was
+# absent, so the message pointed at nothing -- two of the three named had been
+# sent correctly.
+truthy("the refusal names the missing field, not all three",
+       '_missing = [n for n, v in' in RT)
+# Scoped to THIS handler, and to the error VALUE rather than the words. Two
+# reasons: the replacement quotes the old message in a comment explaining what
+# was wrong with it, which is worth keeping; and /cogs/refreeze next door has a
+# message of its own that begins the same way and is not what this is about.
+_order_fn = RT.split("def cogs_order_set(")[1].split("\n    @app.route")[0]
+falsy("  and the old catch-all is no longer what this route returns",
+      '"error": "need an account' in _order_fn)
+
 print("\n== after saving, nothing on screen is left stale ==")
 # The row's profit, margin and ROI are all worked out from this cost. Redrawing
 # only the panel leaves the list showing the profit from before the correction.

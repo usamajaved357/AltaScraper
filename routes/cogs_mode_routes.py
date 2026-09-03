@@ -93,9 +93,21 @@ def register(app, *, CONFIG_PATH, _cfg, _state, _active_account,
         wsid, mkt = _scope()
         b = request.get_json(force=True) or {}
         oid = str(b.get("order_id") or "").strip()
-        if not wsid or not mkt or not oid:
-            return jsonify({"ok": False,
-                            "error": "need an account, marketplace and order"}), 400
+        # WHICH OF THE THREE IS MISSING, not all three names every time.
+        #
+        # This answered "need an account, marketplace and order" whichever one
+        # was absent. The Orders page was sending the account and the order and
+        # not the marketplace -- because the row did not carry one, which is now
+        # fixed in domain/orders_view.to_row -- and the message named three
+        # things, two of which had been sent. There was nothing in it to say
+        # where to look.
+        _missing = [n for n, v in (("account", wsid), ("marketplace", mkt),
+                                   ("order", oid)) if not v]
+        if _missing:
+            return jsonify({"ok": False, "error": (
+                "could not save that cost: no %s came with the request. A cost "
+                "is written against one order of one account, so all three are "
+                "needed." % " or ".join(_missing))}), 400
         cost = b.get("cost")
         if cost not in (None, ""):
             try:

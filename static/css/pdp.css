@@ -196,9 +196,11 @@ body.pdp-on{ overflow:hidden; }
  *
  * So the hero, the layout and the content are the mockup's 900 / 1100 / 720
  * again, centred. Do not widen them without asking. */
+/* Left-aligned with the content below it, not centred in a 900px column: a
+   hero that stops short of where the page starts reads as a different page. */
 .pdp-hero-in{
-  max-width:900px; margin:0 auto; display:flex; gap:24px;
-  align-items:flex-start; padding:0 24px;
+  display:flex; gap:24px;
+  align-items:flex-start; padding:0 28px;
 }
 .pdp-heroimg{
   width:120px; height:120px; border-radius:8px; background:#2a2a35;
@@ -236,9 +238,13 @@ body.pdp-on{ overflow:hidden; }
 .pdp-hb.warn:hover{ filter:brightness(1.15); }
 
 /* ---- 4. TABS ----------------------------------------------------------- */
+/* Left-aligned for the same reason as the hero: centred tabs over full-width
+   content point at the middle of nothing. The 16px lines them up with the
+   sidebar's own padding, so the first tab sits above the rail's first item. */
 .pdp-tabs{
   background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line);
-  display:flex; justify-content:center; gap:0; flex-wrap:wrap;
+  display:flex; justify-content:flex-start; gap:0; flex-wrap:wrap;
+  padding-left:16px;
   position:sticky; top:41px; z-index:2;
 }
 .pdp-tab{
@@ -250,12 +256,25 @@ body.pdp-on{ overflow:hidden; }
 .pdp-tab.active{ color:var(--pdp-ink); border-bottom-color:var(--pdp-accent); }
 
 /* ---- 5. LAYOUT --------------------------------------------------------- */
-.pdp-layout{ display:flex; max-width:1100px; margin:0 auto; gap:0; align-items:flex-start; }
+/* THE PAGE FILLS THE PAGE.
+ *
+ *     "The content doesn't fill the screen — wasted blank space on left and
+ *      right."
+ *
+ * Three caps were doing it: the layout at 1100px, the content at 720px INSIDE
+ * that, and the hero at 900px. On a 1920px screen that left roughly 800px of
+ * nothing either side of a 720px column. All three are gone; what is left is
+ * the 28px of breathing room asked for and the sidebar's own divider.
+ *
+ * The sidebar keeps its border-right and the gap stays 0, so the rail sits
+ * directly against the content rather than floating away from it.
+ */
+.pdp-layout{ display:flex; width:100%; gap:0; align-items:flex-start; }
 .pdp-side{
   width:180px; flex-shrink:0; padding:20px 16px;
   border-right:1px solid var(--pdp-line2);
 }
-.pdp-content{ flex:1; min-width:0; padding:24px 32px; max-width:720px; }
+.pdp-content{ flex:1; min-width:0; padding:24px 28px; }
 
 .pdp-sbsec{ margin-bottom:20px; }
 .pdp-sblabel{
@@ -281,6 +300,10 @@ body.pdp-on{ overflow:hidden; }
 }
 .pdp-ck.ok{   background:var(--pdp-okbg);     color:var(--pdp-ok);     border:1px solid #08504130; }
 .pdp-ck.warn{ background:var(--pdp-warnbg);   color:var(--pdp-warn);   border:1px solid #41240230; }
+/* A HIGH warning is red, not amber. Three shades so the rail can say which of
+   "nothing", "worth a look" and "this will stop the listing" it means -- amber
+   for a medium warning and for a verdict on the row that never became one. */
+.pdp-ck.bad{  background:var(--pdp-badbg, #4b111133); color:var(--pdp-bad, #ff8080); border:1px solid #7a1c1c55; }
 .pdp-ck.info{ background:#042C5318;           color:var(--pdp-link);   border:1px solid #042C5330; }
 .pdp-ck:hover{ filter:brightness(1.12); }
 .pdp-ck i{ font-size:12px; }

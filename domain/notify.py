@@ -404,6 +404,10 @@ LARGE_MOVE = "large_move"
 OUT_OF_STOCK = "out_of_stock"
 BACK_IN_STOCK = "back_in_stock"
 SUPPLIER_ENDED = "supplier_ended"
+# A SKU that left the repricer because Amazon no longer has the listing. In-app
+# only, deliberately: it is not an emergency, and it is the record that stops a
+# row disappearing from a screen with nothing anywhere to say why.
+LISTING_GONE = "listing_gone"
 ERROR = "error"
 
 # Which kinds go OUT as well as in. An ordinary reprice is a log entry; a

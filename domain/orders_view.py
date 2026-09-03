@@ -65,11 +65,25 @@ def address_line(addr):
     return ", ".join(b for b in bits if b)
 
 
-def to_row(order, account_id="", account_label=""):
+def to_row(order, account_id="", account_label="", marketplace=""):
     """One Amazon order -> the row the list draws.
 
     Carries the account, because the whole point is not having to know which
     account an order came from before you can look at it.
+
+    AND THE MARKETPLACE, for the same reason and one more. Typing a cost against
+    an order posts to /cogs/order, which needs the account, the marketplace and
+    the order id, and refuses without all three. The browser reads them off the
+    row -- deliberately, so a cost is written against the order's OWN account
+    rather than whichever workspace happens to be open (the list shows several
+    accounts at once). The row carried the account and not the marketplace, so
+    the browser sent "" for it, the route fell back to the global
+    active_marketplace, and on this screen nothing has ever set that: the Orders
+    page is not where a marketplace is chosen.
+
+    So every attempt to save a cost answered "need an account, marketplace and
+    order" -- naming three things, two of which had been sent. The refusal was
+    right; the row was incomplete.
     """
     o = order or {}
     addr = o.get("ShippingAddress") or {}
@@ -78,6 +92,10 @@ def to_row(order, account_id="", account_label=""):
         "order_id": str(o.get("AmazonOrderId") or ""),
         "account_id": account_id,
         "account": account_label or account_id,
+        # The account's marketplace, passed in by the caller that already looked
+        # it up to fetch the order. Not derived here: this module is handed
+        # Amazon's payload and knows nothing about the config.
+        "marketplace": str(marketplace or "").upper(),
         "purchased": str(o.get("PurchaseDate") or ""),
         "updated": str(o.get("LastUpdateDate") or ""),
         "status": str(o.get("OrderStatus") or ""),
