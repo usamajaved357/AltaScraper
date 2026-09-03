@@ -54,6 +54,7 @@
      file's own .dw2-* blocks and restyles .dw2-sec as the mockup's cards, so
      the later file has to be the one that wins. -->
 <link rel="stylesheet" href="/static/css/pdp.css?v={{ ASSET_V }}">
+<link rel="stylesheet" href="/static/css/pdp_images.css?v={{ ASSET_V }}">
 <!-- The detailed listing row (Amazon's Manage All Inventory layout). Unlike
      the drawer and the product page, this one sits INSIDE the listings grid,
      so it uses dashboard.css's own tokens and must load after it. -->
@@ -2019,6 +2020,9 @@
      own, so it loads after them -- the order on the page matching the order of
      dependence, as with drawer.js. -->
 <script src="/static/js/pdp.js?v={{ ASSET_V }}"></script>
+<!-- The Images tab's four sections. Its own file rather than another thousand
+     lines in pdp.js; pdp.js calls pdpImagesTab(row) and nothing else. -->
+<script src="/static/js/pdp_images.js?v={{ ASSET_V }}"></script>
 <!-- The detailed row renderer. It uses listings.js helpers (rowAsin, _dwCost,
      rowSelectBox, rowActions) at DRAW time, not load time, so it may load
      after them; listings.js checks for it at render time rather than on load,
