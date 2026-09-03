@@ -18,6 +18,7 @@ import json
 from flask import request, jsonify, Response
 
 from config import settings as _settings
+from data import db as _db
 from domain import order_sources as _osrc
 from domain import source_apply as _apply
 from domain import source_bulk as _bulk
@@ -508,12 +509,12 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         note = ""
         if not out:
             if not wsid:
-                note = "No account is selected â€” open a workspace first."
+                note = "No account is selected — open a workspace first."
             elif not mkt:
                 note = ("No marketplace is selected, so there was nothing to look "
                         "up. Pick one on the Listings screen and come back.")
             elif not rec.get("items"):
-                note = ("No live listings are cached for %s on %s yet â€” press Sync "
+                note = ("No live listings are cached for %s on %s yet — press Sync "
                         "on the Listings screen first." % (wsid, mkt))
             else:
                 note = "No listings match that filter."
@@ -1089,7 +1090,7 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
         return jsonify({
             "ok": True, "unenrolled": done, "failed": failed,
             "note": ("Stopped tracking %d SKU%s. Their supplier links and price "
-                     "history are kept â€” enroll one again and everything is still "
+                     "history are kept — enroll one again and everything is still "
                      "attached." % (done, "" if done == 1 else "s")),
         })
 
@@ -1369,6 +1370,51 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state,
                      % (len(done), len(want),
                         ("The rest fall back to your own measured rate."
                          if (failed or skipped) else "")).strip())})
+
+    @app.route("/sourcing/rules_all")
+    def sourcing_rules_all():
+        """Every SKU's stored rule, and nothing else. Read-only, no SP-API.
+
+        WHY THIS EXISTS RATHER THAN THE LISTINGS SCREEN CALLING /sourcing/list.
+
+            "The Min and Max price fields show '—' for every listing."
+
+        They did, and correctly: min_price and max_price are the repricer's rule
+        for a SKU, in sourcing_rules, and nothing on the listings screen had ever
+        read them -- so the boxes said "not loaded here" rather than drawing an
+        empty box, which would have read as "no floor is set".
+
+        /sourcing/list is the obvious place to get them and the wrong one: it
+        calls source_run.dry_run(), which re-prices every enrolled SKU against
+        every supplier. That is seconds of work and a page of decisions to
+        answer "what is the floor", on a screen that draws 200 rows.
+
+        This reads the rules table and stops. Same shape the Repricer stores in
+        SRC_ROW_RULES (repo.rule_for -- the account default with the SKU's
+        override laid over it), so the screen fills ONE global from one concept
+        rather than keeping a second, thinner copy of a rule beside it.
+
+        MEASURED before building it: sourcing_rules holds 5 rows for this
+        account, of which exactly ONE carries a min_price and NONE carries a
+        max_price. So this will light up one listing out of 303 today. That is
+        not a reason to skip it -- the boxes are also how a floor gets SET, and
+        until now the screen could not show one that existed.
+        """
+        wsid, mkt = _where()
+        out = {}
+        try:
+            conn = _db.get_db(CONFIG_PATH)
+            rows = conn.execute(
+                "SELECT sku FROM sourcing_rules "
+                "WHERE workspace_id=? AND marketplace=? AND sku<>''",
+                (wsid, mkt)).fetchall()
+            for r in rows:
+                sku = str(r["sku"] if hasattr(r, "keys") else r[0])
+                if sku:
+                    out[sku] = _repo.rule_for(CONFIG_PATH, wsid, mkt, sku)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)[:200]}), 500
+        return jsonify({"ok": True, "rules": out, "count": len(out)})
 
     @app.route("/sourcing/rules", methods=["POST"])
     def sourcing_rules():
