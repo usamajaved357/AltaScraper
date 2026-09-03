@@ -3424,10 +3424,58 @@ function closeTileMenu(){ const m=document.getElementById("tilemenu"); if(m) m.r
 function drawerMore(ev, sku, row, isLive){
   ev.stopPropagation();
   closeTileMenu();
+  // WHERE THE MENU IS ANCHORED, WORKED OUT BEFORE ANYTHING IS BUILT.
+  //
+  //     "The three-dot button at the end of each listing row does nothing when
+  //      clicked."
+  //
+  // It threw. This read `ev.target.closest("button")` and then that element's
+  // rectangle -- and in the detailed row the dots are an <i>, not a <button>,
+  // so closest() returned null and the next line was a TypeError on null. The
+  // menu had already been appended by then, so what actually happened was worse
+  // than nothing: a position:fixed menu with no top or left, parked at its
+  // static position below the page, and the click-away listener never installed
+  // because the throw came first.
+  //
+  // currentTarget is the element the handler is ON, whatever kind of element
+  // that is, so this works for the drawer's button and the row's icon alike --
+  // one menu, not a second one for rows that are not buttons (Rule 12). The
+  // rect is taken FIRST so a failure to find an anchor cannot leave a menu
+  // stranded in the DOM.
+  const anchor = ev.currentTarget
+              || (ev.target && ev.target.closest && ev.target.closest("button"))
+              || ev.target;
+  if(!anchor || !anchor.getBoundingClientRect) return;
+  const rect = anchor.getBoundingClientRect();
+
+  // OUR ASIN, NEVER THE COMPETITOR'S. A SKU is price_days_ASIN and that ASIN is
+  // the product this listing was researched FROM (CLAUDE.md Rule 1). rowAsin is
+  // the one place that tells the two apart, so "View on Amazon" cannot end up
+  // opening somebody else's listing.
+  const _r = (typeof ROWS !== "undefined")
+    ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+  const _a = (_r && typeof rowAsin === "function") ? (rowAsin(_r) || {}) : {};
+  const ourAsin = _a.own || "";
+
   const m = document.createElement("div");
   m.className = "tilemenu"; m.id = "tilemenu";
   m.innerHTML =
-    `<button onclick="refreshSchemaFor('${esc(sku)}');closeTileMenu()" title="Re-fetch Amazon's allowed values for this product type. Use it when a dropdown is missing an option you know exists — it does NOT touch your listing's own data."><i class="ti ti-refresh"></i> Refresh dropdown options</button>`
+    // THE FIRST THING THE MENU OFFERS IS THE THING IT IS FOR. Asked for by name
+    // -- "Edit listing, View on Amazon, Delete, Duplicate, Copy ASIN" -- and
+    // three of those already existed somewhere; these are the ways to them.
+    //
+    // NO "DUPLICATE". Nothing in this app copies a listing: there is no
+    // function, no route and no SKU-minting path that takes an existing row.
+    // A menu item that opened a listing you did not ask for, or silently did
+    // nothing, would be worse than its absence (Rule 4).
+    `<button onclick="closeTileMenu();openListing('${esc(sku)}')" title="Open this listing to edit it"><i class="ti ti-edit"></i> Edit listing</button>`
+    + (ourAsin
+        ? `<button onclick="closeTileMenu();window.open('${esc(_dpUrl(ourAsin))}','_blank','noopener')" title="Open ${esc(ourAsin)} on Amazon in a new tab"><i class="ti ti-external-link"></i> View on Amazon</button>`
+          + `<button onclick="uiCopy('${esc(ourAsin)}','ASIN copied');closeTileMenu()" title="Copy ${esc(ourAsin)} to the clipboard"><i class="ti ti-copy"></i> Copy ASIN</button>`
+        // NOT LIVE YET MEANS NO ASIN OF ITS OWN, and that is a fact worth
+        // saying rather than two items quietly missing from the menu.
+        : `<button disabled title="This listing is not on Amazon yet, so it has no ASIN of its own. The ASIN in the SKU is the competitor product it was researched from."><i class="ti ti-external-link"></i> No ASIN yet</button>`)
+    + `<button onclick="refreshSchemaFor('${esc(sku)}');closeTileMenu()" title="Re-fetch Amazon's allowed values for this product type. Use it when a dropdown is missing an option you know exists — it does NOT touch your listing's own data."><i class="ti ti-refresh"></i> Refresh dropdown options</button>`
     + `<button onclick="openImageLibrary('${esc(sku)}', ${isLive ? "true" : "false"});closeTileMenu()" title="Every image this listing has: upload your own, pick the main one, push one live"><i class="ti ti-library-photo"></i> Image library</button>`
     + (isLive
         ? `<button onclick="pullLiveRow('${esc(sku)}',this);closeTileMenu()" title="Fetch this listing's real images from Amazon and replace the generation-time ones. Sync does this for every listing at once."><i class="ti ti-cloud-download"></i> Pull live images</button>`
@@ -3435,8 +3483,6 @@ function drawerMore(ev, sku, row, isLive){
         : "")
     + `<button class="danger" onclick="delRow('${esc(sku)}',${row||0},this);closeTileMenu()"><i class="ti ti-trash"></i> Delete listing</button>`;
   document.body.appendChild(m);
-  const btn = ev.target.closest("button");
-  const rect = btn.getBoundingClientRect();
   m.style.top = (rect.bottom + 4) + "px";
   // RIGHT-ALIGNED TO THE BUTTON. The drawer is pinned to the right edge, so a
   // menu laid out leftwards from here would open off the screen.

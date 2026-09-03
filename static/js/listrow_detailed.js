@@ -564,19 +564,102 @@ function lrPerf(r){
  * it showed. A second copy here could print the draft's plan in front of a live
  * listing as though it were fact (Rule 12).
  */
+/* THE HANDLING TIME, EDITABLE -- but only the half of it that is ours.
+ *
+ *     "The handling time is displayed but not clickable/editable. Make it an
+ *      inline editable field."
+ *
+ * TWO NUMBERS LIVE HERE and only one of them can be typed. handling_days is
+ * what this app holds -- a column in _EDITABLE_COLS, ours to change.
+ * handling_time is what Amazon is promising buyers right now, and it is a
+ * reading, not a setting: typing over it here would not change the shopfront.
+ *
+ * So the box edits ours, and _handCell is kept underneath on a live listing
+ * because that is the one place that compares the two and says when they
+ * disagree -- a listing promising two days while the plan says five is a late
+ * dispatch, and that comparison is not reimplemented here (Rule 12).
+ */
+function lrHandRow(r){
+  const live = (typeof isAmazonLive === "function") ? isAmazonLive(r) : false;
+  const ours = r.handling_days;
+  const box = '<div class="d-row"><span class="d-label">Handling</span>'
+    + '<span class="d-val">'
+    + lrEditBox({sku: r.sku, field: "handling",
+                 value: (ours === null || ours === undefined) ? "" : String(ours),
+                 cls: "lr-hand", placeholder: "—",
+                 title: "Days to dispatch, as this app holds it. Saved here, not "
+                      + "sent to Amazon — the listing's own handling time is "
+                      + "changed on Amazon."})
+    + '<span class="lr-unit">d</span></span></div>';
+  // Amazon's own figure, and the disagreement flag, only where there can be one.
+  const amz = (live && typeof _handCell === "function") ? _handCell(r) : "";
+  return box + (amz ? '<div class="d-hand">' + amz + '</div>' : "");
+}
+
+/* CAN THIS LISTING'S STOCK BE TYPED?
+ *
+ *     "For FBM listings, the Available quantity should be editable inline (FBA
+ *      listings stay read-only since Amazon controls stock)."
+ *
+ * ONLY WHEN THE CHANNEL IS KNOWN AND SAYS MERCHANT. stock_daily.fulfillment
+ * carries DEFAULT / MFN for merchant-fulfilled and AMAZON for FBA -- but it is
+ * also "" when nothing has been read yet, and an empty string is NOT a merchant
+ * listing, it is an unanswered question. An editable box on an unknown channel
+ * would be a control that offers something the server then refuses
+ * (push_quantity declines a listing with no fulfillment_availability, which is
+ * how FBA presents), and a refusal after the fact is worse than a box that was
+ * never offered.
+ *
+ * MEASURED: all 100 SKUs with a stock reading on this account are DEFAULT, so
+ * this is the ordinary case here and FBA is the exception.
+ */
+function lrCanEditQty(r, m){
+  const ff = String((m && (m.fulfillment || m.fulfilment)) || "").toUpperCase();
+  if(ff === "DEFAULT" || ff === "MFN") return true;
+  return false;
+}
+
+/* The Available line: a box on a merchant listing, a reading on anything else.
+ *
+ * UNLIKE THE OTHER THREE, SAVING THIS GOES TO AMAZON. Stock has no column in
+ * this app on purpose -- routes/handling_routes.stock_bulk_update spells out
+ * why: Amazon is the authority on it, and a number recorded here would be a
+ * second, immediately-stale copy for every other screen to read. So the box
+ * patches the live listing, and both the tooltip here and the bar at the foot
+ * of the screen say so before anything is pressed. */
+function lrAvailRow(r, m, oos){
+  if(!lrCanEditQty(r, m)){
+    const ff = String((m && (m.fulfillment || m.fulfilment)) || "").toUpperCase();
+    const why = ff
+      ? "Amazon holds this stock (" + ff + "), so it is not set from here."
+      : "This listing's fulfilment channel has not been read yet, so this app "
+        + "cannot tell whether the stock is Amazon's or yours. Sync to find out.";
+    return '<div class="d-row"><span class="d-label">Available</span>'
+      + '<span class="d-val ' + oos(m.available) + '">'
+      + '<span class="lr-ro" title="' + esc(why) + '">' + lrVal(m.available)
+      + '</span></span></div>';
+  }
+  return '<div class="d-row"><span class="d-label">Available</span>'
+    + '<span class="d-val">'
+    + lrEditBox({sku: r.sku, field: "qty", cls: "lr-qty",
+                 value: (m.available === null || m.available === undefined)
+                        ? "" : String(m.available),
+                 placeholder: "—",
+                 title: "Units you can sell. Saving this CHANGES THE LIVE "
+                      + "LISTING ON AMAZON — 0 stops it selling."})
+    + '</span></div>';
+}
+
 function lrInv(r){
   const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
-  const hand = (typeof _handCell === "function") ? _handCell(r) : "";
-  const handBlock = hand
-    ? '<div class="d-hand"><span class="d-label">Handling</span>' + hand + '</div>'
-    : "";
+  const handBlock = lrHandRow(r);
   if(!sent) return '<div class="d-none">' + lrVal(null) + '</div>' + handBlock;
   const m = lrMetrics(r.sku) || {};
   const oos = (v) => (v === 0 || v === "0") ? "red" : "";
   const fba = m.fulfilment || m.fulfillment || "";
   return lrDataRow("On-hand",   lrVal(m.on_hand),   oos(m.on_hand))
     + (fba ? '<div class="d-cat">(' + esc(fba) + ')</div>' : "")
-    + lrDataRow("Available", lrVal(m.available), oos(m.available))
+    + lrAvailRow(r, m, oos)
     + lrDataRow("Inbound",   lrVal(m.inbound))
     // UNFULFILLABLE IS RED WHEN THERE IS ANY. Stock Amazon holds and will not
     // sell -- damaged, expired, defective -- and it looks like inventory on
@@ -622,17 +705,26 @@ function lrCur(r){
   return "GBP";
 }
 
-/* An editable price box. Saves through /edit like every other field, via
- * saveEdit() -- the one function that writes a field (Rule 12), which also
- * handles the saved/err styling and keeps ROWS in step. */
+/* An editable price box.
+ *
+ * IT USED TO SAVE THE INSTANT YOU LOOKED AWAY -- onchange straight into
+ * saveEdit(). That worked, and was the problem:
+ *
+ *     "When you change a price in the inline input box and click elsewhere,
+ *      nothing happens."
+ *
+ * Nothing VISIBLE happened. The write had already gone, with no way to take it
+ * back and nothing on the row to say it had. The box is now staged instead:
+ * lrEditBox holds the change, marks itself, and the bar at the foot of the
+ * screen saves or discards every held change at once. The endpoint is
+ * unchanged -- see listrow_edit.js, which still posts to /edit.
+ */
 function lrPriceBox(r, key, value, title){
   const v = String(value == null ? "" : value).replace(/[^0-9.\-]/g, "");
   return '<div class="price-input-wrap" title="' + esc(title || "") + '">'
        + '<span class="cur">' + esc(lrCur(r)) + '</span>'
-       + '<input type="text" value="' + esc(v) + '" inputmode="decimal"'
-       +   ' onclick="event.stopPropagation()"'
-       +   ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
-       +   ' onchange="saveEdit(this,\'' + esc(r.sku) + '\',\'col\',\'' + esc(key) + '\')">'
+       + lrEditBox({sku: r.sku, field: "price", value: v,
+                    title: title || "The price on the listing"})
        + '</div>';
 }
 
@@ -706,16 +798,49 @@ async function lrSaveRule(sku, key, el){
   }catch(e){ toast("Could not save: " + e); }
 }
 
+/* THE COST, EDITABLE, WITHOUT A SECOND OPINION ABOUT WHAT IT IS.
+ *
+ *     "The Cost value is displayed as plain text. It should be an editable
+ *      input like the price field."
+ *
+ * cogsOf() decides what the cost IS and where it came from -- a figure typed by
+ * the owner, or one read off the SKU's price prefix, or nothing known. That
+ * resolution is not repeated here (Rule 12); this only draws the box and
+ * labels the source, because "9.18 because you typed it" and "9.18 because the
+ * SKU says so" behave differently when the box is cleared.
+ *
+ * THE BOX IS EMPTY WHEN NOTHING IS KNOWN, with the placeholder saying so.
+ * Pre-filling it with 0.00 would be the exact mistake cogs.js was built to
+ * avoid: an item that appears to cost nothing looks infinitely profitable.
+ */
+function lrCostRow(r){
+  const c = (typeof cogsOf === "function") ? cogsOf(r) : {cost: null, source: ""};
+  const known = c.cost !== null && c.cost !== undefined;
+  const tip = c.source === "manual"
+    ? "Your own figure — it beats what the SKU says. Empty it to go back to the SKU."
+    : (c.source === "sku"
+        ? "Read from the SKU's price prefix. Type here to override it."
+        : "No cost known for this SKU. Every profit figure on this row depends on it.");
+  return '<div class="d-row"><span class="d-label">Cost</span>'
+    + '<span class="d-val">'
+    + '<span class="cur">' + esc((typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "") + '</span>'
+    + lrEditBox({sku: r.sku, field: "cost", cls: "lr-cost",
+                 value: known ? Number(c.cost).toFixed(2) : "",
+                 placeholder: "not set", title: tip})
+    + (c.source === "manual"
+        ? '<span class="lr-src" title="You typed this">•</span>' : "")
+    + '</span></div>';
+}
+
 function lrPricing(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
-  const cost  = (typeof _dwCost === "function") ? _dwCost(r) : "";
   const pnum  = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
   return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
     + lrFloorCeiling(r)
-    + lrDataRow("Cost",   cost ? esc(cost) : lrVal(null))
+    + lrCostRow(r)
     + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
     + lrBuyBox(m)
     // BUSINESS PRICE. Amazon reports one only where a business offer exists,
@@ -1045,6 +1170,11 @@ function detailedBlock(rows){
   // when it lands. A local read is quick, but the screen should not wait on it.
   lrLoadMetrics(rows);
   lrLoadFamilies();
+  // A RE-RENDER BUILDS FRESH BOXES FROM SAVED DATA, so anything typed and not
+  // yet saved would vanish out of the inputs while the bar went on counting it.
+  // Scheduled rather than called: this function returns a STRING, and the boxes
+  // do not exist until the caller has put it in the page.
+  if(typeof lrEditRestore === "function") setTimeout(lrEditRestore, 0);
   // And, at most once a page load and once every 20 hours, ask Amazon again for
   // the figures only Amazon has. Cheap and silent when nothing is due; see
   // lrAutoRefresh for why it is not lrRefreshMetrics(). It runs AFTER the local

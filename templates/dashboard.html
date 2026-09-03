@@ -59,6 +59,10 @@
      the drawer and the product page, this one sits INSIDE the listings grid,
      so it uses dashboard.css's own tokens and must load after it. -->
 <link rel="stylesheet" href="/static/css/listrow_detailed.css?v={{ ASSET_V }}">
+<!-- The staged-edit boxes and the Save all / Cancel bar. AFTER
+     listrow_detailed.css on purpose: the price box lives inside
+     .price-input-wrap, whose rules this has to be able to beat. -->
+<link rel="stylesheet" href="/static/css/listrow_edit.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -2041,6 +2045,11 @@
      after them; listings.js checks for it at render time rather than on load,
      which is what makes the order here safe either way. -->
 <script src="/static/js/listrow_detailed.js?v={{ ASSET_V }}"></script>
+<!-- Hold an edit instead of writing it, and save or discard the lot. Called by
+     listrow_detailed.js at DRAW time (lrEditBox, lrEditRestore), so like the
+     file above it the order here is not load-bearing. It reaches cogsSet in
+     cogs.js and updateLocalCol in listings.js, both loaded earlier. -->
+<script src="/static/js/listrow_edit.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/genimage.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/howworks.js?v={{ ASSET_V }}"></script>
