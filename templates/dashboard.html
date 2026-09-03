@@ -66,6 +66,9 @@
 <!-- The revenue calculator panel. Slides in beside the list rather than
      replacing it -- see static/js/revenue.js. -->
 <link rel="stylesheet" href="/static/css/revenue.css?v={{ ASSET_V }}">
+<!-- The compact expanded-order panel: the Sourcing page's bar, cards and pills
+     applied to an order -- see static/js/orders_panel.js. -->
+<link rel="stylesheet" href="/static/css/orders_panel.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -2090,6 +2093,10 @@
 <script src="/static/js/migrate.js?v={{ ASSET_V }}"></script>
 <!-- Every account's orders on one screen. -->
 <script src="/static/js/orders.js?v={{ ASSET_V }}"></script>
+<!-- The compact expanded-order panel. orders.js checks for it at DRAW time and
+     falls back to its own long version, so a load failure costs the layout
+     rather than the order details. -->
+<script src="/static/js/orders_panel.js?v={{ ASSET_V }}"></script>
 <!-- Why things come back, and what it costs. -->
 <script src="/static/js/returns.js?v={{ ASSET_V }}"></script>
 <!-- The weekly KPI pack. Same two-buttons-per-report shape as Returns above. -->

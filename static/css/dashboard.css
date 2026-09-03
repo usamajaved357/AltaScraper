@@ -3957,25 +3957,46 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    file, and a second set of numbers inside a template literal is a second
    place to keep in step. */
 table.ordtable{ border-collapse:separate; border-spacing:0; }
+/* SENTENCE CASE, TWO LINES, AND TIGHTER.
+   Every cell in this table carries two facts -- the order id and its unit
+   count, the date and the fulfilment channel -- and the heading named only the
+   first. The sub-line is the same .th-sub the listings table uses, so the two
+   tables cannot end up with two answers to what a heading looks like; the caps
+   go with it, for the same reason they went there (see listrow_detailed.css:
+   the app-wide `table th{text-transform:uppercase}` was shouting a heading
+   that had been written in sentence case all along). */
 table.ordtable th{
-  padding:10px 12px;
+  padding:7px 10px;
   text-align:left;
   font-size:10.5px;
   font-weight:600;
-  letter-spacing:.04em;
-  text-transform:uppercase;
+  letter-spacing:0;
+  text-transform:none;
   color:var(--muted);
   white-space:nowrap;
+  vertical-align:top;
   background:rgba(0,0,0,.16);
   border-bottom:1px solid rgb(55,65,81);
   position:sticky;                /* the headings stay while a long list scrolls */
   top:0;
   z-index:1;
 }
+/* 7px, so more than three orders fit above the fold.
+   "See 7+ order rows above the fold (currently only ~3 fit)." Every cell on
+   this row is two short lines; 11px of padding above and below each of them was
+   most of the height of the row. */
 table.ordtable td{
-  padding:11px 12px;
+  padding:7px 10px;
   vertical-align:middle;          /* .kv aligns top, which floats a 34px image */
   border-bottom:1px solid rgba(55,65,81,.55);
+}
+/* The sub-line under a heading. Same class and same shape as the listings
+   table's, defined here too because this table is styled in dashboard.css and
+   listrow_detailed.css is not loaded for the Orders screen's sake. */
+table.ordtable th .th-sub{
+  display:block; margin-top:1px;
+  font-size:9.5px; font-weight:400; letter-spacing:0;
+  text-transform:none; color:var(--ink4);
 }
 table.ordtable tbody tr:last-child > td{ border-bottom:0; }
 /* The row a click would open. Colour is reserved for status, so this is only
