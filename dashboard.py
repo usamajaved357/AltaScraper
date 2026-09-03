@@ -1088,6 +1088,24 @@ def _card(r: dict) -> dict:
         "comp_notes":   gm("Compliance Notes", "Compliance Report"),
         "price":        g("Our Price (GBP)"),
         "profit":       g("Profit (GBP)"),
+        # WHAT AMAZON TAKES, AND HOW WE KNOW.
+        #
+        #     "The 'Total fees' field shows '—' for almost every listing."
+        #
+        # The figure was never missing -- it was never SENT. data/column_map has
+        # carried "Amazon Fees (GBP)" -> amazon_fees and "Fee Source" ->
+        # fee_source all along, the generator writes both, and the listings
+        # table holds them: MEASURED, 139 of 303 rows have a fee and 61 of the
+        # 63 LIVE ones do, most stamped "SP-API (exact)". This dict simply had
+        # no key for either, so the browser row had nothing to read and the
+        # column drew a dash over a number the database already had.
+        #
+        # fee_source travels with it deliberately. "2.28, quoted by Amazon" and
+        # "2.28, measured on your own sales" are different degrees of certainty
+        # about the same figure, and a fee with no provenance invites the first
+        # to be trusted like the second.
+        "amazon_fees":  g("Amazon Fees (GBP)"),
+        "fee_source":   g("Fee Source"),
         "viable":       g("Viable?"),
         "source":       g("Source URL"),
         "asin":         gm("Competitor ASIN", "ASIN"),

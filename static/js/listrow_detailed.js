@@ -282,9 +282,48 @@ function lrDataRow(label, valHtml, cls){
  * app calls LIVE would invent a second vocabulary for the same thing. So the
  * app's own word is shown, coloured the way the mockup colours its equivalent.
  */
+/* IS THIS LISTING ON AMAZON? Not "does the stored word say so".
+ *
+ *     "Some listings on the 'Live on Amazon' filtered view show status
+ *      GENERATED instead of LIVE or ACTIVE. This makes no sense."
+ *
+ * It does not, and the answer already existed. isActuallyLive() matches the
+ * row's SKU and our own ASIN against Amazon's catalogue, and _shownStatus()
+ * wraps it -- both in listings.js, both used by the table view and by the count
+ * tiles above the list since long before this view was built. This view was the
+ * one place still reading r.status raw, which is why the tiles could say LIVE
+ * over a row labelled GENERATED.
+ *
+ * NOT A NEW RULE HERE. The brief proposes "if the listing has an ASIN and is in
+ * the catalogue, override the displayed status" -- which is what isActuallyLive
+ * does. Writing it again in this file would be a fourth opinion about what LIVE
+ * means (Rule 12), and it would be the one that disagreed first.
+ */
+function lrShownStatus(r){
+  const raw = (typeof _shownStatus === "function") ? _shownStatus(r)
+                                                   : ((r && r.status) || "");
+  return (typeof lsNorm === "function") ? lsNorm(raw)
+                                        : String(raw || "").toUpperCase();
+}
+
+/* Is it on Amazon, by any reading? Either the catalogue has it, or we sent it
+ * and Amazon has not published it yet. This is the gate for "has this listing
+ * anything to report" -- performance, stock, fees. */
+function lrOnAmazon(r){
+  if(typeof isAmazonLive === "function" && isAmazonLive(r)) return true;
+  return (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
+}
+
 function lrStatus(r){
-  const st = (typeof lsStatusOf === "function") ? lsStatusOf(r)
-                                                : String(r.status||"").toUpperCase();
+  const st = lrShownStatus(r);
+  // THE STORED WORD, WHEN IT DISAGREES. Amazon's answer is the one shown, but
+  // "this app's record still says GENERATED" is a real fact with a real cause --
+  // the listing went live and nothing wrote the status back, which a Sync
+  // fixes. Silently showing LIVE would hide the stale record; showing GENERATED
+  // would be wrong. So: the truth, with the disagreement named on hover.
+  const stored = (typeof lsStatusOf === "function") ? lsStatusOf(r)
+                                                    : String(r.status||"").toUpperCase();
+  const stale = (st !== stored) ? stored : "";
   // The date the listing was last worked on. date_processed is what the
   // generator stamps; updated_at is the row's own. Neither is invented here.
   const d = r.date_processed || r.updated_at || r.created_at || "";
@@ -296,6 +335,13 @@ function lrStatus(r){
          : st === "PARENT" ? " parent" : "")
       + '">' + esc(st || "—") + '</span>';
   return badge
+       + (stale
+           ? '<div class="status-stale" title="Amazon has this listing, so it is '
+             + 'live. This app’s own record still says ' + esc(stale)
+             + ' — nothing wrote the status back after it published. A Sync '
+             + 'corrects it; nothing is wrong with the listing.">'
+             + 'we still record ' + esc(stale) + '</div>'
+           : "")
        + '<div class="status-date">' + (d ? esc(lrDate(d)) : "")
        +   (made ? "<br>" + esc(lrDate(made)) : "") + '</div>'
        + lrAmazonSaid(r);
@@ -527,8 +573,23 @@ function lrProduct(r){
  * A listing that has never been to Amazon has no performance to report and
  * says so, rather than showing four dashes that look like a failed lookup. */
 function lrPerf(r){
-  const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
-  if(!sent) return '<div class="d-none">Not yet live</div>';
+  // "NOT YET LIVE" IS A CLAIM ABOUT AMAZON, so it is answered by Amazon.
+  //
+  //     "Most listings on the Live on Amazon page show 'Not yet live' in the
+  //      Performance column. This is wrong -- these are live products with real
+  //      sales data."
+  //
+  // This read lsWasSentToAmazon(), which is `status is LIVE or SUBMITTED` --
+  // the stored word again, and the same root as the GENERATED badge above. A
+  // listing published outside this app, or one whose status was never written
+  // back, was told it had not been published. lrOnAmazon asks the catalogue
+  // first and falls back to the stored word only when there is no catalogue to
+  // ask (before the first Sync, or on the Drafts tab).
+  //
+  // Once past this gate every figure is a dash when unknown -- see lrVal. A
+  // dash says "we have not been told"; "Not yet live" says "there is nothing to
+  // tell", and only one of those was ever true here.
+  if(!lrOnAmazon(r)) return '<div class="d-none">Not yet live</div>';
   const m = lrMetrics(r.sku) || {};
   // THE RANK'S OWN CATEGORY FIRST, the row's second.
   //
@@ -650,24 +711,79 @@ function lrAvailRow(r, m, oos){
     + '</span></div>';
 }
 
+/* ONE TEMPLATE PER CHANNEL, NOT A MIXTURE.
+ *
+ *     "Some listings show the full breakdown (On-hand, Available, Inbound,
+ *      Unfulfillable, Reserved) while others show only '— Handling 2d'. ...
+ *      Never show a mix -- pick the right template based on fulfillment
+ *      channel."
+ *
+ * The mixture had TWO causes and the brief names only one of them:
+ *
+ *   THE CHANNEL. Inbound, Reserved and Unfulfillable are facts about stock in
+ *   an Amazon warehouse. On a merchant-fulfilled listing there is no such
+ *   warehouse, so those three lines were three dashes that mean "not
+ *   applicable" printed in the place where a dash means "not known" -- the one
+ *   distinction this whole block exists to keep.
+ *
+ *   THE GATE ABOVE THEM. The "— Handling 2d" rows were not a different channel
+ *   at all: they were rows this function had decided were not on Amazon, using
+ *   the stored status (see lrPerf for the same root). So one listing's stock
+ *   was hidden and its neighbour's shown for a reason that had nothing to do
+ *   with fulfilment.
+ *
+ * Three templates, and the third is not a failure to choose -- it is the honest
+ * answer when the channel has not been read yet, which is different from both.
+ */
+function lrInvChannel(m){
+  const ff = String((m && (m.fulfillment || m.fulfilment)) || "").toUpperCase();
+  if(ff === "DEFAULT" || ff === "MFN") return "merchant";
+  if(ff) return "amazon";           // AMAZON, AFN, or anything else Amazon says
+  return "unknown";
+}
+
 function lrInv(r){
-  const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
   const handBlock = lrHandRow(r);
-  if(!sent) return '<div class="d-none">' + lrVal(null) + '</div>' + handBlock;
+  // Same gate as the Performance column, for the same reason: a listing
+  // published outside this app, or one whose status was never written back, is
+  // still on Amazon and still has stock.
+  if(!lrOnAmazon(r)) return '<div class="d-none">' + lrVal(null) + '</div>' + handBlock;
   const m = lrMetrics(r.sku) || {};
   const oos = (v) => (v === 0 || v === "0") ? "red" : "";
-  const fba = m.fulfilment || m.fulfillment || "";
-  return lrDataRow("On-hand",   lrVal(m.on_hand),   oos(m.on_hand))
-    + (fba ? '<div class="d-cat">(' + esc(fba) + ')</div>' : "")
-    + lrAvailRow(r, m, oos)
-    + lrDataRow("Inbound",   lrVal(m.inbound))
-    // UNFULFILLABLE IS RED WHEN THERE IS ANY. Stock Amazon holds and will not
-    // sell -- damaged, expired, defective -- and it looks like inventory on
-    // every other screen. Absent on a merchant-fulfilled listing, which is
-    // correct rather than missing: there is no Amazon warehouse holding it.
-    + lrDataRow("Unfulfillable", lrVal(m.unfulfillable),
-                (m.unfulfillable ? "red" : ""))
-    + lrDataRow("Reserved",  lrVal(m.reserved))
+  const chan = lrInvChannel(m);
+
+  if(chan === "merchant"){
+    // WHAT WE HOLD AND HOW FAST WE SHIP IT. No on-hand line beside available:
+    // for a merchant listing the quantity on the offer IS the available
+    // quantity, and printing it twice under two names invites the reader to
+    // look for a difference that cannot exist.
+    return lrAvailRow(r, m, oos)
+      + '<div class="d-cat" title="You hold and dispatch this stock. Amazon '
+      + 'stores none of it, so there is no inbound, reserved or unfulfillable '
+      + 'to report.">(merchant fulfilled)</div>'
+      + handBlock;
+  }
+  if(chan === "amazon"){
+    return lrDataRow("On-hand",   lrVal(m.on_hand),   oos(m.on_hand))
+      + '<div class="d-cat" title="Amazon holds and ships this stock.">(Amazon fulfilled)</div>'
+      + lrAvailRow(r, m, oos)
+      + lrDataRow("Inbound",   lrVal(m.inbound))
+      // UNFULFILLABLE IS RED WHEN THERE IS ANY. Stock Amazon holds and will not
+      // sell -- damaged, expired, defective -- and it looks like inventory on
+      // every other screen.
+      + lrDataRow("Unfulfillable", lrVal(m.unfulfillable),
+                  (m.unfulfillable ? "red" : ""))
+      + lrDataRow("Reserved",  lrVal(m.reserved))
+      + handBlock;
+  }
+  // NOT A CHANNEL, A GAP. Whatever stock figure arrived is still shown -- it is
+  // real -- but the lines that only make sense for one channel are not drawn
+  // for a listing we cannot place in either.
+  return lrAvailRow(r, m, oos)
+    + '<div class="d-cat" title="This listing’s fulfilment channel has not been '
+    + 'read yet, so the warehouse figures — inbound, reserved, unfulfillable — '
+    + 'are not shown: they would be dashes meaning ‘not applicable’ next to '
+    + 'dashes meaning ‘not known’. Sync reads it.">(channel not read yet)</div>'
     + handBlock;
 }
 
@@ -683,15 +799,54 @@ function lrInv(r){
  * So: a full 100% is reported as holding it, a flat 0% as not, and anything in
  * between is shown as the percentage it actually is. Absent stays absent.
  */
-function lrBuyBox(m){
-  const p = (m || {}).buybox_pct;
-  if(p === null || p === undefined) return "";
-  if(p >= 99.5)
-    return '<div class="bb win" title="Amazon reported our offer in the featured slot for effectively all of the window."><i class="ti ti-circle-check"></i> Featured offer</div>';
-  if(p <= 0.5)
-    return '<div class="bb lose" title="Amazon reported our offer was never in the featured slot over the window."><i class="ti ti-circle-x"></i> Not winning</div>';
-  return '<div class="bb part" title="The share of page views over the window during which our offer held the featured slot. Not a live reading.">'
-       + '<i class="ti ti-circle-half-2"></i> Featured ' + Math.round(p) + '% of views</div>';
+/* THE FEATURED OFFER: THE PRICE FIRST, THE SHARE SECOND.
+ *
+ *     "The pricing column shows 'Featured 83% of views' -- this is the Buy Box
+ *      win percentage. Amazon's Manage Inventory page shows the actual Featured
+ *      Offer price."
+ *
+ * Both are worth having and they answer different questions. The PRICE is what
+ * a shopper pays in the featured slot right now -- CompetitivePriceId "1"'s
+ * LandedPrice, price plus shipping, from getCompetitivePricing (see
+ * api/amazon_metrics.competitive_price). The SHARE is how much of the last
+ * window our offer held that slot. One is a live number about the market, the
+ * other is a historic number about us, and neither substitutes for the other.
+ *
+ * IT IS NOT NECESSARILY OUR PRICE. Whoever holds the slot sets it; the share
+ * beneath says how often that was us. So it is labelled "Featured offer" --
+ * Amazon's own word for the slot -- and never "our price".
+ *
+ * It moved up here from a line called "Competitive" further down the block,
+ * which is the same figure under a name that did not say what it was.
+ */
+function lrBuyBox(m, cur){
+  m = m || {};
+  const sym = cur || ((typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "");
+  const price = (m.buy_box_price != null)
+    ? '<div class="d-row"><span class="d-label">Featured offer</span>'
+      + '<span class="d-val" title="What a shopper pays in the featured slot now '
+      + '— price plus delivery, whoever is holding it. From Amazon’s competitive '
+      + 'pricing, refreshed at most every 4 hours.">' + esc(sym + m.buy_box_price)
+      + '</span></div>'
+    // A DASH, NOT SILENCE. This line was drawn only when the figure existed, so
+    // a listing Amazon had not been asked about looked identical to one with no
+    // featured offer at all.
+    : '<div class="d-row"><span class="d-label">Featured offer</span>'
+      + '<span class="d-val" title="Amazon has not been asked for this listing’s '
+      + 'featured price yet. It arrives on the next refresh.">'
+      + lrVal(null) + '</span></div>';
+
+  const p = m.buybox_pct;
+  let share = "";
+  if(p !== null && p !== undefined){
+    share = (p >= 99.5)
+      ? '<div class="bb win" title="Amazon reported our offer in the featured slot for effectively all of the window."><i class="ti ti-circle-check"></i> Ours, all of the window</div>'
+      : (p <= 0.5)
+        ? '<div class="bb lose" title="Amazon reported our offer was never in the featured slot over the window."><i class="ti ti-circle-x"></i> Never ours</div>'
+        : '<div class="bb part" title="The share of page views over the window during which our offer held the featured slot. Not a live reading.">'
+          + '<i class="ti ti-circle-half-2"></i> Ours for ' + Math.round(p) + '% of views</div>';
+  }
+  return price + share;
 }
 
 /* The currency Amazon prices this row in. UK sells in GBP and US in USD, and
@@ -753,13 +908,67 @@ function lrRule(sku){
   return null;
 }
 
+/* FETCH THE FLOORS ONCE, SO THE BOXES CAN SHOW WHAT IS ACTUALLY SET.
+ *
+ * The comment above used to end "no route on this screen that returns one".
+ * There is now: /sourcing/rules_all, which reads the rules table and stops --
+ * NOT /sourcing/list, which re-prices every enrolled SKU against every supplier
+ * to answer a question about a stored number.
+ *
+ * IT FILLS SRC_ROW_RULES, the Repricer's own global, with the Repricer's own
+ * shape (repo.rule_for: the account default with the SKU's override over it).
+ * A second, thinner store beside it would be a rule object that was complete on
+ * one screen and partial on another, and the Repricer's dialogs open pre-filled
+ * from this -- a partial copy would silently offer the wrong defaults and save
+ * them (Rule 12).
+ *
+ * IT DOES NOT OVERWRITE what the Repricer has already loaded, for the same
+ * reason: that copy carries the runtime additions source_run makes.
+ *
+ * MEASURED: 3 SKUs on this account have a rule row at all, one of which carries
+ * a floor and none a ceiling. So most rows will still show a dash -- but now it
+ * is a dash meaning "none is set", which is the truth, rather than one meaning
+ * "not loaded here".
+ */
+let LR_RULES_ASKED = false;
+// Answered, so an absent rule can be reported as "none is set" rather than as
+// "we have not looked" -- the same distinction the dashes elsewhere on this row
+// are built around.
+let LR_RULES_LOADED = false;
+
+async function lrLoadRules(){
+  if(LR_RULES_ASKED) return;
+  LR_RULES_ASKED = true;
+  if(typeof SRC_ROW_RULES === "undefined") return;   // sourcing.js not loaded
+  try{
+    // _srcUrl, the same stamper every other /sourcing call uses -- it sends the
+    // account AND the marketplace, which this route scopes on. acctUrl sends
+    // only the account, and a rule is per marketplace.
+    const url = (typeof _srcUrl === "function") ? _srcUrl("/sourcing/rules_all")
+                                                : "/sourcing/rules_all";
+    const j = await (await fetch(url)).json();
+    if(!j || !j.ok) return;
+    LR_RULES_LOADED = true;
+    let added = 0;
+    Object.keys(j.rules || {}).forEach(function(sku){
+      if(SRC_ROW_RULES[sku] === undefined){ SRC_ROW_RULES[sku] = j.rules[sku]; added++; }
+    });
+    if(added && typeof render === "function") render();
+  }catch(e){}
+}
+
 function lrRuleBox(r, key, label, title){
   const rule = lrRule(r.sku);
   if(!rule){
-    // Not loaded on this screen. Said, not implied.
+    // TWO REASONS FOR A DASH, AND THEY ARE NOT THE SAME. Before the rules land
+    // this screen genuinely does not know; after they land, a SKU with no rule
+    // row is one the repricer is not tracking, which IS an answer.
+    const why = LR_RULES_LOADED
+      ? "The repricer is not tracking this SKU, so it has no "
+        + label.toLowerCase() + ". Enrol it in the Repricer to set one."
+      : "Reading the repricer's rules…";
     return '<div class="d-row"><span class="d-label">' + esc(label) + '</span>'
-         + '<span class="d-val dash" title="The repricer\'s ' + esc(label.toLowerCase())
-         + ' is not loaded on this screen. Open the Repricer to see or set it.">—</span></div>';
+         + '<span class="d-val dash" title="' + esc(why) + '">—</span></div>';
   }
   const v = rule[key];
   return '<div class="price-input-wrap small" title="' + esc(title) + '">'
@@ -842,21 +1051,29 @@ function lrPricing(r){
     + lrFloorCeiling(r)
     + lrCostRow(r)
     + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
-    + lrBuyBox(m)
-    // BUSINESS PRICE. Amazon reports one only where a business offer exists,
-    // and nothing in this app stores one yet -- so the line says it is not set
-    // rather than showing a figure, and the link goes where it would be set.
-    // An amber triangle beside an invented number would be worse than the gap.
+    + lrBuyBox(m, cur)
+    // BUSINESS PRICE. IT IS NOT A MISSING FEATURE -- IT IS NOT AVAILABLE.
+    //
+    //     "i am not able to set the business price of the item through the all
+    //      listing page screen"
+    //
+    // MEASURED, against Amazon's own schemas rather than guessed (Rule 4):
+    // across all 98 product-type schemas this app has cached for these
+    // accounts, there is no business_price attribute, and
+    // purchasable_offer.audience has exactly one allowed value -- "ALL". There
+    // is no B2B audience to price for, so a box here would collect a number
+    // Amazon would refuse.
+    //
+    // That is an enrolment, not a bug: B2B pricing needs Amazon Business, in
+    // Seller Central. This line used to offer a "Set" link that opened the
+    // product page, which cannot set one either -- a control that promised
+    // something nothing in the app could do.
     + '<div class="bb biz" title="A separate price for Amazon Business buyers. '
-    + 'Nothing in this app holds one for this listing.">'
-    + '<i class="ti ti-alert-triangle"></i> Business price '
-    + '<span class="fee-link" onclick="event.stopPropagation();openListing(\''
-    + esc(r.sku) + '\')">Set</span></div>'
-    // What the market charges NOW, from getCompetitivePricing -- a different
-    // question from listings.buy_box_price, which is the competitor's price
-    // captured when the listing was generated and may be months old.
-    + (m.buy_box_price != null
-        ? lrDataRow("Competitive", esc(cur + m.buy_box_price)) : "")
+    + 'Amazon’s own schema for this account offers no business audience — every '
+    + 'product type this app has read allows only the standard one — so there is '
+    + 'nowhere to put one. It becomes available once the account is enrolled in '
+    + 'Amazon Business in Seller Central.">'
+    + '<i class="ti ti-info-circle"></i> Business price: account not enrolled</div>'
     + (m.offer_count != null
         ? lrDataRow("Offers", lrVal(m.offer_count)) : "");
 }
@@ -1170,6 +1387,9 @@ function detailedBlock(rows){
   // when it lands. A local read is quick, but the screen should not wait on it.
   lrLoadMetrics(rows);
   lrLoadFamilies();
+  // The repricer's floors and ceilings, so the Min and Max boxes can show what
+  // is set rather than saying they are not loaded on this screen.
+  lrLoadRules();
   // A RE-RENDER BUILDS FRESH BOXES FROM SAVED DATA, so anything typed and not
   // yet saved would vanish out of the inputs while the bar went on counting it.
   // Scheduled rather than called: this function returns a STRING, and the boxes

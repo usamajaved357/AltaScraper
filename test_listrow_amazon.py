@@ -127,8 +127,20 @@ truthy("  beside inbound and reserved",
 # 7  floor and ceiling
 truthy("min and max price boxes", "function lrFloorCeiling(" in JS)
 truthy("  saved through the repricer's own route", '"/sourcing/rules"' in JS)
-truthy("  and an unloaded rule is said, not shown as empty",
-       "is not loaded on this screen" in JS)
+# REWRITTEN, NOT DELETED. This asserted the boxes say "not loaded on this
+# screen" -- which was true and is no longer: /sourcing/rules_all now loads the
+# repricer's floors here. The point it was guarding still stands, and there are
+# now TWO ways a rule can be absent that must not look alike:
+#   before the fetch lands  -> "we have not looked yet"
+#   after it, with no row   -> "the repricer is not tracking this SKU"
+# An empty box would read as "no floor is set" in both, and for a SKU with a
+# floor of 18.24 that is the opposite of the truth.
+truthy("  and the floors are actually loaded now", "function lrLoadRules" in JS)
+truthy("  an absent rule is still said, never shown as an empty box",
+       "LR_RULES_LOADED" in JS)
+truthy("    'not tracking this SKU' once they are loaded",
+       "not tracking this SKU" in JS)
+truthy("    and 'still reading' before that", "Reading the repricer" in JS)
 # 10  one control, everything behind it
 truthy("the row shows only a three-dot menu", "act-dots" in JS
        and "drawerMore(event" in JS)

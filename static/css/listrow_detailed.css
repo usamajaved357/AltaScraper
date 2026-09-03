@@ -172,6 +172,13 @@
 .status-badge.err{ background:var(--red-bg); border-color:var(--red-line); }
 .status-badge.parent{ background:var(--panel3); border-color:var(--line2); }
 .status-date{ font-size:11px; color:var(--ink4); line-height:1.45; margin-top:2px; }
+/* AMAZON SAYS LIVE, THIS APP'S RECORD DOES NOT. Quiet on purpose: the badge
+   above it is the truth and this only explains why the record disagrees, so it
+   must not compete with the status it is qualifying. */
+.status-stale{
+  font-size:10px; color:var(--ink4); line-height:1.4; margin-top:2px;
+  cursor:help; font-style:italic;
+}
 
 /* What Amazon said back about the submission. Its own line under the status,
    because "we sent it" and "Amazon accepted it" are different facts. */
