@@ -56,6 +56,13 @@ JS = open(os.path.join(HERE, "static", "js", "listrow_detailed.js"),
 CSS = open(os.path.join(HERE, "static", "css", "listrow_detailed.css"),
            encoding="utf-8").read()
 
+# THE CODE WITHOUT ITS COMMENTS. The comments quote the mockup's hex codes to
+# record what each became, and name the helper this file stopped calling -- so
+# matching the whole text would fail on its own documentation.
+CSSCODE = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+JSCODE = "\n".join(l.split("//")[0] for l in JS.splitlines()
+                   if not l.strip().startswith(("*", "/*", "//")))
+
 print("=== the file is clean UTF-8 ===")
 # A PowerShell round-trip double-encoded this file's dashes and box rules once.
 # It was repaired; this stops it shipping if it happens again.
@@ -63,16 +70,69 @@ truthy("no mojibake left in the renderer",
        not re.search(r"â€|Â·|â•", JS))
 falsy("and no byte-order mark", JS.startswith("﻿"))
 
-print("\n=== 1. a light grey ground, not white ===")
-truthy("the table is grey, not #fff", "background:#fafafa" in CSS)
-falsy("  no pure-white row background survives",
-      re.search(r"\.inv-table\{[^}]*background:#fff\b", CSS) is not None)
-truthy("  and the header is a step darker so it still reads as one",
-       "background:#efefef" in CSS)
-# The mockup's own accents are kept exactly -- they were chosen against a light
-# ground and still work on one.
-for hexv in ("#008296", "#067D62", "#B12704", "#C45500", "#e7e7e7", "#111"):
-    truthy("keeps the mockup's %s" % hexv, hexv in CSS)
+print("\n=== 1. the app's own theme, not a light island in it ===")
+# The mockup specifies a white panel and says the rest of the app stays dark.
+# Built that way it is a sheet of white in the middle of a charcoal app, and
+# the owner looked at it: "please make it match the other theme in grey or
+# whatever color is already there". The layout stays the mockup's; the colours
+# become the app's variables.
+truthy("the table takes the app's panel colour", "background:var(--panel)" in CSS)
+truthy("  and the header the elevated one", "background:var(--panel2)" in CSS)
+falsy("no light ground survives anywhere",
+      re.search(r"background:#(fff|fafafa|f5f5f5|f2f2f2|efefef|f7f7f7)\b", CSS)
+      is not None)
+# NO SECOND PALETTE. Every colour is one the app already defines, so the view
+# cannot drift the first time the theme is touched (Rule 12).
+for var in ("var(--accent)", "var(--ok)", "var(--red)", "var(--warn)",
+            "var(--line)", "var(--ink)"):
+    truthy("uses the app's %s" % var, var in CSS)
+for hexv in ("#008296", "#067D62", "#B12704", "#C45500"):
+    falsy("no hand-picked %s remains" % hexv, hexv in CSSCODE)
+_hexes = set(re.findall(r"#[0-9a-fA-F]{3,6}", CSSCODE))
+check("not one hex colour is declared in this file", sorted(_hexes), [])
+
+print("\n=== the polish pass ===")
+# 1  no flicker: the render loop AND the transition that made it visible
+truthy("the metrics guard remembers SKUs, not the last set asked for",
+       "LR_ASKED = new Set()" in JS and "LR_ASKED.has(s)" in JS)
+truthy("  nothing new means no fetch and no render",
+       "if(!need.length) return;" in JS)
+truthy("  and replies are merged, not assigned over each other",
+       "Object.assign({}, LISTING_METRICS" in JS)
+falsy("the row no longer fades on hover",
+      re.search(r"\.inv-row\{[^}]*transition", CSS) is not None)
+truthy("  the hover paints the cells, which sit above the row",
+       ".inv-row:hover > td{" in CSS)
+# 4  no image border   11  no vertical rules
+falsy("no border on the thumbnail",
+      re.search(r"\.prod-img\{[^}]*border:", CSS) is not None)
+falsy("no vertical rules between cells", "border-right" in CSS.split(".inv-row td{")[1].split("}")[0])
+falsy("  nor in the header", "border-right" in CSS.split(".inv-head th{")[1].split("}")[0])
+# 5  the title opens the listing, the ASIN goes to Amazon
+truthy("the title opens the listing", 'class="prod-title"' in JS
+       and "openListing" in JS.split('class="prod-title"')[1][:400])
+truthy("  and looks like a link", ".prod-title:hover{ text-decoration:underline" in CSS)
+truthy("the ASIN links to Amazon", "asin-link" in JS and "_dpUrl" in JS)
+# 6  the category. metrics_routes._rank_for caches {rank, category} from ONE
+#    answer, so the category shown beside a rank is the one that rank was
+#    measured in; the row's own shop category is the fallback for a draft that
+#    has never had a rank.
+truthy("the rank's own category is preferred", "m.category" in JS)
+truthy("  with the row's as the fallback", "r.amazon_category" in JS)
+# read.txt: inbound / reserved / unfulfillable
+truthy("unfulfillable stock is shown", '"Unfulfillable"' in JS)
+truthy("  and coloured when there is any", "m.unfulfillable ?" in JS)
+truthy("  beside inbound and reserved",
+       '"Inbound"' in JS and '"Reserved"' in JS)
+# 7  floor and ceiling
+truthy("min and max price boxes", "function lrFloorCeiling(" in JS)
+truthy("  saved through the repricer's own route", '"/sourcing/rules"' in JS)
+truthy("  and an unloaded rule is said, not shown as empty",
+       "is not loaded on this screen" in JS)
+# 10  one control, everything behind it
+truthy("the row shows only a three-dot menu", "act-dots" in JS
+       and "drawerMore(event" in JS)
+falsy("  and no longer draws the button strip", "rowActions(r" in JSCODE)
 
 print("\n=== the mockup's structure ===")
 truthy("a real table, as the mockup has", "inv-table" in JS and "<thead" in JS)

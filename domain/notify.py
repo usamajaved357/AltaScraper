@@ -300,6 +300,35 @@ def _payload(kind, subject, lines, event, account):
             "lines": [str(x) for x in (lines or [])], "at": _iso()}
 
 
+def wants(config_path, kind, account=""):
+    """Has any enabled channel ASKED for this kind? True/False. Never raises.
+
+    Only an explicit ask counts: the event named in the channel's `events`, or
+    "*" for everything. An EMPTY events list does not -- empty means "whatever
+    this app sends out by default", which is the OUTBOUND_KINDS list, and
+    reading it as "literally everything" would turn every channel ever added
+    into a firehose the moment a quiet kind was announced.
+
+    So the three states a channel can be in are distinct and all useful:
+
+        events []            the usual alerts (OUTBOUND_KINDS)
+        events ["x", "y"]    exactly those, quiet kinds included
+        events ["*"]         everything this app ever announces
+    """
+    try:
+        chans = [c for c in load(config_path).get("channels", [])
+                 if c.get("enabled")]
+    except Exception:
+        return False
+    for c in chans:
+        if account and str(c.get("account") or "") not in ("", str(account)):
+            continue
+        ev = c.get("events") or []
+        if "*" in ev or (kind and kind in ev):
+            return True
+    return False
+
+
 def send(config_path, subject, lines=None, event="", account="", key="",
          quiet_hours=QUIET_HOURS, force=False):
     """Send one notification to every enabled channel that wants this event.
@@ -321,8 +350,11 @@ def send(config_path, subject, lines=None, event="", account="", key="",
                  if str(c.get("account") or "") in ("", str(account))]
     if event:
         # An empty events list means "everything"; naming events narrows it.
+        # "*" means everything INCLUDING the quiet kinds -- see wants() below.
         chans = [c for c in chans
-                 if not c.get("events") or event in (c.get("events") or [])]
+                 if not c.get("events")
+                 or event in (c.get("events") or [])
+                 or "*" in (c.get("events") or [])]
     if not chans:
         res["note"] = "No enabled channel is set up to receive this."
         return res
@@ -453,7 +485,23 @@ def announce(config_path, workspace_id, kind, title, lines=None, sku="",
                            sku=sku, marketplace=marketplace)
     except Exception:
         pass
+    # OUTBOUND_KINDS IS THE DEFAULT, NOT THE LAST WORD.
+    #
+    #     "i want to get all the notifications in the slack channel we created
+    #      every notification about repricer should be there"
+    #
+    # A channel that has asked for an event gets it, whether or not that kind is
+    # one this file would volunteer. The list above is about what an UNCONFIGURED
+    # channel is troubled with; a channel that names an event, or says "*", has
+    # made the decision for itself and it is not this function's to overrule.
+    #
+    # The volume warning on OUTBOUND_KINDS still stands and is why the default is
+    # what it is -- sixty-seven four-hourly repricings will reach a channel that
+    # asks for price_change, and that is now a choice somebody made rather than
+    # something that happened to them.
     go = (kind in OUTBOUND_KINDS) if outbound is None else bool(outbound)
+    if not go and outbound is None:
+        go = wants(config_path, kind, workspace_id)
     if go:
         try:
             r = send(config_path, title, lines=lines, event=kind,

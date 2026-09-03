@@ -131,6 +131,10 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                         "available": _num(row.get("afn_fulfillable_quantity")),
                         "reserved": _num(row.get("afn_reserved_quantity")),
                         "inbound": _num(row.get("inbound_total")),
+                        # Stock Amazon holds and will not sell. Carried through
+                        # because it is the figure that costs money while
+                        # looking like inventory everywhere else.
+                        "unfulfillable": _num(row.get("afn_unsellable_quantity")),
                     }
                     data = {k: v for k, v in data.items() if v is not None}
                     if data and _cache.put(CONFIG_PATH, wsid, mkt, s, "fba", data):
