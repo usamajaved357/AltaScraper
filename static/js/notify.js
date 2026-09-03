@@ -89,8 +89,30 @@ function ntfRender() {
         "<td>" + esc(c.kind) + "</td>" +
         // Redacted, always. The server never sends the whole thing.
         '<td class="cc" style="font-size:11px;font-family:monospace">' + esc(c.url_shown) + "</td>" +
+        // WHAT "EVERYTHING" MEANT, AND WHAT IT MEANS NOW.
+        //
+        // An empty list has always shown as "everything" here, and it is not:
+        // it means the alerts this app volunteers -- an out-of-stock, a large
+        // price move, a supplier gone. An ordinary reprice and a listing
+        // dropping out of the repricer are deliberately quiet, because a
+        // channel pinged by sixty-seven four-hourly repricings gets muted and
+        // then the real alert is missed too.
+        //
+        // So the column now says which of the two it is, and the switch beside
+        // it turns the quiet ones on for THIS channel. Asked for as: "every
+        // notification about repricer should be there".
         '<td class="cc" style="font-size:11px">' +
-        (c.events && c.events.length ? esc(c.events.join(", ")) : "everything") + "</td>" +
+        (ntfAllEvents(c)
+          ? '<b>everything</b>'
+          : (c.events && c.events.length
+              ? esc(c.events.join(", "))
+              : "the usual alerts")) +
+        '<label class="apmob" style="display:block;margin-top:3px" ' +
+        'title="Also send ordinary price changes and listings leaving the ' +
+        'repricer. On a busy account that is a lot of messages.">' +
+        '<input type="checkbox" ' + (ntfAllEvents(c) ? "checked" : "") +
+        ' onchange="ntfAll(' + c.id + ', this.checked)"> every repricer event' +
+        "</label></td>" +
         '<td class="cc" style="font-size:11px">' +
         (c.last_result ? ntfResult(c.last_result) + " " + esc(c.last_at || "") : "never") + "</td>" +
         '<td><label class="apmob"><input type="checkbox" ' + (c.enabled ? "checked" : "") +
@@ -173,6 +195,32 @@ async function ntfAdd() {
   if (!j.ok) { toast(j.error || "Could not add that."); return; }
   const u = document.getElementById("ntf_url"); if (u) u.value = "";
   toast("Added, switched off. Send a test before turning it on.");
+  ntfLoad();
+}
+
+/* Is this channel signed up for the quiet kinds too?
+ *
+ * "*" is the marker the server reads (domain/notify.wants). An empty list is
+ * NOT everything -- it is the default set -- which is the distinction this
+ * screen used to blur. */
+function ntfAllEvents(c) {
+  return !!(c && c.events && c.events.indexOf("*") >= 0);
+}
+
+/* Turn every event on or off for one channel.
+ *
+ * Off puts the list back to empty, which is the default set, rather than to a
+ * list of names: a channel switched off and on again should be where it
+ * started, not pinned to whatever the event names happened to be today.
+ */
+async function ntfAll(id, on) {
+  const j = await (await fetch("/notify/channel", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id, events: on ? ["*"] : [] })
+  })).json();
+  if (!j.ok) toast(j.error || "Could not change that.");
+  else toast(on ? "This channel will now get every repricer event."
+                : "Back to the usual alerts only.");
   ntfLoad();
 }
 
