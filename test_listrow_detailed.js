@@ -50,7 +50,20 @@ globalThis.rowSelectBox = r => '<input type="checkbox" data-sku="' + r.sku + '">
 globalThis.rowActions = r => '<div class="acts"><button class="btn">…</button></div>';
 globalThis.openListing = () => {};
 
+// isAmazonLive decides whether Amazon's handling read-out is drawn beside our
+// own editable one; cogsOf decides what the cost cell holds. Both are
+// listings.js/cogs.js helpers the row now calls at draw time.
+globalThis.isAmazonLive = r => globalThis.lsStatusOf(r) === "LIVE";
+globalThis.cogsOf = r => ({cost: r.cogs ? Number(r.cogs) : null,
+                           source: r.cogs ? "manual" : ""});
+
 const ctx = vm.createContext(globalThis);
+// THE EDITABLE BOXES ARE A REAL DEPENDENCY OF THE ROW, not a stub. The price,
+// cost, handling and stock cells all call lrEditBox, so the row cannot be
+// rendered without it -- and stubbing it would mean a change that broke the box
+// still passed here, which is the opposite of what running the renderer is for.
+vm.runInContext(fs.readFileSync("static/js/listrow_edit.js", "utf8"), ctx,
+                {filename:"listrow_edit.js"});
 vm.runInContext(SRC, ctx, {filename:"listrow_detailed.js"});
 const LM = () => vm.runInContext("LISTING_METRICS", ctx);
 

@@ -195,6 +195,23 @@ globalThis.lsCheckTone=(types,keys)=>{let w="";(keys||[]).forEach(k=>{const e=(t
   if(!e)return; if(e.worst==="high")w="high"; else if(e.worst==="medium"&&w!=="high")w="medium";});
   return w==="high"?"bad":(w==="medium"?"warn":"ok");};
 globalThis.lsCheckCount=(types,keys)=>{let n=0;(keys||[]).forEach(k=>{n+=(((types||{})[k])||{}).n||0;});return n;};
+// LIVE OR NOT decides whether Amazon's own handling time is shown beside ours,
+// so the probe has to answer it -- without this the live row and the draft row
+// would take the same branch and the distinction would go untested.
+globalThis.isAmazonLive=r=>!!r.live_asin;
+globalThis.cogsOf=r=>({cost:(r.cogs!=null&&r.cogs!=="")?Number(r.cogs):null,
+                      source:(r.cogs!=null&&r.cogs!=="")?"manual":""});
+// THE ROW NOW HAS EDITABLE BOXES IN IT, and they come from listrow_edit.js --
+// the price, the cost, the handling days and (on a merchant listing) the stock.
+// Loaded FIRST here so lrEditBox exists when the renderer below calls it, which
+// is the only reason the order matters at all: in the browser both are loaded
+// before anything draws.
+//
+// This is a REAL dependency, not a stub. The point of this probe is that the
+// renderer runs against the actual code, and faking lrEditBox would mean a
+// change to the box that broke the row would still pass here.
+vm.runInThisContext(fs.readFileSync("static/js/listrow_edit.js","utf8"),
+                    {filename:"listrow_edit.js"});
 vm.runInThisContext(fs.readFileSync("static/js/listrow_detailed.js","utf8"),
                     {filename:"listrow_detailed.js"});
 
@@ -222,7 +239,13 @@ console.log(JSON.stringify({
   headCols: n(head,/<th /g),
   sortBar: /lr-sortbar/.test(block),
   // 2 handling
-  handLive: /3d \(ours\)/.test(rowLive), handDraft: /2d \(ours\)/.test(rowDraft),
+  // 2 handling -- now a BOX holding our number, with Amazon's read-out beside
+  // it only on a live listing (see lrHandRow: ours is a setting, Amazon's is a
+  // reading, and typing over a reading would change nothing).
+  handLive: /data-lr-field="handling" data-lr-orig="3"/.test(rowLive),
+  handDraft: /data-lr-field="handling" data-lr-orig="2"/.test(rowDraft),
+  handAmzOnLive: /3d \(ours\)/.test(rowLive),
+  handNoAmzOnDraft: !/\(ours\)/.test(rowDraft),
   // 3 three symbols on BOTH rows, red where the warning is high
   risksLive: n(rowLive,/class="lr-risk /g), risksDraft: n(rowDraft,/class="lr-risk /g),
   complianceRed: /lr-risk bad/.test(rowLive),
@@ -238,8 +261,17 @@ console.log(JSON.stringify({
   // 6 brand
   brandLive: /Brand <strong>Green Haven<\/strong>/.test(rowLive),
   brandMissing: /Brand <span class="prod-dim">not set/.test(rowDraft),
-  // price box is editable and saves through the one save path
-  priceBox: /class="price-input-wrap"/.test(rowLive) && /saveEdit\(this/.test(rowLive),
+  // THE PRICE BOX STAGES, IT NO LONGER SAVES ON CHANGE. It used to call
+  // saveEdit() the moment focus left, which wrote the price with nothing on the
+  // row to say so and no way back. Now it holds the value for the Save all bar
+  // -- same endpoint, see listrow_edit.js.
+  priceBox: /class="price-input-wrap"/.test(rowLive)
+            && /data-lr-field="price" data-lr-orig="24\.99"/.test(rowLive),
+  priceNoInstantSave: !/saveEdit\(this/.test(rowLive),
+  // Everything typed carries its own original, or Cancel has nothing to
+  // restore after the table has been re-rendered.
+  everyBoxHasAnOriginal:
+    n(rowLive,/class="lr-edit/g) === n(rowLive,/data-lr-orig="/g),
   // a draft has no performance to report and says so
   draftNotLive: /Not yet live/.test(rowDraft),
   // an unknown figure is a dash, never a zero
@@ -261,8 +293,12 @@ try:
         truthy("a real table with a body", g["isTable"])
         check("  eight columns in the header", g["headCols"], 8)
         truthy("  and a sort bar above it", g["sortBar"])
-        truthy("2. handling on a live row", g["handLive"])
+        truthy("2. handling is an editable box on a live row", g["handLive"])
         truthy("   and on a draft", g["handDraft"])
+        truthy("   Amazon's own figure sits beside it when there is one",
+               g["handAmzOnLive"])
+        truthy("   and not on a draft, where there cannot be",
+               g["handNoAmzOnDraft"])
         check("3. three symbols on a live row", g["risksLive"], 3)
         check("   three on a draft too, so a gap is never a missing icon",
               g["risksDraft"], 3)
@@ -277,7 +313,11 @@ try:
         truthy("   a row with no clash says nothing", g["noClashOnDraft"])
         truthy("6. the brand is shown", g["brandLive"])
         truthy("   and 'not set' when there is none", g["brandMissing"])
-        truthy("the price is editable and saves the one way", g["priceBox"])
+        truthy("the price is a staged box carrying its original", g["priceBox"])
+        truthy("  and no longer saves the instant focus leaves",
+               g["priceNoInstantSave"])
+        truthy("  every editable box on the row carries an original",
+               g["everyBoxHasAnOriginal"])
         truthy("a draft reports no performance rather than four dashes",
                g["draftNotLive"])
         truthy("an unknown figure is a dash", g["dashes"])

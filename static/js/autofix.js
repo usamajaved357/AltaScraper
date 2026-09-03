@@ -444,8 +444,11 @@ function _afCopyTrace(){
   const job = window.AF_JOB;
   if(!job){ toast("Nothing to copy yet"); return; }
   const txt = _afTraceText(job);
-  try{ navigator.clipboard.writeText(txt); toast("Trace copied"); }
-  catch(e){ toast("Copy failed"); }
+  // uiCopy (pageui.js), not a bare writeText. The bare call reported success
+  // by saying nothing when the clipboard refused -- it rejects asynchronously
+  // on an unfocused page, so the catch here never fired and "Trace copied"
+  // appeared over an empty clipboard.
+  uiCopy(txt, "Trace copied");
 }
 
 // Runs one Preview and returns a verdict object. Also appends every stream line
@@ -1095,6 +1098,41 @@ function updateLocalCol(r,key,value){
   if(key in COLMAP){ r[COLMAP[key]]=value; return; }
   const m=key.match(/^Bullet (\d)$/); if(m){ r.bullets=r.bullets||[]; r.bullets[+m[1]-1]=value; }
 }
+/* WRITE ONE FIELD. The only place that posts to /edit.
+ *
+ * Extracted from saveEdit when the listings row gained a Save-all bar, which
+ * needs to write a field with no element to style and no toast to fire
+ * (CLAUDE.md Rule 12). Everything that is about the DOM stayed in saveEdit
+ * below; what came out is the request and the ROWS update -- including the
+ * attr-versus-col distinction, which is the part a second copy would get
+ * subtly wrong: an attribute typed empty is DELETED, a column typed empty is
+ * saved as empty.
+ *
+ * Returns {ok, error} and never throws, so a batch can report one failure
+ * without losing the rest.
+ */
+async function editField(sku, target, key, value){
+  try{
+    const body = (typeof acctBody === "function")
+      ? acctBody({sku, target, key, value}) : {sku, target, key, value};
+    const res = await fetch("/edit", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const j = await res.json();
+    if(!j || !j.ok) return {ok:false, error:(j && j.error) || "save refused"};
+    const r = (typeof ROWS !== "undefined") ? ROWS.find(x => x.sku === sku) : null;
+    if(r){
+      if(target === "attr"){
+        r.attributes = r.attributes || {};
+        if(String(value).trim() === "") delete r.attributes[key];
+        else r.attributes[key] = value;
+      }else if(typeof updateLocalCol === "function"){
+        updateLocalCol(r, key, value);
+      }
+    }
+    return {ok:true};
+  }catch(e){ return {ok:false, error:String((e && e.message) || e)}; }
+}
+
 async function saveEdit(el,sku,target,key){
   // ONE SAVE PATH, TWO KINDS OF CONTROL.
   //
@@ -1113,17 +1151,16 @@ async function saveEdit(el,sku,target,key){
             || (el.getAttribute && el.getAttribute("contenteditable") === "true");
   const value = isCE ? (el.textContent == null ? "" : el.textContent) : el.value;
   el.classList.remove("saved","err"); el.classList.add("saving");
-  try{
-    const res=await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(acctBody({sku,target,key,value}))});
-    const j=await res.json(); el.classList.remove("saving");
-    if(j.ok){ el.classList.add("saved"); toast("Saved ✓"); setTimeout(()=>el.classList.remove("saved"),1000);
-      const r=ROWS.find(x=>x.sku===sku);
-      if(r){ if(target==="attr"){ r.attributes=r.attributes||{};
-               if(String(value).trim()==="") delete r.attributes[key]; else r.attributes[key]=value; }
-             else updateLocalCol(r,key,value); }
-    } else { el.classList.add("err"); toast("Save failed: "+(j.error||"")); }
-  }catch(e){ el.classList.remove("saving"); el.classList.add("err"); toast("Save failed: "+e); }
+  // The request and the ROWS update are editField's; this function is the
+  // element around them -- the classes, the toast and the timer.
+  const j = await editField(sku, target, key, value);
+  el.classList.remove("saving");
+  if(j.ok){
+    el.classList.add("saved"); toast("Saved ✓");
+    setTimeout(()=>el.classList.remove("saved"),1000);
+  } else {
+    el.classList.add("err"); toast("Save failed: "+(j.error||""));
+  }
 }
 
 // ============================================================================
@@ -1147,16 +1184,13 @@ function _rebuildDrawerData(sku){
 // is blanked. `refresh` rebuilds the block so a deleted attribute row disappears.
 async function clearField(sku, target, key, refresh){
   if(!await uiConfirm("Delete '"+key+"' from this listing?")) return;
-  try{
-    const j=await (await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(acctBody({sku, target, key, value:""}))})).json();
-    if(!j || !j.ok){ toast("Delete failed: "+((j&&j.error)||"unknown")); return; }
-    const r=ROWS.find(x=>String(x.sku)===String(sku));
-    if(r){ if(target==="attr"){ r.attributes=r.attributes||{}; delete r.attributes[key]; }
-           else if(typeof updateLocalCol==="function") updateLocalCol(r,key,""); }
-    toast("Deleted ✓");
-    if(refresh!==false) _rebuildDrawerData(sku);
-  }catch(e){ toast("Delete failed: "+e); }
+  // Through editField, which already knows that an EMPTY ATTRIBUTE IS REMOVED
+  // and an empty column is saved as empty -- the exact distinction this
+  // function was carrying its own copy of.
+  const j = await editField(sku, target, key, "");
+  if(!j.ok){ toast("Delete failed: "+(j.error||"unknown")); return; }
+  toast("Deleted ✓");
+  if(refresh!==false) _rebuildDrawerData(sku);
 }
 
 // ---- bullets (stored as sheet columns "Bullet 1".."Bullet 5", Amazon max 5) ----
@@ -1166,9 +1200,12 @@ const MAX_BULLETS=5;
 async function _saveBullets(sku, bullets){
   const arr=(bullets||[]).slice(0, MAX_BULLETS);
   for(let i=0;i<MAX_BULLETS;i++){
-    await fetch("/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(acctBody({sku, target:"col", key:"Bullet "+(i+1), value:(arr[i]||"")}))});
+    await editField(sku, "col", "Bullet "+(i+1), (arr[i]||""));
   }
+  // Still set outright afterwards. editField updates r.bullets[i] per write,
+  // which is right for one bullet but cannot SHORTEN the array -- and shortening
+  // is what remove-and-compact does. The blank writes above clear the cells;
+  // this makes the local copy the same length as what was sent.
   const r=ROWS.find(x=>String(x.sku)===String(sku));
   if(r) r.bullets=arr;
 }
@@ -1812,7 +1849,7 @@ function _fullDataParts(r){
             '<span class="dw2-count">literal API body \u00b7 read-only</span>',
             `<div class="payloadnote">This is the verbatim JSON the app sent to Amazon on the last Preview or Submit for this SKU — every word, exactly as transmitted. It does not affect anything; it is for visibility only. You can hide this section in Settings.</div>
             <pre class="raw payloadraw" id="pl_${sidv}">${esc(String(r.api_payload))}</pre>
-            <button class="linkbtn" onclick="navigator.clipboard&&navigator.clipboard.writeText(document.getElementById('pl_${sidv}').textContent);toast&&toast('Payload copied')">Copy payload</button>`)
+            <button class="linkbtn" onclick="uiCopy(document.getElementById('pl_${sidv}').textContent,'Payload copied')">Copy payload</button>`)
        : "" );
   const folds = _vf.compliance + toolFolds;
   return {highlights: secHighlights, bullets: secBullets, search: secSearch,

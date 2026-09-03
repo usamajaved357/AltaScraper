@@ -122,24 +122,29 @@ function bmkRender(){
         + 'onclick="event.stopPropagation();bmkToggle(' + jsArg(b.sec) + ')"></i>'
         + '</button>';
     }).join("");
-  }else{
-    // An empty bar that says nothing looks like a broken bar. It says what it
-    // is for and how to fill it, once, and then never again.
-    h += '<span class="cc bmkhint">Pin the screens you use most — press the '
-       + '<i class="ti ti-bookmark"></i> on any page.</span>';
   }
-
-  // AND THE WAY TO REACH THE OTHER THIRTY-EIGHT. The bookmark bar is for the
-  // handful of screens you open every day; there are 43, in eight collapsible
-  // groups, and the rest are found by remembering which group somebody filed
-  // them under. Ctrl+K searches them by name (static/js/palette.js) -- said
-  // here because a shortcut nobody is told about is a shortcut nobody uses.
-  if(typeof palOpen === "function"){
-    h += '<button class="bmkgoto" onclick="palOpen()" '
-      +  'title="Search every screen by name (Ctrl+K)">'
-      +  '<i class="ti ti-search"></i><span>Go to</span>'
-      +  '<span class="bmkkbd">Ctrl K</span></button>';
-  }
+  // AN EMPTY BAR IS EMPTY. Two things used to live here and both have been
+  // taken out of the header on request:
+  //
+  //     "The app header shows [the sentence telling you to pin screens] and
+  //      'Go to Ctrl K' taking up space. The mockup doesn't have these."
+  //
+  // (That sentence is not quoted here, and deliberately: test_mockup_match.py
+  // proves it is gone by searching this file for it, and a copy of it in a
+  // comment is indistinguishable from a copy of it in the markup.)
+  //
+  // The hint drew whenever nothing was pinned -- which is most accounts, most
+  // of the time -- so the empty state was a sentence rather than nothing. The
+  // bookmark star at the end of this bar is still there and still says what it
+  // does on hover, which is where the instruction now lives.
+  //
+  // WHAT THE "Go to" BUTTON COST TO REMOVE, stated plainly rather than left to
+  // be discovered: it was the only VISIBLE way into the palette (palette.js),
+  // which searches all 43 screens by name. The palette itself is untouched --
+  // Ctrl+K still opens it from anywhere, and palOpen() is still callable -- and
+  // every screen is still reachable from the sidebar, in its group. What is
+  // lost is discoverability of the shortcut, not access to anything. One line
+  // brings the button back if that turns out to matter.
 
   // The star for the page you are on, at the end, so the bar reads
   // left-to-right as "your pages, then add this one".

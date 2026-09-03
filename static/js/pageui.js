@@ -19,6 +19,39 @@
 // tells you how things are before you read anything. A screen that opens with a
 // table makes you do the reading first, and most of the time nobody does.
 
+// COPY A SHORT STRING, AND SAY SO.
+//
+// Extracted because it was written inline in two places already and a third was
+// about to be added (CLAUDE.md Rule 12): a bare
+// `navigator.clipboard.writeText(x)` with a toast beside it. The API is absent
+// on an insecure origin and REJECTS ASYNCHRONOUSLY when the page is not
+// focused, so a bare call reports success by saying nothing and the text is not
+// on the clipboard -- which is the whole failure worth handling here.
+//
+// NOT used by the two auto-fix TRACE exports. Those copy a large block and fall
+// back to opening a window with the text in it when the clipboard refuses,
+// which is a different behaviour and a deliberate one; folding them into this
+// would take that fallback away.
+function uiCopy(text, what){
+  const s = String(text == null ? "" : text);
+  const say = (m) => { if(typeof toast === "function") toast(m); };
+  if(!s){ say("Nothing to copy"); return Promise.resolve(false); }
+  try{
+    if(!navigator.clipboard || !navigator.clipboard.writeText){
+      say("This browser will not let the page copy — select it and press Ctrl+C");
+      return Promise.resolve(false);
+    }
+    return navigator.clipboard.writeText(s).then(
+      // The value is echoed back only when it is short enough to read. An ASIN
+      // confirms itself; a 40KB diagnostic trace in a toast does not.
+      () => { say((what || "Copied") + (s.length <= 40 ? " — " + s : "")); return true; },
+      () => { say("Copy refused by the browser — click the page and try again"); return false; });
+  }catch(e){
+    say("Copy failed: " + e);
+    return Promise.resolve(false);
+  }
+}
+
 // One stat card. `delta` is optional and signed so that POSITIVE IS BETTER --
 // the caller decides that, because for ACOS and cost down is the good direction
 // and an arrow alone reads backwards on half the rows.

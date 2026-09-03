@@ -62,6 +62,36 @@ function cogsCell(row){
        + inner + '</td>';
 }
 
+/* SET ONE COST. The only caller of /cogs/set.
+ *
+ * Extracted from cogsEdit below when the detailed row gained a cost box of its
+ * own (CLAUDE.md Rule 12): two places posting to this route would be two
+ * opinions about what an empty box means, and the answer -- null clears the
+ * override rather than setting zero -- is the whole point of the field.
+ *
+ * `cost` is a number, or null to clear. Returns {ok, error} and never throws,
+ * so a batch save can report one failure without losing the rest.
+ * COGS_LOCAL is updated here so any cell redrawn afterwards shows the new
+ * figure without a reload, whichever editor did the setting.
+ */
+async function cogsSet(sku, cost){
+  try{
+    const j = await (await fetch("/cogs/set", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({sku: sku, cost: cost})})).json();
+    if(!j || !j.ok) return {ok: false, error: (j && j.error) || "could not save that cost"};
+    if(cost === null) delete COGS_LOCAL[sku]; else COGS_LOCAL[sku] = cost;
+    // The row object too, so a re-render built from ROWS agrees with the cell.
+    try{
+      const r = (typeof ROWS !== "undefined")
+        ? ROWS.find(x => String(x.sku) === String(sku)) : null;
+      if(r){ r.cogs = (cost === null ? "" : cost);
+             r.cogs_source = (cost === null ? "" : "manual"); }
+    }catch(e){}
+    return {ok: true};
+  }catch(e){ return {ok: false, error: String((e && e.message) || e)}; }
+}
+
 function cogsEdit(td, sku){
   if(!td || td.querySelector("input")) return;
   const c = cogsOf({sku: sku, cogs: COGS_LOCAL[sku]});
@@ -87,21 +117,19 @@ function cogsEdit(td, sku){
       toast("That is not a cost."); td.innerHTML = was; return;
     }
     td.innerHTML = '<span class="cc" style="font-size:11px">saving…</span>';
-    try{
-      const j = await (await fetch("/cogs/set",{method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sku:sku, cost:val})})).json();
-      if(!j || !j.ok){ toast((j&&j.error)||"Could not save that cost"); td.innerHTML = was; return; }
-      if(val === null) delete COGS_LOCAL[sku]; else COGS_LOCAL[sku] = val;
-      // Redraw just this cell; the whole table does not need rebuilding.
-      const fresh = document.createElement("tbody");
-      fresh.innerHTML = "<tr>" + cogsCell({sku: sku, cogs: COGS_LOCAL[sku],
-                                           cogs_source: val === null ? "" : "manual"}) + "</tr>";
-      const cell = fresh.querySelector("td");
-      if(cell) td.innerHTML = cell.innerHTML;
-      toast(val === null ? "Cleared — back to what the SKU says"
-                         : "Cost set for " + sku);
-    }catch(e){ toast(String(e)); td.innerHTML = was; }
+    // Through cogsSet, which is now the one caller of /cogs/set. This cell keeps
+    // its own redraw and its own wording -- what was shared was the POST and the
+    // rule about null, not the presentation.
+    const res = await cogsSet(sku, val);
+    if(!res.ok){ toast(res.error); td.innerHTML = was; return; }
+    // Redraw just this cell; the whole table does not need rebuilding.
+    const fresh = document.createElement("tbody");
+    fresh.innerHTML = "<tr>" + cogsCell({sku: sku, cogs: COGS_LOCAL[sku],
+                                         cogs_source: val === null ? "" : "manual"}) + "</tr>";
+    const cell = fresh.querySelector("td");
+    if(cell) td.innerHTML = cell.innerHTML;
+    toast(val === null ? "Cleared — back to what the SKU says"
+                       : "Cost set for " + sku);
   };
   inp.addEventListener("blur", function(){ finish(true); });
   inp.addEventListener("keydown", function(ev){

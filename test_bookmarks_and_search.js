@@ -80,11 +80,33 @@ truthy("  and a section with no nav item cannot be pinned",
        /if\(!info\) return;/.test(B));
 truthy("  clicking one just navigates", /if\(typeof navTo === "function"\) navTo\(sec\)/.test(B));
 
-console.log("\n== an empty bar does not look like a broken one ==");
-truthy("it says what it is for", /Pin the screens you use most/.test(B));
-truthy("  and the current page can always be pinned", /function bmkToggle/.test(B));
+console.log("\n== the header carries nothing but bookmarks ==");
+// REWRITTEN, NOT DELETED. This used to assert the opposite -- that an empty bar
+// explains itself with "Pin the screens you use most" -- and that hint plus the
+// "Go to / Ctrl K" button were both removed on request, because the header is
+// being matched to altascraper-listings-mockup.html and neither is in it.
+truthy("the pin hint is gone", !/Pin the screens you use most/.test(B));
+truthy("  and the Go to button with it", !/bmkgoto/.test(B));
+truthy("  so an empty bar renders nothing but the star",
+       /AN EMPTY BAR IS EMPTY/.test(B));
+// THE STAR IS WHAT IS LEFT, and it is now the only thing in the bar that says
+// what the bar is for -- so it has to still be here, and still be titled.
+truthy("the current page can always be pinned", /function bmkToggle/.test(B));
+truthy("  the star is still drawn", /class="bmkadd/.test(B));
+truthy("  and still says what it does", /Bookmark this page/.test(B));
 truthy("  the page you are on is marked in the bar",
        /\(b\.sec === cur\) \? " on" : ""/.test(B));
+
+// WHAT THE REMOVAL MUST NOT HAVE BROKEN. The button was the only visible way
+// into the palette; the palette itself is untouched, and these two are the
+// difference between "harder to discover" and "gone".
+const P = fs.readFileSync("D:/AltaScraper/static/js/palette.js", "utf8");
+truthy("Ctrl+K still opens the palette from anywhere",
+       /function palOpen/.test(P)
+       && /ev\.ctrlKey \|\| ev\.metaKey/.test(P)
+       && /toLowerCase\(\) !== "k"/.test(P));
+truthy("  and the removal says out loud what it cost",
+       /only VISIBLE way into the palette/.test(B));
 
 console.log("\n" + fails + " failed");
 process.exit(fails ? 1 : 0);

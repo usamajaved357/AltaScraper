@@ -56,10 +56,38 @@ SIDE = rd("static/js/sidebar.js")
 
 
 def rule(css, sel):
-    """The body of one rule, or "" -- so a value cannot be matched from the
-    wrong block."""
+    """The body of the FIRST rule with this selector, or "".
+
+    READ THE WARNING ON rules() BEFORE ADDING A CHECK WITH THIS.
+    """
     i = css.find(sel)
     return css[i + len(sel):css.find("}", i)] if i >= 0 else ""
+
+
+def rules(css, sel):
+    """EVERY rule with this selector, in file order.
+
+    A SELECTOR WRITTEN TWICE IS WHY THIS EXISTS, and it cost a whole pass.
+    `main#grid{` appears twice in dashboard.css: `padding:8px 10px` at line ~543
+    and `padding:18px var(--wspad,32px)` in the Orbit block ~1500 lines later.
+    Equal specificity, so the later one wins -- and --wspad is 32px on a desktop,
+    because the 10px override lives inside two @media blocks. rule() took the
+    first, this file asserted the 10px, it passed, and the listings table went on
+    sitting 32px in from each edge until it was reported by eye:
+
+        "The table still has padding/margin between it and the left/right
+         screen edges."
+
+    A check that reads a rule the browser never applies is worse than no check:
+    it is a green light pointing at the wrong line. Neither helper models the
+    cascade -- specificity beats file order and @media scopes both -- so a value
+    that MUST win is asserted by its own scoped selector as well, not inferred.
+    """
+    out, i = [], css.find(sel)
+    while i >= 0:
+        out.append(css[i + len(sel):css.find("}", i)])
+        i = css.find(sel, i + len(sel))
+    return out
 
 
 print("=== 1. the appbar is 40px, and everything measured from it followed ===")
@@ -125,10 +153,21 @@ print("\n=== 4. the content reaches the edges ===")
 truthy("the shared gutter is 10px", "--wspad:10px" in CSS)
 for sel, want in ((".runhealth{", "padding:6px 10px"),
                   ("#log{", "padding:8px 10px"),
-                  ("#summary{", "padding:6px 10px"),
-                  ("main#grid{", "padding:8px 10px")):
+                  ("#summary{", "padding:5px 10px")):
     truthy("%s is 10px in from the edge" % sel.strip("{"), want in rule(CSS, sel))
 truthy("and the Orbit layout's own three", "#sec_listings > .tabfilter{" in CSS)
+
+# THE GRID, ASSERTED PROPERLY THIS TIME -- see rules(). Every unscoped
+# `main#grid{` is listed so a third one cannot be added without this noticing,
+# and the one that actually decides the gutter is named by its own selector.
+_grids = rules(CSS, "main#grid{")
+check("main#grid is written more than once", len(_grids) >= 2, True)
+truthy("  and one of them still asks for 32px",
+       any("var(--wspad,32px)" in g for g in _grids))
+truthy("  so the listings grid overrides it by scope, not by order",
+       "#sec_listings main#grid{" in CSS)
+truthy("    reaching the edges bar 10px",
+       "padding:0 10px 10px" in rule(CSS, "#sec_listings main#grid{"))
 
 print("\n=== 5 and 8. the bars above the table ===")
 truthy("the metrics bar is hidden", "display:none !important" in rule(LR, ".lr-metricsbar{"))

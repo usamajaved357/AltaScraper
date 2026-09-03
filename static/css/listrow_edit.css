@@ -1,0 +1,109 @@
+/* static/css/listrow_edit.css -- the staged-edit boxes and the bar that saves
+ * them. See static/js/listrow_edit.js for what is being staged and where each
+ * field is actually written.
+ *
+ * THE COLOURS ARE THE APP'S, NOT THE BRIEF'S. The brief specifies the bar as
+ * Amazon's mid-teal with white text. Measured, that pairing is 3.35:1 -- under
+ * the 4.5:1 that normal-size text needs -- and this app already made exactly
+ * that decision once, in dashboard.css, where the note reads: white on a light
+ * teal is not a contrast, it is a glare. (The hex is deliberately not repeated
+ * here; test_listrow_edit.js proves it is gone by searching this file for it,
+ * and a copy in a comment is indistinguishable from a copy in a rule.)
+ *
+ * --accent-bg is the dark teal made for pairing with --accent (7.73:1 there),
+ * and .btn-primary is the button that pairing already produced. So the bar is
+ * the app's accent on the app's dark ground, which is the same SHAPE as the
+ * brief asks for -- fixed to the bottom, centred, three things on one line --
+ * in colours that were measured rather than picked (CLAUDE.md Rule 12).
+ */
+
+/* ---- the boxes -------------------------------------------------------- */
+
+.lr-edit{
+  width:62px; padding:1px 4px; text-align:right;
+  background:var(--bg); border:1px solid var(--line2); border-radius:3px;
+  color:var(--ink); font-size:11px; font-family:inherit;
+  font-variant-numeric:tabular-nums; outline:none;
+}
+.lr-edit:focus{ border-color:var(--accent); }
+.lr-edit::placeholder{ color:var(--ink4); }
+
+/* HELD, NOT SAVED. The single most important state in this file: the number on
+   screen is not the number in the database, and nothing else on the row says
+   so. The left bar is deliberately heavy -- it has to be findable by scrolling
+   a 200-row table looking for what you changed.
+
+   THE WHOLE `border` SHORTHAND, NOT JUST border-color. The price box sits
+   inside .price-input-wrap, whose own rule in listrow_detailed.css is
+   `.price-input-wrap input{border:none}` -- one class and one element, so it
+   beats the plain .lr-edit above it and sets the STYLE to none. A state rule
+   that set only border-color would win on specificity and still draw nothing,
+   because there is no border left to colour. */
+.lr-edit.dirty{
+  border:1px solid var(--warn); background:var(--warn-bg);
+  box-shadow:inset 3px 0 0 var(--warn);
+}
+.lr-edit.saving{ border:1px solid var(--accent); opacity:.65; }
+.lr-edit.saved{ border:1px solid var(--ok); background:var(--ok-bg); }
+/* KEEPS ITS EDIT. A failed save leaves the box dirty AND red, because the value
+   is still only here -- clearing it would look like it had gone through. */
+.lr-edit.err{ border:1px solid var(--red); background:var(--red-bg); }
+
+/* The narrow boxes in the Inventory and Pricing stacks, which sit at the right
+   of a label rather than filling a wrapper. */
+.lr-edit.lr-cost, .lr-edit.lr-hand, .lr-edit.lr-qty{ width:52px; }
+.lr-unit, .d-val > .cur{ font-size:10px; color:var(--ink3); margin:0 2px; }
+/* "You typed this, so it beats the SKU" -- the same mark the table view's COGS
+   cell uses, in the same colour. */
+.lr-src{ color:var(--accent); font-size:9px; vertical-align:super; margin-left:2px; }
+
+/* A field this listing cannot have. Read-only rather than absent, so the row
+   still lines up with the ones that can. */
+.lr-ro{
+  font-size:11px; color:var(--ink3); cursor:help;
+  border-bottom:1px dotted var(--line2);
+}
+
+/* ---- the bar ---------------------------------------------------------- */
+
+/* z-index 50, chosen against the bands already in use in this app: chrome
+   10-40, the FAB 60-65, the drawer 70-75, the product page 78, the toast 80,
+   the row menu 85, modals 90-200. So it sits above the page and the sticky
+   toolbar, and UNDER every one of those -- a save bar covering the dialog that
+   asks whether to push stock to Amazon would be the one place it must not be. */
+.lr-savebar{
+  position:fixed; left:0; right:0; bottom:0; z-index:50;
+  display:flex; align-items:center; justify-content:center; gap:14px;
+  padding:8px 20px; font-size:13px; font-weight:500;
+  background:var(--accent-bg); color:var(--ink);
+  border-top:1px solid var(--accent-line);
+  box-shadow:0 -2px 12px rgba(0,0,0,.4);
+}
+.lr-savebar.busy{ opacity:.7; pointer-events:none; }
+.lr-sb-n{ font-weight:600; color:var(--accent2); font-variant-numeric:tabular-nums; }
+.lr-sb-what{ font-size:11px; color:var(--ink3); font-weight:400; }
+.lr-savebar button{
+  padding:5px 16px; border-radius:4px; cursor:pointer;
+  font-size:12.5px; font-family:inherit; line-height:1.35;
+}
+.lr-sb-cancel{
+  background:transparent; border:1px solid var(--line2); color:var(--ink2);
+}
+.lr-sb-cancel:hover{ border-color:var(--ink3); color:var(--ink); }
+.lr-sb-save{
+  background:var(--accent); border:1px solid var(--accent);
+  color:var(--accent-bg); font-weight:600;
+}
+.lr-sb-save:hover{ background:var(--accent2); border-color:var(--accent2); }
+
+/* The bar covers the last row of a scrolled-to-the-bottom table. Nothing else
+   in the app reserves space for it, so it does it itself. */
+body:has(.lr-savebar) main#grid{ padding-bottom:56px; }
+
+@media (max-width:700px){
+  .lr-savebar{ flex-wrap:wrap; gap:8px; padding:8px 10px; }
+  /* The sentence is the first thing to go: on a phone the two buttons and the
+     count have to stay on one line, and what the buttons do is still in the
+     count beside them. */
+  .lr-sb-what{ display:none; }
+}

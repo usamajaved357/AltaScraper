@@ -40,6 +40,11 @@ let LR_COVERAGE = {};        // how many days the window could actually speak fo
 let LR_LAST_FETCH = 0;       // epoch seconds of the newest cached SP-API answer
 let LR_ERRORS = {};          // {group: why} when Amazon refused
 let LR_LOADING = false;
+// The server has answered at least once, so LR_LAST_FETCH means something.
+// Without this, "nobody has ever fetched" (0) and "we have not asked yet" (0)
+// are the same value, and lrAutoRefresh has to tell them apart: the first is
+// the stalest state there is and the second must not act at all.
+let LR_ANSWERED = false;
 // The SKUs already asked about. A SET, not the last key -- see lrLoadMetrics.
 let LR_ASKED = new Set();
 
@@ -103,6 +108,7 @@ async function lrLoadMetrics(rows, force){
       LR_COVERAGE = j.coverage || {};
       LR_LAST_FETCH = j.last_updated || 0;
       LR_ERRORS = j.errors || {};
+      LR_ANSWERED = true;
     } else {
       LR_ERRORS = {all: (j && j.error) || "could not read the metrics"};
     }
@@ -114,9 +120,15 @@ async function lrLoadMetrics(rows, force){
   }
 }
 
-/* The Refresh button: throw the cached Amazon answers away and ask again. */
-async function lrRefreshMetrics(){
-  if(typeof toast === "function") toast("Refreshing metrics from Amazon…");
+/* The Refresh button: throw the cached Amazon answers away and ask again.
+ *
+ * `quiet` suppresses the two toasts, and nothing else. The automatic refresh
+ * below calls THIS function rather than carrying a copy of it (CLAUDE.md
+ * Rule 12) -- a second "ask Amazon again" that drifted from this one is how a
+ * screen ends up with two refreshes that disagree about what they cleared. */
+async function lrRefreshMetrics(quiet){
+  const say = function(m){ if(!quiet && typeof toast === "function") toast(m); };
+  say("Refreshing metrics from Amazon…");
   try{
     await fetch("/listing/metrics_forget", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -125,9 +137,73 @@ async function lrRefreshMetrics(){
   const rows = (typeof ROWS !== "undefined") ? ROWS : [];
   await lrLoadMetrics(rows, true);
   const bad = Object.keys(LR_ERRORS || {});
-  if(typeof toast === "function"){
-    toast(bad.length ? ("Amazon refused: " + LR_ERRORS[bad[0]]) : "Metrics updated");
+  say(bad.length ? ("Amazon refused: " + LR_ERRORS[bad[0]]) : "Metrics updated");
+}
+
+/* ═══ THE REFRESH THAT NOBODY HAS TO PRESS ════════════════════════════════
+ *
+ *     "Instead of adding a visible button, auto-refresh in the background."
+ *
+ * The button exists (lrMetricsBar) but its bar is display:none from the density
+ * pass, so as things stood there was NO way to ask Amazon again -- the rank,
+ * competitive price and FBA stock on this screen could only ever be as fresh as
+ * the last time something else happened to fetch them.
+ *
+ * WHAT IT DOES NOT DO: it does not forget the cache. lrRefreshMetrics(true)
+ * would, and that is right for a person who does not believe what is on screen,
+ * but wrong for a timer -- forgetting makes every group stale by definition, so
+ * a 20-hourly forget would re-fetch rank, pricing and stock for the whole
+ * catalogue every time. This sends fetch=1 and lets the server's own TTLs
+ * (data/metrics_cache.py: 4h pricing, 4h FBA, 24h rank) decide what is actually
+ * due. Usually that is nothing, and the call costs one local read.
+ *
+ * TWO CLOCKS, AND BOTH MUST AGREE:
+ *
+ *   - the SERVER's, LR_LAST_FETCH -- when Amazon was really last asked. This is
+ *     the one that says whether the figures are old, and it is shared by every
+ *     browser and machine looking at this account.
+ *   - this BROWSER's, in localStorage -- a cooldown, so a tab reopened twenty
+ *     times in an afternoon does not fire twenty refreshes while Amazon is
+ *     refusing and the server clock consequently never moves.
+ *
+ * NO CLAIM IS MADE ABOUT THROTTLING. Every SP-API call counts against a rate
+ * limit; there is no free one. The reason this is cheap is the TTL check above,
+ * not a property of the endpoint.
+ */
+const LR_AUTO_HOURS = 20;
+let LR_AUTO_TRIED = false;          // once per page load, whatever else happens
+
+function _lrAutoKey(){
+  const id = (typeof acctId === "function" && acctId()) || "";
+  return "alta_lr_auto_refresh:" + id;
+}
+
+/* Ask Amazon again if it has been LR_AUTO_HOURS since anyone did.
+ * Returns true if a refresh was started -- for the test, and for the caller
+ * that wants to know whether the screen is about to change under it. */
+function lrAutoRefresh(){
+  if(LR_AUTO_TRIED) return false;
+  // Nothing has come back from the server yet, so the server clock is unknown.
+  // Wait for the next draw rather than guessing that "unknown" means "old".
+  if(LR_LOADING || !LR_ANSWERED) return false;
+  LR_AUTO_TRIED = true;
+
+  const gapMs = LR_AUTO_HOURS * 60 * 60 * 1000;
+  // LR_LAST_FETCH === 0 is "Amazon has never been asked about this account",
+  // which is stale by any reading, so it falls through to the fetch.
+  if(LR_LAST_FETCH && Date.now() - Number(LR_LAST_FETCH) * 1000 < gapMs){
+    return false;
   }
+
+  let mine = 0;
+  try{ mine = parseInt(localStorage.getItem(_lrAutoKey()) || "0", 10) || 0; }
+  catch(e){}                          // private mode, or storage turned off
+  if(Date.now() - mine < gapMs) return false;
+  try{ localStorage.setItem(_lrAutoKey(), String(Date.now())); }catch(e){}
+
+  const rows = (typeof ROWS !== "undefined") ? ROWS : [];
+  lrLoadMetrics(rows, true);
+  return true;
 }
 
 /* "2 hours ago", or "" when nothing has ever been fetched. */
@@ -488,19 +564,102 @@ function lrPerf(r){
  * it showed. A second copy here could print the draft's plan in front of a live
  * listing as though it were fact (Rule 12).
  */
+/* THE HANDLING TIME, EDITABLE -- but only the half of it that is ours.
+ *
+ *     "The handling time is displayed but not clickable/editable. Make it an
+ *      inline editable field."
+ *
+ * TWO NUMBERS LIVE HERE and only one of them can be typed. handling_days is
+ * what this app holds -- a column in _EDITABLE_COLS, ours to change.
+ * handling_time is what Amazon is promising buyers right now, and it is a
+ * reading, not a setting: typing over it here would not change the shopfront.
+ *
+ * So the box edits ours, and _handCell is kept underneath on a live listing
+ * because that is the one place that compares the two and says when they
+ * disagree -- a listing promising two days while the plan says five is a late
+ * dispatch, and that comparison is not reimplemented here (Rule 12).
+ */
+function lrHandRow(r){
+  const live = (typeof isAmazonLive === "function") ? isAmazonLive(r) : false;
+  const ours = r.handling_days;
+  const box = '<div class="d-row"><span class="d-label">Handling</span>'
+    + '<span class="d-val">'
+    + lrEditBox({sku: r.sku, field: "handling",
+                 value: (ours === null || ours === undefined) ? "" : String(ours),
+                 cls: "lr-hand", placeholder: "—",
+                 title: "Days to dispatch, as this app holds it. Saved here, not "
+                      + "sent to Amazon — the listing's own handling time is "
+                      + "changed on Amazon."})
+    + '<span class="lr-unit">d</span></span></div>';
+  // Amazon's own figure, and the disagreement flag, only where there can be one.
+  const amz = (live && typeof _handCell === "function") ? _handCell(r) : "";
+  return box + (amz ? '<div class="d-hand">' + amz + '</div>' : "");
+}
+
+/* CAN THIS LISTING'S STOCK BE TYPED?
+ *
+ *     "For FBM listings, the Available quantity should be editable inline (FBA
+ *      listings stay read-only since Amazon controls stock)."
+ *
+ * ONLY WHEN THE CHANNEL IS KNOWN AND SAYS MERCHANT. stock_daily.fulfillment
+ * carries DEFAULT / MFN for merchant-fulfilled and AMAZON for FBA -- but it is
+ * also "" when nothing has been read yet, and an empty string is NOT a merchant
+ * listing, it is an unanswered question. An editable box on an unknown channel
+ * would be a control that offers something the server then refuses
+ * (push_quantity declines a listing with no fulfillment_availability, which is
+ * how FBA presents), and a refusal after the fact is worse than a box that was
+ * never offered.
+ *
+ * MEASURED: all 100 SKUs with a stock reading on this account are DEFAULT, so
+ * this is the ordinary case here and FBA is the exception.
+ */
+function lrCanEditQty(r, m){
+  const ff = String((m && (m.fulfillment || m.fulfilment)) || "").toUpperCase();
+  if(ff === "DEFAULT" || ff === "MFN") return true;
+  return false;
+}
+
+/* The Available line: a box on a merchant listing, a reading on anything else.
+ *
+ * UNLIKE THE OTHER THREE, SAVING THIS GOES TO AMAZON. Stock has no column in
+ * this app on purpose -- routes/handling_routes.stock_bulk_update spells out
+ * why: Amazon is the authority on it, and a number recorded here would be a
+ * second, immediately-stale copy for every other screen to read. So the box
+ * patches the live listing, and both the tooltip here and the bar at the foot
+ * of the screen say so before anything is pressed. */
+function lrAvailRow(r, m, oos){
+  if(!lrCanEditQty(r, m)){
+    const ff = String((m && (m.fulfillment || m.fulfilment)) || "").toUpperCase();
+    const why = ff
+      ? "Amazon holds this stock (" + ff + "), so it is not set from here."
+      : "This listing's fulfilment channel has not been read yet, so this app "
+        + "cannot tell whether the stock is Amazon's or yours. Sync to find out.";
+    return '<div class="d-row"><span class="d-label">Available</span>'
+      + '<span class="d-val ' + oos(m.available) + '">'
+      + '<span class="lr-ro" title="' + esc(why) + '">' + lrVal(m.available)
+      + '</span></span></div>';
+  }
+  return '<div class="d-row"><span class="d-label">Available</span>'
+    + '<span class="d-val">'
+    + lrEditBox({sku: r.sku, field: "qty", cls: "lr-qty",
+                 value: (m.available === null || m.available === undefined)
+                        ? "" : String(m.available),
+                 placeholder: "—",
+                 title: "Units you can sell. Saving this CHANGES THE LIVE "
+                      + "LISTING ON AMAZON — 0 stops it selling."})
+    + '</span></div>';
+}
+
 function lrInv(r){
   const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
-  const hand = (typeof _handCell === "function") ? _handCell(r) : "";
-  const handBlock = hand
-    ? '<div class="d-hand"><span class="d-label">Handling</span>' + hand + '</div>'
-    : "";
+  const handBlock = lrHandRow(r);
   if(!sent) return '<div class="d-none">' + lrVal(null) + '</div>' + handBlock;
   const m = lrMetrics(r.sku) || {};
   const oos = (v) => (v === 0 || v === "0") ? "red" : "";
   const fba = m.fulfilment || m.fulfillment || "";
   return lrDataRow("On-hand",   lrVal(m.on_hand),   oos(m.on_hand))
     + (fba ? '<div class="d-cat">(' + esc(fba) + ')</div>' : "")
-    + lrDataRow("Available", lrVal(m.available), oos(m.available))
+    + lrAvailRow(r, m, oos)
     + lrDataRow("Inbound",   lrVal(m.inbound))
     // UNFULFILLABLE IS RED WHEN THERE IS ANY. Stock Amazon holds and will not
     // sell -- damaged, expired, defective -- and it looks like inventory on
@@ -546,17 +705,26 @@ function lrCur(r){
   return "GBP";
 }
 
-/* An editable price box. Saves through /edit like every other field, via
- * saveEdit() -- the one function that writes a field (Rule 12), which also
- * handles the saved/err styling and keeps ROWS in step. */
+/* An editable price box.
+ *
+ * IT USED TO SAVE THE INSTANT YOU LOOKED AWAY -- onchange straight into
+ * saveEdit(). That worked, and was the problem:
+ *
+ *     "When you change a price in the inline input box and click elsewhere,
+ *      nothing happens."
+ *
+ * Nothing VISIBLE happened. The write had already gone, with no way to take it
+ * back and nothing on the row to say it had. The box is now staged instead:
+ * lrEditBox holds the change, marks itself, and the bar at the foot of the
+ * screen saves or discards every held change at once. The endpoint is
+ * unchanged -- see listrow_edit.js, which still posts to /edit.
+ */
 function lrPriceBox(r, key, value, title){
   const v = String(value == null ? "" : value).replace(/[^0-9.\-]/g, "");
   return '<div class="price-input-wrap" title="' + esc(title || "") + '">'
        + '<span class="cur">' + esc(lrCur(r)) + '</span>'
-       + '<input type="text" value="' + esc(v) + '" inputmode="decimal"'
-       +   ' onclick="event.stopPropagation()"'
-       +   ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
-       +   ' onchange="saveEdit(this,\'' + esc(r.sku) + '\',\'col\',\'' + esc(key) + '\')">'
+       + lrEditBox({sku: r.sku, field: "price", value: v,
+                    title: title || "The price on the listing"})
        + '</div>';
 }
 
@@ -630,16 +798,49 @@ async function lrSaveRule(sku, key, el){
   }catch(e){ toast("Could not save: " + e); }
 }
 
+/* THE COST, EDITABLE, WITHOUT A SECOND OPINION ABOUT WHAT IT IS.
+ *
+ *     "The Cost value is displayed as plain text. It should be an editable
+ *      input like the price field."
+ *
+ * cogsOf() decides what the cost IS and where it came from -- a figure typed by
+ * the owner, or one read off the SKU's price prefix, or nothing known. That
+ * resolution is not repeated here (Rule 12); this only draws the box and
+ * labels the source, because "9.18 because you typed it" and "9.18 because the
+ * SKU says so" behave differently when the box is cleared.
+ *
+ * THE BOX IS EMPTY WHEN NOTHING IS KNOWN, with the placeholder saying so.
+ * Pre-filling it with 0.00 would be the exact mistake cogs.js was built to
+ * avoid: an item that appears to cost nothing looks infinitely profitable.
+ */
+function lrCostRow(r){
+  const c = (typeof cogsOf === "function") ? cogsOf(r) : {cost: null, source: ""};
+  const known = c.cost !== null && c.cost !== undefined;
+  const tip = c.source === "manual"
+    ? "Your own figure — it beats what the SKU says. Empty it to go back to the SKU."
+    : (c.source === "sku"
+        ? "Read from the SKU's price prefix. Type here to override it."
+        : "No cost known for this SKU. Every profit figure on this row depends on it.");
+  return '<div class="d-row"><span class="d-label">Cost</span>'
+    + '<span class="d-val">'
+    + '<span class="cur">' + esc((typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "") + '</span>'
+    + lrEditBox({sku: r.sku, field: "cost", cls: "lr-cost",
+                 value: known ? Number(c.cost).toFixed(2) : "",
+                 placeholder: "not set", title: tip})
+    + (c.source === "manual"
+        ? '<span class="lr-src" title="You typed this">•</span>' : "")
+    + '</span></div>';
+}
+
 function lrPricing(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
-  const cost  = (typeof _dwCost === "function") ? _dwCost(r) : "";
   const pnum  = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
   return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
     + lrFloorCeiling(r)
-    + lrDataRow("Cost",   cost ? esc(cost) : lrVal(null))
+    + lrCostRow(r)
     + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
     + lrBuyBox(m)
     // BUSINESS PRICE. Amazon reports one only where a business offer exists,
@@ -969,6 +1170,16 @@ function detailedBlock(rows){
   // when it lands. A local read is quick, but the screen should not wait on it.
   lrLoadMetrics(rows);
   lrLoadFamilies();
+  // A RE-RENDER BUILDS FRESH BOXES FROM SAVED DATA, so anything typed and not
+  // yet saved would vanish out of the inputs while the bar went on counting it.
+  // Scheduled rather than called: this function returns a STRING, and the boxes
+  // do not exist until the caller has put it in the page.
+  if(typeof lrEditRestore === "function") setTimeout(lrEditRestore, 0);
+  // And, at most once a page load and once every 20 hours, ask Amazon again for
+  // the figures only Amazon has. Cheap and silent when nothing is due; see
+  // lrAutoRefresh for why it is not lrRefreshMetrics(). It runs AFTER the local
+  // read above so the server's own "when did anyone last ask" is known.
+  lrAutoRefresh();
 
   const g = lrGroupRows(rows);
   // Families first, then everything that belongs to none -- the way Amazon
