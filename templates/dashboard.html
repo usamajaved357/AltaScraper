@@ -63,6 +63,9 @@
      listrow_detailed.css on purpose: the price box lives inside
      .price-input-wrap, whose rules this has to be able to beat. -->
 <link rel="stylesheet" href="/static/css/listrow_edit.css?v={{ ASSET_V }}">
+<!-- The revenue calculator panel. Slides in beside the list rather than
+     replacing it -- see static/js/revenue.js. -->
+<link rel="stylesheet" href="/static/css/revenue.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -2050,6 +2053,10 @@
      file above it the order here is not load-bearing. It reaches cogsSet in
      cogs.js and updateLocalCol in listings.js, both loaded earlier. -->
 <script src="/static/js/listrow_edit.js?v={{ ASSET_V }}"></script>
+<!-- What one unit earns, in a panel. Computes nothing itself: every figure
+     comes from /listing/revenue, which reads the same fee, cost and metrics
+     resolvers the row above it uses. -->
+<script src="/static/js/revenue.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/genimage.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/howworks.js?v={{ ASSET_V }}"></script>

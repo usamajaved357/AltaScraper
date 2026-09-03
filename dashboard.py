@@ -4475,6 +4475,13 @@ def build_app(backend=None):
     import routes.metrics_routes as _metrics_routes
     _metrics_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
                              _active_account=_active_account, _state=_state)
+    # What one unit earns at a given price, for the revenue drawer. Calls
+    # nothing outside this app: the fee tiers, the cost and the 30-day units
+    # are all read from what is already stored -- see routes/revenue_routes.py.
+    import routes.revenue_routes as _revenue_routes
+    _revenue_routes.register(app, CONFIG_PATH=CONFIG_PATH, _cfg=_cfg,
+                             _active_account=_active_account, _state=_state,
+                             _resolve_cogs=_resolve_cogs)
     import routes.dash_auth_routes as _dash_auth_routes
     _dash_auth_routes.register(app, _APP_PASSWORD=_APP_PASSWORD, CONFIG_PATH=CONFIG_PATH)
     import routes.users_routes as _users_routes

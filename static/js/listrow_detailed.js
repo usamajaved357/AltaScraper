@@ -1113,8 +1113,20 @@ function lrFees(r){
         ? '<div class="fee-basis">' + rate.toFixed(2).replace(/\.00$/, "") + '% '
           + esc(word) + '</div>'
         : "")
-    + '<span class="fee-link" onclick="event.stopPropagation();openListing(\''
-    + esc(r.sku) + '\')">Calculate revenue</span>';
+    // IT OPENS A PANEL, NOT A PAGE.
+    //
+    //     "Currently clicking 'Calculate revenue' navigates to the product
+    //      detail page. Amazon opens a side drawer."
+    //
+    // Navigating away is the wrong answer to "what does this one make?" -- you
+    // lose the list, the filter and the scroll to read four numbers, then have
+    // to find your way back to compare it with the row beneath. The price is
+    // passed so the panel opens on the price you were looking at.
+    + '<span class="fee-link" onclick="event.stopPropagation();rcOpen(\''
+    + esc(r.sku) + '\',\'' + esc(String(r.price == null ? "" : r.price)
+                                   .replace(/[^0-9.]/g, "")) + '\')"'
+    + ' title="What this unit earns at a given price — Amazon’s cut and the '
+    + 'stock cost, without leaving the list">Calculate revenue</span>';
 }
 
 /* ONE LISTING, AS A DETAILED ROW.
