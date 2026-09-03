@@ -431,10 +431,16 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
                                     handling = lt2[0].get("value")
                             except Exception:
                                 handling = None
+                        # THE PICTURE, from either place Amazon puts it. This
+                        # read summaries[0].mainImage alone and nothing else,
+                        # so a listing whose image is only in
+                        # attributes.main_product_image_locator showed an empty
+                        # square for ever -- the enricher retries listings with
+                        # no image, and every retry read the same empty field.
+                        # Measured on nestwell_goods 9.18_3Days_B0C6XTNXL8.
+                        url = _main_image(attrs, summaries)
                         if summaries:
                             s0 = summaries[0]
-                            mi = s0.get("mainImage") or {}
-                            url = mi.get("link", "") if isinstance(mi, dict) else ""
                             live_title = s0.get("itemName", "") or ""
                             st_arr = s0.get("status", []) or []
                             has_error = any((iss.get("severity", "") == "ERROR") for iss in issues if isinstance(iss, dict))
@@ -1186,16 +1192,53 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
         vs = _attr_vals(attrs, key)
         return vs[0] if vs else ""
 
+    def _main_image(attrs, summaries):
+        """The listing's main picture, from wherever Amazon actually put it.
+
+        TWO PLACES, AND ONLY ONE OF THEM WAS BEING READ. getListingsItem answers
+        with a `summaries[0].mainImage` for most listings and, for some, with
+        nothing there at all -- while `attributes.main_product_image_locator`
+        holds the picture the listing really has.
+
+        MEASURED on nestwell_goods, 3 Sep 2026. Of 37 listings, three had no
+        picture in the app. Asked directly:
+
+            39.99_3Days_B0G14RGRDC  no image anywhere -- Amazon has none
+            8.98_2Days_B0H2WC8DTM   no image anywhere -- Amazon has none
+            9.18_3Days_B0C6XTNXL8   summaries: no mainImage key at all
+                                    attributes: .../61IaMCcv74L.jpg  (loads, 92KB)
+
+        So one of the three empty squares was a picture the app had been told
+        about and did not read. It could never fix itself either: the background
+        enricher retries only listings with no image, and every retry read the
+        same empty field.
+
+        This function is the one answer, because there were two: _mirror_images
+        below has always read the attribute first and the summary second, and
+        /live/images -- the one the enricher calls -- read only the summary.
+        Same question, same file, two answers (CLAUDE.md Rule 12).
+        """
+        v = _attr_one(attrs, "main_product_image_locator")
+        if str(v or "").strip():
+            return str(v).strip()
+        if summaries and isinstance(summaries[0], dict):
+            mi = summaries[0].get("mainImage") or {}
+            if isinstance(mi, dict) and mi.get("link"):
+                return str(mi["link"]).strip()
+        return ""
+
     def _mirror_images(attrs, summaries):
         imgs = list(_attr_vals(attrs, "main_product_image_locator"))
         for k in sorted(attrs.keys()):
             if k.startswith("other_product_image_locator"):
                 imgs += _attr_vals(attrs, k)
         imgs += _attr_vals(attrs, "swatch_image_locator")
-        if not imgs and summaries:
-            mi = (summaries[0].get("mainImage") or {}) if isinstance(summaries[0], dict) else {}
-            if mi.get("link"):
-                imgs = [mi["link"]]
+        if not imgs:
+            # Through the shared reader, so the gallery and the thumbnail cannot
+            # disagree about whether this listing has a picture.
+            m = _main_image(attrs, summaries)
+            if m:
+                imgs = [m]
         seen, out = set(), []
         for u in imgs:
             u = str(u or "").strip()
