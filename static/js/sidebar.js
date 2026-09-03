@@ -102,21 +102,43 @@ function setSidebarMini(on, remember){
  * behaviour, so there is one owner of it.
  *
  * setSidebarMini() and the navmini class are left in place and unused rather
- * than deleted: the class is still written by anything that remembers the old
- * preference, and mobile.css neutralises it explicitly so a remembered "1"
- * cannot shrink the drawer to a 44px strip.
+ * than deleted, and the remembered preference is now CLEARED on load -- see
+ * initSidebarMini below for the bug that made that necessary.
  */
 function toggleSidebar(){
   if(typeof mnavToggle === "function"){ mnavToggle(); return; }
   setSidebarMini(!navMiniOn());      // mobilenav.js absent: the old behaviour
 }
 
-/* Restore the remembered state. Called from the shell once the workspace is on
-   screen -- doing it at parse time would run before #workspace exists. */
+/* THE REMEMBERED FOLD IS THROWN AWAY, and this is a bug I shipped.
+ *
+ *     "click it -> sidebar opens with ALL nav items visible immediately (no
+ *      'Show menu' text, no empty drawer)"
+ *
+ * Anyone who had ever folded the old desktop sidebar has alta_navmini = "1" in
+ * localStorage. This function read it back and set `navmini` on #workspace,
+ * and dashboard.css:450 says:
+ *
+ *     #workspace.navmini .sidebar>*:not(.navtoggle){display:none}
+ *
+ * so the drawer opened with every item hidden and nothing in it but the toggle
+ * -- a menu containing the words "Show menu" and nothing else. The override I
+ * added to mobile.css alongside the drawer LOSES on specificity: that selector
+ * carries an id and three classes (:not(.navtoggle) counts), mine carried an id
+ * and two.
+ *
+ * So the preference is removed rather than read. It is not a preference any
+ * more: there is no in-flow sidebar to fold, and nothing in the app can set it
+ * again. Removing it also means a person who folded the menu once, months ago,
+ * is not still living with the consequence.
+ *
+ * The CSS override is kept as well, with !important, because this only helps
+ * the load path -- anything that sets the class later would hide the drawer
+ * again, and one of the two fixes alone leaves that door open.
+ */
 function initSidebarMini(){
-  let want = false;
-  try{ want = localStorage.getItem(NAVMINI_KEY) === "1"; }catch(e){}
-  setSidebarMini(want, false);
+  try{ localStorage.removeItem(NAVMINI_KEY); }catch(e){}
+  setSidebarMini(false, false);
 }
 
 // Ctrl+B, the shortcut every editor and Seller Central itself uses for this.

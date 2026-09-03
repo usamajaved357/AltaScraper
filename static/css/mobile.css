@@ -118,9 +118,26 @@ body.navopen #workspace .sidebar{
    of the request. The old desktop fold is gone with it: two controls for one
    menu, one of which resized the page, is what this replaces. */
 #workspace{ display:block; }
+
+/* THE OLD FOLD CANNOT EMPTY THE DRAWER.
+ *
+ * dashboard.css:450 is `#workspace.navmini .sidebar>*:not(.navtoggle){display:none}`
+ * -- an id and THREE classes, because :not(.navtoggle) counts as one. The plain
+ * override here is an id and two, so it lost, and a browser holding
+ * alta_navmini="1" from the old desktop fold opened the drawer with every item
+ * hidden: a menu containing the words "Show menu" and nothing else.
+ *
+ * !important rather than out-specifying it, because the honest fix is that the
+ * rule should not apply at all any more and matching its specificity would be a
+ * race that the next selector to be edited wins. sidebar.js also clears the
+ * stored preference on load; both are needed -- the JS stops it being set at
+ * load, this stops anything setting it later from hiding the menu. */
 #workspace.navmini .sidebar{ width:284px; padding:14px 12px; overflow-y:auto; }
-#workspace.navmini .sidebar > *{ display:revert; }
-#workspace.navmini .navtoggle{ justify-content:flex-start; padding:7px 11px; font-size:11.5px; }
+#workspace.navmini .sidebar > *{ display:revert !important; }
+#workspace.navmini .navtoggle{
+  justify-content:flex-start !important; padding:7px 11px !important;
+  font-size:11.5px !important;
+}
 
 
 @media (max-width: 860px){

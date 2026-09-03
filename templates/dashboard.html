@@ -146,6 +146,19 @@
        kept in the browser -- a bookmark is a preference about how somebody
        works, not data about the business. See static/js/bookmarks.js. -->
   <div class="bmkbar" id="bmkbar" style="display:none"></div>
+  <!-- WHICH COMPANY AM I LOOKING AT.
+       The account name lived only in the sidebar, and the sidebar is a drawer
+       now -- so the answer was behind a click, on an app where the same screen
+       shows three different limited companies and a cost typed against the
+       wrong one lands on the wrong company's order. It belongs in the bar that
+       is always on screen. Opens the same switcher the sidebar row does. -->
+  <button class="acct-switch-chip" id="appbar_acctswitch"
+          onclick="openAccountSwitch(event)"
+          title="Switch account">
+    <i class="ti ti-building-store"></i>
+    <span id="appbar_acct_label" class="pii">No account</span>
+    <i class="ti ti-chevron-down" style="font-size:11px;opacity:.5"></i>
+  </button>
   <span class="spacer"></span>
   <!-- Orbit keeps the top bar sparse: breadcrumb left, health badge right.
        Research ASIN and AI settings moved into the sidebar (below the nav,
@@ -466,7 +479,7 @@
                the tooltip now names them instead of saying "sync". -->
           <button class="mktbtn" onclick="syncLive()" title="Not a repeat of the automatic refresh — four things happen only when you press this:&#10;&#10;• Amazon builds a BRAND NEW listings report. Opening this tab reuses the last one, so the list can be right about which listings exist and still be behind on price, stock and status.&#10;• Each listing's actual CONTENTS are pulled — images, A+, bullets, description, variations, and Amazon's own handling time. Nothing else on this screen ever fetches these.&#10;• Drafts you have submitted are checked against Amazon and marked live where Amazon has published them.&#10;• Listings deleted or deactivated on Amazon are settled against what this app holds.&#10;&#10;It takes a few minutes on a large catalogue. The label beside this button says when Amazon was last actually read."><i class="ti ti-refresh"></i> Sync</button>
           <span id="synclabel" class="cc" style="font-size:11px;margin-left:2px"></span>
-          <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose SP-API</button>
+          <button class="mktbtn" title="Run a full SP-API health check for this account and marketplace — tests DNS, network, auth, and every SP-API operation in one shot; tells you exactly which layer is broken and how to fix it" onclick="runSpDiagnose()"><i class="ti ti-stethoscope"></i> Diagnose</button>
           <!-- THE SHEET TO FILL IN, before the button that uploads it. There
                was an upload and no template, so the columns had to be guessed
                and every SKU typed by hand -- and a hand-typed SKU is one that
@@ -485,7 +498,7 @@
                are ticked, which is why the selection bar was the wrong home. -->
           <button class="mktbtn" title="Upload the cost sheet back — or any CSV or spreadsheet with a sku (or asin) column and a cost column. Shows what it would change and asks before writing. Only rows with a cost filled in are applied." onclick="cogsUploadOpen()"><i class="ti ti-upload"></i> Upload costs</button>
           <input type="file" id="cogs_file" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls" style="display:none" onchange="cogsUploadFile(this)">
-          <button class="mktbtn" title="Where every cost comes from, which one wins, and how profit is worked out" onclick="cogsExplain()"><i class="ti ti-help-circle"></i> How costs work</button>
+          <button class="mktbtn" title="Where every cost comes from, which one wins, and how profit is worked out" onclick="cogsExplain()"><i class="ti ti-help-circle"></i> How costs</button>
           <!-- THE WAY BACK OUT. Costs could be set one at a time and by the
                sheetful, and never removed except one SKU at a time by clearing
                its box - so a cost sheet uploaded against the wrong account had
@@ -537,7 +550,7 @@
           <button data-view="detailed" onclick="setListView('detailed')" title="Detailed view — Amazon's Manage All Inventory layout: performance, inventory and pricing beside each listing"><i class="ti ti-list-details"></i></button>
           <button data-view="grid" onclick="setListView('grid')" title="Card view"><i class="ti ti-layout-grid"></i></button>
         </span>
-        <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste listing</button>
+        <button class="ghost" onclick="openPasteListing()" title="Paste a listing's copy (title, bullets, description) + a main image, then open Image Studio to make secondary images and A+ content — no existing listing needed"><i class="ti ti-clipboard-plus"></i> Paste</button>
         <button class="ghost" onclick="refreshView()" title="Reload this workspace's listings, and re-check the live catalog against Amazon when the live view is shown"><i class="ti ti-refresh"></i> Refresh</button>
       </div>
       <div id="gridhow"></div>

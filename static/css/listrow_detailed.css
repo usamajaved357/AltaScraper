@@ -41,14 +41,17 @@
 
 /* ---- sort bar --------------------------------------------------------- */
 
+/* SLIM. The count and the sort picker are one line of text; the container was
+   spending 14px above and below it. The count keeps its own size -- only the
+   padding and the select shrink. */
 .lr-sortbar{
   background:var(--panel2); border-bottom:1px solid var(--line);
-  padding:7px 14px; display:flex; align-items:center;
+  padding:2px 10px; display:flex; align-items:center;
   justify-content:space-between; font-size:12px; color:var(--ink2); gap:10px;
 }
 .lr-sortbar select{
-  border:1px solid var(--line2); border-radius:4px; padding:3px 8px;
-  font-size:12px; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line2); border-radius:4px; padding:1px 4px;
+  font-size:10px; color:var(--ink); background:var(--panel);
 }
 .lr-sortbar .lr-count{ color:var(--ink2); }
 
@@ -68,14 +71,30 @@
   margin-top:1px;
 }
 
-.col-cb{ width:30px; text-align:center; }
-.col-status{ width:118px; }
-.col-product{ min-width:280px; }
-.col-perf{ width:130px; }
-.col-inv{ width:126px; }
-.col-price{ width:165px; }
-.col-fees{ width:120px; }
-.col-actions{ width:28px; text-align:center; }
+/* THE PRODUCT COLUMN TAKES WHAT IS LEFT, AND NOTHING ELSE DOES.
+ *
+ *     "The Product Details column currently eats all available space, pushing
+ *      Performance, Inventory, Pricing and Fees far to the right with a huge
+ *      blank gap in between."
+ *
+ * min-width:280px was the cause: a minimum on the flexible column and no
+ * maximum anywhere, so the browser gave the surplus to the widest cell and the
+ * data columns drifted right of a gap.
+ *
+ * Every column EXCEPT product now carries an explicit width and nowrap, so each
+ * pins to its content; product carries none and absorbs the remainder. That is
+ * ~530px claimed and ~800px left for the title on a 1366px screen, which is how
+ * Amazon distributes it. NOT table-layout:fixed -- that would ignore the
+ * content entirely and needs every width to be right in advance.
+ */
+.col-cb{ width:28px; text-align:center; }
+.col-status{ width:100px; }
+/* .col-product: deliberately no width. */
+.col-perf{ width:120px; white-space:nowrap; }
+.col-inv{ width:110px; white-space:nowrap; }
+.col-price{ width:145px; white-space:nowrap; }
+.col-fees{ width:105px; white-space:nowrap; }
+.col-actions{ width:24px; text-align:center; }
 
 /* NO TRANSITION ON THE ROW, and the hover paints the CELLS.
  *
@@ -140,11 +159,16 @@
   overflow:hidden; color:var(--ink4); font-size:18px;
 }
 .prod-img img{ width:100%; height:100%; object-fit:contain; }
-/* THE TITLE OPENS THE LISTING, so it is a link and looks like one. */
+/* THE TITLE OPENS THE LISTING, so it is a link and looks like one.
+ *
+ * AND IT WRAPS RATHER THAN BEING CUT. It was clamped to two lines, which cut
+ * the title AND left the rest of the column empty underneath -- the dead space
+ * the density pass is about. Amazon lets it run to two or three lines and the
+ * column is sized to the words. */
 .prod-title{
-  font-size:13px; color:var(--accent); font-weight:400; display:-webkit-box;
-  -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  font-size:13px; color:var(--accent); font-weight:400;
   line-height:1.32; margin-bottom:2px; cursor:pointer;
+  white-space:normal; overflow-wrap:anywhere;
 }
 .prod-title:hover{ text-decoration:underline; color:var(--accent2); }
 .prod-meta{ font-size:11px; color:var(--ink2); line-height:1.5; }
@@ -275,10 +299,25 @@
 /* It says where the performance numbers came from and how old they are, which
    the mockup has no equivalent for and which is the difference between a dash
    meaning "none" and one meaning "not asked yet". */
+/* HIDDEN, NOT DELETED.
+ *
+ *     "This bar sits between the stat cards and the table. It shows 'sales &
+ *      traffic: 30 days · stocks of 2026-09-03 · Refresh metrics'. Remove it."
+ *
+ * Its content is still built and still correct -- it is what tells a dash apart
+ * from "not asked yet", and the Refresh button lived on it. Hiding rather than
+ * ripping it out keeps that available to put back somewhere smaller, and the
+ * refresh is still reachable: lrRefreshMetrics() is on the window and the
+ * fetch=1 path is unchanged.
+ *
+ * WORTH KNOWING: with this hidden there is now no visible control that asks
+ * Amazon for the sales rank and the FBA figures. They arrive on the next
+ * fetch=1 call and stay cached; nothing on this screen triggers one any more. */
 .lr-metricsbar{
+  display:none !important;
   background:var(--panel2); border-bottom:1px solid var(--line);
   padding:6px 14px; font-size:11px; color:var(--ink3);
-  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  align-items:center; gap:10px; flex-wrap:wrap;
 }
 .lr-metricsbar b{ color:var(--ink2); font-weight:500; }
 .lr-bits{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }

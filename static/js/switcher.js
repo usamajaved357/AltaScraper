@@ -160,7 +160,17 @@ function renderSwitchRows(){
   // "No account" rather than the name of the workspace that used to be here.
   // It is also the more useful thing to read: the screens below behave
   // differently with nothing open, and this row is where you find that out.
-  if(al) al.textContent = a ? (a.label || a.id) : "No account open";
+  const name = a ? (a.label || a.id) : "No account open";
+  if(al) al.textContent = name;
+  // AND THE HEADER CHIP, from the same line that writes the sidebar row.
+  //
+  // The sidebar is a drawer now, so its account row is behind a click; the chip
+  // in the app bar is the one that is always on screen. Written HERE rather
+  // than by a second listener, so the two cannot end up naming different
+  // companies -- which on an app that shows three limited companies through one
+  // screen is the mistake worth designing out (CLAUDE.md Rule 12).
+  const hdr = document.getElementById("appbar_acct_label");
+  if(hdr) hdr.textContent = name;
   const m = (typeof WS_MARKET !== "undefined") ? WS_MARKET : "";
   if(mf) mf.textContent = m ? mktFlag(m) : "🌐";
   if(ml) ml.textContent = m ? mktName(m) : "No marketplace";

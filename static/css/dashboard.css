@@ -160,9 +160,12 @@
   /* ---- top bar (always visible) ---- */
   /* The top bar takes the SIDEBAR colour, not the panel colour, so the bar and
      the sidebar below it read as one continuous frame around the content. */
-  .appbar{position:sticky;top:0;z-index:20;background:var(--sidebar);
-          border-bottom:1px solid var(--line);padding:11px 18px;display:flex;
-          align-items:center;gap:12px}
+  /* COMPACT. The bar stood 49px tall to hold a logo and a few chips. At 40px the
+   listings underneath get most of a row back, and every sticky offset below is
+   measured from this height -- they are changed with it, not left behind. */
+.appbar{position:sticky;top:0;z-index:20;background:var(--sidebar);
+          border-bottom:1px solid var(--line);padding:6px 12px;display:flex;
+          align-items:center;gap:8px}
   .appbar .brandmark{display:flex;align-items:center;cursor:pointer;flex:0 0 auto}
   /* THE MARK. The wordmark is gone -- it spent 110px of the top bar naming the
      app on the only screen you cannot reach without already knowing which app
@@ -326,9 +329,9 @@
 
   /* ---- workspace screen ---- */
   #workspace{display:none}
-  #workspace.show{display:flex;min-height:calc(100vh - 49px)}
+  #workspace.show{display:flex;min-height:calc(100vh - 40px)}
   .sidebar{width:210px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--line);
-           padding:16px 12px;position:sticky;top:49px;height:calc(100vh - 49px);overflow:auto;
+           padding:16px 12px;position:sticky;top:40px;height:calc(100vh - 40px);overflow:auto;
            display:flex;flex-direction:column}
   .backlink{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px;cursor:pointer;margin-bottom:16px}
   .backlink:hover{color:var(--ink)}
@@ -448,8 +451,33 @@
      sidebar's children, so a nav item added later is hidden by construction
      rather than by somebody remembering to add it here. */
   #workspace.navmini .sidebar>*:not(.navtoggle){display:none}
-  .wstoolbar{position:sticky;top:49px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
-             padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  /* ONE LINE, NO SCROLLBAR.
+   The toolbar wrapped to two and three rows, each costing a listing row. It is
+   tighter and it MUST NOT WRAP -- and it must not scroll either: a horizontal
+   scrollbar hides the buttons at the end from anyone who does not think to drag
+   it. The buttons inside are shrunk instead, below, and nothing else in the app
+   is touched by that. */
+.wstoolbar{position:sticky;top:40px;z-index:10;background:var(--panel);border-bottom:1px solid var(--line);
+             padding:5px 10px;display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
+
+/* SCOPED TO THE TOOLBAR. .mktbtn and .ghost are used all over the app at their
+   own sizes; only the ones in this bar shrink, so no other screen's buttons
+   move. */
+  .wstoolbar .mktbtn{font-size:11px;padding:3px 7px}
+  .wstoolbar .ghost{font-size:11px;padding:3px 7px}
+/* It truncates rather than pushing the buttons off the end -- "synced 29m ago"
+   and "synced 3 hours ago" must not change what fits. */
+  .wstoolbar #synclabel{max-width:140px;overflow:hidden;text-overflow:ellipsis;
+                        white-space:nowrap}
+
+/* 3. THE STATUS DROPDOWN IS REDUNDANT -- the stat cards filter on click. Hidden,
+      NOT removed: metricFilter() in listings.js writes sel.value, and a missing
+      element would throw. */
+  #statussel{display:none !important}
+
+/* 6. TWO BARS THAT ONLY ADD HEIGHT between the stat cards and the table. */
+  #ws_datasrc.datasrc{display:none !important}
+  #gridhow{display:none !important}
   .wstoolbar h2{font-size:15px;margin:0;font-weight:650}
 
   /* ---- THE PAGE HEADER, ONE SIZE FOR EVERY SCREEN ----
@@ -484,11 +512,14 @@
      turned teal that became a blue pill ringed in teal, which reads as a bug
      rather than a style. Same fix applied to .tabpill.active and .mktbtn.on. */
   .pill.active{color:var(--accent2);border-color:var(--accent);background:var(--accent-bg)}
-  #summary{padding:8px 20px;color:var(--muted);border-bottom:1px solid var(--line);
+  /* SIDE PADDING. 20-32px of nothing down both edges of every screen; 10px is
+   the gap the mockup keeps. Only the containers that set the page's left/right
+   gutter change -- no font size and no button padding among them. */
+#summary{padding:6px 10px;color:var(--muted);border-bottom:1px solid var(--line);
            background:var(--panel);font-size:13px}
   /* Run health badge -- sits directly above the log panel. Colour is the state,
      so a frozen run is visibly different from a working one at a glance. */
-  .runhealth{display:flex;align-items:center;gap:10px;padding:8px 20px;
+  .runhealth{display:flex;align-items:center;gap:10px;padding:6px 10px;
        background:var(--panel);border-bottom:1px solid var(--line);font-size:13px}
   .rh_dot{width:9px;height:9px;border-radius:50%;background:var(--ink3);flex:0 0 auto}
   .rh_state{font-weight:600;letter-spacing:.02em}
@@ -504,12 +535,12 @@
   .rh-stopped .rh_state{color:#ff8585}
   .rh-idle    .rh_dot{background:var(--ink3)}
   .rh-idle    .rh_state{color:var(--ink3)}
-  #log{display:none;margin:0;padding:12px 20px;background:var(--bg);color:#cbd3e1;
+  #log{display:none;margin:0;padding:8px 10px;background:var(--bg);color:#cbd3e1;
        border-bottom:1px solid var(--line);max-height:230px;overflow:auto;
        font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
   #log .l{opacity:.92}
   #log .start,#log .done{color:var(--ok)}
-  main#grid{padding:18px 20px;display:grid;gap:14px;
+  main#grid{padding:8px 10px;display:grid;gap:14px;
        grid-template-columns:repeat(auto-fill,minmax(360px,1fr));align-content:start}
   /* secondary panels inside workspace (image refs / brand setup / generate) */
   /* ORBIT: 32px content padding. The number lives in ONE place because the
@@ -774,7 +805,9 @@
   .viewtoggle{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius-sm);
               overflow:hidden;margin-right:6px}
   .viewtoggle button{border:none;border-radius:0;background:transparent;color:var(--ink2);
-                     padding:5px 9px;font-size:14px;line-height:1;cursor:pointer}
+                     width:22px;height:22px;padding:0;font-size:14px;line-height:1;
+                     cursor:pointer;display:inline-flex;align-items:center;
+                     justify-content:center}
   .viewtoggle button:hover{background:var(--panel2);color:var(--ink);border-color:transparent}
   .viewtoggle button.on{background:var(--accent-bg);color:var(--accent)}
 
@@ -1961,7 +1994,7 @@
   .lsku{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
   .lprice{color:var(--gold);font-weight:600;font-variant-numeric:tabular-nums}
   /* selection action bar */
-  .selbar{display:flex;align-items:center;gap:8px;padding:8px 20px;background:#141b2b;
+  .selbar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#141b2b;
           border-bottom:1px solid var(--line);font-size:12.5px;color:var(--accent2);
           position:sticky;top:0;z-index:40;flex-wrap:wrap;
           box-shadow:0 2px 8px rgba(0,0,0,.25)}
@@ -2372,7 +2405,7 @@
 
   /* ---- content ---- */
   .wsmain{ width:100%; }
-  .wspanel{ --wspad:12px; }
+  .wspanel{ --wspad:10px; }
   #sec_listings{ padding:12px; }
   /* The Sales screen's own phone sizing lives with the rest of the Sales rules
      further down -- it has to come AFTER `#sec_sales{padding:32px}` or the two
@@ -4451,3 +4484,28 @@ a:hover{color:var(--accent)}
              border-color:var(--accent);font-weight:600}
 .btn-primary:hover{background:var(--accent2);border-color:var(--accent2);
                    color:var(--accent-bg)}
+
+
+/* ===== LAYOUT DENSITY PASS =========================================
+   Removing dead space only: no font size and no button padding is changed
+   here beyond the toolbar's own, which is scoped to .wstoolbar above.
+   =================================================================== */
+
+/* 4. The Orbit layout sets its own left/right gutter on these three. */
+#sec_listings > #gridhow,
+#sec_listings > .datasrc,
+#sec_listings > .tabfilter{ padding-left:10px; padding-right:10px; }
+
+/* 1. THE ACCOUNT, IN THE HEADER.
+   The account name lived only in the sidebar, and the sidebar is a drawer now --
+   so which company you are looking at was behind a click. It belongs in the bar
+   that is always on screen. */
+.appbar .acct-switch-chip{
+  display:inline-flex; align-items:center; gap:5px;
+  background:var(--panel2); border:1px solid var(--line); border-radius:5px;
+  padding:3px 8px; font-size:11.5px; font-weight:600;
+  color:var(--ink); cursor:pointer; white-space:nowrap;
+  font-family:inherit;
+}
+.appbar .acct-switch-chip:hover{ border-color:var(--accent); }
+.appbar .acct-switch-chip .ti{ font-size:13px; color:var(--ink2); }
