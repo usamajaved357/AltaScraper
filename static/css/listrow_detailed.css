@@ -1,62 +1,71 @@
 /* static/css/listrow_detailed.css -- the Amazon "Manage Your Inventory" view.
  *
- * The values here come from listings-amazon-style-mockup.html, which is the
- * approved design: its hex codes, its paddings, its font sizes. Where this file
- * departs from the mockup it is because the owner asked for it, and each of
- * those is marked. Nothing else is approximated.
+ * THE LAYOUT IS THE MOCKUP'S, THE COLOURS ARE THE APP'S.
  *
- * A LIGHT PANEL INSIDE A DARK APP. Only this view is light; the filter bar
- * above it and the rest of the shell keep the app's dark theme. That is the
- * mockup's own instruction and it is why every colour below is written out
- * rather than taken from the app's variables -- a var(--panel) here would drag
- * the dark theme into the middle of a light table.
+ *     "i currently have white background on the all listing page, please make
+ *      it match the other theme in grey or whatever color is already there"
  *
- * THE ONE DEPARTURE FROM THE MOCKUP: GREY, NOT WHITE.
+ * listings-amazon-style-mockup.html specifies a light panel -- "#fff for rows,
+ * #f5f5f5 page bg" -- and says the rest of the app keeps its dark theme. Built
+ * that way it is a sheet of white in the middle of a charcoal application, and
+ * the owner has looked at it and said no. The screen decides this, not the
+ * mockup.
  *
- *     "i want a light grey background instead of pure white"
+ * So everything about the SHAPE is still the mockup's: the eight columns and
+ * their widths, the two-line header, the 56px thumbnail, the label/value stacks,
+ * the density. Every COLOUR is one of the app's own variables. Nothing is
+ * hand-picked and no hex is written twice -- --panel, --panel2, --line, --ink
+ * and the semantic four already carry this app's contrast decisions, including
+ * the measured pairings recorded in dashboard.css. A teal chosen by eye here
+ * would be a second palette that drifts the first time the theme is touched
+ * (CLAUDE.md Rule 12).
  *
- * So the row background is #fafafa and the surrounding page #f2f2f2, where the
- * mockup had #fff and #f5f5f5. The header sits a step darker again so it still
- * reads as a header against the rows rather than merging into them. Every other
- * colour -- the teal, the greens, the ambers, the borders -- is the mockup's
- * exactly, because they were chosen against a light ground and still work on
- * one.
+ * WHAT THE MOCKUP'S COLOURS BECAME:
+ *
+ *     #008296  teal links      -> var(--accent)
+ *     #067D62  active/positive -> var(--ok)
+ *     #B12704  negative        -> var(--red)
+ *     #C45500  warning         -> var(--warn)
+ *     #fff     rows            -> var(--panel)
+ *     #f7f7f7  header          -> var(--panel2)
+ *     #e7e7e7  rules           -> var(--line)
+ *     #888     labels          -> var(--ink3)
+ *     #555     meta            -> var(--ink2)
  */
 
 .lrwrap{
-  background:#f2f2f2;
-  padding:0; border-radius:8px; overflow:hidden;
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Amazon Ember',Arial,sans-serif;
-  color:#111; font-size:13px; line-height:1.4;
+  background:var(--panel);
+  padding:0; overflow:hidden;
+  color:var(--ink); font-size:13px; line-height:1.4;
 }
 
 /* ---- sort bar --------------------------------------------------------- */
 
 .lr-sortbar{
-  background:#fafafa; border-bottom:1px solid #e7e7e7;
-  padding:8px 16px; display:flex; align-items:center;
-  justify-content:space-between; font-size:12px; color:#555; gap:10px;
+  background:var(--panel2); border-bottom:1px solid var(--line);
+  padding:7px 14px; display:flex; align-items:center;
+  justify-content:space-between; font-size:12px; color:var(--ink2); gap:10px;
 }
 .lr-sortbar select{
-  border:1px solid #ccc; border-radius:4px; padding:3px 8px;
-  font-size:12px; color:#111; background:#fff;
+  border:1px solid var(--line2); border-radius:4px; padding:3px 8px;
+  font-size:12px; color:var(--ink); background:var(--panel);
 }
-.lr-sortbar .lr-count{ color:#555; }
-.lr-sortbar .lr-filtericon{ color:#555; cursor:pointer; font-size:15px; }
-.lr-sortbar .lr-filtericon:hover{ color:#008296; }
+.lr-sortbar .lr-count{ color:var(--ink2); }
 
 /* ---- the table -------------------------------------------------------- */
 
-.inv-table{ width:100%; border-collapse:collapse; background:#fafafa; }
+.inv-table{ width:100%; border-collapse:collapse; background:var(--panel); }
 
-.inv-head{ background:#efefef; border-bottom:2px solid #e7e7e7; }
+.inv-head{ background:var(--panel2); border-bottom:2px solid var(--line2); }
+/* No border-right: Amazon's inventory table has no vertical rules and neither
+   does its header. */
 .inv-head th{
-  padding:8px 10px; text-align:left; font-weight:400; font-size:12px;
-  color:#555; vertical-align:top; border-right:1px solid #e7e7e7;
+  padding:7px 8px; text-align:left; font-weight:500; font-size:12px;
+  color:var(--ink2); vertical-align:top;
 }
-.inv-head th:last-child{ border-right:none; }
 .inv-head .th-sub{
-  font-size:11px; color:#888; font-weight:400; display:block; margin-top:1px;
+  font-size:11px; color:var(--ink4); font-weight:400; display:block;
+  margin-top:1px;
 }
 
 .col-cb{ width:30px; text-align:center; }
@@ -68,215 +77,241 @@
 .col-fees{ width:120px; }
 .col-actions{ width:28px; text-align:center; }
 
-.inv-row{ border-bottom:1px solid #e7e7e7; vertical-align:top; transition:background .1s; }
-.inv-row:hover{ background:#f0f0f0; cursor:pointer; }
-.inv-row.sel{ background:#eef4f5; }
-.inv-row td{
-  padding:8px 10px; vertical-align:top; font-size:13px;
-  border-right:1px solid #ececec;
-}
-.inv-row td:last-child{ border-right:none; }
+/* NO TRANSITION ON THE ROW, and the hover paints the CELLS.
+ *
+ *     "the page is blinking when i place my cursor over the item also the
+ *      featured offer and many more things on that page are blinking"
+ *
+ * The blinking had a bigger cause -- a render loop, fixed in lrLoadMetrics --
+ * and this is the other half. A background TRANSITION on a <tr> inside a
+ * border-collapse table makes the engine repaint the collapsed border grid on
+ * every frame of the fade, which reads as the row's contents shimmering rather
+ * than the background easing. Amazon's row does not fade; it changes.
+ *
+ * The colour goes on the td because a <tr> background sits BEHIND the cells'
+ * own, so any cell with a background of its own would not follow it.
+ */
+.inv-row{ border-bottom:1px solid var(--line); vertical-align:top; cursor:pointer; }
+.inv-row:hover > td{ background:var(--panel2); }
+.inv-row.sel > td{ background:var(--panel3); }
+/* NO VERTICAL LINES anywhere -- only the row rules and the header's. */
+.inv-row td{ padding:6px 8px; vertical-align:top; font-size:13px; }
 .inv-row input[type="checkbox"]{
-  width:15px; height:15px; accent-color:#008296; cursor:pointer;
+  width:15px; height:15px; accent-color:var(--accent); cursor:pointer;
 }
 
 /* ---- status ----------------------------------------------------------- */
 /* The WORD is the app's own (liststatus.js), coloured the way the mockup
    colours its nearest equivalent. Inventing Amazon's vocabulary for a row this
    app calls GENERATED would be a second name for the same thing. */
-.status-live{ color:#067D62; font-weight:500; font-size:12px; }
-.status-oos{ color:#B12704; font-weight:500; font-size:12px; }
-.status-missing{ color:#C45500; font-weight:500; font-size:12px; }
+.status-live{ color:var(--ok); font-weight:600; font-size:12px; }
+.status-oos{ color:var(--red); font-weight:600; font-size:12px; }
+.status-missing{ color:var(--warn); font-weight:600; font-size:12px; }
 .status-badge{
-  color:#fff; background:#008296; font-size:11px; padding:2px 6px;
-  border-radius:3px; font-weight:500; display:inline-block;
+  color:var(--ink); background:var(--accent-bg); border:1px solid var(--accent-line);
+  font-size:11px; padding:1px 6px; border-radius:3px; font-weight:500;
+  display:inline-block;
 }
-.status-badge.queued{ background:#767676; }
-.status-badge.sent{ background:#C45500; }
-.status-badge.err{ background:#B12704; }
-.status-badge.parent{ background:#232f3e; }
-.status-date{ font-size:11px; color:#888; line-height:1.5; margin-top:2px; }
+.status-badge.queued{ background:var(--panel3); border-color:var(--line2); }
+.status-badge.sent{ background:var(--warn-bg); border-color:var(--warn-line); }
+.status-badge.err{ background:var(--red-bg); border-color:var(--red-line); }
+.status-badge.parent{ background:var(--panel3); border-color:var(--line2); }
+.status-date{ font-size:11px; color:var(--ink4); line-height:1.45; margin-top:2px; }
 
 /* What Amazon said back about the submission. Its own line under the status,
    because "we sent it" and "Amazon accepted it" are different facts. */
 .lr-amz{
-  font-size:11px; line-height:1.45; margin-top:4px;
+  font-size:11px; line-height:1.4; margin-top:3px;
   display:flex; align-items:flex-start; gap:3px; cursor:help;
 }
-.lr-amz.ok{ color:#067D62; }
-.lr-amz.bad{ color:#B12704; }
-.lr-amz.wait{ color:#C45500; }
+.lr-amz.ok{ color:var(--ok); }
+.lr-amz.bad{ color:var(--red); }
+.lr-amz.wait{ color:var(--warn); }
 .lr-amz i{ font-size:12px; flex-shrink:0; margin-top:1px; }
 
 /* ---- product ---------------------------------------------------------- */
 
-.prod-wrap{ display:flex; gap:10px; align-items:flex-start; }
+.prod-wrap{ display:flex; gap:9px; align-items:flex-start; }
+/* NO BORDER ON THE THUMBNAIL. Amazon does not outline product images in the
+   inventory list -- the picture sits on the page. */
 .prod-img{
-  width:56px; height:56px; border:1px solid #e7e7e7; border-radius:4px;
-  background:#fff; flex-shrink:0; display:flex; align-items:center;
-  justify-content:center; overflow:hidden; color:#ccc; font-size:18px;
+  width:56px; height:56px; border-radius:2px;
+  flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  overflow:hidden; color:var(--ink4); font-size:18px;
 }
 .prod-img img{ width:100%; height:100%; object-fit:contain; }
+/* THE TITLE OPENS THE LISTING, so it is a link and looks like one. */
 .prod-title{
-  font-size:13px; color:#111; font-weight:400; display:-webkit-box;
+  font-size:13px; color:var(--accent); font-weight:400; display:-webkit-box;
   -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-  line-height:1.35; margin-bottom:3px;
+  line-height:1.32; margin-bottom:2px; cursor:pointer;
 }
-.prod-meta{ font-size:11px; color:#555; line-height:1.65; }
-.prod-meta .asin-link{ color:#008296; text-decoration:none; font-weight:500; }
-.prod-meta .asin-link:hover{ text-decoration:underline; color:#005F6B; }
-.prod-meta .sku{ color:#333; }
-.prod-meta strong{ color:#111; font-weight:500; }
-.prod-dim{ color:#999; }
+.prod-title:hover{ text-decoration:underline; color:var(--accent2); }
+.prod-meta{ font-size:11px; color:var(--ink2); line-height:1.5; }
+.prod-meta .asin-link{ color:var(--accent); text-decoration:none; font-weight:500; }
+.prod-meta .asin-link:hover{ text-decoration:underline; color:var(--accent2); }
+.prod-meta .sku{ color:var(--ink2); }
+.prod-meta strong{ color:var(--ink); font-weight:500; }
+.prod-dim{ color:var(--ink4); }
 
-/* A barcode that another listing already owns. Not a note in a tooltip: Rule 1
-   says a clash must be REPORTED, and a report you have to hover to find has not
-   been made. */
-.prod-ean.clash{ color:#B12704; font-weight:500; }
+/* A barcode another listing already owns. Not a note in a tooltip: Rule 1 says
+   a clash must be REPORTED, and a report you have to hover to find has not been
+   made. */
+.prod-ean.clash{ color:var(--red); font-weight:600; }
 .lr-eanclash{
-  font-size:11px; color:#B12704; margin-top:3px; line-height:1.45;
+  font-size:11px; color:var(--red); margin-top:3px; line-height:1.4;
   display:flex; align-items:flex-start; gap:3px;
 }
 .lr-eanclash i{ font-size:12px; flex-shrink:0; margin-top:1px; }
 
-/* The three risk symbols. Grey when there is nothing to say, amber for a
-   medium warning, red for a high one -- the same three states, from the same
-   reader, as the product page's rail. */
-.lr-risks{ display:flex; gap:5px; margin-top:4px; }
+/* The three risk symbols. Dim when there is nothing to say, amber for a medium
+   warning, red for a high one -- the same three states, from the same reader,
+   as the product page's rail. */
+.lr-risks{ display:flex; gap:4px; margin-top:3px; }
 .lr-risk{
-  font-size:12px; width:20px; height:20px; border-radius:4px;
+  font-size:12px; width:19px; height:19px; border-radius:4px;
   display:inline-flex; align-items:center; justify-content:center;
   border:1px solid transparent; cursor:help;
 }
-.lr-risk.none{ color:#c8c8c8; }
-.lr-risk.warn{ color:#C45500; background:#fdf3e7; border-color:#f0d8b8; }
-.lr-risk.bad{  color:#B12704; background:#fdeceb; border-color:#f2c5c1; }
+.lr-risk.none{ color:var(--ink4); opacity:.45; }
+.lr-risk.warn{ color:var(--warn); background:var(--warn-bg); border-color:var(--warn-line); }
+.lr-risk.bad{  color:var(--red);  background:var(--red-bg);  border-color:var(--red-line); }
 
 .prod-warn{
-  font-size:11px; color:#C45500; margin-top:3px;
+  font-size:11px; color:var(--warn); margin-top:3px;
   display:flex; align-items:center; gap:3px; cursor:pointer;
 }
 .prod-warn:hover{ text-decoration:underline; }
 
 /* ---- the data blocks -------------------------------------------------- */
-
+/* DENSITY. line-height 1.7 on a dozen stacked pairs is what made the rows tall
+   enough to feel like a report rather than an inventory list. */
 .d-row{
   display:flex; justify-content:space-between; align-items:baseline;
-  font-size:12px; line-height:1.7; gap:6px;
+  font-size:12px; line-height:1.45; gap:6px;
 }
-.d-label{ color:#888; }
-.d-val{ color:#111; font-weight:500; text-align:right; }
-.d-val.green{ color:#067D62; }
-.d-val.red{ color:#B12704; }
-.d-val.dash{ color:#ccc; font-weight:400; }
-.d-cat{ font-size:11px; color:#888; font-weight:400; }
-.d-none{ font-size:11px; color:#999; }
+.d-label{ color:var(--ink3); }
+.d-val{ color:var(--ink); font-weight:500; text-align:right; }
+.d-val.green{ color:var(--ok); }
+.d-val.red{ color:var(--red); }
+.d-val.dash{ color:var(--ink4); font-weight:400; opacity:.7; }
+.dash{ color:var(--ink4); opacity:.7; }
+.d-cat{ font-size:11px; color:var(--ink4); font-weight:400; }
+.d-none{ font-size:11px; color:var(--ink4); }
 
 /* The handling time, which the mockup has no column for and the app has always
-   shown. It sits in Inventory because that is the fulfilment block, and it
-   carries listings.js's own cell so the number and its "(ours)/(Amazon's)"
-   label cannot differ from the card view's. */
-.d-hand{ margin-top:4px; padding-top:4px; border-top:1px dashed #e0e0e0; }
+   shown. In Inventory because that is the fulfilment block, carrying
+   listings.js's own cell so the number and its "(ours)/(Amazon's)" label cannot
+   differ from the card view's. */
+.d-hand{ margin-top:4px; padding-top:4px; border-top:1px dashed var(--line2); }
 .d-hand .d-label{ display:block; margin-bottom:1px; }
 
 /* ---- pricing ---------------------------------------------------------- */
 
 .price-input-wrap{
-  display:flex; align-items:center; border:1px solid #ccc; border-radius:3px;
-  overflow:hidden; margin-bottom:4px; background:#fff;
+  display:flex; align-items:center; border:1px solid var(--line2);
+  border-radius:3px; overflow:hidden; margin-bottom:4px;
+  background:var(--panel2);
 }
 .price-input-wrap .cur{
-  background:#f0f0f0; padding:2px 5px; font-size:11px; color:#555;
-  border-right:1px solid #ccc;
+  background:var(--panel3); padding:2px 5px; font-size:11px; color:var(--ink3);
+  border-right:1px solid var(--line2);
 }
 .price-input-wrap input{
   border:none; outline:none; width:100%; padding:2px 5px; font-size:12px;
-  text-align:right; background:#fff; color:#111;
+  text-align:right; background:transparent; color:var(--ink);
+  font-family:inherit;
 }
-.price-input-wrap input:focus{ background:#fffbea; }
-.price-input-wrap.saving input{ background:#fffbea; }
-.price-input-wrap.saved{ border-color:#067D62; }
-.price-input-wrap.err{ border-color:#B12704; }
+.price-input-wrap input:focus{ background:var(--accent-bg); }
+.price-input-wrap.saved{ border-color:var(--ok); }
+.price-input-wrap.err{ border-color:var(--red); }
+/* The floor and ceiling are narrower than the price and carry their label
+   where the currency sits on the price box. */
+.price-input-wrap.small{ margin-bottom:3px; }
+.price-input-wrap.small .cur{ font-size:10px; min-width:30px; text-align:center; }
+.price-input-wrap.small input{ font-size:11px; }
 
 .bb{ font-size:11px; display:flex; align-items:center; gap:3px; margin-top:2px; }
-.bb.win{ color:#067D62; }
-.bb.lose{ color:#B12704; }
-.bb.part{ color:#C45500; }
+.bb.win{ color:var(--ok); }
+.bb.lose{ color:var(--red); }
+.bb.part{ color:var(--warn); }
+.bb.biz{ color:var(--warn); }
 .bb i{ font-size:13px; }
 
 /* ---- fees ------------------------------------------------------------- */
 
-.fee-link{ color:#008296; font-size:11px; text-decoration:none; cursor:pointer; }
-.fee-link:hover{ text-decoration:underline; }
-.fee-basis{ font-size:11px; color:#888; }
+.fee-link{ color:var(--accent); font-size:11px; text-decoration:none; cursor:pointer; }
+.fee-link:hover{ text-decoration:underline; color:var(--accent2); }
+.fee-basis{ font-size:11px; color:var(--ink4); }
 
 /* ---- variation families ----------------------------------------------- */
 
-.var-parent{ background:#f0f0f0; cursor:pointer; }
-.var-parent:hover{ background:#e9e9e9; }
-.var-parent td{ padding:10px 10px; }
+.var-parent{ background:var(--panel2); cursor:pointer; }
+.var-parent:hover > td{ background:var(--panel3); }
+.var-parent td{ padding:8px; }
 .var-toggle{
-  color:#008296; font-size:14px; cursor:pointer; transition:transform .15s;
-  display:inline-block;
+  color:var(--accent); font-size:14px; cursor:pointer;
+  transition:transform .15s; display:inline-block;
 }
 .var-toggle.open{ transform:rotate(90deg); }
-.var-count{ font-size:12px; color:#555; font-weight:500; }
-.var-family{ color:#008296; font-weight:500; font-size:13px; text-decoration:none; }
+.var-count{ font-size:12px; color:var(--ink2); font-weight:500; }
+.var-family{ color:var(--accent); font-weight:500; font-size:13px; text-decoration:none; }
 .var-family:hover{ text-decoration:underline; }
-.var-meta{ font-size:11px; color:#888; margin-top:2px; }
+.var-meta{ font-size:11px; color:var(--ink4); margin-top:2px; }
 .var-img{
-  width:40px; height:40px; border:1px solid #e7e7e7; border-radius:4px;
-  background:#fff; overflow:hidden; display:inline-flex;
-  align-items:center; justify-content:center; color:#ccc;
+  width:40px; height:40px; border-radius:2px; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center;
+  color:var(--ink4);
 }
 .var-img img{ width:100%; height:100%; object-fit:contain; }
 .var-child td:nth-child(2){ padding-left:24px; }
 
 /* ---- actions ---------------------------------------------------------- */
 
-.act-dots{ color:#555; cursor:pointer; font-size:16px; }
-.act-dots:hover{ color:#008296; }
+.act-dots{ color:var(--ink3); cursor:pointer; font-size:16px; }
+.act-dots:hover{ color:var(--accent); }
 
 /* ---- the metrics bar above the table ---------------------------------- */
-/* Kept from the previous version: it says where the performance numbers came
-   from and how old they are, which the mockup has no equivalent for and which
-   is the difference between a dash meaning "none" and "not asked yet". */
+/* It says where the performance numbers came from and how old they are, which
+   the mockup has no equivalent for and which is the difference between a dash
+   meaning "none" and one meaning "not asked yet". */
 .lr-metricsbar{
-  background:#fafafa; border-bottom:1px solid #e7e7e7; padding:6px 16px;
-  font-size:11px; color:#888; display:flex; align-items:center;
-  gap:10px; flex-wrap:wrap;
+  background:var(--panel2); border-bottom:1px solid var(--line);
+  padding:6px 14px; font-size:11px; color:var(--ink3);
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
 }
-.lr-metricsbar b{ color:#555; font-weight:500; }
+.lr-metricsbar b{ color:var(--ink2); font-weight:500; }
 .lr-bits{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.lr-dot{ color:#ccc; }
-.lr-loading{ color:#008296; }
-/* A window Amazon could only half report. Amber, and it carries the reason in
-   its title -- a 30-day total built from four days of data is not one. */
-.lr-part{ color:#C45500; cursor:help; }
+.lr-dot{ color:var(--line2); }
+.lr-loading{ color:var(--accent); }
+/* A window Amazon could only half report, with the reason in its title -- a
+   30-day total built from four days of data is not one. */
+.lr-part{ color:var(--warn); cursor:help; }
 .lr-refresh{
-  margin-left:auto; color:#008296; cursor:pointer; background:none;
-  border:1px solid #ccc; border-radius:4px; padding:3px 9px; font-size:11px;
-  display:inline-flex; align-items:center; gap:4px;
+  margin-left:auto; color:var(--accent); cursor:pointer; background:none;
+  border:1px solid var(--line2); border-radius:4px; padding:3px 9px;
+  font-size:11px; display:inline-flex; align-items:center; gap:4px;
   font-family:inherit;
 }
-.lr-refresh:hover{ background:#eef4f5; border-color:#008296; }
+.lr-refresh:hover{ background:var(--accent-bg); border-color:var(--accent-line); }
 .lr-err{
-  background:#fdf3e7; border-bottom:1px solid #f0d8b8; color:#C45500;
-  font-size:11px; padding:6px 16px; line-height:1.5;
+  background:var(--warn-bg); border-bottom:1px solid var(--warn-line);
+  color:var(--warn); font-size:11px; padding:6px 14px; line-height:1.45;
 }
 .lr-err i{ font-size:12px; }
 
 /* Expand all / collapse all, above the table when there is a family to expand. */
 .lr-famctl{
-  background:#fafafa; border-bottom:1px solid #e7e7e7; padding:6px 16px;
-  font-size:11px; color:#555; display:flex; align-items:center; gap:10px;
+  background:var(--panel2); border-bottom:1px solid var(--line);
+  padding:6px 14px; font-size:11px; color:var(--ink2);
+  display:flex; align-items:center; gap:10px;
 }
 .lr-famctl button{
-  background:none; border:1px solid #ccc; border-radius:4px; padding:3px 9px;
-  font-size:11px; color:#008296; cursor:pointer; font-family:inherit;
-  display:inline-flex; align-items:center; gap:4px;
+  background:none; border:1px solid var(--line2); border-radius:4px;
+  padding:3px 9px; font-size:11px; color:var(--accent); cursor:pointer;
+  font-family:inherit; display:inline-flex; align-items:center; gap:4px;
 }
-.lr-famctl button:hover{ background:#eef4f5; border-color:#008296; }
+.lr-famctl button:hover{ background:var(--accent-bg); border-color:var(--accent-line); }
 
 @media(max-width:1200px){
   .col-fees{ display:none; }

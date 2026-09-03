@@ -14,7 +14,10 @@
  *     lsStatusOf(r)   the status word, in the four-status vocabulary
  *     lsWarnings(r)   the warning count and its severity
  *     rowSelectBox(r) the batch-actions checkbox, with its existing wiring
- *     rowActions(r)   the row menu
+ *     drawerMore(...) the overflow menu behind the three dots. NOT rowActions,
+ *                     which draws seven buttons in a strip: this view shows one
+ *                     control and puts everything behind it. rowActions is
+ *                     unchanged and still used by the table and card views.
  *
  * so this view cannot disagree with the table about what a listing IS. It is a
  * different arrangement of the same facts (CLAUDE.md Rule 12).
@@ -37,7 +40,8 @@ let LR_COVERAGE = {};        // how many days the window could actually speak fo
 let LR_LAST_FETCH = 0;       // epoch seconds of the newest cached SP-API answer
 let LR_ERRORS = {};          // {group: why} when Amazon refused
 let LR_LOADING = false;
-let LR_ASKED = "";           // the SKU set already requested, so we ask once
+// The SKUs already asked about. A SET, not the last key -- see lrLoadMetrics.
+let LR_ASKED = new Set();
 
 function lrMetrics(sku){ return LISTING_METRICS[String(sku)] || null; }
 
@@ -54,18 +58,48 @@ function lrMetrics(sku){ return LISTING_METRICS[String(sku)] || null; }
 async function lrLoadMetrics(rows, force){
   const skus = (rows || []).map(r => String(r.sku)).filter(Boolean);
   if(!skus.length) return;
-  const key = skus.slice().sort().join(",");
-  if(!force && (LR_LOADING || key === LR_ASKED)) return;
-  LR_ASKED = key; LR_LOADING = true;
+
+  // WHY THIS REMEMBERS SKUs AND NOT "THE LAST SET ASKED FOR".
+  //
+  //     "the page is blinking when i place my cursor over the item also the
+  //      featured offer and many more things on that page are blinking"
+  //
+  // The page was redrawing itself perpetually, and hovering just made it
+  // visible. This held ONE key -- the sorted SKUs of the last set it fetched --
+  // and one screen draws SEVERAL blocks: miles_template.js calls listBlock()
+  // separately for queued, drafts, claimed and gone, and each one reaches
+  // detailedBlock() with a DIFFERENT set of rows.
+  //
+  // So the key alternated, for ever:
+  //
+  //     render -> block A: key A is new    -> fetch -> render
+  //            -> block B: key B is not A  -> fetch -> render
+  //            -> block A: key A is not B  -> fetch -> render  ...
+  //
+  // Every reply called render(), which rebuilt every block, which asked again.
+  // A set of SKUs cannot alternate: once a SKU has been asked about it stays
+  // asked about, so the second block finds nothing new and the loop stops on
+  // the first pass.
+  const need = force ? skus : skus.filter(s => !LR_ASKED.has(s));
+  // NOTHING NEW MEANS NOTHING HAPPENS -- no fetch, and no render either. A
+  // render here would restart the cycle by itself.
+  if(!need.length) return;
+  if(LR_LOADING) return;      // one in flight; the next draw picks up the rest
+  LR_LOADING = true;
+  if(force) LR_ASKED = new Set();
+  need.forEach(s => LR_ASKED.add(s));
   try{
     // A cap matching the route's own, so the URL cannot grow past what a
     // server will accept on a large catalogue.
-    const ask = skus.slice(0, 400);
+    const ask = need.slice(0, 400);
     let url = "/listing/live_metrics?skus=" + encodeURIComponent(ask.join(","));
     if(force) url += "&fetch=1";
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
     if(j && j.ok){
-      LISTING_METRICS = j.metrics || {};
+      // MERGED, not replaced. Several blocks contribute their own SKUs, and
+      // assigning the reply would throw away whatever the previous block had
+      // just learned -- which is the same alternation in another form.
+      LISTING_METRICS = Object.assign({}, LISTING_METRICS, j.metrics || {});
       LR_COVERAGE = j.coverage || {};
       LR_LAST_FETCH = j.last_updated || 0;
       LR_ERRORS = j.errors || {};
@@ -332,6 +366,28 @@ function lrDate(v){
 }
 
 /* Product details: image, title, and the identifiers under it. */
+/* THE PICTURE, FROM BOTH PLACES IT CAN BE.
+ *
+ *     "Many items have blank image squares. The image data exists in the
+ *      database or LIVE_ITEMS. Check both sources."
+ *
+ * _rowImages(r) reads the row's OWN attributes -- the draft's
+ * main_product_image_locator. _liveImageFor(r) reads what Amazon holds for the
+ * live listing out of LIVE_ITEMS, which is where the dual-source fix in
+ * routes/live_routes.py puts the picture it found in either summaries.mainImage
+ * or attributes.main_product_image_locator.
+ *
+ * Amazon's wins when it exists: it is what a shopper is actually looking at.
+ * Both helpers are listings.js's, so this reads no field either of them does
+ * not already own (Rule 12).
+ */
+function lrImage(r){
+  const live = (typeof _liveImageFor === "function") ? (_liveImageFor(r) || "") : "";
+  if(live) return live;
+  const own = (typeof _rowImages === "function") ? (_rowImages(r) || []) : [];
+  return own.length ? own[0] : "";
+}
+
 function lrProduct(r){
   const urls = (typeof _rowImages === "function") ? _rowImages(r) : [];
   const a = (typeof rowAsin === "function") ? (rowAsin(r) || {}) : {};
@@ -354,14 +410,19 @@ function lrProduct(r){
   // being spelled out underneath. Rule 1 asks for it to be reported; a red
   // number and a sentence are the report.
   const clash = lrEanClash(r);
+  const img = lrImage(r);
   return '<div class="prod-wrap">'
     + '<div class="prod-img">'
-    +   (urls && urls.length
-        ? '<img src="' + esc(urls[0]) + '" loading="lazy" onerror="this.remove()">'
+    +   (img
+        ? '<img src="' + esc(img) + '" loading="lazy" onerror="this.remove()">'
         : '<i class="ti ti-photo"></i>')
     + '</div>'
     + '<div>'
-    +   '<div class="prod-title" title="' + esc(r.title || "") + '">'
+        // THE TITLE OPENS THE LISTING. It was plain text beside a row that was
+        // already clickable, so the one thing that looks like the product's
+        // name was the one thing that did not behave like a link.
+    +   '<div class="prod-title" title="' + esc(r.title || "") + '"'
+    +     ' onclick="event.stopPropagation();openListing(\'' + esc(r.sku) + '\')">'
     +     (esc(r.title || "") || '<span class="prod-dim">(no title)</span>') + '</div>'
     +   '<div class="prod-meta">' + asinBit
     +     '<br>SKU <span class="sku">' + esc(r.sku || "") + '</span>'
@@ -393,11 +454,21 @@ function lrPerf(r){
   const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
   if(!sent) return '<div class="d-none">Not yet live</div>';
   const m = lrMetrics(r.sku) || {};
+  // THE CATEGORY COMES OFF THE ROW, not from the metrics.
+  //
+  //     "Amazon shows the category in parentheses under the sales rank number
+  //      -- like '45,230 (Home & Kitchen)'. If unknown, don't show anything."
+  //
+  // listings.amazon_category and .subcategory are real columns this app already
+  // fills; the metrics route has neither, and nothing stores a sales RANK at
+  // all, so that stays a dash. The category is shown regardless, because it is
+  // known and it is the half that says what the number would have meant.
+  const cat = String(r.amazon_category || r.subcategory || "").trim();
   return lrDataRow("Sales", lrVal(m.sales, {money:true}))
     + lrDataRow("Units sold", lrVal(m.units))
     + lrDataRow("Page views", lrVal(m.views, {comma:true}))
     + lrDataRow("Sales rank",  lrVal(m.rank,  {comma:true}))
-    + (m.rank_category ? '<div class="d-cat">(' + esc(m.rank_category) + ')</div>' : "");
+    + (cat ? '<div class="d-cat">(' + esc(cat) + ')</div>' : "");
 }
 
 /* Inventory -- and the handling time, which the mockup has no column for.
@@ -479,6 +550,76 @@ function lrPriceBox(r, key, value, title){
        + '</div>';
 }
 
+/* THE REPRICER'S FLOOR AND CEILING, under the price, where Amazon puts them.
+ *
+ *     "Show the minimum price field under the price input box ... Same for
+ *      maximum price."
+ *
+ * THEY DO NOT LIVE ON THE LISTING. min_price and max_price are the repricer's
+ * rule for a SKU, in sourcing_rules -- there is no such column on a listing row
+ * and no route on this screen that returns one. So the box shows a value only
+ * when the repricer's own rules happen to be loaded in the page (SRC_ROW_RULES,
+ * which the Repricer screen fills), and otherwise says NOTHING RATHER THAN
+ * NOTHING-MEANING-NONE: an empty box under the word "Min" reads as "no floor
+ * is set", and a listing that has a floor of 18.24 would be showing the
+ * opposite of the truth.
+ *
+ * Typing in it saves through /sourcing/rules, the route the Repricer screen
+ * already uses (Rule 12).
+ */
+function lrRule(sku){
+  try{
+    if(typeof SRC_ROW_RULES !== "undefined" && SRC_ROW_RULES)
+      return SRC_ROW_RULES[String(sku)] || null;
+  }catch(e){}
+  return null;
+}
+
+function lrRuleBox(r, key, label, title){
+  const rule = lrRule(r.sku);
+  if(!rule){
+    // Not loaded on this screen. Said, not implied.
+    return '<div class="d-row"><span class="d-label">' + esc(label) + '</span>'
+         + '<span class="d-val dash" title="The repricer\'s ' + esc(label.toLowerCase())
+         + ' is not loaded on this screen. Open the Repricer to see or set it.">—</span></div>';
+  }
+  const v = rule[key];
+  return '<div class="price-input-wrap small" title="' + esc(title) + '">'
+       + '<span class="cur">' + esc(label) + '</span>'
+       + '<input type="text" inputmode="decimal" value="'
+       +   esc(v == null ? "" : String(v)) + '"'
+       +   ' onclick="event.stopPropagation()"'
+       +   ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
+       +   ' onchange="lrSaveRule(\'' + esc(r.sku) + '\',\'' + key + '\',this)">'
+       + '</div>';
+}
+
+function lrFloorCeiling(r){
+  return lrRuleBox(r, "min_price", "Min", "The lowest the repricer may go")
+       + lrRuleBox(r, "max_price", "Max", "The highest the repricer may go");
+}
+
+/* Save one repricer rule field. Through /sourcing/rules, which validates the
+ * number and refuses a margin target that cannot be reached -- this screen does
+ * not second-guess any of that. */
+async function lrSaveRule(sku, key, el){
+  const raw = String(el.value || "").trim();
+  const val = raw === "" ? null : parseFloat(raw);
+  if(raw !== "" && !isFinite(val)){ toast("That is not a number."); return; }
+  const body = {sku: sku, rule: {}};
+  body.rule[key] = val;
+  try{
+    const j = await (await fetch("/sourcing/rules", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify((typeof _srcBody === "function") ? _srcBody(body) : body)
+    })).json();
+    if(!j || !j.ok){ toast("Could not save: " + ((j && j.error) || "")); return; }
+    const rule = lrRule(sku);
+    if(rule) rule[key] = val;
+    toast(val == null ? "Cleared" : "Saved");
+  }catch(e){ toast("Could not save: " + e); }
+}
+
 function lrPricing(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
@@ -487,9 +628,19 @@ function lrPricing(r){
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
   return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
+    + lrFloorCeiling(r)
     + lrDataRow("Cost",   cost ? esc(cost) : lrVal(null))
     + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
     + lrBuyBox(m)
+    // BUSINESS PRICE. Amazon reports one only where a business offer exists,
+    // and nothing in this app stores one yet -- so the line says it is not set
+    // rather than showing a figure, and the link goes where it would be set.
+    // An amber triangle beside an invented number would be worse than the gap.
+    + '<div class="bb biz" title="A separate price for Amazon Business buyers. '
+    + 'Nothing in this app holds one for this listing.">'
+    + '<i class="ti ti-alert-triangle"></i> Business price '
+    + '<span class="fee-link" onclick="event.stopPropagation();openListing(\''
+    + esc(r.sku) + '\')">Set</span></div>'
     // What the market charges NOW, from getCompetitivePricing -- a different
     // question from listings.buy_box_price, which is the competitor's price
     // captured when the listing was generated and may be months old.
@@ -513,13 +664,20 @@ function lrPricing(r){
 function lrFees(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
-  const total = m.fees_total != null ? m.fees_total
-              : (m.fees != null ? m.fees : null);
+  // THE ROW ALREADY CARRIES A FEE. listings.amazon_fees and .fee_source are
+  // real columns the generator fills; the metrics route returns neither. So the
+  // row answers first and the metrics only fill what it cannot -- rather than a
+  // column of dashes sitting over a figure the app already had (Rule 12).
+  const rowFee = String(r.amazon_fees == null ? "" : r.amazon_fees)
+                   .replace(/[^0-9.\-]/g, "");
+  const total = rowFee !== "" ? rowFee
+              : (m.fees_total != null ? m.fees_total
+                 : (m.fees != null ? m.fees : null));
   const rate = (m.fee_rate != null) ? (Number(m.fee_rate) * 100) : null;
-  const basis = String(m.fee_basis || "");
+  const basis = String(m.fee_basis || r.fee_source || "");
   const word = basis === "actual" ? "from your sales"
              : basis === "quoted" ? "quoted by Amazon"
-             : basis ? "estimated" : "";
+             : basis ? esc(basis) : "";
   return lrDataRow("Total fees", total != null ? esc(cur + total) : lrVal(null))
     + (m.fba_fee != null ? lrDataRow("FBA fee", esc(cur + m.fba_fee))
        : (m.referral_fee != null ? lrDataRow("Referral", esc(cur + m.referral_fee)) : ""))
@@ -548,8 +706,22 @@ function detailedRow(r, isChild){
     + '<td class="col-inv">' + lrInv(r) + '</td>'
     + '<td class="col-price" onclick="event.stopPropagation()">' + lrPricing(r) + '</td>'
     + '<td class="col-fees">' + lrFees(r) + '</td>'
+        // EVERYTHING ELSE LIVES BEHIND THE THREE DOTS.
+        //
+        //     "There are too many buttons visible on each row -- Image Library,
+        //      Image refs, Optimize listing, Variation, etc. Hide ALL of them
+        //      under the three-dot menu."
+        //
+        // rowActions() draws seven buttons in a strip and is shared with the
+        // table and the card views, so it is not changed -- those two are not
+        // being redesigned (Rule 7). This view simply does not call it. The
+        // dots open drawerMore(), the overflow menu that already exists and
+        // already holds these actions, so nothing is reimplemented (Rule 12).
     + '<td class="col-actions" onclick="event.stopPropagation()">'
-    +   ((typeof rowActions === "function") ? rowActions(r, "dotb") : "") + '</td>'
+    +   '<i class="ti ti-dots act-dots" title="Everything else"'
+    +   ' onclick="drawerMore(event,\'' + esc(r.sku) + '\',' + (r.row || 0) + ','
+    +   ((typeof isAmazonLive === "function" && isAmazonLive(r)) ? "true" : "false")
+    +   ')"></i></td>'
     + '</tr>';
 }
 
