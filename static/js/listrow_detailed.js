@@ -117,11 +117,11 @@ function lrAgo(epochSeconds){
 function lrMetricsBar(){
   const cov = LR_COVERAGE || {};
   const bits = [];
-  if(LR_LOADING) bits.push('<span class="lr-mb-load">reading…</span>');
+  if(LR_LOADING) bits.push('<span class="lr-loading">reading…</span>');
   if(cov.sales_days != null && cov.days){
     bits.push(cov.sales_days >= cov.days
       ? ('sales &amp; traffic: ' + cov.days + ' days')
-      : ('<span class="lr-mb-part" title="Amazon has only reported ' + cov.sales_days
+      : ('<span class="lr-part" title="Amazon has only reported ' + cov.sales_days
          + ' of the last ' + cov.days + ' days. The totals cover what exists, not the full window.">'
          + 'sales &amp; traffic: ' + cov.sales_days + ' of ' + cov.days + ' days</span>'));
   }
@@ -131,15 +131,15 @@ function lrMetricsBar(){
 
   const errs = Object.keys(LR_ERRORS || {});
   const errHtml = errs.length
-    ? '<div class="lr-mb-err"><i class="ti ti-alert-triangle"></i> Amazon did not answer for '
-      + errs.map(esc).join(", ") + ' — <span class="lr-dim">'
+    ? '<div class="lr-err"><i class="ti ti-alert-triangle"></i> Amazon did not answer for '
+      + errs.map(esc).join(", ") + ' — <span class="prod-dim">'
       + esc(String(LR_ERRORS[errs[0]]).slice(0, 160)) + '</span>. The figures below are '
       + 'this app’s own records; the missing ones show as dashes.</div>'
     : "";
 
-  return '<div class="lr-mbar">'
-    + '<span class="lr-mb-bits">' + bits.join(' <span class="lr-mb-dot">·</span> ') + '</span>'
-    + '<button class="lr-mb-btn" onclick="lrRefreshMetrics()" title="Ask Amazon again for sales rank, competitive price and FBA stock. The rest is read from this app’s own database and is always current.">'
+  return '<div class="lr-metricsbar">'
+    + '<span class="lr-bits">' + bits.join(' <span class="lr-dot">·</span> ') + '</span>'
+    + '<button class="lr-refresh" onclick="lrRefreshMetrics()" title="Ask Amazon again for sales rank, competitive price and FBA stock. The rest is read from this app’s own database and is always current.">'
     + '<i class="ti ti-refresh"></i> Refresh metrics</button>'
     + '</div>' + errHtml;
 }
@@ -149,7 +149,9 @@ function lrMetricsBar(){
  * and the whole point of this block is to tell you which one you are reading. */
 function lrVal(v, opts){
   opts = opts || {};
-  if(v === null || v === undefined || v === "") return '<span class="lr-dash">--</span>';
+  // The mockup's em dash, in its own grey, so an absent figure reads as absent
+  // rather than as a very short number.
+  if(v === null || v === undefined || v === "") return '<span class="dash">—</span>';
   let s = String(v);
   if(opts.money) s = (typeof CUR_SYMBOL !== "undefined" ? CUR_SYMBOL : "") + s;
   if(opts.comma) s = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -157,8 +159,8 @@ function lrVal(v, opts){
 }
 
 function lrDataRow(label, valHtml, cls){
-  return '<div class="lr-data"><span class="lr-data-label">' + esc(label) + '</span>'
-       + '<span class="lr-data-val' + (cls ? " " + cls : "") + '">' + valHtml + '</span></div>';
+  return '<div class="d-row"><span class="d-label">' + esc(label) + '</span>'
+       + '<span class="d-val' + (cls ? " " + cls : "") + '">' + valHtml + '</span></div>';
 }
 
 /* The status badge and the date under it.
@@ -173,16 +175,148 @@ function lrDataRow(label, valHtml, cls){
 function lrStatus(r){
   const st = (typeof lsStatusOf === "function") ? lsStatusOf(r)
                                                 : String(r.status||"").toUpperCase();
-  const cls = st === "LIVE" ? "live" : st === "SUBMITTED" ? "sent"
-            : st === "GENERATED" ? "gen" : st === "QUEUED" ? "queued"
-            : st === "PARENT" ? "parent" : "other";
   // The date the listing was last worked on. date_processed is what the
   // generator stamps; updated_at is the row's own. Neither is invented here.
   const d = r.date_processed || r.updated_at || r.created_at || "";
-  return '<span class="lr-status">'
-       + '<span class="lr-status-badge ' + cls + '">' + esc(st || "—") + '</span>'
-       + (d ? '<span class="lr-status-date">' + esc(lrDate(d)) + '</span>' : "")
-       + '</span>';
+  const made = (r.created_at && r.created_at !== d) ? r.created_at : "";
+  const badge = (st === "LIVE")
+    ? '<span class="status-live">' + esc(st) + '</span>'
+    : '<span class="status-badge'
+      + (st === "SUBMITTED" ? " sent" : st === "QUEUED" ? " queued"
+         : st === "PARENT" ? " parent" : "")
+      + '">' + esc(st || "—") + '</span>';
+  return badge
+       + '<div class="status-date">' + (d ? esc(lrDate(d)) : "")
+       +   (made ? "<br>" + esc(lrDate(made)) : "") + '</div>'
+       + lrAmazonSaid(r);
+}
+
+/* WHAT AMAZON SAID ABOUT THE LAST SUBMIT, on the row.
+ *
+ *     "what amazon has to say about the listing submitted, was it a api error
+ *      or some other error"
+ *
+ * THE VERDICT COMES FROM THE STATUS, NEVER FROM READING THE PROSE (Rule 4).
+ * The generator writes one of three states, each with a sentence beside it:
+ *
+ *     API_ERROR   Amazon rejected it, synchronously, with reasons
+ *     SUBMITTED   Amazon accepted it; it publishes in ~5-30 minutes
+ *     API_READY   a Preview passed -- validated, never sent
+ *
+ * The note is shown as the WORDS, on hover, because that is where Amazon's own
+ * messages ended up ("API SUBMIT REJECTED by Amazon (3 error(s)): ..."). The
+ * symbol and the colour come from the status; only the explanation comes from
+ * the text, and a note that cannot be parsed still shows -- it is Amazon's
+ * sentence either way.
+ */
+function lrAmazonSaid(r){
+  const raw = String((r && r.status) || "").toUpperCase().replace(/[\s-]+/g, "_");
+  const note = String((r && r.notes) || "").trim();
+  let tone = "", icon = "", words = "";
+  if(raw === "API_ERROR"){
+    tone = "bad"; icon = "ti-alert-octagon";
+    // The COUNT is out of our own note, which we wrote; the MESSAGE is
+    // Amazon's and is quoted rather than interpreted.
+    const m = note.match(/\((\d+)\s+error/i);
+    words = m ? ("Amazon rejected — " + m[1] + " error" + (m[1] === "1" ? "" : "s"))
+              : "Amazon rejected it";
+  } else if(raw === "SUBMITTED"){
+    tone = "wait"; icon = "ti-clock";
+    words = /Amazon warnings/i.test(note) ? "Accepted, with warnings"
+                                          : "Accepted — publishing";
+  } else if(raw === "API_READY"){
+    tone = "ok"; icon = "ti-circle-check";
+    words = "Preview passed — not sent yet";
+  } else {
+    return "";
+  }
+  return '<div class="lr-amz ' + tone + '" title="' + esc(note || words) + '">'
+       + '<i class="ti ' + icon + '"></i><span>' + esc(words) + '</span></div>';
+}
+
+/* THE THREE RISK SYMBOLS.
+ *
+ *     "i want a symbol telling me that if some listing has compliance
+ *      requirements or a restricted item is it. or there are claims risk in
+ *      the item content."
+ *
+ * Restricted, Compliance and Claims, in that order, always all three -- a
+ * symbol that appears only when there is trouble cannot be told apart from one
+ * that failed to draw. Grey is "nothing here", amber a medium warning, red a
+ * high one.
+ *
+ * Through liststatus.js's lsWarnTypes/lsCheckTone, which is what the product
+ * page's Checks rail uses, so a row and the page it opens cannot disagree about
+ * whether a listing is restricted (Rule 12). The row's own verdicts count too:
+ * listing/restricted.py writes r.restricted and never a warning row, so reading
+ * only the warnings would go quiet about it.
+ */
+function lrRisks(r){
+  const wt = (typeof lsWarnTypes === "function") ? lsWarnTypes(r) : {};
+  const tone = (typeof lsCheckTone === "function") ? lsCheckTone
+             : function(){ return "ok"; };
+  const bits = [
+    {keys: ["restricted", "restricted_product", "prohibited"],
+     hit: !!(r.restricted && r.restricted.matched && r.restricted.matched.length),
+     icon: "ti-ban", name: "Restricted product",
+     none: "Not a restricted product"},
+    {keys: ["compliance_risk", "hazmat", "documents_required"],
+     hit: !!(r.viability && r.viability.matched && r.viability.matched.length),
+     icon: "ti-file-description", name: "Compliance requirements",
+     none: "No compliance requirements found"},
+    {keys: ["ip_risk", "claim_risk", "unsupported_claim"],
+     hit: ((r.claim_flags || []).length > 0),
+     icon: "ti-quote", name: "Claim risk in the content",
+     none: "No claim risks in the content"}
+  ];
+  return '<div class="lr-risks">' + bits.map(function(b){
+    let t = tone(wt, b.keys);
+    if(t === "ok" && b.hit) t = "warn";
+    const cls = (t === "bad") ? "bad" : (t === "warn" ? "warn" : "none");
+    const n = (typeof lsCheckCount === "function") ? lsCheckCount(wt, b.keys) : 0;
+    const title = (cls === "none") ? b.none
+                : (b.name + (n ? " — " + n + " warning" + (n === 1 ? "" : "s") : ""));
+    return '<span class="lr-risk ' + cls + '" title="' + esc(title) + '">'
+         + '<i class="ti ' + b.icon + '"></i></span>';
+  }).join("") + '</div>';
+}
+
+/* IS THIS BARCODE ALREADY ON ANOTHER LISTING?
+ *
+ *     "if 1 ean was used in a listing already in my sellercentral active status
+ *      ... show me outside that this listing holds a ean which is already
+ *      present in this item or asin."
+ *
+ * CLAUDE.md Rule 1 is explicit: a barcode already on another listing must be
+ * REPORTED, not sent and hoped for -- Amazon matches the code to the ASIN that
+ * owns it and refuses to create a second product. Measured on the owner's own
+ * data, sixteen barcodes were on more than one listing.
+ *
+ * NOTHING IS WORKED OUT HERE. listing/warnings.py already answers it, twice
+ * over, and both answers name what the clash is with:
+ *
+ *     barcode_live_on_amazon   the EAN is on a LIVE Amazon listing -> live_asin
+ *     duplicate_barcode        another draft in this app has it -> existing_sku
+ *
+ * so this prints what those carry. A second implementation here would be a
+ * fourth place deciding what a duplicate is (Rule 12).
+ */
+function lrEanClash(r){
+  const list = (r && Array.isArray(r.warnings)) ? r.warnings : [];
+  const hit = list.filter(function(w){
+    const t = String((w && w.type) || "");
+    return t === "barcode_live_on_amazon" || t === "duplicate_barcode";
+  });
+  if(!hit.length) return "";
+  const w = hit[0] || {};
+  const d = w.details || w;
+  const asin = d.live_asin || d.asin || "";
+  const sku = d.existing_sku || "";
+  const where = asin ? ("ASIN " + asin) : (sku ? ("SKU " + sku) : "another listing");
+  return '<div class="lr-eanclash" title="' + esc(String(w.message || "")) + '">'
+       + '<i class="ti ti-alert-triangle"></i>'
+       + '<span>This EAN is already on ' + esc(where)
+       + '. Amazon will refuse a second listing for it.</span></div>';
 }
 
 /* A date as "12 Aug 2026". Returns "" for anything unparseable rather than
@@ -207,33 +341,48 @@ function lrProduct(r){
   // listing that is not live yet having a clickable "ASIN" is how someone comes
   // to believe a draft is on Amazon.
   const asinBit = a.own
-    ? 'ASIN <a class="lr-asin" href="' + esc(typeof _dpUrl === "function" ? _dpUrl(a.own) : "#")
+    ? 'ASIN <a class="asin-link" href="' + esc(typeof _dpUrl === "function" ? _dpUrl(a.own) : "#")
       + '" target="_blank" rel="noopener" onclick="event.stopPropagation()"'
       + ' title="Open your listing on Amazon">' + esc(a.own) + '</a>'
     : (a.source
-        ? '<span class="lr-dim" title="This listing is not live on Amazon yet, so it has no ASIN of its own. '
+        ? '<span class="prod-dim" title="This listing is not live on Amazon yet, so it has no ASIN of its own. '
           + esc(a.source) + ' is the competitor product it was researched from — not your listing.">'
           + 'not live yet · from ' + esc(a.source) + '</span>'
-        : '<span class="lr-dim">no ASIN</span>');
+        : '<span class="prod-dim">no ASIN</span>');
 
-  return '<span class="lr-product">'
-    + '<span class="lr-img">'
+  // A BARCODE ANOTHER LISTING OWNS IS COLOURED WHERE IT IS READ, as well as
+  // being spelled out underneath. Rule 1 asks for it to be reported; a red
+  // number and a sentence are the report.
+  const clash = lrEanClash(r);
+  return '<div class="prod-wrap">'
+    + '<div class="prod-img">'
     +   (urls && urls.length
         ? '<img src="' + esc(urls[0]) + '" loading="lazy" onerror="this.remove()">'
         : '<i class="ti ti-photo"></i>')
-    + '</span>'
-    + '<span class="lr-details">'
-    +   '<div class="lr-title" title="' + esc(r.title || "") + '">'
-    +     (esc(r.title || "") || '<span class="lr-dim">(no title)</span>') + '</div>'
-    +   '<div class="lr-meta">' + asinBit
-    +     '<br>SKU <strong>' + esc(r.sku || "") + '</strong>'
-    +     (r.barcode ? '<br>EAN <strong>' + esc(r.barcode) + '</strong>' : "")
+    + '</div>'
+    + '<div>'
+    +   '<div class="prod-title" title="' + esc(r.title || "") + '">'
+    +     (esc(r.title || "") || '<span class="prod-dim">(no title)</span>') + '</div>'
+    +   '<div class="prod-meta">' + asinBit
+    +     '<br>SKU <span class="sku">' + esc(r.sku || "") + '</span>'
+          // THE BRAND, asked for and already on the row. It is the one field a
+          // listing cannot go up without under Rule 1's own-brand model, so a
+          // row that has none says so rather than leaving the line out.
+    +     '<br>Brand ' + (r.brand ? '<strong>' + esc(r.brand) + '</strong>'
+                                  : '<span class="prod-dim">not set</span>')
+    +     (r.barcode
+            ? '<br>EAN <strong class="prod-ean' + (clash ? " clash" : "") + '">'
+              + esc(r.barcode) + '</strong>'
+            : '<br>EAN <span class="prod-dim">none</span>')
     +     '<br>Condition <strong>New</strong>'
-    +     (w.n ? '<br><span class="lr-warn" onclick="event.stopPropagation();openListing(\''
-             + esc(r.sku) + '\')"><i class="ti ti-alert-triangle"></i> '
-             + w.n + ' warning' + (w.n === 1 ? '' : 's') + '</span>' : "")
     +   '</div>'
-    + '</span></span>';
+    +   clash
+    +   lrRisks(r)
+    +   (w.n ? '<div class="prod-warn" onclick="event.stopPropagation();openListing(\''
+             + esc(r.sku) + '\')"><i class="ti ti-alert-triangle"></i> '
+             + w.n + ' warning' + (w.n === 1 ? '' : 's') + '</div>' : "")
+    + '</div>'
+    + '</div>';
 }
 
 /* Performance, last 30 days. Empty until Phase 2 fills LISTING_METRICS.
@@ -242,27 +391,44 @@ function lrProduct(r){
  * says so, rather than showing four dashes that look like a failed lookup. */
 function lrPerf(r){
   const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
-  if(!sent) return '<span class="lr-perf"><div class="lr-none">Not yet live</div></span>';
+  if(!sent) return '<div class="d-none">Not yet live</div>';
   const m = lrMetrics(r.sku) || {};
-  return '<span class="lr-perf">'
-    + lrDataRow("Sales", lrVal(m.sales, {money:true}))
-    + lrDataRow("Units", lrVal(m.units))
-    + lrDataRow("Views", lrVal(m.views, {comma:true}))
-    + lrDataRow("Rank",  lrVal(m.rank,  {comma:true}))
-    + '</span>';
+  return lrDataRow("Sales", lrVal(m.sales, {money:true}))
+    + lrDataRow("Units sold", lrVal(m.units))
+    + lrDataRow("Page views", lrVal(m.views, {comma:true}))
+    + lrDataRow("Sales rank",  lrVal(m.rank,  {comma:true}))
+    + (m.rank_category ? '<div class="d-cat">(' + esc(m.rank_category) + ')</div>' : "");
 }
 
+/* Inventory -- and the handling time, which the mockup has no column for.
+ *
+ *     "i want my handling days displayed in this page which the mockup does not
+ *      have, but the current app has it"
+ *
+ * It goes here because this is the fulfilment block, and it is drawn by
+ * listings.js's own _handCell so the number AND its label are the card view's.
+ * That label is the point: the app holds handling_days (what we intend to
+ * promise) and Amazon returns handling_time (what the shopfront promises right
+ * now), and _handCell is the one place that decides which wins and says which
+ * it showed. A second copy here could print the draft's plan in front of a live
+ * listing as though it were fact (Rule 12).
+ */
 function lrInv(r){
   const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
-  if(!sent) return '<span class="lr-inv"><div class="lr-none">--</div></span>';
+  const hand = (typeof _handCell === "function") ? _handCell(r) : "";
+  const handBlock = hand
+    ? '<div class="d-hand"><span class="d-label">Handling</span>' + hand + '</div>'
+    : "";
+  if(!sent) return '<div class="d-none">' + lrVal(null) + '</div>' + handBlock;
   const m = lrMetrics(r.sku) || {};
   const oos = (v) => (v === 0 || v === "0") ? "red" : "";
-  return '<span class="lr-inv">'
-    + lrDataRow("On-hand",   lrVal(m.on_hand),   oos(m.on_hand))
+  const fba = m.fulfilment || m.fulfillment || "";
+  return lrDataRow("On-hand",   lrVal(m.on_hand),   oos(m.on_hand))
+    + (fba ? '<div class="d-cat">(' + esc(fba) + ')</div>' : "")
     + lrDataRow("Available", lrVal(m.available), oos(m.available))
     + lrDataRow("Inbound",   lrVal(m.inbound))
     + lrDataRow("Reserved",  lrVal(m.reserved))
-    + '</span>';
+    + handBlock;
 }
 
 /* Pricing. Price, cost and profit come off the row and are known NOW; the buy
@@ -281,23 +447,46 @@ function lrBuyBox(m){
   const p = (m || {}).buybox_pct;
   if(p === null || p === undefined) return "";
   if(p >= 99.5)
-    return '<div class="lr-buybox win" title="Amazon reported our offer in the featured slot for effectively all of the window."><i class="ti ti-circle-check"></i> Featured offer</div>';
+    return '<div class="bb win" title="Amazon reported our offer in the featured slot for effectively all of the window."><i class="ti ti-circle-check"></i> Featured offer</div>';
   if(p <= 0.5)
-    return '<div class="lr-buybox lose" title="Amazon reported our offer was never in the featured slot over the window."><i class="ti ti-circle-x"></i> Not winning</div>';
-  return '<div class="lr-buybox part" title="The share of page views over the window during which our offer held the featured slot. Not a live reading.">'
+    return '<div class="bb lose" title="Amazon reported our offer was never in the featured slot over the window."><i class="ti ti-circle-x"></i> Not winning</div>';
+  return '<div class="bb part" title="The share of page views over the window during which our offer held the featured slot. Not a live reading.">'
        + '<i class="ti ti-circle-half-2"></i> Featured ' + Math.round(p) + '% of views</div>';
+}
+
+/* The currency Amazon prices this row in. UK sells in GBP and US in USD, and
+ * the prefix on the box has to be the marketplace's, not whichever symbol the
+ * screen happens to be showing totals in. */
+function lrCur(r){
+  const mkt = String((typeof rowMkt === "function" ? rowMkt(r) : "")
+                     || (r && r.marketplace) || "").toUpperCase();
+  if(mkt === "US" || mkt === "USA") return "USD";
+  if(["DE", "FR", "IT", "ES", "NL", "SE", "PL", "BE"].indexOf(mkt) >= 0) return "EUR";
+  return "GBP";
+}
+
+/* An editable price box. Saves through /edit like every other field, via
+ * saveEdit() -- the one function that writes a field (Rule 12), which also
+ * handles the saved/err styling and keeps ROWS in step. */
+function lrPriceBox(r, key, value, title){
+  const v = String(value == null ? "" : value).replace(/[^0-9.\-]/g, "");
+  return '<div class="price-input-wrap" title="' + esc(title || "") + '">'
+       + '<span class="cur">' + esc(lrCur(r)) + '</span>'
+       + '<input type="text" value="' + esc(v) + '" inputmode="decimal"'
+       +   ' onclick="event.stopPropagation()"'
+       +   ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}"'
+       +   ' onchange="saveEdit(this,\'' + esc(r.sku) + '\',\'col\',\'' + esc(key) + '\')">'
+       + '</div>';
 }
 
 function lrPricing(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
-  const price = String(r.price == null ? "" : r.price).replace(/[^0-9.\-]/g, "");
   const cost  = (typeof _dwCost === "function") ? _dwCost(r) : "";
   const pnum  = String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, "");
   const pneg  = pnum !== "" && parseFloat(pnum) < 0;
 
-  return '<span class="lr-pricing">'
-    + lrDataRow("Price",  price ? esc(cur + price) : lrVal(null))
+  return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
     + lrDataRow("Cost",   cost ? esc(cost) : lrVal(null))
     + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
     + lrBuyBox(m)
@@ -305,10 +494,41 @@ function lrPricing(r){
     // question from listings.buy_box_price, which is the competitor's price
     // captured when the listing was generated and may be months old.
     + (m.buy_box_price != null
-        ? lrDataRow("Market", esc(cur + m.buy_box_price)) : "")
+        ? lrDataRow("Competitive", esc(cur + m.buy_box_price)) : "")
     + (m.offer_count != null
-        ? lrDataRow("Offers", lrVal(m.offer_count)) : "")
-    + '</span>';
+        ? lrDataRow("Offers", lrVal(m.offer_count)) : "");
+}
+
+/* ESTIMATED FEES -- what Amazon takes out of this price.
+ *
+ * From the three-tier fee system: the settled rate measured on this product's
+ * own orders where it has any, Amazon's own quote where it does not, and the
+ * account's measured average as a last resort. `fee_basis` says which, and it
+ * is printed rather than hidden -- "18.38% from your sales" and "15.00% quoted"
+ * are different degrees of certainty about the same number.
+ *
+ * Nothing is worked out here. The row carries what /listing/live_metrics
+ * returned, and an absent figure is a dash.
+ */
+function lrFees(r){
+  const m = lrMetrics(r.sku) || {};
+  const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
+  const total = m.fees_total != null ? m.fees_total
+              : (m.fees != null ? m.fees : null);
+  const rate = (m.fee_rate != null) ? (Number(m.fee_rate) * 100) : null;
+  const basis = String(m.fee_basis || "");
+  const word = basis === "actual" ? "from your sales"
+             : basis === "quoted" ? "quoted by Amazon"
+             : basis ? "estimated" : "";
+  return lrDataRow("Total fees", total != null ? esc(cur + total) : lrVal(null))
+    + (m.fba_fee != null ? lrDataRow("FBA fee", esc(cur + m.fba_fee))
+       : (m.referral_fee != null ? lrDataRow("Referral", esc(cur + m.referral_fee)) : ""))
+    + (rate != null
+        ? '<div class="fee-basis">' + rate.toFixed(2).replace(/\.00$/, "") + '% '
+          + esc(word) + '</div>'
+        : "")
+    + '<span class="fee-link" onclick="event.stopPropagation();openListing(\''
+    + esc(r.sku) + '\')">Calculate revenue</span>';
 }
 
 /* ONE LISTING, AS A DETAILED ROW.
@@ -317,36 +537,103 @@ function lrPricing(r){
  * through openListing(), the one function that decides which view that is. */
 function detailedRow(r, isChild){
   const sel = (typeof SELECTED !== "undefined") && SELECTED.has(String(r.sku));
-  return '<div class="lr' + (sel ? " sel" : "") + (isChild ? " lr-child" : "")
+  return '<tr class="inv-row' + (sel ? " sel" : "") + (isChild ? " var-child" : "")
     + '" data-sku="' + esc(r.sku) + '"'
     + ' onclick="openListing(\'' + esc(r.sku) + '\')">'
-    + '<span class="lr-cb" onclick="event.stopPropagation()">'
-    +   ((typeof rowSelectBox === "function") ? rowSelectBox(r) : "") + '</span>'
-    + lrStatus(r)
-    + lrProduct(r)
-    + lrPerf(r)
-    + lrInv(r)
-    + lrPricing(r)
-    + '<span class="lr-actions" onclick="event.stopPropagation()">'
-    +   ((typeof rowActions === "function") ? rowActions(r, "dotb") : "") + '</span>'
-    + '</div>';
+    + '<td class="col-cb" onclick="event.stopPropagation()">'
+    +   ((typeof rowSelectBox === "function") ? rowSelectBox(r) : "") + '</td>'
+    + '<td class="col-status">' + lrStatus(r) + '</td>'
+    + '<td class="col-product">' + lrProduct(r) + '</td>'
+    + '<td class="col-perf">' + lrPerf(r) + '</td>'
+    + '<td class="col-inv">' + lrInv(r) + '</td>'
+    + '<td class="col-price" onclick="event.stopPropagation()">' + lrPricing(r) + '</td>'
+    + '<td class="col-fees">' + lrFees(r) + '</td>'
+    + '<td class="col-actions" onclick="event.stopPropagation()">'
+    +   ((typeof rowActions === "function") ? rowActions(r, "dotb") : "") + '</td>'
+    + '</tr>';
 }
 
-/* The column header. One per block of rows, matching the row's own widths. */
+/* The column header, with the mockup's sub-labels under each name.
+ *
+ * NO STAR COLUMN, and that is deliberate. The mockup has a favourite toggle;
+ * this app has no favourite -- there is no such field on a row, in the listings
+ * table or in any route. A star that lit up and then forgot itself on the next
+ * render would be a control that lies about having saved something, which is
+ * worse than not having one (CLAUDE.md Rule 4). It is one column and a database
+ * field away if it is wanted.
+ */
 function detailedHead(rows){
   const all = rows || [];
   const allSel = all.length && (typeof SELECTED !== "undefined")
                  && all.every(x => SELECTED.has(String(x.sku)));
-  return '<div class="lr-head">'
-    + '<span class="lr-cb"><input type="checkbox" class="rowsel"' + (allSel ? " checked" : "")
-    +   ' title="Select every row shown" onchange="selectAllVisible(this.checked)"></span>'
-    + '<span class="lr-status">Listing status</span>'
-    + '<span class="lr-product">Product details</span>'
-    + '<span class="lr-perf">Performance<br><span class="lr-sub">last 30 days</span></span>'
-    + '<span class="lr-inv">Inventory</span>'
-    + '<span class="lr-pricing">Pricing</span>'
-    + '<span class="lr-actions"></span>'
+  const th = function(cls, name, sub){
+    return '<th class="' + cls + '">' + name
+         + (sub ? '<span class="th-sub">' + sub + '</span>' : "") + '</th>';
+  };
+  return '<thead class="inv-head"><tr>'
+    + '<th class="col-cb"><input type="checkbox" class="rowsel"' + (allSel ? " checked" : "")
+    +   ' title="Select every row shown" onchange="event.stopPropagation();selectAllVisible(this.checked)"></th>'
+    + th("col-status", "Listing status", "and what Amazon said")
+    + th("col-product", "Product details", "brand, identifiers, risks")
+    + th("col-perf", "Performance", "last 30 days")
+    + th("col-inv", "Inventory", "and handling time")
+    + th("col-price", "Pricing", "editable")
+    + th("col-fees", "Estimated fees", "per unit")
+    + '<th class="col-actions"></th>'
+    + '</tr></thead>';
+}
+
+/* ═══ THE SORT BAR ═══════════════════════════════════════════════════════
+ *
+ * "1 – 25 of 130", a sort picker, and the filter icon. The count is the rows
+ * this view was handed -- not a page of them, because this view does not
+ * paginate: the grid above it decides what is shown and this reports it.
+ * Saying "1 – 25 of 130" over 130 drawn rows would be a made-up number.
+ */
+let LR_SORT = "";
+
+function lrSortBar(rows){
+  const n = (rows || []).length;
+  const opts = [["", "Default"],
+                ["created_new", "Date created: newest"],
+                ["created_old", "Date created: oldest"],
+                ["price_low", "Price: low to high"],
+                ["price_high", "Price: high to low"],
+                ["title_az", "Title A-Z"]];
+  return '<div class="lr-sortbar">'
+    + '<span class="lr-count">' + (n ? ("1 – " + n + " of " + n) : "No listings")
+    +   '</span>'
+    + '<span>Sort by: '
+    +   '<select onchange="lrSetSort(this.value)">'
+    +     opts.map(function(o){
+            return '<option value="' + o[0] + '"'
+                 + (LR_SORT === o[0] ? " selected" : "") + '>' + o[1] + '</option>';
+          }).join("")
+    +   '</select></span>'
     + '</div>';
+}
+
+function lrSetSort(v){
+  LR_SORT = String(v || "");
+  if(typeof render === "function") render();
+}
+
+/* Sorting is done on a COPY. The array this view is handed belongs to the grid,
+ * and reordering it in place would silently reorder the table and card views
+ * too. */
+function lrSortRows(rows){
+  const out = (rows || []).slice();
+  const num = v => parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+  const when = r => new Date(r.created_at || r.date_processed || 0).getTime() || 0;
+  if(LR_SORT === "created_new") out.sort((a, b) => when(b) - when(a));
+  else if(LR_SORT === "created_old") out.sort((a, b) => when(a) - when(b));
+  else if(LR_SORT === "price_low")
+    out.sort((a, b) => (num(a.price) || Infinity) - (num(b.price) || Infinity));
+  else if(LR_SORT === "price_high")
+    out.sort((a, b) => (num(b.price) || -Infinity) - (num(a.price) || -Infinity));
+  else if(LR_SORT === "title_az")
+    out.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+  return out;
 }
 
 /* ═══ VARIATION FAMILIES ══════════════════════════════════════════════════
@@ -446,24 +733,35 @@ function lrFamilyRow(g){
   const asin = String(p.asin || (g.parentRow && g.parentRow.asin) || "");
   const img = (g.parentRow && typeof _rowImages === "function")
               ? (_rowImages(g.parentRow) || [])[0] : "";
-  return '<div class="lr-var' + (open ? " open" : "") + '"'
+  // The parent spans the data columns rather than filling them with dashes: it
+  // is a container, not a product, and Amazon draws it the same way.
+  return '<tr class="var-parent' + (open ? " open" : "") + '"'
     + ' onclick="lrToggleFamily(\'' + esc(g.parent_sku) + '\')">'
-    + '<span class="lr-cb" onclick="event.stopPropagation()"></span>'
-    + '<span class="lr-var-toggle"><i class="ti ti-chevron-right"></i></span>'
-    + '<span class="lr-var-count">Variations (' + g.children.length + ')</span>'
-    + '<span class="lr-img">'
-    +   (img ? '<img src="' + esc(img) + '" loading="lazy" onerror="this.remove()">'
-            : '<i class="ti ti-photo"></i>')
-    + '</span>'
-    + '<span class="lr-var-info">'
-    +   '<span class="lr-var-family">'
-    +     (esc(title) || '<span class="lr-dim">(variation family)</span>') + '</span>'
-    +   '<span class="lr-var-parent">'
-    +     (asin ? 'Parent ASIN ' + esc(asin) + ' · ' : '')
-    +     'Parent SKU ' + esc(g.parent_sku)
-    +     (g.theme ? ' · varies by ' + esc(String(g.theme).replace(/_/g, " ").toLowerCase()) : '')
-    +   '</span>'
-    + '</span></div>';
+    + '<td class="col-cb" onclick="event.stopPropagation()"></td>'
+    + '<td class="col-status">'
+    +   '<span class="var-toggle' + (open ? " open" : "") + '">'
+    +     '<i class="ti ti-chevron-right"></i></span> '
+    +   '<span class="var-count">Variations (' + g.children.length + ')</span>'
+    + '</td>'
+    + '<td colspan="6">'
+    +   '<div class="prod-wrap">'
+    +     '<span class="var-img">'
+    +       (img ? '<img src="' + esc(img) + '" loading="lazy" onerror="this.remove()">'
+                 : '<i class="ti ti-photo"></i>')
+    +     '</span>'
+    +     '<div>'
+    +       '<span class="var-family">'
+    +         (esc(title) || '(variation family)') + '</span>'
+    +       '<div class="var-meta">'
+    +         (asin ? 'Parent ASIN ' + esc(asin) + ' · ' : '')
+    +         'Parent SKU ' + esc(g.parent_sku)
+    +         (g.theme ? ' · varies by '
+                        + esc(String(g.theme).replace(/_/g, " ").toLowerCase()) : '')
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
+    + '</td>'
+    + '</tr>';
 }
 
 function lrToggleFamily(parentSku){
@@ -493,17 +791,23 @@ function detailedBlock(rows){
   const g = lrGroupRows(rows);
   // Families first, then everything that belongs to none -- the way Amazon
   // orders them, and it keeps the groups from being lost among 200 flat rows.
+  // The sort applies to the loose rows: a family's children are ordered by the
+  // family, and pulling them apart by price would stop it being one.
   const body = g.groups.map(function(fam){
       return lrFamilyRow(fam)
         + (LR_OPEN_FAMS[fam.parent_sku]
             ? fam.children.map(c => detailedRow(c, true)).join("")
             : "");
     }).join("")
-    + g.flat.map(r => detailedRow(r)).join("");
+    + lrSortRows(g.flat).map(r => detailedRow(r)).join("");
 
-  return lrMetricsBar()
+  return '<div class="card lrwrap">'
+       + lrMetricsBar()
        + (g.groups.length ? lrFamilyControls(g.groups) : "")
-       + '<div class="card lrwrap">' + detailedHead(rows) + body + '</div>';
+       + lrSortBar(rows)
+       + '<table class="inv-table">' + detailedHead(rows)
+       +   '<tbody>' + body + '</tbody></table>'
+       + '</div>';
 }
 
 /* Expand all / collapse all, shown only when there is something to expand. */
@@ -522,8 +826,8 @@ function lrFamilyControls(groups){
     ? '<i class="ti ti-chevrons-down"></i> Expand all'
     : '<i class="ti ti-chevrons-up"></i> Collapse all';
   return '<div class="lr-famctl">'
-    + '<span class="lr-dim">' + groups.length + ' variation famil'
+    + '<span class="prod-dim">' + groups.length + ' variation famil'
     + (groups.length === 1 ? 'y' : 'ies') + '</span>'
-    + '<button class="lr-mb-btn" onclick="lrExpandAll(' + willOpen + ')">'
+    + '<button class="lr-refresh" onclick="lrExpandAll(' + willOpen + ')">'
     + btn + '</button></div>';
 }

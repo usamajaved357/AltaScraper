@@ -1,208 +1,286 @@
-/* ============================================================================
-   THE DETAILED LISTING ROW — Amazon "Manage All Inventory" layout
-   ============================================================================
+/* static/css/listrow_detailed.css -- the Amazon "Manage Your Inventory" view.
+ *
+ * The values here come from listings-amazon-style-mockup.html, which is the
+ * approved design: its hex codes, its paddings, its font sizes. Where this file
+ * departs from the mockup it is because the owner asked for it, and each of
+ * those is marked. Nothing else is approximated.
+ *
+ * A LIGHT PANEL INSIDE A DARK APP. Only this view is light; the filter bar
+ * above it and the rest of the shell keep the app's dark theme. That is the
+ * mockup's own instruction and it is why every colour below is written out
+ * rather than taken from the app's variables -- a var(--panel) here would drag
+ * the dark theme into the middle of a light table.
+ *
+ * THE ONE DEPARTURE FROM THE MOCKUP: GREY, NOT WHITE.
+ *
+ *     "i want a light grey background instead of pure white"
+ *
+ * So the row background is #fafafa and the surrounding page #f2f2f2, where the
+ * mockup had #fff and #f5f5f5. The header sits a step darker again so it still
+ * reads as a header against the rows rather than merging into them. Every other
+ * colour -- the teal, the greens, the ambers, the borders -- is the mockup's
+ * exactly, because they were chosen against a light ground and still work on
+ * one.
+ */
 
-   A third view beside the table and the card grid. Layout is
-   docslistings-row-mockup.html's: a fixed-width status column, a flexible
-   product column, then three fixed data blocks and a row menu.
-
-   MUST LOAD AFTER dashboard.css: .card, .lr and the row menu share names and
-   specificity with rules there, and the later file wins.
-
-   ── COLOURS ─────────────────────────────────────────────────────────────────
-
-   This view lives INSIDE the listings page, beside the existing table and
-   cards, so unlike the drawer and the product page it uses the APP's tokens --
-   --panel, --line, --ink, --accent and the rest from dashboard.css. A row that
-   sat in the app's grid wearing the drawer's blue palette would be the only
-   thing on the screen in a different colour scheme.
-
-   The mockup's own names map onto them:
-
-       --surface-0 / -1 -> --bg / --panel2      --text-primary   -> --ink
-       --border         -> --line               --text-secondary -> --ink2
-       --radius         -> 6px                  --text-muted     -> --ink3
-       --fill-accent    -> --accent             --text-accent    -> --accent2
-       --bg-success     -> --ok-bg              --text-success   -> --ok
-       --bg-danger      -> --red-bg             --text-danger    -> --red
-       --bg-warning     -> --warn-bg            --text-warning   -> --warn
-
-   EVERY CLASS IS PREFIXED lr-, because dashboard.css already owns .row,
-   .status, .title, .meta, .data, .img and .actions.
-   ========================================================================= */
-
-.lrwrap{ padding:0; overflow-x:auto; }
-
-/* ---- 1. THE HEADER AND THE ROW SHARE ONE SET OF WIDTHS ------------------
-   Written once as a variable per column so the header can never drift out of
-   line with the rows underneath it -- which is the failure the table view
-   guards against by counting <th> against <td> at runtime. Here the two are
-   the same numbers by construction. */
-.lr-head, .lr{
-  --lr-cb:26px; --lr-status:92px; --lr-perf:120px;
-  --lr-inv:104px; --lr-price:132px; --lr-act:30px;
-  display:flex; align-items:flex-start; gap:8px;
-  padding:10px 12px; border-bottom:1px solid var(--line);
-  min-width:840px;              /* below this the blocks stop being readable */
-}
-.lr-head{
-  font-size:11px; color:var(--ink3); font-weight:600;
-  letter-spacing:.02em; border-bottom:2px solid var(--line2);
-  position:sticky; top:0; background:var(--panel); z-index:1;
-}
-.lr-head .lr-sub{ font-weight:400; color:var(--ink3); font-size:10px; }
-
-.lr{ font-size:12px; cursor:pointer; }
-.lr:hover{ background:var(--panel2); }
-.lr.sel{ background:var(--accent-bg); }
-.lr:last-child{ border-bottom:0; }
-
-.lr-cb{ width:var(--lr-cb); flex:none; padding-top:2px; }
-.lr-status{ width:var(--lr-status); flex:none; }
-.lr-product{ flex:1; min-width:0; display:flex; gap:10px; }
-.lr-perf{ width:var(--lr-perf); flex:none; }
-.lr-inv{ width:var(--lr-inv); flex:none; }
-.lr-pricing{ width:var(--lr-price); flex:none; }
-.lr-actions{ width:var(--lr-act); flex:none; text-align:right; }
-
-/* ---- 2. STATUS ---------------------------------------------------------
-   The app's own four statuses, coloured the way the mockup colours its
-   Amazon equivalents. PARENT gets its own quiet colour -- it is a container,
-   not a state of health. */
-.lr-status-badge{
-  font-size:10px; font-weight:600; padding:2px 7px; border-radius:4px;
-  display:inline-block; margin:0 0 3px; letter-spacing:.02em;
-}
-.lr-status-badge.live{   background:var(--ok-bg);     color:var(--ok); }
-.lr-status-badge.sent{   background:var(--warn-bg);   color:var(--warn); }
-.lr-status-badge.gen{    background:var(--accent-bg); color:var(--accent2); }
-.lr-status-badge.queued,
-.lr-status-badge.other{  background:var(--panel3);    color:var(--ink3); }
-.lr-status-badge.parent{ background:var(--panel3);    color:var(--ink2); }
-.lr-status-date{
-  font-size:10.5px; color:var(--ink3); line-height:1.4; display:block;
+.lrwrap{
+  background:#f2f2f2;
+  padding:0; border-radius:8px; overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Amazon Ember',Arial,sans-serif;
+  color:#111; font-size:13px; line-height:1.4;
 }
 
-/* ---- 3. PRODUCT -------------------------------------------------------- */
-.lr-img{
-  width:56px; height:56px; border-radius:6px; background:var(--bg);
-  border:1px solid var(--line); flex:none; overflow:hidden;
-  display:flex; align-items:center; justify-content:center;
-}
-.lr-img img{ width:100%; height:100%; object-fit:cover; }
-.lr-img i{ font-size:20px; color:var(--ink3); }
-.lr-details{ flex:1; min-width:0; }
-.lr-title{
-  font-size:12.5px; color:var(--ink); font-weight:500; line-height:1.35;
-  margin:0 0 3px;
-  /* Two lines, then ellipsis -- the mockup's clamp. */
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
-  overflow:hidden;
-}
-.lr-meta{ font-size:10.5px; color:var(--ink3); line-height:1.65; }
-.lr-meta strong{ color:var(--ink2); font-weight:500; }
-.lr-asin{ color:var(--accent2); font-weight:500; text-decoration:none; }
-.lr-asin:hover{ text-decoration:underline; }
-.lr-dim{ color:var(--ink3); }
-.lr-warn{ color:var(--warn); cursor:pointer; }
-.lr-warn:hover{ text-decoration:underline; }
-.lr-warn i{ font-size:11px; }
+/* ---- sort bar --------------------------------------------------------- */
 
-/* ---- 4. THE THREE DATA BLOCKS -----------------------------------------
-   Amazon's density: small, muted labels in a fixed-width column so the values
-   line up down the block, values a shade brighter and slightly bolder. */
-.lr-data{ font-size:10.5px; line-height:1.7; white-space:nowrap; }
-.lr-data-label{ color:var(--ink3); display:inline-block; width:56px; }
-.lr-data-val{ color:var(--ink2); font-weight:500; }
-.lr-data-val.green{ color:var(--ok); }
-.lr-data-val.red{ color:var(--red); }
-/* A dash is a FACT -- "we have not got this" -- so it is quiet but not
-   invisible, and never mistaken for a zero. */
-.lr-dash{ color:var(--ink4); }
-.lr-none{ font-size:10.5px; color:var(--ink3); font-style:italic; line-height:1.7; }
-
-.lr-buybox{ display:flex; align-items:center; gap:3px; font-size:10.5px; margin-top:2px; }
-.lr-buybox i{ font-size:12px; }
-.lr-buybox.win{ color:var(--ok); }
-.lr-buybox.lose{ color:var(--red); }
-/* Held the featured slot for SOME of the window -- neither a win nor a loss,
-   and drawn as neither. */
-.lr-buybox.part{ color:var(--warn); }
-
-/* ---- 5. WHERE THE NUMBERS CAME FROM, AND HOW FRESH -------------------- */
-.lr-mbar{
-  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-  font-size:10.5px; color:var(--ink3); margin:0 0 8px; padding:0 2px;
+.lr-sortbar{
+  background:#fafafa; border-bottom:1px solid #e7e7e7;
+  padding:8px 16px; display:flex; align-items:center;
+  justify-content:space-between; font-size:12px; color:#555; gap:10px;
 }
-.lr-mb-bits{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.lr-mb-dot{ color:var(--line2); }
-.lr-mb-load{ color:var(--accent2); }
-/* A window Amazon only partly reported. Marked, because a "30 day" total built
-   from four days looks identical to a real one. */
-.lr-mb-part{ color:var(--warn); cursor:help; }
-.lr-mb-btn{
-  margin-left:auto; background:none; border:1px solid var(--line2);
-  border-radius:5px; color:var(--ink2); font-family:inherit; font-size:10.5px;
-  padding:3px 9px; cursor:pointer; display:inline-flex; align-items:center; gap:4px;
+.lr-sortbar select{
+  border:1px solid #ccc; border-radius:4px; padding:3px 8px;
+  font-size:12px; color:#111; background:#fff;
 }
-.lr-mb-btn:hover{ background:var(--panel2); color:var(--ink); }
-.lr-mb-btn i{ font-size:12px; }
-.lr-mb-err{
-  font-size:10.5px; color:var(--warn); background:var(--warn-bg);
-  border:1px solid var(--warn-line); border-radius:6px;
-  padding:6px 10px; margin:0 0 8px; line-height:1.5;
-}
-.lr-mb-err i{ font-size:12px; }
+.lr-sortbar .lr-count{ color:#555; }
+.lr-sortbar .lr-filtericon{ color:#555; cursor:pointer; font-size:15px; }
+.lr-sortbar .lr-filtericon:hover{ color:#008296; }
 
-/* ---- 6. VARIATION FAMILIES -------------------------------------------
-   The parent row is a container, not a listing: it carries the family, the
-   count and the theme, and NO performance or pricing -- a parent is not
-   buyable, so a block of dashes across it would read as missing data rather
-   than as "this is a group". Amazon draws it the same way. */
+/* ---- the table -------------------------------------------------------- */
+
+.inv-table{ width:100%; border-collapse:collapse; background:#fafafa; }
+
+.inv-head{ background:#efefef; border-bottom:2px solid #e7e7e7; }
+.inv-head th{
+  padding:8px 10px; text-align:left; font-weight:400; font-size:12px;
+  color:#555; vertical-align:top; border-right:1px solid #e7e7e7;
+}
+.inv-head th:last-child{ border-right:none; }
+.inv-head .th-sub{
+  font-size:11px; color:#888; font-weight:400; display:block; margin-top:1px;
+}
+
+.col-cb{ width:30px; text-align:center; }
+.col-status{ width:118px; }
+.col-product{ min-width:280px; }
+.col-perf{ width:130px; }
+.col-inv{ width:126px; }
+.col-price{ width:165px; }
+.col-fees{ width:120px; }
+.col-actions{ width:28px; text-align:center; }
+
+.inv-row{ border-bottom:1px solid #e7e7e7; vertical-align:top; transition:background .1s; }
+.inv-row:hover{ background:#f0f0f0; cursor:pointer; }
+.inv-row.sel{ background:#eef4f5; }
+.inv-row td{
+  padding:8px 10px; vertical-align:top; font-size:13px;
+  border-right:1px solid #ececec;
+}
+.inv-row td:last-child{ border-right:none; }
+.inv-row input[type="checkbox"]{
+  width:15px; height:15px; accent-color:#008296; cursor:pointer;
+}
+
+/* ---- status ----------------------------------------------------------- */
+/* The WORD is the app's own (liststatus.js), coloured the way the mockup
+   colours its nearest equivalent. Inventing Amazon's vocabulary for a row this
+   app calls GENERATED would be a second name for the same thing. */
+.status-live{ color:#067D62; font-weight:500; font-size:12px; }
+.status-oos{ color:#B12704; font-weight:500; font-size:12px; }
+.status-missing{ color:#C45500; font-weight:500; font-size:12px; }
+.status-badge{
+  color:#fff; background:#008296; font-size:11px; padding:2px 6px;
+  border-radius:3px; font-weight:500; display:inline-block;
+}
+.status-badge.queued{ background:#767676; }
+.status-badge.sent{ background:#C45500; }
+.status-badge.err{ background:#B12704; }
+.status-badge.parent{ background:#232f3e; }
+.status-date{ font-size:11px; color:#888; line-height:1.5; margin-top:2px; }
+
+/* What Amazon said back about the submission. Its own line under the status,
+   because "we sent it" and "Amazon accepted it" are different facts. */
+.lr-amz{
+  font-size:11px; line-height:1.45; margin-top:4px;
+  display:flex; align-items:flex-start; gap:3px; cursor:help;
+}
+.lr-amz.ok{ color:#067D62; }
+.lr-amz.bad{ color:#B12704; }
+.lr-amz.wait{ color:#C45500; }
+.lr-amz i{ font-size:12px; flex-shrink:0; margin-top:1px; }
+
+/* ---- product ---------------------------------------------------------- */
+
+.prod-wrap{ display:flex; gap:10px; align-items:flex-start; }
+.prod-img{
+  width:56px; height:56px; border:1px solid #e7e7e7; border-radius:4px;
+  background:#fff; flex-shrink:0; display:flex; align-items:center;
+  justify-content:center; overflow:hidden; color:#ccc; font-size:18px;
+}
+.prod-img img{ width:100%; height:100%; object-fit:contain; }
+.prod-title{
+  font-size:13px; color:#111; font-weight:400; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  line-height:1.35; margin-bottom:3px;
+}
+.prod-meta{ font-size:11px; color:#555; line-height:1.65; }
+.prod-meta .asin-link{ color:#008296; text-decoration:none; font-weight:500; }
+.prod-meta .asin-link:hover{ text-decoration:underline; color:#005F6B; }
+.prod-meta .sku{ color:#333; }
+.prod-meta strong{ color:#111; font-weight:500; }
+.prod-dim{ color:#999; }
+
+/* A barcode that another listing already owns. Not a note in a tooltip: Rule 1
+   says a clash must be REPORTED, and a report you have to hover to find has not
+   been made. */
+.prod-ean.clash{ color:#B12704; font-weight:500; }
+.lr-eanclash{
+  font-size:11px; color:#B12704; margin-top:3px; line-height:1.45;
+  display:flex; align-items:flex-start; gap:3px;
+}
+.lr-eanclash i{ font-size:12px; flex-shrink:0; margin-top:1px; }
+
+/* The three risk symbols. Grey when there is nothing to say, amber for a
+   medium warning, red for a high one -- the same three states, from the same
+   reader, as the product page's rail. */
+.lr-risks{ display:flex; gap:5px; margin-top:4px; }
+.lr-risk{
+  font-size:12px; width:20px; height:20px; border-radius:4px;
+  display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid transparent; cursor:help;
+}
+.lr-risk.none{ color:#c8c8c8; }
+.lr-risk.warn{ color:#C45500; background:#fdf3e7; border-color:#f0d8b8; }
+.lr-risk.bad{  color:#B12704; background:#fdeceb; border-color:#f2c5c1; }
+
+.prod-warn{
+  font-size:11px; color:#C45500; margin-top:3px;
+  display:flex; align-items:center; gap:3px; cursor:pointer;
+}
+.prod-warn:hover{ text-decoration:underline; }
+
+/* ---- the data blocks -------------------------------------------------- */
+
+.d-row{
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-size:12px; line-height:1.7; gap:6px;
+}
+.d-label{ color:#888; }
+.d-val{ color:#111; font-weight:500; text-align:right; }
+.d-val.green{ color:#067D62; }
+.d-val.red{ color:#B12704; }
+.d-val.dash{ color:#ccc; font-weight:400; }
+.d-cat{ font-size:11px; color:#888; font-weight:400; }
+.d-none{ font-size:11px; color:#999; }
+
+/* The handling time, which the mockup has no column for and the app has always
+   shown. It sits in Inventory because that is the fulfilment block, and it
+   carries listings.js's own cell so the number and its "(ours)/(Amazon's)"
+   label cannot differ from the card view's. */
+.d-hand{ margin-top:4px; padding-top:4px; border-top:1px dashed #e0e0e0; }
+.d-hand .d-label{ display:block; margin-bottom:1px; }
+
+/* ---- pricing ---------------------------------------------------------- */
+
+.price-input-wrap{
+  display:flex; align-items:center; border:1px solid #ccc; border-radius:3px;
+  overflow:hidden; margin-bottom:4px; background:#fff;
+}
+.price-input-wrap .cur{
+  background:#f0f0f0; padding:2px 5px; font-size:11px; color:#555;
+  border-right:1px solid #ccc;
+}
+.price-input-wrap input{
+  border:none; outline:none; width:100%; padding:2px 5px; font-size:12px;
+  text-align:right; background:#fff; color:#111;
+}
+.price-input-wrap input:focus{ background:#fffbea; }
+.price-input-wrap.saving input{ background:#fffbea; }
+.price-input-wrap.saved{ border-color:#067D62; }
+.price-input-wrap.err{ border-color:#B12704; }
+
+.bb{ font-size:11px; display:flex; align-items:center; gap:3px; margin-top:2px; }
+.bb.win{ color:#067D62; }
+.bb.lose{ color:#B12704; }
+.bb.part{ color:#C45500; }
+.bb i{ font-size:13px; }
+
+/* ---- fees ------------------------------------------------------------- */
+
+.fee-link{ color:#008296; font-size:11px; text-decoration:none; cursor:pointer; }
+.fee-link:hover{ text-decoration:underline; }
+.fee-basis{ font-size:11px; color:#888; }
+
+/* ---- variation families ----------------------------------------------- */
+
+.var-parent{ background:#f0f0f0; cursor:pointer; }
+.var-parent:hover{ background:#e9e9e9; }
+.var-parent td{ padding:10px 10px; }
+.var-toggle{
+  color:#008296; font-size:14px; cursor:pointer; transition:transform .15s;
+  display:inline-block;
+}
+.var-toggle.open{ transform:rotate(90deg); }
+.var-count{ font-size:12px; color:#555; font-weight:500; }
+.var-family{ color:#008296; font-weight:500; font-size:13px; text-decoration:none; }
+.var-family:hover{ text-decoration:underline; }
+.var-meta{ font-size:11px; color:#888; margin-top:2px; }
+.var-img{
+  width:40px; height:40px; border:1px solid #e7e7e7; border-radius:4px;
+  background:#fff; overflow:hidden; display:inline-flex;
+  align-items:center; justify-content:center; color:#ccc;
+}
+.var-img img{ width:100%; height:100%; object-fit:contain; }
+.var-child td:nth-child(2){ padding-left:24px; }
+
+/* ---- actions ---------------------------------------------------------- */
+
+.act-dots{ color:#555; cursor:pointer; font-size:16px; }
+.act-dots:hover{ color:#008296; }
+
+/* ---- the metrics bar above the table ---------------------------------- */
+/* Kept from the previous version: it says where the performance numbers came
+   from and how old they are, which the mockup has no equivalent for and which
+   is the difference between a dash meaning "none" and "not asked yet". */
+.lr-metricsbar{
+  background:#fafafa; border-bottom:1px solid #e7e7e7; padding:6px 16px;
+  font-size:11px; color:#888; display:flex; align-items:center;
+  gap:10px; flex-wrap:wrap;
+}
+.lr-metricsbar b{ color:#555; font-weight:500; }
+.lr-bits{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.lr-dot{ color:#ccc; }
+.lr-loading{ color:#008296; }
+/* A window Amazon could only half report. Amber, and it carries the reason in
+   its title -- a 30-day total built from four days of data is not one. */
+.lr-part{ color:#C45500; cursor:help; }
+.lr-refresh{
+  margin-left:auto; color:#008296; cursor:pointer; background:none;
+  border:1px solid #ccc; border-radius:4px; padding:3px 9px; font-size:11px;
+  display:inline-flex; align-items:center; gap:4px;
+  font-family:inherit;
+}
+.lr-refresh:hover{ background:#eef4f5; border-color:#008296; }
+.lr-err{
+  background:#fdf3e7; border-bottom:1px solid #f0d8b8; color:#C45500;
+  font-size:11px; padding:6px 16px; line-height:1.5;
+}
+.lr-err i{ font-size:12px; }
+
+/* Expand all / collapse all, above the table when there is a family to expand. */
 .lr-famctl{
-  display:flex; align-items:center; gap:8px;
-  font-size:10.5px; margin:0 0 6px; padding:0 2px;
+  background:#fafafa; border-bottom:1px solid #e7e7e7; padding:6px 16px;
+  font-size:11px; color:#555; display:flex; align-items:center; gap:10px;
 }
-.lr-famctl .lr-mb-btn{ margin-left:0; }
-
-.lr-var{
-  display:flex; align-items:center; gap:8px;
-  padding:9px 12px; border-bottom:1px solid var(--line);
-  cursor:pointer; font-size:12px; background:var(--panel2); min-width:840px;
+.lr-famctl button{
+  background:none; border:1px solid #ccc; border-radius:4px; padding:3px 9px;
+  font-size:11px; color:#008296; cursor:pointer; font-family:inherit;
+  display:inline-flex; align-items:center; gap:4px;
 }
-.lr-var:hover{ background:var(--panel3); }
-.lr-var .lr-cb{ width:26px; flex:none; }
-.lr-var-toggle{
-  width:20px; flex:none; color:var(--ink3); font-size:14px;
-  transition:transform .15s; display:flex; align-items:center;
+.lr-famctl button:hover{ background:#eef4f5; border-color:#008296; }
+
+@media(max-width:1200px){
+  .col-fees{ display:none; }
 }
-.lr-var.open .lr-var-toggle{ transform:rotate(90deg); }
-.lr-var-count{ font-size:11.5px; color:var(--ink2); font-weight:600; width:92px; flex:none; }
-.lr-var-info{ flex:1; min-width:0; font-size:12px; }
-.lr-var-family{
-  color:var(--accent2); font-weight:500; display:block;
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-.lr-var-parent{ color:var(--ink3); font-size:10.5px; display:block; }
-
-/* A child sits under its parent, indented and on a quieter ground so the
-   nesting is visible without a second border. */
-.lr.lr-child{ padding-left:44px; background:var(--bg); }
-.lr.lr-child:hover{ background:var(--panel2); }
-.lr.lr-child.sel{ background:var(--accent-bg); }
-
-/* ---- 5. THE ROW MENU ---------------------------------------------------
-   rowActions() renders the app's existing .acts markup; it is compacted here
-   rather than restyled, so the buttons inside stay the ones the other views
-   use. */
-.lr-actions .acts{ display:flex; justify-content:flex-end; }
-.lr-actions .acts .btn{ padding:2px 6px; font-size:11px; }
-
-/* ---- 6. NARROW SCREENS -------------------------------------------------
-   The row has a min-width and the wrapper scrolls, rather than the blocks
-   collapsing on top of each other. Four numbers in a 60px column is not a
-   denser view, it is an unreadable one. */
-@media (max-width:900px){
-  .lr-head, .lr{ gap:6px; padding:9px 10px; }
-  .lr-title{ font-size:12px; }
+@media(max-width:980px){
+  .col-perf{ display:none; }
 }

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Listings — Amazon Style Mockup</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Amazon Ember',Arial,sans-serif;background:#f5f5f5;color:#111;font-size:13px;line-height:1.4}
+
+/* === Filter bar (your existing dark style — kept) === */
+.filter-bar{background:#232f3e;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-pill{padding:6px 14px;border-radius:20px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;color:#fff;background:transparent}
+.filter-pill:hover{background:rgba(255,255,255,0.1)}
+.filter-pill.active{background:#fff;color:#232f3e}
+.filter-count{font-size:11px;color:#999;margin-left:3px}
+.filter-bar .sync-btn{margin-left:auto;color:#ff9900;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:4px}
+
+/* === Sort bar === */
+.sort-bar{background:#fff;border-bottom:1px solid #e7e7e7;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#555}
+.sort-bar select{border:1px solid #ccc;border-radius:4px;padding:3px 8px;font-size:12px;color:#111}
+
+/* === Table === */
+.inv-table{width:100%;border-collapse:collapse;background:#fff}
+
+/* Header */
+.inv-head{background:#f7f7f7;border-bottom:2px solid #e7e7e7}
+.inv-head th{padding:8px 10px;text-align:left;font-weight:400;font-size:12px;color:#555;vertical-align:top;border-right:1px solid #e7e7e7}
+.inv-head th:last-child{border-right:none}
+.inv-head .th-sub{font-size:11px;color:#888;font-weight:400;display:block;margin-top:1px}
+
+/* Column widths */
+.col-cb{width:30px;text-align:center}
+.col-star{width:28px;text-align:center}
+.col-status{width:110px}
+.col-product{min-width:280px}
+.col-perf{width:130px}
+.col-inv{width:120px}
+.col-price{width:165px}
+.col-fees{width:120px}
+.col-actions{width:28px;text-align:center}
+
+/* Rows */
+.inv-row{border-bottom:1px solid #e7e7e7;vertical-align:top;transition:background .1s}
+.inv-row:hover{background:#f8f8f8}
+.inv-row td{padding:8px 10px;vertical-align:top;font-size:13px;border-right:1px solid #f0f0f0}
+.inv-row td:last-child{border-right:none}
+
+/* Checkbox + star */
+.inv-row input[type="checkbox"]{width:15px;height:15px;accent-color:#008296;cursor:pointer}
+.star{color:#ccc;cursor:pointer;font-size:16px;transition:color .1s}
+.star:hover,.star.on{color:#ff9900}
+
+/* Status */
+.status-active{color:#067D62;font-weight:500;font-size:12px}
+.status-oos{color:#B12704;font-weight:500;font-size:12px}
+.status-missing{color:#C45500;font-weight:500;font-size:12px}
+.status-generated{color:#fff;background:#008296;font-size:11px;padding:2px 6px;border-radius:3px;font-weight:500;display:inline-block}
+.status-date{font-size:11px;color:#888;line-height:1.5;margin-top:2px}
+
+/* Product details */
+.prod-wrap{display:flex;gap:10px;align-items:flex-start}
+.prod-img{width:56px;height:56px;border:1px solid #e7e7e7;border-radius:4px;background:#fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.prod-img img{width:100%;height:100%;object-fit:contain}
+.prod-title{font-size:13px;color:#111;font-weight:400;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35;margin-bottom:3px}
+.prod-meta{font-size:11px;color:#555;line-height:1.65}
+.prod-meta .asin-link{color:#008296;text-decoration:none;font-weight:500}
+.prod-meta .asin-link:hover{text-decoration:underline;color:#005F6B}
+.prod-meta .sku{color:#333}
+.prod-warn{font-size:11px;color:#C45500;margin-top:3px;display:flex;align-items:center;gap:3px}
+
+/* Data labels */
+.d-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;line-height:1.7}
+.d-label{color:#888}
+.d-val{color:#111;font-weight:500;text-align:right}
+.d-val.green{color:#067D62}
+.d-val.red{color:#B12704}
+.d-val.dash{color:#ccc;font-weight:400}
+.d-cat{font-size:11px;color:#888;font-weight:400}
+
+/* Price inputs */
+.price-input-wrap{display:flex;align-items:center;border:1px solid #ccc;border-radius:3px;overflow:hidden;margin-bottom:4px}
+.price-input-wrap .cur{background:#f0f0f0;padding:2px 5px;font-size:11px;color:#555;border-right:1px solid #ccc}
+.price-input-wrap input{border:none;outline:none;width:60px;padding:2px 5px;font-size:12px;text-align:right}
+.price-input-wrap input:focus{background:#fffbea}
+
+/* Buy box */
+.bb{font-size:11px;display:flex;align-items:center;gap:3px;margin-top:2px}
+.bb.win{color:#067D62}
+.bb.lose{color:#B12704}
+.bb .ti{font-size:13px}
+.bb-label{font-size:11px;color:#888}
+.bb-price{font-size:11px;color:#111}
+
+/* Fees */
+.fee-link{color:#008296;font-size:11px;text-decoration:none;cursor:pointer}
+.fee-link:hover{text-decoration:underline}
+
+/* Variation parent row */
+.var-parent{background:#fafafa;cursor:pointer}
+.var-parent:hover{background:#f0f0f0}
+.var-parent td{padding:10px 10px}
+.var-toggle{color:#008296;font-size:14px;cursor:pointer;transition:transform .15s;display:inline-block}
+.var-toggle.open{transform:rotate(90deg)}
+.var-count{font-size:12px;color:#555;font-weight:500}
+.var-family{color:#008296;font-weight:500;font-size:13px;text-decoration:none}
+.var-family:hover{text-decoration:underline}
+.var-meta{font-size:11px;color:#888;margin-top:2px}
+
+/* Variation child row */
+.var-child{background:#fff}
+.var-child td:nth-child(3){padding-left:24px}
+.var-children{display:none}
+.var-children.open{display:table-row-group}
+.var-child-header{background:#f0f4f5;border-bottom:1px solid #e0e0e0}
+.var-child-header td{font-size:12px;color:#555;font-weight:500;padding:6px 10px}
+
+/* Actions */
+.act-dots{color:#555;cursor:pointer;font-size:16px}
+.act-dots:hover{color:#008296}
+
+/* Responsive */
+@media(max-width:1200px){
+  .col-fees{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- Filter bar (your existing dark style) -->
+<div class="filter-bar">
+  <span class="filter-pill active">Drafts</span>
+  <span class="filter-pill">Live on Amazon</span>
+  <span class="filter-pill">All</span>
+  <span class="filter-pill">Removed<span class="filter-count">(10)</span></span>
+  <span class="sync-btn"><i class="ti ti-refresh"></i> Sync · synced 3m ago</span>
+</div>
+
+<!-- Sort bar -->
+<div class="sort-bar">
+  <span>1 – 25 of 130 &nbsp;&nbsp; <strong>Sort by:</strong>
+    <select>
+      <option>Date Created: New to Old</option>
+      <option>Date Created: Old to New</option>
+      <option>Price: Low to High</option>
+      <option>Price: High to Low</option>
+    </select>
+  </span>
+  <span style="display:flex;gap:6px;align-items:center">
+    <span style="color:#008296;cursor:pointer;font-size:11px"><i class="ti ti-filter"></i> All</span>
+  </span>
+</div>
+
+<!-- Main table -->
+<table class="inv-table">
+<thead>
+<tr class="inv-head">
+  <th class="col-cb"><input type="checkbox" title="Select all"></th>
+  <th class="col-star"></th>
+  <th class="col-status">Listing status<span class="th-sub">Next step</span></th>
+  <th class="col-product">Product details<span class="th-sub">Image, Title, ASIN, and SKU</span></th>
+  <th class="col-perf">Performance <i class="ti ti-info-circle" style="font-size:12px;color:#aaa"></i><span class="th-sub">Last 30 days</span></th>
+  <th class="col-inv">Inventory<span class="th-sub">Fulfilled by and quantity</span></th>
+  <th class="col-price">Price and shipping cost<span class="th-sub">Pricing details</span></th>
+  <th class="col-fees">Estimated fees<span class="th-sub">per unit sold</span></th>
+  <th class="col-actions"></th>
+</tr>
+</thead>
+
+<tbody>
+
+<!-- === VARIATION PARENT ROW === -->
+<tr class="inv-row var-parent" onclick="toggleVar(this)">
+  <td class="col-cb"><input type="checkbox" onclick="event.stopPropagation()"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="event.stopPropagation();this.classList.toggle('on')"></i></td>
+  <td colspan="6" style="border-right:none">
+    <div style="display:flex;align-items:center;gap:10px">
+      <i class="ti ti-chevron-right var-toggle"></i>
+      <span class="var-count">Variations (2)</span>
+      <div class="prod-img" style="width:40px;height:40px">
+        <img src="https://m.media-amazon.com/images/I/61QK3VkRcWL._AC_SX75_.jpg" alt="">
+      </div>
+      <div>
+        <a class="var-family" href="#" onclick="event.preventDefault()">SHAKEWARE Protein Shaker Bottle 600ml, Snap-Fit Agitator</a>
+        <div class="var-meta">Parent ASIN: <span style="color:#008296">B0GWFWPLYJ</span> · Parent SKU: Parent-shakeware-2</div>
+      </div>
+    </div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots" onclick="event.stopPropagation()"></i></td>
+</tr>
+
+<!-- Variation children (hidden by default) -->
+<tbody class="var-children" id="var1">
+<tr class="inv-row var-child">
+  <td class="col-cb"><input type="checkbox"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="this.classList.toggle('on')"></i></td>
+  <td class="col-status">
+    <span class="status-active">Active</span>
+    <div class="status-date">Mar 31, 2026<br>Mar 30, 2026</div>
+  </td>
+  <td class="col-product">
+    <div class="prod-wrap">
+      <div class="prod-img"><img src="https://m.media-amazon.com/images/I/61QK3VkRcWL._AC_SX75_.jpg" alt=""></div>
+      <div>
+        <div class="prod-title">SHAKEWARE Protein Shaker Bottle, 28oz, Snap-Fit Agitator for Smooth Mixing, Black</div>
+        <div class="prod-meta">
+          ASIN <a class="asin-link" href="#">B0GVGB378N</a><br>
+          SKU <span class="sku">E1PL-28850-BL-BL-V1</span><br>
+          EAN 5060512130041<br>
+          FNSKU B0GVGB378N
+        </div>
+      </div>
+    </div>
+  </td>
+  <td class="col-perf">
+    <div class="d-row"><span class="d-label">Sales</span><span class="d-val">$79</span></div>
+    <div class="d-row"><span class="d-label">Units sold</span><span class="d-val">8</span></div>
+    <div class="d-row"><span class="d-label">Page views</span><span class="d-val">—</span></div>
+    <div class="d-row"><span class="d-label">Sales rank</span><span class="d-val">411,022</span></div>
+    <div style="font-size:11px;color:#888">(Health & Household)</div>
+  </td>
+  <td class="col-inv">
+    <div class="d-row"><span class="d-label">On-hand</span><span class="d-val">10</span></div>
+    <div style="font-size:11px;color:#888;margin-bottom:2px">(FBA)</div>
+    <div class="d-row"><span class="d-label">Available</span><span class="d-val">10</span></div>
+    <div class="d-row"><span class="d-label">Inbound</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Unfulfillable</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Reserved</span><span class="d-val">1</span></div>
+  </td>
+  <td class="col-price">
+    <div style="margin-bottom:4px">
+      <div class="price-input-wrap"><span class="cur">USD</span><input type="text" value="7.99"></div>
+    </div>
+    <div class="bb-label">Minimum price</div>
+    <div class="price-input-wrap"><span class="cur">USD</span><input type="text" value=""></div>
+    <div class="bb-label">Maximum price</div>
+    <div class="price-input-wrap"><span class="cur">USD</span><input type="text" value=""></div>
+    <div class="bb win"><i class="ti ti-circle-check"></i> Featured offer &nbsp; $7.99 + $0.00</div>
+    <div class="d-row"><span class="bb-label">Competitive price</span><span class="d-val dash">—</span></div>
+    <div class="bb-label" style="margin-top:2px"><i class="ti ti-alert-triangle" style="color:#C45500;font-size:12px"></i> Business price &nbsp; <a class="fee-link">Set</a></div>
+    <div><a class="fee-link">View reference prices</a></div>
+  </td>
+  <td class="col-fees">
+    <div class="d-row"><span class="d-label">Total fees</span><span class="d-val">$6.12</span></div>
+    <div class="d-row"><span class="d-label">FBA fee</span><span class="d-val">$4.92</span></div>
+    <div style="margin-top:4px"><a class="fee-link">Calculate revenue</a></div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots"></i></td>
+</tr>
+
+<tr class="inv-row var-child">
+  <td class="col-cb"><input type="checkbox"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="this.classList.toggle('on')"></i></td>
+  <td class="col-status">
+    <span class="status-oos">Out of stock</span>
+    <div class="status-date">Replenish inventory<br>Jul 25, 2026<br>Mar 30, 2026</div>
+  </td>
+  <td class="col-product">
+    <div class="prod-wrap">
+      <div class="prod-img"><img src="https://m.media-amazon.com/images/I/61QK3VkRcWL._AC_SX75_.jpg" alt=""></div>
+      <div>
+        <div class="prod-title">SHAKEWARE Protein Shaker Bottle — 28oz — Snap-Fit Agitator, Clear</div>
+        <div class="prod-meta">
+          ASIN <a class="asin-link" href="#">B0GVGBLGDM</a><br>
+          SKU <span class="sku">E1PL-28850-CL-CL-V1</span><br>
+          EAN 5060512130058
+        </div>
+      </div>
+    </div>
+  </td>
+  <td class="col-perf">
+    <div class="d-row"><span class="d-label">Sales</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Units sold</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Page views</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Sales rank</span><span class="d-val">412,224</span></div>
+    <div style="font-size:11px;color:#888">(Health & Household)</div>
+  </td>
+  <td class="col-inv">
+    <div class="d-row"><span class="d-label">On-hand</span><span class="d-val red">0</span></div>
+    <div style="font-size:11px;color:#888;margin-bottom:2px">(FBA)</div>
+    <div class="d-row"><span class="d-label">Available</span><span class="d-val red">0</span></div>
+    <div class="d-row"><span class="d-label">Inbound</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Unfulfillable</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Reserved</span><span class="d-val">0</span></div>
+  </td>
+  <td class="col-price">
+    <div class="price-input-wrap"><span class="cur">USD</span><input type="text" value="7.99"></div>
+    <div class="bb-label">Minimum price</div>
+    <div class="price-input-wrap"><span class="cur">USD</span><input type="text" value=""></div>
+    <div class="bb-label">Maximum price</div>
+    <div class="price-input-wrap"><span class="cur">USD</span><input type="text" value=""></div>
+    <div class="d-row"><span class="bb-label">Featured offer</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="bb-label">Competitive price</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="bb-label">Lowest price</span><span class="d-val dash">—</span></div>
+  </td>
+  <td class="col-fees">
+    <div class="d-row"><span class="d-label">Total fees</span><span class="d-val">$6.12</span></div>
+    <div class="d-row"><span class="d-label">FBA fee</span><span class="d-val">$4.92</span></div>
+    <div style="margin-top:4px"><a class="fee-link">Calculate revenue</a></div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots"></i></td>
+</tr>
+</tbody>
+
+<!-- === SINGLE ACTIVE LISTING === -->
+<tr class="inv-row">
+  <td class="col-cb"><input type="checkbox"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="this.classList.toggle('on')"></i></td>
+  <td class="col-status">
+    <span class="status-active">Active</span>
+    <div class="status-date">9 Dec 2025<br>6 Dec 2019</div>
+  </td>
+  <td class="col-product">
+    <div class="prod-wrap">
+      <div class="prod-img"><img src="https://m.media-amazon.com/images/I/61FkRq-e3sL._AC_SX75_.jpg" alt=""></div>
+      <div>
+        <div class="prod-title">3-in-1 Floor Scrub Brush Long Handle Bathroom Kitchen Tile Grout Cleaning Brush</div>
+        <div class="prod-meta">
+          ASIN <a class="asin-link" href="#">B0H8VHDX8B</a><br>
+          SKU <span class="sku">9.18_3Days_B0C6XTNXL8</span><br>
+          EAN 4553334465572<br>
+          Condition <strong>New</strong>
+        </div>
+      </div>
+    </div>
+  </td>
+  <td class="col-perf">
+    <div class="d-row"><span class="d-label">Sales</span><span class="d-val">£187</span></div>
+    <div class="d-row"><span class="d-label">Units sold</span><span class="d-val">8</span></div>
+    <div class="d-row"><span class="d-label">Page views</span><span class="d-val">52</span></div>
+    <div class="d-row"><span class="d-label">Sales rank</span><span class="d-val">45,230</span></div>
+    <div style="font-size:11px;color:#888">(Home & Kitchen)</div>
+  </td>
+  <td class="col-inv">
+    <div class="d-row"><span class="d-label">On-hand</span><span class="d-val dash">—</span></div>
+    <div style="font-size:11px;color:#888;margin-bottom:2px">(MFN)</div>
+    <div class="d-row"><span class="d-label">Available</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Inbound</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Reserved</span><span class="d-val">0</span></div>
+  </td>
+  <td class="col-price">
+    <div class="price-input-wrap"><span class="cur">GBP</span><input type="text" value="24.99"></div>
+    <div class="d-row"><span class="d-label">Cost</span><span class="d-val">£9.18</span></div>
+    <div class="d-row"><span class="d-label">Profit</span><span class="d-val green">£8.57</span></div>
+    <div class="bb win"><i class="ti ti-circle-check"></i> Featured offer</div>
+    <div class="bb win"><i class="ti ti-circle-check"></i> Competitive price</div>
+    <div class="bb win"><i class="ti ti-circle-check"></i> Lowest price</div>
+  </td>
+  <td class="col-fees">
+    <div class="d-row"><span class="d-label">Total fees</span><span class="d-val">£4.08</span></div>
+    <div class="d-row"><span class="d-label">Referral</span><span class="d-val">£3.75</span></div>
+    <div style="margin-top:4px"><a class="fee-link">Calculate revenue</a></div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots"></i></td>
+</tr>
+
+<!-- === OUT OF STOCK === -->
+<tr class="inv-row">
+  <td class="col-cb"><input type="checkbox"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="this.classList.toggle('on')"></i></td>
+  <td class="col-status">
+    <span class="status-oos">Out of stock</span>
+    <div class="status-date">Replenish inventory<br>2 May 2026</div>
+  </td>
+  <td class="col-product">
+    <div class="prod-wrap">
+      <div class="prod-img" style="background:#f5f5f5"><i class="ti ti-photo" style="color:#ccc;font-size:20px"></i></div>
+      <div>
+        <div class="prod-title">Wall Mounted Can Crusher 2-in-1 Bottle Opener Heavy Duty Recycling Tool</div>
+        <div class="prod-meta">
+          ASIN <a class="asin-link" href="#">B0D2RLWFBF</a><br>
+          SKU <span class="sku">8.99_3Days_B0D2RLWFBF</span><br>
+          EAN 4553334465589<br>
+          Condition <strong>New</strong>
+        </div>
+      </div>
+    </div>
+  </td>
+  <td class="col-perf">
+    <div class="d-row"><span class="d-label">Sales</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Units sold</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Page views</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Sales rank</span><span class="d-val">98,961</span></div>
+  </td>
+  <td class="col-inv">
+    <div class="d-row"><span class="d-label">On-hand</span><span class="d-val red">0</span></div>
+    <div class="d-row"><span class="d-label">Available</span><span class="d-val red">0</span></div>
+    <div class="d-row"><span class="d-label">Inbound</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Unfulfillable</span><span class="d-val">0</span></div>
+  </td>
+  <td class="col-price">
+    <div class="price-input-wrap"><span class="cur">GBP</span><input type="text" value="10.49"></div>
+    <div class="d-row"><span class="d-label">Cost</span><span class="d-val">£8.99</span></div>
+    <div class="d-row"><span class="d-label">Profit</span><span class="d-val red">-£1.60</span></div>
+    <div class="bb lose"><i class="ti ti-circle-x"></i> No featured offer</div>
+    <div class="d-row"><span class="bb-label">Competitive price</span><span class="d-val dash">—</span></div>
+    <div class="bb lose"><i class="ti ti-circle-x"></i> Lowest price &nbsp; £29.71</div>
+  </td>
+  <td class="col-fees">
+    <div class="d-row"><span class="d-label">Total fees</span><span class="d-val">£3.10</span></div>
+    <div class="d-row"><span class="d-label">Referral</span><span class="d-val">£1.57</span></div>
+    <div style="margin-top:4px"><a class="fee-link">Calculate revenue</a></div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots"></i></td>
+</tr>
+
+<!-- === MISSING OFFER === -->
+<tr class="inv-row">
+  <td class="col-cb"><input type="checkbox"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="this.classList.toggle('on')"></i></td>
+  <td class="col-status">
+    <span class="status-missing">Missing Offer</span>
+    <div class="status-date">Add missing offer<br>details<br>28 Jan 2025</div>
+  </td>
+  <td class="col-product">
+    <div class="prod-wrap">
+      <div class="prod-img" style="background:#f5f5f5"><i class="ti ti-photo" style="color:#ccc;font-size:20px"></i></div>
+      <div>
+        <div class="prod-title">Stainless Steel Chip Cutter French Fry Slicer Kitchen Vegetable Chopper</div>
+        <div class="prod-meta">
+          ASIN <a class="asin-link" href="#">B0FWKJV5YL</a><br>
+          SKU <span class="sku">9.29_3Days_B0FWKJV5YL</span><br>
+          Condition <strong>New</strong>
+        </div>
+        <div class="prod-warn"><i class="ti ti-alert-triangle" style="font-size:13px"></i> 2 warnings</div>
+      </div>
+    </div>
+  </td>
+  <td class="col-perf">
+    <div class="d-row"><span class="d-label">Sales</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Units sold</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Page views</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Sales rank</span><span class="d-val dash">—</span></div>
+  </td>
+  <td class="col-inv">
+    <div class="d-row"><span class="d-label">On-hand</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Available</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Inbound</span><span class="d-val">0</span></div>
+    <div class="d-row"><span class="d-label">Reserved</span><span class="d-val">0</span></div>
+  </td>
+  <td class="col-price">
+    <div class="d-row"><span class="d-label">Price</span><span class="d-val dash">—</span></div>
+    <div class="d-row"><span class="d-label">Cost</span><span class="d-val">£9.29</span></div>
+    <div class="d-row"><span class="d-label">Profit</span><span class="d-val dash">—</span></div>
+  </td>
+  <td class="col-fees">
+    <div class="d-row"><span class="d-label">Total fees</span><span class="d-val dash">—</span></div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots"></i></td>
+</tr>
+
+<!-- === GENERATED DRAFT === -->
+<tr class="inv-row">
+  <td class="col-cb"><input type="checkbox"></td>
+  <td class="col-star"><i class="ti ti-star star" onclick="this.classList.toggle('on')"></i></td>
+  <td class="col-status">
+    <span class="status-generated">GENERATED</span>
+    <div class="status-date">29 Aug 2026</div>
+  </td>
+  <td class="col-product">
+    <div class="prod-wrap">
+      <div class="prod-img"><img src="https://m.media-amazon.com/images/I/71jLpjVOYSL._AC_SX75_.jpg" alt=""></div>
+      <div>
+        <div class="prod-title">Telescopic Window Cleaning Kit 3.5m with Squeegee and Scrubber Microfibre Head</div>
+        <div class="prod-meta">
+          ASIN <a class="asin-link" href="#">B0C7GSCV5W</a> <span style="font-size:10px;color:#888">(competitor ref)</span><br>
+          SKU <span class="sku">11.99_2Days_B0C7GSCV5W</span><br>
+          EAN 4553334465596<br>
+          Condition <strong>New</strong>
+        </div>
+        <div class="prod-warn"><i class="ti ti-alert-triangle" style="font-size:13px"></i> 2 warnings</div>
+      </div>
+    </div>
+  </td>
+  <td class="col-perf">
+    <div style="color:#888;font-style:italic;font-size:11px">Not yet live</div>
+  </td>
+  <td class="col-inv">
+    <div style="color:#888;font-style:italic;font-size:11px">—</div>
+  </td>
+  <td class="col-price">
+    <div class="d-row"><span class="d-label">Price</span><span class="d-val">£12.99</span></div>
+    <div class="d-row"><span class="d-label">Cost</span><span class="d-val">£11.99</span></div>
+    <div class="d-row"><span class="d-label">Profit</span><span class="d-val red">-£1.62</span></div>
+  </td>
+  <td class="col-fees">
+    <div class="d-row"><span class="d-label">Est. fee</span><span class="d-val">£2.34</span></div>
+    <div style="font-size:10px;color:#888">18.38% measured</div>
+  </td>
+  <td class="col-actions"><i class="ti ti-dots-vertical act-dots"></i></td>
+</tr>
+
+</tbody>
+</table>
+
+<script>
+function toggleVar(parentRow) {
+  var toggle = parentRow.querySelector('.var-toggle');
+  var tbody = parentRow.closest('tbody') || parentRow.parentElement;
+  var childrenTbody = parentRow.nextElementSibling;
+  while (childrenTbody && !childrenTbody.classList.contains('var-children')) {
+    childrenTbody = childrenTbody.nextElementSibling;
+  }
+  if (!childrenTbody) {
+    // try sibling tbody
+    var parent = parentRow.parentElement;
+    childrenTbody = parent.nextElementSibling;
+  }
+  if (childrenTbody && childrenTbody.classList.contains('var-children')) {
+    childrenTbody.classList.toggle('open');
+    toggle.classList.toggle('open');
+  }
+}
+</script>
+</body>
+</html>
