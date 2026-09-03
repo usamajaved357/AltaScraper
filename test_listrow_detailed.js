@@ -97,24 +97,28 @@ truthy("it asks rowAsin() instead", /rowAsin\(r\)/.test(SRC));
 // ---------------------------------------------------------------------------
 console.log("\ndashes mean \"we have not got this\", and zero never stands in");
 // ---------------------------------------------------------------------------
-check("nothing known -> a dash",     ctx.lrVal(undefined), '<span class="lr-dash">--</span>');
-check("null -> a dash",              ctx.lrVal(null),      '<span class="lr-dash">--</span>');
-check("empty string -> a dash",      ctx.lrVal(""),        '<span class="lr-dash">--</span>');
+check("nothing known -> a dash",     ctx.lrVal(undefined), '<span class="dash">—</span>');
+check("null -> a dash",              ctx.lrVal(null),      '<span class="dash">—</span>');
+check("empty string -> a dash",      ctx.lrVal(""),        '<span class="dash">—</span>');
 check("a real ZERO is shown as zero, not a dash", ctx.lrVal(0), "0");
 check("a number survives",           ctx.lrVal(14), "14");
 check("thousands get separators",    ctx.lrVal(24810, {comma:true}), "24,810");
-check("money gets the currency",     ctx.lrVal("342", {money:true}), "£342");
+check("money gets the currency",     ctx.lrVal("342", {money:true}), "£342.00");
 
 console.log("\n  ...so an unfilled metrics table draws dashes, not zeros");
 truthy("Phase 1 starts with no metrics", Object.keys(LM()).length === 0);
 const perf = ctx.lrPerf(LIVE);
-check("four dashes in Performance", (perf.match(/lr-dash/g) || []).length, 4);
+check("four dashes in Performance", (perf.match(/class="dash"/g) || []).length, 4);
 check("  and no zeros",             /">0</.test(perf), false);
 
 console.log("\n  ...and once filled, the values appear");
 // The field names are the ones /listing/live_metrics really returns -- see
 // domain/listing_metrics.py and routes/metrics_routes.py.
 LM()[LIVE.sku] = {sales:342, units:14, views:89, rank:24810,
+                  // AMAZON-fulfilled, so the warehouse lines apply. Without a
+                  // channel the row draws neither them nor a guess -- see
+                  // lrInvChannel.
+                  fulfillment:"AMAZON",
                   on_hand:3, available:3, inbound:0, reserved:0,
                   buybox_pct:100, buy_box_price:"23.99", offer_count:4};
 const perf2 = ctx.lrPerf(LIVE);
@@ -126,27 +130,32 @@ const inv2 = ctx.lrInv(LIVE);
 truthy("on-hand", inv2.indexOf(">3<") >= 0);
 truthy("a real zero inbound is shown as 0", inv2.indexOf(">0<") >= 0);
 const pr2 = ctx.lrPricing(LIVE);
-truthy("the buy box when we held it all window", pr2.indexOf("Featured offer") >= 0);
+truthy("the featured price has its own row", pr2.indexOf("Featured offer") >= 0);
+truthy("  and holding it all window is said as ours", pr2.indexOf("Ours, all of the window") >= 0);
 truthy("the market price when known", pr2.indexOf("£23.99") >= 0);
 truthy("and how many offers there are", pr2.indexOf(">4<") >= 0);
 
 console.log("\n  ...zero stock is called out in red");
 LM()[LIVE.sku].on_hand = 0; LM()[LIVE.sku].available = 0;
 const inv3 = ctx.lrInv(LIVE);
-check("on-hand 0 is red", (inv3.match(/lr-data-val red/g) || []).length, 2);
+check("on-hand 0 is red", (inv3.match(/d-val red/g) || []).length, 2);
 
 console.log("\n  ...the buy box is a SHARE of the window, and is not dressed as a live yes/no");
 LM()[LIVE.sku].buybox_pct = 0;
-truthy("never held -> not winning", ctx.lrPricing(LIVE).indexOf("Not winning") >= 0);
+truthy("never held -> never ours", ctx.lrPricing(LIVE).indexOf("Never ours") >= 0);
 LM()[LIVE.sku].buybox_pct = 52.73;
 const partial = ctx.lrPricing(LIVE);
-check("held for part of it is NOT reported as winning",
-      partial.indexOf("Featured offer") >= 0, false);
-check("  nor as losing", partial.indexOf("Not winning") >= 0, false);
-truthy("  it says what the share actually was", partial.indexOf("53% of views") >= 0);
+check("held for part of it is NOT reported as ours outright",
+      partial.indexOf("Ours, all of the window") >= 0, false);
+check("  nor as never ours", partial.indexOf("Never ours") >= 0, false);
+truthy("  it says what the share actually was", partial.indexOf("Ours for 53% of views") >= 0);
 LM()[LIVE.sku].buybox_pct = undefined;
-check("and an UNKNOWN buy box says nothing at all — it is not 'not winning'",
-      /Not winning|Featured|% of views/.test(ctx.lrPricing(LIVE)), false);
+// AN UNKNOWN SHARE SAYS NOTHING. The featured PRICE row is still drawn, with
+// a dash -- "not asked yet" and "no featured offer" must not look alike.
+check("an UNKNOWN share says nothing at all — it is not 'never ours'",
+      /Never ours|Ours for|Ours, all/.test(ctx.lrPricing(LIVE)), false);
+truthy("  but the featured price row is still there, as a dash",
+       ctx.lrPricing(LIVE).indexOf("Featured offer") >= 0);
 delete LM()[LIVE.sku];
 
 // ---------------------------------------------------------------------------
@@ -156,11 +165,14 @@ truthy("it says 'Not yet live' rather than four dashes",
        ctx.lrPerf(DRAFT).indexOf("Not yet live") >= 0);
 check("  and does not invent inventory for it",
       ctx.lrInv(DRAFT).indexOf("On-hand") >= 0, false);
-truthy("but price, cost and profit ARE known and shown",
-       ctx.lrPricing(DRAFT).indexOf("£12.99") >= 0
-       && ctx.lrPricing(DRAFT).indexOf("£11.99") >= 0);
+// PRICE AND COST ARE EDITABLE BOXES NOW (listrow_edit.js), so they carry the
+// figure as a value rather than as printed money. The profit is still text.
+const _pd = ctx.lrPricing(DRAFT);
+truthy("the price is in its box", _pd.indexOf('data-lr-field="price" data-lr-orig="12.99"') >= 0);
+truthy("the cost is in its box",  _pd.indexOf('data-lr-field="cost"') >= 0 && _pd.indexOf("11.99") >= 0);
+truthy("and the profit is shown", _pd.indexOf("1.62") >= 0);
 truthy("a negative profit is red",
-       ctx.lrPricing(DRAFT).indexOf('lr-data-val red') >= 0);
+       ctx.lrPricing(DRAFT).indexOf('d-val red') >= 0);
 
 // ---------------------------------------------------------------------------
 console.log("\nthe header and the rows carry the same columns");
@@ -168,20 +180,20 @@ console.log("\nthe header and the rows carry the same columns");
 const head = ctx.detailedHead([LIVE, DRAFT]);
 // The class name must END here: \b would also match lr-status-badge and
 // lr-status-date, which are inside the status column, not columns themselves.
-const cols = h => (h.match(/class="lr-(cb|status|product|perf|inv|pricing|actions)["\s]/g) || [])
-                    .map(s => s.replace('class="lr-', '').replace(/["\s]$/, ''));
+const cols = h => (h.match(/class="col-(cb|status|product|perf|inv|price|actions)["\s]/g) || [])
+                    .map(s => s.replace('class="col-', '').replace(/["\s]$/, ''));
 check("the header's columns", cols(head),
-      ["cb","status","product","perf","inv","pricing","actions"]);
+      ["cb","status","product","perf","inv","price","actions"]);
 check("the row's columns are the same, in the same order",
       cols(ctx.detailedRow(LIVE)), cols(head));
 // The widths are declared once as variables so the two cannot drift.
 truthy("and the widths are declared once, shared by both",
-       /\.lr-head,\s*\.lr\{[\s\S]{0,200}--lr-cb:/.test(CSS));
+       /\.col-cb\{ width:28px/.test(CSS));
 
 console.log("\n  ...a block is one header over all the rows");
 const block = ctx.detailedBlock([LIVE, DRAFT]);
-check("exactly one header", (block.match(/lr-head/g) || []).length, 1);
-check("one row per listing",  (block.match(/class="lr[ "]/g) || []).length, 2);
+check("exactly one header", (block.match(/inv-head/g) || []).length, 1);
+check("one row per listing",  (block.match(/class="inv-row/g) || []).length, 2);
 check("no rows -> nothing at all", ctx.detailedBlock([]), "");
 
 // ---------------------------------------------------------------------------
@@ -192,12 +204,13 @@ truthy("clicking opens the listing through openListing()",
 truthy("the batch-actions checkbox is the shared one",
        liveHtml.indexOf('data-sku="' + LIVE.sku + '"') >= 0);
 truthy("  and clicking it does not also open the listing",
-       /class="lr-cb" onclick="event\.stopPropagation\(\)"/.test(liveHtml));
-truthy("the row menu is the shared rowActions()", liveHtml.indexOf('class="acts"') >= 0);
+       /class="col-cb" onclick="event\.stopPropagation\(\)"/.test(liveHtml));
+truthy("the row menu is the shared overflow, drawerMore",
+       /onclick="drawerMore\(event,/.test(liveHtml));
 truthy("  and it does not open the listing either",
-       /class="lr-actions" onclick="event\.stopPropagation\(\)"/.test(liveHtml));
+       /class="col-actions" onclick="event\.stopPropagation\(\)"/.test(liveHtml));
 globalThis.SELECTED.add(LIVE.sku);
-truthy("a selected row is marked", /class="lr sel"/.test(ctx.detailedRow(LIVE)));
+truthy("a selected row is marked", /class="inv-row sel"/.test(ctx.detailedRow(LIVE)));
 globalThis.SELECTED.clear();
 
 console.log("\n  ...warnings are surfaced on the row");
@@ -259,7 +272,7 @@ console.log("\n  ...a PARTLY reported window is not passed off as a full one");
 vm.runInContext("LR_COVERAGE = {days:30, sales_days:4, sales_last:'2026-08-30'};", ctx);
 const partBar = ctx.lrMetricsBar();
 truthy("it says how many days it really had", partBar.indexOf("4 of 30 days") >= 0);
-truthy("and marks it",                        partBar.indexOf("lr-mb-part") >= 0);
+truthy("and marks it",                        partBar.indexOf("lr-part") >= 0);
 
 console.log("\n  ...Amazon refusing is REPORTED, never shown as 'there is none'");
 vm.runInContext("LR_ERRORS = {rank:'403 Forbidden — role not granted'};", ctx);
@@ -276,8 +289,12 @@ truthy("the loader defaults to the local-only form",
 check("  and detailedBlock does not force a fetch",
       /lrLoadMetrics\(rows\)/.test(SRC), true);
 truthy("  while the refresh button does",  /lrLoadMetrics\(rows, true\)/.test(SRC));
-truthy("the same SKU set is not asked for twice",
-       /key === LR_ASKED/.test(SRC));
+// A SET OF SKUs, NOT A KEY. It held one key -- the sorted SKUs of the last
+// set it fetched -- and one screen draws several blocks with different sets, so
+// the key alternated for ever and every reply re-rendered. A set cannot
+// alternate: once a SKU has been asked about it stays asked about.
+truthy("the same SKU is not asked for twice",
+       /LR_ASKED\.has\(s\)/.test(SRC) && /LR_ASKED\.add\(s\)/.test(SRC));
 
 // ---------------------------------------------------------------------------
 console.log("\nvariation families: grouped when known, flat when not");
@@ -335,8 +352,11 @@ ctx.lrToggleFamily(P);
 famBlock = ctx.detailedBlock(ROWSET);
 truthy("child one",  famBlock.indexOf(C1) >= 0);
 truthy("child two",  famBlock.indexOf(C2) >= 0);
-check("both are marked as children", (famBlock.match(/lr lr-child/g) || []).length, 2);
-truthy("a child keeps its pricing block", famBlock.indexOf("£24.99") >= 0);
+check("both are marked as children", (famBlock.match(/var-child/g) || []).length, 2);
+// The price is in an editable box now, so it is a value rather than printed
+// money -- the point stands: a child row carries its own pricing block.
+truthy("a child keeps its pricing block",
+       famBlock.indexOf('data-lr-field="price" data-lr-orig="24.99"') >= 0);
 truthy("and the control now offers Collapse all", famBlock.indexOf("Collapse all") >= 0);
 ctx.lrToggleFamily(P);
 check("toggling again collapses it",

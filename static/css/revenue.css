@@ -11,14 +11,14 @@
  * should cover this, not sit behind it), and under every dialog and toast.
  */
 
-.rc-scrim{
+.rev-scrim{
   position:fixed; inset:0; z-index:76;
   background:rgba(10,10,14,.45);
   opacity:0; pointer-events:none; transition:opacity .16s ease-out;
 }
-.rc-scrim.in{ opacity:1; pointer-events:auto; }
+.rev-scrim.in{ opacity:1; pointer-events:auto; }
 
-.rc{
+.rev{
   position:fixed; top:0; right:0; z-index:76;
   width:400px; max-width:92vw; height:100vh;
   background:var(--panel); border-left:1px solid var(--line);
@@ -28,24 +28,24 @@
   transform:translateX(100%); transition:transform .18s ease-out;
   box-shadow:-8px 0 32px rgba(0,0,0,.42);
 }
-.rc.in{ transform:none; }
+.rev.in{ transform:none; }
 /* The figures are being recomputed; the boxes are not. Dimming the whole panel
    would dim the input under the cursor, which reads as the field going dead. */
-.rc.stale .rc-row:not(:has(.rc-in)) .rc-v{ opacity:.45; }
+.rev.stale .rev-row:not(:has(.rev-in)) .rev-v{ opacity:.45; }
 
-.rc-head{ display:flex; align-items:flex-start; gap:8px; margin-bottom:2px; }
-.rc-title{
+.rev-head{ display:flex; align-items:flex-start; gap:8px; margin-bottom:2px; }
+.rev-title{
   flex:1; font-size:13.5px; font-weight:600; color:var(--ink);
   line-height:1.35; overflow-wrap:anywhere;
 }
-.rc-x{
+.rev-x{
   background:none; border:0; color:var(--ink3); cursor:pointer;
   font-size:16px; padding:0 2px; line-height:1; flex-shrink:0;
 }
-.rc-x:hover{ color:var(--ink); }
-.rc-sku{ font-size:10.5px; color:var(--ink4); margin-bottom:12px; overflow-wrap:anywhere; }
+.rev-x:hover{ color:var(--ink); }
+.rev-sku{ font-size:10.5px; color:var(--ink4); margin-bottom:12px; overflow-wrap:anywhere; }
 
-.rc-sec{
+.rev-sec{
   display:flex; align-items:baseline; gap:8px;
   font-size:10px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
   color:var(--ink3); margin:14px 0 5px;
@@ -54,53 +54,53 @@
 /* WHICH OF THE THREE FEE TIERS THIS IS. The difference between "Amazon took
    this on your own sales" and "15% because nobody has asked" is the difference
    between a figure worth pricing on and a placeholder. */
-.rc-basis{
+.rev-basis{
   margin-left:auto; font-size:9.5px; font-weight:400; letter-spacing:0;
   text-transform:none; color:var(--ink4); cursor:help;
   max-width:58%; text-align:right; line-height:1.35;
 }
 
-.rc-row{
+.rev-row{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
   padding:3px 0; min-height:22px;
 }
-.rc-k{ color:var(--ink2); }
-.rc-v{
+.rev-k{ color:var(--ink2); }
+.rev-v{
   display:flex; align-items:center; gap:4px;
   font-variant-numeric:tabular-nums; color:var(--ink); text-align:right;
 }
-.rc-row.total{
+.rev-row.total{
   border-top:1px solid var(--line); margin-top:4px; padding-top:6px;
   font-weight:600;
 }
-.rc-row.big .rc-v{ font-size:18px; font-weight:700; color:var(--ok); }
-.rc-row.big.neg .rc-v, .rc-row.neg .rc-v{ color:var(--red); }
-.rc-v.neg{ color:var(--warn); }
+.rev-row.big .rev-v{ font-size:18px; font-weight:700; color:var(--ok); }
+.rev-row.big.neg .rev-v, .rev-row.neg .rev-v{ color:var(--red); }
+.rev-v.neg{ color:var(--warn); }
 /* A FEE THAT IS NOT CHARGED, shown rather than dropped -- "FBA, not charged,
    you post this yourself" answers a question that a missing row leaves open. */
-.rc-row.off{ opacity:.5; }
-.rc-row.off .rc-k{ font-style:italic; }
-.rc-src{ font-size:9.5px; color:var(--ink4); }
-.rc-none{ font-size:11.5px; color:var(--ink4); padding:4px 0; }
+.rev-row.off{ opacity:.5; }
+.rev-row.off .rev-k{ font-style:italic; }
+.rev-src{ font-size:9.5px; color:var(--ink4); }
+.rev-none{ font-size:11.5px; color:var(--ink4); padding:4px 0; }
 
-.rc-cur{ font-size:10px; color:var(--ink3); }
-.rc-in{
+.rev-cur{ font-size:10px; color:var(--ink3); }
+.rev-in{
   width:74px; padding:2px 5px; text-align:right;
   background:var(--bg); border:1px solid var(--line2); border-radius:3px;
   color:var(--ink); font-size:12px; font-family:inherit;
   font-variant-numeric:tabular-nums; outline:none;
 }
-.rc-in:focus{ border-color:var(--accent); }
+.rev-in:focus{ border-color:var(--accent); }
 
 /* WHAT THE NUMBER ABOVE DOES NOT INCLUDE. The most important text in the
    panel: a "profit" with postage, ads, storage and returns silently missing is
    worse than one that names what it left out. */
-.rc-note{
+.rev-note{
   margin-top:12px; font-size:10.5px; line-height:1.5; color:var(--ink4);
   border-left:2px solid var(--line2); padding-left:9px;
 }
-.rc-note.warn{ color:var(--warn); border-left-color:var(--warn); }
-.rc-err{
+.rev-note.warn{ color:var(--warn); border-left-color:var(--warn); }
+.rev-err{
   margin:8px 0; font-size:11.5px; color:var(--red);
   background:var(--red-bg); border:1px solid var(--red-line);
   border-radius:4px; padding:7px 9px;
@@ -110,11 +110,11 @@
   /* No room beside the list on a phone, so it takes the screen -- but from the
      bottom, which is where a sheet comes from on a phone and keeps the
      close button under the thumb. */
-  .rc{
+  .rev{
     width:100%; max-width:100%; height:82vh; top:auto; bottom:0;
     border-left:0; border-top:1px solid var(--line);
     border-radius:12px 12px 0 0;
     transform:translateY(100%);
   }
-  .rc.in{ transform:none; }
+  .rev.in{ transform:none; }
 }

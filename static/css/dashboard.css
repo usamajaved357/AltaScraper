@@ -1556,16 +1556,18 @@
      the same shape at every size, which is what "all cards look alike" needs. */
   .tileimg{position:relative;aspect-ratio:1/1;background:var(--panel2);display:flex;align-items:center;
            justify-content:center;cursor:pointer;overflow:hidden}
-  /* THE IMAGE IS ITS OWN SHAPE, and the white is behind the PICTURE rather than
-     behind the whole box.
-     It was width:100%;height:100%;background:#fff with object-fit:contain --
-     so the <img> ELEMENT filled the square and was painted white, and the
-     photo was letterboxed inside a white rectangle on a charcoal card. auto
-     sizing with max constraints shrinks the element to the picture's own
-     proportions, so the white sits under the product (which is what a
-     white-background Amazon photo needs) and the surround is the panel. */
-  .tileimg img{max-width:100%;max-height:100%;width:auto;height:auto;
-               object-fit:contain;background:#fff}
+  /* THE IMAGE FILLS THE SQUARE AND IS LETTERBOXED INSIDE IT.
+     `background:#fff` is gone from here. It was on the <img>, which was
+     width:100%;height:100%, so the ELEMENT was a white square and the photo sat
+     letterboxed inside a white rectangle on a charcoal card.
+     AND IT KEEPS 100%/100% RATHER THAN AUTO SIZING. Measured in a browser: with
+     `width:auto;height:auto;max-width:100%`, an <img> that has not loaded yet
+     has no intrinsic size, so it lays out at 0x0 -- two of the first eight
+     tiles rendered with a zero-size image, which is the "broken on the first
+     few cards" complaint in a new form. 100% gives it the box whether or not
+     the bytes have arrived, and object-fit:contain still means nothing is ever
+     cropped or stretched. The surround is .tileimg's panel colour. */
+  .tileimg img{width:100%;height:100%;object-fit:contain}
   .tileimg.noimg{color:var(--ink4);font-size:34px;flex-direction:column;gap:4px}
   /* "No image" said in words as well as an icon: a lone grey glyph on a grey
      square reads as an image that failed to load, which is a different problem
@@ -2528,6 +2530,29 @@
 .foldgroup > summary:hover{ background:var(--panel2); }
 .foldgroup > summary .cc{ font-weight:400; }
 .foldgroup .grid, .foldgroup > div{ padding:0 12px 12px; }
+
+/* A CLOSED <details> THAT SHOWS ITS CONTENTS ANYWAY.
+ *
+ * Found by driving the Live tab in a browser: the "N listings not confirmed by
+ * Amazon" group reported open === false and its ten rows were on screen, in a
+ * second bordered card with a second table header, under a summary saying
+ * "show". So the fold did nothing, and the repeated header was the thing that
+ * had been objected to on this very screen.
+ *
+ * THE CAUSE IS SPECIFICITY, and it is a trap rather than a mistake. The browser
+ * hides a closed disclosure's children with a rule of its own carrying only
+ * user-agent weight; any author rule that sets `display` on such a child
+ * beats it. The
+ * child here is `<div class="card lrwrap">`, and `.card` sets `display:flex` --
+ * one class, which is enough. Nothing about that rule is wrong; it simply
+ * cannot know it is inside a details.
+ *
+ * So it is stated explicitly, for every <details> in the app rather than this
+ * one: closed means closed, and no future display rule can quietly reopen a
+ * fold. !important because that is exactly what it is competing with -- an
+ * author declaration on the same element.
+ */
+details:not([open]) > *:not(summary){ display:none !important; }
 
 
 /* =====================================================================

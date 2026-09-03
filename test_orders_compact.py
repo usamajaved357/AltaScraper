@@ -110,8 +110,19 @@ check("the bar is 24px", "height:24px" in rule(CSS, ".o-bar{"), True)
 
 print("\n=== 2b. four cards, saying the same as the row ===")
 truthy("the cards exist", "function _opCards" in P)
-for label in ("Profit", "ROI", "Margin", "Handling"):
+for label in ("Profit", "ROI", "Margin", "Post by"):
     truthy("  card: " + label, '"' + label + '"' in P or ("Profit at " in P and label == "Profit"))
+# THE FOURTH CARD IS NOT "HANDLING", and that is a correction to the brief. An
+# ORDER carries no handling time -- it is a setting on the LISTING -- so the
+# card rendered a dash on every order. Measured in a browser. Days-left to post
+# is the same territory from data that exists, and it is the one number on this
+# screen that costs money if it is ignored.
+truthy("  and it is days-left, not a card that can never fill",
+       "function _opDaysLeft" in P)
+truthy("    from Amazon's own ship-by date", "o.ship_by" in P)
+truthy("    overdue is called overdue", '"overdue"' in P)
+falsy("    and nothing reads a handling time off an order",
+      "r.handling_days" in PCODE)
 truthy("the value is 16px bold", "font-size:16px" in rule(CSS, ".o-card-v{"))
 truthy("  the label 9px uppercase", "font-size:9px" in rule(CSS, ".o-card-l{")
        and "text-transform:uppercase" in rule(CSS, ".o-card-l{"))

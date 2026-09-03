@@ -66,7 +66,7 @@ def code(js):
 
 
 print("=== it opens a panel, and the list stays put ===")
-truthy("the link opens the calculator", "rcOpen(" in LR)
+truthy("the link opens the calculator", "revOpen(" in LR)
 # THE ONE fee-link ON THE ROW. It used to call openListing, which is what took
 # you away from the list. Scoped to the tag itself so the check cannot be
 # satisfied -- or broken -- by an openListing anywhere else in the file.
@@ -75,13 +75,13 @@ truthy("  the Calculate revenue link exists", _link is not None)
 falsy("  and no longer navigates to the product page",
       _link is not None and "openListing" in _link.group(1))
 truthy("  it opens the panel instead",
-       _link is not None and "rcOpen(" in _link.group(1))
+       _link is not None and "revOpen(" in _link.group(1))
 truthy("the panel is 400px on the right", "width:400px" in CSS)
 truthy("  full height beside the list", "height:100vh" in CSS)
 truthy("  and slides rather than appearing", "transform:translateX(100%)" in CSS)
 # The scrim is a SIBLING, so a click inside the panel cannot close it.
-truthy("clicking away closes it", "rc-scrim" in CSS and 'scrim.onclick = rcClose' in JS)
-truthy("Escape closes it", "function _rcEsc" in JS)
+truthy("clicking away closes it", "rev-scrim" in CSS and 'scrim.onclick = revClose' in JS)
+truthy("Escape closes it", "function _revEsc" in JS)
 truthy("  but not while a number is being typed",
        't.tagName === "INPUT"' in JS)
 # The z-index is chosen against the bands the app already uses.
@@ -126,14 +126,14 @@ falsy("no SP-API client is built", "sp_api" in RT or "ProductPricing" in RT)
 falsy("  and no quote is requested", "_fees.quote(" in RT)
 truthy("  which is stated", "NOTHING HERE CALLS AMAZON" in RT)
 # AND THE TYPING IS DEBOUNCED. "24.99" is five keystrokes.
-truthy("typing is debounced", "RC_TIMER = setTimeout" in JS)
+truthy("typing is debounced", "REV_TIMER = setTimeout" in JS)
 truthy("  and a stale reply for another listing is dropped",
-       "if(RC_SKU !== sku) return;" in JS)
+       "if(REV_SKU !== sku) return;" in JS)
 
 print("\n=== the referral fee is charged on what the buyer paid ===")
 # amazon_fees.estimate says so in its own docstring: passing the item price
 # alone understates the fee on every order with postage.
-truthy("delivery is its own input", 'id="rc_ship"' in JS)
+truthy("delivery is its own input", 'id="rev_ship"' in JS)
 truthy("  and is added before the fee is worked out",
        "gross = round(float(price) + float(shipping), 2)" in RT)
 truthy("  the row says why", "not on the item price alone" in JS)
@@ -141,7 +141,7 @@ truthy("  and the module it follows agrees",
        "item plus any postage the buyer was" in FEES)
 
 print("\n=== which of the three tiers this is, in words ===")
-truthy("the basis is shown", "_rcBasis" in JS)
+truthy("the basis is shown", "_revBasis" in JS)
 for tier, words in (("actual", "measured on this product"),
                     ("quoted", "Amazon’s own quote"),
                     ("", "this account’s measured rate")):
@@ -152,7 +152,7 @@ print("\n=== a fee that is NOT charged is shown, not dropped ===")
 # "FBA 0.00, you post this yourself" answers a question a missing row leaves
 # open. breakdown_for returns `charged` for exactly this.
 truthy("the not-charged lines are drawn", "l.charged" in JS)
-truthy("  dimmed rather than hidden", ".rc-row.off{" in CSS)
+truthy("  dimmed rather than hidden", ".rev-row.off{" in CSS)
 truthy("  and the route returns that flag", '"charged"' in FEES)
 
 print("\n=== what the number is NOT is said, not implied ===")

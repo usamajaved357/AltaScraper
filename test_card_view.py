@@ -109,11 +109,14 @@ truthy("  on the panel colour", "background:var(--panel2)" in rule(CSS, ".tileim
 # filled the square and was painted white, so a photo sat in a white rectangle
 # on a charcoal card.
 _i = rule(CSS, ".tileimg img{")
-truthy("the image element takes its own proportions", "width:auto" in _i and "height:auto" in _i)
-truthy("  bounded by the box", "max-width:100%" in _i and "max-height:100%" in _i)
-truthy("  never cropped", "object-fit:contain" in _i)
-truthy("  with white behind the picture, for white-background Amazon photos",
-       "background:#fff" in _i)
+# MEASURED IN A BROWSER: auto sizing collapses an <img> that has not loaded to
+# 0x0, and two of the first eight tiles rendered that way -- the same complaint
+# in a new form. 100% gives it the box whether or not the bytes have arrived.
+truthy("the image fills the box", "width:100%" in _i and "height:100%" in _i)
+truthy("  never cropped or stretched", "object-fit:contain" in _i)
+falsy("  and the element is not painted white", "background:#fff" in _i)
+truthy("  the surround is the panel", "background:var(--panel2)" in rule(CSS, ".tileimg{"))
+truthy("  with the browser measurement recorded", "lays out at 0x0" in CSS)
 
 print("\n=== 5. the no-image placeholder ===")
 truthy("a struck-through camera, not a plain one", "ti-photo-off" in CARD)
@@ -169,6 +172,46 @@ truthy("the warning ICON is kept", "ti-alert-triangle" in fn(LS, "_warnChip"))
 # the brief does not touch it.
 truthy("the table's warning cell is untouched", "function _warnCell" in LS
        and "warning${w.n === 1" in fn(LS, "_warnCell"))
+
+print("\n=== one header over the whole list, found in a browser ===")
+# MEASURED ON THE REAL DRAFTS SCREEN: 16 <th> over a 40-row list -- two full
+# headers and two bordered boxes. listBlock opens its own card with its own
+# header, and the drafts path called it twice (queued, then generated). It is
+# the same complaint the live view had -- "why do i have two separate
+# boxes/borders containing the listings?" -- fixed there with listBlocks() and
+# never carried across.
+MT = rd("static/js/miles_template.js")
+truthy("the drafts view draws its groups under one header",
+       "listBlocks([{rows: _queuedAll}, {rows: _draftsAll}])" in MT)
+truthy("  and so does the Drafts tab's own branch",
+       "listBlocks([{rows: queuedRows}, {rows: draftsOnly}])" in MT)
+# Against the CODE: the comment above the fix names the calls that were there,
+# which is the record of what went wrong.
+_mt = re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", MT, flags=re.S))
+falsy("  neither calls listBlock for those groups separately",
+      any(c in _mt for c in ("listBlock(_queuedAll)", "listBlock(_draftsAll)",
+                             "listBlock(queuedRows)", "listBlock(draftsOnly)")))
+# THE SENTENCE STAYS. It explains why some rows look empty; what went is the
+# heading over a second bordered card. The rows keep their own badge.
+truthy("the queued explanation is kept", "not generated yet" in MT)
+truthy("  and the rows are still marked individually", "_queuedChip(r)" in LS)
+truthy("  with the browser measurement recorded", "16 <th> on a 40-row list" in MT)
+
+print("\n=== a closed fold is closed ===")
+# ALSO FOUND IN A BROWSER, on the same screen and for the same visible symptom.
+# The "N listings not confirmed by Amazon" group reported open === false and its
+# ten rows were on screen anyway, in a second bordered card with a second table
+# header. The browser hides a closed disclosure's children at user-agent weight;
+# `.card{display:flex}` on the child beats it with one class. Nothing about that
+# rule is wrong -- it cannot know it is inside a <details>.
+truthy("closed means closed, for every details in the app",
+       "details:not([open]) > *:not(summary){ display:none !important; }" in CSS)
+_cssflat = re.sub(r"\s+", " ", re.sub(r"^\s*\*\s?", "", CSS, flags=re.M))
+truthy("  and the specificity trap is written down", "carrying only user-agent weight" in _cssflat)
+# The rule it is competing with is still there and still correct.
+_card = re.search(r"\n\s*\.card\{([^}]*background:var\(--panel\)[^}]*)\}", CSS)
+truthy("  the .card display rule is untouched",
+       _card is not None and "display:flex" in _card.group(1))
 
 print("\n=== nothing is half-written ===")
 check("dashboard.css braces balance", CSS.count("{"), CSS.count("}"))

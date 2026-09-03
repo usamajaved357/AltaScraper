@@ -239,6 +239,28 @@ truthy("  and says why the warehouse lines are absent",
 truthy("the gate above the templates is named as the other cause",
        "THE GATE ABOVE THEM" in LR)
 
+print("\n=== found in a browser, not in a test ===")
+# A COLUMN OF MONEY WITH ONE DECIMAL IN IT. Seen on the real screen: a stored
+# fee of 2.4 printed as "£2.4" between a "£5.26" and a "£1.99". Same value,
+# different KIND of number to read, and in a money column it reads as a
+# truncation. The database stores a float; only the printing was wrong.
+truthy("money is always two decimals", "n.toFixed(2)" in fn(LR, "lrVal"))
+truthy("  through one formatter", "function lrMoney" in LR)
+falsy("  and nothing concatenates a raw figure onto a symbol",
+      re.search(r"esc\((cur|sym) \+ ", code(LR)) is not None)
+truthy("  with the measurement recorded", "printed as" in LR and "2.4" in LR)
+
+# A 502 ON EVERY PAGE LOAD. /live/aplus returned 502 for every failure, and the
+# one it returns for these accounts is Unauthorized -- a permission that will
+# not change until somebody grants it. So the browser console had a red error
+# on every load, which is also what would hide a real one.
+LIVE = rd("routes/live_routes.py")
+truthy("a refusal from Amazon is an answer, not a gateway failure",
+       "200 if denied else 502" in LIVE)
+truthy("  and a genuine failure is still 502", "else 502" in LIVE)
+truthy("  the browser reads the body either way, not the status",
+       "The browser reads j.ok, never the status" in LIVE)
+
 print("\n=== nothing is half-written ===")
 check("listrow_detailed.css braces balance", CSS.count("{"), CSS.count("}"))
 # THIS CHECK EARNED ITS KEEP THE FIRST TIME IT RAN. It found three

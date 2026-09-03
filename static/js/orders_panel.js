@@ -87,11 +87,17 @@ function _opCards(r, t, cur, o){
     const n = _opNum(v);
     return n === null ? dash : _oEsc(n.toFixed(1) + "%");
   };
-  // HANDLING IS THE ONE FACT HERE THAT IS NOT MONEY, and it is on the card row
-  // because a late dispatch costs the account more than a thin margin does.
-  const hand = (r.handling_days !== null && r.handling_days !== undefined
-                && r.handling_days !== "")
-    ? _oEsc(String(r.handling_days) + "d") : dash;
+  // THE FOURTH CARD IS NOT "HANDLING", and that is a correction to the brief
+  // rather than an omission. An ORDER carries no handling time: handling_days
+  // is a setting on the LISTING, and nothing on an order row or in the order
+  // detail holds one. MEASURED in a browser -- the card rendered a dash on
+  // every order, which is a card that can never say anything.
+  //
+  // What the order DOES carry is Amazon's post-by date, and days-left is the
+  // one number on this screen that costs money if it is ignored: dispatch after
+  // it and the order is late, which is a metric hit on the account. Same
+  // territory the brief wanted the card for, from data that exists.
+  const post = _opDaysLeft(o.ship_by);
   return '<div class="o-cards">'
     + card(profit === null ? dash : _oEsc(_oMoney(profit, cur)),
            paid === null ? "Profit" : ("Profit at " + _oMoney(paid, cur)),
@@ -103,9 +109,38 @@ function _opCards(r, t, cur, o){
            "Profit as a share of what the stock cost — whether the stock was worth buying.")
     + card(pct(r.margin_pct), "Margin", "",
            "Profit as a share of what the buyer paid — whether the price is any good.")
-    + card(hand, "Handling",
-           "", "Days to dispatch, as this app holds it.")
+    + card(post.text === "" ? dash : _oEsc(post.text), post.label, post.tone,
+           post.title)
     + '</div>';
+}
+
+/* How long is left to post this, from Amazon's ship-by date.
+ *
+ * Returns {text, label, tone, title}. Absent rather than guessed when Amazon
+ * gave no date -- an order with no deadline shown is better than one with an
+ * invented deadline, and "overdue" is the single most expensive thing this
+ * panel could get wrong. */
+function _opDaysLeft(shipBy){
+  const out = {text: "", label: "Post by", tone: "",
+               title: "Amazon did not give a dispatch deadline for this order."};
+  if(!shipBy) return out;
+  let due;
+  try{ due = new Date(shipBy); }catch(e){ return out; }
+  if(!due || isNaN(due.getTime())) return out;
+  // WHOLE DAYS, from midnight to midnight -- "1.4 days" is not how a deadline
+  // is read, and rounding the hours would make a deadline this afternoon and
+  // one tomorrow morning both say "1".
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const days = Math.round((d1 - d0) / 86400000);
+  const when = (typeof _oWhen === "function") ? _oWhen(shipBy) : String(shipBy);
+  out.title = "Amazon counts this order late if it is not dispatched by "
+            + when + ".";
+  if(days < 0){ out.text = "overdue"; out.tone = "bad"; out.label = "Post by"; }
+  else if(days === 0){ out.text = "today"; out.tone = "bad"; }
+  else if(days === 1){ out.text = "1 day"; out.tone = "good"; }
+  else { out.text = days + " days"; out.tone = "good"; }
+  return out;
 }
 
 /* The two actions that actually exist. See the note at the top of this file for
