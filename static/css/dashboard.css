@@ -1549,10 +1549,43 @@
      thing the border exists to say. Declared after :hover so they win. */
   .tile.flag,.tile.flag:hover{border-color:var(--red-line)}       /* prohibited / blocker */
   .tile.flagamber,.tile.flagamber:hover{border-color:var(--warn-line)}  /* restricted-needs-docs */
-  .tileimg{position:relative;height:180px;background:var(--panel2);display:flex;align-items:center;
+  /* A SQUARE BOX, THE SAME ON EVERY CARD.
+     It was height:180px on a column whose WIDTH changes with the window, so the
+     picture area was a different shape on a wide screen from a narrow one, and
+     two cards side by side in different-width grids never matched. A ratio is
+     the same shape at every size, which is what "all cards look alike" needs. */
+  .tileimg{position:relative;aspect-ratio:1/1;background:var(--panel2);display:flex;align-items:center;
            justify-content:center;cursor:pointer;overflow:hidden}
-  .tileimg img{width:100%;height:100%;object-fit:contain;background:#fff}
-  .tileimg.noimg{color:var(--ink4);font-size:34px}
+  /* THE IMAGE IS ITS OWN SHAPE, and the white is behind the PICTURE rather than
+     behind the whole box.
+     It was width:100%;height:100%;background:#fff with object-fit:contain --
+     so the <img> ELEMENT filled the square and was painted white, and the
+     photo was letterboxed inside a white rectangle on a charcoal card. auto
+     sizing with max constraints shrinks the element to the picture's own
+     proportions, so the white sits under the product (which is what a
+     white-background Amazon photo needs) and the surround is the panel. */
+  .tileimg img{max-width:100%;max-height:100%;width:auto;height:auto;
+               object-fit:contain;background:#fff}
+  .tileimg.noimg{color:var(--ink4);font-size:34px;flex-direction:column;gap:4px}
+  /* "No image" said in words as well as an icon: a lone grey glyph on a grey
+     square reads as an image that failed to load, which is a different problem
+     from one that was never added. */
+  .tileimg.noimg::after{content:"No image";font-size:10.5px;letter-spacing:.02em}
+  /* The live tile draws its own worded placeholder ("No image uploaded"), which
+     says the same thing at more length. One caption, not two stacked. */
+  .tileimg.noimg:has(.noimgmsg)::after{content:none}
+
+  /* THE WARNING BADGE. See _warnChip in listings.js: this used to be a
+     .tilefact, which is inline-flex and therefore a FLEX ITEM inside .tileimg
+     -- it sat beside the picture and squeezed it. Positioned, like every other
+     overlay in that box. Top-right of the image, clear of the checkbox. */
+  .tilewarn{position:absolute;top:8px;right:36px;z-index:6;display:inline-flex;
+            align-items:center;gap:3px;height:22px;padding:0 7px;border-radius:11px;
+            font-size:11.5px;font-weight:800;line-height:1;cursor:pointer}
+  .tilewarn i{font-size:12px}
+  .tilewarn.red{background:#c0392b;color:#fff;border:1px solid #e05a4b}
+  .tilewarn.amber{background:rgba(90,74,22,.85);color:#f0cf8c;border:1px solid #7a641f}
+  .tilewarn.low{background:rgba(0,0,0,.55);color:var(--ink2);border:1px solid var(--line2)}
   .tiledot{position:absolute;top:8px;left:8px;width:10px;height:10px;border-radius:50%;border:2px solid var(--panel)}
   .tilesel{position:absolute;top:8px;right:8px;width:22px;height:22px;cursor:pointer;accent-color:var(--accent);z-index:5;background:rgba(10,14,20,.6);border-radius:5px;box-shadow:0 0 0 2px rgba(255,255,255,.15)}
   .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}
@@ -1846,8 +1879,18 @@
   .handlingdays{width:62px;background:var(--panel);color:var(--ink);border:1px solid var(--line2);
                 border-radius:7px;padding:5px 8px;font-size:13px}
   .handlingdays:focus{outline:none;border-color:var(--accent)}
-  .tileacts{display:flex;gap:3px;padding:7px 9px 9px}
+  /* PINNED TO THE BOTTOM, whatever the body above it holds. .tilebody already
+     has flex:1, which does this while the card is stretched by the grid --
+     margin-top:auto also does it when it is not, and the two together mean the
+     buttons line up across a row whether or not every card filled its height.
+     The rule above keeps them visually separate from the facts. */
+  .tileacts{display:flex;gap:3px;padding:7px 9px 9px;margin-top:auto;
+            border-top:1px solid var(--line)}
   .tileacts .ib{flex:1}
+
+  /* The margin/ROI/profit chip is .profchip, shared with the live tile -- see
+     _econLine in listings.js for why a second look would have made the
+     "inconsistently formatted" complaint worse rather than better. */
   .ib{height:30px;padding:0;display:flex;align-items:center;justify-content:center;
       background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--ink2);
       cursor:pointer;font-size:14px;text-decoration:none}

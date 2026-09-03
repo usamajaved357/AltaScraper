@@ -1,0 +1,180 @@
+"""CARD_VIEW_FIX.md: the grid view's images, warnings and consistency.
+
+THE IMAGES WERE NOT BEING STRETCHED OR CROPPED. object-fit:contain has been on
+them the whole time, and contain cannot crop. What was happening is worse and
+explains why it looked random:
+
+    .tileimg is display:flex.
+    _warnChip and _queuedChip returned a .tilefact, which is inline-flex.
+    Neither was positioned.
+
+So on a card that had a warning, the text span became a FLEX ITEM BESIDE the
+<img width:100%> and the browser squeezed the picture sideways to make room for
+it. Every other overlay in that box -- .tiledot, .tilesel, .tileflag,
+.tileclaim, .tileinactive -- is position:absolute; those two were the
+exceptions. That is why it was "the first few cards": the first few are the
+ones carrying warnings.
+
+Removing the "N warnings" TEXT, which is what the brief asks for, therefore also
+fixes the images. The two items were one bug.
+
+THE SECOND HALF OF "INCONSISTENTLY FORMATTED" is that the Live tab draws TWO
+kinds of card in one grid -- one from an app row (listings.card) and one from
+Amazon's catalogue (miles_template.liveTile) -- and the second has always shown
+a .profchip that the first did not have at all. Adding a third look would have
+made it worse; the draft card now draws the same chip with the same bands.
+"""
+import io
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+os.chdir(HERE)
+
+FAILS = []
+
+
+def check(label, got, want):
+    ok = got == want
+    if not ok:
+        FAILS.append(label)
+    print("  %-68s %s" % (label, "OK" if ok else "FAIL got=%r want=%r"
+                                                % (got, want)))
+
+
+def truthy(label, got):
+    check(label, bool(got), True)
+
+
+def falsy(label, got):
+    check(label, bool(got), False)
+
+
+def rd(p):
+    return io.open(os.path.join(HERE, *p.split("/")), encoding="utf-8").read()
+
+
+LS = rd("static/js/listings.js")
+MT = rd("static/js/miles_template.js")
+CSS = rd("static/css/dashboard.css")
+ICONS = rd("static/vendor/tabler-icons/tabler-icons.min.css")
+
+
+def fn(src, name):
+    i = src.find("function " + name + "(")
+    if i < 0:
+        return ""
+    j = src.find("\n}", i)
+    return src[i:] if j < 0 else src[i:j + 2]
+
+
+def rule(css, sel):
+    i = css.find(sel)
+    return css[i + len(sel):css.find("}", i)] if i >= 0 else ""
+
+
+print("=== 1 and 2. the text in front of the picture ===")
+CARD = fn(LS, "card")
+# THE PICTURE BOX IS A FLEX CONTAINER, which is the whole mechanism.
+truthy(".tileimg is a flex row", "display:flex" in rule(CSS, ".tileimg{"))
+truthy("  and .tilefact is inline-flex, so it would be an item in it",
+       "display:inline-flex" in rule(CSS, ".tilefact{"))
+# So nothing unpositioned may be placed inside it.
+_img = CARD[CARD.find('class="tileimg'):CARD.find('class="tilebody')]
+falsy("no warning TEXT is placed inside the picture box", "_warnChip(r)" in _img
+      and "tilefact" in fn(LS, "_warnChip"))
+truthy("the warning is a positioned badge now",
+       "position:absolute" in rule(CSS, ".tilewarn{"))
+truthy("  drawn by _warnChip", "tilewarn" in fn(LS, "_warnChip"))
+falsy("  and the words are gone", re.search(r"\} warning\$\{|warning`\s*\+", fn(LS, "_warnChip")) is not None)
+falsy("  no 'warnings' sentence is rendered",
+      re.search(r'\+ `[^`]*\} warnings?', fn(LS, "_warnChip")) is not None)
+# THE COUNT STAYS. "3" and "1" are different amounts of trouble.
+truthy("the count is kept in the badge", "${w.n}</span>" in fn(LS, "_warnChip"))
+truthy("  and the messages are still on hover", "title=" in fn(LS, "_warnChip"))
+# THE OTHER UNPOSITIONED ONE moved out of the picture box too.
+truthy("the queued chip moved to the facts line",
+       "${_brandCell(r)}${_handCell(r)}${_queuedChip(r)}" in CARD)
+falsy("  and is no longer over the image", "_queuedChip(r)" in _img)
+truthy("the mechanism is written down where the next person will look",
+       "FLEX ITEM BESIDE THE <img>" in LS)
+
+print("\n=== the picture is its own shape, on a square of the panel ===")
+truthy("the box is a 1:1 ratio", "aspect-ratio:1/1" in rule(CSS, ".tileimg{"))
+falsy("  not a fixed pixel height", "height:180px" in rule(CSS, ".tileimg{"))
+truthy("  on the panel colour", "background:var(--panel2)" in rule(CSS, ".tileimg{"))
+# THE WHITE WAS BEHIND THE WHOLE BOX, not behind the picture: the <img> element
+# filled the square and was painted white, so a photo sat in a white rectangle
+# on a charcoal card.
+_i = rule(CSS, ".tileimg img{")
+truthy("the image element takes its own proportions", "width:auto" in _i and "height:auto" in _i)
+truthy("  bounded by the box", "max-width:100%" in _i and "max-height:100%" in _i)
+truthy("  never cropped", "object-fit:contain" in _i)
+truthy("  with white behind the picture, for white-background Amazon photos",
+       "background:#fff" in _i)
+
+print("\n=== 5. the no-image placeholder ===")
+truthy("a struck-through camera, not a plain one", "ti-photo-off" in CARD)
+# AN ICON THE FONT DOES NOT HAVE RENDERS AS AN EMPTY BOX, silently.
+truthy("  and that glyph is in the subset this app ships", ".ti-photo-off" in ICONS)
+truthy("said in words as well", 'content:"No image"' in CSS)
+truthy("  and the failed-to-load path lands in the same state",
+       "classList.add('noimg')" in CARD)
+# The live tile writes its own longer caption; one caption, not two stacked.
+truthy("the live tile's own wording is not doubled up",
+       ":has(.noimgmsg)::after{content:none}" in CSS)
+
+print("\n=== 3. one card format, not two in one grid ===")
+# BOTH KINDS OF CARD APPEAR TOGETHER on the Live tab.
+truthy("the live tile draws a profit chip", "profchip" in MT)
+truthy("  and the draft card now draws the same one", "profchip" in fn(LS, "_econLine"))
+truthy("  with the same margin bands", "margin >= 25" in fn(LS, "_econLine")
+       and "margin>=25" in MT)
+truthy("  and the same three figures",
+       all(w in fn(LS, "_econLine") for w in ("margin ", "ROI ")))
+falsy("no third chip class was invented", "tileecon" in LS)
+truthy("the line is on the draft card", "${_econLine(r)}" in CARD)
+# NOTHING IS SHOWN WITHOUT A PROFIT FIGURE -- a margin from a missing cost is
+# the "free stock looks infinitely profitable" mistake in another form.
+truthy("no profit means no line", 'String(r.profit || "").trim() === ""' in fn(LS, "_econLine"))
+truthy("  and ROI is skipped when the cost is unknown",
+       "cost != null && cost > 0" in fn(LS, "_econLine"))
+truthy("the profit is the stored one, not re-derived from a fee guess",
+       "r.profit" in fn(LS, "_econLine"))
+
+print("\n=== 4. the buttons line up across a row ===")
+_a = rule(CSS, ".tileacts{")
+truthy("the action row is pinned to the bottom", "margin-top:auto" in _a)
+truthy("  and separated from the facts", "border-top" in _a)
+# NOT rule(CSS, ".tile{") -- the first match of that selector is the SVG mark in
+# the app bar (`.appbar .brandmark .amark .tile{fill:...}`), which is a rectangle
+# in the logo. Exactly the trap that let the density pass assert the wrong
+# main#grid; matched on the rule's own content instead.
+_tile = re.search(r"\n\s*\.tile\{([^}]*background:var\(--panel\)[^}]*)\}", CSS)
+truthy("the card is a column",
+       _tile is not None and "flex-direction:column" in _tile.group(1))
+truthy("  whose body takes the slack", "flex:1" in rule(CSS, ".tilebody{"))
+# Both kinds of card share every one of those classes, which is what makes them
+# the same height and the same shape.
+for cls in (".tileimg", ".tilebody", ".tileacts", ".tiletitle", ".tilemeta"):
+    truthy("the live tile shares %s" % cls, cls.lstrip(".") in MT)
+
+print("\n=== what was NOT to change ===")
+truthy("the action buttons are still rowActions", 'rowActions(r, "ib")' in CARD)
+truthy("  on the live tile too", 'rowActions(' in MT)
+truthy("the warning ICON is kept", "ti-alert-triangle" in fn(LS, "_warnChip"))
+# The table's own warning cell is a different control on a different screen and
+# the brief does not touch it.
+truthy("the table's warning cell is untouched", "function _warnCell" in LS
+       and "warning${w.n === 1" in fn(LS, "_warnCell"))
+
+print("\n=== nothing is half-written ===")
+check("dashboard.css braces balance", CSS.count("{"), CSS.count("}"))
+falsy("no mojibake", re.search(r"â€|Â·|â•", LS + CSS) is not None)
+
+print("\nFAILURES: %d" % len(FAILS))
+for f in FAILS:
+    print("  - " + f)
+raise SystemExit(1 if FAILS else 0)
