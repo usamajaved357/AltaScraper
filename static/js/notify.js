@@ -254,6 +254,7 @@ function _bellIcon(t) {
   if (k === "back_in_stock")  return ["ti-package",     "var(--ok)"];
   if (k === "large_move")     return ["ti-trending-up", "var(--gold)"];
   if (k === "supplier_ended") return ["ti-link-off",    "var(--red)"];
+  if (k === "listing_gone")   return ["ti-archive",     "var(--ink3)"];
   if (k === "error")          return ["ti-alert-triangle", "var(--red)"];
   return ["ti-tag", "var(--ink3)"];
 }

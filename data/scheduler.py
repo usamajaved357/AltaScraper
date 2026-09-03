@@ -333,6 +333,73 @@ def sourcing_apply(workspace_id=None):
     return _sapply.run_live(config_path, cfg, creds_for, workspace_id=workspace_id)
 
 
+def sourcing_listings(workspace_id=None):
+    """Drop SKUs Amazon no longer has out of the repricer, by itself.
+
+        "if the listing is deleted from my sellercentral i think the app knows
+         it, so lets remove the deleted items from repricer automatically"
+
+    It did know, and only ever when the button was pressed. Measured on jack_uk
+    at the time the check was written: six of its 67 enrolled SKUs answered 404
+    and the repricer was working out prices for all six.
+
+    DAILY, AND ITS OWN JOB. One getListingsItem per enrolled SKU, which is the
+    same order of cost as the fee refresh and far too much to put on the
+    four-hourly pricing pass. A listing deleted this morning being noticed
+    tonight is soon enough -- it is already unpriceable, and decide() refuses to
+    price a SKU marked gone whether or not this has run yet.
+
+    NOTHING IS DELETED. domain/source_run.check_listings unenrols a gone SKU and
+    keeps its row, its suppliers, its history and its rule, so this is a
+    reversible act taken on a 404 and nothing else. That is what makes it safe
+    to do unattended -- see the note on that function.
+    """
+    from domain import accounts as _acc
+    from domain import source_repo as _repo
+    from domain import source_run as _run
+    _app, config_path, cfg = _need("app", "config_path", "cfg")
+    c = cfg() if callable(cfg) else cfg
+
+    # One pass per account+marketplace that actually has enrolled SKUs, rather
+    # than per account: a workspace can track SKUs on more than one marketplace
+    # and each is a separate question to Amazon.
+    pairs = {}
+    for e in _repo.enrolled(config_path, workspace_id):
+        pairs.setdefault((str(e.get("workspace_id") or ""),
+                          str(e.get("marketplace") or "")), 0)
+        pairs[(str(e.get("workspace_id") or ""),
+               str(e.get("marketplace") or ""))] += 1
+
+    checked = removed = unreadable = 0
+    for (ws, mkt) in sorted(pairs):
+        acc = _acc.get_account(c, ws)
+        if not acc:
+            continue
+        got = _run.check_listings(config_path, acc, ws, mkt)
+        if got.get("error"):
+            continue          # an account that cannot be asked is not an error here
+        checked += got["checked"]
+        removed += len(got["removed"])
+        unreadable += len(got["unreadable"])
+        # SAID, NOT DONE SILENTLY. A row vanishing from the repricer with
+        # nothing anywhere to explain it is a worse screen than the one that
+        # showed a deleted SKU. The button says it in a toast to the person who
+        # pressed it; this is the same sentence for the pass nobody watched.
+        if got["removed"]:
+            try:
+                from domain import notify as _notify
+                _notify.announce(
+                    config_path, ws, _notify.LISTING_GONE,
+                    "%d listing%s left the repricer"
+                    % (len(got["removed"]),
+                       "" if len(got["removed"]) == 1 else "s"),
+                    lines=[got["note"]] + got["removed"][:20],
+                    marketplace=mkt)
+            except Exception:
+                pass      # never let saying so undo the doing
+    return {"checked": checked, "removed": removed, "unreadable": unreadable}
+
+
 def sourcing_fees(workspace_id=None):
     """Ask Amazon what it charges on each enrolled product, and remember it.
 
@@ -378,6 +445,9 @@ def sourcing_fees(workspace_id=None):
     return {"asked": asked, "quoted": quoted, "skipped": skipped}
 
 
+register_job("sourcing_listings", sourcing_listings, hours=24,
+             description="Drop SKUs Amazon no longer has out of the repricer "
+                         "(daily)")
 register_job("sourcing_check", sourcing_check, hours=4,
              description="Re-read supplier prices and stock for enrolled SKUs")
 register_job("sourcing_fees", sourcing_fees, hours=24,
