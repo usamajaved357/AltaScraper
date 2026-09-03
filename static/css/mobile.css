@@ -32,11 +32,95 @@
 
 
 /* ---------------------------------------------------------------------
-   Two elements exist only for the phone. On a desktop they are not drawn
-   at all, so nothing here changes a single pixel above 860px.
+   THE DRAWER IS NOT A PHONE THING ANY MORE.
+   ---------------------------------------------------------------------
+       "The app's left sidebar is causing the listings table to shrink and
+        resize. On Amazon, the sidebar opens as an overlay/drawer on TOP of
+        the page -- it does NOT push the content."
+       "i want sidebar overlay"
+
+   These two used to be drawn only below 860px, and the sidebar only became
+   a drawer inside that media query. Everything the request describes was
+   therefore already built, tested and in use -- on phones. Writing a second
+   overlay for wide screens would have been a second implementation of a
+   drawer, with its own scrim, its own state and its own bugs (CLAUDE.md
+   Rule 12).
+
+   So the DRAWER rules are lifted out of the media query below and the two
+   controls are drawn at every width. What stays phone-only is the rest of
+   that block -- the no-sideways-scroll guards, the stacked toolbars, the
+   touch target sizes -- because those are about a small screen and not
+   about the menu.
    --------------------------------------------------------------------- */
-#navburger{ display:none; }
-.navscrim{ display:none; }
+#navburger{
+  display:flex; align-items:center; justify-content:center;
+  width:34px; height:34px; flex:0 0 auto;
+  background:none; border:1px solid transparent; border-radius:var(--radius-sm, 6px);
+  color:var(--ink2); cursor:pointer; font-family:inherit;
+}
+#navburger:hover{ background:var(--panel2); color:var(--ink); }
+#navburger .ti{ font-size:19px; }
+
+/* THE SCRIM IS WHAT MAKES IT AN OVERLAY. Without it the menu floats over the
+   page with no way to say "not that, go back" except finding the button
+   again -- and no visual statement that the page underneath is still there
+   and unchanged. */
+.navscrim{
+  display:block; position:fixed; inset:0; z-index:65;
+  background:rgba(3, 7, 14, .62);
+  -webkit-backdrop-filter:blur(2px);
+  backdrop-filter:blur(2px);
+  opacity:0; pointer-events:none;
+  transition:opacity .24s ease;
+}
+body.navopen .navscrim{ opacity:1; pointer-events:auto; }
+
+/* The page behind must not scroll while the menu is over it, or a flick meant
+   for the menu drags the page and the menu appears to slide. */
+body.navopen{ overflow:hidden; }
+
+/* The sidebar itself, at every width. The values are the drawer's own, which
+   were measured against Orbit's; only the width opens up on a large screen,
+   where 284px of menu over a 1920px page is not a tight fit. */
+#workspace .sidebar{
+  position:fixed; left:0; top:0;
+  width:284px; max-width:86vw;
+  height:100vh;
+  height:100dvh;
+  z-index:70;                       /* over the app bar, which sits at 20 */
+  padding:14px 12px;
+  padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px));
+  border-right:1px solid var(--line);
+  border-bottom:0;
+  display:flex; flex-direction:column; align-items:stretch;
+  overflow-y:auto; overflow-x:hidden;
+  overscroll-behavior:contain;
+  transform:translateX(-100%);
+  /* Hidden rather than merely off-screen: an off-screen menu still takes
+     keyboard focus, and tabbing into something you cannot see is the kind of
+     fault nobody reports because nobody can describe it. */
+  visibility:hidden;
+  transition:transform .24s cubic-bezier(.4, 0, .2, 1),
+             visibility 0s linear .24s,
+             box-shadow .24s ease;
+}
+body.navopen #workspace .sidebar{
+  transform:translateX(0);
+  visibility:visible;
+  box-shadow:0 0 40px rgba(0,0,0,.5);
+  transition:transform .24s cubic-bezier(.4, 0, .2, 1),
+             visibility 0s linear 0s,
+             box-shadow .24s ease;
+}
+
+/* THE PAGE NEVER MOVES. The sidebar is out of flow at every width now, so the
+   content is full width whether the menu is open or shut -- which is the whole
+   of the request. The old desktop fold is gone with it: two controls for one
+   menu, one of which resized the page, is what this replaces. */
+#workspace{ display:block; }
+#workspace.navmini .sidebar{ width:284px; padding:14px 12px; overflow-y:auto; }
+#workspace.navmini .sidebar > *{ display:revert; }
+#workspace.navmini .navtoggle{ justify-content:flex-start; padding:7px 11px; font-size:11.5px; }
 
 
 @media (max-width: 860px){

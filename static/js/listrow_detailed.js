@@ -454,16 +454,20 @@ function lrPerf(r){
   const sent = (typeof lsWasSentToAmazon === "function") ? lsWasSentToAmazon(r) : false;
   if(!sent) return '<div class="d-none">Not yet live</div>';
   const m = lrMetrics(r.sku) || {};
-  // THE CATEGORY COMES OFF THE ROW, not from the metrics.
+  // THE RANK'S OWN CATEGORY FIRST, the row's second.
   //
   //     "Amazon shows the category in parentheses under the sales rank number
   //      -- like '45,230 (Home & Kitchen)'. If unknown, don't show anything."
   //
-  // listings.amazon_category and .subcategory are real columns this app already
-  // fills; the metrics route has neither, and nothing stores a sales RANK at
-  // all, so that stays a dash. The category is shown regardless, because it is
-  // known and it is the half that says what the number would have meant.
-  const cat = String(r.amazon_category || r.subcategory || "").trim();
+  // A sales rank is always a rank WITHIN a category, and metrics_routes caches
+  // the pair together: _rank_for stores {rank, category} from the same answer.
+  // So when there is a rank, the category shown is the one that rank belongs
+  // to -- printing the row's own shop category beside somebody else's rank
+  // would put a number under a heading it was not measured in.
+  //
+  // listings.amazon_category is the fallback, and it is worth having: it is
+  // known for drafts that have never had a rank at all.
+  const cat = String(m.category || r.amazon_category || r.subcategory || "").trim();
   return lrDataRow("Sales", lrVal(m.sales, {money:true}))
     + lrDataRow("Units sold", lrVal(m.units))
     + lrDataRow("Page views", lrVal(m.views, {comma:true}))
@@ -498,6 +502,12 @@ function lrInv(r){
     + (fba ? '<div class="d-cat">(' + esc(fba) + ')</div>' : "")
     + lrDataRow("Available", lrVal(m.available), oos(m.available))
     + lrDataRow("Inbound",   lrVal(m.inbound))
+    // UNFULFILLABLE IS RED WHEN THERE IS ANY. Stock Amazon holds and will not
+    // sell -- damaged, expired, defective -- and it looks like inventory on
+    // every other screen. Absent on a merchant-fulfilled listing, which is
+    // correct rather than missing: there is no Amazon warehouse holding it.
+    + lrDataRow("Unfulfillable", lrVal(m.unfulfillable),
+                (m.unfulfillable ? "red" : ""))
     + lrDataRow("Reserved",  lrVal(m.reserved))
     + handBlock;
 }

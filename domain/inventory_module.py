@@ -199,6 +199,19 @@ def fetch_fba_inventory(creds, marketplace: str, marketplace_id: str,
             inbound_shipped   = float(details.get("inboundShippedQuantity") or 0)
             inbound_receiving = float(details.get("inboundReceivingQuantity") or 0)
             inbound_total     = inbound_working + inbound_shipped + inbound_receiving
+            # UNFULFILLABLE -- stock Amazon holds and will not sell: damaged,
+            # expired, customer-damaged, defective. It was the one figure in
+            # this block that was read past, and it is the one that costs money
+            # while looking like stock on every other screen.
+            #
+            # Amazon nests it, and older accounts answer with a flat number
+            # instead of the breakdown, so both shapes are read rather than
+            # assuming the one this account happens to send today.
+            _unf = details.get("unfulfillableQuantity")
+            if isinstance(_unf, dict):
+                unfulfillable = float(_unf.get("totalUnfulfillableQuantity") or 0)
+            else:
+                unfulfillable = float(_unf or 0)
             total = fulfillable + reserved + inbound_total
 
             rows.append({
@@ -214,6 +227,9 @@ def fetch_fba_inventory(creds, marketplace: str, marketplace_id: str,
                 "afn_inbound_shipped_quantity":    inbound_shipped,
                 "afn_inbound_receiving_quantity":  inbound_receiving,
                 "inbound_total":                   inbound_total,
+                # The Reports-API TSV called it this, so the name matches the
+                # rest of the keys above rather than the API's own wording.
+                "afn_unsellable_quantity":         unfulfillable,
                 "afn_total_quantity":              total,
             })
 

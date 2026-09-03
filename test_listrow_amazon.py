@@ -113,8 +113,17 @@ truthy("the title opens the listing", 'class="prod-title"' in JS
        and "openListing" in JS.split('class="prod-title"')[1][:400])
 truthy("  and looks like a link", ".prod-title:hover{ text-decoration:underline" in CSS)
 truthy("the ASIN links to Amazon", "asin-link" in JS and "_dpUrl" in JS)
-# 6  the category, from the row -- nothing stores a rank
-truthy("the category comes off the row", "r.amazon_category" in JS)
+# 6  the category. metrics_routes._rank_for caches {rank, category} from ONE
+#    answer, so the category shown beside a rank is the one that rank was
+#    measured in; the row's own shop category is the fallback for a draft that
+#    has never had a rank.
+truthy("the rank's own category is preferred", "m.category" in JS)
+truthy("  with the row's as the fallback", "r.amazon_category" in JS)
+# read.txt: inbound / reserved / unfulfillable
+truthy("unfulfillable stock is shown", '"Unfulfillable"' in JS)
+truthy("  and coloured when there is any", "m.unfulfillable ?" in JS)
+truthy("  beside inbound and reserved",
+       '"Inbound"' in JS and '"Reserved"' in JS)
 # 7  floor and ceiling
 truthy("min and max price boxes", "function lrFloorCeiling(" in JS)
 truthy("  saved through the repricer's own route", '"/sourcing/rules"' in JS)

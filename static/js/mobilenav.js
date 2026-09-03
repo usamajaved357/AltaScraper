@@ -50,10 +50,14 @@ document.addEventListener("DOMContentLoaded", function(){
   const scrim = document.querySelector(".navscrim");
   if(scrim) scrim.addEventListener("click", mnavClose);
 
-  // Choosing a destination closes the menu. On a desktop the menu stays put
-  // because there is room for it; on a phone it is covering the thing you just
-  // asked to see, and leaving it there means every single navigation costs a
-  // second tap somewhere else.
+  // Choosing a destination closes the menu -- AT EVERY WIDTH NOW.
+  //
+  // This used to check mnavIsPhone() first, on the reasoning that "on a desktop
+  // the menu stays put because there is room for it". There is no room for it
+  // any more in that sense: the menu is an overlay at every width, so on a wide
+  // screen it is covering the thing you just asked to see exactly as it was on
+  // a phone, and leaving it open would mean every navigation costs a second
+  // click somewhere else.
   //
   // Delegated from the sidebar rather than bound per item: the nav gains rows
   // (Repricer, ASIN Monitor, Import seller) and per-item binding would silently
@@ -61,7 +65,7 @@ document.addEventListener("DOMContentLoaded", function(){
   const side = document.querySelector("#workspace .sidebar");
   if(side){
     side.addEventListener("click", function(ev){
-      if(!mnavIsPhone() || !mnavIsOpen()) return;
+      if(!mnavIsOpen()) return;
       const t = ev.target;
       if(!t || !t.closest) return;
       // Only things that GO somewhere. The account switcher and the
@@ -76,18 +80,14 @@ document.addEventListener("DOMContentLoaded", function(){
     if(ev.key === "Escape" && mnavIsOpen()) mnavClose();
   });
 
-  // Rotating to landscape, or a tablet growing past the breakpoint, leaves
-  // body.navopen set -- which on a desktop layout means `overflow:hidden` on
-  // the body and a page that cannot scroll, with nothing on screen to explain
-  // why. Drop the state the moment the drawer stops existing.
-  try{
-    window.matchMedia("(max-width: " + MNAV_BREAKPOINT + "px)")
-          .addEventListener("change", function(e){ if(!e.matches) mnavClose(); });
-  }catch(e){
-    // Older Safari has addListener and not addEventListener.
-    try{
-      window.matchMedia("(max-width: " + MNAV_BREAKPOINT + "px)")
-            .addListener(function(e){ if(!e.matches) mnavClose(); });
-    }catch(e2){}
-  }
+  // THE BREAKPOINT WATCHER IS GONE, and its own comment says why it can be.
+  //
+  // It closed the drawer when a tablet grew past 860px, because above that the
+  // drawer stopped existing and body.navopen would have left the page unable to
+  // scroll with nothing on screen to explain it. The drawer never stops
+  // existing now -- it is the menu at every width -- so closing it on a resize
+  // would be the menu shutting itself while somebody was reading it.
+  //
+  // MNAV_BREAKPOINT is still used by mnavIsPhone(), which the phone-only layout
+  // rules in mobile.css continue to answer to.
 });

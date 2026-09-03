@@ -85,7 +85,31 @@ function setSidebarMini(on, remember){
   try{ window.dispatchEvent(new Event("resize")); }catch(e){}
 }
 
-function toggleSidebar(){ setSidebarMini(!navMiniOn()); }
+/* ONE MENU, ONE STATE.
+ *
+ *     "i want sidebar overlay"
+ *
+ * The sidebar is a drawer at every width now (static/css/mobile.css), so the
+ * desktop fold this file was written for has nothing left to fold: there is no
+ * in-flow sidebar to give 156px back from, and the page is full width whether
+ * the menu is open or shut.
+ *
+ * So this button -- which sits INSIDE the drawer -- closes it, and Ctrl+B
+ * toggles it, both through mnavToggle(). Two functions writing two different
+ * classes onto two different elements for one menu is how one ends up quietly
+ * undoing the other, which is the reason mobilenav.js gives for having been
+ * kept separate in the first place. That reason has now expired: there is one
+ * behaviour, so there is one owner of it.
+ *
+ * setSidebarMini() and the navmini class are left in place and unused rather
+ * than deleted: the class is still written by anything that remembers the old
+ * preference, and mobile.css neutralises it explicitly so a remembered "1"
+ * cannot shrink the drawer to a 44px strip.
+ */
+function toggleSidebar(){
+  if(typeof mnavToggle === "function"){ mnavToggle(); return; }
+  setSidebarMini(!navMiniOn());      // mobilenav.js absent: the old behaviour
+}
 
 /* Restore the remembered state. Called from the shell once the workspace is on
    screen -- doing it at parse time would run before #workspace exists. */
