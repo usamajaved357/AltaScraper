@@ -2013,6 +2013,15 @@
     border-radius:20px;padding:7px 13px;font-size:12.5px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
   .rqbadge .rqdot{width:8px;height:8px;border-radius:50%;background:#4bd08a;display:inline-block;
     animation:rqpulse 1.2s ease-in-out infinite}
+  /* THE BADGE AFTER THE RUN HAS ENDED. It lingers two minutes so a submit that
+     finished while you were looking elsewhere leaves something on screen and a
+     way back to its log -- see rqRenderBadge. It stops pulsing, because a
+     pulsing dot means "working" and this one is not. */
+  .rqbadge.ok, .rqbadge.bad{ border-color:var(--line2); }
+  .rqbadge.ok .rqdot, .rqbadge.bad .rqdot{ animation:none; }
+  .rqbadge.ok .rqdot{ background:var(--ok); }
+  .rqbadge.bad{ border-color:var(--red-line); color:#ffd9d9; }
+  .rqbadge.bad .rqdot{ background:var(--red); }
   @keyframes rqpulse{0%,100%{opacity:.35}50%{opacity:1}}
   .rqpanel{position:fixed;right:16px;bottom:58px;z-index:1200;width:300px;max-height:50vh;overflow:auto;
     background:var(--bg);border:1px solid #22304a;border-radius:10px;padding:8px;box-shadow:0 10px 40px rgba(0,0,0,.55)}

@@ -9,7 +9,10 @@
 // verdict parsing/rendering mirrors submit.js's finish() -- kept here so the job poller
 // is self-contained and the live SSE wrapper in submit.js stays untouched.
 
-const RQ = { timer:null, watchSku:null, watchJob:null, watchSt:null, globalTimer:null, _jobs:[], _panelOpen:false };
+// _lastActiveAt: when a job was last running or queued. The badge uses it to
+// linger for a couple of minutes after the last one ends -- see rqRenderBadge.
+const RQ = { timer:null, watchSku:null, watchJob:null, watchSt:null, globalTimer:null,
+             _jobs:[], _panelOpen:false, _lastActiveAt:0 };
 
 function _rqNewState(){ return {lines:[], verdict:null, summary:null, warnings:"", notSubmitted:[], sawStart:false, seen:0, titleShown:false}; }
 
@@ -156,6 +159,14 @@ function rqEnqueue(sku, mode, minimal){
   if(!sku) return;
   const P=_runPanel(sku);
   if(P){ P.show((mode==="api_submit"?"Submitting ":"Previewing ")+sku+" …"); P.verdict.innerHTML='<span class="rspin"></span> Queuing…'; }
+  // NO DRAWER OPEN -> SHOW THE RUNS PANEL, so there is something to watch.
+  // Otherwise the only sign a submit is happening is one toast that fades, and
+  // the badge that appears is easy to miss and disappears again the moment the
+  // queue empties. This is the same panel the badge opens; it is simply opened
+  // for you, because you have just asked for the thing it reports on.
+  else if(typeof rqTogglePanel === "function" && !RQ._panelOpen){
+    try{ rqTogglePanel(); }catch(e){}
+  }
   window.RUN_STREAMING=true;
   fetch("/preview/enqueue",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({sku:sku, mode:mode, minimal:!!minimal})})
@@ -174,7 +185,28 @@ function rqEnqueue(sku, mode, minimal){
 // panel. The full server-side job.log is always the source of truth.
 function rqWatch(sku, jobId){
   rqStopWatch();
-  if(!_runPanel(sku)) return;
+  /* IT NO LONGER NEEDS A DRAWER TO WATCH.
+   *
+   *     "when i submit the approved row from drafts i see no progress or log
+   *      what happened to that listing"
+   *
+   * This returned here when there was no runpanel_<sku> element -- and that
+   * element lives INSIDE THE OPEN DRAWER. So submitting from a row, with the
+   * drawer shut, stopped the watcher before it began, and everything after this
+   * line was skipped:
+   *
+   *   - no progress and no log, which is what was reported;
+   *   - no terminal verdict, so nothing ever said whether Amazon took it;
+   *   - _rqRefreshRow never ran, so the row itself did not update either;
+   *   - and avSubmitted() never started, so the auto-verify clock that re-asks
+   *     Amazon at 5, 10 and 15 minutes never began. A listing submitted from
+   *     the list was simply not being followed.
+   *
+   * The panel is one place to RENDER, not a precondition for watching. Every
+   * render below is already guarded by `if(P)`; the loop now runs either way,
+   * and the terminal branch reports through a toast when there is no panel to
+   * write into.
+   */
   const st=_rqNewState();
   RQ.watchSku=sku; RQ.watchJob=jobId||null; RQ.watchSt=st; RQ.watchEl=null; RQ.rendered=0;
   const tick=async ()=>{
@@ -208,6 +240,12 @@ function rqWatch(sku, jobId){
     if(P){
       if(j.status==="cancelled" && !st.sawStart){ P.verdict.innerHTML='<span class="rwarn">Cancelled before it ran.</span>'; }
       else { _rqFinish(st, P, sku, mode); }
+    }else{
+      // NO PANEL TO WRITE INTO, so it is said out loud instead. Without this a
+      // submit from the list ended in silence -- the badge vanishes the moment
+      // the queue empties, and nothing else on the screen changes fast enough
+      // to notice.
+      _rqSayOutcome(st, sku, mode, j.status);
     }
     // AMAZON ACCEPTED IT -- START THE CLOCK.
     //
@@ -229,6 +267,51 @@ function rqWatch(sku, jobId){
   tick();
 }
 
+/* WHAT HAPPENED, IN ONE SENTENCE, WHEN THERE IS NOWHERE TO PUT THE LOG.
+ *
+ * _rqFinish writes a paragraph and a hint into the drawer's verdict box. This
+ * is the same information for the case where the drawer is not open: the ONE
+ * thing worth interrupting somebody for, with a way to the detail.
+ *
+ * IT READS THE SAME PARSED STATE _rqFinish DOES -- st.verdict, st.summary,
+ * st.notSubmitted -- rather than looking at the log again, so the two cannot
+ * come to different conclusions about the same run (CLAUDE.md Rule 12).
+ *
+ * "Amazon accepted it" is deliberately NOT "it is live": Amazon publishes 5-30
+ * minutes later, autoverify.js is already following it, and saying live here
+ * would be a claim nobody has checked.
+ */
+function _rqSayOutcome(st, sku, mode, status){
+  if(typeof toast !== "function") return;
+  const what = (mode === "submit" ? "Submit" : "Preview") + " · " + sku;
+  if(status === "cancelled" && !st.sawStart){ toast(what + " — cancelled before it ran."); return; }
+  if(!st.sawStart){ toast(what + " — the run did not start."); return; }
+  const v = st.verdict, s = st.summary;
+  if(mode === "submit" && s && s.ok === 0 && (!v || v.kind !== "error")){
+    toast(what + " — NOT sent to Amazon. "
+      + (st.notSubmitted.join(" ").replace(/\s+/g, " ").trim().slice(0, 140)
+         || "Open the listing to see why."));
+    return;
+  }
+  if(!v){ toast(what + " — finished. Open the listing to read the log."); return; }
+  if(v.kind === "nocreds"){ toast(what + " — no SP-API credentials for this account."); return; }
+  if(v.kind === "network"){ toast(what + " — could not reach Amazon. A connection problem, not the listing."); return; }
+  if(v.kind === "missing"){ toast(what + " — the row is missing a SKU or a Product Type."); return; }
+  if(v.kind === "error"){
+    const first = (st.lines || []).filter(x => /\[E\]/.test(x))
+      .map(x => x.replace(/^[^[]*\[E\]\s*/, "").replace(/\s+/g, " ").trim())[0];
+    toast(what + " — Amazon refused. " + (first ? first.slice(0, 140)
+      : "Open the listing to see what it said."));
+    return;
+  }
+  if(v.kind === "ok_submit_pending" || v.kind === "ok_submit"){
+    toast(what + " — Amazon accepted it. It usually appears in 5-30 minutes; "
+      + "the app is checking.");
+    return;
+  }
+  toast(what + " — finished. Open the listing for the detail.");
+}
+
 // Stop WATCHING (on closeDrawer). Does NOT stop the server job -- it keeps running.
 function rqStopWatch(){ if(RQ.timer){ clearTimeout(RQ.timer); RQ.timer=null; } RQ.watchSku=null; RQ.watchSt=null; RQ.watchJob=null; RQ.watchEl=null; RQ.rendered=0; }
 
@@ -241,12 +324,49 @@ function rqBadgeEl(){
   if(!el){ el=document.createElement("div"); el.id="rqbadge"; el.className="rqbadge"; el.title="Preview/Submit runs"; el.onclick=rqTogglePanel; document.body.appendChild(el); }
   return el;
 }
+/* THE BADGE OUTLIVES THE RUN, for a couple of minutes.
+ *
+ * It used to vanish the instant the queue emptied -- so a submit that finished
+ * while you were reading something else left NOTHING on the screen, and no way
+ * back to the log. "I see no progress or log what happened to that listing" is
+ * partly that: the answer existed, on a badge that had already gone.
+ *
+ * It now stays for two minutes after the last job ends, saying how it went, and
+ * clicking it opens the same panel with the last fifteen runs in it. Two
+ * minutes because this is a notice, not a status bar: the Runs list is still
+ * reachable afterwards from a job's own listing, and a badge that never leaves
+ * is one nobody reads.
+ */
+const RQ_BADGE_LINGER_MS = 120000;
+
 function rqRenderBadge(counts){
   const el=rqBadgeEl();
   const run=(counts&&counts.running)||0, q=(counts&&counts.queued)||0;
-  if(run+q<=0){ el.style.display="none"; if(RQ._panelOpen) rqRenderPanel(); return; }
-  el.style.display="inline-flex";
-  el.innerHTML='<span class="rqdot"></span>&nbsp;'+run+' running'+(q?(' · '+q+' queued'):'');
+  if(run+q>0){
+    RQ._lastActiveAt = Date.now();
+    el.style.display="inline-flex";
+    el.className="rqbadge";
+    el.innerHTML='<span class="rqdot"></span>&nbsp;'+run+' running'+(q?(' · '+q+' queued'):'');
+    return;
+  }
+  // Nothing active. Linger only if something ran recently AND we know how it
+  // went -- a badge saying "0 running" would be worse than none.
+  const since = RQ._lastActiveAt ? (Date.now() - RQ._lastActiveAt) : Infinity;
+  const recent = (RQ._jobs||[]).filter(j => j.status==="done" || j.status==="error"
+                                         || j.status==="cancelled");
+  if(since < RQ_BADGE_LINGER_MS && recent.length){
+    const bad = recent.filter(j => j.status==="error").length;
+    el.style.display="inline-flex";
+    el.className = "rqbadge" + (bad ? " bad" : " ok");
+    el.innerHTML = bad
+      ? ('<span class="rqdot"></span>&nbsp;' + bad + ' failed — open')
+      : ('<span class="rqdot"></span>&nbsp;finished — open');
+    if(RQ._panelOpen) rqRenderPanel();
+    return;
+  }
+  el.style.display="none";
+  el.className="rqbadge";
+  if(RQ._panelOpen) rqRenderPanel();
 }
 async function rqGlobalPollNow(){
   try{
