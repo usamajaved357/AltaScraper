@@ -420,6 +420,21 @@ body.pdp-on{ overflow:hidden; }
    * the backdrop and so tracked the viewport instead of the card -- on a short
    * listing that put it below the panel's own lower edge. */
   z-index:3;
+  /* HIDDEN UNTIL SOMETHING HAS BEEN CHANGED.
+   *
+   *     "It should only appear AFTER the user has modified any field. Same
+   *      pattern as the Save All bar on the listings page -- hidden until a
+   *      change is detected, then slides in."
+   *
+   * Collapsed to nothing rather than display:none, so it can slide: a height of
+   * 0 with the padding and the border off takes no space at all, and the panel
+   * gives those 53px back to the fields. It is always in the DOM -- pdpRender
+   * replaces the whole panel, so a bar that only existed once dirty would
+   * appear rather than arrive. The declarations are at the END of this rule on
+   * purpose: padding and border are set below as SHORTHANDS, and a shorthand
+   * written later re-sets the longhand. With the collapse written first the bar
+   * still measured 21px -- 0 of content plus the 10+10 padding and 1px border
+   * the shorthands had put back. */
   /* The mockup is justify-content:flex-end with two buttons. The brief keeps
      the sentence as well -- "'Edits save as you leave each box...' text at the
      left side of the footer" -- so the note takes the slack with flex:1 and
@@ -434,6 +449,22 @@ body.pdp-on{ overflow:hidden; }
   background:var(--pdp-panel);
   border-top:1px solid var(--pdp-line);
   border-radius:0 0 9px 9px;
+  max-height:0; padding-top:0; padding-bottom:0;
+  border-top-width:0; overflow:hidden;
+  /* min-height:0 IS LOAD-BEARING, not tidying. A flex item's min-height
+     defaults to auto -- its own content -- and MIN-HEIGHT BEATS MAX-HEIGHT, so
+     without it the cap does not apply at all. Same trap that kept the panel at
+     3,107px in item 2. */
+  min-height:0;
+  transform:translateY(100%);
+  transition:max-height .18s ease, padding .18s ease, transform .18s ease;
+}
+/* A CHANGE HAS BEEN MADE. 60px is a ceiling for the animation, not a height --
+   the bar's own content is 37px and it keeps deciding its own size. */
+.pdp-footer.on{
+  max-height:60px; padding-top:10px; padding-bottom:10px;
+  border-top-width:1px;
+  transform:none;
 }
 .pdp-footer-note{
   flex:1; min-width:0; font-size:10px; color:var(--pdp-dim);

@@ -163,7 +163,13 @@ function pdpOpen(sku){
   }                                              // moving between listings
   const changed = PDP_SKU !== sku;
   PDP_SKU = sku;
-  if(changed) PDP_TAB = "details";               // a new listing starts at the front
+  if(changed){
+    PDP_TAB = "details";                         // a new listing starts at the front
+    // A DIFFERENT LISTING HAS NOT BEEN EDITED YET. Moving between two listings
+    // without closing the page would otherwise carry the bar across, and it
+    // would be reporting the last listing's work over this one's fields.
+    PDP_DIRTY = false;
+  }
   // The drawer and this page are two views of one listing; having both open
   // means two title boxes saving to the same cell.
   if(typeof closeDrawer === "function"){ try{ closeDrawer(); }catch(e){} }
@@ -219,6 +225,10 @@ function pdpOpen(sku){
 function pdpClose(){
   if(!PDP_SKU) return;
   PDP_SKU = "";
+  // "When saved or cancelled: bar disappears." Both buttons close the page, so
+  // it goes with it -- and the flag has to go too, or the next listing opens
+  // wearing the last one's bar.
+  PDP_DIRTY = false;
   const host = document.getElementById("pdp");
   if(host){
     host.classList.remove("in");
@@ -1208,9 +1218,26 @@ function pdpSyncThis(sku){
  * thing that genuinely can be lost is a value typed and never blurred. Sending
  * to Amazon stays on the Submit button at the top, where it is labelled.
  */
+/* AND IT IS NOT THERE UNTIL YOU HAVE CHANGED SOMETHING.
+ *
+ *     "The 'Cancel / Save and finish' bar is always visible. It should only
+ *      appear AFTER the user has modified any field. Same pattern as the Save
+ *      All bar on the listings page ... When no changes have been made: no bar
+ *      visible."
+ *
+ * A bar that is always there is furniture; one that appears when you have
+ * touched something is a statement about this listing. It also buys back 53px
+ * of the panel for the listing itself, which at a capped height is 53px of
+ * fields.
+ *
+ * NOT RENDERED CONDITIONALLY -- always drawn, and hidden. pdpRender replaces the
+ * whole panel, so a bar that only existed once dirty could not slide in; and a
+ * height that appears mid-edit would push the field you are typing in upwards.
+ * It is in the layout from the start and reveals itself.
+ */
 function pdpFooter(r){
   const ro = !!window.WS_READONLY;
-  return '<div class="pdp-footer">'
+  return '<div class="pdp-footer' + (PDP_DIRTY ? " on" : "") + '">'
     + '<span class="pdp-footer-note">'
     +   (ro ? 'Read-only workspace — nothing here can be changed.'
           : 'Edits save as you leave each box. Nothing reaches Amazon until Submit.')
@@ -1222,6 +1249,56 @@ function pdpFooter(r){
     +   ' title="Save whatever box you are still in, then close. Use Submit at the top to send the listing to Amazon.">'
     +   'Save and finish</button>'
     + '</div>';
+}
+
+/* Has anything on this listing been touched since it was opened?
+ *
+ * Reset when the page opens on a DIFFERENT listing, and when it closes -- the
+ * bar is about the listing in front of you, not about the session. */
+let PDP_DIRTY = false;
+let PDP_DIRTY_BOUND = false;
+
+/* One delegated listener, bound once, on the panel host.
+ *
+ * `input` rather than `change`, so the bar appears as you type rather than when
+ * you leave the box -- "When any field is modified: bar appears at the bottom."
+ * Bound by delegation because pdpRender replaces every control on the page and
+ * a listener per box would be re-attached on every render and pile up on
+ * detached nodes.
+ *
+ * ONLY THE EDITING SURFACE COUNTS. The panel also holds an attribute filter, a
+ * tab strip and the rail's own buttons, and none of those is a change to the
+ * listing -- a bar that appeared because somebody clicked "Differs" would be
+ * saying something untrue about their work.
+ */
+function pdpWatchEdits(){
+  const host = document.getElementById("pdp");
+  if(!host || PDP_DIRTY_BOUND) return;
+  const touched = function(ev){
+    const t = ev.target;
+    if(!t || !t.closest) return;
+    if(!t.closest(".pdp-content")) return;          // not the rail, top bar or tabs
+    if(t.closest(".pdp-afrow")) return;             // the attribute filter buttons
+    if(t.closest(".pdp-footer")) return;
+    const tag = t.tagName;
+    if(tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT"
+       && !t.isContentEditable) return;
+    pdpMarkDirty();
+  };
+  host.addEventListener("input", touched);
+  // A <select> fires change, not input, in some browsers; a contenteditable
+  // fires neither reliably until blur. Both are covered.
+  host.addEventListener("change", touched);
+  PDP_DIRTY_BOUND = true;
+}
+
+/* Show the bar. Toggles a class rather than re-rendering: a render mid-keystroke
+ * would replace the box under the cursor and lose the caret. */
+function pdpMarkDirty(){
+  if(PDP_DIRTY) return;
+  PDP_DIRTY = true;
+  const f = document.querySelector("#pdp .pdp-footer");
+  if(f) f.classList.add("on");
 }
 
 /* Commit the field still under the cursor, then close.
@@ -1361,6 +1438,9 @@ function pdpRender(){
   setTimeout(function(){
     if(typeof bulletMeter === "function") bulletMeter();
     pdpAutoGrow();
+    // Bound once, here rather than in pdpOpen, because the host's contents are
+    // what the listener delegates over and they do not exist until a render.
+    pdpWatchEdits();
   }, 40);
 }
 

@@ -173,7 +173,55 @@ yes("padding 10px 16px", ".pdp-footer{" in CSS and "padding:10px 16px" in CSS)
 yes("Cancel and Save and finish", "pdp-footer-cancel" in JS and "pdp-footer-save" in JS)
 yes("  with the note on the left", "pdp-footer-note" in JS
     and "Edits save as you leave each box" in JS)
-yes("  and it is sticky", "position:sticky" in CSS)
+# It WAS sticky. Item 2 of CLAUDE_CODE_PROMPT_v3.md took that away -- it is the
+# last flex item of the panel now, which puts it at the bottom of the CARD
+# rather than tracking the viewport. See "the bars do not scroll away" above.
+
+print("\n== v3 item 1: the bar arrives with the first change ==")
+#     "It should only appear AFTER the user has modified any field. Same
+#      pattern as the Save All bar on the listings page -- hidden until a
+#      change is detected, then slides in.
+#      When no changes have been made: no bar visible."
+yes("the bar is always drawn, and hidden by a class", 'PDP_DIRTY ? " on" : ""' in JS)
+# Collapsed, not display:none -- nothing slides in from nothing.
+# ANCHORED, because ".pdp-top, .pdp-hero, .pdp-tabs, .pdp-footer{ flex-shrink:0 }"
+# is written first and contains ".pdp-footer{" too. This codebase's oldest test
+# trap: the first match is not the rule you mean.
+foot = re.search(r"^\.pdp-footer\{(.*?)\}", CSS, re.S | re.M)
+yes(".pdp-footer takes no height until then",
+    foot and "max-height:0" in foot.group(1)
+         and "padding-top:0" in foot.group(1)
+         and "border-top-width:0" in foot.group(1))
+yes("  and is off the bottom edge", foot and "transform:translateY(100%)" in foot.group(1))
+# ORDER MATTERS INSIDE THE RULE. padding and border-top are set as SHORTHANDS,
+# and a shorthand written after a longhand re-sets it. With the collapse first
+# the bar measured 21px on screen -- 0 of content plus the padding and border
+# the shorthands had put back.
+yes("  written after the padding/border shorthands, not before",
+    foot and foot.group(1).index("max-height:0") > foot.group(1).index("padding:10px 16px")
+         and foot.group(1).index("border-top-width:0") > foot.group(1).index("border-top:1px"))
+# A flex item's min-height defaults to its content, and min-height beats
+# max-height -- without this the cap does nothing at all.
+yes("  with min-height:0 so the cap can apply", foot and "min-height:0" in foot.group(1))
+yes("  with something to animate", foot and "transition:max-height" in foot.group(1))
+on = re.search(r"\.pdp-footer\.on\{(.*?)\}", CSS, re.S)
+yes(".pdp-footer.on brings it back", on and "transform:none" in on.group(1)
+    and "padding-top:10px" in on.group(1) and "border-top-width:1px" in on.group(1))
+yes("one delegated listener, bound once",
+    "function pdpWatchEdits()" in JS and "PDP_DIRTY_BOUND" in JS)
+yes("  on input and change", 'host.addEventListener("input", touched)' in JS
+    and 'host.addEventListener("change", touched)' in JS)
+# Two boxes inside the panel are NOT the listing: the auto-fix suggestion rows
+# and the footer's own controls. Typing in those must not raise the bar.
+yes("  ignoring the auto-fix rows", 't.closest(".pdp-afrow")' in JS)
+yes("  and the footer itself", 't.closest(".pdp-footer")' in JS)
+yes("marking dirty reveals it without a re-render",
+    'f.classList.add("on")' in JS)
+# "When saved or cancelled: bar disappears." Both buttons close the panel.
+yes("closing forgets the change", re.search(
+    r"function pdpClose\(\)\{(?:(?!\n\}).)*PDP_DIRTY = false", JS, re.S) is not None)
+yes("  and so does opening a different listing", re.search(
+    r"if\(changed\)\{(?:(?!\n  \}).)*PDP_DIRTY = false", JS, re.S) is not None)
 
 print("\n== STEP 9: no drawer (see test_one_detail_view.js) ==")
 LIST = nocomments_js(read("static", "js", "listings.js"))
