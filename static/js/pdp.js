@@ -290,7 +290,6 @@ function pdpHero(r){
     : (asin.source ? esc(asin.source) + ' <span class="pdp-dim">(competitor reference — not ours)</span>'
                    : '<span class="pdp-dim">not live yet</span>');
   const cost = (typeof _dwCost === "function") ? _dwCost(r) : "";
-  const w = (typeof lsWarnings === "function") ? lsWarnings(r) : {n:0, high:0};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
   const profit = String(r.profit == null ? "" : r.profit).replace(/^[A-Z]{3}/, "");
 
@@ -319,15 +318,15 @@ function pdpHero(r){
     +     pdpStatusBadge(r)
     +     (profit ? '<span class="pdp-hb profit">Profit ' + esc(cur + profit) + '</span>' : "")
     +     (cost ? '<span class="pdp-hb cost">Cost ' + esc(cost) + '</span>' : "")
-    // The icon and the count, not the sentence -- the same shape the card's
-    // badge and the detailed row's chip use, with lsWarnTip's hover text so all
-    // three say the same thing (Rule 12). The word "warning" is in the tooltip.
-    +     (w.n ? '<span class="pdp-hb warn" onclick="pdpTab(\'compliance\')" '
-              + 'title="' + esc((typeof lsWarnTip === "function")
-                                ? lsWarnTip(w) + "\n\nOpen the Compliance tab"
-                                : "Open the Compliance tab")
-              + '"><i class="ti ti-alert-triangle"></i>'
-              + w.n + '</span>' : "")
+    // THE WARNING-COUNT BADGE WAS HERE, and went with the three on the list.
+    //
+    //     "i dont want this symbol at all, i already have 3 symbols for
+    //      restricted compliance and claims risk, i will maintain those"
+    //
+    // It is the least useful of the four places it appeared: this page has a
+    // Safety & Compliance TAB, two inches below, that lists every warning in
+    // full with what each one matched on. A badge saying "1" above a tab that
+    // says which one is a count of something already on screen.
     +   '</div>'
     + '</div></div></div>';
 }

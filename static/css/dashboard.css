@@ -1647,17 +1647,11 @@
      says the same thing at more length. One caption, not two stacked. */
   .tileimg.noimg:has(.noimgmsg)::after{content:none}
 
-  /* THE WARNING BADGE. See _warnChip in listings.js: this used to be a
-     .tilefact, which is inline-flex and therefore a FLEX ITEM inside .tileimg
-     -- it sat beside the picture and squeezed it. Positioned, like every other
-     overlay in that box. Top-right of the image, clear of the checkbox. */
-  .tilewarn{position:absolute;top:8px;right:36px;z-index:6;display:inline-flex;
-            align-items:center;gap:3px;height:22px;padding:0 7px;border-radius:11px;
-            font-size:12px;font-weight:700;line-height:1;cursor:pointer}
-  .tilewarn i{font-size:12px}
-  .tilewarn.red{background:#c0392b;color:#fff;border:1px solid #e05a4b}
-  .tilewarn.amber{background:rgba(90,74,22,.85);color:#f0cf8c;border:1px solid #7a641f}
-  .tilewarn.low{background:rgba(0,0,0,.55);color:var(--ink2);border:1px solid var(--line2)}
+  /* .tilewarn was here -- the warning-count badge, top-right of the picture.
+     Removed with _warnChip: "i dont want this symbol at all, i already have 3
+     symbols for restricted compliance and claims risk". The three that stay are
+     .tileflag (restricted), .tileclaim (claims risk) and .tileviab, and unlike
+     the count they each name what is wrong. */
   .tiledot{position:absolute;top:8px;left:8px;width:10px;height:10px;border-radius:50%;border:2px solid var(--panel)}
   .tilesel{position:absolute;top:8px;right:8px;width:22px;height:22px;cursor:pointer;accent-color:var(--accent);z-index:5;background:rgba(10,14,20,.6);border-radius:5px;box-shadow:0 0 0 2px rgba(255,255,255,.15)}
   .tile:hover .tilesel{box-shadow:0 0 0 2px var(--accent)}

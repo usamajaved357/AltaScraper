@@ -595,11 +595,9 @@ body.pdp-on{ overflow:hidden; }
 .pdp-hb.other{  background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
 .pdp-hb.profit{ background:var(--pdp-raise); color:var(--pdp-ok); border:1px solid var(--pdp-line); }
 .pdp-hb.cost{   background:var(--pdp-raise); color:var(--pdp-ink3); border:1px solid var(--pdp-line); }
-.pdp-hb.warn{
-  background:var(--pdp-warnbg); color:var(--pdp-warn);
-  border:1px solid #41240235; cursor:pointer;
-}
-.pdp-hb.warn:hover{ filter:brightness(1.15); }
+/* .pdp-hb.warn was here -- the warning-count badge in the hero. Removed with
+   the three on the list; this page's Safety & Compliance tab already lists
+   every warning in full, two inches below where the badge sat. */
 
 /* ---- 4. TABS ----------------------------------------------------------- */
 /* Left-aligned for the same reason as the hero: centred tabs over full-width

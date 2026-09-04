@@ -134,8 +134,12 @@ truthy("and falls back to the drawer when pdp.js has not loaded",
 // used to reach for openDrawer and now go through openListing/openListingAt
 // like everything else. See test_one_detail_view.js -- the side drawer is
 // unreachable now, and this count is where that shows up in this file.
+// 10 -> 9: the warning-count badge was one of them, and it is gone ("i dont
+// want this symbol at all, i already have 3 symbols for restricted compliance
+// and claims risk"). The point of the count is unchanged -- a NEW caller still
+// has to be a deliberate act -- and it moves down as well as up.
 check("every way into a listing goes through it",
-      (LISTINGS.match(/openListing(At)?\('/g) || []).length, 10);
+      (LISTINGS.match(/openListing(At)?\('/g) || []).length, 9);
 // AND ONLY THREE THINGS CALL pdpOpen ITSELF: openListing, openLiveListing, and
 // the drawer's own expand button -- which is deliberate, because the drawer is
 // already showing this listing and is asking for the same one full screen
@@ -324,11 +328,18 @@ truthy("the brand",          html.indexOf("Nestwell") >= 0);
 truthy("a status badge that includes what Amazon says",
        html.indexOf("LIVE · BUYABLE") >= 0);
 truthy("the profit badge",   html.indexOf("Profit £8.57") >= 0);
-// The badge is the triangle and the count; "1 warning (worst: ...)" and the
-// messages are the hover text now, shared with the card and the detailed row.
-truthy("a warning badge",
-       /pdp-hb warn[\s\S]{0,260}<\/i>1<\/span>/.test(html));
-truthy("  with the sentence on hover",  html.indexOf("1 warning (worst:") >= 0);
+// NO WARNING BADGE. It was the fourth mark on a listing that already carries
+// three that name the risk, and on THIS page it sat two inches above a Safety &
+// Compliance tab that lists every warning in full.
+//
+//     "i dont want this symbol at all, i already have 3 symbols for restricted
+//      compliance and claims risk, i will maintain those"
+check("no warning badge in the hero",  /pdp-hb warn/.test(html), false);
+check("  and no tooltip left behind",  html.indexOf("(worst:") >= 0, false);
+// The tab it used to link to is still there, and is where the detail lives.
+truthy("the Safety & Compliance tab is still on the bar",
+       html.indexOf("Safety &amp; Compliance") >= 0
+       || html.indexOf("Safety & Compliance") >= 0);
 
 console.log("\n  ...the top bar and the rail");
 truthy("back, Preview, Auto-fix, Submit and More",

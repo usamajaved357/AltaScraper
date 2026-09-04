@@ -1502,45 +1502,35 @@ function _handCell(r, liveOverride){
   return `<span class="tilefact${isAmazons?' handlive':''}" title="${tip}"><i class="ti ti-clock"></i> ${esc(String(n))}d${isAmazons?'':' <span class="cc">(ours)</span>'}</span>`;
 }
 
-/* HOW MANY WARNINGS, on the card, so you can see which listings want attention
- * without opening every drawer.
+/* THE WARNING-COUNT MARK IS GONE FROM THE LIST. _warnChip was here.
  *
- * Coloured by the worst one it carries: a listing with four low warnings is
- * not the one to look at first, and a single "this barcode is already live on
- * Amazon" is.
+ *     "there is still a symbol saying 1 warning worst: medium. i dont want this
+ *      symbol at all, i already have 3 symbols for restricted compliance and
+ *      claims risk, i will maintain those"
+ *
+ * It was a FOURTH marker on a card that already carries three, and the three it
+ * sat beside are the ones that name what is actually wrong: .tileflag
+ * (restricted / blocked), claimBadge (claims risk) and the compliance shield in
+ * the table. "1 warning" named nothing -- you had to hover it to find out
+ * whether it was a duplicate barcode or a missing product type, and by then the
+ * three symbols beside it had usually already said so.
+ *
+ * NOTHING IS LOST, only un-duplicated. lsWarnings still decides the counts, the
+ * status filters still use them, and every message is still listed in full in
+ * the Safety & Compliance tab (_dwWarnings). What went is the badge, in all
+ * four places that drew it: this one, the table cell (_warnCell), the detailed
+ * row's chip (listrow_detailed.js) and the product page's hero (pdp.js).
+ *
+ * ONE RULE FROM THAT BADGE OUTLIVES IT, and it is why this paragraph stays.
+ * ANYTHING PUT INSIDE .tileimg MUST BE position:absolute. That box is
+ * `display:flex`, so an unpositioned span becomes a FLEX ITEM BESIDE THE <img>
+ * and the picture is squeezed sideways to make room for it. That is what the
+ * reported "images are broken on the first few cards" was -- the first few were
+ * the ones with warnings, and the badge was a .tilefact, which is inline-flex.
+ * .tiledot, .tilesel, .tileflag, .tileclaim and .tileinactive are all
+ * positioned; _queuedChip was the other exception and was moved out to the
+ * facts line instead.
  */
-/* A BADGE ON THE PICTURE, NOT A LINE OF TEXT IN FRONT OF IT.
- *
- *     "The '1 warning' / '2 warnings' text is redundant -- the warning icons
- *      already show the count. Remove the text line entirely."
- *
- * AND IT WAS BREAKING THE IMAGES. This returned a .tilefact, which is
- * `display:inline-flex` -- not positioned. It is placed inside .tileimg, which
- * is `display:flex`, so the span became a FLEX ITEM BESIDE THE <img> and the
- * image was squeezed sideways to make room for the words. That is the reported
- * "images are broken on the first few cards": the first few are the ones with
- * warnings. Every other overlay in that box (.tiledot, .tilesel, .tileflag,
- * .tileclaim, .tileinactive) is position:absolute; these two were the
- * exceptions.
- *
- * So it is now a positioned badge carrying the COUNT and the icon, in the tone
- * of the worst warning it holds. The count stays because it is information --
- * "3" and "1" are different amounts of trouble -- and the sentence goes,
- * because the badge already says it in less room. The messages themselves are
- * still on hover, which is where they always were.
- */
-function _warnChip(r){
-  if(typeof lsWarnings !== "function") return "";
-  const w = lsWarnings(r);
-  if(!w.n) return "";
-  const tone = w.high ? "red" : (w.medium ? "amber" : "low");
-  // The hover text is lsWarnTip's, shared with the detailed row and the product
-  // page's hero, so the three marks cannot start saying different things.
-  const tip = (typeof lsWarnTip === "function") ? lsWarnTip(w) : String(w.n);
-  return `<span class="tilewarn ${tone}" title="${esc(tip)}"`
-       + ` onclick="event.stopPropagation();openListing('${esc(r.sku)}')">`
-       + `<i class="ti ti-alert-triangle"></i>${w.n}</span>`;
-}
 
 /* MARGIN, ROI AND PROFIT, on one line.
  *
@@ -1592,28 +1582,10 @@ function _econLine(r){
        + esc(bits.join(" · ")) + `</span></div>`;
 }
 
-/* THE SAME COUNT, IN THE TABLE.
- *
- * The badge was only on the tile, and the table is the DEFAULT view -- so on the
- * screen almost everyone actually looks at, nothing showed which listings had
- * warnings, and the only way to find out was to open all of them. Which is the
- * problem the badge exists to solve.
- *
- * Sits under the status pill because that is the cell about the listing's state,
- * and a warning is part of that state.
- */
-function _warnCell(r){
-  if(typeof lsWarnings !== "function") return "";
-  const w = lsWarnings(r);
-  if(!w.n) return "";
-  const tone = w.high ? "var(--red)" : (w.medium ? "var(--warn)" : "var(--ink3)");
-  const tip = w.list.slice(0, 5).map(function(x){
-    return "• " + String((x && x.message) || "");
-  }).join("\n");
-  return `<div style="font-size:9.5px;margin-top:3px;color:${tone}" `
-       + `title="${esc(tip)}"><i class="ti ti-alert-triangle"></i> `
-       + `${w.n} warning${w.n === 1 ? "" : "s"}</div>`;
-}
+/* _warnCell was here -- the same count under the status pill in the table.
+ * Removed with the card's badge and for the same reason: the Compliance column
+ * is the next cell along, and it already names what is wrong. See the note
+ * above _statusPill's neighbour, where _warnChip used to be. */
 
 /* WAITING TO GENERATE. A queued row has a SKU and almost nothing else -- no
  * title yet, no bullets, no images -- so it needs to say why it looks empty. */
@@ -1795,7 +1767,6 @@ function card(r){
       ${needsCopyBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
-      ${_warnChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
     <div class="tilebody" onclick="openListing('${esc(r.sku)}')">
@@ -2816,7 +2787,7 @@ function tableRow(r){
         ? `<div class="cc" style="font-size:9.5px;margin-top:3px;color:var(--warn)" `
           + `title="No bullets, no description, no product type yet. Select it and `
           + `press Regenerate copy, or open it and press Write it now.">no copy yet</div>`
-        : ''}${_warnCell(r)}</td>
+        : ''}</td>
     <td>${_compCell(r)}</td>
     <td><div class="acts">
       <button class="btn primary" onclick="event.stopPropagation();openListing('${esc(r.sku)}')">Review</button>

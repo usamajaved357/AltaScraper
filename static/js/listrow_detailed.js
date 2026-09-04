@@ -575,7 +575,6 @@ function lrImage(r){
 function lrProduct(r){
   const urls = (typeof _rowImages === "function") ? _rowImages(r) : [];
   const a = (typeof rowAsin === "function") ? (rowAsin(r) || {}) : {};
-  const w = (typeof lsWarnings === "function") ? lsWarnings(r) : {n:0};
   // OUR asin links to the live product page. The competitor's does NOT get a
   // link that looks like ours -- it is labelled for what it is, because a
   // listing that is not live yet having a clickable "ASIN" is how someone comes
@@ -650,21 +649,18 @@ function lrProduct(r){
     +     '<br>Condition <strong>New</strong>'
     +   '</div>'
     +   clash
+    // lrRisks IS THE ONE THAT STAYS. It names the restriction, the compliance
+    // demand and the claim risk -- the three symbols that say WHAT is wrong.
     +   lrRisks(r)
-    // THE ICON AND THE COUNT, NOT THE SENTENCE.
+    // The warning-count chip was here.
     //
-    //     "The '1 warning' / '2 warnings' text is redundant -- the warning
-    //      icons already show the count. Remove the text line entirely."
+    //     "i dont want this symbol at all, i already have 3 symbols for
+    //      restricted compliance and claims risk, i will maintain those"
     //
-    // The word is what goes; the number stays, because "3" and "1" are
-    // different amounts of trouble and nothing else on the row says which.
-    // The messages themselves are still on hover, where they always were --
-    // the same shape the card view's badge settled on (_warnChip).
-    +   (w.n ? '<div class="prod-warn" title="' + esc(
-                 (typeof lsWarnTip === "function") ? lsWarnTip(w) : String(w.n))
-             + '" onclick="event.stopPropagation();openListing(\''
-             + esc(r.sku) + '\')"><i class="ti ti-alert-triangle"></i>'
-             + w.n + '</div>' : "")
+    // A fourth mark on a row that already carries those three, and the only one
+    // of the four that named nothing -- "2" told you there was trouble but not
+    // what kind, so it always meant opening the listing to find out. The
+    // messages are still listed in full in the Safety & Compliance tab.
     + '</div>'
     + '</div>';
 }

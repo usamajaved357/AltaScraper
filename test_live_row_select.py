@@ -93,14 +93,14 @@ const grab = function(name){
   }
   throw new Error("unbalanced " + name);
 };
-// _warnCell IS GRABBED, NOT STUBBED. tableRow has called it since the warning
-// count was added to the table, and this probe did not know -- so listings.js
-// threw ReferenceError on load and every assertion below it was unreachable.
-// Pulling the real one in keeps the probe honest: a change to how a warning is
-// counted shows up here rather than being faked away.
+// _warnCell WAS GRABBED HERE, because tableRow called it. It no longer exists:
+// the warning-count mark was removed from all four views it appeared in ("i
+// dont want this symbol at all, i already have 3 symbols for restricted
+// compliance and claims risk"). grab() throws on a missing name rather than
+// stubbing one, which is what caught this -- and is the behaviour worth keeping.
 vm.runInThisContext([grab("rowSelectBox"), grab("liveTableRow"),
                      grab("splitByDraft"), grab("_draftOnlyNote"),
-                     grab("_warnCell"), grab("tableRow")].join("\n"));
+                     grab("tableRow")].join("\n"));
 
 const out = {};
 const IT = {sku: "9.18_3Days_B0C6XTNXL8", asin: "B0H8VHDX8B", title: "Floor Brush"};
