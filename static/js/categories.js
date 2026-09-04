@@ -38,8 +38,8 @@ function catsRender() {
     (d.fetched_at ? "Last read " + esc(d.fetched_at) + "." : "Never read yet.") + "</div>");
 
   if (d.note) {
-    html += '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;' +
-            'color:#e6d9b8;margin-bottom:12px">' + esc(d.note) + "</div>";
+    html += '<div class="issuesbox" style="background:var(--warn-bg);border:1px solid var(--warn-line);' +
+            'color:var(--gold);margin-bottom:12px">' + esc(d.note) + "</div>";
   }
 
   html += '<div class="ui-stats">' +

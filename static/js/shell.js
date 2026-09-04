@@ -755,7 +755,7 @@ function openAccountEditor(id){
       const el=document.getElementById("ac_drive_share");
       if(el && ds && ds.ok && ds.service_account_email){
         el.innerHTML='Generated images upload here into per-product <code>SKU_ProductName</code> subfolders. '
-          +'<b>Share this folder (Editor) with:</b><br><code style="user-select:all;background:#11203a;padding:2px 6px;border-radius:4px;display:inline-block;margin-top:3px">'
+          +'<b>Share this folder (Editor) with:</b><br><code style="user-select:all;background:var(--accent-bg);padding:2px 6px;border-radius:4px;display:inline-block;margin-top:3px">'
           +esc(ds.service_account_email)+'</code><br>or uploads will be denied.';
       }
     }catch(e){}
@@ -782,7 +782,7 @@ function _savedSheetLine(label, url, gid){
   if(!u) return `<div class="cc" style="font-size:11px;margin-top:3px"><span class="missing">Nothing saved yet</span></div>`;
   const tab = String(gid||"").trim();
   return `<div class="cc" style="font-size:11px;margin-top:3px;word-break:break-all">`
-       + `${esc(label)}: <a href="${esc(u)}" target="_blank" rel="noopener" style="color:#7fd0ff">${esc(u)}</a>`
+       + `${esc(label)}: <a href="${esc(u)}" target="_blank" rel="noopener" style="color:var(--accent2)">${esc(u)}</a>`
        + (tab ? ` <code style="opacity:.75">(tab gid ${esc(tab)})</code>`
               : ` <span class="missing">— no tab (#gid=…) in this link</span>`)
        + `</div>`;

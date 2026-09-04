@@ -112,9 +112,14 @@ check("nor re-parses Amazon's flagged-field notes",
 console.log("\nclicking a listing goes through one function");
 // ---------------------------------------------------------------------------
 truthy("openListing exists", /function openListing\(/.test(LISTINGS));
-truthy("it prefers the full-screen page", /pdpOpen\(sku\)/.test(LISTINGS));
+// openListing now asks whether this app HOLDS a draft before it sends anything
+// to the product page, because the product page is built from a row and refuses
+// without one -- which is what made "many listings" on the live view refuse to
+// open. See test_open_any_listing.js for the whole of that behaviour.
+truthy("it prefers the full-screen page, for a listing we have a row for",
+       /hasDraftRow\(s\) && typeof pdpOpen === "function"\)\{ pdpOpen\(s\)/.test(LISTINGS));
 truthy("and falls back to the drawer when pdp.js has not loaded",
-       /typeof pdpOpen === "function"[\s\S]{0,80}openDrawer\(sku\)/.test(LISTINGS));
+       /typeof pdpOpen === "function"\)\{ pdpOpen\(s\); return; \}\s*openDrawer\(s\)/.test(LISTINGS));
 // A COUNT, NOT A LIST, so a new caller has to be a deliberate act. It was 4 and
 // is 6: the warnings chip on the detailed row, and "Edit listing" in the
 // three-dot overflow, both go through the same function rather than reaching
@@ -453,10 +458,15 @@ check("no live ROW opens optimizeLive directly",
       /onclick="optimizeLive\('\$\{esc\(it\./.test(LISTINGS + MILES), false);
 truthy("but the deliberate button still does",
        /onclick="optimizeLive\('\$\{esc\(ownAsin\)/.test(LISTINGS));
+// The decision moved OUT of openLiveListing and INTO openListing, so that the
+// detailed view's rows -- which called openListing straight -- get the same
+// answer as the live tiles. openLiveListing is now a two-line wrapper.
 truthy("a SKU this app has a row for goes to the product page",
-       /known && typeof pdpOpen === "function"[\s\S]{0,40}pdpOpen\(s\)/.test(LISTINGS));
+       /hasDraftRow\(s\) && typeof pdpOpen === "function"[\s\S]{0,40}pdpOpen\(s\)/.test(LISTINGS));
 truthy("  and one it does not still opens optimizeLive, so nothing is lost",
        /if\(typeof optimizeLive === "function"\)[\s\S]{0,60}optimizeLive\(asin/.test(LISTINGS));
+truthy("  and openLiveListing just forwards to it now",
+       /function openLiveListing\(asin, sku\)\{\s*openListing\(sku, asin\);\s*\}/.test(LISTINGS));
 truthy("optimizeLive is still reachable from inside the product page",
        /optimizeLive\(/.test(PDPJS));
 

@@ -100,7 +100,7 @@ function cogsEdit(td, sku){
     + (c.cost === null ? "" : Number(c.cost).toFixed(2)) + '" '
     + 'placeholder="0.00" style="width:74px;padding:3px 5px;font-size:11.5px;'
     + 'text-align:right;border:1px solid var(--accent);border-radius:5px;'
-    + 'background:var(--bg,#0e1116);color:inherit">';
+    + 'background:var(--bg,var(--panel2));color:inherit">';
   const inp = td.querySelector("input");
   inp.focus(); inp.select();
 

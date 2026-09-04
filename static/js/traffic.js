@@ -335,11 +335,11 @@ function _tDonut(ch){
     + ' transform="rotate(-90 70 70)"/>'
     + '</svg>'
     + '<div class="ri-legend" style="margin-top:8px">'
-    + '<div class="ri-leg"><span class="ri-dot" style="background:#3b82f6"></span>'
+    + '<div class="ri-leg"><span class="ri-dot" style="background:var(--accent-bg)"></span>'
     + '<span class="ri-leg-label">Browser</span>'
     + '<span class="ri-leg-pct">' + (ch.browser_pct == null ? "—" : ch.browser_pct + "%")
     + '</span></div>'
-    + '<div class="ri-leg"><span class="ri-dot" style="background:#f97316"></span>'
+    + '<div class="ri-leg"><span class="ri-dot" style="background:var(--warn-bg)"></span>'
     + '<span class="ri-leg-label">Mobile</span>'
     + '<span class="ri-leg-pct">' + (ch.mobile_pct == null ? "—" : ch.mobile_pct + "%")
     + '</span></div></div></div>';

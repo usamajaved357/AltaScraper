@@ -368,8 +368,8 @@ function _ilDrawFolders(){
        + ';border-radius:10px;overflow:hidden;background:var(--panel);cursor:pointer">'
        + (cover
            ? '<img src="' + _ilEsc(typeof thumbUrl==="function"?thumbUrl(cover.url,160):cover.url) + '" loading="lazy" '
-             + 'style="width:100%;height:110px;object-fit:contain;background:#0d1220;display:block">'
-           : '<div style="height:110px;background:#0d1220;display:flex;align-items:center;'
+             + 'style="width:100%;height:110px;object-fit:contain;background:var(--sidebar);display:block">'
+           : '<div style="height:110px;background:var(--sidebar);display:flex;align-items:center;'
              + 'justify-content:center"><i class="ti ti-folder" style="font-size:34px;opacity:.5"></i></div>')
        + '<div style="padding:7px 9px">'
        + '<div style="font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;'
@@ -659,7 +659,7 @@ function _ilDraw(){
   h += '<div id="aimg_panel"></div>';
 
   // upload your own
-  h += '<div style="border:1px dashed #2f3a4d;border-radius:8px;padding:10px;margin-bottom:14px">'
+  h += '<div style="border:1px dashed var(--line2);border-radius:8px;padding:10px;margin-bottom:14px">'
      + '<b style="font-size:12.5px">Upload your own image</b>'
      + '<div class="cc" style="font-size:11px;margin:4px 0 8px">'
      + 'Saved to this listing\'s folder and hosted publicly so Amazon can fetch it.</div>'
@@ -713,7 +713,7 @@ function _ilDraw(){
          + '<img src="' + _ilEsc(typeof thumbUrl==="function"?thumbUrl(f.url,160):f.url) + '" loading="lazy" '
          + 'onclick="ilPreview(' + jsArg(f.url) + ',' + jsArg(f.name) + ')" '
          + 'title="Click to view full size" '
-         + 'style="width:100%;height:120px;object-fit:contain;background:#0d1220;'
+         + 'style="width:100%;height:120px;object-fit:contain;background:var(--sidebar);'
          + 'display:block;cursor:zoom-in">'
          + '<div style="padding:6px 7px">'
          + '<div class="cc" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" '
@@ -776,7 +776,7 @@ function _ilDraw(){
   h += '<span id="il_pushstatus" class="cc" style="font-size:11.5px"></span>'
      + '<div id="il_slotpick"></div>';
   if(IMGLIB.live){
-    h += '<div style="margin-top:16px;border-top:1px solid #26303f;padding-top:12px">'
+    h += '<div style="margin-top:16px;border-top:1px solid var(--line2);padding-top:12px">'
        + '<button class="db-chip btn-primary" '
        + 'onclick="ilPushLive()">Push main image to the live Amazon listing</button>'
        // The status line and the picker host live ABOVE, outside this block, so
@@ -807,10 +807,10 @@ function _ilDraw(){
 function _ilLastSendBanner(){
   const s = IMGLIB.lastSend;
   if(!s) return "";
-  return '<div style="border:1px solid #26403a;background:#10231f;border-radius:6px;'
+  return '<div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:6px;'
     + 'padding:9px 11px;margin-bottom:12px;display:flex;gap:10px;align-items:center">'
     + '<img src="' + _ilEsc(typeof thumbUrl==="function"?thumbUrl(s.url,64):s.url) + '" alt="" style="width:38px;height:38px;'
-    + 'object-fit:contain;background:#0d1220;border-radius:5px;flex:0 0 38px">'
+    + 'object-fit:contain;background:var(--sidebar);border-radius:5px;flex:0 0 38px">'
     + '<div style="min-width:0;flex:1">'
     + '<div style="font-size:12px;font-weight:600">'
     + '<i class="ti ti-check"></i> Sent to Amazon as ' + _ilEsc(s.slot) + '</div>'
@@ -937,7 +937,7 @@ function ilPreview(url, name, items, index){
             + '<i class="ti ti-chevron-right"></i></button>' : '')
     + '<img id="ilpreviewimg" src="' + _ilEsc(url) + '" alt="' + _ilEsc(name || "") + '" '
     + 'style="max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px;'
-    + 'background:#0d1220;box-shadow:0 18px 60px rgba(0,0,0,.6);cursor:default">'
+    + 'background:var(--sidebar);box-shadow:0 18px 60px rgba(0,0,0,.6);cursor:default">'
     + '<div style="display:flex;gap:8px;align-items:center;max-width:94vw">'
     + (many ? '<span class="cc" id="ilpreviewcount" style="font-size:11.5px;'
             + 'white-space:nowrap">' + (at + 1) + ' of ' + list.length + '</span>' : '')

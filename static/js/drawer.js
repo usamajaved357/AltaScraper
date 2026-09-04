@@ -122,7 +122,7 @@ function dwTitleParts(r, cid){
         '<span class="dw2-tag info" title="' + esc(TITLE_OPTS.indexTip) + '">'
       + esc(TITLE_OPTS.indexNote) + '</span>',
     warnNote: (warn || over)
-      ? '<div class="dw2-note" style="color:#EF9F27">⚠ ' + esc(TITLE_OPTS.warnMsg) + '</div>'
+      ? '<div class="dw2-note" style="color:var(--gold)">⚠ ' + esc(TITLE_OPTS.warnMsg) + '</div>'
       : ""
   };
 }
@@ -185,7 +185,7 @@ function dwEditBlock(o){
   // rule contentRow() used. Backend search terms are the one that matters:
   // one byte over 249 silently de-indexes the WHOLE field.
   const warnmsg = (o.warnMsg && (warn || over))
-    ? '<div class="dw2-note" style="color:#EF9F27">⚠ ' + esc(o.warnMsg) + "</div>" : "";
+    ? '<div class="dw2-note" style="color:var(--gold)">⚠ ' + esc(o.warnMsg) + "</div>" : "";
   const block = warnmsg +
       '<div class="dw2-edit' + (o.sm ? " sm" : "") + ' empty" contenteditable="true" spellcheck="false"'
     + ' data-ph="' + esc(o.placeholder || "empty") + '"'
@@ -353,7 +353,7 @@ function dwFieldRow(label, ctrl, o){
        + dwSrcDot(o.prov)
        + (o.req ? '<span class="dw2-req" title="Required by Amazon">*</span>' : "")
        + '</span><span class="dw2-frv">' + ctrl + "</span></div>"
-       + (o.hint ? '<div class="dw2-note" style="color:#EF9F27">⚠ ' + esc(o.hint) + "</div>" : "");
+       + (o.hint ? '<div class="dw2-note" style="color:var(--gold)">⚠ ' + esc(o.hint) + "</div>" : "");
 }
 function dwRo(v, cls){
   const s = (v == null ? "" : String(v)).trim();

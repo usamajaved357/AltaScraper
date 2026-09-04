@@ -389,8 +389,8 @@ function _ordItemCell(r){
   return '<div style="display:flex;gap:8px;align-items:center">'
     + (img
         ? '<img src="' + _oEsc(thumbUrl(img, 34)) + '" loading="lazy" decoding="async" style="width:34px;height:34px;'
-          + 'object-fit:contain;background:#0d1220;border-radius:5px;flex:0 0 34px">'
-        : '<span style="width:34px;height:34px;border-radius:5px;background:#0d1220;'
+          + 'object-fit:contain;background:var(--sidebar);border-radius:5px;flex:0 0 34px">'
+        : '<span style="width:34px;height:34px;border-radius:5px;background:var(--sidebar);'
           + 'display:inline-flex;align-items:center;justify-content:center;flex:0 0 34px">'
           + '<i class="ti ti-photo" style="opacity:.4"></i></span>')
     + '<span style="min-width:0">'
@@ -447,7 +447,7 @@ function ordersRender(){
     // Said out loud rather than silently dropped: if this ever fires, it is a
     // fault worth reporting, not a tidy-up worth hiding.
     h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
-      +  'border:1px solid #5c2a33;background:#2a1620;border-radius:6px;color:#ffb3b3">'
+      +  'border:1px solid var(--red-line);background:var(--red-bg);border-radius:6px;color:var(--red)">'
       +  '<i class="ti ti-alert-triangle"></i> ' + _foreign + ' order'
       +  (_foreign === 1 ? "" : "s") + ' belonging to another account '
       +  'were not shown. Please report this — it should not happen.</div>';
@@ -458,7 +458,7 @@ function ordersRender(){
   // if a failure only removes rows.
   (m.errors || []).forEach(function(e){
     h += '<div class="cc" style="font-size:11.5px;margin:0 0 8px;padding:8px 11px;'
-      +  'border:1px solid #3a3320;background:#241f10;border-radius:6px">'
+      +  'border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:6px">'
       +  '<i class="ti ti-alert-triangle"></i> <b>' + _oEsc(e.account) + '</b> — '
       +  _oEsc(e.error)
       // AMAZON'S OWN WORDS, KEPT BUT NOT LEADING. The sentence above is what to
@@ -542,7 +542,7 @@ function ordersRender(){
   ]));
 
   if(!ORD.rows.length){
-    h += '<div class="cc" style="padding:20px;border:1px dashed #2a3446;border-radius:6px">'
+    h += '<div class="cc" style="padding:20px;border:1px dashed var(--line2);border-radius:6px">'
       // AN EMPTY LIST BECAUSE NOBODY ANSWERED IS NOT AN EMPTY LIST OF ORDERS.
       // "No orders in the last 30 days" is a finding; this is the absence of
       // one, and saying the first when the second is true is how somebody
@@ -724,7 +724,7 @@ function ordersRender(){
   // WHAT AMAZON WITHHOLDS, said once at the bottom rather than as an empty
   // column with no explanation.
   h += '<div class="cc" style="font-size:11.5px;margin-top:12px;padding:9px 11px;'
-    +  'border:1px solid #26303f;border-radius:6px;line-height:1.6">'
+    +  'border:1px solid var(--line2);border-radius:6px;line-height:1.6">'
     +  '<i class="ti ti-info-circle"></i> ' + _oEsc(m.pii_note || "") + '</div>';
   body.innerHTML = h;
 }
@@ -1018,7 +1018,7 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
             ? 'Amazon’s own settled figures'
             : 'fee estimated until Amazon settles it') + '</span></h4>'
         + '<table style="width:100%;font-size:11px;border-collapse:collapse">'
-        + '<thead><tr style="color:#8b98a9;text-align:right">'
+        + '<thead><tr style="color:var(--ink2);text-align:right">'
         + '<th style="text-align:left;font-weight:500;padding:2px 4px">Item</th>'
         + '<th style="font-weight:500;padding:2px 4px">Buyer paid</th>'
         + '<th style="font-weight:500;padding:2px 4px">Amazon fee</th>'
@@ -1026,7 +1026,7 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
         + '<th style="font-weight:500;padding:2px 4px">Profit</th>'
         + '</tr></thead><tbody>';
   bd.lines.forEach(function(l){
-    h += '<tr style="text-align:right;border-top:1px solid #161d27">'
+    h += '<tr style="text-align:right;border-top:1px solid var(--line2)">'
       +  '<td style="text-align:left;padding:3px 4px;max-width:190px">'
       +  '<span style="display:block;overflow:hidden;text-overflow:ellipsis;'
       +  'white-space:nowrap" title="' + _oEsc(l.title) + '">'
@@ -1036,10 +1036,10 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
       +  '<td style="padding:3px 4px">' + money(l.revenue) + '</td>'
       // Shown as a deduction, with a minus, so the row reads as a sum rather
       // than as four unrelated numbers.
-      +  '<td style="padding:3px 4px;color:#e8a06a">'
+      +  '<td style="padding:3px 4px;color:var(--warn)">'
       +  (l.fee === null || l.fee === undefined ? money(null)
           : '−' + _oEsc(_oMoney(l.fee, currency))) + '</td>'
-      +  '<td style="padding:3px 4px;color:#e8a06a">'
+      +  '<td style="padding:3px 4px;color:var(--warn)">'
       +  (l.cogs === null || l.cogs === undefined ? money(null)
           : '−' + _oEsc(_oMoney(l.cogs, currency))
             + (l.qty > 1 && l.unit_cost !== null
@@ -1058,16 +1058,16 @@ function _ordBreakdownHtml(bd, currency, orderId, accountId, marketplace){
     // the whole order.
     if(l.note){
       h += '<tr><td colspan="5" class="cc" style="padding:0 4px 4px;'
-        +  'font-size:10px;color:#e8c66a">' + _oEsc(l.note) + '</td></tr>';
+        +  'font-size:10px;color:var(--gold)">' + _oEsc(l.note) + '</td></tr>';
     }
   });
-  h += '</tbody><tfoot><tr style="text-align:right;border-top:1px solid #26303f">'
+  h += '</tbody><tfoot><tr style="text-align:right;border-top:1px solid var(--line2)">'
     +  '<td style="text-align:left;padding:4px;font-weight:600">Order</td>'
     +  '<td style="padding:4px">' + money(t.revenue) + '</td>'
-    +  '<td style="padding:4px;color:#e8a06a">'
+    +  '<td style="padding:4px;color:var(--warn)">'
     +  (t.fees === null || t.fees === undefined ? money(null)
         : '−' + _oEsc(_oMoney(t.fees, currency))) + '</td>'
-    +  '<td style="padding:4px;color:#e8a06a">'
+    +  '<td style="padding:4px;color:var(--warn)">'
     +  (t.cogs_complete ? '−' + _oEsc(_oMoney(t.cogs, currency))
         : '<span class="cc">part only</span>') + '</td>'
     +  '<td style="padding:4px;font-weight:700">' + money(t.profit) + '</td>'
@@ -1345,7 +1345,7 @@ function _ordWhyText(status, cancelRequested, cancelReason){
     // Amazon carries the buyer's stated reason in the same object as the flag.
     // It is usually empty; when it is not, it is the most useful sentence on
     // the screen, so it goes first.
-    bits.push('<b style="color:#fca5a5">' + _oEsc(_ORD_CANCEL_REQUESTED.t)
+    bits.push('<b style="color:var(--red)">' + _oEsc(_ORD_CANCEL_REQUESTED.t)
               + (cancelReason ? ': ' + _oEsc(cancelReason) : '')
               + '.</b> ' + _oEsc(_ORD_CANCEL_REQUESTED.m) + ' '
               + _oEsc(_ORD_CANCEL_REQUESTED.d));

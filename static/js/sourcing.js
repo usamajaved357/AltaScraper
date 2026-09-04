@@ -834,7 +834,7 @@ function _srcModal(title, bodyHtml, onOk, onCancel){
     + '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">'
     + '<button class="db-chip" id="srcmodal_cancel">Cancel</button>'
     + '<button class="db-chip" id="srcmodal_ok" style="background:var(--accent);'
-    + 'color:#fff;border-color:var(--accent)">Save</button></div></div>';
+    + 'color:var(--paper);border-color:var(--accent)">Save</button></div></div>';
   document.body.appendChild(wrap);
   let settled = false;
   const close = function(cancelled){
@@ -1037,13 +1037,13 @@ function sourcingUploadReport(){
     + '<i class="ti ti-table-import"></i> Last sheet upload &mdash; '
     + j.attached + ' attached'
     + (j.already ? (', ' + j.already + ' already had one') : '')
-    + (j.skipped ? ('<b style="color:#e8c66a">, ' + j.skipped + ' skipped</b>') : '')
+    + (j.skipped ? ('<b style="color:var(--gold)">, ' + j.skipped + ' skipped</b>') : '')
     + '<span class="cc"> — matched on "' + _sesc((j.columns||{}).sku || (j.columns||{}).asin || '?')
     + '" and "' + _sesc((j.columns||{}).url || '?') + '"</span></summary>'
     + (bad.length
         ? bad.map(function(r){
             return '<div class="cc" style="font-size:11.5px;padding:3px 0;'
-              + 'border-top:1px solid #1c2531">line ' + r.line + ' &middot; '
+              + 'border-top:1px solid var(--line2)">line ' + r.line + ' &middot; '
               + _sesc(r.sku || r.asin || '(no key)') + ' &mdash; ' + _sesc(r.note) + '</div>';
           }).join("")
         : '<div class="cc" style="font-size:11.5px;padding:4px 0">Every row went in.</div>')
@@ -1408,9 +1408,9 @@ function srcChart(title, json, anchor){
     tip.innerHTML = '<b>' + _smoney(p.landed) + '</b><br>'
       + _sesc((_srcDay(p.at) || '') + ' ' + _srcClock(p.at)).trim()
       + (String(p.status || '') === 'gone'
-          ? '<br><span style="color:#ef4444">supplier ended</span>'
+          ? '<br><span style="color:var(--red)">supplier ended</span>'
           : (p.in_stock === false
-              ? '<br><span style="color:#ef4444">out of stock</span>' : ''));
+              ? '<br><span style="color:var(--red)">out of stock</span>' : ''));
     tip.style.display = 'block';
     const tx = (xs[best] / W) * r.width + (r.left - box.getBoundingClientRect().left);
     tip.style.left = Math.round(tx) + 'px';
@@ -1501,16 +1501,16 @@ function _stackBar(b, r){
           + '" title="This price does not cover what the unit costs">'
           + _smoney(profit) + '</div>');
   h += '</div><div class="rp-sbleg">'
-    + '<span><span class="rp-sq" style="background:#5b8fb9"></span>Supplier</span>'
-    + '<span><span class="rp-sq" style="background:#e25c5c"></span>Referral</span>'
+    + '<span><span class="rp-sq" style="background:var(--accent-bg)"></span>Supplier</span>'
+    + '<span><span class="rp-sq" style="background:var(--red-bg)"></span>Referral</span>'
     + (close > 0
-        ? '<span><span class="rp-sq" style="background:#d4846f"></span>Closing</span>'
+        ? '<span><span class="rp-sq" style="background:var(--red-bg)"></span>Closing</span>'
         : '')
     + (other > 0
         ? '<span><span class="rp-sq" style="background:var(--line2)"></span>'
           + 'Postage &amp; ads</span>'
         : '')
-    + '<span><span class="rp-sq" style="background:#4ebb82"></span>'
+    + '<span><span class="rp-sq" style="background:var(--ok-bg)"></span>'
     + (profit > 0 ? 'Profit' : 'Shortfall') + '</span>'
     // WHICH PRICE THIS BAR IS DRAWN AT.
     //
@@ -2834,7 +2834,7 @@ function sourcingRender(j){
   h += sourcingUploadReport();
 
   if(j.note){
-    h += '<div class="cc" style="font-size:12px;padding:10px;border:1px dashed #2a3446;border-radius:6px">'
+    h += '<div class="cc" style="font-size:12px;padding:10px;border:1px dashed var(--line2);border-radius:6px">'
       +  _sesc(j.note)+' Enroll a SKU above to start watching its suppliers.</div>';
     body.innerHTML = h; return;
   }
@@ -4127,7 +4127,7 @@ async function sourcingPickerLoad(q){
   const items = all.filter(function(it){ return !it.enrolled; });
   const already = all.length - items.length;
 
-  let h = '<div style="border:1px solid #26303f;border-radius:8px;padding:12px;margin-bottom:12px">'
+  let h = '<div style="border:1px solid var(--line2);border-radius:8px;padding:12px;margin-bottom:12px">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
     + '<b style="font-size:13px">Enroll a listing</b>'
     + '<span class="cc" style="font-size:11px">'
@@ -4158,16 +4158,16 @@ async function sourcingPickerLoad(q){
   h += '<div style="max-height:340px;overflow:auto">';
   items.forEach(function(it){
     h += '<div style="display:flex;gap:9px;align-items:center;font-size:11.5px;'
-      +  'padding:6px 4px;border-top:1px solid #1c2531">'
+      +  'padding:6px 4px;border-top:1px solid var(--line2)">'
       // The product, at a glance. A SKU is "10.06_3Days_B0081ZHHTS" and a title
       // is forty words of keywords; neither says what the thing is, and
       // enrolling the wrong one reprices it against somebody else's supplier.
       +  (it.img
           ? '<img src="'+_sesc(thumbUrl(it.img, 38))+'" loading="lazy" decoding="async" alt="" '
-            + 'style="width:38px;height:38px;object-fit:contain;background:#0d1220;'
+            + 'style="width:38px;height:38px;object-fit:contain;background:var(--sidebar);'
             + 'border-radius:5px;flex:0 0 auto">'
           : '<span style="width:38px;height:38px;border-radius:5px;flex:0 0 auto;'
-            + 'background:#0d1220;display:inline-block"></span>')
+            + 'background:var(--sidebar);display:inline-block"></span>')
       +  '<code style="min-width:150px">'+_sesc(it.sku)+'</code>'
       +  '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" '
       +  'title="'+_sesc(it.title)+'">'+_sesc(it.title||"(no title)")+'</span>'

@@ -92,8 +92,8 @@ function leadRender() {
   " days before it." + "</div>";
 
   if (d.note) {
-    head += '<div class="issuesbox" style="background:#241f10;border:1px solid #3a3320;' +
-            'color:#e6d9b8">' + esc(d.note) + "</div>";
+    head += '<div class="issuesbox" style="background:var(--warn-bg);border:1px solid var(--warn-line);' +
+            'color:var(--gold)">' + esc(d.note) + "</div>";
   }
 
   let html = head + uiPanel("Yesterday against its own history",

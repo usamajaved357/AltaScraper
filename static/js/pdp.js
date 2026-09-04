@@ -57,7 +57,17 @@ function pdpIsOpen(){ return !!PDP_SKU; }
 function pdpOpen(sku){
   sku = String(sku || "");
   const r = (typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null;
-  if(!r){ if(typeof toast === "function") toast("That listing is not on this screen."); return; }
+  // NO ROW MEANS NO PRODUCT PAGE -- this page is built from one. Callers are
+  // meant to have asked openListing(), which sends a listing with no draft to
+  // the live optimiser instead; this is the last line, and it says what is
+  // actually true rather than "not on this screen", which reads like the row
+  // scrolled off.
+  if(!r){
+    if(typeof toast === "function")
+      toast("This app holds no draft of " + sku + ", so there is nothing to open here. "
+            + "Press Sync to pull it in from Amazon.");
+    return;
+  }
   if(!PDP_SKU){                                  // entering from the grid, not
     try{ PDP_BACK_SCROLL = window.scrollY || 0; }catch(e){ PDP_BACK_SCROLL = 0; }
   }                                              // moving between listings

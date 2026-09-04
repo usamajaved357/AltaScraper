@@ -483,7 +483,7 @@ function _skLedger(){
       + '<td class="r stk-num">' + _skMoney(r.value_at_cost) + '</td>'
       + '<td><span class="stk-chip ' + cls + '">' + _skEsc(r.status) + '</span>'
       +   (r.already_out
-            ? '<div style="font-size:10px;margin-top:3px;color:#fca5a5">'
+            ? '<div style="font-size:10px;margin-top:3px;color:var(--red)">'
               + 'out now</div>'
             : (r.runs_out && (r.status === "order now"
                               || r.status === "stockout likely")
@@ -554,7 +554,7 @@ function _skOrderList(){
       // ALREADY LATE IS NOT A DEADLINE. Showing a date in the past as though it
       // were something to plan for is worse than saying the gap is unavoidable.
       + (r.late
-          ? '<span style="color:#fca5a5">already late</span>'
+          ? '<span style="color:var(--red)">already late</span>'
           : (r.order_by ? _skDate(r.order_by) : '<span class="cc">—</span>'))
       + '</td>'
       + '<td class="cc" style="font-size:11px">' + _skEsc(r.why)
@@ -825,7 +825,7 @@ function _skMoneyBack(){
       + '<td class="r stk-num">' + _skMoney(c.fee_on_refunded_part, c.currency) + '</td>'
       + '<td class="r stk-num">' + _skMoney(c.returned, c.currency) + '</td>'
       + '<td class="r stk-num">' + _skMoney(c.allowed_to_keep, c.currency) + '</td>'
-      + '<td class="r stk-num"><b style="color:#fbbf24">'
+      + '<td class="r stk-num"><b style="color:var(--warn)">'
       + _skMoney(c.owed, c.currency) + '</b></td></tr>';
   });
   return h + '</tbody></table>' + scope + '</div>';
@@ -867,7 +867,7 @@ function _skForecast(){
   f.forEach(function(r){
     h += '<tr><td><b>' + r.days + ' days</b></td>'
       + '<td class="r stk-num">' + _skNum(r.units_selling) + '</td>'
-      + '<td class="r stk-num"' + (r.units_short ? ' style="color:#fbbf24"' : '')
+      + '<td class="r stk-num"' + (r.units_short ? ' style="color:var(--warn)"' : '')
       + '>' + _skNum(r.units_short) + '</td>'
       + '<td class="r stk-num">' + _skNum(r.skus_short) + '</td>'
       + '<td class="r stk-num">' + _skMoney(r.cost_to_cover)

@@ -184,7 +184,7 @@ function asStudioRender() {
     const img = s.main_image || s.image || (s.images || [])[0] || "";
     h += '<div class="tile" style="max-width:100%;display:flex;gap:14px;padding:12px;margin-bottom:16px">'
        + (img ? '<img src="' + _asEsc(img) + '" style="width:90px;height:90px;'
-                + 'object-fit:contain;border-radius:8px;background:#fff">' : "")
+                + 'object-fit:contain;border-radius:8px;background:var(--paper)">' : "")
        + '<div style="flex:1;min-width:0">'
        + '<div style="font-weight:600">' + _asEsc(s.title || "(no title)") + "</div>"
        + '<div class="cc" style="margin-top:4px">'

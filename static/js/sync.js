@@ -43,8 +43,8 @@ async function syncRenderMatrix(){
     (j.accounts||[]).forEach(function(a){
       h+='<tr><td><b>'+esc(a.label)+'</b></td>'
         +'<td>'+_syncPill(a.status)+'</td>'
-        +'<td title="'+esc(a.reason)+'">'+(a.pull_enabled?'<span style="color:#4caf7d">active</span>':'<span style="color:var(--red)">disabled</span>')+'</td>'
-        +'<td>'+(a.push_enabled?'<span style="color:var(--warn)">inferred</span>':'<span style="color:#8b93a5">—</span>')+'</td></tr>';
+        +'<td title="'+esc(a.reason)+'">'+(a.pull_enabled?'<span style="color:var(--ok)">active</span>':'<span style="color:var(--red)">disabled</span>')+'</td>'
+        +'<td>'+(a.push_enabled?'<span style="color:var(--warn)">inferred</span>':'<span style="color:var(--ink2)">—</span>')+'</td></tr>';
     });
     h+='</tbody></table>'
       +'<div class="cc" style="font-size:11px;opacity:.7;margin-top:6px">Pull reflects a live read-test. Push is inferred until a real push. Re-check / mark-cause apply to the <b>active workspace</b>.</div>'
@@ -116,7 +116,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
   SYNC_LAST={sku:sku, amazon:amazon, stored:stored, status:(meta&&meta.status)};
   var h='<div class="cc" style="margin-bottom:8px">'+esc(sku)+' — '
     +(mode==='pull'?'PULL: tick the Amazon fields to bring into the app.':'PUSH: review what would go to Amazon (write is halted).')+'</div>';
-  if(meta&&meta.warn){ h+='<div style="background:#3a3320;color:var(--warn);padding:8px 10px;border-radius:8px;margin-bottom:8px">'+esc(meta.warn)+'</div>'; }
+  if(meta&&meta.warn){ h+='<div style="background:var(--warn-bg);color:var(--warn);padding:8px 10px;border-radius:8px;margin-bottom:8px">'+esc(meta.warn)+'</div>'; }
   if(meta&&meta.status){ h+='<div style="margin-bottom:8px">Status: '+_syncPill(meta.status)+'</div>'; }
   var srcLbl=(mode==='pull')?'Amazon (incoming)':'App (would push)';
   var tgtLbl=(mode==='pull')?'App (current)':'Amazon (current)';
@@ -130,7 +130,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
     var diff=(src!==tgt);
     h+='<tr style="'+(diff?'background:rgba(110,168,254,.06)':'')+'">';
     if(mode==='pull') h+='<td>'+(diff?'<input type="checkbox" class="sync_apply" data-f="'+f+'">':'')+'</td>';
-    h+='<td class="cc" style="font-size:11px">'+esc(lbl)+(diff?' <span style="color:#6ea8fe">●</span>':'')+'</td>'
+    h+='<td class="cc" style="font-size:11px">'+esc(lbl)+(diff?' <span style="color:var(--accent)">●</span>':'')+'</td>'
       +'<td style="font-size:11px;word-break:break-word">'+esc(String(src).slice(0,300))+'</td>'
       +'<td style="font-size:11px;word-break:break-word">'+esc(String(tgt).slice(0,300))+'</td></tr>';
   });
@@ -138,7 +138,7 @@ function syncOpenModal(mode, sku, stored, amazon, meta){
   if(mode==='pull'){
     h+='<div style="margin-top:12px"><button class="btn primary" onclick="syncApplyPull()">Apply checked Amazon fields to app</button></div>';
   }else{
-    h+='<div style="margin-top:12px;background:#3d1f22;color:var(--red);padding:8px 10px;border-radius:8px">Push write is intentionally HALTED pending the reviewed one-listing first-push test. Nothing was sent to Amazon.</div>';
+    h+='<div style="margin-top:12px;background:var(--red-bg);color:var(--red);padding:8px 10px;border-radius:8px">Push write is intentionally HALTED pending the reviewed one-listing first-push test. Nothing was sent to Amazon.</div>';
   }
   document.getElementById('sync_modal_title').textContent=(mode==='pull'?'Pull review':'Push review')+' — '+sku;
   document.getElementById('sync_modal_body').innerHTML=h;

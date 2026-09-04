@@ -58,7 +58,7 @@ async function suggestFields(sku){
         // it's handled and won't try to fill it by hand.
         return '<div class="sgrow applied" id="sg_'+sidv+'">'+
           '<div class="sghead"><span class="sgfield">'+esc(s.field)+'</span>'+
-          '<span class="srcbadge" style="background:#13371f;border-color:#1f7a3a;color:var(--ok)">auto-filled on Preview</span></div>'+
+          '<span class="srcbadge" style="background:var(--ok-bg);border-color:var(--ok-line);color:var(--ok)">auto-filled on Preview</span></div>'+
           (s.note?'<div class="sgnote">'+esc(s.note)+'</div>':'')+
         '</div>';
       }
@@ -273,8 +273,8 @@ function _afBox(width){
   el.style.cssText = "position:fixed;width:" + width + "px;max-height:80vh;"+
     (onScreen ? ("left:" + s.left + "px;top:" + s.top + "px;")
               : "bottom:20px;right:20px;")+
-    "background:#141b2b;border:1px solid #3b4d70;border-radius:10px;padding:12px;"+
-    "box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;font-size:12px;color:#e8eaed;"+
+    "background:var(--panel);border:1px solid var(--accent-line);border-radius:10px;padding:12px;"+
+    "box-shadow:0 8px 24px rgba(0,0,0,0.5);z-index:9999;font-size:12px;color:var(--ink);"+
     "display:flex;flex-direction:column;gap:8px";
   if(s.min) el.classList.add("af-min");
   return el;
@@ -292,7 +292,7 @@ function _afHead(titleHtml, buttonsHtml){
         buttonsHtml +
         '<button onclick="afBoxFold(event)" id="af_foldbtn" title="Fold this box '+
           'down to its title — the run keeps going" style="background:none;'+
-          'color:#e8eaed;border:none;cursor:pointer;font-size:15px;line-height:1">'+
+          'color:var(--ink);border:none;cursor:pointer;font-size:15px;line-height:1">'+
           (folded ? "▣" : "—") + '</button>'+
       '</div>'+
     '</div>';
@@ -337,22 +337,22 @@ function _afPanel(){
   const el = _afBox(620);
   el.innerHTML =
     _afHead("✦ Auto-fix",
-      '<button onclick="_afCopyTrace()" style="background:#5b3fb8;color:#fff;border:none;'+
+      '<button onclick="_afCopyTrace()" style="background:var(--ai-bg);color:var(--paper);border:none;'+
         'padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">📋 Copy trace</button>'+
       '<button id="af_stopbtn" onclick="_afStopJob()" style="background:var(--red-line);color:var(--red);'+
-        'border:1px solid #7a3030;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+        'border:1px solid var(--red-line);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
         '■ Stop</button>'+
       '<button onclick="document.getElementById(\'autofix_panel\').remove()" title="Close this box '+
-        '(the run KEEPS going on the server)" style="background:none;color:#e8eaed;border:none;'+
+        '(the run KEEPS going on the server)" style="background:none;color:var(--ink);border:none;'+
         'cursor:pointer;font-size:16px">✕</button>')+
     '<div id="af_status" style="color:var(--accent2)"></div>'+
-    '<div id="af_bar" style="height:6px;background:#22293a;border-radius:4px;overflow:hidden">'+
-      '<div id="af_barfill" style="height:100%;width:0%;background:#4a8cff;transition:width .3s"></div>'+
+    '<div id="af_bar" style="height:6px;background:var(--panel3);border-radius:4px;overflow:hidden">'+
+      '<div id="af_barfill" style="height:100%;width:0%;background:var(--accent-bg);transition:width .3s"></div>'+
     '</div>'+
     '<div style="color:var(--ink3);font-size:11px">This runs on the server — you can lock your screen, '+
       'close this box, or sign out. It keeps going until it finishes or you press Stop.</div>'+
     '<div id="af_steps" style="overflow:auto;max-height:30vh;font-family:ui-monospace,monospace;'+
-      'font-size:11px;background:#0f131a;border-radius:6px;padding:8px;white-space:pre-wrap"></div>'+
+      'font-size:11px;background:var(--sidebar);border-radius:6px;padding:8px;white-space:pre-wrap"></div>'+
     '<div id="af_results" style="overflow:auto;max-height:26vh"></div>';
   document.body.appendChild(el);
 }
@@ -396,7 +396,7 @@ function _afRender(job){
     rs.innerHTML = (job.results || []).map(function(r){
       const col = r.outcome === "cleared" ? "var(--ok)" : (r.outcome === "stuck" ? "var(--warn)" : "var(--red)");
       const mark = r.outcome === "cleared" ? "✓" : (r.outcome === "stuck" ? "▲" : "✗");
-      return '<div style="border-top:1px solid #22293a;padding:6px 2px">'+
+      return '<div style="border-top:1px solid var(--panel3);padding:6px 2px">'+
              '<span style="color:'+col+';font-weight:700">'+mark+' '+esc(r.sku)+'</span> '+
              '<span style="color:var(--ink3)">('+esc(r.outcome)+', '+(r.rounds||[]).length+' round(s))</span>'+
              (r.diagnosis ? ('<div style="color:var(--ink2);margin-top:2px">'+esc(r.diagnosis)+'</div>') : '')+
@@ -634,22 +634,22 @@ function _autoFixPanel(sku, state){
   el.innerHTML =
     _afHead("✦ Auto-fix: " + esc(sku),
       '<button id="autofix_copy" onclick="_autoFixCopyTrace()" '+
-        'style="background:#5b3fb8;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+        'style="background:var(--ai-bg);color:var(--paper);border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
         '📋 Copy trace</button>'+
       '<button onclick="if(window.AUTOFIX_STATE)window.AUTOFIX_STATE.cancelled=true;'+
         'document.getElementById(\'autofix_panel\').remove()" '+
-        'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px">✕</button>')+
+        'style="background:none;color:var(--ink);border:none;cursor:pointer;font-size:16px">✕</button>')+
     '<div id="autofix_status" style="color:var(--accent2)"></div>'+
     '<div style="display:flex;gap:6px;font-size:10px">'+
       '<button onclick="document.getElementById(\'autofix_traceview\').style.display=\'none\';document.getElementById(\'autofix_log\').style.display=\'block\'" '+
-        'style="background:#0d1220;border:1px solid #263145;color:#e8eaed;padding:3px 8px;border-radius:4px;cursor:pointer">Live log</button>'+
+        'style="background:var(--sidebar);border:1px solid var(--line2);color:var(--ink);padding:3px 8px;border-radius:4px;cursor:pointer">Live log</button>'+
       '<button onclick="document.getElementById(\'autofix_log\').style.display=\'none\';document.getElementById(\'autofix_traceview\').style.display=\'block\'" '+
-        'style="background:#0d1220;border:1px solid #263145;color:#e8eaed;padding:3px 8px;border-radius:4px;cursor:pointer">Round-by-round trace</button>'+
+        'style="background:var(--sidebar);border:1px solid var(--line2);color:var(--ink);padding:3px 8px;border-radius:4px;cursor:pointer">Round-by-round trace</button>'+
     '</div>'+
-    '<div id="autofix_log" style="background:#0d1220;border:1px solid #263145;border-radius:6px;'+
+    '<div id="autofix_log" style="background:var(--sidebar);border:1px solid var(--line2);border-radius:6px;'+
       'padding:6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:10px;'+
       'max-height:280px;overflow:auto;flex:1"></div>'+
-    '<div id="autofix_traceview" style="display:none;background:#0d1220;border:1px solid #263145;border-radius:6px;'+
+    '<div id="autofix_traceview" style="display:none;background:var(--sidebar);border:1px solid var(--line2);border-radius:6px;'+
       'padding:6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:10px;'+
       'max-height:280px;overflow:auto;flex:1;white-space:pre-wrap"></div>';
   document.body.appendChild(el);
@@ -763,16 +763,16 @@ function _bulkAutoFixPanel(batch){
     _afHead("✦ Batch Auto-fix (" + batch.skus.length + " SKU"
               + (batch.skus.length === 1 ? "" : "s") + ")",
       '<button onclick="_bulkAutoFixCopyTrace()" '+
-        'style="background:#5b3fb8;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
+        'style="background:var(--ai-bg);color:var(--paper);border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px">'+
         '📋 Copy batch trace</button>'+
       '<button onclick="if(window.BULK_AUTOFIX)window.BULK_AUTOFIX.cancelled=true;'+
         'if(window.AUTOFIX_STATE)window.AUTOFIX_STATE.cancelled=true;'+
         'document.getElementById(\'autofix_panel\').remove()" '+
-        'style="background:none;color:#e8eaed;border:none;cursor:pointer;font-size:16px" '+
+        'style="background:none;color:var(--ink);border:none;cursor:pointer;font-size:16px" '+
         'title="Cancel batch and close">✕</button>')+
     '<div id="bulk_autofix_status" style="color:var(--accent2)"></div>'+
-    '<div id="bulk_autofix_summary" style="font-size:11px;color:#bfc7d5"></div>'+
-    '<div id="bulk_autofix_traceview" style="background:#0d1220;border:1px solid #263145;border-radius:6px;'+
+    '<div id="bulk_autofix_summary" style="font-size:11px;color:var(--ink2)"></div>'+
+    '<div id="bulk_autofix_traceview" style="background:var(--sidebar);border:1px solid var(--line2);border-radius:6px;'+
       'padding:6px 8px;font-family:ui-monospace,Consolas,monospace;font-size:10px;'+
       'max-height:400px;overflow:auto;flex:1;white-space:pre-wrap"></div>';
   document.body.appendChild(el);
@@ -1258,7 +1258,7 @@ function schemaDiag(pt, nEnum, nAttrs, nSubs, missing, flagged, a){
     // healthy: schema loaded with enums. Tiny unobtrusive confirmation.
     let note="";
     if(flaggedKeys.length && noDropdown.length){
-      note=`<div style="font-size:11px;color:#c9a227;margin-top:4px">${noDropdown.length} flagged field(s) have no preset list from Amazon (${noDropdown.map(esc).join(", ")}) — these are free-text: type the value Amazon expects.</div>`;
+      note=`<div style="font-size:11px;color:var(--gold);margin-top:4px">${noDropdown.length} flagged field(s) have no preset list from Amazon (${noDropdown.map(esc).join(", ")}) — these are free-text: type the value Amazon expects.</div>`;
     }
     return `<div class="schemadiag ok">Amazon schema loaded for <b>${esc(pt)}</b> · ${nEnum} field(s) with dropdown values, ${nAttrs} total, ${nSubs} nested.${note}</div>`;
   }
@@ -1270,7 +1270,7 @@ function schemaDiag(pt, nEnum, nAttrs, nSubs, missing, flagged, a){
       <button class="ghost" onclick="reloadSchemaNow('${esc(pt)}')"><i class="ti ti-refresh"></i> Reload Amazon values now</button>
       <button class="ghost" onclick="dumpSchemaState('${esc(pt)}')"><i class="ti ti-bug"></i> Show what loaded</button>
     </div>
-    <div id="schemadump_${sid(pt)}" style="font-size:11px;color:#9bb;margin-top:6px;white-space:pre-wrap"></div>
+    <div id="schemadump_${sid(pt)}" style="font-size:11px;color:var(--ink2);margin-top:6px;white-space:pre-wrap"></div>
   </div>`;
 }
 async function reloadSchemaNow(pt){
@@ -1310,10 +1310,10 @@ function fullData(r){
     // Never let a render error silently collapse the drawer into empty boxes.
     // Show what failed so it can be fixed instead of guessed at.
     return `<details open><summary>Full listing data</summary>
-      <div style="background:#3a1212;border:1px solid #6b2222;border-radius:8px;padding:12px;margin:8px 0">
+      <div style="background:var(--red-bg);border:1px solid var(--red-line);border-radius:8px;padding:12px;margin:8px 0">
         <b style="color:var(--red)">This listing's detail view hit an error while rendering.</b>
-        <div style="font-size:12px;color:#ffb3b3;margin-top:6px">${esc(String(err&&err.message||err))}</div>
-        <div style="font-size:11px;color:#c98;margin-top:8px">The raw data is still below so you can read/edit it.</div>
+        <div style="font-size:12px;color:var(--red);margin-top:6px">${esc(String(err&&err.message||err))}</div>
+        <div style="font-size:11px;color:var(--red);margin-top:8px">The raw data is still below so you can read/edit it.</div>
         <pre class="raw" style="display:block;margin-top:8px">${esc(JSON.stringify(r,null,2))}</pre>
       </div></details>`;
   }
@@ -1517,7 +1517,7 @@ function _fullDataParts(r){
     if(BRAND_KEYS.indexOf(String(k).toLowerCase()) >= 0){
       const shown = esc(String(r.brand || r.Brand || "").trim() || "not set");
       return dwCell({label: lbl(k), full: true, ctrl:
-          '<b>' + shown + '</b> <span style="color:#7a7984">— taken from this '
+          '<b>' + shown + '</b> <span style="color:var(--ink3)">— taken from this '
         + 'listing’s <b>Brand</b> field above, not typed here. It must be one of '
         + 'the brands registered on this account; if it is not, the account’s '
         + 'first brand is sent instead and the run says so. Add a brand under '
@@ -1706,7 +1706,7 @@ function _fullDataParts(r){
     : "";
   const _imgActions = imgUrls.length
     ? `<div style="margin-top:6px;display:flex;gap:8px">
-         <button class="suggestbtn" style="background:#2a1414;border-color:var(--red-line);color:var(--red)" onclick="clearMainImage('${esc(sku)}')" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
+         <button class="suggestbtn" style="background:var(--red-bg);border-color:var(--red-line);color:var(--red)" onclick="clearMainImage('${esc(sku)}')" title="Remove the main image URL so the listing can be created without an image (add one later in Seller Central)"><i class="ti ti-photo-off"></i> Remove main image</button>
        </div>`
     : "";
   // THE STRIP, AND THE GENERATOR BEHIND A FOLD. Two different jobs: what this

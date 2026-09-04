@@ -340,10 +340,10 @@ function _pvMatchTable(j){
                   && r.pct_spend - r.pct_profit > 15);
     h += '<tr><td><b>' + _pvEsc(r.match_type) + '</b></td>'
       + '<td class="r stk-num">' + _pvMoney(r.spend) + '</td>'
-      + '<td class="r stk-num"' + (over ? ' style="color:#f87171"' : '') + '>'
+      + '<td class="r stk-num"' + (over ? ' style="color:var(--red)"' : '') + '>'
       + _pvN(r.pct_spend, "%") + '</td>'
       + '<td class="r stk-num">' + _pvMoney(r.sales) + '</td>'
-      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:#f87171"' : '')
+      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:var(--red)"' : '')
       + '>' + _pvMoney(r.profit) + '</td>'
       + '<td class="r stk-num">' + _pvN(r.pct_profit, "%") + '</td>'
       + '<td class="r stk-num">' + _pvN(r.acos, "%") + '</td>'
@@ -460,7 +460,7 @@ function _pvTermTable(j){
       + '<td class="r stk-num">' + _pvMoney(r.spend) + '</td>'
       + '<td class="r stk-num">' + _pvMoney(r.sales) + '</td>'
       + '<td class="r stk-num">' + _pvN(r.acos, "%") + '</td>'
-      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:#f87171"' : '')
+      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:var(--red)"' : '')
       + '>' + _pvMoney(r.profit) + '</td></tr>';
   });
   if(rows.length > 300){
@@ -542,10 +542,10 @@ function _pvCampaignTable(j){
       + '</span></div></td>'
       + '<td class="r stk-num">' + (r.terms || 0) + '</td>'
       + '<td class="r stk-num">' + _pvMoney(r.spend) + '</td>'
-      + '<td class="r stk-num"' + (over ? ' style="color:#f87171"' : '') + '>'
+      + '<td class="r stk-num"' + (over ? ' style="color:var(--red)"' : '') + '>'
       + _pvN(r.pct_spend, "%") + '</td>'
       + '<td class="r stk-num">' + _pvMoney(r.sales) + '</td>'
-      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:#f87171"' : '')
+      + '<td class="r stk-num"' + (r.profit < 0 ? ' style="color:var(--red)"' : '')
       + '>' + _pvMoney(r.profit) + '</td>'
       + '<td class="r stk-num">' + _pvN(r.pct_profit, "%") + '</td>'
       + '<td class="r stk-num">' + _pvN(r.acos, "%") + '</td>'

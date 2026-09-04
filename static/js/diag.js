@@ -24,7 +24,7 @@
     el.id = "diag_bar";
     el.style.cssText =
       "position:sticky;top:0;z-index:900;display:none;padding:10px 14px;" +
-      "background:#3a1d1d;border-bottom:1px solid #6b2c2c;color:#ffd9d9;" +
+      "background:var(--red-bg);border-bottom:1px solid var(--red-line);color:var(--red);" +
       "font-size:12.5px;line-height:1.5";
     document.body.insertBefore(el, document.body.firstChild);
     return el;
@@ -55,7 +55,7 @@
     h += '<div style="margin-top:8px">' +
          '<button id="diag_copy" style="font-size:11px;padding:4px 10px;cursor:pointer">' +
          "Copy full diagnostics</button> " +
-         '<a href="/diag" target="_blank" style="font-size:11px;color:#ffd9d9;margin-left:8px">Open /diag</a> ' +
+         '<a href="/diag" target="_blank" style="font-size:11px;color:var(--red);margin-left:8px">Open /diag</a> ' +
          '<button id="diag_hide" style="font-size:11px;padding:4px 10px;margin-left:8px;cursor:pointer">' +
          "Hide until next visit</button></div>";
 

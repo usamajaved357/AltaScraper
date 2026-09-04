@@ -164,7 +164,7 @@ function milesLoadRuns(){
     host.innerHTML=j.runs.map(function(r){
       const c=r.counts||{};
       const badge=(r.state==="running")?'<span style="color:var(--accent2)">● running</span>'
-        :(r.state==="error")?'<span style="color:#ff8585">error</span>'
+        :(r.state==="error")?'<span style="color:var(--red)">error</span>'
         :(r.state==="stopped")?'<span style="color:var(--warn)">stopped</span>'
         :'<span style="color:var(--ok)">done</span>';
       const counts='harvested '+(c.harvested||0)+' · not found '+(c.not_found||0)+' · review '+(c.review||0);

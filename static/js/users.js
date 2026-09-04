@@ -305,7 +305,7 @@ async function renderUsers(){
 
   if(j.bootstrap){
     h += '<div class="cc" style="font-size:12px;margin:6px 0 12px;padding:8px 10px;'
-      +  'border:1px solid #4a3d1a;background:#2a2310;border-radius:6px">'
+      +  'border:1px solid var(--gold-line);background:var(--gold-bg);border-radius:6px">'
       +  '<b>Start by adding yourself as an owner.</b><br>'
       +  'The app is still using the single shared password, and it keeps working '
       +  'until an <i>owner</i> account exists — not merely until someone accepts. '
@@ -333,12 +333,12 @@ async function renderUsers(){
       ? "all workspaces"
       : (u.workspaces||[]).join(", ");
     let state = "";
-    if(!u.active)            state = '<span style="color:#e0a06b">disabled</span>';
+    if(!u.active)            state = '<span style="color:var(--warn)">disabled</span>';
     else if(u.invite_expired) state = '<span style="color:var(--red)">invite expired</span>';
-    else if(u.pending_invite) state = '<span style="color:#e0c06b">invite not accepted</span>';
+    else if(u.pending_invite) state = '<span style="color:var(--warn)">invite not accepted</span>';
     else                      state = '<span style="color:var(--ok)">active</span>';
 
-    h += '<tr><td style="padding:9px 6px;border-top:1px solid #26303f">'
+    h += '<tr><td style="padding:9px 6px;border-top:1px solid var(--line2)">'
       +  '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
       +  '<div style="flex:1;min-width:190px">'
       +    '<div style="font-weight:600;font-size:13px">'+_uesc(u.name||u.email)+'</div>'
@@ -361,7 +361,7 @@ async function renderUsers(){
   h += '</tbody></table>';
 
   // ---- add form
-  h += '<div style="margin-top:18px;border-top:1px solid #26303f;padding-top:14px">'
+  h += '<div style="margin-top:18px;border-top:1px solid var(--line2);padding-top:14px">'
     +  '<div style="font-weight:600;font-size:13px;margin-bottom:8px">Add a person</div>'
     +  '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
     +    '<input class="rc-in" id="nu_email" placeholder="their@email.com" style="flex:1;min-width:200px;margin:0">'
@@ -577,7 +577,7 @@ async function userCreate(){
 // again later. Say so, so nobody closes the box expecting to find it again.
 function showInviteLink(host, url, who){
   host.innerHTML =
-      '<div style="border:1px solid #2f4a33;background:#16231a;border-radius:6px;padding:10px">'
+      '<div style="border:1px solid var(--ok-line);background:var(--ok-bg);border-radius:6px;padding:10px">'
     + '<div style="font-size:12px;font-weight:600;color:var(--ok);margin-bottom:6px">'
     + 'Invite link for '+_uesc(who)+'</div>'
     + '<div class="cc" style="font-size:11px;margin-bottom:6px">Send this to them. '
@@ -611,7 +611,7 @@ function userEdit(id){
     const u = (j.users||[]).find(function(x){ return x.id===id; });
     if(!u) return;
     host.innerHTML =
-        '<div style="margin:8px 0 4px;padding:10px;border:1px solid #26303f;border-radius:6px">'
+        '<div style="margin:8px 0 4px;padding:10px;border:1px solid var(--line2);border-radius:6px">'
       + '<div class="cc" style="font-size:11.5px;margin-bottom:6px">What may they SEE?</div>'
       + '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">'
       +   featureRows("ue"+id, u.features||{})

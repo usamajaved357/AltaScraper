@@ -18,7 +18,7 @@ async function inv2Run(){
   const resBox = document.getElementById("inv2_result");
   const acctId = (CUR_ACCOUNT && CUR_ACCOUNT.id) || "";
   if(!acctId){
-    resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">No workspace/account selected. Pick one from the sidebar first.</div>';
+    resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">No workspace/account selected. Pick one from the sidebar first.</div>';
     return;
   }
   resBox.innerHTML = '<div class="cc"><span class="genspin"></span> Running inventory model — fetching FBA + sales from SP-API (5-15 min if cache is stale, instant if cached)…</div>';
@@ -38,7 +38,7 @@ async function inv2Run(){
   try{
     const j = await (await fetch("/inventory/v2/run",{method:"POST", body:fd})).json();
     if(!j.ok){
-      resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid #4d1e1e;border-radius:6px;background:#241010">'+esc(j.error||"run failed")+'</div>';
+      resBox.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px;border:1px solid var(--red-line);border-radius:6px;background:var(--red-bg)">'+esc(j.error||"run failed")+'</div>';
       return;
     }
     const s = j.summary || {};
@@ -47,16 +47,16 @@ async function inv2Run(){
 
     // Bucket counts
     html += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px">';
-    html += '<div style="padding:4px 10px;border-radius:4px;background:#1c3a1c;color:#8adca0;border:1px solid #2a7a2a">ACTIVE '+(s.active||0)+'</div>';
-    html += '<div style="padding:4px 10px;border-radius:4px;background:#3a3a1c;color:#ffe066;border:1px solid #7a7a2a">NEW_LAUNCH '+(s.new_launch||0)+'</div>';
-    html += '<div style="padding:4px 10px;border-radius:4px;background:#3a2f1a;color:#ffce7a;border:1px solid #7a5a2a">DORMANT '+(s.dormant||0)+'</div>';
-    html += '<div style="padding:4px 10px;border-radius:4px;background:#3a1f1f;color:var(--red);border:1px solid #7a2a2a">DEAD '+(s.dead||0)+'</div>';
-    html += '<div style="padding:4px 10px;border-radius:4px;background:#1c2a3a;color:#8ac0ff;border:1px solid #2a5a7a">Total '+(s.total_skus||0)+'</div>';
+    html += '<div style="padding:4px 10px;border-radius:4px;background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)">ACTIVE '+(s.active||0)+'</div>';
+    html += '<div style="padding:4px 10px;border-radius:4px;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)">NEW_LAUNCH '+(s.new_launch||0)+'</div>';
+    html += '<div style="padding:4px 10px;border-radius:4px;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)">DORMANT '+(s.dormant||0)+'</div>';
+    html += '<div style="padding:4px 10px;border-radius:4px;background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)">DEAD '+(s.dead||0)+'</div>';
+    html += '<div style="padding:4px 10px;border-radius:4px;background:var(--accent-bg);color:var(--accent2);border:1px solid var(--accent-line)">Total '+(s.total_skus||0)+'</div>';
     html += '</div>';
 
     // Reorder summary
     html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:10px">';
-    html += '<div><b style="color:#ffd76b">'+(s.fba_reorder_count||0)+'</b> SKUs need FBA reorder</div>';
+    html += '<div><b style="color:var(--warn)">'+(s.fba_reorder_count||0)+'</b> SKUs need FBA reorder</div>';
     html += '<div><b>'+Math.round(s.total_fba_units_needed||0).toLocaleString()+'</b> total FBA units</div>';
     if(s.three_pl_reorder_count) html += '<div><b>'+s.three_pl_reorder_count+'</b> SKUs need 3PL reorder</div>';
     html += '</div>';
@@ -69,7 +69,7 @@ async function inv2Run(){
 
     // Sample alerts
     if(j.alerts_sample && j.alerts_sample.length){
-      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:11px">';
+      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn);font-size:11px">';
       html += '<b>Sample alerts (first 10):</b>';
       html += '<ul style="margin:6px 0 0 18px">';
       j.alerts_sample.forEach(a=>{
@@ -78,7 +78,7 @@ async function inv2Run(){
       html += '</ul></div>';
     }
     if(j.three_pl_warnings && j.three_pl_warnings.length){
-      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:#241a10;border:1px solid #4d3712;color:var(--warn);font-size:11px">';
+      html += '<div style="margin-top:8px;padding:8px;border-radius:6px;background:var(--warn-bg);border:1px solid var(--warn-line);color:var(--warn);font-size:11px">';
       html += '<b>3PL CSV warnings:</b><br>'+j.three_pl_warnings.map(esc).join("<br>");
       html += '</div>';
     }
