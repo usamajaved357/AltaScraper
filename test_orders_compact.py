@@ -110,19 +110,27 @@ check("the bar is 24px", "height:24px" in rule(CSS, ".o-bar{"), True)
 
 print("\n=== 2b. four cards, saying the same as the row ===")
 truthy("the cards exist", "function _opCards" in P)
-for label in ("Profit", "ROI", "Margin", "Post by"):
+for label in ("Profit", "ROI", "Margin", "Handling"):
     truthy("  card: " + label, '"' + label + '"' in P or ("Profit at " in P and label == "Profit"))
-# THE FOURTH CARD IS NOT "HANDLING", and that is a correction to the brief. An
-# ORDER carries no handling time -- it is a setting on the LISTING -- so the
-# card rendered a dash on every order. Measured in a browser. Days-left to post
-# is the same territory from data that exists, and it is the one number on this
-# screen that costs money if it is ignored.
-truthy("  and it is days-left, not a card that can never fill",
-       "function _opDaysLeft" in P)
-truthy("    from Amazon's own ship-by date", "o.ship_by" in P)
-truthy("    overdue is called overdue", '"overdue"' in P)
-falsy("    and nothing reads a handling time off an order",
-      "r.handling_days" in PCODE)
+# THE FOURTH CARD IS THE LISTING'S HANDLING TIME, and getting there took two
+# goes. The ORDER carries none -- it is a setting on the LISTING -- so the card
+# first rendered a dash on every order (measured in a browser), was briefly
+# filled with the post-by countdown instead, and now reads the listing's own
+# handling_days off the app's row for the SKU. Which is where it was always
+# available; nothing on the ORDER had it.
+truthy("  it reads the listing's own handling time", "function _opHandling" in P)
+truthy("    from the app's row for the SKU", "row.handling_days" in P)
+falsy("    and never off the order", "r.handling_days" in PCODE)
+truthy("  an order with no listing row here says so, rather than borrowing one",
+       "no listing row for this order" in P)
+# THE COUNTDOWN IS NOT LOST -- it moved to the delivery line, which is where a
+# date belongs: "Post-by deadline belongs in the delivery line, not in the
+# summary cards."
+truthy("  the post-by countdown moved to the delivery line",
+       "function _opDaysLeft" in P and "_opDaysLeft(o.ship_by)" in fn(P, "_opDelivery"))
+truthy("    keeping both the date and how long is left",
+       '"Post by " + _oWhen(o.ship_by)' in P)
+truthy("    and overdue is still called overdue", '"overdue"' in P)
 truthy("the value is 16px bold", "font-size:16px" in rule(CSS, ".o-card-v{"))
 truthy("  the label 9px uppercase", "font-size:9px" in rule(CSS, ".o-card-l{")
        and "text-transform:uppercase" in rule(CSS, ".o-card-l{"))
@@ -207,6 +215,98 @@ print("\n=== nothing is half-written ===")
 check("orders_panel.css braces balance", CSS.count("{"), CSS.count("}"))
 check("dashboard.css braces balance", DASH.count("{"), DASH.count("}"))
 falsy("no mojibake", re.search(r"â€|Â·|â•", P + CSS) is not None)
+
+print("\n=== and it actually runs ===")
+# THE SUITE READ THIS FILE AND NEVER RAN IT, so `_opCards(r, t, cur, o)` calling
+# `_opHandling(r, items)` -- with `items` not among its parameters -- passed
+# every check here and threw "items is not defined" the moment a real order was
+# opened in a browser. A probe that renders is the only kind that catches that.
+import json
+import subprocess
+import tempfile
+
+_probe = r"""
+const fs=require("fs"), vm=require("vm");
+globalThis.window=globalThis;
+globalThis._oEsc=s=>String(s==null?"":s).replace(/[&<>"]/g,
+  c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+globalThis._oMoney=(v,c)=>((c||"")+" "+Number(v).toFixed(2)).trim();
+globalThis._oWhen=s=>String(s||"");
+globalThis.jsArg=s=>"'"+String(s).replace(/'/g,"\\'")+"'";
+globalThis._amzTld=()=>"co.uk";
+globalThis._ordDp=(a)=>"https://www.amazon.co.uk/dp/"+a;
+globalThis._ordStateChip=()=>'<span class="chip">Not shipped yet</span>';
+globalThis._ordWhyText=()=>"";
+globalThis._ordSourcesHtml=(b,t)=>b?'<div class="odp-sec">suppliers</div>':"";
+globalThis._ordBreakdownHtml=()=>'<table class="full"></table>';
+globalThis.ROWS=[{sku:"SKU-1", handling_days:2}];
+vm.runInThisContext(fs.readFileSync("static/js/orders_panel.js","utf8"),
+                    {filename:"orders_panel.js"});
+
+const row={order_id:"026-1", account_id:"acc", marketplace:"UK", currency:"GBP",
+           sku:"SKU-1", margin_pct:28.9, roi_pct:54.5};
+const full={order:{currency:"GBP", status:"Unshipped", ship_by:"2026-09-09",
+                   deliver_by:"2026-09-12", region:"ROMFORD, RM5 3QS, GB"},
+  items:[{sku:"SKU-1", title:"A thing", qty:1, price:14.49, asin:"B0HCVTDFNW"}],
+  sources:{"SKU-1":{options:[{cheapest:true,label:"souqdeals",landed:19.9,
+                              url:"https://x",currency:"GBP"}]}},
+  breakdown:{lines:[{sku:"SKU-1", qty:1, revenue:14.49, fee:2.61, cogs:7.69,
+                     unit_cost:7.69, profit:4.19}],
+             totals:{revenue:14.49, fees:2.61, cogs:7.69, profit:4.19,
+                     cogs_complete:true, fee_rate:0.15, fees_basis:"estimated",
+                     order_total:14.49, uncosted_lines:0}}};
+// The same order with NO cost recorded -- the case the bar and the flow have to
+// keep drawing what they do know.
+const nocost=JSON.parse(JSON.stringify(full));
+nocost.breakdown.totals.cogs=null; nocost.breakdown.totals.profit=null;
+nocost.breakdown.totals.cogs_complete=false; nocost.breakdown.totals.uncosted_lines=1;
+nocost.breakdown.lines[0].cogs=null; nocost.breakdown.lines[0].unit_cost=null;
+
+const a=ordPanelHtml(row, full);
+const b=ordPanelHtml(row, nocost);
+const c=ordPanelHtml({order_id:"x", sku:"UNKNOWN"}, {order:{}, items:[], breakdown:{}});
+console.log(JSON.stringify({
+  cards: (a.match(/o-card"/g)||[]).length + (a.match(/o-card /g)||[]).length,
+  handling: /2d<\/div>\s*<div class="o-card-l">Handling/.test(a.replace(/\n/g,"")),
+  barSegs: (a.match(/class="bar-/g)||[]).length,
+  flowSteps: (a.match(/class="o-step[" ]/g)||[]).length,
+  costOnFlow: a.indexOf("o-costfix") > a.indexOf("o-flow")
+              && a.indexOf("o-costfix") < a.indexOf("o-deliv"),
+  supTable: a.indexOf("suppliers") >= 0,
+  // no cost: the bar still shows what it knows, with the rest marked unknown
+  ncBar: (b.match(/class="bar-/g)||[]).length,
+  ncUnknown: b.indexOf("bar-unknown") >= 0,
+  ncFlow: (b.match(/class="o-step[" ]/g)||[]).length,
+  ncDashes: (b.match(/class="dash"/g)||[]).length,
+  // an order for a listing this app has no row for
+  emptyOk: typeof c === "string" && c.length > 0
+}));
+"""
+try:
+    _fd, _p = tempfile.mkstemp(suffix=".js", dir=HERE)
+    os.write(_fd, _probe.encode("utf-8"))
+    os.close(_fd)
+    _out = subprocess.run(["node", _p], capture_output=True, text=True, cwd=HERE)
+    os.unlink(_p)
+    if _out.returncode != 0:
+        FAILS.append("the panel threw")
+        print("  FAIL the panel threw: %s" % (_out.stderr or "")[:400])
+    else:
+        g = json.loads(_out.stdout.strip().splitlines()[-1])
+        check("  four cards are drawn", g["cards"], 4)
+        truthy("  the fourth is the LISTING's handling time", g["handling"])
+        check("  the bar has three segments", g["barSegs"], 3)
+        check("  the flow has four steps", g["flowSteps"], 4)
+        truthy("  the cost box is ON the flow line, before delivery", g["costOnFlow"])
+        truthy("  the supplier table is drawn", g["supTable"])
+        # WITH NO COST: what is known is still shown.
+        truthy("  no cost -> the bar still draws what it knows", g["ncBar"] >= 2)
+        truthy("    with the rest marked unknown, not omitted", g["ncUnknown"])
+        check("    and the flow keeps all four steps", g["ncFlow"], 4)
+        truthy("    two of them dashes", g["ncDashes"] >= 2)
+        truthy("  an order with nothing at all still renders", g["emptyOk"])
+except FileNotFoundError:
+    print("  (node not on PATH, skipping the render)")
 
 print("\nFAILURES: %d" % len(FAILS))
 for f in FAILS:

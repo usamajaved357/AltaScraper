@@ -43,9 +43,9 @@
   font-family:inherit;font-size:13px;padding:5px 7px;
   font-variant-numeric:tabular-nums}
 .uiinline-in:focus{outline:2px solid var(--accent-line);outline-offset:0}
-.uiinline-hint{font-size:10.5px;color:var(--ink3);margin-top:6px;line-height:1.5}
+.uiinline-hint{font-size:10px;color:var(--ink3);margin-top:6px;line-height:1.5}
 .uiinline-err{font-size:11px;color:var(--red);margin-top:6px;line-height:1.45}
 .uiinline-clear{margin-top:7px;background:none;border:0;padding:0;
-  color:var(--ink3);font-size:10.5px;font-family:inherit;cursor:pointer;
+  color:var(--ink3);font-size:10px;font-family:inherit;cursor:pointer;
   text-decoration:underline}
 .uiinline-clear:hover{color:var(--red)}

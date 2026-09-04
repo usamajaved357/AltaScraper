@@ -12,6 +12,37 @@
      pointing at the new Orbit values. Identical result on screen, nothing
      breaks, and they can be retired file-by-file later. ================== */
   :root{
+    /* ---- TYPE, AS A SHORT LIST ----------------------------------------
+       MEASURED IN A BROWSER across Listings, Orders, the Repricer, Inventory
+       and Sales: EIGHTEEN distinct font sizes on screen, and the four largest
+       groups after 12px were 10.5, 12.5, 11 and 11.5 -- four names for two
+       sizes. Half a pixel is invisible on its own and is most of what makes
+       five screens read as five apps.
+
+       The half-pixel sizes are gone: 189 declarations collapsed onto the whole
+       numbers below (8.5->9, 9.5->10, 10.5->10, 11.5->12, 12.5->12, 13.5->13,
+       14.5->14). Every move was half a pixel or less, so nothing reflowed and
+       nothing had to be retuned. The larger sizes -- 15, 16, 18, 20 and up --
+       are left alone: they are headings and stat numbers, few in number and
+       deliberately distinct from one another.
+
+       These tokens are the vocabulary for anything written from here on. The
+       existing rules still carry literal pixels; they now all carry one of
+       these values, which is the half of the job that had to come first. */
+    --fs-xs:9px;             /* badge text, the smallest label that is read */
+    --fs-sm:10px;            /* metadata, column sub-headings, small buttons */
+    --fs-data:11px;          /* table cell figures, product titles */
+    --fs-base:12px;          /* body text, inputs, descriptions */
+    --fs-md:13px;            /* page titles, toolbar headings */
+    --fs-lg:16px;            /* stat card values */
+    --fs-xl:24px;            /* the big counting numbers */
+
+    /* ---- WEIGHT: four, and only four ----------------------------------
+       400 body · 500 semi-bold labels · 600 bold labels and badges · 700
+       numbers and titles. Twenty declarations of 650 and 800 were collapsed
+       onto 600 and 700 -- both are half-steps between the four, and Inter
+       renders them as the nearest one regardless. */
+
     /* Backgrounds */
     --bg:#1a1d23;            /* main app background -- charcoal, not black */
     --sidebar:#13151a;       /* sidebar, slightly darker than bg */
@@ -317,7 +348,7 @@
   .wsedit:hover{color:var(--ink);border-color:var(--accent)}
   .wscard .ic{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;
               font-size:15px;font-weight:700}
-  .wscard .nm{font-weight:600;font-size:14.5px}
+  .wscard .nm{font-weight:600;font-size:14px}
   .wscard .sub{color:var(--muted);font-size:12px;margin-top:1px}
   .wscard .stats{display:flex;gap:14px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:10px}
   .wscard.add{border-style:dashed;align-items:center;justify-content:center;color:var(--muted);
@@ -333,11 +364,11 @@
   .sidebar{width:210px;flex-shrink:0;background:var(--sidebar);border-right:1px solid var(--line);
            padding:16px 12px;position:sticky;top:40px;height:calc(100vh - 40px);overflow:auto;
            display:flex;flex-direction:column}
-  .backlink{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px;cursor:pointer;margin-bottom:16px}
+  .backlink{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;cursor:pointer;margin-bottom:16px}
   .backlink:hover{color:var(--ink)}
   .wsident{display:flex;align-items:center;gap:9px;margin-bottom:18px}
   .wsident .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
-  .wsident .nm{font-weight:600;font-size:13.5px}
+  .wsident .nm{font-weight:600;font-size:13px}
   /* Orbit's active state is a teal LEFT BORDER, not a filled background.
      The 3px border is declared transparent on every item and only recoloured
      when active -- declaring it solely on .active would widen the box by 3px at
@@ -388,7 +419,7 @@
   /* The indent is what says "these belong to the row above". The left rule
      gives the eye a single line to follow down the group, which matters most
      when several groups are open at once. */
-  .navgroup .navkids .navitem{padding-left:30px;font-size:11.5px;
+  .navgroup .navkids .navitem{padding-left:30px;font-size:12px;
                               margin-left:11px;border-left:2px solid var(--line);
                               border-radius:0}
   .navgroup .navkids .navitem.active{border-left-color:var(--accent)}
@@ -417,7 +448,7 @@
      the label text at the moment of collapsing, because an icon with no name is
      a guess. */
   .navtoggle{display:flex;align-items:center;gap:9px;padding:7px 11px;margin:0 0 10px;
-             font-size:11.5px;color:var(--ink3);cursor:pointer;background:none;
+             font-size:12px;color:var(--ink3);cursor:pointer;background:none;
              border:1px solid transparent;border-radius:var(--radius-sm);width:100%;
              text-align:left;font-family:inherit}
   .navtoggle:hover{background:var(--panel2);color:var(--ink);border-color:var(--line)}
@@ -478,7 +509,7 @@
 /* 6. TWO BARS THAT ONLY ADD HEIGHT between the stat cards and the table. */
   #ws_datasrc.datasrc{display:none !important}
   #gridhow{display:none !important}
-  .wstoolbar h2{font-size:15px;margin:0;font-weight:650}
+  .wstoolbar h2{font-size:15px;margin:0;font-weight:600}
 
   /* ---- THE PAGE HEADER, ONE SIZE FOR EVERY SCREEN ----
      Sales opened with a 28px title and a sentence under it. Every other screen
@@ -495,7 +526,7 @@
   .pagehead h1,.pagehead .pagetitle{font-size:28px;font-weight:600;line-height:30.8px;
                                     margin:0 0 4px;display:flex;align-items:center;gap:10px}
   .pagehead .pagetitle .ti{font-size:24px;color:var(--accent);width:24px;text-align:center}
-  .pagehead .panelsub,.pagehead .sub{color:var(--muted);font-size:12.5px;
+  .pagehead .panelsub,.pagehead .sub{color:var(--muted);font-size:12px;
                                      line-height:1.5;max-width:104ch}
 
   /* A supplier link inside a reason line. The browser's own link colour is a
@@ -618,22 +649,22 @@
   .risk.hi{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line)}
   .risk.med{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-line)}
   .title{font-weight:600;font-size:14px}
-  .meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12.5px}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-size:12px}
   .meta b{color:var(--ink);font-weight:600}
   .findings{background:var(--red-bg);border:1px solid var(--red-line);border-radius:var(--radius-sm);
-            padding:8px 10px;font-size:12.5px;color:var(--red);white-space:pre-wrap}
+            padding:8px 10px;font-size:12px;color:var(--red);white-space:pre-wrap}
   .findings .h{font-weight:700;color:var(--red);margin-bottom:2px}
   .errlist{display:flex;flex-direction:column;gap:5px;white-space:normal}
   .erritem{background:#2a1414;border:1px solid var(--red-line);border-radius:6px;padding:6px 9px;
            font-size:12px;color:var(--red);line-height:1.35}
   .erritem.w{background:#2a2414;border-color:#5c5024;color:#e8d9a8}
-  .errfield{font-weight:700;color:#ffb4b4;font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+  .errfield{font-weight:700;color:#ffb4b4;font-family:ui-monospace,Menlo,monospace;font-size:12px}
   .erritem.w .errfield{color:#ffe08a}
-  details summary{cursor:pointer;color:var(--muted);font-size:12.5px}
-  ul.bul{margin:6px 0 0;padding-left:18px;color:var(--ink);font-size:12.5px}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px}
+  ul.bul{margin:6px 0 0;padding-left:18px;color:var(--ink);font-size:12px}
   ul.bul li{margin:2px 0}
   .acts{display:flex;gap:8px;margin-top:2px}
-  .acts a{margin-left:auto;color:var(--accent);text-decoration:none;font-size:12.5px;align-self:center}
+  .acts a{margin-left:auto;color:var(--accent);text-decoration:none;font-size:12px;align-self:center}
   /* A FILLED GREEN BUTTON. It used to be called `.ok`, and that one bare word
      caused every green patch in the app.
 
@@ -671,7 +702,7 @@
   /* The group of a variation family. Not a product: nothing buys it, it carries
      no price, and it is deliberately outside the approve-and-submit flow. */
   .b-PARENT{background:var(--panel2);color:var(--ink2);border:1px dashed var(--accent)}
-  table.kv{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;table-layout:fixed}
+  table.kv{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;table-layout:fixed}
   table.kv td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   table.kv td.k{color:var(--muted);width:38%;word-break:break-word;overflow-wrap:anywhere}
   table.kv td.v{color:var(--ink);width:62%;word-break:break-word;overflow-wrap:anywhere}
@@ -721,7 +752,7 @@
   .addbulletbtn:hover{background:#16304e;color:#fff}
   td.k{padding-top:9px;white-space:nowrap}
   .ro{color:var(--muted)}
-  .safe{background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;font-size:12.5px;color:#9fe0b8}
+  .safe{background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px;font-size:12px;color:#9fe0b8}
   td.wcell{padding:6px 8px}
   /* Label above a field, per Orbit: 11px, --ink3. */
   .wlab{color:var(--ink3);font-size:11px;margin-bottom:4px}
@@ -824,7 +855,7 @@
      banner must not read as a clearance it cannot give. */
   .compbanner{display:flex;align-items:flex-start;gap:9px;padding:10px 13px;
               border-radius:var(--radius);border:1px solid var(--line);
-              background:var(--panel2);font-size:12.5px;line-height:1.45;margin:10px 0}
+              background:var(--panel2);font-size:12px;line-height:1.45;margin:10px 0}
   .compbanner .ti{font-size:17px;flex:0 0 auto;margin-top:1px}
   .compbanner b{font-weight:600}
   .compbanner .cc{display:block;margin-top:2px}
@@ -834,7 +865,7 @@
   textarea.ed{min-height:42px}
   .reqrow .ed{border-color:#9a6b00}
   .fixhint{color:var(--red);font-size:11px;font-weight:600;display:block;margin-top:2px;white-space:normal;overflow-wrap:anywhere}
-  .nesthint{display:inline-block;margin-left:8px;color:#86d0a8;font-size:10.5px;font-weight:500;font-style:italic;white-space:normal;overflow-wrap:anywhere;cursor:help}
+  .nesthint{display:inline-block;margin-left:8px;color:#86d0a8;font-size:10px;font-weight:500;font-style:italic;white-space:normal;overflow-wrap:anywhere;cursor:help}
   .reqtag{display:inline-block;white-space:normal}
   .klabel{overflow-wrap:anywhere}
   .flaggedrow .ed{border-color:#9a6b00}
@@ -852,7 +883,7 @@
   .thumbcap{position:absolute;left:4px;bottom:4px;font-size:10px;background:rgba(0,0,0,.7);color:var(--ink);padding:1px 5px;border-radius:4px}
   .askthis{background:var(--ai-bg2);color:var(--ai-strong);border:1px solid var(--ai-line2)}
   .reqnote{font-size:12px;color:var(--warn);background:#2a2410;border:1px solid var(--warn-line);border-radius:8px;padding:8px 10px;margin:8px 0;line-height:1.5}
-  .schemadiag{font-size:11.5px;border-radius:8px;padding:7px 10px;margin:6px 0;line-height:1.5}
+  .schemadiag{font-size:12px;border-radius:8px;padding:7px 10px;margin:6px 0;line-height:1.5}
   .schemadiag.ok{color:#7fb98a;background:#13241a;border:1px solid #244e30}
   .schemadiag.bad{color:#ffcf99;background:#2c1f10;border:1px solid #6b4a1a}
   .schemadiag.bad b{color:#ffd9a8}
@@ -861,12 +892,12 @@
   .addfield{margin:8px 0 2px}
   .addfield select{background:#0f1420;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:12px;max-width:100%}
   .addfield .hint{color:var(--muted);font-size:11px;margin:4px 0 0}
-  .cc{color:var(--muted);font-size:10.5px;margin-left:6px;font-weight:400}
+  .cc{color:var(--muted);font-size:10px;margin-left:6px;font-weight:400}
   .cc.over{color:var(--red)}
   .cc.warn{color:var(--warn)}
-  .idxnote{display:inline-block;margin-left:8px;font-size:9.5px;color:var(--ink2);background:#11203a;
+  .idxnote{display:inline-block;margin-left:8px;font-size:10px;color:var(--ink2);background:#11203a;
            border:1px solid #243d63;border-radius:6px;padding:1px 7px;font-weight:500;cursor:help;vertical-align:middle}
-  .cwarn{font-size:10.5px;color:var(--warn);background:#1f1810;border:1px solid var(--warn-line);border-radius:6px;
+  .cwarn{font-size:10px;color:var(--warn);background:#1f1810;border:1px solid var(--warn-line);border-radius:6px;
          padding:4px 8px;margin:4px 0 2px}
   .bulletmeter{margin:2px 0 8px;padding:7px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px}
   .idxbar{height:7px;border-radius:4px;background:#1b2942;overflow:hidden;margin-bottom:4px}
@@ -930,7 +961,7 @@
   .rememberbtn{margin-top:10px;background:#15241a;border:1px solid var(--ok-line);color:var(--ok);border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;font-weight:600}
   .curlbl{display:inline-block;margin-right:6px;color:var(--ink2);font-weight:600}
   .genimg{margin-top:10px}
-  .genimgbtn{background:var(--ai-bg);border:1px solid var(--ai-line);color:var(--ai);border-radius:8px;padding:7px 12px;font-size:12.5px;cursor:pointer;font-weight:600;margin-right:6px}
+  .genimgbtn{background:var(--ai-bg);border:1px solid var(--ai-line);color:var(--ai);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-weight:600;margin-right:6px}
   .genimgbtn.apply{background:#15241a;border-color:var(--ok-line);color:var(--ok)}
   .genpanel{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
   .genrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0}
@@ -941,7 +972,7 @@
            border-radius:50%;animation:genspin .7s linear infinite;vertical-align:-2px;margin-right:5px}
   @keyframes genspin{to{transform:rotate(360deg)}}
   #genstatus_,.genrow .cc{line-height:1.5}
-  .gendiag{font-size:11.5px;padding:7px 10px;border-radius:7px;margin-bottom:8px}
+  .gendiag{font-size:12px;padding:7px 10px;border-radius:7px;margin-bottom:8px}
   .gendiag.ok{background:var(--ok-bg);border:1px solid var(--ok-line);color:var(--ok)}
   .gendiag.bad{background:var(--red-bg);border:1px solid var(--red-line);color:var(--red)}
   .suggestbtn{background:var(--accent-bg);border:1px solid var(--accent-line);color:var(--accent2);font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -957,8 +988,8 @@
   .sghead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
   .sgfield{font-family:ui-monospace,Consolas,monospace;font-size:12px;font-weight:600;color:var(--ink)}
   .srcbadge{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600}
-  .confbadge{font-size:10.5px;font-weight:600;margin-left:auto}
-  .sgval{min-height:38px;font-size:12.5px}
+  .confbadge{font-size:10px;font-weight:600;margin-left:auto}
+  .sgval{min-height:38px;font-size:12px}
   .sgnote{font-size:11px;color:var(--muted);margin-top:4px}
   .sgacts{margin-top:6px}
   .sgapply{background:var(--green);border:1px solid var(--green);color:#fff;font-size:12px;padding:5px 12px;border-radius:7px;cursor:pointer;font-weight:600}
@@ -981,9 +1012,9 @@
   .mfnopic{display:flex !important;align-items:center;justify-content:center;
            color:var(--ink4);font-size:15px}
   .mfmeta{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
-  .mfname{font-size:12.5px;font-weight:600;color:var(--ink);
+  .mfname{font-size:12px;font-weight:600;color:var(--ink);
           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .mfasin{font-size:10.5px;font-weight:600;color:var(--accent);
+  .mfasin{font-size:10px;font-weight:600;color:var(--accent);
           font-family:ui-monospace,Menlo,Consolas,monospace}
   /* The SKU is still there, because it is what the folder is actually named and
      what every other screen calls this row -- just no longer the only thing. */
@@ -993,7 +1024,7 @@
 
   .mediagrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;padding:0 12px 12px}
   .mediacell{position:relative;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--panel);aspect-ratio:1}
-  .mediameta{position:absolute;left:0;right:0;bottom:0;background:rgba(8,10,14,.82);color:#b8c2d4;font-size:9.5px;padding:2px 4px;text-align:center;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mediameta{position:absolute;left:0;right:0;bottom:0;background:rgba(8,10,14,.82);color:#b8c2d4;font-size:10px;padding:2px 4px;text-align:center;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mediacell img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
 
   /* ---- STEPPING THROUGH A FOLDER, AS DRIVE DOES ----
@@ -1016,7 +1047,7 @@
             background:rgba(0,0,0,.6);border:none;color:var(--red);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center}
   .mediadel:hover{background:var(--red-bg)}
   .mediaedit{position:absolute;top:4px;left:4px;border-radius:6px;background:rgba(16,42,48,.85);
-            border:1px solid var(--accent-line);color:var(--accent2);cursor:pointer;font-size:10.5px;padding:2px 6px;
+            border:1px solid var(--accent-line);color:var(--accent2);cursor:pointer;font-size:10px;padding:2px 6px;
             display:inline-flex;align-items:center;gap:3px;line-height:1.4}
   .mediaedit:hover{background:#143842}
   /* Save the file. Bottom-right, the one corner the other three do not use:
@@ -1046,7 +1077,7 @@
                 padding:2px 6px;display:inline-flex;align-items:center;gap:3px;line-height:1.4}
   .aplusdoc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0}
   .aplushead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-             font-size:12.5px;margin-bottom:8px}
+             font-size:12px;margin-bottom:8px}
   .aplusimgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
   .aplusimgs a{flex:0 0 auto;line-height:0}
   .aplusimgs img{height:104px;width:auto;border-radius:6px;border:1px solid var(--line);
@@ -1057,7 +1088,7 @@
           display:flex;align-items:center;gap:6px}
   .srcsub .ti{font-size:13px}
   /* Workspace data-source strip: which spreadsheet + tab this workspace reads/writes. */
-  .datasrc{font-size:11.5px;color:var(--ink3);margin:0 0 10px;display:flex;flex-wrap:wrap;
+  .datasrc{font-size:12px;color:var(--ink3);margin:0 0 10px;display:flex;flex-wrap:wrap;
            align-items:center;gap:6px 18px}
   .datasrc a{color:var(--accent2);text-decoration:none}
   .datasrc a:hover{text-decoration:underline}
@@ -1071,7 +1102,7 @@
      border-color alone does nothing without a border-style and width. */
   .livestatus{font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;
               border:1px solid var(--line);background:var(--panel2);color:var(--ink2)}
-  .profchip{font-size:10.5px;padding:2px 8px;border-radius:999px;font-weight:700;border:1px solid var(--line);display:inline-block;
+  .profchip{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:700;border:1px solid var(--line);display:inline-block;
             font-variant-numeric:tabular-nums}
   /* ---- TONE CHIPS ----------------------------------------------------
      One vocabulary for "small chip tinted by meaning": text colour, tinted
@@ -1120,22 +1151,22 @@
   .recipecard img{width:54px;height:54px;object-fit:cover;border-radius:7px;background:#fff}
   .studiomodels{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;padding:10px;background:var(--panel2);border:1px solid var(--line);border-radius:9px}
   .smodel label{font-size:11px;display:block;margin-bottom:3px}
-  .smodelhint{font-size:10.5px;margin-top:3px;line-height:1.4}
+  .smodelhint{font-size:10px;margin-top:3px;line-height:1.4}
   .ideabox{background:#16202c;border:1px solid #2a3a4d;border-radius:9px;padding:11px 13px;margin-bottom:8px}
   .buildbox{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
   .ordiv{display:flex;align-items:center;text-align:center;margin:14px 0;color:var(--muted);font-size:12px;font-weight:600}
   .ordiv::before,.ordiv::after{content:"";flex:1;border-bottom:1px solid var(--line)}
   .ordiv span{padding:0 12px}
   .howbox{margin-top:8px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.02)}
-  .howbox summary{cursor:pointer;padding:7px 10px;font-size:11.5px;color:var(--muted);list-style:none;user-select:none;display:flex;align-items:center;gap:6px}
+  .howbox summary{cursor:pointer;padding:7px 10px;font-size:12px;color:var(--muted);list-style:none;user-select:none;display:flex;align-items:center;gap:6px}
   .howbox summary::-webkit-details-marker{display:none}
   .howbox summary .chev{transition:transform .15s;display:inline-block}
   .howbox[open] summary .chev{transform:rotate(90deg)}
-  .howbox .howbody{padding:2px 12px 11px 12px;font-size:11.5px;line-height:1.55;color:var(--muted)}
+  .howbox .howbody{padding:2px 12px 11px 12px;font-size:12px;line-height:1.55;color:var(--muted)}
   .howbox .howbody ol{margin:4px 0 0 0;padding-left:18px}
   .howbox .howbody li{margin-bottom:5px}
   .howbox .howbody b{color:var(--text)}
-  .howbox .howbody code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:10.5px}
+  .howbox .howbody code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:10px}
   .adminbox{margin-top:14px;border:1px solid var(--ai-line);background:var(--ai-tint);border-radius:9px;padding:11px 13px}
   .conceptcard{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:7px}
   .conceptcard .ib{white-space:nowrap;align-self:center}
@@ -1176,7 +1207,7 @@
   /* Signed so POSITIVE IS BETTER, decided by the caller -- for ACOS and cost
      down is the good direction, and an arrow alone reads backwards on half the
      rows. */
-  .ui-delta{font-size:11.5px;font-weight:600;line-height:16px}
+  .ui-delta{font-size:12px;font-weight:600;line-height:16px}
   .ui-delta.up{color:#4ade80}
   .ui-delta.down{color:#f87171}
   .ui-delta.flat{color:rgb(156,163,175)}
@@ -1193,16 +1224,16 @@
               background:rgb(37,41,55);border:1px solid rgb(55,65,81);
               border-radius:10px;padding:8px 12px;margin:0 0 12px}
   .ui-toolbar .spacer{flex:1}
-  .ui-lbl{font-size:10.5px;font-weight:700;letter-spacing:.07em;
+  .ui-lbl{font-size:10px;font-weight:700;letter-spacing:.07em;
           text-transform:uppercase;color:rgb(156,163,175)}
 
   /* Every screen has an empty state and most of them said "nothing here",
      which is indistinguishable from broken. */
   .ui-empty{background:rgb(37,41,55);border:1px solid rgb(55,65,81);
             border-radius:12px;padding:26px 24px;text-align:left}
-  .ui-empty-t{font-size:15px;font-weight:650;margin-bottom:6px;
+  .ui-empty-t{font-size:15px;font-weight:600;margin-bottom:6px;
               color:rgb(243,244,246)}
-  .ui-empty-b{font-size:12.5px;line-height:1.6;color:rgb(156,163,175);
+  .ui-empty-b{font-size:12px;line-height:1.6;color:rgb(156,163,175);
               max-width:640px}
 
   /* ---- USER PERMISSIONS, THE WAY SELLER CENTRAL LAYS THEM OUT ----
@@ -1212,8 +1243,8 @@
      Seventeen dropdowns each had to be opened to be read. */
   .perm-head{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
              padding:2px 0 12px}
-  .perm-table{width:100%;border-collapse:collapse;font-size:12.5px}
-  .perm-table th{text-align:left;font-size:10.5px;font-weight:700;
+  .perm-table{width:100%;border-collapse:collapse;font-size:12px}
+  .perm-table th{text-align:left;font-size:10px;font-weight:700;
                  letter-spacing:.06em;text-transform:uppercase;color:var(--ink4);
                  padding:10px 12px;border-bottom:1px solid var(--line)}
   .perm-table td{padding:8px 12px;border-bottom:1px solid var(--line)}
@@ -1230,7 +1261,7 @@
   /* A page that sits under an area is indented, so the hierarchy is visible
      without reading the labels. */
   .perm-child td:first-child{padding-left:26px}
-  .perm-inherit{font-size:10.5px;color:var(--ink4);display:inline-flex;
+  .perm-inherit{font-size:10px;color:var(--ink4);display:inline-flex;
                 align-items:center;gap:5px;white-space:nowrap;cursor:pointer}
   .perm-inherit.on{color:var(--ink2)}
   .perm-ws{display:flex;flex-wrap:wrap;gap:7px}
@@ -1260,7 +1291,7 @@
            min-width:260px;flex:1 1 420px}
   .lsearch .ti{color:var(--ink4);font-size:15px;flex:0 0 auto}
   .lsearch input{background:none;border:none;outline:none;flex:1;min-width:0;
-                 color:var(--ink);font-size:12.5px;padding:4px 0}
+                 color:var(--ink);font-size:12px;padding:4px 0}
   .lsearch input::placeholder{color:var(--ink4)}
 
   /* ---- THE ORDER OF THE IMAGES ----
@@ -1281,7 +1312,7 @@
          text-transform:uppercase;color:var(--ink3);background:var(--panel2);
          border:1px solid var(--line);border-radius:999px;padding:1px 7px;
          margin-left:6px;vertical-align:middle}
-  .cwhy{font-size:11.5px;line-height:1.5;color:var(--ink2);background:var(--panel2);
+  .cwhy{font-size:12px;line-height:1.5;color:var(--ink2);background:var(--panel2);
         border-left:2px solid var(--accent);border-radius:0 6px 6px 0;
         padding:5px 9px;margin:5px 0 6px}
 
@@ -1303,7 +1334,7 @@
   .genplan-n.warn b{color:var(--warn)}
   .genplan-say{font-size:12px;color:var(--ink2);line-height:1.5;max-width:760px}
   .genplan-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
-  .genplan-list span{font-size:10.5px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  .genplan-list span{font-size:10px;font-family:ui-monospace,Menlo,Consolas,monospace;
                      background:var(--panel);border:1px solid var(--line);
                      border-radius:5px;padding:2px 6px;color:var(--ink3)}
 
@@ -1390,7 +1421,7 @@
             padding:10px 12px;margin:0 0 12px}
   .cmp-gapsk{font-size:11px;font-weight:700;letter-spacing:.05em;
              text-transform:uppercase;color:#e3c98a;margin-bottom:5px}
-  .cmp-gap{font-size:11.5px;color:#e6d9b8;line-height:1.5;margin-top:4px}
+  .cmp-gap{font-size:12px;color:#e6d9b8;line-height:1.5;margin-top:4px}
 
   /* ---- PRODUCT CATALOG ----
      Four findings above the table. A catalogue of eighty products is a list
@@ -1408,7 +1439,7 @@
   .catp-k{font-size:10px;font-weight:700;letter-spacing:.07em;
           text-transform:uppercase;color:var(--ink4)}
   .catp-v{font-size:24px;font-weight:700;line-height:1.15;margin:3px 0 2px}
-  .catp-s{font-size:11.5px;color:var(--ink3);line-height:1.45}
+  .catp-s{font-size:12px;color:var(--ink3);line-height:1.45}
   .catp-counts{display:flex;gap:16px;flex-wrap:wrap;align-items:center;
                font-size:12px;color:var(--ink2);padding:2px 0 10px}
   .catp-bar{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
@@ -1442,9 +1473,9 @@
      did not reach. */
   .ld-head{display:flex;justify-content:space-between;align-items:flex-start;
            gap:12px;flex-wrap:wrap;padding:4px 0 12px}
-  .ld-day{font-size:15px;font-weight:650}
+  .ld-day{font-size:15px;font-weight:600}
   .ld-counts{display:flex;gap:6px;flex-wrap:wrap}
-  .ld-pill{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;
+  .ld-pill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;
            border-radius:999px;white-space:nowrap}
   .ld-pill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
   .ld-pill.warn{background:#2a2415;border:1px solid #55492a;color:#e3c98a}
@@ -1464,7 +1495,7 @@
      look like either a pass or a failure. A reading Amazon would not give, and
      a number with no target set, are both genuinely unjudged -- and a
      monitoring screen that renders those as a tick is a screen that lies. */
-  .trkpill{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;
+  .trkpill{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;
            border-radius:999px;white-space:nowrap}
   .trkpill.ok{background:#16291d;border:1px solid #2c5840;color:#7fd6a2}
   .trkpill.off{background:#2b1a1a;border:1px solid #5c2f2f;color:#f0928f}
@@ -1480,7 +1511,7 @@
   .apmob input{margin:0}
   .apscr{display:inline-block;font-size:10px;color:#cbb7e8;background:#241a33;border:1px solid #453258;padding:1px 6px;border-radius:999px;margin-left:4px}
   .apcopy{font-size:11px;color:#c7d0dc;padding:6px 8px;border-top:1px dashed var(--line);line-height:1.45}
-  .issuesbox{border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:12.5px;line-height:1.5}
+  .issuesbox{border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:12px;line-height:1.5}
   .issuesbox.ok{background:#16241a;border:1px solid #2c5036;color:#bfe3c9}
   .issuesbox.warn{background:#2a2014;border:1px solid #5c4528;color:#e9d5b6}
   .issgrp{margin-top:8px}
@@ -1489,14 +1520,14 @@
   .issgrp-h.warn{color:var(--warn)}
   .issrow{background:rgba(0,0,0,.18);border-radius:6px;padding:6px 9px;margin-bottom:4px}
   .issmsg{font-size:12px}
-  .issattr{font-size:10.5px;color:var(--ink2);margin-top:2px}
+  .issattr{font-size:10px;color:var(--ink2);margin-top:2px}
   .issattr code,.optfix~* code{background:#1c2430;padding:0 4px;border-radius:4px}
   .optsec{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent2);font-weight:700;margin:4px 0 8px}
   .srcbox{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
   .optall{margin-top:14px;border:1px solid var(--line);border-radius:9px;padding:4px 10px}
   .optall>summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 0}
   .optattr{font-size:12px}
-  .subrow .k{padding-left:18px;color:#9fb0c8;font-size:12.5px}
+  .subrow .k{padding-left:18px;color:#9fb0c8;font-size:12px}
   .subrow .subarrow{color:var(--ink3);margin-right:3px}
   .optdiff{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px}
   .optdiff.chg{border-color:#5a4a2a;background:#1c1810}
@@ -1516,7 +1547,7 @@
   .ibtn.iwarn{color:var(--warn);border-color:var(--warn-line);background:var(--amberbg)}
   .heroimg{margin:6px 0 2px}
   .heroimg img{max-width:100%;max-height:190px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:var(--panel);display:block}
-  .findsum{font-size:12.5px;font-weight:600;padding:7px 11px;border-radius:8px;cursor:pointer;list-style:none;margin:2px 0}
+  .findsum{font-size:12px;font-weight:600;padding:7px 11px;border-radius:8px;cursor:pointer;list-style:none;margin:2px 0}
   .findsum.good{background:var(--ok-bg);border:1px solid var(--ok-line);color:var(--ok);cursor:default}
   .findsum.bad{background:var(--redbg);border:1px solid var(--red-line);color:var(--red)}
   .findsum.info{background:var(--amberbg);border:1px solid var(--warn-line);color:var(--warn)}
@@ -1534,7 +1565,7 @@
   .restrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
   .restrow.red{background:var(--redbg);border-color:var(--red-line)}
   .restrow.amber{background:var(--amberbg);border-color:var(--warn-line)}
-  .restconf{margin-left:6px;font-size:10.5px}
+  .restconf{margin-left:6px;font-size:10px}
   .findingsbox .findings{margin-top:6px}
   details.findingsbox>summary::-webkit-details-marker{display:none}
   /* ---- GALLERY GRID ---- */
@@ -1572,7 +1603,7 @@
   /* "No image" said in words as well as an icon: a lone grey glyph on a grey
      square reads as an image that failed to load, which is a different problem
      from one that was never added. */
-  .tileimg.noimg::after{content:"No image";font-size:10.5px;letter-spacing:.02em}
+  .tileimg.noimg::after{content:"No image";font-size:10px;letter-spacing:.02em}
   /* The live tile draws its own worded placeholder ("No image uploaded"), which
      says the same thing at more length. One caption, not two stacked. */
   .tileimg.noimg:has(.noimgmsg)::after{content:none}
@@ -1583,7 +1614,7 @@
      overlay in that box. Top-right of the image, clear of the checkbox. */
   .tilewarn{position:absolute;top:8px;right:36px;z-index:6;display:inline-flex;
             align-items:center;gap:3px;height:22px;padding:0 7px;border-radius:11px;
-            font-size:11.5px;font-weight:800;line-height:1;cursor:pointer}
+            font-size:12px;font-weight:700;line-height:1;cursor:pointer}
   .tilewarn i{font-size:12px}
   .tilewarn.red{background:#c0392b;color:#fff;border:1px solid #e05a4b}
   .tilewarn.amber{background:rgba(90,74,22,.85);color:#f0cf8c;border:1px solid #7a641f}
@@ -1600,7 +1631,7 @@
      taken by the restricted flag and bottom-left by .tileclaim, so a third badge
      needs its own lane or it lands on top of one of them. */
   .tiledocs{position:absolute;bottom:8px;right:36px;display:flex;align-items:center;gap:3px;
-            height:22px;padding:0 7px;border-radius:11px;font-size:11.5px;font-weight:800;
+            height:22px;padding:0 7px;border-radius:11px;font-size:12px;font-weight:700;
             cursor:pointer;z-index:6;line-height:1;background:rgba(0,0,0,.55);border:1px solid var(--line)}
   .tiledocs i{font-size:12px}
   .tiledocs.red{color:var(--red);border-color:var(--red-line)}
@@ -1620,7 +1651,7 @@
      so a soft superlative never screams as loud as a pesticide claim. Absent on clean
      listings, so those tiles look exactly as before. */
   .tileclaim{position:absolute;bottom:8px;left:8px;display:flex;align-items:center;gap:3px;
-             height:22px;padding:0 7px;border-radius:11px;font-size:11.5px;font-weight:800;
+             height:22px;padding:0 7px;border-radius:11px;font-size:12px;font-weight:700;
              cursor:pointer;z-index:6;line-height:1}
   .tileclaim i{font-size:12px}
   .tileclaim.red{background:#c0392b;color:#fff;border:1px solid #e05a4b;box-shadow:0 1px 6px rgba(192,57,43,.55)}
@@ -1634,20 +1665,20 @@
   .claimrow{border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
   .claimrow.red{background:var(--redbg);border-color:var(--red-line)}
   .claimrow.amber{background:var(--amberbg);border-color:var(--warn-line)}
-  .claimhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
-  .claimsev{font-size:10px;font-weight:800;padding:1px 6px;border-radius:5px;letter-spacing:.03em}
+  .claimhead{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}
+  .claimsev{font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;letter-spacing:.03em}
   .claimsev.red{background:#c0392b;color:#fff}
   .claimsev.amber{background:#7a641f;color:#fff}
-  .claimtext{margin-top:5px;font-size:12.5px;line-height:1.5;color:var(--fg)}
+  .claimtext{margin-top:5px;font-size:12px;line-height:1.5;color:var(--fg)}
   .rewrite{margin-top:6px;border-top:1px dashed var(--line);padding-top:6px}
   .rwrow{display:flex;gap:8px;align-items:flex-start;margin-bottom:4px}
-  .rwlbl{flex:0 0 46px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;padding-top:2px}
-  .rwbefore,.rwafter{flex:1;font-size:12.5px;line-height:1.5}
+  .rwlbl{flex:0 0 46px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;padding-top:2px}
+  .rwbefore,.rwafter{flex:1;font-size:12px;line-height:1.5}
   .rwafter{color:var(--ok)}
   .rwacts{display:flex;align-items:center;gap:10px;margin-top:4px}
   .linkbtn.ok{color:var(--ok);font-weight:700}
   .tilebody{padding:11px 13px 6px;cursor:pointer;flex:1;display:flex;flex-direction:column;gap:2px}
-  .tiletitle{font-size:13.5px;font-weight:600;line-height:1.4;min-height:38px;overflow:hidden;
+  .tiletitle{font-size:13px;font-weight:600;line-height:1.4;min-height:38px;overflow:hidden;
              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .tilemeta{display:flex;justify-content:space-between;align-items:center;margin-top:5px;gap:8px}
   .fmode{font-size:10px;padding:1px 7px;border-radius:999px;font-weight:700;border:1px solid var(--line)}
@@ -1655,7 +1686,7 @@
   /* Gold marks MONEY. See the .financial note near the status pills. This class
      is shared by the draft tiles (listings.js) and the live tiles
      (miles_template.js), so both get it from one place. */
-  .tileprice{font-size:12.5px;font-weight:600;color:var(--gold);
+  .tileprice{font-size:12px;font-weight:600;color:var(--gold);
              font-variant-numeric:tabular-nums}
   /* A live price is a control, not a label: it says so on hover and carries a
      pencil, because an editable thing that looks identical to a read-only one
@@ -1669,17 +1700,17 @@
      never a link -- it is not our listing, and the whole bug it replaces was
      it looking like one. */
   .srcasin{font-family:ui-monospace,Consolas,monospace;opacity:.7}
-  .tilesku{font-size:10.5px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
+  .tilesku{font-size:10px;color:var(--muted);font-family:ui-monospace,Consolas,monospace}
   /* The two facts every card now states outright: brand and handling time.
      Deliberately quiet -- they are context for the title, not status. */
   .tilefacts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:5px}
-  .tilefact{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:var(--muted)}
+  .tilefact{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)}
   .tilefact i{font-size:12px}
   .brandfact{color:var(--ink2)}
   /* Amazon's own handling time, as opposed to the one we hold for a draft. */
   .handlive{color:var(--accent)}
   /* Your OWN live ASIN chip (from the live catalogue, matched by SKU) */
-  .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10.5px;
+  .tileasin{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10px;
             color:var(--ok);font-family:ui-monospace,Consolas,monospace}
   .tileasin i{font-size:12px}
   .tileasin a{color:var(--ok);text-decoration:none}
@@ -1702,7 +1733,7 @@
            display:inline-flex;align-items:center;gap:6px;line-height:1.2}
   .tabpill:hover{border-color:#3a465c;color:var(--ink)}
   .tabpill.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent2);font-weight:600}
-  .tabpill .tabcount{font-size:10.5px;padding:0 6px;border-radius:999px;
+  .tabpill .tabcount{font-size:10px;padding:0 6px;border-radius:999px;
                      background:rgba(255,255,255,.06);color:var(--muted);
                      font-variant-numeric:tabular-nums}
   .tabpill.active .tabcount{background:rgba(255,255,255,.14);color:#dfe7f5}
@@ -1719,13 +1750,13 @@
   .tile.dup{outline:1px dashed rgba(227,183,104,.55);outline-offset:-1px}
   /* The duplicate chip on a card: label + a delete-this-copy button */
   .tiledup{display:flex;align-items:center;justify-content:space-between;gap:8px;
-           margin:6px 9px 0;padding:5px 8px;border-radius:8px;font-size:10.5px;
+           margin:6px 9px 0;padding:5px 8px;border-radius:8px;font-size:10px;
            color:var(--warn);background:rgba(227,183,104,.10);border:1px solid rgba(227,183,104,.30)}
   .tiledup-lbl{display:inline-flex;align-items:center;gap:5px;min-width:0;
                overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tiledup-lbl i{font-size:12px;flex:0 0 auto}
   .tiledup-del{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;cursor:pointer;
-               font-size:10.5px;padding:3px 8px;border-radius:6px;
+               font-size:10px;padding:3px 8px;border-radius:6px;
                color:var(--red);background:transparent;border:1px solid var(--red-line)}
   .tiledup-del:hover{background:rgba(255,80,80,.10);color:#ffb0b0}
   .tiledup-del:disabled{opacity:.5;cursor:default}
@@ -1736,7 +1767,7 @@
   .mirbox .mirbody{padding:2px 12px 12px}
   .mirimgs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
   .mirimgs img{width:64px;height:64px;object-fit:cover;border-radius:7px;border:1px solid var(--line);background:var(--panel)}
-  .mirrow{display:flex;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.05);font-size:12.5px}
+  .mirrow{display:flex;gap:10px;padding:5px 0;border-top:1px solid rgba(255,255,255,.05);font-size:12px}
   .mirrow .mirk{flex:0 0 130px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding-top:2px}
   .mirdesc{white-space:pre-wrap;max-height:160px;overflow:auto}
   .mirbul{margin:0;padding-left:18px}
@@ -1760,14 +1791,14 @@
      list stayed fully laid out and the page stayed forty screens tall. Measured
      after adding the fold: 48,840px, i.e. taller than before. */
   .monmkt-list[hidden]{display:none}
-  .monmkt-row{font-size:12.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  .monmkt-row{font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
               padding:3px 0;border-top:1px solid var(--line)}
   .monmkt-ts{white-space:nowrap;margin-left:auto}
   .monmkt-row.skipped{opacity:.5}
   /* NEW-account marker on an unknown seller (0 feedback = classic new-hijacker signature) */
   .newacct{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;
            border-radius:5px;background:var(--red-bg);color:var(--red);vertical-align:middle}
-  .fbnote{font-size:9.5px;color:var(--muted)}
+  .fbnote{font-size:10px;color:var(--muted)}
   /* "Third parties on your listings" list */
   .monunk{border:1px solid var(--warn-line);border-radius:12px;background:rgba(227,183,104,.06);padding:10px 12px;margin:0 0 12px}
   .monunk-h{font-size:13px;color:var(--warn);font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:8px}
@@ -1810,18 +1841,18 @@
   .monalert .ma-ic{flex:0 0 auto;font-size:16px;color:var(--ink2);margin-top:1px}
   .monalert.na .ma-ic{color:var(--red)}
   .ma-body{flex:1;min-width:0}
-  .ma-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px}
+  .ma-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px}
   .ma-top .spacer{flex:1}
   .ma-asin{font-family:ui-monospace,Consolas,monospace;color:var(--accent2)}
   .ma-ts{font-size:11px;white-space:nowrap}
-  .ma-mid{font-size:12.5px;margin-top:3px}
+  .ma-mid{font-size:12px;margin-top:3px}
   .ma-mid a{color:var(--accent2);text-decoration:none}
   .ma-mid a:hover{text-decoration:underline}
-  .ma-det{font-size:11.5px;margin-top:2px}
+  .ma-det{font-size:12px;margin-top:2px}
   .monadd{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--panel2)}
   .monrow{display:flex;gap:12px;flex-wrap:wrap}
   .monfield{display:flex;flex-direction:column}
-  .monlbl{font-size:11.5px;color:var(--muted);margin-bottom:5px}
+  .monlbl{font-size:12px;color:var(--muted);margin-bottom:5px}
   .monin{background:var(--panel);color:var(--ink);border:1px solid var(--line2);border-radius:8px;
          padding:8px 10px;font-size:13px;box-sizing:border-box}
   .monin:focus{outline:none;border-color:var(--accent)}
@@ -1830,7 +1861,7 @@
           padding:4px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--line);user-select:none}
   .monmkt input{margin:0;cursor:pointer}
   .montable{width:100%;border-collapse:collapse;font-size:13px}
-  .montable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;
+  .montable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
                color:var(--muted);padding:6px 10px;border-bottom:1px solid var(--line)}
   .montable td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
   .monasin{color:var(--accent2);text-decoration:none;font-family:ui-monospace,Consolas,monospace;font-weight:600}
@@ -1839,7 +1870,7 @@
      risk, and on those the muted grey measured 4.09:1 where it clears 5.2 on
      a plain panel. A marketplace code says which country the seller was found
      in -- it is not decoration. */
-  .monchip{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:999px;
+  .monchip{display:inline-block;font-size:10px;padding:1px 7px;border-radius:999px;
            background:rgba(255,255,255,.06);color:var(--ink);border:1px solid var(--line)}
   .monchip.all{color:var(--ok);border-color:var(--ok-line);background:rgba(18,48,33,.28)}
   .monrm{background:transparent;border:1px solid var(--red-line);color:var(--red);border-radius:7px;
@@ -1851,7 +1882,7 @@
   /* Offer history modal */
   .monhist-mkt{margin:14px 0}
   .monhist-h{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;align-items:center;gap:8px}
-  .monhisttable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .monhisttable{width:100%;border-collapse:collapse;font-size:12px}
   .monhisttable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
                    color:var(--muted);padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
   .monhisttable td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
@@ -1903,7 +1934,7 @@
   .tilemenu{position:fixed;z-index:85;background:var(--panel);border:1px solid var(--line);
             border-radius:9px;padding:5px;min-width:170px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .tilemenu button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
-                   background:transparent;border:none;color:var(--ink);font-size:12.5px;padding:8px 10px;border-radius:6px;cursor:pointer}
+                   background:transparent;border:none;color:var(--ink);font-size:12px;padding:8px 10px;border-radius:6px;cursor:pointer}
   .tilemenu button:hover{background:var(--panel2)}
   .tilemenu button.danger{color:var(--red)}
   .tilemenu .ti{font-size:15px}
@@ -1918,9 +1949,9 @@
   .dwhead{margin-bottom:10px}
   .dwtop{display:flex;align-items:center;gap:8px;margin-bottom:10px}
   .dwtop .spacer{flex:1}
-  .dwtitle{font-size:16px;font-weight:650;line-height:1.3;margin-bottom:6px}
+  .dwtitle{font-size:16px;font-weight:600;line-height:1.3;margin-bottom:6px}
   .dwactions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
-  .dwactions button,.dwactions .srcbtn{font-size:12.5px;padding:7px 12px;border-radius:8px;cursor:pointer;text-decoration:none}
+  .dwactions button,.dwactions .srcbtn{font-size:12px;padding:7px 12px;border-radius:8px;cursor:pointer;text-decoration:none}
   .dwactions .ok{background:var(--green);border:1px solid var(--green);color:#fff;font-weight:600}
   .dwactions .genmain{background:var(--ai-bg);border:1px solid var(--ai-line);color:var(--ai);font-weight:600;display:inline-flex;align-items:center;gap:6px}
   .dwactions .pushimg{background:#102a30;border:1px solid var(--accent-line);color:var(--accent2);font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -1945,7 +1976,7 @@
          padding:9px 10px;background:var(--panel);border:1px solid var(--line);
          border-radius:10px}
   .dwbar-main,.dwbar-side{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
-  .dwb{font-size:12.5px;padding:7px 13px;border-radius:8px;cursor:pointer;
+  .dwb{font-size:12px;padding:7px 13px;border-radius:8px;cursor:pointer;
        display:inline-flex;align-items:center;gap:6px;font-weight:600;
        border:1px solid var(--line);background:var(--panel2);color:var(--ink);
        transition:filter .15s ease,border-color .15s ease}
@@ -1975,7 +2006,7 @@
      single accent, or "which of these two am I on" becomes the only thing the
      colour says. Green for go, amber for held -- the same two the status pills
      use. */
-  .dwseg-b.on{font-weight:650}
+  .dwseg-b.on{font-weight:600}
   .dwseg-b.on:first-child{background:var(--green);color:#fff}
   .dwseg-b.on:last-child{background:var(--warn-bg,#2a230f);color:var(--warn)}
   /* What is left below the bar is a SETTING, not an action. */
@@ -1988,7 +2019,7 @@
   }
   .runpanel{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:12px}
   .runhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-  .runtitle{font-weight:600;font-size:13.5px}
+  .runtitle{font-weight:600;font-size:13px}
   .runclose{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px}
   .runverdict{font-size:13px;line-height:1.5}
   .runverdict .rgood{color:var(--ok);font-weight:600}
@@ -2000,7 +2031,7 @@
   /* Plain-English Amazon-error translation cards (amazon_errors.js) */
   .amztrans{margin-top:6px;padding:9px 11px;background:var(--panel2);border:1px solid var(--line2);border-left:3px solid var(--warn);border-radius:7px}
   .amztrans-h{font-size:13px;color:#ffe1a6;margin-bottom:3px}
-  .amztrans-p{font-size:12.5px;color:#dfe8f7;line-height:1.45}
+  .amztrans-p{font-size:12px;color:#dfe8f7;line-height:1.45}
   .amztrans-p b{color:#fff}
   .amztrans-a{margin-top:5px;font-size:12px;color:#9fe0b8}
   .amztrans-raw{border-left-color:#5c6b85}
@@ -2010,7 +2041,7 @@
   /* Global "Runs" badge + panel (runqueue.js) -- Preview/Submit background jobs */
   .rqbadge{position:fixed;right:16px;bottom:16px;z-index:1200;display:none;align-items:center;
     gap:6px;background:#12233b;color:#dfe8f7;border:1px solid #2c4a6e;
-    border-radius:20px;padding:7px 13px;font-size:12.5px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+    border-radius:20px;padding:7px 13px;font-size:12px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.4)}
   .rqbadge .rqdot{width:8px;height:8px;border-radius:50%;background:#4bd08a;display:inline-block;
     animation:rqpulse 1.2s ease-in-out infinite}
   /* THE BADGE AFTER THE RUN HAS ENDED. It lingers two minutes so a submit that
@@ -2031,7 +2062,7 @@
   .rqmin:hover,.rqx:hover{background:var(--panel2);color:#fff}
   .rqrow{display:flex;align-items:center;gap:7px;padding:6px;border-radius:7px;cursor:pointer;font-size:12px}
   .rqrow:hover{background:var(--panel2)}
-  .rqst{font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:10px;text-transform:uppercase}
+  .rqst{font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;text-transform:uppercase}
   .rqst.run{background:#123a2a;color:#7fe6b0}.rqst.q{background:#3a3312;color:#e6cf7f}
   .rqst.ok{background:#123021;color:var(--ok)}.rqst.err{background:var(--red-bg);color:var(--red)}
   .rqst.c{background:#2a2f38;color:#aebbd0}
@@ -2045,11 +2076,11 @@
   .rspin,.genspin{display:inline-block;width:11px;height:11px;border:2px solid var(--line2);border-top-color:var(--accent2);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px}
   @keyframes spin{to{transform:rotate(360deg)}}
   .lmeta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
-  .lsku{font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+  .lsku{font-family:ui-monospace,Consolas,monospace;font-size:12px}
   .lprice{color:var(--gold);font-weight:600;font-variant-numeric:tabular-nums}
   /* selection action bar */
   .selbar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#141b2b;
-          border-bottom:1px solid var(--line);font-size:12.5px;color:var(--accent2);
+          border-bottom:1px solid var(--line);font-size:12px;color:var(--accent2);
           position:sticky;top:0;z-index:40;flex-wrap:wrap;
           box-shadow:0 2px 8px rgba(0,0,0,.25)}
   .selbar .spacer{flex:1}
@@ -2087,10 +2118,10 @@
   .cogsexpl-head{display:flex;align-items:center;gap:10px;padding:13px 16px;
                  border-bottom:1px solid var(--line);font-size:14px}
   .cogsexpl-head button{margin-left:auto}
-  .cogsexpl-body{padding:14px 18px 20px;overflow-y:auto;font-size:12.5px;
+  .cogsexpl-body{padding:14px 18px 20px;overflow-y:auto;font-size:12px;
                  color:var(--text)}
   .cogsexpl-body code{background:var(--panel2);border-radius:4px;padding:1px 5px;
-                      font-size:11.5px}
+                      font-size:12px}
   .cogsexpl-body table{max-width:100%}
   .mktlabel{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .browsemodels{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--accent);
@@ -2210,7 +2241,7 @@
   .stat-delta.good{color:var(--ok)}
   .stat-delta.bad{color:var(--red)}
   .stat-delta.flat{color:var(--ink3)}
-  .salesnote{font-size:11.5px;margin:-6px 0 14px;padding:8px 10px;
+  .salesnote{font-size:12px;margin:-6px 0 14px;padding:8px 10px;
              border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
 
   /* 30+ columns will not fit; the grid scrolls inside its own box rather than
@@ -2228,7 +2259,7 @@
                       font-weight:600;color:var(--ink3);text-align:right}
   .salesgrid th.mcol{position:sticky;left:0;z-index:1;background:var(--panel2);
                      text-align:left;font-weight:500;color:var(--ink2);
-                     text-transform:none;letter-spacing:0;font-size:11.5px;
+                     text-transform:none;letter-spacing:0;font-size:12px;
                      max-width:210px;overflow:hidden;text-overflow:ellipsis}
   .salesgrid thead th.mcol{z-index:3}
 
@@ -2256,7 +2287,7 @@
   .hrlyrow{ cursor:pointer; }
   .hrlyrow:hover{ background:rgba(255,255,255,.03); }
   .hrlyrow.open{ background:rgba(251,191,36,.06); }
-  .hrlyname{ min-width:0; font-size:11.5px; }
+  .hrlyname{ min-width:0; font-size:12px; }
   .hrlyname code{ font-size:10px; display:block; }
   .hrlytitle{ display:block; overflow:hidden; text-overflow:ellipsis;
               white-space:nowrap; }
@@ -2406,9 +2437,9 @@
   .todaylead{font-size:11px;letter-spacing:.06em;text-transform:uppercase;
              color:var(--muted);font-weight:600}
   .todaybit b{font-variant-numeric:tabular-nums;font-size:15px;font-weight:600}
-  .todaybit .good{color:var(--green,#2dd4a8);font-size:11.5px}
-  .todaybit .bad{color:var(--red,#f87171);font-size:11.5px}
-  .todaynote{margin-left:auto;font-size:10.5px}
+  .todaybit .good{color:var(--green,#2dd4a8);font-size:12px}
+  .todaybit .bad{color:var(--red,#f87171);font-size:12px}
+  .todaynote{margin-left:auto;font-size:10px}
 
 /* =========================================================================
    MOBILE  --  everything below 860px
@@ -2472,7 +2503,7 @@
     flex-wrap:wrap; align-items:flex-start;
   }
   .wstoolbar h2{ font-size:14px; }
-  .wstoolbar .sub{ font-size:11.5px; }
+  .wstoolbar .sub{ font-size:12px; }
   .wstoolbar .spacer{ display:none; }        /* it only forces a wide row */
 
   /* Button rows: let them wrap instead of overflowing. */
@@ -2494,7 +2525,7 @@
      width. The tables keep their min-width on purpose: a squashed financial
      table is unreadable, and sideways scroll is the honest trade. */
   [style*="overflow-x"]{ -webkit-overflow-scrolling:touch; }
-  table.kv{ font-size:11.5px; }
+  table.kv{ font-size:12px; }
   table.kv td, table.kv th{ padding:6px 7px; }
 
   /* ---- modals: use the screen ---- */
@@ -3347,16 +3378,16 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .dy-head.bad{ border-left-color:var(--red); }
 .dy-head.part{ border-left-color:var(--warn); }
 .dy-head.good{ border-left-color:var(--ok); }
-.dy-eyebrow{ font-size:11px; font-weight:800; letter-spacing:.88px;
+.dy-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.88px;
              text-transform:uppercase; color:var(--ink3); }
 .dy-headline{ font-size:23px; font-weight:700; line-height:1.2; margin:5px 0 5px; }
 .dy-head.bad .dy-headline{ color:#fca5a5; }
 .dy-head.good .dy-headline{ color:var(--ok); }
-.dy-sub{ font-size:11.5px; }
+.dy-sub{ font-size:12px; }
 
 .dy-group{ margin-bottom:14px; }
 .dy-gh{
-  font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+  font-size:11px; font-weight:700; letter-spacing:.7px; text-transform:uppercase;
   color:var(--ink3); margin:0 0 7px; display:flex; gap:6px; align-items:center;
 }
 .dy-row{
@@ -3377,11 +3408,11 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    can act on tomorrow. */
 .dy-v{ font-weight:700; font-variant-numeric:tabular-nums; margin-left:5px; }
 .dy-row.off .dy-v{ color:#fca5a5; }
-.dy-d{ font-size:11.5px; color:var(--ink2); line-height:1.5; margin-top:3px; }
-.dy-needs{ font-size:11.5px; color:var(--ink3); line-height:1.5; margin-top:3px;
+.dy-d{ font-size:12px; color:var(--ink2); line-height:1.5; margin-top:3px; }
+.dy-needs{ font-size:12px; color:var(--ink3); line-height:1.5; margin-top:3px;
            font-style:italic; }
-.dy-act{ font-size:11.5px; color:var(--accent); line-height:1.5; margin-top:4px; }
-.dy-g{ font-size:10.5px; white-space:nowrap; flex:0 0 auto; margin-top:2px; }
+.dy-act{ font-size:12px; color:var(--accent); line-height:1.5; margin-top:4px; }
+.dy-g{ font-size:10px; white-space:nowrap; flex:0 0 auto; margin-top:2px; }
 
 /* ---- how the finished image is branded ----------------------------------
    "let the user chose the brand name for its item, whether he wants the images
@@ -3395,7 +3426,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   padding:11px 12px; margin-bottom:10px;
 }
 .brandpane-h{
-  font-size:11px; font-weight:800; letter-spacing:.7px; text-transform:uppercase;
+  font-size:11px; font-weight:700; letter-spacing:.7px; text-transform:uppercase;
   color:var(--ink3); margin-bottom:8px;
 }
 .brandpane-opts{ display:grid; gap:6px;
@@ -3419,7 +3450,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    down, because for ACOS, CPC, CPA and TACOS down is the good direction. */
 .wk-head{ display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
           margin:2px 0 12px; }
-.wk-eyebrow{ font-size:11px; font-weight:800; letter-spacing:.88px;
+.wk-eyebrow{ font-size:11px; font-weight:700; letter-spacing:.88px;
              text-transform:uppercase; color:var(--ink3); }
 .wk-week{ font-size:22px; font-weight:700; line-height:1.2; }
 .wk-built{ margin-left:auto; font-size:11px; }
@@ -3432,12 +3463,12 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   border-radius:8px; padding:14px 15px; min-width:0;
 }
 .wk-card .lbl{
-  font-size:11px; font-weight:800; letter-spacing:.88px; color:var(--ink3);
+  font-size:11px; font-weight:700; letter-spacing:.88px; color:var(--ink3);
   text-transform:uppercase; margin-bottom:6px;
 }
 .wk-card .val{ font-size:23px; font-weight:700; line-height:1.15;
                font-variant-numeric:tabular-nums; }
-.wk-card .sub{ font-size:10.5px; margin-top:5px; line-height:1.45; }
+.wk-card .sub{ font-size:10px; margin-top:5px; line-height:1.45; }
 /* The movement chip. Green means BETTER, not larger. */
 .wk-d{ font-size:11px; font-weight:600; margin-left:5px;
        font-variant-numeric:tabular-nums; }
@@ -3458,7 +3489,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    The parent is a header you can open; the children sit under it, indented and
    joined by a rule, so the relationship is visible rather than described. */
 .varfam-wrap{ margin:0 0 16px; }
-.varfam-head{ font-size:12.5px; margin:2px 0 8px; display:flex; gap:8px;
+.varfam-head{ font-size:12px; margin:2px 0 8px; display:flex; gap:8px;
               align-items:baseline; flex-wrap:wrap; }
 .varfam{
   border:1px solid var(--line); border-radius:8px;
@@ -3477,7 +3508,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 }
 .varfam-nm{ min-width:0; flex:1; }
 .varfam-t{
-  font-size:12.5px; font-weight:600; line-height:1.35;
+  font-size:12px; font-weight:600; line-height:1.35;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .varfam-s{ font-size:11px; margin-top:1px;
@@ -3511,7 +3542,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   background:transparent; border:0; border-bottom:2px solid transparent;
   color:var(--ink3); cursor:pointer;
   padding:9px 13px; margin-bottom:-1px;
-  font-size:12.5px; font-weight:500; white-space:nowrap;
+  font-size:12px; font-weight:500; white-space:nowrap;
   display:inline-flex; align-items:center; gap:7px; min-height:38px;
   transition:color .15s ease, border-color .15s ease;
 }
@@ -3560,7 +3591,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    "all the text all over the app should be arranged and should not be
     floating freely" */
 .srcalert{
-  border-radius:8px; padding:11px 13px; margin:6px 0; font-size:11.5px;
+  border-radius:8px; padding:11px 13px; margin:6px 0; font-size:12px;
   line-height:1.5;
 }
 .srcalert.bad{ border:1px solid #5c2b2b; background:#2a1414; color:#ffb4b4; }
@@ -3710,10 +3741,10 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
   font-size:11px; text-transform:uppercase; letter-spacing:.06em;
   font-weight:700; color:var(--ink2);
 }
-.permgrp-n{ font-size:10.5px; }
+.permgrp-n{ font-size:10px; }
 .permgrp-set{ display:flex; align-items:center; gap:5px; margin-left:auto; }
-.permgrp-set .cc{ font-size:10.5px; }
-.permgrp-set .db-chip{ padding:2px 8px; font-size:10.5px; }
+.permgrp-set .cc{ font-size:10px; }
+.permgrp-set .db-chip{ padding:2px 8px; font-size:10px; }
 
 /* THE ASIN MONITOR, brought onto the app's own surfaces.
    It had its own header trio, its own button shape and eight hardcoded hex
@@ -3723,7 +3754,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 /* One summary line per ASIN, in place of ten "not listed here" rows. */
 .monasin-sum{
   display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-  font-size:11.5px; padding:2px 0 6px; line-height:1.6;
+  font-size:12px; padding:2px 0 6px; line-height:1.6;
 }
 .monsm-dot{ color:var(--ink3); }
 .monsm-hot{ color:var(--warn); font-weight:600; }
@@ -3742,13 +3773,13 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 }
 .moncard-head{
   display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
-  font-size:12.5px; margin-bottom:10px;
+  font-size:12px; margin-bottom:10px;
 }
 .moncard-head .cc{ font-size:11px; }
-.moncard-foot{ font-size:10.5px; margin-top:9px; line-height:1.5; }
+.moncard-foot{ font-size:10px; margin-top:9px; line-height:1.5; }
 .moncard-clean{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ok); }
 .monbars{ display:flex; flex-direction:column; gap:5px; }
-.monbar-row{ display:flex; align-items:center; gap:9px; font-size:11.5px; }
+.monbar-row{ display:flex; align-items:center; gap:9px; font-size:12px; }
 .monbar-lbl{ flex:0 0 34px; color:var(--ink2); font-weight:600; }
 .monbar-track{
   flex:1 1 auto; height:9px; border-radius:5px; background:var(--panel2);
@@ -3827,7 +3858,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 .ri-theme:last-child{ border-bottom:0; }
 .ri-quotes{ margin-top:8px; display:flex; flex-direction:column; gap:5px; }
 .ri-quote{
-  font-size:11.5px; line-height:1.55; color:var(--ink2);
+  font-size:12px; line-height:1.55; color:var(--ink2);
   padding:5px 9px; border-left:2px solid var(--line);
   background:var(--panel2); border-radius:0 4px 4px 0;
 }
@@ -3912,7 +3943,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
 /* "draft-only", "default", "slower" -- the thing worth knowing BEFORE choosing,
    rather than after switching and finding half the screens empty. */
 .switchopt .note{
-  font-size:10.5px;
+  font-size:10px;
   color:rgb(156,163,175);
   white-space:nowrap;
 }
@@ -3924,7 +3955,7 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    three limited companies through one screen. */
 .switchhead{
   padding:6px 10px 5px;
-  font-size:10.5px;
+  font-size:10px;
   font-weight:600;
   letter-spacing:.05em;
   text-transform:uppercase;
@@ -4002,7 +4033,7 @@ table.ordtable{ border-collapse:separate; border-spacing:0; }
 table.ordtable th{
   padding:7px 10px;
   text-align:left;
-  font-size:10.5px;
+  font-size:10px;
   font-weight:600;
   letter-spacing:0;
   text-transform:none;
@@ -4029,7 +4060,7 @@ table.ordtable td{
    listrow_detailed.css is not loaded for the Orders screen's sake. */
 table.ordtable th .th-sub{
   display:block; margin-top:1px;
-  font-size:9.5px; font-weight:400; letter-spacing:0;
+  font-size:10px; font-weight:400; letter-spacing:0;
   text-transform:none; color:var(--ink4);
 }
 table.ordtable tbody tr:last-child > td{ border-bottom:0; }
@@ -4125,7 +4156,7 @@ table.ordtable tbody tr.orddetail > td{
 }
 .stk-bannermain{ flex:1; min-width:280px; }
 .stk-eyebrow{
-  font-size:11px; font-weight:800; letter-spacing:.88px; text-transform:uppercase;
+  font-size:11px; font-weight:700; letter-spacing:.88px; text-transform:uppercase;
   color:var(--ink3); margin:0 0 6px;
 }
 /* 32px rather than Orbit's 3.2em: the same visual weight against this app's
@@ -4140,7 +4171,7 @@ table.ordtable tbody tr.orddetail > td{
    green button -- and this exact headline was rendering as a solid green bar
    because of it. Prefixed modifiers cannot collide with a global word. */
 .stk-headline.is-warn{ color:#fbbf24; }
-.stk-sub{ font-size:12.5px; color:var(--ink2); line-height:1.55; margin:0; }
+.stk-sub{ font-size:12px; color:var(--ink2); line-height:1.55; margin:0; }
 .stk-bannercards{ display:flex; gap:10px; flex-wrap:wrap; }
 
 /* ---- the cards --------------------------------------------------------- */
@@ -4155,7 +4186,7 @@ table.ordtable tbody tr.orddetail > td{
 .stk-card.cost { border-color:rgba(251,191,36,.28); }
 .stk-card.info { border-color:rgba(103,232,249,.26); }
 .stk-card .lbl{
-  font-size:11px; font-weight:800; letter-spacing:.88px; text-transform:uppercase;
+  font-size:11px; font-weight:700; letter-spacing:.88px; text-transform:uppercase;
   color:var(--ink2);
 }
 .stk-card .val{
@@ -4173,7 +4204,7 @@ table.ordtable tbody tr.orddetail > td{
   background:rgba(15,23,42,.34); padding:14px; gap:8px; min-width:auto;
 }
 .stk-grid .stk-card .lbl{ font-size:10px; letter-spacing:.6px; color:var(--ink3); }
-.stk-grid .stk-card .val{ font-size:24px; font-weight:800; }
+.stk-grid .stk-card .val{ font-size:24px; font-weight:700; }
 .stk-grid .stk-card .sub{ font-size:11px; color:var(--ink3); }
 
 /* Stagger, so the row assembles rather than appearing. Orbit does the same with
@@ -4191,7 +4222,7 @@ table.ordtable tbody tr.orddetail > td{
    stockout likely -- "ordered from healthiest to most urgent". */
 .stk-chip{
   display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
-  font-size:10.5px; font-weight:600; letter-spacing:.02em;
+  font-size:10px; font-weight:600; letter-spacing:.02em;
   border-radius:5px; padding:2px 8px; border:1px solid transparent;
 }
 .stk-chip.safe    { color:#34d399; border-color:rgba(16,185,129,.32); background:rgba(16,185,129,.10); }
@@ -4315,7 +4346,7 @@ table.ordtable tbody tr.orddetail > td{
 }
 .odp-item:first-of-type{ border-top:0; padding-top:0; }
 .odp-title{
-  grid-column:1; font-size:12.5px; color:var(--ink); font-weight:500;
+  grid-column:1; font-size:12px; color:var(--ink); font-weight:500;
   /* Two lines then ellipsis: one line hid too much of a long Amazon title,
      and unbounded made the row height jump between products. */
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
@@ -4339,7 +4370,7 @@ table.ordtable tbody tr.orddetail > td{
 /* ---- a status, with what it means ------------------------------------- */
 .odp-state{
   display:inline-flex; align-items:center; gap:5px;
-  font-size:10.5px; border-radius:5px; padding:1px 7px;
+  font-size:10px; border-radius:5px; padding:1px 7px;
   border:1px solid var(--line); white-space:nowrap;
 }
 .odp-state.warn{ color:var(--warn); border-color:var(--warn-line); }
@@ -4380,18 +4411,18 @@ table.ordtable tbody tr.orddetail > td{
 .odp-link:hover{ text-decoration:underline; }
 .odp-num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
 .odp-num.neg{ color:var(--red); }
-.odp-num .sub{ color:var(--ink4); font-size:10.5px; font-weight:400; }
+.odp-num .sub{ color:var(--ink4); font-size:10px; font-weight:400; }
 /* The delivery sentence sits under its own row and spans the whole grid, so
    it can be a full sentence without squeezing the numbers beside it. */
 .odp-ship{
   grid-column:1 / -1; margin:-2px 0 4px; padding:0 0 6px 0;
-  font-size:10.5px; color:var(--ink3); border-bottom:1px solid var(--line);
+  font-size:10px; color:var(--ink3); border-bottom:1px solid var(--line);
 }
 .odp-row-dead{ opacity:.5; }
 
 /* ---- delivery dates --------------------------------------------------- */
 .odp-kv{ display:grid; grid-template-columns:auto 1fr; gap:5px 14px;
-         font-size:11.5px; }
+         font-size:12px; }
 .odp-kv dt{ color:var(--ink3); white-space:nowrap; }
 .odp-kv dd{ margin:0; color:var(--ink); }
 
@@ -4405,7 +4436,7 @@ table.ordtable tbody tr.orddetail > td{
 .odp-i:hover{ border-color:var(--accent); color:var(--accent); }
 
 /* ---- notes under a table --------------------------------------------- */
-.odp-note{ font-size:10.5px; color:var(--ink3); margin-top:5px; line-height:1.5; }
+.odp-note{ font-size:10px; color:var(--ink3); margin-top:5px; line-height:1.5; }
 .odp-note.warn{ color:var(--warn); }
 
 /* ---- the folded supplier block, for screens with many of them ---------
@@ -4414,7 +4445,7 @@ table.ordtable tbody tr.orddetail > td{
    the summary line has to carry the answer on its own. */
 .odp-sec-c{ padding:6px 0 0; border-top:1px solid var(--line); }
 .odp-c-sum{ list-style:none; cursor:pointer; display:flex; align-items:center;
-            gap:7px; flex-wrap:wrap; font-size:11.5px; color:var(--ink2);
+            gap:7px; flex-wrap:wrap; font-size:12px; color:var(--ink2);
             padding:5px 2px; border-radius:6px; }
 .odp-c-sum::-webkit-details-marker{ display:none; }
 .odp-c-sum:hover{ background:var(--panel2); }
@@ -4452,7 +4483,7 @@ details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
      days at a time, so a number without its source is a number you cannot act
      on. Quiet by design: this is provenance, not content. */
   .ui-source{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;
-    margin:2px 0 12px;font-size:10.5px;color:var(--muted);line-height:1.6}
+    margin:2px 0 12px;font-size:10px;color:var(--muted);line-height:1.6}
   .ui-source-i b{font-weight:600;color:var(--ink3);margin-right:3px}
   .ui-source-n{opacity:.85;max-width:640px}
 
@@ -4469,7 +4500,7 @@ details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
 .bmkbar::-webkit-scrollbar{display:none}
 .bmkchip{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
          background:transparent;border:1px solid var(--line);color:var(--fg2);
-         border-radius:14px;padding:3px 8px 3px 9px;font-size:11.5px;
+         border-radius:14px;padding:3px 8px 3px 9px;font-size:12px;
          cursor:pointer;line-height:1.5}
 .bmkchip:hover{border-color:var(--accent);color:var(--fg)}
 /* The page you are on is marked, so the bar doubles as a "where am I". */
@@ -4506,9 +4537,9 @@ details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
   border-bottom:1px solid var(--line)}
 #palette .palhead i{color:var(--ink3);font-size:16px}
 #palette #pal_q{flex:1;background:none;border:0;outline:none;color:var(--ink);
-  font-size:14.5px;font-family:inherit}
+  font-size:14px;font-family:inherit}
 #palette #pal_q::placeholder{color:var(--ink4)}
-#palette .palhint{font-size:10.5px;color:var(--ink4);border:1px solid var(--line2);
+#palette .palhint{font-size:10px;color:var(--ink4);border:1px solid var(--line2);
   border-radius:4px;padding:1px 5px}
 /* A BOX THAT CLAIMS THE WHEEL MUST BE ABLE TO USE IT. overscroll-behavior
    :contain stops a scroll running on to the page behind -- and on an element
@@ -4534,22 +4565,22 @@ details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
    stuck, and there is one on every row. */
 #palette .palnote{flex:1 1 auto;min-width:0;font-size:11px;color:var(--ink4);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#palette .palgrp{flex:0 0 auto;margin-left:auto;font-size:10.5px;
+#palette .palgrp{flex:0 0 auto;margin-left:auto;font-size:10px;
   color:var(--ink3);background:var(--panel2);border-radius:4px;padding:1px 6px;
   white-space:nowrap}
-#palette .palempty{padding:18px 14px;color:var(--ink3);font-size:12.5px}
+#palette .palempty{padding:18px 14px;color:var(--ink3);font-size:12px}
 #palette .palfoot{display:flex;gap:14px;padding:8px 14px;
-  border-top:1px solid var(--line);font-size:10.5px;color:var(--ink4)}
+  border-top:1px solid var(--line);font-size:10px;color:var(--ink4)}
 
 /* "Go to" in the bookmark bar -- the way to reach the 38 screens the bar is not
    for. Built like a .bmkchip so the strip stays one row of one kind of thing. */
 .bmkgoto{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
          background:transparent;border:1px dashed var(--line2);color:var(--fg2);
-         border-radius:14px;padding:3px 8px 3px 9px;font-size:11.5px;
+         border-radius:14px;padding:3px 8px 3px 9px;font-size:12px;
          cursor:pointer;line-height:1.5;margin-left:4px;font-family:inherit}
 .bmkgoto:hover{border-style:solid;border-color:var(--accent-line);
                color:var(--ink)}
-.bmkkbd{font-size:9.5px;color:var(--ink4);border:1px solid var(--line);
+.bmkkbd{font-size:10px;color:var(--ink4);border:1px solid var(--line);
         border-radius:3px;padding:0 4px;letter-spacing:.02em}
 
 /* ===== EVERY MARKETPLACE AT ONCE (static/js/brandview.js) ===== */
@@ -4571,7 +4602,7 @@ details[open] > .odp-c-sum .odp-c-chev{ transform:rotate(90deg); }
 .bvflag{font-size:14px}
 .bvdelta{font-size:10px;margin-left:4px}
 .bvdelta.up{color:var(--ok)} .bvdelta.down{color:var(--red)}
-.bvmore{background:none;border:0;color:var(--ink2);cursor:pointer;font-size:11.5px;
+.bvmore{background:none;border:0;color:var(--ink2);cursor:pointer;font-size:12px;
         padding:8px 2px;font-family:inherit}
 .bvmore:hover{color:var(--ink)}
 .bvquiet{display:flex;gap:6px;flex-wrap:wrap;padding:0 0 8px}
@@ -4626,7 +4657,7 @@ a:hover{color:var(--accent)}
 .appbar .acct-switch-chip{
   display:inline-flex; align-items:center; gap:5px;
   background:var(--panel2); border:1px solid var(--line); border-radius:5px;
-  padding:3px 8px; font-size:11.5px; font-weight:600;
+  padding:3px 8px; font-size:12px; font-weight:600;
   color:var(--ink); cursor:pointer; white-space:nowrap;
   font-family:inherit;
 }

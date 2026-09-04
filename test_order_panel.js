@@ -77,8 +77,16 @@ truthy("  with the long one kept as a fallback",
 // the ASIN and the cancellation reason, and those are kept.
 truthy("  what was ordered: the ASIN and the state chip", /_ordDp\(it\.asin/.test(PCODE)
        && /_ordStateChip\(/.test(PCODE));
-truthy("  where to buy it: the sources block's own compact view",
-       /_ordSourcesHtml\(block[^)]*compact: true/.test(PCODE));
+// THE FULL TABLE, not the one-line summary. Asked for directly: "show the full
+// table with columns (# / Supplier / You pay / Dispatch / Stock / You keep) as
+// in the mockup, not collapsed to one line. The data is already there." It is,
+// and _ordSourcesHtml draws exactly that table -- the compact flag was asking
+// it for its summary instead. What still matters is that it is the sources
+// block's OWN rendering rather than a second table written in the panel.
+truthy("  where to buy it: the sources block's own table",
+       /_ordSourcesHtml\(block,/.test(PCODE));
+check("    in full, not collapsed to a line",
+      /compact:\s*true/.test(PCODE), false);
 truthy("  what it earned: the flow line", /function _opFlow/.test(PANEL));
 truthy("  delivery: one line", /function _opDelivery/.test(PANEL));
 

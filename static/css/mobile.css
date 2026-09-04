@@ -136,7 +136,7 @@ body.navopen #workspace .sidebar{
 #workspace.navmini .sidebar > *{ display:revert !important; }
 #workspace.navmini .navtoggle{
   justify-content:flex-start !important; padding:7px 11px !important;
-  font-size:11.5px !important;
+  font-size:12px !important;
 }
 
 
@@ -233,14 +233,14 @@ body.navopen #workspace .sidebar{
     font-size:11px; padding:14px 8px 5px; text-align:left;
   }
   #workspace.navmini .slbl::after{ display:none; }
-  #workspace.navmini .navitem{ font-size:13.5px; }
+  #workspace.navmini .navitem{ font-size:13px; }
   #workspace.navmini .wsident{ display:flex; }
 
   /* ---- the menu itself: a vertical list with real touch targets ---- */
   .sidebar .navitem{
     display:flex; align-items:center; gap:9px;
     min-height:44px;                        /* the accepted floor for a thumb */
-    padding:10px 11px; font-size:13.5px;
+    padding:10px 11px; font-size:13px;
     border-left:3px solid transparent; border-bottom:0;
     border-radius:8px;
     white-space:normal;                     /* a long name wraps, never clips */
@@ -426,9 +426,9 @@ body.navopen #workspace .sidebar{
   }
   /* Without a floor the table obeys width:100% and squashes rather than
      scrolls, and the scrolling parent above would have nothing to do. */
-  .stk-table{ min-width:720px; font-size:11.5px; }
+  .stk-table{ min-width:720px; font-size:12px; }
   .stk-table th, .stk-table td{ padding:7px 8px; }
-  table.kv{ font-size:11.5px; }
+  table.kv{ font-size:12px; }
   table.kv td, table.kv th{ padding:6px 7px; }
   [style*="overflow-x"]{ -webkit-overflow-scrolling:touch; }
 
@@ -441,7 +441,7 @@ body.navopen #workspace .sidebar{
     flex-wrap:wrap; align-items:flex-start;
   }
   .wstoolbar h2{ font-size:14px; }
-  .wstoolbar .sub{ font-size:11.5px; }
+  .wstoolbar .sub{ font-size:12px; }
   .wstoolbar .spacer{ display:none; }      /* it only forces a wide row */
   .mktswitch, .stk-filters, .stk-chips{ flex-wrap:wrap; }
   .mktbtn, .db-chip, .stk-fbtn, .stk-chip{ min-height:34px; }

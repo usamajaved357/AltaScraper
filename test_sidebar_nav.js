@@ -182,8 +182,13 @@ truthy("  and dashboard.css no longer has an opinion about it",
        !/\.sidebar\{[^}]*flex-direction:row/.test(CSS.replace(/\s*\{\s*/g, "{")));
 truthy("the rail is neutralised at phone width",
        /#workspace\.navmini \.sidebar\{[^}]*width:284px/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
-truthy("  including the labels it collapses to font-size:0",
-       /#workspace\.navmini \.navitem\{[^}]*font-size:13\.5px/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
+// 13px, not 13.5. The half-pixel sizes were collapsed onto whole ones in the
+// visual-consistency pass -- eighteen distinct sizes were on screen across five
+// screens, four of them naming two actual sizes. The POINT of this check is
+// unchanged: the phone drawer restores a readable label where the desktop rail
+// had shrunk it to nothing.
+truthy("  including the labels the rail had collapsed",
+       /#workspace\.navmini \.navitem\{[^}]*font-size:13px/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
 truthy("  and the fold control itself, which a drawer has no use for",
        /\.navtoggle\{[^}]*display:none/.test(MOBILE.replace(/\s*\{\s*/g, "{")));
 

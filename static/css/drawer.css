@@ -386,7 +386,7 @@
 
 /* ---- 14. BANNERS THAT STAY VISIBLE ----------------------------------- */
 .dw2-banner{
-  margin:12px 16px 0; font-size:10.5px; padding:8px 10px; border-radius:5px;
+  margin:12px 16px 0; font-size:10px; padding:8px 10px; border-radius:5px;
   line-height:1.45; display:flex; align-items:flex-start; gap:6px;
 }
 .dw2-banner i{ font-size:13px; flex-shrink:0; margin-top:1px; }
@@ -406,7 +406,7 @@
 /* ---- 15. MINIMAL MODE + FOOT NOTE ------------------------------------ */
 .dw2-setting{
   display:flex; align-items:flex-start; gap:7px; padding:10px 16px;
-  border-bottom:1px solid #3a3a45; font-size:10.5px; color:#8a8992; cursor:pointer;
+  border-bottom:1px solid #3a3a45; font-size:10px; color:#8a8992; cursor:pointer;
 }
 .dw2-setting input{ margin-top:1px; flex-shrink:0; }
 .dw2-ask{ padding:12px 16px; text-align:center; }
