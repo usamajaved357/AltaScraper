@@ -1534,12 +1534,9 @@ function _warnChip(r){
   const w = lsWarnings(r);
   if(!w.n) return "";
   const tone = w.high ? "red" : (w.medium ? "amber" : "low");
-  const worst = w.high ? "high" : (w.medium ? "medium" : "low");
-  const tip = String(w.n) + " warning" + (w.n === 1 ? "" : "s")
-    + " (worst: " + worst + ")\n"
-    + w.list.slice(0, 4).map(function(x){
-        return "• " + String((x && x.message) || "");
-      }).join("\n");
+  // The hover text is lsWarnTip's, shared with the detailed row and the product
+  // page's hero, so the three marks cannot start saying different things.
+  const tip = (typeof lsWarnTip === "function") ? lsWarnTip(w) : String(w.n);
   return `<span class="tilewarn ${tone}" title="${esc(tip)}"`
        + ` onclick="event.stopPropagation();openListing('${esc(r.sku)}')">`
        + `<i class="ti ti-alert-triangle"></i>${w.n}</span>`;

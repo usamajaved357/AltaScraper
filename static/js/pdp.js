@@ -208,9 +208,15 @@ function pdpHero(r){
     +     pdpStatusBadge(r)
     +     (profit ? '<span class="pdp-hb profit">Profit ' + esc(cur + profit) + '</span>' : "")
     +     (cost ? '<span class="pdp-hb cost">Cost ' + esc(cost) + '</span>' : "")
+    // The icon and the count, not the sentence -- the same shape the card's
+    // badge and the detailed row's chip use, with lsWarnTip's hover text so all
+    // three say the same thing (Rule 12). The word "warning" is in the tooltip.
     +     (w.n ? '<span class="pdp-hb warn" onclick="pdpTab(\'compliance\')" '
-              + 'title="Open the Compliance tab"><i class="ti ti-alert-triangle"></i> '
-              + w.n + ' warning' + (w.n === 1 ? '' : 's') + '</span>' : "")
+              + 'title="' + esc((typeof lsWarnTip === "function")
+                                ? lsWarnTip(w) + "\n\nOpen the Compliance tab"
+                                : "Open the Compliance tab")
+              + '"><i class="ti ti-alert-triangle"></i>'
+              + w.n + '</span>' : "")
     +   '</div>'
     + '</div></div></div>';
 }

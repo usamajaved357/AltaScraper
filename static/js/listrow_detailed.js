@@ -619,9 +619,20 @@ function lrProduct(r){
     +   '</div>'
     +   clash
     +   lrRisks(r)
-    +   (w.n ? '<div class="prod-warn" onclick="event.stopPropagation();openListing(\''
-             + esc(r.sku) + '\')"><i class="ti ti-alert-triangle"></i> '
-             + w.n + ' warning' + (w.n === 1 ? '' : 's') + '</div>' : "")
+    // THE ICON AND THE COUNT, NOT THE SENTENCE.
+    //
+    //     "The '1 warning' / '2 warnings' text is redundant -- the warning
+    //      icons already show the count. Remove the text line entirely."
+    //
+    // The word is what goes; the number stays, because "3" and "1" are
+    // different amounts of trouble and nothing else on the row says which.
+    // The messages themselves are still on hover, where they always were --
+    // the same shape the card view's badge settled on (_warnChip).
+    +   (w.n ? '<div class="prod-warn" title="' + esc(
+                 (typeof lsWarnTip === "function") ? lsWarnTip(w) : String(w.n))
+             + '" onclick="event.stopPropagation();openListing(\''
+             + esc(r.sku) + '\')"><i class="ti ti-alert-triangle"></i>'
+             + w.n + '</div>' : "")
     + '</div>'
     + '</div>';
 }

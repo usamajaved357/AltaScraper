@@ -226,6 +226,14 @@ globalThis.SCHEMAS = {};
 globalThis.CUR_SYMBOL = "£";
 globalThis.lsStatusOf = r => String(r.status||"").toUpperCase();
 globalThis.lsWarnings = r => ({n:(r.warnings||[]).length, high:1, list:r.warnings||[]});
+// The REAL lsWarnTip: since the hero badge dropped the word "warning", its
+// hover text is the only place that wording survives, and a stub would let a
+// change to it pass. Pure function of the object above.
+{
+  const LS = fs.readFileSync("static/js/liststatus.js", "utf8");
+  const i = LS.indexOf("function lsWarnTip(");
+  globalThis.lsWarnTip = new Function("return " + LS.slice(i, LS.indexOf("\n}", i) + 2))();
+}
 globalThis.rowAsin = r => ({own: r.asin || "", source: ""});
 globalThis.rowMkt = () => "UK";
 globalThis.isAmazonLive = () => true;
@@ -298,7 +306,11 @@ truthy("the brand",          html.indexOf("Nestwell") >= 0);
 truthy("a status badge that includes what Amazon says",
        html.indexOf("LIVE · BUYABLE") >= 0);
 truthy("the profit badge",   html.indexOf("Profit £8.57") >= 0);
-truthy("a warning badge",    html.indexOf("1 warning") >= 0);
+// The badge is the triangle and the count; "1 warning (worst: ...)" and the
+// messages are the hover text now, shared with the card and the detailed row.
+truthy("a warning badge",
+       /pdp-hb warn[\s\S]{0,260}<\/i>1<\/span>/.test(html));
+truthy("  with the sentence on hover",  html.indexOf("1 warning (worst:") >= 0);
 
 console.log("\n  ...the top bar and the rail");
 truthy("back, Preview, Auto-fix, Submit and More",

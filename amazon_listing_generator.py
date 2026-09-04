@@ -2046,15 +2046,42 @@ _PT_INFER_RULES = [
     (r"\bscrew|\bbolt|\bnut\b|\bbracket|\bhinge|\bfastener|\bhardware", "HARDWARE"),
     (r"\bart\s?(kit|set)|\bcraft\s?(kit|set)|\bpainting\s?set", "ART_CRAFT_KIT"),
     (r"\bfigure\b|\baction\s?figure|\bcollectible|\bfigurine", "TOY_FIGURE"),
+    # ADDED FROM THE ROWS THAT HAD NO TYPE AT ALL -- and only where Amazon has
+    # actually given this app a schema for the type, which is the evidence that
+    # the name is real (CLAUDE.md Rule 4: do not guess what Amazon calls
+    # something). The 96 confirmed names are in the schema_cache table.
+    #
+    # Found by listing the 32 blank listings and reading their titles:
+    #
+    #   "Miles Lubricants POE Refrigeration Oil"     -> MACHINE_LUBRICANT ✓
+    #   "12V 10A AC to DC Adapter 120W Power Supply" -> no confirmed name
+    #   "10X Magnifying Glass Desk Light Magnifier"  -> no confirmed name
+    #   "1m x1m Artificial Plant Flower Wall Panel"  -> no confirmed name
+    #
+    # Only the first gets a rule. The others stay blank on purpose: an invented
+    # product type is worse than none, because Amazon refuses it at submit and
+    # the compliance gate believes it in the meantime. listing/product_type.py
+    # raises a warning on what is left, so a blank is visible and fixable
+    # instead of silent.
+    (r"\blubricant|\bcompressor\s?oil|\brefrigerat\w*\s?oil"
+     r"|\bhydraulic\s?oil|\bgear\s?oil|\bgrease\b", "MACHINE_LUBRICANT"),
 ]
 
 
 def infer_product_type(comp_data: dict, item_name: str = "",
-                       valid_types: dict = None) -> str:
+                       valid_types: dict = None, default: str = "HOME") -> str:
     """Best-effort product type when none came from SP-API or the scrape.
     Matches keywords from the title + item_type_keyword + breadcrumbs against
     known Amazon types. Returns a valid product type, or 'HOME' as a safe
-    generic that exists in the schema (never the invalid literal 'PRODUCT')."""
+    generic that exists in the schema (never the invalid literal 'PRODUCT').
+
+    `default` IS WHAT COMES BACK WHEN NOTHING MATCHED, and it matters where the
+    answer is being STORED rather than used once. "HOME" is the right fallback
+    for a submit -- Amazon needs some type and HOME is a real one. It is the
+    wrong thing to write onto a row: the compliance gate reads the stored type
+    and would take "HOME" as a fact about the product, which for a 12V power
+    supply would turn its electrical check OFF. listing/product_type.py passes
+    "" so that a guess it did not actually make stays blank."""
     haystack = " ".join(str(x) for x in [
         item_name,
         comp_data.get("title", ""),
@@ -2071,7 +2098,7 @@ def infer_product_type(comp_data: dict, item_name: str = "",
             if not valid_types or ptype in valid_types or ptype == "HOME":
                 return ptype
             return ptype
-    return "HOME"
+    return default
 
 
 def load_model_counter() -> dict:
@@ -2145,6 +2172,19 @@ def _product_type_allows(cat_key, rule, product_type):
     function can only ever turn a flag DOWN, and only when a person has written
     down, in compliance_rules.json, that it does not apply. A compliance check
     that guesses its way to silence is worse than one that is noisy.
+
+    THIS WAS BRIEFLY THE OPPOSITE. REMAINING_FIXES_HANDOFF.md asked for "if no
+    product type is cached, skip category-specific compliance checks entirely",
+    and it was built that way -- measured: 32 of 303 listings have no product
+    type, and skipping withheld 10 electrical (HIGH) and 4 cookware (MEDIUM)
+    flags. The owner then settled it the other way:
+
+        "but why are we having products with no product type, the app should be
+         able to pull the product type of the items, dont skip compliance checks"
+
+    Which is the right answer to the right question: a missing product type is a
+    gap to FILL, not a reason to stop checking. See listing/product_type.py,
+    which fills it in.
     """
     pt = str(product_type or "").strip().upper()
     if not pt:
@@ -2209,6 +2249,7 @@ def check_compliance(item_name: str, listing: dict, rules: dict,
 
     matched     = []
     mentioned   = []          # found in the copy only -- a note, never a hold
+    unchecked   = []          # gated on a product type this listing has not got
     all_reqs    = []
     highest     = ""
     # WEAK KEYWORDS -- why almost every listing used to flag.
@@ -2292,7 +2333,9 @@ def check_compliance(item_name: str, listing: dict, rules: dict,
             #
             # THE GATE CAN ONLY DOWNGRADE, AND ONLY ON EVIDENCE:
             #   * no product_type at all -> nothing changes. A missing field must
-            #     never turn a flag off; unknown means flag, as it did before.
+            #     never turn a flag off; unknown means flag. (This was briefly
+            #     the other way round -- see _product_type_allows for why it is
+            #     not any more, and for what fills the gap instead.)
             #   * the category names types it can NEVER apply to, and this is one
             #     -> downgraded.
             #   * the category names the ONLY types it can apply to, and this is
@@ -2378,6 +2421,11 @@ def check_compliance(item_name: str, listing: dict, rules: dict,
             # Named separately so a caller can tell the two apart without
             # parsing the sentence above.
             "mentioned_categories": [c for c, _ in mentioned],
+            # Always empty now. Kept in the shape because a caller that learned
+            # to read it during the brief period the gate skipped must not start
+            # raising KeyError -- and because "nothing was skipped" is a true
+            # and useful thing for this function to keep saying.
+            "unchecked_categories": [c for c, _ in unchecked],
             "highest_risk":       highest,
             "summary":            summary,
             "requirements":       deduped_reqs}

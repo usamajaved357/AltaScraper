@@ -177,6 +177,38 @@ def no_barcode(row):
         "or UPC, or tick GTIN Exemption if this product genuinely has none.")
 
 
+def no_product_type(row):
+    """This listing has no product type, so some compliance rules cannot apply.
+
+        "why are we having products with no product type, the app should be
+         able to pull the product type of the items, dont skip compliance
+         checks"
+
+    The checks are not skipped -- a blank type leaves the gate wide open, which
+    means every category keyword still flags and nothing is silently dropped.
+    But six categories (electrical, health_beauty, knives_blades,
+    tools_hardware, cookware_kitchen, toys_children) use the type to rule
+    THEMSELVES out on a product they cannot apply to, and without it they
+    cannot. So a blank type is a listing whose compliance column is noisier
+    than it needs to be, and whose submit will go out under whatever type the
+    generator falls back to.
+
+    listing/product_type.backfill fills what it can from the title first, so by
+    the time this runs the only blanks left are the ones nothing could type.
+    Measured before the backfill: 32 of 303, all on jack_uk, mostly eBay-sourced
+    rows whose SKU carries an eBay item id where an ASIN would be -- so there
+    was never an ASIN to read a type from.
+    """
+    if _s(row, "product_type"):
+        return None
+    return _warn(
+        "no_product_type", "low",
+        "No product type on this listing. Amazon's own product type is what "
+        "lets the compliance checks rule themselves out, so without it this "
+        "listing is checked against every category. Press Sync to bring it in "
+        "from Amazon, or set it on the listing.")
+
+
 def barcode_live_on_amazon(row, live_by_upc):
     upc = _s(row, "upc")
     if not upc or not live_by_upc:
@@ -231,6 +263,7 @@ def for_rows(rows, live_by_upc=None, age_hours=None):
             ip_risk(r),
             compliance_risk(r),
             no_barcode(r),
+            no_product_type(r),
             barcode_live_on_amazon(r, live_by_upc or {}),
         ]
         # The catalogue's age is a property of the whole run, but it only
@@ -342,6 +375,20 @@ def recompute_workspace(config_path, workspace_id, marketplace=""):
     _qs.ensure_columns(config_path)
     conn = _db.get_db(config_path)
     backfill_ebay_ids(config_path, workspace_id)
+    # AND FILL IN THE PRODUCT TYPES, before the warnings are worked out.
+    #
+    #     "why are we having products with no product type, the app should be
+    #      able to pull the product type of the items"
+    #
+    # Because compliance_risk below reads product_type to decide which category
+    # rules can apply, a blank one is not cosmetic -- it is a check resting on
+    # an empty field. Filled here, next to backfill_ebay_ids and for the same
+    # reason: it has to have happened before anything reads the row.
+    try:
+        from listing import product_type as _pt_mod
+        _pt_mod.backfill(config_path, workspace_id)
+    except Exception:
+        pass          # a backfill must never be the reason warnings do not run
     rows = [dict(r) for r in conn.execute(
         "SELECT * FROM listings WHERE workspace_id=?", (workspace_id,))]
     if not rows:

@@ -301,6 +301,32 @@ class SheetLikeStore:
         """The column order positional reads and writes are currently in."""
         return self._layout or ORDERED_HEADERS
 
+    # THE BOOK THIS TAB BELONGS TO.
+    #
+    # A gspread worksheet has `.spreadsheet`, and code that wants to walk every
+    # tab reaches for it -- routes/handling_routes._sheet_write_handling does
+    # exactly that, `_ws().spreadsheet.worksheets()`. This shim did not have it,
+    # so on the database that line raised AttributeError, the bare `except`
+    # around it returned "no column found", and the bulk handling-time update
+    # reported:
+    #
+    #     Pushed live to Amazon: 36
+    #     Saved: 0 (nowhere to record it on these listings — saving skipped)
+    #
+    # Amazon had the new value and this app kept showing the old one. The
+    # handling column was there the whole time; nothing ever got as far as
+    # looking for it.
+    #
+    # ONE WORKSPACE, NOT ALL OF THEM. On Sheets, "every tab of this spreadsheet"
+    # is one account's tabs. The database equivalent is this workspace -- and it
+    # has to be, because a SKU is not unique across accounts (he runs the same
+    # SKU on two of them), so walking every workspace would write another
+    # account's listing.
+    @property
+    def spreadsheet(self):
+        return StoreBook(config_path=getattr(self.store, "config_path", None),
+                         workspace_ids=[self.store.workspace_id])
+
     # -- reads
     def row_values(self, n):
         if int(n) == 1:

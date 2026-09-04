@@ -190,6 +190,30 @@ function lsIsWaitingOnAmazon(r){
   return lsSaysSubmitted(r) && !lsInLiveCatalogue(r);
 }
 
+/* WHAT THE WARNING MARK SAYS ON HOVER. One sentence, one place.
+ *
+ *     "The '1 warning' / '2 warnings' text is redundant -- the warning icons
+ *      already show the count. Remove the text line entirely."
+ *
+ * The words came off the screen; they had to go somewhere, and hover is where
+ * the messages already were. Three views draw that mark -- the card's badge,
+ * the detailed row's chip and the product page's hero -- and they were about to
+ * grow three slightly different tooltips (CLAUDE.md Rule 12), which is how one
+ * view comes to list four messages and another one.
+ *
+ * Takes the object lsWarnings() returns: {n, high, medium, list}.
+ */
+function lsWarnTip(w){
+  if(!w || !w.n) return "";
+  const worst = w.high ? "high" : (w.medium ? "medium" : "low");
+  return String(w.n) + " warning" + (w.n === 1 ? "" : "s")
+    + " (worst: " + worst + ")\n"
+    + (w.list || []).slice(0, 4).map(function(x){
+        return "• " + String((x && x.message) || "");
+      }).join("\n")
+    + ((w.list || []).length > 4 ? "\n• …and " + (w.list.length - 4) + " more" : "");
+}
+
 // ---- the wording -----------------------------------------------------------
 // What the drawer says when a run finishes. Kept beside the vocabulary above so a
 // change to one cannot silently leave the other lying.

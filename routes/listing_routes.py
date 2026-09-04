@@ -461,6 +461,32 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
             obj.update(images)
             _repo.set_field(ws, trow, "Attributes JSON", json.dumps(obj),
                             headers=found.headers)
+            # AND TAKE AMAZON'S PRODUCT TYPE WHILE IT IS ANSWERING.
+            #
+            #     "why are we having products with no product type, the app
+            #      should be able to pull the product type of the items"
+            #
+            # summaries[0].productType is Amazon's own answer and this call
+            # already asks for summaries -- it was being read for the ASIN and
+            # the status and thrown away otherwise. It is what the compliance
+            # gate reads to rule a category out, so a blank one leaves every
+            # category applying to every product.
+            #
+            # ONLY WHEN THE ROW HAS NONE. What Amazon says and what the row was
+            # generated as can differ, and this is an image pull, not a
+            # re-classification -- overwriting a type somebody chose would be a
+            # change nobody asked for.
+            _pt = ""
+            if summaries and isinstance(summaries[0], dict):
+                _pt = str(summaries[0].get("productType") or "").strip()
+            if _pt and "Product Type" in found.headers:
+                try:
+                    if not str(_repo.cell_value(
+                            ws, trow, found.col("Product Type")) or "").strip():
+                        _repo.set_field(ws, trow, "Product Type", _pt,
+                                        headers=found.headers)
+                except Exception:
+                    pass          # an extra field must not fail the image pull
             try:
                 _bust_records_cache()
             except Exception:
@@ -470,6 +496,7 @@ def register(app, *, CHAT_MODEL, CONFIG_PATH, SCRIPT, SKU_HEADER, STATUS_HEADER,
 
         return jsonify({"ok": True, "sku": sku, "images": images, "count": len(images),
                         "asin": (summaries[0].get("asin", "") if summaries else ""),
+                        "product_type": _pt,
                         "status": (summaries[0].get("status", []) if summaries else [])})
 
     @app.route("/listing/push_image", methods=["POST"])

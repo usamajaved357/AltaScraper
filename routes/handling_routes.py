@@ -86,13 +86,30 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
         """Write `days` into the handling column for every matching SKU across ALL tabs of
         the active sheet (some accounts spread listings over many tabs; Miles tabs have no
         handling column at all, so those are simply skipped). Returns (updated_skus, tabs_touched,
-        had_column)."""
-        updated, tabs_touched, had_col = set(), [], False
+        had_column, why)."""
+        updated, tabs_touched, had_col, why = set(), [], False, []
         try:
             book = _ws().spreadsheet
             worksheets = book.worksheets()
-        except Exception:
-            return updated, tabs_touched, had_col
+        except Exception as e:
+            # A SWALLOWED ERROR REPORTED ITSELF AS AN ANSWER.
+            #
+            # This used to `return updated, tabs_touched, had_col` -- an empty
+            # set and had_col=False, which the caller reads as "these listings
+            # have no handling column" and says so:
+            #
+            #     Pushed live to Amazon: 36
+            #     Saved: 0 (nowhere to record it on these listings)
+            #
+            # The column was there. What was missing was `.spreadsheet` on the
+            # database's worksheet shim, so this line raised AttributeError and
+            # nothing ever got as far as looking for the column. Amazon had the
+            # new handling time and the app kept showing the old one.
+            #
+            # The shim has it now (data/store.SheetLikeStore.spreadsheet). The
+            # reason is carried out regardless, so the next thing that breaks
+            # here says what it was instead of blaming the data.
+            return updated, tabs_touched, had_col, str(e)[:200]
         # This one matches a SET of SKUs in a single pass per tab, so it does NOT
         # use repo.locate() -- that answers "where is ONE sku?" and calling it per
         # SKU would turn one column read into N, against a quota'd API. What it
@@ -122,9 +139,11 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
                 try:
                     _repo.batch_write(ws, data)
                     tabs_touched.append(ws.title)
-                except Exception:
-                    pass
-        return updated, tabs_touched, had_col
+                except Exception as e:
+                    # Same rule as above: a write that failed is not a write
+                    # that found nothing to do.
+                    why.append("%s: %s" % (ws.title, str(e)[:120]))
+        return updated, tabs_touched, had_col, "; ".join(why)
 
     @app.route("/stock/bulk_update", methods=["POST"])
     def stock_bulk_update():
@@ -200,15 +219,39 @@ def register(app, *, _cfg, _active_account, _ws, _bust_records_cache, _state,
         # --- 1) record it here ---
         if do_sheet:
             skus_set = set(skus)
-            updated, tabs_touched, had_col = _sheet_write_handling(skus_set, days)
+            updated, tabs_touched, had_col, why = _sheet_write_handling(skus_set, days)
             if updated:
                 _bust_records_cache()
             out["sheet_updated"] = sorted(updated)
             out["sheet_tabs"] = tabs_touched
             out["sheet_has_column"] = had_col
-            out["sheet_note"] = ("" if had_col else
-                                 "There is no handling-time column on these listings, so nothing "
-                                 "was recorded here (the Amazon push still applies).")
+            out["sheet_error"] = why
+            # WHICH SKUs THIS APP SIMPLY DOES NOT HAVE.
+            #
+            # Amazon's catalogue and this app's listings are two different sets:
+            # measured, 7 of jack_uk's 47 live SKUs and 18 of nestwell_goods' 62
+            # have no row here at all -- made in Seller Central, made by another
+            # tool, or their draft was deleted. Those cannot be recorded, and
+            # that is a different fact from "there is no column for it".
+            #
+            # Nothing is created for them. A handling-time change is not a
+            # reason to invent a half-empty draft; Sync is the thing that pulls
+            # a listing in, and the message says so.
+            missing = sorted(skus_set - updated)
+            out["sheet_missing"] = missing
+            if why:
+                out["sheet_note"] = ("Nothing could be recorded here: %s. The Amazon "
+                                     "push still applies." % why)
+            elif not had_col:
+                out["sheet_note"] = ("There is no handling-time column on these listings, so "
+                                     "nothing was recorded here (the Amazon push still applies).")
+            elif missing:
+                out["sheet_note"] = (
+                    "%d of these have no listing row in this app, so there was nothing here "
+                    "to record the change on. If they are on Amazon, press Sync to pull them "
+                    "in." % len(missing))
+            else:
+                out["sheet_note"] = ""
 
         # --- 2) push to Amazon ---
         if do_push:
