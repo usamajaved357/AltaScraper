@@ -60,9 +60,27 @@ check("  _ordDetailHtml carries almost no inline styling", inline <= 2, true);
 console.log("       (" + inline + " inline style attributes left in it)");
 
 console.log("\n=== the four sections, in the order the questions get asked ===");
+// REWRITTEN, NOT DELETED. These four headings were the panel; the panel is a
+// compact one now (static/js/orders_panel.js) and the long version below them
+// is the fallback for when that file has not loaded. The QUESTIONS are the
+// same four and every one of them is still answered -- that is what this
+// checks, rather than the headings that used to introduce them.
 for (const h of ["What was ordered", "Where to buy it", "What it earned", "Delivery"]) {
-  truthy("  section: " + h, CODE.indexOf(h) >= 0);
+  truthy("  the fallback still has: " + h, CODE.indexOf(h) >= 0);
 }
+const PANEL = fs.readFileSync(path.join(ROOT, "static", "js", "orders_panel.js"), "utf8");
+const PCODE = PANEL.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+truthy("the compact panel is what actually draws", /ordPanelHtml\(r, d\)/.test(CODE));
+truthy("  with the long one kept as a fallback",
+       /typeof ordPanelHtml === "function"/.test(CODE));
+// WHAT WAS ORDERED -> the row above carries it; what the row does NOT carry is
+// the ASIN and the cancellation reason, and those are kept.
+truthy("  what was ordered: the ASIN and the state chip", /_ordDp\(it\.asin/.test(PCODE)
+       && /_ordStateChip\(/.test(PCODE));
+truthy("  where to buy it: the sources block's own compact view",
+       /_ordSourcesHtml\(block[^)]*compact: true/.test(PCODE));
+truthy("  what it earned: the flow line", /function _opFlow/.test(PANEL));
+truthy("  delivery: one line", /function _opDelivery/.test(PANEL));
 
 console.log("\n=== the ASIN opens the product ===");
 truthy("it is an anchor, not text", /_ordDp\(it\.asin/.test(CODE));

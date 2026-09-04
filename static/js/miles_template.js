@@ -524,15 +524,32 @@ function render(){
   const _queuedAll  = real.filter(_isQueued);
   const _waitingAll = real.filter(r => !_isQueued(r) && _isWaiting(r));
   const _draftsAll  = real.filter(r => !_isQueued(r) && !_isWaiting(r));
-  const queuedHtml = _queuedAll.length
-    ? '<div class="srcgroup">Queued — waiting to generate</div>'
-      + '<div class="cc" style="margin:-4px 0 12px;font-size:12px;line-height:1.6">'
+  // ONE HEADER, NOT TWO -- the same fix the live view already had.
+  //
+  // This drew listBlock(_queuedAll) and then listBlock(_draftsAll), and each
+  // listBlock opens its OWN bordered card with its OWN header row. So the
+  // Drafts view had two boxes with a repeated Listing status / Product details
+  // / Performance header partway down the list, which is exactly what was
+  // objected to on the live view ("why do i have two separate boxes/borders
+  // containing the listings?") and fixed there with listBlocks(). The drafts
+  // path was never converted. MEASURED in a browser: 16 <th> on a 40-row list,
+  // two full headers.
+  //
+  // The sentence about queued rows stays, above the single box: it explains why
+  // some rows look empty, and it is not a heading over a group any more. The
+  // rows themselves are still marked -- _queuedChip puts "Waiting to generate"
+  // on each one -- which is where that distinction belongs, on the row that has
+  // it rather than as a category of listing.
+  const queuedNote = _queuedAll.length
+    ? '<div class="cc" style="margin:0 0 8px;font-size:12px;line-height:1.6">'
       + _queuedAll.length + ' product' + (_queuedAll.length > 1 ? 's have' : ' has')
       + ' been added and not generated yet. They carry only what was uploaded or '
       + 'typed in — press <b>Generate</b> above to fill them in.'
-      + '</div>' + listBlock(_queuedAll)
+      + '</div>'
     : "";
-  let draftHtml = listBlock(_draftsAll);
+  const queuedHtml = "";
+  let draftHtml = queuedNote
+    + listBlocks([{rows: _queuedAll}, {rows: _draftsAll}]);
   const waitingAllHtml = (typeof submittedGroupHtml === "function")
                        ? submittedGroupHtml(_waitingAll) : "";
   // DEDUPE: the same SKU can exist BOTH as an app row marked LIVE and as an
@@ -700,15 +717,17 @@ function render(){
     const queuedRows  = notPublished.filter(_isQueued);
     const waitingRows = notPublished.filter(r=>!_isQueued(r) && _isWaiting(r));
     const draftsOnly  = notPublished.filter(r=>!_isQueued(r) && !_isWaiting(r));
-    const draftsHtml  = listBlock(draftsOnly);
+    // ONE HEADER OVER BOTH, as above -- this is the Drafts tab's own branch and
+    // it had the same two-boxes-two-headers shape. The sentence stays; the
+    // heading over a second bordered card does not.
     const queuedHere  = queuedRows.length
-      ? '<div class="srcgroup">Queued — waiting to generate</div>'
-        + '<div class="cc" style="margin:-4px 0 12px;font-size:12px;line-height:1.6">'
+      ? '<div class="cc" style="margin:0 0 8px;font-size:12px;line-height:1.6">'
         + queuedRows.length + ' product' + (queuedRows.length > 1 ? 's have' : ' has')
         + ' been added and not generated yet. They carry only what was uploaded '
         + 'or typed in — press <b>Generate</b> above to fill them in.'
-        + '</div>' + listBlock(queuedRows)
+        + '</div>'
       : "";
+    const draftsHtml  = listBlocks([{rows: queuedRows}, {rows: draftsOnly}]);
     const waitingHtml = (typeof submittedGroupHtml === "function")
                       ? submittedGroupHtml(waitingRows) : "";
     const _liveHere = realAll.length - notPublished.length;   // published rows hidden from Drafts

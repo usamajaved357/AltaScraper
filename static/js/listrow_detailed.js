@@ -263,9 +263,26 @@ function lrVal(v, opts){
   // rather than as a very short number.
   if(v === null || v === undefined || v === "") return '<span class="dash">—</span>';
   let s = String(v);
-  if(opts.money) s = (typeof CUR_SYMBOL !== "undefined" ? CUR_SYMBOL : "") + s;
+  // MONEY HAS TWO DECIMALS. Seen in a browser: a stored fee of 2.4 printed as
+  // "£2.4" beside a "£5.26" and a "£1.99" in the same column -- a price with one
+  // decimal reads as a different KIND of number from the ones around it, and in
+  // a column of money it reads as a truncation. The database stores a float, so
+  // 2.40 and 2.4 are the same value and only the printing was wrong.
+  if(opts.money){
+    const n = Number(v);
+    s = (typeof CUR_SYMBOL !== "undefined" ? CUR_SYMBOL : "")
+      + (isFinite(n) ? n.toFixed(2) : String(v));
+  }
   if(opts.comma) s = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return esc(s);
+}
+
+/* An amount, always to two decimals, for the places that build their own string
+ * instead of going through lrVal -- the fee lines and the featured price. One
+ * formatter, so a column cannot hold "£2.4" and "£5.26" at once. */
+function lrMoney(v){
+  if(v === null || v === undefined || v === "") return lrVal(null);
+  return lrVal(v, {money: true});
 }
 
 function lrDataRow(label, valHtml, cls){
@@ -826,7 +843,7 @@ function lrBuyBox(m, cur){
     ? '<div class="d-row"><span class="d-label">Featured offer</span>'
       + '<span class="d-val" title="What a shopper pays in the featured slot now '
       + '— price plus delivery, whoever is holding it. From Amazon’s competitive '
-      + 'pricing, refreshed at most every 4 hours.">' + esc(sym + m.buy_box_price)
+      + 'pricing, refreshed at most every 4 hours.">' + lrMoney(m.buy_box_price)
       + '</span></div>'
     // A DASH, NOT SILENCE. This line was drawn only when the figure existed, so
     // a listing Amazon had not been asked about looked identical to one with no
@@ -1050,7 +1067,7 @@ function lrPricing(r){
   return lrPriceBox(r, "Our Price (GBP)", r.price, "The price on the listing")
     + lrFloorCeiling(r)
     + lrCostRow(r)
-    + lrDataRow("Profit", pnum ? esc(cur + pnum) : lrVal(null), pneg ? "red" : "green")
+    + lrDataRow("Profit", pnum ? lrMoney(pnum) : lrVal(null), pneg ? "red" : "green")
     + lrBuyBox(m, cur)
     // BUSINESS PRICE. IT IS NOT A MISSING FEATURE -- IT IS NOT AVAILABLE.
     //
@@ -1106,15 +1123,27 @@ function lrFees(r){
   const word = basis === "actual" ? "from your sales"
              : basis === "quoted" ? "quoted by Amazon"
              : basis ? esc(basis) : "";
-  return lrDataRow("Total fees", total != null ? esc(cur + total) : lrVal(null))
-    + (m.fba_fee != null ? lrDataRow("FBA fee", esc(cur + m.fba_fee))
-       : (m.referral_fee != null ? lrDataRow("Referral", esc(cur + m.referral_fee)) : ""))
+  return lrDataRow("Total fees", lrMoney(total))
+    + (m.fba_fee != null ? lrDataRow("FBA fee", lrMoney(m.fba_fee))
+       : (m.referral_fee != null ? lrDataRow("Referral", lrMoney(m.referral_fee)) : ""))
     + (rate != null
         ? '<div class="fee-basis">' + rate.toFixed(2).replace(/\.00$/, "") + '% '
           + esc(word) + '</div>'
         : "")
-    + '<span class="fee-link" onclick="event.stopPropagation();openListing(\''
-    + esc(r.sku) + '\')">Calculate revenue</span>';
+    // IT OPENS A PANEL, NOT A PAGE.
+    //
+    //     "Currently clicking 'Calculate revenue' navigates to the product
+    //      detail page. Amazon opens a side drawer."
+    //
+    // Navigating away is the wrong answer to "what does this one make?" -- you
+    // lose the list, the filter and the scroll to read four numbers, then have
+    // to find your way back to compare it with the row beneath. The price is
+    // passed so the panel opens on the price you were looking at.
+    + '<span class="fee-link" onclick="event.stopPropagation();revOpen(\''
+    + esc(r.sku) + '\',\'' + esc(String(r.price == null ? "" : r.price)
+                                   .replace(/[^0-9.]/g, "")) + '\')"'
+    + ' title="What this unit earns at a given price — Amazon’s cut and the '
+    + 'stock cost, without leaving the list">Calculate revenue</span>';
 }
 
 /* ONE LISTING, AS A DETAILED ROW.

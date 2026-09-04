@@ -592,6 +592,22 @@ function ordersRender(){
     (ORD.rows || []).forEach(function(r){ seen[r.account_id || ""] = 1; });
     return Object.keys(seen).length > 1;
   })();
+  // EACH HEADING SAYS WHAT IS UNDER IT, on a second line.
+  //
+  //     "Column headers use sentence case with a subtitle line."
+  //
+  // Every one of these cells carries TWO facts -- the order id and its unit
+  // count, the date and the fulfilment channel, the status and how many are
+  // left to ship -- and the heading named only the first. The same pattern as
+  // the listings table's own two-line headers, and the same class, so the two
+  // tables cannot end up with two answers to "what does a column heading look
+  // like" (Rule 12).
+  const _COLSUB = {
+    Item: "product, SKU", Order: "ID, units", Account: "which company",
+    Placed: "date, fulfilment", Status: "and what is left to ship",
+    Total: "buyer paid", Profit: "after fees and cost",
+    Margin: "of the price", ROI: "on the cost",
+  };
   const cols = ['Item', 'Order'].concat(_multi ? ['Account'] : [])
                .concat(['Placed', 'Status', 'Total', 'Profit', 'Margin', 'ROI']);
   // The Item column gets the room. The money columns need four characters each
@@ -613,7 +629,9 @@ function ordersRender(){
     +  cols.map(function(t){
          return '<th'
               + (t === 'Item' ? ' style="width:34%"' : (_narrow[t] ? ' style="width:9%"' : ''))
-              + '>' + t + '</th>'; }).join("")
+              + '>' + t
+              + (_COLSUB[t] ? '<span class="th-sub">' + _oEsc(_COLSUB[t]) + '</span>' : '')
+              + '</th>'; }).join("")
     +  '</tr></thead><tbody>';
 
   ORD.rows.forEach(function(r){
@@ -1230,6 +1248,17 @@ function _ordDetailHtml(r){
     return '<div class="odp"><div class="odp-sec" style="color:var(--red)">'
          + _oEsc(d.error) + '</div></div>';
   }
+  // THE COMPACT PANEL, in static/js/orders_panel.js.
+  //
+  //     "The expanded order detail takes ~600px+ of vertical height ... The new
+  //      layout fits all of that into ~300px."
+  //
+  // Same `d`, same call, same route -- it rearranges, it does not fetch or
+  // compute. The long version below is kept as the fallback for the case where
+  // that file has not loaded, so a missing script costs the new layout rather
+  // than the order details.
+  if(typeof ordPanelHtml === "function") return ordPanelHtml(r, d);
+
   const o = d.order || {};
   let h = '<div class="odp">';
 

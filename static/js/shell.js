@@ -439,7 +439,22 @@ async function enterAccount(accountId){
       a.seller_id ? ("Seller ID " + a.seller_id) : "No Amazon account connected";
   }
   document.getElementById("ws_title").textContent="Listings";
-  document.getElementById("crumbs").innerHTML=`<span class="sep">/</span><span class="here">${esc(a.label)}</span>`;
+  // THE CRUMB IS THE SCREEN, NOT THE COMPANY.
+  //
+  //     "The account name shows twice -- once as the workspace label next to
+  //      the logo, and again in the account switcher chip. Remove the
+  //      duplicate."
+  //
+  // It did, and this was the second one: the crumb was set to the account's
+  // label here and then never changed again, so it sat permanently beside a
+  // chip saying the same words. Two of a thing that never varies, in the only
+  // strip of the app that is always on screen.
+  //
+  // The chip keeps the company -- it is the one with the dropdown, and it is
+  // what the mockup's header carries. The crumb takes what actually changes:
+  // which of the forty-odd screens you are on. Written by navTo(), from the nav
+  // item's own label, so a renamed screen is renamed here too.
+  crumbSet();
   document.getElementById("nav_setup").style.display="flex"; // brand/account setup
   // Per-workspace features: show the Supplier Import (harvest) nav only if the
   // account has the "harvest" feature enabled in its settings.
@@ -979,6 +994,29 @@ async function enterWorkspace(key){
   loadViews();   // keep legacy view <select> in sync if present
 }
 
+/* WHICH SCREEN AM I ON, in the one strip that is always visible.
+ *
+ * The name comes from the nav item, exactly as the bookmark bar's does
+ * (_bmkNavInfo in bookmarks.js) -- a second list of what each screen is called
+ * would be wrong the first time one was renamed, and there are forty of them.
+ * Falls back to the section id, which is at least true, rather than to the
+ * account name it used to carry.
+ */
+function crumbSet(sec){
+  const el = document.getElementById("crumbs");
+  if(!el) return;
+  const s = String(sec || (typeof CUR_SEC !== "undefined" ? CUR_SEC : "") || "");
+  let name = "";
+  try{
+    const a = s ? document.querySelector('.navitem[data-sec="' + s + '"]') : null;
+    if(a) name = (a.textContent || "").trim();
+  }catch(e){}
+  if(!name) name = s;
+  el.innerHTML = name
+    ? '<span class="here">' + esc(name) + '</span>'
+    : "";
+}
+
 function navTo(sec){
   // THE DOOR, NOT JUST THE SIGNPOST.
   //
@@ -1008,6 +1046,9 @@ function navTo(sec){
      && typeof imagelibOnLeave === "function") imagelibOnLeave();
   CUR_SEC=sec;
   document.querySelectorAll(".navitem").forEach(n=>n.classList.toggle("active", n.dataset.sec===sec));
+  // The breadcrumb follows the screen. AFTER the active class above, because
+  // the nav item is where the name is read from.
+  crumbSet(sec);
   // OPEN THE GROUP THIS SCREEN LIVES IN. The sidebar's master items collapse,
   // so without this the highlight would sit inside a shut drawer and the app
   // would look like it had lost its place -- most visibly on a deep link into a

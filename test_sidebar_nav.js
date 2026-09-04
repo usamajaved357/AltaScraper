@@ -113,7 +113,16 @@ truthy("  read from the menu itself, not a hardcoded list",
 truthy("  without overwriting one written on purpose",
        /if\(!el\.getAttribute\("title"\)\)/.test(SIDE));
 truthy("the choice is remembered", /localStorage\.setItem\(NAVMINI_KEY/.test(SIDE));
-truthy("  and restored without re-saving it", /setSidebarMini\(want, false\)/.test(SIDE));
+// NOT RESTORED AT ALL ANY MORE, and that is the fix rather than a regression.
+// The sidebar became a drawer overlay, and anyone whose browser remembered
+// the old desktop fold (alta_navmini="1") opened the drawer to find every
+// item hidden and the words "Show menu" alone in it. The remembered value is
+// thrown away on load now -- see test_layout_density.py item 9. What this
+// check was really protecting is that restoring never re-saves, and the way
+// that is true now is that setSidebarMini is called with remember=false.
+truthy("  and the remembered fold is discarded, not restored",
+       /localStorage\.removeItem\(NAVMINI_KEY\)/.test(SIDE));
+truthy("  with the reset itself not re-saving", /setSidebarMini\(false, false\)/.test(SIDE));
 truthy("Ctrl\+B toggles it", /String\(ev\.key\)\.toLowerCase\(\) !== "b"/.test(SIDE));
 truthy("  but not while you are typing",
        /tag === "INPUT" \|\| tag === "TEXTAREA"/.test(SIDE));

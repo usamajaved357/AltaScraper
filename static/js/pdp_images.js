@@ -273,8 +273,13 @@ function pdpImgDropUpload(ev){
 }
 
 async function pdpImgLibDelete(url){
-  if(!confirm("Delete this image from the app's library?\n\nIt is not removed "
-            + "from Amazon, and any slot using it keeps the address.")) return;
+  // uiConfirm, not the browser's confirm(). A native dialog freezes the whole
+  // tab, cannot be styled, and says the page's hostname above the question --
+  // on a screen the rest of which is this app's own. test_no_native_dialogs.py
+  // has been failing on these two calls; they are the only ones left in the app.
+  if(!await uiConfirm("Delete this image from the app's library? It is not "
+            + "removed from Amazon, and any slot using it keeps the address.",
+            {danger: true, ok: "Delete"})) return;
   try{
     const j = await (await fetch("/media/delete", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -290,8 +295,10 @@ async function pdpImgDropSource(url){
   const assigned = _pdpiAssignedNow();
   const keys = Object.keys(assigned).filter(function(k){ return assigned[k] === url; });
   if(!keys.length){ toast("That picture is not in any slot."); return; }
-  if(!confirm("Remove this picture from " + keys.length + " slot"
-            + (keys.length === 1 ? "" : "s") + "?")) return;
+  if(!await uiConfirm("Remove this picture from " + keys.length + " slot"
+            + (keys.length === 1 ? "" : "s") + "? The picture stays in the "
+            + "library; only this listing's slots are cleared.",
+            {ok: "Remove"})) return;
   for(let i = 0; i < keys.length; i++) await pdpImgAssign(keys[i], "");
 }
 

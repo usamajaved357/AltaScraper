@@ -90,8 +90,23 @@ function permSet(feat, level) {
   permRender();
 }
 
-// Set every feature in a group at once. The honest unit of most decisions.
-function permSetGroup(title, level) {
+/* Set every feature in a group at once. The honest unit of most decisions.
+ *
+ * NAMED permDraftSetGroup, NOT permSetGroup, and that is a bug fix rather than
+ * a preference. users.js has its own top-level `function permSetGroup(gid,
+ * level)` -- a DIFFERENT function taking a different first argument (a group
+ * id, and it sets <select> values on the Users screen). Both files share one
+ * global scope, users.js loads second, so its version replaced this one.
+ *
+ * The buttons on this screen were therefore calling the Users screen's
+ * function with a group TITLE where it expects an id. It looks for
+ * `.permgroup[data-gid="<title>"]`, finds nothing, and returns -- so setting a
+ * whole group's level here did nothing at all, silently, with no error.
+ *
+ * Found by driving the app in a browser, and now caught by
+ * test_global_name_clashes.py.
+ */
+function permDraftSetGroup(title, level) {
   if (!PERM.draft || !PERM.meta) return;
   const g = (PERM.meta.feature_groups || []).find(function (x) { return x.title === title; });
   if (!g) return;
@@ -242,7 +257,7 @@ function permEditHtml() {
       PERM_LEVELS.map(function (l) {
         return '<td class="perm-col"><button class="perm-all" title="Set every row ' +
           'in ' + _pesc(g.title) + ' to ' + l.label.replace(/&amp;/g, "&") + '" ' +
-          'onclick="permSetGroup(' + jsArg(g.title) + ',' + jsArg(l.v) + ')">' +
+          'onclick="permDraftSetGroup(' + jsArg(g.title) + ',' + jsArg(l.v) + ')">' +
           "set all</button></td>";
       }).join("") + "<td></td></tr>";
     (g.features || []).forEach(function (k) { h += rowFor(k); });

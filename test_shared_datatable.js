@@ -101,8 +101,14 @@ check("  its blur rule is untouched in dashboard.css",
 // may reach it.
 check("nothing in the shared sheet sizes .tileimg",
       /\.tileimg[^{}]*\{/.test(shared), false);
-check("  and dashboard.css still gives it its height",
-      /\.tileimg\{[^}]*height:180px/.test(dash), true);
+// REWRITTEN, NOT DELETED. This asserted `height:180px`, which was right until
+// the card-view pass: a fixed pixel height on a column whose WIDTH follows the
+// window meant the picture area was a different shape on a wide screen from a
+// narrow one. It is a 1:1 ratio now, so every card's photo is the same shape at
+// every size. The POINT of the check is unchanged -- dashboard.css owns the
+// size of the card's photo area, and the shared sheet may not reach it.
+check("  and dashboard.css still owns its shape",
+      /\.tileimg\{[^}]*aspect-ratio:1\/1/.test(dash), true);
 
 console.log("\n=== the number comes before the label ===");
 // This is the half of the difference that is structural rather than a size: a

@@ -76,8 +76,14 @@ check("an ok listing is not blocked by this", d2["blocked_by"], "")
 print("\n--- 'nobody looked' is not 'it is gone' ---")
 d3 = S.decide({"price": 21.99}, [], {}, listing_state=None)
 check("an unchecked SKU behaves as before", d3["blocked_by"], "")
+# THE RULE MOVED TO WHERE THE DECISION IS MADE. It was a comment in
+# routes/sourcing_routes.py and lives in domain/source_run.py now, beside the
+# code that reads listing_state -- which is where it belongs and where the next
+# person changing that branch will see it. The check follows the rule rather
+# than the file it used to sit in.
+_RUN = open(r"D:\AltaScraper\domain\source_run.py", encoding="utf-8").read()
 truthy("and a timeout is never taken as deletion",
-       "Amazon would not answer\" is NOT \"the listing is gone" in R)
+       "\"Amazon would not answer\" is NOT \"the listing is gone\"" in _RUN)
 
 print("\n--- the screen says so, and offers the check ---")
 # The chip is a red GONE mark beside the product name now, and a red status

@@ -1509,18 +1509,90 @@ function _handCell(r, liveOverride){
  * not the one to look at first, and a single "this barcode is already live on
  * Amazon" is.
  */
+/* A BADGE ON THE PICTURE, NOT A LINE OF TEXT IN FRONT OF IT.
+ *
+ *     "The '1 warning' / '2 warnings' text is redundant -- the warning icons
+ *      already show the count. Remove the text line entirely."
+ *
+ * AND IT WAS BREAKING THE IMAGES. This returned a .tilefact, which is
+ * `display:inline-flex` -- not positioned. It is placed inside .tileimg, which
+ * is `display:flex`, so the span became a FLEX ITEM BESIDE THE <img> and the
+ * image was squeezed sideways to make room for the words. That is the reported
+ * "images are broken on the first few cards": the first few are the ones with
+ * warnings. Every other overlay in that box (.tiledot, .tilesel, .tileflag,
+ * .tileclaim, .tileinactive) is position:absolute; these two were the
+ * exceptions.
+ *
+ * So it is now a positioned badge carrying the COUNT and the icon, in the tone
+ * of the worst warning it holds. The count stays because it is information --
+ * "3" and "1" are different amounts of trouble -- and the sentence goes,
+ * because the badge already says it in less room. The messages themselves are
+ * still on hover, which is where they always were.
+ */
 function _warnChip(r){
   if(typeof lsWarnings !== "function") return "";
   const w = lsWarnings(r);
   if(!w.n) return "";
-  const tone = w.high ? "var(--red)" : (w.medium ? "var(--warn)" : "var(--ink3)");
+  const tone = w.high ? "red" : (w.medium ? "amber" : "low");
   const worst = w.high ? "high" : (w.medium ? "medium" : "low");
-  const tip = w.list.slice(0, 4).map(function(x){
-    return "• " + String((x && x.message) || "");
-  }).join("\n");
-  return `<span class="tilefact" style="color:${tone}" title="${esc(tip)}">`
-       + `<i class="ti ti-alert-triangle"></i> ${w.n} warning`
-       + `${w.n === 1 ? "" : "s"}<span class="cc"> (${worst})</span></span>`;
+  const tip = String(w.n) + " warning" + (w.n === 1 ? "" : "s")
+    + " (worst: " + worst + ")\n"
+    + w.list.slice(0, 4).map(function(x){
+        return "• " + String((x && x.message) || "");
+      }).join("\n");
+  return `<span class="tilewarn ${tone}" title="${esc(tip)}"`
+       + ` onclick="event.stopPropagation();openListing('${esc(r.sku)}')">`
+       + `<i class="ti ti-alert-triangle"></i>${w.n}</span>`;
+}
+
+/* MARGIN, ROI AND PROFIT, on one line.
+ *
+ *     "Margin/ROI/Profit line: coloured badge -- green if positive, red if
+ *      negative."
+ *
+ * ALL THREE COME OFF NUMBERS THE ROW ALREADY CARRIES. r.profit is the stored
+ * figure the generator worked out with the real fee; margin is that over the
+ * price and ROI is it over the cost. Neither ratio re-derives a FEE -- which is
+ * the thing that must have one owner (Rule 12) -- they divide two numbers that
+ * are already on the card.
+ *
+ * NOTHING IS SHOWN WITHOUT A PROFIT FIGURE. A margin computed from a missing
+ * cost would be the "item that appears to cost nothing looks infinitely
+ * profitable" mistake in another form; the line is simply absent, and the row
+ * still has its price and its cost above.
+ */
+function _econLine(r){
+  const p = Number(String(r.profit == null ? "" : r.profit).replace(/[^0-9.\-]/g, ""));
+  if(!isFinite(p) || String(r.profit || "").trim() === "") return "";
+  const price = Number(String(r.price == null ? "" : r.price).replace(/[^0-9.\-]/g, ""));
+  const c = (typeof cogsOf === "function") ? cogsOf(r) : {cost: null};
+  const cost = (c && c.cost != null) ? Number(c.cost) : null;
+  const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
+  const margin = (isFinite(price) && price > 0) ? (p / price * 100) : null;
+  const roi = (cost != null && cost > 0) ? (p / cost * 100) : null;
+  const bits = [];
+  if(margin != null) bits.push("margin " + margin.toFixed(1) + "%");
+  if(roi != null)    bits.push("ROI " + roi.toFixed(1) + "%");
+  bits.push(cur + p.toFixed(2));
+  // THE SAME CHIP THE LIVE TILE USES, with the same thresholds.
+  //
+  //     "Cards are inconsistently formatted -- some show different fields,
+  //      different arrangements."
+  //
+  // They did, and this was one of them: a card built from an app row and a card
+  // built from Amazon's catalogue sit side by side in the same grid on the Live
+  // tab, and the second has always shown its profit as a .profchip while the
+  // first showed nothing at all. Adding a THIRD look here would have made it
+  // worse. Same class, same wording, same margin bands (liveTile: 25% and 10%),
+  // so the only thing that differs between the two cards is where the number
+  // came from -- which is what the tooltip is for.
+  const tone = margin == null ? "" : (margin >= 25 ? "tone-ok"
+                                    : (margin >= 10 ? "tone-warn" : "tone-bad"));
+  return `<div style="margin-top:5px"><span class="profchip ${tone}"`
+       + ` title="From the profit stored on this listing — worked out when it was`
+       + ` generated, with Amazon's fee rather than a flat percentage.`
+       + ` Margin = profit ÷ price · ROI = profit ÷ what the stock cost.">`
+       + esc(bits.join(" · ")) + `</span></div>`;
 }
 
 /* THE SAME COUNT, IN THE TABLE.
@@ -1696,9 +1768,20 @@ function card(r){
   const realIssue = _restFlag || _blocker;
   const flagRed = _restProhibited || _blocker;   // gated-only -> amber
   const urls=_cardImages(r);
+  // The STRUCK-THROUGH camera, not the plain one. A plain camera glyph on a
+  // grey square reads as an image that has not loaded yet; the struck-through
+  // one says there is none. Both are in the font subset -- checked, because an
+  // icon class that is not renders as an empty box with no error anywhere.
+  // (test_http_perf.py scans this file for icon names and reads comments too,
+  // so neither is written here as a partial name.)
+  //
+  // The onerror path adds .noimg to the CONTAINER, which is what draws the
+  // "No image" caption underneath (see .tileimg.noimg::after) -- so a picture
+  // that fails to load and one that was never there end up saying the same
+  // thing, in the same place, instead of one of them leaving a blank square.
   const thumb = (urls&&urls.length)
-    ? `<img src="${esc(thumbUrl(urls[0],120))}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo\\'></i>'">`
-    : `<i class="ti ti-photo"></i>`;
+    ? `<img src="${esc(thumbUrl(urls[0],120))}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentNode.classList.add('noimg');this.parentNode.innerHTML='<i class=\\'ti ti-photo-off\\'></i>'">`
+    : `<i class="ti ti-photo-off"></i>`;
   const selected = SELECTED.has(String(r.sku));
   const skuId=sid(r.sku);
   const ownAsin=ownLiveAsin(r);   // your OWN live ASIN (from the live catalogue), or "" if not live/not loaded
@@ -1715,7 +1798,6 @@ function card(r){
       ${needsCopyBadge(r)}
       ${aplusImages(r).length?`<span class="tileaplus" title="A+ content live on Amazon — ${aplusImages(r).length} image(s). Open the listing to see them.">A+</span>`:''}
       ${_inactiveChip(r)}
-      ${_queuedChip(r)}
       ${_warnChip(r)}
       <button class="peek" title="Reveal this listing" onclick="event.stopPropagation();peekTile(this)"><i class="ti ti-eye"></i></button>
     </div>
@@ -1725,7 +1807,8 @@ function card(r){
         ${_priceCell(r, "tileprice pii")}
         <span class="tilesku pii">${esc(r.sku)||''}</span>
       </div>
-      <div class="tilefacts">${_brandCell(r)}${_handCell(r)}</div>
+      <div class="tilefacts">${_brandCell(r)}${_handCell(r)}${_queuedChip(r)}</div>
+      ${_econLine(r)}
       <!-- the "lives on the X tab" badge went with the spreadsheet -->
 
       ${_isDup?`<div class="tiledup" onclick="event.stopPropagation()">

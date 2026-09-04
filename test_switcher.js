@@ -127,6 +127,71 @@ vm.runInContext("CUR_ACCOUNT = null; openMarketSwitch(null);", s);
 check("no menu", s.made.length, 0);
 truthy("and it says so", String(s._toast || "").indexOf("Open an account first") >= 0);
 
+console.log("\n=== two levels: accounts, then that account's marketplaces ===");
+// "Level 1 -- Account list ... Level 2 -- When an account is clicked, show its
+// marketplaces." Amazon's switcher works this way because a seller account
+// really does span several countries.
+s = sandbox();
+vm.runInContext("CUR_ACCOUNT = ACCOUNTS[0]; WS_MARKET='UK'; openAccountSwitch(null);", s);
+html = s.made[0].innerHTML;
+truthy("the account list is headed", html.indexOf("switchhead") >= 0);
+// AN ACCOUNT IN SEVERAL COUNTRIES DRILLS DOWN; ONE IN A SINGLE COUNTRY DOES
+// NOT. Making somebody choose from a list of one is a click that answers
+// nothing.
+truthy("a multi-marketplace account offers to drill in",
+       html.indexOf("ti-chevron-right") >= 0);
+truthy("  and says how many", html.indexOf("3 marketplaces") >= 0);
+truthy("a single-marketplace account names it instead",
+       html.indexOf("United Kingdom") >= 0);
+
+s = sandbox();
+vm.runInContext("CUR_ACCOUNT = ACCOUNTS[0]; WS_MARKET='UK';"
+                + "openMarketSwitchFor('jack_uk', document.body);", s);
+html = s.made[0].innerHTML;
+truthy("level two is headed with the account it belongs to",
+       html.indexOf("Jack Reacherd") >= 0);
+truthy("  and can go back", html.indexOf("All accounts") >= 0);
+truthy("its registered marketplaces are listed",
+       html.indexOf("Germany") >= 0 && html.indexOf("Ireland") >= 0);
+truthy("  marked as registered", html.indexOf("registered") >= 0);
+truthy("  with the default named", html.indexOf("default · registered") >= 0);
+// NOT REGISTERED IS SHOWN, NOT HIDDEN -- but only because there is a detected
+// list to subtract from. See openMarketSwitchFor.
+truthy("a major it is NOT in is shown", html.indexOf("United States") >= 0);
+truthy("  as needing registration", html.indexOf("needs registration") >= 0);
+truthy("  and is inert", html.indexOf("disabled") >= 0);
+// A country nobody sells in should not pad the list.
+check("the list is the majors, not all 22", html.indexOf("Singapore"), -1);
+
+// AN UNDETECTED ACCOUNT MUST NOT BE TOLD IT NEEDS TO REGISTER EVERYWHERE. That
+// would be inventing a measurement: nobody has asked Amazon yet.
+s = sandbox();
+vm.runInContext("openMarketSwitchFor('draftonly', document.body);", s);
+html = s.made[0].innerHTML;
+check("nothing is called unregistered before detection runs",
+      html.indexOf("needs registration"), -1);
+truthy("  it offers the detection instead", html.indexOf("Detect marketplaces") >= 0);
+
+console.log("\n=== the menu opens under whatever was pressed ===");
+// It was hardcoded to the sidebar row, so opening it from the header chip put
+// the menu on the far side of the screen from the button -- and with the
+// sidebar shut, measured a hidden element.
+const sw = fs.readFileSync("D:/AltaScraper/static/js/switcher.js", "utf8");
+truthy("the anchor is the element the handler is on", /ev\.currentTarget/.test(sw));
+truthy("  with the sidebar row as the fallback", /_switchAnchor\(ev, "nav_acctswitch"\)/.test(sw));
+truthy("  and a hidden element is not used as one", /if\(r\.width \|\| r\.height\) return t;/.test(sw));
+truthy("the menu is kept on screen", /window\.innerHeight - 8/.test(sw));
+
+console.log("\n=== the company is named once in the header, not twice ===");
+truthy("the breadcrumb is the screen, not the account", /function crumbSet/.test(shell0()));
+truthy("  named from the nav item, like the bookmark bar",
+       /navitem\[data-sec="' \+ s \+ '"\]/.test(shell0()));
+truthy("  and it follows navigation", /crumbSet\(sec\);/.test(shell0()));
+check("the account label is no longer written into the crumb",
+      /crumbs"\)\.innerHTML=`<span class="sep">\/<\/span><span class="here">\$\{esc\(a\.label\)\}/.test(shell0()),
+      false);
+function shell0(){ return fs.readFileSync("D:/AltaScraper/static/js/shell.js", "utf8"); }
+
 console.log("\n=== choosing does something, and closes ===");
 s = sandbox();
 vm.runInContext("CUR_ACCOUNT = ACCOUNTS[0]; openAccountSwitch(null);", s);

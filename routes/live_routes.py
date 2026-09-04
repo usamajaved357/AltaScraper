@@ -233,7 +233,32 @@ def register(app, *, CONFIG_PATH, _IMG_CACHE, _IMG_TTL, _LIVE_CACHE, _LIVE_TTL, 
             _APLUS_CACHE[ck] = {"ts": _t.time(), "by_asin": by_asin}
             return jsonify({"ok": True, "by_asin": by_asin, "documents": len(docs), "cached": False})
         except Exception as e:
-            return jsonify({"ok": False, "error": f"A+ Content API failed: {str(e)[:200]}"}), 502
+            # "AMAZON WILL NOT LET US" IS AN ANSWER, NOT A GATEWAY FAILURE.
+            #
+            # This returned 502 for everything, and the one thing it returns for
+            # these accounts is Unauthorized -- the A+ Content role is not
+            # granted to this SP-API application. So every page load logged a
+            # red 502 in the browser console, on every account, for a permission
+            # that is not going to change until somebody grants it in Seller
+            # Central. Found by driving the app in Chrome: it was the only
+            # failing response on the whole listings screen, which means it was
+            # also the thing hiding any real one.
+            #
+            # A refusal is a definite, repeatable answer and comes back 200 with
+            # ok:false and the reason; anything else -- a timeout, a 500 from
+            # Amazon, the client blowing up -- is still 502, because that IS an
+            # upstream failure and is worth seeing in a log.
+            #
+            # The browser reads j.ok, never the status (miles_template.loadAplus),
+            # so both paths reach APLUS_ERROR and the screen says the same thing
+            # either way. Only the console noise changes.
+            msg = str(e)[:200]
+            denied = any(w in msg.lower() for w in
+                         ("unauthor", "access to requested resource is denied",
+                          "forbidden", "accessdenied"))
+            body = {"ok": False, "denied": denied,
+                    "error": f"A+ Content API failed: {msg}"}
+            return jsonify(body), (200 if denied else 502)
 
     @app.route("/live/reconcile", methods=["POST"])
     def live_reconcile():

@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Listing Generator</title>
+<!-- THE TAB ICON, so the browser stops asking for one that is not there.
+     Found by driving the app in Chrome: /favicon.ico returned 404 on every
+     single page load, which put a red line in the console every time. Small in
+     itself, and the same argument as the /live/aplus 502 -- a console with a
+     permanent error in it is a console nobody reads, and it is exactly what
+     hides a real one.
+     It is the app's OWN mark, the "A" from the top bar, inlined as a data URI:
+     no file to serve, no route to add, and nothing to 404. Drawn flat rather
+     than with the bar's gradient because at 16px a gradient is one muddy
+     colour; the accent and the dark ground are the app's own tokens' values. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232dd4bf'/%3E%3Cpath d='M8.6 24.2 L16 8.2 L23.4 24.2 M12.1 18.6 H19.9' fill='none' stroke='%230a1628' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <!-- THE ICON FONT IS OURS NOW, not a CDN's.
      It used to be fetched TWICE, from jsdelivr and from unpkg -- a fallback
      that was always paid for whether or not it was ever needed. Measured on a
@@ -63,6 +74,12 @@
      listrow_detailed.css on purpose: the price box lives inside
      .price-input-wrap, whose rules this has to be able to beat. -->
 <link rel="stylesheet" href="/static/css/listrow_edit.css?v={{ ASSET_V }}">
+<!-- The revenue calculator panel. Slides in beside the list rather than
+     replacing it -- see static/js/revenue.js. -->
+<link rel="stylesheet" href="/static/css/revenue.css?v={{ ASSET_V }}">
+<!-- The compact expanded-order panel: the Sourcing page's bar, cards and pills
+     applied to an order -- see static/js/orders_panel.js. -->
+<link rel="stylesheet" href="/static/css/orders_panel.css?v={{ ASSET_V }}">
 <!-- The phone layout, and the only place it is decided. Must load AFTER
      dashboard.css: several of its rules match the same elements with the same
      specificity, and the later file is the one that wins. -->
@@ -2050,6 +2067,10 @@
      file above it the order here is not load-bearing. It reaches cogsSet in
      cogs.js and updateLocalCol in listings.js, both loaded earlier. -->
 <script src="/static/js/listrow_edit.js?v={{ ASSET_V }}"></script>
+<!-- What one unit earns, in a panel. Computes nothing itself: every figure
+     comes from /listing/revenue, which reads the same fee, cost and metrics
+     resolvers the row above it uses. -->
+<script src="/static/js/revenue.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/miles_template.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/genimage.js?v={{ ASSET_V }}"></script>
 <script src="/static/js/howworks.js?v={{ ASSET_V }}"></script>
@@ -2083,6 +2104,10 @@
 <script src="/static/js/migrate.js?v={{ ASSET_V }}"></script>
 <!-- Every account's orders on one screen. -->
 <script src="/static/js/orders.js?v={{ ASSET_V }}"></script>
+<!-- The compact expanded-order panel. orders.js checks for it at DRAW time and
+     falls back to its own long version, so a load failure costs the layout
+     rather than the order details. -->
+<script src="/static/js/orders_panel.js?v={{ ASSET_V }}"></script>
 <!-- Why things come back, and what it costs. -->
 <script src="/static/js/returns.js?v={{ ASSET_V }}"></script>
 <!-- The weekly KPI pack. Same two-buttons-per-report shape as Returns above. -->

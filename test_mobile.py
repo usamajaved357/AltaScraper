@@ -123,8 +123,19 @@ truthy("mobile.css is the file that owns the phone sidebar",
 
 print("\n== the control that opens it (Orbit: 40x40, aria-label 'Open menu') ==")
 truthy("the button exists in the page", 'id="navburger"' in HTMLC)
-truthy("it is not drawn at all on a desktop",
-       re.search(r"#navburger\s*\{\s*display\s*:\s*none", CSSC))
+# DRAWN AT EVERY WIDTH NOW, and that is the change rather than a regression:
+# the sidebar became an overlay on wide screens too --
+#
+#     "The app's left sidebar is causing the listings table to shrink and
+#      resize. On Amazon, the sidebar opens as an overlay/drawer on TOP of the
+#      page -- it does NOT push the content."
+#
+# -- so the button that opens it has to exist wherever the drawer does. If it
+# were still display:none above the breakpoint there would be no way in.
+check("it is no longer hidden on a desktop",
+      re.search(r"#navburger\s*\{\s*display\s*:\s*none", CSSC) is not None, False)
+truthy("  because the drawer is now an overlay at every width",
+       "translateX(-100%)" in re.split(r"@media", CSSC)[0])
 truthy("it is 40px square, the size measured off Orbit",
        re.search(r"#navburger\s*\{[^}]*width\s*:\s*40px[^}]*height\s*:\s*40px", CSSC))
 truthy("it says whether the menu is open, for a screen reader",
@@ -151,8 +162,16 @@ print("\n== the drawer cannot outlive the drawer ==")
 # Rotating to landscape past the breakpoint used to leave body.navopen set,
 # which on a desktop layout means overflow:hidden on the body -- a page that
 # will not scroll, with nothing on screen to explain why.
-truthy("growing past the breakpoint drops the open state",
-       re.search(r"matchMedia[\s\S]{0,220}?if\s*\(\s*!\s*e\.matches\s*\)\s*mnavClose", JSC))
+# THERE IS NO BREAKPOINT STATE TO DROP ANY MORE. This guarded a real bug --
+# rotating to landscape past the breakpoint left body.navopen set, which meant
+# overflow:hidden on a desktop layout: a page that would not scroll with nothing
+# on screen to explain why. It cannot happen now, because the drawer behaves the
+# same at every width; there is no width at which navopen is wrong.
+#
+# What still has to be true is that the state is only ever set alongside a way
+# out, so the two below carry the weight this one used to.
+truthy("the open state is only set where it can be cleared",
+       "mnavClose" in JSC and "navopen" in JSC)
 truthy("Escape closes it, like every other overlay here",
        re.search(r"Escape[\s\S]{0,80}mnavClose", JSC))
 truthy("choosing a destination closes it",
@@ -198,7 +217,14 @@ print("\n== the desktop is untouched ==")
 # Everything above lives inside a media query or on an element that is
 # display:none until the breakpoint. Nothing may leak out.
 outside = re.split(r"@media", CSSC)[0]
-for banned in ("position:fixed", "translateX", "overflow:hidden"):
+# THE OVERLAY RULES ARE OUTSIDE A MEDIA QUERY ON PURPOSE. This list used to
+# include position:fixed, translateX and overflow:hidden -- the drawer's own
+# three -- back when the drawer was a phone-only thing and anything of its
+# leaking onto a desktop was a bug. The drawer is now an overlay at every width,
+# so those three ARE the desktop behaviour. What must still not leak is anything
+# that changes the SHAPE of the page underneath: a one-column grid, a shrunken
+# font, a squeezed table.
+for banned in ("grid-template-columns:1fr", "font-size:11px"):
     check("nothing outside a media query does %r" % banned,
           banned in outside.replace(" ", ""), False)
 

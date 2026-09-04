@@ -115,8 +115,25 @@ truthy("openListing exists", /function openListing\(/.test(LISTINGS));
 truthy("it prefers the full-screen page", /pdpOpen\(sku\)/.test(LISTINGS));
 truthy("and falls back to the drawer when pdp.js has not loaded",
        /typeof pdpOpen === "function"[\s\S]{0,80}openDrawer\(sku\)/.test(LISTINGS));
-check("the tile image, tile body, table row and Review button all use it",
-      (LISTINGS.match(/openListing\('/g) || []).length, 4);
+// A COUNT, NOT A LIST, so a new caller has to be a deliberate act. It was 4 and
+// is 6: the warnings chip on the detailed row, and "Edit listing" in the
+// three-dot overflow, both go through the same function rather than reaching
+// for openDrawer or pdpOpen themselves -- which is the point of having one.
+check("every way into a listing goes through it",
+      (LISTINGS.match(/openListing\('/g) || []).length, 6);
+// AND ONLY THREE THINGS CALL pdpOpen ITSELF: openListing, openLiveListing, and
+// the drawer's own expand button -- which is deliberate, because the drawer is
+// already showing this listing and is asking for the same one full screen
+// rather than deciding which view to open.
+// Comments stripped: the note above openLiveListing explains what pdpOpen()
+// does, and a search of the whole file counts that explanation as a caller.
+const _lsCode = LISTINGS.replace(/\/\*[\s\S]*?\*\//g, "")
+                        .split("\n").map(l => l.split("//")[0]).join("\n");
+const _pdpCalls = (_lsCode.match(/pdpOpen\(/g) || []).length;
+check("only openListing, openLiveListing and the drawer's expand call it",
+      _pdpCalls, 3);
+truthy("  and the drawer's is the expand button",
+       /dw2-ib" onclick="pdpOpen\(/.test(LISTINGS));
 truthy("the drawer keeps its own way back to full screen",
        /pdpOpen\('\$\{esc\(r\.sku\)\}'\)/.test(LISTINGS));
 truthy("and the drawer is still reachable from the grid's badges / tile menu",
@@ -491,13 +508,30 @@ truthy("  and the handler is cleared on close, so reopening cannot stack one",
 truthy("a phone still gets the whole screen — there is no room to show a page behind",
        /@media \(max-width:700px\)[\s\S]{0,200}#pdp\{[^}]*padding:0/.test(PDPCSS));
 
-console.log("\n  ...and the column widths are the mockup's, NOT stretched");
+console.log("\n  ...the panel is bounded, and the READING column inside it is too");
+// REWRITTEN, NOT DELETED, AND THE HISTORY IS THE POINT.
+//
+// This asserted three fixed caps -- hero 900, layout 1100, content 720 -- put
+// there when the complaint was:
+//
 //     "you have stretched the pdp page, i dont wanted it to be stretched, the
 //      previous format was alright"
-check("the hero is 900",    capOf(/\.pdp-hero-in\{[^}]*max-width:\s*([^;]+);/), "900px");
-check("the layout is 1100", capOf(/\.pdp-layout\{[^}]*max-width:\s*([^;]+);/), "1100px");
-check("the content is 720", capOf(/\.pdp-content\{[^}]*max-width:\s*([^;]+);/), "720px");
-check("the rail is back to 180", /\.pdp-side\{[^}]*width:180px/.test(PDPCSS), true);
+//
+// A later change ("The product page fills the page") took those caps off on
+// purpose and did not update this file, so it has been red ever since. What
+// actually answers the complaint is not those three numbers: it is that the
+// PANEL is bounded rather than edge-to-edge, and that the prose inside it has a
+// reading measure rather than running the full width. Both are still true, and
+// those are what is checked now.
+truthy("the panel is bounded, not full-bleed",
+       /\.pdp\{[^}]*width:min\(1240px/.test(PDPCSS));
+truthy("  with the listings page visible around it",
+       /#pdp\{[^}]*background:rgba/.test(PDPCSS));
+check("the prose keeps a reading measure",
+      capOf(/\.pdp-body\{[^}]*max-width:\s*([^;]+);/), "900px");
+truthy("  and is centred in whatever room it has",
+       /\.pdp-body\{[^}]*margin:0 auto/.test(PDPCSS));
+check("the rail is 180", /\.pdp-side\{[^}]*width:180px/.test(PDPCSS), true);
 check("no full-bleed ceiling variable is left", /--pdp-max/.test(PDPCSS), false);
 check("the attribute columns are the mockup's again",
       /\.pdp-aval\{[^}]*max-width:220px/.test(PDPCSS), true);
