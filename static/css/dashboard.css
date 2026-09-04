@@ -3881,7 +3881,28 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    format can be judged -- but a sample number that looks like a real one is
    the single worst thing this page could do, so every one of them is dimmed
    and struck through with a label saying what it is. */
-.ri-sample{ opacity:.45; font-style:italic; }
+/* A PLACEHOLDER FIGURE, MARKED -- BUT STILL READABLE.
+ *
+ *     "The Organic vs PPC Sales chart draws dotted/broken lines that
+ *      disconnect on days with zero sales."
+ *
+ * MEASURED in the browser before changing anything: it does not. Both lines
+ * come back as ONE path each, stroke-dasharray empty, running flat along £0
+ * through every zero-sale day exactly as the Sales chart above does, and both
+ * charts stop at the same date because that is where this account's data stops
+ * (Aug 20). There was no gap to close.
+ *
+ * What DID differ is this rule. At .45 the whole figure -- axis labels, grid
+ * lines, legend and the two 2px lines -- was washed out beside a full-strength
+ * chart eight inches above it, and a 2px line at 45% over a dark ground is
+ * exactly what a broken line looks like.
+ *
+ * .72 keeps the "this is not your data" signal (with the italics, and the bold
+ * amber banner above it that says so in words) without making the figure look
+ * like a rendering fault. The banner is the load-bearing part of that warning;
+ * the dimming was only ever meant to support it.
+ */
+.ri-sample{ opacity:.72; font-style:italic; }
 .ri-samplebar{
   margin:0 0 18px; padding:10px 13px; border-radius:8px;
   border:1px solid var(--warn-line); background:var(--warn-bg);

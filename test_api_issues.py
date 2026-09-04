@@ -183,6 +183,82 @@ def test_warnings_are_folded_when_there_are_errors():
         "with no errors above them, the warnings should be open"
 
 
+# ---- it survives a Sync, and it shows on the listings page ----------------
+
+def test_the_refusal_becomes_a_warning():
+    """So it appears wherever warnings already do -- the card badge, the
+    detailed row's chip, the product page's hero -- without any of those three
+    learning about a new field."""
+    src = _read("listing", "warnings.py")
+    assert "def amazon_refused(row):" in src
+    assert "_refused," in src, "it must be in the list every active row is checked against"
+    assert '"amazon_refused", "high"' in src, "a refusal is not a low warning"
+
+
+def test_only_errors_raise_it():
+    """'Accepted with warnings' is a success. A mark on a listing Amazon took
+    would make the mark meaningless."""
+    from listing import warnings as W
+    from listing import api_issues as AI
+    warn_only = AI.pack([{"code": "1", "severity": "WARNING", "message": "m"}])
+    assert W.amazon_refused({"api_issues_json": warn_only}) is None
+    err = AI.pack([{"code": "1", "severity": "ERROR", "message": "m",
+                    "attributeNames": ["item_name"]}])
+    got = W.amazon_refused({"api_issues_json": err})
+    assert got and got["severity"] == "high"
+    assert "item_name" in got["message"], "it must say WHICH field"
+    assert got["details"]["fields"] == ["item_name"]
+
+
+def test_a_row_outside_the_active_statuses_is_still_checked():
+    """THE WHOLE POINT. ACTIVE_STATUSES is QUEUED/GENERATED/SUBMITTED/LIVE, and
+    a refused listing is in API_ERROR -- the reported one had been moved on to
+    APPROVED. Both sit outside that set, so the only two statuses that can carry
+    a refusal were the two that could never show one."""
+    from listing import warnings as W
+    from listing import api_issues as AI
+    assert "API_ERROR" not in W.ACTIVE_STATUSES
+    assert "APPROVED" not in W.ACTIVE_STATUSES
+    err = AI.pack([{"code": "1", "severity": "ERROR", "message": "no good",
+                    "attributeNames": ["brand"]}])
+    rows = [{"sku": "A", "status": "APPROVED", "api_issues_json": err},
+            {"sku": "B", "status": "API_ERROR", "api_issues_json": err},
+            {"sku": "C", "status": "APPROVED"}]
+    out = W.for_rows(rows)
+    assert [w["type"] for w in out.get("A", [])] == ["amazon_refused"]
+    assert [w["type"] for w in out.get("B", [])] == ["amazon_refused"]
+    assert "C" not in out, "a row with nothing to say is left alone, not blanked"
+
+
+def test_a_fixed_refusal_is_cleared_not_stranded():
+    """A row that HAD one and no longer does must be written back empty --
+    otherwise a fixed listing keeps a red mark forever."""
+    from listing import warnings as W
+    rows = [{"sku": "A", "status": "APPROVED",
+             "warnings": json.dumps([{"type": "amazon_refused", "severity": "high",
+                                      "message": "old"}])}]
+    out = W.for_rows(rows)
+    assert out.get("A") == [], out
+
+
+def test_sync_cannot_erase_it():
+    """The reply lives in its own column, not in the status.
+
+        "After a Sync the error disappeared and the status changed to APPROVED."
+
+    upsert_row writes only the columns it is given and api_issues_json is not in
+    the generator's blank-row template, so a re-generation cannot blank it
+    either. Only a fresh Preview or Submit writes it."""
+    gen = _read("amazon_listing_generator.py")
+    assert "API Issues JSON" in gen
+    # The only writer: the column is looked up once, guarded once, written once.
+    assert gen.count("issues_col") == 3, gen.count("issues_col")
+    assert 'queue(i, issues_col, _api_issues.pack(' in gen
+    store = _read("data", "store.py")
+    assert "cols = [c for c in data if c in COL_TO_HEADER" in store, \
+        "upsert must write only the columns it was handed"
+
+
 # ---- the driver -----------------------------------------------------------
 # run_tests.py executes this file with the interpreter, not pytest (there is no
 # pytest here), so the functions above have to be called and the exit code has
