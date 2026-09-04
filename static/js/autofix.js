@@ -1129,6 +1129,32 @@ async function editField(sku, target, key, value){
         updateLocalCol(r, key, value);
       }
     }
+    // THE SCREEN HAS TO CATCH UP, or a save that worked looks like one that
+    // did not. The product page's hero draws the title, brand, barcode and the
+    // profit/cost badges from the row at render time, so after one of those is
+    // written it is showing the previous value -- which is exactly what "the
+    // hero section STILL shows Brand: Nestwell Goods" was.
+    //
+    // Only the hero, and only for the fields it shows: this runs on blur, which
+    // is the moment you TAB into the next box, and re-rendering the panel would
+    // pull the focus out of it. pdpRebuild stays for structural edits.
+    if(target !== "attr" && typeof pdpHeroShows === "function"
+       && pdpHeroShows(key) && typeof pdpHeroRefresh === "function"){
+      pdpHeroRefresh(sku);
+    }
+    // AND THE LIST UNDERNEATH IS STALE NOW TOO -- same bug, one screen further
+    // out: edit a title here, close the page, and the row in the table still
+    // showed the old one. pdpClose redraws the grid when this flag is set.
+    //
+    // Marked from the SAVE rather than from the input event that usually
+    // precedes it. PDP_DIRTY is otherwise raised by typing, which is right for
+    // the save bar but is not proof that anything was written -- and a value
+    // set any other way (a suggestion applied, a live value copied in) would
+    // slip past it. A save that returned ok is the thing that is actually true.
+    if(typeof pdpMarkDirty === "function" && typeof PDP_SKU !== "undefined"
+       && String(PDP_SKU) === String(sku)){
+      pdpMarkDirty();
+    }
     return {ok:true};
   }catch(e){ return {ok:false, error:String((e && e.message) || e)}; }
 }

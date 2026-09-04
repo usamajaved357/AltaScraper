@@ -225,10 +225,28 @@ function pdpOpen(sku){
 function pdpClose(){
   if(!PDP_SKU) return;
   PDP_SKU = "";
+  // THE LIST UNDERNEATH IS ANOTHER COPY OF THE ROW, and it goes stale the same
+  // way the hero did.
+  //
+  //     "please check what other problems are related to it and this same
+  //      behavior may be occuring at multiple places"
+  //
+  // It is. Measured: edit the title on this page, close it, and the row in the
+  // table still shows the old one -- nothing after a save re-draws the grid.
+  // The row OBJECT is already correct (editField wrote it), so this is a
+  // redraw and not a re-read: no request, ~25ms.
+  //
+  // ON CLOSE RATHER THAN ON EVERY SAVE, and only when something was actually
+  // changed. A blur-save fires as you tab between fields, and re-drawing 86
+  // rows behind the panel each time is work nobody can see. PDP_DIRTY is
+  // already the answer to "was anything edited here" -- it is what raises the
+  // save bar -- so it is read here before it is cleared.
+  const _edited = PDP_DIRTY;
   // "When saved or cancelled: bar disappears." Both buttons close the page, so
   // it goes with it -- and the flag has to go too, or the next listing opens
   // wearing the last one's bar.
   PDP_DIRTY = false;
+  if(_edited && typeof render === "function"){ try{ render(); }catch(e){} }
   const host = document.getElementById("pdp");
   if(host){
     host.classList.remove("in");
@@ -1449,6 +1467,55 @@ function pdpRender(){
 function pdpRebuild(sku){
   if(PDP_SKU && String(PDP_SKU) === String(sku)) pdpRender();
 }
+
+/* THE HERO IS A COPY OF THE ROW, AND A COPY GOES STALE.
+ *
+ *     "The user changed the Brand Name field from 'Nestwell Goods' to
+ *      'AltaboltaVoo' on the PDP. But ... the hero section STILL shows
+ *      'Brand: Nestwell Goods'. This means either the edit didn't save to the
+ *      database, or the PDP is reading from a stale cache."
+ *
+ * The second one, and only on screen. THE SAVE IS FINE -- measured on a draft,
+ * all eight editable columns (title, brand, barcode, price, handling, bullet,
+ * description, search terms) survive a page reload, and /edit answered ok to
+ * every one of them. Nothing is lost and nothing stale is sent to Amazon.
+ *
+ * What was missing is a redraw. pdpHero() renders r.title, r.barcode and
+ * r.brand at RENDER TIME; a blur-save updates the row and the box it was typed
+ * in, and nothing tells the hero. So the hero showed the value from the last
+ * render until the panel was closed and opened -- measured: box and row both
+ * "ZZBRANDPROBE", hero still "Nestwell Goods", and a bare pdpRender() then
+ * showed the new value, which is what proves the data was there all along.
+ *
+ * THE HERO ONLY, NOT THE WHOLE PANEL. pdpRebuild re-renders everything, which
+ * is right after a structural change but wrong here: a blur-save fires as you
+ * TAB to the next field, and replacing the panel underneath would take the
+ * focus out of the box you just moved into. The hero holds no editable control,
+ * so swapping it is safe.
+ */
+function pdpHeroRefresh(sku){
+  if(!PDP_SKU || String(PDP_SKU) !== String(sku)) return;
+  const host = document.getElementById("pdp");
+  const old = host && host.querySelector(".pdp-hero");
+  if(!old) return;
+  const r = pdpRow();
+  if(!r) return;
+  try{
+    const tmp = document.createElement("div");
+    tmp.innerHTML = pdpHero(r);
+    const fresh = tmp.firstElementChild;
+    if(fresh) old.replaceWith(fresh);
+  }catch(e){}                       // a stale hero beats no hero
+}
+
+/* WHICH SAVED FIELDS THE HERO IS SHOWING. Named here, beside pdpHero, because
+ * this list is only ever wrong when that function changes -- keeping it in the
+ * saver would put it a file away from the thing it describes.
+ *
+ * "Our Price (GBP)" is on it because the hero carries the profit and cost
+ * badges, which are computed from it. */
+const PDP_HERO_COLS = ["Title", "Brand", "UPC", "Our Price (GBP)"];
+function pdpHeroShows(key){ return PDP_HERO_COLS.indexOf(String(key)) >= 0; }
 
 /* ---- the address ------------------------------------------------------- */
 
