@@ -46,26 +46,116 @@ let PDP_BACK_SCROLL = 0;
 /* Which attribute rows the table is showing: all | differs | amazon | empty. */
 let PDP_ATTR_FILTER = "all";
 
+/* THE ROW THIS PAGE IS DRAWING -- ours, or one built from Amazon's own data.
+ *
+ *     "ALL listings open the PDP overlay regardless of origin. A listing synced
+ *      from Amazon is still a listing you manage. ... For synced-only listings,
+ *      the PDP should show Amazon's current attribute data as the input values
+ *      (from the catalogue/summaries), not empty fields."
+ *
+ * MEASURED: 7 of jack_uk's 47 live SKUs and 18 of nestwell_goods' 62 have no
+ * row in this app -- made in Seller Central, made by another tool, or their
+ * draft was deleted. Those opened a different UI, which is the whole complaint:
+ * "Most live listings open the Optimize live listing modal instead of the PDP."
+ */
 function pdpRow(){
-  if(!PDP_SKU || typeof ROWS === "undefined") return null;
-  return ROWS.find(x => String(x.sku) === String(PDP_SKU)) || null;
+  if(!PDP_SKU) return null;
+  const own = (typeof ROWS !== "undefined" && ROWS)
+    ? ROWS.find(x => String(x.sku) === String(PDP_SKU)) : null;
+  return own || pdpCatalogueRow(PDP_SKU);
 }
+
+/* A row shaped like ours, filled from what AMAZON says.
+ *
+ * Two sources, both already fetched and cached by the time this runs:
+ *   LIVE_ITEMS   the catalogue snapshot -- sku, asin, title, price, picture
+ *   lvGet(sku)   getListingsItem -- the attributes, the copy, the summaries
+ *
+ * NOTHING IS INVENTED. Every field is either Amazon's or absent, and the row is
+ * stamped `catalogue_only` so the page can say where it came from and offer the
+ * one thing that changes it (Sync, which pulls the listing in as a real row).
+ *
+ * It is NOT written anywhere. This is a view of Amazon's data, not a draft --
+ * inventing a half-empty row in the store the moment somebody looked at a
+ * listing would put rows in the database that nobody asked for.
+ */
+function pdpCatalogueRow(sku){
+  sku = String(sku || "");
+  const it = (typeof LIVE_ITEMS !== "undefined" && LIVE_ITEMS)
+    ? LIVE_ITEMS.find(x => String(x && x.sku) === sku) : null;
+  const L = (typeof lvGet === "function") ? lvGet(sku) : null;
+  const live = (L && L.state === "ok") ? L : null;
+  if(!it && !live) return null;
+
+  const C = (live && live.content) || {};
+  const S = (live && live.summary) || {};
+  const V = (live && live.values) || {};
+  const first = k => (C[k] && C[k].length) ? C[k][0] : "";
+
+  const row = {
+    sku: sku,
+    catalogue_only: true,
+    // LIVE by definition: Amazon is the only reason we know about it.
+    status: "LIVE",
+    title: String(S.itemName || first("item_name") || (it && it.title) || ""),
+    // Amazon's own ASIN for this listing, in the field the app reads as OURS.
+    // r.asin is the COMPETITOR slot and stays empty -- there is no competitor
+    // here, this listing was never researched from one (CLAUDE.md Rule 1).
+    own_asin: String(S.asin || (it && it.asin) || ""),
+    asin: "",
+    brand: String(S.brand || V.brand || ""),
+    product_type: String((live && live.product_type) || ""),
+    barcode: String(V.externally_assigned_product_identifier || ""),
+    our_price: String((it && it.price) || "").replace(/[^0-9.]/g, ""),
+    handling_days: String(V["fulfillment_availability.lead_time_to_ship_max_days"]
+                          || V.lead_time_to_ship_max_days || ""),
+    description_html: first("product_description"),
+    search_terms: (C.generic_keyword || []).join(" "),
+    attributes: V,
+    attrs: JSON.stringify(V),
+    warnings: [],
+    row: 0,
+  };
+  (C.bullet_point || []).slice(0, 5).forEach(function(b, i){
+    row["bullet_" + (i + 1)] = b;
+  });
+  return row;
+}
+
+/* Is the page showing a listing this app holds no draft of? */
+function pdpIsCatalogueOnly(r){ return !!(r && r.catalogue_only); }
+
 function pdpIsOpen(){ return !!PDP_SKU; }
 
 /* ---- open / close ------------------------------------------------------ */
 
 function pdpOpen(sku){
   sku = String(sku || "");
-  const r = (typeof ROWS !== "undefined") ? ROWS.find(x => String(x.sku) === sku) : null;
-  // NO ROW MEANS NO PRODUCT PAGE -- this page is built from one. Callers are
-  // meant to have asked openListing(), which sends a listing with no draft to
-  // the live optimiser instead; this is the last line, and it says what is
-  // actually true rather than "not on this screen", which reads like the row
-  // scrolled off.
-  if(!r){
+  const own = (typeof ROWS !== "undefined" && ROWS)
+    ? ROWS.find(x => String(x.sku) === sku) : null;
+  // EVERY LISTING OPENS HERE NOW, ours or Amazon's.
+  //
+  //     "ALL listings open the PDP overlay regardless of origin. A listing
+  //      synced from Amazon is still a listing you manage."
+  //
+  // A listing with no draft used to be turned away, and openListing sent it to
+  // the Optimize modal instead -- a third detail view for the majority of live
+  // listings. It is drawn from Amazon's own data now (pdpCatalogueRow).
+  //
+  // AND THE DATA IS FETCHED IF IT IS NOT ALREADY HERE. lvEnsure is the one
+  // place that reads a live listing from Amazon, and it re-renders this page
+  // when the answer lands, so opening on a cold cache shows the catalogue's
+  // title and picture immediately and fills in the rest a moment later.
+  const cat = own ? null : pdpCatalogueRow(sku);
+  if(!own && typeof lvEnsure === "function"){
+    try{
+      lvEnsure(cat || {sku: sku, status: "LIVE"});
+    }catch(e){}
+  }
+  if(!own && !cat){
     if(typeof toast === "function")
-      toast("This app holds no draft of " + sku + ", so there is nothing to open here. "
-            + "Press Sync to pull it in from Amazon.");
+      toast("Nothing is known about " + sku + " — it is not in this app and not "
+            + "in Amazon's catalogue for this account. Press Sync and try again.");
     return;
   }
   if(!PDP_SKU){                                  // entering from the grid, not
@@ -107,12 +197,19 @@ function pdpOpen(sku){
   // The product type's schema drives the attribute dropdowns and the nested
   // sub-field boxes. openDrawer fetches it on demand for exactly this reason;
   // without it the fields render as flat boxes with no allowed values.
+  //
+  // Whichever row this page ended up with -- ours, or Amazon's. On a
+  // catalogue-only listing the product type is the one Amazon reports, so the
+  // dropdowns are right for what the listing actually IS.
+  const r = own || cat || {sku: sku};
   if(r.product_type && typeof loadSchemas === "function"
      && !(SCHEMAS[r.product_type] && (SCHEMAS[r.product_type].attrs||[]).length)){
     loadSchemas([r.product_type], false, (typeof rowMkt==="function")?rowMkt(r):"")
       .then(() => { if(PDP_SKU === sku) pdpRender(); }).catch(() => {});
   }
-  // What Amazon currently holds, for the comparison column.
+  // What Amazon currently holds, for the comparison column. Already asked for
+  // above when there is no draft -- lvEnsure is re-entrant, so a second call
+  // while one is in flight does nothing.
   if(typeof lvEnsure === "function") lvEnsure(r);
 
   if(typeof altaSyncUrl === "function") altaSyncUrl();
@@ -1002,6 +1099,92 @@ function pdpGoToField(key){
   }, 60);
 }
 
+/* WHOSE DATA THIS IS, when it is not ours.
+ *
+ * A listing synced from Amazon opens here now like any other, and every field
+ * on the page is Amazon's own value. That is the point -- but it changes what
+ * an edit means, and saying nothing would let somebody type into a box that has
+ * nowhere to save to.
+ *
+ * The app's edits go through /edit, which finds a listing by SKU and correctly
+ * refuses when there is no row. So the boxes read but do not write until Sync
+ * pulls the listing in as a real draft -- and this says so, once, with the
+ * button that does it.
+ */
+function pdpCatalogueNote(r){
+  if(!pdpIsCatalogueOnly(r)) return "";
+  const L = (typeof lvGet === "function") ? lvGet(r.sku) : null;
+  const state = (L && L.state) || "";
+
+  // A FAILED READ IS NOT AN EMPTY LISTING, and on this page the difference is
+  // everything: without it, a listing Amazon refused to describe looks like one
+  // with no title, no bullets and no attributes. The same distinction
+  // drawer_attributes draws, said here because this page has nothing else on it
+  // to explain the blanks.
+  if(state === "error"){
+    return '<div class="pdp-catnote bad">'
+      + '<i class="ti ti-alert-triangle"></i>'
+      + '<div><b>Amazon would not describe this listing.</b> '
+      + 'It is on your account and this app holds no draft of it, so everything '
+      + 'below the title had to come from Amazon — and that read failed'
+      + (L.error ? ': ' + esc(String(L.error).slice(0, 140)) : '')
+      + '. The empty fields mean <b>nobody could look</b>, not that the listing '
+      + 'has none. Press "Diagnose SP-API" on the listings page if this keeps '
+      + 'happening.'
+      + '</div>'
+      + '<button class="pdp-tb" onclick="lvRefresh(\'' + esc(r.sku) + '\')">'
+      + '<i class="ti ti-refresh"></i> Try again</button>'
+      + '</div>';
+  }
+  if(state === "gone"){
+    return '<div class="pdp-catnote bad">'
+      + '<i class="ti ti-alert-triangle"></i>'
+      + '<div><b>Amazon no longer has this listing.</b> '
+      + 'It was in the catalogue this app last read, and asking about it now '
+      + 'returns nothing. It may have been deleted or closed.</div></div>';
+  }
+
+  return '<div class="pdp-catnote">'
+    + '<i class="ti ti-cloud-download"></i>'
+    + '<div><b>This is Amazon\'s copy of the listing, read live.</b> '
+    + 'It is on your account but this app holds no draft of it, so every field '
+    + 'below is Amazon\'s own value'
+    + (state === "loading" ? ' — still reading the rest' : '')
+    + '. Editing needs a draft to save into: press Sync to pull this listing in, '
+    + 'and it then behaves like any other.'
+    + '</div>'
+    + '<button class="pdp-tb" onclick="pdpSyncThis(\'' + esc(r.sku) + '\')">'
+    + '<i class="ti ti-refresh"></i> Sync this listing</button>'
+    + '</div>';
+}
+
+/* Pull ONE listing in from Amazon, so it becomes a draft that can be edited.
+ * Uses /live/pull_row, which is the app's existing single-listing pull -- it
+ * merges Amazon's real images and product type into a row (Rule 12). */
+function pdpSyncThis(sku){
+  if(typeof toast === "function") toast("Pulling " + sku + " in from Amazon…");
+  const body = (typeof acctBody === "function")
+    ? acctBody({sku: sku}) : {sku: sku};
+  fetch("/live/pull_row", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)})
+    .then(r => r.json())
+    .then(function(j){
+      if(!j || !j.ok){
+        if(typeof toast === "function")
+          toast("Could not pull it in: " + ((j && j.error) || "unknown"));
+        return;
+      }
+      if(typeof toast === "function") toast("Pulled in. Reloading the listing…");
+      if(typeof loadRows === "function"){
+        Promise.resolve(loadRows()).then(function(){ pdpRender(); });
+      }else{
+        pdpRender();
+      }
+    })
+    .catch(e => { if(typeof toast === "function") toast(String(e)); });
+}
+
 /* ---- the footer --------------------------------------------------------- */
 
 /* Cancel | Save and finish, stuck to the bottom of the panel.
@@ -1116,7 +1299,11 @@ function pdpRender(){
                  // Amazon's own reply to the last Preview/Submit. Above the tabs
                  // for the same reason as the two panels above it: a rejection
                  // you have to go looking for has not been reported.
-                 + pdpApiIssues(r);
+                 + pdpApiIssues(r)
+                 // AND WHERE THIS PAGE'S CONTENTS CAME FROM, when they are not
+                 // ours. Above everything, because it changes what every field
+                 // below it means.
+                 + pdpCatalogueNote(r);
 
   let tab = "";
   if(PDP_TAB === "details"){

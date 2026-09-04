@@ -39,10 +39,17 @@ const DET = code(read("static", "js", "listrow_detailed.js"));
 const MIL = code(read("static", "js", "miles_template.js"));
 
 console.log("\n== one function decides where a listing opens ==");
-ok("openListing asks whether there is a draft",
-   /function openListing\(sku, asin\)\{[\s\S]*?hasDraftRow\(s\)/.test(LIST));
-ok("  and sends one without a draft to the live optimiser",
-   /function openListing\(sku, asin\)\{[\s\S]*?optimizeLive\(/.test(LIST));
+// IT NO LONGER ASKS. CLAUDE_CODE_PROMPT_amazon_listings.md:
+//     "ALL listings open the PDP overlay regardless of origin. A listing
+//      synced from Amazon is still a listing you manage."
+// The draft check was the right condition for a page that could only be built
+// from a row. pdpOpen draws one from Amazon's own catalogue and attributes now
+// (pdpCatalogueRow), so there is nothing left for the branch to protect.
+// See test_every_listing_opens.py.
+ok("openListing goes straight to the product page",
+   /function openListing\(sku, asin\)\{[\s\S]{0,200}?pdpOpen\(s\); return;/.test(LIST));
+ok("  and no longer routes anything to the optimize modal",
+   !/function openListing\(sku, asin\)\{[\s\S]{0,400}?optimizeLive\(/.test(LIST));
 ok("openLiveListing now decides nothing of its own",
    /function openLiveListing\(asin, sku\)\{\s*openListing\(sku, asin\);\s*\}/.test(LIST));
 
@@ -67,10 +74,11 @@ ok("  nor do the live tiles", count(MIL, /pdpOpen\(/g) === 0);
 // The fourth is what closes the last route to the old panel, so this count
 // going UP is not a regression by itself; a NEW one outside those four is.
 ok("in listings.js it is only inside openListing, openDrawer and the button",
-   count(LIST, /pdpOpen\(/g) === 4);
+   count(LIST, /pdpOpen\(/g) === 3);
 const inOpen = LIST.slice(LIST.indexOf("function openListing(sku, asin)"));
-ok("  and the first of those is guarded by hasDraftRow",
-   /hasDraftRow\(s\) && typeof pdpOpen === "function"\)\{ pdpOpen\(s\)/.test(inOpen));
+// No guard any more -- every listing is drawable.
+ok("  and it is unconditional",
+   /if\(typeof pdpOpen === "function"\)\{ pdpOpen\(s\); return; \}/.test(inOpen));
 
 console.log("\n== the ASIN handed to the optimiser is OURS, never the competitor's ==");
 // CLAUDE.md Rule 1 and the two-ASIN problem: on a row this app generated,

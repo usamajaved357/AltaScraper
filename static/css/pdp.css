@@ -343,6 +343,29 @@ body.pdp-on{ overflow:hidden; }
   border-bottom:1px solid var(--pdp-line2);
 }
 
+/* ---- 1g. A LISTING THIS APP HOLDS NO DRAFT OF --------------------------- */
+/* Amazon's own copy, read live. Said once at the top, because it changes what
+   every field under it means -- they can be read but not saved until Sync
+   pulls the listing in. */
+.pdp-catnote{
+  display:flex; align-items:flex-start; gap:10px;
+  background:var(--pdp-warnbg); border:1px solid var(--pdp-warn);
+  border-radius:6px; padding:9px 11px; margin-bottom:12px;
+  font-size:11px; line-height:1.5; color:var(--pdp-ink2);
+}
+.pdp-catnote > i{ font-size:15px; color:var(--pdp-warn); flex-shrink:0; margin-top:1px; }
+.pdp-catnote b{ color:var(--pdp-warn); font-weight:600; }
+.pdp-catnote > div{ flex:1; min-width:0; }
+.pdp-catnote button{ flex-shrink:0; white-space:nowrap; }
+/* A READ THAT FAILED, not a listing with nothing in it. Red, because the blanks
+   underneath mean "nobody could look" and that is a different state from
+   "Amazon holds no value here". */
+.pdp-catnote.bad{
+  background:var(--pdp-dangerbg); border-color:var(--pdp-danger);
+}
+.pdp-catnote.bad > i{ color:var(--pdp-danger); }
+.pdp-catnote.bad b{ color:var(--pdp-danger); }
+
 /* ---- 1d. THE FOOTER ----------------------------------------------------- */
 /* Stuck to the bottom of the VIEWPORT, not the end of the content: a panel
    this long scrolls, and a footer that scrolled away with it would only be
