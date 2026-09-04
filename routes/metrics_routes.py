@@ -213,6 +213,83 @@ def register(app, *, CONFIG_PATH, _cfg, _active_account, _state):
                 if entry.get("stale"):
                     m.setdefault("stale_groups", []).append(grp)
 
+        # ---- what Amazon takes, from the resolver the calculator uses -------
+        #
+        #     "many items dont display total fees on all listings page live on
+        #      amazon but when i click on calculate revenue it shows the fee,
+        #      but why not outside"
+        #
+        # Because the two were reading different things. The ROW read
+        # listings.amazon_fees, a figure frozen into the table when the listing
+        # was GENERATED -- so a listing synced from Amazon, which this app never
+        # generated, had none and the cell was a dash. The CALCULATOR asked
+        # domain/amazon_fees.breakdown_for, the three-tier resolver, which
+        # always has an answer: what Amazon actually took on this product's
+        # settled orders, else Amazon's own quote for it, else this account's
+        # own MEASURED referral rate. Never a flat 15%.
+        #
+        # The row asks the same resolver now, so the two cannot disagree and a
+        # catalogue-only listing has a fee like any other (CLAUDE.md Rule 12).
+        #
+        # NOTHING IS FETCHED HERE. breakdown_for reads what is stored; it does
+        # not call Amazon. So this costs nothing on a page drawing sixty rows,
+        # and it works with SP-API down -- the same reason the calculator was
+        # built on it.
+        #
+        # THE BASIS TRAVELS WITH THE NUMBER, always. "2.28, quoted by Amazon"
+        # and "2.28, our measured rate" are different claims, and a bare figure
+        # would let the weaker one be read as the stronger.
+        # THE PRICE AND THE ASIN COME FROM THE BROWSER, in the same request.
+        # That is the pattern /listing/revenue already set, for its own stated
+        # reason: "the browser already holds the listing's price and passes it
+        # on the first call, so this route does not read the listings table at
+        # all -- one fewer thing that can disagree with what is on screen."
+        # It matters more here, because a catalogue-only listing has no row in
+        # that table to read a price from at all.
+        #
+        # ASINS, NOT r.asin. The caller sends OUR asin (rowAsin().own); the one
+        # in the SKU is the competitor this listing was researched from, and a
+        # fee quoted against it would be for somebody else's category (Rule 1).
+        _prices = dict(zip(skus, (request.args.get("prices", "") or "").split(",")))
+        _asins = dict(zip(skus, (request.args.get("asins", "") or "").split(",")))
+        try:
+            from domain import amazon_fees as _af
+            _cur = "USD" if mkt in ("US", "USA") else "GBP"
+            for sku in skus:
+                m = local.setdefault(sku, {})
+                price = _num(_prices.get(sku))
+                if price is None:
+                    price = _num(m.get("price")) or _num(m.get("buy_box_price"))
+                if not price or price <= 0:
+                    continue          # a fee is a share OF a price
+                asin = (_asins.get(sku) or m.get("asin") or "").strip().upper()
+                bd = _af.breakdown_for(
+                    CONFIG_PATH, wsid, mkt, asin, price,
+                    is_fba=bool(m.get("is_fba")), currency=_cur)
+                if not bd:
+                    continue
+                taken = bd.get("total")
+                if taken is None:
+                    continue
+                m["fees_total"] = taken
+                m["fee_basis"] = bd.get("basis") or ""
+                m["fee_detail"] = bd.get("detail") or ""
+                if bd.get("rate") is not None:
+                    m["fee_rate"] = bd["rate"]
+                # The parts come off `lines`, which is the shape breakdown_for
+                # returns -- one entry per charge with its own `charged` flag.
+                # Read as top-level keys they would all have been None, and the
+                # row would have shown a total with no breakdown under it.
+                for _l in (bd.get("lines") or []):
+                    if not _l.get("charged"):
+                        continue
+                    if _l.get("key") == "referral":
+                        m["referral_fee"] = _l.get("amount")
+                    elif _l.get("key") == "fba":
+                        m["fba_fee"] = _l.get("amount")
+        except Exception:
+            pass      # a fee that cannot be resolved is a dash, not a failure
+
         return jsonify({
             "ok": True,
             "metrics": local,

@@ -98,6 +98,38 @@ async function lrLoadMetrics(rows, force){
     // server will accept on a large catalogue.
     const ask = need.slice(0, 400);
     let url = "/listing/live_metrics?skus=" + encodeURIComponent(ask.join(","));
+    // THE PRICE AND OUR ASIN GO WITH THE QUESTION.
+    //
+    //     "many items dont display total fees on all listings page live on
+    //      amazon but when i click on calculate revenue it shows the fee"
+    //
+    // The fee is a share of a PRICE, and the server has no reliable one: a
+    // listing synced from Amazon has no row in the listings table to read it
+    // from. The browser is holding the very price it is about to draw, so it
+    // sends that -- the same reason /listing/revenue takes its price from here
+    // rather than looking it up, and the same guarantee: the fee on screen is
+    // the fee for the price on screen.
+    //
+    // OUR ASIN, never r.asin. rowAsin().own is this account's own listing; the
+    // ASIN embedded in the SKU is the COMPETITOR it was researched from, and a
+    // fee quoted against that would be for their product's category
+    // (CLAUDE.md Rule 1).
+    const byS = {};
+    (rows || []).forEach(function(r){ byS[String(r.sku)] = r; });
+    const priceOf = function(r){
+      const v = (r && (r.our_price != null ? r.our_price : r.price));
+      const n = parseFloat(String(v == null ? "" : v).replace(/[^0-9.\-]/g, ""));
+      return isFinite(n) && n > 0 ? String(n) : "";
+    };
+    const asinOf = function(r){
+      if(!r) return "";
+      if(typeof rowAsin === "function"){
+        try{ return String(rowAsin(r).own || ""); }catch(e){}
+      }
+      return "";
+    };
+    url += "&prices=" + encodeURIComponent(ask.map(s => priceOf(byS[s])).join(","))
+         + "&asins="  + encodeURIComponent(ask.map(s => asinOf(byS[s])).join(","));
     if(force) url += "&fetch=1";
     const j = await (await fetch(typeof acctUrl === "function" ? acctUrl(url) : url)).json();
     if(j && j.ok){
@@ -1161,25 +1193,61 @@ function lrPricing(r){
 function lrFees(r){
   const m = lrMetrics(r.sku) || {};
   const cur = (typeof CUR_SYMBOL !== "undefined") ? CUR_SYMBOL : "";
-  // THE ROW ALREADY CARRIES A FEE. listings.amazon_fees and .fee_source are
-  // real columns the generator fills; the metrics route returns neither. So the
-  // row answers first and the metrics only fill what it cannot -- rather than a
-  // column of dashes sitting over a figure the app already had (Rule 12).
+  // THE RESOLVER ANSWERS FIRST NOW, and the stored column second.
+  //
+  // listings.amazon_fees is a figure FROZEN INTO THE ROW when the listing was
+  // generated. Three things follow from that and all three were on screen:
+  //
+  //   a listing synced from Amazon was never generated here, so it has none --
+  //     which is why "many items dont display total fees on all listings page
+  //     live on amazon" while the revenue calculator showed one;
+  //   the price may have moved since, and a fee is a share of the price;
+  //   17 rows across two accounts carry 0.00 stamped "SP-API (exact)", which
+  //     is a quote that came back empty being recorded as a fee of nothing.
+  //
+  // /listing/live_metrics now resolves it through domain/amazon_fees, the same
+  // three-tier resolver the calculator uses -- settled orders, else Amazon's
+  // quote, else this account's measured rate -- so the two screens cannot
+  // disagree (CLAUDE.md Rule 12) and every listing has an answer.
+  //
+  // The stored column is still the fallback: it is what the app knew before
+  // any of this, and a dash where there is a figure would be a step backwards.
   const rowFee = String(r.amazon_fees == null ? "" : r.amazon_fees)
                    .replace(/[^0-9.\-]/g, "");
-  const total = rowFee !== "" ? rowFee
-              : (m.fees_total != null ? m.fees_total
-                 : (m.fees != null ? m.fees : null));
+  const total = (m.fees_total != null) ? m.fees_total
+              : (m.fees != null ? m.fees
+                 : (rowFee !== "" ? rowFee : null));
   const rate = (m.fee_rate != null) ? (Number(m.fee_rate) * 100) : null;
   const basis = String(m.fee_basis || r.fee_source || "");
-  const word = basis === "actual" ? "from your sales"
-             : basis === "quoted" ? "quoted by Amazon"
+  // WHAT "ESTIMATED" ACTUALLY MEANS HERE, because the bare word undersells it.
+  //
+  //     "i suspect the fee is hardcoded and not actually coming from amazon,
+  //      which is a bad inaccurate behavior"
+  //
+  // The third tier is not a guess and it is not 15%: it is THIS ACCOUNT'S OWN
+  // rate, worked out from what Amazon actually deducted on its settled orders
+  // over the last 120 days. On nestwell_goods that is 18.01%, which is 15% plus
+  // the VAT Amazon charges on its own fees -- a number no default could have
+  // produced and the reason the word matters. Printing "estimated" invited
+  // exactly the suspicion above.
+  const word = basis === "actual" ? "taken on your own sales"
+             : basis === "quoted" ? "quoted by Amazon for this product"
+             : basis === "estimated" ? "your own measured rate"
              : basis ? esc(basis) : "";
+  const why = basis === "actual"
+        ? "What Amazon really deducted on this product's settled orders."
+        : basis === "quoted"
+        ? "Amazon's own quote for this ASIN at this price."
+        : basis === "estimated"
+        ? "Amazon has not been asked about this product, so this is the rate "
+          + "measured across everything this account HAS sold — not a default."
+        : "";
   return lrDataRow("Total fees", lrMoney(total))
     + (m.fba_fee != null ? lrDataRow("FBA fee", lrMoney(m.fba_fee))
        : (m.referral_fee != null ? lrDataRow("Referral", lrMoney(m.referral_fee)) : ""))
     + (rate != null
-        ? '<div class="fee-basis">' + rate.toFixed(2).replace(/\.00$/, "") + '% '
+        ? '<div class="fee-basis" title="' + esc(m.fee_detail || why) + '">'
+          + rate.toFixed(2).replace(/\.00$/, "") + '% '
           + esc(word) + '</div>'
         : "")
     // IT OPENS A PANEL, NOT A PAGE.
