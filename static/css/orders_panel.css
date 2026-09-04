@@ -31,13 +31,31 @@
 }
 .o-bar > div{
   display:flex; align-items:center; justify-content:center;
-  min-width:0; overflow:hidden; white-space:nowrap; cursor:help;
-  color:#0d1117;
+  min-width:0; overflow:hidden; white-space:nowrap;
+  color:var(--sidebar);
 }
-.bar-cost{ background:var(--ink3); color:var(--panel); }
-.bar-fee{ background:var(--red); color:#fff; }
-.bar-profit{ background:var(--ok); }
-.bar-loss{ background:var(--red); color:#fff; }
+/* cursor:help ON THE SEGMENTS THAT HAVE SOMETHING TO SHOW. It was on this
+   shared rule, which is `.o-bar > div` -- more specific than a bare class, so
+   .bar-unknown could not turn it off and the placeholder segment offered a
+   tooltip it no longer has. */
+.o-bar > .bar-cost, .o-bar > .bar-fee,
+.o-bar > .bar-profit, .o-bar > .bar-loss{ cursor:help; }
+/* THE SAME THREE COLOURS THE REPRICER'S BAR USES.
+ *
+ *     "These same three colours must be used everywhere a cost/fee/profit bar
+ *      appears -- orders, sourcing, revenue calculator. One palette, no drift."
+ *
+ * This bar was grey / --red / --ok while the repricer's was blue / coral /
+ * green, so the same three quantities were three different colours depending on
+ * which screen you were on. --red for the referral fee was the worst of it: red
+ * means something is wrong, and Amazon's cut is not wrong, it is just Amazon's.
+ * The tokens are in dashboard.css.
+ *
+ * A LOSS STAYS RED, because that one IS a verdict. */
+.bar-cost{ background:var(--bar-cost); color:var(--sidebar); }
+.bar-fee{ background:var(--bar-fee); color:var(--sidebar); }
+.bar-profit{ background:var(--bar-profit); color:var(--sidebar); }
+.bar-loss{ background:var(--red); color:var(--sidebar); }
 
 /* ---- the four cards ---------------------------------------------------- */
 .o-cards{ display:flex; gap:6px; margin-bottom:9px; flex-wrap:wrap; }
@@ -45,6 +63,12 @@
   flex:1 1 88px; min-width:78px;
   background:var(--sidebar); border:1px solid var(--line); border-radius:5px;
   padding:6px 8px; text-align:center; cursor:help;
+}
+/* WHY A CARD IS BLANK, under the card. A dash on its own reads as a figure
+   that failed to load; this says which fact is missing, and the box that sets
+   it is on the flow line just below. */
+.o-card-why{
+  font-size:var(--fs-xs); color:var(--ink4); margin-top:2px; line-height:1.2;
 }
 .o-card-v{ font-size:16px; font-weight:700; line-height:1.15; color:var(--ink);
            font-variant-numeric:tabular-nums; }
@@ -132,7 +156,19 @@
 .bar-unknown{
   background:repeating-linear-gradient(45deg,
     var(--panel3) 0 6px, var(--panel2) 6px 12px);
-  color:var(--ink3); cursor:help;
+  color:var(--ink3);
+  /* NOT cursor:help any more -- there is nothing to hover for. The segment says
+     what would fill it, on the segment. `.o-bar > div` sets cursor:help for the
+     segments that DO carry a tooltip, so this has to say otherwise. */
+  cursor:default;
+  gap:6px;
+}
+.bar-unknown-v{ font-weight:600; }
+/* The instruction is the second thing read, and it is dropped rather than
+   squeezed when the segment is too narrow to hold it. */
+.bar-unknown-l{
+  font-weight:400; color:var(--ink4);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 
 /* ---- delivery, one line ------------------------------------------------- */

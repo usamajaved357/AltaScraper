@@ -127,6 +127,24 @@
        name, so the same name is defined here and those seven now use it. */
     --paper:#ffffff;
 
+    /* WHERE ONE UNIT'S MONEY WENT. Three colours, used by every stacked bar in
+       the app -- the order panel, the repricer's price bar and the fee panel:
+
+           "These same three colours must be used everywhere a cost/fee/profit
+            bar appears -- orders, sourcing, revenue calculator. One palette,
+            no drift."
+
+       They are NOT the status colours. --red means "something is wrong" and a
+       referral fee is not wrong, it is just Amazon's share; the order panel used
+       --red for it and so read as an error beside the repricer's coral. Amazon's
+       cut is coral, what you paid is blue, what you keep is green -- and that
+       green is deliberately a shade quieter than --ok, because a bar segment is
+       a quantity, not a verdict. */
+    --bar-cost:#5b8fb9;      /* what the stock cost you */
+    --bar-fee:#d4735a;       /* what Amazon took (referral) */
+    --bar-fee2:#c9694f;      /* a second fee beside it (closing) */
+    --bar-profit:#4ebb82;    /* what is left */
+
     /* ---- compatibility aliases (see the note above) ---- */
     --muted:var(--ink2);
     --green:var(--ok);      --greenbg:var(--ok-bg);
@@ -4445,6 +4463,23 @@ table.ordtable tbody tr.orddetail > td{
   grid-column:1 / -1; margin:-2px 0 4px; padding:0 0 6px 0;
   font-size:10px; color:var(--ink3); border-bottom:1px solid var(--line);
 }
+/* ONE PILL PER FACT, under the supplier's name.
+   The postage, the delivery window, the destination, the dispatch time and the
+   stock left were one 10px sentence joined with middots; at full row width
+   nothing in it was findable. Same facts, each with an icon saying which kind
+   of fact it is, so they are picked out by shape rather than by reading. */
+.sup-ship-tags{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.sup-ship-tag{
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:var(--fs-xs); padding:1px 5px;
+  background:var(--panel2); border-radius:var(--radius-sm);
+  color:var(--ink2); white-space:nowrap;
+}
+.sup-ship-tag i{ font-size:10px; color:var(--ink3); }
+/* A REASON THIS SUPPLIER MAY BE UNUSABLE IS NOT A DELIVERY DETAIL. Out of
+   stock, a failed read and a stale price stay sentences -- a chip the same size
+   as "5d handling" would bury them. */
+.odp-shipwarn{ display:block; margin-top:3px; color:var(--warn); }
 .odp-row-dead{ opacity:.5; }
 
 /* ---- delivery dates --------------------------------------------------- */

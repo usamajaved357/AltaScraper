@@ -1500,17 +1500,22 @@ function _stackBar(b, r){
         : '<div class="rp-sb-loss" style="flex:' + Math.max(1, cost * 0.25)
           + '" title="This price does not cover what the unit costs">'
           + _smoney(profit) + '</div>');
+  // THE KEY MUST BE THE BAR'S OWN COLOURS. These were the *-bg TINTS -- the dark
+  // backgrounds, not the segments -- so the legend square beside "Supplier" was
+  // a nearly-black teal while the segment it named was blue. A key that does not
+  // match the thing it explains is worse than no key.
   h += '</div><div class="rp-sbleg">'
-    + '<span><span class="rp-sq" style="background:var(--accent-bg)"></span>Supplier</span>'
-    + '<span><span class="rp-sq" style="background:var(--red-bg)"></span>Referral</span>'
+    + '<span><span class="rp-sq" style="background:var(--bar-cost)"></span>Supplier</span>'
+    + '<span><span class="rp-sq" style="background:var(--bar-fee)"></span>Referral</span>'
     + (close > 0
-        ? '<span><span class="rp-sq" style="background:var(--red-bg)"></span>Closing</span>'
+        ? '<span><span class="rp-sq" style="background:var(--bar-fee2)"></span>Closing</span>'
         : '')
     + (other > 0
         ? '<span><span class="rp-sq" style="background:var(--line2)"></span>'
           + 'Postage &amp; ads</span>'
         : '')
-    + '<span><span class="rp-sq" style="background:var(--ok-bg)"></span>'
+    + '<span><span class="rp-sq" style="background:'
+    + (profit > 0 ? 'var(--bar-profit)' : 'var(--red)') + '"></span>'
     + (profit > 0 ? 'Profit' : 'Shortfall') + '</span>'
     // WHICH PRICE THIS BAR IS DRAWN AT.
     //
@@ -3260,14 +3265,17 @@ function _allFees(d, cur){
   const f = (d || {}).fees;
   if(!f || !(f.lines || []).length) return '';
   const id = 'fee_' + Math.random().toString(36).slice(2, 9);
-  const COL = {referral: '#e25c5c', closing: '#d4846f', fba: '#8b95a5'};
+  // The same money-bar palette the stacked bar above this panel uses, so a fee
+  // line and its segment are the same colour (dashboard.css --bar-*).
+  const COL = {referral: 'var(--bar-fee)', closing: 'var(--bar-fee2)',
+               fba: 'var(--ink3)'};
   let rows = '';
   (f.lines || []).forEach(function(l){
     const on = !!l.charged;
     rows += '<div style="display:flex;gap:8px;font-size:11.5px;padding:1.5px 0;'
          +  (on ? '' : 'opacity:.45') + '">'
          +  '<span style="min-width:178px;padding-left:8px;'
-         +    (on ? 'border-left:2px solid ' + (COL[l.key] || '#5b8fb9')
+         +    (on ? 'border-left:2px solid ' + (COL[l.key] || 'var(--bar-cost)')
                   : 'border-left:2px solid transparent') + '" class="cc">'
          +    _sesc(l.label) + '</span>'
          +  '<span style="min-width:62px;text-align:right">'
