@@ -113,9 +113,18 @@
   width:36px;height:36px;border-radius:var(--radius-sm);
   background:var(--bg);border:1px solid var(--line2);flex:none;
   object-fit:cover;overflow:hidden;position:relative}
-.rp-thumb, .dt-thumb{display:flex;align-items:center;justify-content:center;
-  font-size:15px;color:var(--ink4)}
-.rp-thumb img, .dt-thumb img{width:100%;height:100%;object-fit:cover}
+/* The DIV thumbs -- the ones that hold either an <img> or a placeholder icon --
+ * centre what is in them. .stk-thumb and .catp-img are the <img> itself and are
+ * deliberately not here.
+ *
+ * .lt joined this rule when its own 44px copy in dashboard.css was deleted:
+ * that copy carried the size (dead, this file loads later and won) AND the
+ * centring (live, and the only definition of it), so removing it wholesale
+ * would have left the Listings placeholder icon in the top-left corner. */
+.rp-thumb, .dt-thumb, .lt .thumb{display:flex;align-items:center;
+  justify-content:center;font-size:15px;color:var(--ink4)}
+.rp-thumb img, .dt-thumb img, .lt .thumb img{width:100%;height:100%;
+  object-fit:cover}
 
 .stk-prod, .dt-prod{display:flex;gap:9px;align-items:center;min-width:0}
 
