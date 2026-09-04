@@ -589,10 +589,32 @@ function lrProduct(r){
           // row that has none says so rather than leaving the line out.
     +     '<br>Brand ' + (r.brand ? '<strong>' + esc(r.brand) + '</strong>'
                                   : '<span class="prod-dim">not set</span>')
+          // "NONE" AND "WE HAVE NOT ASKED" ARE DIFFERENT ANSWERS.
+          //
+          //     "my listings on all listings page shows ean none, this is not
+          //      possible, my every listing has ean"
+          //
+          // Correct, and the database agrees -- 271 of 303 listings carry one,
+          // and 86 of 86 on nestwell_goods. The rows saying "none" are the ones
+          // that come from Amazon's catalogue rather than from a draft here,
+          // and until now nothing carried a barcode onto those at all. Saying
+          // "none" for them asserted that the listing has no barcode, which is
+          // the opposite of the truth.
+          //
+          // A draft with no barcode still says "none", because that IS the
+          // answer and it is the one that stops a submit (Rule 1).
     +     (r.barcode
             ? '<br>EAN <strong class="prod-ean' + (clash ? " clash" : "") + '">'
               + esc(r.barcode) + '</strong>'
-            : '<br>EAN <span class="prod-dim">none</span>')
+            : ((typeof hasDraftRow === "function" && !hasDraftRow(r.sku))
+                ? '<br>EAN <span class="prod-dim" title="This listing is on '
+                  + 'Amazon and this app holds no draft of it. Its barcode is '
+                  + 'read from Amazon’s own listings report — press Sync to '
+                  + 'bring it in. This does NOT mean the listing has none.">'
+                  + 'not read yet</span>'
+                : '<br>EAN <span class="prod-dim" title="No barcode on this '
+                  + 'listing. Amazon will not create a product without one '
+                  + 'unless the GTIN exemption is ticked.">none</span>'))
     +     '<br>Condition <strong>New</strong>'
     +   '</div>'
     +   clash

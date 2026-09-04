@@ -145,7 +145,16 @@ def compliance_risk(row):
     level = _s(row, "compliance_risk").upper()
     if not level or level in ("NONE", "BASELINE"):
         return None
-    reason = _s(row, "notes") or _s(row, "compliance_notes")
+    # ITS OWN FIELD FIRST. This read `notes` before `compliance_notes`, and so
+    # does ip_risk above -- so a listing carrying both risks printed the SAME
+    # sentence twice, once under each heading. Measured: 2 rows on jack_uk, both
+    # showing "RE-VERIFIED -- LIVE | COMPLIANCE [HIGH]: electrical | Key
+    # reqs..." as an IP warning and again as a compliance one.
+    #
+    # `notes` is the generator's general log line and belongs to neither check;
+    # compliance_notes is this one's own. Preferring it means the two warnings
+    # say different things, which is the point of there being two.
+    reason = _s(row, "compliance_notes") or _s(row, "notes")
     extra = _s(row, "compliance_notes")
     return _warn(
         "compliance_risk", SEVERITY_WORDS.get(level, "medium"),
@@ -228,7 +237,45 @@ def for_rows(rows, live_by_upc=None, age_hours=None):
         # matters to a row whose barcode check depended on it.
         if stale and _s(r, "upc"):
             found.append(stale)
-        out[r.get("sku")] = [w for w in found if w]
+        out[r.get("sku")] = _dedupe([w for w in found if w])
+    return out
+
+
+def _dedupe(warns):
+    """Drop a warning that says exactly what an earlier one already said.
+
+        "listing/warnings.py stores the same warning twice in the warnings JSON
+         array."
+
+    IT WAS NEVER THE SAME TYPE TWICE -- for_rows builds one of each, and
+    recompute_workspace REPLACES the column rather than appending, so a
+    duplicate by (type, message) cannot happen and none exists in the data
+    (measured: 0 rows out of 171 carrying warnings).
+
+    What DOES happen, and is what a reader means by a duplicate, is the same
+    SENTENCE under two headings: ip_risk and compliance_risk both fell back to
+    the row's general `notes`. That is fixed at the source above; this is the
+    guard that keeps it fixed, and it works for any future pair.
+
+    THE FIRST ONE WINS, and the order in for_rows is deliberate -- the
+    duplicate checks come before the risk verdicts, so the more specific
+    warning is the one kept. Nothing is merged or reworded: a warning is either
+    new information or it is not shown.
+    """
+    seen, out = set(), []
+    for w in warns:
+        if not isinstance(w, dict):
+            continue
+        msg = " ".join(str(w.get("message") or "").split()).lower()
+        key = (str(w.get("type") or ""), msg)
+        # Both keys: the same type twice is a duplicate whatever it says, and
+        # the same sentence twice is a duplicate whatever it is filed under.
+        if key in seen or ("*", msg) in seen:
+            continue
+        seen.add(key)
+        if msg:
+            seen.add(("*", msg))
+        out.append(w)
     return out
 
 

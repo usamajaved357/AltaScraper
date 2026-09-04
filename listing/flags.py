@@ -153,7 +153,14 @@ def rescan_row(row: dict, ip_rules: dict, compliance_rules: dict) -> dict:
     brand        = str(row.get("Brand", "") or "")
     cur_status   = str(row.get("Status", "") or "").strip().upper()
 
-    comp = check_compliance(listing["title"], listing, compliance_rules)
+    # product_type IS PASSED NOW. It was already in scope on the line below --
+    # check_category_claims has always been given it -- and check_compliance was
+    # left to work the product out from words in the title. Amazon's own answer
+    # to "what is this" is the better one, and it is what stops a garden hose
+    # adapter being flagged as electrical goods because the word "mixer" is in
+    # its name.
+    comp = check_compliance(listing["title"], listing, compliance_rules,
+                            product_type)
     ip   = check_ip_violations(listing, brand, ip_rules)   # competitor brand needs SP-API: skipped
     cat  = check_category_claims(listing, product_type)
     rp   = check_restricted_phrasing(listing)
