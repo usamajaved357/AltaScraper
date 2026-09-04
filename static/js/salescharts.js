@@ -1275,6 +1275,44 @@ function salesCombo(o){
     });
   });
 
+  // SHADE THE DAYS NOTHING WAS MEASURED ON.
+  //
+  // The rule at the top of this file: "A missing day breaks the line and is
+  // shaded, so the gap looks like a gap." The single-metric charts do it; this
+  // one, which draws the two biggest charts on the sales page, never did. So
+  // both of them simply STOPPED at the last day Amazon has delivered -- Aug 20
+  // on jack_uk, with a fortnight of empty grid to the right of it and nothing
+  // to say why. That empty stretch is what reads as a broken chart:
+  //
+  //     "the Organic vs PPC chart draws dotted/broken lines that disconnect"
+  //
+  // A day is shaded when nothing about THIS PERIOD is known for it. The
+  // comparison series are not part of that test: "Prior period" and "Prior Year
+  // Sales" are last month's and last year's numbers drawn as context, and they
+  // run the full width because the past is complete. Counting them would mean
+  // the main chart never shaded a single day -- its green Sales line stops on
+  // Aug 20 and the grey prior line carries on to Sep 3, which is exactly the
+  // stretch that needs marking.
+  //
+  // A day where one current series is known and another is not is NOT shaded:
+  // the gap already shows in the line that is missing, and greying the column
+  // would dim the line that was measured.
+  let gaps = "";
+  {
+    const CONTEXT = {prior: 1, prior_year: 1};
+    const cols = (o.columns || []).length;
+    const half = (cols > 1 ? (iw / (cols - 1)) : iw) / 2;
+    for(let i = 0; i < cols; i++){
+      const anyLine = drawable.some(function(l){
+        return !CONTEXT[l.key] && _scNum((l.values || [])[i]) !== null; });
+      const anyBar = barsOn && _scNum((bars.values || [])[i]) !== null;
+      if(anyLine || anyBar) continue;
+      const _b = _scBand(x(i), half, padL, iw);
+      gaps += `<rect x="${_b.x}" y="${padT}" width="${_b.w}" height="${ih}"`
+            + ` fill="#7b8794" opacity="0.07"/>`;
+    }
+  }
+
   // X LABELS, as many as fit. Measured: Orbit labels every one of its 30 days --
   // "Jul 15", "Jul 16", … -- at 40.17px apart, which is as tight as an 11px
   // "Jul 15" goes. Ours thinned to sixteen and dropped half of them for no
@@ -1432,7 +1470,9 @@ function salesCombo(o){
        // small charts. See scChartWidth.
        + `<svg id="${cid}_svg" class="chartbox" viewBox="0 0 ${W} ${H}" width="100%"
                style="display:block;height:${H}px;background:transparent;border:0">`
-       + defs + grid + barsSvg + linesSvg + xl + hits + '</svg>'
+       // gaps go behind everything but the grid, so a shaded day is a
+       // background and never sits over a bar or a line.
+       + defs + grid + gaps + barsSvg + linesSvg + xl + hits + '</svg>'
        + `<div id="${cid}_tip" class="charttip"></div>`
        + '</div>'
        + note + key + '</div>';

@@ -134,12 +134,15 @@
   overflow:hidden}
 .rp-sbar div{display:flex;align-items:center;justify-content:center;
   font-size:10px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden}
-.rp-sb-cost{background:#5b8fb9}
-.rp-sb-ref{background:#e25c5c}
+/* One money-bar palette, shared with the order panel -- see dashboard.css.
+   The referral was #e25c5c here, a red; coral is the same fact without the
+   "something is wrong" the red carried. */
+.rp-sb-cost{background:var(--bar-cost)}
+.rp-sb-ref{background:var(--bar-fee)}
 /* The closing fee is usually pennies, so as a share of the price it would be
  * a sliver too thin to read. It gets a floor width instead of a share. */
-.rp-sb-close{flex:0 0 auto;min-width:40px;background:#d4846f}
-.rp-sb-profit{background:#4ebb82}
+.rp-sb-close{flex:0 0 auto;min-width:40px;background:var(--bar-fee2)}
+.rp-sb-profit{background:var(--bar-profit)}
 /* A price that does not cover its cost has no profit segment to draw. Saying
  * so beats a bar that silently stops early. */
 .rp-sb-loss{background:var(--red-bg);color:var(--red);border:1px dashed var(--red-line)}

@@ -132,14 +132,24 @@ truthy("the carrier / postage line is printed",
        h.includes("Free Royal Mail Tracked 48"));
 truthy("  the delivery window", h.includes("Wed 19 Aug to Thu 20 Aug"));
 truthy("  the postcode it was worked out for", h.includes("B11AA"));
-truthy("  the handling time", /3 days handling/.test(h));
+// EACH FACT IS ITS OWN PILL NOW, not a clause in a joined sentence:
+//
+//     "Shipping details for each supplier should use clean tagged pills under
+//      the supplier name instead of a wall of text."
+//
+// Same five facts, none dropped -- postage, delivery window, destination
+// postcode, dispatch time and stock left -- each with an icon saying which kind
+// of fact it is. The wording tightened with the shape: "3 days handling" in a
+// full-width sentence became "3d handling" in a chip.
+truthy("  the handling time", /3d handling/.test(h));
 truthy("  and how many the supplier has left", /33 left/.test(h));
-// Singular, because "1 days handling" is the sort of thing that makes a screen
-// look unfinished.
+truthy("  each fact is its own chip", (h.match(/sup-ship-tag/g) || []).length >= 5);
+// The plural problem is gone with the wording rather than handled: "1d" has no
+// plural to get wrong.
 const one = render({unit_price: 30, summary: block.summary,
                     options: [opt({dispatch_days: 1})]});
-truthy("one day is not '1 days'", /1 day handling/.test(one));
-falsy("  really not", /1 days handling/.test(one));
+truthy("one day reads as 1d", /1d handling/.test(one));
+falsy("  and never as '1 days'", /1 days handling/.test(one));
 
 console.log("\n=== the profit is against what THIS buyer paid ===");
 // Not the current listing price. A line sold under a coupon does not earn what

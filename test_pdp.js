@@ -120,12 +120,13 @@ truthy("it prefers the full-screen page, for a listing we have a row for",
        /hasDraftRow\(s\) && typeof pdpOpen === "function"\)\{ pdpOpen\(s\)/.test(LISTINGS));
 truthy("and falls back to the drawer when pdp.js has not loaded",
        /typeof pdpOpen === "function"\)\{ pdpOpen\(s\); return; \}\s*openDrawer\(s\)/.test(LISTINGS));
-// A COUNT, NOT A LIST, so a new caller has to be a deliberate act. It was 4 and
-// is 6: the warnings chip on the detailed row, and "Edit listing" in the
-// three-dot overflow, both go through the same function rather than reaching
-// for openDrawer or pdpOpen themselves -- which is the point of having one.
+// A COUNT, NOT A LIST, so a new caller has to be a deliberate act. It was 4,
+// then 6, and is 10: the three tile chips and the tile menu's "Edit details"
+// used to reach for openDrawer and now go through openListing/openListingAt
+// like everything else. See test_one_detail_view.js -- the side drawer is
+// unreachable now, and this count is where that shows up in this file.
 check("every way into a listing goes through it",
-      (LISTINGS.match(/openListing\('/g) || []).length, 6);
+      (LISTINGS.match(/openListing(At)?\('/g) || []).length, 10);
 // AND ONLY THREE THINGS CALL pdpOpen ITSELF: openListing, openLiveListing, and
 // the drawer's own expand button -- which is deliberate, because the drawer is
 // already showing this listing and is asking for the same one full screen
@@ -135,14 +136,20 @@ check("every way into a listing goes through it",
 const _lsCode = LISTINGS.replace(/\/\*[\s\S]*?\*\//g, "")
                         .split("\n").map(l => l.split("//")[0]).join("\n");
 const _pdpCalls = (_lsCode.match(/pdpOpen\(/g) || []).length;
-check("only openListing, openLiveListing and the drawer's expand call it",
-      _pdpCalls, 3);
+// Four now, not three: openDrawer itself redirects here, which is what makes
+// the side drawer unreachable. prompt_orbit_ux.docx:
+//     "These are completely different UIs showing the same data ... pick ONE."
+check("only openListing, openDrawer's redirect and the expand button call it",
+      _pdpCalls, 4);
 truthy("  and the drawer's is the expand button",
        /dw2-ib" onclick="pdpOpen\(/.test(LISTINGS));
 truthy("the drawer keeps its own way back to full screen",
        /pdpOpen\('\$\{esc\(r\.sku\)\}'\)/.test(LISTINGS));
-truthy("and the drawer is still reachable from the grid's badges / tile menu",
-       (LISTINGS.match(/openDrawer\('\$\{esc\(/g) || []).length >= 3);
+// WAS: "and the drawer is still reachable from the grid's badges / tile menu".
+// It is not, deliberately. The three tile chips and the tile menu were the
+// last four routes to it and all four now go through openListing.
+check("nothing in the grid opens the drawer any more",
+      /openDrawer\('\$\{esc\(/.test(LISTINGS), false);
 
 // ---------------------------------------------------------------------------
 console.log("\nthe overlay sits UNDER everything that must float over it");

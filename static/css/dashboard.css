@@ -127,6 +127,24 @@
        name, so the same name is defined here and those seven now use it. */
     --paper:#ffffff;
 
+    /* WHERE ONE UNIT'S MONEY WENT. Three colours, used by every stacked bar in
+       the app -- the order panel, the repricer's price bar and the fee panel:
+
+           "These same three colours must be used everywhere a cost/fee/profit
+            bar appears -- orders, sourcing, revenue calculator. One palette,
+            no drift."
+
+       They are NOT the status colours. --red means "something is wrong" and a
+       referral fee is not wrong, it is just Amazon's share; the order panel used
+       --red for it and so read as an error beside the repricer's coral. Amazon's
+       cut is coral, what you paid is blue, what you keep is green -- and that
+       green is deliberately a shade quieter than --ok, because a bar segment is
+       a quantity, not a verdict. */
+    --bar-cost:#5b8fb9;      /* what the stock cost you */
+    --bar-fee:#d4735a;       /* what Amazon took (referral) */
+    --bar-fee2:#c9694f;      /* a second fee beside it (closing) */
+    --bar-profit:#4ebb82;    /* what is left */
+
     /* ---- compatibility aliases (see the note above) ---- */
     --muted:var(--ink2);
     --green:var(--ok);      --greenbg:var(--ok-bg);
@@ -3881,7 +3899,28 @@ svg.chartbox .bar, .chartbox .bar, .chartcard .bar{
    format can be judged -- but a sample number that looks like a real one is
    the single worst thing this page could do, so every one of them is dimmed
    and struck through with a label saying what it is. */
-.ri-sample{ opacity:.45; font-style:italic; }
+/* A PLACEHOLDER FIGURE, MARKED -- BUT STILL READABLE.
+ *
+ *     "The Organic vs PPC Sales chart draws dotted/broken lines that
+ *      disconnect on days with zero sales."
+ *
+ * MEASURED in the browser before changing anything: it does not. Both lines
+ * come back as ONE path each, stroke-dasharray empty, running flat along £0
+ * through every zero-sale day exactly as the Sales chart above does, and both
+ * charts stop at the same date because that is where this account's data stops
+ * (Aug 20). There was no gap to close.
+ *
+ * What DID differ is this rule. At .45 the whole figure -- axis labels, grid
+ * lines, legend and the two 2px lines -- was washed out beside a full-strength
+ * chart eight inches above it, and a 2px line at 45% over a dark ground is
+ * exactly what a broken line looks like.
+ *
+ * .72 keeps the "this is not your data" signal (with the italics, and the bold
+ * amber banner above it that says so in words) without making the figure look
+ * like a rendering fault. The banner is the load-bearing part of that warning;
+ * the dimming was only ever meant to support it.
+ */
+.ri-sample{ opacity:.72; font-style:italic; }
 .ri-samplebar{
   margin:0 0 18px; padding:10px 13px; border-radius:8px;
   border:1px solid var(--warn-line); background:var(--warn-bg);
@@ -4424,6 +4463,23 @@ table.ordtable tbody tr.orddetail > td{
   grid-column:1 / -1; margin:-2px 0 4px; padding:0 0 6px 0;
   font-size:10px; color:var(--ink3); border-bottom:1px solid var(--line);
 }
+/* ONE PILL PER FACT, under the supplier's name.
+   The postage, the delivery window, the destination, the dispatch time and the
+   stock left were one 10px sentence joined with middots; at full row width
+   nothing in it was findable. Same facts, each with an icon saying which kind
+   of fact it is, so they are picked out by shape rather than by reading. */
+.sup-ship-tags{ display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.sup-ship-tag{
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:var(--fs-xs); padding:1px 5px;
+  background:var(--panel2); border-radius:var(--radius-sm);
+  color:var(--ink2); white-space:nowrap;
+}
+.sup-ship-tag i{ font-size:10px; color:var(--ink3); }
+/* A REASON THIS SUPPLIER MAY BE UNUSABLE IS NOT A DELIVERY DETAIL. Out of
+   stock, a failed read and a stale price stay sentences -- a chip the same size
+   as "5d handling" would bury them. */
+.odp-shipwarn{ display:block; margin-top:3px; color:var(--warn); }
 .odp-row-dead{ opacity:.5; }
 
 /* ---- delivery dates --------------------------------------------------- */

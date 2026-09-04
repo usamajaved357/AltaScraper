@@ -53,6 +53,24 @@ def _warn(wtype, severity, message, **details):
             "details": details}
 
 
+def _existing(row):
+    """The warnings already stored on a row. [] for anything unreadable.
+
+    Needed only to tell "this row has never had a refusal" from "it had one and
+    it is now fixed" -- the second has to be written back as an empty list, the
+    first must leave the row alone."""
+    raw = row.get("warnings") if isinstance(row, dict) else None
+    if isinstance(raw, list):
+        return [w for w in raw if isinstance(w, dict)]
+    if not raw:
+        return []
+    try:
+        got = json.loads(str(raw))
+    except Exception:
+        return []
+    return [w for w in got if isinstance(w, dict)] if isinstance(got, list) else []
+
+
 # ---- the checks ------------------------------------------------------------
 
 def _index(rows, field):
@@ -177,6 +195,54 @@ def no_barcode(row):
         "or UPC, or tick GTIN Exemption if this product genuinely has none.")
 
 
+def amazon_refused(row):
+    """Amazon refused this listing, and the row still carries what it said.
+
+        "A listing previously showed API_ERROR status after a failed
+         putListingsItem submission. After a Sync the error disappeared and the
+         status changed to APPROVED. The API error is now invisible."
+
+    That is what happens when a rejection lives in the STATUS column: the status
+    is Amazon's current state and Sync is entitled to change it, so the record
+    of the refusal goes with it. The reply is kept in its own column now
+    (api_issues_json -- see listing/api_issues.py) which nothing but a fresh
+    Preview or Submit writes, so a Sync cannot erase it.
+
+    This turns it into a warning so it shows up wherever warnings already do --
+    the card badge, the detailed row's chip, the product page's hero -- without
+    any of those three learning about a new field (CLAUDE.md Rule 12). The
+    product page draws the full banner from the same column.
+
+    ONLY ERRORS. "Accepted with warnings" is a success, and putting an amber
+    mark on a listing Amazon took would make the mark meaningless.
+    """
+    raw = _s(row, "api_issues_json")
+    if not raw:
+        return None
+    try:
+        from listing import api_issues as _ai
+    except Exception:
+        return None
+    rec = _ai.parse(raw)
+    errs = _ai.errors(rec)
+    if not errs:
+        return None
+    first = errs[0]
+    fields = sorted({f for e in errs for f in (e.get("fields") or [])})
+    where = (" It names %s." % ", ".join(fields[:3])) if fields else ""
+    when = (" (%s)" % rec["at"]) if rec.get("at") else ""
+    what = ("refused this listing" if rec.get("mode") == "submit"
+            else "would refuse this listing")
+    return _warn(
+        "amazon_refused", "high",
+        "Amazon %s%s: %s%s%s" % (
+            what, when, first.get("message") or "no message given",
+            (" ...and %d more." % (len(errs) - 1)) if len(errs) > 1 else "",
+            where),
+        count=len(errs), at=rec.get("at", ""), mode=rec.get("mode", ""),
+        fields=fields)
+
+
 def no_product_type(row):
     """This listing has no product type, so some compliance rules cannot apply.
 
@@ -254,7 +320,24 @@ def for_rows(rows, live_by_upc=None, age_hours=None):
     stale = stale_catalogue(age_hours)
     out = {}
     for r in rows:
+        # A REFUSAL IS NOT ABOUT OUR WORKFLOW STATE, so it is not filtered by it.
+        #
+        # ACTIVE_STATUSES is QUEUED/GENERATED/SUBMITTED/LIVE -- the rows still
+        # moving through this app. A listing Amazon REFUSED is in API_ERROR,
+        # and the one in the report had been moved on to APPROVED. Both sit
+        # outside that set, so every check below skipped them and the only two
+        # statuses that can carry a refusal were the two that could never show
+        # one. Amazon's own reply is evaluated for every row.
+        _refused = amazon_refused(r)
         if str(r.get("status") or "").upper() not in ACTIVE_STATUSES:
+            # Touched only when there is something to say or something to
+            # UNsay. A row outside the active set is otherwise left exactly as
+            # it is: it may still carry warnings from when it was GENERATED,
+            # and dropping those here would be a change nobody asked for.
+            _had = any(str(w.get("type")) == "amazon_refused"
+                       for w in _existing(r))
+            if _refused or _had:
+                out[r.get("sku")] = _dedupe([_refused] if _refused else [])
             continue
         found = [
             duplicate_barcode(r, by_upc),
@@ -263,6 +346,7 @@ def for_rows(rows, live_by_upc=None, age_hours=None):
             ip_risk(r),
             compliance_risk(r),
             no_barcode(r),
+            _refused,
             no_product_type(r),
             barcode_live_on_amazon(r, live_by_upc or {}),
         ]

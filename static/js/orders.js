@@ -907,13 +907,21 @@ function _ordSourcesHtml(block, forTitle, view){
     +  '<div class="odp-src-h r">You pay</div>'
     +  '<div class="odp-src-h r">You keep</div>';
 
-  opts.forEach(function(o){
+  opts.forEach(function(o, _i){
     const dead = o.state === 'dead', unknown = o.state === 'unknown';
     const cls = dead ? ' odp-row-dead' : '';
     // The cheapest buyable one is marked, so the choice is obvious at a glance
     // rather than being inferred from the order of the rows.
+    //
+    // AND A ROW WITHOUT A RANK IS NUMBERED WHERE IT SITS. o.rank comes from the
+    // server and is not always there; when it was missing this printed the word
+    // "undefined" in the # column, which is the first thing the eye lands on in
+    // that table. The rows are already in the order the server chose, so the
+    // position IS the rank -- there is nothing to work out.
+    const rank = (o.rank === null || o.rank === undefined || o.rank === "")
+      ? (_i + 1) : o.rank;
     h += '<div class="odp-rank' + (o.cheapest ? ' best' : '') + cls + '">'
-      +  (o.cheapest ? 'best' : (dead ? '—' : (unknown ? '?' : o.rank)))
+      +  (o.cheapest ? 'best' : (dead ? '—' : (unknown ? '?' : rank)))
       +  '</div>'
       +  '<div class="' + cls.trim() + '"><a class="odp-link" target="_blank" '
       +  'rel="noopener" href="' + _oEsc(o.url) + '">'
@@ -940,21 +948,40 @@ function _ordSourcesHtml(block, forTitle, view){
                  + '% ROI</span>'))
       +  '</div>';
 
-    // HOW IT GETS THERE AND WHEN, spanning the grid on its own line so it can be
-    // a full sentence without squeezing the numbers.
-    const bits = [];
-    if(o.postage_text) bits.push(_oEsc(o.postage_text));
-    if(o.delivery_text){
-      bits.push('arrives ' + _oEsc(o.delivery_text)
-        + (o.delivery_postcode ? ' to ' + _oEsc(o.delivery_postcode) : ''));
-    }
+    // HOW IT GETS THERE AND WHEN -- ONE PILL PER FACT, not one sentence.
+    //
+    //     "Shipping details for each supplier should use clean tagged pills
+    //      under the supplier name instead of a wall of text."
+    //
+    // It was five separate facts joined with middots:
+    //
+    //     Free Royal Mail Tracked 48 · arrives Mon 7 Sep to Wed 9 Sep to B11AA
+    //     · 5 days handling · 10 left
+    //
+    // and at 10px across a full-width row nothing in it was findable. The facts
+    // are unchanged and none is dropped; each gets its own chip with an icon
+    // that says which kind of fact it is, so "when does it arrive" and "how many
+    // are left" are picked out by shape rather than by reading the line.
+    //
+    // THE PROBLEMS STAY AS SENTENCES. Out of stock, a failed read and a stale
+    // price are not attributes of the delivery -- they are reasons this supplier
+    // may not be usable at all, and a chip the same size as "5d handling" would
+    // bury them.
+    const pill = function(icon, text, extra){
+      return '<span class="sup-ship-tag' + (extra ? ' ' + extra : '') + '">'
+           + '<i class="ti ti-' + icon + '"></i>' + _oEsc(text) + '</span>';
+    };
+    let pills = "";
+    if(o.postage_text) pills += pill('truck', o.postage_text);
+    if(o.delivery_text) pills += pill('calendar', 'Arrives ' + o.delivery_text);
+    if(o.delivery_postcode) pills += pill('map-pin', 'to ' + o.delivery_postcode);
     if(o.dispatch_days !== null && o.dispatch_days !== undefined){
-      bits.push(o.dispatch_days + ' day' + (o.dispatch_days === 1 ? '' : 's')
-                + ' handling');
+      pills += pill('clock', o.dispatch_days + 'd handling');
     }
     if(o.available_qty !== null && o.available_qty !== undefined){
-      bits.push(o.available_qty + ' left');
+      pills += pill('package', o.available_qty + ' left');
     }
+    const bits = [];
     if(dead){
       bits.push(o.status === 'gone' ? 'the listing has ended' : 'out of stock');
     }
@@ -962,7 +989,10 @@ function _ordSourcesHtml(block, forTitle, view){
     // A PRICE FROM YESTERDAY IS NOT A PRICE. Said plainly rather than left for
     // someone to work out from a timestamp.
     if(o.stale) bits.push('this reading is out of date — press Check in the Repricer');
-    h += '<div class="odp-ship' + cls + '">' + (bits.length ? bits.join(' · ') : '')
+    h += '<div class="odp-ship' + cls + '">'
+      +  (pills ? '<span class="sup-ship-tags">' + pills + '</span>' : '')
+      +  (bits.length ? '<span class="odp-shipwarn">' + bits.join(' · ')
+                        + '</span>' : '')
       +  '</div>';
   });
   h += '</div>';

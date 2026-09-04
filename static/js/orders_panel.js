@@ -76,13 +76,24 @@ function _opBar(t, cur){
     return '<div class="o-bar">'
       + seg("bar-cost", cost, "What the stock cost you")
       + seg("bar-fee", fee, "What Amazon took")
+      // THE GREY SEGMENT SAYS WHAT WOULD FILL IT.
+      //
+      //     "show the fee segment and a grey placeholder segment saying 'Set
+      //      cost to calculate profit'. Remove the tooltip entirely."
+      //
+      // The tooltip said "There is not enough here to work the profit out",
+      // which is true and useless: it names the problem to someone who has
+      // already seen the dash, and only if they hover. The segment now names
+      // the ACTION, on the segment, where the missing money is -- and the box
+      // that performs it is at the end of the flow line just below.
+      //
+      // The amount is kept beside it. What is left of what the buyer paid is a
+      // real figure and the one the cost has to come out of.
       + (rest > 0
-          ? '<div class="bar-unknown" style="flex:' + rest + '" title="'
-            + (cost === null
-               ? "No cost is recorded for this order, so what is left of what the "
-                 + "buyer paid cannot be split into cost and profit."
-               : "There is not enough here to work the profit out.")
-            + '">' + _oEsc(_oMoney(rest, cur)) + ' ?</div>'
+          ? '<div class="bar-unknown" style="flex:' + rest + '">'
+            + '<span class="bar-unknown-v">' + _oEsc(_oMoney(rest, cur)) + '</span>'
+            + '<span class="bar-unknown-l">Set cost to calculate profit</span>'
+            + '</div>'
           : "")
       + '</div>';
   }
@@ -110,15 +121,27 @@ function _opNum(v){
  * cannot disagree with it -- they are here because the row's version is 11px in
  * a 9% column and this is the reading you came in for. */
 function _opCards(r, t, cur, o, items){
-  const card = function(value, label, tone, title){
+  const card = function(value, label, tone, title, note){
     return '<div class="o-card' + (tone ? " " + tone : "") + '" title="'
       + _oEsc(title || "") + '">'
       + '<div class="o-card-v">' + value + '</div>'
-      + '<div class="o-card-l">' + _oEsc(label) + '</div></div>';
+      + '<div class="o-card-l">' + _oEsc(label) + '</div>'
+      + (note || "") + '</div>';
   };
   const dash = '<span class="cc">—</span>';
   const profit = _opNum(t.profit);
   const paid = _opNum(t.revenue);
+  // WHY THE DASH IS THERE, under the dash.
+  //
+  //     "Summary cards: show '—' with 'No cost set' in 9px muted text below."
+  //
+  // All three of Profit, ROI and Margin are blank for exactly one reason -- the
+  // cost is not recorded -- and a card showing only a dash reads as a figure
+  // that failed to load. This says which, in a line small enough that a card
+  // with a real number is unchanged.
+  const noCost = (t.cogs_complete === false
+                  || t.cogs === null || t.cogs === undefined);
+  const why = noCost ? '<div class="o-card-why">No cost set</div>' : "";
   const pct = function(v){
     const n = _opNum(v);
     return n === null ? dash : _oEsc(n.toFixed(1) + "%");
@@ -143,11 +166,21 @@ function _opCards(r, t, cur, o, items){
            profit === null ? "" : (profit < 0 ? "bad" : "good"),
            profit === null
              ? "No cost is recorded for part of this order, so there is no profit figure — it is left blank rather than counting the missing cost as nothing."
-             : "What the buyer paid, less Amazon's cut, less what the stock cost.")
+             : "What the buyer paid, less Amazon's cut, less what the stock cost.",
+           profit === null ? why : "")
     + card(pct(r.roi_pct), "ROI", "",
-           "Profit as a share of what the stock cost — whether the stock was worth buying.")
+           "Profit as a share of what the stock cost — whether the stock was worth buying.",
+           _opNum(r.roi_pct) === null ? why : "")
     + card(pct(r.margin_pct), "Margin", "",
-           "Profit as a share of what the buyer paid — whether the price is any good.")
+           "Profit as a share of what the buyer paid — whether the price is any good.",
+           _opNum(r.margin_pct) === null ? why : "")
+    // HANDLING IS NOT A COST FIGURE, so it never wears the "No cost set" note.
+    //
+    //     "Handling card should still show the actual handling time (e.g. '4d'),
+    //      not '—' — handling has nothing to do with cost."
+    //
+    // It reads the listing's own handling_days and is unaffected by whether a
+    // cost was recorded.
     + card(hand.text === "" ? dash : _oEsc(hand.text), "Handling", hand.tone,
            hand.title)
     + '</div>';

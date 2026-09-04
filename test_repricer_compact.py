@@ -115,7 +115,7 @@ truthy("  and nothing tells you rows can be clicked",
 print("\n=== nothing was hidden that cannot be got back ===")
 # The full table is still built in compact mode -- only wrapped.
 truthy("the four-column table is still emitted", "odp-src-h" in _fn)
-truthy("  with every supplier row", "opts.forEach(function(o)" in _fn)
+truthy("  with every supplier row", "opts.forEach(function(o, _i)" in _fn)
 truthy("  and each one's shipping sentence", "odp-ship" in _fn)
 truthy("the chevron turns rather than the row moving",
        "details[open] > .odp-c-sum .odp-c-chev" in CSS)
