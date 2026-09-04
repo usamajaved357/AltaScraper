@@ -59,7 +59,40 @@ yes("  shadow 0 8px 40px", "box-shadow:0 8px 40px rgba(0,0,0,.5)" in CSS)
 yes("  align-self flex-start", "align-self:flex-start" in CSS)
 # The panel used to be min-height:calc(100vh - 38px) -- full screen whatever it
 # held, so its bottom edge was always off screen. That is a sheet, not a card.
-yes("  and as tall as its contents, not the screen", "min-height:min-content" in CSS)
+# It is capped at the viewport now and has NO min-height at all: min-height
+# beats max-height in CSS, so min-content kept the cap from applying and the
+# panel still grew to 3,107px with nothing scrolling.
+yes("  and capped at the viewport, not stretched to it",
+    "max-height:calc(100vh - 80px)" in CSS)
+check("  with no min-height to override that cap", "min-height:min-content" in CSS, False)
+
+print("\n== the bars do not scroll away ==")
+#     "The top bar (Back to listings, Preview, Auto-fix, Submit) and the tabs
+#      bar scroll away when you scroll down in the content. They should stay
+#      pinned at the top of the PDP panel while the content below scrolls."
+#
+# They were position:sticky against the BACKDROP, which is what scrolled. A
+# sticky element can only stick within its own parent's box, so on a 3,000px
+# panel they stuck for a while and then travelled off with it.
+yes("the panel is a flex column that hides its own overflow",
+    "flex-direction:column" in CSS and "overflow:hidden;" in CSS)
+yes("the middle is the one scroller",
+    ".pdp-layout{" in CSS and "flex:1; min-height:0; overflow-y:auto" in CSS)
+yes("the bars are siblings outside it, and do not shrink",
+    ".pdp-top, .pdp-hero, .pdp-tabs, .pdp-footer{ flex-shrink:0; }" in CSS)
+check("  none of them is sticky any more",
+      "position:sticky; top:0; z-index:3" in CSS
+      or "position:sticky; top:41px" in CSS
+      or "position:sticky; bottom:0" in CSS, False)
+# position:fixed appears once and belongs to #pdp, the BACKDROP -- which has to
+# be fixed. What must not be fixed is anything inside the panel.
+check("  and none is fixed",
+      re.search(r"\.pdp-(top|tabs|footer|hero)\{[^}]*position:fixed", CSS) is not None,
+      False)
+# The rail is the exception, and it is INSIDE the scroller: sticky there keeps
+# a short list of actions in view without having to scroll back up for it.
+yes("the rail stays in view inside the scroller",
+    "position:sticky; top:0; align-self:flex-start;" in CSS)
 yes("the JS shows it as a flex box, not a block", 'host.style.display = "flex"' in JS)
 
 print("\n== STEP 3: four tabs, Amazon's names, no Attributes tab ==")
