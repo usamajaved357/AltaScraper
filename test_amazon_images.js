@@ -60,7 +60,11 @@ truthy("  read from Amazon's summary, not from an attribute",
 console.log("\n--- an image Amazon took and then rejected is visible ---");
 // It appears in the listing's issues and nowhere else, so it belongs beside the
 // slots rather than on some other screen.
-truthy("issues come back with the slots", V.includes('"issues": live.get("issues")'));
+// The shape moved: `live` can be absent, so the read is guarded and defaults
+// to an empty list rather than None -- a missing issues list and "Amazon
+// reported none" must not both arrive as null.
+truthy("issues come back with the slots",
+       /"issues": \(live or \{\}\)\.get\("issues"\) or \[\]/.test(V));
 truthy("  and are drawn", A.includes("Amazon has something to say"));
 truthy("  with their severity", A.includes("i.severity"));
 truthy("get_item surfaces them rather than burying them in raw",

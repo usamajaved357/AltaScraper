@@ -69,7 +69,11 @@ truthy("the sheet to fill in is still offered", "/cogs/template.csv" in HTML)
 
 print("\n=== there is a button that explains it, and it is not hidden ===")
 truthy("the button exists", 'onclick="cogsExplain()"' in HTML)
-truthy("  and says what it is for", "How costs work" in HTML)
+# SHORTENED IN THE DENSITY PASS. The toolbar had to fit on one line, and
+# "How costs work" became "How costs" -- test_layout_density.py asserts that
+# rename by name. The point here is unchanged: the button says what it is for
+# rather than being an unlabelled icon.
+truthy("  and says what it is for", "How costs" in HTML)
 truthy("the handler exists", "async function cogsExplain" in COGSJS)
 _fn = COGSJS.split("async function cogsExplain")[1].split("\n/* ---- TAKING")[0]
 # ONE copy of the explanation. howworks.js already had it; a second wording would

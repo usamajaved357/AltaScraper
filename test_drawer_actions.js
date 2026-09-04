@@ -55,30 +55,46 @@ function fnBody(src, name) {
   return src.slice(i);
 }
 
+// REWRITTEN, NOT DELETED, AND THE FILE ITSELF SAYS WHERE EVERYTHING WENT.
+//
+// This read a .dwbar out of drawerContent and checked six buttons on it. The
+// drawer was redesigned since -- _dwShell builds a sticky header instead, and
+// listings.js carries a note headed "WHERE THE OLD DRAWER HEADER WENT" listing
+// each control's new home. Nothing was removed; the bar was.
+//
+// So the check is the same one it always was -- every action is still reachable
+// from the drawer -- asked of the shell that actually draws them.
 const D = fnBody(L, "drawerContent");
-truthy("the drawer body was found", D.length > 2000);
+const SH = fnBody(L, "_dwShell");
+truthy("the drawer shell was found", SH.length > 2000);
+truthy("  and the redesign says where each control went",
+       L.indexOf("WHERE THE OLD DRAWER HEADER WENT") >= 0);
 
-console.log("=== the action bar holds only what you DO to a listing ===");
-const bar = D.slice(D.indexOf('class="dwbar"'), D.indexOf('dwactions-rest'));
-truthy("there is one action bar", D.indexOf('class="dwbar"') >= 0);
+console.log("=== every action is still reachable from the drawer ===");
+const DRAWER = SH + D;
 for (const [what, mark] of [["Preview", "previewOne("], ["Auto-fix", "autoFixLoop("],
                             ["Submit", "submitOne("], ["Image Studio", "openStudioSingle("],
                             ["Ask Claude", "askAbout("], ["More", "drawerMore("]]) {
-  truthy("  " + what + " is on it", bar.indexOf(mark) >= 0);
+  truthy("  " + what + " is there", DRAWER.indexOf(mark) >= 0);
 }
-// Only the three that matter carry colour. When everything is emphasised,
-// nothing is.
-truthy("only three are styled as primary",
-       /class="dwb dwb-go"/.test(bar) && /class="dwb dwb-fix"/.test(bar)
-       && /class="dwb dwb-send"/.test(bar));
-truthy("  and the rest are quiet", /dwb-q/.test(bar));
+// THE THREE THAT MATTER STILL CARRY COLOUR AND THE REST DO NOT. When everything
+// is emphasised, nothing is -- the same rule, in the class names the shell uses.
+truthy("Preview, Auto-fix and Submit are the emphasised three",
+       /dw2-ib" onclick="previewOne\(/.test(SH)
+       && /dw2-ib accent" onclick="autoFixLoop\(/.test(SH)
+       && /dw2-ib success" onclick="submitOne\(/.test(SH));
+truthy("  and the rest are quiet", /dw2-ib" onclick="drawerMore\(/.test(SH));
+// A READ-ONLY WORKSPACE MAY NOT PUBLISH, and the button says so rather than
+// failing when pressed.
+truthy("a read-only workspace gets a locked Submit",
+       /Read-only workspace/.test(SH) && /disabled/.test(SH));
 
 console.log("\n=== the one that was deleted, and why it could be ===");
 // The BUTTON, not the identifier: the note above explaining why it went names
 // the function, and a bare identifier match cannot tell an explanation from a
 // control.
 falsy("Suggest missing fields is gone from the drawer",
-      /onclick="suggestFields\(/.test(D));
+      /onclick="suggestFields\(/.test(SH + D));
 // It is not dead: auto-fix is the thing that calls it now.
 const AF = stripJsComments(fs.readFileSync("D:/AltaScraper/static/js/autofix.js", "utf8"));
 truthy("  because Auto-fix calls it", /suggestFields\(/.test(AF));
@@ -113,16 +129,29 @@ truthy("it is placed so it cannot open off the right edge",
        /rect\.right - 232/.test(M));
 
 console.log("\n=== status: one control, and it never lies ===");
-truthy("Approve and Hold are one segmented control", /class="dwseg"/.test(D));
-truthy("  the half that is true is lit", /dwseg-b \$\{String\(r\.status/.test(D));
+// THE SEGMENTED CONTROL BECAME TWO LIT ICONS in the redesign, and the reason it
+// existed is unchanged: Approve and Hold are one choice, and the half that is
+// already true has to show as true rather than as a button you might press
+// again. Same rule, two buttons that light instead of two halves of one.
+truthy("Approve and Hold both set the status", /setStatus\('\$\{esc\(r\.sku\)\}','APPROVED'/.test(SH)
+       && /setStatus\('\$\{esc\(r\.sku\)\}','NEEDS_REVIEW'/.test(SH));
+truthy("  the one that is true is lit", /on-approve/.test(SH) && /on-hold/.test(SH));
+truthy("  and says so rather than offering it again",
+       /Already approved/.test(SH) && /Already held/.test(SH));
 /* THE TOGGLE CANNOT SPEAK FOR EVERY STATUS. Measured on the 173 stored
  * listings: 84 are APPROVED or NEEDS_REVIEW, and the other 89 are LIVE,
  * COMPLIANCE_HOLD, API_READY, API_ERROR, SUBMITTED or PARENT -- Amazon's state
  * or the app's, not a choice anybody makes in this drawer. On those, a bare
  * toggle lights neither half and says nothing at all. */
-truthy("the real status is shown as well", /class="dwstatus"/.test(D));
-truthy("  using the same pill the card and the table use",
-       /_statusPill\(r\.status\)/.test(D));
+// AND THE REAL STATUS IS STILL ALWAYS ON SCREEN. Measured on the 173 stored
+// listings: 84 are APPROVED or NEEDS_REVIEW, and the other 89 are LIVE,
+// COMPLIANCE_HOLD, API_READY, API_ERROR, SUBMITTED or PARENT -- Amazon's state
+// or the app's, not a choice anybody makes in this drawer. On those the two
+// icons light neither way, so the badge is the only thing that says what the
+// listing actually is.
+truthy("the real status is shown as well", /class="badge \$\{badgeClass\(r\.status\)\}"/.test(SH));
+truthy("  using the same class the card and the table use",
+       /badgeClass\(/.test(L));
 
 console.log("\n=== Orbit, and it stays put while the drawer scrolls ===");
 truthy("the bar is sticky", /\.dwbar\{position:sticky/.test(CSS));

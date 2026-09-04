@@ -93,9 +93,14 @@ const grab = function(name){
   }
   throw new Error("unbalanced " + name);
 };
+// _warnCell IS GRABBED, NOT STUBBED. tableRow has called it since the warning
+// count was added to the table, and this probe did not know -- so listings.js
+// threw ReferenceError on load and every assertion below it was unreachable.
+// Pulling the real one in keeps the probe honest: a change to how a warning is
+// counted shows up here rather than being faked away.
 vm.runInThisContext([grab("rowSelectBox"), grab("liveTableRow"),
                      grab("splitByDraft"), grab("_draftOnlyNote"),
-                     grab("tableRow")].join("\n"));
+                     grab("_warnCell"), grab("tableRow")].join("\n"));
 
 const out = {};
 const IT = {sku: "9.18_3Days_B0C6XTNXL8", asin: "B0H8VHDX8B", title: "Floor Brush"};
@@ -108,7 +113,11 @@ out.boxCarriesSku = row.indexOf("toggleSelect('" + IT.sku + "'") >= 0;
 // Clicking the tick must not also open the live editor behind it.
 out.boxStopsRow   = /onclick="event.stopPropagation\(\)"/.test(row);
 // The row still opens the listing -- the tick was added, nothing was taken.
-out.rowStillOpens = /optimizeLive\('B0H8VHDX8B'/.test(row);
+// THROUGH openLiveListing NOW, not optimizeLive directly: a catalogue row whose
+// SKU this app also holds opens the product page like any other listing, and
+// only one it has no row for falls back to the live editor. openLiveListing is
+// the single place that decides which, so the row asks it rather than choosing.
+out.rowStillOpens = /openLiveListing\('B0H8VHDX8B'/.test(row);
 
 // ---- 2. still ten columns. The last fix to this row was a column count -----
 out.cells       = (row.match(/<td/g) || []).length;
