@@ -605,6 +605,54 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
     except Exception:
         span = set()          # an unparseable range falls back to what we hold
 
+    # WITHIN THE STRETCH THAT WAS FETCHED, A DAY WITH NO FINANCE ROW IS A QUIET
+    # DAY -- NOT AN UNKNOWN ONE.
+    #
+    #     "that sales dotted graph is still not fixed and appear like the ppc
+    #      graph which is consistent even on the day there is no sales"
+    #
+    # finance_daily holds a row only for a day Amazon reported money moving on.
+    # Every finance column was therefore None on a quiet day, net_proceeds could
+    # not be worked out, and profit came back unknown -- so the profit series
+    # was 3 points in 30 while the Sales line, which reads sales_daily and gets
+    # a real 0, ran flat along the axis through the same 27 days. Two lines on
+    # one chart telling different stories about the same empty fortnight.
+    #
+    # Absent BETWEEN the first and last day actually fetched means Amazon
+    # reported no events: nothing moved, so the figures are zero and they are
+    # known. Absent OUTSIDE that stretch means nobody has asked yet, and those
+    # days stay null -- which is what the grey "no data" shading marks.
+    # AND A DAY AMAZON ITSELF REPORTED AS ZERO SALES.
+    #
+    # The two feeds cover different stretches: on jack_uk sales_daily holds
+    # Aug 5 - Sep 3 and finance_daily only Aug 14 - 20, so the rule above alone
+    # left Aug 5-13 unknown while the Sales line drew a confident 0 across them.
+    # But a day Amazon reported as zero ordered sales had no orders, so there
+    # was nothing for it to charge a fee on -- and a refund or a reimbursement
+    # WOULD have created a finance row, so the absence of one means neither
+    # happened. Nothing moved, and that is known from a feed that does cover
+    # the day.
+    #
+    # This is inference from a wider source onto a narrower one, and it only
+    # ever fills in a zero -- it can never invent revenue, a fee or a cost.
+    _fin_lo = min(fin) if fin else None
+    _fin_hi = max(fin) if fin else None
+
+    def _amazon_said_nothing_sold(d):
+        s = sales.get(d)
+        if not s:
+            return False        # no sales row either -- nobody has asked
+        for k in ("units", "orders", "ordered_sales"):
+            v = s.get(k)
+            if v is None:
+                return False    # the day is in the table but the figure is not
+            try:
+                if float(v) != 0:
+                    return False
+            except (TypeError, ValueError):
+                return False
+        return True
+
     out = []
     for d in sorted(span | set(sales) | set(ads) | set(fin)):
         row = dict(sales.get(d) or {"date": d, "asin": key, "currency": ""})
@@ -613,12 +661,17 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         for k in ("impressions", "clicks", "spend", "ad_orders", "ad_sales"):
             row[k] = a.get(k)
         f = fin.get(d) or {}
+        _fetched_quiet = (not f) and (
+            (_fin_lo is not None and _fin_lo <= d <= _fin_hi)
+            or _amazon_said_nothing_sold(d))
         for k in _FIN_COLS:
-            row[k] = f.get(k)
+            v = f.get(k)
+            row[k] = 0.0 if (v is None and _fetched_quiet) else v
         # finance_daily.units is units SHIPPED (money basis); sales_daily.units is
         # units ORDERED (order-date basis). Same word, different measurements, and
         # letting one land on the other would silently replace one with the other.
-        row["units_shipped"] = f.get("units")
+        row["units_shipped"] = (0.0 if (f.get("units") is None and _fetched_quiet)
+                                else f.get("units"))
         if not row.get("currency"):
             row["currency"] = f.get("currency") or ""
         # Derived per DAY as well as per bucket, because a bucket that sums
@@ -643,8 +696,31 @@ def series(config_path, workspace_id, marketplace, start, end, asin=None,
         # profit comes out HIGH, and it comes out high exactly on the products
         # nobody has costed. Better to say nothing for that day and show the
         # coverage than to publish a figure that flatters.
-        u, cu = row.get("units_shipped"), row.get("cogs_units")
-        if row["net_proceeds"] is not None and u and cu == u:
+        #
+        # A DAY WITH NO UNITS IS NOT AN UNKNOWN DAY.
+        #
+        #     "that sales dotted graph is still not fixed and appear like the
+        #      ppc graph which is consistent even on the day there is no sales"
+        #
+        # The test was `u and cu == u`, and `and u` makes a zero-unit day
+        # FALSY -- so every day with no sales was recorded as "profit unknown".
+        # Nothing about such a day is unknown: no units shipped means no unit is
+        # missing a cost, and the profit is whatever net_proceeds says, normally
+        # zero. Measured on jack_uk: 3 of 30 days had sales, so 27 days were
+        # nulls, the profit line was 3 unconnected dots with dashed bridges
+        # between them, and it read as a broken chart beside a Sales line that
+        # ran flat along the axis through the same 27 days.
+        #
+        # A refund landing on a day with no shipment gives that day a NEGATIVE
+        # profit, and that is right too -- money left, and it is known that it
+        # left.
+        #
+        # The all-or-nothing rule is untouched where it earns its keep: a day
+        # with three units and two costs is still None.
+        u = row.get("units_shipped") or 0
+        cu = row.get("cogs_units") or 0
+        _every_unit_costed = (u == 0) or (cu == u)
+        if row["net_proceeds"] is not None and _every_unit_costed:
             row["profit"] = round(row["net_proceeds"] - float(row.get("cogs") or 0.0), 2)
             p = float(row.get("principal") or 0.0)
             row["margin_pct"] = round(row["profit"] / p * 100, 2) if p else None
@@ -1014,9 +1090,16 @@ def profit_for(rows):
     entirely unless every unit in the bucket is costed -- because a partial cost
     of goods only ever makes profit look BETTER than it is.
     """
-    units = _sum(rows, "units_shipped")
-    costed = _sum(rows, "cogs_units")
-    if not units or costed != units:
+    # THE SAME "NO UNITS IS NOT UNKNOWN" RULE the daily rows use.
+    #
+    # `not units` made a bucket containing no shipments report None. On a weekly
+    # or monthly granularity that is a whole empty week reading as "we do not
+    # know", when what is known is that nothing shipped and nothing was made.
+    # A bucket with three units and two costs is still None -- that is the case
+    # the rule is for.
+    units = _sum(rows, "units_shipped") or 0
+    costed = _sum(rows, "cogs_units") or 0
+    if units and costed != units:
         return None
     net = _sum(rows, "net_proceeds")
     if net is None:

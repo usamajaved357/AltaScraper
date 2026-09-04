@@ -243,6 +243,47 @@ def amazon_refused(row):
         fields=fields)
 
 
+def fee_of_nothing(row):
+    """A stored fee of zero on a listing with a price, presented as Amazon's.
+
+        "i suspect the fee is hardcoded and not actually coming from amazon,
+         which is a bad inaccurate behavior, i dont want inaccuracy"
+
+    The fee is NOT hardcoded -- measured across 154 rows stamped
+    "SP-API (exact)", the rates Amazon returned are 15%, 13%, 12%, 8%, 14.6%
+    and 11.7%, which no flat multiplier produces. But 17 of those rows carry
+    0.00, and that IS wrong: Amazon charges a referral fee on every category a
+    bird table, a pizza peel or a massage gun could be in. A zero is a quote
+    that came back empty and was recorded as a fee of nothing.
+
+    It matters because the stored PROFIT was worked out from it. Every one of
+    these is too high by the whole fee -- on a £21.99 massage gun that is £3.30
+    of profit that does not exist.
+
+    domain/amazon_fees.quote refuses a zero referral now, so no new row can be
+    written this way. This names the ones already stored, because a number that
+    is wrong and looks confident is worse than one that is missing.
+    """
+    fee = _s(row, "amazon_fees")
+    price = _s(row, "our_price") or _s(row, "buy_box_price")
+    if not fee or not price:
+        return None
+    try:
+        if float(fee) != 0 or float(price) <= 0:
+            return None
+    except (TypeError, ValueError):
+        return None
+    src = _s(row, "fee_source")
+    return _warn(
+        "fee_of_nothing", "medium",
+        "This listing records an Amazon fee of 0.00 on a price of %s%s. Amazon "
+        "charges a referral fee on every category, so that is a quote that came "
+        "back empty rather than a fee of nothing — and the profit shown for this "
+        "listing is too high by the whole fee. Preview it again to get a real "
+        "figure." % (price, (" (marked \"%s\")" % src) if src else ""),
+        price=price, fee_source=src)
+
+
 def no_product_type(row):
     """This listing has no product type, so some compliance rules cannot apply.
 
@@ -347,6 +388,7 @@ def for_rows(rows, live_by_upc=None, age_hours=None):
             compliance_risk(r),
             no_barcode(r),
             _refused,
+            fee_of_nothing(r),
             no_product_type(r),
             barcode_live_on_amazon(r, live_by_upc or {}),
         ]

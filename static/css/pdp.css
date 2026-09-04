@@ -102,15 +102,37 @@
 #pdp{
   display:none;
   position:fixed; inset:0; z-index:78;
-  background:rgba(10,10,14,.62);        /* the page below shows through this */
+  background:rgba(0,0,0,.6);            /* the page below shows through this */
   color:var(--pdp-ink2);
   overflow-y:auto; overflow-x:hidden;
-  /* The gap at the top is where the listings page stays visible. It is also
-     the click target that closes the panel. */
-  padding:38px 0 0;
+  /* A CARD ON A BACKDROP, NOT A SHEET FROM THE BOTTOM.
+   *
+   *     "The dark backdrop MUST be visible on both sides of the panel."
+   *
+   * It was `padding:38px 0 0` with the panel `min-height:calc(100vh - 38px)`,
+   * which is a bottom sheet: dark above, nothing below, and the panel's bottom
+   * edge off the screen however short the listing was. The backdrop is now a
+   * flex column that centres its child horizontally and holds it to the top,
+   * with a real gap all the way round -- the mockup's 40px 60px.
+   *
+   * align-items rather than justify-content, because this is the SCROLLING
+   * element: justify-content on an overflowing flex container clips the top of
+   * the child, which is the classic centred-modal bug. */
+  display:none;                          /* .in makes it flex -- see below */
+  padding:40px 60px;
   opacity:0; transition:opacity .16s ease-out;
 }
-#pdp.in{ opacity:1; }
+#pdp.in{
+  display:flex;
+  align-items:flex-start;                /* the panel keeps its own height */
+  justify-content:center;
+  opacity:1;
+}
+/* 60px of side padding is most of a phone. The gap is what makes it read as a
+   card; below that width there is no room for one, so it goes edge to edge. */
+@media (max-width:760px){
+  #pdp{ padding:16px 10px; }
+}
 
 /* THE PANEL. Inset from the backdrop so the page behind is visible around it,
    and tall enough that it is still the thing you are working in. */
@@ -128,14 +150,20 @@
    *
    * The rail and the tabs live inside it now rather than beside a wide page --
    * see .pdp-layout below. */
-  width:min(680px, 94vw);
-  margin:0 auto;
-  min-height:calc(100vh - 38px);
+  width:100%;
+  max-width:680px;
+  /* A CARD IS AS TALL AS ITS CONTENTS. min-height:calc(100vh - 38px) forced it
+     to the full screen whatever it held, so a short listing got a panel with
+     empty space at the bottom and no visible lower edge -- which is what made
+     it read as a sheet rather than a card. */
+  min-height:min-content;
+  align-self:flex-start;
+  display:flex;
+  flex-direction:column;
   background:var(--pdp-bg);
   border:1px solid var(--pdp-line);
-  border-bottom:0;
-  border-radius:12px 12px 0 0;
-  box-shadow:0 -10px 48px rgba(0,0,0,.55);
+  border-radius:10px;
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
   transform:translateY(10px);
   transition:transform .16s ease-out;
 }
@@ -153,8 +181,8 @@ body.pdp-on{ overflow:hidden; }
   .pdp{ transform:none; }
 }
 
-/* On a phone there is no room to show the page behind, and a 94vw panel with a
-   38px gap is just a worse full screen. It takes the lot. */
+/* On a phone there is no room to show the page behind, and a card with a gap
+   round it is just a worse full screen. It takes the lot. */
 @media (max-width:700px){
   #pdp{ padding:0; background:var(--pdp-bg); }
   .pdp{
@@ -273,13 +301,20 @@ body.pdp-on{ overflow:hidden; }
   padding:2px 6px; cursor:pointer;
 }
 .pdp-errfield:hover{ border-color:var(--pdp-link); color:var(--pdp-link); }
-/* The same complaint, restated under the box it is about. */
+/* THE SHORT VERSION, under the box. The wording lives in the banner at the top
+   -- once, where there is room for two hundred characters -- and this says only
+   which kind of problem it is, with a way back up to read it. */
 .pdp-afield{
   font-size:10px; line-height:1.45; margin-top:4px;
-  padding-left:7px; border-left:2px solid var(--pdp-danger);
-  color:var(--pdp-ink3);
+  color:var(--pdp-danger);
 }
-.pdp-afield.warn{ border-left-color:var(--pdp-warn, #d69e2e); }
+.pdp-afield.warn{ color:var(--pdp-warn); }
+.pdp-afield a{ color:var(--pdp-link); cursor:pointer; }
+.pdp-afield a:hover{ text-decoration:underline; }
+/* AND THE RED BORDER THE BRIEF ASKS FOR, on the control itself rather than
+   round the row: it is the box that has to be corrected. */
+.pdp-attr.apierr .ed,
+.pdp-attr.apierr .dw2-cv-in{ border-color:var(--pdp-danger); }
 /* ---- 1f. WHAT AMAZON HAS, ABOVE THE BOX -------------------------------- */
 /* Deliberately quiet: it is context for the box under it, not a second value
    competing with it. Two lines at most -- a 2,000-character description would
@@ -301,13 +336,12 @@ body.pdp-on{ overflow:hidden; }
 /* One Amazon attribute with parts (battery, item_dimensions, unit_count) gets a
    heading and its members indented under it, instead of thirteen unrelated rows
    scattered through the table. */
-.pdp-at tr.pdp-agrouphead > td{
-  padding-top:11px; padding-bottom:4px;
+.pdp-agrouphead{
+  padding:11px 0 4px;
   font-size:10px; font-weight:600; letter-spacing:.4px;
   text-transform:uppercase; color:var(--pdp-dim);
   border-bottom:1px solid var(--pdp-line2);
 }
-.pdp-at tr.pdp-asub > .pdp-aname{ padding-left:14px; }
 
 /* ---- 1d. THE FOOTER ----------------------------------------------------- */
 /* Stuck to the bottom of the VIEWPORT, not the end of the content: a panel
@@ -315,25 +349,36 @@ body.pdp-on{ overflow:hidden; }
    reachable from the bottom of a 40-field attribute table. */
 .pdp-footer{
   position:sticky; bottom:0; z-index:3;
-  display:flex; align-items:center; gap:10px;
-  padding:9px 16px;
-  background:var(--pdp-panel); border-top:1px solid var(--pdp-line);
+  /* The mockup is justify-content:flex-end with two buttons. The brief keeps
+     the sentence as well -- "'Edits save as you leave each box...' text at the
+     left side of the footer" -- so the note takes the slack with flex:1 and
+     the buttons end up hard right, which is the same result. */
+  display:flex; align-items:center; gap:8px;
+  padding:10px 16px;
+  /* The mockup puts the footer on --sidebar, a shade DARKER than its panel.
+     This panel's convention runs the other way -- the top bar, the hero and the
+     tab row are all --pdp-panel, a shade LIGHTER than the body -- so the footer
+     joins them. Matching the mockup's token name here would have made the
+     footer the only piece of chrome that did not match the other three. */
+  background:var(--pdp-panel);
+  border-top:1px solid var(--pdp-line);
+  border-radius:0 0 9px 9px;
 }
 .pdp-footer-note{
   flex:1; min-width:0; font-size:10px; color:var(--pdp-dim);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .pdp-footer button{
-  font-size:11px; font-weight:500; padding:6px 14px; border-radius:5px;
+  font-size:12px; font-weight:500; padding:6px 16px; border-radius:4px;
   border:1px solid var(--pdp-edge); cursor:pointer; font-family:inherit;
 }
-.pdp-footer-cancel{ background:transparent; color:var(--pdp-ink3); }
-.pdp-footer-cancel:hover{ color:var(--pdp-ink); border-color:var(--pdp-ink3); }
+.pdp-footer-cancel{ background:transparent; color:var(--pdp-ink); }
+.pdp-footer-cancel:hover{ border-color:var(--pdp-ink3); }
 .pdp-footer-save{
-  background:var(--pdp-link); border-color:var(--pdp-link); color:#0b1220;
+  background:var(--pdp-link); border-color:var(--pdp-link); color:#0a1628;
   font-weight:600;
 }
-.pdp-footer-save:hover{ filter:brightness(1.08); }
+.pdp-footer-save:hover{ opacity:.9; }
 
 /* ---- 1c. TEXTAREAS THAT GROW ------------------------------------------- */
 /* A BOX THAT SCROLLS HIDES ITS OWN CONTENT. A 480-character bullet in a
@@ -353,8 +398,9 @@ body.pdp-on{ overflow:hidden; }
 
 /* Where "go to this field" lands. Fades out on its own -- a highlight that
    stayed would read as a permanent state rather than an answer to a click. */
-.pdp-at tr.pdp-hit > td{
+.pdp-attr.pdp-hit{
   background:var(--pdp-dangerbg) !important;
+  box-shadow:inset 3px 0 0 var(--pdp-danger);
   transition:background .5s;
 }
 
@@ -393,6 +439,7 @@ body.pdp-on{ overflow:hidden; }
    picture was most of the first screen. 12px/16px, per the brief. */
 .pdp-hero{
   background:var(--pdp-panel); border-bottom:1px solid var(--pdp-line); padding:12px 0;
+  border-radius:9px 9px 0 0;   /* it is the panel's top edge when the bar scrolls */
 }
 /* THE MOCKUP'S OWN WIDTHS. Kept, deliberately.
  *
@@ -411,26 +458,29 @@ body.pdp-on{ overflow:hidden; }
   display:flex; gap:14px;
   align-items:flex-start; padding:0 16px;
 }
+/* THE MOCKUP'S NUMBERS, to the pixel. 100x100 rather than 120, and object-fit
+   CONTAIN rather than cover -- a listing photo is usually not square, and cover
+   crops the sides off the one picture on the page. */
 .pdp-heroimg{
-  width:120px; height:120px; border-radius:8px; background:#2a2a35;
-  border:1px solid var(--pdp-edge); flex-shrink:0; overflow:hidden;
+  width:100px; height:100px; border-radius:6px; background:var(--pdp-raise);
+  flex-shrink:0; overflow:hidden;
   display:flex; align-items:center; justify-content:center;
   color:var(--pdp-faint); font-size:32px;
 }
-.pdp-heroimg img{ width:100%; height:100%; object-fit:cover; }
+.pdp-heroimg img{ max-width:100%; max-height:100%; object-fit:contain; }
 .pdp-heroinfo{ flex:1; min-width:0; }
 .pdp-ptitle{
-  font-size:16px; font-weight:500; color:var(--pdp-ink);
-  line-height:1.4; margin-bottom:8px;
+  font-size:15px; font-weight:600; color:var(--pdp-ink);
+  line-height:1.3; margin-bottom:8px;
 }
-.pdp-meta{ font-size:12px; color:var(--pdp-ink3); line-height:1.8; }
-.pdp-meta b{ color:var(--pdp-ink2); font-weight:500; }
-.pdp-mlabel{ color:var(--pdp-dim); display:inline-block; width:64px; }
+.pdp-meta{ font-size:11px; color:var(--pdp-ink3); line-height:1.55; }
+.pdp-meta b{ color:var(--pdp-ink2); font-weight:400; }
+.pdp-mlabel{ color:var(--pdp-dim); display:inline-block; width:60px; }
 .pdp-dim{ color:var(--pdp-dim); }
 
-.pdp-badges{ display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+.pdp-badges{ display:flex; gap:5px; margin-top:10px; flex-wrap:wrap; }
 .pdp-hb{
-  font-size:10px; padding:3px 10px; border-radius:4px; font-weight:500;
+  font-size:9px; padding:2px 6px; border-radius:3px; font-weight:600;
   display:inline-flex; align-items:center; gap:4px;
 }
 .pdp-hb.live{   background:var(--pdp-green); color:#e0fff0; }
@@ -598,33 +648,41 @@ body.pdp-on{ overflow:hidden; }
 .pdp-af.active{ background:#3b7dd420; color:var(--pdp-link); border-color:#3b7dd450; }
 .pdp-af b{ font-weight:600; }
 
-/* The table scrolls INSIDE its own box rather than widening the page. */
-.pdp-atwrap{
-  border:1px solid var(--pdp-line); border-radius:6px; overflow-x:auto;
+/* ---- THE ATTRIBUTE ROWS ------------------------------------------------
+ *
+ *     "Label is right-aligned in a 110px column on the left. Input fills the
+ *      rest. ... The grey live value appears above each input showing what
+ *      Amazon currently has."
+ *
+ * A LABEL AND A VALUE, NOT FIVE COLUMNS. This was a table -- verdict, Field,
+ * Yours, Amazon, use -- inside a horizontally scrolling box. In a 548px content
+ * column that left the input 220px wide, too narrow to read a title in, while
+ * two of the five columns were empty on most rows. The Amazon value moved to
+ * the grey line above the box, which is where the mockup puts the same fact and
+ * where it can be read at full width. */
+.pdp-attrs{ margin-top:2px; }
+.pdp-attr{
+  display:flex; align-items:flex-start; gap:12px;
+  padding:8px 0; border-bottom:1px solid var(--pdp-line2);
 }
-.pdp-at{ width:100%; border-collapse:collapse; font-size:11px; }
-.pdp-at th{
-  font-size:9px; font-weight:600; color:var(--pdp-dim);
-  text-transform:uppercase; letter-spacing:.3px; text-align:left;
-  padding:6px 8px; border-bottom:2px solid var(--pdp-line);
-  background:var(--pdp-bg); position:sticky; top:0; z-index:1;
+.pdp-attr:last-child{ border-bottom:0; }
+.pdp-attr-label{
+  width:110px; flex-shrink:0; font-size:11px; color:var(--pdp-ink3);
+  padding-top:5px; text-align:right; line-height:1.35;
+  overflow-wrap:anywhere;
 }
-.pdp-at td{
-  padding:5px 8px; border-bottom:1px solid var(--pdp-line2); vertical-align:middle;
+.pdp-attr-value{ flex:1; min-width:0; }
+/* What Amazon holds, above the box. Italic is dropped: it is a value, not an
+   aside, and a barcode in italics is harder to read digit by digit. */
+.pdp-attr-amazon{
+  font-size:10px; color:var(--pdp-faint); margin-bottom:3px; line-height:1.4;
+  overflow-wrap:anywhere;
 }
-.pdp-at tr:hover td{ background:var(--pdp-panel); }
-.pdp-at tr.flagged td{ background:#2a1a1a; }
-.pdp-c1{ width:24px; text-align:center; }
-.pdp-c5{ width:44px; }
-.pdp-aname{
-  color:var(--pdp-ink3); max-width:160px; overflow:hidden;
-  text-overflow:ellipsis; white-space:nowrap;
-}
-.pdp-aval{ color:var(--pdp-ink2); font-weight:500; min-width:120px; max-width:220px; }
-.pdp-aamz{
-  color:var(--pdp-dim); max-width:140px; overflow:hidden;
-  text-overflow:ellipsis; white-space:nowrap; font-style:italic;
-}
+/* A row Amazon flagged, and a row Amazon refused. Tinted rather than boxed:
+   the row already has a rule under it and a second border would fight it. */
+.pdp-attr.flagged{ background:var(--pdp-warnbg); }
+.pdp-attr.apierr{ background:var(--pdp-dangerbg); }
+.pdp-attr.sub > .pdp-attr-label{ padding-right:10px; }
 .pdp-ai{ font-weight:600; font-size:11px; }
 .pdp-ai.match{   color:var(--pdp-ok); }
 .pdp-ai.differ{  color:var(--pdp-warn); }
@@ -636,28 +694,51 @@ body.pdp-on{ overflow:hidden; }
   cursor:pointer; font-weight:500; font-family:inherit;
 }
 .pdp-ause:hover{ background:#3b7dd420; border-color:var(--pdp-accent); }
-.pdp-req{ color:var(--pdp-danger); font-size:10px; margin-left:3px; }
-.pdp-reqsoft{ color:var(--pdp-dim); font-size:10px; margin-left:3px; }
+/* Before the label, as the mockup has it: `<span class="req">*</span> Brand`.
+   Solid for a field Amazon has actually flagged, muted for one the schema calls
+   required but Amazon has not complained about yet. */
+.pdp-req{
+  color:var(--pdp-danger); font-weight:700; margin-right:3px;
+}
+.pdp-reqsoft{
+  color:var(--pdp-danger); opacity:.45; font-weight:700; margin-right:3px;
+}
 .pdp-ro{ color:var(--pdp-ink3); }
 
-/* The editors inside the table's "Yours" column: same controls, sized for a
-   table row instead of a card. */
-.pdp-at .ed{
-  width:100%; font-size:11px; padding:3px 6px; border-radius:4px;
+/* THE CONTROLS, FULL WIDTH.
+ *
+ *     "Every text input, textarea, and dropdown must stretch to fill the full
+ *      width of its column. No short inputs for colour, weight, or other
+ *      fields."
+ *
+ * They are the app's own .ed and .dw2-cv-in -- the same controls saving through
+ * the same saveEdit -- sized for a form row rather than a table cell. */
+.pdp-attr .ed,
+.pdp-attr select.ed{
+  width:100%; font-size:12px; padding:5px 8px; border-radius:4px;
   border:1px solid var(--pdp-edge); background:var(--pdp-raise); color:var(--pdp-ink);
   font-family:inherit;
 }
-.pdp-at .ed:focus{ border-color:var(--pdp-accent); outline:none; }
-.pdp-at .dw2-cv-in{
-  display:block; font-size:11px; color:var(--pdp-ink2);
-  padding:3px 6px; border-radius:4px; outline:none; word-break:break-word;
+.pdp-attr .ed:focus{ border-color:var(--pdp-accent); outline:none; }
+.pdp-attr .dw2-cv-in{
+  display:block; font-size:12px; color:var(--pdp-ink2);
+  padding:5px 8px; border-radius:4px; outline:none; word-break:break-word;
+  border:1px solid transparent; min-height:28px;
 }
-.pdp-at .dw2-cv-in:hover{ background:var(--pdp-raise); }
-.pdp-at .dw2-cv-in:focus{
-  background:var(--pdp-raise); box-shadow:inset 0 0 0 1px var(--pdp-accent);
+.pdp-attr .dw2-cv-in:hover{ background:var(--pdp-raise); }
+.pdp-attr .dw2-cv-in:focus{
+  background:var(--pdp-raise); border-color:var(--pdp-accent);
 }
-.pdp-at .dw2-cv-in.empty:empty::before{
+.pdp-attr .dw2-cv-in.empty:empty::before{
   content:'—'; color:var(--pdp-faint); font-style:italic;
+}
+/* A read-only value keeps the shape of a box so the column does not jump, and
+   says why it cannot be typed in. */
+.pdp-attr .pdp-ro{
+  display:inline-flex; align-items:center; min-height:28px;
+  padding:5px 8px; border-radius:4px;
+  background:var(--pdp-panel); color:var(--pdp-ink3);
+  border:1px solid var(--pdp-line);
 }
 
 .pdp-more{

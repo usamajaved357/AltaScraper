@@ -141,16 +141,29 @@ def test_field_names_are_buttons_that_go_somewhere():
     assert "pdpGoToField(" in js.split("function pdpGoToField")[0], \
         "nothing calls it"
     go = js[js.index("function pdpGoToField"):]
-    assert 'PDP_TAB = "attributes"' in go, "the field is on the attributes tab"
+    # The attributes moved onto Product Details -- there is no Attributes tab
+    # any more (PDP_MATCH_MOCKUP.md), so this switches to details.
+    assert 'PDP_TAB = "details"' in go, "the field is on the details tab now"
     assert "scrollIntoView" in go
+    assert ".pdp-attr-label" in go, "it walks the rows, not table cells"
 
 
 def test_each_attribute_row_carries_its_own_complaint():
     js = code(_read("static", "js", "pdp.js"))
-    tbl = js[js.index("function pdpAttrTable"):js.index("function pdpApiIssues")]
+    tbl = js[js.index("function pdpAttrRows"):js.index("function pdpApiIssues")]
     assert "rowIssues" in tbl
     assert 'm.row && m.row.api_issues' in tbl
-    assert "pdp-afield" in tbl, "the message must appear under the box"
+    # A SHORT LINE, not the message again. PDP_MATCH_MOCKUP.md step 7:
+    #     "Do NOT duplicate the full error message next to the field -- the
+    #      field only gets a red border + short one-line summary."
+    assert "pdp-afield" in tbl, "the row must say Amazon complained about it"
+    # The VISIBLE text is a label; Amazon's own sentence is in the title
+    # attribute (hover) and, in full, in the banner at the top.
+    assert "Amazon refused this field" in tbl
+    assert "esc(mine.map(x => x.message" in tbl, \
+        "the full wording should be the tooltip"
+    assert "'<div>' + esc(x.message" not in tbl, \
+        "it must not be printed under the box as well"
     # Amazon names the PARENT even when the fault is in a child
     # (item_dimensions.length.value), so the key is the top level.
     assert 'String(f).split(".")[0]' in tbl
@@ -165,8 +178,10 @@ def test_attr_model_carries_the_row():
 
 def test_the_styles_exist():
     css = _read("static", "css", "pdp.css")
+    # .pdp-at tr.pdp-hit -> .pdp-attr.pdp-hit: the attributes are rows in a
+    # form now, not rows in a table.
     for sel in (".pdp-errhead", ".pdp-error.warn", ".pdp-errfield",
-                ".pdp-afield", ".pdp-at tr.pdp-hit"):
+                ".pdp-afield", ".pdp-attr.pdp-hit"):
         assert sel in css, sel
     # Every colour it uses must be a defined token, not a literal.
     for tok in ("--pdp-danger:", "--pdp-warn:", "--pdp-dangerbg:", "--pdp-edge:"):

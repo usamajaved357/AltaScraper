@@ -80,7 +80,11 @@ function pdpOpen(sku){
 
   const host = document.getElementById("pdp");
   if(host){
-    host.style.display = "block";
+    // FLEX, NOT BLOCK. The backdrop centres the panel and holds it to the top
+    // (#pdp.in in pdp.css); an inline display:block is more specific than that
+    // class rule and silently undid the centring, leaving a 680px card hard
+    // against the left edge with all the backdrop on the right.
+    host.style.display = "flex";
     // CLICKING THE PAGE BEHIND CLOSES THE PANEL, which is how every other
     // layer in this app behaves and the reason the listings page is left
     // visible at all. Only a click that lands on the BACKDROP itself counts --
@@ -221,13 +225,48 @@ function pdpHero(r){
     + '</div></div></div>';
 }
 
+/* AMAZON'S OWN FOUR, PLUS VARIATIONS WHEN THERE ARE ANY.
+ *
+ *     "Normal listing (no variations): Product Details | Images | Offer |
+ *      Safety & Compliance. Listing with variations: ... | Variations | ...
+ *      There is NO 'Attributes' tab."
+ *
+ * THE ATTRIBUTES TAB IS GONE, not hidden. Its whole contents -- brand, EAN,
+ * material, colour, weight, included components, every schema field -- now sits
+ * on Product Details under the description, which is where Seller Central puts
+ * it. A tab called "Attributes" beside one called "Product details" asks the
+ * reader to guess which of two names covers "colour", and the answer was never
+ * obvious.
+ *
+ * VARIATIONS APPEARS ONLY WHEN THE LISTING HAS THEM. A tab that is empty on
+ * nine listings in ten is a tab that trains you to skip it.
+ */
 const PDP_TABS = [
-  {key:"details",    label:"Product details"},
+  {key:"details",    label:"Product Details"},
   {key:"images",     label:"Images"},
-  {key:"attributes", label:"Attributes"},
+  {key:"variations", label:"Variations", only: "hasVariations"},
   {key:"offer",      label:"Offer"},
-  {key:"compliance", label:"Compliance"},
+  {key:"compliance", label:"Safety & Compliance"},
 ];
+
+/* Does this listing have variations? Asked of the row the app already holds --
+ * a parent SKU, a variation theme, or children recorded against it. */
+function pdpHasVariations(r){
+  if(!r) return false;
+  if(String(r.status || "").toUpperCase() === "PARENT") return true;
+  if(String(r.variation_theme || "").trim()) return true;
+  if(String(r.parent_sku || "").trim()) return true;
+  const v = r.variations;
+  if(Array.isArray(v) && v.length) return true;
+  if(v && typeof v === "object" && (v.children || []).length) return true;
+  return false;
+}
+
+/* The tabs this listing actually gets. */
+function pdpTabsFor(r){
+  const has = {hasVariations: pdpHasVariations(r)};
+  return PDP_TABS.filter(function(t){ return !t.only || has[t.only]; });
+}
 
 function pdpTab(name){
   PDP_TAB = String(name || "details");
@@ -235,8 +274,14 @@ function pdpTab(name){
   try{ window.scrollTo(0, 0); }catch(e){}
 }
 
-function pdpTabBar(){
-  return '<div class="pdp-tabs">' + PDP_TABS.map(function(t){
+function pdpTabBar(r){
+  const tabs = pdpTabsFor(r);
+  // A TAB THAT NO LONGER EXISTS MUST NOT LEAVE A BLANK PAGE. PDP_TAB survives
+  // between listings, so moving from a listing with variations to one without
+  // -- or opening an old bookmark that says "attributes" -- would otherwise
+  // select nothing and draw nothing.
+  if(!tabs.some(function(t){ return t.key === PDP_TAB; })) PDP_TAB = "details";
+  return '<div class="pdp-tabs">' + tabs.map(function(t){
     return '<div class="pdp-tab' + (PDP_TAB === t.key ? " active" : "") + '"'
          + ' onclick="pdpTab(\'' + t.key + '\')">' + esc(t.label) + '</div>';
   }).join("") + '</div>';
@@ -361,7 +406,22 @@ function pdpHelp(m, key){
        + esc(h) + '</span></span>';
 }
 
-function pdpAttrTable(m){
+/* THE ATTRIBUTES, AS A SECTION OF PRODUCT DETAILS.
+ *
+ * Was pdpAttrTable, on a tab of its own. The tab is gone -- Seller Central has
+ * no "Attributes" tab and neither does the mockup -- so this is the section
+ * that sits under the description. Renamed rather than wrapped, because two
+ * names for one renderer is how a screen ends up with two of them. */
+function pdpAttrSection(m, addCtrl){
+  const body = pdpAttrRows(m);
+  if(!body) return "";
+  return '<div class="pdp-field pdp-attrsec">'
+       + '<div class="pdp-flabel">Attributes</div>'
+       + body + (addCtrl || "")
+       + '</div>';
+}
+
+function pdpAttrRows(m){
   if(!m) return '<div class="pdp-note">No attributes yet.</div>';
   const sku = m.sku;
   const L = (typeof lvGet === "function") ? lvGet(sku) : null;
@@ -440,9 +500,23 @@ function pdpAttrTable(m){
     // here would make the two views disagree about what blocks a submit.
     const amazonFlagged = isMissing || !!m.flagged[k];
     const schemaReq = (m.reqList || []).indexOf(k) >= 0;
+    // A RED ASTERISK, as the mockup and Amazon both use.
+    //
+    //     "Required fields have red asterisk."
+    //
+    // It was ★ and ☆. Two problems: ☆ is a hollow star that renders as a
+    // tofu box in the font stack this panel uses -- visible on screen as a
+    // stray glyph before "Country Of Origin" -- and neither shape says
+    // "required" to anyone who has filled in a form before.
+    //
+    // THE TWO KINDS ARE STILL TOLD APART, because they need different actions:
+    // solid red is Amazon having flagged it in a Preview (fill it or the submit
+    // fails), muted red is the schema listing it as required without Amazon
+    // having complained yet. Same character, different weight -- the difference
+    // is in the tooltip, where the explanation belongs.
     const req = amazonFlagged
-      ? '<span class="pdp-req" title="Amazon flagged this in Preview — it must be filled">★</span>'
-      : (schemaReq ? '<span class="pdp-reqsoft" title="The schema lists this as required. Amazon’s last Preview did not flag it.">☆</span>' : "");
+      ? '<span class="pdp-req" title="Amazon flagged this in Preview — it must be filled">*</span>'
+      : (schemaReq ? '<span class="pdp-reqsoft" title="The schema lists this as required. Amazon’s last Preview did not flag it.">*</span>' : "");
 
     const multi = (L && L.multi) ? (L.multi[String(k).split(".")[0]] || 0) : 0;
     const hasEnum = !!(m.enums[k] && m.enums[k].length);
@@ -474,14 +548,25 @@ function pdpAttrTable(m){
 
     const amzVal = Object.prototype.hasOwnProperty.call(live, k) ? String(live[k]) : "";
     const canUse = (v === "differs" || v === "live_only") && !multi;
-    // WHAT AMAZON SAID ABOUT THIS FIELD, against the field. One line under the
-    // box, in Amazon's words -- the banner at the top says the same thing, but
-    // finding the box from the banner is the reader's job otherwise.
+    // WHICH FIELD AMAZON MEANT -- said SHORT here, in full at the top.
+    //
+    //     "Show ONCE at the top of the content area. Do NOT duplicate the full
+    //      error message next to the field -- the field only gets a red border
+    //      + short one-line summary."
+    //
+    // Right: Amazon's messages run to two hundred characters and printing one
+    // under a box turned a form row into a paragraph, twice on the page. The
+    // row is tinted and the line says what KIND of problem it is and how many,
+    // with the wording itself in the banner where there is room for it.
     const mine = rowIssues[String(k).split(".")[0]] || [];
+    const mineErr = mine.filter(x => x.severity === "ERROR").length;
     const said = mine.length
-      ? '<div class="pdp-afield' + (mine.some(x => x.severity === "ERROR") ? " err" : " warn") + '">'
-        + mine.map(x => '<div>' + esc(x.message || "") + '</div>').join("")
-        + '</div>'
+      ? '<div class="pdp-afield' + (mineErr ? " err" : " warn") + '" title="'
+        + esc(mine.map(x => x.message || "").join("\n")) + '">'
+        + (mineErr
+            ? 'Amazon refused this field' + (mineErr > 1 ? ' — ' + mineErr + ' problems' : '')
+            : 'Amazon commented on this field')
+        + ' · <a onclick="pdpScrollToErrors()">see what it said</a></div>'
       : "";
 
     // THE HEADING, ONCE PER FAMILY. Drawn from here rather than in a first pass
@@ -493,8 +578,8 @@ function pdpAttrTable(m){
     let head = "";
     if(inGroup && openGroup !== topKey){
       openGroup = topKey;
-      head = '<tr class="pdp-agrouphead"><td></td><td colspan="4">'
-           + esc(lbl(topKey)) + pdpHelp(m, topKey) + '</td></tr>';
+      head = '<div class="pdp-agrouphead">'
+           + esc(lbl(topKey)) + pdpHelp(m, topKey) + '</div>';
     }else if(!inGroup){
       openGroup = "";
     }
@@ -506,21 +591,38 @@ function pdpAttrTable(m){
           : String(k).slice(topKey.length + 1)))
       : lbl(k);
 
+    // ONE ROW: a right-aligned label in a 110px column, and the value beside it
+    // with what Amazon has in grey above the box.
+    //
+    //     "Label is right-aligned in a 110px column on the left. Input fills
+    //      the rest. ... The grey live value appears above each input showing
+    //      what Amazon currently has."
+    //
+    // THIS REPLACES A FIVE-COLUMN TABLE and loses nothing: the "Amazon" column
+    // IS the grey line now, which is where the mockup puts the same fact, and
+    // the verdict tick and the "use" button ride on the label and the line
+    // rather than in columns of their own. Two of the five columns were empty
+    // on most rows, and at 548px of content the value column was 220px wide --
+    // an input too narrow to read a title in.
     return head
-      + '<tr class="' + (mine.some(x => x.severity === "ERROR") ? "flagged apierr"
-                    : (amazonFlagged ? "flagged" : ""))
-      + (inGroup ? " pdp-asub" : "") + '">'
-      + '<td class="pdp-c1">' + icon + '</td>'
-      + '<td class="pdp-aname" title="' + esc(k) + '">' + esc(shown) + req
-      +   pdpHelp(m, k) + '</td>'
-      + '<td class="pdp-aval">' + ctrl + said + '</td>'
-      + '<td class="pdp-aamz" title="' + esc(amzVal) + '">'
-      +   (amzVal ? esc(amzVal) : '<span class="pdp-dim">—</span>')
-      +   (multi ? ' <span class="pdp-dim">(' + multi + ')</span>' : '')
-      + '</td>'
-      + '<td class="pdp-c5">'
-      +   (canUse ? '<button class="pdp-ause" title="Copy Amazon’s value into this listing. Saves to the app only — nothing is sent to Amazon until you press Submit." onclick="lvUse(\'' + esc(sku) + '\',\'' + esc(k) + '\')">use</button>' : "")
-      + '</td></tr>';
+      + '<div class="pdp-attr' + (inGroup ? " sub" : "")
+      +   (mine.some(x => x.severity === "ERROR") ? " apierr"
+           : (amazonFlagged ? " flagged" : "")) + '">'
+      + '<div class="pdp-attr-label" title="' + esc(k) + '">'
+      +   req + esc(shown) + pdpHelp(m, k) + '</div>'
+      + '<div class="pdp-attr-value">'
+      +   (amzVal
+            ? '<div class="pdp-attr-amazon" title="What Amazon holds for this '
+              + 'attribute right now">' + icon + ' ' + esc(amzVal)
+              + (multi ? ' <span class="pdp-dim">(' + multi + ' values)</span>' : '')
+              + (canUse ? ' <button class="pdp-ause" title="Copy Amazon’s value '
+                 + 'into this listing. Saves to the app only — nothing is sent '
+                 + 'to Amazon until you press Submit." onclick="lvUse(\''
+                 + esc(sku) + '\',\'' + esc(k) + '\')">use</button>' : "")
+              + '</div>'
+            : "")
+      +   ctrl + said
+      + '</div></div>';
   }).join("");
 
   const fbtn = (key, label, n) =>
@@ -542,16 +644,13 @@ function pdpAttrTable(m){
     + '</div>';
 
   const empty = !rows
-    ? '<tr><td colspan="5" class="pdp-note">Nothing matches this filter.</td></tr>' : "";
+    ? '<div class="pdp-note">Nothing matches this filter.</div>' : "";
 
   return summary
     + '<div class="pdp-afrow">' + fbtn("all", "All", keys.length)
     +   fbtn("differs", "Differs", nDiff) + fbtn("amazon", "Only Amazon", nOnlyAmz)
     +   fbtn("empty", "Empty") + '</div>'
-    + '<div class="pdp-atwrap"><table class="pdp-at">'
-    +   '<thead><tr><th class="pdp-c1"></th><th>Field</th><th>Yours</th>'
-    +   '<th>Amazon</th><th class="pdp-c5"></th></tr></thead>'
-    +   '<tbody>' + rows + empty + '</tbody></table></div>'
+    + '<div class="pdp-attrs">' + rows + empty + '</div>'
     + (nOnlyAmz ? '<div class="pdp-more" onclick="lvFillEmpty(\'' + esc(sku) + '\')">'
         + '<i class="ti ti-arrow-down"></i> Fill ' + nOnlyAmz + ' empty field(s) from Amazon</div>' : "")
     + (m.productType ? '<div class="pdp-more amber" onclick="saveDefault(\'' + esc(sku) + '\',\''
@@ -865,22 +964,35 @@ function pdpApiIssues(r){
   return '<div class="pdp-errors">' + out + '</div>';
 }
 
-/* Open the Attributes tab and put the named field in view, highlighted.
- * The scroll waits a frame because the tab's table does not exist until the
- * re-render has run. */
+/* Back up to the banner, from a field that says Amazon complained about it.
+ * The other half of "show it once": the short line under the box has to be able
+ * to reach the full wording rather than leaving the reader to find it. */
+function pdpScrollToErrors(){
+  const el = document.querySelector("#pdp .pdp-errors");
+  if(el) el.scrollIntoView({block: "start", behavior: "smooth"});
+}
+
+/* Put the named field in view, highlighted.
+ *
+ * The attributes are a SECTION of Product Details now, not a tab, so this
+ * switches to details rather than to a tab that no longer exists. The scroll
+ * waits a frame because the section does not exist until the re-render has run.
+ */
 function pdpGoToField(key){
   const base = String(key || "").split(".")[0];
-  if(PDP_TAB !== "attributes"){ PDP_TAB = "attributes"; pdpRender(); }
+  if(PDP_TAB !== "details"){ PDP_TAB = "details"; pdpRender(); }
   setTimeout(function(){
-    const rows = document.querySelectorAll("#pdp .pdp-at .pdp-aname");
+    const rows = document.querySelectorAll("#pdp .pdp-attr-label");
     for(let i = 0; i < rows.length; i++){
       const t = String(rows[i].getAttribute("title") || "");
       if(t === key || t.split(".")[0] === base){
-        const tr = rows[i].closest("tr");
-        if(tr){
-          tr.scrollIntoView({block: "center", behavior: "smooth"});
-          tr.classList.add("pdp-hit");
-          setTimeout(function(){ tr.classList.remove("pdp-hit"); }, 2200);
+        const row = rows[i].closest(".pdp-attr");
+        if(row){
+          row.scrollIntoView({block: "center", behavior: "smooth"});
+          row.classList.add("pdp-hit");
+          setTimeout(function(){ row.classList.remove("pdp-hit"); }, 2200);
+          const box = row.querySelector("input, textarea, select, [contenteditable]");
+          if(box) try{ box.focus(); }catch(e){}
         }
         return;
       }
@@ -1020,15 +1132,30 @@ function pdpRender(){
         + p.highlights
         + pdpLiveLine(sku, "bullets") + p.bullets
         + pdpLiveLine(sku, "desc")    + p.desc
-        + pdpLiveLine(sku, "search")  + p.search;
+        + pdpLiveLine(sku, "search")  + p.search
+        // AND THE ATTRIBUTES, HERE, WHERE SELLER CENTRAL PUTS THEM.
+        //
+        //     "There is NO 'Attributes' tab. All attributes ... are displayed
+        //      on the Product Details tab, below the title/highlights/bullets/
+        //      description fields."
+        //
+        // The tab is gone; this is the same builder it used, so nothing about
+        // which fields appear, which are required or what their allowed values
+        // are has changed -- only where they are read.
+        + pdpAttrSection(p.attrModel, p.addCtrl);
   } else if(PDP_TAB === "images"){
     // The four-section slot editor, which lives in its own file (Rule 7). The
     // old strip of source thumbnails is kept underneath it: it carries the AI
     // generation panel and the per-image edit buttons, which are a different
     // job from deciding what goes in which slot.
     tab = ((typeof pdpImagesTab === "function") ? pdpImagesTab(r) : "") + p.images;
-  } else if(PDP_TAB === "attributes"){
-    tab = pdpAttrTable(p.attrModel) + (p.addCtrl || "");
+  } else if(PDP_TAB === "variations"){
+    // The family this listing belongs to. Drawn by the variations screen's own
+    // builder where there is one, so the parent/child rules live in one place.
+    tab = (typeof pdpVariationsTab === "function")
+      ? pdpVariationsTab(r)
+      : '<div class="pdp-note">This listing is part of a variation family. '
+        + 'Open Variations from the sidebar to work on the family.</div>';
   } else if(PDP_TAB === "offer"){
     tab = p.offerOnly + p.identityOnly;
   } else {
@@ -1036,7 +1163,7 @@ function pdpRender(){
         + p.compliance + p.tools;
   }
 
-  host.innerHTML = '<div class="pdp">' + top + pdpHero(r) + pdpTabBar()
+  host.innerHTML = '<div class="pdp">' + top + pdpHero(r) + pdpTabBar(r)
     + '<div class="pdp-layout">'
     +   pdpSidebar(r)
     +   '<div class="pdp-content">' + blocking + tab + '</div>'

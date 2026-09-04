@@ -392,10 +392,23 @@ def quote(creds, marketplace, marketplace_id, asin, price, is_fba=False,
             asin=asin, price=p, currency=cur, is_fba=bool(is_fba),
             marketplace_id=marketplace_id)
         pay = res.payload if hasattr(res, "payload") else (res or {})
-        details = ((pay.get("FeesEstimateResult") or {})
-                   .get("FeesEstimate") or {}).get("FeeDetailList") or []
+        _result = (pay.get("FeesEstimateResult") or {})
+        details = (_result.get("FeesEstimate") or {}).get("FeeDetailList") or []
+        _status = str(_result.get("Status") or "")
+        _err = _result.get("Error") or {}
     except Exception as e:
         out["detail"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+        return out
+    # AMAZON SAYS WHETHER IT ANSWERED, AND IT WAS NOT BEING READ.
+    #
+    # FeesEstimateResult carries a Status of "Success" or "ClientError" /
+    # "ServerError", and on an error it still returns the surrounding structure.
+    # Only FeeDetailList was checked, so an errored result with any lines in it
+    # -- or lines that summed to nothing -- was recorded as basis=QUOTED.
+    # CLAUDE.md Rule 4: read what the schema says, do not infer it.
+    if _status and _status.lower() != "success":
+        out["detail"] = "Amazon answered %s%s" % (
+            _status, (": " + str(_err.get("Message"))[:90]) if _err else "")
         return out
     referral = closing = fba = other = 0.0
     for d in details:
@@ -411,6 +424,23 @@ def quote(creds, marketplace, marketplace_id, asin, price, is_fba=False,
             other += amt
     if not details:
         out["detail"] = "Amazon returned no fee lines for this ASIN"
+        return out
+    # A REFERRAL OF NOTHING IS NOT A QUOTE.
+    #
+    # MEASURED on the stored listings: 17 rows across jack_uk and
+    # nestwell_goods carry amazon_fees = 0.00 with fee_source "SP-API (exact)"
+    # -- a bird table, a pizza peel, a massage gun, an ivy hedge panel. Amazon
+    # charges a referral fee on every one of those categories, so a zero is a
+    # quote that came back empty, not a product Amazon takes nothing on. Every
+    # one of those rows has a stored profit that is too high by the whole fee.
+    #
+    # Refused rather than recorded: the caller falls back to the account's own
+    # measured rate and SAYS it is a rate, which is a smaller error than a
+    # confident nothing. There is no legitimate 0.00 referral on a physical
+    # product at a non-zero price, so nothing real is lost.
+    if referral <= 0 and p > 0:
+        out["detail"] = ("Amazon quoted no referral fee on this ASIN at %.2f, "
+                         "which no category does -- treated as no answer" % p)
         return out
     out.update({"referral": round(referral, 2), "closing": round(closing, 2),
                 "fba": round(fba, 2), "other": round(other, 2),

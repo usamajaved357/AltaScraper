@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AltaScraper — PDP Overlay (Mockup)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/tabler-icons.min.css">
+<style>
+:root {
+  --bg: #1a1d23;
+  --sidebar: #14171c;
+  --panel: #1e2128;
+  --panel2: #252830;
+  --panel3: #2c3038;
+  --ink: #c9d1d9;
+  --ink2: #8b949e;
+  --ink3: #6e7681;
+  --ink4: #484f5a;
+  --accent: #2dd4bf;
+  --accent-bg: rgba(45,212,191,.08);
+  --ok: #7fd1a0;
+  --ok-bg: rgba(127,209,160,.08);
+  --red: #ff6b6b;
+  --warn: #e3b768;
+  --link: #58a6ff;
+  --line: #2a2f3a;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font:12px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+
+/* ===== OVERLAY BACKDROP ===== */
+.overlay-bg{
+  position:fixed;inset:0;z-index:77;
+  background:rgba(0,0,0,.6);
+  display:flex;justify-content:center;
+  padding:40px 60px;
+  overflow-y:auto;
+}
+
+/* ===== OVERLAY PANEL ===== */
+.pdp{
+  background:var(--panel);
+  border-radius:10px;
+  width:100%;
+  max-width:680px;
+  min-height:min-content;
+  box-shadow:0 8px 40px rgba(0,0,0,.5);
+  display:flex;
+  flex-direction:column;
+  align-self:flex-start;
+}
+
+/* ===== TOP BAR ===== */
+.pdp-topbar{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 16px;
+  border-bottom:1px solid var(--line);
+  flex-shrink:0;
+}
+.pdp-back{
+  display:flex;align-items:center;gap:4px;
+  font-size:12px;color:var(--accent);cursor:pointer;
+  background:none;border:none;font-family:inherit;
+}
+.pdp-back:hover{color:var(--accent)}
+.pdp-back .ti{font-size:14px}
+.pdp-spacer{flex:1}
+.pdp-btn{
+  font-size:11px;padding:5px 12px;border-radius:4px;
+  border:none;cursor:pointer;font-weight:600;
+  display:inline-flex;align-items:center;gap:4px;font-family:inherit;
+}
+.pdp-btn .ti{font-size:13px}
+.pdp-btn-ghost{background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+.pdp-btn-ghost:hover{border-color:var(--ink4)}
+.pdp-btn-red{background:#c0392b;color:#fff}
+.pdp-btn-green{background:var(--ok);color:#0a1628}
+.pdp-btn-dots{background:none;border:none;color:var(--ink3);font-size:18px;cursor:pointer;padding:4px}
+
+/* ===== HERO ===== */
+.pdp-hero{
+  display:flex;gap:14px;padding:12px 16px;
+  border-bottom:1px solid var(--line);
+}
+.pdp-hero-img{
+  width:100px;height:100px;flex-shrink:0;
+  background:var(--panel2);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+}
+.pdp-hero-img img{max-width:100%;max-height:100%;object-fit:contain}
+.pdp-hero-info{flex:1;min-width:0}
+.pdp-hero-title{font-size:15px;font-weight:600;line-height:1.3;margin-bottom:8px;color:var(--ink)}
+.pdp-hero-meta{display:flex;flex-direction:column;gap:3px;font-size:11px}
+.pdp-hero-meta .row{display:flex;gap:8px}
+.pdp-hero-meta .label{color:var(--ink3);width:60px;flex-shrink:0}
+.pdp-hero-meta .value{color:var(--ink2)}
+.pdp-hero-meta .value.muted{color:var(--ink3);font-style:italic}
+
+.pdp-badges{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap}
+.pdp-badge{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px}
+.pdp-badge-status{background:var(--panel2);color:var(--ink2)}
+.pdp-badge-profit{background:var(--ok-bg);color:var(--ok)}
+.pdp-badge-cost{background:var(--panel2);color:var(--ink2)}
+.pdp-badge-warn{background:rgba(255,107,107,.1);color:var(--red);cursor:pointer}
+
+/* ===== TABS ===== */
+.pdp-tabs{
+  display:flex;gap:0;padding:0 16px;
+  border-bottom:1px solid var(--line);
+  flex-shrink:0;
+}
+.pdp-tab{
+  padding:8px 14px;font-size:12px;color:var(--ink3);
+  cursor:pointer;border-bottom:2px solid transparent;
+  transition:all .12s;background:none;border-top:none;border-left:none;border-right:none;
+  font-family:inherit;
+}
+.pdp-tab:hover{color:var(--ink)}
+.pdp-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ===== CONTENT AREA ===== */
+.pdp-body{
+  display:flex;flex:1;min-height:400px;
+}
+
+/* Sidebar */
+.pdp-sidebar{
+  width:130px;flex-shrink:0;padding:12px 10px;
+  border-right:1px solid var(--line);
+}
+.pdp-sidebar-title{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink4);margin-bottom:8px}
+.pdp-sidebar-item{
+  display:flex;align-items:center;gap:6px;padding:5px 8px;
+  border-radius:4px;font-size:11px;color:var(--ink2);cursor:pointer;
+  margin-bottom:2px;
+}
+.pdp-sidebar-item:hover{background:var(--panel2);color:var(--ink)}
+.pdp-sidebar-item .ti{font-size:13px;color:var(--ink3)}
+.pdp-sidebar-sep{height:1px;background:var(--line);margin:8px 0}
+.pdp-check{
+  display:flex;align-items:center;gap:6px;padding:5px 8px;
+  border-radius:4px;font-size:10px;margin-bottom:2px;
+}
+.pdp-check .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.pdp-check.ok .dot{background:var(--ok)}
+.pdp-check.ok{color:var(--ok)}
+.pdp-check.warn .dot{background:var(--warn)}
+.pdp-check.warn{color:var(--warn)}
+.pdp-check.bad .dot{background:var(--red)}
+.pdp-check.bad{color:var(--red)}
+
+/* Main content */
+.pdp-main{flex:1;padding:12px 16px;overflow-y:auto}
+
+/* Compliance banner */
+.pdp-banner{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 14px;border-radius:6px;margin-bottom:16px;
+  background:rgba(45,212,191,.06);border:1px solid rgba(45,212,191,.15);
+}
+.pdp-banner .ti{font-size:18px;color:var(--accent);flex-shrink:0;margin-top:1px}
+.pdp-banner-text{font-size:11px;color:var(--ink)}
+.pdp-banner-text b{color:var(--accent);font-weight:600}
+.pdp-banner-text .sub{font-size:10px;color:var(--ink3);margin-top:2px}
+
+/* Form fields */
+.pdp-field{margin-bottom:14px}
+.pdp-field-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.pdp-field-label{font-size:11px;color:var(--ink3)}
+.pdp-field-counter{font-size:10px;color:var(--ink4)}
+.pdp-field-counter.ok{color:var(--ok)}
+.pdp-field-counter.warn{color:var(--warn)}
+.pdp-field-counter.over{color:var(--red)}
+.pdp-field-hint{font-size:9px;color:var(--accent);cursor:pointer}
+
+.pdp-input{
+  width:100%;background:var(--sidebar);border:1px solid var(--line);
+  border-radius:4px;padding:6px 10px;color:var(--ink);font-size:12px;
+  font-family:inherit;outline:none;resize:vertical;
+}
+.pdp-input:focus{border-color:var(--accent)}
+.pdp-input-sm{
+  width:100%;background:var(--sidebar);border:1px solid var(--line);
+  border-radius:4px;padding:5px 8px;color:var(--ink);font-size:12px;
+  font-family:inherit;outline:none;
+}
+.pdp-input-sm:focus{border-color:var(--accent)}
+/* Short numeric inputs only */
+.pdp-input-num{
+  width:100px;background:var(--sidebar);border:1px solid var(--line);
+  border-radius:4px;padding:5px 8px;color:var(--ink);font-size:12px;
+  font-family:inherit;outline:none;
+}
+.pdp-input-num:focus{border-color:var(--accent)}
+
+textarea.pdp-input{min-height:60px}
+
+/* Attribute rows */
+.pdp-attr{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:8px 0;border-bottom:1px solid rgba(42,47,58,.3);
+}
+.pdp-attr-label{
+  width:110px;flex-shrink:0;font-size:11px;color:var(--ink3);
+  padding-top:5px;text-align:right;
+}
+.pdp-attr-label .req{color:var(--red);margin-right:2px}
+.pdp-attr-value{flex:1;min-width:0}
+.pdp-attr-amazon{font-size:10px;color:var(--ink4);margin-bottom:3px}
+
+/* Read-only display value */
+.pdp-readonly{
+  font-size:12px;color:var(--ink);padding:5px 0;
+  display:flex;align-items:center;gap:6px;
+}
+.pdp-readonly .lock{font-size:12px;color:var(--ink4)}
+
+/* Bullet points — auto-height like Amazon, no scroll needed */
+.pdp-bullet{margin-bottom:6px}
+.pdp-bullet textarea{
+  width:100%;background:var(--sidebar);border:1px solid var(--line);
+  border-radius:4px;padding:6px 10px;color:var(--ink);font-size:12px;
+  font-family:inherit;outline:none;resize:none;
+  overflow:hidden;line-height:1.5;
+  field-sizing:content;min-height:38px;
+}
+.pdp-bullet textarea:focus{border-color:var(--accent)}
+
+/* Amazon-style live value — what Amazon is currently showing on the detail page */
+.pdp-live{font-size:10px;color:var(--ink4);margin-bottom:3px;line-height:1.4}
+
+/* Add More / Remove Last links */
+.pdp-addmore{margin-top:4px;font-size:11px}
+.pdp-addmore a{color:var(--accent);cursor:pointer}
+.pdp-addmore a:hover{text-decoration:underline}
+.pdp-addmore a.remove{color:var(--red)}
+.pdp-addmore span{color:var(--ink4);margin:0 4px}
+
+/* API error banner */
+.pdp-error{
+  background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.25);
+  border-radius:6px;padding:8px 12px;margin-bottom:12px;
+  display:flex;align-items:flex-start;gap:8px;
+}
+.pdp-error .ti{font-size:16px;color:var(--red);flex-shrink:0;margin-top:1px}
+.pdp-error-text{font-size:11px;color:var(--ink);line-height:1.45}
+.pdp-error-text b{color:var(--red);font-weight:600}
+.pdp-error-code{font-size:10px;color:var(--ink3);margin-top:3px;font-family:monospace}
+
+/* Footer with Cancel / Save */
+.pdp-footer{
+  display:flex;justify-content:flex-end;gap:8px;
+  padding:10px 16px;border-top:1px solid var(--line);
+  background:var(--sidebar);flex-shrink:0;
+}
+.pdp-footer-cancel{
+  padding:6px 16px;border-radius:4px;font-size:12px;font-weight:500;
+  background:none;border:1px solid var(--line);color:var(--ink);cursor:pointer;font-family:inherit;
+}
+.pdp-footer-cancel:hover{border-color:var(--ink4)}
+.pdp-footer-save{
+  padding:6px 16px;border-radius:4px;font-size:12px;font-weight:600;
+  background:var(--accent);border:none;color:#0a1628;cursor:pointer;font-family:inherit;
+}
+.pdp-footer-save:hover{opacity:.9}
+
+/* Question mark tooltip */
+.pdp-help{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:14px;height:14px;border-radius:50%;border:1px solid var(--ink4);
+  font-size:9px;color:var(--ink4);cursor:help;margin-left:4px;
+  position:relative;flex-shrink:0;
+}
+.pdp-help:hover{border-color:var(--accent);color:var(--accent)}
+.pdp-help .tip{
+  display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:var(--panel3);border:1px solid var(--line);border-radius:5px;
+  padding:6px 10px;font-size:10px;color:var(--ink);white-space:normal;
+  width:220px;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4);
+  line-height:1.4;font-weight:400;text-align:left;
+}
+.pdp-help:hover .tip{display:block}
+</style>
+</head>
+<body>
+
+<!-- OVERLAY BACKDROP -->
+<div class="overlay-bg">
+
+<!-- PDP PANEL — centered, max 900px wide -->
+<div class="pdp">
+
+  <!-- TOP BAR -->
+  <div class="pdp-topbar">
+    <button class="pdp-back"><i class="ti ti-arrow-left"></i> Back to listings</button>
+    <button class="pdp-btn pdp-btn-ghost"><i class="ti ti-eye"></i> Preview</button>
+    <button class="pdp-btn pdp-btn-red"><i class="ti ti-wand"></i> Auto-fix</button>
+    <button class="pdp-btn pdp-btn-green"><i class="ti ti-upload"></i> Submit</button>
+    <span class="pdp-spacer"></span>
+    <button class="pdp-btn-dots">···</button>
+  </div>
+
+  <!-- HERO -->
+  <div class="pdp-hero">
+    <div class="pdp-hero-img">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect fill='%23252830' width='120' height='120'/%3E%3Ctext x='50%25' y='50%25' fill='%236e7681' font-size='10' text-anchor='middle' dy='.3em'%3EIMG%3C/text%3E%3C/svg%3E" alt="">
+    </div>
+    <div class="pdp-hero-info">
+      <div class="pdp-hero-title">Window Cleaning Kit Extendable Pole Squeegee Microfibre Scrubber 3m</div>
+      <div class="pdp-hero-meta">
+        <div class="row"><span class="label">ASIN</span><span class="value muted">B0DNJH3CRX (competitor reference — not ours)</span></div>
+        <div class="row"><span class="label">SKU</span><span class="value">11.59_3Days_B0DNJH3CRX</span></div>
+        <div class="row"><span class="label">Barcode</span><span class="value">4545644574860</span></div>
+        <div class="row"><span class="label">Brand</span><span class="value">Nestwell Goods</span></div>
+      </div>
+      <div class="pdp-badges">
+        <span class="pdp-badge pdp-badge-status">GENERATED</span>
+        <span class="pdp-badge pdp-badge-profit">Profit £3.20</span>
+        <span class="pdp-badge pdp-badge-cost">Cost £11.59</span>
+        <span class="pdp-badge pdp-badge-warn"><i class="ti ti-alert-triangle" style="font-size:10px"></i> 2 warnings</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="pdp-tabs">
+    <button class="pdp-tab active">Product Details</button>
+    <button class="pdp-tab">Images</button>
+    <button class="pdp-tab">Offer</button>
+    <button class="pdp-tab">Safety & Compliance</button>
+  </div>
+
+  <!-- BODY -->
+  <div class="pdp-body">
+
+    <!-- SIDEBAR -->
+    <div class="pdp-sidebar">
+      <div class="pdp-sidebar-title">Quick actions</div>
+      <div class="pdp-sidebar-item"><i class="ti ti-photo"></i> Image studio</div>
+      <div class="pdp-sidebar-item"><i class="ti ti-message-circle"></i> Ask Claude</div>
+      <div class="pdp-sidebar-item"><i class="ti ti-code"></i> Raw data</div>
+
+      <div class="pdp-sidebar-sep"></div>
+      <div class="pdp-sidebar-title">Checks</div>
+      <div class="pdp-check ok"><div class="dot"></div> Restricted</div>
+      <div class="pdp-check warn"><div class="dot"></div> Compliance — 1</div>
+      <div class="pdp-check bad"><div class="dot"></div> 1 claim risk</div>
+      <div class="pdp-sidebar-item"><i class="ti ti-message-report"></i> Amazon feedback</div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="pdp-main">
+
+      <!-- API error banner — shows when submission failed -->
+      <div class="pdp-error">
+        <i class="ti ti-alert-circle"></i>
+        <div class="pdp-error-text">
+          <b>Submission failed — Amazon rejected this listing</b><br>
+          The value provided for attribute "item_name" exceeds the maximum number of characters allowed. Maximum: 200, Provided: 237.
+          <div class="pdp-error-code">Error code: INVALID_ATTRIBUTE_VALUE · Attribute: item_name · Severity: ERROR</div>
+        </div>
+      </div>
+
+      <!-- Compliance banner -->
+      <div class="pdp-banner">
+        <i class="ti ti-shield-check"></i>
+        <div class="pdp-banner-text">
+          <b>Compliance clear — no restricted-product or claim flags</b>
+          <div class="sub">Keyword-based checks. A clean result is not a guarantee — a disguised product can still slip past.</div>
+        </div>
+      </div>
+
+      <!-- Item name -->
+      <div class="pdp-field">
+        <div class="pdp-field-header">
+          <span class="pdp-field-label"><span style="color:var(--red)">*</span> Item name <span class="pdp-help">?<span class="tip">The title of the product as it appears on the Amazon detail page. Maximum 200 characters. Use keywords customers would search for.</span></span></span>
+          <span class="pdp-field-counter ok">67 / 200 · fully indexed · highest weight</span>
+        </div>
+        <div class="pdp-live">Window Cleaning Kit Extendable Pole Squeegee Microfibre Scrubber 3m Professional Window Washer Tool</div>
+        <textarea class="pdp-input" style="min-height:50px;resize:none;overflow:hidden;field-sizing:content">Window Cleaning Kit Extendable Pole Squeegee Microfibre Scrubber 3m</textarea>
+      </div>
+
+      <!-- Highlights -->
+      <div class="pdp-field">
+        <div class="pdp-field-header">
+          <span class="pdp-field-label">Item Highlight <span class="pdp-help">?<span class="tip">A brief highlight or subtitle that appears below the title on the detail page. Maximum 125 characters.</span></span></span>
+          <span class="pdp-field-counter">108 / 125 · indexed · own weight</span>
+        </div>
+        <div class="pdp-live">Reach high windows safely — 3m stainless steel pole, microfibre scrubber and rubber squeegee all in one kit</div>
+        <input class="pdp-input" value="Reach high windows safely — 3m stainless steel pole, microfibre scrubber and rubber squeegee all in one kit">
+      </div>
+
+      <!-- Bullets -->
+      <div class="pdp-field">
+        <div class="pdp-field-header">
+          <span class="pdp-field-label"><span style="color:var(--red)">*</span> Bullet Point <span class="pdp-help">?<span class="tip">Key feature bullet points displayed on the product detail page. Up to 5 bullets, each up to 500 characters. Total indexed limit is 1000 bytes.</span></span></span>
+          <span class="pdp-field-counter warn"><i class="ti ti-alert-triangle" style="font-size:10px"></i> 1971 / 1000 bytes indexed</span>
+        </div>
+        <div class="pdp-bullet">
+          <div class="pdp-live">EXTENDABLE 3M REACH — Telescopic stainless steel pole extends from 1.2m to 3m for first-floor windows</div>
+          <textarea>EXTENDABLE 3M REACH — Telescopic stainless steel pole extends from 1.2m to 3m, letting you clean first-floor windows, conservatory roofs and hard-to-reach glass without a ladder</textarea>
+        </div>
+        <div class="pdp-bullet">
+          <div class="pdp-live">DUAL-ACTION HEAD — Soft microfibre pad loosens dirt, rubber squeegee leaves streak-free finish</div>
+          <textarea>DUAL-ACTION HEAD — Soft microfibre pad loosens dirt and grime on one side, professional rubber squeegee blade on the other leaves a streak-free finish in one pass</textarea>
+        </div>
+        <div class="pdp-bullet">
+          <div class="pdp-live">BUILT TO LAST — Lightweight aluminium alloy frame with reinforced twist-lock joints</div>
+          <textarea>BUILT TO LAST — Lightweight aluminium alloy frame with reinforced twist-lock joints stays rigid at full extension, no wobble or flex even overhead</textarea>
+        </div>
+        <div class="pdp-bullet">
+          <div class="pdp-live">UNIVERSAL FIT — Standard thread connector works with most window cleaning attachments</div>
+          <textarea>UNIVERSAL FIT — Standard thread connector works with most window cleaning attachments, mop heads and dusting tools you already own</textarea>
+        </div>
+        <div class="pdp-bullet">
+          <div class="pdp-live">COMPACT STORAGE — Collapses to just 1.2m and weighs only 680g</div>
+          <textarea>COMPACT STORAGE — Collapses to just 1.2m and weighs only 680g, stores upright in a cupboard or hangs from the built-in hook</textarea>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div class="pdp-field">
+        <div class="pdp-field-header">
+          <span class="pdp-field-label"><span style="color:var(--red)">*</span> Product Description <span class="pdp-help">?<span class="tip">A detailed description of the product. Supports basic HTML formatting. Maximum 2000 characters. Appears in the "Product Description" section of the detail page.</span></span></span>
+          <span class="pdp-field-counter">324 / 2000</span>
+        </div>
+        <textarea class="pdp-input" style="min-height:80px">Professional window cleaning kit with extendable pole for residential and light commercial use. The telescopic handle reaches up to 3 metres, making it ideal for upstairs windows, conservatories, and skylights. Microfibre pad and squeegee blade included.</textarea>
+      </div>
+
+      <!-- Attribute rows -->
+      <div class="pdp-field">
+        <div class="pdp-field-header">
+          <span class="pdp-field-label">Attributes</span>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label"><span class="req">*</span> Brand name <span class="pdp-help">?<span class="tip">The brand name of the product. This must match the brand registered in Amazon Brand Registry.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Nestwell Goods</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input class="pdp-input-sm" value="Nestwell Goods" style="background:var(--panel2);color:var(--ink3)" readonly>
+              <i class="ti ti-lock" style="font-size:14px;color:var(--ink4)"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label"><span class="req">*</span> External Product ID <span class="pdp-help">?<span class="tip">A unique identifier for the product (EAN, UPC, GTIN, or ISBN). Used to match your offer to the correct Amazon catalogue item.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">4545644574860 &nbsp; ean</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input class="pdp-input-sm" value="4545644574860">
+              <select style="background:var(--sidebar);border:1px solid var(--line);border-radius:4px;padding:5px 8px;color:var(--ink);font-size:12px;font-family:inherit;width:80px">
+                <option selected>EAN</option>
+                <option>UPC</option>
+                <option>GTIN</option>
+                <option>ISBN</option>
+              </select>
+              <i class="ti ti-lock" style="font-size:14px;color:var(--ink4)"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Item Type Keyword <span class="pdp-help">?<span class="tip">The browse node classification keyword for the product. Determines which category and product type the listing appears under.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">cleaning-squeegees</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input class="pdp-input-sm" value="cleaning-squeegees">
+              <button style="font-size:10px;padding:4px 10px;background:none;border:1px solid var(--line);border-radius:3px;color:var(--accent);cursor:pointer;font-family:inherit;white-space:nowrap">Edit</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Model Number <span class="pdp-help">?<span class="tip">The manufacturer's model or part number for the product.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">NWG-WCK-3M-001</div>
+            <input class="pdp-input-sm" value="NWG-WCK-3M-001">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label"><span class="req">*</span> Manufacturer <span class="pdp-help">?<span class="tip">The manufacturer or maker of the product. May differ from the brand name.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Nestwell Goods</div>
+            <input class="pdp-input-sm" value="Nestwell Goods">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Material <span class="pdp-help">?<span class="tip">The primary material composition of the product.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Stainless Steel</div>
+            <input class="pdp-input-sm" value="Stainless Steel, Microfibre, Rubber">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Colour <span class="pdp-help">?<span class="tip">The colour of the product as it appears to the customer.</span></span></div>
+          <div class="pdp-attr-value">
+            <input class="pdp-input-sm" value="Blue">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Unit Count <span class="pdp-help">?<span class="tip">The number of units in the package. Used together with Unit Count Type to describe the package contents.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">1.0</div>
+            <input class="pdp-input-sm" value="1.0">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Unit Count Type <span class="pdp-help">?<span class="tip">The unit of measure for the unit count (e.g. Count, Gram, Millilitre).</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Count</div>
+            <select style="width:100%;background:var(--sidebar);border:1px solid var(--line);border-radius:4px;padding:5px 8px;color:var(--ink);font-size:12px;font-family:inherit">
+              <option selected>Count</option>
+              <option>Gram</option>
+              <option>Millilitre</option>
+              <option>Ounce</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Item Weight <span class="pdp-help">?<span class="tip">The weight of the product, not including packaging.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">7.76</div>
+            <input class="pdp-input-sm" value="680">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Item Weight Unit <span class="pdp-help">?<span class="tip">The unit of measurement for the item weight.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">grams</div>
+            <select style="width:100%;background:var(--sidebar);border:1px solid var(--line);border-radius:4px;padding:5px 8px;color:var(--ink);font-size:12px;font-family:inherit">
+              <option selected>Grams</option>
+              <option>Kilograms</option>
+              <option>Ounces</option>
+              <option>Pounds</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Max Height <span class="pdp-help">?<span class="tip">The maximum height of the product when fully extended or assembled.</span></span></div>
+          <div class="pdp-attr-value">
+            <input class="pdp-input-sm" value="300">
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Included Components <span class="pdp-help">?<span class="tip">Specify the items that are included with this product.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Squeegee, Scrubber, Pole</div>
+            <input class="pdp-input-sm" value="Squeegee">
+            <input class="pdp-input-sm" value="Microfibre Scrubber" style="margin-top:4px">
+            <input class="pdp-input-sm" value="Telescopic Pole" style="margin-top:4px">
+            <div class="pdp-addmore"><a>Add More</a> <span>|</span> <a class="remove">Remove Last</a></div>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Specific Uses For Product <span class="pdp-help">?<span class="tip">Describe the specific uses for this product to help customers find it.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Window Cleaning, Conservatory Cleaning</div>
+            <input class="pdp-input-sm" value="Window Cleaning" placeholder="Example: Amateur">
+            <div class="pdp-addmore"><a>Add More</a></div>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Special Feature <span class="pdp-help">?<span class="tip">Highlight a specific feature of the product that differentiates it.</span></span></div>
+          <div class="pdp-attr-value">
+            <div class="pdp-live">Extendable, Lightweight</div>
+            <input class="pdp-input-sm" value="Extendable">
+            <input class="pdp-input-sm" value="Lightweight" style="margin-top:4px">
+            <div class="pdp-addmore"><a>Add More</a> <span>|</span> <a class="remove">Remove Last</a></div>
+          </div>
+        </div>
+
+        <div class="pdp-attr">
+          <div class="pdp-attr-label">Generic Keyword <span class="pdp-help">?<span class="tip">Hidden search terms to help customers find your product. Not visible on the detail page. Maximum 250 bytes.</span></span></div>
+          <div class="pdp-attr-value">
+            <input class="pdp-input-sm" value="window cleaner squeegee pole extendable telescopic microfibre scrubber glass">
+            <div class="pdp-addmore"><a>Add More</a></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="pdp-footer">
+    <button class="pdp-footer-cancel">Cancel</button>
+    <button class="pdp-footer-save">Save and finish</button>
+  </div>
+
+</div>
+</div>
+
+</body>
+</html>
